@@ -16,8 +16,12 @@ export {
   COMMON_NAME_OID
 } from '@shared/verify/timestampToken'
 export type { ParsedTimestampToken } from '@shared/verify/timestampToken'
-export { verifyManifestChainText } from '@shared/verify/manifestChain'
-export type { ChainVerifyResult, CaptureChainEntry } from '@shared/verify/manifestChain'
+export { verifyManifestChainText, describeUnsupportedEntry } from '@shared/verify/manifestChain'
+export type {
+  ChainVerifyResult,
+  CaptureChainEntry,
+  UnsupportedEntry
+} from '@shared/verify/manifestChain'
 export {
   resolveTrustedTimeFromEntries,
   buildTrustedTimeIndexFromEntries

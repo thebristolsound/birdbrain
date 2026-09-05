@@ -4,10 +4,12 @@ import { join, dirname, resolve } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
 import { spawnSync } from 'child_process'
+import { createHash } from 'crypto'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
 import { appendManifestEntry, initManifest } from '@main/services/manifest'
+import { signEntryHash } from '@main/services/signingKey'
 import {
   ingestMhtmlCapture,
   createCaptureLifecycle
@@ -245,6 +247,67 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
     expect(proc.stdout).toContain('RESULT: PASS')
     expect(proc.stdout).toContain(`[SKIP] capture ${unselectedCaptureId}`)
     expect(proc.stdout).toContain('outside the signed export selection')
+  })
+
+  // X25 through the BUILT binary: an entry from a newer schema is a fourth
+  // outcome with its own exit code, never the tamper verdict on the line below.
+  // The future entry is appended to the fixture's chain the way a newer
+  // Birdbrain would have written it — continuing the index, linking to the head,
+  // hashed over its own body and signed by the case's key. Anything less is a
+  // tamper verdict, which the case after this one pins.
+  it('exits 3 with a verifier-too-old report on a package holding a newer entry type', () => {
+    const futureDir = mkdtempSync(join(tmpdir(), 'bb-binfuture-'))
+    for (const [name, bytes] of readStoredZipEntries(join(tempDir, 'evidence.zip'))) {
+      const out = join(futureDir, name)
+      mkdirSync(dirname(out), { recursive: true })
+      writeFileSync(out, bytes)
+    }
+    const manifestPath = join(futureDir, 'manifest.jsonl')
+    const existing = readFileSync(manifestPath, 'utf-8')
+    const lines = existing.trim().split('\n')
+    const head = JSON.parse(lines[lines.length - 1]) as { index: number; entryHash: string }
+    const body = {
+      type: 'exhibit',
+      caseId: 'from-a-later-build',
+      schemaVersion: 4,
+      index: head.index + 1,
+      prevHash: head.entryHash
+    }
+    const entryHash = createHash('sha256').update(canonicalStringify(body)).digest('hex')
+    const future = JSON.stringify({ ...body, entryHash, signature: signEntryHash(entryHash) })
+    writeFileSync(manifestPath, existing + future + '\n')
+
+    const proc = spawnSync(binaryPath, [futureDir], { encoding: 'utf-8' })
+    expect(proc.status, proc.stdout + proc.stderr).toBe(3)
+    expect(proc.stdout).toContain('RESULT: VERIFIER TOO OLD')
+    expect(proc.stdout).toContain('supports up to schema version')
+    expect(proc.stdout).not.toContain('RESULT: FAIL')
+    rmSync(futureDir, { recursive: true, force: true })
+  })
+
+  // The laundering case, end to end: a tampered entry that also claims a newer
+  // schema is a tamper verdict, not the exculpation exit 3 carries.
+  it('exits 1 on a tampered manifest entry that also claims a newer schema', () => {
+    const launderDir = mkdtempSync(join(tmpdir(), 'bb-binlaunder-'))
+    for (const [name, bytes] of readStoredZipEntries(join(tempDir, 'evidence.zip'))) {
+      const out = join(launderDir, name)
+      mkdirSync(dirname(out), { recursive: true })
+      writeFileSync(out, bytes)
+    }
+    const manifestPath = join(launderDir, 'manifest.jsonl')
+    const lines = readFileSync(manifestPath, 'utf-8').trim().split('\n')
+    const entry = JSON.parse(lines[0]) as Record<string, unknown>
+    entry.url = 'https://evil.example/page'
+    entry.schemaVersion = 99
+    lines[0] = JSON.stringify(entry)
+    writeFileSync(manifestPath, lines.join('\n') + '\n')
+
+    const proc = spawnSync(binaryPath, [launderDir], { encoding: 'utf-8' })
+    expect(proc.status, proc.stdout + proc.stderr).toBe(1)
+    expect(proc.stdout).toContain('RESULT: FAIL')
+    expect(proc.stdout).toContain('Entry hash mismatch')
+    expect(proc.stdout).not.toContain('VERIFIER TOO OLD')
+    rmSync(launderDir, { recursive: true, force: true })
   })
 
   it('exits 1 with a FAIL report on a tampered package', () => {

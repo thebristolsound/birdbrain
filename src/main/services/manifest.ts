@@ -12,12 +12,12 @@ import {
 } from 'fs'
 import { join } from 'path'
 import { createHash } from 'crypto'
-import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
+import { MANIFEST_FILENAME } from '@shared/constants'
 import { ManifestEntrySchema } from '@shared/schemas'
 import type { ManifestEntry } from '@shared/schemas'
 import { canonicalStringify, verifyManifestChainText } from '@shared/verify'
 import type { PackagedArtifact } from '@shared/verify/packageHash'
-import type { ChainVerifyResult, CaptureChainEntry } from '@shared/verify'
+import type { ChainVerifyResult, CaptureChainEntry, UnsupportedEntry } from '@shared/verify'
 import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
 import type {
   TrustedTime,
@@ -410,6 +410,32 @@ export interface AppendResult {
   line: string
 }
 
+// The MINIMUM manifest schema version a reader needs for each entry type this
+// build writes — not MANIFEST_SCHEMA_VERSION, which is the highest version this
+// build can READ.
+//
+// Stamping the read ceiling on every entry would make every capture written
+// after a version bump unreadable to verifiers already in recipients' hands,
+// for entries whose shape those verifiers understand perfectly (X25: a stale
+// verifier reporting a valid chain as broken is a false accusation, and nothing
+// can recall a distributed copy). So each type declares the oldest verifier
+// that can read it, and the v3 types (ADR-0023) are the only ones that will
+// stamp 3 — once anything writes them (`803a` onwards).
+//
+// Typed as a total Record over the input union so adding an entry type without
+// deciding its minimum reader version is a compile error, not a silent 2. That
+// no value exceeds what this build can read is pinned by a test rather than a
+// runtime guard — an unreachable throw here would be untestable code on the
+// evidence path.
+export const MIN_READER_SCHEMA_VERSION: Record<ManifestEntryInput['type'], number> = {
+  capture: 2,
+  deletion: 2,
+  timestamp: 2,
+  export: 2,
+  'archive-export': 2,
+  import: 2
+}
+
 // Write-ahead append: compute hash, append JSONL line, fsync.
 // Caller must call rollbackManifestEntry(anchorBytes) if a later step fails.
 export function appendManifestEntry(caseDir: string, entry: ManifestEntryInput): AppendResult {
@@ -421,7 +447,7 @@ export function appendManifestEntry(caseDir: string, entry: ManifestEntryInput):
     ...entry,
     index: nextIndex,
     prevHash,
-    schemaVersion: MANIFEST_SCHEMA_VERSION
+    schemaVersion: MIN_READER_SCHEMA_VERSION[entry.type]
   }
   const canonical = canonicalStringify(body)
   const entryHash = createHash('sha256').update(canonical).digest('hex')
@@ -590,7 +616,7 @@ export async function withCaptureEntry<T>(
   )
 }
 
-export type { ChainVerifyResult, CaptureChainEntry }
+export type { ChainVerifyResult, CaptureChainEntry, UnsupportedEntry }
 
 // Main-process consumers verifying manifest text that is NOT this case dir's
 // live file (e.g. archive inspect, against the archive's own bundled key) go

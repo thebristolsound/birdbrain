@@ -107,6 +107,7 @@ export const IPC_CHANNELS = {
   TAGS_REMOVE_FROM_NOTE: 'tags:removeFromNote',
   TAGS_GET_FOR_NOTE: 'tags:getForNote',
   TAGS_MERGE: 'tags:merge',
+  TAGS_CAPTURES_WITH_ANY_TAG: 'tags:capturesWithAnyTag',
 
   // Session (renderer-side session control; the extension drives HTTP)
   SESSION_SNAPSHOT: 'session:snapshot',
@@ -778,6 +779,9 @@ export interface IpcInvokeContract {
   'tags:removeFromNote': { args: [params: NoteTagParams]; result: void }
   'tags:getForNote': { args: [noteId: string]; result: Tag[] }
   'tags:merge': { args: [params: MergeTagsParams]; result: MergeTagsResult }
+  // Union, not intersection: the ids of every capture in the case carrying any
+  // of these tags (#918). Unbounded, unlike `tags:captureMatrix`.
+  'tags:capturesWithAnyTag': { args: [caseId: string, tagIds: string[]]; result: string[] }
 
   'selectors:list': { args: [caseId: string]; result: Selector[] }
   'selectors:get': { args: [id: string]; result: Selector | undefined }

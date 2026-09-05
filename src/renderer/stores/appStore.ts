@@ -36,6 +36,14 @@ interface AppState {
   searchQuery: string
   activeSelectorFilters: string[]
   filteredCaptureIds: string[] | null
+  // The tag filter (#918) keeps its own pair rather than sharing the slot
+  // above. Both `removeSelectorFilter` and `useSelectorFilters` null
+  // `filteredCaptureIds` the moment the selector list empties — and the hook
+  // does it on every mount and every case change — so a shared slot would wipe
+  // a tag narrowing nothing had touched, leaving the strip naming a filter the
+  // list is no longer applying.
+  activeTagFilters: string[]
+  tagFilteredCaptureIds: string[] | null
   captureEvents: CaptureEvent[]
   captureStats: {
     successCount: number
@@ -82,6 +90,10 @@ interface AppState {
   removeSelectorFilter: (selectorId: string) => void
   clearSelectorFilters: () => void
   setFilteredCaptureIds: (ids: string[] | null) => void
+  addTagFilter: (tagId: string) => void
+  removeTagFilter: (tagId: string) => void
+  clearTagFilters: () => void
+  setTagFilteredCaptureIds: (ids: string[] | null) => void
   addCaptureEvent: (event: CaptureEvent) => void
   clearCaptureEvents: () => void
 }
@@ -98,6 +110,8 @@ export const useAppStore = create<AppState>((set) => ({
   searchQuery: '',
   activeSelectorFilters: [],
   filteredCaptureIds: null,
+  activeTagFilters: [],
+  tagFilteredCaptureIds: null,
   captureEvents: [],
   captureStats: { successCount: 0, failCount: 0, skipCount: 0 },
   commandPaletteOpen: false,
@@ -198,6 +212,29 @@ export const useAppStore = create<AppState>((set) => ({
   clearSelectorFilters: () => set({ activeSelectorFilters: [], filteredCaptureIds: null }),
 
   setFilteredCaptureIds: (ids) => set({ filteredCaptureIds: ids }),
+
+  // The tag filter's four, mirroring the selector four above. Multi-select, and
+  // a union at the point of the query: a capture carrying ANY selected tag
+  // stays, which is what `getCapturesWithAnyTag` returns.
+  addTagFilter: (tagId) =>
+    set((s) => ({
+      activeTagFilters: s.activeTagFilters.includes(tagId)
+        ? s.activeTagFilters
+        : [...s.activeTagFilters, tagId]
+    })),
+
+  removeTagFilter: (tagId) =>
+    set((s) => {
+      const updated = s.activeTagFilters.filter((id) => id !== tagId)
+      return {
+        activeTagFilters: updated,
+        tagFilteredCaptureIds: updated.length === 0 ? null : s.tagFilteredCaptureIds
+      }
+    }),
+
+  clearTagFilters: () => set({ activeTagFilters: [], tagFilteredCaptureIds: null }),
+
+  setTagFilteredCaptureIds: (ids) => set({ tagFilteredCaptureIds: ids }),
 
   addCaptureEvent: (event) =>
     set((s) => {

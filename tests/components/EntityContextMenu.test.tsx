@@ -36,7 +36,13 @@ function tagTarget(setColor = vi.fn()): EntityMenuTarget {
       { value: '#22c55e', label: 'Green' },
       { value: '#3b82f6', label: 'Blue' }
     ],
-    actions: { rename: vi.fn(), setColor, merge: vi.fn(), remove: vi.fn() }
+    actions: {
+      filterCaptures: vi.fn(),
+      rename: vi.fn(),
+      setColor,
+      merge: vi.fn(),
+      remove: vi.fn()
+    }
   }
 }
 

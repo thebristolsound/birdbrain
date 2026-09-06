@@ -4,6 +4,11 @@
 
 **Date:** 2026-08-16
 
+**Amended 2026-09-06 by [ADR-0026](0026-scheduled-dispatch-runs-on-a-github-actions-host.md):**
+the token is also a repository secret for the scheduled dispatch workflow (rule 3), branch pushes
+on that host go out as the machine account (rule 4), and the web is never a dispatch host
+(rule 5). Local sessions are unchanged.
+
 ## Context
 
 The dispatch routine (`.claude/skills/dispatch/SKILL.md` §3) opens every agent PR itself, and
@@ -50,7 +55,10 @@ already posts here under its own identity, so a second identity is known to work
    repository checkout — `~/.config/birdbrain-agent/env`, directory `0700`, file `0600` —
    as `BIRDBRAIN_AGENT_GH_TOKEN`, alongside `BIRDBRAIN_AGENT_GH_LOGIN` and the token's expiry
    date. It is never committed, never written to a repo `.env`, never stored as an Actions
-   secret (no workflow needs it), and never pasted into a chat. The dispatch routine sources
+   secret (no workflow needs it), and never pasted into a chat. *Amended by ADR-0026: one
+   workflow now needs it, so it is also the repository secret `BIRDBRAIN_AGENT_GH_TOKEN`,
+   readable only by workflows on this repository; the login and expiry are repository
+   variables.* The dispatch routine sources
    that file and passes the token to `gh` per write call as `GH_TOKEN`; the maintainer's own
    `gh` login is untouched. Rotation is re-running the provisioning wizard.
 4. **Human commits and pushes stay under the human's identity.** The machine account is a
@@ -58,11 +66,14 @@ already posts here under its own identity, so a second identity is known to work
    credentials (SSH), and commit authorship is unchanged. The `repo` scope *could* push; the
    dispatch contract, not the token, is what keeps the dispatcher off the branch (ADR-0006:
    only the implementer pushes). Whether pushes should also move is a separate decision and
-   is not made here.
+   is not made here. *Amended by ADR-0026: on the Actions host the checkout's git credential is
+   the machine token, so pushes and commit authorship there are the machine account's.*
 5. The web write path (`docs/agents/github-access.md`) is not exempt from rule 2. Where the
    GitHub MCP tools would write as the sandbox identity, they no longer satisfy the dispatch
    contract for opening PRs. Provisioning the machine token into that environment is future
-   work; until it exists, a web dispatch cycle stops at the identity check.
+   work; until it exists, a web dispatch cycle stops at the identity check. *Resolved by
+   ADR-0026: the proxy discards any provisioned credential (#960), so the web is never a
+   dispatch host and a web cycle always stops here.*
 
 ## Consequences
 

@@ -1,6 +1,8 @@
 # Scheduled dispatch on a GitHub Actions host
 
-**Status:** Draft, 2026-09-06. Decision brief for the maintainer.
+**Status:** Approved 2026-09-06 (hosted runner, token as a repository secret). Implemented by
+[ADR-0026](../adr/0026-scheduled-dispatch-runs-on-a-github-actions-host.md) and
+`.github/workflows/dispatch.yml`.
 
 **Supersedes the host half of the #310 verdict.** The routine stays as it is; this brief is
 about where it runs.

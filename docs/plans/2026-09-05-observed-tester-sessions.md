@@ -1,7 +1,7 @@
 # Observed tester sessions - round 1
 
 **Date:** 2026-09-05
-**Status:** Planned - run once the exhibit chain has landed and a candidate build has passed the pre-ship gate
+**Status:** Planned - run once the exhibit chain has landed and a candidate build has passed the pre-ship gate. The sessions gate the public beta cut (decided 2026-09-06, [public-beta brief](../specs/2026-09-06-public-beta-brief.md))
 **Owner:** Matt Donovan
 **Map:** [#284](https://github.com/thebristolsound/birdbrain/issues/284) (round-1 tester readiness); ticket [#1237](https://github.com/thebristolsound/birdbrain/issues/1237)
 
@@ -20,14 +20,15 @@ half hour yields more of that than a month of unobserved use. So the ask becomes
 observed sessions of thirty minutes, scripted, with a fixed end time.
 
 The floor from #284 still governs what counts: **Birdbrain must not silently lose, corrupt,
-or mis-attest evidence.** A session finding that touches the floor is a blocker. Everything
+or mis-attest evidence.** A session finding that touches the floor is a blocker, and it
+cancels the public beta cut until it is fixed and the gate is re-run. Everything
 else is input to the redesign, which is what
 [the sequence note](2026-08-14-round-1-then-redesign-sequence.md) says round 1 is for.
 
 ## Who, when, where
 
 - **Two testers from the round-1 cohort**, referred to by codename only, as the
-  [tester brief](../specs/2026-08-15-tester-rollout-brief.md) requires. Pick one who has
+  [public-beta brief](../specs/2026-09-06-public-beta-brief.md) requires. Pick one who has
   used an evidence tool before and one who has not.
 - **After the exhibit chain lands.** The capture and export flow changes under it, and a
   session run on the old flow spends the tester's one visit on screens that will not ship.

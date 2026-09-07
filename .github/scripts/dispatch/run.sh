@@ -14,6 +14,13 @@
 # contract already tolerates.
 set -euo pipefail
 
+# An API error can quote the credential it was sent: a malformed
+# CLAUDE_CODE_OAUTH_TOKEN came back inside the error message, and because the
+# stored secret held a newline the value no longer matched GitHub's mask. The
+# log was scrubbed, the artifact was not. Everything written to either passes
+# through here first.
+redact() { sed -E 's/sk-ant-[A-Za-z0-9_-]{6}[A-Za-z0-9_-]*/sk-ant-<REDACTED>/g'; }
+
 mode="${1:-cycle}"
 summary="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
 mkdir -p .dispatch/reports
@@ -51,6 +58,12 @@ claude -p "$prompt" \
   > .dispatch/result.json 2> .dispatch/claude.err
 status=$?
 set -e
+
+# Before anything reads, echoes or uploads either file. The failure path is the
+# one that carries a credential, so redacting after it would redact nothing.
+scrub() { redact < "$1" > "$1.redacted" && mv "$1.redacted" "$1"; }
+scrub .dispatch/result.json
+scrub .dispatch/claude.err
 
 if [ "$status" -ne 0 ]; then
   # Both streams, because a fast non-zero exit puts the reason on stdout as a

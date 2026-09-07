@@ -33,7 +33,7 @@ export function captureForNote(note: Note): string | undefined {
  * The tag attaches to the note ALWAYS, and additionally to the note's capture
  * when it has one — so a tag raised from a passage of a note still reaches
  * capture-level filtering and the Signals coverage strip, which read
- * `capture_tags` and know nothing about notes.
+ * `exhibit_tags` and know nothing about notes.
  *
  * One transaction covers the lookup, the create and both attachments: a
  * half-applied tag would claim on one surface what it denies on the other.
@@ -51,7 +51,7 @@ export function applyTagToNote(params: ApplyTagToNoteParams): ApplyTagToNoteResu
 
     // An anchor keeps naming its capture after that capture is deleted — the
     // `capture-missing` gap is deliberate — so the id can be dead. Inserting a
-    // dead id fails capture_tags' foreign key and rolls the note's own tag back
+    // dead id fails exhibit_tags' foreign key and rolls the note's own tag back
     // with it, which would leave a surviving note unable to be tagged at all.
     // The note half is valid on its own, so fall back to it.
     const captureId = captureForNote(note)

@@ -32,6 +32,7 @@ import { initSigningKey, SigningKeyUnacknowledgedError } from '@main/services/si
 import { initServerToken } from '@main/services/serverToken'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createTimestampWorker } from '@main/services/timestampWorker'
+import { runExhibitBackfill } from '@main/services/exhibitBackfill'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { createRecaptureService } from '@main/services/recapture'
 import { createSessionService } from '@main/services/session'
@@ -430,6 +431,14 @@ if (!gotSingleInstanceLock) {
         logger.warn('app', 'app.storage_init_failed', undefined, err)
         initStorage(defaultCapturesDir)
       }
+
+      // The data half of the Exhibit-model migration (#1147). It runs HERE, not
+      // in `runMigrations`, because it appends to each Case's chain and
+      // regenerates thumbnails: signing key, settings and storage root all have
+      // to exist first, and all three are initialised above. Idempotent, so a
+      // reopen appends nothing; awaited so no read path sees a half-numbered
+      // Case.
+      await runExhibitBackfill({ toolVersion: app.getVersion() })
 
       // Build the Selector Lifecycle. Its emitter broadcasts rematched events
       // to every renderer; injecting via factory keeps Electron out of the

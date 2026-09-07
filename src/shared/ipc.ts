@@ -18,6 +18,8 @@ import type {
   CaptureEvent,
   Case,
   CaseAutoCapturePolicy,
+  CaseInventory,
+  ExhibitVerification,
   DiagnosticsSnapshot,
   UnreconciledDeletionReport,
   ExportOptions,
@@ -49,6 +51,7 @@ import type {
   WaybackLookupResult,
   WaybackSnapshot
 } from '@shared/types'
+import type { CaseManifestSnapshot } from '@shared/manifestSnapshot'
 
 export const IPC_CHANNELS = {
   // Cases
@@ -188,6 +191,14 @@ export const IPC_CHANNELS = {
   // Shell
   SHELL_SHOW_ITEM_IN_FOLDER: 'shell:showItemInFolder',
   SHELL_OPEN_PATH: 'shell:openPath',
+
+  // Exhibits (ADR-0023). Read paths only in this cut: Captures are the sole
+  // populated kind, and commit/discard arrive with the Staging Pool.
+  EXHIBITS_INVENTORY: 'exhibits:inventory',
+  EXHIBITS_VERIFY: 'exhibits:verify',
+
+  // Manifest
+  MANIFEST_SNAPSHOT: 'manifest:snapshot',
 
   // App
   APP_GET_VERSION: 'app:getVersion',
@@ -901,6 +912,11 @@ export interface IpcInvokeContract {
 
   'extension:path': { args: []; result: string }
   'extension:openFolder': { args: []; result: void }
+
+  'exhibits:inventory': { args: [caseId: string]; result: CaseInventory }
+  'exhibits:verify': { args: [caseId: string, exhibitId: string]; result: ExhibitVerification }
+
+  'manifest:snapshot': { args: [caseId: string]; result: CaseManifestSnapshot }
 
   'app:getVersion': { args: []; result: string }
   'diagnostics:get': { args: []; result: DiagnosticsSnapshot }

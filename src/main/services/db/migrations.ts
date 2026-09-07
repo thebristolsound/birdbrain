@@ -708,4 +708,167 @@ export function runMigrations(db: Database.Database): void {
       db.pragma('user_version = 33')
     })()
   }
+
+  if (version < 34) {
+    db.transaction(() => {
+      // The Exhibit model (#1147, ADR-0023 / ADR-0024, ruling X35). An Exhibit
+      // is the unit of evidence and a Capture is one kind of it, so `captures`
+      // is untouched — `text_hash` and `screenshot_hash` stay there — and every
+      // Capture gains an `exhibits` row with the SAME id. Kind and origin
+      // columns on `captures` were rejected in X35: they would make every
+      // capture column nullable for the kinds that lack it, and turn the
+      // inventory query into a per-kind special case.
+      //
+      // `kind` and `origin` are plain TEXT, not CHECK-constrained, for the same
+      // reason the Manifest schema keeps them open strings: a vocabulary this
+      // build has never heard of is a row a newer build wrote, and refusing it
+      // at the storage layer would be a false verdict on valid data. The
+      // writer's vocabulary is fixed at commit time by the app (X43).
+      //
+      // `path` and `size_bytes` are nullable because a legacy Capture may
+      // record neither; '' and 0 would be claims nobody made. `manifest_seq`
+      // nullable IS the anchoring axis: NULL means the Exhibit carries no
+      // Manifest Entry (a pre-v11 `html` Capture, X41), and its Exhibit Number
+      // is then a citation aid and never an anchoring claim.
+      db.exec(`
+        CREATE TABLE exhibits (
+          id TEXT PRIMARY KEY,
+          case_id TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          origin TEXT NOT NULL,
+          exhibit_number INTEGER NOT NULL,
+          name TEXT NOT NULL,
+          content_hash TEXT NOT NULL,
+          path TEXT,
+          size_bytes INTEGER,
+          committed_at TEXT NOT NULL,
+          manifest_seq INTEGER,
+          UNIQUE (case_id, exhibit_number),
+          FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+        );
+        CREATE INDEX idx_exhibits_case_id ON exhibits(case_id);
+      `)
+
+      // The `renumber` half of the migration (X18, X41), in SQL because the
+      // ordering it needs is already on the `captures` row: `manifest_index`
+      // for an anchored Capture, `timestamp` for a legacy one. Numbers are a
+      // per-Case RANK starting at 1, not the manifest index itself — the index
+      // counts deletion, timestamp and export entries too, so using it directly
+      // would leave gaps that read as missing Exhibits.
+      //
+      // Anchored Captures come first in manifest order and unanchored ones
+      // after them all in capture order, which is X41 exactly: `manifest_index
+      // IS NULL` sorts 0 before 1. `id` breaks a tie so the assignment is
+      // deterministic across a rebuild rather than dependent on scan order.
+      //
+      // The matching `renumber` Manifest Entry is NOT written here. Appending
+      // to the chain needs the signing key, the storage root and the operator
+      // identity, none of which are initialised when `runMigrations` runs
+      // (see `initDatabase`'s call site in `src/main/index.ts`). The entry is
+      // appended by the post-init backfill in `exhibitBackfill.ts`, which is
+      // idempotent and reconciles against the rows written here.
+      db.exec(`
+        INSERT INTO exhibits (
+          id, case_id, kind, origin, exhibit_number, name,
+          content_hash, path, size_bytes, committed_at, manifest_seq
+        )
+        SELECT
+          id,
+          case_id,
+          'capture',
+          COALESCE(method, 'extension'),
+          ROW_NUMBER() OVER (
+            PARTITION BY case_id
+            ORDER BY (manifest_index IS NULL), manifest_index, timestamp, id
+          ),
+          COALESCE(NULLIF(title, ''), url),
+          hash,
+          COALESCE(mhtml_path, html_path),
+          size_bytes,
+          COALESCE(created_at, timestamp),
+          manifest_index
+        FROM captures;
+      `)
+
+      // Derived Files (X3, X17). `manifest_seq` is nullable for the reason X34
+      // gives: a legacy thumbnail whose screenshot is missing or fails
+      // verification is RECORDED but not anchored, because hashing the bytes
+      // found on disk would anchor a file that could have been swapped. The
+      // column is not in the ticket's column list; without it the inventory
+      // cannot say "unanchored" about a Derived File, which the acceptance
+      // criteria require it to say.
+      //
+      // No Exhibit Number: a Derived File is cited by its parent and its
+      // derivation name (X31).
+      db.exec(`
+        CREATE TABLE derived_files (
+          id TEXT PRIMARY KEY,
+          exhibit_id TEXT NOT NULL,
+          derivation TEXT NOT NULL,
+          tool_version TEXT NOT NULL,
+          content_hash TEXT NOT NULL,
+          path TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          manifest_seq INTEGER,
+          FOREIGN KEY (exhibit_id) REFERENCES exhibits(id) ON DELETE CASCADE
+        );
+        CREATE INDEX idx_derived_files_exhibit_id ON derived_files(exhibit_id);
+      `)
+
+      // The Staging Pool (ADR-0024). Created here, populated by `803p`, so the
+      // inventory query has a stable shape from the first read path rather than
+      // gaining a second branch when the pool arrives.
+      //
+      // `source_url` and `source_claims` are what the operator or an external
+      // service SAID about the bytes' provenance, and are unverified by
+      // construction (X5, X22): the app attests only the bytes it received and
+      // when. `source_claims` is JSON-in-TEXT, the house pattern already used
+      // by notes.body_doc and annotations.shapes_json.
+      db.exec(`
+        CREATE TABLE staging_files (
+          id TEXT PRIMARY KEY,
+          case_id TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          origin TEXT NOT NULL,
+          name TEXT NOT NULL,
+          content_hash TEXT NOT NULL,
+          path TEXT NOT NULL,
+          size_bytes INTEGER NOT NULL,
+          arrived_at TEXT NOT NULL,
+          source_url TEXT,
+          source_claims TEXT,
+          FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+        );
+        CREATE INDEX idx_staging_files_case_id ON staging_files(case_id);
+      `)
+
+      // `exhibit_tags` replaces `capture_tags` (X19, ADR-0023): classification
+      // is Tags, and Tags have to reach every kind. A Capture's Exhibit id IS
+      // its capture id, so this is a rename plus an FK retarget over the same
+      // rows — and it must be a rebuild, not `ALTER TABLE ... RENAME`, because
+      // a rename carries the old foreign key to `captures` with it.
+      //
+      // The copy runs AFTER the `exhibits` backfill above so every referenced
+      // id already exists: `foreign_keys` is ON for the whole connection and
+      // checked per statement, so the opposite order would abort the migration
+      // and, through `initDatabase`, leave the app unable to open the database.
+      //
+      // Index mirrors the dropped `idx_capture_tags_tag_id` (v8): the primary
+      // key already serves the exhibit_id direction.
+      db.exec(`
+        CREATE TABLE exhibit_tags (
+          exhibit_id TEXT NOT NULL,
+          tag_id TEXT NOT NULL,
+          PRIMARY KEY (exhibit_id, tag_id),
+          FOREIGN KEY (exhibit_id) REFERENCES exhibits(id) ON DELETE CASCADE,
+          FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+        );
+        INSERT INTO exhibit_tags (exhibit_id, tag_id)
+          SELECT capture_id, tag_id FROM capture_tags;
+        DROP TABLE capture_tags;
+        CREATE INDEX idx_exhibit_tags_tag_id ON exhibit_tags(tag_id);
+      `)
+      db.pragma('user_version = 34')
+    })()
+  }
 }

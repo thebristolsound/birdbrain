@@ -3,10 +3,12 @@ import { statSync, existsSync, readdirSync, unlinkSync, copyFileSync } from 'fs'
 import { join, resolve, sep } from 'path'
 import { getStorageRoot } from '@main/services/storage'
 import {
+  CASE_SUBDIRECTORIES,
   defaultCaptureStore,
   parseArtifactFilename,
   type CaptureStore
 } from '@main/services/captureStore'
+import { deleteExhibit } from '@main/services/db/exhibitRepo'
 import { buildCsv } from '@main/services/csvEscape'
 import { parseNoteAnchor } from '@shared/noteAnchor'
 import { assertAnchorInCase } from '@main/services/db/noteRepo'
@@ -18,7 +20,7 @@ export const ALLOWED_TABLES = [
   'cases',
   'captures',
   'tags',
-  'capture_tags',
+  'exhibit_tags',
   'selectors',
   'selector_matches',
   'capture_favorites',
@@ -502,18 +504,47 @@ export function findOrphans(): OrphanReport {
 
   if (existsSync(storageRoot)) {
     const captureIds = new Set(captures.map((c) => c.id))
+    // Every storage-root-relative path the database claims for a non-Capture
+    // Exhibit, a Derived File or a pooled file. The Capture directory is
+    // matched by filename (`parseArtifactFilename`) because a Capture's
+    // artifacts are named after its id; nothing else is, so the subdirectories
+    // are matched by recorded path instead.
+    const knownPaths = new Set(
+      (
+        db
+          .prepare(
+            `SELECT path FROM exhibits WHERE path IS NOT NULL
+             UNION SELECT path FROM derived_files
+             UNION SELECT path FROM staging_files`
+          )
+          .all() as Array<{ path: string }>
+      ).map((row) => row.path)
+    )
     const caseDirs = readdirSync(storageRoot, { withFileTypes: true })
       .filter((d) => d.isDirectory())
       .map((d) => d.name)
 
     for (const caseDir of caseDirs) {
       const casePath = join(storageRoot, caseDir)
-      const files = readdirSync(casePath)
-      for (const file of files) {
-        const parsed = parseArtifactFilename(file)
+      for (const entry of readdirSync(casePath, { withFileTypes: true })) {
+        if (entry.isDirectory()) {
+          // Only the subdirectories the layout declares are scanned (X4,
+          // ADR-0024). An unrecognised directory is left alone rather than
+          // reported: `cleanOrphans` deletes what this reports, and guessing
+          // that an unknown directory is ours is how an operator's own files
+          // get deleted.
+          if (!CASE_SUBDIRECTORIES.includes(entry.name)) continue
+          const subPath = join(casePath, entry.name)
+          for (const file of readdirSync(subPath)) {
+            const rel = join(caseDir, entry.name, file)
+            if (!knownPaths.has(rel)) fileOrphans.push(rel)
+          }
+          continue
+        }
+        const parsed = parseArtifactFilename(entry.name)
         if (!parsed) continue
         if (!captureIds.has(parsed.captureId)) {
-          fileOrphans.push(join(caseDir, file))
+          fileOrphans.push(join(caseDir, entry.name))
         }
       }
     }
@@ -536,6 +567,10 @@ export function cleanOrphans(report: OrphanReport): {
       continue
     }
     const run = db.transaction(() => {
+      // The Exhibit row goes with the Capture row: `exhibits` hangs off
+      // `cases`, so nothing cascades to it, and a row left behind would keep a
+      // deleted Capture's tags alive and list it in the inventory.
+      deleteExhibit(orphan.id)
       return db.prepare(`DELETE FROM "${orphan.table}" WHERE id = ?`).run(orphan.id)
     })
     const result = run()

@@ -389,6 +389,42 @@ export type ManifestEntryInput =
       operatorName: string
       toolVersion: string
     }
+  | {
+      // One Derived File computed from an Exhibit (ADR-0023, X17). An entry
+      // cannot be amended once written, so a derivation that runs after its
+      // parent's ingest — the legacy thumbnail regeneration of X34, and every
+      // later derivation — gets its own entry rather than riding in the
+      // parent's. The parent is bound by BOTH its id and the Content Hash the
+      // derivation ran over: the id alone would not say which bytes.
+      type: 'derivation'
+      caseId: string
+      parentExhibitId: string
+      parentContentHash: string
+      derivation: string
+      // The tool that produced the OUTPUT, which is not always the Birdbrain
+      // build that wrote the entry (`toolVersion` below is always that).
+      derivationToolVersion: string
+      outputHash: string
+      outputPath: string
+      timestamp: string
+      operatorId: string
+      operatorName: string
+      toolVersion: string
+    }
+  | {
+      // The one-time assignment of Exhibit Numbers to Captures that predate
+      // them (X18), written once per Case so the assignment is itself in the
+      // chain and a citation cannot be re-derived differently later. An
+      // assignment with no `manifestIndex` is a Capture with no Manifest Entry
+      // at all (X41) — present-means-anchored keeps that case explicit.
+      type: 'renumber'
+      caseId: string
+      assignments: Array<{ exhibitId: string; exhibitNumber: number; manifestIndex?: number }>
+      timestamp: string
+      operatorId: string
+      operatorName: string
+      toolVersion: string
+    }
 
 export interface ExportVerificationResult {
   overallValid: boolean
@@ -433,7 +469,12 @@ export const MIN_READER_SCHEMA_VERSION: Record<ManifestEntryInput['type'], numbe
   timestamp: 2,
   export: 2,
   'archive-export': 2,
-  import: 2
+  import: 2,
+  // The v3 types (ADR-0023). No v1 or v2 form exists for either, so a reader
+  // below 3 cannot make sense of one and stamping anything lower would invite
+  // it to try.
+  derivation: 3,
+  renumber: 3
 }
 
 // Write-ahead append: compute hash, append JSONL line, fsync.

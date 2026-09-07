@@ -206,11 +206,17 @@ describe('applyTagToNote', () => {
     // the check and the insert. Forced here, but it is the reason the apply
     // stays one transaction — a half-applied tag would claim on getTagsForNote
     // what getTagsForCapture denies, and the tag row and its note link are both
-    // already written by the time capture_tags' foreign key notices.
+    // already written by the time exhibit_tags' foreign key notices.
+    //
+    // The forced deletion removes the `exhibits` row as well as the `captures`
+    // one, because that is what deleting a Capture does since ADR-0023: tags
+    // hang off `exhibits` now, and dropping only the capture row would simulate
+    // a state no deletion path can produce.
     const note = createNote({ caseId, captureId, title: 'N', body: 'text' })
     const realGetCapture = captureRepo.getCapture
     vi.spyOn(captureRepo, 'getCapture').mockImplementation((id: string) => {
       const capture = realGetCapture(id)
+      getDb().prepare('DELETE FROM exhibits WHERE id = ?').run(id)
       getDb().prepare('DELETE FROM captures WHERE id = ?').run(id)
       return capture
     })

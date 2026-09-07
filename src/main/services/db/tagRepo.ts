@@ -44,7 +44,7 @@ export function deleteTag(id: string): boolean {
 
 export function addTagToCapture(params: CaptureTagParams): void {
   getDb()
-    .prepare('INSERT OR IGNORE INTO capture_tags (capture_id, tag_id) VALUES (?, ?)')
+    .prepare('INSERT OR IGNORE INTO exhibit_tags (exhibit_id, tag_id) VALUES (?, ?)')
     .run(params.captureId, params.tagId)
 }
 
@@ -57,7 +57,7 @@ export function addTagToCaptures(captureIds: string[], tagId: string): number {
   const d = getDb()
   const run = d.transaction(() => {
     const insert = d.prepare(
-      'INSERT OR IGNORE INTO capture_tags (capture_id, tag_id) VALUES (?, ?)'
+      'INSERT OR IGNORE INTO exhibit_tags (exhibit_id, tag_id) VALUES (?, ?)'
     )
     for (const id of captureIds) insert.run(id, tagId)
     return captureIds.length
@@ -66,7 +66,7 @@ export function addTagToCaptures(captureIds: string[], tagId: string): number {
 }
 
 /**
- * Merge one tag into another (#828): re-point every capture_tags and note_tags
+ * Merge one tag into another (#828): re-point every exhibit_tags and note_tags
  * row from source to target, then delete the source, in one transaction.
  * INSERT OR IGNORE carries the re-point past rows whose capture or note
  * already holds the target — the join tables' primary keys make a plain UPDATE
@@ -94,8 +94,8 @@ export function mergeTags(params: MergeTagsParams): MergeTagsResult | undefined 
     const target = d.prepare('SELECT * FROM tags WHERE id = ?').get(targetId) as Tag | undefined
     if (!source || !target) return undefined
     d.prepare(
-      `INSERT OR IGNORE INTO capture_tags (capture_id, tag_id)
-       SELECT capture_id, ? FROM capture_tags WHERE tag_id = ?`
+      `INSERT OR IGNORE INTO exhibit_tags (exhibit_id, tag_id)
+       SELECT exhibit_id, ? FROM exhibit_tags WHERE tag_id = ?`
     ).run(targetId, sourceId)
     d.prepare(
       `INSERT OR IGNORE INTO note_tags (note_id, tag_id)
@@ -106,14 +106,14 @@ export function mergeTags(params: MergeTagsParams): MergeTagsResult | undefined 
       (d.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE tag_id = ?`).get(targetId) as {
         n: number
       }).n
-    return { target, captureLinks: count('capture_tags'), noteLinks: count('note_tags') }
+    return { target, captureLinks: count('exhibit_tags'), noteLinks: count('note_tags') }
   })
   return run()
 }
 
 export function removeTagFromCapture(params: CaptureTagParams): void {
   getDb()
-    .prepare('DELETE FROM capture_tags WHERE capture_id = ? AND tag_id = ?')
+    .prepare('DELETE FROM exhibit_tags WHERE exhibit_id = ? AND tag_id = ?')
     .run(params.captureId, params.tagId)
 }
 
@@ -164,8 +164,8 @@ export function getTagsForCapture(captureId: string): Tag[] {
   return getDb()
     .prepare(
       `SELECT t.* FROM tags t
-       JOIN capture_tags ct ON t.id = ct.tag_id
-       WHERE ct.capture_id = ?
+       JOIN exhibit_tags ct ON t.id = ct.tag_id
+       WHERE ct.exhibit_id = ?
        ORDER BY t.name`
     )
     .all(captureId) as Tag[]
@@ -175,8 +175,8 @@ export function getTagCountForCase(caseId: string): number {
   const row = getDb()
     .prepare(
       `SELECT COUNT(DISTINCT ct.tag_id) as count
-       FROM capture_tags ct
-       JOIN captures c ON ct.capture_id = c.id
+       FROM exhibit_tags ct
+       JOIN captures c ON ct.exhibit_id = c.id
        WHERE c.case_id = ?`
     )
     .get(caseId) as { count: number } | undefined
@@ -187,8 +187,8 @@ export function getTagUsageCountsForCase(caseId: string): Record<string, number>
   const rows = getDb()
     .prepare(
       `SELECT ct.tag_id, COUNT(*) as count
-       FROM capture_tags ct
-       JOIN captures c ON ct.capture_id = c.id
+       FROM exhibit_tags ct
+       JOIN captures c ON ct.exhibit_id = c.id
        WHERE c.case_id = ?
        GROUP BY ct.tag_id`
     )
@@ -209,17 +209,17 @@ export function getTagUsageCountsForCase(caseId: string): Record<string, number>
 export function getTagCaptureMatrix(caseId: string, limit: number): Record<string, string[]> {
   const rows = getDb()
     .prepare(
-      `SELECT ct.tag_id, ct.capture_id
-       FROM capture_tags ct
+      `SELECT ct.tag_id, ct.exhibit_id
+       FROM exhibit_tags ct
        JOIN (
          SELECT id FROM captures WHERE case_id = ? ORDER BY timestamp DESC LIMIT ?
-       ) recent ON recent.id = ct.capture_id`
+       ) recent ON recent.id = ct.exhibit_id`
     )
-    .all(caseId, limit) as Array<{ tag_id: string; capture_id: string }>
+    .all(caseId, limit) as Array<{ tag_id: string; exhibit_id: string }>
 
   const matrix: Record<string, string[]> = {}
   for (const row of rows) {
-    ;(matrix[row.tag_id] ??= []).push(row.capture_id)
+    ;(matrix[row.tag_id] ??= []).push(row.exhibit_id)
   }
   return matrix
 }
@@ -247,15 +247,15 @@ export function getCapturesWithAnyTag(caseId: string, tagIds: string[]): string[
   const placeholders = tagIds.map(() => '?').join(',')
   const rows = getDb()
     .prepare(
-      `SELECT DISTINCT ct.capture_id, c.timestamp
-       FROM capture_tags ct
-       JOIN captures c ON c.id = ct.capture_id
+      `SELECT DISTINCT ct.exhibit_id, c.timestamp
+       FROM exhibit_tags ct
+       JOIN captures c ON c.id = ct.exhibit_id
        WHERE c.case_id = ? AND ct.tag_id IN (${placeholders})
-       ORDER BY c.timestamp DESC, ct.capture_id`
+       ORDER BY c.timestamp DESC, ct.exhibit_id`
     )
-    .all(caseId, ...tagIds) as Array<{ capture_id: string }>
+    .all(caseId, ...tagIds) as Array<{ exhibit_id: string }>
 
-  return rows.map((r) => r.capture_id)
+  return rows.map((r) => r.exhibit_id)
 }
 
 // --- Archive bulk ops ---
@@ -268,8 +268,8 @@ export function collectTagsForCase(caseId: string): Record<string, unknown>[] {
   return getDb()
     .prepare(
       `SELECT DISTINCT t.* FROM tags t
-       JOIN capture_tags ct ON ct.tag_id = t.id
-       JOIN captures c ON c.id = ct.capture_id
+       JOIN exhibit_tags ct ON ct.tag_id = t.id
+       JOIN captures c ON c.id = ct.exhibit_id
        WHERE c.case_id = ?
        UNION
        SELECT DISTINCT t.* FROM tags t
@@ -293,8 +293,13 @@ export function collectNoteTagsForCase(caseId: string): Record<string, unknown>[
 export function collectCaptureTagsForCase(caseId: string): Record<string, unknown>[] {
   return getDb()
     .prepare(
-      `SELECT ct.* FROM capture_tags ct
-       JOIN captures c ON c.id = ct.capture_id
+      // Aliased back to `capture_id` on purpose: the .birdbrain payload's
+      // `captureTags` rows keep the wire shape they have always had, so an
+      // archive written by this build still imports into an older one and
+      // CASE_ARCHIVE_SCHEMA_VERSION does not move for a storage rename. The
+      // bump X30 reserves belongs with the `staged` flag and the new kinds.
+      `SELECT ct.exhibit_id AS capture_id, ct.tag_id FROM exhibit_tags ct
+       JOIN captures c ON c.id = ct.exhibit_id
        WHERE c.case_id = ?`
     )
     .all(caseId) as Record<string, unknown>[]
@@ -326,9 +331,13 @@ export function importTagRows(rows: Record<string, unknown>[]): void {
   }
 }
 
+// Reads `capture_id` because that is the key every .birdbrain payload carries
+// (see collectCaptureTagsForCase); writes `exhibit_id`, which is the same id.
+// Must run AFTER importCaptureRows: exhibit_tags has a foreign key onto
+// `exhibits`, and the imported Capture's Exhibit row is written there.
 export function importCaptureTagRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
   const insert = getDb().prepare(
-    'INSERT OR IGNORE INTO capture_tags (capture_id, tag_id) VALUES (?, ?)'
+    'INSERT OR IGNORE INTO exhibit_tags (exhibit_id, tag_id) VALUES (?, ?)'
   )
   for (const ct of rows) {
     insert.run(ctx.mapId(ct.capture_id as string), ctx.mapTag(ct.tag_id as string))

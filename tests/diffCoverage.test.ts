@@ -159,6 +159,12 @@ describe('isSourceLike', () => {
     expect(isSourceLike('src/renderer/env.d.ts')).toBe(false)
   })
 
+  it('names scripts/slop-audit/, the one tooling tree vitest instruments', () => {
+    expect(isSourceLike('scripts/slop-audit/cli.mjs')).toBe(true)
+    expect(isSourceLike('scripts/slop-audit/lib/files.mjs')).toBe(true)
+    expect(isSourceLike('scripts/diff-coverage.mjs')).toBe(false)
+  })
+
   it('does not name co-located package tests, which coverage excludes like tests/', () => {
     expect(isSourceLike('src/packages/example/tests/example.test.ts')).toBe(false)
     expect(isSourceLike('src/packages/example/tests/fixtures/sample.ts')).toBe(false)

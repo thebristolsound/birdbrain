@@ -31,6 +31,7 @@
     "lint": "eslint . --ext .ts,.tsx",
     "lint:boundaries": "depcruise src extension/src tests e2e",
     "lint:agents-md": "node scripts/lint-agents-md.mjs",
+    "lint:slop": "node scripts/slop-audit/cli.mjs",
     "audit:check": "node scripts/audit-check.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p extension/tsconfig.json && tsc --noEmit -p tsconfig.test.node.json && tsc --noEmit -p tsconfig.test.web.json && tsc --noEmit -p e2e/tsconfig.json",
     "format": "prettier --write \"src/**/*.{ts,tsx}\" \"extension/**/*.{ts,tsx}\"",

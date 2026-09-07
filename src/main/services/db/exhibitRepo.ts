@@ -181,12 +181,25 @@ interface CaptureNumberingRow {
 // assignment is deterministic. Returns how many rows were written.
 //
 // Shared by the archive import and the post-init backfill deliberately, and the
-// v34 migration's SQL is the same expression: a Case must not come out of an
-// import numbered differently from the Case it was exported from, and "a
-// reference that changes between two exports of the same Case is worse than
-// none" (X18). Insertion order is NOT the ordering — a duplicate Capture (#827)
-// carries the source's page timestamp with a later Manifest index, so payload
-// order and chain order genuinely differ.
+// v34 migration's SQL is the same expression, so one Case cannot end up
+// numbered three ways by three code paths. Insertion order is NOT the ordering
+// — a duplicate Capture (#827) carries the source's page timestamp with a later
+// Manifest index, so payload order and chain order genuinely differ.
+//
+// What this does NOT give is a number that survives an archive round trip, and
+// the gap is open rather than closed here. `exhibit_number` is not carried in
+// the `.birdbrain` payload, so an imported Case is renumbered from
+// `nextExhibitNumber` = 1 and any gap the source had — a deleted Capture —
+// is compacted away: a source numbered 1, 2, 3 with 2 deleted imports as 1, 2.
+// Worse, `importCaseArchive` copies the source manifest verbatim, so the
+// imported chain still carries the SOURCE's `renumber` entry and
+// `hasRenumberEntry` (exhibitBackfill.ts) suppresses a corrective one — the
+// Case's only in-chain numbering record then states numbers the database does
+// not use and names an Exhibit the Case does not hold, on a chain that
+// verifies. That is the X18 harm ("a reference that changes between two exports
+// of the same Case is worse than none"). Closing it needs either
+// `exhibit_number` in the payload, which is the `CASE_ARCHIVE_SCHEMA_VERSION`
+// bump X30 reserves for `803p`, or a corrective `renumber` entry on import.
 export function backfillExhibitsForCaptures(caseId: string): number {
   const rows = getDb()
     .prepare(

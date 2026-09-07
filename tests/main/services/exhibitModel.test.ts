@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createHash, createPublicKey, generateKeyPairSync } from 'crypto'
 import {
+  appendFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -38,7 +39,8 @@ import {
   insertStagingFile,
   listStagingFiles
 } from '@main/services/db/stagingRepo'
-import { findOrphans } from '@main/services/db/dbAdmin'
+import { cleanOrphans, findOrphans } from '@main/services/db/dbAdmin'
+import { exportCaseArchive, importCaseArchive } from '@main/services/caseArchive'
 import {
   backfillCase,
   runExhibitBackfill,
@@ -52,7 +54,8 @@ import { initManifest, verifyManifestChain } from '@main/services/manifest'
 import { createCaptureStore, defaultCaptureStore } from '@main/services/captureStore'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { initSettings, updateSettings } from '@main/services/settings'
-import { getPublicKeyPem } from '@main/services/signingKey'
+import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
+import { canonicalStringify } from '@shared/verify'
 import { MANIFEST_FILENAME } from '@shared/constants'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import type { InventoryExhibitRow, InventoryStagedRow } from '@shared/types'
@@ -99,6 +102,25 @@ function manifestLines(caseDir: string): Record<string, unknown>[] {
     .split('\n')
     .filter((line) => line.trim().length > 0)
     .map((line) => JSON.parse(line) as Record<string, unknown>)
+}
+
+// Appends one correctly linked, correctly signed line to a case manifest. Used
+// to stand in for a writer from a schema this build does not have: reaching the
+// verifier-too-old outcome costs the case's signing key, so an entry that is
+// merely malformed would report as tampering instead.
+function appendSignedLine(caseDir: string, body: Record<string, unknown>): void {
+  const lines = manifestLines(caseDir)
+  const previous = lines.at(-1)
+  const full = {
+    ...body,
+    index: lines.length,
+    prevHash: (previous?.entryHash as string | undefined) ?? ''
+  }
+  const entryHash = createHash('sha256').update(canonicalStringify(full)).digest('hex')
+  appendFileSync(
+    join(caseDir, MANIFEST_FILENAME),
+    JSON.stringify({ ...full, entryHash, signature: signEntryHash(entryHash) }) + '\n'
+  )
 }
 
 function spkiFingerprint(pem: string): string {
@@ -459,6 +481,105 @@ describe('exhibit model', () => {
       expect(listDerivedFilesForCase(caseId)).toEqual([])
     })
 
+    it('binds the derivation entry to the chain content hash, not the editable mirror', async () => {
+      const capture = await ingestInto(caseId, {
+        url: 'https://example.com/mirror',
+        title: 'Mirror',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        screenshot: await screenshotPng({ r: 90, g: 40, b: 10 })
+      })
+      // `exhibits.content_hash` and `captures.hash` are mirrors of the signed
+      // capture entry, and `captures` is in the Database Admin hatch's allowed
+      // tables. Edit both before the backfill runs: an operator (or anything
+      // with write access to the .db) can do exactly this before upgrading.
+      const edited = 'de'.repeat(32)
+      getDb().prepare('UPDATE exhibits SET content_hash = ? WHERE id = ?').run(edited, capture.id)
+      getDb().prepare('UPDATE captures SET hash = ? WHERE id = ?').run(edited, capture.id)
+
+      await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+
+      const [entry] = manifestLines(caseDir).filter((line) => line.type === 'derivation')
+      // The signed entry states the parent hash the CHAIN attests, so an edited
+      // mirror never gets a signature over a claim no capture entry supports.
+      expect(entry.parentContentHash).toBe(capture.hash)
+      expect(entry.parentContentHash).not.toBe(edited)
+      const chain = verifyManifestChain(caseDir)
+      expect(chain.valid).toBe(true)
+      expect(chain.captureEntriesByIndex.get(0)?.contentHash).toBe(entry.parentContentHash)
+    })
+
+    it('rolls the derivation entry back when its derived-file row cannot be written', async () => {
+      await ingestInto(caseId, {
+        url: 'https://example.com/rollback',
+        title: 'Rollback',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        screenshot: await screenshotPng({ r: 15, g: 90, b: 15 })
+      })
+      // Fails the INSERT while leaving the `hasDerivation` SELECT working, so
+      // the throw lands between the append and the row exactly as a failed
+      // write would.
+      getDb().exec(
+        `CREATE TRIGGER block_derived_insert BEFORE INSERT ON derived_files
+         BEGIN SELECT RAISE(ABORT, 'no row for you'); END`
+      )
+
+      await expect(backfillCase(caseId, { toolVersion: TOOL_VERSION })).rejects.toThrow()
+
+      expect(manifestLines(caseDir).filter((line) => line.type === 'derivation')).toHaveLength(0)
+      expect(listDerivedFilesForCase(caseId)).toEqual([])
+      expect(verifyManifestChain(caseDir).valid).toBe(true)
+
+      getDb().exec('DROP TRIGGER block_derived_insert')
+      await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+      expect(manifestLines(caseDir).filter((line) => line.type === 'derivation')).toHaveLength(1)
+    })
+
+    it('records the row against a derivation entry a previous run already appended', async () => {
+      const capture = await ingestInto(caseId, {
+        url: 'https://example.com/killed',
+        title: 'Killed',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        screenshot: await screenshotPng({ r: 40, g: 40, b: 160 })
+      })
+      await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+      const [entry] = manifestLines(caseDir).filter((line) => line.type === 'derivation')
+      // A kill between the signed append and its database row: the entry is on
+      // the chain, the row never landed.
+      getDb().prepare('DELETE FROM derived_files WHERE exhibit_id = ?').run(capture.id)
+
+      const result = await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+
+      // One entry, not two. A second signed entry for the same Derived File
+      // would leave two timestamps and two hashes for one file.
+      expect(manifestLines(caseDir).filter((line) => line.type === 'derivation')).toHaveLength(1)
+      expect(result.thumbnailsAnchored).toBe(1)
+      const [derived] = listDerivedFilesForCase(caseId)
+      expect(derived.manifestSeq).toBe(entry.index)
+      expect(derived.contentHash).toBe(entry.outputHash)
+    })
+
+    it('leaves the row unanchored when the bytes no longer match the entry already appended', async () => {
+      const capture = await ingestInto(caseId, {
+        url: 'https://example.com/killed-swapped',
+        title: 'Killed and swapped',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        screenshot: await screenshotPng({ r: 160, g: 40, b: 40 })
+      })
+      await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+      getDb().prepare('DELETE FROM derived_files WHERE exhibit_id = ?').run(capture.id)
+      writeFileSync(
+        defaultCaptureStore.thumbnailPaths(caseId, capture.id).abs,
+        Buffer.from('not the bytes the entry names')
+      )
+
+      const result = await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+
+      expect(manifestLines(caseDir).filter((line) => line.type === 'derivation')).toHaveLength(1)
+      expect(result.thumbnailsAnchored).toBe(0)
+      expect(result.thumbnailsUnanchored).toBe(1)
+      expect(listDerivedFilesForCase(caseId)[0].manifestSeq).toBeNull()
+    })
+
     it('appends nothing on a second run', async () => {
       await ingestInto(caseId, {
         url: 'https://example.com/idem',
@@ -709,6 +830,97 @@ describe('exhibit model', () => {
       expect(snapshot.chain.valid).toBe(false)
     })
 
+    it('reports a newer-schema entry as verifier-too-old and never as tampering', async () => {
+      await ingestInto(caseId, {
+        url: 'https://example.com/newer',
+        title: 'Newer',
+        timestamp: '2026-04-05T12:00:00.000Z'
+      })
+      appendSignedLine(caseDir, {
+        type: 'annotation-burn',
+        caseId,
+        timestamp: '2026-04-05T12:30:00.000Z',
+        operatorId: 'op-1',
+        operatorName: 'Test Operator',
+        toolVersion: TOOL_VERSION,
+        schemaVersion: 4
+      })
+
+      const snapshot = getManifestSnapshot(caseId)
+
+      // The whole point of X25: a chain this build is too old to read is its own
+      // outcome, and a caller must never render it as a tamper verdict.
+      expect(snapshot.chain.unsupported).toEqual({
+        index: 1,
+        entryType: 'annotation-burn',
+        schemaVersionSeen: 4,
+        supportedSchemaVersion: 3
+      })
+      expect(snapshot.chain.brokenAt).toBeUndefined()
+      expect(snapshot.chain.reason).toContain('verifier too old')
+    })
+
+    it('reports no signer segments for a chain that did not verify', async () => {
+      await ingestInto(caseId, {
+        url: 'https://example.com/unsigned-signers',
+        title: 'Unsigned',
+        timestamp: '2026-04-05T12:00:00.000Z'
+      })
+      const path = join(caseDir, MANIFEST_FILENAME)
+      writeFileSync(
+        path,
+        readFileSync(path, 'utf-8').replace('unsigned-signers', 'something-else')
+      )
+
+      const snapshot = getManifestSnapshot(caseId)
+
+      // The keys segments are cut on come out of `import` lines. On a chain
+      // that did not verify those are a forger's lines, and attributing custody
+      // to them would be taking their word for who signed what.
+      expect(snapshot.chain.valid).toBe(false)
+      expect(snapshot.signers).toEqual([])
+    })
+
+    it('segments a real imported case at its import boundary', async () => {
+      await ingestInto(caseId, {
+        url: 'https://example.com/exported',
+        title: 'Exported',
+        timestamp: '2026-04-05T12:00:00.000Z'
+      })
+      await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+      const archivePath = join(tempDir, 'round-trip.birdbrain')
+      await exportCaseArchive(caseId, archivePath)
+      const { newCaseId } = await importCaseArchive(archivePath)
+
+      const snapshot = getManifestSnapshot(newCaseId)
+
+      // Exercised through a real export/import rather than a hand-built entry,
+      // so the wiring from the manifest on disk to the segments is covered.
+      // Both fingerprints are this installation's: a same-process round trip
+      // signs the source entries and the `import` entry with one key, so this
+      // pins the boundaries and the `embedded`/`local` split, not two distinct
+      // keys — that answer stays with the synthetic case below.
+      expect(snapshot.chain.valid).toBe(true)
+      const importIndex = snapshot.entries.findIndex(
+        (entry) => entry.parsed && entry.entry.type === 'import'
+      )
+      expect(importIndex).toBeGreaterThan(0)
+      expect(snapshot.signers).toEqual([
+        {
+          fromIndex: 0,
+          toIndex: importIndex - 1,
+          fingerprint: spkiFingerprint(getPublicKeyPem()),
+          source: 'embedded'
+        },
+        {
+          fromIndex: importIndex,
+          toIndex: snapshot.entries.length - 1,
+          fingerprint: spkiFingerprint(getPublicKeyPem()),
+          source: 'local'
+        }
+      ])
+    })
+
     it('reports one fingerprint per signing segment for an imported chain', () => {
       // Two hops of custody: entries 0-1 signed by the source key the `import`
       // entry at 2 embeds, entries 2-3 by the local key. Reporting one signer
@@ -896,6 +1108,25 @@ describe('exhibit model', () => {
 
       expect(fileOrphans).toContain(stray.rel)
       expect(fileOrphans).not.toContain(known.rel)
+    })
+
+    it('drops the exhibit row when orphan cleanup removes its capture', async () => {
+      const capture = await ingestInto(caseId, {
+        url: 'https://example.com/orphaned',
+        title: 'Orphaned',
+        timestamp: '2026-04-05T12:00:00.000Z'
+      })
+      unlinkSync(defaultCaptureStore.artifactPaths(caseId, capture.id, 'mhtml').abs)
+
+      const report = findOrphans()
+      expect(report.dbOrphans.map((orphan) => orphan.id)).toContain(capture.id)
+      const { dbRecordsRemoved } = cleanOrphans(report)
+
+      // A row left behind would keep a deleted Capture's tags alive and list it
+      // in the inventory: `exhibits` hangs off `cases`, so nothing cascades.
+      expect(dbRecordsRemoved).toBe(1)
+      expect(getCapture(capture.id)).toBeUndefined()
+      expect(getExhibit(capture.id)).toBeUndefined()
     })
   })
 

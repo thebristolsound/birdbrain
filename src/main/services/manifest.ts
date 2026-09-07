@@ -534,7 +534,7 @@ export class ManifestRollback extends Error {
 // its prior anchor (fn threw or its returned Promise rejected). Ensures the
 // manifest never records a side effect that didn't actually happen. Async
 // because `fn` may return a Promise — sync callbacks still work.
-async function withManifestEntry<T>(
+export async function withManifestEntry<T>(
   caseDir: string,
   entry: ManifestEntryInput,
   fn: (result: AppendResult) => T | Promise<T>

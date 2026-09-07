@@ -1040,28 +1040,12 @@ export interface ArchiveInspectReport {
 
 // --- Exhibit model (ADR-0023, ADR-0024) -----------------------------------
 
-// The kinds of Exhibit the model admits. Captures are the only kind this build
-// populates; the rest arrive with their own tickets (X43). The DB column is
-// plain TEXT and the Manifest schema deliberately keeps `kind` an open string
-// (a verifier's vocabulary must not decide whether a chain verifies), so a
-// value read back from either is checked rather than asserted.
-export const EXHIBIT_KINDS = ['capture', 'attachment', 'image', 'document'] as const
-export type ExhibitKind = (typeof EXHIBIT_KINDS)[number]
-
-// How an Exhibit arrived. Orthogonal to kind (ADR-0023): a PDF can arrive by
-// upload or by Drive and an image by right-click or by a scrape. Transforms are
-// NOT origins — a transform's output is a Derived File whose derivation is
-// named `transform:<name>` (X42).
-export const EXHIBIT_ORIGINS = [
-  'extension',
-  'background',
-  'duplicate',
-  'import',
-  'manual-upload',
-  'extension-image',
-  'google-drive'
-] as const
-export type ExhibitOrigin = (typeof EXHIBIT_ORIGINS)[number]
+// There is deliberately no enumeration of Exhibit kinds or origins here. The DB
+// columns are plain TEXT and the Manifest schema keeps `kind` an open string (a
+// verifier's vocabulary must not decide whether a chain verifies), so a closed
+// list would be a vocabulary nothing validates against — the kinds this build
+// populates are decided by the code paths that write rows, and the rest arrive
+// with their own tickets (X43, X42).
 
 // The identity and numbering row for one unit of evidence. A Capture's Exhibit
 // id IS its capture id, so the two rows are joined by equality and never by a

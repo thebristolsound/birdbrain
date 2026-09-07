@@ -569,7 +569,10 @@ export function cleanOrphans(report: OrphanReport): {
     const run = db.transaction(() => {
       // The Exhibit row goes with the Capture row: `exhibits` hangs off
       // `cases`, so nothing cascades to it, and a row left behind would keep a
-      // deleted Capture's tags alive and list it in the inventory.
+      // deleted Capture's tags alive and list it in the inventory. Called
+      // unconditionally because `allowedOrphanTables` is `{'captures'}` and an
+      // Exhibit id IS its Capture id — a second allowed table would have to
+      // make this per-table rather than inherit it.
       deleteExhibit(orphan.id)
       return db.prepare(`DELETE FROM "${orphan.table}" WHERE id = ?`).run(orphan.id)
     })

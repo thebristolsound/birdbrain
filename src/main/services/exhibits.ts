@@ -4,7 +4,11 @@ import type { ManifestEntry } from '@shared/schemas'
 import { getExhibit, listExhibits } from '@main/services/db/exhibitRepo'
 import { listDerivedFilesForCase } from '@main/services/db/derivedFileRepo'
 import { listStagingFiles } from '@main/services/db/stagingRepo'
-import { readManifestSnapshot, verifyManifestChain } from '@main/services/manifest'
+import {
+  readManifestSnapshot,
+  verifyManifestChainText,
+  type ChainVerifyResult
+} from '@main/services/manifest'
 import { getPublicKeyPem } from '@main/services/signingKey'
 import { defaultCaptureStore, type CaptureStore } from '@main/services/captureStore'
 import { verifyCapture } from '@main/services/captureLifecycle'
@@ -125,6 +129,12 @@ function fingerprintPem(pem: string): string | null {
 // import therefore yields two segments, and a multi-hop A -> B -> C import
 // yields three. Reporting one unspecified signer for such a chain would
 // describe it wrongly, which is why this is never a single field.
+//
+// Call this ONLY on a chain that verified. The boundaries come out of `import`
+// entries' `sourcePublicKeyPem`, and on a chain that did not verify those lines
+// are unverified input — verify-core's own invariant is that nothing an
+// unverified line says may influence a verdict, and custody attribution is what
+// a reader takes off this. `getManifestSnapshot` holds that gate.
 export function signerSegments(
   entries: ManifestSnapshotEntry[],
   localPem: string
@@ -179,7 +189,7 @@ function parseEntries(raw: Record<string, unknown>[]): ManifestSnapshotEntry[] {
   })
 }
 
-function toVerdict(chain: ReturnType<typeof verifyManifestChain>): ManifestChainVerdict {
+function toVerdict(chain: ChainVerifyResult): ManifestChainVerdict {
   return {
     valid: chain.valid,
     ...(chain.brokenAt !== undefined ? { brokenAt: chain.brokenAt } : {}),
@@ -189,7 +199,7 @@ function toVerdict(chain: ReturnType<typeof verifyManifestChain>): ManifestChain
 }
 
 // The Case's manifest as the Data screen reads it (X36): typed entries, the
-// `verifyManifestChain` verdict, and one signer fingerprint per signing
+// chain verdict, and one signer fingerprint per signing
 // segment. The verdict is passed through whole — including `unsupported`, which
 // a caller MUST render as its own outcome and never as tampering (X25).
 export function getManifestSnapshot(
@@ -197,13 +207,24 @@ export function getManifestSnapshot(
   store: CaptureStore = defaultCaptureStore
 ): CaseManifestSnapshot {
   const caseDir = store.caseDir(caseId)
+  // ONE read, shared by the typed entries, the verdict and the head reference.
+  // `readManifestSnapshot`'s contract says a caller needing more than one of
+  // these takes a single snapshot: a second read could see an append the first
+  // did not, and the three halves of this payload would then describe
+  // different manifest states.
   const snapshot = readManifestSnapshot(caseDir)
   const entries = parseEntries(snapshot.entries)
+  const chain = verifyManifestChainText(snapshot.jsonl.toString('utf-8'), {
+    publicKeyPem: getPublicKeyPem()
+  })
   return {
     caseId,
     entries,
-    chain: toVerdict(verifyManifestChain(caseDir)),
-    signers: signerSegments(entries, getPublicKeyPem()),
+    chain: toVerdict(chain),
+    // No segments off a chain that did not verify: the keys they would be built
+    // from are unverified lines, and a reader attributing custody to them would
+    // be taking a forger's word for who signed what. The verdict says why.
+    signers: chain.valid ? signerSegments(entries, getPublicKeyPem()) : [],
     head: snapshot.head
   }
 }

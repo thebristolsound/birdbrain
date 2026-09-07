@@ -6,9 +6,8 @@
 // forgotten, so this does both in one run. It refuses to run when the two files
 // already disagree, and says which is ahead, rather than guessing a base.
 //
-// The generated block is a no-op: a TODO comment and the user_version pragma,
-// no DDL. It compiles and the migration tests pass with it in place, so the
-// scaffold can be committed on its own and the DDL written against it.
+// The generated block fails closed with a TODO error until its DDL is written,
+// so opening the app cannot mark an unfinished migration as applied.
 //
 // Usage: node scripts/new-migration.mjs <slug>
 //   <slug> is kebab-case and lands in the TODO so the empty block names its
@@ -22,7 +21,6 @@ export const MIGRATIONS_PATH = 'src/main/services/db/migrations.ts'
 
 const CONSTANT_RE = /^export const LATEST_SCHEMA_VERSION = (\d+)$/m
 const BLOCK_RE = /^ {2}if \(version < (\d+)\) \{$/gm
-const PRAGMA_RE = /db\.pragma\('user_version = (\d+)'\)/g
 const SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/
 
 export const slugProblem = (slug) => {
@@ -38,14 +36,19 @@ export const readConstant = (coreSource) => {
   return Number(match[1])
 }
 
-// The last block's N is the highest `if (version < N)`; the pragma it ends with
-// has to say the same N, or the file is already inconsistent with itself.
 export const readLastBlock = (migrationsSource) => {
-  const blocks = [...migrationsSource.matchAll(BLOCK_RE)].map((m) => Number(m[1]))
+  const blocks = [...migrationsSource.matchAll(BLOCK_RE)]
   if (blocks.length === 0) throw new Error(`${MIGRATIONS_PATH} has no "if (version < N) {" block`)
-  const last = Math.max(...blocks)
-  const pragmas = [...migrationsSource.matchAll(PRAGMA_RE)].map((m) => Number(m[1]))
-  if (!pragmas.includes(last)) {
+  const versions = blocks.map((m) => Number(m[1]))
+  const outOfOrder = versions.find((version, index) => index > 0 && version <= versions[index - 1])
+  if (outOfOrder !== undefined) {
+    throw new Error(`${MIGRATIONS_PATH}: migration block versions must be strictly increasing`)
+  }
+  const lastIndex = blocks.length - 1
+  const last = versions[lastIndex]
+  const lastBlockStart = blocks[lastIndex].index
+  const lastBlock = migrationsSource.slice(lastBlockStart)
+  if (!new RegExp(`db\\.pragma\\('user_version = ${last}'\\)`).test(lastBlock)) {
     throw new Error(
       `${MIGRATIONS_PATH}: block "if (version < ${last})" has no db.pragma('user_version = ${last}')`
     )
@@ -72,7 +75,7 @@ export const renderBlock = (next, slug) =>
     `  if (version < ${next}) {`,
     '    db.transaction(() => {',
     `      // TODO(${slug}): describe what this migration changes and why, then add the DDL.`,
-    `      db.pragma('user_version = ${next}')`,
+    `      throw new Error('Migration ${next} is not implemented')`,
     '    })()',
     '  }'
   ].join('\n')
@@ -124,7 +127,7 @@ const main = () => {
   console.log(`db:migration:new: appended "if (version < ${result.next})" to ${MIGRATIONS_PATH}`)
   console.log(`db:migration:new: LATEST_SCHEMA_VERSION = ${result.next} in ${CORE_PATH}`)
   console.log(
-    `db:migration:new: fill in the TODO(${slug}) body, then run pnpm test tests/main/services/db`
+    `db:migration:new: fill in the TODO(${slug}) body, then run pnpm test tests/main/services/database.test.ts`
   )
 }
 

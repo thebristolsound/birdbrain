@@ -18,7 +18,7 @@ Open source web investigation & capture tool. Electron desktop app with a compan
 - `pnpm typecheck` - Typecheck all six tsconfig projects: `src` main/preload/shared, `src` renderer, extension, then `tests/` (node flavour and web flavour) and `e2e/`. Tests are inside the gate — see "Testing" below
 - `pnpm format` - Prettier format src/ and extension/
 - `pnpm rebuild:electron` - Rebuild native deps (better-sqlite3)
-- `pnpm db:migration:new <slug>` - Scaffold the next schema migration: appends an empty `if (version < N)` block to `migrations.ts` and bumps `LATEST_SCHEMA_VERSION` in `core.ts` in one run, refusing when the two already disagree
+- `pnpm db:migration:new <slug>` - Scaffold the next schema migration: appends a fail-closed `if (version < N)` block to `migrations.ts` and bumps `LATEST_SCHEMA_VERSION` in `core.ts` in one run, refusing when the two already disagree
 - `pnpm test:e2e` - Run E2E tests (Playwright + Electron, runs `pnpm build` first)
 - `pnpm test:e2e:debug` - Run E2E tests with Playwright inspector
 - `pnpm package` / `pnpm package:win` / `pnpm package:mac` / `pnpm package:linux` - Package for distribution
@@ -128,7 +128,7 @@ Zustand store (`src/renderer/stores/appStore.ts`) for UI-only state:
 SQLite via better-sqlite3. The data-access layer lives in `src/main/services/db/`:
 
 - `core.ts` - Owns the connection. `initDatabase()` opens the file, sets the pragmas (`journal_mode = WAL`, `foreign_keys = ON`, `busy_timeout`), then runs migrations. Also exports `getDb()`, `closeDatabase()`, `withTransaction()`, the `ImportCtx` archive-import context, and `ID_PROBE_TABLES` / `hasRowWithId()` for archive-import id collision remapping.
-- `migrations.ts` - The whole schema history in one `runMigrations(db)` function: a sequence of `if (version < N)` blocks, each running its DDL inside a transaction that ends by setting `db.pragma('user_version = N')`. New schema changes append a new block and bump `LATEST_SCHEMA_VERSION` in `core.ts` (`pnpm db:migration:new <slug>` does both) — that constant is the single source of truth for the current version, so read it rather than counting blocks.
+- `migrations.ts` - The whole schema history in one `runMigrations(db)` function: a sequence of `if (version < N)` blocks, each running its DDL inside a transaction that ends by setting `db.pragma('user_version = N')`. New schema changes append a new block and bump `LATEST_SCHEMA_VERSION` in `core.ts` (`pnpm db:migration:new <slug>` does both) — that constant is the single source of truth for the current version, so read it rather than counting blocks. The generated scaffold throws until its DDL replaces the TODO.
 - Per-domain repos - `caseRepo.ts`, `captureRepo.ts`, `tagRepo.ts`, `selectorRepo.ts`, `noteRepo.ts`, `noteReferenceRepo.ts`, `extractedDataRepo.ts`, `waybackRefRepo.ts`. Each owns the SQL for its aggregate. `noteReferenceRepo.ts` owns the note Mention references index (`note_references`) — derived state, rewritten inside the transaction of every note-body write, never a source of truth.
 - `dbAdmin.ts` - Generic table browse/edit, vacuum, FTS rebuild, orphan cleanup, backup/restore, CSV export (backs Settings → Database).
 - `diagnosticsRepo.ts` - Read-only DB facts for Settings → Diagnostics, including the live `user_version` alongside `LATEST_SCHEMA_VERSION`.

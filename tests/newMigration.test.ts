@@ -81,11 +81,15 @@ const runIn = (coreSource: string, migrationsSource: string, args: string[]) => 
 }
 
 describe('readLastBlock', () => {
-  it('takes the highest block rather than the textually last one', () => {
+  it('takes the textually last block', () => {
     expect(readLastBlock(migrations([1, 2, 3]))).toBe(3)
   })
 
-  it('rejects a block whose pragma does not set its own version', () => {
+  it('rejects a block sequence that is not strictly increasing', () => {
+    expect(() => readLastBlock(migrations([1, 3, 2]))).toThrow(/strictly increasing/)
+  })
+
+  it('rejects the last block when its pragma does not set its own version', () => {
     const broken = migrations([1, 2]).replace('user_version = 2', 'user_version = 1')
 
     expect(() => readLastBlock(broken)).toThrow(/no db\.pragma\('user_version = 2'\)/)
@@ -134,7 +138,7 @@ describe('scaffold', () => {
     expect(result.next).toBe(34)
     expect(result.coreSource).toContain('export const LATEST_SCHEMA_VERSION = 34')
     expect(result.migrationsSource).toContain('if (version < 34) {')
-    expect(result.migrationsSource).toContain("db.pragma('user_version = 34')")
+    expect(result.migrationsSource).toContain("throw new Error('Migration 34 is not implemented')")
     expect(result.migrationsSource).toContain('TODO(exhibit-tables)')
   })
 

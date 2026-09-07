@@ -29,6 +29,7 @@ const SELECTED = ['cap-1', 'cap-2']
 
 let setFavoriteMany: ReturnType<typeof vi.fn>
 let addToCaptures: ReturnType<typeof vi.fn>
+let countsForCaptures: ReturnType<typeof vi.fn>
 let enqueueCaptures: ReturnType<typeof vi.fn>
 let listFavorites: ReturnType<typeof vi.fn>
 
@@ -55,6 +56,7 @@ beforeEach(() => {
   stubMatchMedia(false)
   setFavoriteMany = vi.fn(async () => ({ affected: 2 }))
   addToCaptures = vi.fn(async () => ({ affected: 2 }))
+  countsForCaptures = vi.fn(async () => ({}))
   enqueueCaptures = vi.fn(async () => ({ accepted: 2, rejected: [] }))
   listFavorites = vi.fn(async () => [])
   fakeBridge({
@@ -62,7 +64,8 @@ beforeEach(() => {
     captures: { listFavorites, setFavoriteMany },
     tags: {
       list: vi.fn(async () => [{ id: 'tag-1', name: 'phishing', color: '#f59e0b' }]),
-      addToCaptures
+      addToCaptures,
+      countsForCaptures
     },
     recapture: { enqueueCaptures }
   })
@@ -124,7 +127,9 @@ describe('CaptureSelectionBar', () => {
     })
   })
 
-  it('applies a picked tag to the whole selection', async () => {
+  // The picker itself is covered by BatchTagPopover.test.tsx; here only the
+  // handoff matters — that the bar opens it over this case and this selection.
+  it('applies a tag picked in the batch popover to the whole selection', async () => {
     renderBar()
     fireEvent.click(screen.getByTitle('Tag selection'))
     fireEvent.click(await screen.findByText('phishing'))
@@ -134,7 +139,10 @@ describe('CaptureSelectionBar', () => {
       captureIds: SELECTED,
       tagId: 'tag-1'
     })
-    await waitFor(() => expect(notifySuccess).toHaveBeenCalledWith('Tag applied to 2 captures'))
+    // The popover stays open so a second tag is a second click, not a second
+    // gesture, and the row state replaces the toast the interim picker fired.
+    expect(screen.queryByTestId('batch-tag-popover')).not.toBeNull()
+    expect(notifySuccess).not.toHaveBeenCalled()
   })
 
   it('closes the tag picker on an outside click or Escape, but not on its own clicks', async () => {
@@ -161,16 +169,16 @@ describe('CaptureSelectionBar', () => {
     expect(addToCaptures).not.toHaveBeenCalled()
   })
 
-  it('says so when there are no tags to apply', async () => {
+  it('offers to create one when the picker has no tags to show', async () => {
     fakeBridge({
       cases: { list: vi.fn(async () => [{ id: 'case1', name: 'Nightjar' }]) },
       captures: { listFavorites },
-      tags: { list: vi.fn(async () => []) },
+      tags: { list: vi.fn(async () => []), countsForCaptures },
       recapture: {}
     })
     renderBar()
     fireEvent.click(screen.getByTitle('Tag selection'))
-    expect(await screen.findByText(/No tags yet/)).toBeDefined()
+    expect(await screen.findByText(/type a name to create one/)).toBeDefined()
   })
 
   it('queues a batch recapture and reports the accepted count', async () => {

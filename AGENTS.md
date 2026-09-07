@@ -7,7 +7,7 @@ Open source web investigation & capture tool. Electron desktop app with a compan
 - `pnpm dev` - Start Electron app in dev mode (electron-vite)
 - `pnpm build` - Build the Electron app
 - `pnpm build:extension` - Build the Chrome extension
-- `pnpm dev:extension` - Build Chrome extension in watch mode (background and popup bundles only; does not watch/rebuild the content script IIFE build)
+- `pnpm dev:extension` - Build Chrome extension in watch mode. `scripts/dev-extension.mjs` runs both Vite targets as watchers in one process, so an edit to `extension/src/content.ts` rebuilds the content script IIFE too
 - `pnpm build:verifier` - Build the standalone verifier binary (`scripts/build-verifier.mjs`)
 - `pnpm test` - Run tests (vitest, via Electron runtime). Single file: `pnpm test <path>` — no `--` (`pnpm test -- <path>` does not filter and runs the full suite)
 - `pnpm test:watch` - Run tests in watch mode

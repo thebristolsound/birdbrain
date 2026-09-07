@@ -231,6 +231,19 @@ describe('BatchTagPopover (#665)', () => {
     expect(notifySuccess).not.toHaveBeenCalled()
   })
 
+  it('stays open and removes nothing when the Enter apply fails', async () => {
+    addToCaptures.mockRejectedValue(new Error('nope'))
+    renderPopover()
+    await screen.findByText('phishing')
+    const input = screen.getByLabelText('Find or create a tag')
+    fireEvent.change(input, { target: { value: 'PHISHING' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => expect(addToCaptures).toHaveBeenCalledOnce())
+    // A failed apply must not fall through to the branch it replaced.
+    expect(removeFromCaptures).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
   it('creates on Enter when nothing matches', async () => {
     renderPopover()
     await screen.findByText('phishing')

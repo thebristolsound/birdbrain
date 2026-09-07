@@ -2,7 +2,15 @@
 # Run one cycle of the dispatch skill through headless Claude Code.
 #
 # $1 = mode (report | cycle). Env: CLAUDE_CODE_OAUTH_TOKEN, DISPATCH_MODEL,
-# RUN_URL, GH_TOKEN (machine token, the identity every gh call carries here).
+# RUN_URL, GH_TOKEN (machine token, the identity every gh call carries here),
+# TARGET_ISSUE (optional, narrows section 3 to one issue).
+#
+# TARGET_ISSUE exists for a supervised fire. Section 3 walks the frontier in
+# ascending order and takes the first eligible issue, which is the right rule
+# unattended and the wrong one when a human wants a specific first subject. It
+# narrows the choice and never widens it: the issue still has to pass every
+# eligibility check, and failing one ends the cycle rather than falling through
+# to the next candidate.
 #
 # The prompt is the skill invocation plus the facts the skill cannot probe for
 # itself on this host, including where a reviewer's full report has to be left
@@ -38,8 +46,13 @@ MODE: REPORT-ONLY. Run the environment probe, the identity check, section 1 and 
 $context"
     ;;
   cycle)
+    target=""
+    if [ -n "${TARGET_ISSUE:-}" ]; then
+      target="
+SECTION 3 IS NARROWED TO ISSUE #${TARGET_ISSUE}. Sections 1, 2 and 2a are unchanged. If you reach section 3, the only candidate you may claim or dispatch is #${TARGET_ISSUE}. Apply every eligibility check to it as written; if it fails one, or a slot is not free, report which check stopped you and dispatch nothing. Never fall through to another issue."
+    fi
     prompt="/dispatch
-$context"
+$context$target"
     ;;
   *)
     echo "Unknown mode '$mode'" >&2

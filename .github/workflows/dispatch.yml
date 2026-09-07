@@ -32,6 +32,10 @@ on:
           - report
           - cycle
         default: report
+      issue:
+        description: 'Optional: dispatch only this issue number in cycle mode. Blank means section 3 picks.'
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -48,6 +52,8 @@ env:
     /etc/apt/apt-mirrors.txt
   MODE: ${{ github.event_name == 'schedule' && 'cycle' || inputs.mode }}
   DISPATCH_MODEL: claude-opus-5
+  # Empty on a schedule, so a scheduled fire always lets section 3 pick.
+  TARGET_ISSUE: ${{ github.event_name == 'schedule' && '' || inputs.issue }}
   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
 jobs:

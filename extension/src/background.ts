@@ -355,10 +355,25 @@ let captureScreenshotsEnabled = true
 
 // --- Connection management ---
 
+// Scan whichever tab the operator is looking at right now. The passive scan
+// runs on page load, so anything that changes what a scan would say without the
+// page reloading has to ask for one: the active case changing, and a capture
+// session starting (#682).
+function rescanActiveTab(): void {
+  if (activeSelectors.length === 0) return
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    const activeTab = tabs[0]
+    if (activeTab?.id && activeTab.url) {
+      checkSelectorsOnTab(activeTab.id, activeTab.url)
+    }
+  })
+}
+
 async function checkStatus(): Promise<void> {
   try {
     const status = await getStatus()
     const wasConnected = connected
+    const wasSessionActive = sessionActive
     const previousCaseId = activeCaseId
     connected = status.running
     sessionActive = status.sessionActive
@@ -402,7 +417,8 @@ async function checkStatus(): Promise<void> {
     }
 
     // If active case changed, clear old highlights and re-scan active tab
-    if (connected && activeCaseId !== previousCaseId) {
+    const caseChanged = connected && activeCaseId !== previousCaseId
+    if (caseChanged) {
       // The cached per-tab match summaries counted the previous case's
       // selectors, so the popup would otherwise attribute them to the new one.
       selectorSummaryByTab.clear()
@@ -421,14 +437,21 @@ async function checkStatus(): Promise<void> {
       })
 
       // Re-scan the active tab with new case's selectors
-      if (activeCaseId && activeSelectors.length > 0) {
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-          const activeTab = tabs[0]
-          if (activeTab?.id && activeTab.url) {
-            checkSelectorsOnTab(activeTab.id, activeTab.url)
-          }
-        })
-      }
+      if (activeCaseId) rescanActiveTab()
+    }
+
+    // Starting a session does not reload the tab the operator is already on, so
+    // the page-load scan never fires for it and the popup's match-summary line
+    // stays blank until the operator navigates (#682, #387 AC4). Scan on the
+    // session's false-to-true edge instead. Skipped when the case changed in the
+    // same poll, because that branch has just scanned the same tab.
+    //
+    // The app starts a session over IPC, so nothing tells the worker: it finds
+    // out on the next ALARM_STATUS_CHECK poll below, whose 30 s period is the
+    // MV3 floor. The line therefore trails the app by up to that long, which is
+    // accepted for this round rather than adding a push signal.
+    if (!caseChanged && connected && sessionActive && !wasSessionActive) {
+      rescanActiveTab()
     }
 
     // Update context menu enabled state

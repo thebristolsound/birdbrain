@@ -14,6 +14,12 @@ import { Button } from '@renderer/components/ui'
 import { openExtensionFolder } from '@renderer/lib/api/system'
 import { startTour } from '@renderer/components/onboarding/startTour'
 
+// Step 2 says what the toggle does and stops there. Session-driven capture is
+// HOTFIX-disabled in the extension (extension/src/background.ts:686), so the
+// only thing an active session still drives is selector matching; promising
+// that pages are saved as you browse would tell the operator evidence exists
+// when none does. Steps 1 and 3 and the hero line make that promise too and are
+// left for the panel-wide copy pass.
 const STEPS = [
   {
     n: 1,
@@ -25,7 +31,7 @@ const STEPS = [
     n: 2,
     icon: ToggleRight,
     title: 'Start a capture session',
-    body: 'Toggle Capture Session on in the header bar to start recording pages as you browse.'
+    body: 'Toggle Capture Session on in the header bar. The extension then checks each page you visit against your case selectors and flags the matches.'
   },
   {
     n: 3,

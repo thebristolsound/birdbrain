@@ -83,10 +83,10 @@ function match(selectorId: string, index: number): SelectorMatchInfo {
 
 const MATCHES: SelectorMatchInfo[] = [match('sel-1', 0), match('sel-2', 1), match('sel-2', 2)]
 
-function statusWith(sessionActive: boolean): CaptureServerStatus {
+function statusWith(sessionActive: boolean, caseId = 'case-a'): CaptureServerStatus {
   return {
     running: true,
-    activeCase: { id: 'case-a', name: 'Case A' },
+    activeCase: { id: caseId, name: 'Case A' },
     sessionActive,
     captureCount: 0,
     autoCaptureMode: 'notify',
@@ -125,8 +125,8 @@ async function ask<T>(message: unknown): Promise<T | undefined> {
 }
 
 /** One turn of the 30 s status alarm, awaited to completion. */
-async function poll(sessionActive: boolean): Promise<void> {
-  vi.mocked(getStatus).mockResolvedValue(statusWith(sessionActive))
+async function poll(sessionActive: boolean, caseId = 'case-a'): Promise<void> {
+  vi.mocked(getStatus).mockResolvedValue(statusWith(sessionActive, caseId))
   for (const listener of alarmListeners) listener({ name: ALARM_STATUS_CHECK })
   await flush()
 }
@@ -238,6 +238,20 @@ describe('session rising edge rescans the active tab (#682)', () => {
     expect(scannedTabs).toEqual([])
 
     await poll(true)
+    expect(scannedTabs).toEqual([SUBJECT_TAB_ID])
+  })
+
+  // The rising edge is skipped when the case changed in the same poll, because
+  // the case-change branch has just scanned the same tab. Nothing else here
+  // sees that guard: the four cases above pass with it removed, and a second
+  // scan of one tab is invisible except as a duplicated content-script round
+  // trip. Last, because it leaves the worker on a different case.
+  it('scans once when the case changes and the session starts in the same poll', async () => {
+    scannedTabs.length = 0
+
+    await poll(false)
+    await poll(true, 'case-b')
+
     expect(scannedTabs).toEqual([SUBJECT_TAB_ID])
   })
 })

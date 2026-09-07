@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // The toggle sets sessionActive and nothing else, so its label has to say
-// session (#813). "Auto-Capture" is the Signals setting, written elsewhere.
+// session (#813). "Auto-capture" is the Signals setting, written elsewhere.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 

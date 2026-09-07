@@ -1116,8 +1116,9 @@ async function checkSelectorsOnTab(tabId: number, url: string): Promise<void> {
   if (activeSelectors.length === 0) return
   // Capture-UI suppression (#379, #386): never inject highlights while a
   // capture is collecting frames on this tab — onUpdated, checkStatus's
-  // case-change re-scan and a finished concurrent capture's restore all route
-  // through here. The suppression boundary re-runs this when the capture ends.
+  // case-change and session-start re-scans, creating a selector from a
+  // selection, and a finished concurrent capture's restore all route through
+  // here. The suppression boundary re-runs this when the capture ends.
   if (captureSuppression.isCollectingFrames(tabId)) return
   if (blockedCaptureReason(url) !== null) return
 

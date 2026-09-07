@@ -189,10 +189,27 @@ the per-call scoping work without `gh auth switch`. The token stays a shell vari
 without `set -a` means no child process other than the `agh` call sees it — a `set -a` or
 `export` would hand it to every subprocess the session spawns. Provisioning and rotation are a human-only
 procedure — `scripts/setup-agent-github-account.sh` walks it — and the token is never
-committed, never a repo `.env` value, and never an Actions secret (no workflow needs it).
+committed and never a repo `.env` value. Its one home outside that file is the repository
+secret the scheduled dispatch workflow reads (ADR-0026, next section).
 
-**On the web the machine token is not provisioned.** The GitHub MCP tools write as the
-sandbox's identity, and the `GH_TOKEN` the environment exports is not the machine account's,
-so a web dispatch cycle fails the identity check and stops before claiming the slot. That is
-the intended outcome until the token exists there (ADR-0012 §5); the mechanism notes above
-about MCP writes remain accurate for non-dispatch work.
+**On the web the machine token is not provisioned and cannot be.** The sandbox proxy
+re-authenticates every GitHub request as the session identity whatever credential is offered
+(#960, validated 2026-08-25), so a web dispatch cycle fails the identity check and stops
+before claiming the slot. The web is never a dispatch host (ADR-0026); the mechanism notes
+above about MCP writes remain accurate for non-dispatch work.
+
+## The GitHub Actions host
+
+`.github/workflows/dispatch.yml` runs one cycle of the dispatch skill on a hosted runner
+(ADR-0026). Everything in "Local machines" applies, with these differences:
+
+- `gh` is preinstalled and `GH_TOKEN` for the whole job is the machine token, so bare `gh`
+  and `agh` are the same identity. The environment probe reads `LOCAL`.
+- An identity step writes `~/.config/birdbrain-agent/env` from the repository secret
+  `BIRDBRAIN_AGENT_GH_TOKEN` and the repository variables `BIRDBRAIN_AGENT_GH_LOGIN` and
+  `BIRDBRAIN_AGENT_GH_TOKEN_EXPIRES`, then runs the same `gh api user` check the skill runs.
+  A token that is missing, expired, or resolves to another login fails the job.
+- The checkout's git credential is that token, so branch pushes from the implementer go out
+  as the machine account over HTTPS, and commit author and committer are set to it.
+- Serena is not installed. Project MCP servers are disabled for the cycle.
+- The end-of-cycle report lands in the run's step summary; the raw result is a run artifact.

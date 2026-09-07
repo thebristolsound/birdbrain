@@ -3,7 +3,17 @@ import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useAppStore, type CaptureViewerTab } from '@renderer/stores/appStore'
 import { capturesQueryOptions, captureContentQueryOptions } from '@renderer/lib/queries'
-import { Archive, ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react'
+import {
+  Archive,
+  ChevronLeft,
+  ChevronRight,
+  ArrowLeft,
+  FileCode,
+  FileText,
+  History,
+  ImageIcon,
+  type LucideIcon
+} from 'lucide-react'
 import { MhtmlViewer } from '@renderer/components/captures/MhtmlViewer'
 import { LegacyHtmlViewer } from '@renderer/components/captures/LegacyHtmlViewer'
 import { AnnotationEditor } from '@renderer/components/captures/annotation/AnnotationEditor'
@@ -29,6 +39,16 @@ const TAB_LABELS: Record<CaptureViewerTab, string> = {
   page: 'Page',
   text: 'Text',
   wayback: 'Wayback'
+}
+
+// Stands in for the label below the toolbar's wide tier (#466). Each tab keeps
+// its label as an aria-label, so the icon-only strip is named the same way the
+// labelled one is.
+const TAB_ICONS: Record<CaptureViewerTab, LucideIcon> = {
+  screenshot: ImageIcon,
+  page: FileCode,
+  text: FileText,
+  wayback: History
 }
 
 export function CaptureViewer() {
@@ -114,12 +134,27 @@ export function CaptureViewer() {
     : undefined
 
   return (
-    <main className="flex flex-1 flex-col overflow-hidden bg-canvas">
-      {/* Merged viewer toolbar: breadcrumb + view switcher */}
-      <div className="flex h-11 items-center gap-2.5 border-b border-border px-3">
+    <main className="@container/viewer flex flex-1 flex-col overflow-hidden bg-canvas">
+      {/* Merged viewer toolbar: breadcrumb + view switcher.
+
+          Sized against the pane rather than the window (#466): the pane is what
+          runs out of room, so a viewport breakpoint would still clip the
+          controls whenever the details panel is docked. Below 36rem the tab
+          labels give way to their icons; the Download label waits for 48rem,
+          where the title has room beside it. The method badge comes back at
+          42rem: on the Wayback tab the details panel that also carries the
+          method is hidden, and at the default 1200px window that layout leaves
+          the viewer 716px, so a 48rem tier would leave a background or
+          duplicate capture reading as an ordinary one exactly where the
+          operator has no other marker to check. The title is the only item
+          here that flexes and the download error hangs below the trigger
+          rather than sitting in the row, so from 340px up the tab strip, the
+          download trigger and the pager all stay on screen. */}
+      <div className="flex h-11 items-center gap-1.5 border-b border-border px-3 @xl/viewer:gap-2.5">
         <Button
           variant="ghost"
           size="icon-sm"
+          className="shrink-0"
           onClick={() => useAppStore.getState().setSelectedCaptureId(null)}
           title="Back"
         >
@@ -132,7 +167,7 @@ export function CaptureViewer() {
           {CAPTURE_METHOD_LABELS[capture.method] && (
             <span
               data-testid="method-badge"
-              className="shrink-0 rounded-lg bg-surface px-2 py-0.5 text-[11px] text-text-muted"
+              className="hidden shrink-0 rounded-lg bg-surface px-2 py-0.5 text-[11px] text-text-muted @2xl/viewer:inline-block"
             >
               {CAPTURE_METHOD_LABELS[capture.method]}
             </span>
@@ -140,7 +175,7 @@ export function CaptureViewer() {
           {duplicateOf && (
             <button
               data-testid="duplicate-link-source"
-              className="shrink-0 truncate text-xs text-accent underline underline-offset-2"
+              className="min-w-0 truncate text-xs text-accent underline underline-offset-2"
               onClick={() => useAppStore.getState().setSelectedCaptureId(duplicateOf.id)}
             >
               ← Duplicate of {new Date(duplicateOf.timestamp).toLocaleString()}
@@ -149,7 +184,7 @@ export function CaptureViewer() {
           {supersededOriginal && (
             <button
               data-testid="supersedes-link-original"
-              className="shrink-0 truncate text-xs text-accent underline underline-offset-2"
+              className="min-w-0 truncate text-xs text-accent underline underline-offset-2"
               onClick={() => useAppStore.getState().setSelectedCaptureId(supersededOriginal.id)}
             >
               ← Recapture of {new Date(supersededOriginal.timestamp).toLocaleString()}
@@ -158,7 +193,7 @@ export function CaptureViewer() {
           {recaptureOf && (
             <button
               data-testid="supersedes-link-recapture"
-              className="shrink-0 truncate text-xs text-accent underline underline-offset-2"
+              className="min-w-0 truncate text-xs text-accent underline underline-offset-2"
               onClick={() => useAppStore.getState().setSelectedCaptureId(recaptureOf.id)}
             >
               Recaptured {new Date(recaptureOf.timestamp).toLocaleString()} →
@@ -172,10 +207,13 @@ export function CaptureViewer() {
         >
           {TABS.map((tab) => {
             const isActive = activeTab === tab
+            const Icon = TAB_ICONS[tab]
             return (
               <button
                 key={tab}
                 role="tab"
+                aria-label={TAB_LABELS[tab]}
+                title={TAB_LABELS[tab]}
                 aria-selected={isActive}
                 tabIndex={isActive ? 0 : -1}
                 onClick={() => setActiveTab(tab)}
@@ -205,13 +243,14 @@ export function CaptureViewer() {
                     ;(buttons[nextIndex] as HTMLButtonElement)?.focus()
                   })
                 }}
-                className={`rounded-md px-2.5 py-1 text-[11px] transition-colors ${
+                className={`flex items-center rounded-md px-1.5 py-1 text-[11px] transition-colors @xl/viewer:px-2.5 ${
                   isActive
                     ? 'bg-card font-semibold text-text-primary shadow-sm'
                     : 'font-medium text-text-muted hover:text-text-secondary'
                 }`}
               >
-                {TAB_LABELS[tab]}
+                <Icon aria-hidden className="h-3.5 w-3.5 @xl/viewer:hidden" />
+                <span className="hidden @xl/viewer:inline">{TAB_LABELS[tab]}</span>
               </button>
             )
           })}
@@ -220,6 +259,7 @@ export function CaptureViewer() {
         <Button
           variant="ghost"
           size="icon-sm"
+          className="shrink-0"
           onClick={goPrev}
           disabled={currentIndex <= 0}
           title="Previous capture (←)"
@@ -232,6 +272,7 @@ export function CaptureViewer() {
         <Button
           variant="ghost"
           size="icon-sm"
+          className="shrink-0"
           onClick={goNext}
           disabled={currentIndex >= captures.length - 1}
           title="Next capture (→)"

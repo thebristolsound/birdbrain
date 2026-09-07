@@ -26,7 +26,8 @@ export default defineConfig({
         'src/main/**/*.ts',
         'src/shared/**/*.ts',
         'src/renderer/**/*.{ts,tsx}',
-        'src/packages/**/*.{ts,mts,cts}'
+        'src/packages/**/*.{ts,mts,cts}',
+        'scripts/slop-audit/**/*.mjs'
       ],
       exclude: [
         '**/*.d.ts',

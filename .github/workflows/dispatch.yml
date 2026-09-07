@@ -1,0 +1,132 @@
+name: Dispatch
+
+# Runs one cycle of the dispatch routine (.claude/skills/dispatch/SKILL.md) on a
+# hosted runner, unattended. Decision record: docs/adr/0026. Design brief:
+# docs/specs/2026-09-06-scheduled-dispatch-host-design.md.
+#
+# Identity. Every GitHub write goes out as the machine account (ADR-0012). The
+# checkout carries the machine token as its git credential, so branch pushes are
+# the machine account too, and GH_TOKEN for the cycle is that same token. The
+# workflow's own GITHUB_TOKEN has contents: read and is never used for a write.
+#
+# Cost. The pre-gate decides from the API alone whether this hour has anything to
+# do. An idle fire ends before the toolchain installs, in under a minute.
+#
+# Cleanup. If the job is cancelled, times out, or fails mid-cycle, the always()
+# step fails any agent/pre-pass this run left pending and releases any claim it
+# still owns, so a fire cannot end holding state a peer would wait four hours on
+# (#1141, #1057).
+#
+# The schedule is commented out until the rollout in the design brief reaches
+# step 4. Until then every fire is a workflow_dispatch.
+
+on:
+  # schedule:
+  #   - cron: '43 * * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'report: classify and report, write nothing. cycle: run one full cycle.'
+        type: choice
+        options:
+          - report
+          - cycle
+        default: report
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dispatch
+  cancel-in-progress: false
+
+env:
+  # Same apt hardening as ci.yml, for the same mirror (#620, #475, #539).
+  APT_OPTS: -o Acquire::Retries=3 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15
+  DROP_AZURE_MIRROR: >-
+    sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g'
+    /etc/apt/apt-mirrors.txt
+  MODE: ${{ github.event_name == 'schedule' && 'cycle' || inputs.mode }}
+  DISPATCH_MODEL: claude-opus-5
+  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+jobs:
+  cycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      GH_TOKEN: ${{ secrets.BIRDBRAIN_AGENT_GH_TOKEN }}
+    steps:
+      # fetch-depth: 0 because the implementer's diff base and the reviewer's
+      # completion controls are computed against origin/main, and the post-check
+      # counts commits ahead of it.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.BIRDBRAIN_AGENT_GH_TOKEN }}
+
+      - name: Identity
+        id: identity
+        env:
+          BIRDBRAIN_AGENT_GH_TOKEN: ${{ secrets.BIRDBRAIN_AGENT_GH_TOKEN }}
+          BIRDBRAIN_AGENT_GH_LOGIN: ${{ vars.BIRDBRAIN_AGENT_GH_LOGIN }}
+          BIRDBRAIN_AGENT_GH_TOKEN_EXPIRES: ${{ vars.BIRDBRAIN_AGENT_GH_TOKEN_EXPIRES }}
+        run: bash .github/scripts/dispatch/identity.sh
+
+      - name: Pre-gate
+        id: gate
+        run: bash .github/scripts/dispatch/pregate.sh "$MODE"
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        if: steps.gate.outputs.run == 'true'
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: steps.gate.outputs.run == 'true'
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install system dependencies
+        if: steps.gate.outputs.run == 'true'
+        timeout-minutes: 5
+        run: |
+          ${{ env.DROP_AZURE_MIRROR }}
+          sudo apt-get $APT_OPTS update
+          sudo apt-get $APT_OPTS install -y build-essential python3 \
+            libgtk-3-0 libnotify-dev libnss3 libxss1 \
+            libasound2t64 libxtst6 xauth libgbm1 libsecret-1-0
+
+      - name: Install project dependencies
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          pnpm install
+          openssl version
+          npm install -g @anthropic-ai/claude-code
+
+      - name: Run one cycle
+        if: steps.gate.outputs.run == 'true'
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: bash .github/scripts/dispatch/run.sh "$MODE"
+
+      - name: Post-check
+        if: steps.gate.outputs.run == 'true' && env.MODE == 'cycle'
+        env:
+          STARTED: ${{ steps.identity.outputs.started }}
+          LOGIN: ${{ steps.identity.outputs.login }}
+        run: bash .github/scripts/dispatch/postcheck.sh
+
+      - name: Cleanup
+        if: always() && steps.identity.outcome == 'success'
+        env:
+          STARTED: ${{ steps.identity.outputs.started }}
+          LOGIN: ${{ steps.identity.outputs.login }}
+          JOB_STATUS: ${{ job.status }}
+        run: bash .github/scripts/dispatch/cleanup.sh
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: dispatch-run
+          path: .dispatch/
+          if-no-files-found: ignore

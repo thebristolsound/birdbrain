@@ -1,6 +1,6 @@
 ---
 name: dispatch
-description: Run one cycle of the birdbrain dispatch routine — count the agent-PR slots (three, ADR-0014), then address review feedback, auto-merge a finished non-evidence PR, dispatch the oldest eligible ready-for-agent issue, or exit. Reviewer pre-pass on every agent push. Manual trigger (#308); the schedule wraps this later (#310).
+description: Run one cycle of the birdbrain dispatch routine — count the agent-PR slots (three, ADR-0014), then address review feedback, auto-merge a finished non-evidence PR, dispatch the oldest eligible ready-for-agent issue, or exit. Reviewer pre-pass on every agent push. Manual trigger (#308); scheduled fires run it from `.github/workflows/dispatch.yml` (ADR-0026).
 ---
 
 # Dispatch — one cycle
@@ -33,6 +33,13 @@ esac
   works: porcelain (`gh pr create`, `gh issue edit`, `gh label`) and `gh api` writes alike.
   There is **no GitHub MCP server configured locally**, so the `mcp__github__*` tools named
   below simply will not exist. Use `gh` — subject to authorization, below.
+- **GitHub Actions (`.github/workflows/dispatch.yml`, ADR-0026)** reads as `LOCAL`, and is:
+  nothing sits between `gh` and GitHub. The workflow has already written
+  `~/.config/birdbrain-agent/env` from the repository secret and passed the identity check
+  below, `GH_TOKEN` for the whole job is the machine token, and the checkout's git credential
+  is the same token, so branch pushes from the implementer go out as the machine account.
+  Serena is absent there and its tools do not resolve. The prompt says when you are on this
+  host.
 - **Claude Code on the web** — **only `gh api` REST works**. Every porcelain command
   (`gh pr`, `gh issue`, `gh label`) is GraphQL-backed and returns 403, because the session
   proxy serves only a pinned set of PR-review GraphQL operations. Writes — opening PRs,
@@ -74,9 +81,9 @@ agh() { GH_TOKEN="$BIRDBRAIN_AGENT_GH_TOKEN" gh "$@"; }
   either. The token is a classic `repo`-scope PAT and could push — you still never do
   (ADR-0006). After each write that creates something (claim comment, PR), confirm
   `.user.login` is the machine account.
-- **On the web there is no machine token yet.** The GitHub MCP tools write as the sandbox
-  identity, which is not the machine account, so a web cycle fails the identity check and stops
-  here. That is expected until the token is provisioned into that environment (ADR-0012 §5).
+- **The web is never a dispatch host (ADR-0026).** The sandbox proxy presents the session
+  identity whatever credential is offered (#960), so a web cycle fails the identity check and
+  stops here. Scheduled fires run on GitHub Actions instead.
 
 `.claude/hooks/session-start.sh` installs `gh` and pins Node 20, but **only on the web** — it
 exits immediately unless `CLAUDE_CODE_REMOTE=true`, by design. So:
@@ -423,8 +430,9 @@ control, not merely a capability limit: PR opening and labelling stay with the d
 one place owns what enters the slot, and the dispatcher is the only holder of the machine
 token so one identity authors every agent PR (ADR-0012). (On the web it is also a hard limit
 — a subagent's tool list has no GitHub MCP tools and `gh pr create` is 403 there; see
-`docs/agents/github-access.md`.) The implementer pushes its branch — over the maintainer's
-git credentials; the machine token cannot push and is not meant to — and returns the PR
+`docs/agents/github-access.md`.) The implementer pushes its branch — over the git credential
+the checkout carries: the maintainer's SSH login in a local session, the machine account over
+HTTPS on the Actions host (ADR-0026) — and returns the PR
 title, head sha, a path to the PR body it wrote, and the labels it determined are required.
 **You** open the **draft** PR against `main` and apply the labels via the write path:
 
@@ -581,8 +589,8 @@ Waiting cannot resolve it. Recover in this order, and stop at the first step tha
    and the exit status and stop. If `agent-authored` and `agent-pr` are genuinely absent,
    re-apply them through the write path and go to step 3, since a `labeled` event will not
    re-run `ci.yml` but the next push will.
-2. Push to the head branch to re-drive CI. Over the maintainer's git credentials, not the
-   machine token, which cannot push. If the push fails, report the failure and stop. A branch
+2. Push to the head branch to re-drive CI, over the git credential the checkout carries
+   (ADR-0026). If the push fails, report the failure and stop. A branch
    that never landed means the old all-`skipping` result is still the only result, and acting
    on it is what this whole section exists to prevent.
 3. Re-read head: `gh api repos/thebristolsound/birdbrain/pulls/<n> --jq .head.sha`. It must

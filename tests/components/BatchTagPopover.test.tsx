@@ -4,6 +4,12 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRef, type ReactNode } from 'react'
 
+const notifySuccess = vi.hoisted(() => vi.fn())
+
+vi.mock('@renderer/lib/notify', () => ({
+  notify: { error: vi.fn(), warn: vi.fn(), success: notifySuccess, info: vi.fn() }
+}))
+
 import { BatchTagPopover } from '@renderer/components/captures/BatchTagPopover'
 import { fakeBridge } from '../renderer/fakeBridge'
 
@@ -64,7 +70,10 @@ beforeEach(() => {
   })
 })
 
-afterEach(() => cleanup())
+afterEach(() => {
+  cleanup()
+  notifySuccess.mockReset()
+})
 
 describe('BatchTagPopover (#665)', () => {
   it('reads the selection membership in one call, not one per capture', async () => {
@@ -122,6 +131,39 @@ describe('BatchTagPopover (#665)', () => {
     expect(addToCaptures).not.toHaveBeenCalled()
   })
 
+  it('says so when a tag is removed, and says nothing when one is applied', async () => {
+    renderPopover()
+    fireEvent.click(await screen.findByText('phishing'))
+    // Removal is the branch with no tell of its own: no undo, no audit trail,
+    // and an emptied checkbox an operator who did not mean it will not read.
+    await waitFor(() =>
+      expect(notifySuccess).toHaveBeenCalledWith('Removed phishing from 3 captures')
+    )
+
+    notifySuccess.mockReset()
+    fireEvent.click(screen.getByText('benign'))
+    await waitFor(() => expect(addToCaptures).toHaveBeenCalledOnce())
+    expect(notifySuccess).not.toHaveBeenCalled()
+  })
+
+  it('stays open and reports no success when the untag write fails', async () => {
+    removeFromCaptures.mockRejectedValue(new Error('nope'))
+    renderPopover()
+    fireEvent.click(await screen.findByText('phishing'))
+    await waitFor(() => expect(removeFromCaptures).toHaveBeenCalledOnce())
+    expect(notifySuccess).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('renders no membership state until the counts land', async () => {
+    countsForCaptures.mockImplementation(() => new Promise(() => {}))
+    renderPopover()
+    // Counts still in flight means every count reads 0, which is `none` — a
+    // tag on the whole selection would show as on none of it.
+    expect(await screen.findByText('Loading tags…')).toBeDefined()
+    expect(screen.queryAllByRole('menuitemcheckbox')).toHaveLength(0)
+  })
+
   it('applies several tags in one gesture', async () => {
     renderPopover()
     fireEvent.click(await screen.findByText('benign'))
@@ -169,9 +211,24 @@ describe('BatchTagPopover (#665)', () => {
     const input = screen.getByLabelText('Find or create a tag')
     fireEvent.change(input, { target: { value: 'PHISHING' } })
     expect(screen.queryByText(/and apply/)).toBeNull()
-    // Enter on that name applies the tag it names rather than doing nothing.
+  })
+
+  it('applies and never removes on Enter, whatever the tag already carries', async () => {
+    renderPopover()
+    await screen.findByText('phishing')
+    const input = screen.getByLabelText('Find or create a tag')
+    // phishing is on all three, so a toggle here would strip it from the whole
+    // selection — from the gesture that narrows the list to it.
+    fireEvent.change(input, { target: { value: 'PHISHING' } })
     fireEvent.keyDown(input, { key: 'Enter' })
-    await waitFor(() => expect(removeFromCaptures).toHaveBeenCalledOnce())
+    await waitFor(() => expect(addToCaptures).toHaveBeenCalledOnce())
+    expect(addToCaptures).toHaveBeenCalledWith({
+      caseId: 'case1',
+      captureIds: SELECTED,
+      tagId: 'tag-all'
+    })
+    expect(removeFromCaptures).not.toHaveBeenCalled()
+    expect(notifySuccess).not.toHaveBeenCalled()
   })
 
   it('creates on Enter when nothing matches', async () => {

@@ -50,6 +50,9 @@ export function useBatchTagEditor(caseId: string, captureIds: string[]) {
    * completes a partial application is the same one that starts a new one —
    * so only a fully applied tag is removable, and the operator never removes
    * a tag from rows they could not see it on.
+   *
+   * This is the row click's path and nothing else's: it is the only gesture
+   * that can remove, and the row it belongs to says so in its tooltip.
    */
   async function toggleTag(tagId: string): Promise<'applied' | 'removed'> {
     const applied = rows.find((r) => r.tag.id === tagId)?.state === 'all'
@@ -59,6 +62,17 @@ export function useBatchTagEditor(caseId: string, captureIds: string[]) {
     }
     await addToCaptures.mutateAsync({ captureIds, tagId })
     return 'applied'
+  }
+
+  /**
+   * Apply to the whole selection whatever the current state — the half of
+   * `toggleTag` with no remove branch. The picker's Enter path uses this: the
+   * input doubles as the list filter, so typing a name out in full must not be
+   * a route into an unlogged batch untag. Re-applying a tag the selection
+   * already carries costs one `INSERT OR IGNORE` that changes no row.
+   */
+  async function applyTag(tagId: string): Promise<void> {
+    await addToCaptures.mutateAsync({ captureIds, tagId })
   }
 
   // Create-or-reuse, then apply. Reuse matters here and not only for #811's
@@ -76,6 +90,7 @@ export function useBatchTagEditor(caseId: string, captureIds: string[]) {
     total,
     isLoading: tagsQuery.isLoading || countsQuery.isLoading,
     toggleTag,
+    applyTag,
     createAndApply,
     isWriting: addToCaptures.isPending || removeFromCaptures.isPending || findOrCreate.isPending
   }

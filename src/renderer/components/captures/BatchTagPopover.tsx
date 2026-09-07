@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Minus, Plus } from 'lucide-react'
 import { DEFAULT_TAG_COLOR, TAG_COLOR_PRESETS } from '@renderer/components/tags/tagColors'
+import { notify } from '@renderer/lib/notify'
 import {
   useBatchTagEditor,
   type BatchTagState
@@ -41,15 +42,16 @@ function ariaChecked(state: BatchTagState): boolean | 'mixed' {
  *   tag some rows already carry no longer looks like applying a new one;
  * - a fully applied tag can be removed from the selection.
  *
- * There is no success toast. The rows are the confirmation, and they say more
- * than a toast can — one per click would make multi-apply, the thing being
- * added, unusable. Failures still toast, through the mutation cache.
+ * Applying does not toast. The row filling in says more than a toast can, and
+ * one per click would make multi-apply, the thing being added, unusable.
+ * Removing does toast, because none of that holds for it: the row only empties,
+ * there is no undo, and `capture_tags` keeps no history, so a removal the
+ * operator did not mean would otherwise leave no trace at all. Failures toast
+ * either way, through the mutation cache.
  */
 export function BatchTagPopover({ caseId, selectedIds, onClose, anchorRef }: BatchTagPopoverProps) {
-  const { rows, total, toggleTag, createAndApply, isWriting } = useBatchTagEditor(
-    caseId,
-    selectedIds
-  )
+  const { rows, total, isLoading, toggleTag, applyTag, createAndApply, isWriting } =
+    useBatchTagEditor(caseId, selectedIds)
   const [query, setQuery] = useState('')
   const [color, setColor] = useState(DEFAULT_TAG_COLOR)
   const [showColors, setShowColors] = useState(false)
@@ -88,10 +90,23 @@ export function BatchTagPopover({ caseId, selectedIds, onClose, anchorRef }: Bat
   const canCreate = trimmed.length > 0 && !exactMatch
 
   async function handleToggle(tagId: string) {
+    // Read off the pre-write rows: the refetch the mutation triggers can land
+    // before the toast is composed, and a removed tag may no longer be there.
+    const name = rows.find((r) => r.tag.id === tagId)?.tag.name ?? 'tag'
     try {
-      await toggleTag(tagId)
+      if ((await toggleTag(tagId)) === 'removed') {
+        notify.success(`Removed ${name} from ${total} capture${total === 1 ? '' : 's'}`)
+      }
     } catch {
       // The mutation cache toasts it; the row reverts on the refetch.
+    }
+  }
+
+  async function handleApply(tagId: string) {
+    try {
+      await applyTag(tagId)
+    } catch {
+      // As above.
     }
   }
 
@@ -151,9 +166,13 @@ export function BatchTagPopover({ caseId, selectedIds, onClose, anchorRef }: Bat
           onKeyDown={(e) => {
             if (e.key !== 'Enter') return
             e.preventDefault()
-            // Enter on a name that already exists applies it, so typing a tag
-            // out in full never silently does nothing.
-            if (exactMatch) handleToggle(exactMatch.tag.id)
+            // Enter only ever applies. The input is also the filter, so typing
+            // a name out in full is how the list is narrowed to it; if that
+            // gesture toggled, an operator narrowing to a tag the selection
+            // already carries would strip it from every capture instead — a
+            // write with no confirm, no undo and no audit trail. Removal stays
+            // on the row click, which warns in its tooltip.
+            if (exactMatch) handleApply(exactMatch.tag.id)
             else handleCreate()
           }}
           placeholder="Find or create a tag"
@@ -162,39 +181,54 @@ export function BatchTagPopover({ caseId, selectedIds, onClose, anchorRef }: Bat
         />
       </div>
 
-      <div role="menu" aria-label="Tags" className="max-h-48 overflow-y-auto py-1">
-        {visible.length === 0 && (
+      <div
+        role="menu"
+        aria-label="Tags"
+        aria-busy={isLoading}
+        className="max-h-48 overflow-y-auto py-1"
+      >
+        {/*
+          No rows until the membership read lands. Until then every count is 0,
+          which renders `none` — so a tag on all of the selection would show an
+          empty checkbox and an aria-checked of false, and a click in that
+          window applies what the operator meant to remove.
+        */}
+        {isLoading && <div className="px-3 py-2 text-[11px] text-text-faint">Loading tags…</div>}
+        {!isLoading && visible.length === 0 && (
           <div className="px-3 py-2 text-[11px] text-text-faint">
             {rows.length === 0 ? 'No tags yet — type a name to create one.' : 'No tag matches.'}
           </div>
         )}
-        {visible.map(({ tag, count, state }) => (
-          <button
-            key={tag.id}
-            role="menuitemcheckbox"
-            aria-checked={ariaChecked(state)}
-            disabled={isWriting}
-            onClick={() => handleToggle(tag.id)}
-            title={state === 'all' ? `Remove ${tag.name} from the selection` : undefined}
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text-secondary hover:bg-elevated disabled:opacity-60"
-          >
-            <span aria-hidden="true" className={checkboxClass(state)}>
-              {state === 'all' && <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
-              {state === 'partial' && <Minus className="h-2.5 w-2.5 text-accent" strokeWidth={3} />}
-            </span>
-            <span
-              aria-hidden="true"
-              className="h-2 w-2 shrink-0 rounded-full"
-              style={{ backgroundColor: tag.color || DEFAULT_TAG_COLOR }}
-            />
-            <span className="min-w-0 flex-1 truncate">{tag.name}</span>
-            {state === 'partial' && (
-              <span className="shrink-0 text-[10px] tabular-nums text-text-faint">
-                {count}/{total}
+        {!isLoading &&
+          visible.map(({ tag, count, state }) => (
+            <button
+              key={tag.id}
+              role="menuitemcheckbox"
+              aria-checked={ariaChecked(state)}
+              disabled={isWriting}
+              onClick={() => handleToggle(tag.id)}
+              title={state === 'all' ? `Remove ${tag.name} from the selection` : undefined}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text-secondary hover:bg-elevated disabled:opacity-60"
+            >
+              <span aria-hidden="true" className={checkboxClass(state)}>
+                {state === 'all' && <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
+                {state === 'partial' && (
+                  <Minus className="h-2.5 w-2.5 text-accent" strokeWidth={3} />
+                )}
               </span>
-            )}
-          </button>
-        ))}
+              <span
+                aria-hidden="true"
+                className="h-2 w-2 shrink-0 rounded-full"
+                style={{ backgroundColor: tag.color || DEFAULT_TAG_COLOR }}
+              />
+              <span className="min-w-0 flex-1 truncate">{tag.name}</span>
+              {state === 'partial' && (
+                <span className="shrink-0 text-[10px] tabular-nums text-text-faint">
+                  {count}/{total}
+                </span>
+              )}
+            </button>
+          ))}
       </div>
 
       {canCreate && (

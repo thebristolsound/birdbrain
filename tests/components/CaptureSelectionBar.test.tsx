@@ -140,7 +140,8 @@ describe('CaptureSelectionBar', () => {
       tagId: 'tag-1'
     })
     // The popover stays open so a second tag is a second click, not a second
-    // gesture, and the row state replaces the toast the interim picker fired.
+    // gesture, and on apply the row state replaces the toast the interim
+    // picker fired. Removal still toasts — BatchTagPopover.test.tsx covers it.
     expect(screen.queryByTestId('batch-tag-popover')).not.toBeNull()
     expect(notifySuccess).not.toHaveBeenCalled()
   })

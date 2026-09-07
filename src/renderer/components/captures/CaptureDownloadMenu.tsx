@@ -73,27 +73,48 @@ export function CaptureDownloadMenu({ capture }: Props) {
 
   return (
     <div className="relative flex shrink-0 items-center gap-1.5">
+      {/* Out of the toolbar row rather than beside the trigger (#466): a
+          download error has no length an operator can predict, and in the row it
+          pushed the capture pager off screen at a narrow pane — 54px of overflow
+          at the 360px panel minimum. Dropped below the trigger like the case
+          ExportMenu's, it costs the row nothing and reads in full. The message
+          may be one unbroken token — a destination path — so it wraps at any
+          point rather than running past the box into the shell's clip. */}
       {error && (
-        <span
+        <div
+          role="alert"
           data-testid="capture-download-error"
-          title={error}
-          className="max-w-40 truncate text-[11px] text-red-500"
+          className="absolute right-0 top-full z-40 mt-1 max-w-64 break-words rounded border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-[11px] text-red-400"
         >
           {error}
-        </span>
+        </div>
       )}
+      {/* The visible "Exporting…" label is hidden below 48rem, so the progress
+          has to reach a screen reader some other way. A live region rather than
+          a swapped aria-label: the button stays addressable by its purpose
+          while the export runs. */}
+      <span role="status" aria-live="polite" className="sr-only">
+        {pdfExporting ? 'Exporting PDF' : ''}
+      </span>
       <button
         ref={anchorRef}
         onClick={() => setOpen((v) => !v)}
         title="Download capture artifacts"
+        aria-label="Download capture artifacts"
         aria-haspopup="menu"
         aria-expanded={open}
         data-testid="capture-download-menu-btn"
-        className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium text-accent hover:bg-accent-subtle"
+        className="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium text-accent hover:bg-accent-subtle"
       >
-        <Download className="h-3.5 w-3.5" />
-        {pdfExporting ? 'Exporting…' : 'Download'}
-        <ChevronDown className="h-3 w-3" />
+        <Download className="h-3.5 w-3.5 shrink-0" />
+        {/* Icon-only below the viewer toolbar's widest tier (#466), where the
+            label is what pushed the capture pager off screen. The container is
+            named on the viewer shell in CaptureViewer, and the aria-label above
+            carries the name the text no longer supplies. */}
+        <span className="hidden @3xl/viewer:inline">
+          {pdfExporting ? 'Exporting…' : 'Download'}
+        </span>
+        <ChevronDown className="h-3 w-3 shrink-0" />
       </button>
       {open && (
         <div

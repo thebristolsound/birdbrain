@@ -24,8 +24,8 @@ const STEPS = [
   {
     n: 2,
     icon: ToggleRight,
-    title: 'Enable Auto-Capture',
-    body: 'Toggle Auto-Capture on in the header bar to start recording pages as you browse.'
+    title: 'Start a capture session',
+    body: 'Toggle Capture Session on in the header bar to start recording pages as you browse.'
   },
   {
     n: 3,

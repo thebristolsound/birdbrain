@@ -21,7 +21,7 @@ describe('CapturesGettingStarted', () => {
   it('renders three onboarding steps', () => {
     render(<CapturesGettingStarted />)
     expect(screen.getByText('Install the browser extension')).toBeDefined()
-    expect(screen.getByText('Enable Auto-Capture')).toBeDefined()
+    expect(screen.getByText('Start a capture session')).toBeDefined()
     expect(screen.getByText('Browse and investigate')).toBeDefined()
   })
 

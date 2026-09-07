@@ -19,7 +19,7 @@
     "prepublishOnly": "node scripts/no-registry-publish.mjs",
     "rebuild:electron": "node scripts/rebuild-native.mjs",
     "build:extension": "vite build --config extension/vite.config.ts && cross-env BUILD_TARGET=content vite build --config extension/vite.config.ts",
-    "dev:extension": "vite build --config extension/vite.config.ts --watch",
+    "dev:extension": "node scripts/dev-extension.mjs",
     "build:verifier": "node scripts/build-verifier.mjs",
     "test": "cross-env ELECTRON_RUN_AS_NODE=1 electron ./node_modules/vitest/vitest.mjs run",
     "test:watch": "cross-env ELECTRON_RUN_AS_NODE=1 electron ./node_modules/vitest/vitest.mjs",

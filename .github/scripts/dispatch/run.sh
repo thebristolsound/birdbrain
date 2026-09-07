@@ -53,8 +53,16 @@ status=$?
 set -e
 
 if [ "$status" -ne 0 ]; then
+  # Both streams, because a fast non-zero exit puts the reason on stdout as a
+  # JSON error result and leaves stderr carrying only warnings. Run 34090872909
+  # failed with nothing but the workspace-trust warning in the log, and the
+  # artifact that held the answer had not uploaded.
   echo "claude -p exited $status; see the dispatch-run artifact" >&2
+  echo "--- .dispatch/claude.err (last 40 lines) ---" >&2
   tail -n 40 .dispatch/claude.err >&2
+  echo "--- .dispatch/result.json (first 4000 bytes) ---" >&2
+  head -c 4000 .dispatch/result.json >&2 || true
+  echo >&2
   exit "$status"
 fi
 

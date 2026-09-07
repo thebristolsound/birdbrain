@@ -129,9 +129,14 @@ jobs:
           JOB_STATUS: ${{ job.status }}
         run: bash .github/scripts/dispatch/cleanup.sh
 
+      # include-hidden-files, because .dispatch is a dot-directory and the action
+      # skips those by default: run 34090872909 reported "No files were found
+      # with the provided path" and uploaded nothing, which is the whole report
+      # surface the design brief relies on (R6).
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: dispatch-run
           path: .dispatch/
+          include-hidden-files: true
           if-no-files-found: ignore

@@ -73,8 +73,13 @@ jobs:
           BIRDBRAIN_AGENT_GH_TOKEN_EXPIRES: ${{ vars.BIRDBRAIN_AGENT_GH_TOKEN_EXPIRES }}
         run: bash .github/scripts/dispatch/identity.sh
 
+      # LOGIN lets the pre-gate tell the pipeline's own comments from a human's,
+      # so a PR that is only waiting on a human does not re-run a full cycle
+      # against its own pre-pass verdict every fire.
       - name: Pre-gate
         id: gate
+        env:
+          LOGIN: ${{ steps.identity.outputs.login }}
         run: bash .github/scripts/dispatch/pregate.sh "$MODE"
 
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10

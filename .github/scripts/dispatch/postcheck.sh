@@ -8,6 +8,12 @@
 # least one commit ahead of main and carry agent-authored, and no dispatch claim
 # taken during this run may still be live without a PR.
 #
+# agent-pr is checked too, because `gh pr create --label` is not atomic and a PR
+# that loses it holds no slot and reads as "Not an agent PR" to the gates, so
+# nothing downstream ever waits on it. A process-doc PR is the one machine PR
+# the skill labels agent-authored without agent-pr, and it is recognised the way
+# the skill defines it: a diff confined to .claude/, docs/ and root-level *.md.
+#
 # Env: GH_TOKEN (machine token), STARTED (run start, UTC), LOGIN (machine login).
 set -euo pipefail
 
@@ -35,7 +41,18 @@ for row in $(jq -c '.[]' <<<"$opened"); do
   if ! jq -e 'index("agent-authored")' <<<"$labels" >/dev/null; then
     echo "PR #$n ($ref) is missing the agent-authored label" | tee -a "$summary"; failed=1
   fi
-  echo "PR #$n ($ref): $ahead commit(s) ahead of main, labels $labels" >> "$summary"
+  process_doc=yes
+  while read -r path; do
+    case "$path" in
+      .claude/*|docs/*) ;;
+      *.md) [ "${path%%/*}" = "$path" ] || process_doc=no ;;
+      *) process_doc=no ;;
+    esac
+  done < <(git diff --name-only "origin/main...origin/$ref")
+  if [ "$process_doc" = no ] && ! jq -e 'index("agent-pr")' <<<"$labels" >/dev/null; then
+    echo "PR #$n ($ref) is missing the agent-pr label, so it holds no slot" | tee -a "$summary"; failed=1
+  fi
+  echo "PR #$n ($ref): $ahead commit(s) ahead of main, process-doc=$process_doc, labels $labels" >> "$summary"
 done
 [ "$(jq length <<<"$opened")" -eq 0 ] && echo "No PR was opened during this run." >> "$summary"
 

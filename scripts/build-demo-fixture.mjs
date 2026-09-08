@@ -10,16 +10,26 @@
 //
 // On Linux that needs a display, so the run goes through xvfb-run when one is
 // not already present.
+//
+// Electron is pointed at the output DIRECTORY rather than at the bundle file,
+// and a package.json carrying Birdbrain's own version is written beside it.
+// That is what makes `app.getVersion()` — which `ingestMhtmlCapture` and
+// `exportCaseArchive` both sign into the fixture as `toolVersion` — report the
+// Birdbrain release that built the archive. Handed the bare file, Electron has
+// no application package.json to read and falls back to its own runtime
+// version, which is how the shipped fixture came to claim it was produced by
+// Birdbrain 42.5.1.
 
 import { build } from 'esbuild'
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = join(root, 'out', 'demo-fixture')
 const bundlePath = join(outDir, 'build.cjs')
+const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf-8'))
 
 function log(msg) {
   process.stdout.write(`[build-demo-fixture] ${msg}\n`)
@@ -50,7 +60,11 @@ async function bundle() {
       )
     }
   })
-  log(`bundled -> ${bundlePath}`)
+  writeFileSync(
+    join(outDir, 'package.json'),
+    `${JSON.stringify({ name: 'birdbrain-demo-fixture', version, main: 'build.cjs' }, null, 2)}\n`
+  )
+  log(`bundled -> ${bundlePath} (toolVersion ${version})`)
 }
 
 function runElectron() {
@@ -59,8 +73,8 @@ function runElectron() {
   const needsXvfb = process.platform === 'linux' && !process.env.DISPLAY
   const command = needsXvfb ? 'xvfb-run' : electron
   const args = needsXvfb
-    ? ['--auto-servernum', electron, bundlePath, '--no-sandbox']
-    : [bundlePath, '--no-sandbox']
+    ? ['--auto-servernum', electron, outDir, '--no-sandbox']
+    : [outDir, '--no-sandbox']
   log(`running ${command} ${args.join(' ')}`)
   const result = spawnSync(command, args, { cwd: root, stdio: 'inherit' })
   if (result.status !== 0) {

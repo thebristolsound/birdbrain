@@ -33,6 +33,15 @@ import { MANIFEST_FILENAME } from '@shared/constants'
  */
 const FIXTURE = resolve(__dirname, '../../../resources', DEMO_CASE_ARCHIVE_FILENAME)
 
+/**
+ * The Birdbrain release that produced the committed fixture.
+ *
+ * Frozen, not read from `package.json`: the archive is a binary that is only
+ * regenerated deliberately, so a release bump must not silently redefine what
+ * this test expects. Update it in the same commit that regenerates the fixture.
+ */
+const FIXTURE_TOOL_VERSION = '1.0.1-beta.21'
+
 describe('bundled demo case archive', () => {
   let tempDir: string
 
@@ -73,6 +82,29 @@ describe('bundled demo case archive', () => {
   it('carries the fixed synthetic attribution rather than the building machine', () => {
     const report = inspectCaseArchive(FIXTURE)
     expect(report.sourceOperatorName).toBe(DEMO_CASE_OPERATOR_NAME)
+  })
+
+  it('attributes itself to the Birdbrain release that built it, not to the Electron runtime', async () => {
+    // The generator runs inside a real Electron app, where `app.getVersion()`
+    // reports the Electron runtime unless the process is handed an application
+    // package.json to read (scripts/build-demo-fixture.mjs writes one). The
+    // value is signed into every `capture` entry and into the archive header,
+    // so a regression here ships a false provenance claim rather than only a
+    // cosmetic one.
+    const report = inspectCaseArchive(FIXTURE)
+    expect(report.toolVersion).toBe(FIXTURE_TOOL_VERSION)
+    expect(report.toolVersion).not.toBe(process.versions.electron)
+
+    const { newCaseId } = await importCaseArchive(FIXTURE, {
+      operatorName: DEMO_CASE_OPERATOR_NAME
+    })
+    const caseDir = join(getStorageRoot(), newCaseId)
+    const entries = readEntries(readFileSync(join(caseDir, MANIFEST_FILENAME), 'utf-8'))
+    const captureEntries = entries.filter((e) => e.type === 'capture')
+    expect(captureEntries.length).toBeGreaterThanOrEqual(3)
+    for (const entry of captureEntries) {
+      expect(entry.toolVersion).toBe(FIXTURE_TOOL_VERSION)
+    }
   })
 
   it('imports against the current schema as a demonstration case', async () => {

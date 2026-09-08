@@ -164,7 +164,8 @@ const CODE_LABELS: Record<LogCode, string> = {
     "This installation's signing key is not protected at rest — see Settings → Diagnostics",
   'signingKey.generation_declined': 'Birdbrain quit — the signing key warning was not acknowledged',
   'settings.key_protection_state_unreadable': "Couldn't read saved key-protection state",
-  'settings.fresh_install_seed_failed': "Couldn't save initial settings"
+  'settings.fresh_install_seed_failed': "Couldn't save initial settings",
+  'exhibits.backfill_failed': "Couldn't finish the exhibit migration for a case"
 }
 
 export function labelForCode(code: LogCode): string {

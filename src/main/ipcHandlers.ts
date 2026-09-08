@@ -57,6 +57,7 @@ import { applyTagToNote, NoteNotFoundError } from '@main/services/noteTags'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import { renderCapturePdf } from '@main/services/pdfExport'
 import { getThumbnail } from '@main/services/thumbnails'
+import { getCaseInventory, getManifestSnapshot, verifyExhibit } from '@main/services/exhibits'
 import * as settings from '@main/services/settings'
 import * as openrouter from '@main/services/openrouter'
 import * as analysisService from '@main/services/ai/analysisService'
@@ -946,6 +947,15 @@ export function registerIpcHandlers(deps: {
     const openError = await shell.openPath(path)
     if (openError) throw new IpcFailure(openError, 'OPEN_PATH_FAILED')
   })
+
+  // Exhibits (ADR-0023). The inventory returns anchored and pooled rows in one
+  // list; the snapshot is the only place chain state is computed, so the
+  // renderer never derives a verdict of its own.
+  handle(IPC_CHANNELS.EXHIBITS_INVENTORY, (_, caseId: string) => getCaseInventory(caseId))
+  handle(IPC_CHANNELS.EXHIBITS_VERIFY, (_, caseId: string, exhibitId: string) =>
+    verifyExhibit(caseId, exhibitId)
+  )
+  handle(IPC_CHANNELS.MANIFEST_SNAPSHOT, (_, caseId: string) => getManifestSnapshot(caseId))
 
   // App
   handle(IPC_CHANNELS.APP_GET_VERSION, () => app.getVersion())

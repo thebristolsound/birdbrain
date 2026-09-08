@@ -32,6 +32,30 @@ export const CAPTURE_ARTIFACT_TYPES: readonly CaptureArtifactType[] = [
 
 const THUMBNAIL_SUFFIX = '_thumb.jpg'
 
+// Per-kind storage layout (ADR-0023, X4). Captures stay flat in `{caseId}/` —
+// moving them would be a migration of every existing Case for no verifier gain
+// — and each new kind gets its own subdirectory. Derived Files sit beside their
+// parent with a suffix, as `_thumb.jpg` already does.
+//
+// A kind absent from this map stores flat, which is what `capture` does.
+export const EXHIBIT_KIND_SUBDIRECTORIES: Readonly<Record<string, string>> = {
+  attachment: 'attachments',
+  image: 'images',
+  document: 'documents'
+}
+
+// The Staging Pool (ADR-0024). Bytes here are NOT covered by the chain; the
+// orphan scan and the storage-size read know the directory so pooled files are
+// neither deleted as strays nor omitted from the Case's size.
+export const STAGING_SUBDIRECTORY = 'staging'
+
+// Every subdirectory a Case directory may hold. Single source of truth for the
+// scanners: a new kind adds itself here and both of them follow.
+export const CASE_SUBDIRECTORIES: readonly string[] = [
+  ...Object.values(EXHIBIT_KIND_SUBDIRECTORIES),
+  STAGING_SUBDIRECTORY
+]
+
 export interface ArtifactPaths {
   // Relative path (caseId/captureId.ext) — the form persisted onto capture rows.
   rel: string
@@ -67,7 +91,16 @@ export interface CaptureStore {
   caseDir: (caseId: string) => string
   artifactPaths: (caseId: string, captureId: string, type: CaptureArtifactType) => ArtifactPaths
   thumbnailPaths: (caseId: string, captureId: string) => ArtifactPaths
+  // Where an Exhibit of `kind` stores `fileName` inside a Case. Flat for
+  // `capture`, in the kind's subdirectory otherwise.
+  exhibitPaths: (caseId: string, kind: string, fileName: string) => ArtifactPaths
+  // Where a pooled file stores `fileName` (ADR-0024).
+  stagingPaths: (caseId: string, fileName: string) => ArtifactPaths
   resolveAbsolute: (relPath: string) => string
+  // Whether a storage-root-relative path is on disk. The inventory's
+  // existence column; `''` and undefined answer false rather than resolving to
+  // the storage root itself.
+  existsRelative: (relPath: string | null | undefined) => boolean
   writeMhtmlStream: (
     caseId: string,
     captureId: string,
@@ -133,8 +166,24 @@ export function createCaptureStore(deps: { getRoot: () => string }): CaptureStor
     return { rel, abs: join(getRoot(), rel) }
   }
 
+  function exhibitPaths(caseId: string, kind: string, fileName: string): ArtifactPaths {
+    const subdir = EXHIBIT_KIND_SUBDIRECTORIES[kind]
+    const rel = subdir ? join(caseId, subdir, fileName) : join(caseId, fileName)
+    return { rel, abs: join(getRoot(), rel) }
+  }
+
+  function stagingPaths(caseId: string, fileName: string): ArtifactPaths {
+    const rel = join(caseId, STAGING_SUBDIRECTORY, fileName)
+    return { rel, abs: join(getRoot(), rel) }
+  }
+
   function resolveAbsolute(relPath: string): string {
     return join(getRoot(), relPath)
+  }
+
+  function existsRelative(relPath: string | null | undefined): boolean {
+    if (!relPath) return false
+    return existsSync(join(getRoot(), relPath))
   }
 
   // Streams an MHTML upload to disk in a single pass while computing SHA-256.
@@ -321,7 +370,10 @@ export function createCaptureStore(deps: { getRoot: () => string }): CaptureStor
     caseDir,
     artifactPaths,
     thumbnailPaths,
+    exhibitPaths,
+    stagingPaths,
     resolveAbsolute,
+    existsRelative,
     writeMhtmlStream,
     writeText,
     writeScreenshot,

@@ -19,7 +19,7 @@ export class MentionCaseMismatchError extends Error {
 }
 
 // The case-scoped target tables. Tags are deliberately absent: `tags` has no
-// case_id — a tag is global and attaches to captures through capture_tags —
+// case_id — a tag is global and attaches to captures through exhibit_tags —
 // so any tag id is accepted, existing or not (maintainer ruling 2026-08-20 on
 // #389, spike constraint 3). The alternative reading of "in this case" would
 // make an ordinary tag removal invalidate a previously valid Mention on the

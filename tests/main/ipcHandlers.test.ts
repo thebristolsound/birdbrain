@@ -594,6 +594,29 @@ describe('ipcHandlers — captures', () => {
     })
   })
 
+  // The Exhibit read paths (#1147). Registration is already asserted above;
+  // this is the round trip through the handlers, so a channel wired to the
+  // wrong service or argument order fails here rather than in the renderer.
+  it('answers the exhibit inventory, manifest snapshot and exhibit verify', async () => {
+    const inventory = expectOk<{ caseId: string; rows: Array<{ rowType: string; id: string }> }>(
+      await invoke(IPC_CHANNELS.EXHIBITS_INVENTORY, caseId)
+    )
+    expect(inventory.caseId).toBe(caseId)
+    expect(inventory.rows.map((row) => row.id)).toContain(captureId)
+
+    const snapshot = expectOk<{ caseId: string; signers: unknown[] }>(
+      await invoke(IPC_CHANNELS.MANIFEST_SNAPSHOT, caseId)
+    )
+    expect(snapshot.caseId).toBe(caseId)
+    expect(Array.isArray(snapshot.signers)).toBe(true)
+
+    const verified = expectOk<{ kind: string; status: string }>(
+      await invoke(IPC_CHANNELS.EXHIBITS_VERIFY, caseId, captureId)
+    )
+    expect(verified.kind).toBe('capture')
+    expect(verified.status).toBeDefined()
+  })
+
   it('verifies a capture and deletes it', async () => {
     const verification = expectOk<{ status: string }>(
       await invoke(IPC_CHANNELS.CAPTURES_VERIFY, captureId)
@@ -1889,7 +1912,7 @@ describe('ipcHandlers — database admin', () => {
   it('reports a foreign-key violation as a structured failure, not a rejection', async () => {
     const res = await invoke<{ ok: boolean; error?: string; code?: string }>(
       IPC_CHANNELS.DB_CREATE_ROW,
-      { table: 'capture_tags', data: { capture_id: 'no-such-capture', tag_id: 'no-such-tag' } }
+      { table: 'exhibit_tags', data: { exhibit_id: 'no-such-exhibit', tag_id: 'no-such-tag' } }
     )
 
     expect(res.ok).toBe(false)

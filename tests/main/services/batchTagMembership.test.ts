@@ -27,7 +27,7 @@ import {
  *
  * These functions carry no evidentiary payload — tag membership is
  * investigator-applied metadata, outside the hash chain and the manifest — but
- * they do write to `capture_tags`, which case archives export, so the answers
+ * they do write to `exhibit_tags`, which case archives export, so the answers
  * they give are what a later reader sees.
  */
 

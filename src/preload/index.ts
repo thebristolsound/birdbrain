@@ -188,6 +188,15 @@ const birdbrain = {
     openPath: bridge(IPC_CHANNELS.SHELL_OPEN_PATH)
   },
 
+  exhibits: {
+    inventory: bridge(IPC_CHANNELS.EXHIBITS_INVENTORY),
+    verify: bridge(IPC_CHANNELS.EXHIBITS_VERIFY)
+  },
+
+  manifest: {
+    snapshot: bridge(IPC_CHANNELS.MANIFEST_SNAPSHOT)
+  },
+
   app: {
     getVersion: bridge(IPC_CHANNELS.APP_GET_VERSION)
   },

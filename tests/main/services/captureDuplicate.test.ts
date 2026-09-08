@@ -203,7 +203,7 @@ describe('createCaptureLifecycle.duplicate (#827)', () => {
       'Relevant',
       '#fff'
     )
-    db.prepare('INSERT INTO capture_tags (capture_id, tag_id) VALUES (?, ?)').run(
+    db.prepare('INSERT INTO exhibit_tags (exhibit_id, tag_id) VALUES (?, ?)').run(
       source.id,
       'tag-1'
     )
@@ -212,10 +212,10 @@ describe('createCaptureLifecycle.duplicate (#827)', () => {
     if (result.status !== 'duplicated') throw new Error('expected a duplicate')
 
     const tagRows = db
-      .prepare('SELECT capture_id FROM capture_tags WHERE tag_id = ?')
-      .all('tag-1') as Array<{ capture_id: string }>
+      .prepare('SELECT exhibit_id FROM exhibit_tags WHERE tag_id = ?')
+      .all('tag-1') as Array<{ exhibit_id: string }>
     // An operator's judgement about the original is not a fact about the copy.
-    expect(tagRows.map((r) => r.capture_id)).toEqual([source.id])
+    expect(tagRows.map((r) => r.exhibit_id)).toEqual([source.id])
   })
 
   it('refuses a tampered source, writing neither an entry nor a row', async () => {

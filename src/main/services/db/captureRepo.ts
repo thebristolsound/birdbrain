@@ -10,6 +10,11 @@ import type {
 } from '@shared/types'
 import { TlsCertChainResultSchema } from '@shared/schemas'
 import { getDb, type ImportCtx } from '@main/services/db/core'
+import {
+  backfillExhibitsForCaptures,
+  deleteExhibit,
+  insertExhibitForCapture
+} from '@main/services/db/exhibitRepo'
 
 export function listCaptures(caseId: string): Capture[] {
   const rows = getDb()
@@ -178,6 +183,26 @@ export const insertCapture = function (params: InsertCaptureParams & { id?: stri
       'INSERT INTO capture_texts (capture_id, title, url, content) VALUES (?, ?, ?, ?)'
     ).run(id, params.title ?? '', params.url ?? '', params.textContent ?? '')
 
+    // ...and its Exhibit row, in the SAME transaction (ADR-0023). A Capture is
+    // one kind of Exhibit and its Exhibit id IS its capture id, so this is not
+    // a second record of the capture: it is the identity and numbering row
+    // every kind shares, and Exhibit Numbers are assigned at ingest for
+    // Captures (X18). Writing it here rather than at each call site is what
+    // keeps `exhibit_tags` — whose foreign key points at `exhibits` — usable
+    // for a capture the moment it lands.
+    insertExhibitForCapture({
+      id,
+      caseId: params.caseId,
+      title: params.title,
+      url: params.url,
+      hash: params.hash,
+      path: params.mhtmlPath ?? params.htmlPath ?? null,
+      sizeBytes: params.sizeBytes ?? null,
+      committedAt: now,
+      manifestSeq: params.manifestIndex ?? null,
+      method: params.method ?? null
+    })
+
     // Touch the case's updated_at
     d.prepare('UPDATE cases SET updated_at = ? WHERE id = ?').run(now, params.caseId)
   })
@@ -192,6 +217,10 @@ export function deleteCapture(id: string): boolean {
   if (!capture) return false
 
   const run = d.transaction(() => {
+    // `exhibits` hangs off `cases`, not off `captures`, so nothing cascades to
+    // it when the capture row goes. Left behind, the row would keep the
+    // capture's tags alive and put a phantom Exhibit in the inventory.
+    deleteExhibit(id)
     return d.prepare('DELETE FROM captures WHERE id = ?').run(id)
   })
 
@@ -439,6 +468,12 @@ export function importCaptureRows(rows: Record<string, unknown>[], ctx: ImportCt
       ctx.getText(cap.id as string, newId)
     )
   }
+  // Every imported Capture gets its Exhibit row here, not from the archive:
+  // `exhibits` is not carried in a .birdbrain payload yet, and the row is
+  // derivable from the capture's own fields. Assigned after the loop, and by
+  // the shared helper, so the numbering is the one X41 fixes rather than the
+  // order the payload happens to list rows in.
+  backfillExhibitsForCaptures(ctx.newCaseId)
 }
 
 export function importCaptureFavoriteRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {

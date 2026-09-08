@@ -45,7 +45,7 @@ function ariaChecked(state: BatchTagState): boolean | 'mixed' {
  * Applying does not toast. The row filling in says more than a toast can, and
  * one per click would make multi-apply, the thing being added, unusable.
  * Removing does toast, because none of that holds for it: the row only empties,
- * there is no undo, and `capture_tags` keeps no history, so a removal the
+ * there is no undo, and `exhibit_tags` keeps no history, so a removal the
  * operator did not mean would otherwise leave no trace at all. Failures toast
  * either way, through the mutation cache.
  */

@@ -130,7 +130,7 @@ export function deleteDemoCase(caseId: string): boolean {
   // argument. Best-effort: the row is already gone, and a directory that
   // outlives it is an orphan the storage cleanup handles, not a failed delete.
   try {
-    rmSync(join(getStorageRoot(), caseId), { recursive: true, force: true })
+    rmSync(join(getStorageRoot(), target.id), { recursive: true, force: true })
   } catch (err) {
     logger.warn('demoCase', 'demoCase.artifact_cleanup_failed', undefined, err)
   }

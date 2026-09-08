@@ -8,6 +8,10 @@ import { casesQueryOptions, captureCountsQueryOptions } from '@renderer/lib/quer
 import { presets } from '@renderer/lib/motion'
 import { startTour } from '@renderer/components/onboarding/startTour'
 
+function pluralCaptures(n: number): string {
+  return `${n} capture${n === 1 ? '' : 's'}`
+}
+
 function formatAge(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
   const minutes = Math.floor(diff / 60_000)
@@ -148,7 +152,7 @@ export function CommandPalette() {
                       </div>
                       <span className="min-w-0 flex-1 truncate text-sm font-medium">{c.name}</span>
                       <div className="flex shrink-0 items-center gap-2 text-xs text-text-faint">
-                        <span>{count} captures</span>
+                        <span>{pluralCaptures(count)}</span>
                         <span className="flex items-center gap-1">
                           <Clock className="h-3 w-3" />
                           {formatAge(c.createdAt)}

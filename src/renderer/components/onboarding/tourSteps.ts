@@ -59,12 +59,18 @@ export interface TourStep {
  * clause — an intro promising a seeded demo case — is restored below, because
  * #405 ships the demo case it promises.
  *
- * Where it is read today, though, is a replay. Seeding a case means session
- * restore opens it, so the case chapter auto-fires over the intro before this
- * body renders, and a displaced chapter is recorded complete (#771, ruled
- * 2026-08-30). A fresh install therefore reaches this copy only by replaying
- * the intro from the command palette or Settings → About. Whether that ordering
+ * Where it is read today, though, is a replay — and that goes for the WHOLE
+ * intro chapter, not just this string. Seeding a case means session restore
+ * opens it, so the case chapter auto-fires over the intro, and the displaced
+ * chapter is recorded complete without having rendered (#771, ruled
+ * 2026-08-30). A fresh install with a demo case therefore never sees the
+ * welcome card, the `newcase` mark or this extension step until it replays the
+ * intro from the command palette or Settings → About. Whether that ordering
  * should change is #1296, which is a product call and is not taken here.
+ *
+ * So every `demoCase` branch under `introSteps` — this body and the `newcase`
+ * one — is replay-only copy. The `caseSteps` branches are not: that chapter is
+ * the one that fires.
  */
 const EXT_BODY_INTRO =
   'Right-click any page in Chrome to log it to your active case. Install the extension ' +
@@ -189,6 +195,8 @@ const introSteps = (demoCase: boolean): TourStep[] => [
     target: 'newcase',
     route: 'dashboard',
     title: 'Everything lives in a case',
+    // Replay-only on a fresh install, for the reason given above EXT_BODY_INTRO:
+    // the case chapter displaces this whole chapter before it renders.
     body: demoCase
       ? 'Start one per investigation — captures, selectors, notes, and exports stay scoped to ' +
         'it. A worked demo case is already here to look through.'

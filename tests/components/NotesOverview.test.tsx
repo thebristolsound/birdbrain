@@ -13,7 +13,10 @@ vi.mock('@renderer/lib/notify', () => ({
 }))
 
 import { NotesOverview } from '@renderer/components/notes/NotesOverview'
-import { openNoteComposer } from '@renderer/components/onboarding/tourEffects'
+import {
+  NOTE_COMPOSER_EVENT,
+  openNoteComposer
+} from '@renderer/components/onboarding/tourEffects'
 import { fakeBridge } from '../renderer/fakeBridge'
 
 function stubBridge() {
@@ -56,14 +59,29 @@ describe('NotesOverview and the tour composer request', () => {
     expect(screen.queryByTestId('notes-new-button')).toBeNull()
   })
 
-  it('stops listening once the screen is gone', async () => {
+  it('removes the same listener it added once the screen is gone', async () => {
+    // Asserted through the registration itself, not through the DOM: an
+    // unmounted screen renders nothing either way, so "no editor appears after
+    // unmount" passes with the listener and its cleanup both deleted.
+    const added = vi.spyOn(window, 'addEventListener')
+    const removed = vi.spyOn(window, 'removeEventListener')
     const { unmount } = renderNotes()
     await screen.findByTestId('notes-new-button')
 
+    const registration = added.mock.calls.find(([type]) => type === NOTE_COMPOSER_EVENT)
+    expect(registration).toBeDefined()
+
     unmount()
 
-    // No listener, so nothing to open — and nothing to throw on a screen the
-    // operator has already navigated away from.
+    // The same handler reference: a cleanup removing a different closure would
+    // leave the listener attached and still satisfy a type-only check.
+    expect(
+      removed.mock.calls.some(
+        ([type, handler]) => type === registration![0] && handler === registration![1]
+      )
+    ).toBe(true)
+
+    // And nothing throws on a screen the operator has navigated away from.
     act(() => openNoteComposer())
     expect(document.querySelector('[data-tour="noteeditor"]')).toBeNull()
   })

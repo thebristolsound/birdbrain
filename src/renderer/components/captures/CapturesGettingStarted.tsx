@@ -20,6 +20,10 @@ import { startTour } from '@renderer/components/onboarding/startTour'
 // that pages are saved as you browse would tell the operator evidence exists
 // when none does. Steps 1 and 3 and the hero line make that promise too and are
 // left for the panel-wide copy pass.
+// It also leads with the precondition rather than the instruction: SessionControls
+// renders null until the extension connects (status/SessionControls.tsx), and this
+// panel is only shown to an operator who has captured nothing yet, so "toggle it in
+// the header bar" pointed at an empty header and read as a missing control (#468).
 const STEPS = [
   {
     n: 1,
@@ -31,7 +35,7 @@ const STEPS = [
     n: 2,
     icon: ToggleRight,
     title: 'Start a capture session',
-    body: 'Toggle Capture Session on in the header bar. The extension then checks each page you visit against your case selectors and flags the matches.'
+    body: 'Once the extension connects, a Capture Session toggle appears in the header bar — switch it on. The extension then checks each page you visit against your case selectors and flags the matches.'
   },
   {
     n: 3,

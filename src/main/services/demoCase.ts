@@ -49,6 +49,24 @@ export function getDemoCaseArchivePath(): string {
 }
 
 /**
+ * Records the seeding attempt, whatever a failing settings write does.
+ *
+ * `updateSettings` ends in a `writeFileSync` and throws on an unwritable
+ * userData directory. Seeding is awaited without a local guard during startup,
+ * where anything thrown reaches the `app.whenReady()` catch and exits the app —
+ * so an unlatched demo case would take the whole launch with it. Same trade
+ * `initSettings` makes for its own first-launch write: losing the latch costs
+ * one retry next launch, and nothing else.
+ */
+function latchSeeded(): void {
+  try {
+    updateSettings({ demoCaseSeeded: true })
+  } catch (err) {
+    logger.warn('demoCase', 'demoCase.latch_failed', undefined, err)
+  }
+}
+
+/**
  * Imports the bundled demo Case, once, on a fresh install.
  *
  * Two latches, and both matter. `isFreshInstall` keeps an upgrade from
@@ -69,7 +87,7 @@ export async function seedDemoCaseIfNeeded(): Promise<DemoCaseSeedResult> {
   const archivePath = getDemoCaseArchivePath()
   if (!existsSync(archivePath)) {
     logger.warn('demoCase', 'demoCase.fixture_missing')
-    updateSettings({ demoCaseSeeded: true })
+    latchSeeded()
     return { seeded: false, reason: 'fixture-missing' }
   }
 
@@ -77,12 +95,12 @@ export async function seedDemoCaseIfNeeded(): Promise<DemoCaseSeedResult> {
     const { newCaseId } = await importCaseArchive(archivePath, {
       operatorName: DEMO_CASE_OPERATOR_NAME
     })
-    updateSettings({ demoCaseSeeded: true })
+    latchSeeded()
     logger.info('demoCase', 'demoCase.seeded')
     return { seeded: true, caseId: newCaseId }
   } catch (err) {
     logger.warn('demoCase', 'demoCase.seed_failed', undefined, err)
-    updateSettings({ demoCaseSeeded: true })
+    latchSeeded()
     return { seeded: false, reason: 'import-failed' }
   }
 }

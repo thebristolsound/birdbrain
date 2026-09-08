@@ -140,6 +140,24 @@ describe('demo case seeding', () => {
     expect(result).toEqual({ seeded: false, reason: 'import-failed' })
     expect(getSettings().demoCaseSeeded).toBe(true)
   })
+
+  it('does not throw when the latch write itself fails', async () => {
+    // Startup awaits this without a local guard and treats anything thrown as
+    // a fatal launch failure, so the latch write is the one place a broken
+    // userData directory could cost more than the demo case. Pointing settings
+    // at a directory that does not exist makes writeFileSync fail for real
+    // rather than through a mock.
+    initSettings(join(tempDir, 'never-created'))
+    cwdSpy.mockReturnValue(tempDir)
+
+    await expect(seedDemoCaseIfNeeded()).resolves.toEqual({
+      seeded: false,
+      reason: 'fixture-missing'
+    })
+    // The latch really did not persist — which is what makes the resolution
+    // above evidence that the write threw and was swallowed.
+    expect(getSettings().demoCaseSeeded).toBe(false)
+  })
 })
 
 describe('demo case deletion', () => {

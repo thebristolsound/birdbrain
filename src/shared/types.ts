@@ -557,6 +557,9 @@ export const LOG_CODES = [
   'demoCase.seeded',
   'demoCase.fixture_missing',
   'demoCase.seed_failed',
+  // The latch write itself failing, swallowed so a broken userData directory
+  // costs the demo case rather than the launch.
+  'demoCase.latch_failed',
   'demoCase.artifact_cleanup_failed'
 ] as const
 export type LogCode = (typeof LOG_CODES)[number]

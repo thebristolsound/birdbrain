@@ -168,6 +168,7 @@ const CODE_LABELS: Record<LogCode, string> = {
   'demoCase.seeded': 'Added the demonstration case',
   'demoCase.fixture_missing': 'The demonstration case is not bundled with this build',
   'demoCase.seed_failed': "Couldn't add the demonstration case",
+  'demoCase.latch_failed': "Couldn't record that the demonstration case was set up",
   'demoCase.artifact_cleanup_failed':
     "The demonstration case was removed, but its files couldn't be deleted"
 }

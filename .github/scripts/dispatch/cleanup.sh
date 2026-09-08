@@ -17,12 +17,14 @@
 # Env: GH_TOKEN (machine token), STARTED, LOGIN, JOB_STATUS, RUN_URL.
 set -euo pipefail
 
+# shellcheck source=.github/scripts/dispatch/lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+
 R="${GITHUB_REPOSITORY:-thebristolsound/birdbrain}"
 summary="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
 : "${STARTED:?}" "${LOGIN:?}"
 run_url="${RUN_URL:-<unknown run>}"
 job_status="${JOB_STATUS:-unknown}"
-PENDING_TEXT='Reviewer pre-pass running.'
 
 note() { echo "Cleanup: $*" | tee -a "$summary"; }
 
@@ -39,7 +41,7 @@ for n in $prs; do
   IFS=$'\t' read -r state desc updated <<<"$st"
   if [ "$state" = pending ] && [ "$desc" = "$PENDING_TEXT" ] && [[ "$updated" > "$STARTED" ]]; then
     gh api "repos/$R/statuses/$sha" -f state=failure -f context='agent/pre-pass' \
-      -f description="Dispatch run ended ($job_status) before the pre-pass reported." \
+      -f description="$CLEANUP_FAILURE_PREFIX ($job_status) before the pre-pass reported." \
       -f target_url="$run_url" >/dev/null
     note "PR #$n ${sha:0:8}: agent/pre-pass pending from this run -> failure"
   fi

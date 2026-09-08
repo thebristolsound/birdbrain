@@ -2,23 +2,42 @@
 # Run one cycle of the dispatch skill through headless Claude Code.
 #
 # $1 = mode (report | cycle). Env: CLAUDE_CODE_OAUTH_TOKEN, DISPATCH_MODEL,
-# RUN_URL, GH_TOKEN (machine token, the identity every gh call carries here).
+# RUN_URL, GH_TOKEN (machine token, the identity every gh call carries here),
+# TARGET_ISSUE (optional, narrows section 3 to one issue).
+#
+# TARGET_ISSUE exists for a supervised fire. Section 3 walks the frontier in
+# ascending order and takes the first eligible issue, which is the right rule
+# unattended and the wrong one when a human wants a specific first subject. It
+# narrows the choice and never widens it: the issue still has to pass every
+# eligibility check, and failing one ends the cycle rather than falling through
+# to the next candidate.
 #
 # The prompt is the skill invocation plus the facts the skill cannot probe for
-# itself on this host. Project MCP servers are disabled: .mcp.json starts Serena
-# through uvx, which is not on the runner, and a failed server start is startup
-# time spent for nothing. The implementer's Serena tools therefore do not resolve
-# here, which its contract already tolerates.
+# itself on this host, including where a reviewer's full report has to be left
+# for the verdict comment's link to survive the runner.
+#
+# Project MCP servers are disabled: .mcp.json starts Serena through uvx, which is
+# not on the runner, and a failed server start is startup time spent for nothing.
+# The implementer's Serena tools therefore do not resolve here, which its
+# contract already tolerates.
 set -euo pipefail
+
+# An API error can quote the credential it was sent: a malformed
+# CLAUDE_CODE_OAUTH_TOKEN came back inside the error message, and because the
+# stored secret held a newline the value no longer matched GitHub's mask. The
+# log was scrubbed, the artifact was not. Everything written to either passes
+# through here first.
+redact() { sed -E 's/sk-ant-[A-Za-z0-9_-]{6}[A-Za-z0-9_-]*/sk-ant-<REDACTED>/g'; }
 
 mode="${1:-cycle}"
 summary="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
-mkdir -p .dispatch
+mkdir -p .dispatch/reports
 
 context="You are running unattended from GitHub Actions run ${RUN_URL:-<unknown>} (ADR-0026).
 The environment probe reads LOCAL here: nothing sits between gh and GitHub.
 GH_TOKEN and the checkout's git credential are both the machine account, so bare gh and agh are the same identity, and the implementer pushes as the machine account over HTTPS.
-Serena is not available on this host; its tools will not resolve. Node 20 and pnpm are already on PATH; no mise prefix is needed."
+Serena is not available on this host; its tools will not resolve. Node 20 and pnpm are already on PATH; no mise prefix is needed.
+The machine token carries repo scope and not gist scope, so a pre-pass 'Full report:' link cannot be a gist here. Copy each reviewer full report to .dispatch/reports/pr-<number>-<short sha>.md, which is uploaded as the dispatch-run artifact of this run, and make the link read: ${RUN_URL:-<unknown>} (artifact dispatch-run, reports/pr-<number>-<short sha>.md). The runner filesystem is gone once the job ends, so a bare path is not a link."
 
 case "$mode" in
   report)
@@ -27,8 +46,13 @@ MODE: REPORT-ONLY. Run the environment probe, the identity check, section 1 and 
 $context"
     ;;
   cycle)
+    target=""
+    if [ -n "${TARGET_ISSUE:-}" ]; then
+      target="
+SECTION 3 IS NARROWED TO ISSUE #${TARGET_ISSUE}. Sections 1, 2 and 2a are unchanged. If you reach section 3, the only candidate you may claim or dispatch is #${TARGET_ISSUE}. Apply every eligibility check to it as written; if it fails one, or a slot is not free, report which check stopped you and dispatch nothing. Never fall through to another issue."
+    fi
     prompt="/dispatch
-$context"
+$context$target"
     ;;
   *)
     echo "Unknown mode '$mode'" >&2
@@ -48,9 +72,23 @@ claude -p "$prompt" \
 status=$?
 set -e
 
+# Before anything reads, echoes or uploads either file. The failure path is the
+# one that carries a credential, so redacting after it would redact nothing.
+scrub() { redact < "$1" > "$1.redacted" && mv "$1.redacted" "$1"; }
+scrub .dispatch/result.json
+scrub .dispatch/claude.err
+
 if [ "$status" -ne 0 ]; then
+  # Both streams, because a fast non-zero exit puts the reason on stdout as a
+  # JSON error result and leaves stderr carrying only warnings. Run 34090872909
+  # failed with nothing but the workspace-trust warning in the log, and the
+  # artifact that held the answer had not uploaded.
   echo "claude -p exited $status; see the dispatch-run artifact" >&2
+  echo "--- .dispatch/claude.err (last 40 lines) ---" >&2
   tail -n 40 .dispatch/claude.err >&2
+  echo "--- .dispatch/result.json (first 4000 bytes) ---" >&2
+  head -c 4000 .dispatch/result.json >&2 || true
+  echo >&2
   exit "$status"
 fi
 

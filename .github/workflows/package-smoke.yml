@@ -1,0 +1,67 @@
+name: Package smoke
+
+# Packages the app the way release.yml does and runs scripts/package-smoke.mjs on the
+# result: silent-install the NSIS .exe on Windows, run the AppImage on Ubuntu, and
+# require the capture server to answer. release.yml runs the same script before it
+# uploads a tag's artifacts; this workflow is the off-tag copy, so a runner-image or
+# toolchain change (the windows-latest VS 2026 image that broke node-gyp, for one)
+# surfaces on the weekly run instead of on release day.
+#
+# Not on every pull request on purpose: a Windows packaging leg is ~10 minutes on a
+# 2x-billed runner. It runs on PRs that edit the smoke itself or release.yml, on
+# dispatch, and weekly.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1'
+  pull_request:
+    paths:
+      - .github/workflows/package-smoke.yml
+      - .github/workflows/release.yml
+      - scripts/package-smoke.mjs
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Same legs and the same windows-2022 pin as release.yml build-app; keep
+          # them in step or this stops predicting what the release will do.
+          - os: windows-2022
+            script: package:win
+            smoke: node scripts/package-smoke.mjs
+          - os: ubuntu-latest
+            script: package:linux
+            smoke: xvfb-run --auto-servernum node scripts/package-smoke.mjs
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install Python setuptools (needed for node-gyp)
+        run: python3 -m pip install --break-system-packages setuptools || pip3 install --break-system-packages setuptools || true
+
+      - run: pnpm install
+
+      - name: Build and package
+        run: pnpm ${{ matrix.script }}
+
+      - name: Smoke the packaged app
+        timeout-minutes: 5
+        run: ${{ matrix.smoke }}

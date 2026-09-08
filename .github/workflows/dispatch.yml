@@ -17,12 +17,14 @@ name: Dispatch
 # still owns, so a fire cannot end holding state a peer would wait four hours on
 # (#1141, #1057).
 #
-# The schedule is commented out until the rollout in the design brief reaches
-# step 4. Until then every fire is a workflow_dispatch.
+# Schedule enabled 2026-09-07 at rollout step 4 of the design brief, after three
+# report-only fires and one supervised cycle ran clean on 2026-09-07. Hourly at
+# :43, the cadence #310 chose. A scheduled fire always runs in cycle mode and
+# lets section 3 pick; workflow_dispatch stays for supervised fires.
 
 on:
-  # schedule:
-  #   - cron: '43 * * * *'
+  schedule:
+    - cron: '43 * * * *'
   workflow_dispatch:
     inputs:
       mode:
@@ -32,6 +34,10 @@ on:
           - report
           - cycle
         default: report
+      issue:
+        description: 'Optional: dispatch only this issue number in cycle mode. Blank means section 3 picks.'
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -48,6 +54,8 @@ env:
     /etc/apt/apt-mirrors.txt
   MODE: ${{ github.event_name == 'schedule' && 'cycle' || inputs.mode }}
   DISPATCH_MODEL: claude-opus-5
+  # Empty on a schedule, so a scheduled fire always lets section 3 pick.
+  TARGET_ISSUE: ${{ github.event_name == 'schedule' && '' || inputs.issue }}
   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
 jobs:
@@ -73,8 +81,13 @@ jobs:
           BIRDBRAIN_AGENT_GH_TOKEN_EXPIRES: ${{ vars.BIRDBRAIN_AGENT_GH_TOKEN_EXPIRES }}
         run: bash .github/scripts/dispatch/identity.sh
 
+      # LOGIN lets the pre-gate tell the pipeline's own comments from a human's,
+      # so a PR that is only waiting on a human does not re-run a full cycle
+      # against its own pre-pass verdict every fire.
       - name: Pre-gate
         id: gate
+        env:
+          LOGIN: ${{ steps.identity.outputs.login }}
         run: bash .github/scripts/dispatch/pregate.sh "$MODE"
 
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
@@ -124,9 +137,14 @@ jobs:
           JOB_STATUS: ${{ job.status }}
         run: bash .github/scripts/dispatch/cleanup.sh
 
+      # include-hidden-files, because .dispatch is a dot-directory and the action
+      # skips those by default: run 34090872909 reported "No files were found
+      # with the provided path" and uploaded nothing, which is the whole report
+      # surface the design brief relies on (R6).
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: dispatch-run
           path: .dispatch/
+          include-hidden-files: true
           if-no-files-found: ignore

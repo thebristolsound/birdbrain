@@ -127,6 +127,13 @@ here.
 
 Run the same eight steps per platform.
 
+The first step, install then launch, also runs by machine on the CI-built artifact:
+`release.yml` runs `scripts/package-smoke.mjs` on each leg between packaging and upload
+(silent NSIS install on Windows, the AppImage on Ubuntu, a throwaway profile, and the
+capture server must answer). A leg whose artifact does not boot uploads nothing, so a tag
+that reaches the release page has passed it. Tick the human step anyway: the script proves
+the packaged main process starts, not that the window is usable.
+
 **Windows (NSIS `.exe`) — must pass**
 
 - [ ] Install (expect the SmartScreen "More info → Run anyway" click-through; builds are

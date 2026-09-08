@@ -644,6 +644,29 @@ describe('the seeded demo case', () => {
     )
   })
 
+  it('does not leave the case when main refuses the delete', async () => {
+    installWithCases([demoCase], settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } }))
+    // main answers a refusal with `false` rather than an error, so nothing
+    // downstream would notice it without the mutation raising it.
+    deleteDemo.mockResolvedValue(false)
+    anchorWholeChapter()
+    const { rerender } = renderTour()
+    await reachFinalStep(() => rerender(<OnboardingTour />))
+
+    fireEvent.click(screen.getByTestId('tour-delete-demo'))
+    await act(async () => rerender(<OnboardingTour />))
+
+    await waitFor(() => expect(deleteDemo).toHaveBeenCalledWith('case-1'))
+    // The case is still there, so navigating to the dashboard would present a
+    // refused delete as a completed one.
+    expect(navigate).not.toHaveBeenCalledWith({ to: '/' })
+    // The tour still ends: the operator chose an ending, and leaving them on
+    // its final step with nothing to click is the worse failure.
+    await waitFor(() =>
+      expect(updated).toEqual([{ onboardingChapters: { intro: true, case: true } }])
+    )
+  })
+
   it('leaves the demo case alone when the operator keeps exploring', async () => {
     installWithCases([demoCase], settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } }))
     anchorWholeChapter()

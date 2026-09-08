@@ -132,6 +132,11 @@ export function OnboardingTour() {
   // the seeded demo case, because the case chapter fires on whichever case a
   // fresh install opens first — ungated it would offer one-click deletion of an
   // operator's own case, artifacts included.
+  // Leaving the case is conditional on it actually having gone: main refuses
+  // anything not flagged `is_demo`, and `removeDemo` raises that refusal so it
+  // lands on the failure toast rather than in onSuccess. Closing the tour is
+  // not conditional — the operator picked an ending either way, and a tour that
+  // stayed open on a failed delete would trap them on its final step.
   const deleteDemo = useCallback(() => {
     if (!caseId) return
     removeDemo.mutate(caseId, {

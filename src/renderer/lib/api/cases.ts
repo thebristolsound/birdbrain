@@ -88,7 +88,15 @@ export function useCasesMutations() {
   // delete deliberately does not; main refuses any case that is not flagged as
   // the demonstration case.
   const removeDemo = useMutation({
-    mutationFn: (id: string) => window.birdbrain.cases.deleteDemo(id),
+    // That refusal is a resolved `false`, not a rejection, so left as-is it
+    // reaches onSuccess and a refused delete is indistinguishable from a
+    // completed one — on a path that also removes artifacts from disk. Raised
+    // here it takes the ordinary mutation failure toast instead.
+    mutationFn: async (id: string) => {
+      const removed = await window.birdbrain.cases.deleteDemo(id)
+      if (!removed) throw new Error('Not a demonstration case')
+      return removed
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.cases }),
     meta: { action: 'delete demo case' }
   })

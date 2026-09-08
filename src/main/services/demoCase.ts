@@ -25,6 +25,7 @@ import { DEMO_CASE_ARCHIVE_FILENAME, DEMO_CASE_OPERATOR_NAME } from '@shared/con
 export type DemoCaseSkipReason =
   | 'not-a-fresh-install'
   | 'already-seeded'
+  | 'demo-case-present'
   | 'fixture-missing'
   | 'import-failed'
 
@@ -55,8 +56,9 @@ export function getDemoCaseArchivePath(): string {
  * userData directory. Seeding is awaited without a local guard during startup,
  * where anything thrown reaches the `app.whenReady()` catch and exits the app —
  * so an unlatched demo case would take the whole launch with it. Same trade
- * `initSettings` makes for its own first-launch write: losing the latch costs
- * one retry next launch, and nothing else.
+ * `initSettings` makes for its own first-launch write. What losing this latch
+ * costs is bounded by the database check in `seedDemoCaseIfNeeded`, not by
+ * this write: see the guarantee stated there (#1301).
  */
 function latchSeeded(): void {
   try {
@@ -69,12 +71,18 @@ function latchSeeded(): void {
 /**
  * Imports the bundled demo Case, once, on a fresh install.
  *
- * Two latches, and both matter. `isFreshInstall` keeps an upgrade from
- * acquiring a demo case it never asked for, and `demoCaseSeeded` is written
- * whatever the outcome so a replay of the tour — or a failed import on a build
- * with a broken fixture — never silently imports a second copy. A later import
- * is still possible, but only through the ordinary Import Case dialog, which is
- * the explicit confirmation the ticket asks for.
+ * Three guards, and only the third cannot be lost. `isFreshInstall` keeps an
+ * upgrade from acquiring a demo case it never asked for, and `demoCaseSeeded`
+ * records that the attempt happened whatever its outcome, so a build with a
+ * broken fixture does not retry it every launch. Both live in settings.json,
+ * whose write `latchSeeded` swallows — so the guarantee that no operator ever
+ * silently acquires a SECOND demo case rests on the third guard instead: a row
+ * with `is_demo` already in the database (#1301).
+ *
+ * That leaves exactly one re-import: an install whose settings writes fail AND
+ * whose demo case has since been deleted gets a fresh one on the next launch.
+ * Beyond that a demo case arrives only through the ordinary Import Case dialog,
+ * which is the explicit confirmation the ticket asks for.
  *
  * Never throws: a demonstration case failing to arrive must not stop the app
  * from starting.
@@ -83,6 +91,13 @@ export async function seedDemoCaseIfNeeded(): Promise<DemoCaseSeedResult> {
   const settings = getSettings()
   if (!settings.isFreshInstall) return { seeded: false, reason: 'not-a-fresh-install' }
   if (settings.demoCaseSeeded) return { seeded: false, reason: 'already-seeded' }
+  // Checked before the fixture is even looked for: this is the guard that holds
+  // when the settings latch never persisted, and importing a duplicate is worse
+  // than skipping a seed.
+  if (caseRepo.hasDemoCase()) {
+    latchSeeded()
+    return { seeded: false, reason: 'demo-case-present' }
+  }
 
   const archivePath = getDemoCaseArchivePath()
   if (!existsSync(archivePath)) {

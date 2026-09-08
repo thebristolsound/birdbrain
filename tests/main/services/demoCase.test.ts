@@ -16,7 +16,7 @@ vi.mock('electron', () => ({
 }))
 
 import { initDatabase, closeDatabase } from '@main/services/db/core'
-import { createCase, getCase, setCaseDemo } from '@main/services/db/caseRepo'
+import { createCase, getCase, listCases, setCaseDemo, updateCase } from '@main/services/db/caseRepo'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
 import { initSettings, getSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
@@ -139,6 +139,33 @@ describe('demo case seeding', () => {
 
     expect(result).toEqual({ seeded: false, reason: 'import-failed' })
     expect(getSettings().demoCaseSeeded).toBe(true)
+  })
+
+  it('never imports a second demo case, however many launches lose the latch', async () => {
+    // The #1301 trace: `latchSeeded` swallows a failing settings write and
+    // `isFreshInstall` is never cleared, so before the database guard existed
+    // every launch imported another full copy. Settings point at a directory
+    // that does not exist, so the write throws for real rather than by a mock.
+    initSettings(join(tempDir, 'never-created'))
+
+    const first = await seedDemoCaseIfNeeded()
+    const second = await seedDemoCaseIfNeeded()
+    const third = await seedDemoCaseIfNeeded()
+
+    expect(first.seeded).toBe(true)
+    expect(getSettings().demoCaseSeeded).toBe(false)
+    expect(second).toEqual({ seeded: false, reason: 'demo-case-present' })
+    expect(third).toEqual({ seeded: false, reason: 'demo-case-present' })
+    expect(listCases().filter((c) => c.isDemo)).toHaveLength(1)
+  })
+
+  it('counts an archived demo case, which listCases would not return', async () => {
+    const c = createCase({ name: 'Demo' })
+    setCaseDemo(c.id, true)
+    updateCase({ id: c.id, archived: true })
+    updateSettings({ isFreshInstall: true })
+
+    expect(await seedDemoCaseIfNeeded()).toEqual({ seeded: false, reason: 'demo-case-present' })
   })
 
   it('does not throw when the latch write itself fails', async () => {

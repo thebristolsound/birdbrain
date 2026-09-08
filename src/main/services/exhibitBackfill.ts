@@ -1,7 +1,6 @@
 import { createHash } from 'crypto'
 import { existsSync } from 'fs'
 import { readFile, writeFile } from 'fs/promises'
-import sharp from 'sharp'
 import { listAllCaseIds } from '@main/services/db/caseRepo'
 import { backfillExhibitsForCaptures, listExhibits } from '@main/services/db/exhibitRepo'
 import { hasDerivation, insertDerivedFile } from '@main/services/db/derivedFileRepo'
@@ -16,6 +15,7 @@ import {
 import { defaultCaptureStore, type CaptureStore } from '@main/services/captureStore'
 import { getSettings } from '@main/services/settings'
 import { getInstallationId } from '@main/services/installationId'
+import { renderThumbnail } from '@main/services/thumbnails'
 import { logger } from '@main/services/logger'
 import { ident } from '@main/services/logSafe'
 import type { Exhibit } from '@shared/types'
@@ -43,9 +43,6 @@ import type { Exhibit } from '@shared/types'
 // The derivation name for a Capture's list thumbnail. Matches the file suffix
 // the Capture Store has always used (`_thumb.jpg`).
 export const THUMBNAIL_DERIVATION = 'thumbnail'
-
-const THUMB_WIDTH = 160
-const THUMB_HEIGHT = 120
 
 export interface ExhibitBackfillDeps {
   store?: CaptureStore
@@ -239,10 +236,10 @@ async function backfillThumbnail(
     return 'unanchored'
   }
 
-  const thumbnail = await sharp(parent.screenshot)
-    .resize(THUMB_WIDTH, THUMB_HEIGHT, { fit: 'cover', position: 'top' })
-    .jpeg({ quality: 75 })
-    .toBuffer()
+  // The same renderer `getThumbnail` uses, not a second copy of the pipeline:
+  // the entry appended below anchors these bytes, so a later regeneration from
+  // the same parent screenshot has to reproduce them.
+  const thumbnail = await renderThumbnail(parent.screenshot)
   await writeFile(paths.abs, thumbnail)
   const outputHash = createHash('sha256').update(thumbnail).digest('hex')
   const timestamp = new Date().toISOString()

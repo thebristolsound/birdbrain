@@ -32,7 +32,7 @@ test.describe('Empty Captures State', () => {
     await expect(page.locator('[data-testid="captures-getting-started"]')).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Start capturing the web' })).toBeVisible()
     await expect(page.getByText('Install the browser extension')).toBeVisible()
-    await expect(page.getByText('Enable Auto-Capture')).toBeVisible()
+    await expect(page.getByText('Start a capture session')).toBeVisible()
     await expect(page.getByText('Browse and investigate')).toBeVisible()
   })
 

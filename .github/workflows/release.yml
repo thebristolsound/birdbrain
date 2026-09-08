@@ -73,7 +73,7 @@ jobs:
           EOF
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           # The tag is pushed here, but the Release is published in the public
           # releases repository — electron-updater's unauthenticated GitHub provider
@@ -142,7 +142,7 @@ jobs:
         run: pnpm ${{ matrix.script }}
 
       - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           repository: thebristolsound/birdbrain-releases
           token: ${{ secrets.RELEASES_REPO_TOKEN }}
@@ -177,7 +177,7 @@ jobs:
         run: mkdir -p dist && cd extension/dist && zip -r ../../dist/birdbrain-extension.zip .
 
       - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           repository: thebristolsound/birdbrain-releases
           token: ${{ secrets.RELEASES_REPO_TOKEN }}

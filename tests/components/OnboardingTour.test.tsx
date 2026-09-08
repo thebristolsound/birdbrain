@@ -298,6 +298,27 @@ describe('one chapter displacing another', () => {
     await waitFor(() => expect(updated).toEqual([{ onboardingChapters: { intro: true } }]))
   })
 
+  // #771, ruled 2026-08-30: a chapter displaced on its very first card is
+  // recorded complete, however little of it the operator saw. The concrete path
+  // is a fresh install whose first case is empty — the case chapter auto-fires
+  // on step 0 over CapturesGettingStarted, whose "Learn more" replays the
+  // extension chapter through the same event the palette uses.
+  it('records a chapter displaced on its first card complete', async () => {
+    routerState.caseId = 'case-1'
+    routerState.pathname = '/cases/case-1/captures'
+    install(settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } }))
+    anchor('nav-captures')
+    anchor('browser')
+    renderTour()
+    // Step 0 of ten, the Captures screen card, and nothing else seen.
+    await screen.findByTestId('tour-screen')
+    expect(updated).toEqual([])
+
+    act(() => startTour('ext'))
+
+    await waitFor(() => expect(updated).toEqual([{ onboardingChapters: { intro: true, case: true } }]))
+  })
+
   it('writes nothing when the displaced chapter was itself a replay', async () => {
     install(settingsFixture({ onboardingChapters: { intro: true, ext: true, case: true } }))
     anchor('browser')

@@ -311,6 +311,13 @@ export type TourOutcome = 'finished' | 'skipped'
  *   means dismissing it; a tour that reappears next launch is the worse
  *   failure. It stays replayable on demand.
  * - Finishing a chapter completes that chapter alone.
+ *
+ * The 2026-08-30 ruling on #771 settles how far a displaced chapter has to have
+ * got: no distance at all. A chapter displaced on its very first card is
+ * recorded complete, the same trade the Skip ruling makes, and replay from the
+ * command palette or Settings → About is the recovery. Recorded here because
+ * that ticket's first acceptance criterion asks for the decision to live either
+ * in the issue or in this docstring.
  */
 export function completionAfter(
   previous: Record<string, boolean> | undefined,

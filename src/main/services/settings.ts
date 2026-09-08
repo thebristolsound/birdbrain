@@ -72,6 +72,7 @@ const DEFAULT_SETTINGS: BirdbrainSettings = {
   tooltipsSeen: {},
   onboardingChapters: {},
   isFreshInstall: false,
+  demoCaseSeeded: false,
   releaseChannel: 'stable',
   autoCheckForUpdates: true
 }

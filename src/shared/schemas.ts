@@ -856,6 +856,12 @@ export const BirdbrainSettingsSchema = z.object({
   // before this release loads unchanged.
   onboardingChapters: z.record(z.string(), z.boolean()).optional().default({}),
   isFreshInstall: z.boolean().optional().default(false),
+  // Latched once the bundled demonstration Case Archive has been offered to
+  // this install (#405), whether the import succeeded or not. It is what keeps
+  // a tour replay from importing a second copy of the demo case behind the
+  // operator's back — seeding is a one-time first-launch act, and any later
+  // import goes through the ordinary Import Case dialog.
+  demoCaseSeeded: z.boolean().optional().default(false),
   releaseChannel: z.enum(['stable', 'beta']).optional().default('stable'),
   autoCheckForUpdates: z.boolean().optional().default(true)
 })

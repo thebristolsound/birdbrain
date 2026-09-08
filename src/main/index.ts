@@ -6,6 +6,7 @@ import { is } from '@electron-toolkit/utils'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { PreMigrationSnapshotError } from '@main/services/db/dbSnapshots'
 import { initStorage } from '@main/services/storage'
+import { seedDemoCaseIfNeeded } from '@main/services/demoCase'
 import {
   startCaptureServer,
   stopCaptureServer,
@@ -430,6 +431,13 @@ if (!gotSingleInstanceLock) {
         logger.warn('app', 'app.storage_init_failed', undefined, err)
         initStorage(defaultCapturesDir)
       }
+
+      // Seed the bundled demonstration case (#405). Strictly after the storage
+      // root and the signing key, because it imports a real Case Archive and
+      // signs an import custody entry for it; awaited so the case exists before
+      // the window opens and the case tour looks for one. Never throws — a
+      // missing or unimportable fixture costs the demo case and nothing else.
+      await seedDemoCaseIfNeeded()
 
       // Build the Selector Lifecycle. Its emitter broadcasts rematched events
       // to every renderer; injecting via factory keeps Electron out of the

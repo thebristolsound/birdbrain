@@ -66,6 +66,7 @@ import {
   inspectCaseArchive,
   importCaseArchive
 } from '@main/services/caseArchive'
+import { deleteDemoCase } from '@main/services/demoCase'
 import { getExtensionPath, extensionPathExists } from '@main/services/extensionPath'
 import { lookupSnapshots, isPersistableSnapshot } from '@main/services/waybackMachine'
 import { buildCsv } from '@main/services/csvEscape'
@@ -184,6 +185,7 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.CASES_CREATE, (_, params: CreateCaseParams) => caseRepo.createCase(params))
   handle(IPC_CHANNELS.CASES_UPDATE, (_, params: UpdateCaseParams) => caseRepo.updateCase(params))
   handle(IPC_CHANNELS.CASES_DELETE, (_, id: string) => caseRepo.deleteCase(id))
+  handle(IPC_CHANNELS.CASES_DELETE_DEMO, (_, id: string) => deleteDemoCase(id))
   handle(IPC_CHANNELS.CASES_RECENT_ACTIVITY, (_, limit?: number) =>
     activityRepo.listRecentActivity(limit)
   )

@@ -28,6 +28,7 @@ import { defaultCaptureStore } from '@main/services/captureStore'
 import {
   initManifest,
   appendManifestEntry,
+  readEntries,
   verifyManifestChain
 } from '@main/services/manifest'
 import { initSettings, updateSettings } from '@main/services/settings'
@@ -877,6 +878,39 @@ describe('caseArchive import', () => {
   it('requires an operator name', async () => {
     updateSettings({ operatorName: '' })
     await expect(importCaseArchive(archivePath)).rejects.toThrow(/operator name/i)
+  })
+
+  // The explicit synthetic attribution the bundled demo case is seeded with
+  // (#405, R7). It is an alternative NAME, never an exemption: an empty one
+  // still fails the gate, a supplied one is what the custody entry records, and
+  // the operator's own name is used whenever no override is given.
+  it('records an explicitly supplied operator name on the import custody entry', async () => {
+    updateSettings({ operatorName: '' })
+
+    const { newCaseId } = await importCaseArchive(archivePath, {
+      operatorName: 'Birdbrain demo fixture'
+    })
+
+    const entries = readEntries(
+      readFileSync(join(getStorageRoot(), newCaseId, 'manifest.jsonl'), 'utf-8')
+    )
+    expect(entries.find((e) => e.type === 'import')?.operatorName).toBe('Birdbrain demo fixture')
+  })
+
+  it('refuses a blank explicit operator name just as it refuses a blank setting', async () => {
+    updateSettings({ operatorName: '' })
+    await expect(importCaseArchive(archivePath, { operatorName: '   ' })).rejects.toThrow(
+      /operator name/i
+    )
+  })
+
+  it('still records the local operator when no explicit name is supplied', async () => {
+    const { newCaseId } = await importCaseArchive(archivePath)
+
+    const entries = readEntries(
+      readFileSync(join(getStorageRoot(), newCaseId, 'manifest.jsonl'), 'utf-8')
+    )
+    expect(entries.find((e) => e.type === 'import')?.operatorName).toBe('Test Operator')
   })
 
   it('cleans up staging and the moved case dir on failure', async () => {

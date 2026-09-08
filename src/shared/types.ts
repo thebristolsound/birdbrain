@@ -263,6 +263,9 @@ export interface BirdbrainSettings {
   // Latched once, at the first launch that finds no settings.json. Only a
   // fresh install auto-fires a tour chapter; upgrades never do.
   isFreshInstall: boolean
+  // Latched once the bundled demonstration Case Archive has been offered to
+  // this install (#405). Seeding never repeats on its own.
+  demoCaseSeeded: boolean
   // Update delivery. `releaseChannel` selects the GitHub release track;
   // `autoCheckForUpdates` gates the background check schedule (manual checks are
   // always available). First-run `releaseChannel` is derived from the installed
@@ -450,6 +453,7 @@ export const LOG_SOURCES = [
   'timestampWorker',
   'db',
   'signingKey',
+  'demoCase',
   'renderer'
 ] as const
 export type LogSource = (typeof LOG_SOURCES)[number]
@@ -546,7 +550,14 @@ export const LOG_CODES = [
   // The first-launch settings.json seed that latches the fresh-install flag
   // (#404). Failing it costs only the onboarding tour, so init swallows the
   // error — this is the record that it happened.
-  'settings.fresh_install_seed_failed'
+  'settings.fresh_install_seed_failed',
+  // First-launch seeding of the bundled demonstration Case Archive (#405).
+  // Every outcome is recorded: an operator whose first launch produced no demo
+  // case has no other way to tell a missing fixture from a refused import.
+  'demoCase.seeded',
+  'demoCase.fixture_missing',
+  'demoCase.seed_failed',
+  'demoCase.artifact_cleanup_failed'
 ] as const
 export type LogCode = (typeof LOG_CODES)[number]
 

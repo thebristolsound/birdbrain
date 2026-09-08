@@ -164,7 +164,12 @@ const CODE_LABELS: Record<LogCode, string> = {
     "This installation's signing key is not protected at rest — see Settings → Diagnostics",
   'signingKey.generation_declined': 'Birdbrain quit — the signing key warning was not acknowledged',
   'settings.key_protection_state_unreadable': "Couldn't read saved key-protection state",
-  'settings.fresh_install_seed_failed': "Couldn't save initial settings"
+  'settings.fresh_install_seed_failed': "Couldn't save initial settings",
+  'demoCase.seeded': 'Added the demonstration case',
+  'demoCase.fixture_missing': 'The demonstration case is not bundled with this build',
+  'demoCase.seed_failed': "Couldn't add the demonstration case",
+  'demoCase.artifact_cleanup_failed':
+    "The demonstration case was removed, but its files couldn't be deleted"
 }
 
 export function labelForCode(code: LogCode): string {

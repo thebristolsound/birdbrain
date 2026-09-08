@@ -33,9 +33,20 @@ describe('CapturesGettingStarted', () => {
     render(<CapturesGettingStarted />)
     expect(
       screen.getByText(
-        'Toggle Capture Session on in the header bar. The extension then checks each page you visit against your case selectors and flags the matches.'
+        'Once the extension connects, a Capture Session toggle appears in the header bar — switch it on. The extension then checks each page you visit against your case selectors and flags the matches.'
       )
     ).toBeDefined()
+  })
+
+  // SessionControls returns null while the extension is disconnected, which is
+  // the state this panel is shown in, so step 2 has to name that precondition
+  // before it names the header bar. Asserted separately from the pinned string
+  // above: that one fails on any rewrite, this one states what a rewrite must
+  // keep (#468).
+  it('names the extension connection as the precondition for the session toggle', () => {
+    render(<CapturesGettingStarted />)
+    const step = screen.getByText(/Capture Session toggle appears in the header bar/)
+    expect(step.textContent).toMatch(/^Once the extension connects,/)
   })
 
   it('opens the extension folder when Install Extension clicked', async () => {

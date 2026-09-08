@@ -48,7 +48,14 @@ export const readLastBlock = (migrationsSource) => {
   const last = versions[lastIndex]
   const lastBlockStart = blocks[lastIndex].index
   const lastBlock = migrationsSource.slice(lastBlockStart)
-  if (!new RegExp(`db\\.pragma\\('user_version = ${last}'\\)`).test(lastBlock)) {
+  const closesVersion = new RegExp(`db\\.pragma\\('user_version = ${last}'\\)`).test(lastBlock)
+  // A freshly scaffolded block has no pragma yet — it fails closed with the
+  // TODO placeholder instead — so accept that shape too, or scaffolding a
+  // migration would immediately make reading the version it just wrote throw.
+  const isUnimplementedStub = new RegExp(
+    `throw new Error\\('Migration ${last} is not implemented'\\)`
+  ).test(lastBlock)
+  if (!closesVersion && !isUnimplementedStub) {
     throw new Error(
       `${MIGRATIONS_PATH}: block "if (version < ${last})" has no db.pragma('user_version = ${last}')`
     )

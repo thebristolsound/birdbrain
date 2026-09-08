@@ -17,6 +17,8 @@ vi.mock('electron', () => ({
 
 import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { createCase, getCase, listCases, setCaseDemo, updateCase } from '@main/services/db/caseRepo'
+import { insertCapture } from '@main/services/db/captureRepo'
+import { addTagToCapture, createTag, listTags } from '@main/services/db/tagRepo'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
 import { initSettings, getSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
@@ -95,6 +97,17 @@ describe('demo case seeding', () => {
     expect(result.seeded).toBe(true)
     expect(getCase(result.caseId!)?.isDemo).toBe(true)
     expect(getSettings().demoCaseSeeded).toBe(true)
+  })
+
+  it('leaves no tag behind when the seeded case is deleted again', async () => {
+    updateSettings({ isFreshInstall: true })
+    const { caseId } = await seedDemoCaseIfNeeded()
+    // The fixture's own tag, which the import puts in the global tags table.
+    expect(listTags().map((t) => t.name)).toContain('nightjar')
+
+    expect(deleteDemoCase(caseId!)).toBe(true)
+
+    expect(listTags()).toEqual([])
   })
 
   it('seeds without an operator name configured', async () => {
@@ -190,6 +203,18 @@ describe('demo case seeding', () => {
 describe('demo case deletion', () => {
   let tempDir: string
 
+  // A capture row is what a tag can hang off: `exhibit_tags` keys on the
+  // Exhibit row `insertCapture` writes alongside it.
+  const seedCapture = (caseId: string): string =>
+    insertCapture({
+      caseId,
+      url: 'https://nightjar-exchange.invalid/custody',
+      title: 'Custody',
+      hash: `h-${caseId}`,
+      timestamp: '2026-01-16T09:31:47.000Z',
+      format: 'mhtml'
+    }).id
+
   beforeEach(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'bb-demo-delete-'))
     initStorage(join(tempDir, 'captures'))
@@ -212,6 +237,34 @@ describe('demo case deletion', () => {
     expect(getCase(c.id)).toBeUndefined()
     // The whole point of the separate path: cases:delete leaves this behind.
     expect(existsSync(caseDir)).toBe(false)
+  })
+
+  it('takes the demo tags with it', () => {
+    const demo = createCase({ name: 'Demo' })
+    setCaseDemo(demo.id, true)
+    const tag = createTag({ name: 'nightjar', color: '#c2410c' })
+    addTagToCapture({ captureId: seedCapture(demo.id), tagId: tag.id })
+
+    expect(deleteDemoCase(demo.id)).toBe(true)
+
+    // Tags are global, so the cascade alone would leave this in every picker
+    // for the life of the install.
+    expect(listTags().some((t) => t.id === tag.id)).toBe(false)
+  })
+
+  it('keeps a tag the operator has put on their own evidence', () => {
+    const demo = createCase({ name: 'Demo' })
+    setCaseDemo(demo.id, true)
+    const own = createCase({ name: 'Real evidence' })
+    const tag = createTag({ name: 'nightjar', color: '#c2410c' })
+    addTagToCapture({ captureId: seedCapture(demo.id), tagId: tag.id })
+    // The archive import merges tags by name, so the demo's tag and the
+    // operator's can be the same row.
+    addTagToCapture({ captureId: seedCapture(own.id), tagId: tag.id })
+
+    expect(deleteDemoCase(demo.id)).toBe(true)
+
+    expect(listTags().some((t) => t.id === tag.id)).toBe(true)
   })
 
   it('refuses a case that is not a demo case, artifacts included', () => {

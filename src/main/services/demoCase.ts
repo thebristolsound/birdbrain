@@ -2,6 +2,7 @@ import { app } from 'electron'
 import { existsSync, rmSync } from 'fs'
 import { join } from 'path'
 import * as caseRepo from '@main/services/db/caseRepo'
+import * as tagRepo from '@main/services/db/tagRepo'
 import { importCaseArchive } from '@main/services/caseArchive'
 import { getSettings, updateSettings } from '@main/services/settings'
 import { getStorageRoot } from '@main/services/storage'
@@ -127,7 +128,9 @@ export async function seedDemoCaseIfNeeded(): Promise<DemoCaseSeedResult> {
  * directory on disk — the right default for real evidence, and unchanged here.
  * A demonstration case is disposable, so the tour's ending leaves nothing
  * behind, which is why this is its own path rather than a flag on the ordinary
- * delete (#405, W19).
+ * delete (#405, W19). "Nothing" covers the case row, the artifacts on disk and
+ * the demo's own tags; what it never covers is anything the operator has since
+ * attached their own evidence to.
  *
  * Refuses any case whose `is_demo` is not set, so nothing an operator collected
  * can be routed through it — the tour offers this ending only on the seeded
@@ -137,8 +140,16 @@ export function deleteDemoCase(caseId: string): boolean {
   const target = caseRepo.getCase(caseId)
   if (!target?.isDemo) return false
 
+  // Read before the delete, because the cascade is what removes the links this
+  // query walks.
+  const tagIds = tagRepo.collectTagsForCase(caseId).map((row) => row.id as string)
+
   const deleted = caseRepo.deleteCase(caseId)
   if (!deleted) return false
+
+  // Tags are global, so the cascade takes the demo's tag links and leaves the
+  // tag itself sitting in every picker. Only ones nothing else carries go.
+  tagRepo.deleteUnusedTags(tagIds)
 
   // Rebuilt from the storage root and the id of a row that was just read back
   // from the database, so it cannot be steered outside the root by a crafted

@@ -4,6 +4,17 @@ import { isAutoCaptureExclusionMode } from '@shared/types'
 import type { CreateCaseParams, UpdateCaseParams } from '@shared/ipc'
 import { getDb, type ImportCtx } from '@main/services/db/core'
 
+// Every case id, archived ones included, in a stable order. The Exhibit-model
+// backfill needs the archived Cases too: an archived Case is still evidence and
+// still gets its Exhibit Numbers.
+export function listAllCaseIds(): string[] {
+  return (
+    getDb().prepare('SELECT id FROM cases ORDER BY created_at, rowid').all() as Array<{
+      id: string
+    }>
+  ).map((row) => row.id)
+}
+
 export function listCases(): Case[] {
   const rows = getDb()
     .prepare('SELECT * FROM cases WHERE archived = 0 ORDER BY updated_at DESC, rowid DESC')

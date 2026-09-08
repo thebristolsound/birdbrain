@@ -349,7 +349,7 @@ export function inspectCaseArchive(archivePath: string): ArchiveInspectReport {
 // The id-keyed tables that could collide with an existing local row on import
 // live in db/core as ID_PROBE_TABLES, so this remap loop and hasRowWithId's SQL
 // allowlist share one definition. `annotations`/`capture_favorites` are keyed
-// by `capture_id` and `capture_tags`/`note_tags`/`selector_matches` by their
+// by `capture_id` and `exhibit_tags`/`note_tags`/`selector_matches` by their
 // FKs, so they follow the capture/note/selector/tag remapping automatically —
 // they are NOT there. `note_tags` in particular has no `id` column at all, so
 // listing it would make hasRowWithId's `WHERE id = ?` a SQL error rather than

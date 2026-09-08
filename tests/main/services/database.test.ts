@@ -447,7 +447,7 @@ describe('database', () => {
       // Exact final join rows: one row per (capture, tag) — the collision on B
       // collapsed to a single row rather than violating the primary key.
       const captureRows = getDb()
-        .prepare('SELECT capture_id, tag_id FROM capture_tags ORDER BY capture_id, tag_id')
+        .prepare('SELECT exhibit_id AS capture_id, tag_id FROM exhibit_tags ORDER BY 1, 2')
         .all()
       expect(captureRows).toEqual(
         [
@@ -587,10 +587,12 @@ describe('database', () => {
       expect(idx).toBeDefined()
     })
 
-    it('creates idx_capture_tags_tag_id index', () => {
+    // v34 rebuilt `capture_tags` as `exhibit_tags` (ADR-0023), which drops the
+    // v8 index with the table it belonged to and recreates it on the new one.
+    it('creates the tag_id index on the tag join table', () => {
       const idx = getDb()
         .prepare(
-          "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_capture_tags_tag_id'"
+          "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_exhibit_tags_tag_id'"
         )
         .get()
       expect(idx).toBeDefined()

@@ -10,7 +10,7 @@ const TABLES = [
   'cases',
   'captures',
   'tags',
-  'capture_tags',
+  'exhibit_tags',
   'selectors',
   'selector_matches',
   'capture_favorites',

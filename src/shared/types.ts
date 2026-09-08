@@ -454,6 +454,7 @@ export const LOG_SOURCES = [
   'db',
   'signingKey',
   'demoCase',
+  'exhibits',
   'renderer'
 ] as const
 export type LogSource = (typeof LOG_SOURCES)[number]
@@ -560,7 +561,11 @@ export const LOG_CODES = [
   // The latch write itself failing, swallowed so a broken userData directory
   // costs the demo case rather than the launch.
   'demoCase.latch_failed',
-  'demoCase.artifact_cleanup_failed'
+  'demoCase.artifact_cleanup_failed',
+  // The Exhibit-model backfill (#1147) failing for one Case. Startup continues
+  // over the remaining Cases, so this line is the only record that a Case did
+  // not get its numbers or its anchored thumbnails.
+  'exhibits.backfill_failed'
 ] as const
 export type LogCode = (typeof LOG_CODES)[number]
 
@@ -1045,4 +1050,148 @@ export interface ArchiveInspectReport {
   sourceOperatorName: string
   counts: CaseArchiveCounts
   verification: ArchiveVerificationResult
+}
+
+// --- Exhibit model (ADR-0023, ADR-0024) -----------------------------------
+
+// There is deliberately no enumeration of Exhibit kinds or origins here. The DB
+// columns are plain TEXT and the Manifest schema keeps `kind` an open string (a
+// verifier's vocabulary must not decide whether a chain verifies), so a closed
+// list would be a vocabulary nothing validates against — the kinds this build
+// populates are decided by the code paths that write rows, and the rest arrive
+// with their own tickets (X43, X42).
+
+// The identity and numbering row for one unit of evidence. A Capture's Exhibit
+// id IS its capture id, so the two rows are joined by equality and never by a
+// separate key.
+export interface Exhibit {
+  id: string
+  caseId: string
+  kind: string
+  origin: string
+  // Sequential per-Case integer, assigned at commit (at ingest for Captures)
+  // and recorded in the Manifest Entry so a citation is verifiable (X18).
+  exhibitNumber: number
+  // The original or display name, recorded — never derived from the storage
+  // path (X35).
+  name: string
+  contentHash: string
+  // Storage-root-relative path of the bytes, or null when the row records no
+  // stored file (a legacy Capture whose artifact path was never recorded).
+  path: string | null
+  sizeBytes: number | null
+  committedAt: string
+  // Manifest index of the entry anchoring this Exhibit, or null when it has
+  // none — a pre-v11 `html` Capture (X41). Null is the unanchored case, and the
+  // Exhibit Number there is a citation aid, never an anchoring claim.
+  manifestSeq: number | null
+}
+
+// One file computed from an Exhibit: extracted text, a thumbnail, a PDF
+// metadata sidecar, an enrichment transform's output. Cited by its parent and
+// derivation; Derived Files never get Exhibit Numbers (X31).
+export interface DerivedFile {
+  id: string
+  exhibitId: string
+  derivation: string
+  // Version of the tool that produced the bytes, which is not necessarily the
+  // Birdbrain build that recorded them (X23).
+  toolVersion: string
+  contentHash: string
+  path: string
+  createdAt: string
+  // Manifest index of the `derivation` entry anchoring this file, or null when
+  // it has none — a legacy thumbnail whose screenshot was missing or failed
+  // verification, which X34 leaves unanchored rather than anchoring bytes that
+  // could have been swapped.
+  manifestSeq: number | null
+}
+
+// One file in the Case's Staging Pool: arrived, hashed, and outside the chain
+// until the operator commits it (ADR-0024). Populated by `803p`; the table and
+// this type exist here so the inventory query has a stable shape.
+export interface StagingFile {
+  id: string
+  caseId: string
+  kind: string
+  origin: string
+  name: string
+  contentHash: string
+  path: string
+  sizeBytes: number
+  arrivedAt: string
+  // Source claims: what the operator or an external service SAID about where
+  // the bytes came from. Unverified by construction — the app attests only the
+  // bytes it received and when (X5, X22).
+  sourceUrl: string | null
+  sourceClaims: string | null
+}
+
+interface InventoryRowCommon {
+  id: string
+  caseId: string
+  name: string
+  contentHash: string
+  path: string | null
+  sizeBytes: number | null
+  // Whether the bytes are on disk right now, resolved against the storage root
+  // at read time.
+  exists: boolean
+}
+
+export interface InventoryExhibitRow extends InventoryRowCommon {
+  rowType: 'anchored'
+  entity: 'exhibit'
+  kind: string
+  origin: string
+  exhibitNumber: number
+  committedAt: string
+  manifestSeq: number | null
+  // manifestSeq !== null. Stated as its own field so a consumer never has to
+  // re-derive the anchoring claim from a nullable column.
+  anchored: boolean
+}
+
+export interface InventoryDerivedFileRow extends InventoryRowCommon {
+  rowType: 'anchored'
+  entity: 'derived-file'
+  parentExhibitId: string
+  derivation: string
+  toolVersion: string
+  createdAt: string
+  manifestSeq: number | null
+  anchored: boolean
+}
+
+export interface InventoryStagedRow extends InventoryRowCommon {
+  rowType: 'staged'
+  entity: 'staged-file'
+  kind: string
+  origin: string
+  arrivedAt: string
+  sourceUrl: string | null
+}
+
+// One list with a discriminator, never two lists (X16): a consumer that filters
+// on `rowType` cannot forget the pooled rows exist, which is the failure mode a
+// separate staged list invites.
+export type InventoryRow = InventoryExhibitRow | InventoryDerivedFileRow | InventoryStagedRow
+
+export interface CaseInventory {
+  caseId: string
+  rows: InventoryRow[]
+}
+
+// The result of verifying one Exhibit. `kind = 'capture'` delegates to the
+// Capture verify path and carries its result unchanged, so the two channels
+// cannot drift; the shape admits other kinds so `803p` can add attachments
+// without a second channel.
+export interface ExhibitVerification {
+  exhibitId: string
+  caseId: string
+  kind: string
+  status: HashVerification['status'] | 'unsupported'
+  reason?: string
+  // Present only for `kind = 'capture'`: the untouched `captures:verify` result.
+  capture?: HashVerification
 }

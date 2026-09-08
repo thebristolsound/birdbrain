@@ -37,8 +37,11 @@ import type {
   SessionRecord,
   BugReportInput,
   BugReportResult,
-  RecentActivityEvent
+  RecentActivityEvent,
+  CaseInventory,
+  ExhibitVerification
 } from '@shared/types'
+import type { CaseManifestSnapshot } from '@shared/manifestSnapshot'
 import type {
   CreateCaseParams,
   UpdateCaseParams,
@@ -223,6 +226,13 @@ export interface BirdbrainAPI {
   shell: {
     showItemInFolder(path: string): Promise<void>
     openPath(path: string): Promise<void>
+  }
+  exhibits: {
+    inventory(caseId: string): Promise<CaseInventory>
+    verify(caseId: string, exhibitId: string): Promise<ExhibitVerification>
+  }
+  manifest: {
+    snapshot(caseId: string): Promise<CaseManifestSnapshot>
   }
   app: {
     getVersion(): Promise<string>

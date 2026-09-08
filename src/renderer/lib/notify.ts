@@ -170,7 +170,8 @@ const CODE_LABELS: Record<LogCode, string> = {
   'demoCase.seed_failed': "Couldn't add the demonstration case",
   'demoCase.latch_failed': "Couldn't record that the demonstration case was set up",
   'demoCase.artifact_cleanup_failed':
-    "The demonstration case was removed, but its files couldn't be deleted"
+    "The demonstration case was removed, but its files couldn't be deleted",
+  'exhibits.backfill_failed': "Couldn't finish the exhibit migration for a case"
 }
 
 export function labelForCode(code: LogCode): string {

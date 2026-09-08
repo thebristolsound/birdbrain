@@ -26,6 +26,8 @@ const NAMESPACES = [
   'settings',
   'export',
   'shell',
+  'exhibits',
+  'manifest',
   'app',
   'diagnostics',
   'updates',

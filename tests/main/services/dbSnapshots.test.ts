@@ -30,7 +30,9 @@ import {
 // data" of #413's first acceptance criterion. Same shape as the v25 migration
 // fixture, so every migration block from 25 onwards runs against it. Tables
 // carry only what those blocks need: `selectors` is here because v29 alters
-// it, not because anything below reads it.
+// it, not because anything below reads it, and `tags`/`capture_tags` plus the
+// four later `captures` columns are here because v34 rebuilds and reads them.
+// Every one of those exists in a real v24 database (v11, v23).
 function seedLegacyDb(dbPath: string): void {
   const raw = new Database(dbPath)
   raw.exec(`
@@ -38,12 +40,16 @@ function seedLegacyDb(dbPath: string): void {
       created_at TEXT, updated_at TEXT, archived INTEGER DEFAULT 0);
     CREATE TABLE captures (id TEXT PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
       url TEXT, title TEXT, html_path TEXT, screenshot_path TEXT, hash TEXT, timestamp TEXT,
-      headers TEXT, created_at TEXT);
+      headers TEXT, created_at TEXT, mhtml_path TEXT, size_bytes INTEGER, manifest_index INTEGER,
+      method TEXT NOT NULL DEFAULT 'extension');
     CREATE TABLE notes (id TEXT PRIMARY KEY, case_id TEXT NOT NULL, capture_id TEXT,
       title TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', source_url TEXT,
       screenshot_path TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE TABLE selectors (id TEXT PRIMARY KEY, case_id TEXT NOT NULL, pattern TEXT NOT NULL,
       is_regex INTEGER DEFAULT 0, enabled INTEGER DEFAULT 1, label TEXT, created_at TEXT NOT NULL);
+    CREATE TABLE tags (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, color TEXT);
+    CREATE TABLE capture_tags (capture_id TEXT NOT NULL REFERENCES captures(id) ON DELETE CASCADE,
+      tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE, PRIMARY KEY (capture_id, tag_id));
     CREATE VIRTUAL TABLE captures_fts USING fts5(title, url, content);
   `)
   raw
@@ -51,7 +57,8 @@ function seedLegacyDb(dbPath: string): void {
     .run()
   raw
     .prepare(
-      `INSERT INTO captures (id, case_id, url, title, hash) VALUES ('cap1','case1','https://a.example','Alpha','deadbeef')`
+      `INSERT INTO captures (id, case_id, url, title, hash, timestamp, created_at)
+       VALUES ('cap1','case1','https://a.example','Alpha','deadbeef','2026-01-01','2026-01-01')`
     )
     .run()
   raw.pragma('user_version = 24')

@@ -104,6 +104,7 @@ jobs:
           # until pnpm ships node-gyp >=12.1 (pnpm/pnpm#10268).
           - os: windows-2022
             script: package:win
+            smoke: node scripts/package-smoke.mjs
             # latest.yml by name, not dist/*.yml — that also matches electron-builder's
             # builder-debug.yml config dump, which is build debris and publishes runner
             # paths on a public page (#603). The linux leg is already narrow.
@@ -115,6 +116,7 @@ jobs:
               dist/latest.yml
           - os: ubuntu-latest
             script: package:linux
+            smoke: xvfb-run --auto-servernum node scripts/package-smoke.mjs
             glob: |
               dist/*.{AppImage,deb}
               dist/*-linux.yml
@@ -140,6 +142,14 @@ jobs:
 
       - name: Build and package
         run: pnpm ${{ matrix.script }}
+
+      # Install (Windows) or run (Ubuntu) the artifact this leg just built and require
+      # the capture server to answer: the pre-ship gate's "install -> launch" step, by
+      # machine, on the exact bytes about to be published. A leg whose artifact does
+      # not boot uploads nothing, so a broken build never reaches the update feed.
+      - name: Smoke the packaged app
+        timeout-minutes: 5
+        run: ${{ matrix.smoke }}
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3

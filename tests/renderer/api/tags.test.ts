@@ -19,8 +19,9 @@ describe('tag cache invalidation', () => {
     return { client, keys }
   }
 
-  // The capture list's tag filter (#918) is in the list: it is membership
-  // derived, so a write that moves a count also moves what the filter shows.
+  // The capture list's tag filter (#918) and the batch picker's selection
+  // counts (#665) are in the list: both are membership derived, so a write
+  // that moves a count also moves what they show.
   it('invalidates every read derived from tag membership', () => {
     const { client, keys } = spyOnClient()
 
@@ -30,7 +31,8 @@ describe('tag cache invalidation', () => {
       ['tags', 'usageCounts'],
       ['tags', 'caseCount'],
       ['tags', 'captureMatrix'],
-      ['tags', 'capturesWithAnyTag']
+      ['tags', 'capturesWithAnyTag'],
+      ['tags', 'selectionCounts']
     ])
   })
 
@@ -47,7 +49,8 @@ describe('tag cache invalidation', () => {
       ['tags', 'usageCounts'],
       ['tags', 'caseCount'],
       ['tags', 'captureMatrix'],
-      ['tags', 'capturesWithAnyTag']
+      ['tags', 'capturesWithAnyTag'],
+      ['tags', 'selectionCounts']
     ])
   })
 

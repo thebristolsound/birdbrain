@@ -54,15 +54,26 @@ export const tagCapturesWithAnyQueryOptions = (caseId: string, tagIds: string[])
     enabled: !!caseId && tagIds.length > 0
   })
 
+// How many of a selection carry each tag (#665), backing the batch picker's
+// none/partial/all indicator. One read for the whole selection rather than a
+// `tagsForCapture` per row, which is 500 invokes at the batch bound.
+export const tagSelectionCountsQueryOptions = (caseId: string, captureIds: string[]) =>
+  queryOptions({
+    queryKey: queryKeys.tagSelectionCounts(caseId, captureIds),
+    queryFn: () => window.birdbrain.tags.countsForCaptures({ caseId, captureIds }),
+    enabled: !!caseId && captureIds.length > 0
+  })
+
 // Every read derived from tag membership: the Signals coverage strip, both
-// count badges and the capture list's tag filter. Module-level so the
-// extension-attach listener invalidates the same list the mutations do rather
-// than a copy of it (#852).
+// count badges, the capture list's tag filter and the batch picker's
+// indicator. Module-level so the extension-attach listener invalidates the
+// same list the mutations do rather than a copy of it (#852).
 export function invalidateTagCounts(client: QueryClient): void {
   client.invalidateQueries({ queryKey: ['tags', 'usageCounts'] })
   client.invalidateQueries({ queryKey: ['tags', 'caseCount'] })
   client.invalidateQueries({ queryKey: ['tags', 'captureMatrix'] })
   client.invalidateQueries({ queryKey: queryKeys.tagCapturesWithAnyAll })
+  client.invalidateQueries({ queryKey: queryKeys.tagSelectionCountsAll })
 }
 
 // What an extension `POST /api/tags/apply` stales in an open case (#852). The
@@ -144,6 +155,36 @@ export function useTagsMutations(caseId?: string) {
     meta: { action: 'add tag to captures' }
   })
 
+  // Batch untag (#665), the counterpart of addToCaptures above and with the
+  // same caseId requirement, since it runs the same same-case guard.
+  const removeFromCaptures = useMutation<
+    BatchCountResult,
+    unknown,
+    { captureIds: string[]; tagId: string }
+  >({
+    mutationFn: ({ captureIds, tagId }) => {
+      if (!caseId) return Promise.reject(new Error('useTagsMutations(caseId) required'))
+      return window.birdbrain.tags.removeFromCaptures({ caseId, captureIds, tagId })
+    },
+    onSuccess: (_data, vars) => {
+      for (const id of vars.captureIds) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.tagsForCapture(id) })
+      }
+      invalidateCounts()
+    },
+    meta: { action: 'remove tag from captures' }
+  })
+
+  // Create-or-reuse by name (#665). Separate from `create` rather than
+  // replacing it: `create` is the Signals screen's explicit new-tag action,
+  // where naming an existing tag is an error worth showing, while a picker
+  // that also filters by the typed name wants the existing tag back.
+  const findOrCreate = useMutation({
+    mutationFn: (params: CreateTagParams) => window.birdbrain.tags.findOrCreate(params),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.tags }),
+    meta: { action: 'create tag' }
+  })
+
   // Note-level tag apply (#391). Named by string, not by id: main resolves
   // create-or-reuse, so the renderer never has to decide whether the tag it is
   // about to name already exists. The capture invalidation is conditional on
@@ -179,6 +220,8 @@ export function useTagsMutations(caseId?: string) {
     addToCapture,
     removeFromCapture,
     addToCaptures,
+    removeFromCaptures,
+    findOrCreate,
     applyToNote,
     merge
   }

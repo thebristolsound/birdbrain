@@ -58,6 +58,13 @@ export interface TourStep {
  * no equivalent of, so the copy must not promise it (#707). The other dropped
  * clause — an intro promising a seeded demo case — is restored below, because
  * #405 ships the demo case it promises.
+ *
+ * Where it is read today, though, is a replay. Seeding a case means session
+ * restore opens it, so the case chapter auto-fires over the intro before this
+ * body renders, and a displaced chapter is recorded complete (#771, ruled
+ * 2026-08-30). A fresh install therefore reaches this copy only by replaying
+ * the intro from the command palette or Settings → About. Whether that ordering
+ * should change is #1296, which is a product call and is not taken here.
  */
 const EXT_BODY_INTRO =
   'Right-click any page in Chrome to log it to your active case. Install the extension ' +

@@ -296,6 +296,10 @@ describe('copy that names the seeded demo case', () => {
       .filter((body): body is string => body !== undefined)
   }
 
+  // A unit assertion on the step list, and nothing more: on a fresh install the
+  // case chapter displaces the intro before this body renders, so today the
+  // only operator who reads it is one replaying the intro from the palette or
+  // Settings → About. #1296 owns whether that ordering changes.
   it('promises a demo case in the intro only when one exists', () => {
     const withDemo = bodies('intro', true).join(' ')
     const without = bodies('intro', false).join(' ')

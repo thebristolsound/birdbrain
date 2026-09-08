@@ -802,6 +802,75 @@ describe('ipcHandlers — batch operations (#394)', () => {
     expect(cross.code).toBe('BATCH_CROSS_CASE')
   })
 
+  it('tags:removeFromCaptures clears the tag from the same-case snapshot only', async () => {
+    const second = seedCapture({ url: 'https://example.com/2' }).id
+    const tag = expectOk<{ id: string }>(await invoke(IPC_CHANNELS.TAGS_CREATE, { name: 'batch' }))
+    expectOk(
+      await invoke(IPC_CHANNELS.TAGS_ADD_TO_CAPTURES, {
+        caseId,
+        captureIds: [captureId, second],
+        tagId: tag.id
+      })
+    )
+    expectOk(
+      await invoke(IPC_CHANNELS.TAGS_ADD_TO_CAPTURE, { captureId: foreignId, tagId: tag.id })
+    )
+
+    const res = expectOk<BatchCountResult>(
+      await invoke(IPC_CHANNELS.TAGS_REMOVE_FROM_CAPTURES, {
+        caseId,
+        captureIds: [captureId, second, 'ghost'],
+        tagId: tag.id
+      })
+    )
+    expect(res.affected).toBe(2)
+    for (const id of [captureId, second]) {
+      expect(expectOk<{ id: string }[]>(await invoke(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, id))).toEqual(
+        []
+      )
+    }
+    // The other case's capture kept the tag: the guard refuses the call rather
+    // than silently narrowing it.
+    const cross = (await invoke(IPC_CHANNELS.TAGS_REMOVE_FROM_CAPTURES, {
+      caseId,
+      captureIds: [foreignId],
+      tagId: tag.id
+    })) as { ok: boolean; code?: string }
+    expect(cross.code).toBe('BATCH_CROSS_CASE')
+    expect(
+      expectOk<{ id: string }[]>(await invoke(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, foreignId)).map(
+        (t) => t.id
+      )
+    ).toEqual([tag.id])
+  })
+
+  it('tags:countsForCaptures answers for the selection, not the case', async () => {
+    const second = seedCapture({ url: 'https://example.com/2' }).id
+    const third = seedCapture({ url: 'https://example.com/3' }).id
+    const tag = expectOk<{ id: string }>(await invoke(IPC_CHANNELS.TAGS_CREATE, { name: 'partial' }))
+    expectOk(await invoke(IPC_CHANNELS.TAGS_ADD_TO_CAPTURE, { captureId, tagId: tag.id }))
+
+    expect(
+      expectOk<Record<string, number>>(
+        await invoke(IPC_CHANNELS.TAGS_COUNTS_FOR_CAPTURES, {
+          caseId,
+          captureIds: [captureId, second, third]
+        })
+      )
+    ).toEqual({ [tag.id]: 1 })
+    // A selection carrying nothing gets an empty object, not a zero row.
+    expect(
+      expectOk<Record<string, number>>(
+        await invoke(IPC_CHANNELS.TAGS_COUNTS_FOR_CAPTURES, { caseId, captureIds: [second] })
+      )
+    ).toEqual({})
+    const cross = (await invoke(IPC_CHANNELS.TAGS_COUNTS_FOR_CAPTURES, {
+      caseId,
+      captureIds: [foreignId]
+    })) as { ok: boolean; code?: string }
+    expect(cross.code).toBe('BATCH_CROSS_CASE')
+  })
+
   it('recapture:enqueueCaptures fans the same-case snapshot out as self-superseding jobs', async () => {
     const second = seedCapture({ url: 'https://example.com/2' }).id
     expectOk(
@@ -846,6 +915,8 @@ describe('ipcHandlers — batch operations (#394)', () => {
       IPC_CHANNELS.CAPTURES_DELETE_MANY,
       IPC_CHANNELS.CAPTURES_SET_FAVORITE_MANY,
       IPC_CHANNELS.TAGS_ADD_TO_CAPTURES,
+      IPC_CHANNELS.TAGS_REMOVE_FROM_CAPTURES,
+      IPC_CHANNELS.TAGS_COUNTS_FOR_CAPTURES,
       IPC_CHANNELS.RECAPTURE_ENQUEUE_CAPTURES
     ]) {
       for (const payload of bad) {
@@ -861,11 +932,16 @@ describe('ipcHandlers — batch operations (#394)', () => {
       favorite: 'yes'
     })) as { ok: boolean; code?: string }
     expect(fav.code).toBe('INVALID_BATCH_PAYLOAD')
-    const tag = (await invoke(IPC_CHANNELS.TAGS_ADD_TO_CAPTURES, {
-      caseId,
-      captureIds: [captureId]
-    })) as { ok: boolean; code?: string }
-    expect(tag.code).toBe('INVALID_BATCH_PAYLOAD')
+    for (const channel of [
+      IPC_CHANNELS.TAGS_ADD_TO_CAPTURES,
+      IPC_CHANNELS.TAGS_REMOVE_FROM_CAPTURES
+    ]) {
+      const tag = (await invoke(channel, { caseId, captureIds: [captureId] })) as {
+        ok: boolean
+        code?: string
+      }
+      expect(tag.code).toBe('INVALID_BATCH_PAYLOAD')
+    }
     expect(recaptureService.enqueue).not.toHaveBeenCalled()
   })
 })
@@ -893,6 +969,43 @@ describe('ipcHandlers — tags', () => {
 
     expectOk(await invoke(IPC_CHANNELS.TAGS_REMOVE_FROM_CAPTURE, { captureId, tagId: tag.id }))
     expectOk(await invoke(IPC_CHANNELS.TAGS_DELETE, tag.id))
+  })
+
+  // The batch picker's create path (#665). Driven at the boundary because the
+  // point of the channel is that `tags:create` throws here: the UNIQUE name
+  // constraint is what #811 records, and a picker whose input doubles as its
+  // filter will be handed an existing name routinely.
+  it('resolves a tag by name, creating one only when there is no match', async () => {
+    const made = expectOk<{ id: string; name: string; color?: string }>(
+      await invoke(IPC_CHANNELS.TAGS_FIND_OR_CREATE, { name: 'reused', color: '#10b981' })
+    )
+    expect(made.color).toBe('#10b981')
+
+    const dupe = (await invoke(IPC_CHANNELS.TAGS_CREATE, { name: 'reused' })) as { ok: boolean }
+    expect(dupe.ok).toBe(false)
+
+    // Same name, different case, different colour: the existing tag comes
+    // back unrepainted rather than a second row being minted.
+    const again = expectOk<{ id: string; color?: string }>(
+      await invoke(IPC_CHANNELS.TAGS_FIND_OR_CREATE, { name: '  REUSED  ', color: '#ef4444' })
+    )
+    expect(again.id).toBe(made.id)
+    expect(again.color).toBe('#10b981')
+    expect(
+      expectOk<{ name: string }[]>(await invoke(IPC_CHANNELS.TAGS_LIST)).filter(
+        (t) => t.name.toLowerCase() === 'reused'
+      )
+    ).toHaveLength(1)
+
+    for (const bad of [undefined, null, {}, { name: '' }, { name: '   ' }, { name: 7 }]) {
+      const res = (await invoke(IPC_CHANNELS.TAGS_FIND_OR_CREATE, bad)) as {
+        ok: boolean
+        code?: string
+      }
+      expect(res.code).toBe('INVALID_TAG_PAYLOAD')
+    }
+
+    expectOk(await invoke(IPC_CHANNELS.TAGS_DELETE, made.id))
   })
 
   // The capture list's tag filter reads through this channel (#918). Driven at

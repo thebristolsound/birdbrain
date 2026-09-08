@@ -46,12 +46,12 @@ export function SessionControls() {
   return (
     <div className="flex items-center gap-2">
       <label className="flex cursor-pointer items-center gap-1.5">
-        <span className="text-xs text-text-muted">Auto-Capture</span>
+        <span className="text-xs text-text-muted">Capture Session</span>
         <button
           type="button"
           role="switch"
           aria-checked={sessionActive}
-          aria-label="Auto-Capture"
+          aria-label="Capture Session"
           onClick={handleToggleSession}
           disabled={!activeCaseId || toggling}
           className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-50 ${

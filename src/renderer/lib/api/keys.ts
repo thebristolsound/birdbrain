@@ -27,6 +27,12 @@ export const queryKeys = {
   tagCapturesWithAnyAll: ['tags', 'capturesWithAnyTag'] as const,
   tagCapturesWithAny: (caseId: string, tagIds: string[]) =>
     ['tags', 'capturesWithAnyTag', caseId, ...tagIds] as const,
+  // How many of a selection carry each tag (#665). The ids are sorted into the
+  // key so the same set reached in a different click order is one cache entry,
+  // and nested as one array segment so the prefix below stays two elements.
+  tagSelectionCountsAll: ['tags', 'selectionCounts'] as const,
+  tagSelectionCounts: (caseId: string, captureIds: string[]) =>
+    ['tags', 'selectionCounts', caseId, [...captureIds].sort()] as const,
   tagsForNote: (noteId: string) => ['tags', 'note', noteId] as const,
   selectors: (caseId: string) => ['selectors', caseId] as const,
   selectorMatchCounts: (caseId: string) => ['selectors', 'matchCounts', caseId] as const,

@@ -28,8 +28,7 @@ export function createTag(params: CreateTagParams): Tag {
 
 export function updateTag(params: UpdateTagParams): Tag | undefined {
   const existing = getDb().prepare('SELECT * FROM tags WHERE id = ?').get(params.id) as
-    | Tag
-    | undefined
+    Tag | undefined
   if (!existing) return undefined
   getDb()
     .prepare('UPDATE tags SET name = ?, color = ? WHERE id = ?')
@@ -63,6 +62,61 @@ export function addTagToCaptures(captureIds: string[], tagId: string): number {
     return captureIds.length
   })
   return run()
+}
+
+/**
+ * Batch untag (#665), the counterpart `addTagToCaptures` has lacked since
+ * #394. One DELETE per id in one transaction, so a mid-list failure removes
+ * nothing.
+ *
+ * Returns the ids the tag no longer holds, deliberately the same reading as
+ * `addTagToCaptures` above rather than `changes`: both answer "how many of the
+ * ids you named are now in the state you asked for", so an id that never
+ * carried the tag counts, exactly as re-tagging an already-tagged id counts.
+ *
+ * Removes only the capture links. `note_tags` rows and the tag row itself are
+ * untouched — untagging a selection is not deleting a tag.
+ */
+export function removeTagFromCaptures(captureIds: string[], tagId: string): number {
+  if (captureIds.length === 0) return 0
+  const d = getDb()
+  const run = d.transaction(() => {
+    const del = d.prepare('DELETE FROM exhibit_tags WHERE exhibit_id = ? AND tag_id = ?')
+    for (const id of captureIds) del.run(id, tagId)
+    return captureIds.length
+  })
+  return run()
+}
+
+/**
+ * How many of these captures carry each tag (#665). Backs the batch picker's
+ * none/partial/all indicator, which otherwise needs one `getTagsForCapture`
+ * per selected row — 500 reads for a full selection.
+ *
+ * Scoped by capture id rather than by case, unlike
+ * `getTagUsageCountsForCase`: the selection is a subset of one case and the
+ * indicator has to reflect that subset, not the case. A tag no selected
+ * capture carries is absent rather than present-and-zero, so a caller reads a
+ * missing key as none.
+ */
+export function getTagCountsForCaptures(captureIds: string[]): Record<string, number> {
+  if (captureIds.length === 0) return {}
+  const unique = [...new Set(captureIds)]
+  const placeholders = unique.map(() => '?').join(',')
+  const rows = getDb()
+    .prepare(
+      `SELECT tag_id, COUNT(*) as count
+       FROM exhibit_tags
+       WHERE exhibit_id IN (${placeholders})
+       GROUP BY tag_id`
+    )
+    .all(...unique) as Array<{ tag_id: string; count: number }>
+
+  const counts: Record<string, number> = {}
+  for (const row of rows) {
+    counts[row.tag_id] = row.count
+  }
+  return counts
 }
 
 /**
@@ -103,9 +157,11 @@ export function mergeTags(params: MergeTagsParams): MergeTagsResult | undefined 
     ).run(targetId, sourceId)
     d.prepare('DELETE FROM tags WHERE id = ?').run(sourceId)
     const count = (table: string): number =>
-      (d.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE tag_id = ?`).get(targetId) as {
-        n: number
-      }).n
+      (
+        d.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE tag_id = ?`).get(targetId) as {
+          n: number
+        }
+      ).n
     return { target, captureLinks: count('exhibit_tags'), noteLinks: count('note_tags') }
   })
   return run()
@@ -126,12 +182,17 @@ export function removeTagFromCapture(params: CaptureTagParams): void {
  * PR #835's review gave for the extension path: `Evidence` and `evidence` can
  * both exist, and the insensitive query could return either — attaching a tag
  * with a different identity and colour than the one the operator named.
+ *
+ * `color` applies to the create branch only (#665, for the batch picker's
+ * colour swatch). A reuse never repaints the tag it found: the operator asked
+ * for a tag by that name, not for that tag to change everywhere it is already
+ * applied.
  */
-export function findOrCreateTagByName(name: string): Tag {
+export function findOrCreateTagByName(name: string, color?: string): Tag {
   const exactId = findTagIdByNameExact(name)
   const foundId = exactId ?? findTagIdByNameInsensitive(name)
   const found = foundId ? getTag(foundId) : undefined
-  return found ?? createTag({ name })
+  return found ?? createTag({ name, color })
 }
 
 // Note-level tags (#391). INSERT OR IGNORE for the same reason
@@ -307,15 +368,13 @@ export function collectCaptureTagsForCase(caseId: string): Record<string, unknow
 
 export function findTagIdByNameExact(name: string): string | undefined {
   const hit = getDb().prepare('SELECT id FROM tags WHERE name = ?').get(name) as
-    | { id: string }
-    | undefined
+    { id: string } | undefined
   return hit?.id
 }
 
 export function findTagIdByNameInsensitive(name: string): string | undefined {
   const hit = getDb().prepare('SELECT id FROM tags WHERE lower(name) = lower(?)').get(name) as
-    | { id: string }
-    | undefined
+    { id: string } | undefined
   return hit?.id
 }
 

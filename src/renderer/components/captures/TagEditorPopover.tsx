@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { TagBadge } from '@renderer/components/tags/TagBadge'
 import { useCaptureTagEditor } from '@renderer/components/captures/useCaptureTagEditor'
+import { TAG_COLOR_PRESETS, DEFAULT_TAG_COLOR } from '@renderer/components/tags/tagColors'
 
 interface Props {
   captureId: string
@@ -9,12 +10,10 @@ interface Props {
   anchorRef: React.RefObject<HTMLElement | null>
 }
 
-const COLOR_PRESETS = ['#f59e0b', '#ef4444', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#64748b']
-
 export function TagEditorPopover({ captureId, open, onClose, anchorRef }: Props) {
   const { tags, allTags, toggleTag, createTag } = useCaptureTagEditor(captureId)
   const [name, setName] = useState('')
-  const [color, setColor] = useState(COLOR_PRESETS[0])
+  const [color, setColor] = useState(DEFAULT_TAG_COLOR)
   const [showColors, setShowColors] = useState(false)
   const popoverRef = useRef<HTMLDivElement>(null)
 
@@ -77,7 +76,7 @@ export function TagEditorPopover({ captureId, open, onClose, anchorRef }: Props)
           >
             <span
               className="h-2 w-2 shrink-0 rounded-full"
-              style={{ backgroundColor: tag.color || '#f59e0b' }}
+              style={{ backgroundColor: tag.color || DEFAULT_TAG_COLOR }}
             />
             {tag.name}
           </button>
@@ -96,7 +95,7 @@ export function TagEditorPopover({ captureId, open, onClose, anchorRef }: Props)
             />
             {showColors && (
               <div className="absolute bottom-full left-0 mb-1 flex flex-col gap-1 rounded-lg border border-border-strong bg-card p-1.5 shadow-lg">
-                {COLOR_PRESETS.map((c) => (
+                {TAG_COLOR_PRESETS.map((c) => (
                   <button
                     key={c}
                     type="button"

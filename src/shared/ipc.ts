@@ -106,6 +106,9 @@ export const IPC_CHANNELS = {
   TAGS_USAGE_COUNTS_FOR_CASE: 'tags:usageCountsForCase',
   TAGS_CAPTURE_MATRIX: 'tags:captureMatrix',
   TAGS_ADD_TO_CAPTURES: 'tags:addToCaptures',
+  TAGS_REMOVE_FROM_CAPTURES: 'tags:removeFromCaptures',
+  TAGS_COUNTS_FOR_CAPTURES: 'tags:countsForCaptures',
+  TAGS_FIND_OR_CREATE: 'tags:findOrCreate',
   TAGS_APPLY_TO_NOTE: 'tags:applyToNote',
   TAGS_REMOVE_FROM_NOTE: 'tags:removeFromNote',
   TAGS_GET_FOR_NOTE: 'tags:getForNote',
@@ -786,6 +789,20 @@ export interface IpcInvokeContract {
     args: [payload: CaptureBatchPayload & { tagId: string }]
     result: BatchCountResult
   }
+  'tags:removeFromCaptures': {
+    args: [payload: CaptureBatchPayload & { tagId: string }]
+    result: BatchCountResult
+  }
+  // tagId -> how many of these captures carry it (#665). A tag no selected
+  // capture carries is absent, not zero.
+  'tags:countsForCaptures': {
+    args: [payload: CaptureBatchPayload]
+    result: Record<string, number>
+  }
+  // Create-or-reuse by name (#665). `tags:create` is a bare INSERT against a
+  // UNIQUE name, so a picker that lets the operator type a name has to resolve
+  // the collision in main rather than race a client-side lookup (#811).
+  'tags:findOrCreate': { args: [params: CreateTagParams]; result: Tag }
   'tags:applyToNote': { args: [params: ApplyTagToNoteParams]; result: ApplyTagToNoteResult }
   'tags:removeFromNote': { args: [params: NoteTagParams]; result: void }
   'tags:getForNote': { args: [noteId: string]; result: Tag[] }

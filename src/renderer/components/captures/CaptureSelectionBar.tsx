@@ -1,12 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'motion/react'
 import { Check, Download, RefreshCcw, Star, Tag as TagIcon, Trash2, X } from 'lucide-react'
 import { captureFavoritesQueryOptions, useCapturesMutations } from '@renderer/lib/api/captures'
 import { casesQueryOptions } from '@renderer/lib/api/cases'
-import { tagsQueryOptions, useTagsMutations } from '@renderer/lib/api/tags'
 import { useRecaptureMutations } from '@renderer/lib/api/recapture'
 import { ExportDialog } from '@renderer/components/export/ExportDialog'
+import { BatchTagPopover } from '@renderer/components/captures/BatchTagPopover'
 import { useReduceMotion } from '@renderer/hooks/useReduceMotion'
 import { notify } from '@renderer/lib/notify'
 
@@ -44,35 +44,13 @@ export function CaptureSelectionBar({
   const [showTagPicker, setShowTagPicker] = useState(false)
   const [showExport, setShowExport] = useState(false)
   const tagButtonRef = useRef<HTMLButtonElement>(null)
-  const tagPickerRef = useRef<HTMLDivElement>(null)
 
   const { data: cases = [] } = useQuery(casesQueryOptions)
-  const { data: allTags = [] } = useQuery(tagsQueryOptions)
   const { data: favoriteIds = [] } = useQuery(captureFavoritesQueryOptions(caseId))
   const { setFavoriteMany } = useCapturesMutations(caseId)
-  const { addToCaptures } = useTagsMutations(caseId)
   const { enqueueCaptures } = useRecaptureMutations(caseId)
 
   const caseName = cases.find((c) => c.id === caseId)?.name ?? 'Case'
-
-  useEffect(() => {
-    if (!showTagPicker) return
-    function onDocClick(e: MouseEvent) {
-      const target = e.target as Node
-      if (tagPickerRef.current?.contains(target)) return
-      if (tagButtonRef.current?.contains(target)) return
-      setShowTagPicker(false)
-    }
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') setShowTagPicker(false)
-    }
-    document.addEventListener('mousedown', onDocClick)
-    document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.removeEventListener('mousedown', onDocClick)
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [showTagPicker])
 
   function handleFavorite() {
     // setFavoriteMany takes an explicit boolean: favorite everything unless
@@ -88,16 +66,6 @@ export function CaptureSelectionBar({
               : `Unfavorited ${pluralCaptures(affected)}`
           )
         }
-      }
-    )
-  }
-
-  function handleApplyTag(tagId: string) {
-    setShowTagPicker(false)
-    addToCaptures.mutate(
-      { captureIds: selectedIds, tagId },
-      {
-        onSuccess: () => notify.success(`Tag applied to ${pluralCaptures(selectedIds.length)}`)
       }
     )
   }
@@ -164,33 +132,12 @@ export function CaptureSelectionBar({
           <TagIcon className="h-[13px] w-[13px]" strokeWidth={1.9} />
         </button>
         {showTagPicker && (
-          <div
-            ref={tagPickerRef}
-            data-selection-escape-guard=""
-            className="absolute right-0 top-full z-50 mt-1 w-48 rounded-lg border border-border-strong bg-card py-1 shadow-xl"
-          >
-            {allTags.length === 0 ? (
-              <div className="px-3 py-2 text-[11px] text-text-faint">
-                No tags yet. Create one in the Tags tab first.
-              </div>
-            ) : (
-              <div className="max-h-48 overflow-y-auto">
-                {allTags.map((tag) => (
-                  <button
-                    key={tag.id}
-                    onClick={() => handleApplyTag(tag.id)}
-                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-text-secondary hover:bg-elevated"
-                  >
-                    <span
-                      className="h-2 w-2 shrink-0 rounded-full"
-                      style={{ backgroundColor: tag.color || '#f59e0b' }}
-                    />
-                    {tag.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <BatchTagPopover
+            caseId={caseId}
+            selectedIds={selectedIds}
+            anchorRef={tagButtonRef}
+            onClose={() => setShowTagPicker(false)}
+          />
         )}
       </div>
       <button

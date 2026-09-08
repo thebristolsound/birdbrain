@@ -485,6 +485,32 @@ export function registerIpcHandlers(deps: {
     const ids = snapshotSameCase(caseId, captureIds).map((c) => c.id)
     return { affected: tagRepo.addTagToCaptures(ids, payload.tagId) }
   })
+  // Batch untag (#665). Same guards as its add counterpart, for the same
+  // reason: the same-case snapshot is what stops a selection reaching another
+  // case's captures.
+  handle(IPC_CHANNELS.TAGS_REMOVE_FROM_CAPTURES, (_, payload) => {
+    const { caseId, captureIds } = validateBatchPayload(payload)
+    if (typeof payload.tagId !== 'string') {
+      throw new IpcFailure('Invalid batch payload', 'INVALID_BATCH_PAYLOAD')
+    }
+    const ids = snapshotSameCase(caseId, captureIds).map((c) => c.id)
+    return { affected: tagRepo.removeTagFromCaptures(ids, payload.tagId) }
+  })
+  handle(IPC_CHANNELS.TAGS_COUNTS_FOR_CAPTURES, (_, payload) => {
+    const { caseId, captureIds } = validateBatchPayload(payload)
+    const ids = snapshotSameCase(caseId, captureIds).map((c) => c.id)
+    return tagRepo.getTagCountsForCaptures(ids)
+  })
+  // Create-or-reuse by name (#665). The name is trimmed here rather than in
+  // the renderer so every caller of the channel gets the same identity, and a
+  // whitespace-only name is refused rather than stored.
+  handle(IPC_CHANNELS.TAGS_FIND_OR_CREATE, (_, params: CreateTagParams) => {
+    const p = params as Partial<CreateTagParams> | null | undefined
+    if (!p || typeof p.name !== 'string' || !p.name.trim()) {
+      throw new IpcFailure('Invalid tag payload', 'INVALID_TAG_PAYLOAD')
+    }
+    return tagRepo.findOrCreateTagByName(p.name.trim(), p.color)
+  })
   // Merge tags (#828). A payload channel, so it gets the shape check; the
   // self-merge refusal is here as well as in the repo because the two failures
   // deserve different messages — the repo's undefined cannot say which

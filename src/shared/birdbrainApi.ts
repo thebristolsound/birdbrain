@@ -142,6 +142,9 @@ export interface BirdbrainAPI {
     usageCountsForCase(caseId: string): Promise<Record<string, number>>
     captureMatrix(caseId: string, limit: number): Promise<Record<string, string[]>>
     addToCaptures(payload: CaptureBatchPayload & { tagId: string }): Promise<BatchCountResult>
+    removeFromCaptures(payload: CaptureBatchPayload & { tagId: string }): Promise<BatchCountResult>
+    countsForCaptures(payload: CaptureBatchPayload): Promise<Record<string, number>>
+    findOrCreate(params: CreateTagParams): Promise<Tag>
     applyToNote(params: ApplyTagToNoteParams): Promise<ApplyTagToNoteResult>
     removeFromNote(params: NoteTagParams): Promise<void>
     getForNote(noteId: string): Promise<Tag[]>

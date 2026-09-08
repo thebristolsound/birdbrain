@@ -110,3 +110,16 @@ export const LEGACY_HTML_PARTITION = 'legacy-html-sandbox'
 
 // The only URL prefix a Wayback replay guest may load or navigate to.
 export const WAYBACK_REPLAY_PREFIX = 'https://web.archive.org/web/'
+
+// The bundled demonstration Case Archive (#405). It ships as an ordinary
+// chain-verified .birdbrain archive under resources/ (electron-builder copies
+// it into the packaged app's resources directory alongside the extension) and
+// is imported through the normal inspect/import path on first launch.
+export const DEMO_CASE_ARCHIVE_FILENAME = 'demo-case.birdbrain'
+
+// The attribution baked into the fixture and recorded on its import custody
+// entry (#405, R7/Q3). A fixed string on BOTH sides: the machine that built the
+// archive contributes no operator identity to it, and the operator-name gate
+// that protects real archives stays intact rather than being relaxed for the
+// seeding path.
+export const DEMO_CASE_OPERATOR_NAME = 'Birdbrain demo fixture'

@@ -52,6 +52,21 @@ export function updateCase(params: UpdateCaseParams): Case | undefined {
   return getCase(params.id)
 }
 
+/**
+ * Marks a case as (or as not) the demonstration case (#405).
+ *
+ * The only production writer of `is_demo` is the archive import, which carries
+ * the flag on the imported case row. This setter exists for the fixture
+ * generator (`scripts/demo-fixture/build.ts`), which has to raise the flag on
+ * the case it exports so the shipped archive identifies itself as a demo on the
+ * way back in.
+ */
+export function setCaseDemo(id: string, isDemo: boolean): void {
+  getDb()
+    .prepare('UPDATE cases SET is_demo = ? WHERE id = ?')
+    .run(isDemo ? 1 : 0, id)
+}
+
 export function deleteCase(id: string): boolean {
   const d = getDb()
   const run = d.transaction(() => {

@@ -17,12 +17,14 @@ name: Dispatch
 # still owns, so a fire cannot end holding state a peer would wait four hours on
 # (#1141, #1057).
 #
-# The schedule is commented out until the rollout in the design brief reaches
-# step 4. Until then every fire is a workflow_dispatch.
+# Schedule enabled 2026-09-07 at rollout step 4 of the design brief, after three
+# report-only fires and one supervised cycle ran clean on 2026-09-07. Hourly at
+# :43, the cadence #310 chose. A scheduled fire always runs in cycle mode and
+# lets section 3 pick; workflow_dispatch stays for supervised fires.
 
 on:
-  # schedule:
-  #   - cron: '43 * * * *'
+  schedule:
+    - cron: '43 * * * *'
   workflow_dispatch:
     inputs:
       mode:

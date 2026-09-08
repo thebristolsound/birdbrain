@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Crosshair } from 'lucide-react'
 import type { Capture } from '@shared/types'
@@ -14,7 +14,7 @@ import {
 } from '@renderer/components/signals/useSelectorRescan'
 import {
   signalCountLabel,
-  TAG_PALETTE,
+  TAG_PALETTE_LABELS,
   type Signal
 } from '@renderer/components/signals/signalsModel'
 
@@ -64,6 +64,7 @@ export function SignalDetailRail({
   const addSelectorFilter = useAppStore((s) => s.addSelectorFilter)
   const addTagFilter = useAppStore((s) => s.addTagFilter)
   const { update: updateTag } = useTagsMutations(caseId)
+  const colorLabelId = useId()
   const [exporting, setExporting] = useState(false)
   const { previews, run, reset } = useForegroundMatchPreview(caseId, {
     maxCaptures: 5,
@@ -216,24 +217,33 @@ export function SignalDetailRail({
 
         {!isSelector && (
           <div>
-            <div className={BLOCK_LABEL}>Color</div>
-            <div className="flex gap-1.5">
-              {TAG_PALETTE.map((color) => (
-                <button
-                  key={color}
-                  type="button"
-                  aria-label={`Set color ${color}`}
-                  onClick={() => updateTag.mutate({ id: signal.id, color })}
-                  className="h-[18px] w-[18px] rounded-full"
-                  style={{
-                    background: color,
-                    boxShadow:
-                      signal.color === color
+            <div id={colorLabelId} className={BLOCK_LABEL}>
+              Color
+            </div>
+            <div role="group" aria-labelledby={colorLabelId} className="flex gap-1.5">
+              {TAG_PALETTE_LABELS.map(({ value, label }) => {
+                const selected = signal.color === value
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    // The hex was the accessible name until #472: a screen reader
+                    // spells it out character by character, which names nothing.
+                    // TAG_PALETTE_LABELS is the same palette with a word against
+                    // each swatch, already used by the row context menu (#701).
+                    aria-label={`Set color ${label}`}
+                    aria-pressed={selected}
+                    onClick={() => updateTag.mutate({ id: signal.id, color: value })}
+                    className="h-[18px] w-[18px] rounded-full"
+                    style={{
+                      background: value,
+                      boxShadow: selected
                         ? '0 0 0 2px var(--color-surface), 0 0 0 4px var(--color-accent)'
                         : 'none'
-                  }}
-                />
-              ))}
+                    }}
+                  />
+                )
+              })}
             </div>
           </div>
         )}

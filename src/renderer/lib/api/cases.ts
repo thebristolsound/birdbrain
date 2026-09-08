@@ -83,6 +83,16 @@ export function useCasesMutations() {
     meta: { action: 'delete case' }
   })
 
+  // The tour's "Delete demo case" ending (#405). Separate from `remove`
+  // because it also removes the case's artifacts from disk, which the ordinary
+  // delete deliberately does not; main refuses any case that is not flagged as
+  // the demonstration case.
+  const removeDemo = useMutation({
+    mutationFn: (id: string) => window.birdbrain.cases.deleteDemo(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.cases }),
+    meta: { action: 'delete demo case' }
+  })
+
   const exportArchive = useMutation({
     mutationFn: (caseId: string) => window.birdbrain.cases.exportArchive(caseId),
     meta: { action: 'export case archive' }
@@ -95,5 +105,5 @@ export function useCasesMutations() {
     meta: { action: 'import case archive' }
   })
 
-  return { create, update, remove, exportArchive, importArchive }
+  return { create, update, remove, removeDemo, exportArchive, importArchive }
 }

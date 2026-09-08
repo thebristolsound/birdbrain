@@ -20,6 +20,13 @@ interface CoachMarkProps {
   onNext: () => void
   onSkip: () => void
   onToggleInstall: () => void
+  /**
+   * Supplied only when the case being toured is the seeded demonstration case
+   * (#405). Its presence is what turns the final step's single Next into the
+   * Delete-demo / Keep-exploring pair, so an operator whose first case is their
+   * own is never offered a one-click delete of it.
+   */
+  onDeleteDemo?: () => void
 }
 
 /**
@@ -38,9 +45,11 @@ export function CoachMark({
   installOpen,
   onNext,
   onSkip,
-  onToggleInstall
+  onToggleInstall,
+  onDeleteDemo
 }: CoachMarkProps) {
   const layout = rect ? markLayout(rect, viewport) : null
+  const demoEnding = Boolean(step.final && onDeleteDemo)
 
   const card = (
     <div className="rounded-md border border-border-strong bg-elevated px-3.5 py-3 shadow-[0_12px_32px_rgba(0,0,0,0.45)]">
@@ -115,13 +124,24 @@ export function CoachMark({
             skip
           </button>
         </span>
-        <button
-          data-testid="tour-next"
-          onClick={onNext}
-          className="h-6 shrink-0 whitespace-nowrap rounded border-none bg-accent px-2.5 text-[11px] font-medium text-white hover:bg-accent-hover"
-        >
-          {step.last ?? (step.final ? 'Keep exploring' : 'Next →')}
-        </button>
+        <span className="flex shrink-0 items-center gap-2">
+          {demoEnding ? (
+            <button
+              data-testid="tour-delete-demo"
+              onClick={onDeleteDemo}
+              className="h-6 shrink-0 whitespace-nowrap rounded border border-border-strong bg-transparent px-2.5 text-[11px] font-medium text-text-secondary hover:border-danger-line hover:text-danger-fg"
+            >
+              Delete demo case
+            </button>
+          ) : null}
+          <button
+            data-testid="tour-next"
+            onClick={onNext}
+            className="h-6 shrink-0 whitespace-nowrap rounded border-none bg-accent px-2.5 text-[11px] font-medium text-white hover:bg-accent-hover"
+          >
+            {step.last ?? (step.final ? 'Keep exploring' : 'Next →')}
+          </button>
+        </span>
       </div>
     </div>
   )

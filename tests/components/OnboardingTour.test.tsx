@@ -19,6 +19,8 @@ vi.mock('@tanstack/react-router', () => ({
 
 import { OnboardingTour } from '@renderer/components/onboarding/OnboardingTour'
 import { startTour } from '@renderer/components/onboarding/startTour'
+import { NOTE_COMPOSER_EVENT } from '@renderer/components/onboarding/tourEffects'
+import { useAppStore } from '@renderer/stores/appStore'
 
 let updated: Array<Partial<BirdbrainSettings>>
 
@@ -506,5 +508,172 @@ describe('the dim layer', () => {
     fireEvent.click(screen.getByTestId('tour-next'))
     await screen.findByTestId('tour-ring')
     expect(screen.getByTestId('tour-dim').style.background).toContain('rgba(6, 6, 10, 0)')
+  })
+})
+
+describe('the seeded demo case', () => {
+  const demoCase = { id: 'case-1', name: 'Demo: Nightjar Exchange', isDemo: true }
+  const ownCase = { id: 'case-1', name: 'Operation Kingfisher', isDemo: false }
+  let deleteDemo: ReturnType<typeof vi.fn>
+  let list: ReturnType<typeof vi.fn>
+
+  function installWithCases(cases: Array<Record<string, unknown>>, settings: BirdbrainSettings) {
+    updated = []
+    deleteDemo = vi.fn().mockResolvedValue(true)
+    list = vi.fn().mockResolvedValue(cases)
+    fakeBridge({
+      settings: {
+        get: vi.fn().mockResolvedValue(settings),
+        update: vi.fn().mockImplementation((partial: Partial<BirdbrainSettings>) => {
+          updated.push(partial)
+          return Promise.resolve({ ...settings, ...partial })
+        })
+      },
+      cases: { list, deleteDemo },
+      captures: { list: vi.fn().mockResolvedValue([{ id: 'capture-1' }, { id: 'capture-2' }]) }
+    })
+  }
+
+  /**
+   * One step forward. Steps whose anchor is not mounted spend the engine's
+   * retry budget before falling back to a centred card, so each advance waits
+   * for a rendered surface rather than assuming one is already there.
+   */
+  async function clickNext(rerender: () => void) {
+    const button = await screen.findByTestId('tour-next', undefined, { timeout: 3000 })
+    fireEvent.click(button)
+    await act(async () => rerender())
+  }
+
+  /** Walks the case chapter to its last step, which is the one that branches. */
+  async function reachFinalStep(rerender: () => void) {
+    await screen.findByTestId('tour-screen')
+    for (let i = 0; i < 9; i += 1) await clickNext(rerender)
+    await screen.findByTestId('tour-next', undefined, { timeout: 3000 })
+  }
+
+  /**
+   * Every anchor the case chapter rings. Mounting them all keeps the walk to
+   * the last step off the engine's per-step retry budget, which the ten-step
+   * chapter would otherwise spend nine times over.
+   */
+  function anchorWholeChapter() {
+    for (const name of [
+      'nav-captures',
+      'viewertabs',
+      'caseswitcher',
+      'nav-signals',
+      'selectors',
+      'nav-notes',
+      'noteeditor',
+      'nav-overview',
+      'linkmap',
+      'export'
+    ]) {
+      anchor(name)
+    }
+  }
+
+  beforeEach(() => {
+    routerState.caseId = 'case-1'
+    routerState.pathname = '/cases/case-1/overview'
+  })
+
+  it('offers the delete ending only on a demo case', async () => {
+    installWithCases([demoCase], settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } }))
+    anchorWholeChapter()
+    const { rerender } = renderTour()
+    await reachFinalStep(() => rerender(<OnboardingTour />))
+
+    expect(screen.getByTestId('tour-delete-demo')).toBeTruthy()
+    expect(screen.getByTestId('tour-next').textContent).toBe('Keep exploring')
+  })
+
+  it('withholds the delete ending on a case the operator made', async () => {
+    installWithCases([ownCase], settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } }))
+    anchorWholeChapter()
+    const { rerender } = renderTour()
+    await reachFinalStep(() => rerender(<OnboardingTour />))
+
+    // The case chapter fires on whichever case a fresh install opens first, so
+    // an ungated ending would offer one-click deletion of real evidence (#405).
+    expect(screen.queryByTestId('tour-delete-demo')).toBeNull()
+    expect(screen.getByTestId('tour-next').textContent).toBe('Keep exploring')
+  })
+
+  it('deletes the demo case, leaves the case, and closes the tour', async () => {
+    installWithCases([demoCase], settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } }))
+    anchorWholeChapter()
+    const { rerender } = renderTour()
+    await reachFinalStep(() => rerender(<OnboardingTour />))
+
+    fireEvent.click(screen.getByTestId('tour-delete-demo'))
+    await act(async () => rerender(<OnboardingTour />))
+
+    await waitFor(() => expect(deleteDemo).toHaveBeenCalledWith('case-1'))
+    // The case it was touring is gone, so the tour leaves it rather than
+    // sitting on a dead route.
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/' }))
+    // The chapter is closed through its completion write rather than through
+    // the node detaching: the rerenders that drive this walk hold motion's exit
+    // animation open, the same reason the fake-timer test above asserts on
+    // `updated`.
+    await waitFor(() =>
+      expect(updated).toEqual([{ onboardingChapters: { intro: true, case: true } }])
+    )
+  })
+
+  it('leaves the demo case alone when the operator keeps exploring', async () => {
+    installWithCases([demoCase], settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } }))
+    anchorWholeChapter()
+    const { rerender } = renderTour()
+    await reachFinalStep(() => rerender(<OnboardingTour />))
+
+    await clickNext(() => rerender(<OnboardingTour />))
+
+    await waitFor(() =>
+      expect(updated).toEqual([{ onboardingChapters: { intro: true, case: true } }])
+    )
+    // Keep exploring leaves the demo case exactly where it is: an ordinary case
+    // the operator can carry on using.
+    expect(deleteDemo).not.toHaveBeenCalled()
+  })
+
+  it('selects a capture so the viewer-tabs step has something to ring', async () => {
+    installWithCases([demoCase], settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } }))
+    anchorWholeChapter()
+    const { rerender } = renderTour()
+    await screen.findByTestId('tour-screen')
+
+    await clickNext(() => rerender(<OnboardingTour />))
+
+    await waitFor(() => expect(useAppStore.getState().selectedCaptureId).toBe('capture-1'))
+  })
+
+  it('does not clobber a capture the operator already had open', async () => {
+    installWithCases([demoCase], settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } }))
+    useAppStore.getState().setSelectedCaptureId('capture-2')
+    anchorWholeChapter()
+    const { rerender } = renderTour()
+    await screen.findByTestId('tour-screen')
+
+    await clickNext(() => rerender(<OnboardingTour />))
+
+    expect(useAppStore.getState().selectedCaptureId).toBe('capture-2')
+  })
+
+  it('asks the Notes screen to open its composer for the note-editor step', async () => {
+    installWithCases([demoCase], settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } }))
+    const opened = vi.fn()
+    window.addEventListener(NOTE_COMPOSER_EVENT, opened)
+    anchorWholeChapter()
+    const { rerender } = renderTour()
+    await screen.findByTestId('tour-screen')
+
+    // Six Nexts reach the note-editor step; the composer request fires with it.
+    for (let i = 0; i < 6; i += 1) await clickNext(() => rerender(<OnboardingTour />))
+
+    expect(opened).toHaveBeenCalled()
+    window.removeEventListener(NOTE_COMPOSER_EVENT, opened)
   })
 })

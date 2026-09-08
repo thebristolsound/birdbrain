@@ -17,6 +17,18 @@ export type TourChapter = 'intro' | 'ext' | 'case'
 /** The screens a step can pin itself to. */
 export type TourRoute = 'dashboard' | 'overview' | 'captures' | 'signals' | 'notes'
 
+/**
+ * What a step needs the app to do before its anchor can be rung (#405, Q2).
+ *
+ * Two of the case chapter's anchors do not exist under default state: the
+ * viewer tab list is not rendered until a capture is selected, and the note
+ * editor is not mounted until the composer is open. The tour drives both as
+ * step side effects rather than the app auto-selecting on route entry, which
+ * would change behaviour for every operator whether or not they are being
+ * toured.
+ */
+export type TourEffect = 'select-capture' | 'open-note-composer'
+
 export interface TourStep {
   /** The centered welcome card. Only the intro chapter's first step. */
   welcome?: true
@@ -35,49 +47,59 @@ export interface TourStep {
   last?: string
   /** Last step of the case chapter. */
   final?: true
+  /** Run before the anchor is measured. See `TourEffect`. */
+  effect?: TourEffect
 }
 
 /**
- * Two clauses of the mock's copy are dropped here rather than transcribed.
+ * One clause of the mock's copy is still dropped here rather than transcribed.
  *
  * The mock's Browser button opens a simulated Chrome window, which this app has
- * no equivalent of, and its intro promises a seeded demo case that nothing
- * creates. Both were sent back as constraints (#707) rather than built, so the
- * copy must not promise either.
+ * no equivalent of, so the copy must not promise it (#707). The other dropped
+ * clause — an intro promising a seeded demo case — is restored below, because
+ * #405 ships the demo case it promises.
  */
 const EXT_BODY_INTRO =
   'Right-click any page in Chrome to log it to your active case. Install the extension ' +
-  'below, then start your first investigation.'
+  'below, then open the demo case waiting on your dashboard.'
 
 const EXT_BODY_REPLAY =
   'Right-click any page in Chrome to log it to your active case. Install it below — the ' +
   'folder ships inside this Birdbrain build.'
 
-function extStep(chapter: 'intro' | 'ext'): TourStep {
+const EXT_BODY_NO_DEMO =
+  'Right-click any page in Chrome to log it to your active case. Install the extension ' +
+  'below, then start your first investigation.'
+
+function extStep(chapter: 'intro' | 'ext', demoCase: boolean): TourStep {
+  const introBody = demoCase ? EXT_BODY_INTRO : EXT_BODY_NO_DEMO
   return {
     target: 'browser',
     route: 'dashboard',
     title: 'The extension does the capturing',
-    body: chapter === 'ext' ? EXT_BODY_REPLAY : EXT_BODY_INTRO,
+    body: chapter === 'ext' ? EXT_BODY_REPLAY : introBody,
     install: true,
     last: 'Done'
   }
 }
 
-const caseSteps = (): TourStep[] => [
+const caseSteps = (demoCase: boolean): TourStep[] => [
   {
     screen: 'Captures',
     route: 'captures',
     target: 'nav-captures',
-    body:
-      'The evidence locker. Every page you log lands in the list on the left; the viewer on ' +
-      'the right shows exactly what was saved, pixel for pixel.'
+    body: demoCase
+      ? 'The evidence locker. This demo case already holds three captures; every page you log ' +
+        'lands in the same list, and the viewer on the right shows exactly what was saved.'
+      : 'The evidence locker. Every page you log lands in the list on the left; the viewer on ' +
+        'the right shows exactly what was saved, pixel for pixel.'
   },
   {
     target: 'viewertabs',
     route: 'captures',
     title: 'Four views of every capture',
-    body: 'Screenshot, full page, extracted text, and archive.org snapshots — one tab each.'
+    body: 'Screenshot, full page, extracted text, and archive.org snapshots — one tab each.',
+    effect: 'select-capture'
   },
   {
     target: 'caseswitcher',
@@ -121,7 +143,8 @@ const caseSteps = (): TourStep[] => [
       'Type @ to mention a capture or selector, # for a tag. Mentions become live links in ' +
       'both directions.',
     kbd: '@ #',
-    kbdNote: 'work in any note'
+    kbdNote: 'work in any note',
+    effect: 'open-note-composer'
   },
   {
     screen: 'Overview',
@@ -143,31 +166,43 @@ const caseSteps = (): TourStep[] => [
     target: 'export',
     route: 'overview',
     title: 'Court-ready exports',
-    body:
-      'Every artifact is hashed on capture and sealed in a signed manifest — export the whole ' +
-      'case or just a selection, cover sheet included.',
+    body: demoCase
+      ? 'Every artifact is hashed on capture and sealed in a signed manifest — and a package ' +
+        'built from this demo case says so on its cover sheet. Delete it when you are done, or ' +
+        'keep it and carry on.'
+      : 'Every artifact is hashed on capture and sealed in a signed manifest — export the whole ' +
+        'case or just a selection, cover sheet included.',
     final: true
   }
 ]
 
-const introSteps = (): TourStep[] => [
+const introSteps = (demoCase: boolean): TourStep[] => [
   { welcome: true },
   {
     target: 'newcase',
     route: 'dashboard',
     title: 'Everything lives in a case',
-    body:
-      'Start one per investigation — captures, selectors, notes, and exports stay scoped to it.',
+    body: demoCase
+      ? 'Start one per investigation — captures, selectors, notes, and exports stay scoped to ' +
+        'it. A worked demo case is already here to look through.'
+      : 'Start one per investigation — captures, selectors, notes, and exports stay scoped to it.',
     kbd: accelerator('N', { join: ' ' }),
     kbdNote: 'starts one from anywhere'
   },
-  extStep('intro')
+  extStep('intro', demoCase)
 ]
 
-export function tourSteps(chapter: TourChapter): TourStep[] {
-  if (chapter === 'ext') return [extStep('ext')]
-  if (chapter === 'intro') return introSteps()
-  return caseSteps()
+/**
+ * `demoCase` says whether the seeded demonstration case is in play — for the
+ * case chapter, that the open case IS it; for the intro, that one exists on the
+ * dashboard. Copy that names the demo case is written only when it is there, so
+ * an install whose fixture failed to import is never told to go and look at it.
+ */
+export function tourSteps(chapter: TourChapter, opts?: { demoCase?: boolean }): TourStep[] {
+  const demoCase = opts?.demoCase ?? false
+  if (chapter === 'ext') return [extStep('ext', demoCase)]
+  if (chapter === 'intro') return introSteps(demoCase)
+  return caseSteps(demoCase)
 }
 
 /** Steps that render a coach mark, i.e. everything the mark counter counts. */

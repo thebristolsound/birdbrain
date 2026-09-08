@@ -46,6 +46,7 @@ import {
   runExhibitBackfill,
   THUMBNAIL_DERIVATION
 } from '@main/services/exhibitBackfill'
+import { renderThumbnail } from '@main/services/thumbnails'
 import { logger } from '@main/services/logger'
 import { getCaseInventory, getManifestSnapshot, signerSegments } from '@main/services/exhibits'
 import { verifyCapture, createCaptureLifecycle } from '@main/services/captureLifecycle'
@@ -422,6 +423,13 @@ describe('exhibit model', () => {
       const thumbAbs = defaultCaptureStore.thumbnailPaths(caseId, capture.id).abs
       const onDisk = createHash('sha256').update(readFileSync(thumbAbs)).digest('hex')
       expect(derived.contentHash).toBe(onDisk)
+
+      // The anchored bytes are the ones `renderThumbnail` reproduces from the
+      // same parent screenshot: the backfill and `getThumbnail` share one
+      // pipeline, so a regenerated thumbnail still hashes to what was signed.
+      const parentAbs = defaultCaptureStore.artifactPaths(caseId, capture.id, 'png').abs
+      const rerendered = await renderThumbnail(readFileSync(parentAbs))
+      expect(createHash('sha256').update(rerendered).digest('hex')).toBe(onDisk)
 
       const [entry] = manifestLines(caseDir).filter((line) => line.type === 'derivation')
       expect(entry).toMatchObject({

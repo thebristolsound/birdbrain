@@ -119,17 +119,25 @@ function SelectFolderVisual() {
           </div>
         </div>
       </div>
-      <div className="mt-auto flex items-center gap-2.5 rounded-[10px] border border-emerald-500/20 bg-emerald-500/10 px-3 py-2.5">
-        <img src={extensionIconImg} alt="" className="h-5 w-5 rounded-[5px]" />
+      {/* Chrome after the folder is picked — an illustration, not Birdbrain's own
+          connection state. In live-status green with an "Active" pill it read as
+          the latter, contradicting the real waiting-for-extension status on the
+          same screen (#469), so it is desaturated and labelled as an example. */}
+      <div
+        data-testid="install-step-outcome"
+        className="mt-auto flex items-center gap-2.5 rounded-[10px] border border-dashed border-border-strong bg-surface px-3 py-2.5"
+      >
+        <img src={extensionIconImg} alt="" className="h-5 w-5 rounded-[5px] opacity-70 grayscale" />
         <div className="flex-1">
-          <div className="font-display text-xs font-bold text-text-primary">
+          <div className="font-display text-xs font-bold text-text-secondary">
             Extension installed
           </div>
-          <div className="font-mono text-[10px] text-text-muted">now in your Chrome toolbar</div>
+          <div className="font-mono text-[10px] text-text-faint">
+            how Chrome lists it once loaded
+          </div>
         </div>
-        <span className="flex items-center gap-[5px] rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-[3px] font-mono text-[10px] font-medium text-emerald-500">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-          Active
+        <span className="rounded-full border border-border-strong bg-elevated px-2 py-[3px] font-mono text-[10px] font-medium text-text-muted">
+          Example
         </span>
       </div>
     </div>

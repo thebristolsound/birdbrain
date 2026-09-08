@@ -19,17 +19,31 @@ async function advance(page: Page) {
   await page.locator('[data-testid="tour-next"]').click()
 }
 
+/** The mark on screen is the one named, and it is rung on a real anchor. */
+async function expectAnchoredMark(page: Page, count: string) {
+  await expect(page.locator('[data-testid="tour-count"]')).toContainText(count)
+  await expect(page.locator('[data-testid="tour-mark"]')).toHaveAttribute('data-anchored', 'true')
+}
+
 /**
  * Walks from the chapter's opening screen card to its last mark.
  *
  * Ten steps: four screen cards and six coach marks, interleaved. Two of the
  * marks — the viewer tabs and the note editor — ring surfaces that do not exist
- * under default state, so reaching them at all is the assertion that the tour
- * drives its own side effects.
+ * under default state, so those two are asserted anchored on the way past.
+ * Reaching them is not itself an assertion: a step whose anchor never mounts
+ * falls back to a centred card carrying the same Next button and the same mark
+ * counter, so the walk alone would pass whether or not the side effects fired.
  */
 async function walkToFinalStep(page: Page) {
   await expect(page.locator('[data-testid="tour-screen"]')).toBeVisible()
-  for (let i = 0; i < 9; i += 1) await advance(page)
+  await advance(page)
+  // Anchored only because the step selected a capture (#405, Q2).
+  await expectAnchoredMark(page, '1 of 6')
+  for (let i = 0; i < 5; i += 1) await advance(page)
+  // Anchored only because the step asked Notes to open its composer.
+  await expectAnchoredMark(page, '4 of 6')
+  for (let i = 0; i < 3; i += 1) await advance(page)
   await expect(page.locator('[data-testid="tour-count"]')).toContainText('6 of 6')
 }
 

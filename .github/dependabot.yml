@@ -29,10 +29,11 @@ version: 2
 # docs-build job installs, typechecks and builds it on any PR touching website/, and
 # scripts/audit-check.mjs audits the website tree on every Security run. A bump PR there
 # would not run against less signal, so that argument cannot carry the exclusion.
-# Whether to open /website too is a maintainer decision, left open here and recorded on
-# #1049; weigh it against audit-exceptions.json's live GHSA-f88m-g3jw-g9cj (sharp, tree
-# website, expires 2026-11-03), whose recorded fix is bumping next in this tree — which
-# is what a /website block would propose. All of this governs *version* updates only:
+# Whether to open /website too is a maintainer decision, left open here and tracked on
+# #1347. When that is decided, note that the sharp finding GHSA-f88m-g3jw-g9cj which
+# used to argue for a /website block has cleared upstream: PR #1373 removes its
+# audit-exceptions.json entry and audit-check reports the tree clean on an empty
+# exceptions list. All of this governs *version* updates only:
 # Dependabot security updates are enabled separately and cover both directories.
 #
 # Pre-pass interaction (#488), checked on 2026-09-09 against a live Dependabot PR rather

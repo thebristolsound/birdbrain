@@ -62,7 +62,10 @@
       "output": "dist"
     },
     "files": [
-      "!website/**/*"
+      "out/**/*",
+      "resources/**/*",
+      "package.json",
+      "node_modules/**/*"
     ],
     "publish": [
       {

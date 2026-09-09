@@ -252,6 +252,7 @@ describe('concurrent manual captures on one tab (#379)', () => {
   })
 
   it('falls back to direct DOM cleanup when an orphaned content script cannot be messaged', async () => {
+    const uploadBase = vi.mocked(sendMhtmlCapture).mock.calls.length
     rejectPrepare = true
     dispatch({ type: 'MANUAL_CAPTURE', tabId: TAB.id, caseId: 'case-a' })
     await flush()
@@ -265,7 +266,7 @@ describe('concurrent manual captures on one tab (#379)', () => {
     await flush()
     uploadResolvers[2](UPLOAD_RESULT)
     await flush()
-    expect(vi.mocked(sendMhtmlCapture)).toHaveBeenCalledTimes(3)
+    expect(vi.mocked(sendMhtmlCapture)).toHaveBeenCalledTimes(uploadBase + 1)
     rejectPrepare = false
   })
 

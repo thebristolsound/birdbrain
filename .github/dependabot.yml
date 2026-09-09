@@ -10,10 +10,30 @@ version: 2
 # for a compromised or patched action; an advisory affecting a pinned action will not
 # raise an alert on its own.
 #
-# Deliberately scoped to github-actions. The npm ecosystems are excluded for now: the
-# root tree carries known high-severity advisories that security.yml already tolerates
-# with continue-on-error, and website/ has its own lockfile — opening either to
-# Dependabot is a separate decision.
+# npm version updates cover the root tree only. Re-decided 2026-08-29 against current
+# facts (#1049): the note that used to sit here justified excluding both npm ecosystems
+# on a continue-on-error in security.yml that the file no longer has.
+#
+# What security.yml does now, in its `dependencies` job, is run
+# `node scripts/audit-check.mjs` over both dependency trees. It is enforcing: any high or
+# critical advisory that is neither cleared by an override in pnpm-workspace.yaml /
+# website/pnpm-workspace.yaml nor covered by an unexpired entry in audit-exceptions.json
+# fails the build. It only reports and blocks, though — it never proposes an upgrade,
+# which is what the npm block below adds for the root tree.
+#
+# website/ stays out of version updates. It is an isolated sub-project: its own
+# package.json, pnpm-lock.yaml and pnpm-workspace.yaml (making it a separate workspace
+# root), excluded from the root toolchain (eslint.config.js, pnpm format, the root
+# tsconfigs, build.files), and installed by no CI job except docs.yml — so a bump PR
+# there would run against far less signal than one at the root. This governs *version*
+# updates only: Dependabot security updates are enabled separately and already open
+# grouped npm_and_yarn PRs across both directories.
+#
+# Pre-pass interaction, checked rather than assumed (#488): a Dependabot-triggered
+# workflow gets a read-only GITHUB_TOKEN, so an npm bump PR seeds no `agent/pre-pass`
+# status, exactly as the existing github-actions PRs do not. That is a reason not to
+# make the context a required check, not a blocker here — nothing in
+# .github/workflows/pre-pass-gate.yml changes for this.
 updates:
   - package-ecosystem: github-actions
     directory: '/'
@@ -31,6 +51,24 @@ updates:
       # one needs its own PR and its own green CI run before it goes in. Majors are
       # deliberately left ungrouped for that reason.
       actions:
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: npm
+    directory: '/'
+    schedule:
+      interval: weekly
+    commit-message:
+      # chore(deps) rather than the actions block's 'ci': these are application
+      # dependencies, not CI configuration, and commitlint.config.mjs requires a scope.
+      prefix: 'chore(deps)'
+    groups:
+      # Same shape as the actions group above, and majors are left ungrouped for the
+      # same reason recorded there: one PR and one green CI run each.
+      npm:
         patterns:
           - '*'
         update-types:

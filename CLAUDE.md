@@ -27,6 +27,8 @@ Docs site commands run from `website/` (separate lockfile — see "Documentation
 
 **Run everything on Node 20.** `.nvmrc` and `.mise.toml` pin it, and CI reads `.nvmrc` (`node-version-file`). `engines.node` is only a floor (`>=20.19.0`) — Node 24 satisfies it, so engines will not keep you off the broken version. `.mise.toml` exists because mise ignores `.nvmrc` by default, so shells and agent worktrees would otherwise land on whatever Node is newest. Under Node 24 Electron's postinstall silently fails to extract the binary (extract-zip's promise never settles): install exits 0 but leaves `node_modules/electron/dist` broken, which is what `scripts/ensure-electron.mjs` now backstops. If Electron is mysteriously missing, check `node --version` first.
 
+**Test shell behaviour under `bash -c`, never in the agent tool shell.** Hooks (`.claude/hooks/*.sh`) and workflow `run:` steps are bash, but the tool named `Bash` is not always bash: on the maintainer's machine it is zsh, where unquoted parameter expansion does not word-split, so an argument-splitting check passes there and proves nothing about CI.
+
 ## Architecture
 
 Electron + React 19 + TanStack Router + React Query + Chrome Extension + SQLite (better-sqlite3).

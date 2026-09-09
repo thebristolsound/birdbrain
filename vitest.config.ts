@@ -78,7 +78,12 @@ export default defineConfig({
           lines: 88,
           statements: 88,
           functions: 90,
-          branches: 80
+          // 80 was calibrated against @vitest/coverage-v8 3.x. The 5.x
+          // provider counts branches differently: on the same suite this file
+          // reads 77.22 where it read 89.45, and the whole-repo figure moved
+          // 88.89 -> 76.57. Re-calibrated, not a coverage regression; the rest
+          // of this block still clears its old numbers and is untouched.
+          branches: 74
         },
         'src/main/ipcWrap.ts': {
           lines: 75,

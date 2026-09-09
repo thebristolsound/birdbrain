@@ -2,20 +2,20 @@ import { defineConfig } from 'vitest/config'
 import { resolve } from 'path'
 import react from '@vitejs/plugin-react'
 
+const alias = {
+  '@main': resolve(__dirname, 'src/main'),
+  '@shared': resolve(__dirname, 'src/shared'),
+  '@renderer': resolve(__dirname, 'src/renderer'),
+  '@extension': resolve(__dirname, 'extension/src')
+}
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: {
-      '@main': resolve(__dirname, 'src/main'),
-      '@shared': resolve(__dirname, 'src/shared'),
-      '@renderer': resolve(__dirname, 'src/renderer'),
-      '@extension': resolve(__dirname, 'extension/src')
-    }
+    alias
   },
   test: {
     globals: true,
-    environment: 'node',
-    include: ['tests/**/*.test.{ts,tsx}', 'src/packages/**/tests/**/*.test.{ts,mts,cts,tsx}'],
     coverage: {
       provider: 'v8',
       // 'json' emits coverage-final.json (per-statement hit counts), which
@@ -107,40 +107,36 @@ export default defineConfig({
     },
     projects: [
       {
-        resolve: {
-          alias: {
-            '@main': resolve(__dirname, 'src/main'),
-            '@shared': resolve(__dirname, 'src/shared'),
-            '@renderer': resolve(__dirname, 'src/renderer'),
-            '@extension': resolve(__dirname, 'extension/src')
-          }
-        },
         test: {
           name: 'node',
           environment: 'node',
-          include: ['tests/**/*.test.ts', 'src/packages/**/tests/**/*.test.{ts,mts,cts}'],
-          exclude: ['tests/renderer/**', 'tests/hooks/**'],
+          // Vitest 5 makes inline projects inherit the root config by default.
+          // Keep the node/web split explicit so tests do not leak across
+          // environments when arrays are merged.
+          include: ['tests/**/*.test.{ts,mts,cts}', 'src/packages/**/tests/**/*.test.{ts,mts,cts}'],
+          exclude: [
+            'tests/components/**',
+            'tests/extension/**',
+            'tests/hooks/**',
+            'tests/lib/**',
+            'tests/renderer/**',
+            'tests/setup/jsdom/**'
+          ],
           setupFiles: ['./tests/setup/signing-key.ts']
         }
       },
       {
-        plugins: [react()],
-        resolve: {
-          alias: {
-            '@main': resolve(__dirname, 'src/main'),
-            '@shared': resolve(__dirname, 'src/shared'),
-            '@renderer': resolve(__dirname, 'src/renderer'),
-            '@extension': resolve(__dirname, 'extension/src')
-          }
-        },
         test: {
           name: 'jsdom',
           environment: 'jsdom',
           include: [
-            'tests/components/**/*.test.tsx',
-            'tests/renderer/**/*.test.ts',
-            'tests/hooks/**/*.test.ts',
-            'src/packages/**/tests/**/*.test.tsx'
+            'tests/**/*.test.tsx',
+            'src/packages/**/tests/**/*.test.tsx',
+            'tests/components/**/*.test.{ts,mts,cts}',
+            'tests/extension/**/*.test.{ts,mts,cts}',
+            'tests/hooks/**/*.test.{ts,mts,cts}',
+            'tests/lib/**/*.test.{ts,mts,cts}',
+            'tests/renderer/**/*.test.{ts,mts,cts}'
           ],
           setupFiles: ['./tests/setup/jsdom/layout.ts']
         }

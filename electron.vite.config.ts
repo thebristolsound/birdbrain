@@ -2,6 +2,7 @@ import { resolve } from 'path'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { noInlinedFonts } from './scripts/no-inlined-fonts'
 
 // Removes script-src 'unsafe-inline' from the renderer CSP in production builds
 // only. Dev keeps it because @vitejs/plugin-react injects an inline refresh
@@ -59,8 +60,14 @@ export default defineConfig({
       // Electron's Chromium supports modulepreload natively, so skip Vite's
       // inline polyfill script — that keeps the production HTML free of inline
       // scripts so the strict CSP above holds even if code-splitting is added.
-      modulePreload: { polyfill: false }
+      modulePreload: { polyfill: false },
+      // Emit every asset as a file instead of inlining the small ones. Vite's
+      // default 4096-byte threshold inlined one @fontsource-variable font
+      // subset as a data: URI, which `font-src 'self'` then blocked (#512). The
+      // app loads from the local filesystem, so the extra request costs
+      // nothing measurable and the CSP stays as strict as it was.
+      assetsInlineLimit: 0
     },
-    plugins: [react(), tailwindcss(), strictProdCsp]
+    plugins: [react(), tailwindcss(), strictProdCsp, noInlinedFonts]
   }
 })

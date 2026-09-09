@@ -26,14 +26,19 @@ version: 2
 # pnpm-workspace.yaml (making it a separate workspace root) and sits outside the root
 # toolchain (eslint.config.js, pnpm format, the root tsconfigs, build.files). The
 # ruling's other reason does not. website/ is not installed by docs.yml alone: ci.yml's
-# docs-build job installs, typechecks and builds it on any PR touching website/, and
+# docs-build job installs, typechecks and builds it on a PR touching website/ - though
+# only once `changes` runs, which ci.yml gates on the PR being out of draft or carrying
+# agent-pr or agent-authored, so a human draft does not get it - and
 # scripts/audit-check.mjs audits the website tree on every Security run. A bump PR there
 # would not run against less signal, so that argument cannot carry the exclusion.
 # Whether to open /website too is a maintainer decision, left open here and tracked on
-# #1347. When that is decided, note that the sharp finding GHSA-f88m-g3jw-g9cj which
-# used to argue for a /website block has cleared upstream: PR #1373 removes its
-# audit-exceptions.json entry and audit-check reports the tree clean on an empty
-# exceptions list. All of this governs *version* updates only:
+# #1347. Weigh it against what cleared audit-exceptions.json's sharp entry
+# GHSA-f88m-g3jw-g9cj: not an upstream fix, but merged Dependabot PR #1341 taking next
+# 16.2.12 -> 16.3.3 in the website tree, which is the exact remediation that entry
+# records. That bump also cleared two critical next RCEs and a second high sharp
+# finding, all blocking at the same merge base. A Dependabot bump in /website is
+# therefore the demonstrated fix, which argues for opening it rather than against.
+# PR #1373 removes the now-dead entry. All of this governs *version* updates only:
 # Dependabot security updates are enabled separately and cover both directories.
 #
 # Pre-pass interaction (#488), checked on 2026-09-09 against a live Dependabot PR rather

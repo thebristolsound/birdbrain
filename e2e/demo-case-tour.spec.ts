@@ -112,8 +112,11 @@ test.describe('The demonstration case and its tour', () => {
     await expect(page.locator('[data-testid="tour-welcome"]')).toBeVisible()
     await dismissTour(page)
 
-    // Replay is a renderer act; seeding is latched in settings, so importing a
-    // second demo case would have to be the operator's own explicit choice.
+    // Replay is a renderer act and imports nothing: `seedDemoCaseIfNeeded` has
+    // one caller, startup. The guard that holds there is the `is_demo` probe in
+    // the database (`caseRepo.hasDemoCase`, #1301), not the settings latch —
+    // the latch can fail to persist and the probe still answers, as long as the
+    // case seeded above has not been deleted.
     expect(await listCases(page)).toHaveLength(1)
 
     await page.reload()

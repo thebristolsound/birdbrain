@@ -159,6 +159,9 @@ describe('demo case seeding', () => {
     // `isFreshInstall` is never cleared, so before the database guard existed
     // every launch imported another full copy. Settings point at a directory
     // that does not exist, so the write throws for real rather than by a mock.
+    // The bound, since the title reads absolute: the guard is a probe, so it
+    // holds only while a demo case is present. Delete the one seeded here on
+    // such an install and the next launch seeds another (#1301).
     initSettings(join(tempDir, 'never-created'))
 
     const first = await seedDemoCaseIfNeeded()

@@ -264,7 +264,11 @@ export interface BirdbrainSettings {
   // fresh install auto-fires a tour chapter; upgrades never do.
   isFreshInstall: boolean
   // Latched once the bundled demonstration Case Archive has been offered to
-  // this install (#405). Seeding never repeats on its own.
+  // this install (#405). Not a guarantee on its own: the settings write can
+  // fail, and what holds then is the `is_demo` probe in the database — a probe
+  // of the current state, not a second latch, so on such an install deleting
+  // the demo case brings a fresh one back next launch, and again after each
+  // later deletion (#1301). The full statement is on `seedDemoCaseIfNeeded`.
   demoCaseSeeded: boolean
   // Update delivery. `releaseChannel` selects the GitHub release track;
   // `autoCheckForUpdates` gates the background check schedule (manual checks are

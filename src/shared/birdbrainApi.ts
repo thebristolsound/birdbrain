@@ -99,6 +99,9 @@ export interface BirdbrainAPI {
     create(params: CreateCaseParams): Promise<Case>
     update(params: UpdateCaseParams): Promise<Case | undefined>
     delete(id: string): Promise<boolean>
+    // Removes the seeded demonstration case and its artifacts (#405). False
+    // when the case is not flagged as a demonstration case.
+    deleteDemo(id: string): Promise<boolean>
     exportArchive(caseId: string): Promise<ArchiveExportResult>
     inspectArchive(): Promise<ArchiveInspectReport | null>
     importArchive(archivePath: string, overrideTamper: boolean): Promise<{ newCaseId: string }>

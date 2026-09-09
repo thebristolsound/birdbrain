@@ -21,6 +21,7 @@
     "build:extension": "vite build --config extension/vite.config.ts && cross-env BUILD_TARGET=content vite build --config extension/vite.config.ts",
     "dev:extension": "node scripts/dev-extension.mjs",
     "build:verifier": "node scripts/build-verifier.mjs",
+    "build:demo-fixture": "node scripts/build-demo-fixture.mjs",
     "test": "cross-env ELECTRON_RUN_AS_NODE=1 electron ./node_modules/vitest/vitest.mjs run",
     "test:watch": "cross-env ELECTRON_RUN_AS_NODE=1 electron ./node_modules/vitest/vitest.mjs",
     "test:coverage": "cross-env ELECTRON_RUN_AS_NODE=1 electron ./node_modules/vitest/vitest.mjs run --coverage",
@@ -81,6 +82,10 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "resources/demo-case.birdbrain",
+        "to": "demo-case.birdbrain"
       }
     ],
     "win": {

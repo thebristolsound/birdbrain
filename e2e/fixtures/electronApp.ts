@@ -9,6 +9,16 @@ type ElectronFixtures = {
   page: Page
 }
 
+type ElectronOptions = {
+  /**
+   * Launch with no settings.json at all, so the app latches `isFreshInstall`
+   * for itself and runs its first-launch work — which since #405 includes
+   * seeding the bundled demonstration case. Off by default: the pre-written
+   * settings.json is what gets every other spec past the operator-name gate.
+   */
+  freshInstall: boolean
+}
+
 // Filenames, encodings and algorithm mirror initSigningKey in
 // src/main/services/signingKey.ts: the app reads signing-key.pem back through
 // unwrapPrivateKey, which returns any value without the 'enc:' prefix
@@ -23,15 +33,21 @@ async function seedSigningKey(userDataDir: string): Promise<void> {
   await writeFile(join(userDataDir, 'signing-public-key.pem'), publicKey, 'utf-8')
 }
 
-export const test = base.extend<ElectronFixtures>({
-  electronApp: async ({}, use) => {
+export const test = base.extend<ElectronFixtures & ElectronOptions>({
+  freshInstall: [false, { option: true }],
+
+  electronApp: async ({ freshInstall }, use) => {
     const tempDir = await mkdtemp(join(tmpdir(), 'birdbrain-test-'))
 
     // Seed operator name so the #116 capture gate does not reject test captures.
-    await writeFile(
-      join(tempDir, 'settings.json'),
-      JSON.stringify({ operatorName: 'E2E Test Operator' })
-    )
+    // Skipped for a fresh-install spec: writing the file at all is what tells
+    // initSettings this install has been launched before.
+    if (!freshInstall) {
+      await writeFile(
+        join(tempDir, 'settings.json'),
+        JSON.stringify({ operatorName: 'E2E Test Operator' })
+      )
+    }
 
     // Seed a plaintext signing keypair so initSigningKey takes its existing-key
     // branch and returns before the #414 acknowledgement gate. Playwright's

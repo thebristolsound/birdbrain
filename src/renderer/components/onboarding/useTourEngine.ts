@@ -49,6 +49,18 @@ const CASE_ROUTE_PATHS = {
   notes: '/cases/$caseId/notes'
 } as const satisfies Record<Exclude<TourRoute, 'dashboard'>, string>
 
+/**
+ * What the tour knows about the seeded demonstration case (#405). Optional so
+ * the engine still works for callers that have not resolved it yet; absent
+ * reads as "no demo case", which is the copy that promises nothing.
+ */
+export interface DemoContext {
+  /** A demo case exists somewhere in this install. */
+  hasDemoCase: boolean
+  /** The case the case chapter is touring is that demo case. */
+  currentCaseIsDemo: boolean
+}
+
 export interface TourEngine {
   chapter: TourChapter | null
   stepIndex: number
@@ -89,7 +101,7 @@ function viewport(): { width: number; height: number } {
  * `caseId` is the case the tour navigates into for the case chapter's steps.
  * Without one those steps have nowhere to go, so the chapter cannot run.
  */
-export function useTourEngine(caseId: string | null): TourEngine {
+export function useTourEngine(caseId: string | null, demoContext?: DemoContext): TourEngine {
   const [state, setState] = useState<TourState | null>(null)
   const [rect, setRect] = useState<TourRect | null>(null)
   const [anchorMissing, setAnchorMissing] = useState(false)
@@ -98,7 +110,22 @@ export function useTourEngine(caseId: string | null): TourEngine {
   const { data: settings } = useQuery(settingsQueryOptions)
   const { update } = useSettingsMutations()
 
-  const steps = state ? tourSteps(state.chapter) : []
+  // Resolved per chapter, because the two chapters ask different questions of
+  // the demo case: the case chapter asks whether the case it is touring IS the
+  // demo case, and the intro asks only whether one exists to point at.
+  const demoFor = useCallback(
+    (chapter: TourChapter): boolean =>
+      chapter === 'case'
+        ? Boolean(demoContext?.currentCaseIsDemo)
+        : Boolean(demoContext?.hasDemoCase),
+    [demoContext?.currentCaseIsDemo, demoContext?.hasDemoCase]
+  )
+  const stepsFor = useCallback(
+    (chapter: TourChapter): TourStep[] => tourSteps(chapter, { demoCase: demoFor(chapter) }),
+    [demoFor]
+  )
+
+  const steps = state ? stepsFor(state.chapter) : []
   const step = state ? (steps[state.step] ?? null) : null
   const target = step?.target
 
@@ -195,14 +222,14 @@ export function useTourEngine(caseId: string | null): TourEngine {
       }
       stateRef.current = opening
       setState(opening)
-      routeTo(tourSteps(chapter)[0]?.route)
+      routeTo(stepsFor(chapter)[0]?.route)
     },
-    [caseId, persistCompletion, routeTo]
+    [caseId, persistCompletion, routeTo, stepsFor]
   )
 
   const next = useCallback(() => {
     if (!state) return
-    const chapterSteps = tourSteps(state.chapter)
+    const chapterSteps = stepsFor(state.chapter)
     const index = nextStepIndex(chapterSteps, state.step)
     if (index === null) {
       close(state.chapter, state.auto, 'finished')
@@ -212,7 +239,7 @@ export function useTourEngine(caseId: string | null): TourEngine {
     setAnchorMissing(false)
     setState({ ...state, step: index, installOpen: false })
     routeTo(chapterSteps[index].route)
-  }, [close, routeTo, state])
+  }, [close, routeTo, state, stepsFor])
 
   const skip = useCallback(() => {
     if (!state) return
@@ -307,12 +334,12 @@ export function useTourEngine(caseId: string | null): TourEngine {
     if (!state || state.chapter !== 'case') return
     const route = routeOfPath(pathname)
     if (!route) return
-    const index = jumpAheadIndex(tourSteps(state.chapter), state.step, route)
+    const index = jumpAheadIndex(stepsFor(state.chapter), state.step, route)
     if (index === null) return
     setRect(null)
     setAnchorMissing(false)
     setState({ ...state, step: index, installOpen: false })
-  }, [pathname, state])
+  }, [pathname, state, stepsFor])
 
   return {
     chapter: state?.chapter ?? null,

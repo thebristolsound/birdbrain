@@ -366,6 +366,34 @@ export function collectCaptureTagsForCase(caseId: string): Record<string, unknow
     .all(caseId) as Record<string, unknown>[]
 }
 
+/**
+ * Deletes any of `tagIds` that no Exhibit and no Note still carries.
+ *
+ * For the demonstration case's cleanup path (#405). Tags are global: deleting
+ * a case cascades its `exhibit_tags` and `note_tags` links but leaves the tag
+ * rows themselves in every picker. The remaining links are counted rather than
+ * the ids taken on trust, because the archive import merges tags by name — the
+ * demo's tag may BE one the operator already had, or one they have since put
+ * on their own evidence. Returns how many rows were removed.
+ */
+export function deleteUnusedTags(tagIds: string[]): number {
+  if (tagIds.length === 0) return 0
+  const db = getDb()
+  const stillUsed = db.prepare(
+    `SELECT 1 FROM exhibit_tags WHERE tag_id = ?
+     UNION ALL
+     SELECT 1 FROM note_tags WHERE tag_id = ?
+     LIMIT 1`
+  )
+  const remove = db.prepare('DELETE FROM tags WHERE id = ?')
+  let removed = 0
+  for (const id of tagIds) {
+    if (stillUsed.get(id, id) !== undefined) continue
+    removed += remove.run(id).changes
+  }
+  return removed
+}
+
 export function findTagIdByNameExact(name: string): string | undefined {
   const hit = getDb().prepare('SELECT id FROM tags WHERE name = ?').get(name) as
     { id: string } | undefined

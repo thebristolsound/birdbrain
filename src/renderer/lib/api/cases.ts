@@ -83,6 +83,31 @@ export function useCasesMutations() {
     meta: { action: 'delete case' }
   })
 
+  // The tour's "Delete demo case" ending (#405). Separate from `remove`
+  // because it also removes the case's artifacts from disk, which the ordinary
+  // delete deliberately does not; main refuses any case that is not flagged as
+  // the demonstration case.
+  const removeDemo = useMutation({
+    // That refusal is a resolved `false`, not a rejection, so left as-is it
+    // reaches onSuccess and a refused delete is indistinguishable from a
+    // completed one — on a path that also removes artifacts from disk. Raised
+    // here it takes the ordinary mutation failure toast instead.
+    mutationFn: async (id: string) => {
+      const removed = await window.birdbrain.cases.deleteDemo(id)
+      if (!removed) throw new Error('Not a demonstration case')
+      return removed
+    },
+    // Tags too, unlike the ordinary delete: this path also drops the demo's own
+    // tag rows, and tags are global, so a picker still holding the cached list
+    // would offer one whose row is gone and fail its foreign-key write.
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.cases }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.tags })
+      ]),
+    meta: { action: 'delete demo case' }
+  })
+
   const exportArchive = useMutation({
     mutationFn: (caseId: string) => window.birdbrain.cases.exportArchive(caseId),
     meta: { action: 'export case archive' }
@@ -95,5 +120,5 @@ export function useCasesMutations() {
     meta: { action: 'import case archive' }
   })
 
-  return { create, update, remove, exportArchive, importArchive }
+  return { create, update, remove, removeDemo, exportArchive, importArchive }
 }

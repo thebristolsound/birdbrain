@@ -165,6 +165,12 @@ const CODE_LABELS: Record<LogCode, string> = {
   'signingKey.generation_declined': 'Birdbrain quit — the signing key warning was not acknowledged',
   'settings.key_protection_state_unreadable': "Couldn't read saved key-protection state",
   'settings.fresh_install_seed_failed': "Couldn't save initial settings",
+  'demoCase.seeded': 'Added the demonstration case',
+  'demoCase.fixture_missing': 'The demonstration case is not bundled with this build',
+  'demoCase.seed_failed': "Couldn't add the demonstration case",
+  'demoCase.latch_failed': "Couldn't record that the demonstration case was set up",
+  'demoCase.artifact_cleanup_failed':
+    "The demonstration case was removed, but its files couldn't be deleted",
   'exhibits.backfill_failed': "Couldn't finish the exhibit migration for a case"
 }
 

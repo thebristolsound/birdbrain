@@ -87,6 +87,24 @@ describe('sessionService — state', () => {
     expect(sessionChanges.length).toBe(before)
   })
 
+  it('deactivating clears the case and the recording flag, and notifies', () => {
+    const { service, sessionChanges } = setup()
+    service.activateCase('case-1')
+    service.start()
+    service.touchExtension()
+    service.deactivateCase()
+
+    expect(service.snapshot()).toMatchObject({ activeCaseId: null, sessionActive: false })
+    expect(sessionChanges.at(-1)).toEqual({
+      sessionActive: false,
+      activeCaseId: null,
+      captureCount: 0
+    })
+    // Not `reset()`: the extension is still there, it just has nowhere to
+    // record to.
+    expect(service.isExtensionConnected()).toBe(true)
+  })
+
   it('reset returns every field to its initial value', () => {
     const { service } = setup()
     service.activateCase('case-1')

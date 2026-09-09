@@ -74,6 +74,7 @@ const settings = {
   tooltipsSeen: {},
   onboardingChapters: {},
   isFreshInstall: false,
+  demoCaseSeeded: false,
   releaseChannel: 'stable',
   autoCheckForUpdates: false
 } satisfies BirdbrainSettings

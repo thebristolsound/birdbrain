@@ -60,6 +60,7 @@ export const IPC_CHANNELS = {
   CASES_CREATE: 'cases:create',
   CASES_UPDATE: 'cases:update',
   CASES_DELETE: 'cases:delete',
+  CASES_DELETE_DEMO: 'cases:deleteDemo',
   CASES_EXPORT_ARCHIVE: 'cases:exportArchive',
   CASES_INSPECT_ARCHIVE: 'cases:inspectArchive',
   CASES_IMPORT_ARCHIVE: 'cases:importArchive',
@@ -729,6 +730,11 @@ export interface IpcInvokeContract {
   'cases:create': { args: [params: CreateCaseParams]; result: Case }
   'cases:update': { args: [params: UpdateCaseParams]; result: Case | undefined }
   'cases:delete': { args: [id: string]; result: boolean }
+  // Removes the seeded demonstration case AND its artifacts (#405, W19).
+  // Separate from cases:delete, which leaves the case directory alone because
+  // that is the right default for real evidence. Refuses any case that is not
+  // flagged `is_demo`, returning false.
+  'cases:deleteDemo': { args: [id: string]; result: boolean }
   'cases:exportArchive': { args: [caseId: string]; result: ArchiveExportResult }
   'cases:inspectArchive': { args: []; result: ArchiveInspectReport | null }
   'cases:importArchive': {

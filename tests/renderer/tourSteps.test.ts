@@ -284,3 +284,72 @@ describe('accelerator hints', () => {
     expect(kbdOf('case')).toEqual(['⌘K', '@ #'])
   })
 })
+
+// #405. The demo case is seeded, not guaranteed: a build shipping without the
+// fixture, or an import that failed, leaves an install with no demo case at
+// all. Copy that names one is therefore conditional, and the marks the tour
+// walks are the same either way.
+describe('copy that names the seeded demo case', () => {
+  function bodies(chapter: TourChapter, demoCase: boolean): string[] {
+    return tourSteps(chapter, { demoCase })
+      .map((step) => step.body)
+      .filter((body): body is string => body !== undefined)
+  }
+
+  // A unit assertion on the step list, and nothing more: on a fresh install the
+  // case chapter displaces the whole intro chapter before any of these bodies
+  // renders, so today the only operator who reads them is one replaying the
+  // intro from the palette or Settings → About. #1296 owns that ordering.
+  it('promises a demo case in the intro only when one exists', () => {
+    const withDemo = bodies('intro', true).join(' ')
+    const without = bodies('intro', false).join(' ')
+
+    expect(withDemo).toContain('demo case')
+    expect(without).not.toContain('demo case')
+  })
+
+  it('names the demo case in the case chapter only when it is the case being toured', () => {
+    expect(bodies('case', true).join(' ')).toContain('demo case')
+    expect(bodies('case', false).join(' ')).not.toContain('demo case')
+  })
+
+  it('names the delete ending in the final step copy when the case is a demo', () => {
+    const final = tourSteps('case', { demoCase: true }).at(-1)
+    expect(final?.final).toBe(true)
+    expect(final?.body).toContain('Delete it')
+  })
+
+  it('defaults to promising nothing', () => {
+    expect(tourSteps('intro')).toEqual(tourSteps('intro', { demoCase: false }))
+    expect(tourSteps('case')).toEqual(tourSteps('case', { demoCase: false }))
+    expect(tourSteps('ext')).toEqual(tourSteps('ext', { demoCase: false }))
+  })
+
+  it('walks the same six marks and four screens either way', () => {
+    for (const demoCase of [true, false]) {
+      const steps = tourSteps('case', { demoCase })
+      expect(markSteps(steps)).toHaveLength(6)
+      expect(screenSteps(steps)).toHaveLength(4)
+    }
+  })
+})
+
+// #405, Q2. Two anchors do not exist under default state, so their steps carry
+// the side effect that brings them into being.
+describe('step side effects', () => {
+  it('are declared on exactly the two steps whose anchors are not mounted', () => {
+    const withEffects = tourSteps('case')
+      .filter((step) => step.effect)
+      .map((step) => [step.target, step.effect])
+
+    expect(withEffects).toEqual([
+      ['viewertabs', 'select-capture'],
+      ['noteeditor', 'open-note-composer']
+    ])
+  })
+
+  it('leaves the other chapters free of them', () => {
+    expect(tourSteps('intro').some((step) => step.effect)).toBe(false)
+    expect(tourSteps('ext').some((step) => step.effect)).toBe(false)
+  })
+})

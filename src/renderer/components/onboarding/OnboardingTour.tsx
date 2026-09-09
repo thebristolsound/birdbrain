@@ -1,13 +1,17 @@
-import { useEffect, useRef, useState } from 'react'
-import { useParams, useRouterState } from '@tanstack/react-router'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useParams, useRouterState } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'motion/react'
 import { settingsQueryOptions } from '@renderer/lib/api/settings'
+import { casesQueryOptions, useCasesMutations } from '@renderer/lib/api/cases'
+import { capturesQueryOptions } from '@renderer/lib/api/captures'
 import { presets } from '@renderer/lib/motion'
+import { useAppStore } from '@renderer/stores/appStore'
 import { useTourEngine } from '@renderer/components/onboarding/useTourEngine'
 import { shouldAutoFire } from '@renderer/components/onboarding/tourSteps'
 import { dimOpacity, type Viewport } from '@renderer/components/onboarding/tourGeometry'
 import { TOUR_EVENT, type TourEventDetail } from '@renderer/components/onboarding/startTour'
+import { openNoteComposer } from '@renderer/components/onboarding/tourEffects'
 import { WelcomeCard } from '@renderer/components/onboarding/WelcomeCard'
 import { CoachMark } from '@renderer/components/onboarding/CoachMark'
 import { ScreenCard } from '@renderer/components/onboarding/ScreenCard'
@@ -25,10 +29,24 @@ function readViewport(): Viewport {
  */
 export function OnboardingTour() {
   const { data: settings } = useQuery(settingsQueryOptions)
+  const { data: cases = [] } = useQuery(casesQueryOptions)
   const params = useParams({ strict: false }) as Record<string, string | undefined>
   const caseId = params.caseId ?? null
   const pathname = useRouterState({ select: (s) => s.location.pathname })
-  const engine = useTourEngine(caseId)
+  const navigate = useNavigate()
+  const { removeDemo } = useCasesMutations()
+
+  // The seeded demonstration case (#405). Read off the cases list rather than a
+  // second per-case query so both questions are answered from one cache entry.
+  const demoContext = useMemo(
+    () => ({
+      hasDemoCase: cases.some((c) => c.isDemo),
+      currentCaseIsDemo: cases.some((c) => c.id === caseId && c.isDemo)
+    }),
+    [cases, caseId]
+  )
+
+  const engine = useTourEngine(caseId, demoContext)
   const [viewport, setViewport] = useState<Viewport>(readViewport)
 
   const { start } = engine
@@ -72,8 +90,63 @@ export function OnboardingTour() {
     start('case', { auto: true })
   }, [caseId, pathname, settings, start])
 
-  const { step, steps, stepIndex, rect, anchorMissing, installOpen, next, skip, toggleInstall } =
-    engine
+  const {
+    chapter,
+    step,
+    steps,
+    stepIndex,
+    rect,
+    anchorMissing,
+    installOpen,
+    next,
+    skip,
+    toggleInstall
+  } = engine
+
+  const { data: captures = [] } = useQuery({
+    ...capturesQueryOptions(caseId ?? ''),
+    enabled: Boolean(caseId) && step?.effect === 'select-capture'
+  })
+  const setSelectedCaptureId = useAppStore((s) => s.setSelectedCaptureId)
+
+  // Step side effects (#405, Q2). Keyed on the step the tour is showing, so a
+  // re-render never re-runs one, and scoped to the tour: nothing here happens
+  // to an operator who is not being toured.
+  const effect = step?.effect
+  const firstCaptureId = captures[0]?.id
+  useEffect(() => {
+    if (!effect) return
+    if (effect === 'select-capture') {
+      // Read imperatively rather than subscribed: this is a do-not-clobber
+      // guard on the capture the operator already has open, not a condition the
+      // step should re-run on when the selection later changes.
+      if (!useAppStore.getState().selectedCaptureId && firstCaptureId) {
+        setSelectedCaptureId(firstCaptureId)
+      }
+      return
+    }
+    openNoteComposer()
+  }, [chapter, stepIndex, effect, firstCaptureId, setSelectedCaptureId])
+
+  // The final step's "Delete demo case" ending (#405, Q1/W19). Offered only on
+  // the seeded demo case, because the case chapter fires on whichever case a
+  // fresh install opens first — ungated it would offer one-click deletion of an
+  // operator's own case, artifacts included.
+  // Leaving the case is conditional on it actually having gone: main refuses
+  // anything not flagged `is_demo`, and `removeDemo` raises that refusal so it
+  // lands on the failure toast rather than in onSuccess. Closing the tour is
+  // not conditional — the operator picked an ending either way, and a tour that
+  // stayed open on a failed delete would trap them on its final step.
+  const deleteDemo = useCallback(() => {
+    if (!caseId) return
+    removeDemo.mutate(caseId, {
+      onSuccess: () => {
+        void navigate({ to: '/' })
+      }
+    })
+    next()
+  }, [caseId, navigate, next, removeDemo])
+  const onDeleteDemo = demoContext.currentCaseIsDemo ? deleteDemo : undefined
 
   const kind = step ? (step.welcome ? 'welcome' : step.screen ? 'screen' : 'mark') : null
   // A measured rect means the ring's own 100vmax spread shadow is dimming the
@@ -116,6 +189,7 @@ export function OnboardingTour() {
               onNext={next}
               onSkip={skip}
               onToggleInstall={toggleInstall}
+              onDeleteDemo={onDeleteDemo}
             />
           ) : null}
         </motion.div>

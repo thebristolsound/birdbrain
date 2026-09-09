@@ -433,6 +433,74 @@ describe('SignalDetailRail rescan (#829)', () => {
   })
 })
 
+describe('SignalDetailRail colour picker (#472)', () => {
+  const swatches = () => screen.getAllByRole('button', { name: /^Set color/ })
+
+  // A hex reaches a screen reader as its characters, so "#22c55e" named the
+  // swatch no better than the empty label the harness found.
+  it('names every swatch by its colour word rather than its hex', () => {
+    renderRail(tagSignal)
+
+    expect(swatches().map((button) => button.getAttribute('aria-label'))).toEqual([
+      'Set color Amber',
+      'Set color Red',
+      'Set color Green',
+      'Set color Blue',
+      'Set color Purple',
+      'Set color Pink',
+      'Set color Teal',
+      'Set color Orange'
+    ])
+  })
+
+  it('groups the swatches under the visible Color heading', () => {
+    renderRail(tagSignal)
+
+    expect(screen.getByRole('group', { name: 'Color' })).toBeTruthy()
+  })
+
+  it('exposes the tag colour as the one pressed swatch', () => {
+    renderRail(tagSignal)
+
+    const pressed = screen.getAllByRole('button', { name: /^Set color/, pressed: true })
+    expect(pressed.map((button) => button.getAttribute('aria-label'))).toEqual(['Set color Green'])
+    expect(screen.getAllByRole('button', { name: /^Set color/, pressed: false })).toHaveLength(7)
+  })
+
+  // aria-pressed alone leaves a sighted operator guessing, so the ring is the
+  // other half of the same claim.
+  it('rings the selected swatch and no other', () => {
+    renderRail(tagSignal)
+
+    const ringed = swatches().filter((button) => button.style.boxShadow !== 'none')
+    expect(ringed).toHaveLength(1)
+    expect(ringed[0].getAttribute('aria-label')).toBe('Set color Green')
+  })
+
+  it('moves the pressed state when the tag takes another colour', () => {
+    const { rerenderWith } = renderRail(tagSignal)
+
+    act(() => rerenderWith({ ...tagSignal, color: '#f97316' }))
+
+    const pressed = screen.getAllByRole('button', { name: /^Set color/, pressed: true })
+    expect(pressed.map((button) => button.getAttribute('aria-label'))).toEqual(['Set color Orange'])
+  })
+
+  it('writes the colour its name promises', async () => {
+    const update = vi.fn(async () => ({ ...tagSignal, color: '#3b82f6' }))
+    fakeBridge({
+      captures: { list: vi.fn(async () => captures), getContent: vi.fn(async () => null) },
+      selectors: { matchingCaptures: vi.fn(async () => []) },
+      tags: { update }
+    })
+    renderRail(tagSignal)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Set color Blue' }))
+
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ id: 't1', color: '#3b82f6' }))
+  })
+})
+
 describe('SignalDetailRail merge (#828)', () => {
   it('offers Merge into… for a tag and not for a selector', () => {
     renderRail(tagSignal)

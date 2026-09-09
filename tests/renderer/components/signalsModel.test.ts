@@ -12,7 +12,8 @@ import {
   parseSelectorInput,
   signalCountLabel,
   slugifyTagName,
-  TAG_PALETTE
+  TAG_PALETTE,
+  TAG_PALETTE_LABELS
 } from '@renderer/components/signals/signalsModel'
 
 const selector = (over: Partial<Selector> = {}): Selector => ({
@@ -82,6 +83,20 @@ describe('buildTagSignals', () => {
     const [signal] = buildTagSignals([tag()], { t1: 3 }, { t1: ['c1'] })
 
     expect(signal).toMatchObject({ kind: 'tag', count: 3, sub: '', captureIds: ['c1'] })
+  })
+})
+
+// Two hand-maintained lists of the same eight colours. The detail rail draws
+// TAG_PALETTE_LABELS and compares its values against a tag colour that came
+// from TAG_PALETTE (#472), so a drift between them silently unnames a swatch or
+// leaves the selected one unmarked.
+describe('TAG_PALETTE_LABELS', () => {
+  it('names the palette in the palette order, entry for entry', () => {
+    expect(TAG_PALETTE_LABELS.map(({ value }) => value)).toEqual([...TAG_PALETTE])
+  })
+
+  it('gives every swatch a word rather than a hex', () => {
+    for (const { label } of TAG_PALETTE_LABELS) expect(label).toMatch(/^[A-Z][a-z]+$/)
   })
 })
 

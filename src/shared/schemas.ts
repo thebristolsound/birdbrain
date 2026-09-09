@@ -856,6 +856,14 @@ export const BirdbrainSettingsSchema = z.object({
   // before this release loads unchanged.
   onboardingChapters: z.record(z.string(), z.boolean()).optional().default({}),
   isFreshInstall: z.boolean().optional().default(false),
+  // Latched once the bundled demonstration Case Archive has been offered to
+  // this install (#405), whether the import succeeded or not, so a build with a
+  // broken fixture does not retry the same missing file on every launch. Read
+  // by `seedDemoCaseIfNeeded` and nowhere else, and that has one caller —
+  // startup. Replaying the tour imports nothing. Not the only thing standing
+  // between an install and a second copy either: this write can fail, and the
+  // `is_demo` probe in the database is what holds when it does (#1301).
+  demoCaseSeeded: z.boolean().optional().default(false),
   releaseChannel: z.enum(['stable', 'beta']).optional().default('stable'),
   autoCheckForUpdates: z.boolean().optional().default(true)
 })

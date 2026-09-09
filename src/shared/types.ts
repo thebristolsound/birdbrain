@@ -263,6 +263,13 @@ export interface BirdbrainSettings {
   // Latched once, at the first launch that finds no settings.json. Only a
   // fresh install auto-fires a tour chapter; upgrades never do.
   isFreshInstall: boolean
+  // Latched once the bundled demonstration Case Archive has been offered to
+  // this install (#405). Not a guarantee on its own: the settings write can
+  // fail, and what holds then is the `is_demo` probe in the database — a probe
+  // of the current state, not a second latch, so on such an install deleting
+  // the demo case brings a fresh one back next launch, and again after each
+  // later deletion (#1301). The full statement is on `seedDemoCaseIfNeeded`.
+  demoCaseSeeded: boolean
   // Update delivery. `releaseChannel` selects the GitHub release track;
   // `autoCheckForUpdates` gates the background check schedule (manual checks are
   // always available). First-run `releaseChannel` is derived from the installed
@@ -450,6 +457,7 @@ export const LOG_SOURCES = [
   'timestampWorker',
   'db',
   'signingKey',
+  'demoCase',
   'exhibits',
   'renderer'
 ] as const
@@ -548,6 +556,16 @@ export const LOG_CODES = [
   // (#404). Failing it costs only the onboarding tour, so init swallows the
   // error — this is the record that it happened.
   'settings.fresh_install_seed_failed',
+  // First-launch seeding of the bundled demonstration Case Archive (#405).
+  // Every outcome is recorded: an operator whose first launch produced no demo
+  // case has no other way to tell a missing fixture from a refused import.
+  'demoCase.seeded',
+  'demoCase.fixture_missing',
+  'demoCase.seed_failed',
+  // The latch write itself failing, swallowed so a broken userData directory
+  // costs the demo case rather than the launch.
+  'demoCase.latch_failed',
+  'demoCase.artifact_cleanup_failed',
   // The Exhibit-model backfill (#1147) failing for one Case. Startup continues
   // over the remaining Cases, so this line is the only record that a Case did
   // not get its numbers or its anchored thumbnails.

@@ -330,6 +330,39 @@ describe('ipcHandlers — cases', () => {
     expect(after.some((c) => c.id === created.id)).toBe(false)
   })
 
+  it('clears the session when the deleted demo case was the active one', async () => {
+    const demo = expectOk<Case>(await invoke(IPC_CHANNELS.CASES_CREATE, { name: 'Demo' }))
+    caseRepo.setCaseDemo(demo.id, true)
+    expectOk(await invoke(IPC_CHANNELS.SESSION_ACTIVATE_CASE, demo.id))
+    expectOk(await invoke(IPC_CHANNELS.SESSION_START))
+
+    expect(expectOk<boolean>(await invoke(IPC_CHANNELS.CASES_DELETE_DEMO, demo.id))).toBe(true)
+
+    // Recording left on against a deleted row is the harm: the capture server
+    // reads the same service instance, and every automatic capture into it
+    // would fail on the captures.case_id foreign key.
+    expect(sessionService.snapshot()).toMatchObject({ activeCaseId: null, sessionActive: false })
+  })
+
+  it('leaves a session on another case alone when the demo case is deleted', async () => {
+    const demo = expectOk<Case>(await invoke(IPC_CHANNELS.CASES_CREATE, { name: 'Demo' }))
+    caseRepo.setCaseDemo(demo.id, true)
+    expectOk(await invoke(IPC_CHANNELS.SESSION_ACTIVATE_CASE, caseId))
+
+    expectOk(await invoke(IPC_CHANNELS.CASES_DELETE_DEMO, demo.id))
+
+    expect(sessionService.snapshot().activeCaseId).toBe(caseId)
+  })
+
+  it('refuses a case that is not the demo case, session included', async () => {
+    expectOk(await invoke(IPC_CHANNELS.SESSION_ACTIVATE_CASE, caseId))
+
+    expect(expectOk<boolean>(await invoke(IPC_CHANNELS.CASES_DELETE_DEMO, caseId))).toBe(false)
+
+    expect(sessionService.snapshot().activeCaseId).toBe(caseId)
+    expect(expectOk<Case>(await invoke(IPC_CHANNELS.CASES_GET, caseId))).toBeDefined()
+  })
+
   it('serves the cross-case activity feed and honours the limit argument', async () => {
     const note = expectOk<{ id: string }>(
       await invoke(IPC_CHANNELS.NOTES_CREATE, { caseId, title: 'Feed note' })

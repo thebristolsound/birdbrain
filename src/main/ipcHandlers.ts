@@ -67,6 +67,7 @@ import {
   inspectCaseArchive,
   importCaseArchive
 } from '@main/services/caseArchive'
+import { deleteDemoCase } from '@main/services/demoCase'
 import { getExtensionPath, extensionPathExists } from '@main/services/extensionPath'
 import { lookupSnapshots, isPersistableSnapshot } from '@main/services/waybackMachine'
 import { buildCsv } from '@main/services/csvEscape'
@@ -185,6 +186,18 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.CASES_CREATE, (_, params: CreateCaseParams) => caseRepo.createCase(params))
   handle(IPC_CHANNELS.CASES_UPDATE, (_, params: UpdateCaseParams) => caseRepo.updateCase(params))
   handle(IPC_CHANNELS.CASES_DELETE, (_, id: string) => caseRepo.deleteCase(id))
+  handle(IPC_CHANNELS.CASES_DELETE_DEMO, (_, id: string) => {
+    const deleted = deleteDemoCase(id)
+    // The tour's delete ending always removes the case the operator is looking
+    // at, and CaseWorkspace activated it on the way in. Left alone, the session
+    // would stay active naming a row that no longer exists: recording would
+    // still read as on, and each automatic capture into it would fail on the
+    // captures.case_id foreign key.
+    if (deleted && sessionService.snapshot().activeCaseId === id) {
+      sessionService.deactivateCase()
+    }
+    return deleted
+  })
   handle(IPC_CHANNELS.CASES_RECENT_ACTIVITY, (_, limit?: number) =>
     activityRepo.listRecentActivity(limit)
   )

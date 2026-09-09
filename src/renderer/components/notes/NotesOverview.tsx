@@ -8,6 +8,7 @@ import { Button } from '@renderer/components/ui'
 import { presets } from '@renderer/lib/motion'
 import { NoteCard } from '@renderer/components/notes/NoteCard'
 import { CreateNoteCard } from '@renderer/components/notes/CreateNoteCard'
+import { NOTE_COMPOSER_EVENT } from '@renderer/components/onboarding/tourEffects'
 import { useAppStore } from '@renderer/stores/appStore'
 
 export function NotesOverview() {
@@ -22,6 +23,16 @@ export function NotesOverview() {
     const t = setTimeout(() => setDebouncedQuery(searchInput.trim()), 200)
     return () => clearTimeout(t)
   }, [searchInput])
+
+  // The case tour's note-editor step has to have an editor to ring (#405). It
+  // only ever opens the composer — closing it stays the operator's call.
+  useEffect(() => {
+    function onOpenComposer(): void {
+      setShowCreateForm(true)
+    }
+    window.addEventListener(NOTE_COMPOSER_EVENT, onOpenComposer)
+    return () => window.removeEventListener(NOTE_COMPOSER_EVENT, onOpenComposer)
+  }, [])
 
   const {
     data: allNotes = [],

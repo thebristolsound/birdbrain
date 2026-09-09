@@ -10,6 +10,16 @@
       "@shared/*": ["./src/shared/*"]
     }
   },
-  "include": ["src/main/**/*", "src/preload/**/*", "src/shared/**/*", "src/packages/**/*"],
+  "include": [
+    "src/main/**/*",
+    "src/preload/**/*",
+    "src/shared/**/*",
+    "src/packages/**/*",
+    // The demo-fixture generator is main-process code that happens to live
+    // under scripts/ (#405). Listing it here puts it inside the typecheck gate:
+    // it imports the same services the app does, so a change that breaks it
+    // fails now rather than the next time someone regenerates the fixture.
+    "scripts/demo-fixture/**/*.ts"
+  ],
   "exclude": ["src/packages/**/tests/**"]
 }

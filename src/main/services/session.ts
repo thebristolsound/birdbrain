@@ -35,6 +35,7 @@ export interface SessionServiceDeps {
 export interface SessionService {
   snapshot: () => SessionSnapshot
   activateCase: (caseId: string) => void
+  deactivateCase: () => void
   start: () => void
   stop: () => void
   countCapture: () => void
@@ -95,6 +96,17 @@ export function createSessionService(deps: SessionServiceDeps = {}): SessionServ
 
     activateCase: (caseId) => {
       activeCaseId = caseId
+      notifyChange()
+    },
+
+    // Clears the active case and stops recording, for a case that has just
+    // stopped existing (#405). Distinct from `reset()`, which is deliberately
+    // silent and zeroes the extension heartbeat too: this one notifies, because
+    // a renderer left holding a session state that names a deleted case goes on
+    // offering to record into it, and `start()` would then be refused.
+    deactivateCase: () => {
+      activeCaseId = null
+      sessionActive = false
       notifyChange()
     },
 

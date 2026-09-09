@@ -366,12 +366,18 @@ export function inspectCaseArchive(archivePath: string): ArchiveInspectReport {
 // (post-move) is removed and the error rethrown.
 export async function importCaseArchive(
   archivePath: string,
-  opts?: { overrideTamper?: boolean },
+  opts?: { overrideTamper?: boolean; operatorName?: string },
   onProgress?: (step: string, percent: number) => void
 ): Promise<{ newCaseId: string; report: ArchiveInspectReport }> {
-  // Step 1: operator gate.
+  // Step 1: operator gate. `opts.operatorName` is an explicit synthetic
+  // attribution, NOT a way past the gate: the seeding of the bundled demo case
+  // runs before any operator has configured a name (#405, R7), so it names
+  // itself instead. The gate below still refuses an empty name from either
+  // source, and whatever name is used is what the custody entry records — so
+  // the manifest says truthfully who imported the archive.
   const settings = getSettings()
-  if (!settings.operatorName?.trim()) {
+  const operatorName = opts?.operatorName?.trim() || settings.operatorName?.trim()
+  if (!operatorName) {
     throw new Error(
       'Operator name required. Configure your name in Birdbrain settings before importing.'
     )
@@ -456,7 +462,7 @@ export async function importCaseArchive(
       verificationResult: report.verification,
       timestamp: new Date().toISOString(),
       operatorId: getInstallationId(),
-      operatorName: settings.operatorName,
+      operatorName,
       toolVersion: resolveToolVersion()
     })
   } catch (err) {

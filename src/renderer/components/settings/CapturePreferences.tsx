@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Check } from 'lucide-react'
 import type { BirdbrainSettings } from '@shared/types'
 import { Card, CardContent, Input, Button, Label } from '@renderer/components/ui'
 
@@ -31,12 +32,22 @@ export function CapturePreferences({ settings, onUpdate }: CapturePreferencesPro
 
         <div className="space-y-4">
           <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={settings.captureScreenshots}
-              onChange={(e) => onUpdate({ captureScreenshots: e.target.checked })}
-              className="rounded"
-            />
+            {/* appearance-none is what makes the box themeable at all: left native, Chromium
+                paints the control from its own colour scheme and ignores the token classes,
+                which is why it stayed blue-on-white in dark mode (#473). */}
+            <span className="relative flex h-4 w-4 shrink-0 items-center justify-center">
+              <input
+                type="checkbox"
+                checked={settings.captureScreenshots}
+                onChange={(e) => onUpdate({ captureScreenshots: e.target.checked })}
+                className="peer h-4 w-4 cursor-pointer appearance-none rounded border border-border-strong bg-canvas transition-colors checked:border-accent checked:bg-accent focus:outline-none focus:ring-2 focus:ring-accent/25"
+              />
+              <Check
+                aria-hidden="true"
+                strokeWidth={3}
+                className="pointer-events-none absolute h-3 w-3 text-white opacity-0 peer-checked:opacity-100"
+              />
+            </span>
             <span className="text-sm text-text-secondary">Capture screenshots</span>
           </label>
 

@@ -19,6 +19,17 @@ import { useAppStore } from '@renderer/stores/appStore'
 
 const CASES: Case[] = []
 
+function makeCase(id: string, name: string): Case {
+  return {
+    id,
+    name,
+    isDemo: false,
+    createdAt: '2026-08-15T10:00:00.000Z',
+    updatedAt: '2026-08-15T10:00:00.000Z',
+    archived: false
+  }
+}
+
 function Wrapper({ children }: { children: ReactNode }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>
@@ -71,5 +82,28 @@ describe('the command palette panel', () => {
   it('exposes no dialog at all while closed', () => {
     render(<CommandPalette />, { wrapper: Wrapper })
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+})
+
+describe('the case result row', () => {
+  // getByText matches the whole normalized text of the node, so '1 capture'
+  // does not match a row reading '1 captures' — which is what pins #471.
+  it('pluralizes the capture count only above one', async () => {
+    fakeBridge({
+      cases: {
+        list: vi.fn(async () => [
+          makeCase('one', 'Single'),
+          makeCase('many', 'Several'),
+          makeCase('none', 'Empty')
+        ])
+      },
+      captures: { countsByCase: vi.fn(async () => ({ one: 1, many: 2, none: 0 })) }
+    })
+    useAppStore.setState({ commandPaletteOpen: true })
+    render(<CommandPalette />, { wrapper: Wrapper })
+
+    expect(await screen.findByText('1 capture')).toBeTruthy()
+    expect(screen.getByText('2 captures')).toBeTruthy()
+    expect(screen.getByText('0 captures')).toBeTruthy()
   })
 })

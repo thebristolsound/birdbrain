@@ -6,12 +6,41 @@ import type { CaptureStore } from '@main/services/captureStore'
 import { logger } from '@main/services/logger'
 import { ident } from '@main/services/logSafe'
 
-// ~4:3 thumbnail box. Full-page recapture screenshots are very tall (e.g.
-// 1280x11200); scaling the whole strip to 160px wide yields a 160x1400 sliver
-// that renders as an arbitrary mid-page crop in the list's small box. A
-// cover+top resize previews the top of the page at a fixed box size instead.
-const THUMB_WIDTH = 160
-const THUMB_HEIGHT = 120
+// The stored preview box, ~4:3. Every consumer draws it with object-cover
+// anchored to the top into a box of its own, so what is stored has to be one
+// fixed size rather than a fit of whatever shape a screenshot happens to be.
+export const THUMB_WIDTH = 160
+export const THUMB_HEIGHT = 120
+
+// Scale the screenshot to the box width, then keep the top THUMB_HEIGHT rows.
+// Screenshots vary wildly in shape: a full-page recapture can be 1280x11200,
+// which scales to a 160x1400 sliver, and `trimTrailingBackground` leaves a page
+// like example.com at roughly 1280x260. Scaling by width regardless makes both
+// a preview of the page top at a predictable zoom.
+//
+// Deliberately not sharp's `fit: 'cover'`, which is what this used to do. Cover
+// scales by whichever axis needs the larger factor, so it preserves the page
+// width only while the screenshot is taller than the box. On a short, wide one
+// it scales to the height and crops the width instead — and `position: 'top'`
+// constrains the vertical crop only, so the horizontal crop lands in the middle
+// and the preview becomes a zoomed centre column of body text (#470).
+//
+// A page shorter than the box after scaling is padded at the bottom by
+// replicating its own bottom row, so the pad takes the page's background colour
+// rather than a hardcoded white that would band across a dark page.
+export async function renderThumbnail(screenshot: Buffer): Promise<Buffer> {
+  const { data, info } = await sharp(screenshot)
+    .resize({ width: THUMB_WIDTH })
+    .toBuffer({ resolveWithObject: true })
+
+  const boxed = sharp(data)
+  if (info.height > THUMB_HEIGHT) {
+    boxed.extract({ left: 0, top: 0, width: info.width, height: THUMB_HEIGHT })
+  } else if (info.height < THUMB_HEIGHT) {
+    boxed.extend({ bottom: THUMB_HEIGHT - info.height, extendWith: 'copy' })
+  }
+  return boxed.jpeg({ quality: 75 }).toBuffer()
+}
 
 export async function getThumbnail(
   caseId: string,
@@ -32,15 +61,11 @@ export async function getThumbnail(
   }
 
   try {
-    // Async fs (this runs on the main-process thread, once per visible list item)
-    // + a single sharp pipeline: cover-fit anchored to the top crops the page top
-    // into the box without a separate metadata decode. sharp (libvips) handles
-    // arbitrarily tall screenshots without loading a full GPU texture.
+    // Async fs — this runs on the main-process thread, once per visible list
+    // item. sharp (libvips) handles arbitrarily tall screenshots without
+    // loading a full GPU texture.
     const screenshot = await readFile(screenshotPath)
-    const thumbBuffer = await sharp(screenshot)
-      .resize(THUMB_WIDTH, THUMB_HEIGHT, { fit: 'cover', position: 'top' })
-      .jpeg({ quality: 75 })
-      .toBuffer()
+    const thumbBuffer = await renderThumbnail(screenshot)
 
     await writeFile(thumbPath, thumbBuffer)
     return thumbBuffer

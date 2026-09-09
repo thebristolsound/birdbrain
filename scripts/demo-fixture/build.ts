@@ -50,7 +50,13 @@ const PARTITION = 'demo-fixture'
 interface DemoPage {
   file: string
   url: string
-  /** Recorded on the capture row, so the demo case has a plausible history. */
+  /**
+   * Recorded on the capture row and signed into the archive's `capture` entry,
+   * so the demo case reads as a worked example with a history rather than three
+   * pages grabbed at once. Invented, like the page and the host it belongs to:
+   * nothing was acquired at these times, and they deliberately sit months
+   * before the `exportedAt` the header records, which is the build date.
+   */
   timestamp: string
 }
 

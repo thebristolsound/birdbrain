@@ -20,6 +20,7 @@ vi.mock('@tanstack/react-router', () => ({
 import { OnboardingTour } from '@renderer/components/onboarding/OnboardingTour'
 import { startTour } from '@renderer/components/onboarding/startTour'
 import { NOTE_COMPOSER_EVENT } from '@renderer/components/onboarding/tourEffects'
+import { queryKeys } from '@renderer/lib/api/keys'
 import { useAppStore } from '@renderer/stores/appStore'
 
 let updated: Array<Partial<BirdbrainSettings>>
@@ -73,7 +74,8 @@ function renderTour() {
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
   }
-  return render(<OnboardingTour />, { wrapper: Wrapper })
+  // The client comes back out so a test can watch what a mutation invalidates.
+  return { ...render(<OnboardingTour />, { wrapper: Wrapper }), client }
 }
 
 /** Stands in for the operator navigating: moves the route, then re-renders. */
@@ -642,6 +644,23 @@ describe('the seeded demo case', () => {
     await waitFor(() =>
       expect(updated).toEqual([{ onboardingChapters: { intro: true, case: true } }])
     )
+  })
+
+  it('refreshes the tag caches the demo delete empties', async () => {
+    installWithCases([demoCase], settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } }))
+    anchorWholeChapter()
+    const { rerender, client } = renderTour()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    await reachFinalStep(() => rerender(<OnboardingTour />))
+
+    fireEvent.click(screen.getByTestId('tour-delete-demo'))
+    await act(async () => rerender(<OnboardingTour />))
+
+    // The demo delete takes the demo's own tag rows with it, and tags are
+    // global: a picker left holding the cached list would offer one whose row
+    // is gone and fail its foreign-key write.
+    await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.tags }))
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.cases })
   })
 
   it('does not leave the case when main refuses the delete', async () => {

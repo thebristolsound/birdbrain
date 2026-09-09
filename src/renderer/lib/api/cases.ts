@@ -97,7 +97,14 @@ export function useCasesMutations() {
       if (!removed) throw new Error('Not a demonstration case')
       return removed
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.cases }),
+    // Tags too, unlike the ordinary delete: this path also drops the demo's own
+    // tag rows, and tags are global, so a picker still holding the cached list
+    // would offer one whose row is gone and fail its foreign-key write.
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.cases }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.tags })
+      ]),
     meta: { action: 'delete demo case' }
   })
 

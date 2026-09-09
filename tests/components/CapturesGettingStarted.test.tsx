@@ -49,6 +49,20 @@ describe('CapturesGettingStarted', () => {
     expect(step.textContent).toMatch(/^Once the extension connects,/)
   })
 
+  // jsdom does no layout, so the class is the only thing assertable here; the
+  // geometry it produces is measured in e2e/empty-captures-state.spec.ts. Pinned
+  // because `items-center` reads as the obvious choice and silently clips the top
+  // of the illustration once the panel outgrows the pane (#474), and because a
+  // misspelled safe utility emits no CSS at all — `items-safe-center` compiles to
+  // nothing, which would leave the container at `align-items: normal`.
+  it('centres the panel with safe alignment so an overflowing top stays reachable', () => {
+    render(<CapturesGettingStarted />)
+    const panel = screen.getByTestId('captures-getting-started')
+    expect(panel.className).toContain('items-center-safe')
+    expect(panel.className).toContain('overflow-y-auto')
+    expect(panel.className).not.toMatch(/\bitems-center\b(?!-safe)/)
+  })
+
   it('opens the extension folder when Install Extension clicked', async () => {
     render(<CapturesGettingStarted />)
     fireEvent.click(screen.getByTestId('captures-getting-started-install-btn'))

@@ -131,7 +131,7 @@
     "@peculiar/asn1-x509": "^2.8.0",
     "@tanstack/react-query": "^5.101.2",
     "@tanstack/react-router": "^1.170.17",
-    "@tiptap/core": "3.30.4",
+    "@tiptap/core": "3.30.5",
     "@tiptap/pm": "3.29.0",
     "@tiptap/react": "3.29.0",
     "@tiptap/starter-kit": "3.29.0",

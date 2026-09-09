@@ -57,9 +57,15 @@ export function getDemoCaseArchivePath(): string {
  * userData directory. Seeding is awaited without a local guard during startup,
  * where anything thrown reaches the `app.whenReady()` catch and exits the app —
  * so an unlatched demo case would take the whole launch with it. Same trade
- * `initSettings` makes for its own first-launch write. What losing this latch
- * costs is bounded by the database check in `seedDemoCaseIfNeeded`, not by
- * this write: see the guarantee stated there (#1301).
+ * `initSettings` makes for its own first-launch write.
+ *
+ * What losing this latch costs, plainly: nothing while a demo case is present,
+ * because the database check in `seedDemoCaseIfNeeded` answers for it — but
+ * that check is a probe of the current state, not a second latch, so on an
+ * install whose settings write fails, deleting the demo case brings a fresh one
+ * back on the next launch, and again after each later deletion. That bound is
+ * the deliberate call on #1301, not an oversight; the full statement of it is
+ * on `seedDemoCaseIfNeeded`.
  */
 function latchSeeded(): void {
   try {
@@ -72,18 +78,24 @@ function latchSeeded(): void {
 /**
  * Imports the bundled demo Case, once, on a fresh install.
  *
- * Three guards, and only the third cannot be lost. `isFreshInstall` keeps an
- * upgrade from acquiring a demo case it never asked for, and `demoCaseSeeded`
- * records that the attempt happened whatever its outcome, so a build with a
- * broken fixture does not retry it every launch. Both live in settings.json,
- * whose write `latchSeeded` swallows — so the guarantee that no operator ever
- * silently acquires a SECOND demo case rests on the third guard instead: a row
- * with `is_demo` already in the database (#1301).
+ * Three guards. `isFreshInstall` keeps an upgrade from acquiring a demo case it
+ * never asked for, and `demoCaseSeeded` records that the attempt happened
+ * whatever its outcome, so a build with a broken fixture does not retry it every
+ * launch. Both live in settings.json, whose write `latchSeeded` swallows, so
+ * neither is certain to persist; the third guard is a row with `is_demo`
+ * already in the database (#1301), and it is what stops a second copy arriving
+ * behind the operator's back while the first one is still there.
  *
- * That leaves exactly one re-import: an install whose settings writes fail AND
- * whose demo case has since been deleted gets a fresh one on the next launch.
- * Beyond that a demo case arrives only through the ordinary Import Case dialog,
- * which is the explicit confirmation the ticket asks for.
+ * What the third guard does NOT hold, stated plainly because two rounds of
+ * review found it stated too strongly: it is a probe of the current state, not
+ * a latch. On an install whose settings write fails, deleting the demo case
+ * brings a fresh one back on the next launch — and again after each later
+ * deletion, without bound. Nothing here counts deletions or remembers them.
+ * Making that impossible would need a latch surviving a failed settings write;
+ * keeping the probe and stating the bound is the deliberate choice on #1301.
+ * What #405 asks for is narrower and does hold: no demo case ever arrives
+ * without confirmation except on a first launch, since every other route in is
+ * the operator's own Import Case dialog.
  *
  * Never throws: a demonstration case failing to arrive must not stop the app
  * from starting.

@@ -152,6 +152,8 @@ import { initServerToken } from '@main/services/serverToken'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSessionService, type SessionService } from '@main/services/session'
+import type { RecaptureService } from '@main/services/recapture'
+import type { UpdaterService } from '@main/services/updater'
 import {
   CAPTURE_SERVER_PORT,
   getCaptureServerPort,
@@ -272,8 +274,8 @@ beforeEach(async () => {
   registerIpcHandlers({
     selectorLifecycle,
     captureLifecycle,
-    recaptureService,
-    updaterService,
+    recaptureService: recaptureService as unknown as RecaptureService,
+    updaterService: updaterService as unknown as UpdaterService,
     sessionService
   })
 
@@ -385,6 +387,32 @@ describe('ipcHandlers — cases', () => {
     })
     expect(res.ok).toBe(false)
     expect(res.code).toBe('SQLITE_CONSTRAINT_UNIQUE')
+  })
+
+  it('stores a case auto-capture policy and rejects bad inputs', async () => {
+    const saved = expectOk<{ exclusions: string[]; mode: string }>(
+      await invoke(IPC_CHANNELS.CASES_SET_AUTO_CAPTURE_POLICY, {
+        caseId,
+        exclusions: ['  https://ads.example/*  '],
+        mode: 'stack'
+      })
+    )
+    expect(saved).toEqual({ exclusions: ['https://ads.example/*'], mode: 'stack' })
+    expect(expectOk(await invoke(IPC_CHANNELS.CASES_GET_AUTO_CAPTURE_POLICY, caseId))).toEqual(saved)
+
+    const invalid = await invoke<{ ok: boolean; error?: string }>(
+      IPC_CHANNELS.CASES_SET_AUTO_CAPTURE_POLICY,
+      { caseId, exclusions: ['/[/' ], mode: 'stack' }
+    )
+    expect(invalid.ok).toBe(false)
+    expect(invalid.error).toContain('Invalid exclusion pattern "/[/"')
+
+    const missing = await invoke<{ ok: boolean; error?: string }>(
+      IPC_CHANNELS.CASES_SET_AUTO_CAPTURE_POLICY,
+      { caseId: 'missing-case', exclusions: [], mode: 'stack' }
+    )
+    expect(missing.ok).toBe(false)
+    expect(missing.error).toContain('Case not found')
   })
 })
 
@@ -558,6 +586,49 @@ describe('ipcHandlers — captures', () => {
     }
     expect(dialogArgs.defaultPath.endsWith('.mhtml')).toBe(true)
     expect(dialogArgs.filters[0].extensions).toContain('mhtml')
+  })
+
+  it('returns null when a capture download dialog is canceled', async () => {
+    expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_DOWNLOAD, captureId))).toBeNull()
+  })
+
+  it('returns null or a structured failure on the guarded PDF download paths', async () => {
+    showSaveDialog.mockReset()
+    showSaveDialog.mockResolvedValue({ canceled: true, filePath: undefined })
+    expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_DOWNLOAD_PDF, 'missing'))).toBeNull()
+
+    const cap = seedCapture({ format: 'mhtml' })
+    showSaveDialog.mockResolvedValue({ canceled: false, filePath: join(userDataPath, 'missing.pdf') })
+    const missingArtifact = await invoke<{ ok: boolean; error?: string }>(
+      IPC_CHANNELS.CAPTURES_DOWNLOAD_PDF,
+      cap.id
+    )
+    expect(missingArtifact.ok).toBe(false)
+    expect(missingArtifact.error).toContain('Capture file (.mhtml) not found')
+
+    writeFileSync(defaultCaptureStore.artifactPaths(caseId, cap.id, 'mhtml').abs, 'mhtml-bytes')
+    showSaveDialog.mockResolvedValue({ canceled: true, filePath: join(userDataPath, 'cancel.pdf') })
+    expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_DOWNLOAD_PDF, cap.id))).toBeNull()
+  })
+
+  it('returns null or a structured failure on the guarded screenshot download paths', async () => {
+    showSaveDialog.mockReset()
+    showSaveDialog.mockResolvedValue({ canceled: true, filePath: undefined })
+    expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_DOWNLOAD_SCREENSHOT, 'missing'))).toBeNull()
+
+    const cap = seedCapture({ url: 'https://example.com/screenshot' })
+    unlinkSync(defaultCaptureStore.artifactPaths(caseId, cap.id, 'png').abs)
+    showSaveDialog.mockResolvedValue({ canceled: false, filePath: join(userDataPath, 'missing.png') })
+    const missingPng = await invoke<{ ok: boolean; error?: string }>(
+      IPC_CHANNELS.CAPTURES_DOWNLOAD_SCREENSHOT,
+      cap.id
+    )
+    expect(missingPng.ok).toBe(false)
+    expect(missingPng.error).toContain('Screenshot (.png) not found')
+
+    defaultCaptureStore.writeScreenshot(caseId, cap.id, Buffer.from('png-bytes'))
+    showSaveDialog.mockResolvedValue({ canceled: true, filePath: join(userDataPath, 'cancel.png') })
+    expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_DOWNLOAD_SCREENSHOT, cap.id))).toBeNull()
   })
 
   // #509: the PDF cover's trusted-time row must come from the case manifest, not

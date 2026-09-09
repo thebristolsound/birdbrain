@@ -12,6 +12,6 @@ export function stubResizeObserver() {
   Object.defineProperty(window, 'ResizeObserver', {
     configurable: true,
     writable: true,
-    value: vi.fn().mockImplementation(() => new ResizeObserverStub())
+    value: ResizeObserverStub
   })
 }

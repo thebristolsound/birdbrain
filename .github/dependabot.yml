@@ -21,19 +21,30 @@ version: 2
 # fails the build. It only reports and blocks, though — it never proposes an upgrade,
 # which is what the npm block below adds for the root tree.
 #
-# website/ stays out of version updates. It is an isolated sub-project: its own
-# package.json, pnpm-lock.yaml and pnpm-workspace.yaml (making it a separate workspace
-# root), excluded from the root toolchain (eslint.config.js, pnpm format, the root
-# tsconfigs, build.files), and installed by no CI job except docs.yml — so a bump PR
-# there would run against far less signal than one at the root. This governs *version*
-# updates only: Dependabot security updates are enabled separately and already open
-# grouped npm_and_yarn PRs across both directories.
+# website/ stays out of version updates, as the 2026-08-29 ruling directed. The
+# isolation facts behind it hold: website/ has its own package.json, pnpm-lock.yaml and
+# pnpm-workspace.yaml (making it a separate workspace root) and sits outside the root
+# toolchain (eslint.config.js, pnpm format, the root tsconfigs, build.files). The
+# ruling's other reason does not. website/ is not installed by docs.yml alone: ci.yml's
+# docs-build job installs, typechecks and builds it on any PR touching website/, and
+# scripts/audit-check.mjs audits the website tree on every Security run. A bump PR there
+# would not run against less signal, so that argument cannot carry the exclusion.
+# Whether to open /website too is a maintainer decision, left open here and recorded on
+# #1049; weigh it against audit-exceptions.json's live GHSA-f88m-g3jw-g9cj (sharp, tree
+# website, expires 2026-11-03), whose recorded fix is bumping next in this tree — which
+# is what a /website block would propose. All of this governs *version* updates only:
+# Dependabot security updates are enabled separately and cover both directories.
 #
-# Pre-pass interaction, checked rather than assumed (#488): a Dependabot-triggered
-# workflow gets a read-only GITHUB_TOKEN, so an npm bump PR seeds no `agent/pre-pass`
-# status, exactly as the existing github-actions PRs do not. That is a reason not to
-# make the context a required check, not a blocker here — nothing in
-# .github/workflows/pre-pass-gate.yml changes for this.
+# Pre-pass interaction (#488), checked on 2026-09-09 against a live Dependabot PR rather
+# than assumed — and the expected answer did not hold. #1341 is dependabot[bot]-authored
+# and its head 299b1454 carries `agent/pre-pass` = success, described with the string
+# only .github/workflows/pre-pass-gate.yml writes, from a `pull_request` run triggered by
+# dependabot[bot]. A Dependabot PR therefore does seed the status, so the read-only
+# GITHUB_TOKEN premise recorded at pre-pass-gate.yml and in #488 is stale. Nothing here
+# turns on it: npm bump PRs will behave exactly as the existing github-actions ones do,
+# and nothing in pre-pass-gate.yml changes for this. But the reason not to make the
+# context a required check is not the one #488 gives, and that premise needs re-checking
+# before it is relied on again.
 updates:
   - package-ecosystem: github-actions
     directory: '/'
@@ -63,7 +74,9 @@ updates:
       interval: weekly
     commit-message:
       # chore(deps) rather than the actions block's 'ci': these are application
-      # dependencies, not CI configuration, and commitlint.config.mjs requires a scope.
+      # dependencies, not CI configuration. Not a commitlint requirement — commitlint
+      # runs only from .claude/skills/post-commit-message, never in CI or a git hook,
+      # so it never sees a Dependabot commit.
       prefix: 'chore(deps)'
     groups:
       # Same shape as the actions group above, and majors are left ungrouped for the

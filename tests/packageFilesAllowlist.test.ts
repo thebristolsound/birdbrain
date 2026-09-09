@@ -20,20 +20,26 @@ const roots = positive.map((pattern) => pattern.split('/')[0])
 const FORBIDDEN_ROOTS = ['docs', 'tests', 'e2e', 'src', '.claude', '.serena', '.macroscope', '.env']
 
 describe('electron-builder files allowlist', () => {
-  // FileMatcher.containsOnlyIgnore() in app-builder-lib prepends `**/*` when the
-  // list carries no positive pattern, which makes an exclusion-only key additive
-  // to the defaults instead of a filter — the whole project tree lands in
-  // app.asar and only the negated path is trimmed (#1379).
+  // app-builder-lib's getMainFileMatchers() prepends `**/*` when
+  // FileMatcher.containsOnlyIgnore() reports the list carries no positive
+  // pattern. That makes an exclusion-only key additive to the defaults instead
+  // of a filter: the whole project tree lands in app.asar and only the negated
+  // path is trimmed (#1379). The predicate reports; the prepend is the caller's.
   it('carries at least one positive pattern', () => {
     expect(positive.length).toBeGreaterThan(0)
   })
 
-  it('covers what the packaged app runs', () => {
+  it('names every root the packaged app reads from', () => {
     // `out` is the electron-vite outDir behind the `main` entry point, and
     // src/main/index.ts reaches `../../resources/icon.png` from out/main.
     expect(build.files).toContain('out/**/*')
     expect(build.files).toContain('resources/**/*')
     expect(build.files).toContain('package.json')
+    // Held for intent, not for effect. app-builder-lib hard-excludes the root
+    // node_modules in util/filter.js and resolves production dependencies from
+    // its own tree, so removing this entry yields a byte-identical archive. It
+    // stays because a reader comparing this key against the packaged output
+    // would otherwise ask where 12428 of the 12458 entries came from.
     expect(build.files).toContain('node_modules/**/*')
   })
 

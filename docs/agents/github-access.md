@@ -152,8 +152,8 @@ dead-ended at its first write.
 
 ## The pipeline's identity
 
-**Agent PRs are opened by a machine account, not by the maintainer** (ADR-0012,
-`docs/adr/0012-agent-prs-are-opened-by-a-machine-account.md`). GitHub forbids self-review,
+**Agent PRs are opened by a machine account, not by the maintainer** (ADR-0027,
+`docs/adr/0027-agent-prs-are-opened-by-a-machine-account.md`). GitHub forbids self-review,
 so PRs the maintainer's account opens can never be approved or have changes requested by the
 maintainer; the pipeline therefore has its own GitHub user, added as a collaborator with
 write access, and the dispatch routine makes every write — claim comments, PR creation,

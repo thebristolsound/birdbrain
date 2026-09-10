@@ -153,7 +153,7 @@ except that #405 is last.
 
 Same three phases as every wave, with the same division: phase 1 is a `Workflow` call, phases 2
 and 3 run through the dispatch skill from an interactive session, because a workflow cannot hold
-the `birdbrain-agent` identity ADR-0012 requires or take the ADR-0006 claims.
+the `birdbrain-agent` identity ADR-0027 requires or take the ADR-0006 claims.
 
 ### Phase 0: intake, before any agent runs
 

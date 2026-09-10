@@ -1,4 +1,4 @@
-# Provision the machine token into the cloud environment (ADR-0012 §5)
+# Provision the machine token into the cloud environment (ADR-0027 §5)
 
 One-time dashboard step only you can do. The dispatch routine now checks for these
 variables at the top of every fire and exits in seconds until they exist.

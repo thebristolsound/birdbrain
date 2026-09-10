@@ -60,7 +60,7 @@ statuses) and the ones that return `[]` (the `pulls` list endpoint), is in
 `docs/agents/github-access.md`. Below, **"the write path"** means whichever of the two
 mechanisms the probe selected; on `INDETERMINATE` there is no write path and the cycle stops.
 
-**Every write goes out as the machine account, never as the maintainer (ADR-0012).** Agent PRs
+**Every write goes out as the machine account, never as the maintainer (ADR-0027).** Agent PRs
 opened by the maintainer's own account cannot be reviewed by the maintainer — GitHub forbids
 self-review — so the pipeline has its own identity. Load it and check it **before the slot check**,
 in the same breath as the probe above:
@@ -74,7 +74,7 @@ agh() { GH_TOKEN="$BIRDBRAIN_AGENT_GH_TOKEN" gh "$@"; }
 - If the file is missing, the login does not match, or the call fails (expired token — compare
   `BIRDBRAIN_AGENT_GH_TOKEN_EXPIRES` to today), **stop and report before claiming anything.** Do
   not fall back to the maintainer's `gh` login for writes; a self-authored agent PR is the
-  failure ADR-0012 exists to prevent. Provisioning and rotation are the human's job:
+  failure ADR-0027 exists to prevent. Provisioning and rotation are the human's job:
   `scripts/setup-agent-github-account.sh`.
 - From here on, **`agh` is the write path locally**: every `gh pr create`, `gh issue comment`,
   `gh issue edit`, `gh api ... -X POST`, and status post below runs through `agh`. Reads may use
@@ -218,7 +218,7 @@ comments. Classify:
   re-run anything.
 - **Feedback to address** — review threads or PR comments newer than the head commit, from
   anyone other than the agent pipeline itself, that no branch commit or agent reply has
-  dispositioned yet. Agent PRs are authored by the machine account (ADR-0012), so the
+  dispositioned yet. Agent PRs are authored by the machine account (ADR-0027), so the
   maintainer can post a formal `CHANGES_REQUESTED` review; treat one exactly as you treat a
   human comment asking for changes, and vice versa — the form does not change the handling.
   Dispatch `birdbrain-implementer` with the PR number, its linked
@@ -304,7 +304,7 @@ costs a peer four hours.
 **A seeded `agent/pre-pass` pending is never a claim.** `pre-pass-gate.yml` posts one on every
 agent PR at open, so its presence says only that the workflow ran. Neither is the `pending` a
 dispatcher posts before spawning the reviewer, even though the creator differs: every dispatcher
-writes as the same machine account (ADR-0012), so no session can tell its own status from a
+writes as the same machine account (ADR-0027), so no session can tell its own status from a
 peer's. Read the claim comment. It is the only claim.
 
 ## 2a. Auto-merge — the one merge you may perform
@@ -428,7 +428,7 @@ section, known-answer test).
 **You open the PR, not the implementer, and you open it as the machine account.** This is a
 control, not merely a capability limit: PR opening and labelling stay with the dispatcher so
 one place owns what enters the slot, and the dispatcher is the only holder of the machine
-token so one identity authors every agent PR (ADR-0012). (On the web it is also a hard limit
+token so one identity authors every agent PR (ADR-0027). (On the web it is also a hard limit
 — a subagent's tool list has no GitHub MCP tools and `gh pr create` is 403 there; see
 `docs/agents/github-access.md`.) The implementer pushes its branch — over the git credential
 the checkout carries: the maintainer's SSH login in a local session, the machine account over
@@ -561,7 +561,7 @@ Three rules that matter more than the mechanics:
 agent PRs start `pending`. It never overwrites a verdict you posted.
 
 **You do not approve these PRs and neither does the reviewer.** The pipeline could now post a
-formal review — agent PRs are opened by the machine account, not the maintainer (ADR-0012) —
+formal review — agent PRs are opened by the machine account, not the maintainer (ADR-0027) —
 but the pre-pass stays a commit status plus a comment by design: a review from the same
 identity that authored the PR would sit in the review list looking like a verdict from
 someone else. Approval and `CHANGES_REQUESTED` belong to the maintainer, who can now actually

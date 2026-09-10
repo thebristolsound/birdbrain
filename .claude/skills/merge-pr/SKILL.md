@@ -14,7 +14,7 @@ with an empty body. This skill supplies it and then checks the result instead of
 
 ```shell
 .claude/skills/merge-pr/scripts/merge.sh <n>              # you, as the maintainer
-.claude/skills/merge-pr/scripts/merge.sh <n> --cli agh    # the dispatcher (ADR-0012)
+.claude/skills/merge-pr/scripts/merge.sh <n> --cli agh    # the dispatcher (ADR-0027)
 .claude/skills/merge-pr/scripts/merge.sh <n> --dry-run    # stop after composing the message
 ```
 

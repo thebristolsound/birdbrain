@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Materialise the machine identity the dispatch skill expects, then prove it.
 #
-# Writes ~/.config/birdbrain-agent/env with the modes ADR-0012 prescribes, so the
+# Writes ~/.config/birdbrain-agent/env with the modes ADR-0027 prescribes, so the
 # skill's own identity check runs unchanged on this host. Fails the job when the
 # token is missing, expired, or resolves to any login but the machine account:
-# a fire that cannot write as birdbrain-agent must not write at all (ADR-0012
+# a fire that cannot write as birdbrain-agent must not write at all (ADR-0027
 # rule 2), and it must say so loudly rather than idle (#960).
 #
 # Env in: BIRDBRAIN_AGENT_GH_TOKEN, BIRDBRAIN_AGENT_GH_LOGIN,
@@ -44,7 +44,7 @@ if [ "$login" != "$BIRDBRAIN_AGENT_GH_LOGIN" ]; then
   exit 1
 fi
 if [ "$login" = "${GITHUB_REPOSITORY_OWNER:-}" ]; then
-  echo "Token resolves to the repository owner; ADR-0012 forbids dispatch under that identity" >&2
+  echo "Token resolves to the repository owner; ADR-0027 forbids dispatch under that identity" >&2
   exit 1
 fi
 

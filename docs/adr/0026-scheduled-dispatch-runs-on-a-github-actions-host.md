@@ -4,7 +4,7 @@
 
 **Date:** 2026-09-06
 
-Amends [ADR-0012](0012-agent-prs-are-opened-by-a-machine-account.md) rules 3, 4 and 5. Does
+Amends [ADR-0027](0027-agent-prs-are-opened-by-a-machine-account.md) rules 3, 4 and 5. Does
 not reopen [ADR-0011](0011-restate-the-autonomy-exit-bar.md): the believability streak stays
 withdrawn, and this decision puts a proven tool on a timer rather than resuming a pilot.
 
@@ -14,7 +14,7 @@ The dispatch routine (`.claude/skills/dispatch/SKILL.md`) is adopted as a human-
 (#310, 2026-09-01). It merged eleven agent PRs between 2026-08-30 and 2026-09-05 from
 interactive sessions. It has never run on a schedule that could write: the only scheduled host
 tried, an Anthropic cloud routine, sits behind a proxy that re-authenticates every GitHub
-request as the session identity, so every fire stopped at the ADR-0012 identity gate (#960,
+request as the session identity, so every fire stopped at the ADR-0027 identity gate (#960,
 validated 2026-08-25).
 
 The #310 verdict's first ground was that no other unattended host exists. It did when the
@@ -32,17 +32,17 @@ records the facts verified for the choice.
 
 1. **Identity.** The machine token is a repository secret, `BIRDBRAIN_AGENT_GH_TOKEN`, next to
    the curator's `CLAUDE_CODE_OAUTH_TOKEN`. The login and expiry date are repository variables.
-   A step writes `~/.config/birdbrain-agent/env` with the modes ADR-0012 prescribes and runs the
+   A step writes `~/.config/birdbrain-agent/env` with the modes ADR-0027 prescribes and runs the
    skill's own identity check before anything else. A token that is missing, expired, or
-   resolves to any login but the machine account fails the job before it reads a slot. ADR-0012
+   resolves to any login but the machine account fails the job before it reads a slot. ADR-0027
    rule 3's "never an Actions secret (no workflow needs it)" is amended: a workflow needs it.
 2. **Pushes are the machine account's.** The checkout carries the machine token as its git
    credential and `GH_TOKEN` for the whole job is that token, so branch pushes, commits and
-   API writes share one identity. ADR-0012 rule 4 kept pushes on the maintainer's SSH login
+   API writes share one identity. ADR-0027 rule 4 kept pushes on the maintainer's SSH login
    because that is the only credential a local session has; on this host there is no maintainer
    credential, and ADR-0006's one-writer rule is about branches, not accounts. Commit author
    and committer are the machine account. Locally nothing changes.
-3. **The web is never a dispatch host.** ADR-0012 rule 5 is resolved: the token is not
+3. **The web is never a dispatch host.** ADR-0027 rule 5 is resolved: the token is not
    provisioned into any Anthropic cloud environment, because the proxy would discard it.
 4. **A pre-gate decides from the API whether the hour has work.** It counts the two slot
    markers, checks every open agent PR for an owed verdict, activity newer than head, or a

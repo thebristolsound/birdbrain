@@ -13,7 +13,7 @@ The dispatch routine (`.claude/skills/dispatch/SKILL.md`) works. Between 2026-08
 2026-09-05 it merged eleven agent PRs from interactive sessions. It runs only when a human
 opens a session and types `/dispatch`, because the only scheduled host tried so far, an
 Anthropic cloud routine, sits behind a proxy that re-authenticates every GitHub request as the
-session identity (#960, validated 2026-08-25). ADR-0012 forbids writing as the maintainer, so
+session identity (#960, validated 2026-08-25). ADR-0027 forbids writing as the maintainer, so
 every scheduled fire stopped at the identity gate. The #310 verdict of 2026-09-01 then withdrew
 scheduled operation on the ground that no other unattended host exists.
 
@@ -28,7 +28,7 @@ routine is proven as a tool) still stand and are not reopened here.
 | # | Requirement | Why |
 |---|---|---|
 | R1 | Fires on a clock with nobody present | The whole point |
-| R2 | Writes to GitHub as `birdbrain-agent`, never as the maintainer | ADR-0012 rule 2 |
+| R2 | Writes to GitHub as `birdbrain-agent`, never as the maintainer | ADR-0027 rule 2 |
 | R3 | No proxy between the process and GitHub | #960 |
 | R4 | Can push a branch and run `pnpm preflight`, including Electron tests | Implementer contract |
 | R5 | Runs `claude` with the project's subagents and skills | Dispatch spawns `birdbrain-implementer` and `birdbrain-reviewer` |
@@ -95,7 +95,7 @@ One workflow, `.github/workflows/dispatch.yml`, one job.
    dependency install.
 2. **Identity.** Write `~/.config/birdbrain-agent/env` from three secrets
    (`BIRDBRAIN_AGENT_GH_TOKEN`, `BIRDBRAIN_AGENT_GH_LOGIN`, `BIRDBRAIN_AGENT_GH_TOKEN_EXPIRES`)
-   with the modes ADR-0012 prescribes, then run the skill's own check: `agh api user` must
+   with the modes ADR-0027 prescribes, then run the skill's own check: `agh api user` must
    print the login. The dispatch skill reads that file unchanged, so the identity code path is
    the one that already runs locally.
 3. **Checkout with the machine token as the git credential**, `fetch-depth: 0`. Pushes go out
@@ -123,7 +123,7 @@ summary, and the artifact are the report surface (R6).
 
 ### Rule changes
 
-- **ADR-0012 amendment.** Rule 3 says the token is never an Actions secret because no
+- **ADR-0027 amendment.** Rule 3 says the token is never an Actions secret because no
   workflow needs it. A workflow now needs it, so the token becomes a repository secret next
   to `CLAUDE_CODE_OAUTH_TOKEN`, which is the more sensitive credential of the two. Rule 4
   gains a clause: on the Actions host, branch pushes go out as the machine account, because
@@ -172,7 +172,7 @@ Every step is reversible with a one-line workflow edit or a secret deletion.
 ## Decisions needed from the maintainer
 
 1. **Host and custody.** Build the Actions workflow and store `BIRDBRAIN_AGENT_GH_TOKEN` as a
-   repository secret, amending ADR-0012 rule 3? The alternative with no rule change is the
+   repository secret, amending ADR-0027 rule 3? The alternative with no rule change is the
    `systemd` timer, which runs only while the machine is awake.
 2. **Runner and spend.** Hosted runner at metered minutes, or self-hosted on the WSL2 machine
    at zero minutes and reduced availability? This can start hosted and move.

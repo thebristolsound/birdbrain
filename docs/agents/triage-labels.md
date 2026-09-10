@@ -25,8 +25,8 @@ Edit the right-hand column to match the vocabulary you use.
 The `evidence-affecting` call is made by the human triaging the issue, not by the agent working
 it; the agent opening a PR for a labelled issue copies the label onto the PR. The label is the
 gate's primary trigger; the PR-diff path-list backstop
-(`docs/specs/2026-07-31-evidence-affecting-paths-assessment.md`, drafted in PR #315, until a
-maintained list supersedes it) exists to catch triage misses, not to replace the call.
+(`docs/specs/2026-07-31-evidence-affecting-paths-assessment.md`, in force until a maintained
+list supersedes it) exists to catch triage misses, not to replace the call.
 
 ## The ready-for-agent bar
 
@@ -49,6 +49,38 @@ An agent picking up a `ready-for-agent` issue checks this bar at intake. If any 
 or turns out mid-work to have been wrong — the give-up path applies: comment the findings on
 the issue, relabel `needs-info` or `ready-for-human`, and vacate the slot. Pushing through a
 mis-specified issue is the failure mode this bar exists to prevent.
+
+### Read the history before you apply the label
+
+The four points above are about the issue. This step is about you, and it binds every reader who
+applies triage labels — a triage session, a backlog survey, a readiness assessment, or a human
+doing frontier hygiene.
+
+**Before applying `ready-for-agent`, read the issue's comments and its label timeline, not only
+its body and its current labels.** A missing triage label is ambiguous: it reads identically as
+"never triaged" and as "taken off the frontier on purpose", and the record that tells the two
+apart usually lives in a comment.
+
+```shell
+gh api --paginate "repos/thebristolsound/birdbrain/issues/<n>/timeline?per_page=100" \
+  --jq '[.[] | select(.event=="labeled" or .event=="unlabeled")
+         | {event, label: .label.name, actor: .actor.login, created_at}]'
+```
+
+A prior removal with a stated reason is a decision. Respect it, or overturn it explicitly in a
+comment saying why the reason no longer holds — never correct it silently as an oversight. The
+silent correction is what cost a dispatch cycle on #268: `ready-for-agent` came off at
+`2026-08-10T22:28:55Z` because the work had merged in PR #375, with the reason posted in a
+comment eleven seconds later, and a session reading the body and labels alone put the label back
+at `2026-08-11T00:41:50Z`. The dispatch routine's account of that misdispatch, and the matching
+rule that an issue taken off the frontier never ends bare, are in
+`.claude/skills/dispatch/SKILL.md`, section 3.
+
+This is a different failure from #511, and neither fix covers the other. #511 is about triage
+labels surviving an **auto-close**, which leaves finished work indistinguishable from queued
+work; its remedy strips labels when the issue closes. #268 was never closed — it stayed open,
+with a removed label as the only trace of a deliberate decision, which is what the read step
+here and the never-bare rule in the dispatch skill address.
 
 ### Amending an issue to the bar is re-validation, not transcription
 

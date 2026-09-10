@@ -2,10 +2,10 @@
 
 **Status:** In force. This is the evidence gate's PR-diff backstop list, designated as such by
 [`ADR-0005`](../adr/0005-unattended-agents-on-the-evidence-path.md) and linked as the inventory from
-`CONTRIBUTING.md` and the pull request template. It stands until a maintained machine-consumed list
-supersedes it; the governance-docs ticket (#305) closed without producing one. Individual entries
-stay revisable — see "Judgment calls needing confirmation in review". (Origin: wayfinder ticket
-#303, autonomy map #298.)
+`CONTRIBUTING.md` and the pull request template. It stands until a maintained list supersedes it;
+the governance-docs ticket (#305) closed without producing one. Individual entries stay
+revisable — see "Judgment calls needing confirmation in review". (Origin: wayfinder ticket #303,
+autonomy map #298.)
 **Amended 2026-08-23 by ADR-0014:** every include-list entry now carries a tier, `blocking` or
 `advisory`. Read "Tiers" before using this list for anything; a hit no longer means one thing.
 **Definition applied:** CONTEXT.md, Assurance baseline — "An evidence-affecting change includes acquisition, parsing, extraction, storage, hashing, signing, trusted time, manifests, verification, redaction, export, reporting, AI analysis, and software distribution when it can alter an evidentiary result or its interpretation."

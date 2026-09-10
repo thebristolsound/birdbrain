@@ -33,17 +33,19 @@ version: 2
 # would not run against less signal, so that argument cannot carry the exclusion.
 # Whether to open /website too is a maintainer decision, left open here and tracked on
 # #1347. Weigh it against what cleared audit-exceptions.json's sharp entry
-# GHSA-f88m-g3jw-g9cj: not an upstream fix, but merged Dependabot PR #1341 taking next
-# 16.2.12 -> 16.3.3 in the website tree, which is the exact remediation that entry
-# records. That bump also cleared two critical next RCEs and a second high sharp
-# finding, all blocking at the same merge base. A Dependabot bump in /website is
-# therefore the demonstrated fix, which argues for opening it rather than against.
+# GHSA-f88m-g3jw-g9cj. sharp 0.35.4 is an upstream release, but this tree could only
+# reach it through next, and what delivered it was merged Dependabot PR #1341 taking
+# next 16.2.12 -> 16.3.3 in the website tree - the exact remediation that entry records.
+# The same bump cleared two critical next RCEs and a second high sharp finding, all of
+# which were blocking at 3aea640b, this branch's merge base before #1341 landed. A
+# Dependabot bump in /website is therefore the demonstrated fix, which argues for
+# opening it rather than against.
 # PR #1373 removes the now-dead entry. All of this governs *version* updates only:
 # Dependabot security updates are enabled separately and cover both directories.
 #
 # Pre-pass interaction (#488), checked on 2026-09-09 against a live Dependabot PR rather
 # than assumed — and the expected answer did not hold. #1341 is dependabot[bot]-authored
-# and its head 299b1454 carries `agent/pre-pass` = success, described with the string
+# and its head df478811 carries `agent/pre-pass` = success, described with the string
 # only .github/workflows/pre-pass-gate.yml writes, from a `pull_request` run triggered by
 # dependabot[bot]. A Dependabot PR therefore does seed the status, so the read-only
 # GITHUB_TOKEN premise recorded at pre-pass-gate.yml and in #488 is stale. Nothing here

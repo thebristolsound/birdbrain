@@ -28,9 +28,8 @@ Contributions unlikely to land:
 - Features that conflict with the project's posture: local-first, no accounts, no
   telemetry, no cloud dependency
 - Large refactors or new dependencies without a prior issue
-- Changes to the evidence pipeline (capture, hashing, manifests, signing, trusted
-  time, verification, export) that arrive without discussion — see
-  "Evidence-affecting changes" below
+- Evidence-affecting changes that arrive without discussion — see
+  "Evidence-affecting changes" below for what that covers
 
 ## Issues first
 

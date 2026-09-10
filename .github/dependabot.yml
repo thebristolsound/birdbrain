@@ -10,10 +10,42 @@ version: 2
 # for a compromised or patched action; an advisory affecting a pinned action will not
 # raise an alert on its own.
 #
-# Deliberately scoped to github-actions. The npm ecosystems are excluded for now: the
-# root tree carries known high-severity advisories that security.yml already tolerates
-# with continue-on-error, and website/ has its own lockfile — opening either to
-# Dependabot is a separate decision.
+# npm version updates cover the root tree only. Re-decided 2026-08-29 against current
+# facts (#1049): the note that used to sit here justified excluding both npm ecosystems
+# on a continue-on-error in security.yml that the file no longer has.
+#
+# What security.yml does now, in its `dependencies` job, is run
+# `node scripts/audit-check.mjs` over both dependency trees. It is enforcing: any high or
+# critical advisory that is neither cleared by an override in pnpm-workspace.yaml /
+# website/pnpm-workspace.yaml nor covered by an unexpired entry in audit-exceptions.json
+# fails the build. It only reports and blocks, though — it never proposes an upgrade,
+# which is what the npm block below adds for the root tree.
+#
+# website/ stays out of version updates, as the 2026-08-29 ruling directed. The
+# isolation facts behind it hold: website/ has its own package.json, pnpm-lock.yaml and
+# pnpm-workspace.yaml (making it a separate workspace root) and sits outside the root
+# toolchain (eslint.config.js, pnpm format, the root tsconfigs, build.files). The
+# ruling's other reason does not. website/ is not installed by docs.yml alone: ci.yml's
+# docs-build job installs, typechecks and builds it on a PR touching website/ - though
+# only once `changes` runs, which ci.yml gates on the PR being out of draft or carrying
+# agent-pr or agent-authored, so a human draft does not get it - and
+# scripts/audit-check.mjs audits the website tree on every Security run. A bump PR there
+# would not run against less signal, so that argument cannot carry the exclusion.
+# Whether to open /website too is a maintainer decision. It is left open here and
+# tracked on #1347, which carries the evidence; this file deliberately does not argue
+# it either way. All of this governs *version* updates only: Dependabot security
+# updates are enabled separately and cover both directories.
+#
+# Pre-pass interaction (#488), checked on 2026-09-09 against a live Dependabot PR rather
+# than assumed — and the expected answer did not hold. #1341 is dependabot[bot]-authored
+# and its head df478811 carries `agent/pre-pass` = success, described with the string
+# only .github/workflows/pre-pass-gate.yml writes, from a `pull_request` run triggered by
+# dependabot[bot]. A Dependabot PR therefore does seed the status, so the read-only
+# GITHUB_TOKEN premise recorded at pre-pass-gate.yml and in #488 is stale. Nothing here
+# turns on it: npm bump PRs will behave exactly as the existing github-actions ones do,
+# and nothing in pre-pass-gate.yml changes for this. But the reason not to make the
+# context a required check is not the one #488 gives, and that premise needs re-checking
+# before it is relied on again.
 updates:
   - package-ecosystem: github-actions
     directory: '/'
@@ -31,6 +63,26 @@ updates:
       # one needs its own PR and its own green CI run before it goes in. Majors are
       # deliberately left ungrouped for that reason.
       actions:
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: npm
+    directory: '/'
+    schedule:
+      interval: weekly
+    commit-message:
+      # chore(deps) rather than the actions block's 'ci': these are application
+      # dependencies, not CI configuration. Not a commitlint requirement — commitlint
+      # runs only from .claude/skills/post-commit-message, never in CI or a git hook,
+      # so it never sees a Dependabot commit.
+      prefix: 'chore(deps)'
+    groups:
+      # Same shape as the actions group above, and majors are left ungrouped for the
+      # same reason recorded there: one PR and one green CI run each.
+      npm:
         patterns:
           - '*'
         update-types:

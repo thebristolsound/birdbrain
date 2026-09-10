@@ -13,7 +13,9 @@ Author-time documentation for the project. All folders are tracked, including `p
 | `archive/`   | Superseded specs moved out of the active folders.                                                                          | Original filename preserved                                                  | yes                 |
 | `superpowers/` | Output from the superpowers agent skill — managed by tooling, do not hand-edit.                                          | Tool-managed                                                                 | yes (frozen)        |
 
-`plans/` has been tracked since July 2026. Plans remain author-time artifacts: they get checked off and go stale, and staleness is expected. Commit them in docs-only commits for history; bundling them into feature PRs creates noise, so keep them out of `src/**` PRs. Durable docs (specs, ADRs, reference) are different: they **may ship in the same PR as the code they describe**, and bundling a doc with the `src/**` change it documents is preferred — see the "Documentation conventions" section in `CLAUDE.md`.
+`plans/` has been tracked since July 2026. Plans remain author-time artifacts: they get checked off and go stale, and staleness is expected.
+
+The rule for whether a doc may ship in the same PR as the code it describes, plans included, lives in one place: the "Documentation conventions" section in `CLAUDE.md`. It covers every folder in the preceding table. Do not restate it here, because a second copy is free to drift out of step with the first (#514).
 
 ## Conventions
 

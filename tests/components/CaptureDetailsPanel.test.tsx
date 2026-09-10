@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import type { Mock } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
@@ -38,9 +39,9 @@ const capture: Capture = {
   method: 'extension'
 }
 
-let onCopyUrl: ReturnType<typeof vi.fn>
-let onCopyHash: ReturnType<typeof vi.fn>
-let onDuplicate: ReturnType<typeof vi.fn>
+let onCopyUrl: Mock<() => void>
+let onCopyHash: Mock<() => void>
+let onDuplicate: Mock<() => void>
 
 function renderPanel(props: { isDuplicating?: boolean } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })

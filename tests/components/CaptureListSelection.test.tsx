@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import type { Mock } from 'vitest'
 import { render, screen, fireEvent, cleanup, within, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
@@ -56,7 +57,7 @@ function makeCapture(id: string, minutesAgo: number): Capture {
 // Newest first is the default sort, so the display order is cap-a, cap-b, cap-c.
 const CAPTURES = [makeCapture('cap-a', 1), makeCapture('cap-b', 2), makeCapture('cap-c', 3)]
 
-let onDeleteSelection: ReturnType<typeof vi.fn>
+let onDeleteSelection: Mock<(ids: string[]) => void>
 
 function renderList() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import type { Mock } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRef, type ReactNode } from 'react'
@@ -30,7 +31,7 @@ let countsForCaptures: ReturnType<typeof vi.fn>
 let addToCaptures: ReturnType<typeof vi.fn>
 let removeFromCaptures: ReturnType<typeof vi.fn>
 let findOrCreate: ReturnType<typeof vi.fn>
-let onClose: ReturnType<typeof vi.fn>
+let onClose: Mock<() => void>
 
 function renderPopover() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })

@@ -11,14 +11,5 @@
     "here when a version bump would do buys a re-decision date instead of a fix.",
     "Trees: \".\" is the Electron app, \"website\" is the isolated docs sub-project."
   ],
-  "exceptions": [
-    {
-      "ghsa": "GHSA-f88m-g3jw-g9cj",
-      "package": "sharp",
-      "tree": "website",
-      "path": "next > sharp@0.34.5",
-      "reason": "Docs-site build dependency only; nothing from website/ ships in the app or runs on a server. The libvips CVEs need untrusted image input, and next.config.mjs sets images.unoptimized with output: export, so Next never invokes sharp. Unlike the other website findings, an override does not clear this one: next declares sharp as an optional dependency at ^0.34.5, so the fix is bumping next itself in the isolated website tree, which needs a site build to verify and is not covered by this repo's verify loop.",
-      "expires": "2026-11-03"
-    }
-  ]
+  "exceptions": []
 }

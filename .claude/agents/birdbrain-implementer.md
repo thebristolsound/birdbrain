@@ -75,6 +75,20 @@ To run a single test file, use `pnpm test <path>` — no `--`. With the literal 
 (`pnpm test -- <path>`) the path is not taken as a filter and the full suite runs, and
 `npx vitest run <path>` drops the Electron runtime, which fails every native-module test.
 
+**Your tool shell is not always bash; the things you edit run under bash.** The tool is named
+`Bash`, but on the maintainer's workstation it is zsh (`ZSH_VERSION=5.9`, `BASH_VERSION`
+unset); on a GitHub Actions runner it is bash. Meanwhile every tracked `.sh` under `.claude/`
+has a bash shebang and every workflow `run:` step executes under bash on a Linux runner. So
+when you change a `.sh` script, a hook, or a workflow `run:` step, verify its behaviour by
+wrapping the snippet in `bash -c '...'` rather than pasting it into the tool. The concrete
+failure: unquoted parameter expansion does not word-split in zsh, so
+`OPTS='-o A=1 -o B=2'; set -- $OPTS; echo $#` prints `1` there and `4` under bash. A test of
+argument splitting therefore passes in the tool shell and proves nothing about CI, silently
+and with no error. `set -euo pipefail` semantics, array indexing, glob failure (`nomatch`) and
+`[[ ]]` matching differ the same way. Plain invocations of `pnpm`, `git`, `gh` or `node` are
+unaffected; only tests of shell semantics are. Do not change the tool shell to compensate
+(rejected in #485): wrap the check instead.
+
 ## Responding to review
 
 - **Re-enumerate the review surface yourself before acting**, using `gh api` REST — the

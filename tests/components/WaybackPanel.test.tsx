@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import type { Mock } from 'vitest'
 import { render, screen, waitFor, fireEvent, cleanup, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
@@ -56,7 +57,7 @@ const LOOKUP_RESULT = {
 }
 
 let wayback: Record<string, ReturnType<typeof vi.fn>>
-let onClose: ReturnType<typeof vi.fn>
+let onClose: Mock<() => void>
 
 function withClient(client: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {

@@ -491,6 +491,10 @@ export const LOG_CODES = [
   // Nothing left behind is evidence — the sandbox holds only the sentinel — so
   // the route reports its own result and this is the record that residue exists.
   'captureServer.self_test_cleanup_failed',
+  // The capture server's listener failed, almost always EADDRINUSE on 19845
+  // from a second copy of the app (#513). At boot the same failure also
+  // reaches the operator as a dialog; this is the record of the errno.
+  'captureServer.listen_failed',
   'captureLifecycle.tls_refetch_failed',
   'captureLifecycle.selector_match_failed',
   'captureLifecycle.reprocess_failed',

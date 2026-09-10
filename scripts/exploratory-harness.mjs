@@ -11,6 +11,11 @@
  * initSigningKey would otherwise hit #414's acknowledgement gate — a native modal with no
  * window and nothing to click it, which hangs startup until firstWindow() times out.
  *
+ * The throwaway profile isolates the data, not the port: the app the harness launches binds
+ * 127.0.0.1:19845 like any other copy, so a real Birdbrain left open holds it and the harness
+ * app exits at boot rather than starting a second capture server (#513). It shows the same
+ * kind of unattended modal as above on the way out. Quit the real app before a session.
+ *
  * Two modes, one file:
  *
  *   node scripts/exploratory-harness.mjs serve [--skip-onboarding] [--window-size WxH]

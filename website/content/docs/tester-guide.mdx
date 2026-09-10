@@ -243,6 +243,10 @@ Two more things a restore does not do, both worth knowing before you click it:
   your system password. We announce new betas in the tester chat as well.
 - **The extension is sideloaded.** Chrome may occasionally nag about developer-mode
   extensions.
+- **One running copy at a time.** The extension reaches the app on `127.0.0.1:19845`, and only
+  one program can hold that port. A second copy refuses to start rather than open a window that
+  can't receive captures, and names the port in the error it shows. Quit the copy you already
+  have open, then start it again.
 - **Local-only data, no backup.** Captures live only on your machine. Export
   anything you can't lose before updating or uninstalling.
 - **Deleting a capture is not redacting it.** The files go, but the case manifest is

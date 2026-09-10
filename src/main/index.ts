@@ -8,6 +8,7 @@ import { PreMigrationSnapshotError } from '@main/services/db/dbSnapshots'
 import { initStorage } from '@main/services/storage'
 import { seedDemoCaseIfNeeded } from '@main/services/demoCase'
 import {
+  CaptureServerBindError,
   startCaptureServer,
   stopCaptureServer,
   setMainWindow,
@@ -530,7 +531,10 @@ if (!gotSingleInstanceLock) {
         sessionService
       })
 
-      // Start capture server and extension connection monitor
+      // Start capture server and extension connection monitor. A failed bind
+      // rejects (#513) and is fatal below: the capture server is the only route
+      // the extension has into a case, so a window opened without it would
+      // present as ready to capture while silently receiving nothing.
       await startCaptureServer({ selectorLifecycle, captureLifecycle, sessionService })
       startExtensionConnectionCheck()
 
@@ -579,6 +583,18 @@ if (!gotSingleInstanceLock) {
             'have been changed. ' +
             'Birdbrain takes a snapshot before upgrading its database, and this time it could not — ' +
             'usually a full disk or a read-only data folder. Free some space and start Birdbrain again. ' +
+            'A diagnostic log has been saved in the logs folder of your Birdbrain data directory.'
+        )
+      } else if (err instanceof CaptureServerBindError) {
+        // The generic dialog would send an operator to the log for a cause the
+        // app already knows and can act on: one running copy at a time is the
+        // supported configuration, so name the port and the likely holder.
+        dialog.showErrorBox(
+          'Birdbrain could not start its capture server',
+          `Port ${err.port} is already in use, so the Chrome extension would have no way to ` +
+            'send captures to this copy of Birdbrain. ' +
+            'Birdbrain supports one running copy at a time, so the usual cause is a copy that ' +
+            'is already open — quit it and start Birdbrain again. ' +
             'A diagnostic log has been saved in the logs folder of your Birdbrain data directory.'
         )
       } else {

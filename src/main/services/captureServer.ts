@@ -924,26 +924,60 @@ export function getCaptureServerPort(): number | null {
   return server ? listeningPort : null
 }
 
+/**
+ * Rejection of `startCaptureServer` when the listener never bound — in practice
+ * `EADDRINUSE` on 127.0.0.1:19845, held by a second copy of Birdbrain or by the
+ * exploratory harness running against a throwaway profile. Caught by name in
+ * src/main/index.ts so boot can name the port instead of falling through to the
+ * generic startup dialog (#513).
+ */
+export class CaptureServerBindError extends Error {
+  readonly port: number
+  readonly code: string | undefined
+
+  constructor(port: number, cause: NodeJS.ErrnoException) {
+    super(`Capture server could not bind to 127.0.0.1:${port}: ${cause.message}`, { cause })
+    this.name = 'CaptureServerBindError'
+    this.port = port
+    this.code = cause.code
+  }
+}
+
 export function startCaptureServer(
   deps: CaptureServerDeps,
   port: number = CAPTURE_SERVER_PORT
 ): Promise<void> {
   if (deps.sessionService) sessionService = deps.sessionService
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const app = createApp(deps)
-    server = serve(
+    const instance = serve(
       {
         fetch: app.fetch,
         port,
         hostname: '127.0.0.1'
       },
       (info) => {
+        // Published only once the bind succeeded, so a failed listen leaves
+        // getCaptureServerPort() and stopCaptureServer() looking at nothing
+        // rather than at a socket that was never opened.
+        server = instance
         // Read the bound port back rather than echoing the request, so a
         // caller that asked for port 0 gets the ephemeral port it actually got.
         listeningPort = info.port
         resolve()
       }
     ) as unknown as Server
+    // Without this listener a failed bind surfaces as an unhandled 'error'
+    // event and takes the process down mid-boot, so the operator sees a crash
+    // rather than a startup failure the app can explain (#513). It stays
+    // installed after the bind, where the promise has already settled and the
+    // reject is a no-op: a running server's later error is logged and its
+    // socket left alone, since clearing the module state would strand a
+    // listener stopCaptureServer could no longer close.
+    instance.on('error', (err: NodeJS.ErrnoException) => {
+      logger.error('captureServer', 'captureServer.listen_failed', { port }, err)
+      reject(new CaptureServerBindError(port, err))
+    })
   })
 }
 

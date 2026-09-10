@@ -559,8 +559,11 @@ describe('ipcHandlers — captures', () => {
     const CONTENT_HASH = 'b'.repeat(64)
 
     // Seeds an mhtml capture with its artifact on disk, sets the DB mirror to
-    // `mirror`, exports the PDF, and returns what the cover would print.
-    async function exportPdfCoverRows(mirror: TrustedTime): Promise<[string, string][]> {
+    // `mirror`, exports the PDF, and returns the exported capture's id together
+    // with what the cover would print.
+    async function exportPdfCover(
+      mirror: TrustedTime
+    ): Promise<{ id: string; rows: [string, string][] }> {
       const cap = seedCapture({ format: 'mhtml', hash: CONTENT_HASH })
       writeFileSync(defaultCaptureStore.artifactPaths(caseId, cap.id, 'mhtml').abs, 'mhtml-bytes')
       captureRepo.setCaptureTrustedTime(cap.id, mirror)
@@ -578,23 +581,12 @@ describe('ipcHandlers — captures', () => {
         TrustedTimeResult
       ]
       expect(capture.trustedTimeStatus).toBe(mirror)
-      return buildPdfMetadataRows(capture, trustedTime)
+      return { id: cap.id, rows: buildPdfMetadataRows(capture, trustedTime) }
     }
 
-    function trustedTimeRow(rows: [string, string][]): string | undefined {
-      return rows.find(([label]) => label === 'Trusted time')?.[1]
-    }
-
-    it('prints the manifest floor when the mirror claims a token the manifest lacks', async () => {
-      // Mirror says rfc3161; the manifest holds no entry for this hash at all.
-      const rows = await exportPdfCoverRows('rfc3161')
-
-      expect(trustedTimeRow(rows)).toBe(
-        'Local clock only: no RFC 3161 token is retained for this capture'
-      )
-    })
-
-    it('prints the retained token when the mirror understates the manifest', async () => {
+    // Appends a timestamp entry for CONTENT_HASH, so the manifest answers
+    // 'rfc3161' for it.
+    function stampContentHashInManifest(): void {
       appendManifestEntry(join(storage.getStorageRoot(), caseId), {
         type: 'timestamp',
         caseId,
@@ -609,12 +601,54 @@ describe('ipcHandlers — captures', () => {
         operatorName: 'Operator One',
         toolVersion: '1.2.3'
       })
+    }
 
-      const rows = await exportPdfCoverRows('none')
+    function trustedTimeRow(rows: [string, string][]): string | undefined {
+      return rows.find(([label]) => label === 'Trusted time')?.[1]
+    }
+
+    it('prints the manifest floor when the mirror claims a token the manifest lacks', async () => {
+      // Mirror says rfc3161; the manifest holds no entry for this hash at all.
+      const { rows } = await exportPdfCover('rfc3161')
+
+      expect(trustedTimeRow(rows)).toBe(
+        'Local clock only: no RFC 3161 token is retained for this capture'
+      )
+    })
+
+    it('prints the retained token when the mirror understates the manifest', async () => {
+      stampContentHashInManifest()
+
+      const { rows } = await exportPdfCover('none')
 
       expect(trustedTimeRow(rows)).toContain('RFC 3161 token retained')
       expect(trustedTimeRow(rows)).toContain('tsa.example.net')
       expect(trustedTimeRow(rows)).toContain('2026-04-05T12:00:04.000Z')
+    })
+
+    // #520: the other half of the constraint. Reading the axis from the manifest
+    // is not enough — an export is a read path, so it must also leave the mirror
+    // alone. reconcileCaptureTrustedTime resolves the same value but writes it
+    // through (trustedTime.ts), and the cover assertions above cannot see that:
+    // they read the Capture row the handler loaded before any write. These
+    // re-read the row from the database afterwards, so swapping the handler to
+    // reconcileCaptureTrustedTime fails here in both directions.
+    it('leaves the mirror unchanged when it overstates the manifest', async () => {
+      const { id } = await exportPdfCover('rfc3161')
+
+      // The manifest holds no entry for CONTENT_HASH, so the export resolved
+      // 'none'; a write-through would have demoted the row to it.
+      expect(captureRepo.getCapture(id)?.trustedTimeStatus).toBe('rfc3161')
+    })
+
+    it('leaves the mirror unchanged when it understates the manifest', async () => {
+      stampContentHashInManifest()
+
+      const { id } = await exportPdfCover('none')
+
+      // The export resolved 'rfc3161' from the manifest; a write-through would
+      // have promoted the row to it.
+      expect(captureRepo.getCapture(id)?.trustedTimeStatus).toBe('none')
     })
   })
 
@@ -1823,7 +1857,10 @@ describe('ipcHandlers — AI analysis', () => {
 
   it('rejects malformed analysis lookup ids before reaching the service', async () => {
     for (const value of [undefined, null, {}, 1, '']) {
-      const res = await invoke<{ ok: boolean; code?: string }>(IPC_CHANNELS.AI_GET_ANALYSIS, value)
+      const res = await invoke<{ ok: boolean; code?: string }>(
+        IPC_CHANNELS.AI_GET_ANALYSIS,
+        value
+      )
       expect(res.ok).toBe(false)
       expect(res.code).toBe('INVALID_CAPTURE_ID')
     }

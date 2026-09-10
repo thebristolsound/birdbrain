@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import type { Mock } from 'vitest'
 import { render, screen, fireEvent, cleanup, within, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
@@ -43,9 +44,9 @@ const CAPTURES = [makeCapture('cap-a', 1), makeCapture('cap-b', 2), makeCapture(
 const TAGS = [{ id: 't1', name: 'evidence', color: '#22c55e' }]
 
 let props: {
-  onDeleteSelection: ReturnType<typeof vi.fn>
-  onOpenExternal: ReturnType<typeof vi.fn>
-  onQuoteIntoNote: ReturnType<typeof vi.fn>
+  onDeleteSelection: Mock<(ids: string[]) => void>
+  onOpenExternal: Mock<(url: string) => void>
+  onQuoteIntoNote: Mock<(captureId: string) => void>
 }
 let addToCaptures: ReturnType<typeof vi.fn>
 let setFavoriteMany: ReturnType<typeof vi.fn>

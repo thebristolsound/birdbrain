@@ -243,6 +243,12 @@ Two more things a restore does not do, both worth knowing before you click it:
   your system password. We announce new betas in the tester chat as well.
 - **The extension is sideloaded.** Chrome may occasionally nag about developer-mode
   extensions.
+- **One running copy at a time.** The extension reaches the app on `127.0.0.1:19845`, and only
+  one program can hold that port. Launching Birdbrain while it is already running brings the
+  copy you have to the front instead of starting a second one, so you can't collide with
+  yourself. If some other program on your machine is holding that port, Birdbrain refuses to
+  start rather than open a window that can't receive captures, and names the port in the error
+  it shows. Close whatever is using it, then start Birdbrain again.
 - **Local-only data, no backup.** Captures live only on your machine. Export
   anything you can't lose before updating or uninstalling.
 - **Deleting a capture is not redacting it.** The files go, but the case manifest is

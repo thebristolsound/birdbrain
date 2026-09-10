@@ -11,6 +11,11 @@
  * initSigningKey would otherwise hit #414's acknowledgement gate — a native modal with no
  * window and nothing to click it, which hangs startup until firstWindow() times out.
  *
+ * The throwaway profile isolates the data, not the port: the app the harness launches binds
+ * 127.0.0.1:19845 like any other copy, so a real Birdbrain left open holds it and the harness
+ * app exits at boot rather than starting a second capture server (#513). It shows the same
+ * kind of unattended modal as above on the way out. Quit the real app before a session.
+ *
  * Two modes, one file:
  *
  *   node scripts/exploratory-harness.mjs serve [--skip-onboarding] [--window-size WxH]
@@ -23,8 +28,9 @@
  *     it is refused here rather than silently becoming a default-sized window. The display
  *     and the 900x600 minimum still clamp what is granted; the realized size is reported at
  *     startup and a mismatch is warned about, because screenshots reflect the realized size.
- *     Starting a second serve against a live info file is refused — run it with a distinct
- *     $BIRDBRAIN_HARNESS_INFO for concurrent sessions.
+ *     Starting a second serve against a live info file is refused. A distinct
+ *     $BIRDBRAIN_HARNESS_INFO gets past that refusal, but it does not buy a concurrent
+ *     session: the second app binds the same port 19845 and exits at boot (#513). One at a time.
  *     On start, dead harness profiles with a recorded server pid are swept from $TMPDIR.
  *     Headless hosts (WSL2 shells without $DISPLAY): prefix with
  *     `xvfb-run -a -s "-screen 0 1440x900x24"`.
@@ -164,7 +170,8 @@ async function assertInfoFileFree() {
   if (Number.isSafeInteger(info?.pid) && info.pid > 0 && processIsAlive(info.pid)) {
     console.error(
       `A harness is already running (pid ${info.pid}, info file ${INFO_FILE}).\n` +
-        'Close it first, or set $BIRDBRAIN_HARNESS_INFO to a different path for this session.'
+        'Close it first. A different $BIRDBRAIN_HARNESS_INFO gets past this check, but both ' +
+        'apps bind 127.0.0.1:19845 and the second exits at boot (#513).'
     )
     process.exit(1)
   }

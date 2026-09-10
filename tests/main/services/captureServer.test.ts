@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { existsSync, mkdtempSync, rmSync } from 'fs'
+import { createServer } from 'node:http'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
@@ -18,10 +19,13 @@ import { initStorage } from '@main/services/storage'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import {
+  CaptureServerBindError,
+  getCaptureServerPort,
   startCaptureServer,
   stopCaptureServer,
   resetManualDedup
 } from '@main/services/captureServer'
+import { sanitizeError } from '@main/services/logSafe'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { matchCaseExclusion } from '@main/services/exclusionPolicy'
 import { createSessionService, type SessionService } from '@main/services/session'
@@ -2163,5 +2167,93 @@ describe('captureServer', () => {
         expect((await readJson(res)).error).toBe('Missing or empty required field: noteText')
       })
     })
+  })
+})
+
+// A held port is the one startup failure an operator can cause by hand — a
+// second copy of the app, or the exploratory harness against a throwaway
+// profile — and before #513 it arrived as an unhandled 'error' event rather
+// than a rejection boot could report.
+describe('startCaptureServer bind failure', () => {
+  let tempDir: string
+
+  beforeEach(async () => {
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-bind-test-'))
+    await initDatabase(':memory:')
+    initStorage(join(tempDir, 'captures'))
+    initSettings(tempDir)
+    resetInstallationId()
+    initInstallationId(tempDir)
+    sessionService = createSessionService()
+  })
+
+  afterEach(async () => {
+    await stopCaptureServer()
+    closeDatabase()
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  function startOn(port: number): Promise<void> {
+    const selectorLifecycle = createSelectorLifecycle({ emitRematched: () => {} })
+    const captureLifecycle = createCaptureLifecycle({ selectorLifecycle })
+    return startCaptureServer(
+      { selectorLifecycle, captureLifecycle, token: TEST_TOKEN, sessionService },
+      port
+    )
+  }
+
+  async function occupy(port: number): Promise<() => Promise<void>> {
+    const blocker = createServer()
+    await new Promise<void>((resolve) => blocker.listen(port, '127.0.0.1', resolve))
+    return () => new Promise<void>((resolve) => blocker.close(() => resolve()))
+  }
+
+  it('rejects with CaptureServerBindError when the port is already held', async () => {
+    const port = nextPort++
+    const release = await occupy(port)
+    try {
+      const err = await startOn(port).catch((e: unknown) => e)
+      expect(err).toBeInstanceOf(CaptureServerBindError)
+      const bindError = err as CaptureServerBindError
+      expect(bindError.code).toBe('EADDRINUSE')
+      expect(bindError.port).toBe(port)
+      expect(bindError.message).toContain(`127.0.0.1:${port}`)
+      // Nothing was published, so the port lookup the app resolves its own
+      // server through still says "not running" rather than naming a port the
+      // other process answers on.
+      expect(getCaptureServerPort()).toBeNull()
+    } finally {
+      await release()
+    }
+  })
+
+  it('leaves the server startable on another port after a failed bind', async () => {
+    const held = nextPort++
+    const release = await occupy(held)
+    try {
+      await expect(startOn(held)).rejects.toBeInstanceOf(CaptureServerBindError)
+    } finally {
+      await release()
+    }
+    const free = nextPort++
+    await startOn(free)
+    expect(getCaptureServerPort()).toBe(free)
+  })
+
+  // The durable app.startup_failed entry is all an operator sends in, and
+  // sanitizeError flattens any name outside ERROR_NAMES to 'UnknownError' —
+  // which would leave a bind failure indistinguishable from every other fatal
+  // boot error in that log.
+  it('survives log sanitizing with its own name and errno', async () => {
+    const port = nextPort++
+    const release = await occupy(port)
+    try {
+      const err = await startOn(port).catch((e: unknown) => e)
+      const logged = sanitizeError(err)
+      expect(logged.name).toBe('CaptureServerBindError')
+      expect(logged.code).toBe('EADDRINUSE')
+    } finally {
+      await release()
+    }
   })
 })

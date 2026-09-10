@@ -491,6 +491,12 @@ export const LOG_CODES = [
   // Nothing left behind is evidence — the sandbox holds only the sentinel — so
   // the route reports its own result and this is the record that residue exists.
   'captureServer.self_test_cleanup_failed',
+  // The capture server's listener failed (#513) — at boot usually EADDRINUSE
+  // on 19845, held by another program or by a Birdbrain running against its
+  // own data directory, since the single-instance lock stops a plain second
+  // copy ever getting this far. The boot failure also reaches the operator as
+  // a dialog; this is the record of the errno.
+  'captureServer.listen_failed',
   'captureLifecycle.tls_refetch_failed',
   'captureLifecycle.selector_match_failed',
   'captureLifecycle.reprocess_failed',
@@ -631,7 +637,11 @@ export const ERROR_NAMES = [
   'SqliteError',
   'IpcFailure',
   'ManifestRollback',
-  'PreMigrationSnapshotError'
+  'PreMigrationSnapshotError',
+  // Without this the durable app.startup_failed entry for a bind failure reads
+  // 'UnknownError', which is the one field distinguishing it from any other
+  // fatal boot error in a log an operator has sent in (#513).
+  'CaptureServerBindError'
 ] as const
 
 export interface LoggedError {

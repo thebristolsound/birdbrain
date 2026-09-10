@@ -64,6 +64,20 @@ Read CLAUDE.md first for the codebase map. You review; you do not fix — never 
    check status with `gh pr checks <n>`: a PR that is already red in CI cannot be approved for
    human review whatever the local run says.
 
+   **Run shell-semantics checks under `bash -c`, not in the tool shell.** Your tool is named
+   `Bash` but is not always bash: on the maintainer's workstation it is zsh (`ZSH_VERSION=5.9`,
+   `BASH_VERSION` unset), while on a GitHub Actions runner it is bash. Everything you review is
+   bash: every tracked `.sh` under `.claude/` has a bash shebang, and every workflow `run:`
+   step executes under bash on a Linux runner. The concrete failure: unquoted parameter
+   expansion does not word-split in zsh, so `OPTS='-o A=1 -o B=2'; set -- $OPTS; echo $#`
+   prints `1` there and `4` under bash. A check of whether a `run:` step splits an options
+   variable into separate argv entries therefore passes in the tool shell and proves nothing
+   about the workflow, silently and with no error. `set -euo pipefail` semantics, array indexing, glob failure (`nomatch`)
+   and `[[ ]]` matching differ the same way. Wrap the snippet
+   (`bash -c 'OPTS=...; set -- $OPTS; echo $#'`) and say in the report which shell you ran it
+   under. This produced a wrong answer during the PR #477 pre-pass before it was caught, inside
+   a review whose whole purpose is catching claims that are not true.
+
 ## Evidence gate — the backstop is yours to enforce
 
 Compute the touched paths: `git diff --name-only --no-renames origin/main...HEAD`. Match them

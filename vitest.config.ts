@@ -78,7 +78,12 @@ export default defineConfig({
           lines: 88,
           statements: 88,
           functions: 90,
-          branches: 80
+          // 80 was calibrated against @vitest/coverage-v8 3.x. The 5.x
+          // provider counts branches differently: on the same suite this file
+          // reads 77.22 where it read 89.45, and the whole-repo figure moved
+          // 88.89 -> 76.57. Re-calibrated, not a coverage regression; the rest
+          // of this block still clears its old numbers and is untouched.
+          branches: 74
         },
         'src/main/ipcWrap.ts': {
           lines: 75,
@@ -105,8 +110,13 @@ export default defineConfig({
         }
       }
     },
+    // Since Vitest 5 an inline project extends the config that declares it by
+    // default, which merges the root include/plugins into both projects and
+    // drags the main-process suites into jsdom. Each project already carries
+    // the environment, aliases and plugins it needs, so opt out explicitly.
     projects: [
       {
+        extends: false,
         resolve: {
           alias: {
             '@main': resolve(__dirname, 'src/main'),
@@ -118,12 +128,17 @@ export default defineConfig({
         test: {
           name: 'node',
           environment: 'node',
+          // Vitest 5 flipped clearMocks to true. Suites that assert cumulative
+          // call counts across the `it`s of one file were written against the
+          // old default, so hold it rather than re-scope those assertions here.
+          clearMocks: false,
           include: ['tests/**/*.test.ts', 'src/packages/**/tests/**/*.test.{ts,mts,cts}'],
           exclude: ['tests/renderer/**', 'tests/hooks/**'],
           setupFiles: ['./tests/setup/signing-key.ts']
         }
       },
       {
+        extends: false,
         plugins: [react()],
         resolve: {
           alias: {
@@ -136,6 +151,7 @@ export default defineConfig({
         test: {
           name: 'jsdom',
           environment: 'jsdom',
+          clearMocks: false,
           include: [
             'tests/components/**/*.test.tsx',
             'tests/renderer/**/*.test.ts',

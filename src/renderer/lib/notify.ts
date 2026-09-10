@@ -130,7 +130,12 @@ const CODE_LABELS: Record<LogCode, string> = {
   'captureServer.tag_apply_failed': "Couldn't apply the tag",
   'captureServer.note_create_failed': "Couldn't create the note",
   'captureServer.self_test_cleanup_failed': "Couldn't clean up after the pipeline self-test",
-  'captureServer.listen_failed': "Couldn't start the capture server — its port is already in use",
+  // Errno-neutral on purpose: one label serves two surfaces. In the Log tab it
+  // reads a boot EADDRINUSE entry; as a toast it can only follow a successful
+  // bind, because boot fails before setLoggerWindow and exits — so a label
+  // naming the port as in use would be wrong in the only case it can toast.
+  // The entry's errorCode carries the errno either way.
+  'captureServer.listen_failed': "The capture server's listener failed",
   'captureLifecycle.tls_refetch_failed': "Couldn't verify the site's certificate",
   'captureLifecycle.selector_match_failed': "Couldn't check this capture against selectors",
   'captureLifecycle.reprocess_failed': "Couldn't reprocess this capture",

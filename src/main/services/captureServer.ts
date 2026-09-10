@@ -959,7 +959,11 @@ export function startCaptureServer(
       (info) => {
         // Published only once the bind succeeded, so a failed listen leaves
         // getCaptureServerPort() and stopCaptureServer() looking at nothing
-        // rather than at a socket that was never opened.
+        // rather than at a socket that was never opened. The corollary for a
+        // future caller: stopCaptureServer() during an in-flight start sees
+        // null and resolves at once, leaving this line to publish a listener
+        // that stop no longer knows about. Boot's single call site awaits the
+        // start before anything can quit, so nothing hits that today.
         server = instance
         // Read the bound port back rather than echoing the request, so a
         // caller that asked for port 0 gets the ephemeral port it actually got.

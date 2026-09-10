@@ -25,6 +25,7 @@ import {
   stopCaptureServer,
   resetManualDedup
 } from '@main/services/captureServer'
+import { sanitizeError } from '@main/services/logSafe'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { matchCaseExclusion } from '@main/services/exclusionPolicy'
 import { createSessionService, type SessionService } from '@main/services/session'
@@ -2237,5 +2238,22 @@ describe('startCaptureServer bind failure', () => {
     const free = nextPort++
     await startOn(free)
     expect(getCaptureServerPort()).toBe(free)
+  })
+
+  // The durable app.startup_failed entry is all an operator sends in, and
+  // sanitizeError flattens any name outside ERROR_NAMES to 'UnknownError' —
+  // which would leave a bind failure indistinguishable from every other fatal
+  // boot error in that log.
+  it('survives log sanitizing with its own name and errno', async () => {
+    const port = nextPort++
+    const release = await occupy(port)
+    try {
+      const err = await startOn(port).catch((e: unknown) => e)
+      const logged = sanitizeError(err)
+      expect(logged.name).toBe('CaptureServerBindError')
+      expect(logged.code).toBe('EADDRINUSE')
+    } finally {
+      await release()
+    }
   })
 })

@@ -587,14 +587,26 @@ if (!gotSingleInstanceLock) {
         )
       } else if (err instanceof CaptureServerBindError) {
         // The generic dialog would send an operator to the log for a cause the
-        // app already knows and can act on: one running copy at a time is the
-        // supported configuration, so name the port and the likely holder.
+        // app already knows and can act on. Two messages, because only
+        // EADDRINUSE identifies something to go and close: startCaptureServer
+        // rejects on any listen error, so EACCES, EPERM and EADDRNOTAVAIL land
+        // here too and no other program is holding the port in those cases.
+        // Nor can the holder be a second copy of this build — the
+        // single-instance lock quits that process before this boot chain is
+        // ever registered — so what there is to close is an unrelated program,
+        // or a Birdbrain running against its own data directory.
+        const detail =
+          err.code === 'EADDRINUSE'
+            ? `Another program is already using port ${err.port}, so the Chrome extension would ` +
+              'have no way to send captures to this copy of Birdbrain. Close whatever is holding ' +
+              'the port — including any Birdbrain running against its own data directory — then ' +
+              'start Birdbrain again.'
+            : `Birdbrain could not listen on port ${err.port} (${err.code ?? 'unknown error'}), ` +
+              'so the Chrome extension would have no way to send captures to this copy of ' +
+              'Birdbrain. A local firewall or security tool blocking the port is the usual cause.'
         dialog.showErrorBox(
           'Birdbrain could not start its capture server',
-          `Port ${err.port} is already in use, so the Chrome extension would have no way to ` +
-            'send captures to this copy of Birdbrain. ' +
-            'Birdbrain supports one running copy at a time, so the usual cause is a copy that ' +
-            'is already open — quit it and start Birdbrain again. ' +
+          `${detail} ` +
             'A diagnostic log has been saved in the logs folder of your Birdbrain data directory.'
         )
       } else {

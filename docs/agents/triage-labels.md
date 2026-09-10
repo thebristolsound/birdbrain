@@ -25,8 +25,8 @@ Edit the right-hand column to match the vocabulary you use.
 The `evidence-affecting` call is made by the human triaging the issue, not by the agent working
 it; the agent opening a PR for a labelled issue copies the label onto the PR. The label is the
 gate's primary trigger; the PR-diff path-list backstop
-(`docs/specs/2026-07-31-evidence-affecting-paths-assessment.md`, drafted in PR #315, until a
-maintained list supersedes it) exists to catch triage misses, not to replace the call.
+(`docs/specs/2026-07-31-evidence-affecting-paths-assessment.md`, in force until a maintained
+list supersedes it) exists to catch triage misses, not to replace the call.
 
 ## The ready-for-agent bar
 

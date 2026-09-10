@@ -50,6 +50,25 @@ Capture a Tag or Note binds to, and whether an attach request acquires new bytes
 canonical match means the supplied payload is ingested), so it shapes what enters a case the same
 way `urlPatterns.ts` does; the #227 argument applies unchanged. Shared so the extension and the
 server agree on the rules by construction rather than by convention.
+`src/main/windowSize.ts` added to the **exclusion** list (#515) — window sizing moved there out
+of the already-listed `src/main/index.ts` in #478 and landed on no list at all, so once that
+carve-out had settled a PR touching only the new file would have tripped nothing. The call is
+exclusion rather than inclusion: window geometry enters no capture, content hash, manifest
+entry, canonical JSON field or signature, which #478's Evidence impact section argued and its
+round-2 pre-pass verified. `src/main/index.ts` stays included at blocking tier for the
+invariants it does still hold.
+
+### Known gap: carve-outs are caught by review, not by a check
+
+Nothing detects a file being split out of an include-list path. The rename-detection-off rule
+under "List format" catches the move itself, because that diff still names the old path, and
+nothing after it — once the carve-out has merged, edits touching only the new home match no
+entry. That is why each amendment above was needed, and every one of them was written because a
+person or an agent noticed while reading a diff.
+
+Whether that is the intended control or a gap worth closing with a check is open (#1410). Read
+this as an unresolved gap rather than a decision already taken. It is a live one: two further
+carve-outs from `src/main/index.ts` are on neither list today (#1409).
 
 ## List format
 
@@ -131,7 +150,8 @@ the more misleading class because they read as substantive:
   `ExportMenu.tsx`. Neither shapes a package.
 - **#478** hit `src/main/index.ts` moving window sizing out to `resolveWindowSize`. That file is
   listed for the evidence-viewer invariants, webview navigation blocking and sandbox
-  `webPreferences`, and the diff went nowhere near them. #515 tracks the same carve-out.
+  `webPreferences`, and the diff went nowhere near them. The file it moved the sizing into,
+  `src/main/windowSize.ts`, is on the exclusion list below (#515).
 
 So 16 of 38 labelled merges, 42%, touched no path where the change could have altered an
 evidentiary result.
@@ -155,8 +175,8 @@ does reach `main` through this route, that is the evidence to promote the entry,
 promoted rather than argued with.
 
 `src/main/index.ts` stays blocking despite its only observed fire being incidental. One file's noise
-does not buy dropping the evidence-viewer invariants, and #515 is the better fix for the specific
-carve-out that caused it.
+does not buy dropping the evidence-viewer invariants, and the better fix for the specific carve-out
+that caused it was to record the carved-out file as an exclusion (#515), which is now done.
 
 ## Include list
 
@@ -320,6 +340,7 @@ It is *notable* exclusions, not an exhaustive complement of the include list.
 | `src/main/services/openrouter.ts` | API-key test + model catalog only; cannot alter analysis output. Distinct from the included `src/main/services/ai/openrouter.ts` chat client |
 | `src/main/services/deepLink.ts` | Navigation plumbing |
 | `src/main/services/extensionPath.ts` | Extension setup plumbing |
+| `src/main/windowSize.ts` | Main-window geometry, and the `BIRDBRAIN_WINDOW_SIZE` override read only in an unpackaged build. It holds none of the invariants `src/main/index.ts` is listed for: no capture, content hash, manifest entry, canonical JSON field or signature depends on the size of the window the evidence is later viewed in. Split out of the included `src/main/index.ts` by #478, and left off both lists until #515 |
 | `src/renderer/lib/api/**` | High-churn typed passthrough; evidence parameters originate in included dialogs and are enforced in main (but see judgment call 2) |
 | `src/renderer/lib/queries.ts` | Same rationale — the re-export barrel left behind by the split, deleted by the last PR of #229 |
 | `src/renderer/components/captures/AddUrlsBox.tsx` | Removed by the challenge pass as inconsistent with the standard applied to `src/renderer/lib/queries.ts` and `src/renderer/components/settings/CapturePreferences.tsx` — UI-side plumbing whose values are enforced in main |

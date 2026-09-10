@@ -18,8 +18,10 @@
  *     $TMPDIR/birdbrain-harness.json by default, overridable with $BIRDBRAIN_HARNESS_INFO).
  *     Ctrl-C / `close` tool shuts down and deletes the temp dir.
  *     `--skip-onboarding` seeds the completed-onboarding setting so the dashboard opens.
- *     `--window-size` requests the app window's outer dimensions for layout testing. The
- *     display and the app's 900x600 minimum both clamp it; the realized size is reported at
+ *     `--window-size` requests the app window's outer dimensions for layout testing.
+ *     Accepted between 900x600 and 10000x10000 — the app ignores anything outside that, so
+ *     it is refused here rather than silently becoming a default-sized window. The display
+ *     and the 900x600 minimum still clamp what is granted; the realized size is reported at
  *     startup and a mismatch is warned about, because screenshots reflect the realized size.
  *     Starting a second serve against a live info file is refused — run it with a distinct
  *     $BIRDBRAIN_HARNESS_INFO for concurrent sessions.
@@ -87,11 +89,17 @@ function parseServeArgs(args) {
     throw new Error('--window-size must use WxH, for example 1600x1000')
   }
   if (windowSize) {
-    // Same floor as MIN_WINDOW_SIZE in src/main/windowSize.ts. Rejecting here rather than
-    // silently falling back keeps the charter honest about the size it actually tested.
+    // Same bounds as MIN_WINDOW_SIZE and MAX_WINDOW_DIMENSION in src/main/windowSize.ts.
+    // Rejecting here rather than silently falling back keeps the charter honest about the size
+    // it actually tested, and keeps the realized-size warning in serve() truthful: an
+    // out-of-bounds request never reaches the window, so the only causes left for a mismatch
+    // are the ones that warning names.
     const [w, h] = windowSize.split('x').map((n) => Number.parseInt(n, 10))
     if (w < 900 || h < 600) {
       throw new Error(`--window-size ${windowSize} is below the app's 900x600 minimum`)
+    }
+    if (w > 10000 || h > 10000) {
+      throw new Error(`--window-size ${windowSize} is above the app's 10000x10000 maximum`)
     }
   }
   return { skipOnboarding, windowSize }
@@ -120,7 +128,9 @@ async function sweepStaleProfiles() {
           return
         }
         if (!Number.isSafeInteger(pid) || pid <= 0 || !processIsAlive(pid)) {
-          await rm(dir, { recursive: true, force: true })
+          // Best effort: another local user's birdbrain-explore- dir is not ours to remove,
+          // and an EACCES on it must not abort a serve that has nothing to do with it.
+          await rm(dir, { recursive: true, force: true }).catch(() => {})
         }
       })
   )
@@ -204,7 +214,13 @@ async function serve(args) {
 
   let app
   let page
+  let server
   let consoleBuf = []
+  // Everything up to the catch below runs before the shutdown handlers exist, so nothing in
+  // here can rely on them: a throw would leave the Electron process holding the temp profile
+  // until the next serve swept it. The try covers the whole window rather than the calls that
+  // are known to throw today, because the last leak (a bad $BIRDBRAIN_HARNESS_INFO path) was
+  // introduced by a later line landing outside a narrower guard.
   try {
     app = await _electron.launch({
       args: ['.', `--user-data-dir=${tempDir}`],
@@ -223,104 +239,118 @@ async function serve(args) {
     page.on('pageerror', (e) => consoleBuf.push({ type: 'pageerror', text: String(e) }))
     await page.waitForLoadState('domcontentloaded')
     await page.waitForSelector('[data-testid="app-ready"]', { timeout: 15000 })
+
+    const [realWidth, realHeight] = await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].getSize()
+    )
+    if (windowSize && windowSize !== `${realWidth}x${realHeight}`) {
+      console.warn(
+        `warning: requested --window-size ${windowSize} but the window is ` +
+          `${realWidth}x${realHeight}. The display size or the app's 900x600 minimum clamped ` +
+          'it; screenshots and any layout finding reflect the realized size, not the request.'
+      )
+    }
+
+    let shotN = 0
+    const tools = {
+      snapshot: () => page.locator('body').ariaSnapshot(),
+      click: async ([selector]) => {
+        await page.locator(selector).first().click({ timeout: 5000 })
+        return `clicked ${selector}`
+      },
+      type: async ([selector, text]) => {
+        await page.locator(selector).first().fill(text, { timeout: 5000 })
+        return `typed into ${selector}`
+      },
+      typetext: async ([text]) => {
+        await page.keyboard.type(text)
+        return 'typed into focused element'
+      },
+      press: async ([key]) => {
+        await page.keyboard.press(key)
+        return `pressed ${key}`
+      },
+      screenshot: async ([name]) => {
+        const file = join(shotsDir, `${String(++shotN).padStart(3, '0')}-${name ?? 'shot'}.png`)
+        await page.screenshot({ path: file })
+        return file
+      },
+      console: () => {
+        const out = consoleBuf
+        consoleBuf = []
+        return out
+      },
+      url: () => page.url(),
+      close: async () => {
+        setTimeout(shutdown, 50)
+        return 'closing'
+      }
+    }
+
+    const token = randomBytes(32).toString('hex')
+
+    // Same threat model as the capture server (src/main/services/captureServer.ts): binding
+    // loopback is not access control. A page in the operator's browser can POST here without a
+    // preflight if the body is a CORS-simple type, and DNS rebinding gets it a same-origin read
+    // of the reply. Reject non-loopback Host, reject any Origin (no browser is a legitimate
+    // client of this CLI), and require the per-run token — all before the body is read.
+    server = createServer(async (req, res) => {
+      const reply = (status, payload) => {
+        if (res.destroyed || res.writableEnded) return
+        res.writeHead(status, { 'content-type': 'application/json' })
+        res.end(JSON.stringify(payload))
+      }
+      if (!isLoopbackHost(req.headers.host) || req.headers.origin) {
+        req.resume()
+        return reply(403, { ok: false, error: 'forbidden' })
+      }
+      if (!tokenMatches(req.headers[TOKEN_HEADER], token)) {
+        req.resume()
+        return reply(401, { ok: false, error: 'unauthorized' })
+      }
+      try {
+        // Inside the try: an aborted upload rejects this loop, and an async listener that
+        // rejects is an unhandled rejection, which Node 20 turns into a process exit — killing
+        // the session and leaking the temp profile before shutdown() can remove it.
+        let body = ''
+        for await (const chunk of req) body += chunk
+        const { tool, args = [] } = JSON.parse(body || '{}')
+        if (!tools[tool]) throw new Error(`unknown tool "${tool}"`)
+        const result = await tools[tool](args)
+        reply(200, { ok: true, result })
+      } catch (err) {
+        reply(400, { ok: false, error: String(err?.message ?? err) })
+      }
+    })
+
+    await new Promise((r) => server.listen(0, '127.0.0.1', r))
+    const { port } = server.address()
+    // 0600: the file carries the control token, and $TMPDIR is world-readable. The mode only
+    // applies when this call creates the file, and the default path is predictable inside a
+    // world-writable directory — so unlink first and create exclusively, rather than writing
+    // the token into a file another local user pre-created and still owns.
+    try {
+      await rm(INFO_FILE, { force: true })
+      await writeFile(
+        INFO_FILE,
+        JSON.stringify({ port, token, pid: process.pid, tempDir, shotsDir }),
+        { mode: 0o600, flag: 'wx' }
+      )
+    } catch (err) {
+      throw new Error(
+        `Cannot create the info file ${INFO_FILE} (${String(err?.message ?? err)}). ` +
+          'Point $BIRDBRAIN_HARNESS_INFO at a writable path you own.'
+      )
+    }
+    console.log(`harness ready: http://127.0.0.1:${port}  userData=${tempDir}`)
+    console.log(`window: ${realWidth}x${realHeight}`)
+    console.log(`tools: ${Object.keys(tools).join(', ')}  (info file: ${INFO_FILE})`)
   } catch (err) {
+    server?.close()
     await app?.close().catch(() => {})
     await rm(tempDir, { recursive: true, force: true }).catch(() => {})
     throw err
   }
-
-  const [realWidth, realHeight] = await app.evaluate(({ BrowserWindow }) =>
-    BrowserWindow.getAllWindows()[0].getSize()
-  )
-  if (windowSize && windowSize !== `${realWidth}x${realHeight}`) {
-    console.warn(
-      `warning: requested --window-size ${windowSize} but the window is ` +
-        `${realWidth}x${realHeight}. The display size or the app's 900x600 minimum clamped ` +
-        'it; screenshots and any layout finding reflect the realized size, not the request.'
-    )
-  }
-
-  let shotN = 0
-  const tools = {
-    snapshot: () => page.locator('body').ariaSnapshot(),
-    click: async ([selector]) => {
-      await page.locator(selector).first().click({ timeout: 5000 })
-      return `clicked ${selector}`
-    },
-    type: async ([selector, text]) => {
-      await page.locator(selector).first().fill(text, { timeout: 5000 })
-      return `typed into ${selector}`
-    },
-    typetext: async ([text]) => {
-      await page.keyboard.type(text)
-      return 'typed into focused element'
-    },
-    press: async ([key]) => {
-      await page.keyboard.press(key)
-      return `pressed ${key}`
-    },
-    screenshot: async ([name]) => {
-      const file = join(shotsDir, `${String(++shotN).padStart(3, '0')}-${name ?? 'shot'}.png`)
-      await page.screenshot({ path: file })
-      return file
-    },
-    console: () => {
-      const out = consoleBuf
-      consoleBuf = []
-      return out
-    },
-    url: () => page.url(),
-    close: async () => {
-      setTimeout(shutdown, 50)
-      return 'closing'
-    }
-  }
-
-  const token = randomBytes(32).toString('hex')
-
-  // Same threat model as the capture server (src/main/services/captureServer.ts): binding
-  // loopback is not access control. A page in the operator's browser can POST here without a
-  // preflight if the body is a CORS-simple type, and DNS rebinding gets it a same-origin read
-  // of the reply. Reject non-loopback Host, reject any Origin (no browser is a legitimate
-  // client of this CLI), and require the per-run token — all before the body is read.
-  const server = createServer(async (req, res) => {
-    const reply = (status, payload) => {
-      if (res.destroyed || res.writableEnded) return
-      res.writeHead(status, { 'content-type': 'application/json' })
-      res.end(JSON.stringify(payload))
-    }
-    if (!isLoopbackHost(req.headers.host) || req.headers.origin) {
-      req.resume()
-      return reply(403, { ok: false, error: 'forbidden' })
-    }
-    if (!tokenMatches(req.headers[TOKEN_HEADER], token)) {
-      req.resume()
-      return reply(401, { ok: false, error: 'unauthorized' })
-    }
-    try {
-      // Inside the try: an aborted upload rejects this loop, and an async listener that
-      // rejects is an unhandled rejection, which Node 20 turns into a process exit — killing
-      // the session and leaking the temp profile before shutdown() can remove it.
-      let body = ''
-      for await (const chunk of req) body += chunk
-      const { tool, args = [] } = JSON.parse(body || '{}')
-      if (!tools[tool]) throw new Error(`unknown tool "${tool}"`)
-      const result = await tools[tool](args)
-      reply(200, { ok: true, result })
-    } catch (err) {
-      reply(400, { ok: false, error: String(err?.message ?? err) })
-    }
-  })
-
-  await new Promise((r) => server.listen(0, '127.0.0.1', r))
-  const { port } = server.address()
-  // 0600: the file carries the control token, and $TMPDIR is world-readable.
-  await writeFile(INFO_FILE, JSON.stringify({ port, token, pid: process.pid, tempDir, shotsDir }), {
-    mode: 0o600
-  })
-  console.log(`harness ready: http://127.0.0.1:${port}  userData=${tempDir}`)
-  console.log(`window: ${realWidth}x${realHeight}`)
-  console.log(`tools: ${Object.keys(tools).join(', ')}  (info file: ${INFO_FILE})`)
 
   let closing = false
   async function shutdown() {

@@ -11,6 +11,13 @@ describe('resolveWindowSize', () => {
     expect(resolveWindowSize('900x600', true)).toEqual(MIN_WINDOW_SIZE)
   })
 
+  // Both boundaries of the 10000 ceiling, so an off-by-one there fails here rather than
+  // silently widening or narrowing what the harness may request. The rejected side is in the
+  // table below.
+  it('honours the largest accepted override', () => {
+    expect(resolveWindowSize('10000x10000', true)).toEqual({ width: 10000, height: 10000 })
+  })
+
   // Table of the inputs the previous inline regex accepted and passed straight to
   // BrowserWindow. Each is now answered with the default instead: Electron enforces
   // minWidth/minHeight at construction, so a smaller request cannot produce the window a
@@ -20,6 +27,8 @@ describe('resolveWindowSize', () => {
     ['899x600', 'one pixel under the minimum width'],
     ['900x599', 'one pixel under the minimum height'],
     ['1x1', 'far under the minimum'],
+    ['10001x600', 'one pixel over the maximum width'],
+    ['900x10001', 'one pixel over the maximum height'],
     ['100000x100000', 'absurdly large'],
     ['1600x', 'missing height'],
     ['x1000', 'missing width'],

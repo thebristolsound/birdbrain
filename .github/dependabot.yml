@@ -31,17 +31,10 @@ version: 2
 # agent-pr or agent-authored, so a human draft does not get it - and
 # scripts/audit-check.mjs audits the website tree on every Security run. A bump PR there
 # would not run against less signal, so that argument cannot carry the exclusion.
-# Whether to open /website too is a maintainer decision, left open here and tracked on
-# #1347. Weigh it against what cleared audit-exceptions.json's sharp entry
-# GHSA-f88m-g3jw-g9cj. sharp 0.35.4 is an upstream release, but this tree could only
-# reach it through next, and what delivered it was merged Dependabot PR #1341 taking
-# next 16.2.12 -> 16.3.3 in the website tree - the exact remediation that entry records.
-# The same bump cleared two critical next RCEs and a second high sharp finding, all of
-# which were blocking at 3aea640b, this branch's merge base before #1341 landed. A
-# Dependabot bump in /website is therefore the demonstrated fix, which argues for
-# opening it rather than against.
-# PR #1373 removes the now-dead entry. All of this governs *version* updates only:
-# Dependabot security updates are enabled separately and cover both directories.
+# Whether to open /website too is a maintainer decision. It is left open here and
+# tracked on #1347, which carries the evidence; this file deliberately does not argue
+# it either way. All of this governs *version* updates only: Dependabot security
+# updates are enabled separately and cover both directories.
 #
 # Pre-pass interaction (#488), checked on 2026-09-09 against a live Dependabot PR rather
 # than assumed — and the expected answer did not hold. #1341 is dependabot[bot]-authored

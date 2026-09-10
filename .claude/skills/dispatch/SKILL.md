@@ -375,9 +375,23 @@ dependency that has not landed is a reason to skip the issue this cycle, not a r
 **Then check the candidate is not already done — before claiming.** A `ready-for-agent` label
 on an issue whose work already merged is indistinguishable from real work, and costs a full
 cycle: on 2026-08-10 the routine dispatched #268, whose PR #375 had merged two hours earlier.
-Two causes compound. A merging PR only auto-closes its issue when the body says `Closes #N` —
-`Implements #N` leaves the issue open with its label intact; and a label removed after a merge
-can be re-added later, as #268's was.
+Three causes compound. A merging PR only auto-closes its issue when the body says `Closes #N` —
+`Implements #N` leaves the issue open with its label intact; a label removed after a merge can
+be re-added later, as #268's was; and the removal is unreadable to anyone working from the body
+and the current labels, because a missing triage label says "never triaged" and "taken off the
+frontier on purpose" in the same breath.
+
+**The third cause is traced, so do not re-derive it (#536).** #268's `ready-for-agent` came off
+at `2026-08-10T22:28:55Z`, with the reason posted in a comment eleven seconds later, and went
+back on at `2026-08-11T00:41:50Z`. A local Claude Code session answering an unrelated question
+surveyed the frontier from each issue's body and labels, never read the comments, took the gap
+on #268 for an oversight, and recommended the `gh api ... -f 'labels[]=ready-for-agent'` the
+maintainer then ran. That event's `performed_via_github_app` is `null` — a local token — against
+`claude` on the dispatch cycle's own label events earlier that evening. Twenty minutes later the
+next cycle read the restored label and picked #268 as the lowest eligible issue. The reader was
+a triage-shaped session, not this routine, so no guard here would have caught it: the
+consumer-side fix is the read-the-history step on the `ready-for-agent` bar in
+`docs/agents/triage-labels.md`, and the producer-side fix is the never-bare rule below.
 
 ```
 gh api --paginate "repos/thebristolsound/birdbrain/issues/<n>/timeline?per_page=100" \
@@ -389,9 +403,25 @@ For each cross-referencing number, check whether it is a merged PR
 is an issue, not a PR). If one merged, **do not claim and do not dispatch**: verify the
 acceptance criteria against the files on `main` yourself, then take the issue off the frontier
 the same way as the give-up path below — post a comment saying what merged and what you
-checked, remove `ready-for-agent`, and apply `ready-for-human` so a human closes it. Report it
-as a misdispatch, naming who re-added the label and when, since a repeat means something
-upstream is putting it back.
+checked, remove `ready-for-agent`, and apply `ready-for-human` so a human closes it.
+
+**The issue ends carrying a triage label. Never leave it bare.** Removing `ready-for-agent` and
+applying `ready-for-human` is one swap, not two steps you may stop between: `ready-for-human` is
+what makes the decision legible to a reader who sees only labels, and it is the whole reason to
+apply it here rather than to just drop the issue off the frontier. #268 sat with no triage label
+for just over two hours, and that is the state a passing session read as an oversight.
+
+Then report it as a misdispatch, naming who re-added the label and when. Read the actor,
+`created_at` and `performed_via_github_app` off the `labeled` timeline event — `null` is a local
+token, a slug names the app — so the next repeat is traceable in minutes rather than by
+transcript archaeology:
+
+```shell
+gh api --paginate "repos/thebristolsound/birdbrain/issues/<n>/timeline?per_page=100" \
+  --jq '[.[] | select(.event=="labeled" or .event=="unlabeled")
+         | {event, label: .label.name, actor: .actor.login, created_at,
+            app: (.performed_via_github_app.slug // null)}]'
+```
 
 **Claim a slot before spawning anything** (ADR-0006). In this order:
 
@@ -490,6 +520,10 @@ its blockers as text and stops. Via the write path, you post them to the issue i
 - Locally: `agh issue comment <n> --body-file <path>`, then `agh issue edit <n>` with
   `--remove-label ready-for-agent --remove-label agent-wip --add-label ready-for-human`.
 - On the web: `mcp__github__add_issue_comment` and `mcp__github__issue_write`.
+
+The never-bare rule holds here too: this is a swap, never a bare removal, so the issue leaves
+the frontier carrying a triage label and its state reads as a decision rather than as never
+triaged.
 
 A give-up that leaves the claim in place stalls dispatch for 4 hours for nothing, and one that
 leaves the issue otherwise unchanged is indistinguishable from an agent that silently

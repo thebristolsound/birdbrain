@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import type { Mock } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import type { BirdbrainSettings } from '@shared/types'
@@ -80,7 +81,7 @@ const settings = {
 } satisfies BirdbrainSettings
 
 let chooseStoragePath: ReturnType<typeof vi.fn>
-let onUpdate: ReturnType<typeof vi.fn>
+let onUpdate: Mock<(partial: Partial<BirdbrainSettings>) => Promise<void>>
 
 beforeEach(() => {
   chooseStoragePath = vi.fn(async () => '/home/tester/NewRoot')

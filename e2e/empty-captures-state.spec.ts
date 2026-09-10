@@ -36,6 +36,44 @@ test.describe('Empty Captures State', () => {
     await expect(page.getByText('Browse and investigate')).toBeVisible()
   })
 
+  // Shrinks the window to the app minimum so the panel is taller than the pane it
+  // scrolls in — the state #474 was reported from. Without that precondition the
+  // panel fits, centring is harmless and the assertion would pass either way, so it
+  // is asserted rather than assumed.
+  test('keeps the illustration reachable when the panel overflows the pane', async ({
+    electronApp,
+    page
+  }) => {
+    await createCaseAndOpenCaptures(page, 'Clipped Illustration Case')
+    await expect(page.locator('[data-testid="captures-getting-started"]')).toBeVisible()
+
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0].setContentSize(900, 600)
+    })
+
+    const readMetrics = () =>
+      page.evaluate(() => {
+        const panel = document.querySelector<HTMLElement>('[data-testid="captures-getting-started"]')
+        const art = document.querySelector<HTMLElement>(
+          '[data-testid="captures-getting-started-illustration"]'
+        )
+        if (!panel || !art) return null
+        panel.scrollTop = 0
+        return {
+          overflowing: panel.scrollHeight > panel.clientHeight,
+          topOffset: art.getBoundingClientRect().top - panel.getBoundingClientRect().top
+        }
+      })
+
+    await expect.poll(async () => (await readMetrics())?.overflowing).toBe(true)
+
+    const metrics = await readMetrics()
+    // Scrolled to the top of the range, the illustration must still be below the
+    // pane's top edge. Centred overflow put it ~100px above it, where no amount of
+    // scrolling reaches.
+    expect(metrics?.topOffset).toBeGreaterThanOrEqual(0)
+  })
+
   test('Learn more replays the extension chapter of the tour', async ({ page }) => {
     await createCaseAndOpenCaptures(page, 'Walkthrough Case')
 

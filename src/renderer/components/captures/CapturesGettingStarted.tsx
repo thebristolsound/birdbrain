@@ -56,15 +56,23 @@ export function CapturesGettingStarted() {
     }
   }
 
+  // `items-center-safe` rather than `items-center`: this panel is taller than the viewer
+  // pane at small window heights, and a scroll container cannot scroll above its own top
+  // edge, so plain centring left the top of the illustration permanently out of reach —
+  // measured at -100px in Electron's Chromium (#474). Safe centring falls back to start
+  // alignment as soon as the content overflows.
   return (
     <main
       data-testid="captures-getting-started"
-      className="flex flex-1 items-center justify-center overflow-y-auto bg-canvas p-8"
+      className="flex flex-1 items-center-safe justify-center overflow-y-auto bg-canvas p-8"
     >
       <div className="w-full max-w-lg">
         {/* Hero */}
         <div className="mb-10 text-center">
-          <div className="relative mx-auto mb-6 inline-block">
+          <div
+            data-testid="captures-getting-started-illustration"
+            className="relative mx-auto mb-6 inline-block"
+          >
             {!reduce && (
               <motion.div
                 aria-hidden

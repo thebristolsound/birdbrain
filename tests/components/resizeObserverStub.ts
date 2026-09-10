@@ -12,6 +12,9 @@ export function stubResizeObserver() {
   Object.defineProperty(window, 'ResizeObserver', {
     configurable: true,
     writable: true,
-    value: vi.fn().mockImplementation(() => new ResizeObserverStub())
+    // The class itself, not a vi.fn() wrapping it: Vitest 5 constructs a mock
+    // with Reflect.construct, and an arrow-function implementation is not
+    // constructable, so `new ResizeObserver(...)` threw a TypeError.
+    value: ResizeObserverStub
   })
 }

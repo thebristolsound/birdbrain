@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi, beforeAll } from 'vitest'
+import type { MockedObject } from 'vitest'
 import {
   existsSync,
   mkdirSync,
@@ -152,6 +153,8 @@ import { initServerToken } from '@main/services/serverToken'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSessionService, type SessionService } from '@main/services/session'
+import type { RecaptureService } from '@main/services/recapture'
+import type { UpdaterService } from '@main/services/updater'
 import {
   CAPTURE_SERVER_PORT,
   getCaptureServerPort,
@@ -186,20 +189,8 @@ let sessionService: SessionService
 let dbPath = ''
 let caseId = ''
 let captureId = ''
-let recaptureService: {
-  enqueue: ReturnType<typeof vi.fn>
-  status: ReturnType<typeof vi.fn>
-  idle: ReturnType<typeof vi.fn>
-}
-let updaterService: {
-  start: ReturnType<typeof vi.fn>
-  getStatus: ReturnType<typeof vi.fn>
-  check: ReturnType<typeof vi.fn>
-  download: ReturnType<typeof vi.fn>
-  install: ReturnType<typeof vi.fn>
-  applySettingsChange: ReturnType<typeof vi.fn>
-  dispose: ReturnType<typeof vi.fn>
-}
+let recaptureService: MockedObject<RecaptureService>
+let updaterService: MockedObject<UpdaterService>
 
 function seedCapture(overrides: Partial<captureRepo.InsertCaptureParams> = {}): Capture {
   const cap = captureRepo.insertCapture({

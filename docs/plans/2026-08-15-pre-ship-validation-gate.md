@@ -99,11 +99,11 @@ Notes worth knowing before you read a green tick as meaning more than it does:
   target ref**, not today's. These workflow files change often and materially, so dispatching
   at an older tag can green-tick a weaker gate than `main` currently runs. Read the result as
   evidence about that commit under the job set that commit carried.
-- The `test` job's diff-coverage step is gated `if: github.event_name == 'pull_request'`
-  (`.github/workflows/ci.yml:187`), so `scripts/diff-coverage.mjs` does **not** run on the
-  push-to-`main` run this section reads, nor on a dispatched one. Diff coverage is a per-PR
-  gate; a green `test` here means the suite and the project-wide coverage thresholds passed,
-  nothing more.
+- The diff-coverage step is gated `if: github.event_name == 'pull_request'`
+  (`.github/workflows/ci.yml`, `test` job, step `Diff coverage`), so
+  `scripts/diff-coverage.mjs` does **not** run on the push-to-`main` run this section reads,
+  nor on a dispatched one. Diff coverage is a per-PR gate; a green `test` here means the suite
+  and the project-wide coverage thresholds passed, nothing more.
 - `BIRDBRAIN_REQUIRE_OPENSSL=1` is what stops the OpenSSL-dependent timestamp tests from
   turning green-by-skipping (`tests/helpers/openssl.ts`). Locally, run
   `BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test` for the same reason.
@@ -181,7 +181,7 @@ store.
 This decomposes #291's single "run the verifier against `tests/fixtures/timestamp/`" item
 into the three boxes below, because that item was not implementable as written: the
 standalone verifier has no mode that reads the fixture. `--self-check` routes to
-`runSelfCheck()` (`src/verifier/cli.ts:117`), which compares a frozen canonical-JSON golden
+`runSelfCheck()` in `src/verifier/cli.ts`, which compares a frozen canonical-JSON golden
 vector, and the only other mode takes a package directory. So the fixture is exercised by
 the test suite and by hand with `openssl`, and the verifier's own known-answer check is
 `--self-check` — the same coverage, split across the tools that can actually deliver it.

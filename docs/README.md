@@ -24,6 +24,37 @@ The rule for whether a doc may ship in the same PR as the code it describes, pla
 - Superseding an existing doc? Move the old file to `archive/` (keep its original name) before adding the replacement.
 - Permanent technical reference (architecture, pipelines, protocols)? Goes in `website/content/docs/` without a date prefix, as `.mdx` with `title`/`description` frontmatter, plus an entry in `website/content/docs/meta.json`. See the "Documentation site" section in `CLAUDE.md` for the MDX constraints (braces, link form, image paths).
 - Writing any of the above? See [`agents/writing-guide.md`](agents/writing-guide.md) for audience, claim discipline, tone, and the shape each document type takes.
+- Pointing at code or a workflow? Cite a stable anchor, never a line number. See below.
+
+### Cite by stable anchor, never by line number
+
+A line number is a position, and positions move whenever anything above them changes. Nothing
+in this repository checks a `file.ts:123` citation, so it drifts silently: the document keeps
+reading as if it were true and the reader discovers otherwise by landing on unrelated code. A
+stale citation is worse than none, because the reader has to work out which of the two files
+is wrong before they can carry on (#575).
+
+Cite the thing, not where it currently sits:
+
+| Target | Write this | Not this |
+| --- | --- | --- |
+| A workflow step | `.github/workflows/ci.yml`, `test` job, step `Diff coverage` | `ci.yml:187` |
+| A source symbol | `runSelfCheck()` in `src/verifier/cli.ts` | `src/verifier/cli.ts:117` |
+| A whole file | `src/main/services/db/migrations.ts` | `migrations.ts:1-40` |
+
+Anchors survive edits above them, and a renamed job or symbol fails a `grep` instead of
+resolving to the wrong place.
+
+**The one exception is a document that records a point-in-time reading.** A phase-1 findings
+document, a review verdict, or an intake ruling quotes what it read at a stated commit; its
+citations are evidence of that reading, not pointers the project maintains. Those pin their
+frame of reference — the sha in the header, or failing that the date in the filename — and are
+left alone. Do not rewrite them to match today's tree: that falsifies the record, and where the
+cited file has since been deleted there is nothing to rewrite it to.
+
+The rule binds hardest on the documents that lack that excuse. Anything marked **Active** — a
+runbook or checklist re-run over time, read under time pressure — carries no line citations at
+all.
 
 ## Tool-specific path overrides
 

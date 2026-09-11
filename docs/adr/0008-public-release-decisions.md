@@ -405,3 +405,135 @@ cutover is a separate question, deliberately left to #1357.
 **Revisit trigger.** A concrete harm arising from either the `@proton.me`
 exclusion or the `refs/pull` residue - unsolicited contact traced to the
 history, or a request from a third party whose address appears in it.
+
+## Amendment 2026-09-11: Decision 5's artifact residue, and figures re-derived
+
+The 2026-09-09 amendment earlier in this record reopened Decisions 1 and 2 and
+recorded the ruling on them. It left two things undone that its own text calls
+for. This amendment records the Decision 5 ruling that was taken and executed on
+2026-09-09 but never written into this record, and re-derives every figure
+against the current tip, because `origin/main` has advanced from f1ab45ae to
+064a80c5. It takes no new decision. The one question the 2026-09-09 amendment
+deliberately left open is restated at the end, still open.
+
+### Decision 5: the artifact residue, and what was done about it
+
+Decision 5 orders `docs/specs/2026-07-27-public-repository-readiness-assessment.md`
+absent from the published history entirely, and folds the removal into
+Decision 2's rewrite so tip-removal alone is not relied on. #1362 established
+that the file is also inside published installer bytes, which no rewrite of a
+git history reaches. The stated aim was therefore unachievable by the rewrite
+alone, for reasons that have nothing to do with git.
+
+**What was decided and executed on 2026-09-09**, recorded on #1362 at the time
+and re-verified here:
+
+- **The 16 legacy releases on `thebristolsound/birdbrain` were deleted.**
+  `v0.1.0-alpha.2` through `v1.0.1-beta.17`, dated 2026-04-03 to 2026-07-24, all
+  flagged pre-release, carrying 120 assets, and 35 downloads between them. They
+  would have become a second public download surface at the visibility change.
+- **Their tags were preserved.** `gh release delete` was run without
+  `--cleanup-tag`, deliberately, because Decision 2's rewrite scope counts tags
+  and deleting them would have changed that scope silently.
+- **The four pre-releases on `thebristolsound/birdbrain-releases` were left in
+  place.** `v1.0.1-beta.18` through `v1.0.1-beta.21` still contain the readiness
+  assessment, `CLAUDE.md` and `CONTEXT.md`. The rationale recorded on #1362 is
+  that testers are running `beta.21` now, and yanking it costs more than it
+  buys. The replacement is a re-cut on the next beta rather than a withdrawal.
+
+**Read back on 2026-09-11**, at `origin/main` 064a80c5:
+
+```
+$ gh api repos/thebristolsound/birdbrain/releases --jq 'length'
+0
+$ gh release list --repo thebristolsound/birdbrain-releases --limit 30 | wc -l
+4
+$ git ls-remote --tags origin | grep -v '\^{}' | wc -l
+22
+```
+
+**The packaging cause is fixed.** PR #1384 merged 2026-09-10 and replaced the
+exclusion-only `build.files` key with an allowlist, so a build from the current
+tip no longer packs the project tree.
+
+```
+$ git show origin/main:package.json \
+    | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).build.files))'
+[ 'out/**/*', 'resources/**/*', 'package.json', 'node_modules/**/*' ]
+```
+
+**What this means for Decision 5.** The decision stands for the tip and for the
+history. Its stated outcome does not extend to artifact bytes already
+downloaded, and this record should not be read as claiming otherwise. The
+residue is bounded to four pre-releases on one repository, with a re-cut as the
+retirement path, and the mechanism that produced it is closed.
+
+### Figures re-derived at 064a80c5
+
+The 2026-09-09 amendment states that its figures were re-derived at f1ab45ae.
+That statement stays true as written and its numbers are not edited here. These
+are the same measurements taken again on 2026-09-11, so that whoever writes the
+#269 tooling works from the current tip rather than from a two-day-old count.
+Local parts are withheld throughout; only domains are reported.
+
+```
+$ git log --format='%ae%n%ce' origin/main \
+    | grep -oE '@[A-Za-z0-9.-]+$' | sort | uniq -c | sort -rn
+   1703 @protonmail.com
+    671 @github.com
+    567 @proton.me
+    216 @anthropic.com
+    202 @users.noreply.github.com
+      7 @gmail.com
+
+$ git log -40 --format='%ae' origin/main \
+    | grep -oE '@[A-Za-z0-9.-]+$' | sort | uniq -c | sort -rn
+     16 @protonmail.com
+     13 @users.noreply.github.com
+     11 @proton.me
+
+$ git log --format='%B' origin/main \
+    | grep -cE '[A-Za-z0-9._%+-]+@(proton\.me|protonmail\.com|gmail\.com)'
+266
+
+$ git grep -lE '@(proton\.me|protonmail\.com|gmail\.com)' origin/main -- . | wc -l
+14
+
+$ git ls-remote origin 'refs/pull/*/head' | wc -l
+510
+$ git ls-remote --heads origin | wc -l
+130
+```
+
+Three of those moved in a direction worth naming. The `refs/pull` head count
+rose from 494 to 510 in two days, so the residue Decision 2 cannot reach grows
+with ordinary development. The commit-body count rose from 265 to 266. And in
+the last 40 commits, 27 of 40 author addresses now carry a personal domain
+against 16 of 40 at f1ab45ae, because the repository's configured commit
+identity is itself an in-scope address. That last point is filed separately as
+a defect rather than absorbed here: every commit made before it is fixed
+enlarges the scope of the rewrite this record orders.
+
+### Still open: the filter scope for commit bodies and tracked files
+
+Decision 2 states that nothing beyond identity metadata and the Decision 5 file
+is rewritten, and that any additional purge candidate must be added to this
+record first, with its own rationale, before it joins the filter scope. The
+2026-09-09 amendment recorded the 265 commit message bodies and 14 tracked
+files as candidates and deliberately took no decision on them. That decision is
+still not taken, and this amendment does not take it either. #1359 tracks it.
+
+Stated so the next reader does not have to reconstruct it: the question is
+whether the `git-filter-repo` pass extends beyond author and committer fields
+to commit message bodies and blob content, or whether those two surfaces are
+excluded with a recorded reason.
+
+The argument for excluding them, offered as input and not as a decision, is
+that the `refs/pull` finding applies to commit bodies exactly as it applies to
+identity fields. Rewriting 266 message bodies on `refs/heads` leaves the
+pull-request copies of those same commits serving the originals, so the work
+buys a partial result on the same surface where the partial result has already
+been accepted for identity metadata. Blob content is the weaker half of the
+argument: 14 tracked files at the tip are reachable by an ordinary commit, and
+one of them, `SECURITY.md`, publishes its address on purpose under the
+2026-09-09 ruling.

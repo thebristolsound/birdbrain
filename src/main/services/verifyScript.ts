@@ -29,7 +29,8 @@ export const VERIFY_SCRIPT = `#!/bin/sh
 #
 # REQUIRED TOOLS. Every tool this script uses is named here and checked for
 # before any check runs; a missing one exits 2 naming it:
-#   jq, openssl, sha256sum (or shasum, on macOS), cut, dirname, grep, tr, mktemp.
+#   jq, openssl, sha256sum (or shasum, on macOS), cut, dirname, grep, rm, tr,
+#   mktemp.
 #
 # This is the executable form of VERIFY.md. It runs the same six steps against
 # the package it sits in, prints a line per check, and exits non-zero naming the
@@ -37,15 +38,19 @@ export const VERIFY_SCRIPT = `#!/bin/sh
 # trust model; this script does not replace reading it.
 #
 # Exit codes: 0 every check passed, 1 at least one check FAILED, 2 the script
-# could not run at all (a missing tool, or this is not an evidence package).
+# could not run at all (a missing tool, or this is not an evidence package),
+# 3 INCOMPLETE - nothing failed, but a check could not be completed, so this is
+# not a pass either. A check that cannot run is never folded into exit 0.
 #
 # What exit 0 means: the enclosed files match the signed, hash-linked manifest,
-# every signed entry verifies under the enclosed public key, and every enclosed
-# RFC 3161 token verifies to the enclosed TSA root. What it does NOT mean: that
-# the enclosed root is the authority's real root. Step 6a prints that root's
-# fingerprint so you can check it against a source outside this package. Until
-# you have, the trusted-time result is conditional on a file whoever built this
-# package supplied.
+# every signed entry verifies under the enclosed public key, and every RFC 3161
+# token the SIGNED manifest carries is enclosed and verifies to the enclosed TSA
+# root. A token the manifest signs for but the package does not enclose is a
+# FAILURE, not a silence. What exit 0 does NOT mean: that the enclosed root is
+# the authority's real root. Step 6a prints that root's fingerprint so you can
+# check it against a source outside this package. Until you have, the
+# trusted-time result is conditional on a file whoever built this package
+# supplied.
 
 set -u
 
@@ -57,7 +62,7 @@ TSA_INTERMEDIATES=${TSA_INTERMEDIATES_FILENAME}
 need() {
   command -v "$1" >/dev/null 2>&1 && return 0
   printf 'verify.sh: required tool "%s" was not found on PATH.\\n' "$1" >&2
-  printf 'verify.sh: needs jq, openssl, sha256sum (or shasum), cut, dirname, grep, tr, mktemp.\\n' >&2
+  printf 'verify.sh: needs jq, openssl, sha256sum (or shasum), cut, dirname, grep, rm, tr, mktemp.\\n' >&2
   exit 2
 }
 
@@ -66,6 +71,9 @@ need openssl
 need cut
 need dirname
 need grep
+# Used by the EXIT trap below, which is installed too late to report its own
+# absence - so it is checked here with the rest.
+need rm
 need tr
 need mktemp
 
@@ -93,8 +101,10 @@ tmp=$(mktemp -d) || exit 2
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 
 fail_count=0
+incomplete_count=0
 step=0
 failed_steps=''
+incomplete_steps=''
 
 begin() {
   step="$1"
@@ -110,6 +120,18 @@ fail() {
   case " $failed_steps " in
   *" $step "*) ;;
   *) failed_steps="$failed_steps $step" ;;
+  esac
+}
+
+# A check that could not be run at all - neither a pass nor a failure. It gets
+# its own verdict and its own exit code because a skip reported inside PASS is
+# indistinguishable, to a reader and to a wrapper script, from a check that ran.
+incomplete() {
+  printf '   INCOMPLETE [step %s] %s\\n' "$step" "$*"
+  incomplete_count=$((incomplete_count + 1))
+  case " $incomplete_steps " in
+  *" $step "*) ;;
+  *) incomplete_steps="$incomplete_steps $step" ;;
   esac
 }
 
@@ -274,86 +296,118 @@ note "$bound capture(s) bound to the signed chain"
 
 # --- Step 6 ---------------------------------------------------------------
 begin 6 'timestamp, the canonical TSA verification'
-tokens=''
+# The work set comes from the SIGNED manifest, never from listing timestamps/.
+# Read off the directory instead and a package stripped of its .tst files says
+# "nothing to check" and passes, while the signed chain still asserts a trusted
+# time for the capture. Which digest each token is entitled to attest comes from
+# that same signed entry - never from a file name, and never from evidence.json.
+jq -r 'select(.type == "timestamp" and .tsaToken != null) | "\\(.captureContentHash) \\(.tsaToken)"' \\
+  manifest.jsonl >"$tmp/signed-tokens.txt"
+signed_tokens=$(grep -c . "$tmp/signed-tokens.txt")
+
+# sha256 of every enclosed token file. A signed entry is matched to a file by
+# its bytes, because nothing signed the file's name.
+: >"$tmp/file-index.txt"
 if [ -d timestamps ]; then
   for candidate in timestamps/*; do
-    [ -f "$candidate" ] && tokens="$tokens$candidate
-"
+    [ -f "$candidate" ] || continue
+    printf '%s %s\\n' "$(sha256_of "$candidate")" "$candidate" >>"$tmp/file-index.txt"
   done
 fi
 
-if [ -z "$tokens" ]; then
-  note 'no RFC 3161 tokens are enclosed, so there is no trusted-time claim to check here'
+anchor_named=0
+verified_count=0
+
+if [ "$signed_tokens" -eq 0 ]; then
+  note 'the signed manifest carries no RFC 3161 token, so it makes no trusted-time claim'
 elif [ ! -f "$TSA_ROOT" ]; then
   note "$TSA_ROOT is absent: this case was configured with a non-default timestamp authority"
   note "obtain that authority's own root and re-run the step 6b command from VERIFY.md with it as -CAfile"
-  note 'SKIPPED - this script will not verify a token against an anchor it cannot name'
-else
-  if openssl x509 -in "$TSA_ROOT" -noout -subject -issuer -fingerprint -sha256 \\
-    >"$tmp/anchor.txt" 2>&1; then
-    anchor_subject=$(grep '^subject=' "$tmp/anchor.txt" | cut -d= -f2-)
-    anchor_issuer=$(grep '^issuer=' "$tmp/anchor.txt" | cut -d= -f2-)
-    [ "$anchor_subject" = "$anchor_issuer" ] ||
-      fail "$TSA_ROOT is not self-signed, so it is not a root and cannot be the anchor"
+  incomplete "$signed_tokens signed token(s) were not verified: no anchor is enclosed for this script to name"
+elif openssl x509 -in "$TSA_ROOT" -noout -subject -issuer -fingerprint -sha256 \\
+  >"$tmp/anchor.txt" 2>&1; then
+  anchor_subject=$(grep '^subject=' "$tmp/anchor.txt" | cut -d= -f2-)
+  anchor_issuer=$(grep '^issuer=' "$tmp/anchor.txt" | cut -d= -f2-)
+  if [ "$anchor_subject" = "$anchor_issuer" ]; then
+    anchor_named=1
     note "anchor subject: $anchor_subject"
     note "anchor $(grep -i 'Fingerprint=' "$tmp/anchor.txt")"
     note 'CHECK THAT FINGERPRINT against the published value or your own trust store before trusting it'
   else
-    fail "$TSA_ROOT could not be read as a certificate"
+    fail "$TSA_ROOT is not self-signed, so it is not a root and cannot be the anchor"
   fi
-
-  # Which digest each enclosed token is entitled to attest comes from the SIGNED
-  # manifest entry carrying the same token bytes - never from a file name, and
-  # never from evidence.json. A .tst no signed entry accounts for is reported,
-  # not verified against a digest of its own choosing.
-  jq -r 'select(.type == "timestamp" and .tsaToken != null) | "\\(.captureContentHash) \\(.tsaToken)"' \\
-    manifest.jsonl >"$tmp/signed-tokens.txt"
-  : >"$tmp/token-index.txt"
-  while IFS=' ' read -r imprint encoded; do
-    [ -n "$encoded" ] || continue
-    printf '%s' "$encoded" | openssl base64 -d -A >"$tmp/signed-token.der" 2>/dev/null || continue
-    printf '%s %s\\n' "$(sha256_of "$tmp/signed-token.der")" "$imprint" >>"$tmp/token-index.txt"
-  done <"$tmp/signed-tokens.txt"
-
-  untrusted=''
-  [ -f "$TSA_INTERMEDIATES" ] && untrusted="$TSA_INTERMEDIATES"
-
-  printf '%s' "$tokens" >"$tmp/tokens.txt"
-  while IFS= read -r token; do
-    [ -n "$token" ] || continue
-    digest=$(grep "^$(sha256_of "$token") " "$tmp/token-index.txt" | cut -d' ' -f2)
-    if [ -z "$digest" ]; then
-      fail "$token: these bytes are not the token of any signed timestamp entry, so nothing states what they attest"
-      continue
-    fi
-    result=0
-    if [ -n "$untrusted" ]; then
-      openssl ts -verify -digest "$digest" -in "$token" -token_in \\
-        -CAfile "$TSA_ROOT" -untrusted "$untrusted" >"$tmp/ts.out" 2>&1 || result=$?
-    else
-      openssl ts -verify -digest "$digest" -in "$token" -token_in \\
-        -CAfile "$TSA_ROOT" >"$tmp/ts.out" 2>&1 || result=$?
-    fi
-    if [ "$result" -eq 0 ]; then
-      note "$token: TSA signature verifies to $TSA_ROOT over imprint $digest"
-    else
-      fail "$token: TSA signature does not verify to $TSA_ROOT over the signed imprint $digest"
-      while IFS= read -r detail; do
-        printf '   openssl: %s\\n' "$detail"
-      done <"$tmp/ts.out"
-    fi
-  done <"$tmp/tokens.txt"
+else
+  fail "$TSA_ROOT could not be read as a certificate"
 fi
+
+untrusted=''
+[ -f "$TSA_INTERMEDIATES" ] && untrusted="$TSA_INTERMEDIATES"
+
+# Every signed token: it must be enclosed, and it must verify to the anchor.
+: >"$tmp/signed-shas.txt"
+while IFS=' ' read -r imprint encoded; do
+  [ -n "$encoded" ] || continue
+  if ! printf '%s' "$encoded" | openssl base64 -d -A >"$tmp/signed-token.der" 2>/dev/null; then
+    fail "the signed timestamp entry for imprint $imprint carries a tsaToken that is not base64"
+    continue
+  fi
+  token_sha=$(sha256_of "$tmp/signed-token.der")
+  printf '%s\\n' "$token_sha" >>"$tmp/signed-shas.txt"
+  token=$(grep "^$token_sha " "$tmp/file-index.txt" | cut -d' ' -f2)
+  if [ -z "$token" ]; then
+    fail "the signed manifest carries a timestamp token for imprint $imprint but no enclosed file holds those bytes"
+    continue
+  fi
+  [ "$anchor_named" -eq 1 ] || continue
+  result=0
+  if [ -n "$untrusted" ]; then
+    openssl ts -verify -digest "$imprint" -in "$token" -token_in \\
+      -CAfile "$TSA_ROOT" -untrusted "$untrusted" >"$tmp/ts.out" 2>&1 || result=$?
+  else
+    openssl ts -verify -digest "$imprint" -in "$token" -token_in \\
+      -CAfile "$TSA_ROOT" >"$tmp/ts.out" 2>&1 || result=$?
+  fi
+  if [ "$result" -eq 0 ]; then
+    verified_count=$((verified_count + 1))
+    note "$token: TSA signature verifies to $TSA_ROOT over imprint $imprint"
+  else
+    fail "$token: TSA signature does not verify to $TSA_ROOT over the signed imprint $imprint"
+    while IFS= read -r detail; do
+      printf '   openssl: %s\\n' "$detail"
+    done <"$tmp/ts.out"
+  fi
+done <"$tmp/signed-tokens.txt"
+
+# The other direction: a .tst no signed entry accounts for is reported, never
+# verified against a digest of its own choosing.
+while IFS=' ' read -r file_sha file_path; do
+  [ -n "$file_path" ] || continue
+  grep -qxF -e "$file_sha" "$tmp/signed-shas.txt" ||
+    fail "$file_path: these bytes are not the token of any signed timestamp entry, so nothing states what they attest"
+done <"$tmp/file-index.txt"
 
 printf '\\n'
-if [ "$fail_count" -eq 0 ]; then
-  printf 'verify.sh: PASS - every check above succeeded.\\n'
-  printf 'That is an integrity and internal-consistency result. It becomes a trusted-time claim\\n'
-  printf 'only once the step 6a fingerprint is checked against a source outside this package.\\n'
-  exit 0
+if [ "$fail_count" -gt 0 ]; then
+  printf 'verify.sh: FAIL - %s check(s) failed, in step(s):%s\\n' "$fail_count" "$failed_steps"
+  printf 'Read the FAIL lines above. VERIFY.md explains what each step proves.\\n'
+  exit 1
 fi
 
-printf 'verify.sh: FAIL - %s check(s) failed, in step(s):%s\\n' "$fail_count" "$failed_steps"
-printf 'Read the FAIL lines above. VERIFY.md explains what each step proves.\\n'
-exit 1
+if [ "$incomplete_count" -gt 0 ]; then
+  printf 'verify.sh: INCOMPLETE - nothing failed, but %s check(s) could not be run, in step(s):%s\\n' \\
+    "$incomplete_count" "$incomplete_steps"
+  printf 'This is not a pass. Read the INCOMPLETE lines above and run those checks by hand\\n'
+  printf 'with the material they name; VERIFY.md gives the command for each step.\\n'
+  exit 3
+fi
+
+printf 'verify.sh: PASS - every check above succeeded.\\n'
+if [ "$verified_count" -gt 0 ]; then
+  printf 'That is an integrity and internal-consistency result. It becomes a trusted-time claim\\n'
+  printf 'only once the step 6a fingerprint is checked against a source outside this package.\\n'
+else
+  printf 'That is an integrity and internal-consistency result only. The signed chain carries no\\n'
+  printf 'RFC 3161 token, so this package makes no trusted-time claim for you to check.\\n'
+fi
+exit 0
 `

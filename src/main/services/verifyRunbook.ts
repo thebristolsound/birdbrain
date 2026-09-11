@@ -29,8 +29,10 @@ form of the six steps below. Run it from the unpacked package directory:
 sh ${VERIFY_SCRIPT_FILENAME}
 \`\`\`
 
-It prints a line per check and exits non-zero naming the step that failed — or 2
-if a tool it needs is missing, so a silent skip is not one of its outcomes. It is
+It prints a line per check and exits non-zero naming the step that failed — 2 if
+a tool it needs is missing, and 3 (\`INCOMPLETE\`) if a check could not be run at
+all, which this package can cause by enclosing no root for a non-default
+timestamp authority. A skipped check is never folded into its \`PASS\`. It is
 a convenience, not the authority: what makes this package checkable is that every
 step below can be run by hand, which is what the rest of this document is for.
 Read step 6a before treating its PASS as proof of trusted time.
@@ -208,7 +210,12 @@ it as \`-CAfile\` below. Never use \`${TSA_INTERMEDIATES_FILENAME}\` as
 \`-CAfile\` — those certificates came out of the tokens being checked, so
 trusting them proves nothing.
 
-**6b. Verify each token.** The \`.tst\` files are bare RFC 3161 tokens (DER
+**6b. Verify each token.** Take the list from the signed manifest, not from
+\`ls timestamps/\`: every token is also carried base64-encoded in its own signed
+entry (\`jq -r 'select(.type == "timestamp") | "\\(.captureContentHash) \\(.tsaToken)"' manifest.jsonl\`),
+so a \`.tst\` deleted from the package is visible there and invisible in a
+directory listing. A signed entry with no enclosed token is a failure, not an
+absence of work. The \`.tst\` files are bare RFC 3161 tokens (DER
 \`TimeStampToken\`), not full \`TimeStampResp\` structures, so \`-token_in\` is
 required — without it OpenSSL reports an ASN.1 error, not a verdict.
 

@@ -255,6 +255,20 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     return dir
   }
 
+  /**
+   * Removes rows from the unsigned index, the way anyone deleting a file from a
+   * package would: leave them and step 1 reports the missing file, which is the
+   * easy case. What step 6 has to catch is the tidy version of the same edit.
+   */
+  const dropArtifacts = (dir: string, match: (path: string) => boolean): void => {
+    const path = join(dir, 'evidence.json')
+    const evidence = JSON.parse(readFileSync(path, 'utf-8')) as {
+      artifacts: Array<{ path: string }>
+    }
+    evidence.artifacts = evidence.artifacts.filter((a) => !match(a.path))
+    writeFileSync(path, JSON.stringify(evidence, null, 2))
+  }
+
   it.skipIf(!RUNS)('executes every shell block of the generated runbook', () => {
     const blocks = extractRunbookBlocks(VERIFY_RUNBOOK)
     // A runbook that stopped carrying executable steps would otherwise pass by
@@ -366,6 +380,40 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     expect(run.status).toBe(1)
     expect(run.output).toContain('FAIL [step 6]')
     expect(run.output).toContain('not the token of any signed timestamp entry')
+  })
+
+  it.skipIf(!RUNS)('fails when a token the signed manifest carries is not enclosed', () => {
+    // The strip attack: delete the tokens AND their rows from the unsigned
+    // index, so step 1 is silent. Nothing on disk then says a trusted time was
+    // ever claimed — only the signed manifest does, which is why step 6 has to
+    // take its work set from there rather than from `timestamps/`.
+    const dir = corruptedCopy('stripped-tokens')
+    rmSync(join(dir, 'timestamps'), { recursive: true, force: true })
+    dropArtifacts(dir, (path) => path.startsWith('timestamps/'))
+
+    const run = runVerifyScript(dir)
+    expect(run.status, run.output).toBe(1)
+    expect(run.output).toContain('FAIL [step 6]')
+    expect(run.output).toContain('no enclosed file holds those bytes')
+    expect(run.output).not.toContain('PASS')
+  })
+
+  it.skipIf(!RUNS)('reports INCOMPLETE, not PASS, when no anchor is enclosed', () => {
+    // What an operator on a non-default timestamp authority actually gets:
+    // getTsaTrustBundle bundles no root, the tokens still ship, and no
+    // verification against any anchor is possible. That is neither a pass nor a
+    // failure of this package, and exit 0 would report it as the former.
+    const dir = corruptedCopy('no-anchor')
+    rmSync(join(dir, 'tsa-root.pem'), { force: true })
+    dropArtifacts(dir, (path) => path === 'tsa-root.pem')
+
+    const run = runVerifyScript(dir)
+    expect(run.status, run.output).toBe(3)
+    expect(run.output).toContain('INCOMPLETE [step 6]')
+    expect(run.output).toContain('verify.sh: INCOMPLETE')
+    expect(run.output).not.toContain('PASS')
+    // The token is still bound to its signed entry; only the anchor is gone.
+    expect(run.output).not.toContain('FAIL')
   })
 
   it.skipIf(!RUNS)('exits 2 rather than passing when a required tool is missing', () => {

@@ -1130,11 +1130,11 @@ describe('captureServer', () => {
     expect(captures).toHaveLength(1)
     expect(captures[0].screenshotPath).toBeFalsy()
     // 15s rather than the 5s default because this streams a 100MB oversized
-    // screenshot through the multipart parser. Measured in isolation at ~0.7s
-    // both plain and under coverage, and ~3.1s at 3.5x CPU oversubscription —
-    // the budget is ~20x the unloaded cost, so a failure of this test under
-    // load is not this number running out. Look for a beforeEach port collision
-    // (#948) before raising it again (#555).
+    // screenshot through the multipart parser. On a 2-core CI runner it costs
+    // ~0.9s idle, ~1.0s under coverage and ~4.6s at 3.5x CPU oversubscription,
+    // rising roughly linearly from there: ~9.8s at 8x, so 15s is reachable near
+    // 12x. At the ~3x contention #555 reports the budget is ample, so look for a
+    // beforeEach port collision (#948) before raising this again.
   }, 15000)
 
   it('returns screenshotStatus "none" when no screenshot is sent', async () => {

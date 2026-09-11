@@ -13,11 +13,27 @@ import {
   TSA_INTERMEDIATES_FILENAME,
   TSA_ROOT_FILENAME
 } from '@main/services/tsaTrust'
+import { VERIFY_SCRIPT_FILENAME } from '@main/services/verifyScript'
 
 export const VERIFY_RUNBOOK = `# Verifying this evidence package by hand
 
 This package can be re-verified by a third party **without running Birdbrain**,
 using only stock tools: \`sha256sum\`, \`openssl\`, and \`jq\`.
+
+## One command — \`${VERIFY_SCRIPT_FILENAME}\`
+
+\`${VERIFY_SCRIPT_FILENAME}\` is enclosed with this package and is the executable
+form of the six steps below. Run it from the unpacked package directory:
+
+\`\`\`sh
+sh ${VERIFY_SCRIPT_FILENAME}
+\`\`\`
+
+It prints a line per check and exits non-zero naming the step that failed — or 2
+if a tool it needs is missing, so a silent skip is not one of its outcomes. It is
+a convenience, not the authority: what makes this package checkable is that every
+step below can be run by hand, which is what the rest of this document is for.
+Read step 6a before treating its PASS as proof of trusted time.
 
 ## Trust model (read first)
 
@@ -75,6 +91,7 @@ internal consistency*, **not** timestamp authenticity — this runbook's
 |---|---|
 | \`manifest.jsonl\` | Signed, hash-linked audit chain (root of trust) |
 | \`signing-public-key.pem\` | RSA public key for the per-entry signatures |
+| \`${VERIFY_SCRIPT_FILENAME}\` | The steps below as a runnable script (see above) |
 | \`${TSA_ROOT_FILENAME}\` | Self-signed TSA root — the trust anchor for step 6 (absent when no anchor is bundled for the configured authority) |
 | \`${TSA_INTERMEDIATES_FILENAME}\` | Responder + intermediate certs lifted from the tokens (chain-building only, never trusted on their own) |
 | \`pages/{captureId}.mhtml\` | Captured content (hashed as \`contentHash\`) |

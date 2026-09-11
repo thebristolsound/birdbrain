@@ -46,6 +46,7 @@ import type {
   ReportData
 } from '@main/services/reportHtml'
 import { VERIFY_RUNBOOK } from '@main/services/verifyRunbook'
+import { VERIFY_SCRIPT, VERIFY_SCRIPT_FILENAME } from '@main/services/verifyScript'
 import { WORKING_COPY_MARKER_FILENAME } from '@shared/schemas'
 import type {
   Capture,
@@ -598,6 +599,11 @@ function buildEvidenceZip(
   )
   add('signing-public-key.pem', publicKeyPem)
   add('VERIFY.md', VERIFY_RUNBOOK)
+  // The runbook's executable form (#584). Written through add() like every other
+  // packaged document, so it lands in artifacts[] and in packageHash: a script
+  // that verifies the package is worth no more than the package's own account of
+  // it, and step 1 re-hashes it along with everything else.
+  add(VERIFY_SCRIPT_FILENAME, VERIFY_SCRIPT)
   // Operator notes as package content (#399): written through add() so the
   // file participates in packageHash and the artifact index like every other
   // packaged document. Written even when the case has none — "0 notes existed"

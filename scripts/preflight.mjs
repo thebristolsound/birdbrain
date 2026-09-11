@@ -20,7 +20,7 @@
 //   pnpm lint:boundaries
 //   pnpm lint:agents-md      advisory: reports drift between the two files, never fails
 //   pnpm typecheck
-//   BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test
+//   BIRDBRAIN_REQUIRE_OPENSSL=1 BIRDBRAIN_REQUIRE_JQ=1 pnpm test
 //   pnpm build
 //   pnpm build:extension      only when the diff against the base touches extension/
 //   pnpm test:coverage
@@ -85,7 +85,7 @@ export const touchesExtension = (paths) => paths.some((path) => path.startsWith(
 // The environment every step runs under. COVERAGE_DIFF_MIN is dropped because
 // diff-coverage.mjs reads it after its arguments and would lower the floor.
 export const childEnv = (parent) => {
-  const env = { ...parent, BIRDBRAIN_REQUIRE_OPENSSL: '1' }
+  const env = { ...parent, BIRDBRAIN_REQUIRE_OPENSSL: '1', BIRDBRAIN_REQUIRE_JQ: '1' }
   delete env.COVERAGE_DIFF_MIN
   return env
 }
@@ -229,7 +229,12 @@ const main = async () => {
   await run('pnpm', ['lint:boundaries'], 'pnpm lint:boundaries')
   await run('pnpm', ['lint:agents-md'], 'pnpm lint:agents-md', describeAgentsMd)
   await run('pnpm', ['typecheck'], 'pnpm typecheck')
-  await run('pnpm', ['test'], 'BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test', describeVitest)
+  await run(
+    'pnpm',
+    ['test'],
+    'BIRDBRAIN_REQUIRE_OPENSSL=1 BIRDBRAIN_REQUIRE_JQ=1 pnpm test',
+    describeVitest
+  )
   await run('pnpm', ['build'], 'pnpm build')
   if (touchesExtension(changed)) {
     await run('pnpm', ['build:extension'], 'pnpm build:extension')

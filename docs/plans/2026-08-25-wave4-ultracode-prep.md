@@ -95,7 +95,7 @@ These are not theoretical. Each cost real time during wave 3 and each has a file
 - **`extension/**` is invisible to `coverage:diff` (#964).** An extension-only PR passes the
   90%-changed-lines gate unscored. The script says so honestly (`NOT SCORED`), but a wave-4
   extension ticket has no coverage floor and its reviewer must weigh tests directly.
-- **A scheduled cloud dispatch cannot satisfy ADR-0012 (#960).** The Anthropic-cloud sandbox proxy
+- **A scheduled cloud dispatch cannot satisfy ADR-0027 (#960).** The Anthropic-cloud sandbox proxy
   re-authenticates every GitHub request as the session identity: the machine token, a deliberately
   bogus token, and raw `curl` all return the maintainer's login. The routine is turned off. Wave 4
   runs from interactive local sessions only.

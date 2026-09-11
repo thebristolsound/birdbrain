@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Provision the birdbrain agent pipeline's machine GitHub account (ADR-0012):
+# Provision the birdbrain agent pipeline's machine GitHub account (ADR-0027):
 # create the account, add it as a collaborator, mint a classic PAT with the
 # single `repo` scope, store it outside any checkout, and verify the identity
 # end to end.
@@ -199,7 +199,7 @@ ENV_FILE="$CONF_DIR/env"        # never a repo .env — the token must not live 
 TOTAL_STAGES=6
 TOTAL_MINUTES=20
 
-banner "birdbrain — agent machine account (ADR-0012)"
+banner "birdbrain — agent machine account (ADR-0027)"
 
 # ── 1. Preflight ──────────────────────────────────────────────────────────
 stage "Preflight" 2

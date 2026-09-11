@@ -120,6 +120,6 @@ line into git history.
 ## Related
 
 - ADR-0018 - the Verification block is computed at head; this ADR shapes the rest of the body.
-- ADR-0012 - the machine account authors every pipeline write; unchanged here.
+- ADR-0027 - the machine account authors every pipeline write; unchanged here.
 - `docs/plans/2026-08-29-agent-posting-controls.md` - the fifteen decisions and their facts.
 - #1068, #1117, #1125 - the merged message, PR body and comment this ADR is measured from.

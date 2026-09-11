@@ -187,7 +187,7 @@ Evidence-affecting PRs are never merged without human review. Do not weaken that
   yourself.** The dispatcher says so when it spawns you; absent that, assume it.
   This is a control, not a capability limit, so it holds even where `gh pr create` works. The
   dispatcher is the only holder of the machine token, which is what makes one identity the
-  author of every PR entering the slot (ADR-0012); it is instructed to treat a PR showing the
+  author of every PR entering the slot (ADR-0027); it is instructed to treat a PR showing the
   maintainer's login as a contract violation, refuse `agent-pr`, and stop
   (`.claude/skills/dispatch/SKILL.md`). Opening it yourself does not rescue the PR, it strands
   it. On the web you could not do it in any case — `gh pr create` and `gh pr edit` are

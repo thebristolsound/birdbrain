@@ -346,7 +346,7 @@ extension build when `extension/` changed, coverage thresholds and diff coverage
 sha-stamped block to `.preflight/verification.md`), then finish by opening a **draft PR** with
 the standard attribution line. Exception: if a dispatcher
 spawned you, push the branch and hand off instead. PR opening stays with the dispatcher so
-one identity authors every PR entering the slot (ADR-0012).
+one identity authors every PR entering the slot (ADR-0027).
 
 **Label it, or the gates cannot see it.** `agent-authored` always, `agent-pr` as well only if
 the PR takes a dispatch slot, `evidence-affecting` when the gate fired at the **blocking** tier

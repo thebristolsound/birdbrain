@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Squash-merge one PR the way ADR-0022 expects, then read back what landed.
 #   merge.sh <pr-number> [--cli gh|agh] [--dry-run]
-# --cli agh runs every GitHub write as the machine account (ADR-0012); the dispatcher uses it.
+# --cli agh runs every GitHub write as the machine account (ADR-0027); the dispatcher uses it.
 # --dry-run stops after composing the subject and body.
 set -u
 
@@ -23,7 +23,7 @@ done
 case "$cli" in gh|agh) ;; *) echo "merge-pr: --cli must be gh or agh" >&2; exit 2 ;; esac
 if [ "$cli" = "agh" ]; then
   # agh is a shell function on the maintainer's machine (docs/agents/github-access.md); a script
-  # has to define it from the same token and prove the identity before any write (ADR-0012).
+  # has to define it from the same token and prove the identity before any write (ADR-0027).
   [ -n "${BIRDBRAIN_AGENT_GH_TOKEN:-}" ] || { echo "merge-pr: BIRDBRAIN_AGENT_GH_TOKEN is not set; see docs/agents/github-access.md" >&2; exit 2; }
   agh() { GH_TOKEN="$BIRDBRAIN_AGENT_GH_TOKEN" gh "$@"; }
   login="$(agh api user --jq .login)"

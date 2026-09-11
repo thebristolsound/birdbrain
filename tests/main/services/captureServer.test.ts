@@ -1129,9 +1129,12 @@ describe('captureServer', () => {
     const captures = listCaptures(c.id)
     expect(captures).toHaveLength(1)
     expect(captures[0].screenshotPath).toBeFalsy()
-    // Allocating + streaming an oversized buffer through the multipart parser
-    // takes ~5s and intermittently bumps the default 5s timeout under
-    // full-suite CPU contention; give it explicit headroom.
+    // 15s rather than the 5s default because this streams a 100MB oversized
+    // screenshot through the multipart parser. On a 2-core CI runner it costs
+    // ~0.9s idle, ~1.0s under coverage and ~4.6s at 3.5x CPU oversubscription,
+    // rising roughly linearly from there: ~9.8s at 8x, so 15s is reachable near
+    // 12x. At the ~3x contention #555 reports the budget is ample, so look for a
+    // beforeEach port collision (#948) before raising this again.
   }, 15000)
 
   it('returns screenshotStatus "none" when no screenshot is sent', async () => {

@@ -406,15 +406,16 @@ cutover is a separate question, deliberately left to #1357.
 exclusion or the `refs/pull` residue - unsolicited contact traced to the
 history, or a request from a third party whose address appears in it.
 
-## Amendment 2026-09-11: Decision 5's artifact residue, and figures re-derived
+## Amendment 2026-09-11: Decision 5's artifact residue, and the filter scope
 
 The 2026-09-09 amendment earlier in this record reopened Decisions 1 and 2 and
 recorded the ruling on them. It left two things undone that its own text calls
 for. This amendment records the Decision 5 ruling that was taken and executed on
 2026-09-09 but never written into this record, and re-derives every figure
 against the current tip, because `origin/main` has advanced from f1ab45ae to
-064a80c5. It takes no new decision. The one question the 2026-09-09 amendment
-deliberately left open is restated at the end, still open.
+064a80c5. It then records the one decision the 2026-09-09 amendment
+deliberately left open, the filter scope for commit bodies and tracked files,
+ruled by the maintainer on 2026-09-11.
 
 ### Decision 5: the artifact residue, and what was done about it
 
@@ -514,26 +515,61 @@ identity is itself an in-scope address. That last point is filed separately as
 a defect rather than absorbed here: every commit made before it is fixed
 enlarges the scope of the rewrite this record orders.
 
-### Still open: the filter scope for commit bodies and tracked files
+### Ruled: commit bodies and tracked files are excluded from the filter scope
 
 Decision 2 states that nothing beyond identity metadata and the Decision 5 file
-is rewritten, and that any additional purge candidate must be added to this
-record first, with its own rationale, before it joins the filter scope. The
-2026-09-09 amendment recorded the 265 commit message bodies and 14 tracked
-files as candidates and deliberately took no decision on them. That decision is
-still not taken, and this amendment does not take it either. #1359 tracks it.
+is rewritten, and that an additional purge candidate joins the scope only with
+its own rationale recorded here. The 2026-09-09 amendment named the commit
+message bodies and the tracked files as candidates and took no decision on
+them. This records the decision. #1359 asked for it.
 
-Stated so the next reader does not have to reconstruct it: the question is
-whether the `git-filter-repo` pass extends beyond author and committer fields
-to commit message bodies and blob content, or whether those two surfaces are
-excluded with a recorded reason.
+**Outcome. Both surfaces are excluded.** Decided by the maintainer on
+2026-09-11. The `git-filter-repo` pass stays scoped to author and committer
+metadata, plus the Decision 5 file purge. Commit message bodies and blob
+content are not rewritten.
 
-The argument for excluding them, offered as input and not as a decision, is
-that the `refs/pull` finding applies to commit bodies exactly as it applies to
-identity fields. Rewriting 266 message bodies on `refs/heads` leaves the
-pull-request copies of those same commits serving the originals, so the work
-buys a partial result on the same surface where the partial result has already
-been accepted for identity metadata. Blob content is the weaker half of the
-argument: 14 tracked files at the tip are reachable by an ordinary commit, and
-one of them, `SECURITY.md`, publishes its address on purpose under the
-2026-09-09 ruling.
+**Rationale for the 266 commit message bodies.** The `refs/pull` finding
+applies to a message body exactly as it applies to an identity field. Rewriting
+266 bodies on `refs/heads` leaves the pull-request copies of those same commits
+serving the originals, so the work buys a partial result on the surface where a
+partial result has already been accepted for identity metadata. Paying for the
+rewrite twice does not make either half complete.
+
+**Rationale for the tracked files.** The figure of 14 files counts three
+different things, and separating them removes the case for rewriting any of
+them. Every match was classified on 2026-09-11 by comparing its local part
+against the single personal local part that appears in the repository's
+identity fields.
+
+- **Three files carry the maintainer's own address, all on `@proton.me`:**
+  `SECURITY.md`, `docs/plans/2026-04-09-settings-enforcement.md` and
+  `docs/plans/2026-05-03-capture-detail-polish-r2-impl.md`, 8 occurrences
+  between them. That domain left the rewrite scope under the 2026-09-09 ruling
+  because `SECURITY.md` publishes it deliberately, so these are already out of
+  scope and nothing here changes that.
+- **Five files carry invented demo content**, the design-handoff mocks under
+  `docs/design-handoff/`, 18 occurrences. The addresses sit beside
+  `gh0stline@tuta.io`, `cracked-forum.example.net` and fabricated Bitcoin
+  addresses in a fictional investigation scenario. They are not anyone's
+  contact details.
+- **Six files carry test fixtures**, two under `docs/plans/` and `docs/specs/`
+  and four under `tests/` and `e2e/`, 27 occurrences. They are extraction
+  fixtures and an email-validator assertion.
+
+**No tracked file at the tip contains a maintainer address on a domain the
+rewrite is scoped to remove.** The in-scope domains are `@protonmail.com` and
+`@gmail.com`; every occurrence of either in tracked content has a local part
+that does not match the maintainer's, and each was read in context and found to
+be synthetic. Rewriting blob content would therefore rewrite fixtures and demo
+data, at the cost of changing every descendant object identity, and would
+remediate nothing.
+
+**What this does not decide.** Excluding the tracked files from the filter pass
+says nothing about whether any of them should be edited at the tip. That is an
+ordinary commit rather than a history rewrite, and it is available at any time
+without a freeze window.
+
+**Revisit trigger.** A match found in tracked content whose local part does
+match the maintainer's, on an in-scope domain. That would be a new fact rather
+than a re-weighing of this one, and it reopens the blob half of this ruling
+only.

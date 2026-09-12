@@ -449,6 +449,46 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
       expect(run.output).toContain('verify.sh: PASS')
       expect(run.output).toContain('expected absent')
       expect(run.output).not.toContain('FAIL')
+      // The chain does carry a token, so the verdict must not claim it carries none.
+      expect(run.output).toContain('only for captures this package does not enclose')
+      expect(run.output).not.toContain('The signed chain carries no')
+    }
+  )
+
+  it.skipIf(!RUNS)(
+    'still requires a live capture token when a deleted capture shares its content hash',
+    async () => {
+      // Timestamp entries are keyed by content hash alone, so an exemption keyed
+      // on the deleted duplicate's hash would also exempt the live capture.
+      const payload = '<html><body>Runbook execution evidence</body></html>'
+      const { capture: duplicate } = await ingestMhtmlCapture({
+        caseId,
+        url: 'https://example.com/evidence-again',
+        title: 'Evidence Page Again',
+        timestamp: '2026-04-05T12:03:00.000Z',
+        stream: Readable.from([Buffer.from(payload)]) as unknown as ReadableStream<Uint8Array>,
+        textContent: payload,
+        headers: {},
+        browserVersion: '',
+        userAgent: '',
+        httpStatus: 200,
+        extensionVersion: '',
+        operatorId: 'op',
+        operatorName: 'Test Operator',
+        toolVersion: '0.1.0'
+      })
+      expect(duplicate.hash).toBe(contentHash)
+      await captureLifecycle.delete(duplicate.id)
+
+      const dir = await exportPackage('shared-hash-stripped')
+      rmSync(join(dir, 'timestamps'), { recursive: true, force: true })
+      dropArtifacts(dir, (path) => path.startsWith('timestamps/'))
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      expect(run.output).toContain(`FAIL [step 6] capture ${captureId}`)
+      expect(run.output).toContain('no enclosed file holds those bytes')
+      expect(run.output).not.toContain('PASS')
     }
   )
 

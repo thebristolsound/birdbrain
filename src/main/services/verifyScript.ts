@@ -12,11 +12,12 @@
 // TSA authenticity check, which the programmatic/binary verifier does NOT do.
 // It still says nothing about whether the enclosed root is the authority's
 // real root, which is why step 6a prints its fingerprint rather than asserting
-// it. Step 6's required work set is the same one the binary checks: signed
-// timestamp entries for captures that are both active (no later deletion
-// entry) and, on a selection-scoped package, named in the signed selection.
-// A deleted or out-of-scope capture's token is expected absent, exactly as its
-// page and screenshot are in step 5 — never a FAIL.
+// it. Step 6 finds its required tokens the way the binary does: it walks the
+// captures that are active (no later deletion entry) and, on a
+// selection-scoped package, named in the signed selection, and takes each
+// one's signed token by contentHash. A deleted or out-of-scope capture is never
+// visited, so its token is expected absent, as its page and screenshot are in
+// step 5.
 //
 // Written as POSIX sh with no bashisms so it runs under dash, bash and the BSD
 // sh on macOS. Held in step with VERIFY.md by
@@ -54,8 +55,9 @@ export const VERIFY_SCRIPT = `#!/bin/sh
 # is a FAILURE, not a silence; a deleted or out-of-selection capture's token is
 # expected absent, exactly like its page and screenshot. What exit 0 does NOT
 # mean: it does not recompute a package-wide hash the way the binary verifier
-# does, so a file with no signed entry of its own (report.html, evidence.json)
-# is checked only against the unsigned index in step 1. Nor does it mean the
+# does, so a file with no signed entry of its own (report.html) is checked only
+# against the unsigned index in step 1, and evidence.json, which that index
+# does not list, is not hashed by any step. Nor does it mean the
 # enclosed TSA root is the authority's real root — step 6a prints that root's
 # fingerprint so you can check it against a source outside this package. Until
 # you have, the trusted-time result is conditional on a file whoever built this
@@ -311,37 +313,36 @@ begin 6 'timestamp, the canonical TSA verification'
 # time for the capture. Which digest each token is entitled to attest comes from
 # that same signed entry - never from a file name, and never from evidence.json.
 #
-# The REQUIRED subset of that work set mirrors step 5's: a deleted or
-# out-of-selection capture's token is expected absent, exactly like its page
-# and screenshot there, never a FAILURE for being unenclosed.
-excluded_hashes=''
+# The REQUIRED tokens are found the way step 5 and the binary find pages: walk
+# the captures that are active and in scope, and take each one's signed token by
+# its contentHash. A deleted or out-of-selection capture is never visited, so
+# its token is expected absent without any exclusion list to get wrong.
+signed_token_filter='select(.type == "timestamp" and (.tsaToken | type) == "string")'
+jq -r "$signed_token_filter"' | "\\(.captureContentHash) \\(.tsaToken)"' \\
+  manifest.jsonl >"$tmp/signed-tokens.txt"
+
+signed_tokens=0
+while IFS= read -r signed_line; do
+  [ -n "$signed_line" ] && signed_tokens=$((signed_tokens + 1))
+done <"$tmp/signed-tokens.txt"
+
+: >"$tmp/required-tokens.txt"
+required_tokens=0
 while IFS= read -r line; do
   [ -n "$line" ] || continue
   id=$(field "$line" '.captureId')
-  excluded=0
-  in_list "$deleted" "$id" && excluded=1
-  if [ "$excluded" -eq 0 ] && [ "$have_selection" -eq 1 ] && ! in_list "$selection" "$id"; then
-    excluded=1
+  in_list "$deleted" "$id" && continue
+  if [ "$have_selection" -eq 1 ] && ! in_list "$selection" "$id"; then
+    continue
   fi
-  if [ "$excluded" -eq 1 ]; then
-    excluded_hashes="$excluded_hashes
-$(field "$line" '.contentHash')"
-  fi
-done <"$tmp/captures.jsonl"
-
-jq -r 'select(.type == "timestamp" and .tsaToken != null) | "\\(.captureContentHash) \\(.tsaToken)"' \\
-  manifest.jsonl >"$tmp/signed-tokens.txt"
-
-required_tokens=0
-excluded_tokens=0
-while IFS=' ' read -r imprint encoded; do
+  imprint=$(field "$line" '.contentHash')
+  encoded=$(jq -rn --arg h "$imprint" \\
+    "first(inputs | $signed_token_filter | select(.captureContentHash == \\$h) | .tsaToken) // empty" \\
+    manifest.jsonl)
   [ -n "$encoded" ] || continue
-  if in_list "$excluded_hashes" "$imprint"; then
-    excluded_tokens=$((excluded_tokens + 1))
-  else
-    required_tokens=$((required_tokens + 1))
-  fi
-done <"$tmp/signed-tokens.txt"
+  printf '%s %s %s\\n' "$id" "$imprint" "$encoded" >>"$tmp/required-tokens.txt"
+  required_tokens=$((required_tokens + 1))
+done <"$tmp/captures.jsonl"
 
 # sha256 of every enclosed token file. A signed entry is matched to a file by
 # its bytes, because nothing signed the file's name.
@@ -357,8 +358,8 @@ anchor_named=0
 verified_count=0
 
 if [ "$required_tokens" -eq 0 ]; then
-  if [ "$excluded_tokens" -gt 0 ]; then
-    note "$excluded_tokens signed token(s) belong to a deleted or out-of-scope capture, so their absence needs no anchor"
+  if [ "$signed_tokens" -gt 0 ]; then
+    note "$signed_tokens signed token(s) belong only to deleted or out-of-scope captures, so they are expected absent and need no anchor"
   else
     note 'the signed manifest carries no RFC 3161 token, so it makes no trusted-time claim'
   fi
@@ -385,27 +386,26 @@ fi
 untrusted=''
 [ -f "$TSA_INTERMEDIATES" ] && untrusted="$TSA_INTERMEDIATES"
 
-# Every signed token: it must be enclosed, and it must verify to the anchor.
+# The bytes of every signed token, required or not, so the reverse pass below
+# does not report a deleted capture's enclosed token as unaccounted for.
 : >"$tmp/signed-shas.txt"
 while IFS=' ' read -r imprint encoded; do
   [ -n "$encoded" ] || continue
+  printf '%s' "$encoded" | openssl base64 -d -A >"$tmp/signed-token.der" 2>/dev/null || continue
+  sha256_of "$tmp/signed-token.der" >>"$tmp/signed-shas.txt"
+done <"$tmp/signed-tokens.txt"
+
+# Every required token: it must be enclosed, and it must verify to the anchor.
+while IFS=' ' read -r id imprint encoded; do
+  [ -n "$encoded" ] || continue
   if ! printf '%s' "$encoded" | openssl base64 -d -A >"$tmp/signed-token.der" 2>/dev/null; then
-    fail "the signed timestamp entry for imprint $imprint carries a tsaToken that is not base64"
+    fail "capture $id: its signed timestamp entry carries a tsaToken that is not base64"
     continue
   fi
   token_sha=$(sha256_of "$tmp/signed-token.der")
-  printf '%s\\n' "$token_sha" >>"$tmp/signed-shas.txt"
   token=$(grep "^$token_sha " "$tmp/file-index.txt" | cut -d' ' -f2)
-  if in_list "$excluded_hashes" "$imprint"; then
-    if [ -n "$token" ]; then
-      note "capture with content hash $imprint: a deleted or out-of-scope capture's token is enclosed anyway, but is not required and is not verified here"
-    else
-      note "capture with content hash $imprint: a deleted or out-of-scope capture's token, so it is expected absent"
-    fi
-    continue
-  fi
   if [ -z "$token" ]; then
-    fail "the signed manifest carries a timestamp token for imprint $imprint but no enclosed file holds those bytes"
+    fail "capture $id: the signed manifest carries a timestamp token for imprint $imprint but no enclosed file holds those bytes"
     continue
   fi
   [ "$anchor_named" -eq 1 ] || continue
@@ -426,7 +426,7 @@ while IFS=' ' read -r imprint encoded; do
       printf '   openssl: %s\\n' "$detail"
     done <"$tmp/ts.out"
   fi
-done <"$tmp/signed-tokens.txt"
+done <"$tmp/required-tokens.txt"
 
 # The other direction: a .tst no signed entry accounts for is reported, never
 # verified against a digest of its own choosing.
@@ -455,6 +455,10 @@ printf 'verify.sh: PASS - every check above succeeded.\\n'
 if [ "$verified_count" -gt 0 ]; then
   printf 'That is an integrity and internal-consistency result. It becomes a trusted-time claim\\n'
   printf 'only once the step 6a fingerprint is checked against a source outside this package.\\n'
+elif [ "$signed_tokens" -gt 0 ]; then
+  printf 'That is an integrity and internal-consistency result only. The signed chain carries\\n'
+  printf 'RFC 3161 tokens, but only for captures this package does not enclose, so it makes no\\n'
+  printf 'trusted-time claim about its contents for you to check.\\n'
 else
   printf 'That is an integrity and internal-consistency result only. The signed chain carries no\\n'
   printf 'RFC 3161 token, so this package makes no trusted-time claim for you to check.\\n'

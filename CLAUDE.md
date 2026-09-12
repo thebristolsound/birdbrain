@@ -322,15 +322,15 @@ Issues live as GitHub Issues in `thebristolsound/birdbrain`, accessed via the `g
 
 Two `gh` traps that produce wrong numbers rather than errors. **`gh api --jq` rejects `-r`**, and **`gh issue comment` has no `-q`** — in both cases the command fails, and a pipeline that ends in `| tail -1` swallows the failure and reports success. Never derive a count through a pipe whose exit status you have not checked. Separately, **the label-filtered issue search (`issues?labels=…`) reads GitHub's search index and lags a direct label read by seconds** — verified twice on 2026-08-14 — so never treat it as authoritative for a decision; read `issues/<n>/labels` for that.
 
-**Every defect you notice gets filed before you finish, whatever its severity and whether or not it is in scope.** Noticing is not tracking. A defect named in a PR body, a review comment, or a chat report and left unfiled is gone the moment that context ends, and it puts the filing burden on the maintainer — who was told about it precisely because they were not the one who found it. This applies to out-of-scope findings especially: file separately rather than widening the diff, and say in the issue why it was kept out of the change that found it.
-
-Never end a report by observing that something is untracked. File it, choose labels with your own judgement, and report it as filed with the number. If a defect is too small to deserve acceptance criteria, it is still large enough for a one-line issue.
+**File a defect only when it is user-visible or evidence-affecting, and file at most two per PR.** Every other finding (process, tooling, CI, docs wording, a comment that overclaims, style) goes in the PR body's findings list or the review comment and is discarded when the PR merges. This replaces the file-every-defect rule of 2026-08 (ADR-0028): between 2026-W34 and W37 that rule produced 336 agent-filed issues against 93 merged agent PRs, half of them about the dispatch machinery itself, and the backlog grew by 514. When you do file, say in the issue why it was kept out of the change that found it, and report it as filed with the number.
 
 The same rule covers the inverse failure: **do not write that something "is filed" until it is.** On 2026-08-15 a gate document merged to `main` asserting a `workflow_dispatch` ticket had been "filed separately" when none existed — the intent to file never executed, and the false claim shipped. File first, then reference the number you actually got back.
 
 ### Triage labels
 
 Five canonical triage roles using their default label strings (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+Two further labels gate dispatch (ADR-0028). `queued` is the maintainer's hand-picked dispatch list: the frontier is `ready-for-agent` and `queued` together, never `ready-for-agent` alone. `process` marks work about the agent pipeline itself (dispatch, gates, ADRs, Vale, CI, skills) and is frozen: never queue it, never dispatch it. `.github/workflows/stale-agent-issues.yml` closes machine-filed issues untouched for 14 days unless they carry `queued` or `agent-wip`.
 
 ### Domain docs
 
@@ -375,8 +375,8 @@ a review round's only blocking findings are body defects on an unchanged sha, fi
 the body in the same round with no new code pass.
 
 The gates in `docs/adr/0005-unattended-agents-on-the-evidence-path.md` still apply, as amended by
-`docs/adr/0014-tier-the-evidence-backstop-and-widen-the-dispatch-slot.md`: WIP of three concurrent
-agent PRs with every branch cut from `main` and never from another cycle's branch,
+`docs/adr/0014-tier-the-evidence-backstop-and-widen-the-dispatch-slot.md`: WIP of one agent PR
+(ADR-0028) with every branch cut from `main` and never from another cycle's branch,
 `evidence-affecting` PRs never auto-merge and always get human review, non-evidence agent PRs may
 merge on all required checks green plus an `agent/pre-pass` success verdict, and the give-up path
 (comment findings on the issue, relabel `needs-info`/`ready-for-human`, vacate the slot) whenever

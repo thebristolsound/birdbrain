@@ -1,0 +1,52 @@
+name: Stale agent issues
+
+# Closes issues the machine account (birdbrain-agent) filed that nobody has touched in 14 days.
+# Decision record: docs/adr/0028. An issue carrying `queued` or `agent-wip` is exempt: the
+# first is on the maintainer's dispatch list, the second is being worked. Anything closed here
+# is closed as "not planned" with a comment saying how to bring it back.
+
+on:
+  schedule:
+    - cron: '0 7 * * 1' # Monday 07:00 UTC
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'List the issues that would close without closing them'
+        type: boolean
+        default: true
+
+permissions:
+  issues: write
+
+jobs:
+  close:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close agent-filed issues untouched for 14 days
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ inputs.dry_run == true }}
+        run: |
+          set -euo pipefail
+          cutoff="$(date -u -d '14 days ago' +%Y-%m-%dT%H:%M:%SZ)"
+          gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/issues?state=open&creator=birdbrain-agent&per_page=100" \
+            --jq ".[] | select(.pull_request | not)
+                      | select(.updated_at < \"${cutoff}\")
+                      | select([.labels[].name] | any(. == \"queued\" or . == \"agent-wip\") | not)
+                      | .number" > stale.txt
+          echo "untouched since ${cutoff}: $(wc -l < stale.txt) issue(s)"
+          cat stale.txt
+          if [ "${DRY_RUN}" = "true" ]; then
+            echo "dry run: nothing closed"
+            exit 0
+          fi
+          cat > comment.md <<'MSG'
+          Closed as not planned by the stale-agent-issues workflow: filed by the machine account and untouched for 14 days (ADR-0028).
+
+          Reopen it and apply `queued` to put it on the dispatch list.
+          MSG
+          while read -r n; do
+            gh issue comment "$n" --repo "${GITHUB_REPOSITORY}" --body-file comment.md
+            gh issue close "$n" --repo "${GITHUB_REPOSITORY}" --reason 'not planned'
+          done < stale.txt

@@ -1,6 +1,6 @@
 ---
 name: dispatch
-description: Run one cycle of the birdbrain dispatch routine — count the agent-PR slots (three, ADR-0014), then address review feedback, auto-merge a finished non-evidence PR, dispatch the oldest eligible ready-for-agent issue, or exit. Reviewer pre-pass on every agent push. Manual trigger (#308); scheduled fires run it from `.github/workflows/dispatch.yml` (ADR-0026).
+description: Run one cycle of the birdbrain dispatch routine — check the single agent-PR slot (ADR-0028), then address review feedback, auto-merge a finished non-evidence PR, dispatch the lowest-numbered `queued` ready-for-agent issue, or exit. Reviewer pre-pass on every agent push. Manual trigger (#308); scheduled fires run it from `.github/workflows/dispatch.yml` (ADR-0026).
 ---
 
 # Dispatch — one cycle
@@ -11,8 +11,8 @@ You are the dispatch routine for birdbrain's autonomous agent pipeline
 exactly one cycle of the state machine below, then reports and stops. Repo:
 `thebristolsound/birdbrain`.
 
-**Capacity is three concurrent cycles, not one** (ADR-0014). Everything ADR-0006 says about *how*
-a slot is claimed is unchanged; you count the markers and act while the count is under three.
+**Capacity is one cycle** (ADR-0028, reversing ADR-0014's widening). Everything ADR-0006 says about
+*how* a slot is claimed is unchanged; you count the markers and dispatch only when the count is zero.
 
 ## GitHub access — read this before running any command
 
@@ -149,7 +149,7 @@ exits immediately unless `CLAUDE_CODE_REMOTE=true`, by design. So:
 
 ## 1. Slot check
 
-There are **three slots** (ADR-0014). Each is held by one of **two markers**, counted together
+There is **one slot** (ADR-0028). Each is held by one of **two markers**, counted together
 (ADR-0006, `docs/agents/triage-labels.md`): an open PR labelled `agent-pr`, and an open issue
 labelled `agent-wip` — the claim for a cycle whose PR does not exist yet:
 
@@ -173,12 +173,9 @@ its release step: remove the label with a note, and count the slot once, not twi
 
 **Then compare the count to capacity.**
 
-- **Occupancy 3 or more** → full. Report the holders and stop. Do not dispatch. An occupancy
-  above three is not a violation the way a second PR used to be, but report it as one to look
-  at: it means a release step was missed somewhere.
-- **Occupancy under 3** → there is room. Dispatch one issue (section 3). **One dispatch per
-  invocation**, even with two slots free, so that a bad cycle is visible before it is repeated.
-- **Occupancy 0** → before dispatching, run the **departed-slot hygiene
+- **Occupancy 1 or more** → full. Report the holders and stop. Do not dispatch. An occupancy
+  above one is a violation: report it, since it means a release step was missed somewhere.
+- **Occupancy 0** → there is room. Dispatch one issue (section 3), but first run the **departed-slot hygiene
   check** — closed PRs never appear in the open-PR query above, so this branch is the only
   entry point ADR-0007's rule 4 and the give-up check have. Fetch the most recently created
   closed `agent-pr` PR:
@@ -356,17 +353,19 @@ on the current sha, or a human and an ADR-0007 override record.
 
 ## 3. Room in the queue — dispatch the oldest eligible issue
 
-Eligibility (the frontier): open, labelled `ready-for-agent`, unassigned, and no open
-blockers via native dependencies:
+Eligibility (the frontier): open, labelled **both** `ready-for-agent` and `queued`, not labelled
+`process`, unassigned, and no open blockers via native dependencies. `queued` is the maintainer's
+hand-picked list (ADR-0028): an issue that is ready but not queued is not eligible, however old.
 
 ```
-gh api --paginate "repos/thebristolsound/birdbrain/issues?state=open&labels=ready-for-agent&per_page=100" \
-  --jq '[.[] | select(.pull_request|not) | {number, assignees: [.assignees[].login]}]'
+gh api --paginate "repos/thebristolsound/birdbrain/issues?state=open&labels=ready-for-agent,queued&per_page=100" \
+  --jq '[.[] | select(.pull_request|not) | select([.labels[].name] | index("process") | not) | {number, assignees: [.assignees[].login]}]'
 gh api repos/thebristolsound/birdbrain/issues/<n>/dependencies/blocked_by   # skip if any returned issue is open
 ```
 
-Pick the **lowest issue number** among eligible issues. If none are eligible, report "frontier
-empty" and stop.
+Pick the **lowest issue number** among eligible issues. If none are eligible, report "queue
+empty" and stop: the maintainer refills the queue by applying `queued`, and the routine never
+widens the frontier on its own.
 
 **An issue whose work must build on an unmerged agent branch is not eligible**, even with its
 native dependencies closed. ADR-0014 requires every agent branch to be cut from `main`, so a
@@ -428,8 +427,8 @@ gh api --paginate "repos/thebristolsound/birdbrain/issues/<n>/timeline?per_page=
 0. Check the chosen issue's recent comments for an existing claim the label query missed —
    a crash between comment and label leaves exactly this: a claim comment with no withdrawal
    after it and no open agent PR. 4 hours old or younger → this issue is already claimed by
-   another cycle. Note it, drop this candidate, and take the next eligible issue; with three
-   slots a claimed candidate no longer ends the invocation. Older → note it as stale and continue.
+   another cycle. Note it and stop: with one slot a claimed candidate ends the invocation.
+   Older → note it as stale and continue.
 1. Post a claim comment on the chosen issue via the write path (locally
    `agh issue comment <n> --body-file <file>`) — e.g. "Dispatch slot claimed for this issue; a cycle
    is starting." **The comment is the claim** (ADR-0006): its server-assigned `created_at` is
@@ -771,13 +770,13 @@ Two questions worth asking out loud when the check fires, because they were the 
 
 **Release every cycle claim you took before writing the report** (section 2), on every exit path.
 
-Finish every invocation with a short report: occupancy found out of three and which PRs or claims
+Finish every invocation with a short report: occupancy found out of one and which PRs or claims
 hold it, every cycle claim you took, lost or cleared as stale, action taken per PR (merged #N /
 dispatched #N / addressed feedback on PR #N / exited idle / violation found), pre-pass verdict if
 one ran, the CI state of every head sha you touched, and
 anything a human must do next.
 
-A cycle now touches up to three PRs, so report them as a list rather than one narrative. If you
+A cycle can touch more than one PR, so report them as a list rather than one narrative. If you
 merged under section 2a, state the four conditions as you found them, and name any advisory-tier
 backstop hits with their one-line dispositions.
 

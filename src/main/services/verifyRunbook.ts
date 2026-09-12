@@ -214,8 +214,11 @@ trusting them proves nothing.
 \`ls timestamps/\`: every token is also carried base64-encoded in its own signed
 entry (\`jq -r 'select(.type == "timestamp") | "\\(.captureContentHash) \\(.tsaToken)"' manifest.jsonl\`),
 so a \`.tst\` deleted from the package is visible there and invisible in a
-directory listing. A signed entry with no enclosed token is a failure, not an
-absence of work. The \`.tst\` files are bare RFC 3161 tokens (DER
+directory listing. For a capture step 5 still requires present — active, and
+inside the selection if one is declared — a signed entry with no enclosed
+token is a failure, not an absence of work. A deleted or out-of-selection
+capture's token is expected absent for exactly the same reason its page and
+screenshot are in step 5. The \`.tst\` files are bare RFC 3161 tokens (DER
 \`TimeStampToken\`), not full \`TimeStampResp\` structures, so \`-token_in\` is
 required — without it OpenSSL reports an ASN.1 error, not a verdict.
 

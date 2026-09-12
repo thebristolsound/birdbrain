@@ -10,9 +10,13 @@
 //
 // SAME BOUNDARY AS THE RUNBOOK: `openssl ts -verify` in step 6 is the canonical
 // TSA authenticity check, which the programmatic/binary verifier does NOT do.
-// A PASS here therefore covers more than a binary PASS — and still says nothing
-// about whether the enclosed root is the authority's real root, which is why
-// step 6a prints its fingerprint rather than asserting it.
+// It still says nothing about whether the enclosed root is the authority's
+// real root, which is why step 6a prints its fingerprint rather than asserting
+// it. Step 6's required work set is the same one the binary checks: signed
+// timestamp entries for captures that are both active (no later deletion
+// entry) and, on a selection-scoped package, named in the signed selection.
+// A deleted or out-of-scope capture's token is expected absent, exactly as its
+// page and screenshot are in step 5 — never a FAIL.
 //
 // Written as POSIX sh with no bashisms so it runs under dash, bash and the BSD
 // sh on macOS. Held in step with VERIFY.md by
@@ -42,15 +46,20 @@ export const VERIFY_SCRIPT = `#!/bin/sh
 # 3 INCOMPLETE - nothing failed, but a check could not be completed, so this is
 # not a pass either. A check that cannot run is never folded into exit 0.
 #
-# What exit 0 means: the enclosed files match the signed, hash-linked manifest,
-# every signed entry verifies under the enclosed public key, and every RFC 3161
-# token the SIGNED manifest carries is enclosed and verifies to the enclosed TSA
-# root. A token the manifest signs for but the package does not enclose is a
-# FAILURE, not a silence. What exit 0 does NOT mean: that the enclosed root is
-# the authority's real root. Step 6a prints that root's fingerprint so you can
-# check it against a source outside this package. Until you have, the
-# trusted-time result is conditional on a file whoever built this package
-# supplied.
+# What exit 0 means: every signed entry verifies under the enclosed public key
+# and recomputes to its own entryHash, and for every capture this package's
+# signed chain still calls active and in scope, its page, screenshot and RFC
+# 3161 token are enclosed and match that signed entry. A signed token whose
+# capture is active and in scope but whose bytes the package does not enclose
+# is a FAILURE, not a silence; a deleted or out-of-selection capture's token is
+# expected absent, exactly like its page and screenshot. What exit 0 does NOT
+# mean: it does not recompute a package-wide hash the way the binary verifier
+# does, so a file with no signed entry of its own (report.html, evidence.json)
+# is checked only against the unsigned index in step 1. Nor does it mean the
+# enclosed TSA root is the authority's real root — step 6a prints that root's
+# fingerprint so you can check it against a source outside this package. Until
+# you have, the trusted-time result is conditional on a file whoever built this
+# package supplied.
 
 set -u
 
@@ -301,9 +310,38 @@ begin 6 'timestamp, the canonical TSA verification'
 # "nothing to check" and passes, while the signed chain still asserts a trusted
 # time for the capture. Which digest each token is entitled to attest comes from
 # that same signed entry - never from a file name, and never from evidence.json.
+#
+# The REQUIRED subset of that work set mirrors step 5's: a deleted or
+# out-of-selection capture's token is expected absent, exactly like its page
+# and screenshot there, never a FAILURE for being unenclosed.
+excluded_hashes=''
+while IFS= read -r line; do
+  [ -n "$line" ] || continue
+  id=$(field "$line" '.captureId')
+  excluded=0
+  in_list "$deleted" "$id" && excluded=1
+  if [ "$excluded" -eq 0 ] && [ "$have_selection" -eq 1 ] && ! in_list "$selection" "$id"; then
+    excluded=1
+  fi
+  if [ "$excluded" -eq 1 ]; then
+    excluded_hashes="$excluded_hashes
+$(field "$line" '.contentHash')"
+  fi
+done <"$tmp/captures.jsonl"
+
 jq -r 'select(.type == "timestamp" and .tsaToken != null) | "\\(.captureContentHash) \\(.tsaToken)"' \\
   manifest.jsonl >"$tmp/signed-tokens.txt"
-signed_tokens=$(grep -c . "$tmp/signed-tokens.txt")
+
+required_tokens=0
+excluded_tokens=0
+while IFS=' ' read -r imprint encoded; do
+  [ -n "$encoded" ] || continue
+  if in_list "$excluded_hashes" "$imprint"; then
+    excluded_tokens=$((excluded_tokens + 1))
+  else
+    required_tokens=$((required_tokens + 1))
+  fi
+done <"$tmp/signed-tokens.txt"
 
 # sha256 of every enclosed token file. A signed entry is matched to a file by
 # its bytes, because nothing signed the file's name.
@@ -318,12 +356,16 @@ fi
 anchor_named=0
 verified_count=0
 
-if [ "$signed_tokens" -eq 0 ]; then
-  note 'the signed manifest carries no RFC 3161 token, so it makes no trusted-time claim'
+if [ "$required_tokens" -eq 0 ]; then
+  if [ "$excluded_tokens" -gt 0 ]; then
+    note "$excluded_tokens signed token(s) belong to a deleted or out-of-scope capture, so their absence needs no anchor"
+  else
+    note 'the signed manifest carries no RFC 3161 token, so it makes no trusted-time claim'
+  fi
 elif [ ! -f "$TSA_ROOT" ]; then
   note "$TSA_ROOT is absent: this case was configured with a non-default timestamp authority"
   note "obtain that authority's own root and re-run the step 6b command from VERIFY.md with it as -CAfile"
-  incomplete "$signed_tokens signed token(s) were not verified: no anchor is enclosed for this script to name"
+  incomplete "$required_tokens signed token(s) were not verified: no anchor is enclosed for this script to name"
 elif openssl x509 -in "$TSA_ROOT" -noout -subject -issuer -fingerprint -sha256 \\
   >"$tmp/anchor.txt" 2>&1; then
   anchor_subject=$(grep '^subject=' "$tmp/anchor.txt" | cut -d= -f2-)
@@ -354,6 +396,14 @@ while IFS=' ' read -r imprint encoded; do
   token_sha=$(sha256_of "$tmp/signed-token.der")
   printf '%s\\n' "$token_sha" >>"$tmp/signed-shas.txt"
   token=$(grep "^$token_sha " "$tmp/file-index.txt" | cut -d' ' -f2)
+  if in_list "$excluded_hashes" "$imprint"; then
+    if [ -n "$token" ]; then
+      note "capture with content hash $imprint: a deleted or out-of-scope capture's token is enclosed anyway, but is not required and is not verified here"
+    else
+      note "capture with content hash $imprint: a deleted or out-of-scope capture's token, so it is expected absent"
+    fi
+    continue
+  fi
   if [ -z "$token" ]; then
     fail "the signed manifest carries a timestamp token for imprint $imprint but no enclosed file holds those bytes"
     continue

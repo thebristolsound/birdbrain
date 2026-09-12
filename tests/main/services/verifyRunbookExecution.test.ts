@@ -149,6 +149,7 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
   let captureId = ''
   let contentHash = ''
   let captureLifecycle: CaptureLifecycle
+  let caseId = ''
 
   beforeAll(() => {
     if (!RUNS) return
@@ -203,6 +204,7 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     })
     captureId = capture.id
     contentHash = capture.hash
+    caseId = testCase.id
 
     // A token genuinely issued over THIS capture's content hash, so step 6's
     // `-digest <contentHash>` is fed the digest the signed entry binds. The
@@ -252,6 +254,39 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
   const corruptedCopy = (name: string): string => {
     const dir = join(tempDir, name)
     cpSync(packageDir, dir, { recursive: true })
+    return dir
+  }
+
+  /**
+   * Re-exports the case through the real export path with the given options
+   * and unpacks the result under `name`, for a test that needs a package
+   * shaped differently from the one `beforeEach` already built (a deletion
+   * or a selection scope applied after the timestamp entry above).
+   */
+  const exportPackage = async (
+    name: string,
+    options: { captureIds?: string[] } = {}
+  ): Promise<string> => {
+    const outputPath = join(tempDir, `${name}.zip`)
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: {
+          captures: true,
+          screenshots: true,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
+        exportClass: 'evidence',
+        outputPath,
+        ...options
+      },
+      captureLifecycle
+    )
+    const dir = join(tempDir, name)
+    unpack(readStoredZipEntries(outputPath), dir)
     return dir
   }
 
@@ -397,6 +432,58 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     expect(run.output).toContain('no enclosed file holds those bytes')
     expect(run.output).not.toContain('PASS')
   })
+
+  it.skipIf(!RUNS)(
+    'passes on a legitimate package exported after the timestamped capture was deleted',
+    async () => {
+      // Deletion never removes the capture's earlier manifest entries, so the
+      // signed chain still carries a `timestamp` entry for this content hash —
+      // but the deletion means no page, screenshot or token for it is ever
+      // packaged again. Step 6's required work set has to know that, the same
+      // way step 5 already does for the page and screenshot.
+      await captureLifecycle.delete(captureId)
+      const dir = await exportPackage('post-deletion')
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(0)
+      expect(run.output).toContain('verify.sh: PASS')
+      expect(run.output).toContain('expected absent')
+      expect(run.output).not.toContain('FAIL')
+    }
+  )
+
+  it.skipIf(!RUNS)(
+    'passes on a selection-scoped export that excludes the timestamped capture',
+    async () => {
+      const payload = '<html><body>second, unselected capture</body></html>'
+      const { capture: other } = await ingestMhtmlCapture({
+        caseId,
+        url: 'https://example.com/other',
+        title: 'Other Page',
+        timestamp: '2026-04-05T12:02:00.000Z',
+        stream: Readable.from([Buffer.from(payload)]) as unknown as ReadableStream<Uint8Array>,
+        textContent: payload,
+        headers: {},
+        browserVersion: '',
+        userAgent: '',
+        httpStatus: 200,
+        extensionVersion: '',
+        operatorId: 'op',
+        operatorName: 'Test Operator',
+        toolVersion: '0.1.0'
+      })
+
+      // Selects only the untimestamped capture, so the timestamped one's page,
+      // screenshot AND signed token are all legitimately unenclosed.
+      const dir = await exportPackage('selection-scoped', { captureIds: [other.id] })
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(0)
+      expect(run.output).toContain('verify.sh: PASS')
+      expect(run.output).toContain('outside the signed export selection')
+      expect(run.output).not.toContain('FAIL')
+    }
+  )
 
   it.skipIf(!RUNS)('reports INCOMPLETE, not PASS, when no anchor is enclosed', () => {
     // What an operator on a non-default timestamp authority actually gets:

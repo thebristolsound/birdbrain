@@ -575,9 +575,8 @@ describe('certification', () => {
 
       expect(cert).toContain('Entry signatures')
       expect(cert).toMatch(/A\s+signed\s+manifest\s+entry\s+is\s+present\s+for\s+1\s+of\s+the\s+3/)
-      expect(cert).toMatch(
-        /1\s+written\s+before\s+per-entry\s+signing\s+existed,\s+1\s+with\s+no\s+manifest\s+entry/
-      )
+      expect(cert).toMatch(/1\s+was\s+written\s+before\s+per-entry\s+signing\s+existed/)
+      expect(cert).toMatch(/1\s+has\s+no\s+manifest\s+entry\s+at\s+all/)
       expect(cert).toMatch(/no\s+entry\s+signature\s+is\s+asserted/i)
 
       // AC3: the summary is the per-exhibit disclosure, counted. A second
@@ -585,6 +584,45 @@ describe('certification', () => {
       expect(countReportSignatureRows(report, 'signed')).toBe(1)
       expect(countReportSignatureRows(report, 'unsigned-legacy')).toBe(1)
       expect(countReportSignatureRows(report, 'no-entry')).toBe(1)
+    })
+
+    // The disclosure sentence, not just the counts. Before review this package
+    // told the reader chain linkage covered the whole unsigned set, while
+    // report.html said the no-entry exhibit had "no chain position to cite" —
+    // the certificate contradicting the report it ships beside, at 100% diff
+    // coverage, because coverage measures execution and not truth.
+    it('claims chain coverage only for the class that has it, and never for no-entry', async () => {
+      const caseDir = join(tempDir, 'captures', caseId)
+      await seedLegacyGenesisCapture(caseId, caseDir)
+      await ingest(
+        caseId,
+        '<html><body>Signed</body></html>',
+        'https://example.com/signed',
+        'Signed'
+      )
+      await seedUnchainedCapture(caseId)
+
+      const entries = await exportZip()
+      const cert = entries.get('certification.html')!.toString('utf-8')
+      const report = entries.get('report.html')!.toString('utf-8')
+
+      // The chain-linkage claim is bounded to the pre-signing class.
+      expect(cert).toMatch(
+        /written\s+before\s+per-entry\s+signing\s+existed,\s+and\s+is\s+covered\s+by\s+manifest\s+chain\s+linkage/
+      )
+      // The no-entry class is told the opposite, and it matches what the report
+      // says per exhibit in the same package.
+      expect(cert).toMatch(
+        /no\s+manifest\s+entry\s+at\s+all,\s+so\s+the\s+chain\s+records\s+no\s+acquisition\s+and\s+there\s+is\s+no\s+chain\s+position\s+to\s+cite/
+      )
+      expect(report).toContain('no chain position to cite')
+      // What it does have: the export-time seal, named so the reader can check it.
+      expect(cert).toMatch(/signed\s+export\s+entry\s+in\s+export-entry\.json/)
+      expect(entries.has('export-entry.json')).toBe(true)
+
+      // The sentence the fix removed must not come back in any form that closes
+      // the whole unsigned set under chain linkage.
+      expect(cert).not.toMatch(/Those\s+captures\s+are\s+covered\s+by\s+manifest\s+chain\s+linkage/)
     })
 
     // AC4: absence of legacy entries is unremarkable, so it is stated as an
@@ -598,11 +636,28 @@ describe('certification', () => {
 
       expect(cert).toMatch(/All\s+2\s+captures\s+in\s+this\s+export\s+have\s+a\s+signed\s+manifest/)
       expect(cert).not.toMatch(/no\s+entry\s+signature\s+is\s+asserted/i)
-      expect(cert).not.toMatch(/0\s+written\s+before\s+per-entry\s+signing/)
+      expect(cert).not.toMatch(/written\s+before\s+per-entry\s+signing/)
       expect(cert).not.toMatch(/with\s+no\s+manifest\s+entry\s+at\s+all/)
       expect(
         countReportSignatureRows(entries.get('report.html')!.toString('utf-8'), 'signed')
       ).toBe(2)
+    })
+
+    // The enclosed key is always this installation's (export.ts writes
+    // getPublicKeyPem()), but entries inherited across an import verify against
+    // the key embedded in the import entry (manifestChain.ts's KEY RULE). The
+    // all-clear must not send a reader to the wrong key and hand them a
+    // "Verification Failure" on an untampered package.
+    it('does not name the enclosed key as sufficient for an imported entry', async () => {
+      await ingest(caseId, '<html><body>One</body></html>', 'https://example.com/1', 'One')
+
+      const entries = await exportZip()
+      const cert = entries.get('certification.html')!.toString('utf-8')
+
+      expect(cert).toMatch(
+        /verifiable\s+against\s+the\s+signing\s+key\s+of\s+the\s+installation\s+that\s+wrote\s+it/
+      )
+      expect(cert).toMatch(/except\s+where\s+a\s+case\s+was\s+imported/)
     })
 
     it('makes no signature claim at all when the chain holds only a legacy entry', async () => {
@@ -614,10 +669,38 @@ describe('certification', () => {
       expect(cert).toMatch(
         /No\s+entry\s+signature\s+is\s+asserted<\/strong>\s+for\s+any\s+of\s+the\s+1\s+capture\s+in/
       )
-      expect(cert).toMatch(
-        /1\s+written\s+before\s+per-entry\s+signing\s+existed,\s+0\s+with\s+no\s+manifest\s+entry/
-      )
+      expect(cert).toMatch(/1\s+was\s+written\s+before\s+per-entry\s+signing\s+existed/)
+      // The class that is not present says nothing at all, rather than zero.
+      expect(cert).not.toMatch(/no\s+manifest\s+entry\s+at\s+all/)
       expect(cert).not.toMatch(/have\s+a\s+signed\s+manifest\s+entry/)
+    })
+
+    // AC4 at the other edge: with no captures the none-signed branch would
+    // print a bolded negative finding, a row of zeroes and a coverage claim
+    // about the empty set.
+    it('prints no finding at all for an export containing no captures', () => {
+      const html = buildCertification(
+        {
+          caseName: 'Cert Case',
+          ...DIRECT_INPUT_EXTRAS,
+          contents: { captureCount: 0, screenshotCount: 0, noteCount: 0 },
+          exportTimestamp: '2026-04-05T13:00:00.000Z',
+          installationId: 'install-1',
+          operatorName: 'Det. Smith',
+          operatorRole: 'Detective',
+          operatorOrganization: 'Metro PD',
+          tsaUrl: 'https://tsa.example/timestamp',
+          captures: [],
+          trustedTimeByCaptureId: new Map<string, TrustedTimeResult>(),
+          entrySignatureByCaptureId: new Map<string, EntrySignatureStatus>()
+        },
+        resolveToolVersion()
+      )
+
+      expect(html).toMatch(/This\s+export\s+contains\s+no\s+captures/)
+      expect(html).not.toMatch(/No\s+entry\s+signature\s+is\s+asserted/)
+      expect(html).not.toMatch(/written\s+before\s+per-entry\s+signing/)
+      expect(html).not.toMatch(/manifest\s+chain\s+linkage/)
     })
 
     // AC5. resolveEntrySignatures backfills 'no-entry' for every capture, so a

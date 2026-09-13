@@ -2,7 +2,7 @@
 # Decide from the API alone whether this fire has anything to do.
 #
 # The full cycle costs a toolchain install and a Claude session. Most hours it
-# would find three occupied slots with nothing owed and exit, so this step asks
+# would find the slot occupied with nothing owed and exit, so this step asks
 # the cheap version of the skill's sections 1 to 3 first and skips the rest when
 # every answer is "nothing". It never writes. It is deliberately conservative:
 # any doubt reads as "run", because a missed cycle costs an hour and a spurious
@@ -30,6 +30,9 @@ summary="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
 # Empty when this step runs outside the workflow; an empty login matches no
 # author, so the pipeline filter below degrades to the unfiltered behaviour.
 me="${LOGIN:-}"
+# One slot, and only hand-picked work fills it (ADR-0028). Keep both in step with
+# sections 1 and 3 of .claude/skills/dispatch/SKILL.md.
+capacity=1
 stale_before="$(date -u -d "$CLAIM_MAX_AGE" +%FT%TZ)"
 
 decide() {
@@ -65,10 +68,10 @@ newest_activity() {
 prs="$(list "repos/$R/issues?state=open&labels=agent-pr&per_page=100" | jq '[.[] | select(.pull_request) | .number]')"
 wip="$(list "repos/$R/issues?state=open&labels=agent-wip&per_page=100" | jq '[.[] | select(.pull_request | not) | .number]')"
 occupancy=$(( $(jq length <<<"$prs") + $(jq length <<<"$wip") ))
-echo "Occupancy $occupancy/3: agent-pr PRs $prs, agent-wip claims $wip" | tee -a "$summary"
+echo "Occupancy $occupancy/$capacity: agent-pr PRs $prs, agent-wip claims $wip" | tee -a "$summary"
 
 # Section 1: a claim past the 4-hour expiry is stale, and only the routine ages
-# it out. Counting it as a held slot lets three abandoned claims declare the
+# it out. Counting it as a held slot lets an abandoned claim declare the
 # queue full for good, with the one component that could clear them gated off.
 for n in $(jq -r '.[]' <<<"$wip"); do
   claimed="$(labelled_at "$n")"
@@ -123,15 +126,16 @@ for n in $(jq -r '.[]' <<<"$prs"); do
 done
 
 # Section 3: is there room, and anything to put in it?
-if [ "$occupancy" -lt 3 ]; then
+if [ "$occupancy" -lt "$capacity" ]; then
   # Section 3 rejects a candidate whose native blocked_by dependencies are not
   # all closed, and rejecting it changes no label, so a frontier counted without
   # that query repeats a full install and Claude session every fire for work the
   # routine will refuse. A failed or unsupported dependency read counts the
   # issue as available, which is the conservative direction.
   frontier=0
-  for n in $(list "repos/$R/issues?state=open&labels=ready-for-agent&per_page=100" \
-      | jq -r '.[] | select(.pull_request | not) | select(.assignees | length == 0) | .number'); do
+  for n in $(list "repos/$R/issues?state=open&labels=ready-for-agent,queued&per_page=100" \
+      | jq -r '.[] | select(.pull_request | not) | select(.assignees | length == 0)
+               | select([.labels[].name] | index("process") | not) | .number'); do
     blockers="$(gh api "repos/$R/issues/$n/dependencies/blocked_by" \
       --jq '[.[] | select(.state == "open")] | length' 2>/dev/null || echo 0)"
     if [ "${blockers:-0}" -eq 0 ]; then
@@ -141,9 +145,9 @@ if [ "$occupancy" -lt 3 ]; then
     fi
   done
   if [ "$frontier" -gt 0 ]; then
-    decide true "$((3 - occupancy)) slot(s) free and $frontier unblocked ready-for-agent issue(s)"
+    decide true "the slot is free and $frontier unblocked queued issue(s) wait"
   fi
-  decide false "$((3 - occupancy)) slot(s) free but the frontier is empty"
+  decide false "the slot is free but the queue is empty"
 fi
 
-decide false "all three slots held and no open agent PR needs the routine"
+decide false "the slot is held and no open agent PR needs the routine"

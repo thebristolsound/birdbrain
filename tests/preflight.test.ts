@@ -183,12 +183,16 @@ describe('touchesExtension', () => {
 })
 
 describe('childEnv', () => {
-  it('requires OpenSSL and drops the diff-coverage floor override', () => {
+  it('requires OpenSSL and jq, and drops the diff-coverage floor override', () => {
     const env = childEnv({ PATH: '/usr/bin', COVERAGE_DIFF_MIN: '0', COVERAGE_DIFF_BASE: 'main' })
     expect(env).toEqual({
       PATH: '/usr/bin',
       COVERAGE_DIFF_BASE: 'main',
-      BIRDBRAIN_REQUIRE_OPENSSL: '1'
+      BIRDBRAIN_REQUIRE_OPENSSL: '1',
+      // Same reason as openssl (#584): without jq the suite that executes the
+      // shipped VERIFY.md skips itself, and preflight would report a green loop
+      // over a runbook nothing ran.
+      BIRDBRAIN_REQUIRE_JQ: '1'
     })
   })
 })

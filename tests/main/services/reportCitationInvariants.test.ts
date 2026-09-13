@@ -93,6 +93,7 @@ const COMPANION_FILES = [
   'tsa-root.pem',
   'tsa-intermediates.pem',
   'VERIFY.md',
+  'verify.sh',
   'report.html'
 ]
 

@@ -224,7 +224,7 @@ _Avoid_: summary, AI note.
 ### Export and verification
 
 **Evidence Package**:
-The exported bundle: `manifest.jsonl`, the signed `export-entry.json`, `signing-public-key.pem`, `evidence.json`, `report.html`, `certification.html`, `VERIFY.md`, and the selected Exhibits with their Derived Files.
+The exported bundle: `manifest.jsonl`, the signed `export-entry.json`, `signing-public-key.pem`, `evidence.json`, `report.html`, `certification.html`, `VERIFY.md`, `verify.sh`, and the selected Exhibits with their Derived Files.
 _Avoid_: export, bundle, ZIP.
 
 **Working Copy**:
@@ -236,7 +236,7 @@ The operator statement in an Evidence Package naming the tool, hash algorithm, p
 _Avoid_: cover sheet, declaration.
 
 **Verify Runbook**:
-The `VERIFY.md` instructions telling a third party how to check the package with standard tools, independent of Birdbrain. The canonical TSA check (`openssl ts -verify`) lives here.
+The `VERIFY.md` instructions telling a third party how to check the package with standard tools, independent of Birdbrain. The canonical TSA check (`openssl ts -verify`) lives here. `verify.sh`, enclosed beside it, is the same six steps as a runnable script; the runbook stays the explanation and the authority.
 _Avoid_: verification guide, instructions.
 
 **Package Verification**:

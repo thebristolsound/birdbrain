@@ -573,7 +573,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   <code>manifest.jsonl</code>, <code>certification.html</code>,
   <code>signing-public-key.pem</code>, <code>tsa-intermediates.pem</code>,${
     data.tsaTrustAnchorBundled ? ' <code>tsa-root.pem</code>,' : ''
-  } <code>VERIFY.md</code>,
+  } <code>VERIFY.md</code>, <code>verify.sh</code>,
   and the <code>pages/</code>, <code>screenshots/</code> and <code>timestamps/</code>
   directories.</p>`
       : `<p class="fine">This is a standalone report, not an evidence package. The stored page

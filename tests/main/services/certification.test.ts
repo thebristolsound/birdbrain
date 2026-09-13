@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, readFileSync } from 'fs'
+import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
@@ -18,7 +18,10 @@ import {
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { generateReport } from '@main/services/export'
 import { buildCertification, resolveToolVersion } from '@main/services/certification'
-import { setCaptureTrustedTime } from '@main/services/db/captureRepo'
+import type { EntrySignatureStatus } from '@main/services/reportHtml'
+import { insertCapture, setCaptureTrustedTime } from '@main/services/db/captureRepo'
+import { defaultCaptureStore } from '@main/services/captureStore'
+import { canonicalStringify } from '@shared/verify'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
@@ -62,6 +65,92 @@ async function ingest(caseId: string, payload: string, url: string, title: strin
     operatorName: '',
     toolVersion: '0.1.0'
   })
+}
+
+// A pre-signing manifest entry: schemaVersion 1, with no `signature` key at all,
+// which resolveEntrySignatures reports as 'unsigned-legacy'. Written as the
+// genesis entry because a chain may go v1 -> v2 as the tool was upgraded but
+// never back — verifyManifestChain rejects a v1 entry after a signed one as a
+// schema downgrade, which is a different finding entirely.
+async function seedLegacyGenesisCapture(caseId: string, caseDir: string) {
+  const bytes = 'legacy bytes'
+  const capture = insertCapture({
+    caseId,
+    url: 'https://legacy.example/page',
+    title: 'Legacy Page',
+    hash: createHash('sha256').update(bytes).digest('hex'),
+    timestamp: '2026-04-05T11:00:00.000Z'
+  })
+  await defaultCaptureStore.writeMhtmlStream(
+    caseId,
+    capture.id,
+    Readable.from([Buffer.from(bytes)]) as unknown as ReadableStream<Uint8Array>
+  )
+
+  const body = {
+    type: 'capture',
+    captureId: capture.id,
+    caseId,
+    url: 'https://legacy.example/page',
+    timestamp: '2026-04-05T11:00:00.000Z',
+    contentHash: capture.hash,
+    sizeBytes: Buffer.byteLength(bytes),
+    operatorId: 'op',
+    operatorName: '',
+    toolVersion: '0.0.1',
+    index: 0,
+    prevHash: '',
+    schemaVersion: 1
+  }
+  writeFileSync(
+    join(caseDir, 'manifest.jsonl'),
+    JSON.stringify({
+      ...body,
+      entryHash: createHash('sha256').update(canonicalStringify(body)).digest('hex')
+    }) + '\n'
+  )
+
+  return capture
+}
+
+// A capture the DB holds and the chain never recorded, which
+// resolveEntrySignatures reports as 'no-entry'. Bytes are written so the export
+// can package it; only the manifest entry is missing.
+async function seedUnchainedCapture(caseId: string) {
+  const bytes = 'unchained bytes'
+  const capture = insertCapture({
+    caseId,
+    url: 'https://unchained.example/page',
+    title: 'Unchained Page',
+    hash: createHash('sha256').update(bytes).digest('hex'),
+    timestamp: '2026-04-05T11:30:00.000Z'
+  })
+  await defaultCaptureStore.writeMhtmlStream(
+    caseId,
+    capture.id,
+    Readable.from([Buffer.from(bytes)]) as unknown as ReadableStream<Uint8Array>
+  )
+  return capture
+}
+
+// The per-exhibit 'Entry signature' rail labels report.html prints, which the
+// certification's summary counts must reconcile against.
+const REPORT_SIGNATURE_LABELS = {
+  signed: 'Present',
+  'unsigned-legacy': 'Absent (pre-signing tool version)',
+  'no-entry': 'No manifest entry'
+} as const
+
+function countReportSignatureRows(report: string, status: keyof typeof REPORT_SIGNATURE_LABELS) {
+  const label = REPORT_SIGNATURE_LABELS[status]
+  const pattern = new RegExp(
+    `Entry signature[\\s\\S]{0,200}?<span class="strong">${label.replace(
+      /[.*+?^${}()|[\]\\]/g,
+      '\\$&'
+    )}</span>`,
+    'g'
+  )
+  return report.match(pattern)?.length ?? 0
 }
 
 // The package-level fields a direct buildCertification call must supply since
@@ -400,7 +489,8 @@ describe('certification', () => {
         captures: [{ ...capture, trustedTimeStatus: 'rfc3161' }],
         trustedTimeByCaptureId: new Map<string, TrustedTimeResult>([
           [capture.id, { trustedTime: 'none' }]
-        ])
+        ]),
+        entrySignatureByCaptureId: new Map<string, EntrySignatureStatus>([[capture.id, 'signed']])
       },
       resolveToolVersion()
     )
@@ -448,6 +538,10 @@ describe('certification', () => {
             }
           ],
           [pending.id, { trustedTime: 'pending' }]
+        ]),
+        entrySignatureByCaptureId: new Map<string, EntrySignatureStatus>([
+          [stamped.id, 'signed'],
+          [pending.id, 'signed']
         ])
       },
       resolveToolVersion()
@@ -457,6 +551,106 @@ describe('certification', () => {
     expect(html).toMatch(/1\s+remaining\s+capture\s+\(1\s+pending,\s+0\s+none\)/i)
     expect(html).toContain('tsa.example.com')
     expect(html).toContain('2026-04-05T12:01:00Z')
+  })
+
+  // #611. The signature axis gets the #492 treatment the trusted-time axis has:
+  // one map in, summary folded out of the same rows report.html states per
+  // exhibit. A package cannot then say "all signed" over a report that names a
+  // legacy entry.
+  describe('entry signature counts (#611)', () => {
+    it('counts signed, legacy and unchained captures and reconciles them with report.html', async () => {
+      const caseDir = join(tempDir, 'captures', caseId)
+      await seedLegacyGenesisCapture(caseId, caseDir)
+      await ingest(
+        caseId,
+        '<html><body>Signed</body></html>',
+        'https://example.com/signed',
+        'Signed'
+      )
+      await seedUnchainedCapture(caseId)
+
+      const entries = await exportZip()
+      const cert = entries.get('certification.html')!.toString('utf-8')
+      const report = entries.get('report.html')!.toString('utf-8')
+
+      expect(cert).toContain('Entry signatures')
+      expect(cert).toMatch(/A\s+signed\s+manifest\s+entry\s+is\s+present\s+for\s+1\s+of\s+the\s+3/)
+      expect(cert).toMatch(
+        /1\s+written\s+before\s+per-entry\s+signing\s+existed,\s+1\s+with\s+no\s+manifest\s+entry/
+      )
+      expect(cert).toMatch(/no\s+entry\s+signature\s+is\s+asserted/i)
+
+      // AC3: the summary is the per-exhibit disclosure, counted. A second
+      // aggregation path would be free to disagree with these rows.
+      expect(countReportSignatureRows(report, 'signed')).toBe(1)
+      expect(countReportSignatureRows(report, 'unsigned-legacy')).toBe(1)
+      expect(countReportSignatureRows(report, 'no-entry')).toBe(1)
+    })
+
+    // AC4: absence of legacy entries is unremarkable, so it is stated as an
+    // all-clear rather than as a row of zeroes a reader has to interpret.
+    it('states an all-clear with no zero counts when every entry is signed', async () => {
+      await ingest(caseId, '<html><body>One</body></html>', 'https://example.com/1', 'One')
+      await ingest(caseId, '<html><body>Two</body></html>', 'https://example.com/2', 'Two')
+
+      const entries = await exportZip()
+      const cert = entries.get('certification.html')!.toString('utf-8')
+
+      expect(cert).toMatch(/All\s+2\s+captures\s+in\s+this\s+export\s+have\s+a\s+signed\s+manifest/)
+      expect(cert).not.toMatch(/no\s+entry\s+signature\s+is\s+asserted/i)
+      expect(cert).not.toMatch(/0\s+written\s+before\s+per-entry\s+signing/)
+      expect(cert).not.toMatch(/with\s+no\s+manifest\s+entry\s+at\s+all/)
+      expect(
+        countReportSignatureRows(entries.get('report.html')!.toString('utf-8'), 'signed')
+      ).toBe(2)
+    })
+
+    it('makes no signature claim at all when the chain holds only a legacy entry', async () => {
+      await seedLegacyGenesisCapture(caseId, join(tempDir, 'captures', caseId))
+
+      const entries = await exportZip()
+      const cert = entries.get('certification.html')!.toString('utf-8')
+
+      expect(cert).toMatch(
+        /No\s+entry\s+signature\s+is\s+asserted<\/strong>\s+for\s+any\s+of\s+the\s+1\s+capture\s+in/
+      )
+      expect(cert).toMatch(
+        /1\s+written\s+before\s+per-entry\s+signing\s+existed,\s+0\s+with\s+no\s+manifest\s+entry/
+      )
+      expect(cert).not.toMatch(/have\s+a\s+signed\s+manifest\s+entry/)
+    })
+
+    // AC5. resolveEntrySignatures backfills 'no-entry' for every capture, so a
+    // missing key is a broken invariant, not a legacy capture. Defaulting one
+    // would understate the unsigned share silently — the #1110 failure on the
+    // trusted-time axis. Refusing is loud.
+    it('refuses to certify a capture the signature resolution never saw', async () => {
+      const { capture } = await ingest(
+        caseId,
+        '<html><body>One</body></html>',
+        'https://example.com/1',
+        'One'
+      )
+
+      expect(() =>
+        buildCertification(
+          {
+            caseName: 'Cert Case',
+            ...DIRECT_INPUT_EXTRAS,
+            exportTimestamp: '2026-04-05T13:00:00.000Z',
+            installationId: 'install-1',
+            operatorName: 'Det. Smith',
+            operatorRole: 'Detective',
+            operatorOrganization: 'Metro PD',
+            tsaUrl: 'https://tsa.example/timestamp',
+            captures: [capture],
+            trustedTimeByCaptureId: new Map<string, TrustedTimeResult>(),
+            entrySignatureByCaptureId: new Map<string, EntrySignatureStatus>()
+          },
+          resolveToolVersion()
+        )
+      ).toThrow(new RegExp(`no entry signature resolved for capture ${capture.id}`))
+    })
   })
 
   describe('extended certification (#399)', () => {

@@ -592,7 +592,8 @@ function buildEvidenceZip(
         operatorOrganization: data.operatorOrganization,
         tsaUrl: data.tsaUrl,
         captures: data.captures,
-        trustedTimeByCaptureId: data.trustedTimeByCaptureId
+        trustedTimeByCaptureId: data.trustedTimeByCaptureId,
+        entrySignatureByCaptureId: data.entrySignatureByCaptureId
       },
       resolveToolVersion()
     )

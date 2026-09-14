@@ -33,7 +33,6 @@ Yes
 
 - `pnpm lint` - pass (exit 0)
 - `pnpm typecheck` - pass (exit 0)
-- `BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test` - pass (exit 0) - 3648 passed, 8 skipped (3656)
 - `pnpm build` - pass (exit 0)
 - `pnpm build:extension` - skipped - no extension/ changes
 - `pnpm test:coverage` - pass (exit 0) - 3648 passed, 8 skipped (3656), thresholds met

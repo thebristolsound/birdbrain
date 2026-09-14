@@ -37,7 +37,7 @@ Read CLAUDE.md first for the codebase map. You review; you do not fix — never 
    false claim in a gate artifact or an operator-facing string is not a documentation nit: it is
    the operator acting on something that is not true.
 4. **Verification.** Re-run the verify loop on the branch and compare against what the PR
-   claims: `pnpm lint`, `pnpm typecheck`, `BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test`, `pnpm build`
+   claims: `pnpm lint`, `pnpm typecheck`, `pnpm build`
    (plus `pnpm build:extension` if extension/ changed). A PR whose stated results you cannot
    reproduce is a blocking finding, whatever else is true.
 
@@ -54,15 +54,13 @@ Read CLAUDE.md first for the codebase map. You review; you do not fix — never 
    plainly — your findings, and your `git log origin/main..HEAD` completion controls, were
    computed against a tree that is no longer head.
 
-   **Then run `pnpm test:coverage` and `pnpm coverage:diff`, which those four do not cover.**
-   CI's `test` job runs the suite and then `scripts/diff-coverage.mjs`, failing under 90% of
-   changed lines covered; `pnpm test` never evaluates that threshold because it omits
-   `--coverage`. Reproducing a green four-command loop therefore proves nothing about whether
-   CI will pass. Under 90% is a blocking finding — and check *which* lines are uncovered before
-   writing it up, because they are often the error and rollback paths, which makes the gate a
-   second witness to a real defect rather than a bookkeeping complaint. Also read the live
-   check status with `gh pr checks <n>`: a PR that is already red in CI cannot be approved for
-   human review whatever the local run says.
+   **Run the full suite once with coverage:**
+   `BIRDBRAIN_REQUIRE_OPENSSL=1 BIRDBRAIN_REQUIRE_JQ=1 pnpm test:coverage`, then
+   `pnpm coverage:diff`. The coverage command reports both test results and coverage
+   thresholds; a separate full `pnpm test` run is unnecessary. Targeted reproductions
+   remain part of source review. CI's `test` job also checks changed-line coverage;
+   under 90% is a blocking finding. Inspect uncovered lines, especially error and
+   rollback paths, before reporting the finding.
 
    **Run shell-semantics checks under `bash -c`, not in the tool shell.** Your tool is named
    `Bash` but is not always bash: on the maintainer's workstation it is zsh (`ZSH_VERSION=5.9`,

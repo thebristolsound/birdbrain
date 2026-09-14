@@ -4,7 +4,8 @@ Extracted design-handoff bundles from the claude.ai prototype loop, kept byte-fa
 
 | Bundle | Received | Engineering response |
 | --- | --- | --- |
-| [`2026-08-21-birdbrain-standalone/`](2026-08-21-birdbrain-standalone/) | 2026-08-21 | **Current source.** Supersedes both bundles below |
+| [`2026-09-14-birdbrain-dc/`](2026-09-14-birdbrain-dc/) | 2026-09-14 | Answers part of #708. Delta against 2026-08-21 in its README; supersession awaits a ruling |
+| [`2026-08-21-birdbrain-standalone/`](2026-08-21-birdbrain-standalone/) | 2026-08-21 | **Current source.** Supersedes the bundle below |
 | [`2026-08-10-birdbrain-prototype/`](2026-08-10-birdbrain-prototype/) | 2026-08-10 | Superseded. [Feasibility assessment](../specs/2026-08-10-design-handoff-feasibility-assessment.md) |
 
 The 2026-08-21 standalone is the single design source by maintainer ruling. It ships packed,

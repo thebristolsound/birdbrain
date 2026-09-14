@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { execFileSync, spawnSync } from 'child_process'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
 import {
@@ -51,12 +51,6 @@ describe('formatVerificationBlock', () => {
   const passingSteps = [
     { command: 'pnpm lint', status: 'pass', exitCode: 0 },
     { command: 'pnpm typecheck', status: 'pass', exitCode: 0 },
-    {
-      command: 'BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test',
-      status: 'pass',
-      exitCode: 0,
-      detail: '2094 passed, 3 skipped (2097)'
-    },
     { command: 'pnpm build', status: 'pass', exitCode: 0 },
     { command: 'pnpm build:extension', status: 'skipped', detail: 'no extension/ changes' },
     {
@@ -92,7 +86,6 @@ describe('formatVerificationBlock', () => {
         '',
         '- `pnpm lint` - pass (exit 0)',
         '- `pnpm typecheck` - pass (exit 0)',
-        '- `BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test` - pass (exit 0) - 2094 passed, 3 skipped (2097)',
         '- `pnpm build` - pass (exit 0)',
         '- `pnpm build:extension` - skipped - no extension/ changes',
         '- `pnpm test:coverage` - pass (exit 0) - 2094 passed, 3 skipped (2097), thresholds met',
@@ -117,7 +110,7 @@ describe('formatVerificationBlock', () => {
     expect(block).toContain('Result: **fail**.')
     expect(block).toContain('- `pnpm typecheck` - fail (exit 2)')
     expect(block).toContain('- `pnpm coverage:diff` - pass (exit 0)')
-    expect(block.match(/^- /gm)).toHaveLength(7)
+    expect(block.match(/^- /gm)).toHaveLength(6)
   })
 
   it('marks the extension build as a real step when it ran', () => {
@@ -261,5 +254,91 @@ describe('pnpm preflight on a dirty tree', () => {
     } finally {
       rmSync(elsewhere, { recursive: true, force: true })
     }
+  })
+})
+
+describe('preflight execution', () => {
+  const prepare = () => {
+    mkdirSync(join(repo, 'bin'))
+    mkdirSync(join(repo, 'scripts'))
+    writeFileSync(join(repo, '.gitignore'), '.preflight/\ncalls.jsonl\n')
+    writeFileSync(
+      join(repo, 'bin', 'pnpm'),
+      `#!/usr/bin/env node
+const { appendFileSync } = require('node:fs')
+const { execFileSync } = require('node:child_process')
+const command = process.argv[2]
+appendFileSync('calls.jsonl', JSON.stringify({
+  command,
+  openssl: process.env.BIRDBRAIN_REQUIRE_OPENSSL,
+  jq: process.env.BIRDBRAIN_REQUIRE_JQ,
+  floor: process.env.COVERAGE_DIFF_MIN
+}) + '\\n')
+if (command === 'test') process.exit(99)
+if (command === 'test:coverage') {
+  console.log('      Tests  2 passed (2)')
+  if (process.env.MOVE_HEAD === '1') {
+    execFileSync('git', ['commit', '--allow-empty', '-qm', 'move head'])
+  }
+  process.exit(Number(process.env.COVERAGE_EXIT || 0))
+}
+`,
+      { mode: 0o755 }
+    )
+    writeFileSync(
+      join(repo, 'scripts', 'diff-coverage.mjs'),
+      `const failed = process.env.DIFF_EXIT === '1'
+console.log(JSON.stringify({ scored: true, pct: failed ? 80 : 100, total: 10, min: 90 }))
+process.exit(failed ? 1 : 0)
+`
+    )
+    git('add', 'bin/pnpm', 'scripts/diff-coverage.mjs', '.gitignore')
+    git('commit', '-qm', 'fixtures')
+  }
+
+  const run = (overrides: Record<string, string> = {}) =>
+    // The parent Vitest process uses Electron's Node. Preflight requires the
+    // repository's Node 20 toolchain, so resolve node from PATH for this CLI test.
+    spawnSync('node', [SCRIPT, '--base', 'HEAD'], {
+      cwd: repo,
+      encoding: 'utf8',
+      env: {
+        ...gitEnv,
+        PATH: `${join(repo, 'bin')}:${process.env.PATH}`,
+        COVERAGE_DIFF_MIN: '0',
+        ...overrides
+      }
+    })
+
+  it.each([
+    { name: 'success', coverageExit: '0', diffExit: '0', status: 0 },
+    { name: 'test or coverage failure', coverageExit: '1', diffExit: '0', status: 1 },
+    { name: 'diff below 90%', coverageExit: '0', diffExit: '1', status: 1 }
+  ])('runs the suite once and reports $name honestly', ({ coverageExit, diffExit, status }) => {
+    prepare()
+    const result = run({ COVERAGE_EXIT: coverageExit, DIFF_EXIT: diffExit })
+    expect(result.status, result.stderr).toBe(status)
+    const calls = readFileSync(join(repo, 'calls.jsonl'), 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+    expect(calls.filter((call) => call.command.startsWith('test'))).toEqual([
+      { command: 'test:coverage', openssl: '1', jq: '1' }
+    ])
+    const block = readFileSync(join(repo, DEFAULT_OUT), 'utf8')
+    expect(block).toContain(`status=${status === 0 ? 'pass' : 'fail'}`)
+    expect(block).toContain('2 passed (2)')
+    expect(block).toContain('pnpm coverage:diff')
+    expect(block).not.toContain('`pnpm test`')
+  })
+
+  it('refuses to stamp a result if HEAD changes during coverage', () => {
+    prepare()
+    mkdirSync(join(repo, '.preflight'))
+    writeFileSync(join(repo, DEFAULT_OUT), 'stale block')
+    const result = run({ MOVE_HEAD: '1' })
+    expect(result.status, result.stderr).toBe(1)
+    expect(result.stderr).toContain('HEAD moved')
+    expect(existsSync(join(repo, DEFAULT_OUT))).toBe(false)
   })
 })

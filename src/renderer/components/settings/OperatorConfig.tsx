@@ -68,7 +68,7 @@ export function OperatorConfig() {
             if (e.target.value.trim()) setNameError('')
           }}
           onBlur={save}
-          placeholder="e.g. Det. Smith"
+          placeholder="e.g. Alex Smith"
           className={`border-border bg-surface${nameError ? ' border-red-500' : ''}`}
         />
         {nameError ? (
@@ -87,7 +87,7 @@ export function OperatorConfig() {
           value={operatorRole}
           onChange={(e) => setOperatorRole(e.target.value)}
           onBlur={save}
-          placeholder="e.g. Detective, Analyst"
+          placeholder="e.g. Researcher, Analyst"
           className="border-border bg-surface"
         />
         <p className="mt-1 text-[11px] text-text-muted">Optional. Included in the export report.</p>
@@ -99,7 +99,7 @@ export function OperatorConfig() {
           value={operatorOrganization}
           onChange={(e) => setOperatorOrganization(e.target.value)}
           onBlur={save}
-          placeholder="e.g. Metro Police Department"
+          placeholder="e.g. Independent Research Group"
           className="border-border bg-surface"
         />
         <p className="mt-1 text-[11px] text-text-muted">Optional. Included in the export report.</p>

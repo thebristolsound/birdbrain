@@ -4,6 +4,11 @@
 
 **Date:** 2026-07-25
 
+**Amended 2026-09-14 by
+[ADR-0029](0029-position-birdbrain-for-civil-society-investigations.md):** the Forensic Science
+Regulator Code is no longer a voluntary Birdbrain benchmark, and the maintained standards
+register no longer includes guidance specific to policing or criminal-justice operations.
+
 Birdbrain adopts the standards register in
 [`website/content/docs/osint-investigation-standards.mdx`](../../website/content/docs/osint-investigation-standards.mdx)
 as the engineering baseline for evidence-affecting architecture, implementation, validation,

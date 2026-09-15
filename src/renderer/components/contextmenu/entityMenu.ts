@@ -182,6 +182,8 @@ export interface ExhibitMenuTarget {
   entity: 'exhibit' | 'derived-file'
   // Only a Capture has a viewer; an attachment or document opens nowhere yet.
   canOpen: boolean
+  // A legacy Capture may record no stored path; there is nothing to copy.
+  hasPath: boolean
   actions: {
     open: () => void
     copyHash: () => void
@@ -210,8 +212,10 @@ export interface LedgerMenuTarget {
   index: number
   entryType: string
   // Absent when the entry names nothing the screen can show (an export, an
-  // unreadable line).
+  // unreadable line, a deleted Capture).
   canShowTarget: boolean
+  // The genesis entry has no previous hash to copy.
+  hasPrevHash: boolean
   actions: {
     showTarget: () => void
     copyEntryHash: () => void
@@ -575,7 +579,7 @@ export function tagMenuEntries(target: TagMenuTarget): MenuEntry[] {
  * yet and the item says so rather than vanishing.
  */
 export function exhibitMenuEntries(target: ExhibitMenuTarget): MenuEntry[] {
-  const { actions, entity, canOpen } = target
+  const { actions, entity, canOpen, hasPath } = target
   return [
     {
       id: 'exhibit-open',
@@ -596,6 +600,7 @@ export function exhibitMenuEntries(target: ExhibitMenuTarget): MenuEntry[] {
       id: 'exhibit-copy-path',
       label: 'Copy relative path',
       icon: Clipboard,
+      disabled: !hasPath,
       run: actions.copyPath
     },
     {
@@ -654,7 +659,7 @@ export function nodeMenuEntries(target: NodeMenuTarget): MenuEntry[] {
  * the hash cells, which copy on click.
  */
 export function ledgerMenuEntries(target: LedgerMenuTarget): MenuEntry[] {
-  const { actions, canShowTarget } = target
+  const { actions, canShowTarget, hasPrevHash } = target
   return [
     {
       id: 'ledger-show-target',
@@ -675,6 +680,7 @@ export function ledgerMenuEntries(target: LedgerMenuTarget): MenuEntry[] {
       id: 'ledger-copy-prev-hash',
       label: 'Copy previous hash',
       icon: Hash,
+      disabled: !hasPrevHash,
       run: actions.copyPrevHash
     }
   ]

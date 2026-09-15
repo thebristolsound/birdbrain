@@ -285,6 +285,7 @@ export function DataExplorer() {
   const { rowTarget, nodeTarget, ledgerTarget } = useDataContextMenu({
     rows,
     entries: snapshot?.entries ?? [],
+    context,
     captureIds,
     onOpenCapture: openCapture,
     onVerify: verifyIds,

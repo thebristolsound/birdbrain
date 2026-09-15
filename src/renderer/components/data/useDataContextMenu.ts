@@ -8,7 +8,7 @@ import type {
   NodeMenuTarget,
   StagedMenuTarget
 } from '@renderer/components/contextmenu/entityMenu'
-import type { ArtifactRow } from '@renderer/components/data/dataTableModel'
+import type { ArtifactRow, RowContext } from '@renderer/components/data/dataTableModel'
 import {
   descendantKeys,
   type DataNodeKey,
@@ -22,6 +22,9 @@ import { copyValue } from '@renderer/components/data/copy'
 interface DataContextMenuOptions {
   rows: InventoryRow[]
   entries: ManifestSnapshotEntry[]
+  // What the table knows beyond the inventory, so a node's Verify covers the
+  // rows the node actually shows (this session's buckets, a Selector's hits).
+  context: RowContext
   /** Which Exhibits a Capture-only action can open: the ids with a viewer. */
   captureIds: ReadonlySet<string>
   onOpenCapture: (captureId: string) => void
@@ -40,6 +43,7 @@ interface DataContextMenuOptions {
 export function useDataContextMenu({
   rows,
   entries,
+  context,
   captureIds,
   onOpenCapture,
   onVerify,
@@ -71,6 +75,7 @@ export function useDataContextMenu({
         name: row.name,
         entity: row.entity === 'derived-file' ? 'derived-file' : 'exhibit',
         canOpen: captureIds.has(parentId),
+        hasPath: row.path !== null,
         actions: {
           open: () => onOpenCapture(parentId),
           copyHash: () => void copyCaptureHash(row.hash),
@@ -87,7 +92,8 @@ export function useDataContextMenu({
 
   const nodeTarget = useCallback(
     (node: DataTreeNode): EntityMenuTarget => {
-      const exhibitIds = rowsForNode(rows, node.key, new Map())
+      const { captures, ...extras } = context
+      const exhibitIds = rowsForNode(rows, node.key, captures, extras)
         .filter((row) => row.entity === 'exhibit')
         .map((row) => row.id)
       const target: NodeMenuTarget = {
@@ -105,18 +111,21 @@ export function useDataContextMenu({
       }
       return target
     },
-    [rows, onSelectNode, onSetExpanded, onVerify]
+    [rows, context, onSelectNode, onSetExpanded, onVerify]
   )
 
   const ledgerTarget = useCallback(
     (row: LedgerRow): EntityMenuTarget => {
       const line = entries.find((entry) => entry.index === row.index)
-      const targetId = line ? targetExhibitId(line, rows) : null
+      const named = line ? targetExhibitId(line, rows) : null
+      // A deleted Capture's entry names an id the inventory no longer holds.
+      const targetId = named && rows.some((r) => r.id === named) ? named : null
       const target: LedgerMenuTarget = {
         kind: 'ledger',
         index: row.index,
         entryType: row.type,
         canShowTarget: targetId !== null,
+        hasPrevHash: row.prevHash !== '',
         actions: {
           showTarget: () => {
             if (targetId) onShowRow(targetId)

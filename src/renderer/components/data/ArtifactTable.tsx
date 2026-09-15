@@ -11,9 +11,8 @@ import {
   type ArtifactRow
 } from '@renderer/components/data/dataTableModel'
 
-// Inline Commit and Discard for pooled rows (X16, X38). Absent until the
-// Staging Pool channels exist (#1148): the buttons then render disabled and say
-// so, rather than not rendering, so the affordance is visible where it will be.
+// Inline Commit and Discard for pooled rows (X16, X38), the routes the staged
+// menu items accelerate.
 export interface StagingRowActions {
   commit: (id: string) => void
   discard: (id: string) => void
@@ -56,7 +55,9 @@ export function ArtifactTable({
   menuTargetFor
 }: ArtifactTableProps) {
   function onRowKey(event: KeyboardEvent<HTMLDivElement>, row: ArtifactRow) {
-    if (event.key === 'Enter' && onOpen) {
+    // Only the row's own Enter: a keydown bubbling from the inline Commit or
+    // Discard button is that button's activation, not an open.
+    if (event.key === 'Enter' && onOpen && event.target === event.currentTarget) {
       event.preventDefault()
       onOpen(row)
     }
@@ -152,11 +153,7 @@ export function ArtifactTable({
                         variant="outline"
                         size="sm"
                         disabled={!stagingActions || stagingActions.pending}
-                        title={
-                          stagingActions
-                            ? 'Commit to the chain'
-                            : 'Arrives with the Staging Pool (#1148)'
-                        }
+                        title="Commit to the chain"
                         onClick={() => stagingActions?.commit(row.id)}
                         data-testid={`staging-commit-${row.id}`}
                       >
@@ -166,11 +163,7 @@ export function ArtifactTable({
                         variant="outline"
                         size="sm"
                         disabled={!stagingActions || stagingActions.pending}
-                        title={
-                          stagingActions
-                            ? 'Discard from the pool'
-                            : 'Arrives with the Staging Pool (#1148)'
-                        }
+                        title="Discard from the pool"
                         onClick={() => stagingActions?.discard(row.id)}
                         data-testid={`staging-discard-${row.id}`}
                       >

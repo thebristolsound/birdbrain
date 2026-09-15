@@ -400,6 +400,7 @@ describe('data screen kinds', () => {
       name: 'Example page',
       entity: 'exhibit',
       canOpen: true,
+      hasPath: true,
       actions: { open: vi.fn(), copyHash: vi.fn(), copyPath: vi.fn(), verify: vi.fn() },
       ...overrides
     }
@@ -421,6 +422,7 @@ describe('data screen kinds', () => {
       index: 3,
       entryType: 'capture',
       canShowTarget: true,
+      hasPrevHash: true,
       actions: { showTarget: vi.fn(), copyEntryHash: vi.fn(), copyPrevHash: vi.fn() },
       ...overrides
     }
@@ -466,6 +468,9 @@ describe('data screen kinds', () => {
     expect(derived[0].label).toBe('Open parent in viewer')
     const attachment = exhibitMenuEntries(exhibitTarget({ canOpen: false }))
     expect((attachment[0] as MenuAction).disabled).toBe(true)
+    // No stored path, nothing to copy: the item is off, like the Properties button.
+    const pathless = exhibitMenuEntries(exhibitTarget({ hasPath: false }))
+    expect((pathless[2] as MenuAction).disabled).toBe(true)
     expect(entityMenuHeader(exhibitTarget({ entity: 'derived-file' }))).toMatchObject({
       subtitle: 'derived file',
       ariaLabel: 'Exhibit actions: Example page'
@@ -502,6 +507,9 @@ describe('data screen kinds', () => {
     expect(target.actions.copyPrevHash).toHaveBeenCalledOnce()
     const orphan = ledgerMenuEntries(ledgerTarget({ canShowTarget: false }))
     expect((orphan[0] as MenuAction).disabled).toBe(true)
+    // Genesis has no previous hash; the cell shows none and the item is off.
+    const genesis = ledgerMenuEntries(ledgerTarget({ hasPrevHash: false }))
+    expect((genesis[2] as MenuAction).disabled).toBe(true)
     expect(entityMenuHeader(ledgerTarget())).toMatchObject({
       title: 'seq 0003 · capture',
       ariaLabel: 'Manifest entry actions: seq 3'

@@ -13,8 +13,10 @@ export function useStagingMutations(caseId: string) {
 
   const upload = useMutation<StagingFile[], unknown, void>({
     mutationFn: () => window.birdbrain.staging.upload(caseId),
-    onSuccess: (staged) => {
-      if (staged.length > 0) invalidateInventory()
+    // A rejected upload can still have pooled the files before the one that
+    // failed, so the inventory is refreshed on error as well as on success.
+    onSettled: (staged) => {
+      if (staged === undefined || staged.length > 0) invalidateInventory()
     },
     meta: { action: 'add files to the staging pool' }
   })

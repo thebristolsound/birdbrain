@@ -171,7 +171,15 @@ describe('Data screen context menus (#1151)', () => {
     fireEvent.keyDown(row, { key: 'Enter' })
     expect(navigate).toHaveBeenCalledTimes(1)
 
-    fireEvent.click(row)
+    // Enter on an inline button is that button's activation, not an open: the
+    // row handler neither cancels it nor opens anything.
+    await select('staging')
+    const commitButton = await screen.findByTestId('staging-commit-staged-1')
+    expect(fireEvent.keyDown(commitButton, { key: 'Enter' })).toBe(true)
+    expect(navigate).toHaveBeenCalledTimes(1)
+    await select('data-sources')
+    fireEvent.click(await screen.findByTestId('artifact-row-cap-a'))
+
     fireEvent.click(await screen.findByTestId('row-verify'))
     await waitFor(() => expect(verify).toHaveBeenCalledWith('case1', 'cap-a'))
 
@@ -214,6 +222,23 @@ describe('Data screen context menus (#1151)', () => {
     expect(rail.getByTestId('data-tree-node-derived:thumb-a')).toBeTruthy()
   })
 
+  it('node Verify on Integrity Exceptions covers the exceptions shown this session', async () => {
+    renderExplorer()
+    const rail = await tree()
+    // The persisted-tampered Capture is the node's only row; once its verify
+    // comes back clean the node is empty and Verify goes off.
+    const first = await openMenu(rail.getByTestId('data-tree-node-integrity-exceptions'))
+    expect(item(first, 'node-verify').getAttribute('data-disabled')).toBeNull()
+    fireEvent.click(item(first, 'node-verify'))
+    await waitFor(() => expect(verify).toHaveBeenCalledTimes(1))
+    expect(verify.mock.calls[0][1]).toBe('cap-a')
+    await waitFor(() =>
+      expect(rail.getByTestId('data-tree-count-integrity-exceptions').textContent).toBe('0')
+    )
+    const second = await openMenu(rail.getByTestId('data-tree-node-integrity-exceptions'))
+    expect(item(second, 'node-verify').getAttribute('data-disabled')).not.toBeNull()
+  })
+
   it('staged row: commits, confirms a discard, and copies the hash labelled not anchored', async () => {
     renderExplorer()
     await select('staging')
@@ -249,6 +274,15 @@ describe('Data screen context menus (#1151)', () => {
 
     fireEvent.click(screen.getByTestId('staging-upload'))
     await waitFor(() => expect(upload).toHaveBeenCalledWith('case1'))
+  })
+
+  it('ledger entry: Show target is off for an id the inventory no longer holds, and Copy previous hash is off on genesis', async () => {
+    renderExplorer()
+    await select('manifest-ledger')
+    const menu = await openMenu(await screen.findByTestId('ledger-row-0'))
+    // seq 0 is the genesis capture entry: a target that exists, no previous hash.
+    expect(item(menu, 'ledger-show-target').getAttribute('data-disabled')).toBeNull()
+    expect(item(menu, 'ledger-copy-prev-hash').getAttribute('data-disabled')).not.toBeNull()
   })
 
   it('ledger entry: shows its target, copies the hashes, and the cells copy on click', async () => {

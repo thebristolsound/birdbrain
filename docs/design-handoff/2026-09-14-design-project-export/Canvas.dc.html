@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Patrick+Hand&amp;family=Shantell+Sans:wght@400;600&amp;display=swap">
+<style>
+body{margin:0;background:#f0eee9;font-family:'Shantell Sans',system-ui,sans-serif}
+a{color:#2a4bd6}a:hover{color:#1a35a8}
+.dv-turn{padding:40px 44px 32px;border-bottom:1px solid rgba(0,0,0,.08);scroll-margin-top:16px}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 20px}
+.dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#1a1a1a;color:#fff;border-radius:4px;text-decoration:none}
+.dv-tname{font:600 13px/1.2 'Shantell Sans',sans-serif;color:#1a1a1a}
+.dv-opts{display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}
+.dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.08);color:#1a1a1a;border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 12px/1.3 'Shantell Sans',sans-serif;color:rgba(0,0,0,.6)}
+.dv-card{max-width:100%;background:#fff;border:1px solid rgba(0,0,0,.12);border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.06);overflow:hidden}
+.dv-opt:target .dv-oid{background:#2a78d6;color:#fff}
+.dv-next{margin:22px 0 0;font:12px/1.5 'Shantell Sans',sans-serif;color:rgba(0,0,0,.5)}
+.wf{font-family:'Patrick Hand',cursive;color:#333}
+.ln{height:7px;border-radius:4px;background:#d8d5cf}
+.lnD{height:7px;border-radius:4px;background:#b8b4ac}
+.bx{border:1.5px solid #999;border-radius:6px;background:#fafaf8}
+.dash{border:1.5px dashed #aaa;border-radius:6px;background:#fcfcfa}
+.chip{display:inline-flex;align-items:center;font:400 11px 'Patrick Hand',cursive;border:1.2px solid #999;border-radius:999px;padding:1px 8px;background:#f4f2ee;color:#444}
+.acc{color:#3a56c9}
+.accbg{background:#e7ebfa;border-color:#8fa0e0}
+.note{font:400 11px/1.35 'Patrick Hand',cursive;color:#b0542a}
+.arrow{color:#b0542a;font-size:14px}
+.ic{display:inline-block;width:16px;height:16px;border:1.5px solid #888;border-radius:4px}
+</style></helmet>
+<section class="dv-turn" id="t2">
+<div class="dv-thd"><a class="dv-tid" href="#t2">2</a><span class="dv-tname">Deep dive on <a class="dv-oid" href="#1e">1e</a> — the mention grammar as a full flow</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="2a"><div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a>Storyboard — selection in the capture viewer to selector, zero panels</div>
+<div class="dv-card wf" style="width:640px;padding:16px;display:flex;flex-direction:column;gap:14px">
+  <div style="display:flex;gap:14px">
+    <div style="flex:1">
+      <div style="font-size:12px;color:#555;margin-bottom:6px">① select text in capture</div>
+      <div class="bx" style="padding:10px 12px;font-size:12px;position:relative">
+        <div class="ln" style="width:90%;margin-bottom:6px"></div>
+        <div>…POST creds to <span style="background:#cfd9f7;padding:1px 2px">pay-nightjar.io/api</span> then…</div>
+        <div class="ln" style="width:70%;margin-top:6px"></div>
+        <div class="bx" style="position:absolute;left:90px;top:-16px;display:flex;gap:0;box-shadow:2px 3px 0 rgba(0,0,0,.12);font-size:11px;overflow:hidden">
+          <span style="padding:4px 9px;background:#e7ebfa" class="acc">◈ Selector</span>
+          <span style="padding:4px 9px;border-left:1.2px solid #ccc"># Tag</span>
+          <span style="padding:4px 9px;border-left:1.2px solid #ccc">✎ Quote</span>
+        </div>
+      </div>
+    </div>
+    <div style="flex:1">
+      <div style="font-size:12px;color:#555;margin-bottom:6px">② one confirm, pre-parsed</div>
+      <div class="bx" style="padding:10px 12px;display:flex;flex-direction:column;gap:7px;font-size:11px">
+        <div style="display:flex;gap:6px;align-items:center"><span class="chip accbg acc">domain</span><span style="font-family:monospace">pay-nightjar.io</span><span style="color:#999">(path stripped)</span></div>
+        <div style="display:flex;gap:6px;align-items:center"><span class="ic" style="width:12px;height:12px;background:#e7ebfa"></span> watch for new hits</div>
+        <div style="display:flex;gap:6px;align-items:center"><span class="ic" style="width:12px;height:12px"></span> backfill: scan 42 existing captures</div>
+        <div style="display:flex;gap:8px;margin-top:2px"><span class="chip accbg acc">Create ⏎</span><span class="chip">Esc</span></div>
+      </div>
+      <div class="note" style="margin-top:6px">type auto-detected; ⏎ and it's gone. No panel opens.</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:14px">
+    <div style="flex:1">
+      <div style="font-size:12px;color:#555;margin-bottom:6px">③ toast links to the entity</div>
+      <div class="bx" style="padding:7px 11px;display:flex;gap:8px;align-items:center;font-size:11px;width:fit-content;box-shadow:2px 3px 0 rgba(0,0,0,.1)">✓ selector created · <span class="acc">◈ pay-nightjar.io</span> · <span style="color:#999">14 hits found</span></div>
+    </div>
+    <div style="flex:1">
+      <div style="font-size:12px;color:#555;margin-bottom:6px">④ same selector, mentioned in the note later</div>
+      <div class="bx" style="padding:8px 11px;font-size:12px">infra pivots through <span class="chip accbg acc" style="font-size:10px">◈ pay-nightjar.io · 14</span> since June</div>
+    </div>
+  </div>
+</div>
+<div class="note" style="max-width:600px"><span class="arrow">↑</span> the selection quick-bar replaces the right-click context menu — same gesture in the browser extension and in the app.</div>
+</div>
+
+<div class="dv-opt" id="2b"><div class="dv-olabel"><a class="dv-oid" href="#2b">2b</a>Popup states — @ and # are the whole retrieval surface</div>
+<div class="dv-card wf" style="width:400px;padding:16px;display:flex;flex-direction:column;gap:14px">
+  <div>
+    <div style="font-size:12px;color:#555;margin-bottom:6px">"@" — things (captures, notes)</div>
+    <div class="bx" style="width:270px;box-shadow:2px 3px 0 rgba(0,0,0,.1);font-size:11px">
+      <div style="padding:5px 9px;color:#999;border-bottom:1.2px solid #eee">@ nigh…</div>
+      <div style="padding:5px 9px;background:#e7ebfa" class="acc">🖼 kit-landing.html <span style="float:right;color:#999">capture</span></div>
+      <div style="padding:5px 9px">🖼 nightjar-panel.png <span style="float:right;color:#999">capture</span></div>
+      <div style="padding:5px 9px">📄 Infra map <span style="float:right;color:#999">note</span></div>
+    </div>
+  </div>
+  <div>
+    <div style="font-size:12px;color:#555;margin-bottom:6px">"#" — meanings (selectors, tags), create inline</div>
+    <div class="bx" style="width:270px;box-shadow:2px 3px 0 rgba(0,0,0,.1);font-size:11px">
+      <div style="padding:5px 9px;color:#999;border-bottom:1.2px solid #eee"># crow…</div>
+      <div style="padding:5px 9px">◈ jb-crow@proton.me <span style="float:right;color:#999">selector · 8</span></div>
+      <div style="padding:5px 9px"># crow-persona <span style="float:right;color:#999">tag</span></div>
+      <div style="padding:5px 9px;background:#fdf3ec;color:#b0542a">+ create "crow…" as selector or tag</div>
+    </div>
+    <div class="note" style="margin-top:6px">tags stop needing a panel: born here, browsed via filter chips.</div>
+  </div>
+  <div>
+    <div style="font-size:12px;color:#555;margin-bottom:6px">hover any mention → peek card</div>
+    <div class="bx" style="width:280px;padding:9px 11px;display:flex;gap:9px;box-shadow:2px 3px 0 rgba(0,0,0,.1)">
+      <div class="bx" style="width:52px;height:38px;background:#e9e7e2"></div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:4px"><div class="lnD" style="width:110px"></div><div class="ln" style="width:80px"></div><span style="font-size:10px" class="acc">open · pin ⌖</span></div>
+    </div>
+  </div>
+</div>
+<div class="note" style="max-width:380px"><span class="arrow">↑</span> two sigils, four object types, one muscle memory. Peek means you rarely leave the note.</div>
+</div>
+
+<div class="dv-opt" id="2c"><div class="dv-olabel"><a class="dv-oid" href="#2c">2c</a>Where mentions land — backlink footers on every object</div>
+<div class="dv-card wf" style="width:480px;padding:16px;display:flex;flex-direction:column;gap:12px">
+  <div>
+    <div style="font-size:12px;color:#555;margin-bottom:6px">capture viewer, bottom strip</div>
+    <div class="bx" style="padding:8px 11px;display:flex;gap:8px;align-items:center;font-size:11px">
+      <span style="color:#999">in:</span><span class="chip accbg acc">📄 Case log ×2</span><span class="chip">◈ pay-nightjar.io</span><span class="chip"># phishing-kit</span>
+      <div style="flex:1"></div><span class="acc" style="font-size:10px">+ note ⌘J</span>
+    </div>
+  </div>
+  <div>
+    <div style="font-size:12px;color:#555;margin-bottom:6px">selector row (Selectors panel gains depth for free)</div>
+    <div class="bx" style="padding:8px 11px;font-size:11px;display:flex;flex-direction:column;gap:6px">
+      <div style="display:flex;gap:8px;align-items:center"><span class="acc">◈ pay-nightjar.io</span><span class="chip" style="font-size:9px">domain</span><span style="color:#999">14 hits</span><div style="flex:1"></div><span class="ic" style="width:22px;height:12px;border-radius:999px;background:#e7ebfa"></span></div>
+      <div style="display:flex;gap:6px;padding-left:8px;color:#777"><span>↳ mentioned in</span><span class="chip" style="font-size:9px">Case log</span><span class="chip" style="font-size:9px">Infra map</span><span>· first seen via quote in ①<a class="dv-oid" href="#2a" style="font-size:9px">2a</a></span></div>
+    </div>
+  </div>
+  <div>
+    <div style="font-size:12px;color:#555;margin-bottom:6px">note footer (as in <a class="dv-oid" href="#1a">1a</a>)</div>
+    <div class="bx" style="padding:8px 11px;display:flex;gap:8px;font-size:11px;align-items:center"><span style="color:#999">linked:</span><span class="chip">3 captures</span><span class="chip">2 selectors</span><span class="chip">1 note</span></div>
+  </div>
+</div>
+<div class="note" style="max-width:440px"><span class="arrow">↑</span> nothing new to maintain — footers are computed from mentions. Sparse panels get their depth from the graph instead of more chrome.</div>
+</div>
+
+</div>
+<p class="dv-next">Try next: "hi-fi <a class="dv-oid" href="#2a">2a</a>+<a class="dv-oid" href="#2b">2b</a> in the design system" · "prototype the quick-bar inside Birdbrain v2" · "riff on the confirm popover in <a class="dv-oid" href="#2a">2a</a>"</p>
+</section>
+<section class="dv-turn" id="t1">
+<div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">Notebook-first Birdbrain — where does the note sit relative to evidence?</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="1a"><div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a>Notebook as case spine — captures embed inline, nav collapses to 3</div>
+<div class="dv-card wf" style="width:560px">
+  <div style="display:flex;height:420px">
+    <div style="width:44px;border-right:1.5px solid #ccc;display:flex;flex-direction:column;align-items:center;gap:10px;padding:10px 0;background:#f6f5f2">
+      <span class="ic" style="background:#e7ebfa;border-color:#8fa0e0"></span><span class="ic"></span><span class="ic"></span>
+      <div style="flex:1"></div><span class="ic" style="border-radius:50%"></span>
+    </div>
+    <div style="flex:1;display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1.5px solid #ddd">
+        <div class="lnD" style="width:120px"></div><div style="flex:1"></div><span class="chip">Nightjar</span>
+      </div>
+      <div style="flex:1;padding:16px 22px;display:flex;flex-direction:column;gap:9px;overflow:hidden">
+        <div class="lnD" style="width:200px;height:12px"></div>
+        <div class="ln" style="width:92%"></div><div class="ln" style="width:84%"></div>
+        <div style="font-size:12px">…seen on <span class="chip accbg acc">@capture: kit-landing.html</span> and <span class="chip accbg acc">#sel: pay-nightjar.io</span> …</div>
+        <div class="dash accbg" style="margin:4px 0;padding:8px 10px;display:flex;gap:10px;align-items:center">
+          <div class="bx" style="width:64px;height:44px;background:#e9e7e2"></div>
+          <div style="display:flex;flex-direction:column;gap:5px;flex:1">
+            <div class="lnD" style="width:150px"></div><div class="ln" style="width:100px"></div>
+          </div>
+          <span style="font-size:11px" class="acc">open ↗</span>
+        </div>
+        <div class="ln" style="width:88%"></div><div class="ln" style="width:60%"></div>
+        <div class="ln" style="width:80%"></div>
+      </div>
+      <div style="border-top:1.5px dashed #ccc;padding:8px 22px;display:flex;gap:8px;align-items:center;font-size:11px;color:#777">
+        linked here: <span class="chip">3 captures</span><span class="chip">2 selectors</span>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="note" style="max-width:520px"><span class="arrow">↑</span> nav = Notebook · Evidence · Data only. Tags &amp; Selectors panels dissolve into mentions + the backlink footer. Embed block is a live card, not a link.</div>
+</div>
+
+<div class="dv-opt" id="1b"><div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a>Split workspace — notebook left, evidence right, drag to embed</div>
+<div class="dv-card wf" style="width:640px">
+  <div style="display:flex;height:420px">
+    <div style="width:44px;border-right:1.5px solid #ccc;display:flex;flex-direction:column;align-items:center;gap:10px;padding:10px 0;background:#f6f5f2">
+      <span class="ic" style="background:#e7ebfa;border-color:#8fa0e0"></span><span class="ic"></span><span class="ic"></span>
+    </div>
+    <div style="flex:1.1;display:flex;flex-direction:column;border-right:2px solid #bbb">
+      <div style="padding:8px 14px;border-bottom:1.5px solid #ddd;display:flex;gap:8px;align-items:center">
+        <div class="lnD" style="width:90px"></div><span style="font-size:10px;color:#999">notebook</span>
+      </div>
+      <div style="flex:1;padding:14px 18px;display:flex;flex-direction:column;gap:8px">
+        <div class="lnD" style="width:160px;height:11px"></div>
+        <div class="ln" style="width:90%"></div><div class="ln" style="width:78%"></div>
+        <div class="dash accbg" style="height:52px;display:flex;align-items:center;justify-content:center;font-size:11px" class="acc">⟵ drop capture here</div>
+        <div class="ln" style="width:85%"></div><div class="ln" style="width:55%"></div>
+      </div>
+    </div>
+    <div style="flex:1;display:flex;flex-direction:column;background:#fbfaf8">
+      <div style="padding:8px 14px;border-bottom:1.5px solid #ddd;display:flex;gap:8px;align-items:center">
+        <div class="lnD" style="width:70px"></div><span style="font-size:10px;color:#999">evidence</span>
+      </div>
+      <div style="flex:1;padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:10px;align-content:start">
+        <div class="bx" style="height:64px;box-shadow:3px 3px 0 rgba(58,86,201,.25);border-color:#8fa0e0;transform:rotate(-2deg)"></div>
+        <div class="bx" style="height:64px"></div><div class="bx" style="height:64px"></div><div class="bx" style="height:64px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="note" style="max-width:600px"><span class="arrow">↑</span> both always visible; dragging a capture card into the note creates the @capture embed. Viewer opens as overlay on click, keeps split intact.</div>
+</div>
+
+<div class="dv-opt" id="1c"><div class="dv-olabel"><a class="dv-oid" href="#1c">1c</a>Entity pages — every selector/tag is its own note with backlinks (full Obsidian)</div>
+<div class="dv-card wf" style="width:560px">
+  <div style="display:flex;height:420px">
+    <div style="width:150px;border-right:1.5px solid #ccc;background:#f6f5f2;padding:10px;display:flex;flex-direction:column;gap:6px;font-size:11px">
+      <div class="lnD" style="width:70px"></div>
+      <div style="padding-left:8px;display:flex;flex-direction:column;gap:5px">
+        <span>📄 Case log</span><span>📄 Infra map</span>
+        <span class="acc" style="background:#e7ebfa;border-radius:4px;padding:1px 4px">◈ pay-nightjar.io</span>
+        <span>◈ jb-crow@proton…</span><span># phishing-kit</span>
+      </div>
+      <div style="flex:1"></div>
+      <div class="dash" style="height:70px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#999">graph view</div>
+    </div>
+    <div style="flex:1;display:flex;flex-direction:column;padding:16px 20px;gap:9px">
+      <div style="display:flex;gap:8px;align-items:center"><span class="chip accbg acc">◈ selector</span><div class="lnD" style="width:140px;height:12px"></div></div>
+      <div style="display:flex;gap:6px;font-size:11px;color:#777">type: domain · watch: on · hits: 14</div>
+      <div class="ln" style="width:88%"></div><div class="ln" style="width:70%"></div>
+      <div style="margin-top:8px;font-size:12px;color:#555">Backlinks (5)</div>
+      <div class="bx" style="padding:7px 10px;display:flex;gap:8px;align-items:center;font-size:11px"><span>📄</span><div class="ln" style="width:130px"></div><span style="color:#999">Case log</span></div>
+      <div class="bx" style="padding:7px 10px;display:flex;gap:8px;align-items:center;font-size:11px"><span>🖼</span><div class="ln" style="width:110px"></div><span style="color:#999">capture</span></div>
+      <div class="bx" style="padding:7px 10px;display:flex;gap:8px;align-items:center;font-size:11px"><span>🖼</span><div class="ln" style="width:150px"></div><span style="color:#999">capture</span></div>
+    </div>
+  </div>
+</div>
+<div class="note" style="max-width:520px"><span class="arrow">↑</span> selectors ARE notes: one sidebar tree mixes notes, selectors, tags. The Selectors panel becomes the entity page; hits + backlinks in one place.</div>
+</div>
+
+<div class="dv-opt" id="1d"><div class="dv-olabel"><a class="dv-oid" href="#1d">1d</a>Evidence-first, notebook as slide-over — least disruptive</div>
+<div class="dv-card wf" style="width:560px">
+  <div style="display:flex;height:420px;position:relative">
+    <div style="width:44px;border-right:1.5px solid #ccc;display:flex;flex-direction:column;align-items:center;gap:10px;padding:10px 0;background:#f6f5f2">
+      <span class="ic"></span><span class="ic" style="background:#e7ebfa;border-color:#8fa0e0"></span><span class="ic"></span><span class="ic"></span>
+    </div>
+    <div style="flex:1;padding:14px;display:flex;flex-direction:column;gap:10px">
+      <div class="lnD" style="width:140px;height:11px"></div>
+      <div class="bx" style="flex:1;background:#eceae5"></div>
+      <div style="display:flex;gap:8px"><span class="chip">Source</span><span class="chip accbg acc">Text</span><span class="chip">Screenshot</span></div>
+    </div>
+    <div style="position:absolute;right:0;top:0;bottom:0;width:210px;border-left:2px solid #999;background:#fffdf8;box-shadow:-6px 0 12px rgba(0,0,0,.08);padding:12px;display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;align-items:center;gap:6px"><span style="font-size:11px;color:#999">⌘J</span><div class="lnD" style="width:80px"></div></div>
+      <div class="ln" style="width:90%"></div><div class="ln" style="width:75%"></div>
+      <div style="font-size:11px">…redirects to <span class="chip accbg acc" style="font-size:10px">#pay-nightjar.io</span></div>
+      <div class="dash accbg" style="height:40px;display:flex;align-items:center;justify-content:center;font-size:10px" class="acc">@this capture</div>
+      <div class="ln" style="width:82%"></div>
+      <div style="flex:1"></div>
+      <div style="font-size:10px;color:#999">✓ quotes selection into note</div>
+    </div>
+  </div>
+</div>
+<div class="note" style="max-width:520px"><span class="arrow">↑</span> capture viewer stays king; ⌘J slides the case note over any screen. "Quote selection" pushes highlighted text into the note with an auto @capture cite.</div>
+</div>
+
+<div class="dv-opt" id="1e"><div class="dv-olabel"><a class="dv-oid" href="#1e">1e</a>Micro-flow — @mention popup + embed block anatomy (applies to any of the above)</div>
+<div class="dv-card wf" style="width:400px;padding:16px;display:flex;flex-direction:column;gap:14px">
+  <div>
+    <div style="font-size:12px;color:#555;margin-bottom:6px">① typing "@" in the note</div>
+    <div class="bx" style="padding:10px 12px">
+      <div style="font-size:12px">The kit was first seen on @kit<span style="border-left:2px solid #333">&nbsp;</span></div>
+      <div class="bx" style="margin-top:6px;width:230px;box-shadow:2px 3px 0 rgba(0,0,0,.1)">
+        <div style="padding:5px 9px;font-size:11px;background:#e7ebfa" class="acc">🖼 kit-landing.html · capture</div>
+        <div style="padding:5px 9px;font-size:11px">🖼 kit-panel-login.png · capture</div>
+        <div style="padding:5px 9px;font-size:11px">◈ kit-author (tag)</div>
+        <div style="padding:5px 9px;font-size:11px;color:#999">+ new selector "kit…"</div>
+      </div>
+    </div>
+  </div>
+  <div>
+    <div style="font-size:12px;color:#555;margin-bottom:6px">② the embed block it creates</div>
+    <div class="dash accbg" style="padding:9px 11px;display:flex;gap:10px;align-items:center">
+      <div class="bx" style="width:56px;height:40px;background:#e9e7e2"></div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:4px">
+        <div class="lnD" style="width:120px"></div>
+        <div style="display:flex;gap:5px"><span class="chip" style="font-size:9px">2026-08-02</span><span class="chip" style="font-size:9px">phishing-kit</span></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;font-size:10px" class="acc"><span>open</span><span>pin ⌖</span></div>
+    </div>
+  </div>
+  <div>
+    <div style="font-size:12px;color:#555;margin-bottom:6px">③ and the reverse link on the capture</div>
+    <div class="bx" style="padding:8px 11px;display:flex;gap:8px;align-items:center;font-size:11px">
+      <span style="color:#999">referenced in:</span><span class="chip accbg acc">Case log ×2</span><span class="chip">Infra map</span>
+    </div>
+  </div>
+</div>
+<div class="note" style="max-width:380px"><span class="arrow">↑</span> one mention grammar everywhere: @ = captures/notes, # = selectors/tags. Creating a selector from the popup replaces today's 4-step flow.</div>
+</div>
+
+</div>
+<p class="dv-next">Try next: "hi-fi <a class="dv-oid" href="#1a">1a</a> in the design system" · "combine <a class="dv-oid" href="#1d">1d</a>'s slide-over with <a class="dv-oid" href="#1e">1e</a>'s mentions" · "show the graph view from <a class="dv-oid" href="#1c">1c</a>"</p>
+</section>
+</x-dc>
+</body>
+</html>

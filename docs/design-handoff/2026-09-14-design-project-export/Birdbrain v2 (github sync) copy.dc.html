@@ -1,0 +1,1318 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/birdbrain-ui-9632b0b0-024d-4a3c-94db-688afdd4768f/fonts/fonts.css">
+  <link rel="stylesheet" href="_ds/birdbrain-ui-9632b0b0-024d-4a3c-94db-688afdd4768f/_ds_bundle.css">
+  <link rel="stylesheet" href="_ds/birdbrain-ui-9632b0b0-024d-4a3c-94db-688afdd4768f/styles.css">
+  <style>
+    html,body{margin:0;padding:0;height:100%;}
+    a{color:var(--color-accent);text-decoration:none;}
+    a:hover{color:var(--color-accent-hover);}
+    ::placeholder{color:var(--color-text-faint);}
+    .hovrow:hover{background:var(--color-elevated)!important;}
+    .hovbrd:hover{border-color:var(--color-border-strong)!important;}
+    .sb .sb-tip{opacity:0;pointer-events:none;transition:opacity .12s;}
+    .sb:hover .sb-tip{opacity:1;}
+    ::-webkit-scrollbar{width:10px;height:10px}
+    ::-webkit-scrollbar-thumb{background:var(--color-border-strong);border-radius:6px;border:3px solid transparent;background-clip:content-box}
+    ::-webkit-scrollbar-track{background:transparent}
+    symbol,symbol *{fill:none;stroke:currentColor;}
+  </style>
+</helmet>
+<svg width="0" height="0" fill="none" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="v-chevr" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"></path></symbol>
+    <symbol id="v-chevl" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"></path></symbol>
+    <symbol id="v-chevd" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"></path></symbol>
+    <symbol id="v-arrl" viewBox="0 0 24 24"><path d="M19 12H5"></path><path d="m12 19-7-7 7-7"></path></symbol>
+    <symbol id="v-home" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></symbol>
+    <symbol id="v-layers" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></symbol>
+    <symbol id="v-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></symbol>
+    <symbol id="v-note" viewBox="0 0 24 24"><path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"></path><path d="M15 3v4a2 2 0 0 0 2 2h4"></path></symbol>
+    <symbol id="v-db" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"></path></symbol>
+    <symbol id="v-cog" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></symbol>
+    <symbol id="v-sort" viewBox="0 0 24 24"><path d="m21 16-4 4-4-4"></path><path d="M17 20V4"></path><path d="m3 8 4-4 4 4"></path><path d="M7 4v16"></path></symbol>
+    <symbol id="v-filter" viewBox="0 0 24 24"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></symbol>
+    <symbol id="v-more" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></symbol>
+    <symbol id="v-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></symbol>
+    <symbol id="v-crosshair" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="22" y1="12" x2="18" y2="12"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="12" y1="6" x2="12" y2="2"></line><line x1="12" y1="22" x2="12" y2="18"></line></symbol>
+    <symbol id="v-plus" viewBox="0 0 24 24"><path d="M12 5v14"></path><path d="M5 12h14"></path></symbol>
+    <symbol id="v-minus" viewBox="0 0 24 24"><path d="M5 12h14"></path></symbol>
+    <symbol id="v-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></symbol>
+    <symbol id="v-shieldal" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></symbol>
+    <symbol id="v-shieldck" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></symbol>
+    <symbol id="v-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path></symbol>
+    <symbol id="v-archive" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="5" rx="1"></rect><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"></path><path d="M10 12h4"></path></symbol>
+    <symbol id="v-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></symbol>
+    <symbol id="v-cal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></symbol>
+    <symbol id="v-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path><path d="M2 12h20"></path></symbol>
+    <symbol id="v-arrd" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"></path></symbol>
+    <symbol id="v-pin" viewBox="0 0 24 24"><path d="M12 17v5"></path><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"></path></symbol>
+    <symbol id="v-mappin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"></path><circle cx="12" cy="10" r="3"></circle></symbol>
+    <symbol id="v-hdd" viewBox="0 0 24 24"><line x1="22" y1="12" x2="2" y2="12"></line><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path><line x1="6" y1="16" x2="6.01" y2="16"></line><line x1="10" y1="16" x2="10.01" y2="16"></line></symbol>
+    <symbol id="v-x" viewBox="0 0 24 24"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></symbol>
+    <symbol id="v-fileout" viewBox="0 0 24 24"><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="M4 7V4a2 2 0 0 1 2-2h8.5L20 7.5V20a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-1"></path><path d="M2 15h10"></path><path d="m9 12 3 3-3 3"></path></symbol>
+    <symbol id="v-dl" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></symbol>
+    <symbol id="v-star" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></symbol>
+    <symbol id="v-ext" viewBox="0 0 24 24"><path d="M15 3h6v6"></path><path d="M10 14 21 3"></path><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path></symbol>
+    <symbol id="v-tag" viewBox="0 0 24 24"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"></path><circle cx="7.5" cy="7.5" r=".5"></circle></symbol>
+    <symbol id="v-sticky" viewBox="0 0 24 24"><path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11l5-5V5a2 2 0 0 0-2-2z"></path><path d="M15 21v-5a1 1 0 0 1 1-1h5"></path></symbol>
+    <symbol id="v-refresh" viewBox="0 0 24 24"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path><path d="M3 22v-6h6"></path><path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path></symbol>
+    <symbol id="v-trash" viewBox="0 0 24 24"><path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></symbol>
+    <symbol id="v-hand" viewBox="0 0 24 24"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"></path><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"></path><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"></path><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"></path></symbol>
+    <symbol id="v-cursor" viewBox="0 0 24 24"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51z"></path><path d="M13 13l6 6"></path></symbol>
+    <symbol id="v-square" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"></rect></symbol>
+    <symbol id="v-arrr" viewBox="0 0 24 24"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></symbol>
+    <symbol id="v-marker" viewBox="0 0 24 24"><path d="m9 11-6 6v3h9l3-3"></path><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"></path></symbol>
+    <symbol id="v-eye" viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></symbol>
+    <symbol id="v-eyeoff" viewBox="0 0 24 24"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"></path><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path><line x1="2" y1="2" x2="22" y2="22"></line></symbol>
+    <symbol id="v-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"></path><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"></path></symbol>
+    <symbol id="v-redo" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"></path><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13"></path></symbol>
+  </defs>
+</svg>
+
+<div style="display:flex;flex-direction:column;height:100vh;background:var(--color-canvas);color:var(--color-text-secondary);font-family:var(--font-body);font-size:12px;line-height:1.5;overflow:hidden">
+
+  <header style="display:flex;height:40px;flex-shrink:0;align-items:center;gap:10px;border-bottom:1px solid var(--color-border);background:var(--color-surface);padding:0 14px">
+    <img src="src/renderer/assets/logo.png" alt="Birdbrain" style="height:20px;width:20px">
+    <span style="flex-shrink:0;white-space:nowrap;font-size:12px;font-weight:700;letter-spacing:-0.02em;color:var(--color-text-primary)">Birdbrain</span>
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#v-chevr"></use></svg>
+    <span style="flex-shrink:0;white-space:nowrap;font-size:12px;font-weight:600;color:var(--color-text-primary)">{{ crumb }}</span>
+    <div style="flex:1;min-width:8px"></div>
+    <span style="flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;letter-spacing:.02em;color:var(--color-text-faint)">{{ syncLine }}</span>
+    <button onClick="{{ noop }}" class="hovrow" style="display:inline-flex;flex-shrink:0;white-space:nowrap;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:4px;border:1px solid var(--color-border-strong);background:transparent;color:var(--color-text-primary);font-family:var(--font-body);font-size:12px;font-weight:500;cursor:pointer">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#v-fileout"></use></svg>
+      Export
+    </button>
+  </header>
+
+  <div data-shell="app-shell" style="display:flex;flex:1;min-height:0;overflow:hidden">
+
+    <aside style="display:flex;width:48px;flex-shrink:0;flex-direction:column;border-right:1px solid var(--color-border);background:var(--color-surface)">
+      <div style="display:flex;flex:1;flex-direction:column;align-items:center;gap:2px;padding:6px 0">
+        <sc-for list="{{ rail }}" as="it" hint-placeholder-count="7">
+          <div class="sb" style="position:relative">
+            <button onClick="{{ it.click }}" aria-label="{{ it.label }}" style="position:relative;display:flex;height:38px;width:38px;align-items:center;justify-content:center;border-radius:4px;border:none;cursor:pointer;transition:background-color .15s,color .15s;background:{{ it.bg }};color:{{ it.color }}">
+              <sc-if value="{{ it.active }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;left:-5px;top:50%;height:18px;width:2px;transform:translateY(-50%);border-radius:0 2px 2px 0;background:var(--color-accent)"></span></sc-if>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="{{ it.icon }}"></use></svg>
+            </button>
+            <div class="sb-tip" style="position:absolute;left:100%;top:50%;z-index:50;margin-left:6px;transform:translateY(-50%)">
+              <div style="white-space:nowrap;border-radius:4px;background:var(--color-surface);padding:3px 7px;font-size:11px;color:var(--color-text-primary);box-shadow:var(--shadow-overlay);outline:1px solid var(--color-border)">{{ it.label }}</div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </aside>
+
+    <!-- ============ DASHBOARD ============ -->
+    <sc-if value="{{ vDash }}" hint-placeholder-val="{{ true }}">
+      <div data-screen-label="Dashboard" style="display:flex;flex:1;min-width:0;min-height:0">
+
+        <div style="display:flex;flex:1;min-width:0;flex-direction:column;min-height:0">
+
+          <div style="display:flex;align-items:center;gap:10px;height:36px;flex-shrink:0;padding:0 14px;border-bottom:1px solid var(--color-border);background:var(--color-surface)">
+            <span style="flex-shrink:0;white-space:nowrap;font-size:14px;font-weight:700;letter-spacing:-0.01em;color:var(--color-text-primary)">Cases</span>
+            <span style="flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;color:var(--color-text-faint)">{{ caseCountLine }}</span>
+            <div style="flex:1;min-width:8px"></div>
+            <button onClick="{{ noop }}" style="display:inline-flex;flex-shrink:0;white-space:nowrap;align-items:center;gap:5px;height:24px;padding:0 9px;border-radius:4px;border:none;background:var(--color-accent);color:#fff;font-family:var(--font-body);font-size:11px;font-weight:600;cursor:pointer">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#v-plus"></use></svg>
+              New case
+            </button>
+          </div>
+
+          <div style="flex-shrink:0;padding:12px 14px;border-bottom:1px solid var(--color-border)">
+            <div style="display:flex;align-items:center;gap:8px">
+              <div class="hovbrd" style="display:flex;flex:1;min-width:0;align-items:center;gap:8px;height:30px;border-radius:4px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:0 10px;transition:border-color .15s">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#v-link"></use></svg>
+                <input type="text" aria-label="URL to capture" value="{{ capUrl }}" onChange="{{ onCapUrl }}" placeholder="Paste a URL to capture into the active case…" style="min-width:0;flex:1;background:transparent;border:none;outline:none;font-family:var(--font-body);font-size:11px;color:var(--color-text-primary)">
+                <span style="flex-shrink:0;white-space:nowrap;font-size:10px;color:var(--color-text-faint)">{{ activeCaseName }}</span>
+              </div>
+              <button onClick="{{ noop }}" style="display:inline-flex;flex-shrink:0;white-space:nowrap;align-items:center;gap:5px;height:30px;padding:0 12px;border-radius:4px;border:none;background:var(--color-accent);color:#fff;font-family:var(--font-body);font-size:12px;font-weight:600;cursor:pointer">Capture</button>
+            </div>
+            <p style="margin:7px 2px 0;font-size:11px;color:var(--color-text-faint);line-height:1.5">{{ capHint }}</p>
+          </div>
+
+          <div style="flex:1;overflow-y:auto;min-height:0;padding:12px 14px 20px">
+            <sc-if value="{{ showOnboard }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;border-radius:4px;border:1px solid var(--color-border);background:var(--color-card);padding:9px 11px">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#v-shieldck"></use></svg>
+                <span style="flex:1;min-width:0;font-size:11px;color:var(--color-text-muted);line-height:1.5">{{ onboardText }}</span>
+                <button onClick="{{ dismissOnboard }}" aria-label="Dismiss" style="display:grid;flex-shrink:0;place-items:center;height:20px;width:20px;border:none;border-radius:4px;background:transparent;color:var(--color-text-faint);cursor:pointer">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#v-x"></use></svg>
+                </button>
+              </div>
+            </sc-if>
+
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:10px">
+              <sc-for list="{{ cases }}" as="c" hint-placeholder-count="4">
+                <button onClick="{{ c.click }}" class="hovbrd" style="display:flex;flex-direction:column;gap:9px;border-radius:6px;border:1px solid var(--color-border);background:var(--color-card);padding:11px 12px;cursor:pointer;text-align:left;transition:border-color .15s;box-shadow:var(--shadow-card)">
+                  <div style="display:flex;align-items:flex-start;gap:8px">
+                    <span style="flex:1;min-width:0;font-size:12px;font-weight:600;color:var(--color-text-primary);line-height:1.4">{{ c.name }}</span>
+                    <span style="display:inline-flex;flex-shrink:0;white-space:nowrap;align-items:center;gap:4px;border-radius:9999px;border:1px solid {{ c.stBorder }};background:{{ c.stBg }};padding:1px 7px;font-size:10px;font-weight:600;color:{{ c.stColor }}">{{ c.status }}</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:5px;white-space:nowrap;font-size:10px;font-variant-numeric:tabular-nums;color:var(--color-text-faint)">
+                    <span>{{ c.captures }}</span><span>·</span><span>{{ c.selectors }}</span><span>·</span><span>{{ c.size }}</span>
+                  </div>
+                  <div style="height:2px;border-radius:2px;background:var(--color-elevated);overflow:hidden">
+                    <div style="height:100%;width:{{ c.pct }}%;background:{{ c.barColor }}"></div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#v-clock"></use></svg>
+                    <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;font-variant-numeric:tabular-nums;color:var(--color-text-faint)">{{ c.touched }}</span>
+                    <sc-if value="{{ c.hasEx }}" hint-placeholder-val="{{ false }}">
+                      <span style="display:inline-flex;flex-shrink:0;white-space:nowrap;align-items:center;gap:4px;font-size:10px;color:#f59e0b">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#v-shieldal"></use></svg>
+                        {{ c.exText }}
+                      </span>
+                    </sc-if>
+                  </div>
+                </button>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+
+        <aside style="display:flex;width:288px;flex-shrink:0;flex-direction:column;border-left:1px solid var(--color-border);background:var(--color-surface);min-height:0;overflow-y:auto">
+
+          <div style="display:flex;flex-shrink:0;flex-direction:column">
+            <div style="display:flex;align-items:center;gap:7px;height:36px;flex-shrink:0;padding:0 12px;border-bottom:1px solid var(--color-border)">
+              <span style="flex-shrink:0;white-space:nowrap;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)">Recent activity</span>
+              <div style="flex:1;min-width:8px"></div>
+              <span style="flex-shrink:0;white-space:nowrap;font-size:10px;color:var(--color-text-faint)">{{ actWindow }}</span>
+            </div>
+            <div style="padding:4px 0 10px">
+              <sc-for list="{{ activity }}" as="a" hint-placeholder-count="9">
+                <div class="hovrow" style="display:grid;grid-template-columns:40px 13px minmax(0,1fr);align-items:baseline;gap:8px;padding:4px 12px;background:transparent">
+                  <span style="font-size:10px;font-variant-numeric:tabular-nums;color:var(--color-text-faint);text-align:right;white-space:nowrap">{{ a.time }}</span>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="{{ a.color }}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="align-self:center"><use href="{{ a.icon }}"></use></svg>
+                  <span style="min-width:0;font-size:11px;color:var(--color-text-muted);line-height:1.5;overflow-wrap:anywhere">
+                    <span style="font-size:10.5px;color:{{ a.color }}">{{ a.event }}</span>
+                    <span> </span>
+                    <span style="color:var(--color-text-secondary)">{{ a.target }}</span>
+                  </span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="flex-shrink:0;border-top:1px solid var(--color-border);padding:11px 12px">
+            <div style="display:flex;align-items:center;gap:7px;margin-bottom:9px">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#v-hdd"></use></svg>
+              <span style="flex-shrink:0;white-space:nowrap;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)">Storage</span>
+              <div style="flex:1;min-width:8px"></div>
+              <span style="flex-shrink:0;white-space:nowrap;font-size:10px;font-variant-numeric:tabular-nums;color:var(--color-text-muted)">{{ storLine }}</span>
+            </div>
+            <div style="display:flex;height:4px;border-radius:2px;background:var(--color-elevated);overflow:hidden">
+              <sc-for list="{{ storSegs }}" as="g" hint-placeholder-count="3">
+                <div style="height:100%;width:{{ g.pct }}%;background:{{ g.color }}"></div>
+              </sc-for>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:8px">
+              <sc-for list="{{ storSegs }}" as="g" hint-placeholder-count="3">
+                <span style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-size:10px;color:var(--color-text-faint)">
+                  <span style="flex-shrink:0;height:6px;width:6px;border-radius:2px;background:{{ g.color }}"></span>
+                  {{ g.label }}
+                </span>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="flex-shrink:0;border-top:1px solid var(--color-border);padding:11px 12px 12px">
+            <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#v-pin"></use></svg>
+              <span style="flex-shrink:0;white-space:nowrap;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)">Pinned notes</span>
+              <div style="flex:1;min-width:8px"></div>
+              <span style="flex-shrink:0;white-space:nowrap;font-size:10px;color:var(--color-text-faint)">{{ noteCount }}</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <sc-for list="{{ notes }}" as="n" hint-placeholder-count="3">
+                <div class="hovbrd" style="border-radius:4px;border:1px solid var(--color-border);background:var(--color-card);padding:7px 9px;transition:border-color .15s">
+                  <div style="font-size:11px;color:var(--color-text-secondary);line-height:1.5">{{ n.text }}</div>
+                  <div style="margin-top:4px;font-size:10px;color:var(--color-text-faint)">{{ n.meta }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </sc-if>
+
+    <!-- ============ CAPTURES ============ -->
+    <sc-if value="{{ vCaps }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="Captures" style="position:relative;display:flex;flex:1;min-width:0;min-height:0">
+
+        <!-- LIST -->
+        <aside style="display:flex;width:296px;min-width:240px;flex-shrink:0;flex-direction:column;border-right:1px solid var(--color-border);background:var(--color-surface);min-height:0">
+          <div style="flex-shrink:0;border-bottom:1px solid var(--color-border);padding:8px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:4px">
+              <div style="display:flex;min-width:0;gap:4px">
+                <div style="position:relative;flex-shrink:0">
+                  <button onClick="{{ toggleSortMenu }}" class="hovrow" style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap;border:none;border-radius:4px;background:transparent;padding:4px 7px;font-family:var(--font-body);font-size:11px;color:{{ sortColor }};cursor:pointer">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#v-sort"></use></svg>
+                    {{ sortLabel }}
+                  </button>
+                  <sc-if value="{{ sortMenuOpen }}" hint-placeholder-val="{{ false }}">
+                    <div style="position:absolute;left:0;top:100%;z-index:50;margin-top:4px;width:160px;border-radius:6px;border:1px solid var(--color-border);background:var(--color-card);padding:4px 0;box-shadow:var(--shadow-overlay)">
+                      <sc-for list="{{ sortOptions }}" as="o" hint-placeholder-count="4">
+                        <button onClick="{{ o.click }}" class="hovrow" style="display:flex;width:100%;align-items:center;gap:8px;border:none;background:transparent;padding:5px 11px;font-family:var(--font-body);font-size:11px;color:{{ o.color }};cursor:pointer;text-align:left">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;opacity:{{ o.tick }}"><use href="#v-check"></use></svg>
+                          {{ o.label }}
+                        </button>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                </div>
+                <div style="position:relative;flex-shrink:0">
+                  <button onClick="{{ toggleFilterMenu }}" class="hovrow" style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap;border:none;border-radius:4px;background:transparent;padding:4px 7px;font-family:var(--font-body);font-size:11px;color:{{ filterColor }};cursor:pointer">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#v-filter"></use></svg>
+                    Filter
+                    <sc-if value="{{ hasFilters }}" hint-placeholder-val="{{ false }}">
+                      <span style="display:grid;place-items:center;height:15px;width:15px;flex-shrink:0;border-radius:9999px;background:var(--color-accent);font-size:9px;font-weight:600;color:#fff">{{ filterCount }}</span>
+                    </sc-if>
+                  </button>
+                  <sc-if value="{{ filterMenuOpen }}" hint-placeholder-val="{{ false }}">
+                    <div style="position:absolute;left:0;top:100%;z-index:50;margin-top:4px;width:192px;border-radius:6px;border:1px solid var(--color-border);background:var(--color-card);padding:4px 0;box-shadow:var(--shadow-overlay)">
+                      <div style="padding:4px 11px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)">Format</div>
+                      <sc-for list="{{ formatOptions }}" as="o" hint-placeholder-count="3">
+                        <button onClick="{{ o.click }}" class="hovrow" style="display:flex;width:100%;align-items:center;gap:8px;border:none;background:transparent;padding:5px 11px;font-family:var(--font-body);font-size:11px;color:{{ o.color }};cursor:pointer;text-align:left">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;opacity:{{ o.tick }}"><use href="#v-check"></use></svg>
+                          {{ o.label }}
+                        </button>
+                      </sc-for>
+                      <div style="margin:4px 0;border-top:1px solid var(--color-border)"></div>
+                      <div style="padding:4px 11px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)">Date</div>
+                      <sc-for list="{{ dateOptions }}" as="o" hint-placeholder-count="4">
+                        <button onClick="{{ o.click }}" class="hovrow" style="display:flex;width:100%;align-items:center;gap:8px;border:none;background:transparent;padding:5px 11px;font-family:var(--font-body);font-size:11px;color:{{ o.color }};cursor:pointer;text-align:left">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;opacity:{{ o.tick }}"><use href="#v-check"></use></svg>
+                          {{ o.label }}
+                        </button>
+                      </sc-for>
+                      <div style="margin:4px 0;border-top:1px solid var(--color-border)"></div>
+                      <button onClick="{{ toggleFavOnly }}" class="hovrow" style="display:flex;width:100%;align-items:center;gap:8px;border:none;background:transparent;padding:5px 11px;font-family:var(--font-body);font-size:11px;color:{{ favOnlyColor }};cursor:pointer;text-align:left">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;opacity:{{ favOnlyTick }}"><use href="#v-check"></use></svg>
+                        Favourites only
+                      </button>
+                      <sc-if value="{{ hasFilters }}" hint-placeholder-val="{{ false }}">
+                        <span style="display:block">
+                          <span style="display:block;margin:4px 0;border-top:1px solid var(--color-border)"></span>
+                          <button onClick="{{ clearFilters }}" class="hovrow" style="display:flex;width:100%;align-items:center;gap:8px;border:none;background:transparent;padding:5px 11px;font-family:var(--font-body);font-size:11px;color:#f87171;cursor:pointer;text-align:left">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#v-x"></use></svg>
+                            Clear all filters
+                          </button>
+                        </span>
+                      </sc-if>
+                    </div>
+                  </sc-if>
+                </div>
+              </div>
+              <button onClick="{{ noop }}" class="hovrow" aria-label="Capture actions" style="display:grid;flex-shrink:0;place-items:center;height:24px;width:24px;border:none;border-radius:4px;background:transparent;color:var(--color-text-muted);cursor:pointer">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#v-more"></use></svg>
+              </button>
+            </div>
+            <sc-if value="{{ selectorFilterActive }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;align-items:center;gap:5px;margin-top:6px;border-radius:4px;border:1px solid color-mix(in srgb,var(--color-accent) 20%,transparent);background:var(--color-accent-subtle);padding:4px 8px;font-size:11px;color:var(--color-accent)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#v-crosshair"></use></svg>
+                <span style="flex:1;min-width:0">{{ selectorFilterText }}</span>
+                <button onClick="{{ clearSelectorFilters }}" aria-label="Clear selector filters" style="display:grid;flex-shrink:0;place-items:center;height:15px;width:15px;border:none;border-radius:4px;background:transparent;color:currentColor;cursor:pointer">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#v-x"></use></svg>
+                </button>
+              </div>
+            </sc-if>
+          </div>
+
+          <div style="display:flex;flex:1;flex-direction:column;gap:4px;overflow-x:hidden;overflow-y:auto;min-height:0;padding:8px">
+            <sc-for list="{{ rows }}" as="r" hint-placeholder-count="8">
+              <div role="button" tabIndex="0" onClick="{{ r.click }}" class="{{ r.cls }}" style="width:100%;border-radius:6px;border:1px solid {{ r.border }};background:{{ r.bg }};padding:8px;text-align:left;cursor:pointer;transition:background-color .15s">
+                <div style="display:flex;gap:8px">
+                  <div style="position:relative;height:48px;width:64px;flex-shrink:0;border-radius:4px;overflow:hidden;background:{{ r.thumbBg }}">
+                    <div style="display:flex;height:100%;width:100%;flex-direction:column;justify-content:center;gap:4px;padding:0 6px">
+                      <div style="height:4px;width:100%;border-radius:9999px;background:{{ r.thumbBar }}"></div>
+                      <div style="height:4px;width:75%;border-radius:9999px;background:{{ r.thumbBar }};opacity:.7"></div>
+                      <div style="height:4px;width:50%;border-radius:9999px;background:{{ r.thumbBar }};opacity:.5"></div>
+                    </div>
+                    <sc-if value="{{ r.background }}" hint-placeholder-val="{{ false }}">
+                      <div title="Background recapture" style="position:absolute;bottom:2px;right:2px;display:grid;place-items:center;border-radius:3px;background:rgba(0,0,0,.65);padding:2px">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#v-refresh"></use></svg>
+                      </div>
+                    </sc-if>
+                  </div>
+                  <div style="display:flex;min-width:0;flex:1;flex-direction:column">
+                    <div style="display:flex;align-items:flex-start;gap:4px">
+                      <div title="{{ r.title }}" style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:600;color:var(--color-text-primary)">{{ r.title }}</div>
+                      <button onClick="{{ r.fav }}" aria-label="{{ r.favLabel }}" style="display:grid;flex-shrink:0;place-items:center;height:16px;width:16px;border:none;border-radius:3px;background:transparent;cursor:pointer">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="{{ r.starFill }}" stroke="{{ r.starStroke }}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#v-star"></use></svg>
+                      </button>
+                    </div>
+                    <div style="margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--color-text-muted)">{{ r.hostname }}</div>
+                    <div style="display:flex;align-items:center;gap:4px;margin-top:2px;min-width:0">
+                      <span style="flex-shrink:0;white-space:nowrap;font-size:11px;color:var(--color-text-faint)">{{ r.rel }}</span>
+                      <span style="display:flex;min-width:0;gap:3px;overflow:hidden">
+                        <sc-for list="{{ r.badges }}" as="b" hint-placeholder-count="2">
+                          <span title="{{ b.title }}" style="flex-shrink:0;white-space:nowrap;border-radius:9999px;background:{{ b.bg }};padding:1px 6px;font-size:10px;font-weight:500;color:{{ b.color }}">{{ b.label }}</span>
+                        </sc-for>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </sc-for>
+            <sc-if value="{{ noRows }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:16px 12px;text-align:center;font-size:11px;color:var(--color-text-faint)">{{ emptyText }}</div>
+            </sc-if>
+          </div>
+
+          <div style="flex-shrink:0;border-top:1px solid var(--color-border);background:var(--color-surface);padding:11px 12px">
+            <div style="text-align:center;font-size:11px;color:var(--color-text-muted)">{{ showingLine }}</div>
+          </div>
+        </aside>
+
+        <!-- VIEWER -->
+        <main style="display:flex;flex:1;min-width:360px;flex-direction:column;min-height:0;background:var(--color-canvas)">
+          <div style="display:flex;align-items:center;gap:6px;height:44px;flex-shrink:0;padding:0 10px;border-bottom:1px solid var(--color-border)">
+            <button onClick="{{ noop }}" class="hovrow" aria-label="Back" title="Back" style="display:grid;flex-shrink:0;place-items:center;height:24px;width:24px;border:none;border-radius:4px;background:transparent;color:var(--color-text-muted);cursor:pointer">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#v-arrl"></use></svg>
+            </button>
+            <div style="display:flex;flex:1;min-width:40px;align-items:center;gap:6px">
+              <span title="{{ selTitle }}" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:600;color:var(--color-text-primary)">{{ selTitle }}</span>
+              <sc-if value="{{ selBackground }}" hint-placeholder-val="{{ false }}">
+                <span style="flex-shrink:0;white-space:nowrap;border-radius:4px;background:var(--color-surface);padding:1px 6px;font-size:10px;color:var(--color-text-muted)">Background</span>
+              </sc-if>
+              <sc-if value="{{ showRecaptureLink }}" hint-placeholder-val="{{ false }}">
+                <button onClick="{{ noop }}" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:none;background:transparent;padding:0;font-family:var(--font-body);font-size:10.5px;color:var(--color-accent);text-decoration:underline;text-underline-offset:2px;cursor:pointer">{{ selRecaptureText }}</button>
+              </sc-if>
+            </div>
+            <div role="tablist" style="display:flex;flex-shrink:0;align-items:center;gap:2px;border-radius:6px;border:1px solid var(--color-border);background:var(--color-surface);padding:2px">
+              <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
+                <button onClick="{{ t.click }}" role="tab" aria-selected="{{ t.selected }}" style="height:20px;flex-shrink:0;white-space:nowrap;padding:0 8px;border:none;border-radius:4px;background:{{ t.bg }};color:{{ t.color }};font-family:var(--font-body);font-size:11px;font-weight:{{ t.fw }};cursor:pointer;box-shadow:{{ t.shadow }}">{{ t.label }}</button>
+              </sc-for>
+            </div>
+            <sc-if value="{{ showDownload }}" hint-placeholder-val="{{ true }}">
+              <button onClick="{{ noop }}" class="hovrow" aria-label="Download" title="Download capture" style="display:grid;flex-shrink:0;place-items:center;height:24px;width:24px;border:none;border-radius:4px;background:transparent;color:var(--color-text-muted);cursor:pointer">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#v-dl"></use></svg>
+              </button>
+            </sc-if>
+            <div style="display:flex;flex-shrink:0;align-items:center">
+              <button onClick="{{ goPrev }}" class="hovrow" aria-label="Previous capture" title="Previous capture (←)" style="display:grid;place-items:center;height:24px;width:22px;border:none;border-radius:4px;background:transparent;color:var(--color-text-muted);cursor:pointer;opacity:{{ prevOpacity }}">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#v-chevl"></use></svg>
+              </button>
+              <sc-if value="{{ showCounter }}" hint-placeholder-val="{{ true }}">
+                <span style="padding:0 2px;white-space:nowrap;font-size:10px;font-variant-numeric:tabular-nums;color:var(--color-text-faint)">{{ posLine }}</span>
+              </sc-if>
+              <button onClick="{{ goNext }}" class="hovrow" aria-label="Next capture" title="Next capture (→)" style="display:grid;place-items:center;height:24px;width:22px;border:none;border-radius:4px;background:transparent;color:var(--color-text-muted);cursor:pointer;opacity:{{ nextOpacity }}">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#v-chevr"></use></svg>
+              </button>
+            </div>
+          </div>
+
+          <div style="position:relative;flex:1;min-height:0;overflow:hidden">
+
+            <sc-if value="{{ vShot }}" hint-placeholder-val="{{ true }}">
+              <div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:12px">
+                <div style="display:flex;flex:1;min-height:0;flex-direction:column;border-radius:6px;border:1px solid var(--color-border);background:var(--color-surface);overflow:hidden">
+                  <div style="display:flex;align-items:center;gap:8px;height:28px;flex-shrink:0;padding:0 10px;border-bottom:1px solid var(--color-border)">
+                    <span style="display:flex;flex-shrink:0;gap:4px">
+                      <span style="height:7px;width:7px;border-radius:9999px;background:var(--color-border-strong)"></span>
+                      <span style="height:7px;width:7px;border-radius:9999px;background:var(--color-border-strong)"></span>
+                      <span style="height:7px;width:7px;border-radius:9999px;background:var(--color-border-strong)"></span>
+                    </span>
+                    <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:4px;background:var(--color-canvas);padding:2px 8px;font-size:10px;color:var(--color-text-faint)">{{ selUrl }}</span>
+                  </div>
+                  <div style="position:relative;flex:1;min-height:0;overflow:auto;background:var(--color-canvas)">
+                    <div style="display:flex;justify-content:center;padding:12px 12px 64px">
+                      <div style="width:min(720px,96%);flex-shrink:0;background:#fff;box-shadow:var(--shadow-overlay)">
+                        <img src="./pasted-1786076566546-0-msifvf7w-wjzq.png" alt="Captured page" style="display:block;width:100%;height:auto">
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style="pointer-events:none;position:absolute;left:0;right:0;bottom:18px;z-index:20;display:flex;flex-direction:column;align-items:center;gap:8px;padding:0 12px">
+                  <sc-if value="{{ stylePanelOpen }}" hint-placeholder-val="{{ false }}">
+                    <div style="pointer-events:auto;display:flex;max-width:100%;flex-wrap:wrap;align-items:center;justify-content:center;gap:10px;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:6px 10px;box-shadow:var(--shadow-overlay)">
+                      <span style="white-space:nowrap;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)">Style</span>
+                      <div style="display:flex;align-items:center;gap:5px">
+                        <sc-for list="{{ swatches }}" as="w" hint-placeholder-count="7">
+                          <button onClick="{{ w.click }}" aria-label="{{ w.label }}" style="height:16px;width:16px;flex-shrink:0;border-radius:9999px;border:1px solid var(--color-border);background:{{ w.color }};cursor:pointer;box-shadow:{{ w.ring }}"></button>
+                        </sc-for>
+                      </div>
+                      <span aria-hidden="true" style="height:16px;width:1px;background:var(--color-border)"></span>
+                      <span style="display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:11px;color:var(--color-text-muted)">
+                        <span>Stroke</span>
+                        <input type="range" min="1" max="10" value="{{ stroke }}" onChange="{{ onStroke }}" aria-label="Stroke width" style="width:72px;accent-color:var(--color-accent)">
+                        <span style="width:12px;text-align:right;font-variant-numeric:tabular-nums;color:var(--color-text-secondary)">{{ stroke }}</span>
+                      </span>
+                    </div>
+                  </sc-if>
+
+                  <div style="pointer-events:auto;display:flex;max-width:100%;flex-wrap:wrap;align-items:center;justify-content:center;gap:1px;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:4px;box-shadow:var(--shadow-overlay)">
+                    <sc-for list="{{ navTools }}" as="t" hint-placeholder-count="2">
+                      <button onClick="{{ t.click }}" aria-label="{{ t.label }}" title="{{ t.label }}" style="display:grid;place-items:center;height:26px;width:26px;flex-shrink:0;border:none;border-radius:4px;background:{{ t.bg }};color:{{ t.color }};cursor:pointer">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="{{ t.icon }}"></use></svg>
+                      </button>
+                    </sc-for>
+                    <span aria-hidden="true" style="margin:0 3px;height:16px;width:1px;flex-shrink:0;background:var(--color-border)"></span>
+                    <sc-for list="{{ drawTools }}" as="t" hint-placeholder-count="5">
+                      <button onClick="{{ t.click }}" aria-label="{{ t.label }}" title="{{ t.label }}" style="display:grid;place-items:center;height:26px;width:26px;flex-shrink:0;border:none;border-radius:4px;background:{{ t.bg }};color:{{ t.color }};cursor:pointer">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="{{ t.icon }}"></use></svg>
+                      </button>
+                    </sc-for>
+                    <span aria-hidden="true" style="margin:0 3px;height:16px;width:1px;flex-shrink:0;background:var(--color-border)"></span>
+                    <button onClick="{{ toggleStylePanel }}" aria-label="Colour and stroke" title="Colour and stroke" style="display:grid;place-items:center;height:26px;width:26px;flex-shrink:0;border:none;border-radius:4px;background:transparent;cursor:pointer">
+                      <span style="height:14px;width:14px;border-radius:9999px;border:2px solid var(--color-card);background:{{ color }};box-shadow:0 0 0 1px var(--color-border-strong)"></span>
+                    </button>
+                    <span aria-hidden="true" style="margin:0 3px;height:16px;width:1px;flex-shrink:0;background:var(--color-border)"></span>
+                    <button onClick="{{ zoomOut }}" class="hovrow" aria-label="Zoom out" style="display:grid;place-items:center;height:26px;width:26px;flex-shrink:0;border:none;border-radius:4px;background:transparent;color:var(--color-text-muted);cursor:pointer">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#v-minus"></use></svg>
+                    </button>
+                    <span style="min-width:44px;text-align:center;white-space:nowrap;font-size:11px;font-variant-numeric:tabular-nums;color:var(--color-text-muted)">{{ zoomLine }}</span>
+                    <button onClick="{{ zoomIn }}" class="hovrow" aria-label="Zoom in" style="display:grid;place-items:center;height:26px;width:26px;flex-shrink:0;border:none;border-radius:4px;background:transparent;color:var(--color-text-muted);cursor:pointer">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#v-plus"></use></svg>
+                    </button>
+                    <button onClick="{{ zoomFit }}" class="hovrow" style="height:26px;flex-shrink:0;white-space:nowrap;padding:0 7px;border:none;border-radius:4px;background:transparent;color:var(--color-text-muted);font-family:var(--font-body);font-size:11px;cursor:pointer">Fit</button>
+                    <button onClick="{{ zoomOne }}" class="hovrow" style="height:26px;flex-shrink:0;white-space:nowrap;padding:0 7px;border:none;border-radius:4px;background:transparent;color:var(--color-text-muted);font-family:var(--font-body);font-size:11px;cursor:pointer">1:1</button>
+                    <span aria-hidden="true" style="margin:0 3px;height:16px;width:1px;flex-shrink:0;background:var(--color-border)"></span>
+                    <button onClick="{{ toggleOverlay }}" aria-label="{{ overlayLabel }}" title="{{ overlayTitle }}" style="display:grid;place-items:center;height:26px;width:26px;flex-shrink:0;border:none;border-radius:4px;background:transparent;color:var(--color-text-muted);cursor:{{ overlayCursor }};opacity:{{ overlayOpacity }}">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="{{ overlayIcon }}"></use></svg>
+                    </button>
+                    <sc-if value="{{ editVisible }}" hint-placeholder-val="{{ false }}">
+                      <span style="display:flex;align-items:center;gap:1px">
+                        <span aria-hidden="true" style="margin:0 3px;height:16px;width:1px;flex-shrink:0;background:var(--color-border)"></span>
+                        <button onClick="{{ noop }}" class="hovrow" aria-label="Undo" style="display:grid;place-items:center;height:26px;width:26px;border:none;border-radius:4px;background:transparent;color:var(--color-text-muted);cursor:pointer;opacity:.4">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#v-undo"></use></svg>
+                        </button>
+                        <button onClick="{{ noop }}" class="hovrow" aria-label="Redo" style="display:grid;place-items:center;height:26px;width:26px;border:none;border-radius:4px;background:transparent;color:var(--color-text-muted);cursor:pointer;opacity:.4">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#v-redo"></use></svg>
+                        </button>
+                        <button onClick="{{ noop }}" class="hovrow" aria-label="Delete selected shape" title="Delete selected (Del)" style="display:grid;place-items:center;height:26px;width:26px;border:none;border-radius:4px;background:transparent;color:var(--color-text-muted);cursor:pointer;opacity:.4">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#v-trash"></use></svg>
+                        </button>
+                      </span>
+                    </sc-if>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ vPage }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:12px">
+                <div style="display:flex;flex:1;min-height:0;flex-direction:column;border-radius:6px;border:1px solid var(--color-border);overflow:hidden;background:#fff">
+                  <div style="display:flex;align-items:center;gap:8px;height:24px;flex-shrink:0;padding:0 10px;border-bottom:1px solid var(--color-border);background:var(--color-surface)">
+                    <span style="flex-shrink:0;white-space:nowrap;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)">{{ pageMode }}</span>
+                    <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;color:var(--color-text-faint)">{{ pageNote }}</span>
+                  </div>
+                  <div style="flex:1;min-height:0;overflow:auto">
+                    <img src="./pasted-1786076566546-0-msifvf7w-wjzq.png" alt="Rendered archive" style="display:block;width:100%;height:auto">
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ vSource }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;inset:0;overflow:auto;padding:12px 0 20px">
+                <sc-for list="{{ sourceLines }}" as="l" hint-placeholder-count="14">
+                  <div style="display:flex;gap:12px;padding:0 16px;line-height:1.7">
+                    <span style="width:28px;flex-shrink:0;text-align:right;font-size:10.5px;font-variant-numeric:tabular-nums;color:var(--color-text-faint);opacity:.6">{{ l.n }}</span>
+                    <span style="min-width:0;font-size:11px;color:var(--color-text-muted);white-space:pre-wrap;overflow-wrap:anywhere">{{ l.text }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ vText }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;inset:0;overflow:auto;padding:12px 0 20px">
+                <sc-for list="{{ textLines }}" as="l" hint-placeholder-count="10">
+                  <div style="display:flex;gap:12px;padding:0 16px;line-height:1.75">
+                    <span style="width:28px;flex-shrink:0;text-align:right;font-size:10.5px;font-variant-numeric:tabular-nums;color:var(--color-text-faint);opacity:.6">{{ l.n }}</span>
+                    <span style="min-width:0;font-size:11.5px;color:var(--color-text-muted);white-space:pre-wrap;overflow-wrap:anywhere"><span>{{ l.pre }}</span><sc-if value="{{ l.hasHit }}" hint-placeholder-val="{{ false }}"><span style="background:rgba(245,158,11,.22);color:#fbbf24;border-radius:2px;padding:0 2px">{{ l.hit }}</span></sc-if><span>{{ l.post }}</span></span>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+        </main>
+
+        <!-- DETAILS RAIL (collapsed) -->
+        <sc-if value="{{ railOnly }}" hint-placeholder-val="{{ false }}">
+          <aside style="display:flex;width:40px;flex-shrink:0;flex-direction:column;align-items:center;gap:3px;border-left:1px solid var(--color-border);background:var(--color-surface);padding:7px 0">
+            <button onClick="{{ expandDetails }}" class="hovrow" aria-label="{{ expandTitle }}" title="{{ expandTitle }}" style="display:grid;place-items:center;height:26px;width:26px;border:none;border-radius:4px;background:transparent;color:var(--color-text-muted);cursor:pointer">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#v-chevl"></use></svg>
+            </button>
+            <button onClick="{{ toggleSelFav }}" class="hovrow" aria-label="Favourite" title="{{ favTitle }}" style="display:grid;place-items:center;height:26px;width:26px;border:none;border-radius:4px;background:transparent;cursor:pointer">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="{{ selFavFill }}" stroke="{{ selFavStroke }}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><use href="#v-star"></use></svg>
+            </button>
+            <button onClick="{{ noop }}" class="hovrow" aria-label="Open URL" title="Open URL" style="display:grid;place-items:center;height:26px;width:26px;border:none;border-radius:4px;background:transparent;color:var(--color-text-muted);cursor:pointer">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#v-ext"></use></svg>
+            </button>
+            <button onClick="{{ expandDetails }}" class="hovrow" aria-label="Tags" title="{{ tagTitle }}" style="position:relative;display:grid;place-items:center;height:26px;width:26px;border:none;border-radius:4px;background:transparent;color:var(--color-text-muted);cursor:pointer">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#v-tag"></use></svg>
+              <sc-if value="{{ hasSelTags }}" hint-placeholder-val="{{ true }}">
+                <span style="position:absolute;right:-1px;top:-1px;border-radius:9999px;background:var(--color-accent-subtle);padding:0 3px;font-size:9px;font-weight:600;line-height:1.4;color:var(--color-accent)">{{ selTagCount }}</span>
+              </sc-if>
+            </button>
+            <button onClick="{{ expandDetails }}" class="hovrow" aria-label="Notes" title="{{ noteTitle }}" style="position:relative;display:grid;place-items:center;height:26px;width:26px;border:none;border-radius:4px;background:transparent;color:var(--color-text-muted);cursor:pointer">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#v-sticky"></use></svg>
+              <sc-if value="{{ hasSelNotes }}" hint-placeholder-val="{{ true }}">
+                <span style="position:absolute;right:-1px;top:-1px;border-radius:9999px;background:var(--color-accent-subtle);padding:0 3px;font-size:9px;font-weight:600;line-height:1.4;color:var(--color-accent)">{{ selNoteCount }}</span>
+              </sc-if>
+            </button>
+          </aside>
+        </sc-if>
+
+        <!-- DETAILS PANEL — docked, or overlaid when the viewport forces the collapse -->
+        <sc-if value="{{ detailsVisible }}" hint-placeholder-val="{{ true }}">
+          <aside style="position:{{ panelPosition }};right:{{ panelRight }};top:{{ panelTop }};bottom:{{ panelBottom }};z-index:{{ panelZ }};display:flex;width:304px;flex-shrink:0;flex-direction:column;overflow-y:auto;border-left:1px solid var(--color-border);background:var(--color-surface);min-height:0;box-shadow:{{ panelShadow }}">
+
+            <section style="flex-shrink:0;border-bottom:1px solid var(--color-border);padding:14px 16px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <h2 style="margin:0;flex-shrink:0;white-space:nowrap;font-size:12px;font-weight:600;letter-spacing:-0.01em;color:var(--color-text-primary)">Capture</h2>
+                <span style="display:inline-flex;min-width:0;align-items:center;gap:5px;border-radius:9999px;border:1px solid var(--color-border);background:{{ provBg }};padding:2px 8px">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="{{ provColor }}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="{{ provIcon }}"></use></svg>
+                  <span style="white-space:nowrap;font-size:10.5px;font-weight:600;color:{{ provColor }}">{{ provLabel }}</span>
+                </span>
+                <div style="display:flex;margin-left:auto;flex-shrink:0;align-items:center;gap:1px">
+                  <div style="position:relative">
+                    <button onClick="{{ toggleActions }}" class="hovrow" aria-label="Capture actions" title="Capture actions" style="display:grid;place-items:center;height:24px;width:24px;border:none;border-radius:4px;background:transparent;color:var(--color-text-muted);cursor:pointer">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#v-more"></use></svg>
+                    </button>
+                    <sc-if value="{{ actionsOpen }}" hint-placeholder-val="{{ false }}">
+                      <div role="menu" style="position:absolute;right:0;top:100%;z-index:60;margin-top:4px;width:216px;border-radius:6px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:4px 0;box-shadow:var(--shadow-overlay)">
+                        <button onClick="{{ toggleSelFav }}" class="hovrow" style="display:flex;width:100%;align-items:center;gap:8px;border:none;background:transparent;padding:7px 11px;font-family:var(--font-body);font-size:11px;color:var(--color-text-secondary);cursor:pointer;text-align:left">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="{{ selFavFill }}" stroke="{{ selFavStroke }}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#v-star"></use></svg>
+                          {{ starLabel }}
+                        </button>
+                        <button onClick="{{ closeActions }}" class="hovrow" style="display:flex;width:100%;align-items:center;gap:8px;border:none;background:transparent;padding:7px 11px;font-family:var(--font-body);font-size:11px;color:var(--color-text-secondary);cursor:pointer;text-align:left">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#v-ext"></use></svg>
+                          Open URL
+                        </button>
+                        <button onClick="{{ closeActions }}" class="hovrow" style="display:flex;width:100%;align-items:center;gap:8px;border:none;background:transparent;padding:7px 11px;font-family:var(--font-body);font-size:11px;color:var(--color-text-secondary);cursor:pointer;text-align:left">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#v-refresh"></use></svg>
+                          Recapture current page
+                        </button>
+                        <div style="margin:4px 0;border-top:1px solid var(--color-border)"></div>
+                        <button onClick="{{ closeActions }}" class="hovrow" style="display:flex;width:100%;align-items:center;gap:8px;border:none;background:transparent;padding:7px 11px;font-family:var(--font-body);font-size:11px;color:#f87171;cursor:pointer;text-align:left">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#v-trash"></use></svg>
+                          Delete capture
+                        </button>
+                      </div>
+                    </sc-if>
+                  </div>
+                  <button onClick="{{ collapseDetails }}" class="hovrow" aria-label="Collapse details panel" title="Collapse details" style="display:grid;place-items:center;height:24px;width:24px;border:none;border-radius:4px;background:transparent;color:var(--color-text-muted);cursor:pointer">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#v-chevr"></use></svg>
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <section style="display:flex;flex-shrink:0;flex-direction:column;gap:14px;border-bottom:1px solid var(--color-border);padding:14px 16px">
+              <div style="display:flex;align-items:flex-start;gap:8px">
+                <span style="margin-top:2px;flex-shrink:0;color:var(--color-text-muted)">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#v-globe"></use></svg>
+                </span>
+                <div style="min-width:0;flex:1">
+                  <div style="font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)">Source</div>
+                  <button onClick="{{ noop }}" title="{{ selUrl }}" style="display:block;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:none;background:transparent;padding:0;font-family:var(--font-body);font-size:11.5px;color:var(--color-text-secondary);cursor:pointer;text-align:left">{{ selHostname }}</button>
+                </div>
+              </div>
+              <div style="display:flex;align-items:flex-start;gap:8px">
+                <span style="margin-top:2px;flex-shrink:0;color:var(--color-text-muted)">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#v-cal"></use></svg>
+                </span>
+                <div style="min-width:0;flex:1">
+                  <div style="font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)">Captured</div>
+                  <div title="{{ selAbsTime }}" style="font-size:11.5px;color:var(--color-text-secondary);line-height:1.5">{{ selCapturedLine }}</div>
+                </div>
+              </div>
+            </section>
+
+            <section style="flex-shrink:0;border-bottom:1px solid var(--color-border)">
+              <div style="display:flex;align-items:center;gap:8px;padding:12px 16px">
+                <button onClick="{{ toggleCustody }}" aria-expanded="{{ custodyExpanded }}" style="display:flex;min-width:0;flex:1;align-items:center;gap:8px;border:none;background:transparent;padding:0;cursor:pointer;text-align:left">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#v-shield"></use></svg>
+                  <span style="white-space:nowrap;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-secondary)">Chain of custody</span>
+                </button>
+                <button onClick="{{ noop }}" class="hovrow" style="flex-shrink:0;white-space:nowrap;border:none;border-radius:4px;background:transparent;padding:2px 7px;font-family:var(--font-body);font-size:10.5px;color:var(--color-accent);cursor:pointer">Re-verify</button>
+                <button onClick="{{ toggleCustody }}" aria-label="Toggle chain of custody" style="display:grid;flex-shrink:0;place-items:center;height:20px;width:20px;border:none;background:transparent;color:var(--color-text-muted);cursor:pointer;transform:{{ custodyRotate }}">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#v-chevd"></use></svg>
+                </button>
+              </div>
+              <sc-if value="{{ custodyOpen }}" hint-placeholder-val="{{ true }}">
+                <div style="border-top:1px solid var(--color-border)">
+                  <sc-if value="{{ legacyBanner }}" hint-placeholder-val="{{ false }}">
+                    <div style="margin:14px 16px 0;border-radius:4px;border:1px solid rgba(245,158,11,.2);background:rgba(245,158,11,.1);padding:9px 11px;font-size:10.5px;color:#f59e0b;line-height:1.5">{{ legacyText }}</div>
+                  </sc-if>
+                  <sc-for list="{{ forensicSections }}" as="g" hint-placeholder-count="3">
+                    <section style="border-bottom:1px solid var(--color-border);padding:13px 16px">
+                      <div style="margin-bottom:8px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)">{{ g.title }}</div>
+                      <div style="display:flex;flex-direction:column;gap:11px">
+                        <sc-for list="{{ g.rows }}" as="p" hint-placeholder-count="4">
+                          <div>
+                            <div style="font-size:10.5px;color:var(--color-text-faint)">{{ p.k }}</div>
+                            <div style="font-size:11px;color:var(--color-text-secondary);overflow-wrap:anywhere;line-height:1.5">{{ p.v }}</div>
+                          </div>
+                        </sc-for>
+                        <sc-if value="{{ g.hasStatus }}" hint-placeholder-val="{{ false }}">
+                          <div>
+                            <div style="font-size:10.5px;color:var(--color-text-faint)">Chain status</div>
+                            <div style="display:flex;align-items:center;gap:7px;white-space:nowrap;font-size:11px;color:{{ provColor }}">
+                              <span style="height:6px;width:6px;flex-shrink:0;border-radius:9999px;background:{{ provDotColor }}"></span>
+                              <span>{{ provLabel }}</span>
+                            </div>
+                          </div>
+                        </sc-if>
+                      </div>
+                    </section>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </section>
+
+            <section style="flex-shrink:0;border-bottom:1px solid var(--color-border)">
+              <button onClick="{{ toggleWayback }}" aria-expanded="{{ waybackExpanded }}" style="display:flex;width:100%;align-items:center;gap:8px;border:none;background:transparent;padding:12px 16px;cursor:pointer;text-align:left">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#v-archive"></use></svg>
+                <span style="flex-shrink:0;white-space:nowrap;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-secondary)">Wayback Machine</span>
+                <span style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;font-size:10.5px;color:var(--color-text-muted)">{{ waybackSummary }}</span>
+                <span style="display:grid;flex-shrink:0;place-items:center;height:16px;width:16px;color:var(--color-text-muted);transform:{{ waybackRotate }}">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#v-chevd"></use></svg>
+                </span>
+              </button>
+              <sc-if value="{{ waybackOpen }}" hint-placeholder-val="{{ false }}">
+                <div style="border-top:1px solid var(--color-border);padding:14px 16px">
+                  <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:12px">
+                    <div style="min-width:0;flex:1">
+                      <div style="font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)">Wayback Machine</div>
+                      <p style="margin:4px 0 0;font-size:10.5px;color:var(--color-text-muted);line-height:1.55">{{ waybackBlurb }}</p>
+                    </div>
+                    <button onClick="{{ noop }}" class="hovrow" style="display:inline-flex;flex-shrink:0;align-items:center;gap:5px;white-space:nowrap;border-radius:4px;border:1px solid var(--color-border);background:transparent;padding:3px 8px;font-family:var(--font-body);font-size:10.5px;color:var(--color-accent);cursor:pointer">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#v-refresh"></use></svg>
+                      {{ waybackButton }}
+                    </button>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:4px">
+                    <sc-for list="{{ wayback }}" as="w" hint-placeholder-count="3">
+                      <div style="display:flex;align-items:center;gap:8px;border-radius:4px;border:1px solid {{ w.border }};background:{{ w.bg }};padding:7px 9px">
+                        <span style="display:flex;min-width:0;flex:1;flex-direction:column">
+                          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-variant-numeric:tabular-nums;color:var(--color-text-primary)">{{ w.date }}</span>
+                          <span style="display:flex;align-items:center;gap:5px;margin-top:2px">
+                            <sc-if value="{{ w.closest }}" hint-placeholder-val="{{ false }}">
+                              <span style="flex-shrink:0;white-space:nowrap;border-radius:3px;background:var(--color-accent);padding:0 5px;font-size:9.5px;font-weight:600;color:#fff">closest to capture</span>
+                            </sc-if>
+                            <span style="flex-shrink:0;white-space:nowrap;font-size:10px;color:var(--color-text-faint)">{{ w.mime }}</span>
+                          </span>
+                        </span>
+                        <button onClick="{{ noop }}" aria-label="Open snapshot" title="Open snapshot" style="display:grid;flex-shrink:0;place-items:center;height:20px;width:20px;border:none;border-radius:4px;background:transparent;color:var(--color-accent);cursor:pointer">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#v-ext"></use></svg>
+                        </button>
+                        <button onClick="{{ noop }}" aria-label="Pin snapshot" title="Pin snapshot" style="display:grid;flex-shrink:0;place-items:center;height:20px;width:20px;border:none;border-radius:4px;background:transparent;color:var(--color-text-muted);cursor:pointer">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#v-mappin"></use></svg>
+                        </button>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-if>
+            </section>
+
+            <section style="flex-shrink:0;border-bottom:1px solid var(--color-border);padding:14px 16px">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
+                <span style="white-space:nowrap;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)">Tags</span>
+                <button onClick="{{ noop }}" class="hovrow" style="display:inline-flex;flex-shrink:0;align-items:center;gap:4px;white-space:nowrap;border:none;border-radius:4px;background:transparent;padding:2px 7px;font-family:var(--font-body);font-size:10.5px;color:var(--color-accent);cursor:pointer">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#v-plus"></use></svg>
+                  Add
+                </button>
+              </div>
+              <sc-if value="{{ hasSelTags }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;flex-wrap:wrap;gap:4px">
+                  <sc-for list="{{ selTags }}" as="t" hint-placeholder-count="2">
+                    <span style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap;border-radius:9999px;border:1px solid var(--color-border);background:var(--color-card);padding:1px 8px;font-size:10.5px;color:var(--color-text-secondary)">
+                      <span style="height:6px;width:6px;flex-shrink:0;border-radius:9999px;background:{{ t.color }}"></span>
+                      {{ t.label }}
+                    </span>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <sc-if value="{{ noSelTags }}" hint-placeholder-val="{{ false }}">
+                <p style="margin:0;font-size:10.5px;color:var(--color-text-faint)">No tags yet.</p>
+              </sc-if>
+            </section>
+
+            <section style="flex-shrink:0;padding:14px 16px 18px">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
+                <span style="display:flex;align-items:center;gap:7px;min-width:0">
+                  <span style="white-space:nowrap;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)">Notes</span>
+                  <sc-if value="{{ manyNotes }}" hint-placeholder-val="{{ true }}">
+                    <span style="flex-shrink:0;white-space:nowrap;border-radius:9999px;background:var(--color-accent-subtle);padding:0 6px;font-size:10px;font-weight:600;color:var(--color-accent)">{{ noteCountLabel }}</span>
+                  </sc-if>
+                </span>
+                <button onClick="{{ noop }}" class="hovrow" aria-label="New note" title="New note" style="display:grid;flex-shrink:0;place-items:center;height:22px;width:22px;border:none;border-radius:4px;background:transparent;color:var(--color-text-muted);cursor:pointer">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#v-plus"></use></svg>
+                </button>
+              </div>
+              <textarea value="{{ noteDraft }}" onChange="{{ onNoteDraft }}" aria-label="Capture note" placeholder="Add a quick note…" style="display:block;box-sizing:border-box;width:100%;min-height:80px;resize:vertical;border-radius:4px;border:1px solid var(--color-border);background:var(--color-card);padding:8px 9px;font-family:var(--font-body);font-size:11px;line-height:1.55;color:var(--color-text-secondary);outline:none"></textarea>
+              <p style="display:flex;align-items:center;gap:5px;margin:6px 0 0;font-size:10px;color:var(--color-text-faint)">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#v-sticky"></use></svg>
+                {{ savedLine }}
+              </p>
+            </section>
+          </aside>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <!-- ============ PLACEHOLDER SCREENS ============ -->
+    <sc-if value="{{ vStub }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex:1;min-width:0;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px;text-align:center">
+        <span style="font-size:14px;font-weight:700;letter-spacing:-0.01em;color:var(--color-text-primary)">{{ stubTitle }}</span>
+        <span style="max-width:340px;font-size:11px;color:var(--color-text-faint);line-height:1.6">{{ stubNote }}</span>
+      </div>
+    </sc-if>
+
+  </div>
+
+  <footer style="display:flex;align-items:center;gap:12px;height:24px;flex-shrink:0;border-top:1px solid var(--color-border);background:var(--color-surface);padding:0 14px;font-size:10px;color:var(--color-text-faint)">
+    <span style="white-space:nowrap;font-variant-numeric:tabular-nums">{{ statCases }}</span>
+    <span>·</span>
+    <span style="white-space:nowrap;font-variant-numeric:tabular-nums">{{ statCaptures }}</span>
+    <span>·</span>
+    <span style="white-space:nowrap;font-variant-numeric:tabular-nums;color:{{ statExColor }}">{{ statEx }}</span>
+    <div style="flex:1;min-width:8px"></div>
+    <span style="flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ statPath }}</span>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;density&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;compact&quot;,&quot;comfortable&quot;],&quot;default&quot;:&quot;compact&quot;,&quot;tsType&quot;:&quot;'compact'|'comfortable'&quot;,&quot;section&quot;:&quot;Layout&quot;}}">
+class Component extends DCLogic {
+  constructor(p) {
+    super(p)
+    const LT = '<'
+    const hex = (seed) => {
+      let x = seed * 2654435761 % 4294967296, out = ''
+      while (out.length < 64) { x = (x * 1103515245 + 12345) % 2147483648; out += x.toString(16).padStart(8, '0') }
+      return out.slice(0, 64)
+    }
+    this.hex = hex
+
+    // Fixed "now" so the relative timestamps in this static prototype stay stable.
+    this.now = new Date('2026-08-07T09:00:00Z').getTime()
+
+    // THUMB_COLORS + getThumbColor, verbatim from CaptureItem.tsx
+    this.THUMB = [
+      { from: 'rgba(49,46,129,0.3)', to: 'rgba(30,27,75,0.2)', bar: 'rgba(129,140,248,0.25)' },
+      { from: 'rgba(6,78,59,0.3)', to: 'rgba(4,47,36,0.2)', bar: 'rgba(52,211,153,0.25)' },
+      { from: 'rgba(124,45,18,0.25)', to: 'rgba(67,20,7,0.15)', bar: 'rgba(251,146,60,0.25)' },
+      { from: 'rgba(12,74,110,0.25)', to: 'rgba(7,47,75,0.15)', bar: 'rgba(56,189,248,0.25)' },
+      { from: 'rgba(76,29,149,0.25)', to: 'rgba(46,16,101,0.15)', bar: 'rgba(167,139,250,0.25)' },
+      { from: 'rgba(136,19,55,0.25)', to: 'rgba(76,5,25,0.15)', bar: 'rgba(251,113,133,0.25)' },
+      { from: 'rgba(19,78,74,0.25)', to: 'rgba(4,47,46,0.15)', bar: 'rgba(45,212,191,0.25)' },
+      { from: 'rgba(51,65,85,1)', to: 'rgba(30,41,59,1)', bar: 'rgba(100,116,139,0.3)' }
+    ]
+
+    this.cases = [
+      { id: 'nightjar', name: 'Nightjar Phishing Kit', status: 'Active', captures: 42, selectors: 7, size: '1.84 GB', touched: '2026-08-05 16:38', pct: 78, ex: 2 },
+      { id: 'midcity', name: 'Midcity CU Lookalikes', status: 'Active', captures: 18, selectors: 4, size: '640 MB', touched: '2026-08-04 09:12', pct: 41, ex: 0 },
+      { id: 'pillar', name: 'Pillarbank Drops', status: 'Review', captures: 7, selectors: 2, size: '212 MB', touched: '2026-07-30 18:55', pct: 22, ex: 0 },
+      { id: 'kestrel', name: 'Kestrel Infrastructure', status: 'Archived', captures: 63, selectors: 11, size: '3.10 GB', touched: '2026-06-21 11:04', pct: 100, ex: 1 }
+    ]
+
+    this.activity = [
+      { time: '16:38', event: 'case.verify', target: 'nightjar · all sources', kind: 'ok' },
+      { time: '16:12', event: 'capture.seal', target: 'CAP-0031 nightjar-id.cdn-secure.cc', kind: 'ok' },
+      { time: '15:57', event: 'selector.hit', target: 'bc1q… on CAP-0031', kind: 'hit' },
+      { time: '14:20', event: 'verify.mismatch', target: 'CAP-0012/screenshot.png', kind: 'bad' },
+      { time: '11:46', event: 'capture.seal', target: 'CAP-0030 paste.ee/r/2Yb8k', kind: 'ok' },
+      { time: '11:45', event: 'capture.begin', target: 'CAP-0030 paste.ee/r/2Yb8k', kind: 'ok' },
+      { time: '09:12', event: 'case.open', target: 'midcity', kind: 'ok' },
+      { time: '08:31', event: 'verify.missing', target: 'CAP-0019/network.har', kind: 'bad' },
+      { time: '08:04', event: 'selector.hit', target: 'proton.me on CAP-0028', kind: 'hit' },
+      { time: '07:52', event: 'capture.seal', target: 'CAP-0029 gg-cdn.net/admin', kind: 'ok' }
+    ]
+
+    this.notes = [
+      { text: 'Leaf cert fingerprint on CAP-0007 and CAP-0012 is identical — lure and panel share an origin.', meta: 'nightjar · 2026-08-05' },
+      { text: 'paste.ee content pulled upstream 11h after capture. Our copy is the only one.', meta: 'nightjar · 2026-08-02' },
+      { text: 'Ask counsel before re-verifying CAP-0012; screenshot hash already disputed.', meta: 'nightjar · 2026-07-31' }
+    ]
+
+    this.caps = [
+      { id: 'CAP-0031', title: 'Northbank — Secure Session Verification', host: 'nightjar-id.cdn-secure.cc', path: '/collect.php', ts: '2026-08-05T16:12:00Z', format: 'mhtml', method: 'foreground', status: 'verified', trustedTime: 'rfc3161', tsa: 'FreeTSA', tags: ['lure', 'drop'], size: '2.41 MB', seed: 11, manifestIndex: 24, httpStatus: '200 OK', supersedes: null, recapturedBy: null, selectors: ['bc1q…', 'proton.me', 'collect.php', 'kestrel'] },
+      { id: 'CAP-0030', title: 'nightjar kit v3.4.1 — config dump', host: 'paste.ee', path: '/r/2Yb8k', ts: '2026-08-05T11:46:00Z', format: 'mhtml', method: 'background', status: 'verified', trustedTime: 'rfc3161', tsa: 'FreeTSA', tags: ['config'], size: '214 KB', seed: 12, manifestIndex: 23, httpStatus: '200 OK', supersedes: null, recapturedBy: null, selectors: ['BOT_TOKEN', 'bc1q…'] },
+      { id: 'CAP-0029', title: 'nightjar panel — operator sign in', host: 'nightjar-panel.gg-cdn.net', path: '/admin/login', ts: '2026-08-04T07:52:00Z', format: 'mhtml', method: 'foreground', status: 'verified', trustedTime: 'pending', tags: ['panel'], size: '1.87 MB', seed: 13, manifestIndex: 22, httpStatus: '401 Unauthorized', supersedes: '2026-07-29 09:41', recapturedBy: null, selectors: ['kestrel'] },
+      { id: 'CAP-0028', title: 'Midcity CU — renew your session', host: 'midcity-cu.secure-verify.cc', path: '/session/renew', ts: '2026-08-03T22:09:00Z', format: 'mhtml', method: 'background', status: 'verified', trustedTime: 'rfc3161', tsa: 'FreeTSA', tags: ['lure'], size: '3.02 MB', seed: 14, manifestIndex: 21, httpStatus: '200 OK', supersedes: null, recapturedBy: null, selectors: ['proton.me'] },
+      { id: 'CAP-0019', title: 'nightjar kit v3.4.1 — config dump', host: 'paste.ee', path: '/r/9Kx2f', ts: '2026-08-01T22:17:00Z', format: 'mhtml', method: 'foreground', status: 'missing', trustedTime: 'rfc3161', tsa: 'FreeTSA', tags: ['config'], size: '214 KB', seed: 15, manifestIndex: 19, httpStatus: '200 OK', supersedes: null, recapturedBy: null, selectors: ['BOT_TOKEN', 'bc1q…', 'collect.php'] },
+      { id: 'CAP-0018', title: 'Pillarbank — verify your account', host: 'pillarbank.account-check.net', path: '/verify', ts: '2026-07-31T13:40:00Z', format: 'mhtml', method: 'foreground', status: 'verified', trustedTime: 'none', tags: ['lure'], size: '1.44 MB', seed: 16, manifestIndex: 18, httpStatus: '200 OK', supersedes: null, recapturedBy: null, selectors: [] },
+      { id: 'CAP-0012', title: 'nightjar panel — operator sign in', host: 'nightjar-panel.gg-cdn.net', path: '/admin/login', ts: '2026-07-29T09:41:00Z', format: 'mhtml', method: 'foreground', status: 'tampered', trustedTime: 'rfc3161', tsa: 'FreeTSA', tags: ['panel'], size: '1.87 MB', seed: 17, manifestIndex: 16, httpStatus: '401 Unauthorized', supersedes: null, recapturedBy: '2026-08-04 07:52', selectors: ['kestrel'] },
+      { id: 'CAP-0009', title: 'kestrel-host status', host: 'kestrel-host.gg-cdn.net', path: '/status', ts: '2026-07-28T20:15:00Z', format: 'html', method: 'background', status: 'legacy', trustedTime: 'none', tags: ['infra'], size: '86 KB', seed: 18, manifestIndex: null, httpStatus: '200 OK', supersedes: null, recapturedBy: null, selectors: [] },
+      { id: 'CAP-0007', title: 'Northbank — Secure Session Verification', host: 'nightjar-login.cdn-secure.cc', path: '/verify?ref=northbank', ts: '2026-07-28T14:02:00Z', format: 'mhtml', method: 'foreground', status: 'verified', trustedTime: 'rfc3161', tsa: 'FreeTSA', tags: ['lure', 'drop'], size: '2.41 MB', seed: 19, manifestIndex: 12, httpStatus: '200 OK', supersedes: null, recapturedBy: null, selectors: ['proton.me', 'bc1q…', 'collect.php'] },
+      { id: 'CAP-0004', title: 'kit.min.js', host: 'cdn.jsdelivr.workers.dev', path: '/nightjar/kit.min.js', ts: '2026-07-27T08:33:00Z', format: 'html', method: 'background', status: 'legacy', trustedTime: 'none', tags: ['payload'], size: '48.9 KB', seed: 20, manifestIndex: null, httpStatus: '200 OK', supersedes: null, recapturedBy: null, selectors: ['kestrel'] }
+    ]
+
+    this.text = [
+      'Northbank Online — Secure Session Verification',
+      'Your online banking session has been temporarily suspended.',
+      'Card number ________  Expiry __/__  Security code ___',
+      'This verification is processed by nightjar-id.cdn-secure.cc.',
+      'Questions? Contact northbank.support@proton.me',
+      'Donations accepted at bc1qx7vk3n9dl2m4pq8syt0cfr6uwe5haz2j0kq9rn',
+      'Reference: NB-VER-88213-QA',
+      'Session token: nj_5f2c9a71e0b4 (expires 2026-07-29T14:02:11Z)',
+      '© Northbank plc. All rights reserved. Registered in England.'
+    ]
+
+    this.source = [
+      LT + '!DOCTYPE html>',
+      LT + 'html lang="en">',
+      LT + 'head>',
+      '  ' + LT + 'meta charset="utf-8">',
+      '  ' + LT + 'title>Northbank Online — Secure Session Verification' + LT + '/title>',
+      '  ' + LT + 'link rel="stylesheet" href="/assets/app.9f21c.css">',
+      '  ' + LT + 'script src="https://cdn.jsdelivr.workers.dev/nightjar/kit.min.js">' + LT + '/script>',
+      LT + '/head>',
+      LT + 'body class="nb-shell">',
+      '  ' + LT + 'form action="https://nightjar-id.cdn-secure.cc/collect.php" method="post">',
+      '    ' + LT + 'input name="pan" autocomplete="cc-number" data-nj-field="1">',
+      '    ' + LT + 'input name="cvv" maxlength="3" data-nj-field="2">',
+      '    ' + LT + 'button type="submit">Confirm details' + LT + '/button>',
+      '  ' + LT + '/form>',
+      LT + '/body>',
+      LT + '/html>'
+    ]
+
+    this.snapshots = [
+      { ts: '2026-08-02T04:11:00Z', mime: 'text/html', closest: true },
+      { ts: '2026-07-30T18:22:00Z', mime: 'text/html', closest: false },
+      { ts: '2026-07-26T09:05:00Z', mime: 'text/html', closest: false }
+    ]
+
+    this.state = {
+      screen: 'dash', sel: 'CAP-0031', tab: 'shot',
+      capUrl: '', onboard: true, favOnly: false,
+      sort: 'newest', format: 'all', date: 'all',
+      sortMenu: false, filterMenu: false, actions: false,
+      details: true, forced: false, avail: 1280,
+      custody: true, wayback: false, noteDraft: '',
+      tool: 'select', color: '#ef4444', stroke: 3,
+      zoom: 1, overlay: true, stylePanel: false,
+      favs: { 'CAP-0031': true, 'CAP-0019': true }
+    }
+  }
+
+  // 48 rail + 296 list + 360 min viewer + 304 panel = 1008px before the docked
+  // panel stops fitting. Measured off a queried marker rather than a ref.
+  measure() {
+    const el = document.querySelector('[data-shell="app-shell"]')
+    const w = el ? el.clientWidth : (window.innerWidth || 1280)
+    if (!w) return
+    const forced = w < 1008
+    if (forced !== this.state.forced || Math.abs(w - this.state.avail) > 4) {
+      this.setState({ forced: forced, avail: w })
+    }
+  }
+
+  componentDidMount() {
+    this.onResize = () => this.measure()
+    window.addEventListener('resize', this.onResize)
+    // The marker mounts with the template, which may still be streaming.
+    this.measure()
+    this.raf = requestAnimationFrame(() => {
+      this.measure()
+      const el = document.querySelector('[data-shell="app-shell"]')
+      if (el && typeof ResizeObserver === 'function') {
+        this.ro = new ResizeObserver(() => this.measure())
+        this.ro.observe(el)
+      } else {
+        this.poll = setInterval(() => this.measure(), 400)
+      }
+    })
+  }
+
+  componentWillUnmount() {
+    if (this.ro) this.ro.disconnect()
+    if (this.raf) cancelAnimationFrame(this.raf)
+    if (this.poll) clearInterval(this.poll)
+    if (this.onResize) window.removeEventListener('resize', this.onResize)
+  }
+
+  thumb(url) {
+    let h = 0
+    for (let i = 0; i < url.length; i++) h = ((h << 5) - h + url.charCodeAt(i)) | 0
+    return this.THUMB[Math.abs(h) % this.THUMB.length]
+  }
+
+  // formatTimestamp from CaptureItem.tsx
+  rel(ts) {
+    const mins = Math.floor((this.now - new Date(ts).getTime()) / 60000)
+    if (mins < 1) return 'Just now'
+    if (mins < 60) return mins + ' min ago'
+    const hours = Math.floor(mins / 60)
+    if (hours < 24) return hours + ' hour' + (hours !== 1 ? 's' : '') + ' ago'
+    return new Date(ts).toLocaleDateString()
+  }
+
+  abs(ts) { return new Date(ts).toISOString().slice(0, 16).replace('T', ' ') + ' UTC' }
+
+  // formatClosestDelta from CaptureDetailsPanel.tsx
+  closestDelta(snapIso, capIso) {
+    const diff = new Date(snapIso).getTime() - new Date(capIso).getTime()
+    const mins = Math.round(Math.abs(diff) / 60000)
+    const span = mins < 60 ? mins + 'm' : mins < 48 * 60 ? Math.round(mins / 60) + 'h' : Math.round(mins / (24 * 60)) + 'd'
+    return span + ' ' + (diff <= 0 ? 'before' : 'after')
+  }
+
+  // getProvenanceColor.ts, mapped to this document's literals
+  prov(status) {
+    if (status === 'verified') return { label: 'Verified', color: '#34d399', bg: 'rgba(16,185,129,.1)', dot: '#34d399', icon: '#v-shieldck' }
+    if (status === 'tampered') return { label: 'Tampered', color: '#f87171', bg: 'rgba(239,68,68,.1)', dot: '#f87171', icon: '#v-shieldal' }
+    if (status === 'chain-broken') return { label: 'Chain broken', color: '#f87171', bg: 'rgba(239,68,68,.1)', dot: '#f87171', icon: '#v-shieldal' }
+    if (status === 'missing') return { label: 'Missing', color: '#fbbf24', bg: 'rgba(245,158,11,.1)', dot: '#fbbf24', icon: '#v-shieldal' }
+    if (status === 'legacy') return { label: 'Legacy HTML', color: '#fbbf24', bg: 'rgba(245,158,11,.1)', dot: '#fbbf24', icon: '#v-shield' }
+    return { label: 'Not verified', color: 'var(--color-text-faint)', bg: 'var(--color-surface)', dot: 'var(--color-border-strong)', icon: '#v-shield' }
+  }
+
+  renderVals() {
+    const s = this.state
+    const dense = (this.props.density ?? 'compact') === 'compact'
+
+    const railDefs = [
+      { k: 'dash', icon: '#v-home', label: 'Dashboard' },
+      { k: 'caps', icon: '#v-layers', label: 'Captures' },
+      { k: 'sel', icon: '#v-target', label: 'Selectors' },
+      { k: 'notes', icon: '#v-note', label: 'Notes' },
+      { k: 'data', icon: '#v-db', label: 'Data' },
+      { k: 'rev', icon: '#v-shieldck', label: 'Case Reviewer' },
+      { k: 'set', icon: '#v-cog', label: 'Settings' }
+    ]
+
+    const totalEx = this.cases.reduce((a, c) => a + c.ex, 0)
+    const totalCaps = this.cases.reduce((a, c) => a + c.captures, 0)
+
+    const stColor = (st) => st === 'Active' ? { c: 'var(--color-accent)', bg: 'var(--color-accent-subtle)', b: 'color-mix(in srgb,var(--color-accent) 25%,transparent)' }
+      : st === 'Review' ? { c: '#f59e0b', bg: 'rgba(245,158,11,.1)', b: 'rgba(245,158,11,.28)' }
+      : { c: 'var(--color-text-muted)', bg: 'var(--color-elevated)', b: 'var(--color-border)' }
+
+    const actColor = (k) => k === 'bad' ? '#f59e0b' : k === 'hit' ? '#a78bfa' : '#10b981'
+    const actIcon = (k) => k === 'bad' ? '#v-shieldal' : k === 'hit' ? '#v-target' : '#v-shieldck'
+
+    // ---------- list: computeDisplayedCaptures ----------
+    let list = this.caps.slice()
+    if (s.format !== 'all') list = list.filter((c) => c.format === s.format)
+    if (s.favOnly) list = list.filter((c) => !!s.favs[c.id])
+    const cutoff = { today: 864e5, '7days': 6048e5, '30days': 2592e6 }[s.date]
+    if (cutoff) list = list.filter((c) => new Date(c.ts).getTime() >= this.now - cutoff)
+    if (s.sort === 'oldest') list.sort((a, b) => new Date(a.ts) - new Date(b.ts))
+    else if (s.sort === 'title-az') list.sort((a, b) => (a.title || '').localeCompare(b.title || ''))
+    else if (s.sort === 'url-az') list.sort((a, b) => ('https://' + a.host + a.path).localeCompare('https://' + b.host + b.path))
+    else list.sort((a, b) => new Date(b.ts) - new Date(a.ts))
+
+    const filterCount = (s.format !== 'all' ? 1 : 0) + (s.date !== 'all' ? 1 : 0) + (s.favOnly ? 1 : 0)
+
+    const rows = list.map((c) => {
+      const sel = s.sel === c.id
+      const th = this.thumb('https://' + c.host + c.path)
+      const shown = c.selectors.slice(0, 3)
+      const badges = shown.map((x) => ({
+        label: x.length > 8 ? x.slice(0, 8) : x, title: x,
+        bg: 'color-mix(in srgb,var(--color-accent) 20%,transparent)', color: 'var(--color-accent)'
+      }))
+      if (c.selectors.length > 3) badges.push({
+        label: '+' + (c.selectors.length - 3), title: (c.selectors.length - 3) + ' more',
+        bg: 'color-mix(in srgb,var(--color-accent) 10%,transparent)', color: 'var(--color-text-faint)'
+      })
+      return {
+        title: c.title, hostname: c.host, rel: this.rel(c.ts),
+        background: c.method === 'background',
+        badges: badges,
+        thumbBg: 'linear-gradient(to bottom right,' + th.from + ',' + th.to + ')',
+        thumbBar: th.bar,
+        cls: sel ? '' : 'hovrow',
+        border: sel ? 'color-mix(in srgb,var(--color-accent) 35%,transparent)' : 'transparent',
+        bg: sel ? 'var(--color-accent-subtle)' : 'transparent',
+        starFill: s.favs[c.id] ? '#eab308' : 'none',
+        starStroke: s.favs[c.id] ? '#eab308' : 'var(--color-text-faint)',
+        favLabel: s.favs[c.id] ? 'Unfavourite capture' : 'Favourite capture',
+        fav: (e) => { e.stopPropagation(); const f = Object.assign({}, s.favs); f[c.id] = !f[c.id]; this.setState({ favs: f }) },
+        click: () => this.setState({ sel: c.id })
+      }
+    })
+
+    const opt = (label, active, click) => ({
+      label: label, click: click, tick: active ? '1' : '0',
+      color: active ? 'var(--color-accent)' : 'var(--color-text-secondary)'
+    })
+    const sortLabel = { newest: 'Newest first', oldest: 'Oldest first', 'title-az': 'Title A–Z', 'url-az': 'URL A–Z' }[s.sort]
+
+    // ---------- selection ----------
+    const sc = list.filter((c) => c.id === s.sel)[0] || list[0] || this.caps[0]
+    const pv = this.prov(sc.status)
+    const idx = list.indexOf(sc)
+    const sha = this.hex(sc.seed)
+    const isMhtml = sc.format === 'mhtml'
+
+    const term = 'proton.me'
+    const textLines = this.text.map((line, i) => {
+      const k = line.toLowerCase().indexOf(term)
+      return k >= 0
+        ? { n: i + 1, pre: line.slice(0, k), hit: line.slice(k, k + term.length), post: line.slice(k + term.length), hasHit: true }
+        : { n: i + 1, pre: line, hit: '', post: '', hasHit: false }
+    })
+
+    const tabDefs = [
+      { id: 'shot', label: 'Screenshot' }, { id: 'page', label: 'Page' },
+      { id: 'source', label: 'Source' }, { id: 'text', label: 'Text' }
+    ]
+    const tabs = tabDefs.map((t) => ({
+      label: t.label, selected: s.tab === t.id ? 'true' : 'false',
+      bg: s.tab === t.id ? 'var(--color-card)' : 'transparent',
+      color: s.tab === t.id ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+      fw: s.tab === t.id ? 600 : 500,
+      shadow: s.tab === t.id ? 'var(--shadow-btn)' : 'none',
+      click: () => this.setState({ tab: t.id })
+    }))
+
+    // ForensicsTab section order
+    const forensicSections = []
+    if (isMhtml) {
+      forensicSections.push({ title: 'Hash chain', hasStatus: true, rows: [
+        { k: 'Hash (SHA-256)', v: sha },
+        { k: 'Previous hash', v: this.hex(sc.seed - 1) },
+        { k: 'Entry hash', v: this.hex(sc.seed + 100) },
+        { k: 'Manifest index', v: String(sc.manifestIndex) }
+      ] })
+    }
+    forensicSections.push({ title: 'Identity', hasStatus: false, rows: [
+      { k: 'URL', v: 'https://' + sc.host + sc.path },
+      { k: 'Title', v: sc.title },
+      { k: 'Captured at', v: this.abs(sc.ts) },
+      { k: 'Created at', v: this.abs(sc.ts) }
+    ].concat(isMhtml ? [] : [{ k: 'Hash (SHA-256)', v: sha }]) })
+    if (isMhtml) {
+      forensicSections.push({ title: 'Capture environment', hasStatus: false, rows: [
+        { k: 'Tool version', v: '1.0.1-beta.17' },
+        { k: 'Extension version', v: '1.4.2' },
+        { k: 'Browser version', v: 'Chrome 126.0.6478.127' },
+        { k: 'User agent', v: 'Mozilla/5.0 (X11; Linux x86_64) Birdbrain/1.4 Chrome/126' },
+        { k: 'HTTP status', v: sc.httpStatus }
+      ] })
+      forensicSections.push({ title: 'Operator', hasStatus: false, rows: [
+        { k: 'Operator name', v: 'M. Donovan' },
+        { k: 'Operator ID', v: 'op-4417' }
+      ] })
+    }
+
+    const closest = this.snapshots.filter((x) => x.closest)[0]
+    const waybackSummary = this.snapshots.length + ' snapshot' + (this.snapshots.length === 1 ? '' : 's') +
+      (closest ? ' · closest ' + this.closestDelta(closest.ts, sc.ts) : '')
+
+    const navToolDefs = [{ k: 'hand', icon: '#v-hand', label: 'Hand tool' }, { k: 'select', icon: '#v-cursor', label: 'Select' }]
+    const drawToolDefs = [
+      { k: 'rect', icon: '#v-square', label: 'Rectangle' }, { k: 'arrow', icon: '#v-arrr', label: 'Arrow' },
+      { k: 'highlight', icon: '#v-marker', label: 'Highlight' }, { k: 'redact', icon: '#v-eyeoff', label: 'Redact' },
+      { k: 'pin', icon: '#v-mappin', label: 'Pin' }
+    ]
+    const toolBtn = (d) => ({
+      icon: d.icon, label: d.label,
+      bg: s.tool === d.k ? 'var(--color-accent-subtle)' : 'transparent',
+      color: s.tool === d.k ? 'var(--color-accent)' : 'var(--color-text-muted)',
+      click: () => this.setState({ tool: s.tool === d.k && d.k === 'hand' ? 'select' : d.k })
+    })
+    const drawing = ['rect', 'arrow', 'highlight', 'redact', 'pin'].indexOf(s.tool) >= 0
+
+    const stub = {
+      sel: ['Selectors', 'Not rebuilt in this pass — upstream lives in components/selectors/.'],
+      notes: ['Notes', 'Not rebuilt in this pass — upstream lives in components/notes/.'],
+      data: ['Data Sources', 'Not rebuilt in this pass — see Case Reviewer.dc.html for the file-explorer treatment.'],
+      rev: ['Case Reviewer', 'Already built — open Case Reviewer.dc.html.'],
+      set: ['Settings', 'Not rebuilt in this pass — upstream lives in components/settings/.']
+    }
+    const st = stub[s.screen] || ['', '']
+
+    const tagPalette = { lure: '#f87171', drop: '#fbbf24', panel: '#a78bfa', config: '#38bdf8', infra: 'var(--color-text-muted)', payload: '#34d399' }
+
+    // Forced collapse: below 1008px the docked panel has no room, so the rail
+    // takes over and expanding overlays the panel instead of re-docking.
+    const forced = s.forced
+    const detailsVisible = s.details && (!forced || s.details)
+    const docked = s.details && !forced
+    const overlaid = s.details && forced
+    const compact = s.avail < 1120
+
+    const noteCount = 2
+
+    return {
+      noop: () => {},
+      rail: railDefs.map((d) => ({
+        icon: d.icon, label: d.label, active: s.screen === d.k,
+        bg: s.screen === d.k ? 'var(--color-accent-subtle)' : 'transparent',
+        color: s.screen === d.k ? 'var(--color-accent)' : 'var(--color-text-muted)',
+        click: () => this.setState({ screen: d.k })
+      })),
+      vDash: s.screen === 'dash', vCaps: s.screen === 'caps', vStub: !!stub[s.screen],
+      stubTitle: st[0], stubNote: st[1],
+      crumb: s.screen === 'caps' ? 'Nightjar Phishing Kit' : 'All cases',
+      syncLine: 'synced 4m ago · 2 exceptions',
+
+      caseCountLine: this.cases.length + ' cases · ' + totalCaps + ' captures',
+      capUrl: s.capUrl, onCapUrl: (e) => this.setState({ capUrl: e.target.value }),
+      activeCaseName: '→ nightjar',
+      capHint: 'Captures the live page with its MHTML archive, DOM, headers, TLS chain and a hash of every part.',
+      showOnboard: s.onboard, dismissOnboard: () => this.setState({ onboard: false }),
+      onboardText: 'Browser extension connected. Captures you take while browsing land in the active case automatically.',
+      cases: this.cases.map((c) => {
+        const k = stColor(c.status)
+        return {
+          name: c.name, status: c.status, stColor: k.c, stBg: k.bg, stBorder: k.b,
+          captures: c.captures + ' captures', selectors: c.selectors + ' selectors', size: c.size,
+          pct: c.pct, barColor: c.status === 'Archived' ? 'var(--color-border-strong)' : 'var(--color-accent)',
+          touched: 'touched ' + c.touched,
+          hasEx: c.ex > 0, exText: c.ex + ' exceptions',
+          click: () => this.setState({ screen: 'caps' })
+        }
+      }),
+      actWindow: 'last 24h',
+      activity: this.activity.map((a) => ({ time: a.time, event: a.event, target: a.target, color: actColor(a.kind), icon: actIcon(a.kind) })),
+      storLine: '5.79 GB of 20 GB',
+      storSegs: [
+        { label: 'archives 3.9 GB', pct: 19.5, color: 'var(--color-accent)' },
+        { label: 'screenshots 1.4 GB', pct: 7, color: '#a78bfa' },
+        { label: 'derived 0.49 GB', pct: 2.5, color: '#38bdf8' }
+      ],
+      noteCount: this.notes.length + ' pinned',
+      notes: this.notes,
+
+      // list
+      sortLabel: sortLabel,
+      sortColor: s.sort !== 'newest' ? 'var(--color-accent)' : 'var(--color-text-muted)',
+      sortMenuOpen: s.sortMenu,
+      toggleSortMenu: () => this.setState({ sortMenu: !s.sortMenu, filterMenu: false }),
+      sortOptions: [
+        opt('Newest first', s.sort === 'newest', () => this.setState({ sort: 'newest', sortMenu: false })),
+        opt('Oldest first', s.sort === 'oldest', () => this.setState({ sort: 'oldest', sortMenu: false })),
+        opt('Title A–Z', s.sort === 'title-az', () => this.setState({ sort: 'title-az', sortMenu: false })),
+        opt('URL A–Z', s.sort === 'url-az', () => this.setState({ sort: 'url-az', sortMenu: false }))
+      ],
+      filterColor: filterCount > 0 ? 'var(--color-accent)' : 'var(--color-text-muted)',
+      filterMenuOpen: s.filterMenu, hasFilters: filterCount > 0, filterCount: filterCount,
+      toggleFilterMenu: () => this.setState({ filterMenu: !s.filterMenu, sortMenu: false }),
+      formatOptions: [
+        opt('All formats', s.format === 'all', () => this.setState({ format: 'all' })),
+        opt('HTML', s.format === 'html', () => this.setState({ format: 'html' })),
+        opt('MHTML', s.format === 'mhtml', () => this.setState({ format: 'mhtml' }))
+      ],
+      dateOptions: [
+        opt('All time', s.date === 'all', () => this.setState({ date: 'all' })),
+        opt('Today', s.date === 'today', () => this.setState({ date: 'today' })),
+        opt('Last 7 days', s.date === '7days', () => this.setState({ date: '7days' })),
+        opt('Last 30 days', s.date === '30days', () => this.setState({ date: '30days' }))
+      ],
+      toggleFavOnly: () => this.setState({ favOnly: !s.favOnly }),
+      favOnlyTick: s.favOnly ? '1' : '0',
+      favOnlyColor: s.favOnly ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+      clearFilters: () => this.setState({ format: 'all', date: 'all', favOnly: false, filterMenu: false }),
+      selectorFilterActive: false, selectorFilterText: '', clearSelectorFilters: () => {},
+      rows: rows, noRows: rows.length === 0,
+      emptyText: filterCount > 0 ? 'No captures match the active filters' : 'No captures in this case yet',
+      showingLine: 'Showing ' + rows.length + ' of ' + this.caps.length + ' captures',
+
+      // viewer
+      selTitle: sc.title, selUrl: 'https://' + sc.host + sc.path, selHostname: sc.host,
+      selBackground: sc.method === 'background',
+      showRecaptureLink: (!!sc.supersedes || !!sc.recapturedBy) && !compact,
+      selRecaptureText: sc.supersedes ? '← Recapture of ' + sc.supersedes : (sc.recapturedBy ? 'Recaptured ' + sc.recapturedBy + ' →' : ''),
+      selAbsTime: this.abs(sc.ts),
+      selCapturedLine: [this.rel(sc.ts), isMhtml ? 'MHTML Archive' : 'HTML Page', sc.method === 'background' ? 'Background' : ''].filter(Boolean).join(' · '),
+      posLine: (idx + 1) + ' / ' + list.length,
+      showDownload: !compact, showCounter: !compact,
+      goPrev: () => { if (idx > 0) this.setState({ sel: list[idx - 1].id }) },
+      goNext: () => { if (idx < list.length - 1) this.setState({ sel: list[idx + 1].id }) },
+      prevOpacity: idx <= 0 ? '.35' : '1',
+      nextOpacity: idx >= list.length - 1 ? '.35' : '1',
+      tabs: tabs,
+      vShot: s.tab === 'shot', vPage: s.tab === 'page', vSource: s.tab === 'source', vText: s.tab === 'text',
+      pageMode: isMhtml ? 'MHTML' : 'HTML',
+      pageNote: isMhtml ? 'rendered from the multipart archive — subresources served from the capture' : 'rendered in a sandboxed frame — no network access',
+      sourceLines: this.source.map((t, i) => ({ n: i + 1, text: t })),
+      textLines: textLines,
+
+      navTools: navToolDefs.map(toolBtn), drawTools: drawToolDefs.map(toolBtn),
+      color: s.color, stroke: s.stroke,
+      onStroke: (e) => this.setState({ stroke: Number(e.target.value) }),
+      swatches: ['#ef4444', '#f59e0b', '#22c55e', '#3b82f6', '#a855f7', '#000000', '#ffffff'].map((c) => ({
+        color: c, label: 'Colour ' + c, click: () => this.setState({ color: c }),
+        ring: c === s.color ? '0 0 0 2px var(--color-accent)' : 'none'
+      })),
+      stylePanelOpen: drawing || s.stylePanel,
+      toggleStylePanel: () => this.setState({ stylePanel: !s.stylePanel }),
+      zoomLine: Math.round(s.zoom * 100) + '%',
+      zoomIn: () => this.setState({ zoom: Math.min(4, s.zoom * 1.25) }),
+      zoomOut: () => this.setState({ zoom: Math.max(0.25, s.zoom * 0.8) }),
+      zoomFit: () => this.setState({ zoom: 1 }),
+      zoomOne: () => this.setState({ zoom: 1 }),
+      editVisible: drawing,
+      overlayIcon: s.overlay ? '#v-eye' : '#v-eyeoff',
+      overlayLabel: s.overlay ? 'Hide annotations' : 'Show annotations',
+      overlayTitle: drawing ? 'Switch to the cursor tool to hide annotations' : (s.overlay ? 'Hide annotations' : 'Show annotations'),
+      overlayCursor: drawing ? 'not-allowed' : 'pointer',
+      overlayOpacity: drawing ? '.45' : '1',
+      toggleOverlay: () => { if (!drawing) this.setState({ overlay: !s.overlay }) },
+
+      // details
+      detailsVisible: detailsVisible, railOnly: !s.details || forced,
+      panelPosition: overlaid ? 'absolute' : 'relative',
+      panelRight: overlaid ? '40px' : 'auto',
+      panelTop: overlaid ? '0' : 'auto',
+      panelBottom: overlaid ? '0' : 'auto',
+      panelZ: overlaid ? '40' : 'auto',
+      panelShadow: overlaid ? 'var(--shadow-overlay)' : 'none',
+      expandTitle: forced ? 'Show details' : 'Expand details',
+      expandDetails: () => this.setState({ details: true }),
+      collapseDetails: () => this.setState({ details: false }),
+      actionsOpen: s.actions,
+      toggleActions: () => this.setState({ actions: !s.actions }),
+      closeActions: () => this.setState({ actions: false }),
+      starLabel: s.favs[sc.id] ? 'Unstar' : 'Star',
+      toggleSelFav: () => { const f = Object.assign({}, s.favs); f[sc.id] = !f[sc.id]; this.setState({ favs: f, actions: false }) },
+      favTitle: s.favs[sc.id] ? 'Unfavourite' : 'Favourite',
+      selFavFill: s.favs[sc.id] ? '#fbbf24' : 'none',
+      selFavStroke: s.favs[sc.id] ? '#fbbf24' : 'var(--color-text-muted)',
+      provLabel: pv.label, provColor: pv.color, provBg: pv.bg, provIcon: pv.icon, provDotColor: pv.dot,
+      custodyOpen: s.custody, custodyExpanded: s.custody ? 'true' : 'false',
+      custodyRotate: s.custody ? 'rotate(0deg)' : 'rotate(-90deg)',
+      toggleCustody: () => this.setState({ custody: !s.custody }),
+      legacyBanner: sc.format === 'html',
+      legacyText: 'Legacy HTML capture — captured before forensic chain (v2). Hash present, chain metadata unavailable.',
+      forensicSections: forensicSections,
+      waybackOpen: s.wayback, waybackExpanded: s.wayback ? 'true' : 'false',
+      waybackRotate: s.wayback ? 'rotate(0deg)' : 'rotate(-90deg)',
+      toggleWayback: () => this.setState({ wayback: !s.wayback }),
+      waybackSummary: s.wayback ? '' : waybackSummary,
+      waybackButton: 'Look up again',
+      waybackBlurb: 'archive.org\u2019s independent record of this URL. Corroboration only — looking up discloses the URL to archive.org.',
+      wayback: this.snapshots.map((w) => ({
+        date: this.abs(w.ts), mime: w.mime, closest: w.closest,
+        border: w.closest ? 'var(--color-accent)' : 'var(--color-border)',
+        bg: w.closest ? 'var(--color-accent-subtle)' : 'var(--color-card)'
+      })),
+      selTags: sc.tags.map((t) => ({ label: t, color: tagPalette[t] || 'var(--color-text-muted)' })),
+      hasSelTags: sc.tags.length > 0, noSelTags: sc.tags.length === 0,
+      selTagCount: sc.tags.length, tagTitle: sc.tags.length + ' tags',
+      manyNotes: noteCount > 1, noteCountLabel: noteCount + ' notes',
+      hasSelNotes: noteCount > 0, selNoteCount: noteCount, noteTitle: noteCount + ' notes',
+      noteDraft: s.noteDraft, onNoteDraft: (e) => this.setState({ noteDraft: e.target.value }),
+      savedLine: 'Saved 4 min ago',
+
+      statCases: this.cases.length + ' cases',
+      statCaptures: totalCaps + ' captures',
+      statEx: totalEx + ' integrity exceptions',
+      statExColor: totalEx ? '#f59e0b' : 'var(--color-text-faint)',
+      statPath: '~/Birdbrain/cases'
+    }
+  }
+}
+</script>
+</body>
+</html>

@@ -33,7 +33,7 @@ importers:
         version: 5.3.0
       '@ghostery/adblocker-electron':
         specifier: ^2.18.2
-        version: 2.18.2(electron@42.5.1)
+        version: 2.18.2(electron@44.3.0)
       '@hono/node-server':
         specifier: ^2.1.1
         version: 2.1.1(hono@4.13.7)
@@ -151,7 +151,7 @@ importers:
         version: 21.2.2
       '@electron-toolkit/utils':
         specifier: ^4.0.0
-        version: 4.0.0(electron@42.5.1)
+        version: 4.0.0(electron@44.3.0)
       '@eslint/js':
         specifier: ^9.39.4
         version: 9.39.4
@@ -204,8 +204,8 @@ importers:
         specifier: ^17.4.3
         version: 17.4.3
       electron:
-        specifier: ^42.5.1
-        version: 42.5.1
+        specifier: ^44.3.0
+        version: 44.3.0
       electron-builder:
         specifier: ^26.15.3
         version: 26.15.3(electron-builder-squirrel-windows@25.1.8)
@@ -2674,8 +2674,8 @@ packages:
   '@types/ms@2.1.0':
     resolution: {integrity: sha512-GsCCIZDE/p3i96vtEqx+7dBUGXrc7zeSK3wwPHIaRThS+9OhWIXRqzs4d6k1SVU8g91DrNRWxWUGhp5KXQb2VA==}
 
-  '@types/node@24.13.3':
-    resolution: {integrity: sha512-Dh8vAsV36ig5wa9OX4pXvMc9D3Veibfw2wix0CUwYODLD8nkj9UsLjASr49nPg+2eKzxhBV+v7L8pXvT4e639Q==}
+  '@types/node@24.13.4':
+    resolution: {integrity: sha512-YJ7EqCstVTzIr0fMr7qul/977en+pQHrfmuKIo6Zr9i75Be21dr3MovcfvGtyvi2HAUrRerWps5sMO9I7WaxDw==}
 
   '@types/node@25.9.4':
     resolution: {integrity: sha512-dszCsrKb5U7ZsVZBWiHFklTloVl0mSEnWH/iZXfZUlI4rzCUnsvGmgqfuVRHL54ugE7/wRuxEIXRa2iMZ+BG6g==}
@@ -3555,8 +3555,8 @@ packages:
       '@swc/core':
         optional: true
 
-  electron@42.5.1:
-    resolution: {integrity: sha512-2VFNJcHHbrhIpGsJHdkLoi/nWPZPxN3GHVPe+9At3Oz3/TJRwpr+7JL97ddBDbKyLmHGx3GfI2jvzcEQL28uFw==}
+  electron@44.3.0:
+    resolution: {integrity: sha512-St9EV7F2VtYaYWD2qaAjBwUgKxx39eJOUsUJ5+/1113sqbVfNqv4Dbm/W1rN7qmYSPa+mWwR6yr+b7MfgjgVfQ==}
     engines: {node: '>= 22.12.0'}
     hasBin: true
 
@@ -6628,9 +6628,9 @@ snapshots:
 
   '@electron-internal/extract-zip@1.0.5': {}
 
-  '@electron-toolkit/utils@4.0.0(electron@42.5.1)':
+  '@electron-toolkit/utils@4.0.0(electron@44.3.0)':
     dependencies:
-      electron: 42.5.1
+      electron: 44.3.0
 
   '@electron/asar@3.4.1':
     dependencies:
@@ -6937,16 +6937,16 @@ snapshots:
     dependencies:
       '@ghostery/adblocker-extended-selectors': 2.18.2
 
-  '@ghostery/adblocker-electron-preload@2.18.2(electron@42.5.1)':
+  '@ghostery/adblocker-electron-preload@2.18.2(electron@44.3.0)':
     dependencies:
       '@ghostery/adblocker-content': 2.18.2
-      electron: 42.5.1
+      electron: 44.3.0
 
-  '@ghostery/adblocker-electron@2.18.2(electron@42.5.1)':
+  '@ghostery/adblocker-electron@2.18.2(electron@44.3.0)':
     dependencies:
       '@ghostery/adblocker': 2.18.2
-      '@ghostery/adblocker-electron-preload': 2.18.2(electron@42.5.1)
-      electron: 42.5.1
+      '@ghostery/adblocker-electron-preload': 2.18.2(electron@44.3.0)
+      electron: 44.3.0
       tldts-experimental: 7.4.12
 
   '@ghostery/adblocker-extended-selectors@2.18.2': {}
@@ -8532,7 +8532,7 @@ snapshots:
     dependencies:
       '@types/http-cache-semantics': 4.2.0
       '@types/keyv': 3.1.4
-      '@types/node': 25.9.4
+      '@types/node': 25.9.6
       '@types/responselike': 1.0.3
 
   '@types/chai@5.2.3':
@@ -8567,7 +8567,7 @@ snapshots:
 
   '@types/fs-extra@9.0.13':
     dependencies:
-      '@types/node': 25.9.4
+      '@types/node': 25.9.6
 
   '@types/har-format@1.2.16': {}
 
@@ -8581,7 +8581,7 @@ snapshots:
 
   '@types/keyv@3.1.4':
     dependencies:
-      '@types/node': 25.9.4
+      '@types/node': 25.9.6
 
   '@types/mdast@4.0.4':
     dependencies:
@@ -8589,7 +8589,7 @@ snapshots:
 
   '@types/ms@2.1.0': {}
 
-  '@types/node@24.13.3':
+  '@types/node@24.13.4':
     dependencies:
       undici-types: 7.18.2
 
@@ -8600,7 +8600,6 @@ snapshots:
   '@types/node@25.9.6':
     dependencies:
       undici-types: 7.24.6
-    optional: true
 
   '@types/react-dom@19.3.0(@types/react@19.3.0)':
     dependencies:
@@ -8620,7 +8619,7 @@ snapshots:
 
   '@types/responselike@1.0.3':
     dependencies:
-      '@types/node': 25.9.4
+      '@types/node': 25.9.6
 
   '@types/set-cookie-parser@2.4.10':
     dependencies:
@@ -8644,7 +8643,7 @@ snapshots:
 
   '@types/ws@8.18.1':
     dependencies:
-      '@types/node': 25.9.4
+      '@types/node': 25.9.6
 
   '@typescript-eslint/eslint-plugin@8.70.0(@typescript-eslint/parser@8.70.0(eslint@10.10.0(jiti@2.7.0))(typescript@5.9.3))(eslint@10.10.0(jiti@2.7.0))(typescript@5.9.3)':
     dependencies:
@@ -9063,7 +9062,7 @@ snapshots:
 
   buffer-image-size@0.6.4:
     dependencies:
-      '@types/node': 25.9.4
+      '@types/node': 25.9.6
 
   buffer@5.7.1:
     dependencies:
@@ -9614,11 +9613,11 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  electron@42.5.1:
+  electron@44.3.0:
     dependencies:
       '@electron-internal/extract-zip': 1.0.5
       '@electron/get': 5.1.0
-      '@types/node': 24.13.3
+      '@types/node': 24.13.4
     transitivePeerDependencies:
       - supports-color
 
@@ -10136,7 +10135,7 @@ snapshots:
       es6-error: 4.1.1
       matcher: 3.0.0
       roarr: 2.15.4
-      semver: 7.7.4
+      semver: 7.8.5
       serialize-error: 7.0.1
     optional: true
 
@@ -11028,11 +11027,11 @@ snapshots:
 
   node-abi@4.33.0:
     dependencies:
-      semver: 7.7.4
+      semver: 7.8.5
 
   node-api-version@0.2.1:
     dependencies:
-      semver: 7.7.4
+      semver: 7.8.5
 
   node-gyp@12.4.0:
     dependencies:

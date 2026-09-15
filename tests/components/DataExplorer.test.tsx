@@ -80,9 +80,9 @@ describe('DataExplorer (#1149)', () => {
     )
     expect(text(rail.getByTestId('data-tree-count-indicators'))).toContain('5')
     expect(text(rail.getByTestId('data-tree-count-manifest-ledger'))).toContain('1')
-    // One Capture's persisted verify state is tampered, and its thumbnail
-    // follows it into the exceptions bucket (X37: Derived Files alike).
-    expect(text(rail.getByTestId('data-tree-count-integrity-exceptions'))).toContain('2')
+    // One Capture's persisted verify state is tampered; its thumbnail has no
+    // persisted state and the renderer infers none for it (X36).
+    expect(text(rail.getByTestId('data-tree-count-integrity-exceptions'))).toContain('1')
   })
 
   it('rows read the density token for their height', async () => {
@@ -148,17 +148,22 @@ describe('DataExplorer (#1149)', () => {
     expect(await screen.findByText('No files match this search.')).toBeTruthy()
   })
 
+  it('closes the strip when the search hides the selected row', async () => {
+    renderExplorer()
+    fireEvent.click(await screen.findByTestId('artifact-row-cap-a'))
+    expect(await screen.findByTestId('artifact-tabs')).toBeTruthy()
+    fireEvent.change(screen.getByTestId('data-search'), { target: { value: 'Old page' } })
+    await waitFor(() => expect(screen.queryByTestId('artifact-tabs')).toBeNull())
+  })
+
   it('selecting a row opens the strip with the Properties tab', async () => {
     renderExplorer()
     fireEvent.click(await screen.findByTestId('artifact-row-cap-a'))
     const strip = within(await screen.findByTestId('artifact-tabs'))
-    // No extracted text and no headers are stubbed, so those two tabs are
-    // absent; the anchored Capture still has its ledger entries (#1150).
-    expect(strip.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
-      'Manifest Ledger',
-      'Properties'
-    ])
-    fireEvent.click(strip.getByRole('tab', { name: 'Properties' }))
+    // No extracted text and no headers are stubbed, and the stubbed snapshot's
+    // only line is unreadable, so no entry names the row: Properties alone
+    // (#1150, a tab with no data is absent).
+    expect(strip.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Properties'])
     const props = within(strip.getByTestId('properties-tab'))
     expect(text(props.getByText('Exhibit Number').nextSibling)).toContain('Exhibit 1')
     expect(text(props.getByText('Origin').nextSibling)).toContain('extension')
@@ -215,6 +220,7 @@ describe('DataExplorer (#1149)', () => {
     expect(heading()).toBe('Integrity exceptions')
     expect(screen.getByTestId('artifact-row-cap-a')).toBeTruthy()
     expect(screen.queryByTestId('artifact-row-cap-legacy')).toBeNull()
+    expect(screen.queryByTestId('artifact-row-thumb-a')).toBeNull()
     select('manifest-ledger')
     expect(heading()).toBe('Manifest ledger')
 

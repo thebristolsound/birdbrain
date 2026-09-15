@@ -75,7 +75,13 @@ export function kindLabel(kind: string): string {
   return kind.charAt(0).toUpperCase() + kind.slice(1) + 's'
 }
 
-export function kindSortIndex(kind: string): number {
+// The singular for a Properties row: the stored kind, capitalised, never a
+// pluralised label with a letter chopped off.
+export function kindSingular(kind: string): string {
+  return kind.charAt(0).toUpperCase() + kind.slice(1)
+}
+
+function kindSortIndex(kind: string): number {
   const index = KIND_ORDER.indexOf(kind)
   return index === -1 ? KIND_ORDER.length : index
 }
@@ -120,6 +126,10 @@ export function buildDataTree({
 
   const exhibits = rows.filter((row) => row.entity === 'exhibit')
   const staged = rows.filter((row) => row.rowType === 'staged')
+  // Every count outside Staging is over anchored rows only (X16): a pooled
+  // file appears under Staging and nowhere else, so a Views count that
+  // included it would disagree with the table the node selects.
+  const anchored = rows.filter((row) => row.rowType === 'anchored')
 
   const push = (
     node: Omit<DataTreeNode, 'expanded' | 'alert'> & Partial<Pick<DataTreeNode, 'alert'>>
@@ -193,14 +203,14 @@ export function buildDataTree({
   })
 
   // --- Views ----------------------------------------------------------------
-  const types = [...new Set(rows.map(fileTypeOf))].sort((a, b) => a.localeCompare(b))
+  const types = [...new Set(anchored.map(fileTypeOf))].sort((a, b) => a.localeCompare(b))
   push({
     key: 'views',
     label: 'Views',
     depth: 0,
     group: true,
     hasChildren: true,
-    count: rows.length
+    count: anchored.length
   })
   if (isOpen('views')) {
     push({
@@ -219,7 +229,7 @@ export function buildDataTree({
           depth: 2,
           group: false,
           hasChildren: false,
-          count: rows.filter((row) => fileTypeOf(row) === type).length
+          count: anchored.filter((row) => fileTypeOf(row) === type).length
         })
       }
     }
@@ -293,6 +303,7 @@ export const DEFAULT_EXPANDED: ReadonlySet<string> = new Set(['data-sources', 'v
 // and the tests: the keys of a node and everything under it.
 export function descendantKeys(rows: InventoryRow[], key: DataNodeKey): DataNodeKey[] {
   const exhibits = rows.filter((row) => row.entity === 'exhibit')
+  const anchored = rows.filter((row) => row.rowType === 'anchored')
   const under = (id: string): DataNodeKey[] => [
     `exhibit:${id}`,
     ...derivedFilesOf(rows, id).map((file): DataNodeKey => `derived:${file.id}`)
@@ -312,27 +323,14 @@ export function descendantKeys(rows: InventoryRow[], key: DataNodeKey): DataNode
   if (key === 'views') {
     return [
       'file-types',
-      ...[...new Set(rows.map(fileTypeOf))].map((t): DataNodeKey => `file-type:${t}`)
+      ...[...new Set(anchored.map(fileTypeOf))].map((t): DataNodeKey => `file-type:${t}`)
     ]
   }
   if (key === 'file-types') {
-    return [...new Set(rows.map(fileTypeOf))].map((t): DataNodeKey => `file-type:${t}`)
+    return [...new Set(anchored.map(fileTypeOf))].map((t): DataNodeKey => `file-type:${t}`)
   }
   if (key === 'results') {
     return ['keyword-hits', 'indicators', 'integrity-exceptions', 'manifest-ledger']
   }
   return []
-}
-
-// Every node key that can be expanded for this inventory, for a first render
-// that opens the whole rail and for "Expand below" on a group.
-export function expandableKeys(rows: InventoryRow[]): DataNodeKey[] {
-  return [
-    'data-sources',
-    ...descendantKeys(rows, 'data-sources'),
-    'views',
-    'file-types',
-    'results',
-    'keyword-hits'
-  ]
 }

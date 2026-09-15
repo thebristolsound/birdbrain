@@ -35,6 +35,7 @@ export function useExhibitsMutations(caseId: string) {
       queryClient.setQueryData(queryKeys.exhibitVerification(caseId, exhibitId), result)
       queryClient.invalidateQueries({ queryKey: queryKeys.captures(caseId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.exhibitInventory(caseId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.manifestSnapshot(caseId) })
     },
     meta: { action: 'verify exhibit' }
   })
@@ -57,14 +58,20 @@ export function useVerifyAll(caseId: string) {
   const [progress, setProgress] = useState<VerifyAllProgress | null>(null)
 
   const run = useCallback(
-    async (exhibitIds: string[], onResult?: (result: ExhibitVerification) => void) => {
+    async (
+      exhibitIds: string[],
+      onResult?: (result: ExhibitVerification) => void,
+      onFailure?: (exhibitId: string) => void
+    ) => {
       setProgress({ done: 0, total: exhibitIds.length })
       try {
         for (const [index, exhibitId] of exhibitIds.entries()) {
           try {
             onResult?.(await verify.mutateAsync(exhibitId))
           } catch {
-            // Reported by the mutation cache; the loop goes on.
+            // The mutation cache toasts the error; the caller is told so the
+            // row does not keep reading a stale persisted state as verified.
+            onFailure?.(exhibitId)
           }
           setProgress({ done: index + 1, total: exhibitIds.length })
         }

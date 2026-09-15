@@ -129,10 +129,10 @@ function bucketOfStatus(status: ExhibitVerification['status'] | undefined): Inte
 
 // The X37 bucket for one anchored row. An Exhibit reads this session's verify
 // result first and the Capture's persisted state otherwise. A Derived File
-// reads its own outcome from the parent's session result; without one it is
-// unverified unless the parent is an exception, because a Capture verify binds
-// the sidecars but never the thumbnail, so a verified parent says nothing
-// about it. Pooled rows have no bucket (X16) and are never passed here.
+// reads its own outcome from the parent's session result, which the main
+// process computed against the `derivation` entry; without one it is
+// unverified, and nothing is inferred from the parent in the renderer (X36).
+// Pooled rows have no bucket (X16) and are never passed here.
 export function bucketForRow(row: InventoryRow, context: RowContext): IntegrityBucket {
   if (row.entity === 'exhibit') {
     const session = context.verifications?.get(row.id)?.status
@@ -147,10 +147,7 @@ export function bucketForRow(row: InventoryRow, context: RowContext): IntegrityB
       if (own.status === 'tampered' || own.status === 'missing') return 'exception'
       return 'unverified'
     }
-    const parentBucket = parent
-      ? bucketOfStatus(parent.status)
-      : bucketOfStatus(context.captures.get(row.parentExhibitId)?.lastVerifiedStatus)
-    return parentBucket === 'exception' ? 'exception' : 'unverified'
+    return 'unverified'
   }
   return 'unverified'
 }
@@ -224,19 +221,25 @@ export function rowsForNode(
   return anchored
 }
 
+// The shortest query that is read as a hash fragment. A hex string this short
+// matches almost every digest by chance, and "2" must reach Exhibit 2, not
+// every row whose hash contains a 2.
+export const MIN_HASH_QUERY = 6
+
 // Search filters by name, Exhibit, kind and hash only (R21, Q8) — never page
-// text, which is why the shell's placeholder does not say "text". "Exhibit 7"
-// and "7" both reach Exhibit 7; a hash matches by prefix or substring, case-
-// insensitively, because operators paste both forms.
+// text or a row's URL, which is why the shell's placeholder does not say
+// "text". "Exhibit 7" and "7" both reach Exhibit 7; a hash matches by prefix
+// or substring, case-insensitively, once the query is long enough to mean one.
 export function filterRows(rows: ArtifactRow[], query: string): ArtifactRow[] {
   const q = query.trim().toLowerCase()
   if (!q) return rows
   const number = q.replace(/^exhibit\s+/, '')
+  const hashLike = q.length >= MIN_HASH_QUERY && /^[0-9a-f]+$/.test(q)
   return rows.filter((row) => {
     if (row.name.toLowerCase().includes(q)) return true
     if (row.kind.toLowerCase().includes(q)) return true
     if (kindLabel(row.kind).toLowerCase().includes(q)) return true
-    if (row.hash.toLowerCase().includes(q)) return true
+    if (hashLike && row.hash.toLowerCase().includes(q)) return true
     if (row.exhibitNumber !== null && String(row.exhibitNumber) === number) return true
     return false
   })

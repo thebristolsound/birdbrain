@@ -69,8 +69,8 @@ describe('rowsForNode', () => {
     expect(rows('derived:thumb-a').map((r) => r.id)).toEqual(['thumb-a'])
   })
 
-  it('files Integrity Exceptions from the persisted Capture state, Derived Files with their parent', () => {
-    expect(rows('integrity-exceptions').map((r) => r.id)).toEqual(['cap-a', 'thumb-a'])
+  it('files Integrity Exceptions from the persisted Capture state and infers nothing for Derived Files', () => {
+    expect(rows('integrity-exceptions').map((r) => r.id)).toEqual(['cap-a'])
   })
 
   it('filters a keyword node to the matched Exhibits and nothing else (X39)', () => {
@@ -128,8 +128,8 @@ describe('bucketForRow', () => {
     ).toBe('unverified')
   })
 
-  it('without a session result a Derived File is unverified unless its parent is an exception', () => {
-    expect(bucketForRow(THUMB_A, { captures: FACTS })).toBe('exception')
+  it('without a session result a Derived File is unverified whatever its parent says (X36)', () => {
+    expect(bucketForRow(THUMB_A, { captures: FACTS })).toBe('unverified')
     const cleanParent = new Map(FACTS)
     cleanParent.set('cap-a', { url: 'https://example.com/page', lastVerifiedStatus: 'verified' })
     expect(bucketForRow(THUMB_A, { captures: cleanParent })).toBe('unverified')
@@ -151,8 +151,8 @@ describe('bucketForRow', () => {
   it('counts the three buckets over anchored rows only', () => {
     expect(integrityCounts(INVENTORY, { captures: FACTS })).toEqual({
       verified: 0,
-      exception: 2,
-      unverified: 1
+      exception: 1,
+      unverified: 2
     })
   })
 })
@@ -165,13 +165,23 @@ describe('filterRows', () => {
     expect(filterRows(all, 'thumbnail').map((r) => r.id)).toEqual(['thumb-a'])
     expect(filterRows(all, HASH_A.slice(0, 8).toUpperCase()).map((r) => r.id)).toEqual(['cap-a'])
     expect(filterRows(all, 'Exhibit 2').map((r) => r.id)).toEqual(['cap-legacy'])
+    expect(filterRows(all, '2').map((r) => r.id)).toEqual(['cap-legacy'])
     expect(filterRows(all, 'Captures').map((r) => r.id)).toEqual(['cap-a', 'cap-legacy'])
   })
 
-  it('does not search page text', () => {
-    // The fixture's Capture text would contain this if text were searched;
-    // the model has no text input at all, so nothing can match it.
-    expect(filterRows(all, 'lorem ipsum')).toEqual([])
+  it('reads a short hex query as a number, not a hash fragment', () => {
+    // Every fixture hash contains a "2"; only Exhibit 2 may answer to it.
+    expect(filterRows(all, '2').map((r) => r.id)).toEqual(['cap-legacy'])
+    expect(filterRows(all, HASH_A.slice(3, 8))).toEqual([])
+    expect(filterRows(all, HASH_A.slice(3, 9)).map((r) => r.id)).toEqual(['cap-a'])
+  })
+
+  it('does not search the URL behind SOURCE, only the four fields (R21)', () => {
+    // SOURCE renders "example.com" for cap-a, so a search over rendered cells
+    // or over the row's URL would return it; the field is not searchable.
+    expect(all.find((r) => r.id === 'cap-a')?.source).toBe('example.com')
+    expect(filterRows(all, 'example.com')).toEqual([])
+    expect(filterRows(all, 'manual-upload')).toEqual([])
   })
 
   it('returns everything for a blank query', () => {

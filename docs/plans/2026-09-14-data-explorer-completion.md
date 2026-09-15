@@ -79,8 +79,9 @@ Each carries its own `pnpm preflight` block at head.
   counts; X33), `dataTableModel.ts` (pure: node -> rows, search over name, Exhibit Number,
   kind, hash; R21/Q8), `DataTree.tsx` (`var(--d-tree)` rows), `ArtifactTable.tsx` (NAME,
   SOURCE, KIND, SIZE, SHA-256, CAPTURED; missing-on-disk state; not-anchored chip),
-  `StagingGroup.tsx` (Upload group action; inline Commit and Discard wired to the `803p`
-  channels, inactive until they exist), `ArtifactTabs.tsx` (strip with Properties only),
+  the Staging group rendered by the shell and the table (Upload as the group action and inline
+  Commit and Discard on pooled rows, inert until #1148 merges and #1151 wires them),
+  `ArtifactTabs.tsx` (strip with Properties only),
   `PropertiesTab.tsx` (kind, origin, Exhibit Number, recorded size labelled "recorded at
   ingest", relative path, Collector from the four version fields; parent and derivation for a
   Derived File).

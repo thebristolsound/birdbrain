@@ -78,6 +78,70 @@ const RENUMBER: ManifestEntry = {
   assignments: [{ exhibitId: 'cap-a', exhibitNumber: 1, manifestIndex: 0 }],
   timestamp: '2026-09-02T12:00:00.000Z'
 }
+const DELETION: ManifestEntry = {
+  ...chain,
+  ...who,
+  type: 'deletion',
+  index: 6,
+  captureId: 'cap-gone',
+  caseId: 'case1',
+  timestamp: '2026-09-03T10:00:00.000Z',
+  contentHash: 'd'.repeat(64),
+  reason: 'pipeline-test',
+  schemaVersion: 2
+}
+const EXPORT: ManifestEntry = {
+  ...chain,
+  ...who,
+  type: 'export',
+  index: 7,
+  caseId: 'case1',
+  timestamp: '2026-09-03T11:00:00.000Z',
+  packageHash: '1'.repeat(64),
+  verificationResult: {
+    overallValid: true,
+    captureCount: 2,
+    verifiedCount: 2,
+    tamperedCount: 0,
+    missingCount: 0
+  },
+  scope: 'selection',
+  captureIds: ['cap-a', 'cap-b'],
+  exportClass: 'working-copy',
+  schemaVersion: 2
+}
+const ARCHIVE_EXPORT: ManifestEntry = {
+  ...chain,
+  ...who,
+  type: 'archive-export',
+  index: 8,
+  caseId: 'case1',
+  timestamp: '2026-09-03T12:00:00.000Z',
+  packageHash: '2'.repeat(64),
+  schemaVersion: 2
+}
+const IMPORT: ManifestEntry = {
+  ...chain,
+  ...who,
+  type: 'import',
+  index: 9,
+  caseId: 'case1',
+  sourceCaseId: 'case-src',
+  sourceInstallationId: 'inst-src',
+  sourcePublicKeyPem: '-----BEGIN PUBLIC KEY-----',
+  packageHash: '3'.repeat(64),
+  idMapSha256: '4'.repeat(64),
+  verificationResult: {
+    overallValid: true,
+    chainValid: true,
+    artifactCount: 1,
+    artifactFailureCount: 0,
+    captureCount: 1,
+    captureHashFailureCount: 0
+  },
+  timestamp: '2026-09-03T13:00:00.000Z',
+  schemaVersion: 2
+}
 const UNREADABLE: ManifestSnapshotEntry = {
   index: 5,
   parsed: false,
@@ -92,7 +156,11 @@ describe('toLedgerRows', () => {
       line(EXHIBIT),
       line(DERIVATION),
       line(RENUMBER),
-      UNREADABLE
+      UNREADABLE,
+      line(DELETION),
+      line(EXPORT),
+      line(ARCHIVE_EXPORT),
+      line(IMPORT)
     ])
     expect(rows.map((r) => [r.index, r.type, r.target])).toEqual([
       [0, 'capture', 'cap-a · https://example.com/page'],
@@ -100,8 +168,22 @@ describe('toLedgerRows', () => {
       [2, 'exhibit', 'Exhibit 2 · bundle.zip'],
       [3, 'derivation', 'thumbnail of cap-a'],
       [4, 'renumber', '1 assignment'],
-      [5, 'unreadable', 'Entry does not match the manifest schema']
+      [5, 'unreadable', 'Entry does not match the manifest schema'],
+      [6, 'deletion', 'cap-gone · pipeline-test'],
+      [7, 'export', 'package 111111111111 · 2 selected · working copy'],
+      [8, 'archive-export', 'archive 222222222222'],
+      [9, 'import', 'from case case-src']
     ])
+    // The wording that flips per field: an unstamped timestamp, a case-scoped
+    // evidence export.
+    expect(toLedgerRows([line({ ...TIMESTAMP, tsaToken: undefined })])[0].target).toBe(
+      'hash aaaaaaaaaaaa · no token'
+    )
+    expect(
+      toLedgerRows([
+        line({ ...EXPORT, scope: undefined, captureIds: undefined, exportClass: undefined })
+      ])[0].target
+    ).toBe('package 111111111111')
     expect(rows[0].schemaVersion).toBe(2)
     expect(rows[2].schemaVersion).toBe(3)
     expect(rows[5].parsed).toBe(false)

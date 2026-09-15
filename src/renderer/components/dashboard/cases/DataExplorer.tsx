@@ -30,6 +30,7 @@ import {
   ManifestLedgerView
 } from '@renderer/components/data/ManifestLedger'
 import { IntegrityStrip } from '@renderer/components/data/IntegrityStrip'
+import { rowsNaming } from '@renderer/components/data/ledgerModel'
 import { IndicatorsView } from '@renderer/components/data/IndicatorsView'
 import { DiscardStagedDialog } from '@renderer/components/data/DiscardStagedDialog'
 import { useDataContextMenu } from '@renderer/components/data/useDataContextMenu'
@@ -119,7 +120,7 @@ export function DataExplorer() {
   const { upload, commit } = useStagingMutations(caseId)
 
   const keywordSelectorId = node.startsWith('keyword:') ? node.slice('keyword:'.length) : null
-  const { data: keywordCaptureIds } = useQuery(
+  const { data: keywordCaptureIds, isFetching: keywordFetching } = useQuery(
     selectorMatchingCapturesQueryOptions(caseId, keywordSelectorId ? [keywordSelectorId] : [])
   )
 
@@ -153,6 +154,8 @@ export function DataExplorer() {
         results: {
           keywordHits: selectors.length,
           indicators: indicatorCount ?? null,
+          // The same bucket rule the node's table uses, so the count and the
+          // rows cannot disagree.
           integrityExceptions: buckets.exception,
           manifestLedger: snapshot ? snapshot.entries.length : null
         },
@@ -176,7 +179,9 @@ export function DataExplorer() {
     [rows, node, captureFacts, verifications, keywordMatches, query]
   )
 
-  const selectedRow = rows.find((row) => row.id === selectedId) ?? null
+  // Resolved from the table as filtered, so a row the search has hidden does
+  // not keep its strip open.
+  const selectedRow = tableRows.find((row) => row.id === selectedId)?.raw ?? null
   const selectedCapture =
     selectedRow?.entity === 'exhibit' ? captureById.get(selectedRow.id) : undefined
   const { data: extractedText } = useQuery({
@@ -195,11 +200,28 @@ export function DataExplorer() {
       return next
     })
   }, [])
+  // A verify that threw is recorded as not completed, so the row's bucket
+  // reads unverified for the session instead of whatever was persisted before.
+  const recordVerifyFailure = useCallback(
+    (exhibitId: string) => {
+      const row = rows.find((r) => r.id === exhibitId)
+      recordVerification({
+        exhibitId,
+        caseId,
+        kind: row?.entity === 'exhibit' ? row.kind : 'unknown',
+        status: 'unsupported',
+        reason: 'Verify did not complete'
+      })
+    },
+    [rows, caseId, recordVerification]
+  )
   const verifyIds = useCallback(
     (exhibitIds: string[]) => {
-      if (exhibitIds.length > 0) void verifyAll(exhibitIds, recordVerification)
+      if (exhibitIds.length > 0) {
+        void verifyAll(exhibitIds, recordVerification, recordVerifyFailure)
+      }
     },
-    [verifyAll, recordVerification]
+    [verifyAll, recordVerification, recordVerifyFailure]
   )
 
   // Discard always goes through the dialog (X38); the inline button and the
@@ -296,7 +318,8 @@ export function DataExplorer() {
   // A tab with no data for the row's kind is absent, not empty (#1150).
   const tabs: ArtifactTab[] = []
   if (selectedRow) {
-    if (selectedCapture && typeof extractedText === 'string') {
+    // A zero-byte sidecar is no text, not one empty line.
+    if (selectedCapture && typeof extractedText === 'string' && extractedText.length > 0) {
       tabs.push({
         id: 'text',
         label: 'Extracted Text',
@@ -321,7 +344,14 @@ export function DataExplorer() {
         content: <HeadersTlsTab capture={selectedCapture} />
       })
     }
-    if (snapshot && selectedRow.rowType === 'anchored' && selectedRow.manifestSeq !== null) {
+    // Present only when an entry this build can read names the row; a row
+    // whose only entry is an unreadable newer-schema line gets no empty tab.
+    if (
+      snapshot &&
+      selectedRow.rowType === 'anchored' &&
+      rowsNaming(snapshot.entries, { id: selectedRow.id, contentHash: selectedRow.contentHash })
+        .length > 0
+    ) {
       tabs.push({
         id: 'ledger',
         label: 'Manifest Ledger',
@@ -476,7 +506,9 @@ export function DataExplorer() {
                       counts={buckets}
                       progress={progress}
                       disabled={anchoredExhibitIds.length === 0}
-                      onVerifyAll={() => void verifyAll(anchoredExhibitIds, recordVerification)}
+                      onVerifyAll={() =>
+                        void verifyAll(anchoredExhibitIds, recordVerification, recordVerifyFailure)
+                      }
                     />
                   )}
                   <ArtifactTable
@@ -495,9 +527,11 @@ export function DataExplorer() {
                         ? 'Nothing in the pool.'
                         : node === 'integrity-exceptions'
                           ? 'No exceptions among the verified rows.'
-                          : query
-                            ? 'No files match this search.'
-                            : 'No files under this node.'
+                          : keywordSelectorId && keywordFetching
+                            ? 'Loading matches…'
+                            : query
+                              ? 'No files match this search.'
+                              : 'No files under this node.'
                     }
                   />
                 </>

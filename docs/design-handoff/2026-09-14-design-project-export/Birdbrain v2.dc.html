@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/birdbrain-ui-9632b0b0-024d-4a3c-94db-688afdd4768f/fonts/fonts.css">
+  <link rel="stylesheet" href="_ds/birdbrain-ui-9632b0b0-024d-4a3c-94db-688afdd4768f/_ds_bundle.css">
+  <link rel="stylesheet" href="_ds/birdbrain-ui-9632b0b0-024d-4a3c-94db-688afdd4768f/styles.css">
+  <style>
+    html,body{margin:0;padding:0;height:100%;}
+    a{color:var(--color-accent);text-decoration:none;}
+    a:hover{color:var(--color-accent-hover);}
+    ::placeholder{color:var(--color-text-faint);}
+    .hovrow:hover{background:var(--color-elevated)!important;}
+    .hovbrd:hover{border-color:var(--color-border-strong)!important;}
+    .sb .sb-tip{opacity:0;pointer-events:none;transition:opacity .12s;}
+    .sb:hover .sb-tip{opacity:1;}
+    ::-webkit-scrollbar{width:10px;height:10px}
+    ::-webkit-scrollbar-thumb{background:var(--color-border-strong);border-radius:6px;border:3px solid transparent;background-clip:content-box}
+    ::-webkit-scrollbar-track{background:transparent}
+    symbol,symbol *{fill:none;stroke:currentColor;}
+  </style>
+</helmet>
+<svg width="0" height="0" fill="none" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="v-chevr" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"></path></symbol>
+    <symbol id="v-home" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></symbol>
+    <symbol id="v-layers" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></symbol>
+    <symbol id="v-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></symbol>
+    <symbol id="v-note" viewBox="0 0 24 24"><path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"></path><path d="M15 3v4a2 2 0 0 0 2 2h4"></path></symbol>
+    <symbol id="v-db" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"></path></symbol>
+    <symbol id="v-cog" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></symbol>
+    <symbol id="v-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></symbol>
+    <symbol id="v-plus" viewBox="0 0 24 24"><path d="M12 5v14"></path><path d="M5 12h14"></path></symbol>
+    <symbol id="v-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></symbol>
+    <symbol id="v-shieldal" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></symbol>
+    <symbol id="v-shieldck" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></symbol>
+    <symbol id="v-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path></symbol>
+    <symbol id="v-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></symbol>
+    <symbol id="v-arrd" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"></path></symbol>
+    <symbol id="v-arru" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"></path></symbol>
+    <symbol id="v-pin" viewBox="0 0 24 24"><path d="M12 17v5"></path><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"></path></symbol>
+    <symbol id="v-hdd" viewBox="0 0 24 24"><line x1="22" y1="12" x2="2" y2="12"></line><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path><line x1="6" y1="16" x2="6.01" y2="16"></line><line x1="10" y1="16" x2="10.01" y2="16"></line></symbol>
+    <symbol id="v-x" viewBox="0 0 24 24"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></symbol>
+    <symbol id="v-fileout" viewBox="0 0 24 24"><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="M4 7V4a2 2 0 0 1 2-2h8.5L20 7.5V20a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-1"></path><path d="M2 15h10"></path><path d="m9 12 3 3-3 3"></path></symbol>
+    <symbol id="v-dl" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></symbol>
+    <symbol id="v-ext" viewBox="0 0 24 24"><path d="M15 3h6v6"></path><path d="M10 14 21 3"></path><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path></symbol>
+    <symbol id="v-chevd" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"></path></symbol>
+    <symbol id="v-chevu" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"></path></symbol>
+  </defs>
+</svg>
+
+<div style="display:flex;flex-direction:column;height:100vh;background:var(--color-canvas);color:var(--color-text-secondary);font-family:var(--font-body);font-size:12px;line-height:1.5;overflow:hidden">
+
+  <header style="display:flex;height:40px;flex-shrink:0;align-items:center;gap:10px;border-bottom:1px solid var(--color-border);background:var(--color-surface);padding:0 14px">
+    <img src="src/renderer/assets/logo.png" alt="Birdbrain" style="height:20px;width:20px">
+    <span style="flex-shrink:0;white-space:nowrap;font-size:12px;font-weight:700;letter-spacing:-0.02em;color:var(--color-text-primary)">Birdbrain</span>
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#v-chevr"></use></svg>
+    <span style="flex-shrink:0;white-space:nowrap;font-size:12px;font-weight:600;color:var(--color-text-primary)">{{ crumb }}</span>
+    <div style="flex:1;min-width:8px"></div>
+    <span style="flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;letter-spacing:.02em;color:var(--color-text-faint)">{{ syncLine }}</span>
+    <button onClick="{{ noop }}" class="hovrow" style="display:inline-flex;flex-shrink:0;white-space:nowrap;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:4px;border:1px solid var(--color-border-strong);background:transparent;color:var(--color-text-primary);font-family:var(--font-body);font-size:12px;font-weight:500;cursor:pointer">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#v-fileout"></use></svg>
+      Export
+    </button>
+  </header>
+
+  <div style="display:flex;flex:1;min-height:0">
+
+    <aside style="display:flex;width:48px;flex-shrink:0;flex-direction:column;border-right:1px solid var(--color-border);background:var(--color-surface)">
+      <div style="display:flex;flex:1;flex-direction:column;align-items:center;gap:2px;padding:6px 0">
+        <sc-for list="{{ rail }}" as="it" hint-placeholder-count="7">
+          <div class="sb" style="position:relative">
+            <button onClick="{{ it.click }}" aria-label="{{ it.label }}" style="position:relative;display:flex;height:38px;width:38px;align-items:center;justify-content:center;border-radius:4px;border:none;cursor:pointer;transition:background-color .15s,color .15s;background:{{ it.bg }};color:{{ it.color }}">
+              <sc-if value="{{ it.active }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;left:-5px;top:50%;height:18px;width:2px;transform:translateY(-50%);border-radius:0 2px 2px 0;background:var(--color-accent)"></span></sc-if>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="{{ it.icon }}"></use></svg>
+            </button>
+            <div class="sb-tip" style="position:absolute;left:100%;top:50%;z-index:50;margin-left:6px;transform:translateY(-50%)">
+              <div style="white-space:nowrap;border-radius:4px;background:var(--color-surface);padding:3px 7px;font-size:11px;color:var(--color-text-primary);box-shadow:var(--shadow-overlay);outline:1px solid var(--color-border)">{{ it.label }}</div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </aside>
+
+    <!-- ============ DASHBOARD ============ -->
+    <sc-if value="{{ vDash }}" hint-placeholder-val="{{ true }}">
+      <div data-screen-label="Dashboard" style="display:flex;flex:1;min-width:0;min-height:0">
+
+        <div style="display:flex;flex:1;min-width:0;flex-direction:column;min-height:0">
+
+          <div style="display:flex;align-items:center;gap:10px;height:36px;flex-shrink:0;padding:0 14px;border-bottom:1px solid var(--color-border);background:var(--color-surface)">
+            <span style="flex-shrink:0;white-space:nowrap;font-size:14px;font-weight:700;letter-spacing:-0.01em;color:var(--color-text-primary)">Cases</span>
+            <span style="flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;color:var(--color-text-faint)">{{ caseCountLine }}</span>
+            <div style="flex:1;min-width:8px"></div>
+            <button onClick="{{ noop }}" style="display:inline-flex;flex-shrink:0;white-space:nowrap;align-items:center;gap:5px;height:24px;padding:0 9px;border-radius:4px;border:none;background:var(--color-accent);color:#fff;font-family:var(--font-body);font-size:11px;font-weight:600;cursor:pointer">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#v-plus"></use></svg>
+              New case
+            </button>
+          </div>
+
+          <div style="flex-shrink:0;padding:12px 14px;border-bottom:1px solid var(--color-border)">
+            <div style="display:flex;align-items:center;gap:8px;max-width:1200px">
+              <div class="hovbrd" style="display:flex;flex:1;min-width:0;align-items:center;gap:8px;height:30px;border-radius:4px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:0 10px;transition:border-color .15s">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#v-link"></use></svg>
+                <input type="text" aria-label="URL to capture" value="{{ capUrl }}" onChange="{{ onCapUrl }}" placeholder="Paste a URL to capture into the active case…" style="min-width:0;flex:1;background:transparent;border:none;outline:none;font-family:var(--font-body);font-size:11px;color:var(--color-text-primary)">
+                <span style="flex-shrink:0;white-space:nowrap;font-size:10px;color:var(--color-text-faint)">{{ activeCaseName }}</span>
+              </div>
+              <button onClick="{{ noop }}" style="display:inline-flex;flex-shrink:0;white-space:nowrap;align-items:center;gap:5px;height:30px;padding:0 12px;border-radius:4px;border:none;background:var(--color-accent);color:#fff;font-family:var(--font-body);font-size:12px;font-weight:600;cursor:pointer">Capture</button>
+            </div>
+            <p style="margin:7px 2px 0;max-width:1200px;font-size:11px;color:var(--color-text-faint);line-height:1.5">{{ capHint }}</p>
+          </div>
+
+          <div style="flex:1;overflow-y:auto;min-height:0;padding:12px 14px 20px">
+            <sc-if value="{{ showOnboard }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;align-items:center;gap:10px;max-width:1200px;margin-bottom:12px;border-radius:4px;border:1px solid var(--color-border);background:var(--color-card);padding:9px 11px">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#v-shieldck"></use></svg>
+                <span style="flex:1;min-width:0;font-size:11px;color:var(--color-text-muted);line-height:1.5">{{ onboardText }}</span>
+                <button onClick="{{ dismissOnboard }}" aria-label="Dismiss" style="display:grid;flex-shrink:0;place-items:center;height:20px;width:20px;border:none;border-radius:4px;background:transparent;color:var(--color-text-faint);cursor:pointer">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#v-x"></use></svg>
+                </button>
+              </div>
+            </sc-if>
+
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:10px;max-width:1200px">
+              <sc-for list="{{ cases }}" as="c" hint-placeholder-count="4">
+                <button onClick="{{ c.click }}" class="hovbrd" style="display:flex;flex-direction:column;gap:9px;border-radius:6px;border:1px solid var(--color-border);background:var(--color-card);padding:11px 12px;cursor:pointer;text-align:left;transition:border-color .15s;box-shadow:var(--shadow-card)">
+                  <div style="display:flex;align-items:flex-start;gap:8px">
+                    <span style="flex:1;min-width:0;font-size:12px;font-weight:600;color:var(--color-text-primary);line-height:1.4">{{ c.name }}</span>
+                    <span style="display:inline-flex;flex-shrink:0;white-space:nowrap;align-items:center;gap:4px;border-radius:9999px;border:1px solid {{ c.stBorder }};background:{{ c.stBg }};padding:1px 7px;font-size:10px;font-weight:600;color:{{ c.stColor }}">{{ c.status }}</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:5px;white-space:nowrap;font-size:10px;font-variant-numeric:tabular-nums;color:var(--color-text-faint)">
+                    <span>{{ c.captures }}</span><span>·</span><span>{{ c.selectors }}</span><span>·</span><span>{{ c.size }}</span>
+                  </div>
+                  <div style="height:2px;border-radius:2px;background:var(--color-elevated);overflow:hidden">
+                    <div style="height:100%;width:{{ c.pct }}%;background:{{ c.barColor }}"></div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#v-clock"></use></svg>
+                    <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;font-variant-numeric:tabular-nums;color:var(--color-text-faint)">{{ c.touched }}</span>
+                    <sc-if value="{{ c.hasEx }}" hint-placeholder-val="{{ false }}">
+                      <span style="display:inline-flex;flex-shrink:0;white-space:nowrap;align-items:center;gap:4px;font-size:10px;color:#f59e0b">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#v-shieldal"></use></svg>
+                        {{ c.exText }}
+                      </span>
+                    </sc-if>
+                  </div>
+                </button>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+
+        <aside style="display:flex;width:288px;flex-shrink:0;flex-direction:column;border-left:1px solid var(--color-border);background:var(--color-surface);min-height:0;overflow-y:auto">
+
+          <div style="display:flex;flex-direction:column;flex:1;min-height:132px">
+            <div style="display:flex;align-items:center;gap:7px;height:36px;flex-shrink:0;padding:0 12px;border-bottom:1px solid var(--color-border)">
+              <span style="flex-shrink:0;white-space:nowrap;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)">Recent activity</span>
+              <div style="flex:1;min-width:8px"></div>
+              <span style="flex-shrink:0;white-space:nowrap;font-size:10px;color:var(--color-text-faint)">{{ actWindow }}</span>
+            </div>
+            <div style="flex:1;overflow-x:hidden;overflow-y:auto;min-height:0;padding:4px 0 10px">
+              <sc-for list="{{ activity }}" as="a" hint-placeholder-count="9">
+                <div class="hovrow" style="display:grid;grid-template-columns:40px 13px minmax(0,1fr);align-items:baseline;gap:8px;padding:4px 12px;background:transparent">
+                  <span style="font-size:10px;font-variant-numeric:tabular-nums;color:var(--color-text-faint);text-align:right;white-space:nowrap">{{ a.time }}</span>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="{{ a.color }}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="align-self:center"><use href="{{ a.icon }}"></use></svg>
+                  <span style="min-width:0;font-size:11px;color:var(--color-text-muted);line-height:1.5;overflow-wrap:anywhere">
+                    <span style="font-size:10.5px;color:{{ a.color }}">{{ a.event }}</span>
+                    <span> </span>
+                    <span style="color:var(--color-text-secondary)">{{ a.target }}</span>
+                  </span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="flex-shrink:0;border-top:1px solid var(--color-border);padding:11px 12px">
+            <div style="display:flex;align-items:center;gap:7px;margin-bottom:9px">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#v-hdd"></use></svg>
+              <span style="flex-shrink:0;white-space:nowrap;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)">Storage</span>
+              <div style="flex:1;min-width:8px"></div>
+              <span style="flex-shrink:0;white-space:nowrap;font-size:10px;font-variant-numeric:tabular-nums;color:var(--color-text-muted)">{{ storLine }}</span>
+            </div>
+            <div style="display:flex;height:4px;border-radius:2px;background:var(--color-elevated);overflow:hidden">
+              <sc-for list="{{ storSegs }}" as="g" hint-placeholder-count="3">
+                <div style="height:100%;width:{{ g.pct }}%;background:{{ g.color }}"></div>
+              </sc-for>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:8px">
+              <sc-for list="{{ storSegs }}" as="g" hint-placeholder-count="3">
+                <span style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-size:10px;color:var(--color-text-faint)">
+                  <span style="flex-shrink:0;height:6px;width:6px;border-radius:2px;background:{{ g.color }}"></span>
+                  {{ g.label }}
+                </span>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="flex-shrink:0;border-top:1px solid var(--color-border);padding:11px 12px 12px">
+            <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#v-pin"></use></svg>
+              <span style="flex-shrink:0;white-space:nowrap;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)">Pinned notes</span>
+              <div style="flex:1;min-width:8px"></div>
+              <span style="flex-shrink:0;white-space:nowrap;font-size:10px;color:var(--color-text-faint)">{{ noteCount }}</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <sc-for list="{{ notes }}" as="n" hint-placeholder-count="3">
+                <div class="hovbrd" style="border-radius:4px;border:1px solid var(--color-border);background:var(--color-card);padding:7px 9px;transition:border-color .15s">
+                  <div style="font-size:11px;color:var(--color-text-secondary);line-height:1.5">{{ n.text }}</div>
+                  <div style="margin-top:4px;font-size:10px;color:var(--color-text-faint)">{{ n.meta }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </sc-if>
+
+    <!-- ============ CAPTURES — table + docked viewer ============ -->
+    <sc-if value="{{ vCaps }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="Captures" style="display:flex;flex:1;min-width:0;min-height:0;flex-direction:column">
+
+        <div style="display:flex;align-items:center;gap:10px;height:36px;flex-shrink:0;padding:0 14px;border-bottom:1px solid var(--color-border);background:var(--color-surface)">
+          <span style="flex-shrink:0;white-space:nowrap;font-size:14px;font-weight:700;letter-spacing:-0.01em;color:var(--color-text-primary)">Captures</span>
+          <span style="flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;font-variant-numeric:tabular-nums;color:var(--color-text-faint)">{{ showingLine }}</span>
+          <div style="flex:1;min-width:8px"></div>
+          <div class="hovbrd" style="display:flex;flex-shrink:0;align-items:center;gap:6px;width:212px;height:24px;border-radius:4px;border:1px solid var(--color-border-strong);background:var(--color-card);padding:0 8px;transition:border-color .15s">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#v-search"></use></svg>
+            <input type="text" aria-label="Filter captures" value="{{ query }}" onChange="{{ onQuery }}" placeholder="Filter source, hash, tag…" style="min-width:0;flex:1;background:transparent;border:none;outline:none;font-family:var(--font-body);font-size:11px;color:var(--color-text-primary)">
+            <sc-if value="{{ hasQuery }}" hint-placeholder-val="{{ false }}">
+              <button onClick="{{ clearQuery }}" aria-label="Clear filter" style="display:grid;flex-shrink:0;place-items:center;height:14px;width:14px;border:none;border-radius:4px;background:transparent;color:var(--color-text-muted);cursor:pointer">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#v-x"></use></svg>
+              </button>
+            </sc-if>
+          </div>
+        </div>
+
+        <div style="display:flex;flex:1;min-height:0;flex-direction:column">
+
+          <div style="display:flex;flex:1;min-height:0;flex-direction:column;overflow:hidden">
+            <div style="display:grid;grid-template-columns:{{ gridCols }};align-items:center;gap:12px;height:26px;flex-shrink:0;padding:0 14px;border-bottom:1px solid var(--color-border);background:var(--color-surface)">
+              <sc-for list="{{ cols }}" as="h" hint-placeholder-count="6">
+                <button onClick="{{ h.click }}" style="display:inline-flex;align-items:center;gap:4px;min-width:0;justify-content:{{ h.justify }};border:none;background:transparent;padding:0;font-family:var(--font-body);font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:{{ h.color }};cursor:pointer;white-space:nowrap">
+                  <span style="min-width:0;overflow:hidden;text-overflow:ellipsis">{{ h.label }}</span>
+                  <sc-if value="{{ h.sorted }}" hint-placeholder-val="{{ false }}">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="{{ h.icon }}"></use></svg>
+                  </sc-if>
+                </button>
+              </sc-for>
+            </div>
+
+            <div style="flex:1;overflow-x:hidden;overflow-y:auto;min-height:0">
+              <sc-for list="{{ rows }}" as="r" hint-placeholder-count="10">
+                <button onClick="{{ r.click }}" class="hovrow" style="display:grid;grid-template-columns:{{ gridCols }};align-items:center;gap:12px;width:100%;height:{{ rowH }};padding:0 14px;border:none;border-bottom:1px solid var(--color-border);border-left:2px solid {{ r.bar }};background:{{ r.bg }};font-family:var(--font-body);cursor:pointer;text-align:left">
+                  <span style="display:flex;align-items:center;gap:7px;min-width:0">
+                    <span title="{{ r.provLabel }}" style="flex-shrink:0;height:6px;width:6px;border-radius:9999px;background:{{ r.provDot }}"></span>
+                    <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px;font-weight:{{ r.fw }};color:{{ r.titleColor }}">{{ r.host }}</span>
+                    <span style="flex-shrink:0;white-space:nowrap;font-size:10px;color:var(--color-text-faint)">{{ r.path }}</span>
+                  </span>
+                  <span style="white-space:nowrap;font-size:11px;font-variant-numeric:tabular-nums;color:var(--color-text-muted)">{{ r.time }}</span>
+                  <span style="white-space:nowrap;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;color:{{ r.hitColor }}">{{ r.hits }}</span>
+                  <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-variant-numeric:tabular-nums;color:var(--color-text-faint)">{{ r.sha }}</span>
+                  <span style="white-space:nowrap;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;color:var(--color-text-muted)">{{ r.size }}</span>
+                  <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;color:var(--color-text-faint)">{{ r.tagLine }}</span>
+                </button>
+              </sc-for>
+              <sc-if value="{{ noRows }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:36px 16px;text-align:center;font-size:11px;color:var(--color-text-faint);line-height:1.6">{{ emptyText }}</div>
+              </sc-if>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-shrink:0;flex-direction:column;border-top:1px solid var(--color-border);background:var(--color-surface);height:{{ dockH }}">
+            <div style="display:flex;align-items:center;gap:8px;height:36px;flex-shrink:0;padding:0 12px;border-bottom:1px solid var(--color-border)">
+              <span style="min-width:0;flex-shrink:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:600;color:var(--color-text-primary)">{{ selTitle }}</span>
+              <span style="display:inline-flex;flex-shrink:0;white-space:nowrap;align-items:center;gap:5px;border-radius:4px;background:{{ provBg }};padding:1px 7px;font-size:10px;font-weight:600;color:{{ provColor }}">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="{{ provIcon }}"></use></svg>
+                {{ provLabel }}
+              </span>
+              <div style="flex:1;min-width:6px"></div>
+              <button onClick="{{ noop }}" class="hovrow" aria-label="Open URL" title="Open URL" style="display:grid;flex-shrink:0;place-items:center;height:22px;width:22px;border:none;border-radius:4px;background:transparent;color:var(--color-text-muted);cursor:pointer">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#v-ext"></use></svg>
+              </button>
+              <button onClick="{{ noop }}" class="hovrow" aria-label="Download" title="Download capture" style="display:grid;flex-shrink:0;place-items:center;height:22px;width:22px;border:none;border-radius:4px;background:transparent;color:var(--color-text-muted);cursor:pointer">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#v-dl"></use></svg>
+              </button>
+              <button onClick="{{ toggleDock }}" class="hovrow" aria-label="{{ dockLabel }}" title="{{ dockLabel }}" style="display:grid;flex-shrink:0;place-items:center;height:22px;width:22px;border:none;border-radius:4px;background:transparent;color:var(--color-text-muted);cursor:pointer">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="{{ dockIcon }}"></use></svg>
+              </button>
+            </div>
+
+            <sc-if value="{{ dockOpen }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex:1;min-height:0;flex-direction:column">
+                <div style="display:flex;flex-shrink:0;align-items:center;gap:2px;height:30px;padding:0 10px;border-bottom:1px solid var(--color-border);background:var(--color-canvas);overflow-x:auto">
+                  <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="5">
+                    <button onClick="{{ t.click }}" style="height:22px;flex-shrink:0;white-space:nowrap;padding:0 9px;border:none;border-radius:4px;background:{{ t.bg }};color:{{ t.color }};font-family:var(--font-body);font-size:11px;font-weight:{{ t.fw }};cursor:pointer">{{ t.label }}</button>
+                  </sc-for>
+                </div>
+
+                <div style="flex:1;min-height:0;overflow-x:hidden;overflow-y:auto">
+                  <sc-if value="{{ vText }}" hint-placeholder-val="{{ true }}">
+                    <div style="padding:10px 0 16px">
+                      <sc-for list="{{ textLines }}" as="l" hint-placeholder-count="9">
+                        <div style="display:flex;gap:12px;padding:0 14px;line-height:1.75">
+                          <span style="width:24px;flex-shrink:0;text-align:right;font-size:10.5px;font-variant-numeric:tabular-nums;color:var(--color-text-faint);opacity:.6">{{ l.n }}</span>
+                          <span style="min-width:0;font-size:11.5px;color:var(--color-text-secondary);white-space:pre-wrap;overflow-wrap:anywhere"><span>{{ l.pre }}</span><sc-if value="{{ l.hasHit }}" hint-placeholder-val="{{ false }}"><span style="background:rgba(245,158,11,.22);color:#fbbf24;border-radius:2px;padding:0 2px">{{ l.hit }}</span></sc-if><span>{{ l.post }}</span></span>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+
+                  <sc-if value="{{ vParts }}" hint-placeholder-val="{{ false }}">
+                    <div>
+                      <div style="display:grid;grid-template-columns:minmax(0,2fr) 130px 88px 96px;align-items:center;gap:12px;height:24px;padding:0 14px;border-bottom:1px solid var(--color-border);background:var(--color-canvas)">
+                        <span style="font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)">Part</span>
+                        <span style="font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)">Content type</span>
+                        <span style="text-align:right;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)">Size</span>
+                        <span style="font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)">Integrity</span>
+                      </div>
+                      <sc-for list="{{ parts }}" as="p" hint-placeholder-count="6">
+                        <div class="hovrow" style="display:grid;grid-template-columns:minmax(0,2fr) 130px 88px 96px;align-items:center;gap:12px;height:28px;padding:0 14px;border-bottom:1px solid var(--color-border)">
+                          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--color-text-secondary)">{{ p.name }}</span>
+                          <span style="white-space:nowrap;font-size:11px;color:var(--color-text-faint)">{{ p.type }}</span>
+                          <span style="text-align:right;white-space:nowrap;font-size:11px;font-variant-numeric:tabular-nums;color:var(--color-text-muted)">{{ p.size }}</span>
+                          <span style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-size:11px;color:{{ p.color }}">
+                            <span style="flex-shrink:0;height:6px;width:6px;border-radius:9999px;background:{{ p.dot }}"></span>
+                            {{ p.state }}
+                          </span>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+
+                  <sc-if value="{{ vHeaders }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:0">
+                      <sc-for list="{{ headerGroups }}" as="g" hint-placeholder-count="2">
+                        <section style="border-bottom:1px solid var(--color-border);border-right:1px solid var(--color-border);padding:11px 14px">
+                          <div style="margin-bottom:8px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)">{{ g.title }}</div>
+                          <div style="display:flex;flex-direction:column;gap:6px">
+                            <sc-for list="{{ g.rows }}" as="p" hint-placeholder-count="5">
+                              <div style="display:grid;grid-template-columns:118px minmax(0,1fr);gap:10px;align-items:baseline">
+                                <span style="font-size:10px;color:var(--color-text-faint);overflow-wrap:anywhere">{{ p.k }}</span>
+                                <span style="min-width:0;font-size:11px;color:{{ p.color }};overflow-wrap:anywhere;line-height:1.5">{{ p.v }}</span>
+                              </div>
+                            </sc-for>
+                          </div>
+                        </section>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+
+                  <sc-if value="{{ vLedger }}" hint-placeholder-val="{{ false }}">
+                    <div>
+                      <sc-for list="{{ ledger }}" as="e" hint-placeholder-count="5">
+                        <div class="hovrow" style="display:grid;grid-template-columns:52px 130px minmax(0,1fr) 104px;align-items:center;gap:12px;height:30px;padding:0 14px;border-bottom:1px solid var(--color-border);background:{{ e.bg }}">
+                          <span style="text-align:right;white-space:nowrap;font-size:11px;font-variant-numeric:tabular-nums;color:var(--color-text-faint)">{{ e.idx }}</span>
+                          <span style="white-space:nowrap;font-size:11px;font-variant-numeric:tabular-nums;color:var(--color-text-muted)">{{ e.time }}</span>
+                          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-variant-numeric:tabular-nums;color:{{ e.hashColor }}">{{ e.hash }}</span>
+                          <span style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-size:11px;color:{{ e.color }}">
+                            <span style="flex-shrink:0;height:6px;width:6px;border-radius:9999px;background:{{ e.dot }}"></span>
+                            {{ e.state }}
+                          </span>
+                        </div>
+                      </sc-for>
+                      <p style="margin:10px 14px 16px;font-size:10.5px;color:var(--color-text-faint);line-height:1.6">{{ ledgerNote }}</p>
+                    </div>
+                  </sc-if>
+
+                  <sc-if value="{{ vProps }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:0">
+                      <sc-for list="{{ propGroups }}" as="g" hint-placeholder-count="3">
+                        <section style="border-bottom:1px solid var(--color-border);border-right:1px solid var(--color-border);padding:11px 14px">
+                          <div style="margin-bottom:8px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)">{{ g.title }}</div>
+                          <div style="display:flex;flex-direction:column;gap:6px">
+                            <sc-for list="{{ g.rows }}" as="p" hint-placeholder-count="4">
+                              <div style="display:grid;grid-template-columns:118px minmax(0,1fr);gap:10px;align-items:baseline">
+                                <span style="font-size:10px;color:var(--color-text-faint);overflow-wrap:anywhere">{{ p.k }}</span>
+                                <span style="min-width:0;font-size:11px;color:{{ p.color }};overflow-wrap:anywhere;line-height:1.5">{{ p.v }}</span>
+                              </div>
+                            </sc-for>
+                          </div>
+                        </section>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ============ PLACEHOLDER SCREENS ============ -->
+    <sc-if value="{{ vStub }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex:1;min-width:0;flex-direction:column;align-items:center;justify-content:center;gap:8px">
+        <span style="font-size:14px;font-weight:700;letter-spacing:-0.01em;color:var(--color-text-primary)">{{ stubTitle }}</span>
+        <span style="font-size:11px;color:var(--color-text-faint)">{{ stubNote }}</span>
+      </div>
+    </sc-if>
+
+  </div>
+
+  <footer style="display:flex;align-items:center;gap:12px;height:24px;flex-shrink:0;border-top:1px solid var(--color-border);background:var(--color-surface);padding:0 14px;font-size:10px;color:var(--color-text-faint)">
+    <span style="white-space:nowrap;font-variant-numeric:tabular-nums">{{ statCases }}</span>
+    <span>·</span>
+    <span style="white-space:nowrap;font-variant-numeric:tabular-nums">{{ statCaptures }}</span>
+    <span>·</span>
+    <span style="white-space:nowrap;font-variant-numeric:tabular-nums;color:{{ statExColor }}">{{ statEx }}</span>
+    <div style="flex:1;min-width:8px"></div>
+    <span style="flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ statPath }}</span>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;density&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;compact&quot;,&quot;comfortable&quot;],&quot;default&quot;:&quot;compact&quot;,&quot;tsType&quot;:&quot;'compact'|'comfortable'&quot;,&quot;section&quot;:&quot;Layout&quot;}}">
+class Component extends DCLogic {
+  constructor(p) {
+    super(p)
+    this.hex = (seed) => {
+      let x = seed * 2654435761 % 4294967296, out = ''
+      while (out.length < 64) { x = (x * 1103515245 + 12345) % 2147483648; out += x.toString(16).padStart(8, '0') }
+      return out.slice(0, 64)
+    }
+
+    this.cases = [
+      { id: 'nightjar', name: 'Nightjar Phishing Kit', status: 'Active', captures: 42, selectors: 7, size: '1.84 GB', touched: '2026-08-05 16:38', pct: 78, ex: 2 },
+      { id: 'midcity', name: 'Midcity CU Lookalikes', status: 'Active', captures: 18, selectors: 4, size: '640 MB', touched: '2026-08-04 09:12', pct: 41, ex: 0 },
+      { id: 'pillar', name: 'Pillarbank Drops', status: 'Review', captures: 7, selectors: 2, size: '212 MB', touched: '2026-07-30 18:55', pct: 22, ex: 0 },
+      { id: 'kestrel', name: 'Kestrel Infrastructure', status: 'Archived', captures: 63, selectors: 11, size: '3.10 GB', touched: '2026-06-21 11:04', pct: 100, ex: 1 }
+    ]
+
+    this.activity = [
+      { time: '16:38', event: 'case.verify', target: 'nightjar · all sources', kind: 'ok' },
+      { time: '16:12', event: 'capture.seal', target: 'CAP-0031 nightjar-id.cdn-secure.cc', kind: 'ok' },
+      { time: '15:57', event: 'selector.hit', target: 'bc1q… on CAP-0031', kind: 'hit' },
+      { time: '14:20', event: 'verify.mismatch', target: 'CAP-0012/screenshot.png', kind: 'bad' },
+      { time: '11:46', event: 'capture.seal', target: 'CAP-0030 paste.ee/r/2Yb8k', kind: 'ok' },
+      { time: '11:45', event: 'capture.begin', target: 'CAP-0030 paste.ee/r/2Yb8k', kind: 'ok' },
+      { time: '09:12', event: 'case.open', target: 'midcity', kind: 'ok' },
+      { time: '08:31', event: 'verify.missing', target: 'CAP-0019/network.har', kind: 'bad' },
+      { time: '08:04', event: 'selector.hit', target: 'proton.me on CAP-0028', kind: 'hit' },
+      { time: '07:52', event: 'capture.seal', target: 'CAP-0029 gg-cdn.net/admin', kind: 'ok' }
+    ]
+
+    this.notes = [
+      { text: 'Leaf cert fingerprint on CAP-0007 and CAP-0012 is identical — lure and panel share an origin.', meta: 'nightjar · 2026-08-05' },
+      { text: 'paste.ee content pulled upstream 11h after capture. Our copy is the only one.', meta: 'nightjar · 2026-08-02' },
+      { text: 'Ask counsel before re-verifying CAP-0012; screenshot hash already disputed.', meta: 'nightjar · 2026-07-31' }
+    ]
+
+    this.caps = [
+      { id: 'CAP-0031', title: 'Northbank — Secure Session Verification', host: 'nightjar-id.cdn-secure.cc', path: '/collect.php', time: '2026-08-05 16:12', status: 'verified', tags: ['lure', 'drop'], hits: 6, size: '2.41 MB', bytes: 2528215, seed: 11, manifestIndex: 24, httpStatus: '200 OK' },
+      { id: 'CAP-0030', title: 'nightjar kit v3.4.1 — config dump', host: 'paste.ee', path: '/r/2Yb8k', time: '2026-08-05 11:46', status: 'verified', tags: ['config'], hits: 9, size: '214 KB', bytes: 219136, seed: 12, manifestIndex: 23, httpStatus: '200 OK' },
+      { id: 'CAP-0029', title: 'nightjar panel — operator sign in', host: 'nightjar-panel.gg-cdn.net', path: '/admin/login', time: '2026-08-04 07:52', status: 'verified', tags: ['panel'], hits: 3, size: '1.87 MB', bytes: 1960837, seed: 13, manifestIndex: 22, httpStatus: '401 Unauthorized' },
+      { id: 'CAP-0028', title: 'Midcity CU — renew your session', host: 'midcity-cu.secure-verify.cc', path: '/session/renew', time: '2026-08-03 22:09', status: 'verified', tags: ['lure'], hits: 4, size: '3.02 MB', bytes: 3166699, seed: 14, manifestIndex: 21, httpStatus: '200 OK' },
+      { id: 'CAP-0019', title: 'nightjar kit v3.4.1 — config dump', host: 'paste.ee', path: '/r/9Kx2f', time: '2026-08-01 22:17', status: 'missing', tags: ['config'], hits: 9, size: '214 KB', bytes: 219136, seed: 15, manifestIndex: 19, httpStatus: '200 OK' },
+      { id: 'CAP-0018', title: 'Pillarbank — verify your account', host: 'pillarbank.account-check.net', path: '/verify', time: '2026-07-31 13:40', status: 'verified', tags: ['lure'], hits: 2, size: '1.44 MB', bytes: 1509949, seed: 16, manifestIndex: 18, httpStatus: '200 OK' },
+      { id: 'CAP-0012', title: 'nightjar panel — operator sign in', host: 'nightjar-panel.gg-cdn.net', path: '/admin/login', time: '2026-07-29 09:41', status: 'tampered', tags: ['panel'], hits: 3, size: '1.87 MB', bytes: 1960837, seed: 17, manifestIndex: 16, httpStatus: '401 Unauthorized' },
+      { id: 'CAP-0009', title: 'kestrel-host status', host: 'kestrel-host.gg-cdn.net', path: '/status', time: '2026-07-28 20:15', status: 'legacy', tags: ['infra'], hits: 0, size: '86 KB', bytes: 88064, seed: 18, manifestIndex: null, httpStatus: '200 OK' },
+      { id: 'CAP-0007', title: 'Northbank — Secure Session Verification', host: 'nightjar-login.cdn-secure.cc', path: '/verify?ref=northbank', time: '2026-07-28 14:02', status: 'verified', tags: ['lure', 'drop'], hits: 7, size: '2.41 MB', bytes: 2528215, seed: 19, manifestIndex: 12, httpStatus: '200 OK' },
+      { id: 'CAP-0004', title: 'kit.min.js', host: 'cdn.jsdelivr.workers.dev', path: '/nightjar/kit.min.js', time: '2026-07-27 08:33', status: 'legacy', tags: ['payload'], hits: 5, size: '48.9 KB', bytes: 50074, seed: 20, manifestIndex: null, httpStatus: '200 OK' }
+    ]
+
+    this.text = [
+      'Northbank Online — Secure Session Verification',
+      'Your online banking session has been temporarily suspended.',
+      'Card number ________  Expiry __/__  Security code ___',
+      'This verification is processed by nightjar-id.cdn-secure.cc.',
+      'Questions? Contact northbank.support@proton.me',
+      'Donations accepted at bc1qx7vk3n9dl2m4pq8syt0cfr6uwe5haz2j0kq9rn',
+      'Reference: NB-VER-88213-QA',
+      'Session token: nj_5f2c9a71e0b4 (expires 2026-07-29T14:02:11Z)',
+      '© Northbank plc. All rights reserved. Registered in England.'
+    ]
+
+    this.state = {
+      screen: 'dash', sel: 'CAP-0031', tab: 'text',
+      query: '', capUrl: '', onboard: true,
+      sortKey: 'time', sortDir: 'desc', dock: true
+    }
+  }
+
+  prov(status) {
+    if (status === 'verified') return { label: 'Verified', color: '#34d399', bg: 'rgba(16,185,129,.1)', dot: '#34d399', icon: '#v-shieldck' }
+    if (status === 'tampered') return { label: 'Tampered', color: '#f87171', bg: 'rgba(239,68,68,.1)', dot: '#f87171', icon: '#v-shieldal' }
+    if (status === 'missing') return { label: 'Missing', color: '#fbbf24', bg: 'rgba(245,158,11,.1)', dot: '#fbbf24', icon: '#v-shieldal' }
+    if (status === 'legacy') return { label: 'Legacy HTML', color: '#fbbf24', bg: 'rgba(245,158,11,.1)', dot: '#fbbf24', icon: '#v-shield' }
+    return { label: 'Not verified', color: 'var(--color-text-faint)', bg: 'var(--color-surface)', dot: 'var(--color-border-strong)', icon: '#v-shield' }
+  }
+
+  renderVals() {
+    const s = this.state
+    const dense = (this.props.density ?? 'compact') === 'compact'
+    const q = s.query.trim().toLowerCase()
+
+    const railDefs = [
+      { k: 'dash', icon: '#v-home', label: 'Dashboard' },
+      { k: 'caps', icon: '#v-layers', label: 'Captures' },
+      { k: 'sel', icon: '#v-target', label: 'Selectors' },
+      { k: 'notes', icon: '#v-note', label: 'Notes' },
+      { k: 'data', icon: '#v-db', label: 'Data' },
+      { k: 'rev', icon: '#v-shieldck', label: 'Case Reviewer' },
+      { k: 'set', icon: '#v-cog', label: 'Settings' }
+    ]
+
+    const totalEx = this.cases.reduce((a, c) => a + c.ex, 0)
+    const totalCaps = this.cases.reduce((a, c) => a + c.captures, 0)
+
+    const stColor = (st) => st === 'Active' ? { c: 'var(--color-accent)', bg: 'var(--color-accent-subtle)', b: 'color-mix(in srgb,var(--color-accent) 25%,transparent)' }
+      : st === 'Review' ? { c: '#f59e0b', bg: 'rgba(245,158,11,.1)', b: 'rgba(245,158,11,.28)' }
+      : { c: 'var(--color-text-muted)', bg: 'var(--color-elevated)', b: 'var(--color-border)' }
+
+    const actColor = (k) => k === 'bad' ? '#f59e0b' : k === 'hit' ? '#a78bfa' : '#10b981'
+    const actIcon = (k) => k === 'bad' ? '#v-shieldal' : k === 'hit' ? '#v-target' : '#v-shieldck'
+
+    // ---------- table ----------
+    let list = this.caps.slice()
+    if (q) list = list.filter((c) => (c.id + ' ' + c.title + ' ' + c.host + ' ' + c.path + ' ' + this.hex(c.seed) + ' ' + c.tags.join(' ')).toLowerCase().indexOf(q) >= 0)
+
+    const dir = s.sortDir === 'asc' ? 1 : -1
+    const cmp = {
+      host: (a, b) => (a.host + a.path).localeCompare(b.host + b.path),
+      time: (a, b) => a.time < b.time ? -1 : a.time > b.time ? 1 : 0,
+      hits: (a, b) => a.hits - b.hits,
+      sha: (a, b) => this.hex(a.seed).localeCompare(this.hex(b.seed)),
+      size: (a, b) => a.bytes - b.bytes,
+      tags: (a, b) => a.tags.join(' ').localeCompare(b.tags.join(' '))
+    }[s.sortKey]
+    list.sort((a, b) => cmp(a, b) * dir)
+
+    const colDefs = [
+      { k: 'host', label: 'Source', justify: 'flex-start' },
+      { k: 'time', label: 'Captured', justify: 'flex-start' },
+      { k: 'hits', label: 'Hits', justify: 'flex-end' },
+      { k: 'sha', label: 'SHA-256', justify: 'flex-start' },
+      { k: 'size', label: 'Size', justify: 'flex-end' },
+      { k: 'tags', label: 'Tags', justify: 'flex-start' }
+    ]
+    const cols = colDefs.map((c) => ({
+      label: c.label, justify: c.justify,
+      sorted: s.sortKey === c.k,
+      icon: s.sortDir === 'asc' ? '#v-chevu' : '#v-chevd',
+      color: s.sortKey === c.k ? 'var(--color-text-secondary)' : 'var(--color-text-faint)',
+      click: () => this.setState(s.sortKey === c.k
+        ? { sortDir: s.sortDir === 'asc' ? 'desc' : 'asc' }
+        : { sortKey: c.k, sortDir: c.k === 'time' || c.k === 'hits' || c.k === 'size' ? 'desc' : 'asc' })
+    }))
+
+    const rows = list.map((c) => {
+      const sel = s.sel === c.id, pv = this.prov(c.status)
+      return {
+        host: c.host, path: c.path, time: c.time,
+        hits: c.hits === 0 ? '—' : c.hits + ' hits',
+        hitColor: c.hits === 0 ? 'var(--color-text-faint)' : 'var(--color-text-muted)',
+        sha: this.hex(c.seed).slice(0, 16) + '…',
+        size: c.size, tagLine: c.tags.join(' · '),
+        provDot: pv.dot, provLabel: pv.label,
+        fw: sel ? 600 : 500,
+        titleColor: sel ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+        bg: sel ? 'var(--color-accent-subtle)' : 'transparent',
+        bar: sel ? 'var(--color-accent)' : 'transparent',
+        click: () => this.setState({ sel: c.id })
+      }
+    })
+
+    // ---------- selection ----------
+    const sc = list.filter((c) => c.id === s.sel)[0] || list[0] || this.caps[0]
+    const pv = this.prov(sc.status)
+    const sha = this.hex(sc.seed)
+    const isLegacy = sc.status === 'legacy'
+
+    const term = q || 'proton.me'
+    const textLines = this.text.map((line, i) => {
+      const k = line.toLowerCase().indexOf(term.toLowerCase())
+      return k >= 0
+        ? { n: i + 1, pre: line.slice(0, k), hit: line.slice(k, k + term.length), post: line.slice(k + term.length), hasHit: true }
+        : { n: i + 1, pre: line, hit: '', post: '', hasHit: false }
+    })
+
+    const tabDefs = [
+      { id: 'text', label: 'Extracted Text' }, { id: 'parts', label: 'MHTML Parts' },
+      { id: 'headers', label: 'Headers & TLS' }, { id: 'ledger', label: 'Manifest Ledger' },
+      { id: 'props', label: 'Properties' }
+    ]
+    const tabs = tabDefs.map((t) => ({
+      label: t.label,
+      bg: s.tab === t.id ? 'var(--color-elevated)' : 'transparent',
+      color: s.tab === t.id ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+      fw: s.tab === t.id ? 600 : 500,
+      click: () => this.setState({ tab: t.id })
+    }))
+
+    const okDot = { color: '#34d399', dot: '#34d399', state: 'Match' }
+    const badDot = { color: '#f87171', dot: '#f87171', state: 'Mismatch' }
+    const missDot = { color: '#fbbf24', dot: '#fbbf24', state: 'Missing' }
+    const partState = (i) => sc.status === 'tampered' && i === 1 ? badDot : sc.status === 'missing' && i === 4 ? missDot : okDot
+    const parts = [
+      { name: 'index.mhtml', type: 'multipart/related', size: sc.size },
+      { name: 'screenshot.png', type: 'image/png', size: '842 KB' },
+      { name: 'dom.html', type: 'text/html', size: '96 KB' },
+      { name: 'headers.json', type: 'application/json', size: '4.1 KB' },
+      { name: 'network.har', type: 'application/json', size: '318 KB' },
+      { name: 'tls-chain.pem', type: 'application/x-pem-file', size: '6.8 KB' }
+    ].map((p, i) => Object.assign({}, p, partState(i)))
+
+    const headerGroups = [
+      { title: 'Response headers', rows: [
+        { k: 'Status', v: sc.httpStatus, color: 'var(--color-text-secondary)' },
+        { k: 'Content-Type', v: 'text/html; charset=utf-8', color: 'var(--color-text-secondary)' },
+        { k: 'Server', v: 'cloudflare', color: 'var(--color-text-secondary)' },
+        { k: 'Cache-Control', v: 'no-store, max-age=0', color: 'var(--color-text-secondary)' },
+        { k: 'Set-Cookie', v: 'nj_sid=5f2c9a71e0b4; HttpOnly; Secure', color: 'var(--color-text-secondary)' }
+      ] },
+      { title: 'TLS chain', rows: [
+        { k: 'Protocol', v: 'TLS 1.3', color: 'var(--color-text-secondary)' },
+        { k: 'Cipher', v: 'TLS_AES_128_GCM_SHA256', color: 'var(--color-text-secondary)' },
+        { k: 'Subject', v: 'CN=' + sc.host, color: 'var(--color-text-secondary)' },
+        { k: 'Issuer', v: "CN=E6, O=Let's Encrypt", color: 'var(--color-text-secondary)' },
+        { k: 'Valid', v: '2026-07-14 → 2026-10-12', color: 'var(--color-text-secondary)' },
+        { k: 'Leaf SHA-256', v: this.hex(sc.seed + 40), color: 'var(--color-text-secondary)' }
+      ] }
+    ]
+
+    const ledger = isLegacy ? [] : [
+      { idx: sc.manifestIndex - 2, time: '2026-07-28 14:03', seed: sc.seed - 2, ok: true, cur: false },
+      { idx: sc.manifestIndex - 1, time: '2026-07-29 09:42', seed: sc.seed - 1, ok: true, cur: false },
+      { idx: sc.manifestIndex, time: sc.time, seed: sc.seed, ok: sc.status === 'verified', cur: true },
+      { idx: sc.manifestIndex + 1, time: '2026-08-05 16:38', seed: sc.seed + 1, ok: true, cur: false }
+    ].map((e) => ({
+      idx: '#' + e.idx, time: e.time, hash: this.hex(e.seed).slice(0, 32) + '…',
+      hashColor: e.cur ? 'var(--color-text-primary)' : 'var(--color-text-faint)',
+      state: e.ok ? 'Sealed' : this.prov(sc.status).label,
+      color: e.ok ? '#34d399' : this.prov(sc.status).color,
+      dot: e.ok ? '#34d399' : this.prov(sc.status).dot,
+      bg: e.cur ? 'var(--color-accent-subtle)' : 'transparent'
+    }))
+
+    const propGroups = [
+      { title: 'Identity', rows: [
+        { k: 'Capture ID', v: sc.id, color: 'var(--color-text-secondary)' },
+        { k: 'URL', v: 'https://' + sc.host + sc.path, color: 'var(--color-text-secondary)' },
+        { k: 'Page title', v: sc.title, color: 'var(--color-text-secondary)' },
+        { k: 'Captured at', v: sc.time, color: 'var(--color-text-secondary)' }
+      ] },
+      { title: 'Integrity', rows: [
+        { k: 'SHA-256', v: sha, color: 'var(--color-text-secondary)' },
+        { k: 'Manifest index', v: isLegacy ? 'not in ledger' : '#' + sc.manifestIndex, color: isLegacy ? '#fbbf24' : 'var(--color-text-secondary)' },
+        { k: 'Chain status', v: pv.label, color: pv.color },
+        { k: 'Archive size', v: sc.size, color: 'var(--color-text-secondary)' }
+      ] },
+      { title: 'Provenance', rows: [
+        { k: 'Tool version', v: 'Birdbrain 1.0.1-beta.11', color: 'var(--color-text-secondary)' },
+        { k: 'Operator', v: 'M. Donovan (op-4417)', color: 'var(--color-text-secondary)' },
+        { k: 'Selector hits', v: sc.hits === 0 ? 'none' : sc.hits + ' across 3 selectors', color: 'var(--color-text-secondary)' },
+        { k: 'Tags', v: sc.tags.join(', '), color: 'var(--color-text-secondary)' }
+      ] }
+    ]
+
+    const stub = { sel: ['Selectors', 'Not part of this sample — standardized next pass.'], notes: ['Notes', 'Not part of this sample — standardized next pass.'], data: ['Data Sources', 'Not part of this sample — standardized next pass.'], rev: ['Case Reviewer', 'Already built — see Case Reviewer.dc.html.'], set: ['Settings', 'Not part of this sample — standardized next pass.'] }
+    const st = stub[s.screen] || ['', '']
+
+    return {
+      noop: () => {},
+      rail: railDefs.map((d) => ({
+        icon: d.icon, label: d.label, active: s.screen === d.k,
+        bg: s.screen === d.k ? 'var(--color-accent-subtle)' : 'transparent',
+        color: s.screen === d.k ? 'var(--color-accent)' : 'var(--color-text-muted)',
+        click: () => this.setState({ screen: d.k })
+      })),
+      vDash: s.screen === 'dash', vCaps: s.screen === 'caps', vStub: !!stub[s.screen],
+      stubTitle: st[0], stubNote: st[1],
+      crumb: s.screen === 'caps' ? 'Nightjar Phishing Kit' : 'All cases',
+      syncLine: 'synced 4m ago · 2 exceptions',
+
+      caseCountLine: this.cases.length + ' cases · ' + totalCaps + ' captures',
+      capUrl: s.capUrl, onCapUrl: (e) => this.setState({ capUrl: e.target.value }),
+      activeCaseName: '→ nightjar',
+      capHint: 'Captures the live page with its MHTML archive, DOM, headers, TLS chain and a hash of every part.',
+      showOnboard: s.onboard, dismissOnboard: () => this.setState({ onboard: false }),
+      onboardText: 'Browser extension connected. Captures you take while browsing land in the active case automatically.',
+      cases: this.cases.map((c) => {
+        const k = stColor(c.status)
+        return {
+          name: c.name, status: c.status, stColor: k.c, stBg: k.bg, stBorder: k.b,
+          captures: c.captures + ' captures', selectors: c.selectors + ' selectors', size: c.size,
+          pct: c.pct, barColor: c.status === 'Archived' ? 'var(--color-border-strong)' : 'var(--color-accent)',
+          touched: 'touched ' + c.touched,
+          hasEx: c.ex > 0, exText: c.ex + ' exceptions',
+          click: () => this.setState({ screen: 'caps' })
+        }
+      }),
+      actWindow: 'last 24h',
+      activity: this.activity.map((a) => ({ time: a.time, event: a.event, target: a.target, color: actColor(a.kind), icon: actIcon(a.kind) })),
+      storLine: '5.79 GB of 20 GB',
+      storSegs: [
+        { label: 'archives 3.9 GB', pct: 19.5, color: 'var(--color-accent)' },
+        { label: 'screenshots 1.4 GB', pct: 7, color: '#a78bfa' },
+        { label: 'derived 0.49 GB', pct: 2.5, color: '#38bdf8' }
+      ],
+      noteCount: this.notes.length + ' pinned',
+      notes: this.notes,
+
+      query: s.query, hasQuery: s.query.length > 0,
+      onQuery: (e) => this.setState({ query: e.target.value }),
+      clearQuery: () => this.setState({ query: '' }),
+      showingLine: 'Showing ' + rows.length + ' of ' + this.caps.length + ' captures',
+      gridCols: 'minmax(0,2.1fr) 128px 66px minmax(0,1.1fr) 74px minmax(0,0.9fr)',
+      cols: cols, rows: rows, noRows: rows.length === 0,
+      rowH: dense ? '34px' : '44px',
+      emptyText: q ? 'No captures match this filter' : 'No captures in this case yet',
+
+      selTitle: sc.host + sc.path,
+      provLabel: pv.label, provColor: pv.color, provBg: pv.bg, provIcon: pv.icon,
+      dockOpen: s.dock, dockH: s.dock ? '46%' : '36px',
+      dockIcon: s.dock ? '#v-chevd' : '#v-chevu',
+      dockLabel: s.dock ? 'Collapse viewer' : 'Expand viewer',
+      toggleDock: () => this.setState({ dock: !s.dock }),
+      tabs: tabs,
+      vText: s.tab === 'text', vParts: s.tab === 'parts', vHeaders: s.tab === 'headers',
+      vLedger: s.tab === 'ledger', vProps: s.tab === 'props',
+      textLines: textLines,
+      parts: parts,
+      headerGroups: headerGroups,
+      ledger: ledger,
+      ledgerNote: isLegacy
+        ? 'This capture predates the manifest ledger, so it has no chain entry. Its hash is recorded but cannot be chained.'
+        : 'Each entry hashes the one before it. Altering any sealed capture breaks every entry after it.',
+      propGroups: propGroups,
+
+      statCases: this.cases.length + ' cases',
+      statCaptures: totalCaps + ' captures',
+      statEx: totalEx + ' integrity exceptions',
+      statExColor: totalEx ? '#f59e0b' : 'var(--color-text-faint)',
+      statPath: '~/Birdbrain/cases'
+    }
+  }
+}
+</script>
+</body>
+</html>

@@ -68,8 +68,9 @@ export function HeadersTlsTab({ capture }: { capture: Capture }) {
           <p className="text-xs text-text-faint">No headers were recorded for this capture.</p>
         ) : (
           <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 font-mono text-[11px]">
-            {headers.map(([name, value]) => (
-              <div key={name} className="contents">
+            {headers.map(([name, value], index) => (
+              // Indexed, not named: a response can repeat a header (`set-cookie`).
+              <div key={`${index}-${name}`} className="contents">
                 <dt className="text-text-muted">{name}</dt>
                 <dd className="break-all text-text-secondary">{value}</dd>
               </div>

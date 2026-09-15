@@ -243,15 +243,35 @@ describe('DataExplorer results and tabs (#1150)', () => {
     renderExplorer()
     await select('integrity-exceptions')
     const strip = within(await screen.findByTestId('integrity-strip'))
-    // Persisted state: cap-a tampered (with its thumbnail), cap-legacy legacy.
+    // Persisted state: cap-a tampered, cap-legacy legacy; the thumbnail has no
+    // state of its own and none is inferred.
     expect(text(strip.getByTestId('bucket-verified'))).toBe('0 verified')
-    expect(text(strip.getByTestId('bucket-exception'))).toBe('2 tampered, missing or chain-broken')
-    expect(text(strip.getByTestId('bucket-unverified'))).toBe('1 unverified')
+    expect(text(strip.getByTestId('bucket-exception'))).toBe('1 tampered, missing or chain-broken')
+    expect(text(strip.getByTestId('bucket-unverified'))).toBe('2 unverified')
     expect(screen.getByTestId('artifact-row-cap-a')).toBeTruthy()
-    expect(screen.getByTestId('artifact-row-thumb-a')).toBeTruthy()
+    expect(screen.queryByTestId('artifact-row-thumb-a')).toBeNull()
     expect(text(screen.getByTestId('chain-verdict'))).toBe('Chain intact through seq 1')
 
+    // Sequential (X37): the second verify is not requested until the first
+    // resolves, and the progress counter advances between them.
+    let releaseFirst: (() => void) | undefined
+    const firstDone = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+    const original = verify.getMockImplementation() as (
+      caseId: string,
+      exhibitId: string
+    ) => Promise<ExhibitVerification>
+    verify.mockImplementation(async (caseId: string, exhibitId: string) => {
+      if (exhibitId === 'cap-a') await firstDone
+      return original(caseId, exhibitId)
+    })
     fireEvent.click(strip.getByTestId('verify-all'))
+    await waitFor(() => expect(verify).toHaveBeenCalledTimes(1))
+    expect(text(strip.getByTestId('verify-all-progress'))).toBe('0 / 2')
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(verify).toHaveBeenCalledTimes(1)
+    releaseFirst!()
     await waitFor(() => expect(verify).toHaveBeenCalledTimes(2))
     // One call per anchored Exhibit, in inventory order, never for the pool.
     expect(verify.mock.calls.map((c) => c[1])).toEqual(['cap-a', 'cap-legacy'])
@@ -266,6 +286,42 @@ describe('DataExplorer results and tabs (#1150)', () => {
     )
   })
 
+  it('files a verify that threw as unverified for the session, not as its stale persisted state', async () => {
+    verify.mockImplementation(async (_caseId: string, exhibitId: string) => {
+      if (exhibitId === 'cap-a') throw new Error('EBUSY')
+      return { exhibitId, caseId: 'case1', kind: 'capture', status: 'verified' }
+    })
+    renderExplorer()
+    await select('integrity-exceptions')
+    const strip = within(await screen.findByTestId('integrity-strip'))
+    expect(text(strip.getByTestId('bucket-exception'))).toBe('1 tampered, missing or chain-broken')
+    fireEvent.click(strip.getByTestId('verify-all'))
+    await waitFor(() => expect(verify).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(text(strip.getByTestId('bucket-verified'))).toBe('1 verified'))
+    // cap-a's persisted "tampered" is not repeated and it is not verified either.
+    expect(text(strip.getByTestId('bucket-exception'))).toBe('0 tampered, missing or chain-broken')
+    expect(text(strip.getByTestId('bucket-unverified'))).toBe('2 unverified')
+  })
+
+  it('omits the text tab for a zero-byte sidecar and the ledger tab when only an unreadable line names the row', async () => {
+    getContent.mockResolvedValue('')
+    snapshotStub = {
+      ...SNAPSHOT,
+      entries: [{ index: 0, parsed: false, reason: 'Entry does not match the manifest schema' }],
+      chain: { valid: false, unsupported: { index: 0, supportedSchemaVersion: 3 } },
+      signers: [],
+      head: { index: 0, entryHash: 'z'.repeat(64) }
+    }
+    renderExplorer()
+    fireEvent.click(await screen.findByTestId('artifact-row-cap-a'))
+    const strip = within(await screen.findByTestId('artifact-tabs'))
+    await waitFor(() => expect(getContent).toHaveBeenCalledWith('cap-a', 'txt'))
+    expect(strip.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'Headers & TLS',
+      'Properties'
+    ])
+  })
+
   it('renders the whole ledger with the verdict and the signer fingerprint', async () => {
     renderExplorer()
     await select('manifest-ledger')
@@ -274,6 +330,7 @@ describe('DataExplorer results and tabs (#1150)', () => {
     expect(text(view.getByTestId('ledger-signer'))).toBe(
       'seq 0–1: abababababab (this installation)'
     )
+    expect(view.getByTestId('ledger-signer').getAttribute('title')).toBe('ab'.repeat(32))
     expect(view.getByTestId('ledger-row-0').getAttribute('data-entry-type')).toBe('capture')
     expect(text(view.getByTestId('ledger-row-0'))).toContain('cap-a · https://example.com/page')
     expect(screen.queryByTestId('artifact-table')).toBeNull()

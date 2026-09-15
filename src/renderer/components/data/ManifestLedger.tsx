@@ -110,6 +110,7 @@ export function ManifestLedgerView({ snapshot }: { snapshot: CaseManifestSnapsho
             <span
               key={`${segment.fromIndex}-${segment.toIndex}`}
               className="font-mono"
+              title={segment.fingerprint ?? 'unreadable key'}
               data-testid="ledger-signer"
             >
               {describeSigner(segment)}

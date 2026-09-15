@@ -5,7 +5,7 @@ import {
   descendantKeys,
   fileTypeOf,
   kindLabel,
-  kindSortIndex
+  kindSingular
 } from '@renderer/components/data/dataTreeModel'
 import { CAPTURE_A, CAPTURE_LEGACY, INVENTORY, STAGED_PDF, THUMB_A } from '../dataFixtures'
 
@@ -29,13 +29,14 @@ describe('buildDataTree', () => {
       results: RESULTS
     })
     const count = (key: string) => nodes.find((n) => n.key === key)?.count
-    // Two Captures and one thumbnail are anchored rows; the pooled PDF is not.
+    // Two Captures and one thumbnail are anchored rows; the pooled PDF is not,
+    // and it is counted under Staging and nowhere else (X16).
     expect(count('data-sources')).toBe(3)
     expect(count('staging')).toBe(1)
-    expect(count('views')).toBe(4)
-    expect(count('file-types')).toBe(4)
+    expect(count('views')).toBe(3)
+    expect(count('file-types')).toBe(3)
     expect(count('file-type:MHTML')).toBe(1)
-    expect(count('file-type:PDF')).toBe(1)
+    expect(nodes.find((n) => n.key === 'file-type:PDF')).toBeUndefined()
     expect(count('keyword-hits')).toBe(2)
     expect(count('indicators')).toBe(5)
     expect(count('integrity-exceptions')).toBe(1)
@@ -140,14 +141,12 @@ describe('descendantKeys', () => {
       'file-types',
       'file-type:MHTML',
       'file-type:HTML',
-      'file-type:JPG',
-      'file-type:PDF'
+      'file-type:JPG'
     ])
     expect(descendantKeys(INVENTORY, 'file-types')).toEqual([
       'file-type:MHTML',
       'file-type:HTML',
-      'file-type:JPG',
-      'file-type:PDF'
+      'file-type:JPG'
     ])
     expect(descendantKeys(INVENTORY, 'results')).toEqual([
       'keyword-hits',
@@ -174,12 +173,11 @@ describe('labels', () => {
     expect(kindLabel('capture')).toBe('Captures')
     expect(kindLabel('attachment')).toBe('Attachments')
     expect(kindLabel('recording')).toBe('Recordings')
+    expect(kindSingular('capture')).toBe('Capture')
+    expect(kindSingular('attachment')).toBe('Attachment')
   })
 
   it('sorts the ruling’s kinds first and an unknown kind after them by name', () => {
-    expect(kindSortIndex('capture')).toBe(0)
-    expect(kindSortIndex('document')).toBe(3)
-    expect(kindSortIndex('recording')).toBe(4)
     const mixed = [
       { ...CAPTURE_A, id: 'r1', kind: 'recording', exhibitNumber: 3 },
       { ...CAPTURE_A, id: 'a1', kind: 'attachment', exhibitNumber: 4 },

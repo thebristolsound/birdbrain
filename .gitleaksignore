@@ -56,3 +56,24 @@ cd5a25c266ba99b515ddaeb39c16a05ce954080b:tests/shared/verify/fixtures/pre-scope-
 # not a credential. The branch entry above is inert now that the source
 # branch is deleted, and stays for history.
 911859d698f1b66c9993e9fe617b4fc0f74bf4ad:tests/shared/verify/fixtures/pre-scope-package/manifest.jsonl:generic-api-key:3
+#
+# The 2026-09-14 design-project export copied the same mock "Session token:
+# nj_..." fixture line into multiple archived prototype files. This is demo
+# content from the design handoff bundle (same fake token pattern as earlier
+# allowlists), not a real credential.
+89085808dd8b8d411ff9ac822511e17f605b7797:docs/design-handoff/2026-09-14-design-project-export/Birdbrain v2 (github sync) copy.dc.html:generic-api-key:863
+89085808dd8b8d411ff9ac822511e17f605b7797:docs/design-handoff/2026-09-14-design-project-export/Birdbrain v2 (github sync).dc.html:generic-api-key:863
+89085808dd8b8d411ff9ac822511e17f605b7797:docs/design-handoff/2026-09-14-design-project-export/Birdbrain v2.dc.html:generic-api-key:477
+89085808dd8b8d411ff9ac822511e17f605b7797:docs/design-handoff/2026-09-14-design-project-export/Birdbrain-standalone.html:generic-api-key:384
+89085808dd8b8d411ff9ac822511e17f605b7797:docs/design-handoff/2026-09-14-design-project-export/Birdbrain.html:generic-api-key:384
+89085808dd8b8d411ff9ac822511e17f605b7797:docs/design-handoff/2026-09-14-design-project-export/Case Reviewer.dc.html:generic-api-key:434
+89085808dd8b8d411ff9ac822511e17f605b7797:docs/design-handoff/2026-09-14-design-project-export/archive/Birdbrain - Fable.dc.html:generic-api-key:4619
+89085808dd8b8d411ff9ac822511e17f605b7797:docs/design-handoff/2026-09-14-design-project-export/archive/Birdbrain - Opus.dc.html:generic-api-key:4619
+89085808dd8b8d411ff9ac822511e17f605b7797:docs/design-handoff/2026-09-14-design-project-export/archive/Birdbrain -pre-standardization 2026-08-08-.dc.html:generic-api-key:4913
+89085808dd8b8d411ff9ac822511e17f605b7797:docs/design-handoff/2026-09-14-design-project-export/design_handoff_birdbrain_prototype/Birdbrain.dc.html:generic-api-key:6171
+89085808dd8b8d411ff9ac822511e17f605b7797:docs/design-handoff/2026-09-14-design-project-export/design_handoff_birdbrain_prototype/Case Reviewer.dc.html:generic-api-key:434
+89085808dd8b8d411ff9ac822511e17f605b7797:docs/design-handoff/2026-09-14-design-project-export/design_handoff_birdbrain_prototype/style_sync_patch/prototypes/Birdbrain.dc.html:generic-api-key:5727
+89085808dd8b8d411ff9ac822511e17f605b7797:docs/design-handoff/2026-09-14-design-project-export/design_handoff_birdbrain_prototype/style_sync_patch/prototypes/Case Reviewer.dc.html:generic-api-key:434
+89085808dd8b8d411ff9ac822511e17f605b7797:docs/design-handoff/2026-09-14-design-project-export/design_handoff_style_sync/prototypes/Birdbrain.dc.html:generic-api-key:5727
+89085808dd8b8d411ff9ac822511e17f605b7797:docs/design-handoff/2026-09-14-design-project-export/design_handoff_style_sync/prototypes/Case Reviewer.dc.html:generic-api-key:434
+fc4a365e1be2cc7f7b4134e4084ae97c47c5cc68:docs/design-handoff/2026-09-14-birdbrain-dc/Birdbrain.dc.html:generic-api-key:6211

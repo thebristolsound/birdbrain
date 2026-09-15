@@ -191,7 +191,7 @@
     "dependency-cruiser": "^17.4.3",
     "electron": "^44.3.0",
     "electron-builder": "^26.15.3",
-    "electron-vite": "^3.1.0",
+    "electron-vite": "^5.0.0",
     "esbuild": "^0.28.2",
     "eslint": "^10.10.0",
     "eslint-config-prettier": "^10.1.8",

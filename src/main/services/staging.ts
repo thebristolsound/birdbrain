@@ -139,7 +139,18 @@ export async function uploadToStaging(
     const name = basename(source)
     const { rel, abs } = store.stagingPaths(caseId, id + extname(name))
     mkdirSync(dirname(abs), { recursive: true })
-    const { hash, sizeBytes } = await copyHashed(source, abs, maxSizeBytes)
+    let copied: { hash: string; sizeBytes: number }
+    try {
+      copied = await copyHashed(source, abs, maxSizeBytes)
+    } catch (err) {
+      // The files before this one are pooled and stay pooled; the error says
+      // so, because the caller gets no list back from a rejected upload.
+      throw new Error(
+        `${name}: ${err instanceof Error ? err.message : String(err)}` +
+          (staged.length > 0 ? ` (${staged.length} earlier file(s) were added to the pool)` : '')
+      )
+    }
+    const { hash, sizeBytes } = copied
     const kind = detectExhibitKind(await readHead(abs))
     staged.push(
       insertStagingFile({
@@ -193,13 +204,14 @@ export async function commitStagedFiles(
 
     const exhibitId = randomUUID()
     const target = store.exhibitPaths(caseId, row.kind, exhibitId + extname(row.path))
-    mkdirSync(dirname(target.abs), { recursive: true })
-    await rename(pooledAbs, target.abs)
-
-    const settings = getSettings()
-    const timestamp = new Date().toISOString()
-    const exhibitNumber = nextExhibitNumber(caseId)
+    let moved = false
     try {
+      const settings = getSettings()
+      const timestamp = new Date().toISOString()
+      const exhibitNumber = nextExhibitNumber(caseId)
+      mkdirSync(dirname(target.abs), { recursive: true })
+      await rename(pooledAbs, target.abs)
+      moved = true
       await withManifestEntry(
         caseDir,
         {
@@ -236,24 +248,36 @@ export async function commitStagedFiles(
             deleteStagingFile(stagingId)
           })
       )
+      deps.enqueueTimestamp?.(exhibitId)
+      outcomes.push({ stagingId, status: 'committed', exhibitId, exhibitNumber })
     } catch (err) {
-      await rename(target.abs, pooledAbs).catch(() => {})
       logger.error('staging', 'staging.commit_failed', { stagingId: ident(stagingId) }, err)
+      if (moved) {
+        // The entry (if any) is already truncated by the seam; put the bytes
+        // back so the pool row and the file agree again. A failed move back is
+        // its own record: the file then sits in the kind directory with no row.
+        await rename(target.abs, pooledAbs).catch((moveErr) =>
+          logger.error('staging', 'staging.commit_failed', { stagingId: ident(stagingId) }, moveErr)
+        )
+      }
       outcomes.push({
         stagingId,
         status: 'failed',
         error: err instanceof Error ? err.name : 'UnknownError'
       })
-      continue
     }
-    deps.enqueueTimestamp?.(exhibitId)
-    outcomes.push({ stagingId, status: 'committed', exhibitId, exhibitNumber })
   }
   return { outcomes }
 }
 
 // Removes the file and the row and writes nothing to the manifest (X29): the
 // pool is outside the chain, so leaving it is not custody.
+//
+// The row goes only when the bytes are gone. An unlink that fails for any
+// reason but "already absent" (EACCES, EPERM, EBUSY with the file open in a
+// viewer) keeps the row and leaves the id out of `discarded`: deleting the
+// row over bytes still on disk would leave undeclared bytes inside the Case
+// directory, which is the state the pool exists to rule out (ADR-0024).
 export async function discardStagedFiles(
   caseId: string,
   stagingIds: string[],
@@ -264,7 +288,14 @@ export async function discardStagedFiles(
   for (const stagingId of stagingIds) {
     const row = getStagingFile(stagingId)
     if (!row || row.caseId !== caseId) continue
-    await unlink(store.resolveAbsolute(row.path)).catch(() => {})
+    try {
+      await unlink(store.resolveAbsolute(row.path))
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        logger.error('staging', 'staging.discard_failed', { stagingId: ident(stagingId) }, err)
+        continue
+      }
+    }
     if (deleteStagingFile(stagingId)) discarded.push(stagingId)
   }
   return { discarded }

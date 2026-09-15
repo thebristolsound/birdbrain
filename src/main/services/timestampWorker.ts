@@ -159,9 +159,13 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
   function listPendingExhibits(): string[] {
     const pending: string[] = []
     for (const c of caseRepo.listCases()) {
+      const candidates = listExhibits(c.id).filter(
+        (exhibit) => exhibit.kind !== 'capture' && exhibit.manifestSeq !== null
+      )
+      // Most Cases hold Captures only; no manifest read for those.
+      if (candidates.length === 0) continue
       const index = buildTrustedTimeIndex(join(getStorageRoot(), c.id))
-      for (const exhibit of listExhibits(c.id)) {
-        if (exhibit.kind === 'capture' || exhibit.manifestSeq === null) continue
+      for (const exhibit of candidates) {
         if (index.get(exhibit.contentHash)?.trustedTime === 'rfc3161') continue
         pending.push(exhibit.id)
       }

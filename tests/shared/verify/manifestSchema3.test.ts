@@ -6,6 +6,7 @@ import { tmpdir } from 'os'
 import {
   appendManifestEntry,
   initManifest,
+  readEntries,
   verifyManifestChain,
   MIN_READER_SCHEMA_VERSION
 } from '@main/services/manifest'
@@ -250,6 +251,27 @@ describe('manifest schema 3 — writing stays readable by a schema-2 verifier', 
       expect(version).toBe(v3Types.has(type) ? 3 : 2)
       expect(version).toBeLessThanOrEqual(MANIFEST_SCHEMA_VERSION)
     }
+  })
+
+  it('clamps a per-entry reader override between the type minimum and the read ceiling', () => {
+    const base = {
+      type: 'timestamp' as const,
+      caseId: CASE_ID,
+      captureContentHash: 'a'.repeat(64),
+      timestamp: '2026-06-01T12:00:00.000Z',
+      operatorId: 'op',
+      operatorName: 'Op',
+      toolVersion: '0.1.0'
+    }
+    appendManifestEntry(caseDir, base, { minReaderSchemaVersion: 1 })
+    appendManifestEntry(caseDir, base, { minReaderSchemaVersion: 3 })
+    appendManifestEntry(caseDir, base, { minReaderSchemaVersion: 99 })
+    const versions = readEntries(readFileSync(join(caseDir, MANIFEST_FILENAME), 'utf-8'))
+      .slice(-3)
+      .map((line) => line.schemaVersion)
+    // 1 cannot lower a v2 type; 99 cannot pass what this build can read.
+    expect(versions).toEqual([2, 3, MANIFEST_SCHEMA_VERSION])
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
   })
 
   it('appends a capture entry at schemaVersion 2, not the read ceiling', () => {

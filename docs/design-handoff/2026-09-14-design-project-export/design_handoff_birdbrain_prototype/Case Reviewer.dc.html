@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/birdbrain-ui-9632b0b0-024d-4a3c-94db-688afdd4768f/fonts/fonts.css">
+  <link rel="stylesheet" href="_ds/birdbrain-ui-9632b0b0-024d-4a3c-94db-688afdd4768f/_ds_bundle.css">
+  <link rel="stylesheet" href="_ds/birdbrain-ui-9632b0b0-024d-4a3c-94db-688afdd4768f/styles.css">
+  <style>
+    html,body{margin:0;padding:0;height:100%;}
+    a{color:var(--color-accent);text-decoration:none;}
+    a:hover{color:var(--color-accent-hover);}
+    ::placeholder{color:var(--color-text-faint);}
+    .hovrow:hover{background:var(--color-elevated)!important;}
+    .hovbrd:hover{border-color:var(--color-border-strong);}
+    .sb .sb-tip{opacity:0;pointer-events:none;transition:opacity .12s;}
+    .sb:hover .sb-tip{opacity:1;}
+    ::-webkit-scrollbar{width:10px;height:10px}
+    ::-webkit-scrollbar-thumb{background:var(--color-border-strong);border-radius:6px;border:3px solid transparent;background-clip:content-box}
+    ::-webkit-scrollbar-track{background:transparent}
+    symbol,symbol *{fill:none;stroke:currentColor;}
+  </style>
+</helmet>
+<svg width="0" height="0" fill="none" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="r-chevr" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"></path></symbol>
+    <symbol id="r-chevd" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"></path></symbol>
+    <symbol id="r-arrl" viewBox="0 0 24 24"><path d="M19 12H5"></path><path d="m12 19-7-7 7-7"></path></symbol>
+    <symbol id="r-db" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"></path></symbol>
+    <symbol id="r-layers" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></symbol>
+    <symbol id="r-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></symbol>
+    <symbol id="r-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path><path d="M2 12h20"></path></symbol>
+    <symbol id="r-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></symbol>
+    <symbol id="r-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="M16 13H8"></path><path d="M16 17H8"></path></symbol>
+    <symbol id="r-archive" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="5" rx="1"></rect><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"></path><path d="M10 12h4"></path></symbol>
+    <symbol id="r-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path></symbol>
+    <symbol id="r-code" viewBox="0 0 24 24"><path d="m16 18 6-6-6-6"></path><path d="m8 6-6 6 6 6"></path></symbol>
+    <symbol id="r-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></symbol>
+    <symbol id="r-shieldal" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></symbol>
+    <symbol id="r-shieldck" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></symbol>
+    <symbol id="r-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></symbol>
+    <symbol id="r-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></symbol>
+    <symbol id="r-type" viewBox="0 0 24 24"><polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" y1="20" x2="15" y2="20"></line><line x1="12" y1="4" x2="12" y2="20"></line></symbol>
+    <symbol id="r-fileout" viewBox="0 0 24 24"><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="M4 7V4a2 2 0 0 1 2-2h8.5L20 7.5V20a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-1"></path><path d="M2 15h10"></path><path d="m9 12 3 3-3 3"></path></symbol>
+    <symbol id="r-refcw" viewBox="0 0 24 24"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path><path d="M3 22v-6h6"></path><path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path></symbol>
+    <symbol id="r-x" viewBox="0 0 24 24"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></symbol>
+    <symbol id="r-home" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></symbol>
+    <symbol id="r-dash" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></symbol>
+    <symbol id="r-note" viewBox="0 0 24 24"><path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"></path><path d="M15 3v4a2 2 0 0 0 2 2h4"></path></symbol>
+    <symbol id="r-cross" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="22" y1="12" x2="18" y2="12"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="12" y1="6" x2="12" y2="2"></line><line x1="12" y1="22" x2="12" y2="18"></line></symbol>
+    <symbol id="r-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></symbol>
+  </defs>
+</svg>
+
+<div style="display:flex;flex-direction:column;height:100vh;background:var(--color-canvas);color:var(--color-text-secondary);font-family:var(--font-body);overflow:hidden">
+
+  <header style="display:flex;height:48px;flex-shrink:0;align-items:center;gap:10px;border-bottom:1px solid var(--color-border);background:var(--color-surface);padding:0 14px">
+    <img src="src/renderer/assets/logo.png" alt="Birdbrain" style="height:22px;width:22px">
+    <span style="font-family:var(--font-display);font-size:12px;font-weight:800;letter-spacing:-0.025em;color:var(--color-text-primary)">Birdbrain</span>
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#r-chevr"></use></svg>
+    <span style="font-family:var(--font-display);font-size:12px;font-weight:700;color:var(--color-text-primary)">Nightjar Phishing Kit</span>
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#r-chevr"></use></svg>
+    <span style="display:inline-flex;align-items:center;gap:6px;border-radius:6px;border:1px solid color-mix(in srgb,var(--color-accent) 25%,transparent);background:var(--color-accent-subtle);padding:3px 9px;font-size:11px;font-weight:600;color:var(--color-accent)">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#r-layers"></use></svg>
+      Case Reviewer
+    </span>
+    <div style="flex:1"></div>
+    <span style="font-family:var(--font-mono);font-size:10px;color:var(--color-text-faint);letter-spacing:.02em">read-only · working copy</span>
+    <button onClick="{{ noop }}" class="hovrow" style="display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:6px;border:1px solid var(--color-border-strong);background:transparent;color:var(--color-text-primary);font-family:var(--font-body);font-size:12px;font-weight:500;cursor:pointer">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#r-refcw"></use></svg>
+      Re-verify case
+    </button>
+    <button onClick="{{ noop }}" class="hovrow" style="display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:6px;border:1px solid var(--color-border-strong);background:transparent;color:var(--color-text-primary);font-family:var(--font-body);font-size:12px;font-weight:500;cursor:pointer">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#r-fileout"></use></svg>
+      Export
+    </button>
+  </header>
+
+  <div style="display:flex;flex:1;min-height:0">
+
+    <!-- ============ APP RAIL ============ -->
+    <aside style="display:flex;width:48px;flex-shrink:0;flex-direction:column;border-right:1px solid var(--color-border);background:var(--color-surface)">
+      <div style="display:flex;flex:1;flex-direction:column;align-items:center;gap:4px;padding:8px 0">
+        <sc-for list="{{ rail }}" as="it" hint-placeholder-count="6">
+          <div class="sb" style="position:relative">
+            <button onClick="{{ noop }}" aria-label="{{ it.label }}" style="position:relative;display:flex;height:40px;width:40px;align-items:center;justify-content:center;border-radius:4px;border:none;cursor:pointer;transition:background-color .15s,color .15s;background:{{ it.bg }};color:{{ it.color }}">
+              <sc-if value="{{ it.active }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;left:0;top:50%;height:20px;width:2px;transform:translateY(-50%);border-radius:0 2px 2px 0;background:var(--color-accent)"></span></sc-if>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="{{ it.icon }}"></use></svg>
+            </button>
+            <div class="sb-tip" style="position:absolute;left:100%;top:50%;z-index:50;margin-left:8px;transform:translateY(-50%)">
+              <div style="white-space:nowrap;border-radius:4px;background:var(--color-surface);padding:4px 8px;font-size:12px;color:var(--color-text-primary);box-shadow:0 4px 6px -1px rgba(0,0,0,.1);outline:1px solid var(--color-border)">{{ it.label }}</div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </aside>
+
+    <!-- ============ LEFT: TREE ============ -->
+    <aside style="display:flex;flex-direction:column;width:296px;flex-shrink:0;border-right:1px solid var(--color-border);background:var(--color-surface);min-height:0">
+      <div style="padding:10px;border-bottom:1px solid var(--color-border)">
+        <div style="display:flex;align-items:center;gap:7px;border-radius:7px;border:1px solid var(--color-border);background:var(--color-card);padding:5px 9px">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#r-search"></use></svg>
+          <input type="text" aria-label="Search raw files" value="{{ query }}" onChange="{{ onQuery }}" placeholder="Search files, hashes, text…" style="min-width:0;flex:1;background:transparent;border:none;outline:none;font-family:var(--font-body);font-size:12px;color:var(--color-text-primary)">
+          <sc-if value="{{ hasQuery }}" hint-placeholder-val="{{ false }}">
+            <button onClick="{{ clearQuery }}" aria-label="Clear search" style="display:grid;place-items:center;height:16px;width:16px;border:none;border-radius:4px;background:transparent;color:var(--color-text-muted);cursor:pointer;flex-shrink:0">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#r-x"></use></svg>
+            </button>
+          </sc-if>
+        </div>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:6px 6px 16px">
+        <sc-for list="{{ tree }}" as="n" hint-placeholder-count="14">
+          <div style="display:flex;align-items:center;gap:2px;padding-left:{{ n.pad }}px">
+            <button onClick="{{ n.toggle }}" aria-label="Expand" style="display:grid;place-items:center;height:18px;width:14px;flex-shrink:0;border:none;background:transparent;color:var(--color-text-faint);cursor:{{ n.twistCursor }};opacity:{{ n.twistOpacity }}">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><use href="{{ n.twist }}"></use></svg>
+            </button>
+            <button onClick="{{ n.click }}" class="hovrow" style="display:flex;flex:1;min-width:0;align-items:center;gap:7px;height:{{ n.h }}px;padding:0 7px;border:none;border-radius:5px;background:{{ n.bg }};color:{{ n.color }};font-family:var(--font-body);font-size:{{ n.fs }}px;font-weight:{{ n.fw }};letter-spacing:{{ n.ls }};text-transform:{{ n.tt }};cursor:pointer;text-align:left">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="{{ n.iconColor }}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;opacity:{{ n.iconOpacity }}"><use href="{{ n.icon }}"></use></svg>
+              <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ n.label }}</span>
+              <sc-if value="{{ n.alert }}" hint-placeholder-val="{{ false }}">
+                <span style="flex-shrink:0;height:6px;width:6px;border-radius:9999px;background:#f59e0b"></span>
+              </sc-if>
+              <sc-if value="{{ n.showCount }}" hint-placeholder-val="{{ true }}">
+                <span style="flex-shrink:0;font-family:var(--font-mono);font-size:10px;color:var(--color-text-faint)">{{ n.count }}</span>
+              </sc-if>
+            </button>
+          </div>
+        </sc-for>
+      </div>
+    </aside>
+
+    <!-- ============ RIGHT: TABLE + VIEWER ============ -->
+    <div style="display:flex;flex:1;min-width:0;flex-direction:{{ dockDir }}">
+
+      <section style="display:flex;flex-direction:column;min-height:0;min-width:0;flex:{{ tableFlex }}">
+        <div style="display:flex;align-items:center;gap:10px;height:38px;flex-shrink:0;padding:0 14px;border-bottom:1px solid var(--color-border);background:var(--color-surface)">
+          <span style="font-family:var(--font-display);font-size:12px;font-weight:700;color:var(--color-text-primary)">{{ nodeTitle }}</span>
+          <span style="font-family:var(--font-mono);font-size:10px;color:var(--color-text-faint)">{{ nodeSub }}</span>
+          <div style="flex:1"></div>
+          <sc-if value="{{ nodeAlert }}" hint-placeholder-val="{{ false }}">
+            <span style="display:inline-flex;align-items:center;gap:5px;border-radius:5px;border:1px solid rgba(245,158,11,.28);background:rgba(245,158,11,.1);padding:2px 8px;font-size:10px;font-weight:600;color:#f59e0b">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#r-shieldal"></use></svg>
+              {{ nodeAlertText }}
+            </span>
+          </sc-if>
+        </div>
+
+        <div style="flex:1;overflow-y:auto;overflow-x:hidden;min-height:0">
+        <div style="display:grid;grid-template-columns:{{ cols }};align-items:center;height:28px;position:sticky;top:0;z-index:2;padding:0 14px;border-bottom:1px solid var(--color-border);background:var(--color-canvas);font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)">
+          <span>Name</span>
+          <span>Source</span>
+          <span>Type</span>
+          <span style="text-align:right;padding-right:14px">Size</span>
+          <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}">
+            <span>SHA-256</span>
+            <span>Captured</span>
+          </sc-if>
+        </div>
+
+          <sc-for list="{{ rows }}" as="r" hint-placeholder-count="8">
+            <button onClick="{{ r.click }}" class="hovrow" style="display:grid;grid-template-columns:{{ cols }};align-items:center;width:100%;min-height:{{ rowH }}px;padding:0 14px;border:none;border-bottom:1px solid var(--color-border);border-left:2px solid {{ r.bar }};background:{{ r.bg }};font-family:var(--font-body);font-size:12px;color:var(--color-text-secondary);cursor:pointer;text-align:left">
+              <span style="display:flex;align-items:center;gap:7px;min-width:0;padding:5px 10px 5px 0">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="{{ r.iconColor }}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="{{ r.icon }}"></use></svg>
+                <sc-if value="{{ r.flagged }}" hint-placeholder-val="{{ false }}">
+                  <span title="{{ r.flagLabel }}" style="display:grid;place-items:center;flex-shrink:0;height:17px;width:17px;border-radius:5px;background:{{ r.flagBg }};color:{{ r.flagColor }}">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#r-shieldal"></use></svg>
+                  </span>
+                </sc-if>
+                <span style="min-width:0">
+                  <span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-mono);font-size:11.5px;color:{{ r.nameColor }}">{{ r.name }}</span>
+                  <sc-if value="{{ r.hasSnippet }}" hint-placeholder-val="{{ false }}">
+                    <span style="display:block;margin-top:2px;font-family:var(--font-mono);font-size:10.5px;color:var(--color-text-faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                      <span>{{ r.snipPre }}</span><span style="background:rgba(245,158,11,.22);color:#fbbf24;border-radius:2px;padding:0 2px">{{ r.snipHit }}</span><span>{{ r.snipPost }}</span>
+                    </span>
+                  </sc-if>
+                </span>
+              </span>
+              <span style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-muted)">{{ r.cap }}</span>
+              <span style="font-size:11.5px;color:var(--color-text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.type }}</span>
+              <span style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-muted);text-align:right;padding-right:14px">{{ r.size }}</span>
+              <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}">
+                <span style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.sha }}</span>
+                <span style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.time }}</span>
+              </sc-if>
+            </button>
+          </sc-for>
+          <sc-if value="{{ noRows }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:36px;text-align:center;font-size:12px;color:var(--color-text-faint)">No files match this filter.</div>
+          </sc-if>
+        </div>
+      </section>
+
+      <!-- ============ VIEWER ============ -->
+      <section style="display:flex;flex-direction:column;min-height:0;min-width:0;flex:{{ viewerFlex }};border-top:{{ dockBorderTop }};border-left:{{ dockBorderLeft }};background:var(--color-surface)">
+        <div style="display:flex;align-items:center;gap:10px;height:42px;flex-shrink:0;padding:0 14px;border-bottom:1px solid var(--color-border)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{ selIconColor }}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="{{ selIcon }}"></use></svg>
+          <span style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--color-text-primary)">{{ selName }}</span>
+          <span style="font-family:var(--font-mono);font-size:10.5px;color:var(--color-text-faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ selPath }}</span>
+          <div style="flex:1"></div>
+          <sc-if value="{{ selFlagged }}" hint-placeholder-val="{{ false }}">
+            <span style="display:inline-flex;align-items:center;gap:6px;border-radius:5px;border:1px solid {{ selFlagBorder }};background:{{ selFlagBg }};padding:3px 9px;font-size:11px;font-weight:600;color:{{ selFlagColor }}">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#r-shieldal"></use></svg>
+              {{ selFlagLabel }}
+            </span>
+          </sc-if>
+        </div>
+
+        <div style="display:flex;gap:2px;height:34px;flex-shrink:0;align-items:center;padding:0 10px;border-bottom:1px solid var(--color-border);background:var(--color-canvas)">
+          <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="5">
+            <button onClick="{{ t.click }}" style="height:24px;flex-shrink:0;white-space:nowrap;padding:0 11px;border:none;border-radius:5px;background:{{ t.bg }};color:{{ t.color }};font-family:var(--font-body);font-size:11.5px;font-weight:{{ t.fw }};cursor:pointer">{{ t.label }}</button>
+          </sc-for>
+          <div style="flex:1;min-width:12px"></div>
+          <span style="flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-mono);font-size:10px;color:var(--color-text-faint)">{{ tabHint }}</span>
+        </div>
+
+        <div style="flex:1;overflow:auto;min-height:0">
+
+          <!-- Extracted text -->
+          <sc-if value="{{ vText }}" hint-placeholder-val="{{ true }}">
+            <div style="padding:12px 0 24px">
+              <sc-if value="{{ textEmpty }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:36px;text-align:center;font-size:12px;color:var(--color-text-faint)">{{ textEmptyMsg }}</div>
+              </sc-if>
+              <sc-for list="{{ textLines }}" as="l" hint-placeholder-count="14">
+                <div style="display:flex;gap:14px;padding:0 16px;line-height:1.75">
+                  <span style="width:34px;flex-shrink:0;text-align:right;font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint);opacity:.6">{{ l.n }}</span>
+                  <span style="font-family:var(--font-mono);font-size:12px;color:var(--color-text-secondary);white-space:pre-wrap;word-break:break-word"><span>{{ l.pre }}</span><sc-if value="{{ l.hasHit }}" hint-placeholder-val="{{ false }}"><span style="background:rgba(245,158,11,.22);color:#fbbf24;border-radius:2px;padding:0 2px">{{ l.hit }}</span></sc-if><span>{{ l.post }}</span></span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <!-- MHTML parts -->
+          <sc-if value="{{ vParts }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:14px 16px 24px">
+              <sc-if value="{{ partsEmpty }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:36px;text-align:center;font-size:12px;color:var(--color-text-faint)">{{ partsEmptyMsg }}</div>
+              </sc-if>
+              <sc-if value="{{ partsShown }}" hint-placeholder-val="{{ true }}">
+                <div style="border-radius:8px;border:1px solid var(--color-border);background:var(--color-card);padding:10px 12px;margin-bottom:12px;font-family:var(--font-mono);font-size:11px;color:var(--color-text-muted);line-height:1.8">
+                  <div><span style="color:var(--color-text-faint)">Content-Type: </span>multipart/related; type="text/html"</div>
+                  <div><span style="color:var(--color-text-faint)">boundary: </span>{{ mhtBoundary }}</div>
+                  <div><span style="color:var(--color-text-faint)">Snapshot-Content-Location: </span>{{ selUrl }}</div>
+                  <div><span style="color:var(--color-text-faint)">Parts: </span>{{ partsCount }} · <span style="color:var(--color-text-faint)">Decoded size: </span>{{ partsBytes }}</div>
+                </div>
+                <div style="display:grid;grid-template-columns:26px minmax(180px,1.6fr) 150px 96px 84px 150px;align-items:center;height:26px;padding:0 10px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)">
+                  <span>#</span><span>Content-Location</span><span>Content-Type</span><span>Encoding</span><span style="text-align:right">Size</span><span style="padding-left:14px">SHA-256</span>
+                </div>
+                <div style="border-radius:8px;border:1px solid var(--color-border);overflow:hidden">
+                  <sc-for list="{{ parts }}" as="p" hint-placeholder-count="6">
+                    <div class="hovrow" style="display:grid;grid-template-columns:26px minmax(180px,1.6fr) 150px 96px 84px 150px;align-items:center;min-height:32px;padding:4px 10px;border-bottom:1px solid var(--color-border);background:var(--color-card);font-family:var(--font-mono);font-size:11px;color:var(--color-text-muted)">
+                      <span style="color:var(--color-text-faint)">{{ p.n }}</span>
+                      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--color-text-secondary);padding-right:10px">{{ p.loc }}</span>
+                      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.ctype }}</span>
+                      <span>{{ p.enc }}</span>
+                      <span style="text-align:right">{{ p.size }}</span>
+                      <span style="padding-left:14px;color:var(--color-text-faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.sha }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+                <p style="margin:10px 2px 0;font-size:11px;color:var(--color-text-faint);line-height:1.6">Every part is hashed at capture time. Re-hashing on open compares against the manifest — a part that no longer matches is listed as an integrity exception rather than silently re-rendered.</p>
+              </sc-if>
+            </div>
+          </sc-if>
+
+          <!-- Headers + TLS -->
+          <sc-if value="{{ vHead }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px 16px 24px;align-items:start">
+              <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
+                <div style="border-radius:8px;border:1px solid var(--color-border);background:var(--color-card);overflow:hidden">
+                  <div style="padding:8px 12px;border-bottom:1px solid var(--color-border);font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)">Request</div>
+                  <div style="padding:8px 12px">
+                    <sc-for list="{{ reqHeaders }}" as="h" hint-placeholder-count="6">
+                      <div style="display:flex;gap:10px;padding:2px 0;font-family:var(--font-mono);font-size:11px;line-height:1.6">
+                        <span style="width:130px;flex-shrink:0;color:var(--color-text-faint)">{{ h.k }}</span>
+                        <span style="min-width:0;color:var(--color-text-secondary);word-break:break-all">{{ h.v }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+                <div style="border-radius:8px;border:1px solid var(--color-border);background:var(--color-card);overflow:hidden">
+                  <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--color-border)">
+                    <span style="font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)">Response</span>
+                    <span style="font-family:var(--font-mono);font-size:10.5px;color:{{ statusColor }}">{{ statusLine }}</span>
+                  </div>
+                  <div style="padding:8px 12px">
+                    <sc-for list="{{ resHeaders }}" as="h" hint-placeholder-count="8">
+                      <div style="display:flex;gap:10px;padding:2px 0;font-family:var(--font-mono);font-size:11px;line-height:1.6">
+                        <span style="width:130px;flex-shrink:0;color:var(--color-text-faint)">{{ h.k }}</span>
+                        <span style="min-width:0;color:var(--color-text-secondary);word-break:break-all">{{ h.v }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#r-lock"></use></svg>
+                  <span style="font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)">TLS chain at capture time</span>
+                </div>
+                <sc-for list="{{ tlsChain }}" as="c" hint-placeholder-count="3">
+                  <div style="position:relative;border-radius:8px;border:1px solid var(--color-border);background:var(--color-card);padding:10px 12px;margin-left:{{ c.indent }}px">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                      <span style="border-radius:4px;background:var(--color-elevated);padding:1px 6px;font-family:var(--font-mono);font-size:9.5px;color:var(--color-text-muted)">{{ c.role }}</span>
+                      <span style="font-family:var(--font-mono);font-size:11.5px;font-weight:600;color:var(--color-text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.cn }}</span>
+                    </div>
+                    <div style="display:flex;gap:10px;font-family:var(--font-mono);font-size:10.5px;line-height:1.7"><span style="width:66px;flex-shrink:0;color:var(--color-text-faint)">issuer</span><span style="color:var(--color-text-muted);min-width:0;word-break:break-word">{{ c.issuer }}</span></div>
+                    <div style="display:flex;gap:10px;font-family:var(--font-mono);font-size:10.5px;line-height:1.7"><span style="width:66px;flex-shrink:0;color:var(--color-text-faint)">valid</span><span style="color:var(--color-text-muted)">{{ c.valid }}</span></div>
+                    <div style="display:flex;gap:10px;font-family:var(--font-mono);font-size:10.5px;line-height:1.7"><span style="width:66px;flex-shrink:0;color:var(--color-text-faint)">fingerprint</span><span style="color:var(--color-text-faint);min-width:0;word-break:break-all">{{ c.fp }}</span></div>
+                  </div>
+                </sc-for>
+                <div style="display:flex;gap:8px;border-radius:8px;border:1px solid var(--color-border);background:var(--color-canvas);padding:10px 12px">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px"><use href="#r-clock"></use></svg>
+                  <span style="font-size:11px;color:var(--color-text-muted);line-height:1.6">{{ tlsNote }}</span>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- Manifest ledger -->
+          <sc-if value="{{ vLedger }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:14px 16px 24px">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                <span style="display:inline-flex;align-items:center;gap:6px;border-radius:5px;border:1px solid rgba(16,185,129,.28);background:rgba(16,185,129,.1);padding:3px 9px;font-size:11px;font-weight:600;color:#10b981">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><use href="#r-shieldck"></use></svg>
+                  Chain intact through seq 0024
+                </span>
+                <span style="font-family:var(--font-mono);font-size:10.5px;color:var(--color-text-faint)">signer: bb-local-key · ed25519 · 9c4f…a017</span>
+              </div>
+              <div style="display:grid;grid-template-columns:52px 148px 150px minmax(140px,1fr) 128px 128px;align-items:center;height:26px;padding:0 10px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)">
+                <span>Seq</span><span>Time (UTC)</span><span>Event</span><span>Target</span><span>Entry hash</span><span>Prev hash</span>
+              </div>
+              <div style="border-radius:8px;border:1px solid var(--color-border);overflow:hidden">
+                <sc-for list="{{ ledger }}" as="e" hint-placeholder-count="8">
+                  <div class="hovrow" style="display:grid;grid-template-columns:52px 148px 150px minmax(140px,1fr) 128px 128px;align-items:center;min-height:30px;padding:3px 10px;border-bottom:1px solid var(--color-border);background:{{ e.bg }};font-family:var(--font-mono);font-size:11px;color:var(--color-text-muted)">
+                    <span style="color:var(--color-text-faint)">{{ e.seq }}</span>
+                    <span>{{ e.time }}</span>
+                    <span style="color:{{ e.evColor }}">{{ e.event }}</span>
+                    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--color-text-secondary);padding-right:10px">{{ e.target }}</span>
+                    <span style="color:var(--color-text-faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:10px">{{ e.hash }}</span>
+                    <span style="color:var(--color-text-faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ e.prev }}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <p style="margin:10px 2px 0;font-size:11px;color:var(--color-text-faint);line-height:1.6">Each entry hashes the previous one, so an edit to any capture breaks every later link. Two entries below seq 0018 are flagged: the ledger still verifies, but the files on disk no longer match what was recorded.</p>
+            </div>
+          </sc-if>
+
+          <!-- Properties -->
+          <sc-if value="{{ vProps }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px 16px 24px;align-items:start">
+              <sc-for list="{{ propGroups }}" as="g" hint-placeholder-count="2">
+                <div style="border-radius:8px;border:1px solid var(--color-border);background:var(--color-card);overflow:hidden">
+                  <div style="padding:8px 12px;border-bottom:1px solid var(--color-border);font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-faint)">{{ g.title }}</div>
+                  <div style="padding:8px 12px">
+                    <sc-for list="{{ g.rows }}" as="p" hint-placeholder-count="5">
+                      <div style="display:flex;gap:10px;padding:3px 0;font-size:11px;line-height:1.6">
+                        <span style="width:120px;flex-shrink:0;color:var(--color-text-faint)">{{ p.k }}</span>
+                        <span style="min-width:0;font-family:var(--font-mono);font-size:11px;color:{{ p.color }};word-break:break-all">{{ p.v }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <footer style="display:flex;align-items:center;gap:14px;height:26px;flex-shrink:0;border-top:1px solid var(--color-border);background:var(--color-surface);padding:0 14px;font-family:var(--font-mono);font-size:10.5px;color:var(--color-text-faint)">
+    <span>{{ statCaptures }}</span>
+    <span>·</span>
+    <span>{{ statFiles }}</span>
+    <span>·</span>
+    <span style="color:{{ statExColor }}">{{ statExceptions }}</span>
+    <div style="flex:1"></div>
+    <span>{{ statPath }}</span>
+  </footer>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;viewerDock&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;bottom&quot;,&quot;right&quot;],&quot;default&quot;:&quot;bottom&quot;,&quot;tsType&quot;:&quot;'bottom'|'right'&quot;,&quot;section&quot;:&quot;Layout&quot;},&quot;density&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;compact&quot;,&quot;comfortable&quot;],&quot;default&quot;:&quot;compact&quot;,&quot;tsType&quot;:&quot;'compact'|'comfortable'&quot;,&quot;section&quot;:&quot;Layout&quot;},&quot;treeCounts&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Layout&quot;}}">
+class Component extends DCLogic {
+  constructor(p) {
+    super(p)
+    const hex = (seed) => {
+      let x = seed * 2654435761 % 4294967296, out = ''
+      while (out.length < 64) { x = (x * 1103515245 + 12345) % 2147483648; out += x.toString(16).padStart(8, '0') }
+      return out.slice(0, 64)
+    }
+    this.hex = hex
+    const F = (cap, name, group, type, size, seed, flag, url) => ({
+      id: cap + '/' + group + '/' + name, cap: cap, name: name, group: group, type: type,
+      size: size, sha: hex(seed), flag: flag || null
+    })
+    this.caps = [
+      {
+        id: 'CAP-0007', host: 'nightjar-login.cdn-secure.cc',
+        url: 'https://nightjar-login.cdn-secure.cc/verify?ref=northbank',
+        time: '2026-07-28 14:02:11', ip: '185.62.188.44', status: '200 OK', statusOk: true,
+        boundary: '----MultipartBoundary--rQ8vN2kLpXw31--',
+        files: [
+          F('CAP-0007', 'page.mhtml', 'raw', 'MHTML archive', '2.41 MB', 11),
+          F('CAP-0007', 'dom.html', 'raw', 'HTML document', '318 KB', 12),
+          F('CAP-0007', 'screenshot.png', 'raw', 'PNG image', '1.14 MB', 13),
+          F('CAP-0007', 'headers.json', 'raw', 'HTTP exchange', '4.2 KB', 14),
+          F('CAP-0007', 'tls-chain.json', 'raw', 'TLS chain', '11.6 KB', 15),
+          F('CAP-0007', 'network.har', 'raw', 'HAR log', '896 KB', 16),
+          F('CAP-0007', 'text.txt', 'derived', 'Extracted text', '24.1 KB', 17),
+          F('CAP-0007', 'entities.json', 'derived', 'Extracted entities', '6.8 KB', 18)
+        ],
+        text: [
+          'Northbank Online — Secure Session Verification',
+          'Your online banking session has been temporarily suspended.',
+          'To restore access, confirm the details below within 24 hours.',
+          'Card number ________  Expiry __/__  Security code ___',
+          'Online passcode ________  Memorable word ________',
+          'This verification is processed by nightjar-id.cdn-secure.cc.',
+          'Questions? Contact northbank.support@proton.me',
+          'Reference: NB-VER-88213-QA',
+          '© Northbank plc. All rights reserved. Registered in England.',
+          'form action="https://nightjar-id.cdn-secure.cc/collect.php" method="post"',
+          'script src="https://cdn.jsdelivr.workers.dev/nightjar/kit.min.js"',
+          'input name="pan" autocomplete="cc-number" data-nj-field="1"',
+          'Donations accepted at bc1qx7vk3n9dl2m4pq8syt0cfr6uwe5haz2j0kq9rn',
+          'Session token: nj_5f2c9a71e0b4 (expires 2026-07-29T14:02:11Z)'
+        ],
+        req: [
+          { k: 'Method', v: 'GET' }, { k: 'Host', v: 'nightjar-login.cdn-secure.cc' },
+          { k: 'User-Agent', v: 'Mozilla/5.0 (X11; Linux x86_64) Birdbrain/1.4 Chrome/126' },
+          { k: 'Accept-Language', v: 'en-GB,en;q=0.9' }, { k: 'Referer', v: '(none — direct navigation)' },
+          { k: 'X-BB-Capture', v: 'CAP-0007' }
+        ],
+        res: [
+          { k: 'Server', v: 'cloudflare' }, { k: 'Content-Type', v: 'text/html; charset=utf-8' },
+          { k: 'Content-Length', v: '312884' }, { k: 'CF-Ray', v: '8f21c0e7ab3d41a2-LHR' },
+          { k: 'Set-Cookie', v: 'nj_sess=5f2c9a71e0b4; Path=/; HttpOnly; SameSite=Lax' },
+          { k: 'X-Powered-By', v: 'PHP/7.4.33' }, { k: 'Last-Modified', v: 'Sat, 25 Jul 2026 08:14:02 GMT' }
+        ],
+        tls: [
+          { role: 'leaf', cn: '*.cdn-secure.cc', issuer: 'R11, Let\u2019s Encrypt', valid: '2026-07-04 → 2026-10-02', fp: 'a4:1f:9c:22:0e:7b:65:d3:88:10:cc:4f:2a:9e:71:b0' },
+          { role: 'intermediate', cn: 'R11', issuer: 'ISRG Root X1', valid: '2024-03-13 → 2027-03-12', fp: 'c5:9e:0b:71:44:2d:8a:16:f0:3c:97:52:bb:6d:1e:84' },
+          { role: 'root', cn: 'ISRG Root X1', issuer: 'self-signed', valid: '2015-06-04 → 2035-06-04', fp: '96:bc:ec:06:26:49:76:f3:74:60:77:9a:cf:28:c5:a7' }
+        ],
+        tlsNote: 'Certificate issued 24 days before capture; the domain resolved to 185.62.188.44 (AS 200019, Alexhost SRL). Same leaf key appears on the CAP-0012 panel host.',
+        parts: [
+          { loc: 'https://nightjar-login.cdn-secure.cc/verify', ctype: 'text/html', enc: 'quoted-printable', size: '312 KB', seed: 41 },
+          { loc: '/assets/nb-mark.svg', ctype: 'image/svg+xml', enc: 'base64', size: '11.4 KB', seed: 42 },
+          { loc: '/assets/app.9f21c.css', ctype: 'text/css', enc: 'quoted-printable', size: '86.2 KB', seed: 43 },
+          { loc: 'https://cdn.jsdelivr.workers.dev/nightjar/kit.min.js', ctype: 'application/javascript', enc: 'quoted-printable', size: '48.9 KB', seed: 44 },
+          { loc: '/assets/hero-lock.webp', ctype: 'image/webp', enc: 'base64', size: '1.82 MB', seed: 45 },
+          { loc: 'https://fonts.gstatic.com/s/inter/v13/u.woff2', ctype: 'font/woff2', enc: 'base64', size: '38.1 KB', seed: 46 }
+        ]
+      },
+      {
+        id: 'CAP-0012', host: 'nightjar-panel.gg-cdn.net',
+        url: 'https://nightjar-panel.gg-cdn.net/admin/login',
+        time: '2026-07-29 09:41:55', ip: '185.62.188.44', status: '401 Unauthorized', statusOk: false,
+        boundary: '----MultipartBoundary--7Tz0Ha4bQm82--',
+        files: [
+          F('CAP-0012', 'page.mhtml', 'raw', 'MHTML archive', '1.87 MB', 21),
+          F('CAP-0012', 'dom.html', 'raw', 'HTML document', '402 KB', 22),
+          F('CAP-0012', 'screenshot.png', 'raw', 'PNG image', '980 KB', 23, { level: 'error', label: 'SHA-256 mismatch vs manifest' }),
+          F('CAP-0012', 'headers.json', 'raw', 'HTTP exchange', '3.9 KB', 24),
+          F('CAP-0012', 'tls-chain.json', 'raw', 'TLS chain', '10.2 KB', 25),
+          F('CAP-0012', 'text.txt', 'derived', 'Extracted text', '18.3 KB', 26),
+          F('CAP-0012', 'entities.json', 'derived', 'Extracted entities', '4.1 KB', 27)
+        ],
+        text: [
+          'nightjar panel — operator sign in',
+          'username ________  password ________  2fa ______',
+          'build 3.4.1-rc2 · licensed to "kestrel"',
+          'Panel support: nightjar.ops@proton.me',
+          'Telegram: @nightjar_kit_support',
+          'Last deploy 2026-07-26 by kestrel@nightjar-panel',
+          'Harvest endpoint: /collect.php  ·  drops: 4,182 (30d)',
+          'Payout wallet bc1qx7vk3n9dl2m4pq8syt0cfr6uwe5haz2j0kq9rn',
+          'Blocked ASNs: 16509, 14618, 15169 (cloud scanners)',
+          'Kit template set: northbank, midcity-cu, pillarbank'
+        ],
+        req: [
+          { k: 'Method', v: 'GET' }, { k: 'Host', v: 'nightjar-panel.gg-cdn.net' },
+          { k: 'User-Agent', v: 'Mozilla/5.0 (X11; Linux x86_64) Birdbrain/1.4 Chrome/126' },
+          { k: 'Accept-Language', v: 'en-GB,en;q=0.9' }, { k: 'X-BB-Capture', v: 'CAP-0012' }
+        ],
+        res: [
+          { k: 'Server', v: 'nginx/1.24.0' }, { k: 'Content-Type', v: 'text/html; charset=utf-8' },
+          { k: 'WWW-Authenticate', v: 'Basic realm="panel"' },
+          { k: 'Set-Cookie', v: 'PHPSESSID=b71ce4f0d9; Path=/; HttpOnly' },
+          { k: 'X-Frame-Options', v: 'DENY' }, { k: 'X-Powered-By', v: 'PHP/7.4.33' }
+        ],
+        tls: [
+          { role: 'leaf', cn: 'nightjar-panel.gg-cdn.net', issuer: 'R11, Let\u2019s Encrypt', valid: '2026-07-11 → 2026-10-09', fp: 'a4:1f:9c:22:0e:7b:65:d3:88:10:cc:4f:2a:9e:71:b0' },
+          { role: 'intermediate', cn: 'R11', issuer: 'ISRG Root X1', valid: '2024-03-13 → 2027-03-12', fp: 'c5:9e:0b:71:44:2d:8a:16:f0:3c:97:52:bb:6d:1e:84' },
+          { role: 'root', cn: 'ISRG Root X1', issuer: 'self-signed', valid: '2015-06-04 → 2035-06-04', fp: '96:bc:ec:06:26:49:76:f3:74:60:77:9a:cf:28:c5:a7' }
+        ],
+        tlsNote: 'Leaf fingerprint is identical to CAP-0007 — the login lure and the operator panel share a certificate and an origin IP.',
+        parts: [
+          { loc: 'https://nightjar-panel.gg-cdn.net/admin/login', ctype: 'text/html', enc: 'quoted-printable', size: '402 KB', seed: 51 },
+          { loc: '/static/panel.css', ctype: 'text/css', enc: 'quoted-printable', size: '64.8 KB', seed: 52 },
+          { loc: '/static/panel.js', ctype: 'application/javascript', enc: 'quoted-printable', size: '212 KB', seed: 53 },
+          { loc: '/static/logo-nj.png', ctype: 'image/png', enc: 'base64', size: '18.6 KB', seed: 54 }
+        ]
+      },
+      {
+        id: 'CAP-0019', host: 'paste.ee',
+        url: 'https://paste.ee/r/9Kx2f',
+        time: '2026-08-01 22:17:03', ip: '104.21.63.9', status: '200 OK', statusOk: true,
+        boundary: '----MultipartBoundary--Lc5Yq1WdEr77--',
+        files: [
+          F('CAP-0019', 'page.mhtml', 'raw', 'MHTML archive', '214 KB', 31),
+          F('CAP-0019', 'dom.html', 'raw', 'HTML document', '96 KB', 32),
+          F('CAP-0019', 'screenshot.png', 'raw', 'PNG image', '402 KB', 33),
+          F('CAP-0019', 'headers.json', 'raw', 'HTTP exchange', '2.8 KB', 34),
+          F('CAP-0019', 'network.har', 'raw', 'HAR log', '—', 35, { level: 'warn', label: 'In manifest, missing on disk' }),
+          F('CAP-0019', 'text.txt', 'derived', 'Extracted text', '61.4 KB', 36)
+        ],
+        text: [
+          '# nightjar kit v3.4.1 — config dump (paste)',
+          'BOT_TOKEN=76211043:AAF-nJk9x2Lc0pQr',
+          'CHAT_ID=-1002214887',
+          'DROP_URL=https://nightjar-id.cdn-secure.cc/collect.php',
+          'PANEL=https://nightjar-panel.gg-cdn.net/admin',
+          'MAIL_TO=nightjar.ops@proton.me',
+          'BTC=bc1qx7vk3n9dl2m4pq8syt0cfr6uwe5haz2j0kq9rn',
+          'BLOCK_UA=curl|wget|python-requests|Googlebot',
+          'TEMPLATES=northbank,midcity-cu,pillarbank',
+          'BUILD=3.4.1-rc2 kestrel 2026-07-26'
+        ],
+        req: [
+          { k: 'Method', v: 'GET' }, { k: 'Host', v: 'paste.ee' },
+          { k: 'User-Agent', v: 'Mozilla/5.0 (X11; Linux x86_64) Birdbrain/1.4 Chrome/126' },
+          { k: 'X-BB-Capture', v: 'CAP-0019' }
+        ],
+        res: [
+          { k: 'Server', v: 'cloudflare' }, { k: 'Content-Type', v: 'text/plain; charset=utf-8' },
+          { k: 'Cache-Control', v: 'no-store' }, { k: 'CF-Cache-Status', v: 'DYNAMIC' }
+        ],
+        tls: [
+          { role: 'leaf', cn: 'paste.ee', issuer: 'WE1, Google Trust Services', valid: '2026-06-19 → 2026-09-17', fp: '3d:77:be:04:19:a2:5c:8f:e1:60:2b:99:d4:07:53:1c' },
+          { role: 'intermediate', cn: 'WE1', issuer: 'GTS Root R4', valid: '2023-12-13 → 2029-02-20', fp: '81:9c:1e:5a:70:f3:2b:d8:44:0a:97:66:1f:c2:e0:35' },
+          { role: 'root', cn: 'GTS Root R4', issuer: 'self-signed', valid: '2016-06-22 → 2036-06-22', fp: '7e:2f:a5:c1:38:90:d6:4b:22:af:05:e9:73:8c:11:60' }
+        ],
+        tlsNote: 'Third-party host; the paste itself is the evidence. Content was already removed upstream 11 hours after capture.',
+        parts: [
+          { loc: 'https://paste.ee/r/9Kx2f', ctype: 'text/plain', enc: 'quoted-printable', size: '61.4 KB', seed: 61 },
+          { loc: '/assets/paste.css', ctype: 'text/css', enc: 'quoted-printable', size: '22.1 KB', seed: 62 }
+        ]
+      }
+    ]
+    this.allFiles = []
+    this.caps.forEach((c) => c.files.forEach((f, i) => {
+      f.capture = c
+      f.time = c.time.slice(0, 16)
+      this.allFiles.push(f)
+    }))
+    this.keywords = ['proton.me', 'bc1q', 'collect.php', 'kestrel', 'northbank']
+    this.ledger = [
+      { seq: '0009', time: '2026-07-28 14:02:11', event: 'capture.begin', target: 'CAP-0007', s: 71 },
+      { seq: '0010', time: '2026-07-28 14:02:14', event: 'artifact.write', target: 'CAP-0007/page.mhtml', s: 72 },
+      { seq: '0011', time: '2026-07-28 14:02:14', event: 'artifact.write', target: 'CAP-0007/screenshot.png', s: 73 },
+      { seq: '0012', time: '2026-07-28 14:02:16', event: 'capture.seal', target: 'CAP-0007', s: 74 },
+      { seq: '0014', time: '2026-07-29 09:41:55', event: 'capture.begin', target: 'CAP-0012', s: 75 },
+      { seq: '0015', time: '2026-07-29 09:41:59', event: 'artifact.write', target: 'CAP-0012/screenshot.png', s: 76 },
+      { seq: '0016', time: '2026-07-29 09:42:01', event: 'capture.seal', target: 'CAP-0012', s: 77 },
+      { seq: '0018', time: '2026-07-31 08:20:44', event: 'verify.mismatch', target: 'CAP-0012/screenshot.png', s: 78, bad: true },
+      { seq: '0021', time: '2026-08-01 22:17:03', event: 'capture.begin', target: 'CAP-0019', s: 79 },
+      { seq: '0022', time: '2026-08-01 22:17:07', event: 'capture.seal', target: 'CAP-0019', s: 80 },
+      { seq: '0023', time: '2026-08-03 11:04:12', event: 'verify.missing', target: 'CAP-0019/network.har', s: 81, bad: true },
+      { seq: '0024', time: '2026-08-05 16:38:50', event: 'case.verify', target: 'all sources', s: 82 }
+    ]
+    this.state = {
+      node: 'cap:CAP-0007',
+      expanded: { ds: true, views: true, results: true, 'cap:CAP-0007': true },
+      sel: 'CAP-0007/raw/page.mhtml',
+      tab: 'text',
+      query: ''
+    }
+  }
+
+  short(sha) { return sha.slice(0, 14) + '\u2026' }
+
+  iconFor(f) {
+    if (f.name.indexOf('.mhtml') >= 0) return { icon: '#r-archive', color: 'var(--color-accent)' }
+    if (f.name.indexOf('.png') >= 0) return { icon: '#r-image', color: '#a78bfa' }
+    if (f.name.indexOf('.json') >= 0 || f.name.indexOf('.har') >= 0) return { icon: '#r-code', color: '#38bdf8' }
+    if (f.name.indexOf('.html') >= 0) return { icon: '#r-code', color: '#34d399' }
+    return { icon: '#r-file', color: 'var(--color-text-muted)' }
+  }
+
+  hitsFor(term) {
+    const out = []
+    this.caps.forEach((c) => {
+      c.text.forEach((line) => {
+        const i = line.toLowerCase().indexOf(term.toLowerCase())
+        if (i < 0 || out.some((o) => o.f.cap === c.id)) return
+        const f = c.files.filter((x) => x.name === 'text.txt')[0] || c.files[0]
+        out.push({ f: f, pre: line.slice(Math.max(0, i - 28), i), hit: line.slice(i, i + term.length), post: line.slice(i + term.length, i + term.length + 40) })
+      })
+    })
+    return out
+  }
+
+  filesFor(key) {
+    if (key.indexOf('cap:') === 0) return this.allFiles.filter((f) => f.cap === key.slice(4)).map((f) => ({ f: f }))
+    if (key.indexOf('dir:') === 0) {
+      const p = key.split(':')
+      return this.allFiles.filter((f) => f.cap === p[1] && f.group === p[2]).map((f) => ({ f: f }))
+    }
+    if (key.indexOf('ft:') === 0) return this.allFiles.filter((f) => f.type === key.slice(3)).map((f) => ({ f: f }))
+    if (key.indexOf('kw:') === 0) return this.hitsFor(key.slice(3))
+    if (key === 'exceptions') return this.allFiles.filter((f) => f.flag).map((f) => ({ f: f }))
+    if (key === 'text') return this.allFiles.filter((f) => f.type === 'Extracted text' || f.type === 'HTML document').map((f) => ({ f: f }))
+    return this.allFiles.map((f) => ({ f: f }))
+  }
+
+  titleFor(key) {
+    if (key === 'ds') return { t: 'All data sources', s: 'every raw and derived artifact in the case' }
+    if (key === 'views') return { t: 'File types', s: 'grouped by detected type' }
+    if (key === 'results') return { t: 'Results', s: 'derived findings' }
+    if (key === 'exceptions') return { t: 'Integrity exceptions', s: 'files that no longer match the manifest' }
+    if (key === 'text') return { t: 'Extracted text', s: 'text-bearing artifacts' }
+    if (key === 'ledger') return { t: 'Manifest ledger', s: 'hash chain across all captures' }
+    if (key.indexOf('kw:') === 0) return { t: 'Keyword hit — ' + key.slice(3), s: 'first hit per source' }
+    if (key.indexOf('ft:') === 0) return { t: key.slice(3), s: 'file type view' }
+    if (key.indexOf('dir:') === 0) { const p = key.split(':'); return { t: p[1] + ' / ' + p[2], s: p[2] === 'raw' ? 'bytes exactly as captured' : 'generated from raw at capture time' } }
+    if (key.indexOf('cap:') === 0) {
+      const c = this.caps.filter((x) => x.id === key.slice(4))[0]
+      return { t: c.id, s: c.url }
+    }
+    return { t: key, s: '' }
+  }
+
+  renderVals() {
+    const self = this, s = this.state
+    const dock = this.props.viewerDock ?? 'bottom'
+    const dense = (this.props.density ?? 'compact') === 'compact'
+    const counts = this.props.treeCounts ?? true
+    const q = s.query.trim().toLowerCase()
+
+    // ---------- tree ----------
+    const types = []
+    this.allFiles.forEach((f) => { if (types.indexOf(f.type) < 0) types.push(f.type) })
+    const nodes = [
+      { k: 'ds', label: 'Data Sources', icon: '#r-db', group: true, kids: this.caps.map((c) => ({
+        k: 'cap:' + c.id, label: c.id + ' · ' + c.host, icon: '#r-globe', kids: [
+          { k: 'dir:' + c.id + ':raw', label: 'raw', icon: '#r-folder' },
+          { k: 'dir:' + c.id + ':derived', label: 'derived', icon: '#r-folder' }
+        ]
+      })) },
+      { k: 'views', label: 'Views', icon: '#r-layers', group: true, kids: [
+        { k: 'ft', label: 'File Types', icon: '#r-type', kids: types.map((t) => ({ k: 'ft:' + t, label: t, icon: '#r-file' })) }
+      ] },
+      { k: 'results', label: 'Results', icon: '#r-target', group: true, kids: [
+        { k: 'kw', label: 'Keyword Hits', icon: '#r-search', kids: this.keywords.map((w) => ({ k: 'kw:' + w, label: w, icon: '#r-search' })) },
+        { k: 'text', label: 'Extracted Text', icon: '#r-file' },
+        { k: 'exceptions', label: 'Integrity Exceptions', icon: '#r-shieldal', alert: true },
+        { k: 'ledger', label: 'Manifest Ledger', icon: '#r-link' }
+      ] }
+    ]
+    const tree = []
+    const walk = (list, depth) => {
+      list.forEach((n) => {
+        const open = !!s.expanded[n.k]
+        const kids = n.kids || null
+        const sel = s.node === n.k
+        const cnt = n.k === 'ledger' ? this.ledger.length : (n.k === 'ft' || n.k === 'kw' ? (n.kids || []).length : this.filesFor(n.k).length)
+        tree.push({
+          k: n.k, label: n.label, icon: n.icon, pad: 4 + depth * 13,
+          h: dense ? 24 : 28, fs: n.group ? 10 : 12, fw: n.group ? 700 : (sel ? 600 : 500),
+          ls: n.group ? '.07em' : 'normal', tt: n.group ? 'uppercase' : 'none',
+          color: n.group ? 'var(--color-text-faint)' : (sel ? 'var(--color-text-primary)' : 'var(--color-text-secondary)'),
+          bg: sel ? 'var(--color-accent-subtle)' : 'transparent',
+          iconColor: sel ? 'var(--color-accent)' : 'var(--color-text-muted)',
+          iconOpacity: n.group ? '.7' : '1',
+          twist: kids ? (open ? '#r-chevd' : '#r-chevr') : '#r-chevr',
+          twistOpacity: kids ? '1' : '0', twistCursor: kids ? 'pointer' : 'default',
+          alert: !!n.alert, showCount: counts && !n.group, count: cnt,
+          click: () => this.setState({ node: n.k, tab: n.k === 'ledger' ? 'ledger' : s.tab }),
+          toggle: (e) => { if (!kids) return; e.stopPropagation(); const ex = Object.assign({}, s.expanded); ex[n.k] = !open; this.setState({ expanded: ex }) }
+        })
+        if (kids && open) walk(kids, depth + 1)
+      })
+    }
+    walk(nodes, 0)
+
+    // ---------- table ----------
+    let entries = this.filesFor(s.node)
+    if (q) entries = this.allFiles.filter((f) => (f.name + ' ' + f.cap + ' ' + f.type + ' ' + f.sha).toLowerCase().indexOf(q) >= 0).map((f) => ({ f: f }))
+    const rows = entries.map((e) => {
+      const f = e.f, ic = this.iconFor(f), sel = s.sel === f.id
+      const err = f.flag && f.flag.level === 'error'
+      return {
+        name: f.name, cap: f.cap, type: f.type, size: f.size, sha: this.short(f.sha), time: f.time,
+        icon: ic.icon, iconColor: ic.color,
+        nameColor: sel ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+        bg: sel ? 'var(--color-accent-subtle)' : 'transparent',
+        bar: sel ? 'var(--color-accent)' : 'transparent',
+        flagged: !!f.flag, flagLabel: f.flag ? f.flag.label : '',
+        flagBg: err ? 'rgba(239,68,68,.14)' : 'rgba(245,158,11,.14)',
+        flagColor: err ? '#f87171' : '#f59e0b',
+        hasSnippet: !!e.hit, snipPre: e.pre || '', snipHit: e.hit || '', snipPost: e.post || '',
+        click: () => this.setState({ sel: f.id })
+      }
+    })
+    const title = q ? { t: 'Search results', s: '"' + s.query.trim() + '" across names, types and hashes' } : this.titleFor(s.node)
+    const exCount = this.allFiles.filter((f) => f.flag).length
+
+    // ---------- selection ----------
+    const sf = this.allFiles.filter((f) => f.id === s.sel)[0] || this.allFiles[0]
+    const c = sf.capture
+    const sic = this.iconFor(sf)
+    const isMht = sf.name.indexOf('.mhtml') >= 0
+    const textual = isMht || sf.name.indexOf('.html') >= 0 || sf.name.indexOf('.txt') >= 0
+    const term = s.node.indexOf('kw:') === 0 ? s.node.slice(3) : (q || '')
+    const textLines = textual ? c.text.map((line, i) => {
+      const idx = term ? line.toLowerCase().indexOf(term.toLowerCase()) : -1
+      return idx >= 0
+        ? { n: i + 1, pre: line.slice(0, idx), hit: line.slice(idx, idx + term.length), post: line.slice(idx + term.length), hasHit: true }
+        : { n: i + 1, pre: line, hit: '', post: '', hasHit: false }
+    }) : []
+
+    const tabDefs = [
+      { id: 'text', label: 'Extracted Text' }, { id: 'parts', label: 'MHTML Parts' },
+      { id: 'head', label: 'Headers & TLS' }, { id: 'ledger', label: 'Manifest Ledger' },
+      { id: 'props', label: 'Properties' }
+    ]
+    const tabs = tabDefs.map((t) => ({
+      label: t.label, bg: s.tab === t.id ? 'var(--color-elevated)' : 'transparent',
+      color: s.tab === t.id ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+      fw: s.tab === t.id ? 600 : 500, click: () => this.setState({ tab: t.id })
+    }))
+    const hints = {
+      text: textual ? c.text.length + ' lines · extracted at capture time' : 'no text layer',
+      parts: isMht ? c.parts.length + ' MIME parts' : 'not a multipart archive',
+      head: c.status, ledger: this.ledger.length + ' entries', props: 'file + source metadata'
+    }
+
+    const ledger = this.ledger.map((e) => ({
+      seq: e.seq, time: e.time, event: e.event, target: e.target,
+      hash: this.short(this.hex(e.s)), prev: this.short(this.hex(e.s - 1)),
+      evColor: e.bad ? '#f59e0b' : 'var(--color-text-muted)',
+      bg: e.target.indexOf(sf.name) >= 0 && e.target.indexOf(sf.cap) >= 0 ? 'var(--color-accent-subtle)' : 'var(--color-card)'
+    }))
+
+    const propGroups = [
+      { title: 'File', rows: [
+        { k: 'Name', v: sf.name, color: 'var(--color-text-primary)' },
+        { k: 'Path', v: 'cases/nightjar/' + sf.cap + '/' + sf.group + '/' + sf.name, color: 'var(--color-text-muted)' },
+        { k: 'Type', v: sf.type, color: 'var(--color-text-muted)' },
+        { k: 'Size on disk', v: sf.size, color: 'var(--color-text-muted)' },
+        { k: 'SHA-256', v: sf.sha, color: 'var(--color-text-muted)' },
+        { k: 'Manifest state', v: sf.flag ? sf.flag.label : 'matches manifest', color: sf.flag ? (sf.flag.level === 'error' ? '#f87171' : '#f59e0b') : '#10b981' }
+      ] },
+      { title: 'Source capture', rows: [
+        { k: 'Capture', v: sf.cap, color: 'var(--color-text-primary)' },
+        { k: 'URL', v: c.url, color: 'var(--color-text-muted)' },
+        { k: 'Captured (UTC)', v: c.time, color: 'var(--color-text-muted)' },
+        { k: 'Remote address', v: c.ip, color: 'var(--color-text-muted)' },
+        { k: 'HTTP status', v: c.status, color: 'var(--color-text-muted)' },
+        { k: 'Collector', v: 'Birdbrain extension 1.4.2 · headless profile', color: 'var(--color-text-muted)' }
+      ] }
+    ]
+
+    const railDefs = [
+      { icon: '#r-home', label: 'Home' }, { icon: '#r-dash', label: 'Overview' },
+      { icon: '#r-layers', label: 'Captures' }, { icon: '#r-note', label: 'Notes' },
+      { icon: '#r-cross', label: 'Signals' }, { icon: '#r-db', label: 'Data' },
+      { icon: '#r-target', label: 'Case Reviewer', active: true }
+    ]
+
+    return {
+      noop: () => {},
+      rail: railDefs.map((d) => ({
+        icon: d.icon, label: d.label, active: !!d.active,
+        bg: d.active ? 'var(--color-accent-subtle)' : 'transparent',
+        color: d.active ? 'var(--color-accent)' : 'var(--color-text-muted)'
+      })),
+      query: s.query, hasQuery: s.query.length > 0,
+      onQuery: (e) => this.setState({ query: e.target.value }),
+      clearQuery: () => this.setState({ query: '' }),
+      tree: tree,
+      dockDir: dock === 'right' ? 'row' : 'column',
+      tableFlex: dock === 'right' ? '1.05' : '1',
+      viewerFlex: dock === 'right' ? '1' : '1.2',
+      dockBorderTop: dock === 'right' ? 'none' : '1px solid var(--color-border)',
+      dockBorderLeft: dock === 'right' ? '1px solid var(--color-border)' : 'none',
+      wide: dock !== 'right',
+      cols: dock === 'right'
+        ? 'minmax(90px,1fr) minmax(56px,84px) minmax(60px,110px) minmax(48px,72px)'
+        : 'minmax(120px,1fr) minmax(56px,84px) minmax(60px,110px) minmax(48px,72px) minmax(70px,118px) minmax(66px,112px)',
+      rowH: dense ? 30 : 38,
+      nodeTitle: title.t, nodeSub: title.s,
+      nodeAlert: s.node === 'exceptions' || s.node === 'ledger',
+      nodeAlertText: exCount + ' exceptions · ledger chain intact',
+      rows: rows, noRows: rows.length === 0,
+      selName: sf.name, selPath: sf.cap + ' / ' + sf.group, selIcon: sic.icon, selIconColor: sic.color,
+      selUrl: c.url,
+      selFlagged: !!sf.flag, selFlagLabel: sf.flag ? sf.flag.label : '',
+      selFlagColor: sf.flag && sf.flag.level === 'error' ? '#f87171' : '#f59e0b',
+      selFlagBg: sf.flag && sf.flag.level === 'error' ? 'rgba(239,68,68,.1)' : 'rgba(245,158,11,.1)',
+      selFlagBorder: sf.flag && sf.flag.level === 'error' ? 'rgba(239,68,68,.28)' : 'rgba(245,158,11,.28)',
+      tabs: tabs, tabHint: hints[s.tab],
+      vText: s.tab === 'text', vParts: s.tab === 'parts', vHead: s.tab === 'head', vLedger: s.tab === 'ledger', vProps: s.tab === 'props',
+      textLines: textLines, textEmpty: !textual,
+      textEmptyMsg: sf.name.indexOf('.png') >= 0 ? 'Binary image — no text layer. Open the Properties tab for capture metadata.' : 'No extracted text for this artifact.',
+      partsShown: isMht, partsEmpty: !isMht,
+      partsEmptyMsg: sf.name + ' is not a multipart archive. Select the page.mhtml for this capture to inspect its MIME parts.',
+      mhtBoundary: c.boundary, partsCount: c.parts.length,
+      partsBytes: isMht ? sf.size : '—',
+      parts: c.parts.map((p, i) => ({ n: i + 1, loc: p.loc, ctype: p.ctype, enc: p.enc, size: p.size, sha: this.short(this.hex(p.seed)) })),
+      reqHeaders: c.req, resHeaders: c.res,
+      statusLine: c.status, statusColor: c.statusOk ? '#10b981' : '#f59e0b',
+      tlsChain: c.tls.map((t, i) => ({ role: t.role, cn: t.cn, issuer: t.issuer, valid: t.valid, fp: t.fp, indent: i * 12 })),
+      tlsNote: c.tlsNote,
+      ledger: ledger,
+      propGroups: propGroups,
+      statCaptures: this.caps.length + ' data sources',
+      statFiles: this.allFiles.length + ' artifacts',
+      statExceptions: exCount + ' integrity exceptions',
+      statExColor: exCount ? '#f59e0b' : 'var(--color-text-faint)',
+      statPath: '~/Birdbrain/cases/nightjar'
+    }
+  }
+}
+
+</script>
+</body>
+</html>

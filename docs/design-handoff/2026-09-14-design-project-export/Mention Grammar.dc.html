@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/birdbrain-ui-9632b0b0-024d-4a3c-94db-688afdd4768f/fonts/fonts.css">
+  <link rel="stylesheet" href="_ds/birdbrain-ui-9632b0b0-024d-4a3c-94db-688afdd4768f/_ds_bundle.css">
+  <link rel="stylesheet" href="_ds/birdbrain-ui-9632b0b0-024d-4a3c-94db-688afdd4768f/styles.css">
+  <style>
+    html,body{margin:0;padding:0;height:100%;}
+    a{color:var(--color-accent);text-decoration:none;}
+    a:hover{color:var(--color-accent-hover);}
+    ::placeholder{color:var(--color-text-faint);}
+    :root{
+      --sel:rgba(99,102,241,.26);
+      --color-success-surface:rgba(16,185,129,.10);
+      --color-success-line:rgba(16,185,129,.20);
+      --color-success-fg:#10b981;
+    }
+    html.dark{
+      --sel:rgba(100,103,242,.34);
+      --color-success-fg:#34d399;
+    }
+    .hovrow:hover{background:var(--color-elevated);}
+    .hovbrd:hover{border-color:var(--color-border-strong);}
+    @keyframes bbpulse{0%,100%{opacity:1}50%{opacity:.45}}
+    @keyframes bbrise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+  </style>
+</helmet>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="i-crosshair" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="22" y1="12" x2="18" y2="12"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="12" y1="6" x2="12" y2="2"></line><line x1="12" y1="22" x2="12" y2="18"></line></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path></symbol>
+  <symbol id="i-filetext" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="M16 13H8"></path><path d="M16 17H8"></path><path d="M10 9H8"></path></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path><path d="M2 12h20"></path></symbol>
+  <symbol id="i-shieldck" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></symbol>
+  <symbol id="i-morev" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="19" r="1"></circle></symbol>
+  <symbol id="i-refccw" viewBox="0 0 24 24"><path d="M3 2v6h6"></path><path d="M21 12A9 9 0 0 0 6 5.3L3 8"></path><path d="M21 22v-6h-6"></path><path d="M3 12a9 9 0 0 0 15 6.7l3-2.7"></path></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 17v5"></path><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"></path></symbol>
+  <symbol id="i-extlink" viewBox="0 0 24 24"><path d="M15 3h6v6"></path><path d="M10 14 21 3"></path><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></symbol>
+  <symbol id="i-chevr" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"></path></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"></path><path d="M12 5v14"></path></symbol>
+  <symbol id="i-puzzle" viewBox="0 0 24 24"><path d="M19.439 7.85c-.049.322.059.648.289.878l1.568 1.568c.47.47.706 1.087.706 1.704s-.235 1.233-.706 1.704l-1.611 1.611a.98.98 0 0 1-.837.276c-.47-.07-.802-.48-.968-.925a2.501 2.501 0 1 0-3.214 3.214c.446.166.855.497.925.968a.979.979 0 0 1-.276.837l-1.61 1.61a2.404 2.404 0 0 1-1.705.707 2.402 2.402 0 0 1-1.704-.706l-1.568-1.568a1.026 1.026 0 0 0-.877-.29c-.493.074-.84.504-1.02.968a2.5 2.5 0 1 1-3.237-3.237c.464-.18.894-.527.967-1.02a1.026 1.026 0 0 0-.289-.877l-1.568-1.568A2.402 2.402 0 0 1 1.998 12c0-.617.236-1.234.706-1.704L4.23 8.77c.24-.24.581-.353.917-.303.515.077.877.528 1.073 1.01a2.5 2.5 0 1 0 3.259-3.259c-.482-.196-.933-.558-1.01-1.073-.05-.336.062-.676.303-.917l1.525-1.525A2.402 2.402 0 0 1 12 1.998c.617 0 1.234.236 1.704.706l1.568 1.568c.23.23.556.338.877.29.493-.074.84-.504 1.02-.968a2.5 2.5 0 1 1 3.237 3.237c-.464.18-.894.527-.967 1.02Z"></path></symbol>
+  <symbol id="i-highlight" viewBox="0 0 24 24"><path d="m9 11-6 6v3h9l3-3"></path><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4Z"></path></symbol>
+  <symbol id="i-type" viewBox="0 0 24 24"><polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" y1="20" x2="15" y2="20"></line><line x1="12" y1="4" x2="12" y2="20"></line></symbol>
+</defs></svg>
+
+<div style="display:flex;flex-direction:column;height:100vh;background:var(--color-canvas);color:var(--color-text-secondary);font-family:var(--font-body);overflow:hidden">
+
+  <header style="display:flex;height:48px;flex-shrink:0;align-items:center;gap:12px;border-bottom:1px solid var(--color-border);background:var(--color-surface);padding:0 16px;z-index:40">
+    <div style="display:flex;align-items:center;gap:8px;padding:2px 4px;margin-left:-4px">
+      <img src="src/renderer/assets/logo.png" alt="Birdbrain" style="height:24px;width:24px">
+      <span style="font-family:var(--font-display);font-size:12px;font-weight:800;letter-spacing:-0.025em;color:var(--color-text-primary)">Birdbrain</span>
+    </div>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#i-chevr"></use></svg>
+    <span style="font-family:var(--font-display);font-size:12px;font-weight:700;color:var(--color-text-primary)">Nightjar phishing kit</span>
+    <div style="flex:1;min-width:0;display:flex;align-items:center;justify-content:center;padding:0 8px">
+      <div style="display:flex;align-items:center;gap:8px;width:100%;max-width:400px;border-radius:8px;border:1px solid var(--color-border);background:var(--color-card);padding:4px 10px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#i-search"></use></svg>
+        <input type="text" aria-label="Search case captures" placeholder="Search this case…" style="min-width:0;flex:1;background:transparent;border:none;font-size:12px;color:var(--color-text-primary);outline:none;font-family:var(--font-body)">
+        <span style="flex-shrink:0;border-radius:4px;border:1px solid var(--color-border-strong);background:var(--color-surface);padding:2px 6px;font-family:var(--font-mono);font-size:10px;color:var(--color-text-faint)">Ctrl F</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:9999px;background:var(--color-success-surface);border:1px solid var(--color-success-line);color:var(--color-success-fg);font-size:12px;font-weight:500">
+      <span style="width:6px;height:6px;border-radius:9999px;background:currentColor;animation:bbpulse 2s ease-in-out infinite"></span>
+      <span>Extension connected</span>
+    </div>
+  </header>
+
+  <div style="flex:1;min-height:0;display:flex">
+
+    <!-- ═══════════ CAPTURE VIEWER — 2a ═══════════ -->
+    <section style="flex:1.32;min-width:0;display:flex;flex-direction:column;border-right:1px solid var(--color-border);background:var(--color-canvas)">
+      <div style="display:flex;align-items:center;gap:10px;height:44px;flex-shrink:0;padding:0 20px;border-bottom:1px solid var(--color-border);background:var(--color-surface)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#i-globe"></use></svg>
+        <span style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">https://kit-landing.nightjar-cdn.net/verify</span>
+        <div style="display:flex;align-items:center;gap:5px;height:20px;padding:0 8px;flex-shrink:0;border-radius:9999px;background:var(--color-success-surface);border:1px solid var(--color-success-line);color:var(--color-success-fg);font-family:var(--font-mono);font-size:10px">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-shieldck"></use></svg>
+          <span>verified</span>
+        </div>
+        <div style="flex:1"></div>
+        <button onClick="{{ reset }}" title="Replay" class="hovrow" style="display:flex;align-items:center;justify-content:center;height:28px;width:28px;border-radius:6px;border:none;background:transparent;color:var(--color-text-muted);cursor:pointer">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-refccw"></use></svg>
+        </button>
+        <button class="hovrow" style="display:flex;align-items:center;justify-content:center;height:28px;width:28px;border-radius:6px;border:none;background:transparent;color:var(--color-text-muted);cursor:pointer">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-morev"></use></svg>
+        </button>
+      </div>
+
+      <div style="flex:1;min-height:0;padding:28px 32px;position:relative">
+        <div style="max-width:660px;border-radius:16px;border:1px solid var(--color-border);background:var(--color-card);padding:28px 32px 26px">
+          <div style="font-family:var(--font-display);font-size:18px;font-weight:700;letter-spacing:-0.025em;color:var(--color-text-primary);margin-bottom:14px">Account verification required</div>
+          <p style="margin:0 0 14px;font-size:13px;line-height:1.75;color:var(--color-text-secondary);text-wrap:pretty">The kit renders a bank-styled interstitial and defers all logic to a loader fetched at runtime, so the landing HTML itself stays clean of indicators.</p>
+          <p style="margin:0 0 14px;font-size:13px;line-height:1.75;color:var(--color-text-secondary);text-wrap:pretty">On submit the form serializes the field set and <span style="position:relative;background:var(--sel);border-radius:3px;padding:1px 2px;box-shadow:0 0 0 1px var(--sel)">POSTs credentials to <span style="font-family:var(--font-mono);font-size:12px">pay-nightjar.io/api/v2/collect</span><sc-if value="{{ isDone }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;left:0;right:0;bottom:-3px;height:2px;background:var(--color-accent);border-radius:2px"></span></sc-if><sc-if value="{{ isBar }}" hint-placeholder-val="{{ true }}"><span style="position:absolute;left:0;bottom:calc(100% + 10px);z-index:60;display:flex;height:32px;align-items:center;border-radius:8px;border:1px solid var(--color-border-strong);background:var(--color-elevated);box-shadow:var(--shadow-overlay);overflow:hidden;animation:bbrise .12s ease-out;white-space:nowrap"><button onClick="{{ openConfirm }}" class="hovrow" style="display:flex;align-items:center;gap:6px;height:100%;padding:0 11px;border:none;background:transparent;color:var(--color-accent);font-family:var(--font-body);font-size:12px;font-weight:500;cursor:pointer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-crosshair"></use></svg><span>Selector</span></button><button class="hovrow" style="display:flex;align-items:center;gap:6px;height:100%;padding:0 11px;border:none;border-left:1px solid var(--color-border);background:transparent;color:var(--color-text-secondary);font-family:var(--font-body);font-size:12px;font-weight:500;cursor:pointer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-tag"></use></svg><span>Tag</span></button><button class="hovrow" style="display:flex;align-items:center;gap:6px;height:100%;padding:0 11px;border:none;border-left:1px solid var(--color-border);background:transparent;color:var(--color-text-secondary);font-family:var(--font-body);font-size:12px;font-weight:500;cursor:pointer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-highlight"></use></svg><span>Quote</span></button></span></sc-if><sc-if value="{{ isConfirm }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;left:0;bottom:calc(100% + 10px);z-index:60;display:block;width:312px;border-radius:12px;border:1px solid var(--color-border-strong);background:var(--color-elevated);box-shadow:var(--shadow-overlay);padding:14px;animation:bbrise .12s ease-out;white-space:normal;text-align:left">
+  <span style="display:block;font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--color-text-faint);line-height:1;margin-bottom:10px">New selector</span>
+  <span style="display:flex;align-items:center;gap:8px;border-radius:8px;border:1px solid var(--color-border);background:var(--color-canvas);padding:7px 10px;margin-bottom:4px">
+    <span style="flex-shrink:0;height:18px;display:inline-flex;align-items:center;padding:0 7px;border-radius:9999px;background:var(--color-accent-subtle);color:var(--color-accent);font-family:var(--font-mono);font-size:10px">domain</span>
+    <span style="flex:1;min-width:0;font-family:var(--font-mono);font-size:12px;color:var(--color-text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">pay-nightjar.io</span>
+  </span>
+  <span style="display:block;font-size:11px;color:var(--color-text-faint);margin-bottom:10px">Type detected from selection · path stripped</span>
+  <button onClick="{{ toggleWatch }}" style="display:flex;width:100%;align-items:center;gap:9px;padding:5px 0;border:none;background:transparent;cursor:pointer;text-align:left">
+    <span style="flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:4px;border:1px solid {{ watchBorder }};background:{{ watchBg }};color:#fff">
+      <sc-if value="{{ watch }}" hint-placeholder-val="{{ true }}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><use href="#i-check"></use></svg></sc-if>
+    </span>
+    <span style="font-size:12px;color:var(--color-text-secondary)">Watch for new hits</span>
+  </button>
+  <button onClick="{{ toggleBackfill }}" style="display:flex;width:100%;align-items:center;gap:9px;padding:5px 0;border:none;background:transparent;cursor:pointer;text-align:left">
+    <span style="flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:4px;border:1px solid {{ backfillBorder }};background:{{ backfillBg }};color:#fff">
+      <sc-if value="{{ backfill }}" hint-placeholder-val="{{ false }}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><use href="#i-check"></use></svg></sc-if>
+    </span>
+    <span style="font-size:12px;color:var(--color-text-secondary)">Backfill — scan <span style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-muted)">42</span> existing captures</span>
+  </button>
+  <span style="display:flex;align-items:center;gap:8px;margin-top:12px">
+    <button onClick="{{ create }}" style="display:flex;align-items:center;gap:7px;height:28px;padding:0 12px;border-radius:6px;border:none;background:var(--color-accent);color:#fff;font-family:var(--font-body);font-size:12px;font-weight:600;cursor:pointer">
+      <span>Create selector</span>
+      <span style="font-family:var(--font-mono);font-size:10px;opacity:.7">⏎</span>
+    </button>
+    <button onClick="{{ reset }}" class="hovrow" style="display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:6px;border:none;background:transparent;color:var(--color-text-muted);font-family:var(--font-body);font-size:12px;cursor:pointer">
+      <span>Cancel</span>
+      <span style="font-family:var(--font-mono);font-size:10px">Esc</span>
+    </button>
+  </span>
+</span></sc-if></span> before redirecting to the genuine issuer.</p>
+          <p style="margin:0;font-size:13px;line-height:1.75;color:var(--color-text-secondary);text-wrap:pretty">The redirect target rotates weekly; the collector host has not changed since the first capture in this case.</p>
+
+        </div>
+
+        <!-- toast -->
+        <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;left:32px;bottom:26px;z-index:70;display:flex;align-items:center;gap:10px;height:36px;padding:0 8px 0 12px;border-radius:8px;border:1px solid var(--color-border-strong);background:var(--color-elevated);box-shadow:var(--shadow-overlay);animation:bbrise .16s ease-out">
+            <span style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:9999px;background:var(--color-success-surface);color:var(--color-success-fg)">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><use href="#i-check"></use></svg>
+            </span>
+            <span style="font-size:12px;color:var(--color-text-secondary)">Selector created</span>
+            <span style="color:var(--color-text-faint)">·</span>
+            <span style="display:inline-flex;align-items:center;gap:5px;color:var(--color-accent);font-family:var(--font-mono);font-size:11px">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-crosshair"></use></svg>
+              <span>pay-nightjar.io</span>
+            </span>
+            <span style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">14 hits</span>
+            <button onClick="{{ dismissToast }}" aria-label="Dismiss" class="hovrow" style="display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:4px;border:none;background:transparent;color:var(--color-text-faint);cursor:pointer">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-x"></use></svg>
+            </button>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:16px;height:36px;flex-shrink:0;padding:0 32px;border-top:1px solid var(--color-border);background:var(--color-surface);font-family:var(--font-mono);font-size:10px;color:var(--color-text-faint)">
+        <span>2026-07-28 14:02:11Z</span>
+        <span>sha256 4f9c…a17b</span>
+        <span>capture 084</span>
+      </div>
+    </section>
+
+    <!-- ═══════════ NOTE + MENTION POPUPS — 2b ═══════════ -->
+    <section style="flex:1;min-width:0;display:flex;flex-direction:column;background:var(--color-surface)">
+      <div style="display:flex;align-items:center;gap:9px;height:44px;flex-shrink:0;padding:0 20px;border-bottom:1px solid var(--color-border)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#i-filetext"></use></svg>
+        <span style="font-family:var(--font-display);font-size:12px;font-weight:700;letter-spacing:-0.025em;color:var(--color-text-primary)">Case log</span>
+        <div style="flex:1"></div>
+        <span style="font-family:var(--font-mono);font-size:10px;color:var(--color-text-faint)">edited 4m ago</span>
+      </div>
+
+      <div style="flex:1;min-height:0;padding:20px 20px 0;display:flex;flex-direction:column;gap:12px">
+        <sc-for list="{{ lines }}" as="line" hint-placeholder-count="2">
+          <p style="margin:0;font-size:13px;line-height:1.85;color:var(--color-text-secondary);text-wrap:pretty">
+            <sc-for list="{{ line.segs }}" as="seg" hint-placeholder-count="1">
+              <sc-if value="{{ seg.isText }}" hint-placeholder-val="{{ true }}"><span>{{ seg.text }}</span></sc-if>
+              <sc-if value="{{ seg.isChip }}" hint-placeholder-val="{{ false }}">
+                <span style="position:relative;display:inline-block;vertical-align:baseline">
+                  <span onMouseEnter="{{ seg.enter }}" onMouseLeave="{{ seg.leave }}" style="display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px 0 6px;border-radius:9999px;background:{{ seg.bg }};border:1px solid {{ seg.line }};color:{{ seg.fg }};font-size:11px;cursor:pointer;white-space:nowrap">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="{{ seg.icon }}"></use></svg>
+                    <span style="font-family:var(--font-mono);font-size:10.5px">{{ seg.text }}</span>
+                    <sc-if value="{{ seg.hasCount }}" hint-placeholder-val="{{ false }}"><span style="font-family:var(--font-mono);font-size:10px;opacity:.6">{{ seg.count }}</span></sc-if>
+                  </span>
+                  <sc-if value="{{ seg.hovered }}" hint-placeholder-val="{{ false }}">
+                    <span style="position:absolute;left:0;bottom:calc(100% + 8px);z-index:80;display:flex;gap:10px;width:264px;padding:10px;border-radius:12px;border:1px solid var(--color-border-strong);background:var(--color-elevated);box-shadow:var(--shadow-overlay);animation:bbrise .12s ease-out">
+                      <span style="flex-shrink:0;display:flex;align-items:center;justify-content:center;width:56px;height:42px;border-radius:8px;background:var(--color-canvas);border:1px solid var(--color-border);color:var(--color-text-faint)">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="{{ seg.icon }}"></use></svg>
+                      </span>
+                      <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+                        <span style="font-size:12px;font-weight:500;color:var(--color-text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ seg.peekTitle }}</span>
+                        <span style="font-family:var(--font-mono);font-size:10px;color:var(--color-text-faint)">{{ seg.peekMeta }}</span>
+                        <span style="display:flex;gap:10px;margin-top:2px;font-size:10.5px;color:var(--color-accent)">
+                          <span style="display:inline-flex;align-items:center;gap:4px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-extlink"></use></svg>Open</span>
+                          <span style="display:inline-flex;align-items:center;gap:4px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-pin"></use></svg>Pin</span>
+                        </span>
+                      </span>
+                    </span>
+                  </sc-if>
+                </span>
+              </sc-if>
+            </sc-for>
+          </p>
+        </sc-for>
+
+        <p style="margin:0;font-size:13px;line-height:1.85;color:var(--color-text-secondary)">
+          <sc-for list="{{ draftSegs }}" as="d" hint-placeholder-count="0">
+            <span style="display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px 0 6px;border-radius:9999px;background:{{ d.bg }};border:1px solid {{ d.line }};color:{{ d.fg }};font-size:11px;white-space:nowrap">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="{{ d.icon }}"></use></svg>
+              <span style="font-family:var(--font-mono);font-size:10.5px">{{ d.text }}</span>
+            </span>
+          </sc-for>
+        </p>
+      </div>
+
+      <div style="flex-shrink:0;position:relative;padding:0 20px 18px">
+        <sc-if value="{{ menuOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;left:20px;right:20px;bottom:calc(100% - 4px);z-index:70;max-width:300px;border-radius:12px;border:1px solid var(--color-border-strong);background:var(--color-elevated);box-shadow:var(--shadow-overlay);overflow:hidden;animation:bbrise .12s ease-out">
+            <div style="padding:7px 12px;border-bottom:1px solid var(--color-border);font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--color-text-faint);line-height:1">{{ menuTitle }}</div>
+            <sc-for list="{{ menuItems }}" as="it" hint-placeholder-count="3">
+              <button onClick="{{ it.pick }}" class="hovrow" style="display:flex;width:100%;align-items:center;gap:8px;height:32px;padding:0 12px;border:none;background:{{ it.bg }};cursor:pointer;text-align:left">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="{{ it.iconColor }}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="{{ it.icon }}"></use></svg>
+                <span style="flex:1;min-width:0;font-family:var(--font-mono);font-size:11.5px;color:var(--color-text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ it.label }}</span>
+                <span style="flex-shrink:0;font-family:var(--font-mono);font-size:10px;color:var(--color-text-faint)">{{ it.meta }}</span>
+              </button>
+            </sc-for>
+            <sc-if value="{{ showCreate }}" hint-placeholder-val="{{ false }}">
+              <button onClick="{{ createInline }}" class="hovrow" style="display:flex;width:100%;align-items:center;gap:8px;height:32px;padding:0 12px;border:none;border-top:1px solid var(--color-border);background:transparent;cursor:pointer;text-align:left">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#i-plus"></use></svg>
+                <span style="flex:1;min-width:0;font-size:11.5px;color:var(--color-text-secondary)">Create <span style="font-family:var(--font-mono);color:var(--color-text-primary)">{{ menuQuery }}</span> as selector</span>
+                <span style="flex-shrink:0;font-family:var(--font-mono);font-size:10px;color:var(--color-text-faint)">⏎</span>
+              </button>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <div style="display:flex;align-items:center;gap:8px;border-radius:8px;border:1px solid {{ composerBorder }};background:var(--color-canvas);padding:7px 10px">
+          <input type="text" aria-label="Write in the case log" value="{{ draftText }}" onChange="{{ onType }}" onKeyDown="{{ onKey }}" placeholder="Continue the log…" style="min-width:0;flex:1;background:transparent;border:none;font-size:12px;color:var(--color-text-primary);outline:none;font-family:var(--font-body)">
+        </div>
+        <div style="display:flex;align-items:center;gap:14px;margin-top:8px;font-size:11px;color:var(--color-text-faint)">
+          <span><span style="font-family:var(--font-mono);color:var(--color-text-muted)">@</span> captures &amp; notes</span>
+          <span><span style="font-family:var(--font-mono);color:var(--color-text-muted)">#</span> selectors &amp; tags</span>
+          <div style="flex:1"></div>
+          <span style="display:inline-flex;align-items:center;gap:5px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-puzzle"></use></svg>same grammar in the extension</span>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;'dark' | 'light'&quot;},&quot;watchDefault&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Selector defaults&quot;},&quot;backfillDefault&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Selector defaults&quot;}}">
+const CHIP = {
+  selector: { bg: 'var(--color-accent-subtle)', line: 'transparent', fg: 'var(--color-accent)', icon: '#i-crosshair' },
+  capture:  { bg: 'var(--color-elevated)', line: 'var(--color-border-strong)', fg: 'var(--color-text-secondary)', icon: '#i-image' },
+  note:     { bg: 'var(--color-elevated)', line: 'var(--color-border-strong)', fg: 'var(--color-text-secondary)', icon: '#i-filetext' },
+  tag:      { bg: 'var(--color-elevated)', line: 'var(--color-border-strong)', fg: 'var(--color-text-secondary)', icon: '#i-tag' }
+};
+
+class Component extends DCLogic {
+  state = {
+    step: 'bar',
+    watch: true,
+    backfill: false,
+    toast: false,
+    created: false,
+    hover: null,
+    draftText: '',
+    draftSegs: [],
+    sigil: null,
+    sigilIdx: -1,
+    lines: [
+      { id: 'l1', segs: [{ kind: 'text', text: 'Landing page pulls a fresh loader on every request, so the HTML alone carries no indicators.' }] },
+      { id: 'l2', segs: [
+        { kind: 'text', text: 'Operator persona ' },
+        { kind: 'chip', id: 'c1', type: 'selector', text: 'jb-crow@proton.me', count: '8', peekTitle: 'jb-crow@proton.me', peekMeta: 'selector · email · 8 hits' },
+        { kind: 'text', text: ' reused across three registrations.' }
+      ] }
+    ]
+  };
+
+  componentDidMount() {
+    const t = this.props.theme ?? 'dark';
+    document.documentElement.classList.toggle('dark', t === 'dark');
+    this.setState({ watch: this.props.watchDefault ?? true, backfill: this.props.backfillDefault ?? false });
+  }
+
+  componentDidUpdate(prev) {
+    if (prev.theme !== this.props.theme) {
+      document.documentElement.classList.toggle('dark', (this.props.theme ?? 'dark') === 'dark');
+    }
+  }
+
+  catalog() {
+    const sel = [
+      { type: 'selector', label: 'jb-crow@proton.me', meta: 'selector · 8' },
+      { type: 'tag', label: 'crow-persona', meta: 'tag' },
+      { type: 'tag', label: 'phishing-kit', meta: 'tag' }
+    ];
+    if (this.state.created) sel.unshift({ type: 'selector', label: 'pay-nightjar.io', meta: 'selector · 14' });
+    return {
+      '@': [
+        { type: 'capture', label: 'kit-landing.html', meta: 'capture' },
+        { type: 'capture', label: 'nightjar-panel.png', meta: 'capture' },
+        { type: 'note', label: 'Infra map', meta: 'note' }
+      ],
+      '#': sel
+    };
+  }
+
+  onType = (e) => {
+    const v = e.target.value;
+    const at = v.lastIndexOf('@');
+    const hash = v.lastIndexOf('#');
+    const idx = Math.max(at, hash);
+    let sigil = null;
+    if (idx >= 0 && !/\s/.test(v.slice(idx + 1))) sigil = v[idx];
+    this.setState({ draftText: v, sigil, sigilIdx: idx });
+  };
+
+  onKey = (e) => {
+    if (e.key === 'Escape') this.setState({ sigil: null });
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const items = this.visibleItems();
+      if (this.state.sigil && items.length) this.insert(items[0]);
+      else if (this.state.sigil) this.createInline();
+    }
+  };
+
+  query() {
+    if (!this.state.sigil) return '';
+    return this.state.draftText.slice(this.state.sigilIdx + 1);
+  }
+
+  visibleItems() {
+    if (!this.state.sigil) return [];
+    const q = this.query().toLowerCase();
+    return this.catalog()[this.state.sigil].filter((i) => i.label.toLowerCase().includes(q));
+  }
+
+  insert = (item) => {
+    const seg = { kind: 'chip', id: 'd' + this.state.draftSegs.length, type: item.type, text: item.label };
+    this.setState((s) => ({
+      draftSegs: s.draftSegs.concat([seg]),
+      draftText: s.draftText.slice(0, s.sigilIdx),
+      sigil: null,
+      sigilIdx: -1
+    }));
+  };
+
+  createInline = () => {
+    const q = this.query();
+    if (!q) return;
+    this.insert({ type: 'selector', label: q });
+  };
+
+  openConfirm = () => this.setState({ step: 'confirm' });
+  toggleWatch = () => this.setState((s) => ({ watch: !s.watch }));
+  toggleBackfill = () => this.setState((s) => ({ backfill: !s.backfill }));
+  create = () => this.setState({ step: 'done', created: true, toast: true });
+  dismissToast = () => this.setState({ toast: false });
+  reset = () => this.setState({ step: 'bar', created: false, toast: false, draftSegs: [], draftText: '', sigil: null });
+
+  decorate(seg) {
+    if (seg.kind !== 'chip') return { isText: true, isChip: false, text: seg.text };
+    const c = CHIP[seg.type] || CHIP.selector;
+    return {
+      isText: false, isChip: true, text: seg.text,
+      bg: c.bg, line: c.line, fg: c.fg, icon: c.icon,
+      hasCount: !!seg.count, count: seg.count,
+      hovered: this.state.hover === seg.id,
+      peekTitle: seg.peekTitle || seg.text,
+      peekMeta: seg.peekMeta || '',
+      enter: () => this.setState({ hover: seg.id }),
+      leave: () => this.setState({ hover: null })
+    };
+  }
+
+  renderVals() {
+    const s = this.state;
+    const items = this.visibleItems();
+    const q = this.query();
+    return {
+      isBar: s.step === 'bar',
+      isConfirm: s.step === 'confirm',
+      isDone: s.step === 'done',
+      toast: s.toast,
+      watch: s.watch,
+      backfill: s.backfill,
+      watchBg: s.watch ? 'var(--color-accent)' : 'transparent',
+      watchBorder: s.watch ? 'var(--color-accent)' : 'var(--color-border-strong)',
+      backfillBg: s.backfill ? 'var(--color-accent)' : 'transparent',
+      backfillBorder: s.backfill ? 'var(--color-accent)' : 'var(--color-border-strong)',
+      lines: s.lines.map((l) => ({ id: l.id, segs: l.segs.map((sg) => this.decorate(sg)) })),
+      draftSegs: s.draftSegs.map((sg) => this.decorate(sg)),
+      draftText: s.draftText,
+      menuOpen: !!s.sigil,
+      menuTitle: s.sigil === '@' ? 'Captures & notes' : 'Selectors & tags',
+      menuQuery: q,
+      showCreate: s.sigil === '#' && q.length > 0,
+      composerBorder: s.sigil ? 'var(--color-accent)' : 'var(--color-border)',
+      menuItems: items.map((it, i) => ({
+        label: it.label,
+        meta: it.meta,
+        icon: (CHIP[it.type] || CHIP.selector).icon,
+        iconColor: it.type === 'selector' ? 'var(--color-accent)' : 'var(--color-text-muted)',
+        bg: i === 0 ? 'var(--color-accent-subtle)' : 'transparent',
+        pick: () => this.insert(it)
+      })),
+      onType: this.onType,
+      onKey: this.onKey,
+      openConfirm: this.openConfirm,
+      toggleWatch: this.toggleWatch,
+      toggleBackfill: this.toggleBackfill,
+      create: this.create,
+      createInline: this.createInline,
+      reset: this.reset,
+      dismissToast: this.dismissToast
+    };
+  }
+}
+</script>
+</body>
+</html>

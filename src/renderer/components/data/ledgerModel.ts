@@ -106,6 +106,34 @@ export function entryNames(
   }
 }
 
+// The Exhibit a ledger entry points the screen at (#1151 Show target): the
+// id the entry carries, or for a `timestamp` the anchored row whose hash it
+// binds. Null for entries about the Case as a whole (export, import,
+// renumber) and for unreadable lines.
+export function targetExhibitId(
+  line: ManifestSnapshotEntry,
+  rows: ReadonlyArray<{ id: string; contentHash: string; entity: string }>
+): string | null {
+  if (!line.parsed) return null
+  const { entry } = line
+  switch (entry.type) {
+    case 'capture':
+    case 'deletion':
+      return entry.captureId
+    case 'exhibit':
+      return entry.exhibitId
+    case 'derivation':
+      return (
+        rows.find((r) => r.entity === 'derived-file' && r.contentHash === entry.outputHash)?.id ??
+        entry.parentExhibitId
+      )
+    case 'timestamp':
+      return rows.find((r) => r.contentHash === entry.captureContentHash)?.id ?? null
+    default:
+      return null
+  }
+}
+
 export function rowsNaming(
   entries: ManifestSnapshotEntry[],
   exhibit: { id: string; contentHash: string }

@@ -13,13 +13,15 @@ interface ArtifactTabsProps {
   title: string
   subtitle: string
   tabs: ArtifactTab[]
+  // Right-aligned control in the strip header — the row's Verify (#1151).
+  action?: ReactNode
   // Selecting a row drives the strip (#1149). A tab absent from `tabs` is
   // absent, not empty (#1150): the strip only ever shows tabs with data.
 }
 
 // The per-row strip below the table. Tabs beyond Properties arrive with #1150;
 // the strip already takes a list so that ticket adds entries, not markup.
-export function ArtifactTabs({ title, subtitle, tabs }: ArtifactTabsProps) {
+export function ArtifactTabs({ title, subtitle, tabs, action }: ArtifactTabsProps) {
   const [active, setActive] = useState(tabs[0]?.id ?? '')
   useEffect(() => {
     if (!tabs.some((tab) => tab.id === active)) setActive(tabs[0]?.id ?? '')
@@ -34,6 +36,8 @@ export function ArtifactTabs({ title, subtitle, tabs }: ArtifactTabsProps) {
       <div className="flex h-[42px] shrink-0 items-center gap-2.5 border-b border-border px-3.5">
         <span className="font-mono text-xs font-semibold text-text-primary">{title}</span>
         <span className="min-w-0 truncate font-mono text-[11px] text-text-faint">{subtitle}</span>
+        <div className="flex-1" />
+        {action}
       </div>
       <div
         role="tablist"

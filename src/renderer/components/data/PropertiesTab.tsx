@@ -7,12 +7,17 @@ interface PropertiesTabProps {
   rows: InventoryRow[]
   // The Capture row for a Capture Exhibit, for the Collector fields.
   capture?: Capture
+  // The inline route for the menu's Copy SHA-256 and Copy relative path
+  // (#1151): a copy button beside each.
+  onCopy?: (value: string, label: string) => void
 }
 
 interface Prop {
   label: string
   value: string
   mono?: boolean
+  // What a copy of this value is announced as; absent means not copyable.
+  copyAs?: string
 }
 
 // Q10: kind, origin, Exhibit Number, recorded size (labelled as recorded at
@@ -53,9 +58,19 @@ export function propertiesFor(row: InventoryRow, rows: InventoryRow[], capture?:
     if (row.sourceUrl) props.push({ label: 'Stated source', value: row.sourceUrl })
     props.push({ label: 'Arrived', value: row.arrivedAt })
   }
-  props.push({ label: 'SHA-256', value: row.contentHash, mono: true })
+  props.push({
+    label: 'SHA-256',
+    value: row.contentHash,
+    mono: true,
+    copyAs: row.entity === 'staged-file' ? 'SHA-256 (not anchored)' : 'SHA-256'
+  })
   props.push({ label: 'Size (recorded at ingest)', value: formatBytes(row.sizeBytes) })
-  props.push({ label: 'Relative path', value: row.path ?? 'No file recorded', mono: true })
+  props.push({
+    label: 'Relative path',
+    value: row.path ?? 'No file recorded',
+    mono: true,
+    ...(row.path ? { copyAs: 'relative path' } : {})
+  })
   if (capture) {
     const collector = [
       capture.toolVersion && `Birdbrain ${capture.toolVersion}`,
@@ -70,7 +85,7 @@ export function propertiesFor(row: InventoryRow, rows: InventoryRow[], capture?:
   return props
 }
 
-export function PropertiesTab({ row, rows, capture }: PropertiesTabProps) {
+export function PropertiesTab({ row, rows, capture, onCopy }: PropertiesTabProps) {
   return (
     <dl
       className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 p-4 text-xs"
@@ -87,6 +102,16 @@ export function PropertiesTab({ row, rows, capture }: PropertiesTabProps) {
             }
           >
             {prop.value}
+            {prop.copyAs && onCopy && (
+              <button
+                type="button"
+                className="ml-2 rounded px-1.5 py-0.5 text-[10px] text-accent hover:bg-accent-subtle"
+                onClick={() => onCopy(prop.value, prop.copyAs!)}
+                data-testid={`copy-${prop.label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
+              >
+                Copy
+              </button>
+            )}
           </dd>
         </div>
       ))}

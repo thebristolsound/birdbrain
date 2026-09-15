@@ -1,6 +1,9 @@
+import { Fragment, type ReactNode } from 'react'
 import { ShieldAlert, ShieldCheck, ShieldQuestion } from 'lucide-react'
 import type { CaseManifestSnapshot } from '@shared/manifestSnapshot'
 import { cn } from '@renderer/lib/utils'
+import { EntityContextMenu } from '@renderer/components/contextmenu/EntityContextMenu'
+import type { EntityMenuTarget } from '@renderer/components/contextmenu/entityMenu'
 import {
   describeSigner,
   summarizeVerdict,
@@ -47,7 +50,48 @@ export function ChainVerdict({ snapshot }: { snapshot: CaseManifestSnapshot }) {
 
 const COLUMNS = '56px minmax(120px,140px) minmax(90px,120px) minmax(160px,1fr) 110px 110px'
 
-function LedgerRows({ rows }: { rows: LedgerRow[] }) {
+// The row-level routes the ledger menu accelerates (#1151): a row click shows
+// the entry's target, and each hash cell copies on click.
+export interface LedgerRowActions {
+  onShowTarget?: (row: LedgerRow) => void
+  onCopyHash?: (value: string, label: string) => void
+  menuTargetFor?: (row: LedgerRow) => EntityMenuTarget | null
+}
+
+function MaybeMenu({ target, children }: { target: EntityMenuTarget | null; children: ReactNode }) {
+  return target ? (
+    <EntityContextMenu target={target}>{children}</EntityContextMenu>
+  ) : (
+    <Fragment>{children}</Fragment>
+  )
+}
+
+function HashCell({
+  value,
+  label,
+  onCopy
+}: {
+  value: string
+  label: string
+  onCopy?: (value: string, label: string) => void
+}) {
+  if (!value) return <span className="text-text-faint">genesis</span>
+  return (
+    <button
+      type="button"
+      className="truncate text-left text-text-faint hover:text-accent"
+      title={`${value} — click to copy`}
+      onClick={(event) => {
+        event.stopPropagation()
+        onCopy?.(value, label)
+      }}
+    >
+      {value.slice(0, 12)}
+    </button>
+  )
+}
+
+function LedgerRows({ rows, actions = {} }: { rows: LedgerRow[]; actions?: LedgerRowActions }) {
   return (
     <div className="min-h-0 flex-1 overflow-y-auto" data-testid="ledger-rows">
       <div
@@ -65,31 +109,34 @@ function LedgerRows({ rows }: { rows: LedgerRow[] }) {
         <div className="p-9 text-center text-xs text-text-faint">No entries.</div>
       ) : (
         rows.map((row) => (
-          <div
-            key={row.index}
-            className={cn(
-              'grid min-h-[var(--d-row)] items-center border-b border-border px-[var(--d-rowpad)] font-mono text-[11px]',
-              row.parsed ? 'text-text-muted' : 'text-warning-fg'
-            )}
-            style={{ gridTemplateColumns: COLUMNS }}
-            data-testid={`ledger-row-${row.index}`}
-            data-entry-type={row.type}
-          >
-            <span className="tabular-nums text-text-faint">
-              {String(row.index).padStart(4, '0')}
-            </span>
-            <span className="tabular-nums">{row.time ? formatStamp(row.time) : '—'}</span>
-            <span className="text-text-secondary">{row.type}</span>
-            <span className="truncate" title={row.target}>
-              {row.target}
-            </span>
-            <span className="truncate text-text-faint" title={row.entryHash}>
-              {row.entryHash.slice(0, 12)}
-            </span>
-            <span className="truncate text-text-faint" title={row.prevHash}>
-              {row.prevHash ? row.prevHash.slice(0, 12) : 'genesis'}
-            </span>
-          </div>
+          <MaybeMenu key={row.index} target={actions.menuTargetFor?.(row) ?? null}>
+            <div
+              className={cn(
+                'grid min-h-[var(--d-row)] items-center border-b border-border px-[var(--d-rowpad)] font-mono text-[11px]',
+                row.parsed ? 'text-text-muted' : 'text-warning-fg',
+                actions.onShowTarget && 'cursor-pointer hover:bg-elevated'
+              )}
+              style={{ gridTemplateColumns: COLUMNS }}
+              data-testid={`ledger-row-${row.index}`}
+              data-entry-type={row.type}
+              tabIndex={actions.onShowTarget ? 0 : undefined}
+              onClick={() => actions.onShowTarget?.(row)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') actions.onShowTarget?.(row)
+              }}
+            >
+              <span className="tabular-nums text-text-faint">
+                {String(row.index).padStart(4, '0')}
+              </span>
+              <span className="tabular-nums">{row.time ? formatStamp(row.time) : '—'}</span>
+              <span className="text-text-secondary">{row.type}</span>
+              <span className="truncate" title={row.target}>
+                {row.target}
+              </span>
+              <HashCell value={row.entryHash} label="entry hash" onCopy={actions.onCopyHash} />
+              <HashCell value={row.prevHash} label="previous hash" onCopy={actions.onCopyHash} />
+            </div>
+          </MaybeMenu>
         ))
       )}
     </div>
@@ -98,7 +145,13 @@ function LedgerRows({ rows }: { rows: LedgerRow[] }) {
 
 // The whole ledger: every entry in sequence, typed by the nine schema-3 types,
 // with the verdict and the signer fingerprints from the snapshot (X36).
-export function ManifestLedgerView({ snapshot }: { snapshot: CaseManifestSnapshot }) {
+export function ManifestLedgerView({
+  snapshot,
+  actions
+}: {
+  snapshot: CaseManifestSnapshot
+  actions?: LedgerRowActions
+}) {
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="manifest-ledger-view">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-surface px-3.5 py-2 text-[11px] text-text-faint">
@@ -117,7 +170,7 @@ export function ManifestLedgerView({ snapshot }: { snapshot: CaseManifestSnapsho
           ))
         )}
       </div>
-      <LedgerRows rows={toLedgerRows(snapshot.entries)} />
+      <LedgerRows rows={toLedgerRows(snapshot.entries)} actions={actions} />
     </div>
   )
 }
@@ -125,17 +178,19 @@ export function ManifestLedgerView({ snapshot }: { snapshot: CaseManifestSnapsho
 // The per-row tab: only the entries that name this Exhibit.
 export function ManifestLedgerTab({
   snapshot,
-  exhibit
+  exhibit,
+  actions
 }: {
   snapshot: CaseManifestSnapshot
   exhibit: { id: string; contentHash: string }
+  actions?: LedgerRowActions
 }) {
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="manifest-ledger-tab">
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-3.5 py-2">
         <ChainVerdict snapshot={snapshot} />
       </div>
-      <LedgerRows rows={rowsNaming(snapshot.entries, exhibit)} />
+      <LedgerRows rows={rowsNaming(snapshot.entries, exhibit)} actions={actions} />
     </div>
   )
 }

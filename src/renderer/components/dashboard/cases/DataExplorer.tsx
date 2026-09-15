@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
-import { useParams } from '@tanstack/react-router'
+import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { Search, Upload, X } from 'lucide-react'
+import { Search, ShieldCheck, Upload, X } from 'lucide-react'
 import type { ExhibitVerification, InventoryRow } from '@shared/types'
 import { Button } from '@renderer/components/ui'
 import { captureContentQueryOptions, capturesQueryOptions } from '@renderer/lib/api/captures'
@@ -11,6 +11,8 @@ import {
   useVerifyAll
 } from '@renderer/lib/api/exhibits'
 import { extractedDataCountQueryOptions } from '@renderer/lib/api/extractedData'
+import { useStagingMutations } from '@renderer/lib/api/staging'
+import { useAppStore } from '@renderer/stores/appStore'
 import {
   selectorMatchCountsQueryOptions,
   selectorMatchingCapturesQueryOptions,
@@ -29,9 +31,14 @@ import {
 } from '@renderer/components/data/ManifestLedger'
 import { IntegrityStrip } from '@renderer/components/data/IntegrityStrip'
 import { IndicatorsView } from '@renderer/components/data/IndicatorsView'
+import { DiscardStagedDialog } from '@renderer/components/data/DiscardStagedDialog'
+import { useDataContextMenu } from '@renderer/components/data/useDataContextMenu'
+import { copyValue } from '@renderer/components/data/copy'
+import { targetExhibitId, type LedgerRow } from '@renderer/components/data/ledgerModel'
 import {
   buildDataTree,
   DEFAULT_EXPANDED,
+  descendantKeys,
   kindLabel,
   type DataNodeKey
 } from '@renderer/components/data/dataTreeModel'
@@ -92,6 +99,9 @@ export function DataExplorer() {
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(DEFAULT_EXPANDED)
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [discardTarget, setDiscardTarget] = useState<{ id: string; name: string } | null>(null)
+  const navigate = useNavigate()
+  const selectCapture = useAppStore((s) => s.selectCapture)
   // This session's `exhibits:verify` results, keyed by Exhibit id. Nothing
   // persists for a non-Capture Exhibit yet, so this map is the only place its
   // bucket can come from until Verify runs again.
@@ -106,6 +116,7 @@ export function DataExplorer() {
   const { data: indicatorCount } = useQuery(extractedDataCountQueryOptions(caseId))
   const { data: snapshot } = useQuery(manifestSnapshotQueryOptions(caseId))
   const { run: verifyAll, progress } = useVerifyAll(caseId)
+  const { upload, commit } = useStagingMutations(caseId)
 
   const keywordSelectorId = node.startsWith('keyword:') ? node.slice('keyword:'.length) : null
   const { data: keywordCaptureIds } = useQuery(
@@ -177,10 +188,6 @@ export function DataExplorer() {
     : undefined
   const { title, subtitle } = nodeTitle(node, rows)
 
-  // The Staging Pool's channels arrive with #1148; until then the group
-  // renders with its actions visibly inert rather than absent.
-  const stagingActions: StagingRowActions | undefined = undefined
-
   const recordVerification = useCallback((result: ExhibitVerification) => {
     setVerifications((current) => {
       const next = new Map(current)
@@ -188,6 +195,37 @@ export function DataExplorer() {
       return next
     })
   }, [])
+  const verifyIds = useCallback(
+    (exhibitIds: string[]) => {
+      if (exhibitIds.length > 0) void verifyAll(exhibitIds, recordVerification)
+    },
+    [verifyAll, recordVerification]
+  )
+
+  // Discard always goes through the dialog (X38); the inline button and the
+  // menu item both land here.
+  const requestDiscard = useCallback(
+    (file: { id: string; name: string }) => setDiscardTarget(file),
+    []
+  )
+  const stagingActions: StagingRowActions = {
+    commit: (id) => commit.mutate([id]),
+    discard: (id) => {
+      const row = rows.find((r) => r.id === id)
+      if (row) requestDiscard({ id, name: row.name })
+    },
+    pending: commit.isPending || upload.isPending
+  }
+
+  // Open in viewer: the Captures screen with this Capture selected. Only a
+  // Capture has a viewer; the menu disables the item for other kinds.
+  const openCapture = useCallback(
+    (captureId: string) => {
+      selectCapture(captureId)
+      void navigate({ to: '/cases/$caseId/captures', params: { caseId } })
+    },
+    [selectCapture, navigate, caseId]
+  )
 
   function toggle(key: DataNodeKey) {
     setExpanded((current) => {
@@ -196,6 +234,55 @@ export function DataExplorer() {
       else next.add(key)
       return next
     })
+  }
+  const setExpandedKeys = useCallback((keys: DataNodeKey[], open: boolean) => {
+    setExpanded((current) => {
+      const next = new Set(current)
+      for (const key of keys) {
+        if (open) next.add(key)
+        else next.delete(key)
+      }
+      return next
+    })
+  }, [])
+
+  // Show target (ledger) and Show only this: land on the row under its own
+  // node so the selection is visible whatever the rail was showing.
+  const showRow = useCallback(
+    (rowId: string) => {
+      const row = rows.find((r) => r.id === rowId)
+      if (!row) return
+      if (row.rowType === 'staged') setNode('staging')
+      else setNode(row.entity === 'derived-file' ? `derived:${row.id}` : `exhibit:${row.id}`)
+      setSelectedId(row.id)
+    },
+    [rows]
+  )
+
+  const captureIds = useMemo(() => new Set(captureById.keys()), [captureById])
+  const { rowTarget, nodeTarget, ledgerTarget } = useDataContextMenu({
+    rows,
+    entries: snapshot?.entries ?? [],
+    captureIds,
+    onOpenCapture: openCapture,
+    onVerify: verifyIds,
+    onSelectNode: (key) => {
+      setNode(key)
+      setSelectedId(null)
+    },
+    onSetExpanded: setExpandedKeys,
+    onShowRow: showRow,
+    onCommit: (id) => commit.mutate([id]),
+    onDiscard: requestDiscard
+  })
+  const ledgerActions = {
+    onShowTarget: (row: LedgerRow) => {
+      const line = snapshot?.entries.find((entry) => entry.index === row.index)
+      const targetId = line ? targetExhibitId(line, rows) : null
+      if (targetId) showRow(targetId)
+    },
+    onCopyHash: (value: string, label: string) => void copyValue(value, label),
+    menuTargetFor: ledgerTarget
   }
 
   if (isLoading) {
@@ -243,6 +330,7 @@ export function DataExplorer() {
           <ManifestLedgerTab
             snapshot={snapshot}
             exhibit={{ id: selectedRow.id, contentHash: selectedRow.contentHash }}
+            actions={ledgerActions}
           />
         )
       })
@@ -251,13 +339,33 @@ export function DataExplorer() {
       id: 'properties',
       label: 'Properties',
       hint: 'file and source metadata',
-      content: <PropertiesTab row={selectedRow} rows={rows} capture={selectedCapture} />
+      content: (
+        <PropertiesTab
+          row={selectedRow}
+          rows={rows}
+          capture={selectedCapture}
+          onCopy={(value, label) => void copyValue(value, label)}
+        />
+      )
     })
   }
 
   const anchoredExhibitIds = rows
     .filter((row) => row.entity === 'exhibit' && row.rowType === 'anchored')
     .map((row) => row.id)
+  // The Exhibits under the current node, for the pane header's Verify — the
+  // inline route for the node menu's Verify (#1151).
+  const nodeExhibitIds = rowsForNode(rows, node, captureFacts)
+    .filter((row) => row.entity === 'exhibit')
+    .map((row) => row.id)
+  const showNodeVerify =
+    nodeExhibitIds.length > 0 && node !== 'integrity-exceptions' && node !== 'manifest-ledger'
+  const selectedExhibitId =
+    selectedRow && selectedRow.rowType === 'anchored'
+      ? selectedRow.entity === 'derived-file'
+        ? selectedRow.parentExhibitId
+        : selectedRow.id
+      : null
 
   return (
     <div className="flex h-full min-h-0" data-testid="data-explorer">
@@ -295,6 +403,10 @@ export function DataExplorer() {
               setSelectedId(null)
             }}
             onToggle={toggle}
+            onToggleBelow={(key, open) =>
+              setExpandedKeys([key, ...descendantKeys(rows, key)], open)
+            }
+            menuTargetFor={nodeTarget}
           />
         </div>
       </aside>
@@ -322,27 +434,38 @@ export function DataExplorer() {
                 {(node === 'integrity-exceptions' || node === 'manifest-ledger') && snapshot && (
                   <ChainVerdict snapshot={snapshot} />
                 )}
+                {showNodeVerify && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5"
+                    disabled={progress !== null}
+                    title="Verify every exhibit under this node"
+                    onClick={() => verifyIds(nodeExhibitIds)}
+                    data-testid="node-verify"
+                  >
+                    <ShieldCheck size={12} strokeWidth={1.8} />
+                    Verify
+                  </Button>
+                )}
                 {node === 'staging' && (
                   <Button
                     variant="outline"
                     size="sm"
                     className="gap-1.5"
-                    disabled={!stagingActions}
-                    title={
-                      stagingActions
-                        ? 'Add files to the Staging Pool'
-                        : 'Arrives with the Staging Pool (#1148)'
-                    }
+                    disabled={upload.isPending}
+                    title="Add files to the Staging Pool"
+                    onClick={() => upload.mutate()}
                     data-testid="staging-upload"
                   >
                     <Upload size={12} strokeWidth={1.8} />
-                    Upload
+                    {upload.isPending ? 'Adding…' : 'Upload'}
                   </Button>
                 )}
               </div>
               {node === 'manifest-ledger' ? (
                 snapshot ? (
-                  <ManifestLedgerView snapshot={snapshot} />
+                  <ManifestLedgerView snapshot={snapshot} actions={ledgerActions} />
                 ) : (
                   <div className="p-9 text-center text-xs text-text-faint">Loading the ledger…</div>
                 )
@@ -360,6 +483,12 @@ export function DataExplorer() {
                     rows={tableRows}
                     selectedId={selectedId}
                     onSelect={setSelectedId}
+                    onOpen={(row) => {
+                      const parent =
+                        row.raw.entity === 'derived-file' ? row.raw.parentExhibitId : row.id
+                      if (captureIds.has(parent)) openCapture(parent)
+                    }}
+                    menuTargetFor={rowTarget}
                     stagingActions={stagingActions}
                     emptyMessage={
                       node === 'staging'
@@ -379,11 +508,36 @@ export function DataExplorer() {
                 title={selectedRow.name}
                 subtitle={selectedRow.path ?? 'no file recorded'}
                 tabs={tabs}
+                action={
+                  selectedExhibitId ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      disabled={progress !== null}
+                      onClick={() => verifyIds([selectedExhibitId])}
+                      data-testid="row-verify"
+                    >
+                      <ShieldCheck size={12} strokeWidth={1.8} />
+                      Verify
+                    </Button>
+                  ) : undefined
+                }
               />
             )}
           </>
         )}
       </div>
+      {discardTarget && (
+        <DiscardStagedDialog
+          caseId={caseId}
+          open
+          onOpenChange={(open) => {
+            if (!open) setDiscardTarget(null)
+          }}
+          file={discardTarget}
+        />
+      )}
     </div>
   )
 }

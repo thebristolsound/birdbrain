@@ -7,7 +7,8 @@ import type { ExhibitVerification } from '@shared/types'
 import type { CaseManifestSnapshot } from '@shared/manifestSnapshot'
 
 vi.mock('@tanstack/react-router', () => ({
-  useParams: () => ({ caseId: 'case1' })
+  useParams: () => ({ caseId: 'case1' }),
+  useNavigate: () => vi.fn()
 }))
 vi.mock('@renderer/lib/notify', () => ({
   notify: { error: vi.fn(), warn: vi.fn(), success: vi.fn(), info: vi.fn() }

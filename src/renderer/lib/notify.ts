@@ -179,7 +179,8 @@ const CODE_LABELS: Record<LogCode, string> = {
   'demoCase.artifact_cleanup_failed':
     "The demonstration case was removed, but its files couldn't be deleted",
   'exhibits.backfill_failed': "Couldn't finish the exhibit migration for a case",
-  'staging.commit_failed': "Couldn't commit a pooled file to the case"
+  'staging.commit_failed': "Couldn't commit a pooled file to the case",
+  'staging.discard_failed': "Couldn't delete a pooled file; it stays in the pool"
 }
 
 export function labelForCode(code: LogCode): string {

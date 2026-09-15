@@ -12,7 +12,7 @@ import {
 } from 'fs'
 import { join } from 'path'
 import { createHash } from 'crypto'
-import { MANIFEST_FILENAME } from '@shared/constants'
+import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import { ManifestEntrySchema } from '@shared/schemas'
 import type { ManifestEntry } from '@shared/schemas'
 import { canonicalStringify, verifyManifestChainText } from '@shared/verify'
@@ -524,7 +524,13 @@ export function appendManifestEntry(
     ...entry,
     index: nextIndex,
     prevHash,
-    schemaVersion: Math.max(MIN_READER_SCHEMA_VERSION[entry.type], opts.minReaderSchemaVersion ?? 0)
+    // Never below the type's own minimum, never above what this build can
+    // read: an entry stamped past the ceiling would be reported "verifier too
+    // old" by the verifier that wrote it.
+    schemaVersion: Math.min(
+      MANIFEST_SCHEMA_VERSION,
+      Math.max(MIN_READER_SCHEMA_VERSION[entry.type], opts.minReaderSchemaVersion ?? 0)
+    )
   }
   const canonical = canonicalStringify(body)
   const entryHash = createHash('sha256').update(canonical).digest('hex')

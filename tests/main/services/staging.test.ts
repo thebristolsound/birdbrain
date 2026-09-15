@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createHash } from 'crypto'
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -317,6 +318,25 @@ describe('staging pool', () => {
   })
 
   describe('discard (X29)', () => {
+    it('keeps the row when the bytes cannot be removed, so nothing undeclared stays on disk', async () => {
+      const [staged] = await uploadToStaging(caseId, [sourceFile('a.zip', ZIP)])
+      const pool = join(caseDir, 'staging')
+      // A read-only directory refuses the unlink (EACCES) while the file stays.
+      chmodSync(pool, 0o555)
+      try {
+        const result = await discardStagedFiles(caseId, [staged.id])
+        expect(result).toEqual({ discarded: [] })
+        expect(getStagingFile(staged.id)).toBeDefined()
+        expect(existsSync(join(storageRoot, staged.path))).toBe(true)
+      } finally {
+        chmodSync(pool, 0o755)
+      }
+      // Already-absent bytes are the one case the row goes anyway.
+      unlinkSync(join(storageRoot, staged.path))
+      expect(await discardStagedFiles(caseId, [staged.id])).toEqual({ discarded: [staged.id] })
+      expect(getStagingFile(staged.id)).toBeUndefined()
+    })
+
     it('removes the file and the row and writes no entry', async () => {
       const staged = await uploadToStaging(caseId, [
         sourceFile('a.zip', ZIP),
@@ -438,6 +458,39 @@ describe('staging pool', () => {
   })
 
   describe('export guard (X44)', () => {
+    it('never packages pooled bytes in an Evidence Package', async () => {
+      await ingestCapture('first')
+      const [staged] = await uploadToStaging(caseId, [sourceFile('report.pdf', PDF)])
+      const outputPath = join(tempDir, 'pooled-only.zip')
+      const lifecycle = createCaptureLifecycle({
+        selectorLifecycle: {
+          runActiveSelectorsForCapture: vi.fn()
+        } as unknown as SelectorLifecycle
+      })
+      await generateReport(
+        caseId,
+        {
+          format: 'zip',
+          exportClass: 'evidence',
+          include: {
+            captures: true,
+            screenshots: false,
+            auditTrail: true,
+            notes: false,
+            annotations: 'none'
+          },
+          outputPath
+        },
+        lifecycle
+      )
+      const zip = readStoredZip(readFileSync(outputPath))
+      const names = [...zip.keys()]
+      expect(names.some((name) => name.includes('staging') || name.includes(staged.id))).toBe(false)
+      expect([...zip.values()].some((buf) => buf.equals(PDF))).toBe(false)
+      const evidence = zip.get('evidence.json')!.toString('utf-8')
+      expect(evidence.includes(sha256(PDF))).toBe(false)
+    })
+
     it('refuses an Evidence Package while a committed non-capture exhibit exists', async () => {
       const [staged] = await uploadToStaging(caseId, [sourceFile('bundle.zip', ZIP)])
       await commitStagedFiles(caseId, [staged.id])

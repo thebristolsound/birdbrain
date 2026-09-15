@@ -567,7 +567,10 @@ export const LOG_CODES = [
   // A Staging Pool commit (#1148) whose manifest append or row insert threw:
   // the entry was rolled back and the file returned to the pool, so this line
   // is the only record that the operator's commit did not land.
-  'staging.commit_failed'
+  'staging.commit_failed',
+  // A pooled file that could not be unlinked on discard; the row is kept so
+  // the bytes stay declared.
+  'staging.discard_failed'
 ] as const
 export type LogCode = (typeof LOG_CODES)[number]
 

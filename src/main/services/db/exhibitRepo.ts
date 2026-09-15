@@ -58,10 +58,11 @@ export interface InsertExhibitParams {
 // number, which X18 says must never happen. Closing it needs a per-Case
 // high-water mark that survives deletion — a fourth table or a `cases` column,
 // either of which is a storage surface this ticket did not enumerate and which
-// the archive round trip would have to carry. The exposure today is bounded:
-// nothing renders an Exhibit Number yet (`803b`/`803c`) and no export cites one
-// (`803e`), so no citation can be made against a number before the counter
-// lands.
+// the archive round trip would have to carry. Since #1148 the number a commit
+// takes is written into a signed `exhibit` entry, so a reused number is now a
+// reused number IN THE CHAIN, and since #1149 the screen renders it. The gap
+// is no longer bounded and needs the high-water mark before a citation is
+// made against a number.
 export function nextExhibitNumber(caseId: string): number {
   const row = getDb()
     .prepare('SELECT COALESCE(MAX(exhibit_number), 0) AS max FROM exhibits WHERE case_id = ?')

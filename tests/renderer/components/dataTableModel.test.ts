@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest'
+import type { ExhibitVerification } from '@shared/types'
 import {
+  bucketForRow,
   filterRows,
   formatBytes,
+  integrityCounts,
   formatStamp,
   isIntegrityException,
   rowsForNode,
@@ -70,12 +73,87 @@ describe('rowsForNode', () => {
     expect(rows('integrity-exceptions').map((r) => r.id)).toEqual(['cap-a', 'thumb-a'])
   })
 
+  it('filters a keyword node to the matched Exhibits and nothing else (X39)', () => {
+    const matches = new Map([['s1', new Set(['cap-legacy'])]])
+    const hit = rowsForNode(INVENTORY, 'keyword:s1', FACTS, { keywordMatches: matches })
+    expect(hit.map((r) => r.id)).toEqual(['cap-legacy'])
+    expect(rowsForNode(INVENTORY, 'keyword:s9', FACTS, { keywordMatches: matches })).toEqual([])
+    expect(rowsForNode(INVENTORY, 'keyword:s1', FACTS)).toEqual([])
+  })
+
   it('treats legacy and unverified as not exceptions', () => {
     expect(isIntegrityException('legacy')).toBe(false)
     expect(isIntegrityException(undefined)).toBe(false)
     expect(isIntegrityException('verified')).toBe(false)
     expect(isIntegrityException('chain-broken')).toBe(true)
     expect(isIntegrityException('missing')).toBe(true)
+  })
+})
+
+describe('bucketForRow', () => {
+  const verified: ExhibitVerification = {
+    exhibitId: 'cap-a',
+    caseId: 'case1',
+    kind: 'capture',
+    status: 'verified',
+    derived: [{ derivedFileId: 'thumb-a', derivation: 'thumbnail', status: 'tampered' }]
+  }
+
+  it('reads this session’s verify result before the persisted state', () => {
+    // Persisted says tampered; the session verify said verified.
+    expect(bucketForRow(CAPTURE_A, { captures: FACTS })).toBe('exception')
+    expect(
+      bucketForRow(CAPTURE_A, { captures: FACTS, verifications: new Map([['cap-a', verified]]) })
+    ).toBe('verified')
+  })
+
+  it('gives a Derived File its own outcome from the parent’s session result', () => {
+    const context = { captures: FACTS, verifications: new Map([['cap-a', verified]]) }
+    expect(bucketForRow(THUMB_A, context)).toBe('exception')
+    const clean = {
+      ...verified,
+      derived: [{ derivedFileId: 'thumb-a', derivation: 'thumbnail', status: 'verified' as const }]
+    }
+    expect(
+      bucketForRow(THUMB_A, { captures: FACTS, verifications: new Map([['cap-a', clean]]) })
+    ).toBe('verified')
+    const unanchored = {
+      ...verified,
+      derived: [
+        { derivedFileId: 'thumb-a', derivation: 'thumbnail', status: 'unverified' as const }
+      ]
+    }
+    expect(
+      bucketForRow(THUMB_A, { captures: FACTS, verifications: new Map([['cap-a', unanchored]]) })
+    ).toBe('unverified')
+  })
+
+  it('without a session result a Derived File is unverified unless its parent is an exception', () => {
+    expect(bucketForRow(THUMB_A, { captures: FACTS })).toBe('exception')
+    const cleanParent = new Map(FACTS)
+    cleanParent.set('cap-a', { url: 'https://example.com/page', lastVerifiedStatus: 'verified' })
+    expect(bucketForRow(THUMB_A, { captures: cleanParent })).toBe('unverified')
+  })
+
+  it('files legacy and verifier-too-old as unverified, never as exceptions', () => {
+    expect(bucketForRow(CAPTURE_LEGACY, { captures: FACTS })).toBe('unverified')
+    const tooOld: ExhibitVerification = {
+      exhibitId: 'cap-a',
+      caseId: 'case1',
+      kind: 'capture',
+      status: 'unsupported'
+    }
+    expect(
+      bucketForRow(CAPTURE_A, { captures: FACTS, verifications: new Map([['cap-a', tooOld]]) })
+    ).toBe('unverified')
+  })
+
+  it('counts the three buckets over anchored rows only', () => {
+    expect(integrityCounts(INVENTORY, { captures: FACTS })).toEqual({
+      verified: 0,
+      exception: 2,
+      unverified: 1
+    })
   })
 })
 

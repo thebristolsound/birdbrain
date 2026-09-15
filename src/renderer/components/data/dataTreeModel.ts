@@ -20,6 +20,7 @@ export type DataNodeKey =
   | `file-type:${string}`
   | 'results'
   | 'keyword-hits'
+  | `keyword:${string}`
   | 'indicators'
   | 'integrity-exceptions'
   | 'manifest-ledger'
@@ -47,6 +48,14 @@ export interface ResultCounts {
   indicators: number | null
   integrityExceptions: number | null
   manifestLedger: number | null
+}
+
+// One child per Selector under Keyword Hits (X39): the label the Signals
+// screen shows and how many Captures it matched.
+export interface KeywordHitNode {
+  selectorId: string
+  label: string
+  count: number
 }
 
 const KIND_LABELS: Record<string, string> = {
@@ -96,10 +105,16 @@ export interface BuildTreeInput {
   rows: InventoryRow[]
   expanded: ReadonlySet<string>
   results: ResultCounts
+  keywordHits?: KeywordHitNode[]
 }
 
 // The visible rows of the rail, in order, with collapsed subtrees omitted.
-export function buildDataTree({ rows, expanded, results }: BuildTreeInput): DataTreeNode[] {
+export function buildDataTree({
+  rows,
+  expanded,
+  results,
+  keywordHits = []
+}: BuildTreeInput): DataTreeNode[] {
   const out: DataTreeNode[] = []
   const isOpen = (key: string) => expanded.has(key)
 
@@ -225,9 +240,21 @@ export function buildDataTree({ rows, expanded, results }: BuildTreeInput): Data
       label: 'Keyword Hits',
       depth: 1,
       group: false,
-      hasChildren: false,
+      hasChildren: keywordHits.length > 0,
       count: results.keywordHits
     })
+    if (isOpen('keyword-hits')) {
+      for (const hit of keywordHits) {
+        push({
+          key: `keyword:${hit.selectorId}`,
+          label: hit.label,
+          depth: 2,
+          group: false,
+          hasChildren: false,
+          count: hit.count
+        })
+      }
+    }
     push({
       key: 'indicators',
       label: 'Indicators',
@@ -295,4 +322,17 @@ export function descendantKeys(rows: InventoryRow[], key: DataNodeKey): DataNode
     return ['keyword-hits', 'indicators', 'integrity-exceptions', 'manifest-ledger']
   }
   return []
+}
+
+// Every node key that can be expanded for this inventory, for a first render
+// that opens the whole rail and for "Expand below" on a group.
+export function expandableKeys(rows: InventoryRow[]): DataNodeKey[] {
+  return [
+    'data-sources',
+    ...descendantKeys(rows, 'data-sources'),
+    'views',
+    'file-types',
+    'results',
+    'keyword-hits'
+  ]
 }

@@ -26,8 +26,12 @@ function renderExplorer() {
 beforeEach(() => {
   fakeBridge({
     exhibits: { inventory: vi.fn(async () => ({ caseId: 'case1', rows: INVENTORY })) },
-    captures: { list: vi.fn(async () => CAPTURES) },
-    selectors: { list: vi.fn(async () => [{ id: 's1' }, { id: 's2' }]) },
+    captures: { list: vi.fn(async () => CAPTURES), getContent: vi.fn(async () => null) },
+    selectors: {
+      list: vi.fn(async () => [{ id: 's1' }, { id: 's2' }]),
+      matchCounts: vi.fn(async () => ({})),
+      matchingCaptures: vi.fn(async () => [])
+    },
     manifest: {
       snapshot: vi.fn(async () => ({
         caseId: 'case1',
@@ -75,8 +79,9 @@ describe('DataExplorer (#1149)', () => {
     )
     expect(text(rail.getByTestId('data-tree-count-indicators'))).toContain('5')
     expect(text(rail.getByTestId('data-tree-count-manifest-ledger'))).toContain('1')
-    // One Capture's persisted verify state is tampered.
-    expect(text(rail.getByTestId('data-tree-count-integrity-exceptions'))).toContain('1')
+    // One Capture's persisted verify state is tampered, and its thumbnail
+    // follows it into the exceptions bucket (X37: Derived Files alike).
+    expect(text(rail.getByTestId('data-tree-count-integrity-exceptions'))).toContain('2')
   })
 
   it('rows read the density token for their height', async () => {
@@ -142,8 +147,13 @@ describe('DataExplorer (#1149)', () => {
     renderExplorer()
     fireEvent.click(await screen.findByTestId('artifact-row-cap-a'))
     const strip = within(await screen.findByTestId('artifact-tabs'))
-    expect(strip.getByRole('tab', { name: 'Properties' })).toBeTruthy()
-    expect(strip.getAllByRole('tab')).toHaveLength(1)
+    // No extracted text and no headers are stubbed, so those two tabs are
+    // absent; the anchored Capture still has its ledger entries (#1150).
+    expect(strip.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'Manifest Ledger',
+      'Properties'
+    ])
+    fireEvent.click(strip.getByRole('tab', { name: 'Properties' }))
     const props = within(strip.getByTestId('properties-tab'))
     expect(text(props.getByText('Exhibit Number').nextSibling)).toContain('Exhibit 1')
     expect(text(props.getByText('Origin').nextSibling)).toContain('extension')
@@ -158,6 +168,7 @@ describe('DataExplorer (#1149)', () => {
   it('shows parent and derivation for a Derived File', async () => {
     renderExplorer()
     fireEvent.click(await screen.findByTestId('artifact-row-thumb-a'))
+    fireEvent.click(await screen.findByRole('tab', { name: 'Properties' }))
     const props = within(await screen.findByTestId('properties-tab'))
     expect(text(props.getByText('Parent').nextSibling)).toContain('Example page')
     expect(text(props.getByText('Derivation').nextSibling)).toContain('thumbnail')
@@ -233,6 +244,8 @@ describe('DataExplorer (#1149)', () => {
       (await tree()).getByTestId('data-tree-node-staging').querySelector('button:last-of-type')!
     )
     fireEvent.click(await screen.findByTestId('artifact-row-staged-1'))
+    // A pooled row has nothing but Properties (#1150).
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Properties'])
     const props = within(await screen.findByTestId('properties-tab'))
     expect(text(props.getByText('Kind').nextSibling)).toBe('Document (not anchored)')
     expect(text(props.getByText('Origin').nextSibling)).toBe('manual-upload')

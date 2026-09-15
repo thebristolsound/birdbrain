@@ -1,0 +1,339 @@
+// @vitest-environment jsdom
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
+import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { ReactNode } from 'react'
+import type { ExhibitVerification } from '@shared/types'
+import type { CaseManifestSnapshot } from '@shared/manifestSnapshot'
+
+vi.mock('@tanstack/react-router', () => ({
+  useParams: () => ({ caseId: 'case1' })
+}))
+vi.mock('@renderer/lib/notify', () => ({
+  notify: { error: vi.fn(), warn: vi.fn(), success: vi.fn(), info: vi.fn() }
+}))
+
+import { DataExplorer } from '@renderer/components/dashboard/cases/DataExplorer'
+import { parseHeaders } from '@renderer/components/data/HeadersTlsTab'
+import { splitLine, highlightRegex } from '@renderer/components/data/ExtractedTextTab'
+import { fakeBridge } from '../renderer/fakeBridge'
+import { CAPTURES, HASH_A, INVENTORY } from '../renderer/dataFixtures'
+
+const SNAPSHOT: CaseManifestSnapshot = {
+  caseId: 'case1',
+  entries: [
+    {
+      index: 0,
+      parsed: true,
+      entry: {
+        type: 'capture',
+        captureId: 'cap-a',
+        caseId: 'case1',
+        url: 'https://example.com/page',
+        timestamp: '2026-09-01T10:00:00.000Z',
+        contentHash: HASH_A,
+        sizeBytes: 2048,
+        operatorId: 'op',
+        operatorName: 'Op',
+        toolVersion: '1.0.0',
+        index: 0,
+        prevHash: '',
+        schemaVersion: 2,
+        entryHash: 'e'.repeat(64)
+      }
+    },
+    {
+      index: 1,
+      parsed: true,
+      entry: {
+        type: 'derivation',
+        caseId: 'case1',
+        parentExhibitId: 'cap-a',
+        parentContentHash: HASH_A,
+        derivation: 'thumbnail',
+        derivationToolVersion: '1.0.0',
+        outputHash: 'c'.repeat(64),
+        outputPath: 'case1/cap-a_thumb.jpg',
+        timestamp: '2026-09-01T10:00:05.000Z',
+        operatorId: 'op',
+        operatorName: 'Op',
+        toolVersion: '1.0.0',
+        index: 1,
+        prevHash: 'e'.repeat(64),
+        schemaVersion: 3,
+        entryHash: 'f'.repeat(64)
+      }
+    }
+  ],
+  chain: { valid: true },
+  signers: [{ fromIndex: 0, toIndex: 1, fingerprint: 'ab'.repeat(32), source: 'local' }],
+  head: { index: 1, entryHash: 'f'.repeat(64) }
+}
+
+const SELECTORS = [
+  {
+    id: 's1',
+    caseId: 'case1',
+    pattern: 'proton',
+    isRegex: false,
+    enabled: true,
+    label: 'proton.me'
+  },
+  { id: 's2', caseId: 'case1', pattern: 'bc1q\\w+', isRegex: true, enabled: true }
+]
+
+let verify: ReturnType<typeof vi.fn>
+let matchingCaptures: ReturnType<typeof vi.fn>
+let getContent: ReturnType<typeof vi.fn>
+let snapshotStub: CaseManifestSnapshot
+
+function renderExplorer() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  function Wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  }
+  return render(<DataExplorer />, { wrapper: Wrapper })
+}
+
+function text(node: Element | ChildNode | null | undefined): string {
+  return node?.textContent ?? ''
+}
+
+async function tree() {
+  return within(await screen.findByRole('tree', { name: 'Case data' }))
+}
+
+async function select(key: string) {
+  fireEvent.click(
+    (await tree()).getByTestId(`data-tree-node-${key}`).querySelector('button:last-of-type')!
+  )
+}
+
+beforeEach(() => {
+  snapshotStub = SNAPSHOT
+  verify = vi.fn(async (_caseId: string, exhibitId: string): Promise<ExhibitVerification> => ({
+    exhibitId,
+    caseId: 'case1',
+    kind: 'capture',
+    status: exhibitId === 'cap-a' ? 'verified' : 'legacy',
+    derived:
+      exhibitId === 'cap-a'
+        ? [{ derivedFileId: 'thumb-a', derivation: 'thumbnail', status: 'verified' }]
+        : []
+  }))
+  matchingCaptures = vi.fn(async () => ['cap-legacy'])
+  getContent = vi.fn(async (id: string, type: string) =>
+    id === 'cap-a' && type === 'txt' ? 'first line\nmail me at proton.me today\nlast' : null
+  )
+  fakeBridge({
+    exhibits: {
+      inventory: vi.fn(async () => ({ caseId: 'case1', rows: INVENTORY })),
+      verify
+    },
+    captures: {
+      list: vi.fn(async () =>
+        CAPTURES.map((c) =>
+          c.id === 'cap-a'
+            ? {
+                ...c,
+                httpStatus: 200,
+                headers: JSON.stringify({ server: 'nginx', 'content-type': 'text/html' }),
+                tlsCertChain: {
+                  url: 'https://example.com/page',
+                  refetchedAt: '2026-09-01T10:00:02.000Z',
+                  chain: [
+                    {
+                      subject: 'CN=example.com',
+                      issuer: 'CN=Test CA',
+                      validFrom: '2026-01-01',
+                      validTo: '2027-01-01',
+                      fingerprint256: 'ab'.repeat(32),
+                      serialNumber: '1',
+                      subjectAltNames: ['example.com']
+                    }
+                  ]
+                }
+              }
+            : c
+        )
+      ),
+      getContent
+    },
+    selectors: {
+      list: vi.fn(async () => SELECTORS),
+      matchCounts: vi.fn(async () => ({ s1: 1 })),
+      matchingCaptures
+    },
+    manifest: { snapshot: vi.fn(async () => snapshotStub) },
+    extractedData: { count: vi.fn(async () => 5) }
+  })
+})
+
+afterEach(() => cleanup())
+
+describe('DataExplorer results and tabs (#1150)', () => {
+  it('shows the five-minus-one tabs for a Capture and only Properties for a pooled row', async () => {
+    renderExplorer()
+    fireEvent.click(await screen.findByTestId('artifact-row-cap-a'))
+    const strip = within(await screen.findByTestId('artifact-tabs'))
+    await waitFor(() =>
+      expect(strip.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+        'Extracted Text',
+        'Headers & TLS',
+        'Manifest Ledger',
+        'Properties'
+      ])
+    )
+    // No MHTML Parts tab: #991 owns it, and a tab with no data is absent.
+    expect(strip.queryByRole('tab', { name: /MHTML/ })).toBeNull()
+
+    // The strip keeps whichever tab was active when the text arrived.
+    fireEvent.click(strip.getByRole('tab', { name: 'Extracted Text' }))
+    const textTab = within(strip.getByTestId('extracted-text-tab'))
+    expect(text(textTab.getByText('mail me at proton.me today'))).toBeTruthy()
+    expect(getContent).toHaveBeenCalledWith('cap-a', 'txt')
+
+    fireEvent.click(strip.getByRole('tab', { name: 'Headers & TLS' }))
+    const headers = within(strip.getByTestId('headers-tls-tab'))
+    expect(text(headers.getByText('server').nextSibling)).toBe('nginx')
+    expect(headers.getByTestId('tls-chain')).toBeTruthy()
+    expect(headers.getByText('CN=example.com')).toBeTruthy()
+    expect(headers.getByText(/Corroboration only/)).toBeTruthy()
+
+    fireEvent.click(strip.getByRole('tab', { name: 'Manifest Ledger' }))
+    const ledger = within(strip.getByTestId('manifest-ledger-tab'))
+    expect(ledger.getByTestId('ledger-row-0').getAttribute('data-entry-type')).toBe('capture')
+    expect(ledger.getByTestId('ledger-row-1').getAttribute('data-entry-type')).toBe('derivation')
+    expect(text(ledger.getByTestId('chain-verdict'))).toBe('Chain intact through seq 1')
+  })
+
+  it('gives a legacy Capture with no text and no headers only the Properties tab', async () => {
+    renderExplorer()
+    fireEvent.click(await screen.findByTestId('artifact-row-cap-legacy'))
+    const strip = within(await screen.findByTestId('artifact-tabs'))
+    await waitFor(() => expect(getContent).toHaveBeenCalledWith('cap-legacy', 'txt'))
+    expect(strip.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Properties'])
+  })
+
+  it('filters the table to a Selector’s matched Exhibits with no snippet, and highlights the text', async () => {
+    renderExplorer()
+    const rail = await tree()
+    await waitFor(() => expect(rail.getByLabelText('Expand Keyword Hits')).toBeTruthy())
+    fireEvent.click(rail.getByLabelText('Expand Keyword Hits'))
+    expect(text(rail.getByTestId('data-tree-count-keyword:s1'))).toBe('1')
+    expect(text(rail.getByTestId('data-tree-node-keyword:s2'))).toContain('bc1q\\w+')
+
+    await select('keyword:s1')
+    await waitFor(() => expect(matchingCaptures).toHaveBeenCalledWith('case1', ['s1']))
+    expect(await screen.findByTestId('artifact-row-cap-legacy')).toBeTruthy()
+    expect(screen.queryByTestId('artifact-row-cap-a')).toBeNull()
+    expect(screen.queryByTestId('artifact-row-thumb-a')).toBeNull()
+    expect(screen.queryByTestId('text-hit')).toBeNull()
+
+    // The highlight is live from the Selector when a row with text is open.
+    matchingCaptures.mockResolvedValue(['cap-a'])
+    await select('data-sources')
+    await select('keyword:s1')
+    fireEvent.click(await screen.findByTestId('artifact-row-cap-a'))
+    fireEvent.click(await screen.findByRole('tab', { name: 'Extracted Text' }))
+    expect((await screen.findAllByTestId('text-hit')).map((m) => m.textContent)).toEqual(['proton'])
+  })
+
+  it('shows the three buckets, runs Verify all in sequence with progress, and re-buckets', async () => {
+    renderExplorer()
+    await select('integrity-exceptions')
+    const strip = within(await screen.findByTestId('integrity-strip'))
+    // Persisted state: cap-a tampered (with its thumbnail), cap-legacy legacy.
+    expect(text(strip.getByTestId('bucket-verified'))).toBe('0 verified')
+    expect(text(strip.getByTestId('bucket-exception'))).toBe('2 tampered, missing or chain-broken')
+    expect(text(strip.getByTestId('bucket-unverified'))).toBe('1 unverified')
+    expect(screen.getByTestId('artifact-row-cap-a')).toBeTruthy()
+    expect(screen.getByTestId('artifact-row-thumb-a')).toBeTruthy()
+    expect(text(screen.getByTestId('chain-verdict'))).toBe('Chain intact through seq 1')
+
+    fireEvent.click(strip.getByTestId('verify-all'))
+    await waitFor(() => expect(verify).toHaveBeenCalledTimes(2))
+    // One call per anchored Exhibit, in inventory order, never for the pool.
+    expect(verify.mock.calls.map((c) => c[1])).toEqual(['cap-a', 'cap-legacy'])
+    await waitFor(() => expect(text(strip.getByTestId('bucket-verified'))).toBe('2 verified'))
+    expect(text(strip.getByTestId('bucket-exception'))).toBe('0 tampered, missing or chain-broken')
+    expect(text(strip.getByTestId('bucket-unverified'))).toBe('1 unverified')
+    expect(screen.queryByTestId('artifact-row-cap-a')).toBeNull()
+    expect(screen.getByText('No exceptions among the verified rows.')).toBeTruthy()
+    const rail = await tree()
+    await waitFor(() =>
+      expect(text(rail.getByTestId('data-tree-count-integrity-exceptions'))).toBe('0')
+    )
+  })
+
+  it('renders the whole ledger with the verdict and the signer fingerprint', async () => {
+    renderExplorer()
+    await select('manifest-ledger')
+    const view = within(await screen.findByTestId('manifest-ledger-view'))
+    expect(text(view.getByTestId('chain-verdict'))).toBe('Chain intact through seq 1')
+    expect(text(view.getByTestId('ledger-signer'))).toBe(
+      'seq 0–1: abababababab (this installation)'
+    )
+    expect(view.getByTestId('ledger-row-0').getAttribute('data-entry-type')).toBe('capture')
+    expect(text(view.getByTestId('ledger-row-0'))).toContain('cap-a · https://example.com/page')
+    expect(screen.queryByTestId('artifact-table')).toBeNull()
+  })
+
+  it('shows a too-old verdict as its own outcome and never as tampering', async () => {
+    snapshotStub = {
+      ...SNAPSHOT,
+      entries: [
+        ...SNAPSHOT.entries,
+        { index: 2, parsed: false, reason: 'Entry does not match the manifest schema' }
+      ],
+      chain: {
+        valid: false,
+        unsupported: {
+          index: 2,
+          entryType: 'hologram',
+          schemaVersionSeen: 4,
+          supportedSchemaVersion: 3
+        }
+      },
+      signers: [],
+      head: { index: 2, entryHash: 'g'.repeat(64) }
+    }
+    renderExplorer()
+    await select('manifest-ledger')
+    const view = within(await screen.findByTestId('manifest-ledger-view'))
+    const verdict = view.getByTestId('chain-verdict')
+    expect(verdict.getAttribute('data-tone')).toBe('unsupported')
+    expect(text(verdict)).toContain('verifier too old')
+    expect(text(verdict)).not.toMatch(/broken|tamper/i)
+    expect(text(view.getByTestId('ledger-signers'))).toBe('Signers not attributed on this chain.')
+    expect(view.getByTestId('ledger-row-2').getAttribute('data-entry-type')).toBe('unreadable')
+  })
+})
+
+describe('tab helpers', () => {
+  it('parses object and array header shapes and falls back to text', () => {
+    expect(parseHeaders('{"a":"1"}')).toEqual([['a', '1']])
+    expect(parseHeaders('[{"name":"x","value":"y"}]')).toEqual([['x', 'y']])
+    expect(parseHeaders('raw: text')).toEqual([['headers', 'raw: text']])
+    expect(parseHeaders('')).toEqual([])
+    expect(parseHeaders(undefined)).toEqual([])
+  })
+
+  it('splits a line around literal and regex hits, and survives a bad regex', () => {
+    expect(splitLine('a proton b', highlightRegex({ pattern: 'proton', isRegex: false }))).toEqual([
+      { text: 'a ', hit: false },
+      { text: 'proton', hit: true },
+      { text: ' b', hit: false }
+    ])
+    expect(splitLine('x.y', highlightRegex({ pattern: '.', isRegex: false }))).toEqual([
+      { text: 'x', hit: false },
+      { text: '.', hit: true },
+      { text: 'y', hit: false }
+    ])
+    expect(splitLine('bc1qabc', highlightRegex({ pattern: 'bc1q\\w+', isRegex: true }))).toEqual([
+      { text: 'bc1qabc', hit: true }
+    ])
+    expect(highlightRegex({ pattern: '(', isRegex: true })).toBeNull()
+    expect(splitLine('plain', null)).toEqual([{ text: 'plain', hit: false }])
+  })
+})

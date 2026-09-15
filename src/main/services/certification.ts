@@ -312,7 +312,9 @@ function renderCertificationHtml(fields: CertificationFields): string {
           (${signedCount} of ${total}). ${perExhibit}</p>`
         : signedCount > 0
           ? `<p>A signature is present on the manifest entry for ${signedCount} of the ${total}
-            captures in this export. For the remaining ${unsignedTotal} ${breakdown},
+            captures in this export. For the remaining ${unsignedTotal} capture${
+              unsignedTotal === 1 ? '' : 's'
+            } ${breakdown},
             <strong>no entry signature is asserted</strong>. ${perExhibit}</p>`
           : `<p><strong>No entry signature is asserted</strong> for any of the ${total} capture${
               total === 1 ? '' : 's'

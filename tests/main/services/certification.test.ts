@@ -588,7 +588,7 @@ describe('certification', () => {
         /A\s+signature\s+is\s+present\s+on\s+the\s+manifest\s+entry\s+for\s+1\s+of\s+the\s+3/
       )
       expect(cert).toMatch(
-        /remaining\s+2\s+\(1\s+with\s+an\s+unsigned\s+entry,\s+1\s+with\s+no\s+manifest\s+entry\)/
+        /remaining\s+2\s+captures\s+\(1\s+with\s+an\s+unsigned\s+entry,\s+1\s+with\s+no\s+manifest\s+entry\)/
       )
       expect(cert).toMatch(/no\s+entry\s+signature\s+is\s+asserted/i)
 

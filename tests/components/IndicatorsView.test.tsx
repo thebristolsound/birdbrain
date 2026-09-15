@@ -133,4 +133,36 @@ describe('IndicatorsView', () => {
       origin: 'capture'
     })
   })
+
+  it('runs the whole-case reprocess from its header and refreshes', async () => {
+    const reprocess = vi.fn(async () => ({ processed: 2 }))
+    fakeBridge({
+      extractedData: {
+        categories: vi.fn(async () => [{ category: 'emails', count: 1 }]),
+        subcategories: vi.fn(async () => []),
+        items: vi.fn(async () => []),
+        count: vi.fn(async () => 1),
+        search: vi.fn(async () => []),
+        reprocess
+      }
+    })
+    renderExplorer()
+    fireEvent.click(await screen.findByRole('button', { name: /Reprocess/ }))
+    await waitFor(() => expect(reprocess).toHaveBeenCalledWith('case1'))
+  })
+
+  it('explains the empty state when nothing has been extracted', async () => {
+    fakeBridge({
+      extractedData: {
+        categories: vi.fn(async () => []),
+        subcategories: vi.fn(async () => []),
+        items: vi.fn(async () => []),
+        count: vi.fn(async () => 0),
+        search: vi.fn(async () => [])
+      }
+    })
+    renderExplorer()
+    expect(await screen.findByText('No data extracted yet')).toBeTruthy()
+    expect(screen.getByText('No extracted data yet')).toBeTruthy()
+  })
 })

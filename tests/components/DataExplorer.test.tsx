@@ -173,4 +173,70 @@ describe('DataExplorer (#1149)', () => {
     expect(screen.getByRole('button', { name: /Reprocess/ })).toBeTruthy()
     expect(screen.queryByTestId('artifact-table')).toBeNull()
   })
+
+  it('titles the main pane for every node kind, and collapses a subtree from its twist', async () => {
+    renderExplorer()
+    const rail = await tree()
+    const select = (key: string) =>
+      fireEvent.click(
+        rail.getByTestId(`data-tree-node-${key}`).querySelector('button:last-of-type')!
+      )
+    const heading = () => screen.getByTestId('data-node-title').textContent
+
+    expect(heading()).toBe('All data sources')
+    select('kind:capture')
+    expect(heading()).toBe('Captures')
+    select('views')
+    expect(heading()).toBe('File types')
+    fireEvent.click(rail.getByLabelText('Expand File Types'))
+    select('file-type:MHTML')
+    expect(heading()).toBe('MHTML')
+    select('results')
+    expect(heading()).toBe('Results')
+    select('keyword-hits')
+    expect(heading()).toBe('Keyword hits')
+    select('integrity-exceptions')
+    expect(heading()).toBe('Integrity exceptions')
+    expect(screen.getByTestId('artifact-row-cap-a')).toBeTruthy()
+    expect(screen.queryByTestId('artifact-row-cap-legacy')).toBeNull()
+    select('manifest-ledger')
+    expect(heading()).toBe('Manifest ledger')
+
+    fireEvent.click(rail.getByLabelText('Expand Captures'))
+    select('exhibit:cap-a')
+    expect(heading()).toBe('Example page')
+    expect(screen.getByTestId('data-node-subtitle').textContent).toBe('Exhibit 1')
+    fireEvent.click(rail.getByLabelText('Expand Example page'))
+    select('derived:thumb-a')
+    expect(heading()).toBe('thumbnail')
+    expect(screen.getByTestId('data-node-subtitle').textContent).toBe('Derived File')
+
+    // Collapsing Data Sources hides the kind subgroup and the rows under it.
+    fireEvent.click(rail.getByLabelText('Collapse Data Sources'))
+    expect(rail.queryByTestId('data-tree-node-kind:capture')).toBeNull()
+    expect(rail.queryByTestId('data-tree-node-exhibit:cap-a')).toBeNull()
+  })
+
+  it('clears the search from its button', async () => {
+    renderExplorer()
+    const input = (await screen.findByTestId('data-search')) as HTMLInputElement
+    fireEvent.change(input, { target: { value: 'zzz' } })
+    expect(await screen.findByText('No files match this search.')).toBeTruthy()
+    fireEvent.click(screen.getByLabelText('Clear search'))
+    expect(input.value).toBe('')
+    expect(await screen.findByTestId('artifact-row-cap-a')).toBeTruthy()
+  })
+
+  it('shows a pooled row’s properties as not anchored, with its stated source', async () => {
+    renderExplorer()
+    fireEvent.click(
+      (await tree()).getByTestId('data-tree-node-staging').querySelector('button:last-of-type')!
+    )
+    fireEvent.click(await screen.findByTestId('artifact-row-staged-1'))
+    const props = within(await screen.findByTestId('properties-tab'))
+    expect(text(props.getByText('Kind').nextSibling)).toBe('Document (not anchored)')
+    expect(text(props.getByText('Origin').nextSibling)).toBe('manual-upload')
+    expect(text(props.getByText('Arrived').nextSibling)).toBe('2026-09-10T12:00:00.000Z')
+    expect(props.queryByText('Exhibit Number')).toBeNull()
+  })
 })

@@ -211,8 +211,18 @@ export function DataExplorer() {
           <>
             <section className="flex min-h-0 min-w-0 flex-1 flex-col">
               <div className="flex h-[38px] shrink-0 items-center gap-2.5 border-b border-border bg-surface px-3.5">
-                <span className="font-display text-xs font-bold text-text-primary">{title}</span>
-                <span className="min-w-0 truncate text-[11px] text-text-faint">{subtitle}</span>
+                <span
+                  className="font-display text-xs font-bold text-text-primary"
+                  data-testid="data-node-title"
+                >
+                  {title}
+                </span>
+                <span
+                  className="min-w-0 truncate text-[11px] text-text-faint"
+                  data-testid="data-node-subtitle"
+                >
+                  {subtitle}
+                </span>
                 <div className="flex-1" />
                 {node === 'staging' && (
                   <Button

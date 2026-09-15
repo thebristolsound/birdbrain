@@ -4,7 +4,8 @@ import {
   DEFAULT_EXPANDED,
   descendantKeys,
   fileTypeOf,
-  kindLabel
+  kindLabel,
+  kindSortIndex
 } from '@renderer/components/data/dataTreeModel'
 import { CAPTURE_A, CAPTURE_LEGACY, INVENTORY, STAGED_PDF, THUMB_A } from '../dataFixtures'
 
@@ -101,6 +102,33 @@ describe('buildDataTree', () => {
 })
 
 describe('descendantKeys', () => {
+  it('walks each group and node kind', () => {
+    expect(descendantKeys(INVENTORY, 'kind:capture')).toEqual([
+      `exhibit:${CAPTURE_A.id}`,
+      `derived:${THUMB_A.id}`,
+      `exhibit:${CAPTURE_LEGACY.id}`
+    ])
+    expect(descendantKeys(INVENTORY, 'views')).toEqual([
+      'file-types',
+      'file-type:MHTML',
+      'file-type:HTML',
+      'file-type:JPG',
+      'file-type:PDF'
+    ])
+    expect(descendantKeys(INVENTORY, 'file-types')).toEqual([
+      'file-type:MHTML',
+      'file-type:HTML',
+      'file-type:JPG',
+      'file-type:PDF'
+    ])
+    expect(descendantKeys(INVENTORY, 'results')).toEqual([
+      'keyword-hits',
+      'indicators',
+      'integrity-exceptions',
+      'manifest-ledger'
+    ])
+  })
+
   it('walks kinds, Exhibits and Derived Files under Data Sources', () => {
     expect(descendantKeys(INVENTORY, 'data-sources')).toEqual([
       'kind:capture',
@@ -118,6 +146,27 @@ describe('labels', () => {
     expect(kindLabel('capture')).toBe('Captures')
     expect(kindLabel('attachment')).toBe('Attachments')
     expect(kindLabel('recording')).toBe('Recordings')
+  })
+
+  it('sorts the ruling’s kinds first and an unknown kind after them by name', () => {
+    expect(kindSortIndex('capture')).toBe(0)
+    expect(kindSortIndex('document')).toBe(3)
+    expect(kindSortIndex('recording')).toBe(4)
+    const mixed = [
+      { ...CAPTURE_A, id: 'r1', kind: 'recording', exhibitNumber: 3 },
+      { ...CAPTURE_A, id: 'a1', kind: 'attachment', exhibitNumber: 4 },
+      CAPTURE_A
+    ]
+    const nodes = buildDataTree({
+      rows: mixed,
+      expanded: new Set(['data-sources']),
+      results: RESULTS
+    })
+    expect(nodes.filter((n) => n.key.startsWith('kind:')).map((n) => n.key)).toEqual([
+      'kind:capture',
+      'kind:attachment',
+      'kind:recording'
+    ])
   })
 
   it('types a row by its stored extension and says so when there is no file', () => {

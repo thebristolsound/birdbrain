@@ -26,6 +26,16 @@ describe('toArtifactRow', () => {
     expect(toArtifactRow(STAGED_PDF, INVENTORY, FACTS).source).toBe('manual-upload')
   })
 
+  it('falls back to the raw URL when it does not parse, and to origin when there is none', () => {
+    const facts = new Map<string, CaptureFacts>([['cap-a', { url: 'not a url' }]])
+    expect(toArtifactRow(CAPTURE_A, INVENTORY, facts).source).toBe('not a url')
+    expect(toArtifactRow(CAPTURE_A, INVENTORY, new Map()).source).toBe('extension')
+    expect(
+      toArtifactRow({ ...STAGED_PDF, sourceUrl: 'https://drive.example/x' }, INVENTORY, facts)
+        .source
+    ).toBe('drive.example')
+  })
+
   it('carries anchoring and pooled state separately from kind', () => {
     const staged = toArtifactRow(STAGED_PDF, INVENTORY, FACTS)
     expect(staged).toMatchObject({ staged: true, anchored: false, kind: 'document' })

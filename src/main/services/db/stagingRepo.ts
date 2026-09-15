@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto'
-import { getDb } from '@main/services/db/core'
+import { getDb, type ImportCtx } from '@main/services/db/core'
 import type { StagingFile } from '@shared/types'
+import { rerootPath } from '@main/services/db/exhibitRepo'
 
 // The Staging Pool's rows (ADR-0024): files that have arrived and been hashed
 // but are NOT evidence until the operator commits them. Nothing here writes a
@@ -105,4 +106,40 @@ export function listStagingFiles(caseId: string): StagingFile[] {
 
 export function deleteStagingFile(id: string): boolean {
   return getDb().prepare('DELETE FROM staging_files WHERE id = ?').run(id).changes > 0
+}
+
+// --- Archive round trip (#1148, X12) ----------------------------------------
+
+export function collectStagingFilesForCase(caseId: string): Record<string, unknown>[] {
+  return getDb()
+    .prepare('SELECT * FROM staging_files WHERE case_id = ? ORDER BY arrived_at, id')
+    .all(caseId) as Record<string, unknown>[]
+}
+
+// Pooled rows come back to the pool and never as anchored (X12): this writes
+// `staging_files` only, and nothing here can reach `exhibits` or the manifest.
+export function importStagingFileRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
+  const insert = getDb().prepare(
+    `INSERT INTO staging_files (
+       id, case_id, kind, origin, name, content_hash, path, size_bytes,
+       arrived_at, source_url, source_claims
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  )
+  for (const row of rows) {
+    const oldId = row.id as string
+    const newId = ctx.mapId(oldId)
+    insert.run(
+      newId,
+      ctx.newCaseId,
+      row.kind,
+      row.origin,
+      row.name,
+      row.content_hash,
+      rerootPath(row.path as string, ctx.newCaseId, oldId, newId),
+      row.size_bytes,
+      row.arrived_at,
+      row.source_url ?? null,
+      row.source_claims ?? null
+    )
+  }
 }

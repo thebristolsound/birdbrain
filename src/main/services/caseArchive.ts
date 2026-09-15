@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync, renameSync, rmSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, rmSync } from 'fs'
 import { unlink } from 'fs/promises'
 import { createHash, randomUUID } from 'crypto'
 import { join } from 'path'
@@ -10,6 +10,8 @@ import {
 } from '@main/services/db/core'
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
+import * as exhibitRepo from '@main/services/db/exhibitRepo'
+import * as stagingRepo from '@main/services/db/stagingRepo'
 import * as tagRepo from '@main/services/db/tagRepo'
 import * as selectorRepo from '@main/services/db/selectorRepo'
 import * as noteRepo from '@main/services/db/noteRepo'
@@ -26,7 +28,12 @@ import {
   importCaptureAnalysisRows
 } from '@main/services/ai/analysisService'
 import { getStorageRoot } from '@main/services/storage'
-import { CAPTURE_ARTIFACT_TYPES, defaultCaptureStore } from '@main/services/captureStore'
+import {
+  CAPTURE_ARTIFACT_TYPES,
+  defaultCaptureStore,
+  EXHIBIT_KIND_SUBDIRECTORIES,
+  STAGING_SUBDIRECTORY
+} from '@main/services/captureStore'
 import { getSettings } from '@main/services/settings'
 import { getInstallationId } from '@main/services/installationId'
 import { getPublicKeyPem } from '@main/services/signingKey'
@@ -50,6 +57,14 @@ import type {
   CaseArchiveCounts
 } from '@shared/types'
 
+// 6 since the Exhibit model and the Staging Pool (#1148, ADR-0023/0024, X12,
+// X30): data.json carries `exhibits` and `stagingFiles`, the zip carries a
+// committed non-Capture Exhibit's bytes under `files/exhibits/` and a pooled
+// file's under `files/staging/`, and the header lists the pooled paths as
+// `staged` so an importer cannot mistake them for anchored ones. A pre-v34
+// Birdbrain has no `exhibits` table to import into and no per-kind directory
+// to put the bytes in, so the gate refuses rather than dropping an anchored
+// Exhibit on the way in.
 // 5 since duplicate provenance (#827, schema v33): the manifest may carry
 // capture entries with `method: 'duplicate'` and captures rows may carry
 // `duplicate_of_capture_id`. A pre-#827 Birdbrain hits BOTH arms of the bump
@@ -77,7 +92,7 @@ import type {
 // anchor_json, which a pre-v27 import would silently drop. Bump this whenever a
 // Case Archive gains data an older release would silently discard or reject
 // opaquely.
-export const CASE_ARCHIVE_SCHEMA_VERSION = 5
+export const CASE_ARCHIVE_SCHEMA_VERSION = 6
 
 export interface CaseArchiveData {
   case: Record<string, unknown>
@@ -95,6 +110,10 @@ export interface CaseArchiveData {
   captureAnalyses: Record<string, unknown>[]
   extractedData: Record<string, unknown>[]
   captureArchiveRefs: Record<string, unknown>[]
+  /** Absent on archives written before schemaVersion 6 (#1148). */
+  exhibits?: Record<string, unknown>[]
+  /** Absent on archives written before schemaVersion 6 (#1148). */
+  stagingFiles?: Record<string, unknown>[]
 }
 
 interface CaseArchiveHeader {
@@ -115,6 +134,12 @@ interface CaseArchiveHeader {
   counts: CaseArchiveCounts
   artifacts: PackagedArtifact[]
   packageHash: string
+  /**
+   * Artifact paths that are pooled, not anchored (X12). Absent before schema 6.
+   * Listed here rather than flagged on `PackagedArtifact` so the packageHash
+   * recipe every verifier shares is untouched.
+   */
+  staged?: string[]
 }
 
 // Collects every row belonging to `caseId` across the tables a .birdbrain
@@ -136,8 +161,22 @@ export function collectCaseData(caseId: string): CaseArchiveData {
     annotationPins: collectAnnotationPinsForCase(caseId),
     captureAnalyses: collectCaptureAnalysesForCase(caseId),
     extractedData: extractedDataRepo.collectExtractedDataForCase(caseId),
-    captureArchiveRefs: waybackRefRepo.collectWaybackRefsForCase(caseId)
+    captureArchiveRefs: waybackRefRepo.collectWaybackRefsForCase(caseId),
+    exhibits: exhibitRepo.collectExhibitsForCase(caseId),
+    stagingFiles: stagingRepo.collectStagingFilesForCase(caseId)
   }
+}
+
+// Zip entry names for the bytes that are not Capture artifacts. A committed
+// non-Capture Exhibit and a pooled file are each named by row id plus the
+// stored extension, which is what lets the import re-root the path.
+const EXHIBIT_FILES_PREFIX = 'files/exhibits/'
+const STAGING_FILES_PREFIX = 'files/staging/'
+
+function fileExt(path: string): string {
+  const base = path.split('/').pop() ?? path
+  const dot = base.lastIndexOf('.')
+  return dot === -1 ? '' : base.slice(dot)
 }
 
 function sha256(buf: Buffer): string {
@@ -186,6 +225,26 @@ export async function exportCaseArchive(
     }
   }
 
+  // Committed non-Capture Exhibits ship with their bytes (X30) and pooled
+  // files ship flagged `staged` (X12); a row whose file is missing at source
+  // is carried as a row only, as a Capture with no artifact already is.
+  const staged: string[] = []
+  const exhibits = (data.exhibits ?? []) as Array<{ id: string; kind: string; path: string | null }>
+  for (const exhibit of exhibits) {
+    if (exhibit.kind === 'capture' || !exhibit.path) continue
+    const abs = defaultCaptureStore.resolveAbsolute(exhibit.path)
+    if (!existsSync(abs)) continue
+    add(`${EXHIBIT_FILES_PREFIX}${exhibit.id}${fileExt(exhibit.path)}`, readFileSync(abs))
+  }
+  const pooled = (data.stagingFiles ?? []) as Array<{ id: string; path: string }>
+  for (const file of pooled) {
+    const abs = defaultCaptureStore.resolveAbsolute(file.path)
+    if (!existsSync(abs)) continue
+    const name = `${STAGING_FILES_PREFIX}${file.id}${fileExt(file.path)}`
+    add(name, readFileSync(abs))
+    staged.push(name)
+  }
+
   const packageHash = computePackageHash(artifacts)
 
   const counts: CaseArchiveCounts = {
@@ -219,7 +278,8 @@ export async function exportCaseArchive(
     },
     counts,
     artifacts,
-    packageHash
+    packageHash,
+    staged
   }
 
   entries.unshift({ name: 'package.json', data: JSON.stringify(header, null, 2) })
@@ -322,6 +382,45 @@ export function inspectCaseArchive(archivePath: string): ArchiveInspectReport {
     }
   }
 
+  // The same check for a non-Capture Exhibit's bytes and for a pooled file's
+  // (#1148): the packaged bytes must hash to what the row records. Counted
+  // with the artifact failures because `ArchiveVerificationResult` is the
+  // shape the signed `import` entry carries, and a new field there would be a
+  // schema change every distributed verifier would have to learn.
+  const rowHashChecks = [
+    ...(
+      (data.exhibits ?? []) as Array<{
+        id: string
+        kind: string
+        path: string | null
+        content_hash: string
+      }>
+    )
+      .filter((row) => row.kind !== 'capture' && row.path)
+      .map((row) => ({
+        path: `${EXHIBIT_FILES_PREFIX}${row.id}${fileExt(row.path!)}`,
+        hash: row.content_hash
+      })),
+    ...((data.stagingFiles ?? []) as Array<{ id: string; path: string; content_hash: string }>).map(
+      (row) => ({
+        path: `${STAGING_FILES_PREFIX}${row.id}${fileExt(row.path)}`,
+        hash: row.content_hash
+      })
+    )
+  ]
+  for (const check of rowHashChecks) {
+    if (!declaredPaths.has(check.path)) continue
+    const buf = entries.get(check.path)
+    if (!buf || sha256(buf) !== check.hash) artifactFailureCount++
+  }
+  // A pooled path the header does not flag `staged`, or a flag on a path that
+  // is not pooled, is a header that lies about anchoring (X12).
+  const stagedDeclared = new Set(header.staged ?? [])
+  for (const name of declaredPaths) {
+    const isPooledPath = name.startsWith(STAGING_FILES_PREFIX)
+    if (isPooledPath !== stagedDeclared.has(name)) artifactFailureCount++
+  }
+
   const verification: ArchiveVerificationResult = {
     overallValid: artifactFailureCount === 0 && chainResult.valid && captureHashFailureCount === 0,
     chainValid: chainResult.valid,
@@ -402,6 +501,8 @@ export async function importCaseArchive(
   const idMap: Record<string, string> = {}
   const tableRows: Record<(typeof ID_PROBE_TABLES)[number], Record<string, unknown>[]> = {
     captures: data.captures,
+    exhibits: data.exhibits ?? [],
+    staging_files: data.stagingFiles ?? [],
     notes: data.notes,
     selectors: data.selectors,
     capture_analyses: data.captureAnalyses,
@@ -427,10 +528,21 @@ export async function importCaseArchive(
   const storageRoot = getStorageRoot()
   const stagingDir = join(storageRoot, '.import-staging-' + randomUUID())
   mkdirSync(stagingDir, { recursive: true })
+  // Where a non-Capture Exhibit's bytes land is the kind's subdirectory (X4),
+  // read off the row the archive carries for it.
+  const exhibitKinds = new Map(
+    ((data.exhibits ?? []) as Array<{ id: string; kind: string }>).map((row) => [row.id, row.kind])
+  )
   try {
     for (const [name, buf] of entries) {
       if (!name.startsWith('files/')) continue
-      const base = name.slice('files/'.length) // <oldCaptureId>.<ext>
+      const isExhibit = name.startsWith(EXHIBIT_FILES_PREFIX)
+      const isPooled = name.startsWith(STAGING_FILES_PREFIX)
+      const base = isExhibit
+        ? name.slice(EXHIBIT_FILES_PREFIX.length)
+        : isPooled
+          ? name.slice(STAGING_FILES_PREFIX.length)
+          : name.slice('files/'.length) // <oldCaptureId>.<ext>
       // Zip-slip guard: the entry name is attacker-controlled (a crafted archive
       // can self-sign as valid), and stagingDir is later renamed into the live
       // storage root. Only a bare filename is ever legitimate here.
@@ -438,9 +550,18 @@ export async function importCaseArchive(
         throw new Error('Not a valid Birdbrain archive: malformed file entry name')
       }
       const dot = base.lastIndexOf('.')
-      const oldCaptureId = dot === -1 ? base : base.slice(0, dot)
+      const oldId = dot === -1 ? base : base.slice(0, dot)
       const ext = dot === -1 ? '' : base.slice(dot)
-      writeFileSync(join(stagingDir, mapId(oldCaptureId) + ext), buf)
+      let subdir = ''
+      if (isPooled) subdir = STAGING_SUBDIRECTORY
+      else if (isExhibit) {
+        const kind = exhibitKinds.get(oldId)
+        if (!kind) throw new Error('Not a valid Birdbrain archive: exhibit file with no row')
+        subdir = EXHIBIT_KIND_SUBDIRECTORIES[kind] ?? ''
+      }
+      const dir = subdir ? join(stagingDir, subdir) : stagingDir
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, mapId(oldId) + ext), buf)
     }
     writeFileSync(
       join(stagingDir, MANIFEST_FILENAME),
@@ -540,6 +661,12 @@ function insertImportedRows(
 
   caseRepo.importCaseRow(data.case, ctx)
   tagRepo.importTagRows(tagRowsToInsert)
+  // Exhibit rows travel verbatim from schema 6 so the source's numbers survive
+  // (X18, X30). Before the Captures on purpose: `importCaptureRows` backfills a
+  // row for any Capture still without one, which numbers an older archive's
+  // Captures and is a no-op here, and the tag import after it keys on the
+  // Exhibit row. Pooled rows come back to the pool and never as anchored (X12).
+  exhibitRepo.importExhibitRows(data.exhibits ?? [], ctx)
   captureRepo.importCaptureRows(data.captures, ctx)
   tagRepo.importCaptureTagRows(data.captureTags, ctx)
   selectorRepo.importSelectorRows(data.selectors, ctx)
@@ -554,4 +681,5 @@ function insertImportedRows(
   // Strictly after the notes, whose rows note_tags has a foreign key onto. An
   // archive written before schemaVersion 4 carries no key at all (#391).
   tagRepo.importNoteTagRows(data.noteTags ?? [], ctx)
+  stagingRepo.importStagingFileRows(data.stagingFiles ?? [], ctx)
 }

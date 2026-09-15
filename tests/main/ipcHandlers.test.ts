@@ -675,6 +675,43 @@ describe('ipcHandlers — captures', () => {
     expect(verified.status).toBeDefined()
   })
 
+  // The Staging Pool channels (#1148). The dialog lives in the upload
+  // handler, so a cancel is an empty list; commit and discard take an id list
+  // that is shape-checked before anything reaches the pool.
+  it('uploads, commits and discards pooled files, and treats a cancelled dialog as empty', async () => {
+    expect(expectOk(await invoke(IPC_CHANNELS.STAGING_UPLOAD, caseId))).toEqual([])
+
+    const source = join(userDataPath, 'bundle.zip')
+    writeFileSync(source, Buffer.concat([Buffer.from([0x50, 0x4b, 0x03, 0x04]), Buffer.from('z')]))
+    showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [source] })
+    const staged = expectOk<Array<{ id: string; kind: string; name: string }>>(
+      await invoke(IPC_CHANNELS.STAGING_UPLOAD, caseId)
+    )
+    expect(staged).toHaveLength(1)
+    expect(staged[0]).toMatchObject({ kind: 'attachment', name: 'bundle.zip' })
+
+    const bad = (await invoke(IPC_CHANNELS.STAGING_COMMIT, caseId, 'not-a-list')) as {
+      ok: boolean
+      code?: string
+    }
+    expect(bad.ok).toBe(false)
+    expect(bad.code).toBe('INVALID_BATCH_PAYLOAD')
+
+    const committed = expectOk<{ outcomes: Array<{ status: string }> }>(
+      await invoke(IPC_CHANNELS.STAGING_COMMIT, caseId, [staged[0].id])
+    )
+    expect(committed.outcomes[0].status).toBe('committed')
+
+    showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [source] })
+    const [again] = expectOk<Array<{ id: string }>>(
+      await invoke(IPC_CHANNELS.STAGING_UPLOAD, caseId)
+    )
+    const discarded = expectOk<{ discarded: string[] }>(
+      await invoke(IPC_CHANNELS.STAGING_DISCARD, caseId, [again.id])
+    )
+    expect(discarded).toEqual({ discarded: [again.id] })
+  })
+
   it('verifies a capture and deletes it', async () => {
     const verification = expectOk<{ status: string }>(
       await invoke(IPC_CHANNELS.CAPTURES_VERIFY, captureId)
@@ -883,9 +920,9 @@ describe('ipcHandlers — batch operations (#394)', () => {
     )
     expect(res.affected).toBe(2)
     for (const id of [captureId, second]) {
-      expect(expectOk<{ id: string }[]>(await invoke(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, id))).toEqual(
-        []
-      )
+      expect(
+        expectOk<{ id: string }[]>(await invoke(IPC_CHANNELS.TAGS_GET_FOR_CAPTURE, id))
+      ).toEqual([])
     }
     // The other case's capture kept the tag: the guard refuses the call rather
     // than silently narrowing it.
@@ -905,7 +942,9 @@ describe('ipcHandlers — batch operations (#394)', () => {
   it('tags:countsForCaptures answers for the selection, not the case', async () => {
     const second = seedCapture({ url: 'https://example.com/2' }).id
     const third = seedCapture({ url: 'https://example.com/3' }).id
-    const tag = expectOk<{ id: string }>(await invoke(IPC_CHANNELS.TAGS_CREATE, { name: 'partial' }))
+    const tag = expectOk<{ id: string }>(
+      await invoke(IPC_CHANNELS.TAGS_CREATE, { name: 'partial' })
+    )
     expectOk(await invoke(IPC_CHANNELS.TAGS_ADD_TO_CAPTURE, { captureId, tagId: tag.id }))
 
     expect(
@@ -1175,7 +1214,9 @@ describe('ipcHandlers — tags', () => {
   })
 
   it('refuses a malformed, self-targeted or missing-tag merge with distinct codes', async () => {
-    const tag = expectOk<{ id: string }>(await invoke(IPC_CHANNELS.TAGS_CREATE, { name: 'keep-828' }))
+    const tag = expectOk<{ id: string }>(
+      await invoke(IPC_CHANNELS.TAGS_CREATE, { name: 'keep-828' })
+    )
 
     const malformed = (await invoke(IPC_CHANNELS.TAGS_MERGE, { sourceId: tag.id })) as {
       ok: boolean
@@ -1857,10 +1898,7 @@ describe('ipcHandlers — AI analysis', () => {
 
   it('rejects malformed analysis lookup ids before reaching the service', async () => {
     for (const value of [undefined, null, {}, 1, '']) {
-      const res = await invoke<{ ok: boolean; code?: string }>(
-        IPC_CHANNELS.AI_GET_ANALYSIS,
-        value
-      )
+      const res = await invoke<{ ok: boolean; code?: string }>(IPC_CHANNELS.AI_GET_ANALYSIS, value)
       expect(res.ok).toBe(false)
       expect(res.code).toBe('INVALID_CAPTURE_ID')
     }

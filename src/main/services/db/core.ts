@@ -92,6 +92,10 @@ export interface ImportCtx {
 // remap loop and row map from the same list, so the two cannot drift.
 export const ID_PROBE_TABLES = [
   'captures',
+  // A Capture's Exhibit id IS its capture id, so the two probes share one
+  // remap; a non-Capture Exhibit and a pooled file have ids of their own.
+  'exhibits',
+  'staging_files',
   'notes',
   'selectors',
   'capture_analyses',

@@ -39,7 +39,10 @@ import type {
   BugReportResult,
   RecentActivityEvent,
   CaseInventory,
-  ExhibitVerification
+  ExhibitVerification,
+  StagingCommitResult,
+  StagingDiscardResult,
+  StagingFile
 } from '@shared/types'
 import type { CaseManifestSnapshot } from '@shared/manifestSnapshot'
 import type {
@@ -233,6 +236,11 @@ export interface BirdbrainAPI {
   }
   manifest: {
     snapshot(caseId: string): Promise<CaseManifestSnapshot>
+  }
+  staging: {
+    upload(caseId: string): Promise<StagingFile[]>
+    commit(caseId: string, stagingIds: string[]): Promise<StagingCommitResult>
+    discard(caseId: string, stagingIds: string[]): Promise<StagingDiscardResult>
   }
   app: {
     getVersion(): Promise<string>

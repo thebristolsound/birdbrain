@@ -20,6 +20,9 @@ import type {
   CaseAutoCapturePolicy,
   CaseInventory,
   ExhibitVerification,
+  StagingCommitResult,
+  StagingDiscardResult,
+  StagingFile,
   DiagnosticsSnapshot,
   UnreconciledDeletionReport,
   ExportOptions,
@@ -203,6 +206,12 @@ export const IPC_CHANNELS = {
 
   // Manifest
   MANIFEST_SNAPSHOT: 'manifest:snapshot',
+
+  // Staging Pool (ADR-0024). Upload lands bytes outside the chain; commit is
+  // the only route by which a pooled file becomes an Exhibit.
+  STAGING_UPLOAD: 'staging:upload',
+  STAGING_COMMIT: 'staging:commit',
+  STAGING_DISCARD: 'staging:discard',
 
   // App
   APP_GET_VERSION: 'app:getVersion',
@@ -666,10 +675,7 @@ export interface BatchCountResult {
 // - copy_mismatch: the copy on disk does not hash to the source's content hash,
 //   so the source changed between verification and copy. Nothing is written.
 export type DuplicateCaptureRefusal =
-  | 'not_found'
-  | 'operator_name_required'
-  | 'not_verified'
-  | 'copy_mismatch'
+  'not_found' | 'operator_name_required' | 'not_verified' | 'copy_mismatch'
 
 export type DuplicateCaptureResult =
   | { status: 'duplicated'; capture: Capture }
@@ -940,6 +946,14 @@ export interface IpcInvokeContract {
   'exhibits:verify': { args: [caseId: string, exhibitId: string]; result: ExhibitVerification }
 
   'manifest:snapshot': { args: [caseId: string]; result: CaseManifestSnapshot }
+
+  // The open-file dialog lives in the handler; an empty list is a cancel.
+  'staging:upload': { args: [caseId: string]; result: StagingFile[] }
+  'staging:commit': { args: [caseId: string, stagingIds: string[]]; result: StagingCommitResult }
+  'staging:discard': {
+    args: [caseId: string, stagingIds: string[]]
+    result: StagingDiscardResult
+  }
 
   'app:getVersion': { args: []; result: string }
   'diagnostics:get': { args: []; result: DiagnosticsSnapshot }

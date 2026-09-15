@@ -239,12 +239,13 @@ describe('manifest schema 3 — writing stays readable by a schema-2 verifier', 
     // perfectly, and stamping the read ceiling on them would make every capture
     // written after a version bump unreadable to it.
     //
-    // The v3 types (#1147) are the exception the constant exists to express.
-    // Neither `derivation` nor `renumber` has a v1 or v2 form, so no reader
-    // below 3 can make sense of one and stamping lower would invite it to try.
-    // They stamp 3 only because `803v` shipped the reader that reports a
-    // too-new entry as "verifier too old" instead of as a broken chain.
-    const v3Types = new Set(['derivation', 'renumber'])
+    // The v3 types (#1147, #1148) are the exception the constant exists to
+    // express. None of `exhibit`, `derivation` or `renumber` has a v1 or v2
+    // form, so no reader below 3 can make sense of one and stamping lower
+    // would invite it to try. They stamp 3 only because `803v` shipped the
+    // reader that reports a too-new entry as "verifier too old" instead of as
+    // a broken chain.
+    const v3Types = new Set(['exhibit', 'derivation', 'renumber'])
     for (const [type, version] of Object.entries(MIN_READER_SCHEMA_VERSION)) {
       expect(version).toBe(v3Types.has(type) ? 3 : 2)
       expect(version).toBeLessThanOrEqual(MANIFEST_SCHEMA_VERSION)

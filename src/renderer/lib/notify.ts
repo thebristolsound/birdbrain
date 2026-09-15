@@ -144,7 +144,8 @@ const CODE_LABELS: Record<LogCode, string> = {
   'captureLifecycle.duplicate_cleanup_failed':
     "The duplicate failed, and its copied files couldn't be removed",
   'backgroundRenderer.trim_failed': "Couldn't trim the screenshot",
-  'backgroundRenderer.consent_blocker_disable_failed': "Couldn't turn off the cookie-notice blocker",
+  'backgroundRenderer.consent_blocker_disable_failed':
+    "Couldn't turn off the cookie-notice blocker",
   'backgroundRenderer.consent_blocker_enable_failed': "Couldn't turn on the cookie-notice blocker",
   'consentBlocker.filter_engine_failed': "Couldn't load the cookie-notice filter lists",
   'selectorLifecycle.retroactive_match_failed':
@@ -177,7 +178,8 @@ const CODE_LABELS: Record<LogCode, string> = {
   'demoCase.latch_failed': "Couldn't record that the demonstration case was set up",
   'demoCase.artifact_cleanup_failed':
     "The demonstration case was removed, but its files couldn't be deleted",
-  'exhibits.backfill_failed': "Couldn't finish the exhibit migration for a case"
+  'exhibits.backfill_failed': "Couldn't finish the exhibit migration for a case",
+  'staging.commit_failed': "Couldn't commit a pooled file to the case"
 }
 
 export function labelForCode(code: LogCode): string {

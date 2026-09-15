@@ -11,8 +11,8 @@ import type {
 import { TlsCertChainResultSchema } from '@shared/schemas'
 import { getDb, type ImportCtx } from '@main/services/db/core'
 import {
-  backfillExhibitsForCaptures,
   deleteExhibit,
+  backfillExhibitsForCaptures,
   insertExhibitForCapture
 } from '@main/services/db/exhibitRepo'
 
@@ -25,8 +25,7 @@ export function listCaptures(caseId: string): Capture[] {
 
 export function getCapture(id: string): Capture | undefined {
   const row = getDb().prepare('SELECT * FROM captures WHERE id = ?').get(id) as
-    | Record<string, unknown>
-    | undefined
+    Record<string, unknown> | undefined
   return row ? rowToCapture(row) : undefined
 }
 
@@ -468,11 +467,12 @@ export function importCaptureRows(rows: Record<string, unknown>[], ctx: ImportCt
       ctx.getText(cap.id as string, newId)
     )
   }
-  // Every imported Capture gets its Exhibit row here, not from the archive:
-  // `exhibits` is not carried in a .birdbrain payload yet, and the row is
-  // derivable from the capture's own fields. Assigned after the loop, and by
-  // the shared helper, so the numbering is the one X41 fixes rather than the
-  // order the payload happens to list rows in.
+  // Every imported Capture that still lacks an Exhibit row gets one here. A
+  // schema-6 archive carries the rows (#1148) and caseArchive inserts them
+  // BEFORE this runs, so the numbers survive the round trip and this is a
+  // no-op; an older archive has none and is numbered here, by the shared
+  // helper, in the order X41 fixes rather than the payload's. The tag import
+  // that follows has a foreign key onto `exhibits`, so this cannot move later.
   backfillExhibitsForCaptures(ctx.newCaseId)
 }
 

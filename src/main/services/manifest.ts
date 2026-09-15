@@ -390,6 +390,28 @@ export type ManifestEntryInput =
       toolVersion: string
     }
   | {
+      // One Exhibit that is not a Capture (ADR-0023, X24): one entry type with
+      // `kind` and `origin` fields, never one type per kind, so the verifier
+      // learns one shape. Written by the Staging Pool's commit (#1148); a
+      // Capture keeps its `capture` entry.
+      type: 'exhibit'
+      exhibitId: string
+      caseId: string
+      kind: string
+      origin: string
+      name: string
+      exhibitNumber: number
+      // Storage-root-relative, the same form `derivation.outputPath` records
+      // and the `exhibits` row stores, so the three name one file one way.
+      path: string
+      contentHash: string
+      sizeBytes: number
+      timestamp: string
+      operatorId: string
+      operatorName: string
+      toolVersion: string
+    }
+  | {
       // One Derived File computed from an Exhibit (ADR-0023, X17). An entry
       // cannot be amended once written, so a derivation that runs after its
       // parent's ingest — the legacy thumbnail regeneration of X34, and every
@@ -473,13 +495,27 @@ export const MIN_READER_SCHEMA_VERSION: Record<ManifestEntryInput['type'], numbe
   // The v3 types (ADR-0023). No v1 or v2 form exists for either, so a reader
   // below 3 cannot make sense of one and stamping anything lower would invite
   // it to try.
+  exhibit: 3,
   derivation: 3,
   renumber: 3
 }
 
+// Per-entry overrides for the two generalized types (#1180). A `timestamp` or
+// `deletion` entry's shape has a schema-2 form, so the map above says 2 — and
+// a schema-2 verifier would then parse an entry that binds an attachment as a
+// Capture's and silently fail to apply it. The caller that knows the target is
+// not a Capture says so here, and the writer stamps the higher of the two.
+export interface AppendOptions {
+  minReaderSchemaVersion?: number
+}
+
 // Write-ahead append: compute hash, append JSONL line, fsync.
 // Caller must call rollbackManifestEntry(anchorBytes) if a later step fails.
-export function appendManifestEntry(caseDir: string, entry: ManifestEntryInput): AppendResult {
+export function appendManifestEntry(
+  caseDir: string,
+  entry: ManifestEntryInput,
+  opts: AppendOptions = {}
+): AppendResult {
   const path = join(caseDir, MANIFEST_FILENAME)
   const anchorBytes = existsSync(path) ? statSync(path).size : 0
   const { prevHash, nextIndex } = getManifestHead(caseDir)
@@ -488,7 +524,7 @@ export function appendManifestEntry(caseDir: string, entry: ManifestEntryInput):
     ...entry,
     index: nextIndex,
     prevHash,
-    schemaVersion: MIN_READER_SCHEMA_VERSION[entry.type]
+    schemaVersion: Math.max(MIN_READER_SCHEMA_VERSION[entry.type], opts.minReaderSchemaVersion ?? 0)
   }
   const canonical = canonicalStringify(body)
   const entryHash = createHash('sha256').update(canonical).digest('hex')
@@ -537,10 +573,11 @@ export class ManifestRollback extends Error {
 export async function withManifestEntry<T>(
   caseDir: string,
   entry: ManifestEntryInput,
-  fn: (result: AppendResult) => T | Promise<T>
+  fn: (result: AppendResult) => T | Promise<T>,
+  opts: AppendOptions = {}
 ): Promise<T> {
   initManifest(caseDir)
-  const result = appendManifestEntry(caseDir, entry)
+  const result = appendManifestEntry(caseDir, entry, opts)
   try {
     return await fn(result)
   } catch (err) {

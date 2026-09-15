@@ -1,0 +1,214 @@
+import type { HashVerification, InventoryRow } from '@shared/types'
+import { fileTypeOf, kindLabel, type DataNodeKey } from '@renderer/components/data/dataTreeModel'
+
+// The artifact table as a pure function of the inventory and the selected
+// node (#1149). Everything the table shows about a row is derived here, so the
+// component renders values and never decides them.
+
+export interface ArtifactRow {
+  id: string
+  entity: InventoryRow['entity']
+  name: string
+  // SOURCE: a Capture's URL host, a Derived File's parent Exhibit, a pooled or
+  // non-Capture row's origin.
+  source: string
+  // KIND as displayed: the Exhibit kind, `derivation` for a Derived File, and
+  // the pooled file's detected kind with its not-anchored state carried
+  // separately so the chip is never mistaken for a kind.
+  kind: string
+  sizeBytes: number | null
+  hash: string
+  capturedAt: string
+  // Whether the chain covers this row. False for every pooled row and for an
+  // Exhibit or Derived File with no Manifest Entry (X41, X34).
+  anchored: boolean
+  staged: boolean
+  exists: boolean
+  exhibitNumber: number | null
+  path: string | null
+  raw: InventoryRow
+}
+
+export interface CaptureFacts {
+  url?: string
+  lastVerifiedStatus?: HashVerification['status']
+}
+
+// Per-Capture facts the inventory does not carry but the table wants: the URL
+// for SOURCE and the persisted verify state for Integrity Exceptions. Keyed by
+// capture id, which is the Exhibit id for a Capture.
+export type CaptureFactsById = ReadonlyMap<string, CaptureFacts>
+
+function hostOf(url: string | undefined): string {
+  if (!url) return ''
+  try {
+    return new URL(url).host
+  } catch {
+    return url
+  }
+}
+
+export function toArtifactRow(
+  row: InventoryRow,
+  rows: InventoryRow[],
+  captures: CaptureFactsById
+): ArtifactRow {
+  const common = {
+    id: row.id,
+    entity: row.entity,
+    name: row.name,
+    hash: row.contentHash,
+    sizeBytes: row.sizeBytes,
+    exists: row.exists,
+    path: row.path,
+    raw: row
+  }
+  if (row.entity === 'exhibit') {
+    const facts = captures.get(row.id)
+    return {
+      ...common,
+      source: row.kind === 'capture' ? hostOf(facts?.url) || row.origin : row.origin,
+      kind: row.kind,
+      capturedAt: row.committedAt,
+      anchored: row.anchored,
+      staged: false,
+      exhibitNumber: row.exhibitNumber
+    }
+  }
+  if (row.entity === 'derived-file') {
+    const parent = rows.find((r) => r.entity === 'exhibit' && r.id === row.parentExhibitId)
+    return {
+      ...common,
+      source: parent?.name ?? row.parentExhibitId,
+      kind: row.derivation,
+      capturedAt: row.createdAt,
+      anchored: row.anchored,
+      staged: false,
+      exhibitNumber: null
+    }
+  }
+  return {
+    ...common,
+    source: row.sourceUrl ? hostOf(row.sourceUrl) : row.origin,
+    kind: row.kind,
+    capturedAt: row.arrivedAt,
+    anchored: false,
+    staged: true,
+    exhibitNumber: null
+  }
+}
+
+// Whether a Capture's persisted verify state is an exception (X37's middle
+// bucket). `legacy` and undefined are unverified, not exceptions: a legacy
+// Capture has no entry to verify against and an unverified one has not been
+// looked at, and neither is a finding.
+export function isIntegrityException(status: HashVerification['status'] | undefined): boolean {
+  return status === 'tampered' || status === 'missing' || status === 'chain-broken'
+}
+
+// The rows a tree node selects. Pooled rows appear ONLY under Staging (X16):
+// every other node reads the anchored list, so a consumer that forgets the
+// discriminator still cannot show a pooled file beside evidence.
+export function rowsForNode(
+  rows: InventoryRow[],
+  key: DataNodeKey,
+  captures: CaptureFactsById
+): InventoryRow[] {
+  const anchored = rows.filter((row) => row.rowType === 'anchored')
+  if (key === 'staging') return rows.filter((row) => row.rowType === 'staged')
+  if (key === 'data-sources' || key === 'views' || key === 'file-types' || key === 'results') {
+    return anchored
+  }
+  if (key.startsWith('kind:')) {
+    const kind = key.slice('kind:'.length)
+    const ids = new Set(
+      anchored.filter((row) => row.entity === 'exhibit' && row.kind === kind).map((r) => r.id)
+    )
+    return anchored.filter(
+      (row) =>
+        (row.entity === 'exhibit' && ids.has(row.id)) ||
+        (row.entity === 'derived-file' && ids.has(row.parentExhibitId))
+    )
+  }
+  if (key.startsWith('exhibit:')) {
+    const id = key.slice('exhibit:'.length)
+    return anchored.filter(
+      (row) =>
+        (row.entity === 'exhibit' && row.id === id) ||
+        (row.entity === 'derived-file' && row.parentExhibitId === id)
+    )
+  }
+  if (key.startsWith('derived:')) {
+    const id = key.slice('derived:'.length)
+    return anchored.filter((row) => row.entity === 'derived-file' && row.id === id)
+  }
+  if (key.startsWith('file-type:')) {
+    const type = key.slice('file-type:'.length)
+    return anchored.filter((row) => fileTypeOf(row) === type)
+  }
+  if (key === 'integrity-exceptions') {
+    // A Derived File follows its parent Capture's persisted state here: the
+    // Capture verify path binds the sidecars to the signed entry, so a sidecar
+    // failure is reported on the Capture (#118, #234).
+    const failing = new Set(
+      anchored
+        .filter(
+          (row) =>
+            row.entity === 'exhibit' &&
+            isIntegrityException(captures.get(row.id)?.lastVerifiedStatus)
+        )
+        .map((row) => row.id)
+    )
+    return anchored.filter(
+      (row) =>
+        (row.entity === 'exhibit' && failing.has(row.id)) ||
+        (row.entity === 'derived-file' && failing.has(row.parentExhibitId))
+    )
+  }
+  // keyword-hits, indicators, manifest-ledger: their content is #1150; until
+  // then they select the anchored list so the table is never a stale subset.
+  return anchored
+}
+
+// Search filters by name, Exhibit, kind and hash only (R21, Q8) — never page
+// text, which is why the shell's placeholder does not say "text". "Exhibit 7"
+// and "7" both reach Exhibit 7; a hash matches by prefix or substring, case-
+// insensitively, because operators paste both forms.
+export function filterRows(rows: ArtifactRow[], query: string): ArtifactRow[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return rows
+  const number = q.replace(/^exhibit\s+/, '')
+  return rows.filter((row) => {
+    if (row.name.toLowerCase().includes(q)) return true
+    if (row.kind.toLowerCase().includes(q)) return true
+    if (kindLabel(row.kind).toLowerCase().includes(q)) return true
+    if (row.hash.toLowerCase().includes(q)) return true
+    if (row.exhibitNumber !== null && String(row.exhibitNumber) === number) return true
+    return false
+  })
+}
+
+export function formatBytes(bytes: number | null): string {
+  if (bytes === null) return '—'
+  if (bytes < 1024) return `${bytes} B`
+  const units = ['KB', 'MB', 'GB']
+  let value = bytes / 1024
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024
+    unit += 1
+  }
+  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`
+}
+
+// A fixed UTC rendering, `YYYY-MM-DD HH:MM`, so two operators reading the same
+// Case see the same string; the full ISO value sits on the hover title.
+export function formatStamp(iso: string): string {
+  const ts = new Date(iso)
+  if (Number.isNaN(ts.getTime())) return iso
+  return ts.toISOString().slice(0, 16).replace('T', ' ')
+}
+
+export function shortHash(hash: string): string {
+  return hash.length > 12 ? hash.slice(0, 12) : hash
+}

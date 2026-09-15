@@ -291,7 +291,9 @@ independent of the Operator who holds it.
 | `src/renderer/components/overview/VerifyBar.tsx` | blocking | Case-level verification display |
 | `src/renderer/components/overview/overviewModel.ts` | blocking | The actual verified/tampered bucketing VerifyBar shows |
 | `src/renderer/components/dashboard/cases/ImportCaseDialog.tsx` | blocking | Archive verification display + `overrideTamper` flow |
-| `src/renderer/components/dashboard/cases/DataExplorer.tsx` | blocking | Extraction results display + reprocess trigger |
+| `src/renderer/components/dashboard/cases/DataExplorer.tsx` | blocking | The Data screen shell: per-row SHA-256, anchored versus not-anchored state, Integrity Exceptions and the manifest ledger (#1149). Extraction results display + reprocess trigger before that |
+| `src/renderer/components/data/**` | blocking | The Data screen's models and parts (#1149): what the artifact table says about anchoring, verification buckets and hashes is decided here |
+| `src/main/services/exhibits.ts` | blocking | The Exhibit model read paths (#1147): inventory with the anchored/pooled discriminator, manifest snapshot verdict and signer segments, per-Exhibit verify. Added 2026-09-14; it shipped off the list |
 | `src/renderer/components/settings/DatabaseAdmin.tsx` | blocking | Direct DB administration over evidence tables |
 | `src/renderer/components/settings/db/**` | blocking | The DB administration views behind it (browse, row edit, utilities) |
 | `src/renderer/components/settings/OperatorConfig.tsx` | blocking | Operator identity embedded verbatim in export certification |

@@ -246,14 +246,7 @@ export interface BirdbrainSettings {
   // because older settings files still hold them; both resolve to 'signals'
   // on restore. Dropping them would fail the settings parse on upgrade.
   lastActiveSection:
-    | 'overview'
-    | 'captures'
-    | 'selectors'
-    | 'notes'
-    | 'tags'
-    | 'signals'
-    | 'data'
-    | 'settings'
+    'overview' | 'captures' | 'selectors' | 'notes' | 'tags' | 'signals' | 'data' | 'settings'
   hasCompletedOnboarding: boolean
   analysisSystemPrompt: string
   detailsPanelCollapsed: boolean
@@ -282,13 +275,7 @@ export interface BirdbrainSettings {
 // ever reaches idle → checking → up-to-date | available | error; the
 // downloading/downloaded states are reserved for the Phase 2 auto-install path.
 export type UpdateState =
-  | 'idle'
-  | 'checking'
-  | 'up-to-date'
-  | 'available'
-  | 'downloading'
-  | 'downloaded'
-  | 'error'
+  'idle' | 'checking' | 'up-to-date' | 'available' | 'downloading' | 'downloaded' | 'error'
 
 export interface UpdateStatus {
   state: UpdateState
@@ -459,6 +446,7 @@ export const LOG_SOURCES = [
   'signingKey',
   'demoCase',
   'exhibits',
+  'staging',
   'renderer'
 ] as const
 export type LogSource = (typeof LOG_SOURCES)[number]
@@ -575,7 +563,11 @@ export const LOG_CODES = [
   // The Exhibit-model backfill (#1147) failing for one Case. Startup continues
   // over the remaining Cases, so this line is the only record that a Case did
   // not get its numbers or its anchored thumbnails.
-  'exhibits.backfill_failed'
+  'exhibits.backfill_failed',
+  // A Staging Pool commit (#1148) whose manifest append or row insert threw:
+  // the entry was rolled back and the file returned to the pool, so this line
+  // is the only record that the operator's commit did not land.
+  'staging.commit_failed'
 ] as const
 export type LogCode = (typeof LOG_CODES)[number]
 
@@ -589,6 +581,9 @@ export const LOG_CONTEXT_KEYS = [
   'caseId',
   'noteId',
   'selectorId',
+  // The Exhibit model's ids (#1148): a non-Capture Exhibit and a pooled file.
+  'exhibitId',
+  'stagingId',
   'bytes',
   'count',
   'ms',
@@ -1204,8 +1199,44 @@ export interface ExhibitVerification {
   exhibitId: string
   caseId: string
   kind: string
+  // `unsupported` is two things, told apart by `reason`: a kind this build has
+  // no verify path for, and a chain holding an entry from a newer schema (X25),
+  // which is never reported as tampering.
   status: HashVerification['status'] | 'unsupported'
   reason?: string
   // Present only for `kind = 'capture'`: the untouched `captures:verify` result.
   capture?: HashVerification
+  // One outcome per Derived File of the Exhibit (X37). An anchored file is
+  // re-hashed against the `derivation` entry the chain vouches for; an
+  // unanchored one (X34) is reported as such and never re-hashed, because a
+  // hash the chain does not cover proves nothing.
+  derived?: DerivedFileVerification[]
+}
+
+export interface DerivedFileVerification {
+  derivedFileId: string
+  derivation: string
+  status: 'verified' | 'tampered' | 'missing' | 'unverified'
+  reason?: string
+}
+
+// --- Staging Pool (ADR-0024, #1148) ----------------------------------------
+
+// One pooled file's commit outcome. Refusals are outcomes, never throws, so a
+// batch commit reports each file rather than stopping at the first.
+export type StagingCommitOutcome =
+  | { stagingId: string; status: 'committed'; exhibitId: string; exhibitNumber: number }
+  // `changed`: the bytes on disk no longer hash to the arrival hash (X13).
+  // `missing`: the pooled file is gone. `not_found`: no such row in this Case.
+  | { stagingId: string; status: 'refused'; reason: 'changed' | 'missing' | 'not_found' }
+  // The manifest append or the row insert threw; the entry was rolled back and
+  // the file put back in the pool. `error` is the error's name only.
+  | { stagingId: string; status: 'failed'; error: string }
+
+export interface StagingCommitResult {
+  outcomes: StagingCommitOutcome[]
+}
+
+export interface StagingDiscardResult {
+  discarded: string[]
 }

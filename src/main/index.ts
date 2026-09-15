@@ -528,7 +528,8 @@ if (!gotSingleInstanceLock) {
         captureLifecycle,
         recaptureService,
         updaterService,
-        sessionService
+        sessionService,
+        enqueueExhibitTimestamp: (exhibitId) => timestampWorker.enqueueExhibit(exhibitId)
       })
 
       // Start capture server and extension connection monitor. A failed bind

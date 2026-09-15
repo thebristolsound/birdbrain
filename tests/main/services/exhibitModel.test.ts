@@ -996,7 +996,9 @@ describe('exhibit model', () => {
       })
     })
 
-    it('reports a kind with no verify path yet as unsupported', async () => {
+    // Every kind has a verify path since #1148; a row that records no stored
+    // file is reported missing, by the row's own claim, before any hashing.
+    it('reports a non-capture exhibit with no recorded file as missing', async () => {
       getDb()
         .prepare(
           `INSERT INTO exhibits (id, case_id, kind, origin, exhibit_number, name,
@@ -1008,7 +1010,8 @@ describe('exhibit model', () => {
 
       const result = await verifyExhibit(caseId, 'att-1')
 
-      expect(result.status).toBe('unsupported')
+      expect(result.status).toBe('missing')
+      expect(result.reason).toBe('No stored file recorded for this exhibit')
       expect(result.kind).toBe('attachment')
     })
   })

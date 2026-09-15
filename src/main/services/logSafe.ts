@@ -63,7 +63,9 @@ function defaultAppRoot(): string {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- see above
     const electron: unknown = require('electron')
-    return (electron as { app?: { getAppPath?: () => string } }).app?.getAppPath?.() ?? process.cwd()
+    return (
+      (electron as { app?: { getAppPath?: () => string } }).app?.getAppPath?.() ?? process.cwd()
+    )
   } catch {
     return process.cwd()
   }
@@ -173,8 +175,6 @@ export function tag(value: string, vocabulary: keyof typeof TAG_VOCABULARIES): L
 // the first place": codes, sources, and context keys are closed sets, and
 // `sanitizeError` no longer carries a message field for prose to hide in.
 
-
-
 export type LogContext = Partial<Record<LogContextKey, LogValue>>
 
 // Per-key value formats: the TAG_VOCABULARIES philosophy applied to shapes
@@ -245,6 +245,8 @@ const CONTEXT_FORMATS: Record<LogContextKey, ContextFormat> = {
   caseId: UUID,
   noteId: UUID,
   selectorId: UUID,
+  exhibitId: UUID,
+  stagingId: UUID,
   installationId: UUID,
   bytes: 'number',
   count: 'number',
@@ -320,7 +322,6 @@ export function context(ctx: Record<string, LogValue>): LogContext {
   }
   return out
 }
-
 
 // Windows (drive-rooted 'D:\...', drive-relative 'D:...', or UNC
 // '\\server\share\...') and POSIX paths share one shape, described once here
@@ -512,10 +513,7 @@ export function sanitizeError(
     const frames = stackFrames(rawStack)
     if (frames.length > 0) {
       const relativized = relativizeStack(frames.join('\n'), appRoot)
-      stack = sanitizeText(relativized, homeDir)
-        .split('\n')
-        .slice(0, MAX_STACK_FRAMES)
-        .join('\n')
+      stack = sanitizeText(relativized, homeDir).split('\n').slice(0, MAX_STACK_FRAMES).join('\n')
     }
   }
 

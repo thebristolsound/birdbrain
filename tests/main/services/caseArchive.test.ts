@@ -219,8 +219,11 @@ describe('caseArchive export', () => {
   // constant's doc comment says to bump for. Contrast #400, where the
   // maintainer ruled no bump on 2026-08-19 for two added case columns; that
   // tension was recorded here and is preserved by this comment.
-  it('keeps CASE_ARCHIVE_SCHEMA_VERSION at 5 since #827 duplicate provenance', () => {
-    expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(5)
+  // 6 since #1148: `exhibits` and `stagingFiles` in data.json, non-Capture
+  // Exhibit bytes and `staged` pooled bytes in the zip, which a pre-v34 build
+  // has no table or directory for.
+  it('keeps CASE_ARCHIVE_SCHEMA_VERSION at 6 since #1148 exhibits and the staging pool', () => {
+    expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(6)
   })
 
   it('exports a .birdbrain archive with header, data, manifest, and files', async () => {

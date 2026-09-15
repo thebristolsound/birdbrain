@@ -153,6 +153,16 @@ function countReportSignatureRows(report: string, status: keyof typeof REPORT_SI
   return report.match(pattern)?.length ?? 0
 }
 
+// The Entry signatures section alone, so a negative assertion is not satisfied
+// or tripped by wording elsewhere in the certificate.
+function entrySignatureSection(cert: string) {
+  const start = cert.indexOf('Entry signatures</h2>')
+  const end = cert.indexOf('Certifier</h2>', start)
+  expect(start).toBeGreaterThan(-1)
+  expect(end).toBeGreaterThan(start)
+  return cert.slice(start, end)
+}
+
 // The package-level fields a direct buildCertification call must supply since
 // #399; the trusted-time tests using this spread do not read any of them.
 const DIRECT_INPUT_EXTRAS = {
@@ -574,9 +584,12 @@ describe('certification', () => {
       const report = entries.get('report.html')!.toString('utf-8')
 
       expect(cert).toContain('Entry signatures')
-      expect(cert).toMatch(/A\s+signed\s+manifest\s+entry\s+is\s+present\s+for\s+1\s+of\s+the\s+3/)
-      expect(cert).toMatch(/1\s+was\s+written\s+before\s+per-entry\s+signing\s+existed/)
-      expect(cert).toMatch(/1\s+has\s+no\s+manifest\s+entry\s+at\s+all/)
+      expect(cert).toMatch(
+        /A\s+signature\s+is\s+present\s+on\s+the\s+manifest\s+entry\s+for\s+1\s+of\s+the\s+3/
+      )
+      expect(cert).toMatch(
+        /remaining\s+2\s+\(1\s+with\s+an\s+unsigned\s+entry,\s+1\s+with\s+no\s+manifest\s+entry\)/
+      )
       expect(cert).toMatch(/no\s+entry\s+signature\s+is\s+asserted/i)
 
       // AC3: the summary is the per-exhibit disclosure, counted. A second
@@ -586,12 +599,10 @@ describe('certification', () => {
       expect(countReportSignatureRows(report, 'no-entry')).toBe(1)
     })
 
-    // The disclosure sentence, not just the counts. Before review this package
-    // told the reader chain linkage covered the whole unsigned set, while
-    // report.html said the no-entry exhibit had "no chain position to cite" —
-    // the certificate contradicting the report it ships beside, at 100% diff
-    // coverage, because coverage measures execution and not truth.
-    it('claims chain coverage only for the class that has it, and never for no-entry', async () => {
+    // Every coverage claim this section once made (chain linkage, the export
+    // entry's packageHash, "and by nothing else") was false for some capture
+    // class, so the section states counts and no claim about what covers the rest.
+    it('makes no coverage claim for any unsigned class', async () => {
       const caseDir = join(tempDir, 'captures', caseId)
       await seedLegacyGenesisCapture(caseId, caseDir)
       await ingest(
@@ -603,26 +614,12 @@ describe('certification', () => {
       await seedUnchainedCapture(caseId)
 
       const entries = await exportZip()
-      const cert = entries.get('certification.html')!.toString('utf-8')
-      const report = entries.get('report.html')!.toString('utf-8')
+      const section = entrySignatureSection(entries.get('certification.html')!.toString('utf-8'))
 
-      // The chain-linkage claim is bounded to the pre-signing class.
-      expect(cert).toMatch(
-        /written\s+before\s+per-entry\s+signing\s+existed,\s+and\s+is\s+covered\s+by\s+manifest\s+chain\s+linkage/
-      )
-      // The no-entry class is told the opposite, and it matches what the report
-      // says per exhibit in the same package.
-      expect(cert).toMatch(
-        /no\s+manifest\s+entry\s+at\s+all,\s+so\s+the\s+chain\s+records\s+no\s+acquisition\s+and\s+there\s+is\s+no\s+chain\s+position\s+to\s+cite/
-      )
-      expect(report).toContain('no chain position to cite')
-      // What it does have: the export-time seal, named so the reader can check it.
-      expect(cert).toMatch(/signed\s+export\s+entry\s+in\s+export-entry\.json/)
-      expect(entries.has('export-entry.json')).toBe(true)
-
-      // The sentence the fix removed must not come back in any form that closes
-      // the whole unsigned set under chain linkage.
-      expect(cert).not.toMatch(/Those\s+captures\s+are\s+covered\s+by\s+manifest\s+chain\s+linkage/)
+      expect(section).not.toMatch(/chain\s+linkage/)
+      expect(section).not.toMatch(/covered\s+by/)
+      expect(section).not.toMatch(/nothing\s+else/)
+      expect(section).not.toMatch(/packageHash|export-entry\.json/)
     })
 
     // AC4: absence of legacy entries is unremarkable, so it is stated as an
@@ -634,30 +631,30 @@ describe('certification', () => {
       const entries = await exportZip()
       const cert = entries.get('certification.html')!.toString('utf-8')
 
-      expect(cert).toMatch(/All\s+2\s+captures\s+in\s+this\s+export\s+have\s+a\s+signed\s+manifest/)
+      expect(cert).toMatch(
+        /present\s+on\s+the\s+manifest\s+entry\s+for\s+every\s+capture\s+in\s+this\s+export\s+\(2\s+of\s+2\)/
+      )
       expect(cert).not.toMatch(/no\s+entry\s+signature\s+is\s+asserted/i)
-      expect(cert).not.toMatch(/written\s+before\s+per-entry\s+signing/)
-      expect(cert).not.toMatch(/with\s+no\s+manifest\s+entry\s+at\s+all/)
+      expect(cert).not.toMatch(/with\s+an\s+unsigned\s+entry/)
+      expect(cert).not.toMatch(/with\s+no\s+manifest\s+entry/)
       expect(
         countReportSignatureRows(entries.get('report.html')!.toString('utf-8'), 'signed')
       ).toBe(2)
     })
 
-    // The enclosed key is always this installation's (export.ts writes
-    // getPublicKeyPem()), but entries inherited across an import verify against
-    // the key embedded in the import entry (manifestChain.ts's KEY RULE). The
-    // all-clear must not send a reader to the wrong key and hand them a
-    // "Verification Failure" on an untampered package.
-    it('does not name the enclosed key as sufficient for an imported entry', async () => {
+    // resolveEntrySignatures reports 'signed' for any string in `signature`, so
+    // the all-clear can assert presence and must not assert that it verifies, or
+    // against which key: an entry inherited across an import verifies against the
+    // key in the import entry, not the enclosed signing-public-key.pem.
+    it('asserts signature presence and not verifiability when every entry is signed', async () => {
       await ingest(caseId, '<html><body>One</body></html>', 'https://example.com/1', 'One')
 
       const entries = await exportZip()
-      const cert = entries.get('certification.html')!.toString('utf-8')
+      const section = entrySignatureSection(entries.get('certification.html')!.toString('utf-8'))
 
-      expect(cert).toMatch(
-        /verifiable\s+against\s+the\s+signing\s+key\s+of\s+the\s+installation\s+that\s+wrote\s+it/
-      )
-      expect(cert).toMatch(/except\s+where\s+a\s+case\s+was\s+imported/)
+      expect(section).toMatch(/A\s+signature\s+is\s+present/)
+      expect(section).not.toMatch(/verif/i)
+      expect(section).not.toMatch(/public\s+key|signing-public-key\.pem/)
     })
 
     it('makes no signature claim at all when the chain holds only a legacy entry', async () => {
@@ -667,12 +664,9 @@ describe('certification', () => {
       const cert = entries.get('certification.html')!.toString('utf-8')
 
       expect(cert).toMatch(
-        /No\s+entry\s+signature\s+is\s+asserted<\/strong>\s+for\s+any\s+of\s+the\s+1\s+capture\s+in/
+        /No\s+entry\s+signature\s+is\s+asserted<\/strong>\s+for\s+any\s+of\s+the\s+1\s+capture\s+in\s+this\s+export\s+\(1\s+with\s+an\s+unsigned\s+entry,\s+0\s+with\s+no\s+manifest\s+entry\)/
       )
-      expect(cert).toMatch(/1\s+was\s+written\s+before\s+per-entry\s+signing\s+existed/)
-      // The class that is not present says nothing at all, rather than zero.
-      expect(cert).not.toMatch(/no\s+manifest\s+entry\s+at\s+all/)
-      expect(cert).not.toMatch(/have\s+a\s+signed\s+manifest\s+entry/)
+      expect(cert).not.toMatch(/signature\s+is\s+present/)
     })
 
     // AC4 at the other edge: with no captures the none-signed branch would
@@ -778,7 +772,9 @@ describe('certification', () => {
 
       // Two 'not stated' cells beyond the existing role/organisation ones —
       // absent values are stated as absent, never rendered as empty cells.
-      expect(cert).toMatch(/Case number \(self-asserted\)<\/div>\s*<div class="field-value">not stated/)
+      expect(cert).toMatch(
+        /Case number \(self-asserted\)<\/div>\s*<div class="field-value">not stated/
+      )
       expect(cert).toMatch(
         /Purpose or authority \(self-asserted\)<\/div>\s*<div class="field-value">not stated/
       )

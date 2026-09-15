@@ -292,62 +292,31 @@ function renderCertificationHtml(fields: CertificationFields): string {
   // as the unremarkable absence it is. An empty export gets its own branch for
   // the same reason — otherwise it falls through to the none-signed wording and
   // prints a bolded negative finding about a set with nothing in it.
+  //
+  // Counts only, by ruling on #1460: the document states how many entries carry a
+  // signature and makes no claim about what else covers an unsigned capture or
+  // whether a present signature verifies. Each such claim tried here was false
+  // for some capture class, and none is in #611's criteria.
   const { signedCount, unsignedLegacyCount, noEntryCount } = entrySignatures
   const unsignedTotal = unsignedLegacyCount + noEntryCount
-
-  // Stated per class, never over the unsigned set as a whole. Chain linkage is
-  // a true statement about an unsigned-legacy entry and a false one about a
-  // capture with no entry, which has no chain position at all — report.html
-  // says exactly that per exhibit, and the two documents ship side by side.
-  // What a no-entry capture does have is the export-time seal: the signed
-  // export entry carries packageHash, which commits to every packaged file
-  // (packageHash.ts), and it is written for every non-working-copy export,
-  // which is the only kind this document ships in (export.ts).
-  const unsignedCover = [
-    unsignedLegacyCount > 0
-      ? `${unsignedLegacyCount} ${
-          unsignedLegacyCount === 1 ? 'was' : 'were'
-        } written before per-entry signing existed, and ${
-          unsignedLegacyCount === 1 ? 'is' : 'are'
-        } covered by manifest chain linkage and by any trusted timestamp appended later, and by
-        nothing else.`
-      : '',
-    noEntryCount > 0
-      ? `${noEntryCount} ${
-          noEntryCount === 1 ? 'has' : 'have'
-        } no manifest entry at all, so the chain records no acquisition and there is no chain
-        position to cite; within this package ${
-          noEntryCount === 1 ? 'its' : 'their'
-        } bytes are covered by the signed export entry in export-entry.json — whose packageHash
-        commits to every packaged file as at the time of export — and by nothing else.`
-      : ''
-  ]
-    .filter(Boolean)
-    .join(' ')
+  const total = fields.captures.length
+  const breakdown = `(${unsignedLegacyCount} with an unsigned entry, ${noEntryCount} with no manifest entry)`
   const perExhibit = 'report.html states the signature status of every exhibit individually.'
 
   const entrySignatureProse =
-    fields.captures.length === 0
+    total === 0
       ? `<p>This export contains no captures, so there is no manifest entry for this document to
         report a signature for.</p>`
       : entrySignatures.allSigned
-        ? `<p>All ${signedCount} capture${
-            signedCount === 1 ? '' : 's'
-          } in this export have a signed manifest entry: each entry carries an RSA signature over
-          its entry hash, verifiable against the signing key of the installation that wrote it —
-          the enclosed signing-public-key.pem, except where a case was imported, when it is the
-          key embedded in that import's manifest entry.</p>`
+        ? `<p>A signature is present on the manifest entry for every capture in this export
+          (${signedCount} of ${total}). ${perExhibit}</p>`
         : signedCount > 0
-          ? `<p>A signed manifest entry is present for ${signedCount} of the ${
-              fields.captures.length
-            } captures in this export. For the remaining ${unsignedTotal} capture${
-              unsignedTotal === 1 ? '' : 's'
-            }, <strong>no entry signature is asserted</strong>. ${unsignedCover} ${perExhibit}</p>`
-          : `<p><strong>No entry signature is asserted</strong> for any of the ${
-              fields.captures.length
-            } capture${
-              fields.captures.length === 1 ? '' : 's'
-            } in this export. ${unsignedCover} ${perExhibit}</p>`
+          ? `<p>A signature is present on the manifest entry for ${signedCount} of the ${total}
+            captures in this export. For the remaining ${unsignedTotal} ${breakdown},
+            <strong>no entry signature is asserted</strong>. ${perExhibit}</p>`
+          : `<p><strong>No entry signature is asserted</strong> for any of the ${total} capture${
+              total === 1 ? '' : 's'
+            } in this export ${breakdown}. ${perExhibit}</p>`
 
   return `<!DOCTYPE html>
 <html lang="en">

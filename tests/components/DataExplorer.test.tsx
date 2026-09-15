@@ -138,6 +138,14 @@ describe('DataExplorer (#1149)', () => {
     expect(await screen.findByText('No files match this search.')).toBeTruthy()
   })
 
+  it('closes the strip when the search hides the selected row', async () => {
+    renderExplorer()
+    fireEvent.click(await screen.findByTestId('artifact-row-cap-a'))
+    expect(await screen.findByTestId('artifact-tabs')).toBeTruthy()
+    fireEvent.change(screen.getByTestId('data-search'), { target: { value: 'Old page' } })
+    await waitFor(() => expect(screen.queryByTestId('artifact-tabs')).toBeNull())
+  })
+
   it('selecting a row opens the strip with the Properties tab', async () => {
     renderExplorer()
     fireEvent.click(await screen.findByTestId('artifact-row-cap-a'))
@@ -199,6 +207,7 @@ describe('DataExplorer (#1149)', () => {
     expect(heading()).toBe('Integrity exceptions')
     expect(screen.getByTestId('artifact-row-cap-a')).toBeTruthy()
     expect(screen.queryByTestId('artifact-row-cap-legacy')).toBeNull()
+    expect(screen.queryByTestId('artifact-row-thumb-a')).toBeNull()
     select('manifest-ledger')
     expect(heading()).toBe('Manifest ledger')
 

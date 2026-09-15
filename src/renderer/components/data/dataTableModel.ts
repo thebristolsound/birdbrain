@@ -147,22 +147,13 @@ export function rowsForNode(
     return anchored.filter((row) => fileTypeOf(row) === type)
   }
   if (key === 'integrity-exceptions') {
-    // A Derived File follows its parent Capture's persisted state here: the
-    // Capture verify path binds the sidecars to the signed entry, so a sidecar
-    // failure is reported on the Capture (#118, #234).
-    const failing = new Set(
-      anchored
-        .filter(
-          (row) =>
-            row.entity === 'exhibit' &&
-            isIntegrityException(captures.get(row.id)?.lastVerifiedStatus)
-        )
-        .map((row) => row.id)
-    )
+    // Exhibits whose PERSISTED verify state is an exception, and nothing
+    // inferred: a Derived File has no persisted state of its own, and the
+    // renderer never derives one for it (X36). #1150 adds the per-Derived-File
+    // outcome from `exhibits:verify`.
     return anchored.filter(
       (row) =>
-        (row.entity === 'exhibit' && failing.has(row.id)) ||
-        (row.entity === 'derived-file' && failing.has(row.parentExhibitId))
+        row.entity === 'exhibit' && isIntegrityException(captures.get(row.id)?.lastVerifiedStatus)
     )
   }
   // keyword-hits, indicators, manifest-ledger: their content is #1150; until
@@ -170,19 +161,25 @@ export function rowsForNode(
   return anchored
 }
 
+// The shortest query that is read as a hash fragment. A hex string this short
+// matches almost every digest by chance, and "2" must reach Exhibit 2, not
+// every row whose hash contains a 2.
+export const MIN_HASH_QUERY = 6
+
 // Search filters by name, Exhibit, kind and hash only (R21, Q8) — never page
-// text, which is why the shell's placeholder does not say "text". "Exhibit 7"
-// and "7" both reach Exhibit 7; a hash matches by prefix or substring, case-
-// insensitively, because operators paste both forms.
+// text or a row's URL, which is why the shell's placeholder does not say
+// "text". "Exhibit 7" and "7" both reach Exhibit 7; a hash matches by prefix
+// or substring, case-insensitively, once the query is long enough to mean one.
 export function filterRows(rows: ArtifactRow[], query: string): ArtifactRow[] {
   const q = query.trim().toLowerCase()
   if (!q) return rows
   const number = q.replace(/^exhibit\s+/, '')
+  const hashLike = q.length >= MIN_HASH_QUERY && /^[0-9a-f]+$/.test(q)
   return rows.filter((row) => {
     if (row.name.toLowerCase().includes(q)) return true
     if (row.kind.toLowerCase().includes(q)) return true
     if (kindLabel(row.kind).toLowerCase().includes(q)) return true
-    if (row.hash.toLowerCase().includes(q)) return true
+    if (hashLike && row.hash.toLowerCase().includes(q)) return true
     if (row.exhibitNumber !== null && String(row.exhibitNumber) === number) return true
     return false
   })

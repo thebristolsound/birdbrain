@@ -1,6 +1,6 @@
 import type { Capture, InventoryRow } from '@shared/types'
 import { formatBytes } from '@renderer/components/data/dataTableModel'
-import { kindLabel } from '@renderer/components/data/dataTreeModel'
+import { kindSingular } from '@renderer/components/data/dataTreeModel'
 
 interface PropertiesTabProps {
   row: InventoryRow
@@ -22,7 +22,7 @@ interface Prop {
 export function propertiesFor(row: InventoryRow, rows: InventoryRow[], capture?: Capture): Prop[] {
   const props: Prop[] = []
   if (row.entity === 'exhibit') {
-    props.push({ label: 'Kind', value: kindLabel(row.kind).replace(/s$/, '') })
+    props.push({ label: 'Kind', value: kindSingular(row.kind) })
     props.push({ label: 'Origin', value: row.origin })
     props.push({ label: 'Exhibit Number', value: `Exhibit ${row.exhibitNumber}` })
     props.push({
@@ -48,7 +48,7 @@ export function propertiesFor(row: InventoryRow, rows: InventoryRow[], capture?:
     })
     props.push({ label: 'Created', value: row.createdAt })
   } else {
-    props.push({ label: 'Kind', value: `${kindLabel(row.kind).replace(/s$/, '')} (not anchored)` })
+    props.push({ label: 'Kind', value: `${kindSingular(row.kind)} (not anchored)` })
     props.push({ label: 'Origin', value: row.origin })
     if (row.sourceUrl) props.push({ label: 'Stated source', value: row.sourceUrl })
     props.push({ label: 'Arrived', value: row.arrivedAt })

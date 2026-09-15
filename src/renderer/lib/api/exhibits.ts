@@ -34,6 +34,7 @@ export function useExhibitsMutations(caseId: string) {
       queryClient.setQueryData(queryKeys.exhibitVerification(caseId, exhibitId), result)
       queryClient.invalidateQueries({ queryKey: queryKeys.captures(caseId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.exhibitInventory(caseId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.manifestSnapshot(caseId) })
     },
     meta: { action: 'verify exhibit' }
   })

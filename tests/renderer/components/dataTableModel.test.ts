@@ -66,8 +66,8 @@ describe('rowsForNode', () => {
     expect(rows('derived:thumb-a').map((r) => r.id)).toEqual(['thumb-a'])
   })
 
-  it('files Integrity Exceptions from the persisted Capture state, Derived Files with their parent', () => {
-    expect(rows('integrity-exceptions').map((r) => r.id)).toEqual(['cap-a', 'thumb-a'])
+  it('files Integrity Exceptions from the persisted Capture state and infers nothing for Derived Files', () => {
+    expect(rows('integrity-exceptions').map((r) => r.id)).toEqual(['cap-a'])
   })
 
   it('treats legacy and unverified as not exceptions', () => {
@@ -87,13 +87,23 @@ describe('filterRows', () => {
     expect(filterRows(all, 'thumbnail').map((r) => r.id)).toEqual(['thumb-a'])
     expect(filterRows(all, HASH_A.slice(0, 8).toUpperCase()).map((r) => r.id)).toEqual(['cap-a'])
     expect(filterRows(all, 'Exhibit 2').map((r) => r.id)).toEqual(['cap-legacy'])
+    expect(filterRows(all, '2').map((r) => r.id)).toEqual(['cap-legacy'])
     expect(filterRows(all, 'Captures').map((r) => r.id)).toEqual(['cap-a', 'cap-legacy'])
   })
 
-  it('does not search page text', () => {
-    // The fixture's Capture text would contain this if text were searched;
-    // the model has no text input at all, so nothing can match it.
-    expect(filterRows(all, 'lorem ipsum')).toEqual([])
+  it('reads a short hex query as a number, not a hash fragment', () => {
+    // Every fixture hash contains a "2"; only Exhibit 2 may answer to it.
+    expect(filterRows(all, '2').map((r) => r.id)).toEqual(['cap-legacy'])
+    expect(filterRows(all, HASH_A.slice(3, 8))).toEqual([])
+    expect(filterRows(all, HASH_A.slice(3, 9)).map((r) => r.id)).toEqual(['cap-a'])
+  })
+
+  it('does not search the URL behind SOURCE, only the four fields (R21)', () => {
+    // SOURCE renders "example.com" for cap-a, so a search over rendered cells
+    // or over the row's URL would return it; the field is not searchable.
+    expect(all.find((r) => r.id === 'cap-a')?.source).toBe('example.com')
+    expect(filterRows(all, 'example.com')).toEqual([])
+    expect(filterRows(all, 'manual-upload')).toEqual([])
   })
 
   it('returns everything for a blank query', () => {

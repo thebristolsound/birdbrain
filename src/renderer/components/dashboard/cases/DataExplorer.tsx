@@ -23,7 +23,6 @@ import {
 } from '@renderer/components/data/dataTreeModel'
 import {
   filterRows,
-  isIntegrityException,
   rowsForNode,
   toArtifactRow,
   type CaptureFacts
@@ -101,11 +100,9 @@ export function DataExplorer() {
         results: {
           keywordHits: selectors.length,
           indicators: indicatorCount ?? null,
-          integrityExceptions: rows.filter(
-            (row) =>
-              row.entity === 'exhibit' &&
-              isIntegrityException(captureFacts.get(row.id)?.lastVerifiedStatus)
-          ).length,
+          // The same selector the node's table uses, so the count and the
+          // rows cannot disagree.
+          integrityExceptions: rowsForNode(rows, 'integrity-exceptions', captureFacts).length,
           manifestLedger: snapshot ? snapshot.entries.length : null
         }
       }),
@@ -121,7 +118,9 @@ export function DataExplorer() {
     [rows, node, captureFacts, query]
   )
 
-  const selectedRow = rows.find((row) => row.id === selectedId) ?? null
+  // Resolved from the table as filtered, so a row the search has hidden does
+  // not keep its strip open.
+  const selectedRow = tableRows.find((row) => row.id === selectedId)?.raw ?? null
   const { title, subtitle } = nodeTitle(node, rows)
 
   // The Staging Pool's channels arrive with #1148; until then the group

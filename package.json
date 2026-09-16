@@ -188,7 +188,7 @@
     "@vitejs/plugin-react": "^4.7.0",
     "@vitest/coverage-v8": "^5.0.0",
     "cross-env": "^10.1.0",
-    "dependency-cruiser": "^18.2.0",
+    "dependency-cruiser": "^17.4.3",
     "electron": "^44.3.0",
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",

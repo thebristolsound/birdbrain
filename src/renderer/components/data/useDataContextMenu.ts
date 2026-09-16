@@ -93,9 +93,14 @@ export function useDataContextMenu({
   const nodeTarget = useCallback(
     (node: DataTreeNode): EntityMenuTarget => {
       const { captures, ...extras } = context
-      const exhibitIds = rowsForNode(rows, node.key, captures, extras)
-        .filter((row) => row.entity === 'exhibit')
-        .map((row) => row.id)
+      // The Manifest Ledger node lists entries, not Exhibits, and the pane
+      // header offers no Verify there, so the menu offers none either.
+      const exhibitIds =
+        node.key === 'manifest-ledger'
+          ? []
+          : rowsForNode(rows, node.key, captures, extras)
+              .filter((row) => row.entity === 'exhibit')
+              .map((row) => row.id)
       const target: NodeMenuTarget = {
         kind: 'node',
         nodeKey: node.key,

@@ -618,9 +618,10 @@ export function exhibitMenuEntries(target: ExhibitMenuTarget): MenuEntry[] {
 /**
  * Tree nodes on the Data screen. Show only this is the click; Expand and
  * Collapse below are Shift+click on the twist; Verify is the pane header's
- * Verify over the same rows, except on Integrity Exceptions, where the
+ * Verify over the same rows, with two exceptions: on Integrity Exceptions the
  * header's Verify all covers every anchored Exhibit and this covers only the
- * exceptions shown.
+ * exceptions shown, and on Manifest Ledger, which lists entries rather than
+ * Exhibits, neither offers Verify.
  */
 export function nodeMenuEntries(target: NodeMenuTarget): MenuEntry[] {
   const { actions, hasChildren, hasExhibits } = target

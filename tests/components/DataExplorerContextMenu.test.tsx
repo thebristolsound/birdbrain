@@ -243,6 +243,16 @@ describe('Data screen context menus (#1151)', () => {
     expect(item(second, 'node-verify').getAttribute('data-disabled')).not.toBeNull()
   })
 
+  it('node Verify is off on the Manifest Ledger node, which lists entries, not Exhibits', async () => {
+    renderExplorer()
+    const rail = await tree()
+    const menu = await openMenu(rail.getByTestId('data-tree-node-manifest-ledger'))
+    expect(item(menu, 'node-verify').getAttribute('data-disabled')).not.toBeNull()
+    fireEvent.click(item(menu, 'node-verify'))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(verify).not.toHaveBeenCalled()
+  })
+
   it('node Verify on a Selector node: the pane header covers exactly the matched rows', async () => {
     selectorsList.mockResolvedValue([
       { id: 's1', caseId: 'case1', pattern: 'proton', isRegex: false, enabled: true }

@@ -55,6 +55,13 @@ export const queryKeys = {
   extractedDataSearch: (caseId: string, query: string) =>
     ['extractedData', 'search', caseId, query] as const,
   annotations: (captureId: string) => ['annotations', captureId] as const,
+  // The Exhibit model's read paths (ADR-0023). One inventory per case, one
+  // manifest snapshot per case; a verify result is keyed per Exhibit so the
+  // Integrity Exceptions view can read the latest outcome without a refetch.
+  exhibitInventory: (caseId: string) => ['exhibits', 'inventory', caseId] as const,
+  exhibitVerification: (caseId: string, exhibitId: string) =>
+    ['exhibits', 'verification', caseId, exhibitId] as const,
+  manifestSnapshot: (caseId: string) => ['manifest', 'snapshot', caseId] as const,
   waybackLookup: (captureId: string) => ['wayback', 'lookup', captureId] as const,
   waybackPins: (captureId: string) => ['wayback', 'pins', captureId] as const,
   waybackCasePins: (caseId: string) => ['wayback', 'casePins', caseId] as const,

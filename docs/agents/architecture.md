@@ -156,6 +156,7 @@ Organized by feature under `src/renderer/components/`:
 
 - **captures/** - Capture list/viewer workflow (three resizable columns, each side one collapsible to a 40px rail), details panel/rail, add-URL box, provenance, viewer tabs Screenshot/Page/Text/Wayback, analysis and forensics sections, MHTML viewer, download menu, inline tag/note editing hooks, verify mutation, and the annotation editor under `captures/annotation/` (canvas, zoom/pan and editor hooks, pin popover, shape components under `annotation/shapes/`)
 - **dashboard/** - Dashboard, CaseCard, DashboardFooter, ExtensionBanner, HeroSection, QuickStartGuide, RecentCases, plus case workspace components under `dashboard/cases/` (CaseWorkspace, CreateCaseDialog, DataExplorer, ImportCaseDialog, NewCaseWizard)
+- **data/** - The Data screen's parts (#1149): `dataTreeModel.ts` and `dataTableModel.ts` (pure models over the exhibit inventory), DataTree, ArtifactTable, ArtifactTabs, PropertiesTab, and IndicatorsView (the extracted-data browser, reachable as Results > Indicators). `dashboard/cases/DataExplorer.tsx` is the shell that mounts them
 - **export/** - ExportDialog, ExportMenu, ExportProgress, ExportComplete
 - **extension/** - InstallExtensionStepper, installSteps.tsx
 - **layout/** - TopBar, Sidebar, CommandPalette

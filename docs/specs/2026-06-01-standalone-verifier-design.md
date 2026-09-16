@@ -384,6 +384,15 @@ handing them a truncated head would report a chain break as `index edited` and
 strip a signed selection of its scope, turning designed absences into missing-file
 FAILs.
 
+The bound is not purely subtractive, and a report can gain rows by it. A
+`deletion` or `timestamp` entry at or past the break stops counting as well, so
+a capture whose deletion sits there returns to the active set and regains its
+§7.3 rows — PASSing ones when the package holds its files — and a capture whose
+only timestamp entry sits there reports SKIP naming the break rather than
+naming an absent token. Both directions fail closed: an untrusted line neither
+removes a capture from the report nor vouches for its time. The package verdict
+is FAIL either way, since §7.1 has already failed.
+
 ### 7.2 Active-capture set (derived from the verified chain)
 From the verified entries, compute the **active set**: every `type: 'capture'`
 entry whose `captureId` has **no later** `type: 'deletion'` entry. Deleted

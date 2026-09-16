@@ -282,10 +282,19 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   // what stops untrusted lines from contributing rows; the `manifest chain`
   // FAIL above is what says the package is not trustworthy.
   //
+  // The bound is not purely subtractive. A `deletion` or `timestamp` entry at
+  // or past the break stops counting too, so a capture whose deletion sits
+  // there returns to the active set and regains its §7.3 rows — PASSing ones
+  // when the package holds its files — and a capture whose only timestamp entry
+  // sits there loses its token. Both directions fail closed: an untrusted line
+  // neither removes a capture from the report nor vouches for its time. The
+  // package verdict is FAIL regardless, since §7.1 already failed.
+  //
   // The `?? 0` is unreachable today — the one invalid outcome carrying no
   // `brokenAt` is `unsupported`, which returned above — and fails closed to the
   // empty set if a later outcome ever reaches here without one.
-  const entries = chain.valid ? shippedEntries : shippedEntries.slice(0, chain.brokenAt ?? 0)
+  const breakIndex = chain.valid ? undefined : (chain.brokenAt ?? 0)
+  const entries = breakIndex === undefined ? shippedEntries : shippedEntries.slice(0, breakIndex)
 
   // §7.2 active-capture set: every `capture` entry whose captureId has no later
   // `deletion` entry. Deleted captures are expected absent — not required to
@@ -301,6 +310,18 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
 
   const timestampEntries = entries.filter(
     (e): e is Extract<ManifestEntry, { type: 'timestamp' }> => e.type === 'timestamp'
+  )
+
+  // Content hashes whose only timestamp token sits at or past the break. The
+  // package does carry a token for these captures, so the §7.3 SKIP below must
+  // not report that the manifest holds none: "never timestamped" and "its time
+  // anchor sits on a line this report has declared untrustworthy" are different
+  // evidentiary readings and only the second is true here (#691).
+  const untrustedTokenHashes = new Set(
+    (breakIndex === undefined ? [] : shippedEntries.slice(breakIndex))
+      .filter((e): e is Extract<ManifestEntry, { type: 'timestamp' }> => e.type === 'timestamp')
+      .filter((e) => typeof e.tsaToken === 'string')
+      .map((e) => e.captureContentHash)
   )
 
   // §7.2b export-entry.json (#398): the package's signed statement of its own
@@ -434,9 +455,23 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
       (t) => t.captureContentHash === cap.contentHash && typeof t.tsaToken === 'string'
     )
     if (!tsEntry || typeof tsEntry.tsaToken !== 'string') {
-      // No token to byte-bind. Report the axis: an eligible v2 capture is
-      // 'pending'; a legacy/grandfathered one is 'none'. Either way not a FAIL.
-      add(tsName, 'skip', `${axis?.trustedTime ?? 'none'} — no timestamp token in the manifest`)
+      // No trusted token to byte-bind. Report the axis: an eligible v2 capture
+      // is 'pending'; a legacy/grandfathered one is 'none'. Either way not a
+      // FAIL. When the token exists but sits past the break there is no axis to
+      // report — `chain.trustedTimes` is empty on a broken chain — and printing
+      // 'none — no timestamp token in the manifest' over a manifest that holds
+      // one would invite the reader to conclude the capture was never
+      // timestamped, which is a different and wrong inference (#691).
+      if (untrustedTokenHashes.has(cap.contentHash)) {
+        add(
+          tsName,
+          'skip',
+          `no trustworthy timestamp: the manifest's token for this capture is at or ` +
+            `past the chain break at index ${breakIndex}`
+        )
+      } else {
+        add(tsName, 'skip', `${axis?.trustedTime ?? 'none'} — no timestamp token in the manifest`)
+      }
     } else {
       const signedToken = Buffer.from(tsEntry.tsaToken, 'base64')
       const tstPath = locateTimestampFile(dir, cap.captureId, evidence, signedToken)
@@ -488,10 +523,11 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   // verdict on that ground is the false accusation X25 forbids. These rows come
   // from the break-bounded `entries`, so a FAILing chain lists only the Exhibit
   // entries preceding its break and an Exhibit appended past one gets no row at
-  // all (#691) — the report never names an item it took from a line the same
-  // report has declared untrustworthy. The rows it does emit inside a FAIL are
-  // still rows for entries nothing bound bytes to, not a claim about them, and
-  // `pass` is false regardless.
+  // all (#691). That is a bound, not a provenance guarantee: on a parse-stage
+  // break the prefix these rows come from is schema-valid but never hash- or
+  // signature-checked, per the caveat on the bound above. The rows it does emit
+  // inside a FAIL are still rows for entries nothing bound bytes to, not a
+  // claim about them, and `pass` is false regardless.
   for (const entry of entries) {
     if (entry.type === 'exhibit') {
       add(

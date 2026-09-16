@@ -706,9 +706,59 @@ describe('verifyEvidencePackage', () => {
       expect(coverage.map((c) => c.status)).toEqual(['pass'])
 
       // The broken entry itself is past the break too, so the token it carries
-      // no longer satisfies the capture's timestamp check.
+      // no longer satisfies the capture's timestamp check. The SKIP says that,
+      // and does not say the manifest holds no token — it holds one, on a line
+      // this report has just called untrustworthy.
+      const ts = result.checks.find((c) => c.name === `capture ${captureId} timestamp`)
+      expect(ts?.status).toBe('skip')
+      expect(ts?.reason).toBe(
+        `no trustworthy timestamp: the manifest's token for this capture is at or past ` +
+          `the chain break at index ${breakIndex}`
+      )
+    })
+
+    it('keeps the no-token SKIP reason for a capture the manifest never timestamped', () => {
+      // A second capture with no timestamp entry of its own, then a filler
+      // deletion after it whose signature is forged. The break therefore sits
+      // past the appended capture, which stays active and untimestamped — the
+      // discriminator for the reason above is where a token is, not whether the
+      // chain is broken.
+      appendSignedLine({
+        type: 'capture',
+        captureId: APPENDED_ID,
+        caseId,
+        url: 'https://example.com/untimestamped',
+        timestamp: '2026-04-05T13:01:00.000Z',
+        contentHash: createHash('sha256').update('untimestamped').digest('hex'),
+        sizeBytes: 0,
+        operatorId: 'op',
+        operatorName: 'Test Operator',
+        toolVersion: '0.1.0'
+      })
+      appendSignedLine({
+        type: 'deletion',
+        captureId: 'a-capture-this-manifest-never-recorded',
+        caseId,
+        contentHash: createHash('sha256').update('filler').digest('hex'),
+        timestamp: '2026-04-05T13:02:00.000Z',
+        operatorId: 'op',
+        operatorName: 'Test Operator',
+        toolVersion: '0.1.0'
+      })
+      const breakIndex =
+        readFileSync(join(pkgDir, 'manifest.jsonl'), 'utf-8').split('\n').filter((l) => l.trim())
+          .length - 1
+      forgeSignatureAt(breakIndex)
+
+      const result = verifyEvidencePackage(pkgDir)
+
+      expect(result.checks.find((c) => c.name === 'manifest chain')?.status).toBe('fail')
+      const ts = result.checks.find((c) => c.name === `capture ${APPENDED_ID} timestamp`)
+      expect(ts?.status).toBe('skip')
+      expect(ts?.reason).toBe('none — no timestamp token in the manifest')
+      // The packaged capture's own token is before the break and still binds.
       expect(result.checks.find((c) => c.name === `capture ${captureId} timestamp`)?.status).toBe(
-        'skip'
+        'pass'
       )
     })
 

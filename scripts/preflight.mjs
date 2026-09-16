@@ -20,10 +20,9 @@
 //   pnpm lint:boundaries
 //   pnpm lint:agents-md      advisory: reports drift between the two files, never fails
 //   pnpm typecheck
-//   BIRDBRAIN_REQUIRE_OPENSSL=1 BIRDBRAIN_REQUIRE_JQ=1 pnpm test
 //   pnpm build
 //   pnpm build:extension      only when the diff against the base touches extension/
-//   pnpm test:coverage
+//   pnpm test:coverage        full suite once; OpenSSL and jq required via childEnv
 //   pnpm coverage:diff        run as `node scripts/diff-coverage.mjs --json --base <merge-base sha>`
 //
 // COVERAGE_DIFF_MIN is stripped from the child environment: preflight is the
@@ -229,12 +228,6 @@ const main = async () => {
   await run('pnpm', ['lint:boundaries'], 'pnpm lint:boundaries')
   await run('pnpm', ['lint:agents-md'], 'pnpm lint:agents-md', describeAgentsMd)
   await run('pnpm', ['typecheck'], 'pnpm typecheck')
-  await run(
-    'pnpm',
-    ['test'],
-    'BIRDBRAIN_REQUIRE_OPENSSL=1 BIRDBRAIN_REQUIRE_JQ=1 pnpm test',
-    describeVitest
-  )
   await run('pnpm', ['build'], 'pnpm build')
   if (touchesExtension(changed)) {
     await run('pnpm', ['build:extension'], 'pnpm build:extension')

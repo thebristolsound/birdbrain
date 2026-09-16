@@ -49,8 +49,8 @@ this file only adds the duties CLAUDE.md does not cover.
 ## Verify loop — run it, report real output
 
 Before opening the PR, commit your work and run `pnpm preflight`. It refuses a dirty tree and
-a Node other than 20.x, then runs the whole loop — lint, typecheck, unit tests, build, the
-extension build when `extension/` changed, coverage thresholds, and diff coverage against
+a Node other than 20.x, then runs the whole loop — lint, typecheck, build, the
+extension build when `extension/` changed, the unit suite once with coverage, and diff coverage against
 `origin/main` — and writes a sha-stamped block to `.preflight/verification.md`. The command
 expansion is documented once, in the header of `scripts/preflight.mjs`. Paste the file's
 contents verbatim as the PR body's `## Verification` section. Never commit it: the commit

@@ -18,11 +18,7 @@ import {
   withDeletionEntry,
   ManifestRollback
 } from '@main/services/manifest'
-import type {
-  CaptureChainEntry,
-  ManifestCaptureEntry,
-  ManifestImportEntry
-} from '@main/services/manifest'
+import type { CaptureChainEntry, ManifestImportEntry } from '@main/services/manifest'
 import { reconcileCaptureTrustedTime } from '@main/services/trustedTime'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { getSettings } from '@main/services/settings'
@@ -466,16 +462,18 @@ export async function verifyCapture(
   return result
 }
 
-// Whether the signed entry at a row's `manifestIndex` is the entry for THAT
-// row (#827). Direct equality is the native case. A case that arrived by
-// archive import is the reason this is not just equality: the manifest is
-// immutable, so its capture entries keep the source installation's case id and
-// capture ids, while import mints a fresh case id and remaps any capture id
-// that collided with a local row. Both are resolved through the case's own
+// Whether the signed entry at a row's manifest index is the entry for THAT
+// row (#827). `entry` is the case id and row id the entry names — a `capture`
+// entry's `captureId`, an `exhibit` entry's `exhibitId` — so a Capture and any
+// other Exhibit kind bind the same way. Direct equality is the native case. A
+// case that arrived by archive import is the reason this is not just equality:
+// the manifest is immutable, so its entries keep the source installation's
+// case id and row ids, while import mints a fresh case id and remaps any row
+// id that collided with a local row. Both are resolved through the case's own
 // signed custody records — the `import` entries in the same verified manifest
 // read, and the id map they anchor by hash.
-function entryDescribesRow(
-  entry: ManifestCaptureEntry,
+export function entryDescribesRow(
+  entry: { caseId: string; rowId: string },
   row: { id: string; caseId: string },
   imports: ManifestImportEntry[],
   caseDir: string
@@ -486,10 +484,10 @@ function entryDescribesRow(
     custodyCaseIds.add(imported.sourceCaseId)
   }
   if (!custodyCaseIds.has(entry.caseId)) return false
-  if (entry.captureId === row.id) return true
-  // Only an id-collision remap can leave the entry naming a different capture,
+  if (entry.rowId === row.id) return true
+  // Only an id-collision remap can leave the entry naming a different row,
   // and only the map this case's own import entry anchors may say so.
-  return readAnchoredIdMap(caseDir, row.caseId, imports)?.[entry.captureId] === row.id
+  return readAnchoredIdMap(caseDir, row.caseId, imports)?.[entry.rowId] === row.id
 }
 
 // The id-collision remap archive import wrote into this case directory, read
@@ -788,7 +786,14 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
         // land on a DIFFERENT capture's same-hash entry, whose url/timestamp/
         // headers/tls would then be re-signed as this source's provenance.
         // Bind the entry to the row it must describe.
-        if (!entryDescribesRow(sourceEntry, source, imports, caseDir)) {
+        if (
+          !entryDescribesRow(
+            { caseId: sourceEntry.caseId, rowId: sourceEntry.captureId },
+            source,
+            imports,
+            caseDir
+          )
+        ) {
           return { status: 'rejected', reason: 'not_verified', detail: 'entry-mismatch' }
         }
 

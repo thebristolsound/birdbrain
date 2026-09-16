@@ -40,7 +40,7 @@ import { initInstallationId, resetInstallationId } from '@main/services/installa
 import { initSettings, updateSettings } from '@main/services/settings'
 import { createStoredZip } from '@main/services/zip'
 import { readStoredZip } from '@main/services/zipRead'
-import { MANIFEST_FILENAME } from '@shared/constants'
+import { IMPORT_ID_MAP_FILENAME, MANIFEST_FILENAME } from '@shared/constants'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 
@@ -59,7 +59,9 @@ import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 //   6. The Evidence Package is refused while a committed non-Capture Exhibit
 //      exists (X44).
 //   7. A `.birdbrain` archive round-trips pooled files as `staged` and
-//      committed Exhibits with their numbers (X12, X30).
+//      committed Exhibits with their numbers (X12, X30); an Exhibit whose id
+//      was remapped on import still verifies through the anchored id map, and
+//      an unanchored map fails closed.
 
 vi.mock('@main/services/tlsCertChain', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@main/services/tlsCertChain')>()
@@ -567,7 +569,30 @@ describe('staging pool', () => {
       expect(readFileSync(join(storageRoot, pool[0].path))).toEqual(PDF)
       // Pooled, never anchored: no exhibits row and no entry names the PDF.
       expect(imported.some((e) => e.contentHash === sha256(PDF))).toBe(false)
-      expect(verifyManifestChain(join(storageRoot, newCaseId)).valid).toBe(true)
+      const newCaseDir = join(storageRoot, newCaseId)
+      expect(verifyManifestChain(newCaseDir).valid).toBe(true)
+
+      // The `exhibit` entry still names the source id; the row resolves to it
+      // through the id map the `import` entry anchors.
+      expect(await verifyExhibit(newCaseId, importedAttachment.id)).toMatchObject({
+        exhibitId: importedAttachment.id,
+        kind: 'attachment',
+        status: 'verified'
+      })
+
+      // A map the import entry did not anchor may not say so: same mapping,
+      // different bytes, so its digest no longer matches `idMapSha256`.
+      const idMapPath = join(newCaseDir, IMPORT_ID_MAP_FILENAME)
+      const idMap = JSON.parse(readFileSync(idMapPath, 'utf-8')) as {
+        remapped: Record<string, string>
+      }
+      expect(idMap.remapped[attachment.id]).toBe(importedAttachment.id)
+      writeFileSync(idMapPath, JSON.stringify({ ...idMap, forged: true }))
+      expect(verifyManifestChain(newCaseDir).valid).toBe(true)
+      expect(await verifyExhibit(newCaseId, importedAttachment.id)).toMatchObject({
+        status: 'chain-broken',
+        reason: 'Exhibit not anchored in manifest chain'
+      })
     })
 
     it('fails verification when a pooled entry is altered or its flag is dropped', async () => {

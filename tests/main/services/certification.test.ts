@@ -93,9 +93,9 @@ describe('certification', () => {
     initInstallationId(tempDir)
     initSettings(tempDir)
     updateSettings({
-      operatorName: 'Det. Smith',
-      operatorRole: 'Detective',
-      operatorOrganization: 'Metro PD',
+      operatorName: 'Alex Smith',
+      operatorRole: 'Researcher',
+      operatorOrganization: 'Independent Research Group',
       tsaUrl: 'https://tsa.example/timestamp'
     })
 
@@ -134,7 +134,7 @@ describe('certification', () => {
           timestamp: '2026-04-05T12:01:00.000Z',
           tsaToken: token.toString('base64'),
           operatorId: 'op',
-          operatorName: 'Det. Smith',
+          operatorName: 'Alex Smith',
           toolVersion: '0.1.0'
         })
         return result
@@ -162,9 +162,9 @@ describe('certification', () => {
     const entries = await exportZip()
     const html = entries.get('certification.html')!.toString('utf-8')
 
-    expect(html).toContain('Det. Smith')
-    expect(html).toContain('Detective')
-    expect(html).toContain('Metro PD')
+    expect(html).toContain('Alex Smith')
+    expect(html).toContain('Researcher')
+    expect(html).toContain('Independent Research Group')
     expect(html).toContain('Birdbrain')
     expect(html).toContain('SHA-256')
     expect(html).toContain('https://tsa.example/timestamp')
@@ -217,7 +217,7 @@ describe('certification', () => {
       timestamp: '2026-04-05T12:01:00.000Z',
       tsaToken: token.toString('base64'),
       operatorId: 'op',
-      operatorName: 'Det. Smith',
+      operatorName: 'Alex Smith',
       toolVersion: '0.1.0'
     })
 
@@ -265,7 +265,7 @@ describe('certification', () => {
       timestamp: '2026-04-05T12:01:00.000Z',
       tsaToken: token.toString('base64'),
       operatorId: 'op',
-      operatorName: 'Det. Smith',
+      operatorName: 'Alex Smith',
       toolVersion: '0.1.0'
     })
     setCaptureTrustedTime(capture.id, 'none')
@@ -393,9 +393,9 @@ describe('certification', () => {
         ...DIRECT_INPUT_EXTRAS,
         exportTimestamp: '2026-04-05T13:00:00.000Z',
         installationId: 'install-1',
-        operatorName: 'Det. Smith',
-        operatorRole: 'Detective',
-        operatorOrganization: 'Metro PD',
+        operatorName: 'Alex Smith',
+        operatorRole: 'Researcher',
+        operatorOrganization: 'Independent Research Group',
         tsaUrl: 'https://tsa.example/timestamp',
         captures: [{ ...capture, trustedTimeStatus: 'rfc3161' }],
         trustedTimeByCaptureId: new Map<string, TrustedTimeResult>([
@@ -433,9 +433,9 @@ describe('certification', () => {
         ...DIRECT_INPUT_EXTRAS,
         exportTimestamp: '2026-04-05T13:00:00.000Z',
         installationId: 'install-1',
-        operatorName: 'Det. Smith',
-        operatorRole: 'Detective',
-        operatorOrganization: 'Metro PD',
+        operatorName: 'Alex Smith',
+        operatorRole: 'Researcher',
+        operatorOrganization: 'Independent Research Group',
         tsaUrl: 'https://tsa.example/timestamp',
         captures: [stamped, pending],
         trustedTimeByCaptureId: new Map<string, TrustedTimeResult>([

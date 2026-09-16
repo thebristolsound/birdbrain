@@ -1493,7 +1493,7 @@ describe('captureServer', () => {
   })
 
   it('POST /api/captures succeeds when operator name is set', async () => {
-    updateSettings({ operatorName: 'Det. Smith' })
+    updateSettings({ operatorName: 'Alex Smith' })
     const testCase = createCase({ name: 'Named Operator' })
     const res = await postCapture(
       {

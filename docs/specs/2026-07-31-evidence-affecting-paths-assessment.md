@@ -221,6 +221,7 @@ independent of the Operator who holds it.
 | `src/main/services/signingKey.ts` | blocking | Manifest signing keypair generation/storage/signing — the key the chain's assurance is bounded by |
 | `src/main/services/timestamp.ts` | blocking | RFC 3161 `TimeStampReq` construction (message imprint = the capture's `contentHash`) and TSA round-trip. The token dates the content; it does not prove manifest-chain integrity |
 | `src/main/services/timestampWorker.ts` | blocking | Async timestamping worker writing manifest entries |
+| `src/main/services/staging.ts` | blocking | The Staging Pool (#1148): upload hashes bytes on arrival outside the chain, commit writes the `exhibit` entry and the row, discard removes both |
 | `src/main/services/trustedTime.ts` | blocking | Per-capture trusted-time status resolution |
 | `src/main/services/tsaTrust.ts` | blocking | Embedded TSA trust anchors shipped in evidence packages |
 | `src/main/services/tlsCertChain.ts` | blocking | TLS chain corroboration anchored into signed manifest entries |

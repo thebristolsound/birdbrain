@@ -629,7 +629,8 @@ const ManifestExhibitEntrySchema = z
     // Sequential per-Case integer assigned at commit and never reused (X18).
     // Recorded here so a citation ("Exhibit 7") is verifiable from the chain.
     exhibitNumber: z.number().int().positive(),
-    // Case-directory-relative path of the stored bytes.
+    // Storage-root-relative path of the stored bytes (`{caseId}/...`), the
+    // same form `derivation.outputPath` and the `exhibits` row record.
     path: z.string(),
     contentHash: z.string(),
     sizeBytes: z.number(),

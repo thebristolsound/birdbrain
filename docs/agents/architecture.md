@@ -56,7 +56,7 @@ Packages are deep modules - see [src/packages/README.md](../../src/packages/READ
 
 All renderer↔main communication uses typed IPC channels defined in `src/shared/ipc.ts`. Channels follow `domain:action` naming (e.g., `cases:create`, `selectors:create`). Event channels (main→renderer) use `event:` prefix.
 
-**Domains** (read `IPC_CHANNELS` in `src/shared/ipc.ts` for the authoritative list): cases, captures, recapture, tags, search, settings, export, selectors, notes, wayback, extractedData, annotations, extension, shell, app, diagnostics, updates, ai, db — plus the `event:` main→renderer channels.
+**Domains** (read `IPC_CHANNELS` in `src/shared/ipc.ts` for the authoritative list): cases, captures, recapture, tags, search, settings, export, selectors, notes, wayback, extractedData, annotations, extension, shell, exhibits, manifest, staging, app, diagnostics, updates, ai, db — plus the `event:` main→renderer channels.
 
 The preload script exposes these via `window.birdbrain` with typed invoke/on methods.
 

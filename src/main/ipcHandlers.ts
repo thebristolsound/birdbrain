@@ -58,6 +58,7 @@ import { defaultCaptureStore } from '@main/services/captureStore'
 import { renderCapturePdf } from '@main/services/pdfExport'
 import { getThumbnail } from '@main/services/thumbnails'
 import { getCaseInventory, getManifestSnapshot, verifyExhibit } from '@main/services/exhibits'
+import { commitStagedFiles, discardStagedFiles, uploadToStaging } from '@main/services/staging'
 import * as settings from '@main/services/settings'
 import * as openrouter from '@main/services/openrouter'
 import * as analysisService from '@main/services/ai/analysisService'
@@ -159,6 +160,19 @@ function snapshotSameCase(caseId: string, captureIds: string[]): Capture[] {
   return rows
 }
 
+// The pooled-row batches take a plain id list; the same shape and size rule
+// as the capture batches, so a malformed payload never reaches the pool.
+function validateIds(ids: unknown): string[] {
+  if (
+    !Array.isArray(ids) ||
+    ids.length > MAX_BATCH_CAPTURE_IDS ||
+    !ids.every((id) => typeof id === 'string')
+  ) {
+    throw new IpcFailure('Invalid id list', 'INVALID_BATCH_PAYLOAD')
+  }
+  return ids
+}
+
 function rememberRevealablePath(filePath: string): void {
   const resolved = resolve(filePath)
   // delete-then-add so re-exporting the same destination refreshes its recency.
@@ -177,6 +191,9 @@ export function registerIpcHandlers(deps: {
   recaptureService: RecaptureService
   updaterService: UpdaterService
   sessionService: SessionService
+  // Hand-off for a freshly committed Exhibit to the trusted-timestamp worker
+  // (X26). Optional so tests without a worker can register the handlers.
+  enqueueExhibitTimestamp?: (exhibitId: string) => void
 }): void {
   const { selectorLifecycle, captureLifecycle, recaptureService, updaterService, sessionService } =
     deps
@@ -920,9 +937,15 @@ export function registerIpcHandlers(deps: {
       const isWorkingCopy = options.exportClass === 'working-copy'
       const { canceled, filePath } = await dialog.showSaveDialog({
         defaultPath:
-          options.outputPath || (isZip ? (isWorkingCopy ? 'working-copy.zip' : 'evidence.zip') : 'report.html'),
+          options.outputPath ||
+          (isZip ? (isWorkingCopy ? 'working-copy.zip' : 'evidence.zip') : 'report.html'),
         filters: isZip
-          ? [{ name: isWorkingCopy ? 'Working Copy (non-evidentiary)' : 'Evidence Package', extensions: ['zip'] }]
+          ? [
+              {
+                name: isWorkingCopy ? 'Working Copy (non-evidentiary)' : 'Evidence Package',
+                extensions: ['zip']
+              }
+            ]
           : [{ name: 'HTML', extensions: ['html'] }]
       })
       if (canceled || !filePath) return { canceled: true }
@@ -969,6 +992,26 @@ export function registerIpcHandlers(deps: {
     verifyExhibit(caseId, exhibitId)
   )
   handle(IPC_CHANNELS.MANIFEST_SNAPSHOT, (_, caseId: string) => getManifestSnapshot(caseId))
+
+  // Staging Pool (ADR-0024, #1148). The file dialog lives here, as the archive
+  // import's does; a cancel is an empty list, not an error.
+  handle(IPC_CHANNELS.STAGING_UPLOAD, async (_, caseId: string) => {
+    if (!caseRepo.getCase(caseId)) throw new IpcFailure('Case not found', 'NOT_FOUND')
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      title: 'Add files to the Staging Pool',
+      properties: ['openFile', 'multiSelections']
+    })
+    if (canceled || filePaths.length === 0) return []
+    return uploadToStaging(caseId, filePaths)
+  })
+  handle(IPC_CHANNELS.STAGING_COMMIT, (_, caseId: string, stagingIds: string[]) =>
+    commitStagedFiles(caseId, validateIds(stagingIds), {
+      enqueueTimestamp: deps.enqueueExhibitTimestamp
+    })
+  )
+  handle(IPC_CHANNELS.STAGING_DISCARD, (_, caseId: string, stagingIds: string[]) =>
+    discardStagedFiles(caseId, validateIds(stagingIds))
+  )
 
   // App
   handle(IPC_CHANNELS.APP_GET_VERSION, () => app.getVersion())

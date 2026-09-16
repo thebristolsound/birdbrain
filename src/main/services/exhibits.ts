@@ -1,19 +1,25 @@
 import { createHash, createPublicKey } from 'crypto'
+import { createReadStream } from 'fs'
 import { ManifestEntrySchema } from '@shared/schemas'
 import type { ManifestEntry } from '@shared/schemas'
 import { getExhibit, listExhibits } from '@main/services/db/exhibitRepo'
-import { listDerivedFilesForCase } from '@main/services/db/derivedFileRepo'
+import {
+  listDerivedFilesForCase,
+  listDerivedFilesForExhibit
+} from '@main/services/db/derivedFileRepo'
 import { listStagingFiles } from '@main/services/db/stagingRepo'
 import {
+  importEntriesOf,
   readManifestSnapshot,
   verifyManifestChainText,
   type ChainVerifyResult
 } from '@main/services/manifest'
 import { getPublicKeyPem } from '@main/services/signingKey'
 import { defaultCaptureStore, type CaptureStore } from '@main/services/captureStore'
-import { verifyCapture } from '@main/services/captureLifecycle'
+import { entryDescribesRow, verifyCapture } from '@main/services/captureLifecycle'
 import type {
   CaseInventory,
+  DerivedFileVerification,
   ExhibitVerification,
   InventoryDerivedFileRow,
   InventoryExhibitRow,
@@ -229,14 +235,83 @@ export function getManifestSnapshot(
   }
 }
 
+async function hashFile(path: string): Promise<string> {
+  const hasher = createHash('sha256')
+  await new Promise<void>((resolve, reject) => {
+    const rs = createReadStream(path)
+    rs.on('data', (chunk) => hasher.update(chunk))
+    rs.on('end', () => resolve())
+    rs.on('error', reject)
+  })
+  return hasher.digest('hex')
+}
+
+// The verified line at `index`, or undefined when the chain did not verify or
+// the line is not one this build can type. Reading the raw snapshot is safe
+// only AFTER the chain verified: every line up to the head is then covered by
+// the signatures, and an unparsed line is one from a newer schema.
+function verifiedEntryAt(
+  snapshot: ReturnType<typeof readManifestSnapshot>,
+  chain: ChainVerifyResult,
+  index: number | null
+): ManifestEntry | undefined {
+  if (!chain.valid || index === null) return undefined
+  const line = snapshot.entries[index]
+  if (!line) return undefined
+  const parsed = ManifestEntrySchema.safeParse(line)
+  return parsed.success ? parsed.data : undefined
+}
+
+// One outcome per Derived File (X37). The recorded hash is compared against
+// the `derivation` entry the chain vouches for, never against the row alone:
+// the row is a mirror written in the same seam, and a mirror is what #234
+// showed cannot vouch for bytes. An unanchored file (X34) is reported as such.
+async function verifyDerivedFiles(
+  exhibitId: string,
+  store: CaptureStore,
+  snapshot: ReturnType<typeof readManifestSnapshot>,
+  chain: ChainVerifyResult
+): Promise<DerivedFileVerification[]> {
+  const results: DerivedFileVerification[] = []
+  for (const file of listDerivedFilesForExhibit(exhibitId)) {
+    const base = { derivedFileId: file.id, derivation: file.derivation }
+    const entry = verifiedEntryAt(snapshot, chain, file.manifestSeq)
+    if (!entry || entry.type !== 'derivation') {
+      results.push({
+        ...base,
+        status: 'unverified',
+        reason:
+          file.manifestSeq === null
+            ? 'No manifest entry anchors this derived file'
+            : 'Derived file is not anchored in the verified chain'
+      })
+      continue
+    }
+    const abs = store.resolveAbsolute(file.path)
+    let computed: string
+    try {
+      computed = await hashFile(abs)
+    } catch {
+      results.push({ ...base, status: 'missing', reason: 'Derived file unreadable' })
+      continue
+    }
+    results.push({ ...base, status: computed === entry.outputHash ? 'verified' : 'tampered' })
+  }
+  return results
+}
+
 // Verify one Exhibit (X37). `capture` delegates to the Capture path and returns
 // its result untouched, so `exhibits:verify` and `captures:verify` cannot drift
-// apart; `803p` adds attachments by extending the switch, not by adding a
-// second channel. A verify-all is the caller running this per Exhibit in
-// sequence — there is deliberately no batch channel.
+// apart. Every other kind (#1148) hashes the stored bytes and binds them to the
+// `exhibit` entry at the row's manifest index on a verified chain — the same
+// statuses a Capture gets, plus `unsupported` for a chain this build cannot
+// read (X25), which is never reported as tampering. A verify-all is the caller
+// running this per Exhibit in sequence — there is deliberately no batch
+// channel.
 export async function verifyExhibit(
   caseId: string,
-  exhibitId: string
+  exhibitId: string,
+  store: CaptureStore = defaultCaptureStore
 ): Promise<ExhibitVerification> {
   const exhibit = getExhibit(exhibitId)
   if (!exhibit || exhibit.caseId !== caseId) {
@@ -248,22 +323,59 @@ export async function verifyExhibit(
       reason: 'Exhibit not found in this case'
     }
   }
-  if (exhibit.kind !== 'capture') {
+  const snapshot = readManifestSnapshot(store.caseDir(caseId))
+  const chain = verifyManifestChainText(snapshot.jsonl.toString('utf-8'), {
+    publicKeyPem: getPublicKeyPem()
+  })
+  const derived = await verifyDerivedFiles(exhibitId, store, snapshot, chain)
+  const base = { exhibitId, caseId, kind: exhibit.kind, derived }
+
+  if (exhibit.kind === 'capture') {
+    const capture = await verifyCapture(exhibitId, store)
     return {
-      exhibitId,
-      caseId,
-      kind: exhibit.kind,
-      status: 'unsupported',
-      reason: `No verify path for exhibit kind '${exhibit.kind}' yet`
+      ...base,
+      status: capture.status,
+      ...(capture.reason !== undefined ? { reason: capture.reason } : {}),
+      capture
     }
   }
-  const capture = await verifyCapture(exhibitId)
-  return {
-    exhibitId,
-    caseId,
-    kind: exhibit.kind,
-    status: capture.status,
-    ...(capture.reason !== undefined ? { reason: capture.reason } : {}),
-    capture
+
+  if (!exhibit.path) {
+    return { ...base, status: 'missing', reason: 'No stored file recorded for this exhibit' }
   }
+  let computed: string
+  try {
+    computed = await hashFile(store.resolveAbsolute(exhibit.path))
+  } catch (err) {
+    return { ...base, status: 'missing', reason: 'Exhibit file unreadable: ' + String(err) }
+  }
+  if (chain.unsupported) {
+    return {
+      ...base,
+      status: 'unsupported',
+      reason: 'Manifest holds an entry from a newer schema; this verifier is too old to read it'
+    }
+  }
+  if (!chain.valid) {
+    return { ...base, status: 'chain-broken', reason: chain.reason }
+  }
+  const entry = verifiedEntryAt(snapshot, chain, exhibit.manifestSeq)
+  // The entry names the row through the case's custody records, not by bare id
+  // equality: an archive import keeps the source's `exhibitId` on the entry and
+  // remaps a colliding row id, and only the id map the `import` entry anchors
+  // may reconcile the two (the same binding a Capture gets).
+  if (
+    !entry ||
+    entry.type !== 'exhibit' ||
+    entry.contentHash !== exhibit.contentHash ||
+    !entryDescribesRow(
+      { caseId: entry.caseId, rowId: entry.exhibitId },
+      exhibit,
+      importEntriesOf(snapshot),
+      store.caseDir(caseId)
+    )
+  ) {
+    return { ...base, status: 'chain-broken', reason: 'Exhibit not anchored in manifest chain' }
+  }
+  return { ...base, status: computed === entry.contentHash ? 'verified' : 'tampered' }
 }

@@ -1,4 +1,4 @@
-import { getDb } from '@main/services/db/core'
+import { getDb, type ImportCtx } from '@main/services/db/core'
 import type { Exhibit } from '@shared/types'
 
 // The identity and numbering rows of the Exhibit model (ADR-0023). A Capture's
@@ -58,10 +58,11 @@ export interface InsertExhibitParams {
 // number, which X18 says must never happen. Closing it needs a per-Case
 // high-water mark that survives deletion — a fourth table or a `cases` column,
 // either of which is a storage surface this ticket did not enumerate and which
-// the archive round trip would have to carry. The exposure today is bounded:
-// nothing renders an Exhibit Number yet (`803b`/`803c`) and no export cites one
-// (`803e`), so no citation can be made against a number before the counter
-// lands.
+// the archive round trip would have to carry. Since #1148 the number a commit
+// takes is written into a signed `exhibit` entry, so a reused number is now a
+// reused number IN THE CHAIN, and since #1149 the screen renders it. The gap
+// is no longer bounded and needs the high-water mark before a citation is
+// made against a number.
 export function nextExhibitNumber(caseId: string): number {
   const row = getDb()
     .prepare('SELECT COALESCE(MAX(exhibit_number), 0) AS max FROM exhibits WHERE case_id = ?')
@@ -186,20 +187,10 @@ interface CaptureNumberingRow {
 // — a duplicate Capture (#827) carries the source's page timestamp with a later
 // Manifest index, so payload order and chain order genuinely differ.
 //
-// What this does NOT give is a number that survives an archive round trip, and
-// the gap is open rather than closed here. `exhibit_number` is not carried in
-// the `.birdbrain` payload, so an imported Case is renumbered from
-// `nextExhibitNumber` = 1 and any gap the source had — a deleted Capture —
-// is compacted away: a source numbered 1, 2, 3 with 2 deleted imports as 1, 2.
-// Worse, `importCaseArchive` copies the source manifest verbatim, so the
-// imported chain still carries the SOURCE's `renumber` entry and
-// `hasRenumberEntry` (exhibitBackfill.ts) suppresses a corrective one — the
-// Case's only in-chain numbering record then states numbers the database does
-// not use and names an Exhibit the Case does not hold, on a chain that
-// verifies. That is the X18 harm ("a reference that changes between two exports
-// of the same Case is worse than none"). Closing it needs either
-// `exhibit_number` in the payload, which is the `CASE_ARCHIVE_SCHEMA_VERSION`
-// bump X30 reserves for `803p`, or a corrective `renumber` entry on import.
+// A schema-6 archive carries `exhibits` rows (#1148, X30), so an import from
+// one keeps the source's numbers and this runs as a no-op; an older archive
+// still reaches this and is numbered fresh, which is the only numbering it
+// ever had.
 export function backfillExhibitsForCaptures(caseId: string): number {
   const rows = getDb()
     .prepare(
@@ -234,4 +225,55 @@ export function backfillExhibitsForCaptures(caseId: string): number {
 // `exhibits` hangs off `cases`, not `captures`, so nothing cascades for it.
 export function deleteExhibit(id: string): boolean {
   return getDb().prepare('DELETE FROM exhibits WHERE id = ?').run(id).changes > 0
+}
+
+// --- Archive round trip (#1148, X30) ----------------------------------------
+
+export function collectExhibitsForCase(caseId: string): Record<string, unknown>[] {
+  return getDb()
+    .prepare('SELECT * FROM exhibits WHERE case_id = ? ORDER BY exhibit_number')
+    .all(caseId) as Record<string, unknown>[]
+}
+
+// Rows from a schema-6 archive, inserted with their numbers intact so a
+// citation made against the source Case still names the same Exhibit here
+// (X18). `id` is remapped (a Capture's Exhibit id follows its capture id), and
+// `path` is re-rooted from the source Case directory to the new one, because
+// the column is storage-root-relative and the Case directory is the new id.
+export function importExhibitRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
+  const insert = getDb().prepare(
+    `INSERT INTO exhibits (
+       id, case_id, kind, origin, exhibit_number, name,
+       content_hash, path, size_bytes, committed_at, manifest_seq
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  )
+  for (const row of rows) {
+    const oldId = row.id as string
+    const newId = ctx.mapId(oldId)
+    const oldPath = row.path as string | null
+    insert.run(
+      newId,
+      ctx.newCaseId,
+      row.kind,
+      row.origin,
+      row.exhibit_number,
+      row.name,
+      row.content_hash,
+      oldPath ? rerootPath(oldPath, ctx.newCaseId, oldId, newId) : null,
+      row.size_bytes ?? null,
+      row.committed_at,
+      row.manifest_seq ?? null
+    )
+  }
+}
+
+// `<oldCase>/<sub>/<oldId><ext>` -> `<newCase>/<sub>/<newId><ext>`. The file
+// name carries the row id, so a remapped id renames the file too — the same
+// rule the archive import applies to Capture artifacts.
+export function rerootPath(path: string, newCaseId: string, oldId: string, newId: string): string {
+  const parts = path.split('/')
+  parts[0] = newCaseId
+  const last = parts.length - 1
+  if (parts[last].startsWith(oldId)) parts[last] = newId + parts[last].slice(oldId.length)
+  return parts.join('/')
 }

@@ -28,6 +28,7 @@ const NAMESPACES = [
   'shell',
   'exhibits',
   'manifest',
+  'staging',
   'app',
   'diagnostics',
   'updates',

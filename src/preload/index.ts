@@ -198,6 +198,12 @@ const birdbrain = {
     snapshot: bridge(IPC_CHANNELS.MANIFEST_SNAPSHOT)
   },
 
+  staging: {
+    upload: bridge(IPC_CHANNELS.STAGING_UPLOAD),
+    commit: bridge(IPC_CHANNELS.STAGING_COMMIT),
+    discard: bridge(IPC_CHANNELS.STAGING_DISCARD)
+  },
+
   app: {
     getVersion: bridge(IPC_CHANNELS.APP_GET_VERSION)
   },

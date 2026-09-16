@@ -1,8 +1,15 @@
 import { join } from 'path'
 import { app } from 'electron'
 import * as captureRepo from '@main/services/db/captureRepo'
+import * as caseRepo from '@main/services/db/caseRepo'
+import { getExhibit, listExhibits } from '@main/services/db/exhibitRepo'
 import { appendManifestEntry, initManifest } from '@main/services/manifest'
-import { reconcileCaptureTrustedTime, reconcileAllMirrors } from '@main/services/trustedTime'
+import {
+  buildTrustedTimeIndex,
+  reconcileCaptureTrustedTime,
+  reconcileAllMirrors,
+  resolveTrustedTime
+} from '@main/services/trustedTime'
 import { requestTimestamp } from '@main/services/timestamp'
 import { parseTimestampToken } from '@shared/verify'
 import { getSettings } from '@main/services/settings'
@@ -26,8 +33,12 @@ export interface TimestampWorkerDeps {
 
 export interface TimestampWorker {
   stampCapture(captureId: string): Promise<boolean>
+  // A committed non-Capture Exhibit (X26): the same RFC 3161 path over its
+  // Content Hash, and a `timestamp` entry stamped at schema 3 (#1180).
+  stampExhibit(exhibitId: string): Promise<boolean>
   processPending(): Promise<{ stamped: number; failed: number }>
   enqueue(captureId: string): void
+  enqueueExhibit(exhibitId: string): void
   rebuildMirror(): void
   start(): void
   stop(): void
@@ -93,11 +104,84 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
     }
   }
 
+  // Stamps one non-Capture Exhibit. There is no mirror column for these: the
+  // pending set is read off the manifest (an anchored Exhibit whose hash has no
+  // `timestamp` entry), so a lost column cannot lose the queue. The entry is
+  // stamped at schema 3 (#1180): its shape is the schema-2 one, but a schema-2
+  // verifier would read it as a Capture's stamp and silently fail to apply it.
+  async function stampExhibit(exhibitId: string): Promise<boolean> {
+    const exhibit = getExhibit(exhibitId)
+    if (!exhibit || exhibit.manifestSeq === null) return false
+    if (exhibit.kind === 'capture') return stampCapture(exhibitId)
+
+    const settings = getSettings()
+    const tsaUrl = settings.tsaUrl || DEFAULT_TSA_URL
+    const caseDir = join(getStorageRoot(), exhibit.caseId)
+
+    try {
+      const token = await requestToken(exhibit.contentHash, tsaUrl)
+      const parsed = parseTimestampToken(token)
+      if (parsed.messageImprintHex !== exhibit.contentHash) {
+        throw new Error('TSA token imprint does not match exhibit content hash')
+      }
+      if (resolveTrustedTime(caseDir, exhibit.contentHash).trustedTime === 'rfc3161') {
+        return true
+      }
+      initManifest(caseDir)
+      appendManifestEntry(
+        caseDir,
+        {
+          type: 'timestamp',
+          caseId: exhibit.caseId,
+          captureContentHash: exhibit.contentHash,
+          timestamp: new Date().toISOString(),
+          tsaToken: token.toString('base64'),
+          operatorId: getInstallationId(),
+          operatorName: settings.operatorName ?? '',
+          toolVersion: getToolVersion()
+        },
+        { minReaderSchemaVersion: 3 }
+      )
+      return true
+    } catch (err) {
+      logger.error(
+        'timestampWorker',
+        'timestampWorker.stamp_failed',
+        { exhibitId: ident(exhibitId) },
+        err
+      )
+      return false
+    }
+  }
+
+  // Anchored non-Capture Exhibits with no `timestamp` entry over their hash,
+  // one manifest pass per Case.
+  function listPendingExhibits(): string[] {
+    const pending: string[] = []
+    for (const c of caseRepo.listCases()) {
+      const candidates = listExhibits(c.id).filter(
+        (exhibit) => exhibit.kind !== 'capture' && exhibit.manifestSeq !== null
+      )
+      // Most Cases hold Captures only; no manifest read for those.
+      if (candidates.length === 0) continue
+      const index = buildTrustedTimeIndex(join(getStorageRoot(), c.id))
+      for (const exhibit of candidates) {
+        if (index.get(exhibit.contentHash)?.trustedTime === 'rfc3161') continue
+        pending.push(exhibit.id)
+      }
+    }
+    return pending
+  }
+
   async function processPending(): Promise<{ stamped: number; failed: number }> {
     let stamped = 0
     let failed = 0
     for (const cap of captureRepo.listPendingTimestampCaptures()) {
       if (await stampCapture(cap.id)) stamped++
+      else failed++
+    }
+    for (const exhibitId of listPendingExhibits()) {
+      if (await stampExhibit(exhibitId)) stamped++
       else failed++
     }
     return { stamped, failed }
@@ -109,6 +193,14 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
     captureRepo.setCaptureTrustedTime(captureId, 'pending')
     setImmediate(() => {
       void stampCapture(captureId)
+    })
+  }
+
+  // The commit path's hand-off (X26). Nothing to mark pending: the manifest
+  // already says so by having no stamp for the hash.
+  function enqueueExhibit(exhibitId: string): void {
+    setImmediate(() => {
+      void stampExhibit(exhibitId)
     })
   }
 
@@ -132,5 +224,14 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
     timer = undefined
   }
 
-  return { stampCapture, processPending, enqueue, rebuildMirror, start, stop }
+  return {
+    stampCapture,
+    stampExhibit,
+    processPending,
+    enqueue,
+    enqueueExhibit,
+    rebuildMirror,
+    start,
+    stop
+  }
 }

@@ -3,6 +3,7 @@ import { createHash } from 'crypto'
 import { join } from 'path'
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
+import { listExhibits } from '@main/services/db/exhibitRepo'
 import * as noteRepo from '@main/services/db/noteRepo'
 import * as waybackRefRepo from '@main/services/db/waybackRefRepo'
 import { getStorageRoot } from '@main/services/storage'
@@ -40,11 +41,7 @@ import {
 import type { TrustedTimeResult } from '@shared/verify'
 import { buildCertification, resolveToolVersion } from '@main/services/certification'
 import { buildHtmlReport } from '@main/services/reportHtml'
-import type {
-  EntrySignatureStatus,
-  PackagedArtifacts,
-  ReportData
-} from '@main/services/reportHtml'
+import type { EntrySignatureStatus, PackagedArtifacts, ReportData } from '@main/services/reportHtml'
 import { VERIFY_RUNBOOK } from '@main/services/verifyRunbook'
 import { VERIFY_SCRIPT, VERIFY_SCRIPT_FILENAME } from '@main/services/verifyScript'
 import { WORKING_COPY_MARKER_FILENAME } from '@shared/schemas'
@@ -281,6 +278,22 @@ export async function generateReport(
 
   const caseData = caseRepo.getCase(caseId)
   if (!caseData) throw new Error(`Case not found: ${caseId}`)
+
+  // X44: the Evidence Package enumerates Captures only until #1156 lands, and
+  // its Certification claims to describe the Case's evidence. A committed
+  // attachment silently left out of a package that makes that claim is the
+  // dishonest third option ADR-0023 rejected, so the export is refused rather
+  // than narrowed. The Working Copy and the standalone report are unchanged.
+  if (options.format === 'zip' && !workingCopy) {
+    const committed = listExhibits(caseId).filter((exhibit) => exhibit.kind !== 'capture')
+    if (committed.length > 0) {
+      throw new Error(
+        `Evidence Package export is refused: this case holds ${committed.length} committed ` +
+          `non-capture exhibit${committed.length === 1 ? '' : 's'} and the package format covers ` +
+          'captures only until #1156 lands. Export a Working Copy instead.'
+      )
+    }
+  }
 
   onProgress?.('Loading captures...', 10)
   const allCaptures = captureRepo.listCaptures(caseId)

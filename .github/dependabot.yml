@@ -88,3 +88,10 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # dependency-cruiser 18.x declares engines.node ^22||^24||>=26 and exits 1
+      # under the Node 20 that .nvmrc pins, which is how #1465 turned the
+      # required lint check red on main until #1475 pinned it back to 17.x.
+      # Drop this entry when the repository moves to Node 22.
+      - dependency-name: 'dependency-cruiser'
+        versions: ['>=18']

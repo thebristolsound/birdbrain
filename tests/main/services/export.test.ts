@@ -1906,9 +1906,9 @@ describe('export', () => {
 
   it('generated report includes installationId and operator identity', async () => {
     updateSettings({
-      operatorName: 'Det. Smith',
-      operatorRole: 'Detective',
-      operatorOrganization: 'Metro PD'
+      operatorName: 'Alex Smith',
+      operatorRole: 'Researcher',
+      operatorOrganization: 'Independent Research Group'
     })
     await ingest(caseId, '<html>test</html>')
     const outputPath = join(tempDir, 'identity.html')
@@ -1924,9 +1924,9 @@ describe('export', () => {
     )
 
     const content = readFileSync(outputPath, 'utf-8')
-    expect(content).toContain('Det. Smith')
-    expect(content).toContain('Detective')
-    expect(content).toContain('Metro PD')
+    expect(content).toContain('Alex Smith')
+    expect(content).toContain('Researcher')
+    expect(content).toContain('Independent Research Group')
     // installationId is a UUID — verify its label is present
     expect(content).toContain('Installation identifier')
   })

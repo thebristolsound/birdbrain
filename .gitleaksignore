@@ -77,3 +77,8 @@ cd5a25c266ba99b515ddaeb39c16a05ce954080b:tests/shared/verify/fixtures/pre-scope-
 89085808dd8b8d411ff9ac822511e17f605b7797:docs/design-handoff/2026-09-14-design-project-export/design_handoff_style_sync/prototypes/Birdbrain.dc.html:generic-api-key:5727
 89085808dd8b8d411ff9ac822511e17f605b7797:docs/design-handoff/2026-09-14-design-project-export/design_handoff_style_sync/prototypes/Case Reviewer.dc.html:generic-api-key:434
 fc4a365e1be2cc7f7b4134e4084ae97c47c5cc68:docs/design-handoff/2026-09-14-birdbrain-dc/Birdbrain.dc.html:generic-api-key:6211
+#
+# #1474 (commit 6ed0204d) edited the 2026-08-21 standalone mock, so the same
+# packed fixture line surfaced once more at that commit. Same mock session
+# token as the a447ef03 and 8496383a entries for this file, not a credential.
+6ed0204df9a4c00a123fe54f3685f69d27e71f94:docs/design-handoff/2026-08-21-birdbrain-standalone/Birdbrain-standalone.html:generic-api-key:384

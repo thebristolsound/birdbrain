@@ -19,7 +19,15 @@ import {
   CopyPlus,
   Clipboard,
   Download,
-  X
+  X,
+  Check,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  Crosshair as Target,
+  FileText,
+  Folder,
+  Link,
+  ShieldCheck
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { accelerator } from '@renderer/lib/accelerator'
@@ -156,8 +164,87 @@ export interface TagMenuTarget {
   }
 }
 
+// --- The Data screen's four kinds (#1151, X38) ------------------------------
+//
+// Backed items only: every one accelerates a control the screen already has.
+// Reveal in folder and Copy absolute path are absent on purpose — the
+// `shell:showItemInFolder` allowlist is not widened for evidence files, which
+// is #1194's ruling to make, not this menu's. Rename, Delete, Re-extract, Run
+// selectors, Verify chain from here, Show signature detail and Export are
+// absent because the app has no route for them.
+
+export interface ExhibitMenuTarget {
+  kind: 'exhibit'
+  exhibitId: string
+  name: string
+  // 'exhibit' or 'derived-file': a Derived File has no viewer of its own, so
+  // Open in viewer opens its parent and the label says so.
+  entity: 'exhibit' | 'derived-file'
+  // Only a Capture has a viewer; an attachment or document opens nowhere yet.
+  canOpen: boolean
+  // A legacy Capture may record no stored path; there is nothing to copy.
+  hasPath: boolean
+  actions: {
+    open: () => void
+    copyHash: () => void
+    copyPath: () => void
+    verify: () => void
+  }
+}
+
+export interface NodeMenuTarget {
+  kind: 'node'
+  nodeKey: string
+  label: string
+  hasChildren: boolean
+  // Whether any Exhibit sits under this node, for Verify.
+  hasExhibits: boolean
+  actions: {
+    showOnly: () => void
+    expandBelow: () => void
+    collapseBelow: () => void
+    verify: () => void
+  }
+}
+
+export interface LedgerMenuTarget {
+  kind: 'ledger'
+  index: number
+  entryType: string
+  // Absent when the entry names nothing the screen can show (an export, an
+  // unreadable line, a deleted Capture).
+  canShowTarget: boolean
+  // An unreadable line has no entry hash to copy.
+  hasEntryHash: boolean
+  // The genesis entry has no previous hash to copy.
+  hasPrevHash: boolean
+  actions: {
+    showTarget: () => void
+    copyEntryHash: () => void
+    copyPrevHash: () => void
+  }
+}
+
+export interface StagedMenuTarget {
+  kind: 'staged'
+  stagingId: string
+  name: string
+  actions: {
+    commit: () => void
+    discard: () => void
+    copyHash: () => void
+  }
+}
+
 export type EntityMenuTarget =
-  CaptureMenuTarget | NoteMenuTarget | SelectorMenuTarget | TagMenuTarget
+  | CaptureMenuTarget
+  | NoteMenuTarget
+  | SelectorMenuTarget
+  | TagMenuTarget
+  | ExhibitMenuTarget
+  | NodeMenuTarget
+  | LedgerMenuTarget
+  | StagedMenuTarget
 
 /** Derived rather than declared, so the two cannot drift as kinds are added. */
 export type EntityKind = EntityMenuTarget['kind']
@@ -484,6 +571,159 @@ export function tagMenuEntries(target: TagMenuTarget): MenuEntry[] {
   ]
 }
 
+/**
+ * Exhibit and Derived File rows on the Data screen (#1151, X38).
+ *
+ * Open in viewer accelerates Enter on the focused row (and a double-click);
+ * the two copies accelerate the copy buttons on the Properties tab; Verify
+ * accelerates the strip's Verify button. A Derived File opens its parent,
+ * because it has no viewer of its own; a non-Capture Exhibit opens nothing
+ * yet and the item says so rather than vanishing.
+ */
+export function exhibitMenuEntries(target: ExhibitMenuTarget): MenuEntry[] {
+  const { actions, entity, canOpen, hasPath } = target
+  return [
+    {
+      id: 'exhibit-open',
+      label: entity === 'derived-file' ? 'Open parent in viewer' : 'Open in viewer',
+      icon: Eye,
+      shortcut: 'Enter',
+      disabled: !canOpen,
+      run: actions.open
+    },
+    {
+      id: 'exhibit-copy-hash',
+      label: 'Copy SHA-256',
+      icon: Hash,
+      separatorBefore: true,
+      run: actions.copyHash
+    },
+    {
+      id: 'exhibit-copy-path',
+      label: 'Copy relative path',
+      icon: Clipboard,
+      disabled: !hasPath,
+      run: actions.copyPath
+    },
+    {
+      id: 'exhibit-verify',
+      label: 'Verify',
+      icon: ShieldCheck,
+      separatorBefore: true,
+      run: actions.verify
+    }
+  ]
+}
+
+/**
+ * Tree nodes on the Data screen. Show only this is the click; Expand and
+ * Collapse below are Shift+click on the twist; Verify is the pane header's
+ * Verify over the same rows, with two exceptions: on Integrity Exceptions the
+ * header's Verify all covers every anchored Exhibit and this covers only the
+ * exceptions shown, and on Manifest Ledger, which lists entries rather than
+ * Exhibits, neither offers Verify.
+ */
+export function nodeMenuEntries(target: NodeMenuTarget): MenuEntry[] {
+  const { actions, hasChildren, hasExhibits } = target
+  return [
+    {
+      id: 'node-show-only',
+      label: 'Show only this',
+      icon: Target,
+      shortcut: 'Enter',
+      run: actions.showOnly
+    },
+    {
+      id: 'node-expand-below',
+      label: 'Expand below',
+      icon: ChevronsUpDown,
+      separatorBefore: true,
+      disabled: !hasChildren,
+      run: actions.expandBelow
+    },
+    {
+      id: 'node-collapse-below',
+      label: 'Collapse below',
+      icon: ChevronsDownUp,
+      disabled: !hasChildren,
+      run: actions.collapseBelow
+    },
+    {
+      id: 'node-verify',
+      label: 'Verify',
+      icon: ShieldCheck,
+      separatorBefore: true,
+      disabled: !hasExhibits,
+      run: actions.verify
+    }
+  ]
+}
+
+/**
+ * Manifest Ledger entries. Show target is the row click; the two copies are
+ * the hash cells, which copy on click.
+ */
+export function ledgerMenuEntries(target: LedgerMenuTarget): MenuEntry[] {
+  const { actions, canShowTarget, hasEntryHash, hasPrevHash } = target
+  return [
+    {
+      id: 'ledger-show-target',
+      label: 'Show target',
+      icon: Link,
+      shortcut: 'Enter',
+      disabled: !canShowTarget,
+      run: actions.showTarget
+    },
+    {
+      id: 'ledger-copy-entry-hash',
+      label: 'Copy entry hash',
+      icon: Hash,
+      separatorBefore: true,
+      disabled: !hasEntryHash,
+      run: actions.copyEntryHash
+    },
+    {
+      id: 'ledger-copy-prev-hash',
+      label: 'Copy previous hash',
+      icon: Hash,
+      disabled: !hasPrevHash,
+      run: actions.copyPrevHash
+    }
+  ]
+}
+
+/**
+ * Pooled rows in the Staging group. Commit and Discard are the row's inline
+ * buttons; Discard confirms through the same dialog either way. The copied
+ * hash is labelled not anchored (X38): a pooled file's digest names bytes the
+ * chain does not cover, and a paste that read as evidence would be wrong.
+ */
+export function stagedMenuEntries(target: StagedMenuTarget): MenuEntry[] {
+  const { actions } = target
+  return [
+    {
+      id: 'staged-commit',
+      label: 'Commit to the chain',
+      icon: Check,
+      run: actions.commit
+    },
+    {
+      id: 'staged-discard',
+      label: 'Discard…',
+      icon: Trash2,
+      danger: true,
+      run: actions.discard
+    },
+    {
+      id: 'staged-copy-hash',
+      label: 'Copy SHA-256 (not anchored)',
+      icon: Hash,
+      separatorBefore: true,
+      run: actions.copyHash
+    }
+  ]
+}
+
 /** The registry proper: one kind, one action set, one place to change it. */
 export function entityMenuEntries(target: EntityMenuTarget): MenuEntry[] {
   switch (target.kind) {
@@ -495,6 +735,14 @@ export function entityMenuEntries(target: EntityMenuTarget): MenuEntry[] {
       return selectorMenuEntries(target)
     case 'tag':
       return tagMenuEntries(target)
+    case 'exhibit':
+      return exhibitMenuEntries(target)
+    case 'node':
+      return nodeMenuEntries(target)
+    case 'ledger':
+      return ledgerMenuEntries(target)
+    case 'staged':
+      return stagedMenuEntries(target)
   }
 }
 
@@ -537,6 +785,34 @@ export function entityMenuHeader(target: EntityMenuTarget): MenuHeader {
         title: target.name,
         subtitle: 'tag',
         ariaLabel: `Tag actions: ${target.name}`
+      }
+    case 'exhibit':
+      return {
+        icon: FileText,
+        title: target.name,
+        subtitle: target.entity === 'derived-file' ? 'derived file' : 'exhibit',
+        ariaLabel: `Exhibit actions: ${target.name}`
+      }
+    case 'node':
+      return {
+        icon: Folder,
+        title: target.label,
+        subtitle: 'node',
+        ariaLabel: `Node actions: ${target.label}`
+      }
+    case 'ledger':
+      return {
+        icon: Link,
+        title: `seq ${String(target.index).padStart(4, '0')} · ${target.entryType}`,
+        subtitle: 'manifest entry',
+        ariaLabel: `Manifest entry actions: seq ${target.index}`
+      }
+    case 'staged':
+      return {
+        icon: FileText,
+        title: target.name,
+        subtitle: 'pooled · not anchored',
+        ariaLabel: `Pooled file actions: ${target.name}`
       }
   }
 }

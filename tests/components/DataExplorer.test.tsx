@@ -5,7 +5,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 
 vi.mock('@tanstack/react-router', () => ({
-  useParams: () => ({ caseId: 'case1' })
+  useParams: () => ({ caseId: 'case1' }),
+  useNavigate: () => vi.fn()
 }))
 vi.mock('@renderer/lib/notify', () => ({
   notify: { error: vi.fn(), warn: vi.fn(), success: vi.fn(), info: vi.fn() }
@@ -117,15 +118,19 @@ describe('DataExplorer (#1149)', () => {
     expect(screen.queryByTestId('artifact-row-cap-a')).toBeNull()
   })
 
-  it('renders the Staging group with Upload, Commit and Discard inert until #1148', async () => {
+  it('renders the Staging group with Upload, and inline Commit and Discard on the pooled row', async () => {
     renderExplorer()
     fireEvent.click(
       (await tree()).getByTestId('data-tree-node-staging').querySelector('button:last-of-type')!
     )
-    expect(((await screen.findByTestId('staging-upload')) as HTMLButtonElement).disabled).toBe(true)
-    expect((screen.getByTestId('staging-commit-staged-1') as HTMLButtonElement).disabled).toBe(true)
+    expect(((await screen.findByTestId('staging-upload')) as HTMLButtonElement).disabled).toBe(
+      false
+    )
+    expect((screen.getByTestId('staging-commit-staged-1') as HTMLButtonElement).disabled).toBe(
+      false
+    )
     expect((screen.getByTestId('staging-discard-staged-1') as HTMLButtonElement).disabled).toBe(
-      true
+      false
     )
   })
 

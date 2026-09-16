@@ -5,12 +5,20 @@ import {
   captureMenuEntries,
   entityMenuEntries,
   entityMenuHeader,
+  exhibitMenuEntries,
   isSubmenu,
+  ledgerMenuEntries,
+  nodeMenuEntries,
   noteMenuEntries,
   selectorMenuEntries,
+  stagedMenuEntries,
   tagMenuEntries,
   type CaptureMenuActions,
   type CaptureMenuTarget,
+  type ExhibitMenuTarget,
+  type LedgerMenuTarget,
+  type NodeMenuTarget,
+  type StagedMenuTarget,
   type MenuAction,
   type MenuEntry,
   type NoteMenuTarget,
@@ -379,5 +387,164 @@ describe('accelerator hints on macOS', () => {
     const multi = captureTarget({ targetIds: ['cap-a', 'cap-b'], inSelection: true })
     expect(actionById(captureMenuEntries(multi), 'capture-deselect').shortcut).toBe('⌘-click')
     expect(entityMenuHeader(multi).subtitle).toBe('⌘-click to change the selection')
+  })
+})
+
+// The Data screen's four kinds (#1151, X38): backed items only, in the
+// ruling's order, and never a route to `shell:showItemInFolder`.
+describe('data screen kinds', () => {
+  function exhibitTarget(overrides: Partial<ExhibitMenuTarget> = {}): ExhibitMenuTarget {
+    return {
+      kind: 'exhibit',
+      exhibitId: 'cap-a',
+      name: 'Example page',
+      entity: 'exhibit',
+      canOpen: true,
+      hasPath: true,
+      actions: { open: vi.fn(), copyHash: vi.fn(), copyPath: vi.fn(), verify: vi.fn() },
+      ...overrides
+    }
+  }
+  function nodeTarget(overrides: Partial<NodeMenuTarget> = {}): NodeMenuTarget {
+    return {
+      kind: 'node',
+      nodeKey: 'kind:capture',
+      label: 'Captures',
+      hasChildren: true,
+      hasExhibits: true,
+      actions: { showOnly: vi.fn(), expandBelow: vi.fn(), collapseBelow: vi.fn(), verify: vi.fn() },
+      ...overrides
+    }
+  }
+  function ledgerTarget(overrides: Partial<LedgerMenuTarget> = {}): LedgerMenuTarget {
+    return {
+      kind: 'ledger',
+      index: 3,
+      entryType: 'capture',
+      canShowTarget: true,
+      hasEntryHash: true,
+      hasPrevHash: true,
+      actions: { showTarget: vi.fn(), copyEntryHash: vi.fn(), copyPrevHash: vi.fn() },
+      ...overrides
+    }
+  }
+  function stagedTarget(): StagedMenuTarget {
+    return {
+      kind: 'staged',
+      stagingId: 'staged-1',
+      name: 'report.pdf',
+      actions: { commit: vi.fn(), discard: vi.fn(), copyHash: vi.fn() }
+    }
+  }
+  const labels = (entries: MenuEntry[]) => entries.map((e) => e.label)
+  const run = (entries: MenuEntry[], id: string) => {
+    const entry = entries.find((e) => e.id === id)
+    if (!entry || isSubmenu(entry)) throw new Error(`no action ${id}`)
+    entry.run()
+    return entry
+  }
+
+  it('exhibit: Open in viewer, Copy SHA-256, Copy relative path, Verify — and nothing else', () => {
+    const target = exhibitTarget()
+    const entries = exhibitMenuEntries(target)
+    expect(labels(entries)).toEqual([
+      'Open in viewer',
+      'Copy SHA-256',
+      'Copy relative path',
+      'Verify'
+    ])
+    run(entries, 'exhibit-open')
+    run(entries, 'exhibit-copy-hash')
+    run(entries, 'exhibit-copy-path')
+    run(entries, 'exhibit-verify')
+    expect(target.actions.open).toHaveBeenCalledOnce()
+    expect(target.actions.copyHash).toHaveBeenCalledOnce()
+    expect(target.actions.copyPath).toHaveBeenCalledOnce()
+    expect(target.actions.verify).toHaveBeenCalledOnce()
+    expect(entityMenuEntries(target)).toEqual(entries)
+  })
+
+  it('exhibit: a Derived File opens its parent, and a kind with no viewer cannot open', () => {
+    const derived = exhibitMenuEntries(exhibitTarget({ entity: 'derived-file' }))
+    expect(derived[0].label).toBe('Open parent in viewer')
+    const attachment = exhibitMenuEntries(exhibitTarget({ canOpen: false }))
+    expect((attachment[0] as MenuAction).disabled).toBe(true)
+    // No stored path, nothing to copy: the item is off, like the Properties button.
+    const pathless = exhibitMenuEntries(exhibitTarget({ hasPath: false }))
+    expect((pathless[2] as MenuAction).disabled).toBe(true)
+    expect(entityMenuHeader(exhibitTarget({ entity: 'derived-file' }))).toMatchObject({
+      subtitle: 'derived file',
+      ariaLabel: 'Exhibit actions: Example page'
+    })
+  })
+
+  it('node: Show only this, Expand below, Collapse below, Verify, with the last three gated', () => {
+    const target = nodeTarget()
+    const entries = nodeMenuEntries(target)
+    expect(labels(entries)).toEqual(['Show only this', 'Expand below', 'Collapse below', 'Verify'])
+    run(entries, 'node-show-only')
+    run(entries, 'node-expand-below')
+    run(entries, 'node-collapse-below')
+    run(entries, 'node-verify')
+    expect(target.actions.showOnly).toHaveBeenCalledOnce()
+    expect(target.actions.expandBelow).toHaveBeenCalledOnce()
+    expect(target.actions.collapseBelow).toHaveBeenCalledOnce()
+    expect(target.actions.verify).toHaveBeenCalledOnce()
+
+    const leaf = nodeMenuEntries(nodeTarget({ hasChildren: false, hasExhibits: false }))
+    expect(leaf.map((e) => (e as MenuAction).disabled)).toEqual([undefined, true, true, true])
+    expect(entityMenuHeader(nodeTarget())).toMatchObject({ ariaLabel: 'Node actions: Captures' })
+  })
+
+  it('ledger: Show target, Copy entry hash, Copy previous hash', () => {
+    const target = ledgerTarget()
+    const entries = ledgerMenuEntries(target)
+    expect(labels(entries)).toEqual(['Show target', 'Copy entry hash', 'Copy previous hash'])
+    run(entries, 'ledger-show-target')
+    run(entries, 'ledger-copy-entry-hash')
+    run(entries, 'ledger-copy-prev-hash')
+    expect(target.actions.showTarget).toHaveBeenCalledOnce()
+    expect(target.actions.copyEntryHash).toHaveBeenCalledOnce()
+    expect(target.actions.copyPrevHash).toHaveBeenCalledOnce()
+    const orphan = ledgerMenuEntries(ledgerTarget({ canShowTarget: false }))
+    expect((orphan[0] as MenuAction).disabled).toBe(true)
+    // Genesis has no previous hash; the cell shows none and the item is off.
+    const genesis = ledgerMenuEntries(ledgerTarget({ hasPrevHash: false }))
+    expect((genesis[2] as MenuAction).disabled).toBe(true)
+    expect(entityMenuHeader(ledgerTarget())).toMatchObject({
+      title: 'seq 0003 · capture',
+      ariaLabel: 'Manifest entry actions: seq 3'
+    })
+  })
+
+  it('staged: Commit, Discard (confirmed), Copy SHA-256 labelled not anchored', () => {
+    const target = stagedTarget()
+    const entries = stagedMenuEntries(target)
+    expect(labels(entries)).toEqual([
+      'Commit to the chain',
+      'Discard…',
+      'Copy SHA-256 (not anchored)'
+    ])
+    expect((entries[1] as MenuAction).danger).toBe(true)
+    run(entries, 'staged-commit')
+    run(entries, 'staged-discard')
+    run(entries, 'staged-copy-hash')
+    expect(target.actions.commit).toHaveBeenCalledOnce()
+    expect(target.actions.discard).toHaveBeenCalledOnce()
+    expect(target.actions.copyHash).toHaveBeenCalledOnce()
+    expect(entityMenuHeader(target)).toMatchObject({
+      subtitle: 'pooled · not anchored',
+      ariaLabel: 'Pooled file actions: report.pdf'
+    })
+  })
+
+  it('offers no Reveal in folder or absolute-path item on any of the four kinds', () => {
+    const all = [
+      ...exhibitMenuEntries(exhibitTarget()),
+      ...nodeMenuEntries(nodeTarget()),
+      ...ledgerMenuEntries(ledgerTarget()),
+      ...stagedMenuEntries(stagedTarget())
+    ]
+    expect(all.some((e) => /reveal|folder|absolute/i.test(e.label))).toBe(false)
   })
 })

@@ -422,6 +422,7 @@ describe('data screen kinds', () => {
       index: 3,
       entryType: 'capture',
       canShowTarget: true,
+      hasEntryHash: true,
       hasPrevHash: true,
       actions: { showTarget: vi.fn(), copyEntryHash: vi.fn(), copyPrevHash: vi.fn() },
       ...overrides

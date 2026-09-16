@@ -66,16 +66,22 @@ function MaybeMenu({ target, children }: { target: EntityMenuTarget | null; chil
   )
 }
 
+// An empty hash is only a statement about the chain when the caller says so
+// (`placeholder`): a readable first entry has no previous hash because it is
+// the genesis entry, but an unreadable line's empty hashes mean nothing was
+// read, so they render as nothing and offer nothing to copy.
 function HashCell({
   value,
   label,
-  onCopy
+  onCopy,
+  placeholder
 }: {
   value: string
   label: string
   onCopy?: (value: string, label: string) => void
+  placeholder?: string
 }) {
-  if (!value) return <span className="text-text-faint">genesis</span>
+  if (!value) return <span className="text-text-faint">{placeholder}</span>
   return (
     <button
       type="button"
@@ -122,7 +128,11 @@ function LedgerRows({ rows, actions = {} }: { rows: LedgerRow[]; actions?: Ledge
               tabIndex={actions.onShowTarget ? 0 : undefined}
               onClick={() => actions.onShowTarget?.(row)}
               onKeyDown={(event) => {
-                if (event.key === 'Enter') actions.onShowTarget?.(row)
+                // Only the row's own Enter: a keydown bubbling from a hash
+                // cell is that button's copy, not a Show target.
+                if (event.key === 'Enter' && event.target === event.currentTarget) {
+                  actions.onShowTarget?.(row)
+                }
               }}
             >
               <span className="tabular-nums text-text-faint">
@@ -134,7 +144,12 @@ function LedgerRows({ rows, actions = {} }: { rows: LedgerRow[]; actions?: Ledge
                 {row.target}
               </span>
               <HashCell value={row.entryHash} label="entry hash" onCopy={actions.onCopyHash} />
-              <HashCell value={row.prevHash} label="previous hash" onCopy={actions.onCopyHash} />
+              <HashCell
+                value={row.prevHash}
+                label="previous hash"
+                onCopy={actions.onCopyHash}
+                placeholder={row.parsed ? 'genesis' : undefined}
+              />
             </div>
           </MaybeMenu>
         ))

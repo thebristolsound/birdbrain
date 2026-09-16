@@ -214,6 +214,8 @@ export interface LedgerMenuTarget {
   // Absent when the entry names nothing the screen can show (an export, an
   // unreadable line, a deleted Capture).
   canShowTarget: boolean
+  // An unreadable line has no entry hash to copy.
+  hasEntryHash: boolean
   // The genesis entry has no previous hash to copy.
   hasPrevHash: boolean
   actions: {
@@ -659,7 +661,7 @@ export function nodeMenuEntries(target: NodeMenuTarget): MenuEntry[] {
  * the hash cells, which copy on click.
  */
 export function ledgerMenuEntries(target: LedgerMenuTarget): MenuEntry[] {
-  const { actions, canShowTarget, hasPrevHash } = target
+  const { actions, canShowTarget, hasEntryHash, hasPrevHash } = target
   return [
     {
       id: 'ledger-show-target',
@@ -674,6 +676,7 @@ export function ledgerMenuEntries(target: LedgerMenuTarget): MenuEntry[] {
       label: 'Copy entry hash',
       icon: Hash,
       separatorBefore: true,
+      disabled: !hasEntryHash,
       run: actions.copyEntryHash
     },
     {

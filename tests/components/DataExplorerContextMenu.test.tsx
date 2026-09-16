@@ -54,6 +54,10 @@ let upload: ReturnType<typeof vi.fn>
 let commit: ReturnType<typeof vi.fn>
 let discard: ReturnType<typeof vi.fn>
 let writeText: ReturnType<typeof vi.fn>
+let snapshot: ReturnType<typeof vi.fn>
+let selectorsList: ReturnType<typeof vi.fn>
+let matchCounts: ReturnType<typeof vi.fn>
+let matchingCaptures: ReturnType<typeof vi.fn>
 
 function renderExplorer() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -100,6 +104,10 @@ beforeEach(() => {
   }))
   discard = vi.fn(async (_caseId: string, ids: string[]) => ({ discarded: ids }))
   writeText = vi.fn(async () => undefined)
+  snapshot = vi.fn(async () => SNAPSHOT)
+  selectorsList = vi.fn(async () => [])
+  matchCounts = vi.fn(async () => ({}))
+  matchingCaptures = vi.fn(async () => [])
   Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
   fakeBridge({
     exhibits: {
@@ -107,12 +115,8 @@ beforeEach(() => {
       verify
     },
     captures: { list: vi.fn(async () => CAPTURES), getContent: vi.fn(async () => null) },
-    selectors: {
-      list: vi.fn(async () => []),
-      matchCounts: vi.fn(async () => ({})),
-      matchingCaptures: vi.fn(async () => [])
-    },
-    manifest: { snapshot: vi.fn(async () => SNAPSHOT) },
+    selectors: { list: selectorsList, matchCounts, matchingCaptures },
+    manifest: { snapshot },
     extractedData: { count: vi.fn(async () => 0) },
     staging: { upload, commit, discard }
   })
@@ -304,6 +308,44 @@ describe('Data screen context menus (#1151)', () => {
     await select('manifest-ledger')
     fireEvent.click(within(await screen.findByTestId('ledger-row-0')).getByTitle(/click to copy/))
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2))
+  })
+
+  it('ledger row: Enter on a hash cell is that cell’s copy, Enter on the row shows its target', async () => {
+    renderExplorer()
+    await select('manifest-ledger')
+    const row = await screen.findByTestId('ledger-row-0')
+    const cell = within(row).getByTitle(/click to copy/)
+    // Not cancelled, so the button's own activation (its click) is what runs;
+    // the row does not read it as a Show target.
+    expect(fireEvent.keyDown(cell, { key: 'Enter' })).toBe(true)
+    expect(screen.getByTestId('data-node-title').textContent).toBe('Manifest ledger')
+    fireEvent.click(cell)
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('e'.repeat(64)))
+    expect(screen.getByTestId('data-node-title').textContent).toBe('Manifest ledger')
+
+    fireEvent.keyDown(row, { key: 'Enter' })
+    expect(screen.getByTestId('data-node-title').textContent).toBe('Example page')
+  })
+
+  it('ledger row: an unreadable line shows no hash and copies none; only a readable first entry reads genesis', async () => {
+    snapshot.mockResolvedValue({
+      ...SNAPSHOT,
+      entries: [...SNAPSHOT.entries, { index: 1, parsed: false, reason: 'bad json' }]
+    })
+    renderExplorer()
+    await select('manifest-ledger')
+    const cells = (id: string) =>
+      Array.from(screen.getByTestId(id).children).map((el) => el.textContent)
+    expect(cells('ledger-row-0').slice(4)).toEqual(['e'.repeat(12), 'genesis'])
+    expect(cells('ledger-row-1').slice(2)).toEqual(['unreadable', 'bad json', '', ''])
+    expect(within(screen.getByTestId('ledger-row-1')).queryByTitle(/click to copy/)).toBeNull()
+
+    const menu = await openMenu(screen.getByTestId('ledger-row-1'))
+    expect(item(menu, 'ledger-copy-entry-hash').getAttribute('data-disabled')).not.toBeNull()
+    expect(item(menu, 'ledger-copy-prev-hash').getAttribute('data-disabled')).not.toBeNull()
+    expect(item(menu, 'ledger-show-target').getAttribute('data-disabled')).not.toBeNull()
+    fireEvent.click(item(menu, 'ledger-copy-entry-hash'))
+    expect(writeText).not.toHaveBeenCalled()
   })
 
   it('never offers a reveal-in-folder route', async () => {

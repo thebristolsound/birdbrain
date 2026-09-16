@@ -125,6 +125,7 @@ export function useDataContextMenu({
         index: row.index,
         entryType: row.type,
         canShowTarget: targetId !== null,
+        hasEntryHash: row.entryHash !== '',
         hasPrevHash: row.prevHash !== '',
         actions: {
           showTarget: () => {

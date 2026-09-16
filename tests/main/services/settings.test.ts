@@ -134,8 +134,8 @@ describe('settings', () => {
   })
 
   it('persists operatorName updates', () => {
-    updateSettings({ operatorName: 'Det. Smith' })
-    expect(getSettings().operatorName).toBe('Det. Smith')
+    updateSettings({ operatorName: 'Alex Smith' })
+    expect(getSettings().operatorName).toBe('Alex Smith')
   })
 
   it('includes lastActiveCaseId and lastActiveSection in defaults', () => {
@@ -211,7 +211,7 @@ describe('settings', () => {
   it('discards the whole file when the stored density is unrecognised', () => {
     writeFileSync(
       settingsFile,
-      JSON.stringify({ density: 'cosy', operatorName: 'Det. Smith' }),
+      JSON.stringify({ density: 'cosy', operatorName: 'Alex Smith' }),
       'utf-8'
     )
     const settings = getSettings()
@@ -271,13 +271,13 @@ describe('settings', () => {
     // and the rest of the file survives untouched.
     writeFileSync(
       settingsFile,
-      JSON.stringify({ theme: 'dark', operatorName: 'Det. Smith' }),
+      JSON.stringify({ theme: 'dark', operatorName: 'Alex Smith' }),
       'utf-8'
     )
     const settings = getSettings()
     expect(settings.density).toBe('compact')
     expect(settings.theme).toBe('dark')
-    expect(settings.operatorName).toBe('Det. Smith')
+    expect(settings.operatorName).toBe('Alex Smith')
   })
 
   describe('tour state (#404)', () => {
@@ -339,14 +339,14 @@ describe('initSettings and the fresh-install latch', () => {
   it('leaves an existing install alone', async () => {
     writeFileSync(
       join(tempDir, 'settings.json'),
-      JSON.stringify({ operatorName: 'Det. Smith' }),
+      JSON.stringify({ operatorName: 'Alex Smith' }),
       'utf-8'
     )
     const { initSettings, getSettings: read } = await load()
     initSettings(tempDir)
     const settings = read()
     expect(settings.isFreshInstall).toBe(false)
-    expect(settings.operatorName).toBe('Det. Smith')
+    expect(settings.operatorName).toBe('Alex Smith')
   })
 
   // The upgrade case the acceptance criteria call out: an install predating

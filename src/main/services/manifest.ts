@@ -224,13 +224,20 @@ export function readCaptureEntryAt(
   if (!parsed.success || parsed.data.type !== 'capture' || parsed.data.index !== index) {
     return undefined
   }
+  return { entry: parsed.data, imports: importEntriesOf(snapshot) }
+}
+
+// Every `import` entry in a manifest read. Only meaningful over a snapshot the
+// caller has just verified: the custody records must come from the same chain
+// check as the entry they resolve, not from a second unverified read.
+export function importEntriesOf(snapshot: ManifestSnapshot): ManifestImportEntry[] {
   const imports: ManifestImportEntry[] = []
   for (const line of snapshot.entries) {
     if (line.type !== 'import') continue
     const parsedImport = ManifestEntrySchema.safeParse(line)
     if (parsedImport.success && parsedImport.data.type === 'import') imports.push(parsedImport.data)
   }
-  return { entry: parsed.data, imports }
+  return imports
 }
 
 // A file packaged into an export (evidence .zip or .birdbrain archive), as

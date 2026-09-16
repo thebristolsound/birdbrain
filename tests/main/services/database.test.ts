@@ -278,7 +278,7 @@ describe('database', () => {
         userAgent: 'Mozilla/5.0',
         httpStatus: 200,
         operatorId: '11111111-1111-1111-1111-111111111111',
-        operatorName: 'Det. Smith'
+        operatorName: 'Alex Smith'
       })
 
       const retrieved = getCapture(cap.id)!
@@ -288,7 +288,7 @@ describe('database', () => {
       expect(retrieved.manifestIndex).toBe(0)
       expect(retrieved.entryHash).toBe('b'.repeat(64))
       expect(retrieved.toolVersion).toBe('0.1.0')
-      expect(retrieved.operatorName).toBe('Det. Smith')
+      expect(retrieved.operatorName).toBe('Alex Smith')
     })
 
     it('defaults legacy captures to format=html', () => {

@@ -9,13 +9,14 @@ import {
 } from '@main/services/db/derivedFileRepo'
 import { listStagingFiles } from '@main/services/db/stagingRepo'
 import {
+  importEntriesOf,
   readManifestSnapshot,
   verifyManifestChainText,
   type ChainVerifyResult
 } from '@main/services/manifest'
 import { getPublicKeyPem } from '@main/services/signingKey'
 import { defaultCaptureStore, type CaptureStore } from '@main/services/captureStore'
-import { verifyCapture } from '@main/services/captureLifecycle'
+import { entryDescribesRow, verifyCapture } from '@main/services/captureLifecycle'
 import type {
   CaseInventory,
   DerivedFileVerification,
@@ -359,11 +360,20 @@ export async function verifyExhibit(
     return { ...base, status: 'chain-broken', reason: chain.reason }
   }
   const entry = verifiedEntryAt(snapshot, chain, exhibit.manifestSeq)
+  // The entry names the row through the case's custody records, not by bare id
+  // equality: an archive import keeps the source's `exhibitId` on the entry and
+  // remaps a colliding row id, and only the id map the `import` entry anchors
+  // may reconcile the two (the same binding a Capture gets).
   if (
     !entry ||
     entry.type !== 'exhibit' ||
-    entry.exhibitId !== exhibit.id ||
-    entry.contentHash !== exhibit.contentHash
+    entry.contentHash !== exhibit.contentHash ||
+    !entryDescribesRow(
+      { caseId: entry.caseId, rowId: entry.exhibitId },
+      exhibit,
+      importEntriesOf(snapshot),
+      store.caseDir(caseId)
+    )
   ) {
     return { ...base, status: 'chain-broken', reason: 'Exhibit not anchored in manifest chain' }
   }

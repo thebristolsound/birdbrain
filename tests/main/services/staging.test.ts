@@ -19,6 +19,7 @@ import { closeDatabase, getDb, initDatabase } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
 import { insertCapture, setCaptureTrustedTime } from '@main/services/db/captureRepo'
 import { getExhibit, listExhibits } from '@main/services/db/exhibitRepo'
+import { insertDerivedFile } from '@main/services/db/derivedFileRepo'
 import { getStagingFile, listStagingFiles } from '@main/services/db/stagingRepo'
 import {
   commitStagedFiles,
@@ -35,12 +36,17 @@ import {
 } from '@main/services/caseArchive'
 import { createTimestampWorker } from '@main/services/timestampWorker'
 import { createCaptureLifecycle, type CaptureLifecycle } from '@main/services/captureLifecycle'
-import { appendManifestEntry, initManifest, verifyManifestChain } from '@main/services/manifest'
+import {
+  appendManifestEntry,
+  initManifest,
+  verifyManifestChain,
+  withManifestEntry
+} from '@main/services/manifest'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { createStoredZip } from '@main/services/zip'
 import { readStoredZip } from '@main/services/zipRead'
-import { MANIFEST_FILENAME } from '@shared/constants'
+import { IMPORT_ID_MAP_FILENAME, MANIFEST_FILENAME } from '@shared/constants'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 
@@ -53,13 +59,16 @@ import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 //      chain still verifies; the RFC 3161 request is handed off (X26).
 //   3. DISCARD removes file and row and writes no entry (X29).
 //   4. VERIFY reports verified, tampered and missing for a committed
-//      attachment through `exhibits:verify`.
+//      attachment through `exhibits:verify`, and one outcome per Derived File
+//      bound to its `derivation` entry (X37).
 //   5. A `timestamp` entry over a committed attachment stamps schema 3 and a
 //      Capture's still stamps 2 (#1180).
 //   6. The Evidence Package is refused while a committed non-Capture Exhibit
 //      exists (X44).
 //   7. A `.birdbrain` archive round-trips pooled files as `staged` and
-//      committed Exhibits with their numbers (X12, X30).
+//      committed Exhibits with their numbers (X12, X30); an Exhibit whose id
+//      was remapped on import still verifies through the anchored id map, and
+//      an unanchored map fails closed.
 
 vi.mock('@main/services/tlsCertChain', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@main/services/tlsCertChain')>()
@@ -386,6 +395,85 @@ describe('staging pool', () => {
         reason: 'Exhibit not anchored in manifest chain'
       })
     })
+
+    it('reports one outcome per derived file bound to its derivation entry', async () => {
+      const exhibitId = await committedAttachment()
+      const exhibit = getExhibit(exhibitId)!
+      const output = Buffer.from('extracted text')
+      const rel = join(caseId, 'derived', 'text.txt')
+      mkdirSync(join(caseDir, 'derived'))
+      writeFileSync(join(storageRoot, rel), output)
+      const derived = await withManifestEntry(
+        caseDir,
+        {
+          type: 'derivation',
+          caseId,
+          parentExhibitId: exhibitId,
+          parentContentHash: exhibit.contentHash,
+          derivation: 'text',
+          derivationToolVersion: '9.9.9-test',
+          outputHash: sha256(output),
+          outputPath: rel,
+          timestamp: '2026-09-01T10:00:00.000Z',
+          operatorId: 'op-1',
+          operatorName: 'Test Operator',
+          toolVersion: '9.9.9-test'
+        },
+        (appended) =>
+          insertDerivedFile({
+            exhibitId,
+            derivation: 'text',
+            toolVersion: '9.9.9-test',
+            contentHash: sha256(output),
+            path: rel,
+            createdAt: '2026-09-01T10:00:00.000Z',
+            manifestSeq: appended.index
+          })
+      )
+      const outcome = async () => (await verifyExhibit(caseId, exhibitId)).derived
+
+      expect(await outcome()).toEqual([
+        { derivedFileId: derived.id, derivation: 'text', status: 'verified' }
+      ])
+
+      writeFileSync(join(storageRoot, rel), Buffer.concat([output, Buffer.from('!')]))
+      expect(await outcome()).toMatchObject([{ status: 'tampered' }])
+
+      unlinkSync(join(storageRoot, rel))
+      expect(await outcome()).toMatchObject([
+        { status: 'missing', reason: 'Derived file unreadable' }
+      ])
+
+      // The parent's own outcome is untouched by its derived files.
+      expect((await verifyExhibit(caseId, exhibitId)).status).toBe('verified')
+
+      // Pointed at the parent's `exhibit` entry: the chain vouches for that
+      // line, but it is not a derivation, so nothing anchors the file.
+      writeFileSync(join(storageRoot, rel), output)
+      const seqAt = (seq: number | null) =>
+        getDb()
+          .prepare('UPDATE derived_files SET manifest_seq = ? WHERE id = ?')
+          .run(seq, derived.id)
+      seqAt(exhibit.manifestSeq)
+      expect(await outcome()).toEqual([
+        {
+          derivedFileId: derived.id,
+          derivation: 'text',
+          status: 'unverified',
+          reason: 'Derived file is not anchored in the verified chain'
+        }
+      ])
+
+      seqAt(null)
+      expect(await outcome()).toEqual([
+        {
+          derivedFileId: derived.id,
+          derivation: 'text',
+          status: 'unverified',
+          reason: 'No manifest entry anchors this derived file'
+        }
+      ])
+    })
   })
 
   describe('trusted time (X26, #1180)', () => {
@@ -567,7 +655,30 @@ describe('staging pool', () => {
       expect(readFileSync(join(storageRoot, pool[0].path))).toEqual(PDF)
       // Pooled, never anchored: no exhibits row and no entry names the PDF.
       expect(imported.some((e) => e.contentHash === sha256(PDF))).toBe(false)
-      expect(verifyManifestChain(join(storageRoot, newCaseId)).valid).toBe(true)
+      const newCaseDir = join(storageRoot, newCaseId)
+      expect(verifyManifestChain(newCaseDir).valid).toBe(true)
+
+      // The `exhibit` entry still names the source id; the row resolves to it
+      // through the id map the `import` entry anchors.
+      expect(await verifyExhibit(newCaseId, importedAttachment.id)).toMatchObject({
+        exhibitId: importedAttachment.id,
+        kind: 'attachment',
+        status: 'verified'
+      })
+
+      // A map the import entry did not anchor may not say so: same mapping,
+      // different bytes, so its digest no longer matches `idMapSha256`.
+      const idMapPath = join(newCaseDir, IMPORT_ID_MAP_FILENAME)
+      const idMap = JSON.parse(readFileSync(idMapPath, 'utf-8')) as {
+        remapped: Record<string, string>
+      }
+      expect(idMap.remapped[attachment.id]).toBe(importedAttachment.id)
+      writeFileSync(idMapPath, JSON.stringify({ ...idMap, forged: true }))
+      expect(verifyManifestChain(newCaseDir).valid).toBe(true)
+      expect(await verifyExhibit(newCaseId, importedAttachment.id)).toMatchObject({
+        status: 'chain-broken',
+        reason: 'Exhibit not anchored in manifest chain'
+      })
     })
 
     it('fails verification when a pooled entry is altered or its flag is dropped', async () => {

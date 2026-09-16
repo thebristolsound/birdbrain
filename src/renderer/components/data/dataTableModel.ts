@@ -1,4 +1,4 @@
-import type { HashVerification, InventoryRow } from '@shared/types'
+import type { ExhibitVerification, HashVerification, InventoryRow } from '@shared/types'
 import { fileTypeOf, kindLabel, type DataNodeKey } from '@renderer/components/data/dataTreeModel'
 
 // The artifact table as a pure function of the inventory and the selected
@@ -102,8 +102,66 @@ export function toArtifactRow(
 // bucket). `legacy` and undefined are unverified, not exceptions: a legacy
 // Capture has no entry to verify against and an unverified one has not been
 // looked at, and neither is a finding.
-export function isIntegrityException(status: HashVerification['status'] | undefined): boolean {
+export function isIntegrityException(
+  status: HashVerification['status'] | 'unsupported' | undefined
+): boolean {
   return status === 'tampered' || status === 'missing' || status === 'chain-broken'
+}
+
+export type IntegrityBucket = 'verified' | 'exception' | 'unverified'
+
+// What the table knows beyond the inventory: per-Capture facts, the verify
+// results this session produced (`exhibits:verify`, keyed by Exhibit id), and
+// which Captures each Selector matched (the Keyword Hits node, X39).
+export interface RowContext {
+  captures: CaptureFactsById
+  verifications?: ReadonlyMap<string, ExhibitVerification>
+  keywordMatches?: ReadonlyMap<string, ReadonlySet<string>>
+}
+
+function bucketOfStatus(status: ExhibitVerification['status'] | undefined): IntegrityBucket {
+  if (status === 'verified') return 'verified'
+  if (isIntegrityException(status)) return 'exception'
+  // `legacy`, `unsupported` (verifier too old — X25, never an exception) and
+  // "not looked at" all land here.
+  return 'unverified'
+}
+
+// The X37 bucket for one anchored row. An Exhibit reads this session's verify
+// result first and the Capture's persisted state otherwise. A Derived File
+// reads its own outcome from the parent's session result, which the main
+// process computed against the `derivation` entry; without one it is
+// unverified, and nothing is inferred from the parent in the renderer (X36).
+// Pooled rows have no bucket (X16) and are never passed here.
+export function bucketForRow(row: InventoryRow, context: RowContext): IntegrityBucket {
+  if (row.entity === 'exhibit') {
+    const session = context.verifications?.get(row.id)?.status
+    if (session !== undefined) return bucketOfStatus(session)
+    return bucketOfStatus(context.captures.get(row.id)?.lastVerifiedStatus)
+  }
+  if (row.entity === 'derived-file') {
+    const parent = context.verifications?.get(row.parentExhibitId)
+    const own = parent?.derived?.find((d) => d.derivedFileId === row.id)
+    if (own) {
+      if (own.status === 'verified') return 'verified'
+      if (own.status === 'tampered' || own.status === 'missing') return 'exception'
+      return 'unverified'
+    }
+    return 'unverified'
+  }
+  return 'unverified'
+}
+
+export function integrityCounts(
+  rows: InventoryRow[],
+  context: RowContext
+): Record<IntegrityBucket, number> {
+  const counts = { verified: 0, exception: 0, unverified: 0 }
+  for (const row of rows) {
+    if (row.rowType !== 'anchored') continue
+    counts[bucketForRow(row, context)] += 1
+  }
+  return counts
 }
 
 // The rows a tree node selects. Pooled rows appear ONLY under Staging (X16):
@@ -112,8 +170,10 @@ export function isIntegrityException(status: HashVerification['status'] | undefi
 export function rowsForNode(
   rows: InventoryRow[],
   key: DataNodeKey,
-  captures: CaptureFactsById
+  captures: CaptureFactsById,
+  extras: Omit<RowContext, 'captures'> = {}
 ): InventoryRow[] {
+  const context: RowContext = { captures, ...extras }
   const anchored = rows.filter((row) => row.rowType === 'anchored')
   if (key === 'staging') return rows.filter((row) => row.rowType === 'staged')
   if (key === 'data-sources' || key === 'views' || key === 'file-types' || key === 'results') {
@@ -147,14 +207,14 @@ export function rowsForNode(
     return anchored.filter((row) => fileTypeOf(row) === type)
   }
   if (key === 'integrity-exceptions') {
-    // Exhibits whose PERSISTED verify state is an exception, and nothing
-    // inferred: a Derived File has no persisted state of its own, and the
-    // renderer never derives one for it (X36). #1150 adds the per-Derived-File
-    // outcome from `exhibits:verify`.
-    return anchored.filter(
-      (row) =>
-        row.entity === 'exhibit' && isIntegrityException(captures.get(row.id)?.lastVerifiedStatus)
-    )
+    return anchored.filter((row) => bucketForRow(row, context) === 'exception')
+  }
+  if (key.startsWith('keyword:')) {
+    // Matched Exhibits only, no snippet (X39): `selector_matches` stores no
+    // offset, and nothing from pooled content can appear here (X15).
+    const matched = context.keywordMatches?.get(key.slice('keyword:'.length))
+    if (!matched) return []
+    return anchored.filter((row) => row.entity === 'exhibit' && matched.has(row.id))
   }
   // keyword-hits, indicators, manifest-ledger: their content is #1150; until
   // then they select the anchored list so the table is never a stale subset.

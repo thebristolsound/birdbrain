@@ -96,6 +96,34 @@ describe('buildDataTree', () => {
     expect(nodes.find((n) => n.key === 'integrity-exceptions')?.alert).toBe(false)
   })
 
+  it('lists one Keyword Hits child per Selector with its match count (X39)', () => {
+    const nodes = buildDataTree({
+      rows: INVENTORY,
+      expanded: new Set(['results', 'keyword-hits']),
+      results: RESULTS,
+      keywordHits: [
+        { selectorId: 's1', label: 'proton.me', count: 3 },
+        { selectorId: 's2', label: 'bc1q', count: 0 }
+      ]
+    })
+    const keys = nodes.map((n) => n.key)
+    expect(keys.indexOf('keyword:s1')).toBe(keys.indexOf('keyword-hits') + 1)
+    expect(nodes.find((n) => n.key === 'keyword:s1')).toMatchObject({
+      label: 'proton.me',
+      depth: 2,
+      count: 3
+    })
+    expect(nodes.find((n) => n.key === 'keyword-hits')?.hasChildren).toBe(true)
+    // Collapsed by default: no children until the node is opened.
+    const closed = buildDataTree({
+      rows: INVENTORY,
+      expanded: new Set(['results']),
+      results: RESULTS,
+      keywordHits: [{ selectorId: 's1', label: 'proton.me', count: 3 }]
+    })
+    expect(closed.map((n) => n.key)).not.toContain('keyword:s1')
+  })
+
   it('hides a collapsed subtree', () => {
     const nodes = buildDataTree({ rows: INVENTORY, expanded: new Set(), results: RESULTS })
     expect(nodes.map((n) => n.key)).toEqual(['data-sources', 'staging', 'views', 'results'])

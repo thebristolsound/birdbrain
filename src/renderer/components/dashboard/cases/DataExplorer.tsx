@@ -1,19 +1,34 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { Search, Upload, X } from 'lucide-react'
+import type { ExhibitVerification, InventoryRow } from '@shared/types'
 import { Button } from '@renderer/components/ui'
-import { capturesQueryOptions } from '@renderer/lib/api/captures'
+import { captureContentQueryOptions, capturesQueryOptions } from '@renderer/lib/api/captures'
 import {
   exhibitInventoryQueryOptions,
-  manifestSnapshotQueryOptions
+  manifestSnapshotQueryOptions,
+  useVerifyAll
 } from '@renderer/lib/api/exhibits'
 import { extractedDataCountQueryOptions } from '@renderer/lib/api/extractedData'
-import { selectorsQueryOptions } from '@renderer/lib/api/selectors'
+import {
+  selectorMatchCountsQueryOptions,
+  selectorMatchingCapturesQueryOptions,
+  selectorsQueryOptions
+} from '@renderer/lib/api/selectors'
 import { DataTree } from '@renderer/components/data/DataTree'
 import { ArtifactTable, type StagingRowActions } from '@renderer/components/data/ArtifactTable'
 import { ArtifactTabs, type ArtifactTab } from '@renderer/components/data/ArtifactTabs'
 import { PropertiesTab } from '@renderer/components/data/PropertiesTab'
+import { ExtractedTextTab } from '@renderer/components/data/ExtractedTextTab'
+import { HeadersTlsTab, hasHeadersOrTls } from '@renderer/components/data/HeadersTlsTab'
+import {
+  ChainVerdict,
+  ManifestLedgerTab,
+  ManifestLedgerView
+} from '@renderer/components/data/ManifestLedger'
+import { IntegrityStrip } from '@renderer/components/data/IntegrityStrip'
+import { rowsNaming } from '@renderer/components/data/ledgerModel'
 import { IndicatorsView } from '@renderer/components/data/IndicatorsView'
 import {
   buildDataTree,
@@ -23,17 +38,19 @@ import {
 } from '@renderer/components/data/dataTreeModel'
 import {
   filterRows,
+  integrityCounts,
   rowsForNode,
   toArtifactRow,
-  type CaptureFacts
+  type CaptureFacts,
+  type RowContext
 } from '@renderer/components/data/dataTableModel'
-import type { InventoryRow } from '@shared/types'
 
-// The Data screen (#1149, #803): the inventory and integrity cross-cut over
-// every Exhibit kind (X8). A rail of four groups, an artifact table, and a
-// per-row tab strip. Everything integrity-shaped here is read off the main
+// The Data screen (#1149, #1150, #803): the inventory and integrity cross-cut
+// over every Exhibit kind (X8). A rail of four groups, an artifact table, and
+// a per-row tab strip. Everything integrity-shaped here is read off the main
 // process — the inventory's anchored flag, the snapshot's verdict, a Capture's
-// persisted verify state — and never computed in this file (X36).
+// persisted verify state, this session's `exhibits:verify` results — and never
+// computed in this file (X36).
 
 function nodeTitle(key: DataNodeKey, rows: InventoryRow[]): { title: string; subtitle: string } {
   if (key === 'data-sources')
@@ -48,6 +65,7 @@ function nodeTitle(key: DataNodeKey, rows: InventoryRow[]): { title: string; sub
     return { title: 'Integrity exceptions', subtitle: 'files whose last verify did not pass' }
   if (key === 'manifest-ledger')
     return { title: 'Manifest ledger', subtitle: 'the hash chain across the case' }
+  if (key.startsWith('keyword:')) return { title: 'Keyword hit', subtitle: 'matched Exhibits' }
   if (key.startsWith('kind:'))
     return { title: kindLabel(key.slice('kind:'.length)), subtitle: 'by kind' }
   if (key.startsWith('file-type:'))
@@ -75,12 +93,25 @@ export function DataExplorer() {
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(DEFAULT_EXPANDED)
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // This session's `exhibits:verify` results, keyed by Exhibit id. Nothing
+  // persists for a non-Capture Exhibit yet, so this map is the only place its
+  // bucket can come from until Verify runs again.
+  const [verifications, setVerifications] = useState<ReadonlyMap<string, ExhibitVerification>>(
+    () => new Map()
+  )
 
   const { data: inventory, isLoading } = useQuery(exhibitInventoryQueryOptions(caseId))
   const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))
   const { data: selectors = [] } = useQuery(selectorsQueryOptions(caseId))
+  const { data: matchCounts = {} } = useQuery(selectorMatchCountsQueryOptions(caseId))
   const { data: indicatorCount } = useQuery(extractedDataCountQueryOptions(caseId))
   const { data: snapshot } = useQuery(manifestSnapshotQueryOptions(caseId))
+  const { run: verifyAll, progress } = useVerifyAll(caseId)
+
+  const keywordSelectorId = node.startsWith('keyword:') ? node.slice('keyword:'.length) : null
+  const { data: keywordCaptureIds, isFetching: keywordFetching } = useQuery(
+    selectorMatchingCapturesQueryOptions(caseId, keywordSelectorId ? [keywordSelectorId] : [])
+  )
 
   const rows = useMemo(() => inventory?.rows ?? [], [inventory])
   const captureFacts = useMemo(() => {
@@ -91,6 +122,18 @@ export function DataExplorer() {
     return map
   }, [captures])
   const captureById = useMemo(() => new Map(captures.map((c) => [c.id, c])), [captures])
+  const keywordMatches = useMemo(() => {
+    const map = new Map<string, ReadonlySet<string>>()
+    if (keywordSelectorId && keywordCaptureIds) {
+      map.set(keywordSelectorId, new Set(keywordCaptureIds))
+    }
+    return map
+  }, [keywordSelectorId, keywordCaptureIds])
+  const context = useMemo<RowContext>(
+    () => ({ captures: captureFacts, verifications, keywordMatches }),
+    [captureFacts, verifications, keywordMatches]
+  )
+  const buckets = useMemo(() => integrityCounts(rows, context), [rows, context])
 
   const tree = useMemo(
     () =>
@@ -100,32 +143,71 @@ export function DataExplorer() {
         results: {
           keywordHits: selectors.length,
           indicators: indicatorCount ?? null,
-          // The same selector the node's table uses, so the count and the
+          // The same bucket rule the node's table uses, so the count and the
           // rows cannot disagree.
-          integrityExceptions: rowsForNode(rows, 'integrity-exceptions', captureFacts).length,
+          integrityExceptions: buckets.exception,
           manifestLedger: snapshot ? snapshot.entries.length : null
-        }
+        },
+        keywordHits: selectors.map((selector) => ({
+          selectorId: selector.id,
+          label: selector.label || selector.pattern,
+          count: matchCounts[selector.id] ?? 0
+        }))
       }),
-    [rows, expanded, selectors.length, indicatorCount, captureFacts, snapshot]
+    [rows, expanded, selectors, indicatorCount, buckets.exception, snapshot, matchCounts]
   )
 
   const tableRows = useMemo(
     () =>
       filterRows(
-        rowsForNode(rows, node, captureFacts).map((row) => toArtifactRow(row, rows, captureFacts)),
+        rowsForNode(rows, node, captureFacts, { verifications, keywordMatches }).map((row) =>
+          toArtifactRow(row, rows, captureFacts)
+        ),
         query
       ),
-    [rows, node, captureFacts, query]
+    [rows, node, captureFacts, verifications, keywordMatches, query]
   )
 
   // Resolved from the table as filtered, so a row the search has hidden does
   // not keep its strip open.
   const selectedRow = tableRows.find((row) => row.id === selectedId)?.raw ?? null
+  const selectedCapture =
+    selectedRow?.entity === 'exhibit' ? captureById.get(selectedRow.id) : undefined
+  const { data: extractedText } = useQuery({
+    ...captureContentQueryOptions(selectedCapture?.id ?? '', 'txt'),
+    enabled: selectedCapture !== undefined
+  })
+  const highlightSelector = keywordSelectorId
+    ? selectors.find((selector) => selector.id === keywordSelectorId)
+    : undefined
   const { title, subtitle } = nodeTitle(node, rows)
 
   // The Staging Pool's channels arrive with #1148; until then the group
   // renders with its actions visibly inert rather than absent.
   const stagingActions: StagingRowActions | undefined = undefined
+
+  const recordVerification = useCallback((result: ExhibitVerification) => {
+    setVerifications((current) => {
+      const next = new Map(current)
+      next.set(result.exhibitId, result)
+      return next
+    })
+  }, [])
+  // A verify that threw is recorded as not completed, so the row's bucket
+  // reads unverified for the session instead of whatever was persisted before.
+  const recordVerifyFailure = useCallback(
+    (exhibitId: string) => {
+      const row = rows.find((r) => r.id === exhibitId)
+      recordVerification({
+        exhibitId,
+        caseId,
+        kind: row?.entity === 'exhibit' ? row.kind : 'unknown',
+        status: 'unsupported',
+        reason: 'Verify did not complete'
+      })
+    },
+    [rows, caseId, recordVerification]
+  )
 
   function toggle(key: DataNodeKey) {
     setExpanded((current) => {
@@ -144,24 +226,66 @@ export function DataExplorer() {
     )
   }
 
-  const tabs: ArtifactTab[] = selectedRow
-    ? [
-        {
-          id: 'properties',
-          label: 'Properties',
-          hint: 'file and source metadata',
-          content: (
-            <PropertiesTab
-              row={selectedRow}
-              rows={rows}
-              capture={
-                selectedRow.entity === 'exhibit' ? captureById.get(selectedRow.id) : undefined
-              }
-            />
-          )
-        }
-      ]
-    : []
+  // A tab with no data for the row's kind is absent, not empty (#1150).
+  const tabs: ArtifactTab[] = []
+  if (selectedRow) {
+    // A zero-byte sidecar is no text, not one empty line.
+    if (selectedCapture && typeof extractedText === 'string' && extractedText.length > 0) {
+      tabs.push({
+        id: 'text',
+        label: 'Extracted Text',
+        hint: `${extractedText.split(/\r?\n/).length} lines · extracted at capture`,
+        content: (
+          <ExtractedTextTab
+            text={extractedText}
+            highlight={
+              highlightSelector
+                ? { pattern: highlightSelector.pattern, isRegex: highlightSelector.isRegex }
+                : undefined
+            }
+          />
+        )
+      })
+    }
+    if (selectedCapture && hasHeadersOrTls(selectedCapture)) {
+      tabs.push({
+        id: 'headers',
+        label: 'Headers & TLS',
+        hint: selectedCapture.httpStatus ? `HTTP ${selectedCapture.httpStatus}` : undefined,
+        content: <HeadersTlsTab capture={selectedCapture} />
+      })
+    }
+    // Present only when an entry this build can read names the row; a row
+    // whose only entry is an unreadable newer-schema line gets no empty tab.
+    if (
+      snapshot &&
+      selectedRow.rowType === 'anchored' &&
+      rowsNaming(snapshot.entries, { id: selectedRow.id, contentHash: selectedRow.contentHash })
+        .length > 0
+    ) {
+      tabs.push({
+        id: 'ledger',
+        label: 'Manifest Ledger',
+        hint: `${snapshot.entries.length} entries`,
+        content: (
+          <ManifestLedgerTab
+            snapshot={snapshot}
+            exhibit={{ id: selectedRow.id, contentHash: selectedRow.contentHash }}
+          />
+        )
+      })
+    }
+    tabs.push({
+      id: 'properties',
+      label: 'Properties',
+      hint: 'file and source metadata',
+      content: <PropertiesTab row={selectedRow} rows={rows} capture={selectedCapture} />
+    })
+  }
+
+  const anchoredExhibitIds = rows
+    .filter((row) => row.entity === 'exhibit' && row.rowType === 'anchored')
+    .map((row) => row.id)
 
   return (
     <div className="flex h-full min-h-0" data-testid="data-explorer">
@@ -223,6 +347,9 @@ export function DataExplorer() {
                   {subtitle}
                 </span>
                 <div className="flex-1" />
+                {(node === 'integrity-exceptions' || node === 'manifest-ledger') && snapshot && (
+                  <ChainVerdict snapshot={snapshot} />
+                )}
                 {node === 'staging' && (
                   <Button
                     variant="outline"
@@ -241,21 +368,45 @@ export function DataExplorer() {
                   </Button>
                 )}
               </div>
-              <ArtifactTable
-                rows={tableRows}
-                selectedId={selectedId}
-                onSelect={setSelectedId}
-                stagingActions={stagingActions}
-                emptyMessage={
-                  node === 'staging'
-                    ? 'Nothing in the pool.'
-                    : query
-                      ? 'No files match this search.'
-                      : 'No files under this node.'
-                }
-              />
+              {node === 'manifest-ledger' ? (
+                snapshot ? (
+                  <ManifestLedgerView snapshot={snapshot} />
+                ) : (
+                  <div className="p-9 text-center text-xs text-text-faint">Loading the ledger…</div>
+                )
+              ) : (
+                <>
+                  {node === 'integrity-exceptions' && (
+                    <IntegrityStrip
+                      counts={buckets}
+                      progress={progress}
+                      disabled={anchoredExhibitIds.length === 0}
+                      onVerifyAll={() =>
+                        void verifyAll(anchoredExhibitIds, recordVerification, recordVerifyFailure)
+                      }
+                    />
+                  )}
+                  <ArtifactTable
+                    rows={tableRows}
+                    selectedId={selectedId}
+                    onSelect={setSelectedId}
+                    stagingActions={stagingActions}
+                    emptyMessage={
+                      node === 'staging'
+                        ? 'Nothing in the pool.'
+                        : node === 'integrity-exceptions'
+                          ? 'No exceptions among the verified rows.'
+                          : keywordSelectorId && keywordFetching
+                            ? 'Loading matches…'
+                            : query
+                              ? 'No files match this search.'
+                              : 'No files under this node.'
+                    }
+                  />
+                </>
+              )}
             </section>
-            {selectedRow && (
+            {selectedRow && node !== 'manifest-ledger' && (
               <ArtifactTabs
                 title={selectedRow.name}
                 subtitle={selectedRow.path ?? 'no file recorded'}

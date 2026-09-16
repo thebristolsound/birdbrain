@@ -1,3 +1,4 @@
+import { useCallback, useState } from 'react'
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ExhibitVerification } from '@shared/types'
 import { queryKeys } from '@renderer/lib/api/keys'
@@ -40,4 +41,46 @@ export function useExhibitsMutations(caseId: string) {
   })
 
   return { verify }
+}
+
+export interface VerifyAllProgress {
+  done: number
+  total: number
+}
+
+// "Verify all" (X37): one `exhibits:verify` per Exhibit, in sequence, with
+// progress. Sequential on purpose — there is deliberately no batch channel,
+// and running the hashes in parallel would contend for the same disk. A
+// rejected verify is reported through the mutation cache's onError and the
+// loop continues, so one unreadable file does not stop the others.
+export function useVerifyAll(caseId: string) {
+  const { verify } = useExhibitsMutations(caseId)
+  const [progress, setProgress] = useState<VerifyAllProgress | null>(null)
+
+  const run = useCallback(
+    async (
+      exhibitIds: string[],
+      onResult?: (result: ExhibitVerification) => void,
+      onFailure?: (exhibitId: string) => void
+    ) => {
+      setProgress({ done: 0, total: exhibitIds.length })
+      try {
+        for (const [index, exhibitId] of exhibitIds.entries()) {
+          try {
+            onResult?.(await verify.mutateAsync(exhibitId))
+          } catch {
+            // The mutation cache toasts the error; the caller is told so the
+            // row does not keep reading a stale persisted state as verified.
+            onFailure?.(exhibitId)
+          }
+          setProgress({ done: index + 1, total: exhibitIds.length })
+        }
+      } finally {
+        setProgress(null)
+      }
+    },
+    [verify]
+  )
+
+  return { run, progress, running: progress !== null }
 }

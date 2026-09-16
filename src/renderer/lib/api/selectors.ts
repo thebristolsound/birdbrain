@@ -67,6 +67,16 @@ export function exportSelectorMatches(
   return window.birdbrain.selectors.exportMatches(caseId, selectorId)
 }
 
+// The Captures one Selector matched, cached per selector set: the Data
+// screen's Keyword Hits node (#1150, X39) filters the table to these ids and
+// re-reads them on every tree click, which is what the cache identity is for.
+export const selectorMatchingCapturesQueryOptions = (caseId: string, selectorIds: string[]) =>
+  queryOptions({
+    queryKey: queryKeys.selectorMatchingCaptures(caseId, selectorIds),
+    queryFn: () => window.birdbrain.selectors.matchingCaptures(caseId, selectorIds),
+    enabled: !!caseId && selectorIds.length > 0
+  })
+
 // Read without a cache identity: the capture-filter effect and the foreground
 // match preview both want the current answer for an ad-hoc selector set, not a
 // cached one keyed by it.

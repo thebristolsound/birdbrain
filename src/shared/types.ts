@@ -246,14 +246,7 @@ export interface BirdbrainSettings {
   // because older settings files still hold them; both resolve to 'signals'
   // on restore. Dropping them would fail the settings parse on upgrade.
   lastActiveSection:
-    | 'overview'
-    | 'captures'
-    | 'selectors'
-    | 'notes'
-    | 'tags'
-    | 'signals'
-    | 'data'
-    | 'settings'
+    'overview' | 'captures' | 'selectors' | 'notes' | 'tags' | 'signals' | 'data' | 'settings'
   hasCompletedOnboarding: boolean
   analysisSystemPrompt: string
   detailsPanelCollapsed: boolean
@@ -282,13 +275,7 @@ export interface BirdbrainSettings {
 // ever reaches idle → checking → up-to-date | available | error; the
 // downloading/downloaded states are reserved for the Phase 2 auto-install path.
 export type UpdateState =
-  | 'idle'
-  | 'checking'
-  | 'up-to-date'
-  | 'available'
-  | 'downloading'
-  | 'downloaded'
-  | 'error'
+  'idle' | 'checking' | 'up-to-date' | 'available' | 'downloading' | 'downloaded' | 'error'
 
 export interface UpdateStatus {
   state: UpdateState
@@ -1204,8 +1191,23 @@ export interface ExhibitVerification {
   exhibitId: string
   caseId: string
   kind: string
+  // `unsupported` is two things, told apart by `reason`: a kind this build has
+  // no verify path for, and a chain holding an entry from a newer schema (X25),
+  // which is never reported as tampering.
   status: HashVerification['status'] | 'unsupported'
   reason?: string
   // Present only for `kind = 'capture'`: the untouched `captures:verify` result.
   capture?: HashVerification
+  // One outcome per Derived File of the Exhibit (X37). An anchored file is
+  // re-hashed against the `derivation` entry the chain vouches for; an
+  // unanchored one (X34) is reported as such and never re-hashed, because a
+  // hash the chain does not cover proves nothing.
+  derived?: DerivedFileVerification[]
+}
+
+export interface DerivedFileVerification {
+  derivedFileId: string
+  derivation: string
+  status: 'verified' | 'tampered' | 'missing' | 'unverified'
+  reason?: string
 }

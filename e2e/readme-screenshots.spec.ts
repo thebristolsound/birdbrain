@@ -526,6 +526,9 @@ test.describe('README screenshots', () => {
     await page.evaluate((id) => {
       window.location.hash = `/cases/${id}/data`
     }, caseId)
+    // The IOC browser lives under Results > Indicators since #1149; the rail
+    // opens on Data Sources, so select the node before waiting on extraction.
+    await page.getByTestId('data-tree-node-indicators').locator('button').last().click()
     // Wait for extraction results; reprocess if needed.
     const categoriesReady = async () =>
       page
@@ -589,7 +592,10 @@ test.describe('README screenshots', () => {
     await page.waitForTimeout(300)
 
     // --- 4f. Export dialog ---------------------------------------------------
-    await page.getByRole('button', { name: /export/i }).first().click()
+    await page
+      .getByRole('button', { name: /export/i })
+      .first()
+      .click()
     await page.getByRole('menuitem', { name: /export evidence report/i }).click()
     await page.waitForTimeout(800)
     const purposeInput = page.getByPlaceholder(/Disclosure under/i)

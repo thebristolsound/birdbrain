@@ -1,5 +1,5 @@
 import { app } from 'electron'
-import { REPORT_PAGE_CSS } from '@main/services/reportHtml'
+import { REPORT_PAGE_CSS, type EntrySignatureStatus } from '@main/services/reportHtml'
 import type { Capture, TrustedTime } from '@shared/types'
 import type { TrustedTimeResult } from '@shared/verify'
 
@@ -50,6 +50,26 @@ export interface CertificationInput {
    * superseded by the snapshot the package is built from.
    */
   trustedTimeByCaptureId: Map<string, TrustedTimeResult>
+  /**
+   * The export's single per-entry signature resolution, keyed by capture id —
+   * see resolveEntrySignatures in export.ts. This document's ONLY source for the
+   * axis, by design (#611): the summary counts are folded out of the same rows
+   * report.html states per exhibit, so the two documents cannot report different
+   * totals whatever else changes.
+   *
+   * That is a guarantee about the counts and about nothing else. The prose the
+   * counts sit in is written here and can still say something report.html
+   * contradicts — it did, for the no-entry class, before review caught it. A
+   * claim about what covers an unsigned capture has to be checked against
+   * entrySignatureView in reportHtml.ts by hand.
+   *
+   * Total over `captures` by construction — resolveEntrySignatures backfills
+   * every capture with 'no-entry' — so the lookup relies on that rather than
+   * defaulting an absent key to a status nothing resolved. A default would be
+   * unreachable today and would silently understate the unsigned share if the
+   * invariant ever broke; see #1110 for that failure on the trusted-time axis.
+   */
+  entrySignatureByCaptureId: Map<string, EntrySignatureStatus>
 }
 
 const NO_TRUSTED_TIME: TrustedTimeResult = { trustedTime: 'none' }
@@ -61,6 +81,7 @@ export interface CertificationCaptureRow {
   trustedTime: TrustedTime
   tsaName?: string
   stampedAt?: string
+  entrySignature: EntrySignatureStatus
 }
 
 export interface CertificationFields {
@@ -80,6 +101,12 @@ export interface CertificationFields {
     pendingCount: number
     noneCount: number
     allStamped: boolean
+  }
+  entrySignatures: {
+    signedCount: number
+    unsignedLegacyCount: number
+    noEntryCount: number
+    allSigned: boolean
   }
   captures: CertificationCaptureRow[]
   exportTimestamp: string
@@ -108,18 +135,34 @@ export function buildCertificationFields(
 ): CertificationFields {
   const captures: CertificationCaptureRow[] = data.captures.map((capture) => {
     const resolved = data.trustedTimeByCaptureId.get(capture.id) ?? NO_TRUSTED_TIME
+    const entrySignature = data.entrySignatureByCaptureId.get(capture.id)
+    // No default: the map is total over data.captures, so an absent key is a
+    // broken invariant rather than a capture without an entry — which the map
+    // already spells 'no-entry'. Refuse to certify instead of printing a count
+    // that quietly understates how much of the package is unsigned.
+    if (entrySignature === undefined) {
+      throw new Error(`certification: no entry signature resolved for capture ${capture.id}`)
+    }
     return {
       id: capture.id,
       title: capture.title,
       url: capture.url,
       trustedTime: resolved.trustedTime,
       tsaName: resolved.tsaName,
-      stampedAt: resolved.stampedAt
+      stampedAt: resolved.stampedAt,
+      entrySignature
     }
   })
 
   const counts: Record<TrustedTime, number> = { rfc3161: 0, pending: 0, none: 0 }
   for (const row of captures) counts[row.trustedTime]++
+
+  const signatureCounts: Record<EntrySignatureStatus, number> = {
+    signed: 0,
+    'unsigned-legacy': 0,
+    'no-entry': 0
+  }
+  for (const row of captures) signatureCounts[row.entrySignature]++
 
   return {
     toolName: 'Birdbrain',
@@ -143,6 +186,14 @@ export function buildCertificationFields(
       pendingCount: counts.pending,
       noneCount: counts.none,
       allStamped: captures.length > 0 && counts.pending + counts.none === 0
+    },
+    entrySignatures: {
+      signedCount: signatureCounts.signed,
+      unsignedLegacyCount: signatureCounts['unsigned-legacy'],
+      noEntryCount: signatureCounts['no-entry'],
+      allSigned:
+        captures.length > 0 &&
+        signatureCounts['unsigned-legacy'] + signatureCounts['no-entry'] === 0
     },
     captures,
     exportTimestamp: data.exportTimestamp,
@@ -182,7 +233,7 @@ export function buildCertification(data: CertificationInput, toolVersion: string
  * labelled at every occurrence.
  */
 function renderCertificationHtml(fields: CertificationFields): string {
-  const { certifier, trustedTime } = fields
+  const { certifier, trustedTime, entrySignatures } = fields
 
   const stamped = fields.captures.filter((c) => c.trustedTime === 'rfc3161')
   const unstamped = fields.captures.filter((c) => c.trustedTime !== 'rfc3161')
@@ -233,6 +284,41 @@ function renderCertificationHtml(fields: CertificationFields): string {
       </tr>`
     )
     .join('')
+
+  // Counted from the same rows report.html states per exhibit, so the summary
+  // and the per-exhibit disclosure are one derivation (#611). The all-signed
+  // branch states the all-clear and stops: a package with no legacy entries has
+  // nothing to disclose, and a "0 unsigned" row reads as a finding rather than
+  // as the unremarkable absence it is. An empty export gets its own branch for
+  // the same reason — otherwise it falls through to the none-signed wording and
+  // prints a bolded negative finding about a set with nothing in it.
+  //
+  // Counts only, by ruling on #1460: the document states how many entries carry a
+  // signature and makes no claim about what else covers an unsigned capture or
+  // whether a present signature verifies. Each such claim tried here was false
+  // for some capture class, and none is in #611's criteria.
+  const { signedCount, unsignedLegacyCount, noEntryCount } = entrySignatures
+  const unsignedTotal = unsignedLegacyCount + noEntryCount
+  const total = fields.captures.length
+  const breakdown = `(${unsignedLegacyCount} with an unsigned entry, ${noEntryCount} with no manifest entry)`
+  const perExhibit = 'report.html states the signature status of every exhibit individually.'
+
+  const entrySignatureProse =
+    total === 0
+      ? `<p>This export contains no captures, so there is no manifest entry for this document to
+        report a signature for.</p>`
+      : entrySignatures.allSigned
+        ? `<p>A signature is present on the manifest entry for every capture in this export
+          (${signedCount} of ${total}). ${perExhibit}</p>`
+        : signedCount > 0
+          ? `<p>A signature is present on the manifest entry for ${signedCount} of the ${total}
+            captures in this export. For the remaining ${unsignedTotal} capture${
+              unsignedTotal === 1 ? '' : 's'
+            } ${breakdown},
+            <strong>no entry signature is asserted</strong>. ${perExhibit}</p>`
+          : `<p><strong>No entry signature is asserted</strong> for any of the ${total} capture${
+              total === 1 ? '' : 's'
+            } in this export ${breakdown}. ${perExhibit}</p>`
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -331,6 +417,10 @@ function renderCertificationHtml(fields: CertificationFields): string {
   <th>Clock basis</th></tr></thead><tbody>${unstampedRows}</tbody></table>`
       : ''
   }
+
+  <h2 style="margin-top:22pt">Entry signatures</h2>
+  <div class="rule-medium"></div>
+  ${entrySignatureProse}
 
   <h2 style="margin-top:22pt">Certifier</h2>
   <div class="rule-medium"></div>

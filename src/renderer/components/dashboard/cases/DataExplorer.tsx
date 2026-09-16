@@ -385,8 +385,9 @@ export function DataExplorer() {
     .filter((row) => row.entity === 'exhibit' && row.rowType === 'anchored')
     .map((row) => row.id)
   // The Exhibits under the current node, for the pane header's Verify — the
-  // inline route for the node menu's Verify (#1151).
-  const nodeExhibitIds = rowsForNode(rows, node, captureFacts)
+  // inline route for the node menu's Verify (#1151). Same context as the
+  // table and the menu, so a Selector's hits are the rows it verifies.
+  const nodeExhibitIds = rowsForNode(rows, node, captureFacts, { verifications, keywordMatches })
     .filter((row) => row.entity === 'exhibit')
     .map((row) => row.id)
   const showNodeVerify =

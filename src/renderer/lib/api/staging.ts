@@ -4,8 +4,7 @@ import { queryKeys } from '@renderer/lib/api/keys'
 
 // The Staging Pool's three writes (ADR-0024, #1148). Upload and discard touch
 // the pool only, so they invalidate the inventory; commit anchors bytes, so it
-// also invalidates the snapshot the ledger reads and the captures list the
-// buckets read.
+// also invalidates the manifest snapshot the ledger reads.
 export function useStagingMutations(caseId: string) {
   const queryClient = useQueryClient()
   const invalidateInventory = () =>

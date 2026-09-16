@@ -243,6 +243,29 @@ describe('Data screen context menus (#1151)', () => {
     expect(item(second, 'node-verify').getAttribute('data-disabled')).not.toBeNull()
   })
 
+  it('node Verify on a Selector node: the pane header covers exactly the matched rows', async () => {
+    selectorsList.mockResolvedValue([
+      { id: 's1', caseId: 'case1', pattern: 'proton', isRegex: false, enabled: true }
+    ])
+    matchCounts.mockResolvedValue({ s1: 1 })
+    matchingCaptures.mockResolvedValue(['cap-legacy'])
+    renderExplorer()
+    const rail = await tree()
+    await waitFor(() => expect(rail.getByLabelText('Expand Keyword Hits')).toBeTruthy())
+    fireEvent.click(rail.getByLabelText('Expand Keyword Hits'))
+    await select('keyword:s1')
+    expect(await screen.findByTestId('artifact-row-cap-legacy')).toBeTruthy()
+
+    // The header reads the same session context as the table and the menu,
+    // so the Selector's hits are what it verifies — not nothing, not everything.
+    fireEvent.click(await screen.findByTestId('node-verify'))
+    await waitFor(() => expect(verify).toHaveBeenCalledTimes(1))
+    expect(verify.mock.calls[0][1]).toBe('cap-legacy')
+
+    const menu = await openMenu(rail.getByTestId('data-tree-node-keyword:s1'))
+    expect(item(menu, 'node-verify').getAttribute('data-disabled')).toBeNull()
+  })
+
   it('staged row: commits, confirms a discard, and copies the hash labelled not anchored', async () => {
     renderExplorer()
     await select('staging')

@@ -88,6 +88,13 @@ function safeJoin(base: string, ...segments: string[]): string | undefined {
   return normalized.startsWith(realBase + sep) || normalized === realBase ? resolved : undefined
 }
 
+// Parses manifest.jsonl into its schema-valid entries. It stops at the first
+// line it cannot read and never SKIPS one — blank lines aside, which the chain
+// walk's own line filter drops too — so output position k is manifest line k.
+// That correspondence is what lets a caller bound the result by the chain's
+// `brokenAt`, which is an index into the same blank-filtered line sequence.
+// Parsing says nothing about integrity: the chain walk is what verifies hashes,
+// linkage and signatures.
 function parseManifestEntries(jsonl: string): ManifestEntry[] {
   const out: ManifestEntry[] = []
   for (const line of jsonl.split('\n')) {
@@ -114,9 +121,15 @@ type ExportEntry = Extract<ManifestEntry, { type: 'export' }>
 // and a valid signature over the entryHash by the bundled public key. Nothing
 // from the file is used until every one of these holds — its captureIds are
 // what scopes §7.3/§7.5, so an unproven entry must confer no scope.
+//
+// The head it links against is the manifest AS SHIPPED, not the break-bounded
+// prefix: this is a cross-check between two package files, and it defends
+// itself. A genuine export entry links to the genuine head, so lines appended
+// past it — or a mid-chain edit whose downstream hashes were relinked — move
+// the shipped head and fail the prevHash check here.
 function validateExportEntry(
   raw: string,
-  chainEntries: ManifestEntry[],
+  shippedEntries: ManifestEntry[],
   publicKeyPem: string
 ): { entry: ExportEntry } | { reason: string } {
   let parsed: unknown
@@ -138,7 +151,7 @@ function validateExportEntry(
   if (recomputed !== entryHash) {
     return { reason: 'export-entry.json entry hash mismatch' }
   }
-  const head = chainEntries.at(-1)
+  const head = shippedEntries.at(-1)
   if (entry.prevHash !== (head?.entryHash ?? '')) {
     return { reason: 'export-entry.json prevHash does not match the bundled manifest head' }
   }
@@ -247,9 +260,32 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
     )
   }
 
-  // Operate on the schema-valid entries parsed up to the first break — no entry
-  // past `brokenAt` can be trusted. When the chain is valid this is every entry.
-  const entries = parseManifestEntries(manifestJsonl)
+  // Every schema-valid entry in manifest.jsonl AS SHIPPED. Only the two
+  // structural cross-checks that must see the shipped head read this — the
+  // export-entry linkage (§7.2b) and the evidence.json head comparison (§7.4).
+  // Neither derives a fact about the case from it: both compare one package
+  // file against another, and handing either the break-bounded head below would
+  // report a chain break as `index edited`, accusing an index nobody touched.
+  const shippedEntries = parseManifestEntries(manifestJsonl)
+
+  // Every fact this verifier derives about the case comes from here: the
+  // shipped entries bounded by the chain's own verdict. When the chain reports
+  // a break at `brokenAt`, nothing at or after that index contributes,
+  // whichever reason fired — the parse and shape breaks `parseManifestEntries`
+  // stops on itself, and equally the index-gap, linkage, hash, downgrade and
+  // signature breaks that only the chain walk detects, which it did not (#691).
+  // When the chain is valid this is every shipped entry.
+  //
+  // What this does NOT claim: the entries before a PARSE-stage break are
+  // schema-valid but unverified, because the chain walk returns before the pass
+  // that recomputes hashes and checks signatures ever runs. Bounding the set is
+  // what stops untrusted lines from contributing rows; the `manifest chain`
+  // FAIL above is what says the package is not trustworthy.
+  //
+  // The `?? 0` is unreachable today — the one invalid outcome carrying no
+  // `brokenAt` is `unsupported`, which returned above — and fails closed to the
+  // empty set if a later outcome ever reaches here without one.
+  const entries = chain.valid ? shippedEntries : shippedEntries.slice(0, chain.brokenAt ?? 0)
 
   // §7.2 active-capture set: every `capture` entry whose captureId has no later
   // `deletion` entry. Deleted captures are expected absent — not required to
@@ -289,7 +325,7 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
       add('export entry', 'fail', `export-entry.json unreadable: ${(err as Error).message}`)
     }
     if (rawEntry !== undefined) {
-      const validated = validateExportEntry(rawEntry, entries, publicKeyPem)
+      const validated = validateExportEntry(rawEntry, shippedEntries, publicKeyPem)
       if ('reason' in validated) {
         add('export entry', 'fail', validated.reason)
       } else {
@@ -449,13 +485,13 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   // chain anchors was verified" over a package whose Exhibits it never looked
   // at, which is X44's dishonest third option. A SKIP and not a FAIL: the
   // package is not at fault for being newer than the verifier, and a tamper
-  // verdict on that ground is the false accusation X25 forbids. `entries` is
-  // PARSE-scoped, not brokenAt-scoped: parseManifestEntries stops at the first
-  // line it cannot read, so a chain that FAILs on a signature, hash or linkage
-  // with every line parseable still lists its Exhibit entries here and emits
-  // their SKIPs inside a FAIL report. Rows for entries nothing verified, not a
-  // claim about them — `pass` is false regardless. The scoping itself, and the
-  // comment at the `entries` declaration that still says otherwise, are #691.
+  // verdict on that ground is the false accusation X25 forbids. These rows come
+  // from the break-bounded `entries`, so a FAILing chain lists only the Exhibit
+  // entries preceding its break and an Exhibit appended past one gets no row at
+  // all (#691) — the report never names an item it took from a line the same
+  // report has declared untrustworthy. The rows it does emit inside a FAIL are
+  // still rows for entries nothing bound bytes to, not a claim about them, and
+  // `pass` is false regardless.
   for (const entry of entries) {
     if (entry.type === 'exhibit') {
       add(
@@ -473,9 +509,13 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
     }
   }
 
-  // §7.4 head cross-check (index integrity).
+  // §7.4 head cross-check (index integrity). Reads the shipped head, not the
+  // break-bounded one: the question here is whether evidence.json still points
+  // at the manifest it was written for. Comparing it against a truncated chain
+  // would turn every chain break into an `index edited` FAIL over an index the
+  // package never touched, and the break is already reported above.
   if (evidence) {
-    const head = entries.at(-1)
+    const head = shippedEntries.at(-1)
     const expectedIndex = head?.index ?? null
     const expectedHash = head?.entryHash ?? null
     const { manifestHeadIndex, manifestHeadHash } = evidence.verificationMaterials

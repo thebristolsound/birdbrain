@@ -19,6 +19,7 @@ import { closeDatabase, getDb, initDatabase } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
 import { insertCapture, setCaptureTrustedTime } from '@main/services/db/captureRepo'
 import { getExhibit, listExhibits } from '@main/services/db/exhibitRepo'
+import { insertDerivedFile } from '@main/services/db/derivedFileRepo'
 import { getStagingFile, listStagingFiles } from '@main/services/db/stagingRepo'
 import {
   commitStagedFiles,
@@ -35,7 +36,12 @@ import {
 } from '@main/services/caseArchive'
 import { createTimestampWorker } from '@main/services/timestampWorker'
 import { createCaptureLifecycle, type CaptureLifecycle } from '@main/services/captureLifecycle'
-import { appendManifestEntry, initManifest, verifyManifestChain } from '@main/services/manifest'
+import {
+  appendManifestEntry,
+  initManifest,
+  verifyManifestChain,
+  withManifestEntry
+} from '@main/services/manifest'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { createStoredZip } from '@main/services/zip'
@@ -53,7 +59,8 @@ import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 //      chain still verifies; the RFC 3161 request is handed off (X26).
 //   3. DISCARD removes file and row and writes no entry (X29).
 //   4. VERIFY reports verified, tampered and missing for a committed
-//      attachment through `exhibits:verify`.
+//      attachment through `exhibits:verify`, and one outcome per Derived File
+//      bound to its `derivation` entry (X37).
 //   5. A `timestamp` entry over a committed attachment stamps schema 3 and a
 //      Capture's still stamps 2 (#1180).
 //   6. The Evidence Package is refused while a committed non-Capture Exhibit
@@ -387,6 +394,85 @@ describe('staging pool', () => {
         status: 'chain-broken',
         reason: 'Exhibit not anchored in manifest chain'
       })
+    })
+
+    it('reports one outcome per derived file bound to its derivation entry', async () => {
+      const exhibitId = await committedAttachment()
+      const exhibit = getExhibit(exhibitId)!
+      const output = Buffer.from('extracted text')
+      const rel = join(caseId, 'derived', 'text.txt')
+      mkdirSync(join(caseDir, 'derived'))
+      writeFileSync(join(storageRoot, rel), output)
+      const derived = await withManifestEntry(
+        caseDir,
+        {
+          type: 'derivation',
+          caseId,
+          parentExhibitId: exhibitId,
+          parentContentHash: exhibit.contentHash,
+          derivation: 'text',
+          derivationToolVersion: '9.9.9-test',
+          outputHash: sha256(output),
+          outputPath: rel,
+          timestamp: '2026-09-01T10:00:00.000Z',
+          operatorId: 'op-1',
+          operatorName: 'Test Operator',
+          toolVersion: '9.9.9-test'
+        },
+        (appended) =>
+          insertDerivedFile({
+            exhibitId,
+            derivation: 'text',
+            toolVersion: '9.9.9-test',
+            contentHash: sha256(output),
+            path: rel,
+            createdAt: '2026-09-01T10:00:00.000Z',
+            manifestSeq: appended.index
+          })
+      )
+      const outcome = async () => (await verifyExhibit(caseId, exhibitId)).derived
+
+      expect(await outcome()).toEqual([
+        { derivedFileId: derived.id, derivation: 'text', status: 'verified' }
+      ])
+
+      writeFileSync(join(storageRoot, rel), Buffer.concat([output, Buffer.from('!')]))
+      expect(await outcome()).toMatchObject([{ status: 'tampered' }])
+
+      unlinkSync(join(storageRoot, rel))
+      expect(await outcome()).toMatchObject([
+        { status: 'missing', reason: 'Derived file unreadable' }
+      ])
+
+      // The parent's own outcome is untouched by its derived files.
+      expect((await verifyExhibit(caseId, exhibitId)).status).toBe('verified')
+
+      // Pointed at the parent's `exhibit` entry: the chain vouches for that
+      // line, but it is not a derivation, so nothing anchors the file.
+      writeFileSync(join(storageRoot, rel), output)
+      const seqAt = (seq: number | null) =>
+        getDb()
+          .prepare('UPDATE derived_files SET manifest_seq = ? WHERE id = ?')
+          .run(seq, derived.id)
+      seqAt(exhibit.manifestSeq)
+      expect(await outcome()).toEqual([
+        {
+          derivedFileId: derived.id,
+          derivation: 'text',
+          status: 'unverified',
+          reason: 'Derived file is not anchored in the verified chain'
+        }
+      ])
+
+      seqAt(null)
+      expect(await outcome()).toEqual([
+        {
+          derivedFileId: derived.id,
+          derivation: 'text',
+          status: 'unverified',
+          reason: 'No manifest entry anchors this derived file'
+        }
+      ])
     })
   })
 

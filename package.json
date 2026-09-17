@@ -165,7 +165,7 @@
     "tldts": "^7.4.13",
     "use-image": "^1.1.4",
     "uuid": "^14.0.2",
-    "zod": "^3.25.76",
+    "zod": "^4.6.5",
     "zustand": "^5.0.15"
   },
   "devDependencies": {

@@ -154,7 +154,7 @@
     "ioc-extractor": "^8.2.0",
     "konva": "^10.5.0",
     "lucide-react": "^0.577.0",
-    "motion": "^12.42.2",
+    "motion": "^13.2.0",
     "radix-ui": "^1.6.7",
     "react-konva": "^19.2.7",
     "react-markdown": "^10.1.0",

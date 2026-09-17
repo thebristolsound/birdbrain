@@ -27,8 +27,10 @@ records the facts verified for the choice.
 
 ## Decision
 
-**One cycle of the dispatch routine runs on a GitHub Actions hosted runner, hourly, from
-`.github/workflows/dispatch.yml`.** The skill is the program; the workflow is the host.
+**One cycle of the dispatch routine runs on a GitHub Actions hosted runner, every four hours,
+from `.github/workflows/dispatch.yml`.** The skill is the program; the workflow is the host.
+(Hourly from 2026-09-07 to 2026-09-16; the maintainer slowed it to every four hours on
+2026-09-16 because each fire is billed minutes while the repository is private.)
 
 1. **Identity.** The machine token is a repository secret, `BIRDBRAIN_AGENT_GH_TOKEN`, next to
    the curator's `CLAUDE_CODE_OAUTH_TOKEN`. The login and expiry date are repository variables.

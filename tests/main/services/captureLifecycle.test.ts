@@ -206,6 +206,66 @@ describe('createCaptureLifecycle.ingest', () => {
     expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
   })
 
+  it('anchors the HTTP status in the manifest body and mirrors it on the row (#797)', async () => {
+    const { readFileSync } = await import('fs')
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('mhtml-body'), { httpStatus: 404 })
+    )
+
+    // The row and the entry come from ONE derivation, so the report cannot
+    // print a status the chain leaves unattested.
+    expect(getCapture(capture.id)!.httpStatus).toBe(404)
+    const manifestPath = join(tempDir, 'captures', caseId, 'manifest.jsonl')
+    const lines = readFileSync(manifestPath, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+    const captureEntry = JSON.parse(lines[lines.length - 1])
+    expect(captureEntry.httpStatus).toBe(404)
+    expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+  })
+
+  it('OMITS an unrecorded HTTP status from both the entry and the row (#797)', async () => {
+    const { readFileSync } = await import('fs')
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    // 0 is what the wire schema coerces a missing httpStatus field to, and 900
+    // is not a status at all. Neither is written as a claim: the entry keeps
+    // its pre-R7 canonical body and the row records nothing to display.
+    for (const httpStatus of [0, 900]) {
+      const { capture } = await lifecycle.ingest(
+        buildIngestParams(caseId, Buffer.from('mhtml-body'), { httpStatus })
+      )
+      expect(getCapture(capture.id)!.httpStatus).toBeUndefined()
+      const lines = readFileSync(join(tempDir, 'captures', caseId, 'manifest.jsonl'), 'utf-8')
+        .split('\n')
+        .filter((l) => l.trim().length > 0)
+      const captureEntry = JSON.parse(lines[lines.length - 1])
+      expect('httpStatus' in captureEntry).toBe(false)
+    }
+    expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+  })
+
+  it('anchors a final URL only when the acquiring path supplies one (#797)', async () => {
+    const { readFileSync } = await import('fs')
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const entryAfter = async (overrides: Record<string, unknown>) => {
+      await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('mhtml-body'), overrides))
+      const lines = readFileSync(join(tempDir, 'captures', caseId, 'manifest.jsonl'), 'utf-8')
+        .split('\n')
+        .filter((l) => l.trim().length > 0)
+      return JSON.parse(lines[lines.length - 1])
+    }
+
+    expect((await entryAfter({ finalUrl: 'https://example.com/landing' })).finalUrl).toBe(
+      'https://example.com/landing'
+    )
+    // No final URL, and the empty string a caller might pass for "none": the
+    // entry must carry no claim at all rather than an empty one.
+    expect('finalUrl' in (await entryAfter({}))).toBe(false)
+    expect('finalUrl' in (await entryAfter({ finalUrl: '' }))).toBe(false)
+    expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+  })
+
   it('persists the TLS cert chain on the DB row, anchors it in the manifest body, and the chain still verifies (#123)', async () => {
     const { readFileSync } = await import('fs')
     const tls = {

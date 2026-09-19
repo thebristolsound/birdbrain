@@ -159,6 +159,13 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         browserVersion: rendered.browserVersion,
         userAgent: rendered.userAgent,
         httpStatus: rendered.httpStatus,
+        // The renderer is the one acquiring path that knows both URLs, so it is
+        // the one that can state a redirect (R7, #797). The capture is stored
+        // under the URL the bytes came from — `url` above — which on its own
+        // cannot tell a reader whether that is where the operator aimed. When
+        // the two differ, the entry says so; when they agree, nothing is
+        // written, because there is no redirect to record.
+        finalUrl: rendered.finalUrl !== job.url ? rendered.finalUrl : undefined,
         operatorId: getInstallationId(),
         operatorName: settings.operatorName ?? '',
         toolVersion: getToolVersion(),

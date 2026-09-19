@@ -43,6 +43,7 @@ import type {
   WaybackRef
 } from '@shared/types'
 import type { TrustedTimeResult } from '@shared/verify'
+import { recordedHttpStatus } from '@shared/httpStatus'
 import { formatSnapshotDelta } from '@shared/wayback'
 import {
   TRUSTED_TIME_UNRECORDED_STAMPED_AT,
@@ -973,7 +974,7 @@ function renderExhibit(e: ExhibitView, total: number): string {
   }
   add('Format', c.format === 'mhtml' ? 'MHTML archive' : 'HTML page')
   add('Method', c.method)
-  add('HTTP status', c.httpStatus)
+  add('HTTP status', recordedHttpStatus(c.httpStatus))
   add('Size', c.sizeBytes !== undefined ? formatBytes(c.sizeBytes) : undefined)
   add('Browser', c.browserVersion)
   add('Tool version', c.toolVersion)

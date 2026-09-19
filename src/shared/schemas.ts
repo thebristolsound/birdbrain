@@ -426,6 +426,17 @@ const ManifestCaptureEntrySchema = z
     screenshotHash: z.string().optional(),
     textHash: z.string().optional(),
     headers: z.record(z.string(), z.string()).optional(),
+    // Transaction provenance (R7, #797). `httpStatus` is the status the
+    // acquiring path recorded for the stored response; `finalUrl` is the URL
+    // the stored bytes were served from, written only by a path that resolved
+    // one AND saw it differ from the URL that was requested — its presence is
+    // the entry's statement that a redirect took the capture somewhere other
+    // than where it was aimed. Both optional and OMITTED (never 0 / '' / null)
+    // when unknown, so every entry written before R7 keeps its canonical body
+    // and therefore its chain hash. The status range is HTTP's own (RFC 9110
+    // §15); a value outside it is not a status and is never written.
+    httpStatus: z.number().int().min(100).max(599).optional(),
+    finalUrl: z.string().optional(),
     tls: TlsCertChainResultSchema.optional(),
     method: z.enum(CAPTURE_METHODS).optional(),
     supersedesCaptureId: z.string().optional(),

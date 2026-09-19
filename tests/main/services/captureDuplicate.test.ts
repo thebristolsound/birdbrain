@@ -195,6 +195,25 @@ describe('createCaptureLifecycle.duplicate (#827)', () => {
     expect(verifyManifestChain(caseDir).valid).toBe(true)
   })
 
+  it('re-anchors the transaction provenance the source entry holds (#797)', async () => {
+    const { getDb } = await import('@main/services/db/core')
+    // The status is anchored provenance now, so the copy takes it from the
+    // signed entry: an edited mirror must not become the copy's chain claim.
+    getDb().prepare('UPDATE captures SET http_status = ? WHERE id = ?').run(503, source.id)
+
+    const result = await lifecycle.duplicate(source.id)
+    if (result.status !== 'duplicated') throw new Error('expected a duplicate')
+
+    const entry = manifestLines()[1]
+    expect(entry.httpStatus).toBe(200)
+    // The source was ingested under the URL it was requested with, so it
+    // anchored no final URL and the copy claims none either.
+    expect('finalUrl' in entry).toBe(false)
+    expect(result.capture.httpStatus).toBe(200)
+    expect(ManifestEntrySchema.safeParse(entry).success).toBe(true)
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+  })
+
   it('copies no tags, notes or extracted data — only the bytes and their provenance', async () => {
     const { getDb } = await import('@main/services/db/core')
     const db = getDb()

@@ -62,6 +62,16 @@ const CAPTURE_BODY = {
   schemaVersion: 2
 }
 
+// The same body once R7 transaction provenance (#797) is on it: the status the
+// origin sent and the URL the bytes were actually served from. Every other
+// field is identical to CAPTURE_BODY above, so the pair pins exactly what the
+// two new fields cost — nothing when absent, a different hash when present.
+const CAPTURE_BODY_R7 = {
+  ...CAPTURE_BODY,
+  httpStatus: 404,
+  finalUrl: 'https://example.com/redirected'
+}
+
 const EXHIBIT_ID = '0196f7a2-aaaa-bbbb-cccc-000000000010'
 const EXHIBIT_CONTENT_HASH = 'd'.repeat(64)
 
@@ -127,7 +137,12 @@ const FROZEN_ENTRY_HASHES = {
   capture: 'c993dd9744c9f98bc096939e5d37c7f5b0490b47098dd961a01def5cc2a68ebf',
   exhibit: 'a3088330cefd3f04fe332992d9597cacebf6760c68f528a10b944465fc085431',
   derivation: 'ce3e175420475fcc8e8b4086d51df1f9e5282716affade0d2ec1268ac04b5221',
-  renumber: 'eb23edc7c967c8f6e3114df29f49bc0d989c5cfcc2aa1734f6f1c72ade0b0485'
+  renumber: 'eb23edc7c967c8f6e3114df29f49bc0d989c5cfcc2aa1734f6f1c72ade0b0485',
+  // Frozen at R7 (#797), the first build that could write this body. It is a
+  // new answer, not a moved one: the `capture` digest above is for the same
+  // fields WITHOUT the two new ones and is unchanged, which is the claim that
+  // every chain written before R7 still verifies.
+  captureR7: 'f2e8b2c8d315fa63a0609e7bb321c3146cf786812a1c6478e9c158623c18aa32'
 }
 
 function entryHashOf(body: Record<string, unknown>): string {
@@ -165,6 +180,24 @@ describe('manifest schema 3 — frozen entry hashes', () => {
     expect(parsed.success).toBe(true)
   })
 
+  it('pins the canonical hash of a capture entry carrying R7 provenance (#797)', () => {
+    // The pre-R7 answer is untouched (asserted above), and this is the answer
+    // for the same capture once the status and final URL are on it. The two
+    // differ, which is what makes the provenance attested rather than
+    // decorative: strip either field and the recomputed hash no longer matches
+    // what the entry carries.
+    expect(entryHashOf(CAPTURE_BODY_R7)).toBe(FROZEN_ENTRY_HASHES.captureR7)
+    expect(entryHashOf(CAPTURE_BODY_R7)).not.toBe(FROZEN_ENTRY_HASHES.capture)
+  })
+
+  it('verifies a chain mixing pre-R7 and R7 capture entries (#797)', () => {
+    // The normal state of a case that predates R7: old entries carry no
+    // provenance fields, new ones do, and one verifier reads both.
+    const result = verify(buildChain([CAPTURE_BODY, CAPTURE_BODY_R7]))
+    expect(result.valid).toBe(true)
+    expect(result.unsupported).toBeUndefined()
+  })
+
   it('pins the canonical hash of each new entry type', () => {
     expect(entryHashOf(EXHIBIT_BODY)).toBe(FROZEN_ENTRY_HASHES.exhibit)
     expect(entryHashOf(DERIVATION_BODY)).toBe(FROZEN_ENTRY_HASHES.derivation)
@@ -197,6 +230,25 @@ describe('manifest schema 3 — the schema', () => {
     for (const body of [EXHIBIT_BODY, DERIVATION_BODY, RENUMBER_BODY]) {
       const parsed = ManifestEntrySchema.safeParse({ ...body, entryHash: 'f'.repeat(64) })
       expect(parsed.success).toBe(true)
+    }
+  })
+
+  it('parses a capture entry carrying R7 provenance, and refuses a non-status (#797)', () => {
+    expect(
+      ManifestEntrySchema.safeParse({ ...CAPTURE_BODY_R7, entryHash: 'f'.repeat(64) }).success
+    ).toBe(true)
+    // 0 is the value a missing status field coerces to on the wire and 700 is
+    // not a status code. Neither is a claim the chain will carry: the writer
+    // omits them, and an entry that states one is malformed rather than read
+    // as "the origin answered 0".
+    for (const httpStatus of [0, 700, 200.5]) {
+      expect(
+        ManifestEntrySchema.safeParse({
+          ...CAPTURE_BODY_R7,
+          httpStatus,
+          entryHash: 'f'.repeat(64)
+        }).success
+      ).toBe(false)
     }
   })
 

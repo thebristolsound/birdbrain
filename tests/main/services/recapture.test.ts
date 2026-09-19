@@ -128,6 +128,34 @@ describe('recapture service', () => {
     expect(manifest).not.toContain('consentSuppression')
   })
 
+  it('anchors the final post-redirect URL when the render redirected (#797)', async () => {
+    const svc = makeService(fakeRender({ finalUrl: 'https://example.com/landing' }))
+    svc.enqueue([{ url: 'https://example.com/page', caseId }])
+    await svc.idle()
+
+    // The capture is stored under the URL the bytes came from, as it always
+    // has been. `finalUrl` is what lets a chain reader tell that the stored URL
+    // is a redirect target and not where the operator aimed.
+    expect(getCapture(newCaptures[0].id)!.url).toBe('https://example.com/landing')
+    const manifest = readFileSync(join(getStorageRoot(), caseId, MANIFEST_FILENAME), 'utf-8')
+    expect(manifest).toContain('"finalUrl":"https://example.com/landing"')
+    expect(manifest).toContain('"httpStatus":200')
+    // The verifier's strict entry schema rejects unknown keys as chain-broken,
+    // so this is also the check that the new fields are readable.
+    const verification = await verifyCapture(newCaptures[0].id)
+    expect(verification.status).toBe('verified')
+  })
+
+  it('omits the final URL when the requested URL is what was served (#797)', async () => {
+    const svc = makeService(fakeRender())
+    svc.enqueue([{ url: 'https://example.com/page', caseId }])
+    await svc.idle()
+    const manifest = readFileSync(join(getStorageRoot(), caseId, MANIFEST_FILENAME), 'utf-8')
+    // Writing the requested URL here would claim a redirect that never
+    // happened, so nothing is written at all.
+    expect(manifest).not.toContain('finalUrl')
+  })
+
   it('runs jobs serially in FIFO order', async () => {
     const order: string[] = []
     const gate: Array<() => void> = []

@@ -9,10 +9,15 @@
 
 import type { SessionStateEvent } from '@shared/ipc'
 
-// The extension is considered present if it has polled within this window.
-const DEFAULT_EXTENSION_TIMEOUT_MS = 10_000
-// How often the heartbeat monitor looks for an expired extension.
-const DEFAULT_HEARTBEAT_POLL_MS = 5_000
+// The extension is considered present if it has polled within this window. Its
+// poll period is 30 s — the MV3 `chrome.alarms` floor, so it cannot be shortened
+// (extension/src/background.ts:479) — and service-worker teardown makes delivery
+// unpunctual, so the window is three poll periods and survives one missed alarm.
+// A window shorter than the poll period reads a healthy extension as gone (#628).
+const DEFAULT_EXTENSION_TIMEOUT_MS = 90_000
+// How often the heartbeat monitor looks for an expired extension. Worst-case
+// disconnect detection is the window plus one poll interval: 105 s.
+const DEFAULT_HEARTBEAT_POLL_MS = 15_000
 
 export interface SessionSnapshot {
   activeCaseId: string | null

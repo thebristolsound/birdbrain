@@ -277,8 +277,8 @@ function verifiedDerivations(
   for (const line of snapshot.entries) {
     const parsed = ManifestEntrySchema.safeParse(line)
     if (!parsed.success || parsed.data.type !== 'derivation') continue
-    const { parentExhibitId, outputPath, outputHash } = parsed.data
-    facts.push({ parentExhibitId, outputPath, outputHash })
+    const { caseId, parentExhibitId, outputPath, outputHash } = parsed.data
+    facts.push({ caseId, parentExhibitId, outputPath, outputHash })
   }
   return facts
 }
@@ -306,9 +306,9 @@ async function verifyDerivedFiles(
   // by bare id equality, the same resolution `verifyExhibit` gives an Exhibit:
   // an archive import keeps the source's id on the entry and only the anchored
   // id map may reconcile the two.
-  const parentMatches = (entryParentExhibitId: string): boolean =>
+  const parentMatches = (entry: DerivationEntryFacts): boolean =>
     entryDescribesRow(
-      { caseId: exhibit.caseId, rowId: entryParentExhibitId },
+      { caseId: entry.caseId, rowId: entry.parentExhibitId },
       exhibit,
       imports,
       caseDir

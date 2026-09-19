@@ -10,10 +10,7 @@ import { createCase } from '@main/services/db/caseRepo'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
 import { appendManifestEntry, initManifest } from '@main/services/manifest'
 import { signEntryHash } from '@main/services/signingKey'
-import {
-  ingestMhtmlCapture,
-  createCaptureLifecycle
-} from '@main/services/captureLifecycle'
+import { ingestMhtmlCapture, createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { generateReport } from '@main/services/export'
 import { initSettings, updateSettings } from '@main/services/settings'
@@ -146,7 +143,13 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
     const outputPath = join(tempDir, 'evidence.zip')
     const options: ExportOptions = {
       format: 'zip',
-      include: { captures: true, screenshots: true, auditTrail: true, notes: false, annotations: 'none' },
+      include: {
+        captures: true,
+        screenshots: true,
+        auditTrail: true,
+        notes: false,
+        annotations: 'none'
+      },
       exportClass: 'evidence',
       outputPath
     }
@@ -183,6 +186,24 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
     // The shared mixed-kind fixture Case (#1156, D14): a capture with its
     // thumbnail derived file, plus a committed attachment, image and document.
     mixed = await seedMixedKindCase({ tempDir, name: 'Binary Mixed Kind Case' })
+    // A token over a committed Exhibit's Content Hash (X26), so the binary has
+    // an exhibit timestamp to bind rather than only a capture's.
+    const mixedCaseDir = join(tempDir, 'captures', mixed.caseId)
+    const documentHash = createHash('sha256').update(mixed.document.bytes).digest('hex')
+    appendManifestEntry(mixedCaseDir, {
+      type: 'timestamp',
+      caseId: mixed.caseId,
+      captureContentHash: documentHash,
+      timestamp: '2026-04-05T12:01:00.000Z',
+      tsaToken: buildSyntheticToken({
+        contentHash: documentHash,
+        genTime: new Date('2026-04-05T12:01:00.000Z'),
+        tsaDnsName: 'tsa.example.com'
+      }).toString('base64'),
+      operatorId: 'op',
+      operatorName: 'Test Operator',
+      toolVersion: '0.1.0'
+    })
     const mixedPath = join(tempDir, 'mixed-evidence.zip')
     await generateReport(mixed.caseId, { ...options, outputPath: mixedPath }, captureLifecycle)
     mixedPkgDir = mkdtempSync(join(tmpdir(), 'bb-binmixedpkg-'))
@@ -212,6 +233,11 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
       expect(proc.stdout).toContain(`Exhibit ${exhibit.exhibitNumber} (${exhibit.kind})`)
     }
     expect(proc.stdout).toContain(`[PASS] derivation thumbnail of ${mixed.captureId}`)
+    // X26 through the binary: a committed Exhibit's token is bound, not passed
+    // over in silence while verify.sh requires it and the certification
+    // asserts a trusted time off it.
+    expect(proc.stdout).toContain(`[PASS] exhibit ${mixed.document.id} timestamp`)
+    expect(proc.stdout).toContain('structural (imprint + bytes)')
     // The answer this replaced: one SKIP per exhibit entry deferring the work.
     expect(proc.stdout).not.toContain('803e')
   })
@@ -288,14 +314,7 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
   // package (no export-entry.json, legacy export entry in its chain) must keep
   // passing byte-for-byte unchanged.
   it('exits 0 with a PASS report on the frozen pre-scope fixture package', () => {
-    const fixtureDir = resolve(
-      __dirname,
-      '..',
-      'shared',
-      'verify',
-      'fixtures',
-      'pre-scope-package'
-    )
+    const fixtureDir = resolve(__dirname, '..', 'shared', 'verify', 'fixtures', 'pre-scope-package')
     const proc = spawnSync(binaryPath, [fixtureDir], { encoding: 'utf-8' })
     expect(proc.status, proc.stdout + proc.stderr).toBe(0)
     expect(proc.stdout).toContain('RESULT: PASS')

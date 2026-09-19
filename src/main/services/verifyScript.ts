@@ -370,6 +370,26 @@ parent_dir() {
   return 1
 }
 
+# Exhibit Numbers as the chain records them: on an \`exhibit\` entry, and for a
+# Capture in the one-time \`renumber\` entry. A Capture committed after its Case
+# was renumbered has no number in the chain, and is then named by its id -
+# never by a number counted here, which would cite something nothing signed.
+: >"$tmp/exhibit-numbers.txt"
+jq -r 'select(.type == "exhibit") | "\\(.exhibitId) \\(.exhibitNumber)"' \\
+  manifest.jsonl >>"$tmp/exhibit-numbers.txt"
+jq -r 'select(.type == "renumber") | .assignments[] | "\\(.exhibitId) \\(.exhibitNumber)"' \\
+  manifest.jsonl >>"$tmp/exhibit-numbers.txt"
+
+# How a finding cites an Exhibit, matching the binary verifier's wording.
+exhibit_label() {
+  while IFS=' ' read -r numbered_id number; do
+    [ "$numbered_id" = "$1" ] || continue
+    printf 'Exhibit %s' "$number"
+    return 0
+  done <"$tmp/exhibit-numbers.txt"
+  printf 'exhibit %s' "$1"
+}
+
 # Derived Files (X17): bytes the tool computed FROM an Exhibit, enclosed beside
 # their parent. A Derived File has no Exhibit Number of its own (X31), so a
 # finding names the parent and the derivation that produced it.
@@ -394,10 +414,11 @@ while IFS= read -r line; do
   else
     rel="$base"
   fi
+  label="$(exhibit_label "$parent"), derivation $derivation"
   if [ ! -f "$rel" ]; then
-    fail "derivation $derivation of exhibit $parent: $rel is missing and nothing signed accounts for its absence"
+    fail "$label: $rel is missing and nothing signed accounts for its absence"
   elif [ "$(sha256_of "$rel")" != "$(field "$line" '.outputHash')" ]; then
-    fail "derivation $derivation of exhibit $parent: $rel does not match the outputHash in its signed entry"
+    fail "$label: $rel does not match the outputHash in its signed entry"
   else
     derived_bound=$((derived_bound + 1))
   fi

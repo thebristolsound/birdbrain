@@ -363,11 +363,20 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
     parentDirectories.set(exhibit.exhibitId, exhibitPackageDirectory(exhibit.kind, exhibit.path))
   }
 
+  // Whether the SIGNED chain carries the Exhibit model at all. This, and never
+  // evidence.json's own `schemaVersion`, is what decides that the index owes an
+  // `exhibits` list: the version field is unsigned and a downgrade must not buy
+  // a bypass.
+  const chainCarriesExhibitModel = entries.some(
+    (e) => e.type === 'exhibit' || e.type === 'derivation'
+  )
+
   // The `derivation` entries the bound predicate may consider: break-bounded,
   // exactly like every other fact this verifier derives about the case.
   const derivationFacts: DerivationEntryFacts[] = entries
     .filter((e): e is Extract<ManifestEntry, { type: 'derivation' }> => e.type === 'derivation')
-    .map(({ parentExhibitId, outputPath, outputHash }) => ({
+    .map(({ caseId, parentExhibitId, outputPath, outputHash }) => ({
+      caseId,
       parentExhibitId,
       outputPath,
       outputHash
@@ -547,7 +556,12 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
       }
     } else {
       const signedToken = Buffer.from(tsEntry.tsaToken, 'base64')
-      const tstPath = locateTimestampFile(dir, cap.captureId, evidence, signedToken)
+      const tstPath = locateTimestampFile(
+        dir,
+        cap.captureId,
+        evidence?.captures.find((c) => c.id === cap.captureId)?.timestampTokenPaths ?? [],
+        signedToken
+      )
       if (!tstPath) {
         add(tsName, 'fail', `capture ${cap.captureId}: timestamp token file missing`)
       } else {
@@ -613,7 +627,76 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
     } else {
       add(name, 'pass', `${label} at ${relPath}`)
     }
+
+    // Timestamp — the same STRUCTURAL check a Capture's token gets, for the
+    // same reason it gets one: committing an Exhibit runs the same RFC 3161
+    // path ingesting a Capture does (X26), the exporter encloses the token and
+    // the certification asserts a trusted time off it. Saying nothing here
+    // while `verify.sh` requires the file and the certification names the
+    // authority is the silence X44 rejects, and it left two shipped verifiers
+    // disagreeing about what a package must contain.
+    const tsName = `exhibit ${exhibit.exhibitId} timestamp`
+    const axis = chain.trustedTimes.get(exhibit.contentHash)
+    const tsEntry = timestampEntries.find(
+      (t) => t.captureContentHash === exhibit.contentHash && typeof t.tsaToken === 'string'
+    )
+    if (!tsEntry || typeof tsEntry.tsaToken !== 'string') {
+      if (untrustedTokenHashes.has(exhibit.contentHash)) {
+        add(
+          tsName,
+          'skip',
+          `${label}: no trustworthy timestamp — the manifest's token for it is at or past the ` +
+            `chain break at index ${breakIndex}`
+        )
+      } else {
+        add(
+          tsName,
+          'skip',
+          `${label}: ${axis?.trustedTime ?? 'none'} — no timestamp token in the manifest`
+        )
+      }
+    } else {
+      const signedToken = Buffer.from(tsEntry.tsaToken, 'base64')
+      const indexed =
+        evidence?.exhibits?.find((row) => row.id === exhibit.exhibitId)?.timestampTokenPaths ?? []
+      const tstPath = locateTimestampFile(dir, exhibit.exhibitId, indexed, signedToken)
+      if (!tstPath) {
+        add(tsName, 'fail', `${label}: timestamp token file missing`)
+      } else if (!readFileSync(tstPath).equals(signedToken)) {
+        add(
+          tsName,
+          'fail',
+          `${label}: timestamp token does not match the signed manifest (swapped token)`
+        )
+      } else {
+        let imprint: string | undefined
+        try {
+          imprint = parseTimestampToken(signedToken).messageImprintHex
+        } catch {
+          imprint = undefined
+        }
+        if (imprint !== exhibit.contentHash) {
+          add(tsName, 'fail', `${label}: timestamp imprint does not bind this exhibit`)
+        } else {
+          const who = axis?.tsaName ? ` per ${axis.tsaName}` : ''
+          add(
+            tsName,
+            'pass',
+            `${label}: ${axis?.trustedTime ?? 'none'}${who} — structural (imprint + bytes); ` +
+              'run `openssl ts -verify` for TSA authenticity'
+          )
+        }
+      }
+    }
   }
+
+  // What evidence.json's `exhibits[].derivedFiles` must list, built from the
+  // chain as the derivations are bound below. The index is untrusted, so the
+  // chain is what says which Derived Files exist and what they hash to.
+  const requiredDerivedFiles = new Map<
+    string,
+    Array<{ derivation: string; packagePath: string; entry: DerivationEntryFacts }>
+  >()
 
   // Derived Files (X17, X37). Bound through the SAME predicate the app's verify
   // path uses (`bindDerivedFile`), because an app and a standalone verifier that
@@ -623,6 +706,14 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   for (const derivation of entries) {
     if (derivation.type !== 'derivation') continue
     const name = `derivation ${derivation.derivation} of ${derivation.parentExhibitId}`
+    // Every derivation the chain carries for a parent this package is expected
+    // to hold, with the package path the layout puts it at. §7.5 reconciles
+    // evidence.json's nested list against exactly this set.
+    const expectedDerived = (parentId: string, packagePath: string): void => {
+      const rows = requiredDerivedFiles.get(parentId) ?? []
+      rows.push({ derivation: derivation.derivation, packagePath, entry: derivation })
+      requiredDerivedFiles.set(parentId, rows)
+    }
     const label = `${exhibitLabel(derivation.parentExhibitId, exhibitNumbers)}, derivation \`${derivation.derivation}\``
     const parent = parentDirectories.get(derivation.parentExhibitId)
     if (parent === undefined) {
@@ -639,6 +730,7 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
       continue
     }
     const relPath = derivedFilePackagePath(parent, derivation.outputPath)
+    expectedDerived(derivation.parentExhibitId, relPath)
     const filePath = safeJoin(dir, relPath)
     if (!filePath) {
       add(name, 'fail', `${label}: the output path in its signed entry escapes the package`)
@@ -742,11 +834,17 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
     }
     if (coverageOk) add('evidence.json coverage', 'pass')
 
-    // The same reconciliation over the `exhibits` list (#1156). Required from
-    // evidence.json schemaVersion 2 on, where its absence is an edited index
-    // rather than an older writer; a schemaVersion 1 package predates the list
-    // and is reconciled on `captures` alone, exactly as it always was.
-    if (evidence.schemaVersion >= 2) {
+    // The same reconciliation over the `exhibits` list (#1156), run whenever the
+    // SIGNED CHAIN carries the Exhibit model — an `exhibit` or `derivation`
+    // entry — or the index itself declares schemaVersion 2.
+    //
+    // The chain is the trigger, not `schemaVersion`, because that field lives
+    // in the same unsigned file as the list it would gate: a tamperer who
+    // deleted `exhibits` and set `schemaVersion` back to 1 skipped the check
+    // entirely. A package whose chain carries no Exhibit entries and whose
+    // index declares version 1 is a genuine pre-#1156 package and is
+    // reconciled on `captures` alone, exactly as it always was.
+    if (chainCarriesExhibitModel || evidence.schemaVersion >= 2) {
       const indexedExhibitIds = new Set((evidence.exhibits ?? []).map((e) => e.id))
       const chainActiveIds = new Set([
         ...activeCaptures.map((c) => c.captureId),
@@ -761,7 +859,10 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
         add(
           'evidence.json exhibits',
           'fail',
-          'evidence.json declares schemaVersion 2 but carries no exhibits list'
+          chainCarriesExhibitModel
+            ? 'evidence.json carries no exhibits list, but the verified manifest anchors ' +
+                'exhibits or derived files'
+            : 'evidence.json declares schemaVersion 2 but carries no exhibits list'
         )
       }
       for (const id of expected) {
@@ -791,6 +892,70 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
         }
       }
       if (exhibitCoverageOk) add('evidence.json exhibits', 'pass')
+
+      // The nested Derived File rows, reconciled in both directions against the
+      // chain (#1156 review A1). Without this a fabricated row plus its file
+      // passed every check: the sweep proved the file matched its own row, and
+      // nothing asked whether any `derivation` entry said the file existed —
+      // which is precisely the provenance claim a nested row makes.
+      let derivedOk = true
+      for (const row of evidence.exhibits ?? []) {
+        const required = requiredDerivedFiles.get(row.id) ?? []
+        for (const listed of row.derivedFiles) {
+          const candidate = required.find(
+            (item) => item.derivation === listed.derivation && item.packagePath === listed.path
+          )
+          if (!candidate) {
+            derivedOk = false
+            add(
+              'evidence.json derived files',
+              'fail',
+              `evidence.json lists derived file \`${listed.derivation}\` of exhibit ${row.id}, ` +
+                'which the verified manifest does not anchor at that path'
+            )
+            continue
+          }
+          // Through the same predicate the bytes were bound with: the row's
+          // own contentHash has to be the digest the signed entry records.
+          const bound = bindDerivedFile(
+            {
+              parentExhibitId: candidate.entry.parentExhibitId,
+              storedPath: candidate.entry.outputPath,
+              computedHash: listed.contentHash
+            },
+            derivationFacts
+          )
+          if (bound.status !== 'verified') {
+            derivedOk = false
+            add(
+              'evidence.json derived files',
+              'fail',
+              `evidence.json records a different digest for derived file ` +
+                `\`${listed.derivation}\` of exhibit ${row.id} than its signed entry`
+            )
+          }
+        }
+        for (const item of required) {
+          if (
+            !row.derivedFiles.some(
+              (listed) => listed.derivation === item.derivation && listed.path === item.packagePath
+            )
+          ) {
+            derivedOk = false
+            add(
+              'evidence.json derived files',
+              'fail',
+              `evidence.json omits derived file \`${item.derivation}\` of exhibit ${row.id}, ` +
+                'which the verified manifest anchors'
+            )
+          }
+        }
+      }
+      // An Exhibit the index omits entirely is already a coverage FAIL above;
+      // this states the derived-file half only when there were rows to check.
+      if (derivedOk && requiredDerivedFiles.size > 0) {
+        add('evidence.json derived files', 'pass')
+      }
     }
 
     let sweepOk = true
@@ -854,15 +1019,14 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
 // signed token.
 function locateTimestampFile(
   dir: string,
-  captureId: string,
-  evidence: ReturnType<typeof EvidencePackageSchema.parse> | undefined,
+  exhibitId: string,
+  indexedPaths: readonly string[],
   signedToken: Buffer
 ): string | undefined {
-  const ownPath = join(dir, 'timestamps', `${captureId}.tst`)
+  const ownPath = join(dir, 'timestamps', `${exhibitId}.tst`)
   if (existsSync(ownPath)) return ownPath
 
-  const indexed = evidence?.captures.find((c) => c.id === captureId)?.timestampTokenPaths ?? []
-  for (const rel of indexed) {
+  for (const rel of indexedPaths) {
     const p = safeJoin(dir, rel)
     if (p && existsSync(p)) return p
   }

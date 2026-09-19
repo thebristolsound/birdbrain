@@ -799,6 +799,12 @@ const EvidenceExhibitSchema = z.object({
   // enclose them (the file was unreadable at export time, and the warnings
   // block counts it).
   path: z.string().nullable(),
+  // Where the package encloses this Exhibit's RFC 3161 token, when one is
+  // enclosed. A locating hint only, like the capture row's: the verifier
+  // byte-binds whatever it finds to the token the signed entry carries, so the
+  // path carries no security weight. Optional for an index written before the
+  // field existed.
+  timestampTokenPaths: z.array(z.string()).optional(),
   derivedFiles: z.array(EvidenceDerivedFileSchema)
 })
 

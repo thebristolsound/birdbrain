@@ -74,8 +74,14 @@ export function derivedFilePackagePath(
   return parentDirectory ? `${parentDirectory}/${name}` : name
 }
 
-/** The three fields of a `derivation` entry a binding is allowed to read. */
+/** The fields of a `derivation` entry a binding is allowed to read. */
 export interface DerivationEntryFacts {
+  /**
+   * The Case the ENTRY names, which on an imported Case is the source Case and
+   * not the row's. Carried so a custody-aware `parentMatches` has the entry's
+   * own value to resolve against rather than being handed the row's back.
+   */
+  caseId: string
   parentExhibitId: string
   outputPath: string
   outputHash: string
@@ -96,11 +102,13 @@ export type DerivedFileBinding =
 
 export interface DerivedFileBindingOptions {
   /**
-   * Whether an entry's `parentExhibitId` names this file's parent. Defaults to
-   * id equality; the main process passes the custody-aware resolution an
-   * archive import needs, where the entry keeps the source's id.
+   * Whether an entry names this file's parent. Defaults to id equality; the
+   * main process passes the custody-aware resolution an archive import needs,
+   * where the entry keeps the source Case's id for both fields. The whole entry
+   * is passed, not just the parent id, so that resolution reads the entry's
+   * `caseId` — handing it the row's would make the custody half a tautology.
    */
-  parentMatches?: (entryParentExhibitId: string) => boolean
+  parentMatches?: (entry: DerivationEntryFacts) => boolean
 }
 
 /**
@@ -127,10 +135,11 @@ export function bindDerivedFile(
   options: DerivedFileBindingOptions = {}
 ): DerivedFileBinding {
   const parentMatches =
-    options.parentMatches ?? ((id: string): boolean => id === file.parentExhibitId)
+    options.parentMatches ??
+    ((entry: DerivationEntryFacts): boolean => entry.parentExhibitId === file.parentExhibitId)
   const wanted = inCasePath(file.storedPath)
   const candidates = entries.filter(
-    (entry) => parentMatches(entry.parentExhibitId) && inCasePath(entry.outputPath) === wanted
+    (entry) => parentMatches(entry) && inCasePath(entry.outputPath) === wanted
   )
   if (candidates.length === 0) {
     return {

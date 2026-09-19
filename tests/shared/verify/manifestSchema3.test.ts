@@ -1078,6 +1078,17 @@ describe('manifest schema 3 — Exhibit and Derived File binding (#1156)', () =>
     expect(result.pass).toBe(true)
   })
 
+  it('fails a Derived File the chain anchors and the package does not enclose', () => {
+    writePackage()
+    rmSync(join(pkgDir, 'documents', `${EXHIBIT_ID}_pdf-metadata.json`))
+
+    const result = verifyEvidencePackage(pkgDir)
+    const derivation = checkFor(result, `derivation pdf-metadata of ${EXHIBIT_ID}`)
+    expect(derivation?.status).toBe('fail')
+    expect(derivation?.reason).toContain('is missing from the package')
+    expect(result.pass).toBe(false)
+  })
+
   it('reports a chain Exhibit the index omits as an evidence.json disagreement', () => {
     writePackage()
     const path = join(pkgDir, 'evidence.json')

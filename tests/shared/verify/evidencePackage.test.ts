@@ -7,6 +7,7 @@ import { createHash } from 'crypto'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
 import { insertCapture } from '@main/services/db/captureRepo'
+import { listExhibits } from '@main/services/db/exhibitRepo'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
 import { appendManifestEntry, initManifest } from '@main/services/manifest'
 import { ingestMhtmlCapture, createCaptureLifecycle } from '@main/services/captureLifecycle'
@@ -1562,6 +1563,139 @@ describe('verifyEvidencePackage — exhibits of every kind (#1156)', () => {
     expect(checkNamed(result, `exhibit ${fixture.attachment.id}`)?.reason).toContain(
       'is missing from the package'
     )
+  })
+
+  it('binds a committed exhibit timestamp token, and fails a tampered or missing one', async () => {
+    // X26: committing an Exhibit runs the same RFC 3161 path ingesting a
+    // Capture does, so its token is bound the same way. The exporter ships it
+    // and the certification asserts a trusted time off it; a verifier that
+    // never looks leaves those two claims unchecked.
+    const target = fixture.document
+    const stored = listExhibits(fixture.caseId).find((e) => e.id === target.id)!
+    const token = buildSyntheticToken({
+      contentHash: stored.contentHash,
+      genTime: new Date('2026-04-05T12:01:00.000Z'),
+      tsaDnsName: 'tsa.example.com'
+    })
+    appendManifestEntry(join(tempDir, 'captures', fixture.caseId), {
+      type: 'timestamp',
+      caseId: fixture.caseId,
+      captureContentHash: stored.contentHash,
+      timestamp: '2026-04-05T12:01:00.000Z',
+      tsaToken: token.toString('base64'),
+      operatorId: 'op',
+      operatorName: 'Test Operator',
+      toolVersion: '0.1.0'
+    })
+
+    const outputPath = join(tempDir, 'mixed-stamped.zip')
+    await generateReport(
+      fixture.caseId,
+      {
+        format: 'zip',
+        include: {
+          captures: true,
+          screenshots: true,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
+        exportClass: 'evidence',
+        outputPath
+      },
+      createCaptureLifecycle({
+        selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} })
+      })
+    )
+    const dir = mkdtempSync(join(tmpdir(), 'bb-mixedstamp-'))
+    try {
+      unzipToDir(outputPath, dir)
+      const tokenPath = join(dir, 'timestamps', `${target.id}.tst`)
+      expect(existsSync(tokenPath)).toBe(true)
+
+      const pass = verifyEvidencePackage(dir)
+      const check = pass.checks.find((c) => c.name === `exhibit ${target.id} timestamp`)
+      expect(check?.status).toBe('pass')
+      expect(check?.reason).toContain(`Exhibit ${target.exhibitNumber}`)
+      expect(check?.reason).toContain('structural (imprint + bytes)')
+      expect(pass.pass, JSON.stringify(pass.checks, null, 2)).toBe(true)
+
+      // A token swapped for one the signed entry does not carry.
+      writeFileSync(
+        tokenPath,
+        buildSyntheticToken({
+          contentHash: stored.contentHash,
+          genTime: new Date('2026-04-05T13:00:00.000Z'),
+          tsaDnsName: 'other.example.com'
+        })
+      )
+      const swapped = verifyEvidencePackage(dir)
+      const swappedCheck = swapped.checks.find((c) => c.name === `exhibit ${target.id} timestamp`)
+      expect(swappedCheck?.status).toBe('fail')
+      expect(swappedCheck?.reason).toContain('does not match the signed manifest')
+
+      // And the token removed entirely.
+      rmSync(tokenPath)
+      const missing = verifyEvidencePackage(dir)
+      const missingCheck = missing.checks.find((c) => c.name === `exhibit ${target.id} timestamp`)
+      expect(missingCheck?.status).toBe('fail')
+      expect(missingCheck?.reason).toContain('timestamp token file missing')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('fails a fabricated derived-file row in evidence.json', () => {
+    // The row is a provenance claim: it says the tool computed this file from
+    // this Exhibit. Nothing in the chain says so, so the index and the chain
+    // disagree and the package must not pass.
+    const path = join(pkgDir, 'evidence.json')
+    const evidence = JSON.parse(readFileSync(path, 'utf-8')) as {
+      exhibits: Array<{
+        id: string
+        derivedFiles: Array<{ derivation: string; contentHash: string; path: string }>
+      }>
+      artifacts: Array<{ path: string; sha256: string; sizeBytes: number }>
+    }
+    const bytes = Buffer.from('forged derivation output')
+    const forgedPath = `documents/forged.txt`
+    writeFileSync(join(pkgDir, forgedPath), bytes)
+    const row = evidence.exhibits.find((e) => e.id === fixture.document.id)!
+    row.derivedFiles.push({
+      derivation: 'text',
+      contentHash: createHash('sha256').update(bytes).digest('hex'),
+      path: forgedPath
+    })
+    // Indexed too, so the artifact sweep is satisfied and only the chain
+    // reconciliation can catch it.
+    evidence.artifacts.push({
+      path: forgedPath,
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+      sizeBytes: bytes.length
+    })
+    writeFileSync(path, JSON.stringify(evidence, null, 2))
+
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass).toBe(false)
+    const check = result.checks.find((c) => c.name === 'evidence.json derived files')
+    expect(check?.status).toBe('fail')
+    expect(check?.reason).toContain('which the verified manifest does not anchor at that path')
+  })
+
+  it('fails a schemaVersion downgraded to hide the exhibits list', () => {
+    // `schemaVersion` lives in the same unsigned file as the list it would
+    // gate, so the chain is what decides the index owes one.
+    const path = join(pkgDir, 'evidence.json')
+    const evidence = JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>
+    evidence.schemaVersion = 1
+    delete evidence.exhibits
+    writeFileSync(path, JSON.stringify(evidence, null, 2))
+
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass).toBe(false)
+    const check = result.checks.find((c) => c.name === 'evidence.json exhibits')
+    expect(check?.status).toBe('fail')
+    expect(check?.reason).toContain('the verified manifest anchors exhibits or derived files')
   })
 
   it('fails an evidence.json that lists an exhibit the chain does not hold', () => {

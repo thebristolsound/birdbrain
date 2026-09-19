@@ -55,7 +55,9 @@ vi.mock('@main/services/tsaTrust', async (importOriginal) => {
   return {
     ...actual,
     getTsaTrustBundle: (tsaUrl: string) =>
-      localRoot.pem === '' ? actual.getTsaTrustBundle(tsaUrl) : { pem: localRoot.pem, bundled: true }
+      localRoot.pem === ''
+        ? actual.getTsaTrustBundle(tsaUrl)
+        : { pem: localRoot.pem, bundled: true }
   }
 })
 
@@ -426,7 +428,10 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     const run = runVerifyScript(dir)
     expect(run.status).toBe(1)
     expect(run.output).toContain('FAIL [step 5]')
-    expect(run.output).toContain(`derivation thumbnail of exhibit ${captureId}`)
+    // AC 2's wording, the same in both shipped verifiers: a Derived File has no
+    // number of its own (X31), so it is cited by its parent's and its
+    // derivation. The parent Capture's number comes off the `renumber` entry.
+    expect(run.output).toContain('Exhibit 1, derivation thumbnail')
     expect(run.output).toContain('does not match the outputHash in its signed entry')
   })
 

@@ -14,6 +14,7 @@ import {
   TSA_ROOT_FILENAME
 } from '@main/services/tsaTrust'
 import { VERIFY_SCRIPT_FILENAME } from '@main/services/verifyScript'
+import { EVIDENCE_INDEX_SCHEMA_VERSION } from '@shared/schemas'
 
 export const VERIFY_RUNBOOK = `# Verifying this evidence package by hand
 
@@ -76,8 +77,23 @@ recipe, and its \`prevHash\` must equal the \`entryHash\` of the **last line** o
 authoritative statement of what this package encloses: \`scope: "selection"\`
 means the operator deliberately exported a subset, and \`captureIds\` lists
 exactly the captures whose files are enclosed. The manifest still covers the
-whole case — the chain is never sliced. A package with no \`export-entry.json\`
-predates this file and encloses every active capture.
+whole case — the chain is never sliced.
+
+A package with **no** \`export-entry.json\` is not automatically an old one. The
+only thing dating it is \`evidence.json\`'s \`schemaVersion\`, which names the era
+the package was sealed in:
+
+\`\`\`sh
+jq -r '.schemaVersion' evidence.json
+\`\`\`
+
+Below ${EVIDENCE_INDEX_SCHEMA_VERSION} the package predates this file and encloses every active capture. At ${EVIDENCE_INDEX_SCHEMA_VERSION}
+or above it was sealed with an export entry, so an absent one is a **removed
+file**, not an age: treat the package as tampered with, and accept no statement
+of its scope. Birdbrain's verifier and \`${VERIFY_SCRIPT_FILENAME}\` both fail such a package; a
+hand check should too. That index is unsigned, so a \`schemaVersion\` edited
+downward looks by hand exactly like a genuinely old package — what settles it is
+knowing which build sealed this one.
 
 **What the programmatic/binary verifier does vs. this runbook:** the binary
 checks timestamp tokens **structurally only** (the token's message imprint binds
@@ -100,7 +116,7 @@ internal consistency*, **not** timestamp authenticity — this runbook's
 | \`screenshots/{sha256}.png\` | Captured screenshot (hashed as \`screenshotHash\`) |
 | \`timestamps/*.tst\` | RFC 3161 tokens (DER), when present |
 | \`evidence.json\` | Unsigned index (reconcile, do not trust) |
-| \`export-entry.json\` | Signed export entry for this package — scope of the enclosed captures (absent from older packages) |
+| \`export-entry.json\` | Signed export entry for this package — scope of the enclosed captures (absent only from packages whose \`evidence.json\` states a \`schemaVersion\` below ${EVIDENCE_INDEX_SCHEMA_VERSION}; see Trust model) |
 
 ## Step 1 — File integrity (index self-consistency)
 
@@ -169,7 +185,9 @@ Trust model) carries \`scope: "selection"\`, only the captures listed in its
 expect the others absent. Only the signed entry can account for an absent
 capture; never accept that explanation from \`evidence.json\` or the report.
 Without a verified selection scope, every capture entry with no later
-\`deletion\` entry must be present and must match.
+\`deletion\` entry must be present and must match. An **absent**
+\`export-entry.json\` is not a verified whole-case scope: run the era check in
+Trust model before reading it as one.
 
 \`\`\`sh
 # Content:

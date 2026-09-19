@@ -1,5 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, mkdirSync, rmSync, readFileSync, existsSync, writeFileSync } from 'fs'
+import {
+  accessSync,
+  chmodSync,
+  constants,
+  mkdtempSync,
+  mkdirSync,
+  rmSync,
+  readFileSync,
+  existsSync,
+  writeFileSync
+} from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
@@ -2932,12 +2942,101 @@ describe('export', () => {
       const report = readFileSync(outputPath, 'utf-8')
 
       expect(report).toContain('anchored in the chain by its own entry')
+      expect(report).toContain('the stored bytes recompute to the digest that entry records')
       expect(report).toContain('This document was exported on its own')
       // None of the package-only language, in either direction.
       expect(report).not.toContain('could not be read and is not enclosed')
       expect(report).not.toContain('is enclosed beside it')
       expect(report).not.toContain('recorded but not anchored')
       expect(report).not.toContain('evidence.json</code>, which indexes what this package')
+    })
+
+    it('discloses a lost derived file in a standalone HTML report', async () => {
+      // The chain state alone would leave the operator of a Case with a lost
+      // derived file untold that it is lost; the packaged report says so, and
+      // this one has no reason to be quieter.
+      const thumbnail = listDerivedFilesForCase(fixture.caseId).find(
+        (file) => file.exhibitId === fixture.captureId
+      )!
+      rmSync(join(tempDir, 'captures', thumbnail.path))
+
+      const outputPath = join(tempDir, 'standalone-lost.html')
+      await generateReport(
+        fixture.caseId,
+        {
+          format: 'html',
+          include: {
+            captures: true,
+            screenshots: true,
+            auditTrail: true,
+            notes: false,
+            annotations: 'none'
+          },
+          exportClass: 'evidence',
+          outputPath
+        },
+        captureLifecycle
+      )
+      const report = readFileSync(outputPath, 'utf-8')
+
+      expect(report).toContain('the stored file could not be read')
+      expect(report).toContain('anchored in the chain by its own entry')
+      // The note's own sentence states that this document encloses nothing at
+      // all; what must not appear is a per-file enclosure finding, in either
+      // direction, since there is no package for one to be about.
+      expect(report).toContain('This document was exported on its own')
+      expect(report).not.toContain('could not be read and is not enclosed')
+      expect(report).not.toContain('is enclosed beside it')
+      expect(report).not.toContain('evidence.json</code>, which indexes what this package')
+    })
+
+    it('refuses the export when a capture artifact is present but unreadable', async () => {
+      // The Capture path is outside `createPackageReader` (its artifacts are
+      // probed and read separately, as they were before #1156), so a read
+      // failure there is an error and not a classification: the export fails
+      // and writes nothing, rather than quietly narrowing the package. Pinned
+      // so that behaviour cannot drift into a silent narrowing, and named in
+      // the PR's findings list as a follow-up candidate.
+      const mhtml = join(tempDir, 'captures', fixture.caseId, `${fixture.captureId}.mhtml`)
+      chmodSync(mhtml, 0o000)
+      let stillReadable = false
+      try {
+        accessSync(mhtml, constants.R_OK)
+        stillReadable = true
+      } catch {
+        stillReadable = false
+      }
+      // Root defeats the mode bits and there is no portable way to make a file
+      // unreadable to a process that may read anything.
+      if (stillReadable) {
+        chmodSync(mhtml, 0o644)
+        return
+      }
+
+      const outputPath = join(tempDir, 'capture-unreadable.zip')
+      try {
+        await expect(
+          generateReport(
+            fixture.caseId,
+            {
+              format: 'zip',
+              include: {
+                captures: true,
+                screenshots: false,
+                auditTrail: false,
+                notes: false,
+                annotations: 'none'
+              },
+              exportClass: 'evidence',
+              outputPath
+            },
+            captureLifecycle
+          )
+        ).rejects.toThrow(/EACCES|permission denied/i)
+        expect(existsSync(outputPath)).toBe(false)
+      } finally {
+        chmodSync(mhtml, 0o644)
+      }
     })
 
     it('ships the same exhibits and derived files in a Working Copy', async () => {

@@ -460,9 +460,10 @@ export async function generateReport(
   // package against a stale hash.
   const manifest = readManifestSnapshot(join(getStorageRoot(), caseId))
   data.manifestHead = manifest.head
-  // One reader for the whole export: it reads each enclosed file exactly once,
-  // classification reads its outcome, and the zip builders consume the buffers
-  // it already holds.
+  // One reader for the whole export: it reads each enclosed non-Capture
+  // Exhibit and each enclosed Derived File exactly once, classification reads
+  // its outcome, and the zip builders consume the buffers it already holds. A
+  // Capture's own artifacts are outside it — see createPackageReader.
   const reader = createPackageReader()
   // One token-path resolution over every Exhibit in scope, shared by the
   // report, evidence.json and the packager (X26).
@@ -896,22 +897,32 @@ interface EvidenceZipResult {
 }
 
 /**
- * The ONE read of every file this export encloses, and the only place a read
- * failure is interpreted (#1156 round 5).
+ * The ONE read of every non-Capture Exhibit and every Derived File this export
+ * encloses, and the only place a read failure on those files is interpreted
+ * (#1156 round 5).
  *
- * Every downstream fact — the zip entry, the evidence.json row, the report's
- * enclosure sentence, the certification's counts — is derived from the outcome
- * recorded here, and assembly consumes these buffers rather than reading
- * again. Splitting the decision across an `existsSync` probe at classification
- * and a read at assembly is what let report.html name a path the zip did not
- * contain: the probe said the file was there, the read failed, and the silent
- * `catch` between them reached only the assembly half. A file that exists and
- * cannot be read (a lock, a permission, a disconnected share) is the state
- * that produced it, and a wide window between the two reads produced it
- * without any lock at all.
+ * For those files every downstream fact — the zip entry, the evidence.json
+ * row, the report's enclosure sentence, the certification's counts — is
+ * derived from the outcome recorded here, and assembly consumes these buffers
+ * rather than reading again. Splitting the decision across an `existsSync`
+ * probe at classification and a read at assembly is what let report.html name
+ * a path the zip did not contain: the probe said the file was there, the read
+ * failed, and the silent `catch` between them reached only the assembly half.
+ * A file that exists and cannot be read (a lock, a permission, a disconnected
+ * share) is the state that produced it, and a wide window between the two
+ * reads produced it without any lock at all. For these files a read failure is
+ * a classification, not an error: the file is disclosed as not enclosed, and
+ * the export carries on.
  *
- * A read failure is a classification, not an error: the file is disclosed as
- * not enclosed, and the export carries on.
+ * A CAPTURE'S OWN ARTIFACTS ARE NOT READ HERE. Its page archive and screenshot
+ * keep the path they had before #1156: probed with `existsSync` in
+ * `buildPackagedPaths` and read separately in the zip builders, where
+ * `CaptureStore.readArtifact` does not catch. A Capture whose MHTML or
+ * screenshot is present but unreadable therefore fails the whole export with
+ * that error and writes no package — loud, and never a package narrowed
+ * without saying so, which is why this ticket leaves it rather than widening
+ * its scope into the Capture path. The PR's findings list carries it as a
+ * follow-up candidate.
  */
 function createPackageReader(): {
   read: (storedPath: string | null) => Buffer | null
@@ -1524,8 +1535,14 @@ function buildPackagedPaths(
   const isPackage = options.format === 'zip'
 
   for (const capture of data.captures) {
-    // existsSync rather than a read: the packager skips exactly the artifacts
-    // that are absent, and the archives can be large.
+    // The CAPTURE path, which `createPackageReader` deliberately does not
+    // cover: `existsSync` here, and a separate `readArtifact` in the zip
+    // builders. It predates #1156 and stays as it was, so an archive that can
+    // be large is not held in memory from classification to assembly. The
+    // consequence is stated where the reader is: an unreadable page archive or
+    // screenshot aborts the export with that error rather than narrowing the
+    // package, so the probe cannot leave the report citing a path the zip
+    // lacks — the export produces no zip at all.
     const { abs } = defaultCaptureStore.artifactPaths(capture.caseId, capture.id, 'mhtml')
     const screenshotDigest = screenshotDigests.get(capture.id)
     paths.set(capture.id, {

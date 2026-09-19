@@ -1519,6 +1519,36 @@ function renderExhibit(e: ExhibitView, total: number, packaged: boolean): string
 }
 
 /**
+ * One derived file in a standalone report: what the chain says about it, and
+ * what the export's verification run found in its stored bytes. Both, because
+ * the chain half alone leaves an operator holding a Case with a LOST derived
+ * file untold that it is lost — the packaged report says so plainly and this
+ * one has no reason to be quieter. Neither half mentions enclosure: a
+ * standalone report encloses nothing.
+ */
+function standaloneDerivedRow(derived: ExportDerivedFile): string {
+  const chainState =
+    derived.anchoring === 'anchored'
+      ? 'anchored in the chain by its own entry'
+      : derived.anchoring === 'chain-unverified'
+        ? 'named by a manifest entry, over a chain that did not verify'
+        : 'named by no manifest entry'
+  // Absent for a file the chain does not vouch for: nothing was hashed against
+  // anything, and the chain half above already says why.
+  const byteState =
+    derived.verification?.status === 'verified'
+      ? 'the stored bytes recompute to the digest that entry records'
+      : derived.verification?.status === 'tampered'
+        ? 'the stored bytes no longer recompute to the digest that entry records'
+        : derived.verification?.status === 'missing'
+          ? 'the stored file could not be read'
+          : null
+  return `<li><span class="mono">${esc(derived.derivation)}</span> — ${esc(chainState)}${
+    byteState ? `; ${esc(byteState)}` : ''
+  }<br><span class="sub">Recorded digest ${esc(derived.contentHash)}</span></li>`
+}
+
+/**
  * The derived-file disclosure, for an Exhibit of any kind.
  *
  * Two facts decide what is said, and both are settled before this runs: what
@@ -1556,18 +1586,7 @@ function derivedFilesBlock(files: ExportDerivedFile[], packaged: boolean): strin
       files.length === 1 ? 'it is' : 'they are'
     } not enclosed with it and nothing here states otherwise; what is stated is what the case
     records and what the manifest chain says about ${files.length === 1 ? 'it' : 'them'}.</p>
-    <ul>${files
-      .map(
-        (derived) =>
-          `<li><span class="mono">${esc(derived.derivation)}</span> — ${esc(
-            derived.anchoring === 'anchored'
-              ? 'anchored in the chain by its own entry'
-              : derived.anchoring === 'chain-unverified'
-                ? 'named by a manifest entry, over a chain that did not verify'
-                : 'named by no manifest entry'
-          )}<br><span class="sub">Recorded digest ${esc(derived.contentHash)}</span></li>`
-      )
-      .join('')}</ul>
+    <ul>${files.map(standaloneDerivedRow).join('')}</ul>
   </div>`
   }
 

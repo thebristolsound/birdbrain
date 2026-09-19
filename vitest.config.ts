@@ -158,7 +158,7 @@ export default defineConfig({
             'tests/hooks/**/*.test.ts',
             'src/packages/**/tests/**/*.test.tsx'
           ],
-          setupFiles: ['./tests/setup/jsdom/layout.ts']
+          setupFiles: ['./tests/setup/jsdom/layout.ts', './tests/setup/jsdom/focus.ts']
         }
       }
     ]

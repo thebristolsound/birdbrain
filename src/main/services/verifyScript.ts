@@ -155,7 +155,16 @@ in_list() { printf '%s\\n' "$1" | grep -qxF -e "$2"; }
 # "<caseId>/documents/x.pdf" -> "documents/x.pdf", which is where the package
 # holds it. The first segment is dropped rather than matched against a case id
 # because an imported Case keeps the source Case's path in its signed entries.
-in_case_path() { printf '%s' "\${1#*/}"; }
+#
+# Backslashes are normalized first, exactly as the binary verifier's
+# inCasePath does: the store writes platform-native paths, so a Case built on
+# Windows signs "<caseId>\\documents\\x.pdf" while the package holds
+# "documents/x.pdf". Stripping only up to a "/" left that path whole and
+# reported every enclosed file of such a package missing.
+in_case_path() {
+  icp_path=$(printf '%s' "$1" | tr '\\\\' '/')
+  printf '%s' "\${icp_path#*/}"
+}
 
 # Verifies one manifest line's RSA signature over its bare entryHash hex with no
 # trailing newline - the recipe VERIFY.md step 2 documents. Prints nothing and

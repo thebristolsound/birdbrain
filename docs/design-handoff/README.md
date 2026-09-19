@@ -4,6 +4,7 @@ Extracted design-handoff bundles from the claude.ai prototype loop, kept byte-fa
 
 | Bundle | Received | Engineering response |
 | --- | --- | --- |
+| [`2026-09-19-shared-case-members/`](2026-09-19-shared-case-members/) | 2026-09-19 | Answers the [Shared Case members UI brief](../specs/2026-09-19-shared-case-members-ui-brief.md); review items 19–25 in its `ENGINEERING_REVIEW.md` await verdicts |
 | [`2026-09-14-design-project-export/`](2026-09-14-design-project-export/) | 2026-09-14 | The whole design project, self-rendering. Its live mock answers part of #708; delta in its README; supersession awaits a ruling |
 | [`2026-08-21-birdbrain-standalone/`](2026-08-21-birdbrain-standalone/) | 2026-08-21 | **Current source.** Supersedes the bundle below |
 | [`2026-08-10-birdbrain-prototype/`](2026-08-10-birdbrain-prototype/) | 2026-08-10 | Superseded. [Feasibility assessment](../specs/2026-08-10-design-handoff-feasibility-assessment.md) |

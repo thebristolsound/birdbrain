@@ -330,3 +330,17 @@ when its stamp is stale, and only a missing or inconsistent copy yields the not-
 One question stays with the maintainer, restated in full on PR #1494: a Working Copy discloses a
 held-back or lost Derived File only as an integer in `WORKING-COPY.json`, because that class
 carries no report and no certification by design; is that enough disclosure for that class?
+
+### Later the same day
+
+An outside review of PR #1494 at `a373a04c` found three defects: a fabricated Exhibit row in
+`evidence.json` still verified PASS because reconciliation compared ids only, certification
+counted a chain-unverified Derived File as enclosed without checking the packaged path, and
+`verify.sh` did not normalise backslash storage paths. All three were fixed with regression
+tests at `0fb5d6de` and approved on a delta pass. The maintainer then merged #1490, #1492,
+#1493 and #1494.
+
+With #1493 on `main`, #1491 took a back-merge (head `aac48556`), passed the ADR-0025 delta pass
+against the merged extension-path code, and was marked ready. It is the last merge before the
+tag. Two advisories remain on the tester guide (lines 144 and 149) and one carried-forward
+finding on `evidencePackage.ts`: legacy `captures` rows are still reconciled by id alone.

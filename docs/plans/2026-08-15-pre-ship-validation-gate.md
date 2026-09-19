@@ -135,13 +135,14 @@ that reaches the release page has passed it. Tick the human step anyway: the scr
 the packaged main process starts, not that the window is usable.
 
 That script launches twice against the same profile and requires the extension folder and
-its `extension-version` stamp under user data after both (#653). On the Ubuntu leg it gives
-each launch its own `TMPDIR`, which is where `--appimage-extract-and-run` unpacks the app,
-and deletes the first one before the second launch; it asserts that the two
-launches really did run from different directories, so the folder the app advertised
-outlived the directory it was serving from. It cannot show that Chrome's loaded extension
-still runs, which is why the load goes through **Open extension folder** below and is
-re-checked after the relaunch.
+its `extension-version` stamp under user data after both (#653). On the Ubuntu leg each
+launch gets its own `TMPDIR`, which is where `--appimage-extract-and-run` unpacks the app;
+the first is deleted before the second launch, and the script asserts that the two launches
+unpacked to different directories and that the first one is gone. What that establishes is
+one thing: the folder under user data is there after a launch from a directory the first
+launch never used. It does not tell a copy that was left alone from one the second launch
+rewrote, and it cannot show that Chrome's loaded extension still runs, which is why the
+load goes through **Open extension folder** below and is re-checked after the relaunch.
 
 **Windows (NSIS `.exe`) — must pass**
 

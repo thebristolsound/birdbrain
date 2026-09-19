@@ -11,9 +11,11 @@
 // src/main/index.ts, so a 200 proves the packaged main process got through startup.
 //
 // It launches twice against the same userData directory, and the second launch is
-// the point (#653): the extension folder the app advertises must survive a quit and
-// come back at the same path, so <userData>/extension/manifest.json and the
-// extension-version stamp have to be there after both.
+// the point (#653): the folder the app advertises has to be at the same path after
+// a quit, so <userData>/extension/manifest.json and the extension-version stamp
+// have to be there after both. It does not distinguish a copy that was left alone
+// from one the second launch rewrote; either way the path holds a loadable folder,
+// which is what the advertised path has to do.
 //
 // On Linux the second launch also runs the app from a DIFFERENT directory, which is
 // the condition #653 is actually about. --appimage-extract-and-run does not mount:

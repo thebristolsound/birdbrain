@@ -11,11 +11,23 @@
 // src/main/index.ts, so a 200 proves the packaged main process got through startup.
 //
 // It launches twice against the same userData directory, and the second launch is
-// the point: the AppImage runtime extracts to a fresh directory every run, so a
-// path the app handed out from inside the first one is dead by the second (#653).
-// Both launches must leave <userData>/extension/manifest.json in place. That proves
-// the copy survives a relaunch — not that Chrome's loaded extension keeps working,
-// which no headless probe can show and which stays a human gate step.
+// the point (#653): the extension folder the app advertises must survive a quit and
+// come back at the same path, so <userData>/extension/manifest.json and the
+// extension-version stamp have to be there after both.
+//
+// On Linux the second launch also runs the app from a DIFFERENT directory, which is
+// the condition #653 is actually about. --appimage-extract-and-run does not mount:
+// AppImageKit v12's runtime (src/runtime.c:580-695, and the same literals are in the
+// runtime electron-builder ships) extracts to $TMPDIR/appimage_extracted_<md5 of the
+// AppImage's own bytes>. The digest is content-derived, so renaming or copying the
+// artifact changes nothing — TMPDIR is the half that can differ. Each launch gets
+// its own, the first one is deleted before the second starts, and the script asserts
+// each launch really did extract under its own TMPDIR, so process.resourcesPath
+// differed and the first launch's copy of it no longer exists. That is the mount
+// churn, without FUSE. Windows has no mount and is launched twice unchanged.
+//
+// What it still does not prove: that Chrome's loaded extension keeps working, which
+// no headless probe can show and which stays a human gate step.
 //
 // It proves launch, nothing more beyond that: the rest of section 3 (capture, view,
 // export) stays with the human checklist and the Playwright suite.
@@ -42,14 +54,18 @@ const { version, build } = JSON.parse(readFileSync(join(root, 'package.json'), '
 const productName = build.productName
 const dist = join(root, build.directories?.output ?? 'dist')
 
-// The throwaway userData directory, removed on the way out of either exit.
-// process.exit() skips finally blocks, so fail() clears it rather than main.
-let scratch = null
+// The throwaway directories: the userData profile and, on Linux, one TMPDIR per
+// launch. process.exit() skips finally blocks, so fail() clears them, not main.
+const scratch = []
+
+function scratchDir(prefix) {
+  const dir = mkdtempSync(join(tmpdir(), prefix))
+  scratch.push(dir)
+  return dir
+}
 
 function clearScratch() {
-  if (!scratch) return
-  rmSync(scratch, { recursive: true, force: true })
-  scratch = null
+  while (scratch.length) rmSync(scratch.pop(), { recursive: true, force: true })
 }
 
 function fail(message) {
@@ -77,7 +93,7 @@ async function statusAnswers() {
 }
 
 function seedUserData() {
-  const dir = mkdtempSync(join(tmpdir(), 'birdbrain-smoke-'))
+  const dir = scratchDir('birdbrain-smoke-')
   writeFileSync(join(dir, 'settings.json'), JSON.stringify({ operatorName: 'Package smoke' }))
   const { privateKey, publicKey } = generateKeyPairSync('rsa', {
     modulusLength: 2048,
@@ -143,13 +159,14 @@ async function stop(child) {
 }
 
 // One launch against `userData`, stopped once the server answers or the budget runs
-// out. Everything the pass condition needs is read before the app is stopped.
-async function launchOnce(command, args, userData, label) {
+// out. Everything the pass condition needs is read before the app is stopped —
+// including the extraction directory, which the AppImage runtime removes on exit.
+async function launchOnce(command, args, userData, label, appTmp) {
   const output = []
   const started = Date.now()
   console.log(`package-smoke: ${label} launch ${command} ${args.join(' ')}`)
   const child = spawn(command, [...args, `--user-data-dir=${userData}`], {
-    env: { ...process.env, BIRDBRAIN_USER_DATA: userData },
+    env: { ...process.env, BIRDBRAIN_USER_DATA: userData, ...(appTmp ? { TMPDIR: appTmp } : {}) },
     stdio: ['ignore', 'pipe', 'pipe'],
     // Own process group, so stop() can signal the whole tree (see there).
     detached: process.platform !== 'win32'
@@ -173,13 +190,19 @@ async function launchOnce(command, args, userData, label) {
   const elapsed = Date.now() - started
   const dbExists = existsSync(join(userData, 'birdbrain.db'))
   const extensionCopied = existsSync(join(userData, 'extension', 'manifest.json'))
+  const stampExists = existsSync(join(userData, 'extension-version'))
+  const extractedIn = appTmp
+    ? readdirSync(appTmp)
+        .filter((n) => n.startsWith('appimage_extracted_'))
+        .map((n) => join(appTmp, n))
+    : []
   await stop(child)
-  return { label, status, output, exited, elapsed, dbExists, extensionCopied }
+  return { label, status, output, exited, elapsed, dbExists, extensionCopied, stampExists, extractedIn }
 }
 
 function assertLaunchPassed(run, userData) {
-  const { label, status, output, exited, elapsed, dbExists, extensionCopied } = run
-  if (status && dbExists && extensionCopied) return
+  const { label, status, output, exited, elapsed, dbExists, extensionCopied, stampExists } = run
+  if (status && dbExists && extensionCopied && stampExists) return
   console.error(`--- app output (${label} launch, tail) ---`)
   console.error(output.join('').split('\n').slice(-40).join('\n'))
   if (exited) {
@@ -189,9 +212,34 @@ function assertLaunchPassed(run, userData) {
   if (!dbExists) {
     fail(`${label} launch: server answered but ${join(userData, 'birdbrain.db')} was never created`)
   }
+  if (!extensionCopied) {
+    fail(
+      `${label} launch: server answered but ${join(userData, 'extension', 'manifest.json')} does not exist — the bundled extension was not copied under user data (#653)`
+    )
+  }
   fail(
-    `${label} launch: server answered but ${join(userData, 'extension', 'manifest.json')} does not exist — the bundled extension was not copied under user data (#653)`
+    `${label} launch: server answered but ${join(userData, 'extension-version')} does not exist — the copy was never stamped with the app version (#653)`
   )
+}
+
+// The premise of the two-launch check on Linux: each launch extracted the AppImage
+// under its own TMPDIR, so the app ran from a different resources path each time and
+// the first one was deleted before the second started. Asserted rather than assumed,
+// because it is what the gate document claims this leg establishes.
+function assertRanFromDifferentDirectories(first, second) {
+  if (process.platform !== 'linux') return
+  for (const run of [first, second]) {
+    if (run.extractedIn.length === 0) {
+      fail(
+        `${run.label} launch: no appimage_extracted_* directory under its own TMPDIR, so this leg does not show the app running from a changed path (#653)`
+      )
+    }
+  }
+  const [firstDir] = first.extractedIn
+  const [secondDir] = second.extractedIn
+  if (firstDir === secondDir) fail(`both launches ran from ${firstDir}; the paths did not change`)
+  if (existsSync(firstDir)) fail(`${firstDir} still exists; the first launch's directory was not removed`)
+  console.log(`package-smoke: ran from ${firstDir}, then ${secondDir}`)
 }
 
 // The port the first launch held is released by the OS asynchronously, and a
@@ -213,16 +261,21 @@ async function main() {
 
   const { command, args } = prepareLaunch()
   const userData = seedUserData()
-  scratch = userData
-  const first = await launchOnce(command, args, userData, 'first')
+  // Linux only: TMPDIR is where --appimage-extract-and-run puts the app, so a
+  // fresh one per launch is a fresh resources path (see the header).
+  const appTmp = process.platform === 'linux' ? scratchDir('birdbrain-smoke-tmp-') : null
+  const first = await launchOnce(command, args, userData, 'first', appTmp)
   assertLaunchPassed(first, userData)
   await waitForPortFree()
-  // Same user data, fresh AppImage mount: the relaunch the gate's section 3
-  // checks by hand.
-  const second = await launchOnce(command, args, userData, 'second')
+  if (appTmp) rmSync(appTmp, { recursive: true, force: true })
+  // Same user data, a directory the first launch never ran from: the relaunch
+  // the gate's section 3 checks by hand.
+  const secondTmp = process.platform === 'linux' ? scratchDir('birdbrain-smoke-tmp-') : null
+  const second = await launchOnce(command, args, userData, 'second', secondTmp)
   assertLaunchPassed(second, userData)
+  assertRanFromDifferentDirectories(first, second)
   console.log(
-    `package-smoke: pass in ${first.elapsed}ms + ${second.elapsed}ms; status keys: ${Object.keys(second.status).sort().join(', ')}; database created; extension folder present after both launches`
+    `package-smoke: pass in ${first.elapsed}ms + ${second.elapsed}ms; status keys: ${Object.keys(second.status).sort().join(', ')}; database created; extension folder and version stamp present after both launches`
   )
   clearScratch()
   // Explicit: a pipe left open by a grandchild that survived stop() must not turn

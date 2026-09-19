@@ -63,7 +63,10 @@ about.
   the Case directory. Derived Files sit beside their parent with a suffix, as `_thumb.jpg` does
   today, and thumbnails join the anchored set.
 - **Exhibit Numbers.** A sequential per-Case integer assigned at commit (at ingest for Captures),
-  never reused, recorded in the Manifest Entry so a citation is verifiable. Existing Captures are
+  never reused, recorded in the Manifest Entry so a citation is verifiable. The next number is
+  derived from the chain, one more than the highest any entry carries, deleted Exhibits included;
+  a Capture's number rides on its own `capture` entry as an optional schema-3 field, amended in
+  place before schema 3 first shipped (X45, X46, 2026-09-19). Existing Captures are
   numbered by Manifest index in a one-time migration that writes a `renumber` entry, so the
   assignment is itself in the chain. A legacy Capture with no Manifest Entry (pre-v11 `html`)
   is numbered after every anchored Capture, in capture order, and the `renumber` entry lists it

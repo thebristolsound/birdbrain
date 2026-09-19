@@ -54,9 +54,12 @@ export interface CertificationInput {
      */
     unverifiableDerivedFileCount?: number
     /**
-     * Derived Files the chain anchors whose stored bytes could not be read at
-     * export time. Enclosed by neither the package nor `evidence.json`, so
-     * they are counted apart from the enclosed files rather than inside them.
+     * Derived Files the chain anchors that this export did not enclose,
+     * because the single read of their stored bytes failed — the file is gone,
+     * locked, or unreadable. Enclosed by neither the package nor
+     * `evidence.json`, so they are counted apart from the enclosed files
+     * rather than inside them, and the four counts partition the Case's
+     * Derived Files between them.
      */
     missingDerivedFileCount?: number
   }

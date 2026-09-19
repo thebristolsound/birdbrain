@@ -460,6 +460,10 @@ export async function generateReport(
   // package against a stale hash.
   const manifest = readManifestSnapshot(join(getStorageRoot(), caseId))
   data.manifestHead = manifest.head
+  // One reader for the whole export: it reads each enclosed file exactly once,
+  // classification reads its outcome, and the zip builders consume the buffers
+  // it already holds.
+  const reader = createPackageReader()
   // One token-path resolution over every Exhibit in scope, shared by the
   // report, evidence.json and the packager (X26).
   const tokenPaths =
@@ -490,7 +494,8 @@ export async function generateReport(
     trustedTimeByHash,
     entrySignatures: resolveExhibitEntrySignatures(scope.fileExhibits, manifest.entries),
     tokenPaths,
-    isPackage: options.format === 'zip'
+    isPackage: options.format === 'zip',
+    reader
   })
   data.derivedFilesByCaptureId = new Map(
     captures.map((capture) => [
@@ -499,7 +504,8 @@ export async function generateReport(
         derivedByExhibitId.get(capture.id) ?? [],
         exhibitPackageDirectory('capture', capture.mhtmlPath ?? null),
         options.format === 'zip',
-        derivedVerifications.get(capture.id)
+        derivedVerifications.get(capture.id),
+        reader
       )
     ])
   )
@@ -519,12 +525,12 @@ export async function generateReport(
       // No report, no certification: the Working Copy deliberately carries no
       // evidentiary documents at all (#399, ADR-0010).
       onProgress?.('Packaging working copy...', 90)
-      zip = buildWorkingCopyZip(caseId, data, packageMeta)
+      zip = buildWorkingCopyZip(caseId, data, packageMeta, reader)
     } else {
       onProgress?.('Generating report...', 80)
       const html = buildHtmlReport(data, options)
       onProgress?.('Packaging evidence...', 90)
-      zip = buildEvidenceZip(caseId, data, html, manifest, packageMeta)
+      zip = buildEvidenceZip(caseId, data, html, manifest, packageMeta, reader)
     }
     const { entries, packageHash, verificationResult } = zip
 
@@ -731,7 +737,8 @@ function buildDerivedFiles(
   files: DerivedFile[],
   parentDirectory: string,
   isPackage: boolean,
-  verifications: DerivedFileVerification[] | undefined
+  verifications: DerivedFileVerification[] | undefined,
+  reader: PackageReader
 ): ExportDerivedFile[] {
   const byId = new Map((verifications ?? []).map((result) => [result.derivedFileId, result]))
   return files.map((file) => {
@@ -756,8 +763,8 @@ function buildDerivedFiles(
           : verification.unanchoredCause === 'chain-unverified'
             ? 'chain-unverified'
             : 'no-entry'
-    const present =
-      isPackage && anchoring !== 'no-entry' && defaultCaptureStore.existsRelative(file.path)
+    // The read itself decides enclosure. Nothing probes and then reads.
+    const enclosed = isPackage && anchoring !== 'no-entry' ? reader.read(file.path) !== null : false
     return {
       id: file.id,
       derivation: file.derivation,
@@ -765,7 +772,7 @@ function buildDerivedFiles(
       contentHash: file.contentHash,
       storedPath: file.path,
       anchoring,
-      packagedPath: present ? derivedFilePackagePath(parentDirectory, file.path) : null,
+      packagedPath: enclosed ? derivedFilePackagePath(parentDirectory, file.path) : null,
       manifestIndex: file.manifestSeq,
       ...(verification !== undefined ? { verification } : {})
     }
@@ -783,18 +790,19 @@ interface FileExhibitInputs {
   entrySignatures: Map<string, EntrySignatureStatus>
   tokenPaths: Map<string, string>
   isPackage: boolean
+  reader: PackageReader
 }
 
 function buildFileExhibitRecords(
   exhibits: Exhibit[],
   inputs: FileExhibitInputs
 ): ExportFileExhibit[] {
-  const { isPackage } = inputs
+  const { isPackage, reader } = inputs
   return exhibits.map((exhibit) => {
     const directory = exhibitPackageDirectory(exhibit.kind, exhibit.path)
-    // existsSync rather than a read: the packager encloses exactly the files
-    // that are present, and an exhibit can be large.
-    const present = isPackage && defaultCaptureStore.existsRelative(exhibit.path)
+    // The bytes are read here, once, and assembly encloses what this read
+    // returned — the same rule the Derived Files follow, for the same reason.
+    const enclosed = isPackage ? reader.read(exhibit.path) !== null : false
     const verification = inputs.verifications.get(exhibit.id)
     return {
       id: exhibit.id,
@@ -807,13 +815,14 @@ function buildFileExhibitRecords(
       sizeBytes: exhibit.sizeBytes,
       committedAt: exhibit.committedAt,
       manifestIndex: exhibit.manifestSeq,
-      packagedPath: present && exhibit.path ? exhibitPackagePath(exhibit.path) : null,
+      packagedPath: enclosed && exhibit.path ? exhibitPackagePath(exhibit.path) : null,
       timestampTokenPath: isPackage ? (inputs.tokenPaths.get(exhibit.contentHash) ?? null) : null,
       derivedFiles: buildDerivedFiles(
         inputs.derivedByExhibitId.get(exhibit.id) ?? [],
         directory,
         isPackage,
-        inputs.derivedVerifications.get(exhibit.id)
+        inputs.derivedVerifications.get(exhibit.id),
+        reader
       ),
       trustedTime: inputs.trustedTimeByHash.get(exhibit.contentHash) ?? UNSTAMPED,
       entrySignature: inputs.entrySignatures.get(exhibit.id) ?? 'no-entry',
@@ -845,9 +854,10 @@ function exhibitKindCounts(data: ExportData): {
       if (file.anchoring === 'no-entry') unanchoredDerivedFileCount++
       else if (file.anchoring === 'chain-unverified') unverifiableDerivedFileCount++
       else if (file.packagedPath) derivedFileCount++
-      // Anchored, and its stored bytes could not be read. Counted apart from
-      // the enclosed files so the contents line and the enclosed set agree:
-      // this one is in neither the package nor evidence.json.
+      // Anchored, and the export's single read of its bytes failed, so it is
+      // in neither the package nor evidence.json. Counted apart from the
+      // enclosed files, off the same `packagedPath` the zip and the index are
+      // built from, so the contents line and the enclosed set cannot disagree.
       else missingDerivedFileCount++
     }
   }
@@ -886,32 +896,70 @@ interface EvidenceZipResult {
 }
 
 /**
- * Reads an Exhibit's or Derived File's stored bytes for packaging. A file the
- * row records and the disk no longer holds is a gap the package states — the
- * warnings block counts it and the exhibit's `path` is null — never a throw
- * that loses the rest of the export.
+ * The ONE read of every file this export encloses, and the only place a read
+ * failure is interpreted (#1156 round 5).
+ *
+ * Every downstream fact — the zip entry, the evidence.json row, the report's
+ * enclosure sentence, the certification's counts — is derived from the outcome
+ * recorded here, and assembly consumes these buffers rather than reading
+ * again. Splitting the decision across an `existsSync` probe at classification
+ * and a read at assembly is what let report.html name a path the zip did not
+ * contain: the probe said the file was there, the read failed, and the silent
+ * `catch` between them reached only the assembly half. A file that exists and
+ * cannot be read (a lock, a permission, a disconnected share) is the state
+ * that produced it, and a wide window between the two reads produced it
+ * without any lock at all.
+ *
+ * A read failure is a classification, not an error: the file is disclosed as
+ * not enclosed, and the export carries on.
  */
-function readPackagedFile(storedPath: string | null): Buffer | null {
-  if (!storedPath) return null
-  try {
-    return readFileSync(defaultCaptureStore.resolveAbsolute(storedPath))
-  } catch {
-    return null
+function createPackageReader(): {
+  read: (storedPath: string | null) => Buffer | null
+  bytesFor: (storedPath: string) => Buffer
+} {
+  const cache = new Map<string, Buffer>()
+  return {
+    read: (storedPath) => {
+      if (!storedPath) return null
+      const cached = cache.get(storedPath)
+      if (cached) return cached
+      let bytes: Buffer
+      try {
+        bytes = readFileSync(defaultCaptureStore.resolveAbsolute(storedPath))
+      } catch {
+        return null
+      }
+      cache.set(storedPath, bytes)
+      return bytes
+    },
+    // Assembly's view of the same read. A packaged path is recorded only when
+    // the read above succeeded, so a miss here is a broken invariant between
+    // classification and assembly — exactly the drift this replaced — and it
+    // throws rather than quietly enclosing nothing.
+    bytesFor: (storedPath) => {
+      const bytes = cache.get(storedPath)
+      if (!bytes) throw new Error(`export: no bytes were read for ${storedPath}`)
+      return bytes
+    }
   }
 }
+
+type PackageReader = ReturnType<typeof createPackageReader>
 
 /**
  * Encloses an Exhibit's Derived Files and returns their index rows (X31).
  *
- * The index lists exactly what the package encloses, and nothing else. A file
- * no entry names is neither packaged nor listed, so the index cannot attribute
- * to an Exhibit a file nothing in the chain says was computed from it; a file
- * that IS anchored but whose bytes could not be read is not listed either,
- * because a row with a null path is a row the two verifiers read differently —
- * the standalone one calls it a fabricated row the manifest does not anchor at
- * that path, while verify.sh, which never reads the index, says nothing. Both
- * still FAIL the package through the chain-side check that the anchored file is
- * absent, which is the finding that matters and the one they agree on.
+ * The index lists exactly what the package encloses, and nothing else — it
+ * writes a row only where `packagedPath` is set, which is set only where the
+ * export's single read of the bytes succeeded. A file no entry names is
+ * neither packaged nor listed, so the index cannot attribute to an Exhibit a
+ * file nothing in the chain says was computed from it; a file that IS anchored
+ * but whose bytes could not be read is not listed either, because a row with a
+ * null path is a row the two verifiers read differently — the standalone one
+ * calls it a fabricated row the manifest does not anchor at that path, while
+ * verify.sh, which never reads the index, says nothing. Both still FAIL the
+ * package through the chain-side check that the anchored file is absent, which
+ * is the finding that matters and the one they agree on.
  *
  * Every omission is disclosed by whatever each class carries: report.html and
  * the certification's contents line in an Evidence Package, the counts in
@@ -919,14 +967,15 @@ function readPackagedFile(storedPath: string | null): Buffer | null {
  */
 function addDerivedFiles(
   files: ExportDerivedFile[],
-  add: ArtifactAccumulator['add']
+  add: ArtifactAccumulator['add'],
+  reader: PackageReader
 ): Array<{ derivation: string; contentHash: string; path: string }> {
   const rows: Array<{ derivation: string; contentHash: string; path: string }> = []
   for (const file of files) {
-    if (file.anchoring === 'no-entry' || !file.packagedPath) continue
-    const bytes = readPackagedFile(file.storedPath)
-    if (!bytes) continue
-    add(file.packagedPath, bytes)
+    // `packagedPath` IS the read's outcome, so this encloses exactly what the
+    // report says it encloses and the index lists exactly that.
+    if (!file.packagedPath) continue
+    add(file.packagedPath, reader.bytesFor(file.storedPath))
     rows.push({
       derivation: file.derivation,
       contentHash: file.contentHash,
@@ -961,7 +1010,8 @@ function buildEvidenceZip(
   data: ExportData,
   reportHtml: string,
   manifest: ManifestSnapshot,
-  meta: PackageMeta
+  meta: PackageMeta,
+  reader: PackageReader
 ): EvidenceZipResult {
   const { entries, artifacts, add } = createArtifactAccumulator()
 
@@ -1142,12 +1192,14 @@ function buildEvidenceZip(
   // verifier looks for.
   const exhibitsMissingContent: string[] = []
   const exhibitEvidence = data.fileExhibits.map((exhibit) => {
-    const enclosed = exhibit.packagedPath ? readPackagedFile(exhibit.storedPath) : null
-    if (enclosed && exhibit.packagedPath) add(exhibit.packagedPath, enclosed)
-    else exhibitsMissingContent.push(exhibit.id)
+    if (exhibit.packagedPath && exhibit.storedPath) {
+      add(exhibit.packagedPath, reader.bytesFor(exhibit.storedPath))
+    } else {
+      exhibitsMissingContent.push(exhibit.id)
+    }
     return {
-      ...describeExhibit(exhibit, enclosed !== null),
-      derivedFiles: addDerivedFiles(exhibit.derivedFiles, add)
+      ...describeExhibit(exhibit, exhibit.packagedPath !== null),
+      derivedFiles: addDerivedFiles(exhibit.derivedFiles, add, reader)
     }
   })
 
@@ -1169,7 +1221,7 @@ function buildEvidenceZip(
       name: capture.title,
       contentHash: capture.hash,
       path: capturesMissingContent.includes(capture.id) ? null : `pages/${capture.id}.mhtml`,
-      derivedFiles: addDerivedFiles(derived, add)
+      derivedFiles: addDerivedFiles(derived, add, reader)
     }
   })
 
@@ -1284,7 +1336,8 @@ const WORKING_COPY_STATEMENT =
 function buildWorkingCopyZip(
   caseId: string,
   data: ExportData,
-  meta: PackageMeta
+  meta: PackageMeta,
+  reader: PackageReader
 ): EvidenceZipResult {
   const { entries, artifacts, add } = createArtifactAccumulator()
 
@@ -1309,7 +1362,7 @@ function buildWorkingCopyZip(
       capturedAt: capture.timestamp,
       pagePath: mhtml ? pagePath : null,
       screenshotPath,
-      derivedFiles: addDerivedFiles(data.derivedFilesByCaptureId.get(capture.id) ?? [], add)
+      derivedFiles: addDerivedFiles(data.derivedFilesByCaptureId.get(capture.id) ?? [], add, reader)
     }
   })
 
@@ -1320,8 +1373,9 @@ function buildWorkingCopyZip(
   // the class split is untouched: this is the operator's working set of the
   // Case's files, not a second evidentiary object.
   const exhibitIndex = data.fileExhibits.map((exhibit) => {
-    const bytes = exhibit.packagedPath ? readPackagedFile(exhibit.storedPath) : null
-    if (bytes && exhibit.packagedPath) add(exhibit.packagedPath, bytes)
+    if (exhibit.packagedPath && exhibit.storedPath) {
+      add(exhibit.packagedPath, reader.bytesFor(exhibit.storedPath))
+    }
     return {
       id: exhibit.id,
       kind: exhibit.kind,
@@ -1329,8 +1383,8 @@ function buildWorkingCopyZip(
       exhibitNumber: exhibit.exhibitNumber,
       name: exhibit.name,
       committedAt: exhibit.committedAt,
-      path: bytes && exhibit.packagedPath ? exhibit.packagedPath : null,
-      derivedFiles: addDerivedFiles(exhibit.derivedFiles, add)
+      path: exhibit.packagedPath,
+      derivedFiles: addDerivedFiles(exhibit.derivedFiles, add, reader)
     }
   })
 

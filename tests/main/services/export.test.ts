@@ -2907,6 +2907,39 @@ describe('export', () => {
       expect(certification).not.toContain('unanchored derived file')
     })
 
+    it('says nothing about enclosure in a standalone HTML report', async () => {
+      // A standalone report assembles no package, so every derived file would
+      // otherwise land in the not-enclosed bucket and be described as a gap
+      // over bytes that are on disk and fine. Reached through the IPC handler
+      // rather than the dialog, which pins format: 'zip' today.
+      const outputPath = join(tempDir, 'standalone.html')
+      await generateReport(
+        fixture.caseId,
+        {
+          format: 'html',
+          include: {
+            captures: true,
+            screenshots: true,
+            auditTrail: true,
+            notes: false,
+            annotations: 'none'
+          },
+          exportClass: 'evidence',
+          outputPath
+        },
+        captureLifecycle
+      )
+      const report = readFileSync(outputPath, 'utf-8')
+
+      expect(report).toContain('anchored in the chain by its own entry')
+      expect(report).toContain('This document was exported on its own')
+      // None of the package-only language, in either direction.
+      expect(report).not.toContain('could not be read and is not enclosed')
+      expect(report).not.toContain('is enclosed beside it')
+      expect(report).not.toContain('recorded but not anchored')
+      expect(report).not.toContain('evidence.json</code>, which indexes what this package')
+    })
+
     it('ships the same exhibits and derived files in a Working Copy', async () => {
       const entries = await exportMixed('mixed-working-copy.zip', {
         exportClass: 'working-copy',

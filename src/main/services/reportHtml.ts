@@ -1180,8 +1180,8 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
       return rows
         .map((row) =>
           row.entity === 'capture'
-            ? renderExhibit(row.view, rows.length)
-            : renderFileExhibit(row.view, rows.length)
+            ? renderExhibit(row.view, rows.length, isPackagedExport(ctx.options))
+            : renderFileExhibit(row.view, rows.length, isPackagedExport(ctx.options))
         )
         .join('\n')
     }
@@ -1298,7 +1298,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
  * dozens of exhibits. The cover sheet stays flush-left ("ruled docket"); only
  * the exhibits use the two-column register.
  */
-function renderExhibit(e: ExhibitView, total: number): string {
+function renderExhibit(e: ExhibitView, total: number, packaged: boolean): string {
   const c = e.capture
   const environment: Array<[string, string]> = []
   const add = (label: string, value: string | number | undefined | null): void => {
@@ -1510,7 +1510,7 @@ function renderExhibit(e: ExhibitView, total: number): string {
       ${missingBanner}
       ${image}
       ${legend}
-      ${derivedFilesBlock(e.derivedFiles)}
+      ${derivedFilesBlock(e.derivedFiles, packaged)}
       ${corroboration}
       ${waybackCorroboration}
     </div>
@@ -1521,30 +1521,60 @@ function renderExhibit(e: ExhibitView, total: number): string {
 /**
  * The derived-file disclosure, for an Exhibit of any kind.
  *
- * Four states, never one sentence over all of them. A derived file is enclosed
- * and anchored; anchored but absent from the package because its stored bytes
- * could not be read; named by a manifest line the chain does not vouch for; or
- * named by no line at all. Each is a different thing to tell a reader, and each
- * has been told wrongly once: an unanchored legacy thumbnail (X34) shipped
- * under an anchoring claim no entry supported; then a file on a BROKEN chain
- * was described as one "no entry states what was produced or from which bytes"
- * for, while its `derivation` entry sat in the same zip saying both; then a
- * file with NO entry whose bytes were also gone was reported as one the chain
- * anchors, because the unreadable bytes were classified before the entry
- * question was asked. Which bucket a file lands in is settled upstream, in
- * `verifyDerivedFiles`, and read here rather than re-derived.
+ * Two facts decide what is said, and both are settled before this runs: what
+ * the chain says about the file (`anchoring`, from `verifyDerivedFiles`) and
+ * whether the export actually read its bytes (`packagedPath`, from the single
+ * read in export.ts). Nothing here re-derives either, and no sentence about
+ * enclosure is printed unless a package was produced.
+ *
+ * Each state has been told wrongly once, which is why they are enumerated:
+ * an unanchored legacy thumbnail (X34) shipped under an anchoring claim no
+ * entry supported; a file on a BROKEN chain was described as one "no entry
+ * states what was produced" for, while its `derivation` entry sat in the same
+ * zip saying both; a file with no entry whose bytes were also gone was
+ * reported as one the chain anchors; and a file whose bytes existed but could
+ * not be read was named as enclosed at a path the zip did not contain.
  */
-function derivedFilesBlock(files: ExportDerivedFile[]): string {
+function derivedFilesBlock(files: ExportDerivedFile[], packaged: boolean): string {
   if (files.length === 0) return ''
-  const enclosed = files.filter((file) => file.anchoring === 'anchored' && file.packagedPath)
-  const absent = files.filter((file) => file.anchoring === 'anchored' && !file.packagedPath)
-  const unverified = files.filter((file) => file.anchoring === 'chain-unverified')
-  const held = files.filter((file) => file.anchoring === 'no-entry')
 
   const row = (derived: ExportDerivedFile, path: string): string =>
     `<li><span class="mono">${esc(derived.derivation)}</span> — <span class="mono">${esc(
       path
     )}</span><br><span class="sub">Recorded digest ${esc(derived.contentHash)}</span></li>`
+
+  // A standalone report encloses nothing, so it says nothing about enclosure:
+  // every file here would otherwise land in the not-enclosed bucket and be
+  // described as a gap, over bytes that are on disk and fine.
+  if (!packaged) {
+    return `<div class="note">
+    <p class="note-title">Derived files</p>
+    <p>${files.length} file${files.length === 1 ? ' was' : 's were'} computed from this exhibit by
+    the tool. A derived file is cited by its parent and its derivation and carries no exhibit
+    number of its own. This document was exported on its own rather than as an evidence package,
+    so ${
+      files.length === 1 ? 'it is' : 'they are'
+    } not enclosed with it and nothing here states otherwise; what is stated is what the case
+    records and what the manifest chain says about ${files.length === 1 ? 'it' : 'them'}.</p>
+    <ul>${files
+      .map(
+        (derived) =>
+          `<li><span class="mono">${esc(derived.derivation)}</span> — ${esc(
+            derived.anchoring === 'anchored'
+              ? 'anchored in the chain by its own entry'
+              : derived.anchoring === 'chain-unverified'
+                ? 'named by a manifest entry, over a chain that did not verify'
+                : 'named by no manifest entry'
+          )}<br><span class="sub">Recorded digest ${esc(derived.contentHash)}</span></li>`
+      )
+      .join('')}</ul>
+  </div>`
+  }
+
+  const enclosed = files.filter((file) => file.anchoring === 'anchored' && file.packagedPath)
+  const absent = files.filter((file) => file.anchoring === 'anchored' && !file.packagedPath)
+  const unverified = files.filter((file) => file.anchoring === 'chain-unverified')
+  const held = files.filter((file) => file.anchoring === 'no-entry')
 
   const enclosedBlock =
     enclosed.length === 0
@@ -1578,6 +1608,10 @@ function derivedFilesBlock(files: ExportDerivedFile[]): string {
     <ul>${absent.map((derived) => row(derived, 'not enclosed')).join('')}</ul>
   </div>`
 
+  // Worded from the enclosed subset rather than from the bucket: the bytes of
+  // a file named over a broken chain can be unreadable too, and "they are
+  // enclosed so that a reviewer can check them" would then be false.
+  const unverifiedEnclosed = unverified.filter((file) => file.packagedPath).length
   const unverifiedBlock =
     unverified.length === 0
       ? ''
@@ -1593,10 +1627,19 @@ function derivedFilesBlock(files: ExportDerivedFile[]): string {
     }, and no statement is made here about whether ${
       unverified.length === 1 ? 'this file is' : 'these files are'
     } anchored. ${
-      unverified.length === 1 ? 'It is' : 'They are'
-    } enclosed so that a reviewer can check ${
-      unverified.length === 1 ? 'it' : 'them'
-    } against the manifest directly; the chain failure is reported under “Chain of custody”.</p>
+      unverifiedEnclosed === unverified.length
+        ? `${unverified.length === 1 ? 'It is' : 'They are'} enclosed so that a reviewer can check ${
+            unverified.length === 1 ? 'it' : 'them'
+          } against the manifest directly`
+        : unverifiedEnclosed === 0
+          ? `The stored bytes could not be read either, so ${
+              unverified.length === 1 ? 'it is' : 'they are'
+            } not enclosed`
+          : `${unverifiedEnclosed} of ${unverified.length} could be read and ${
+              unverifiedEnclosed === 1 ? 'is' : 'are'
+            } enclosed; the ${unverified.length - unverifiedEnclosed} listed below as not enclosed
+      could not be read`
+    }; the chain failure is reported under “Chain of custody”.</p>
     <ul>${unverified
       .map((derived) => row(derived, derived.packagedPath ?? 'not enclosed'))
       .join('')}</ul>
@@ -1632,7 +1675,7 @@ function derivedFilesBlock(files: ExportDerivedFile[]): string {
  * committed to the case, and what the chain says about them since. The block
  * states that limit rather than leaving fields blank.
  */
-function renderFileExhibit(e: FileExhibitView, total: number): string {
+function renderFileExhibit(e: FileExhibitView, total: number, packaged: boolean): string {
   const { exhibit } = e
   const artefacts: Array<[string, string]> = []
   if (exhibit.packagedPath) {
@@ -1727,7 +1770,7 @@ function renderFileExhibit(e: FileExhibitView, total: number): string {
         digest of the bytes, the point at which they entered the case, and whether the chain still
         reconciles for them.</p>
       </div>
-      ${derivedFilesBlock(exhibit.derivedFiles)}
+      ${derivedFilesBlock(exhibit.derivedFiles, packaged)}
     </div>
   </div>
 </section>`

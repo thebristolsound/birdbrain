@@ -381,13 +381,23 @@ jq -r 'select(.type == "renumber") | .assignments[] | "\\(.exhibitId) \\(.exhibi
   manifest.jsonl >>"$tmp/exhibit-numbers.txt"
 
 # How a finding cites an Exhibit, matching the binary verifier's wording.
+#
+# The LAST assignment wins, which is what the binary does when it folds the
+# same entries into a map: a Case renumbered after an Exhibit was committed
+# carries both an \`exhibit\` entry and a later \`renumber\` assignment for that
+# id, and taking the first would cite the superseded number here and the
+# current one there.
 exhibit_label() {
+  found=''
   while IFS=' ' read -r numbered_id number; do
     [ "$numbered_id" = "$1" ] || continue
-    printf 'Exhibit %s' "$number"
-    return 0
+    found="$number"
   done <"$tmp/exhibit-numbers.txt"
-  printf 'exhibit %s' "$1"
+  if [ -n "$found" ]; then
+    printf 'Exhibit %s' "$found"
+  else
+    printf 'exhibit %s' "$1"
+  fi
 }
 
 # Derived Files (X17): bytes the tool computed FROM an Exhibit, enclosed beside

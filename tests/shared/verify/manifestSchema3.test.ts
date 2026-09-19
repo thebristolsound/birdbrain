@@ -15,6 +15,7 @@ import { canonicalStringify, verifyManifestChainText } from '@shared/verify'
 import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
 import { ManifestEntrySchema, MANIFEST_ENTRY_TYPES } from '@shared/schemas'
 import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
+import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 
 // Known-answer tests for manifest schema 3 (ADR-0023, rulings X17/X18/X24/X25).
 //
@@ -882,8 +883,10 @@ describe('manifest schema 3 — Exhibit and Derived File binding (#1156)', () =>
    * file's subject is what the VERIFIER does with schema-3 entries, and a
    * fixture the exporter produced could only ever agree with itself.
    */
-  function writePackage(): void {
-    const jsonl = buildChain([CAPTURE_ENTRY, EXHIBIT_ENTRY, DERIVATION_ENTRY])
+  function writePackage(
+    bodies: Record<string, unknown>[] = [CAPTURE_ENTRY, EXHIBIT_ENTRY, DERIVATION_ENTRY]
+  ): void {
+    const jsonl = buildChain(bodies)
     const lines = jsonl.trim().split('\n')
     const head = JSON.parse(lines[lines.length - 1]) as { index: number; entryHash: string }
     writeFileSync(join(pkgDir, 'manifest.jsonl'), jsonl, 'utf-8')
@@ -1076,6 +1079,37 @@ describe('manifest schema 3 — Exhibit and Derived File binding (#1156)', () =>
     expect(checkFor(result, `exhibit ${EXHIBIT_ID}`)).toBeUndefined()
     expect(result.checks.filter((check) => check.status === 'fail')).toEqual([])
     expect(result.pass).toBe(true)
+  })
+
+  it('fails a committed Exhibit whose enclosed token attests another digest', () => {
+    // The check that makes token binding mean something: the bytes match the
+    // signed entry, so a byte comparison alone passes, and the token attests a
+    // digest that is not this Exhibit's. Built by hand because reaching it
+    // through the app would mean editing a `timestamp` entry, which breaks the
+    // chain before this check runs.
+    const token = buildSyntheticToken({
+      contentHash: 'f'.repeat(64),
+      genTime: new Date('2026-06-01T12:30:00.000Z'),
+      tsaDnsName: 'tsa.example.com'
+    })
+    const timestamp = {
+      type: 'timestamp',
+      caseId: CASE_ID,
+      captureContentHash: DOCUMENT_HASH,
+      timestamp: '2026-06-01T12:30:00.000Z',
+      tsaToken: token.toString('base64'),
+      ...OPERATOR,
+      schemaVersion: 3
+    }
+    writePackage([CAPTURE_ENTRY, EXHIBIT_ENTRY, DERIVATION_ENTRY, timestamp])
+    mkdirSync(join(pkgDir, 'timestamps'), { recursive: true })
+    writeFileSync(join(pkgDir, 'timestamps', `${EXHIBIT_ID}.tst`), token)
+
+    const result = verifyEvidencePackage(pkgDir)
+    const check = checkFor(result, `exhibit ${EXHIBIT_ID} timestamp`)
+    expect(check?.status).toBe('fail')
+    expect(check?.reason).toContain('timestamp imprint does not bind this exhibit')
+    expect(result.pass).toBe(false)
   })
 
   it('fails a Derived File the chain anchors and the package does not enclose', () => {

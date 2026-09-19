@@ -1682,6 +1682,38 @@ describe('verifyEvidencePackage — exhibits of every kind (#1156)', () => {
     expect(check?.reason).toContain('which the verified manifest does not anchor at that path')
   })
 
+  it('fails an evidence.json row whose derived-file digest is not the signed one', () => {
+    const path = join(pkgDir, 'evidence.json')
+    const evidence = JSON.parse(readFileSync(path, 'utf-8')) as {
+      exhibits: Array<{ id: string; derivedFiles: Array<{ contentHash: string }> }>
+    }
+    const row = evidence.exhibits.find((e) => e.derivedFiles.length > 0)!
+    row.derivedFiles[0].contentHash = 'c'.repeat(64)
+    writeFileSync(path, JSON.stringify(evidence, null, 2))
+
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass).toBe(false)
+    const check = result.checks.find((c) => c.name === 'evidence.json derived files')
+    expect(check?.status).toBe('fail')
+    expect(check?.reason).toContain('records a different digest for derived file')
+  })
+
+  it('fails an evidence.json that omits a derived file the chain anchors', () => {
+    const path = join(pkgDir, 'evidence.json')
+    const evidence = JSON.parse(readFileSync(path, 'utf-8')) as {
+      exhibits: Array<{ id: string; derivedFiles: unknown[] }>
+    }
+    const row = evidence.exhibits.find((e) => e.derivedFiles.length > 0)!
+    row.derivedFiles = []
+    writeFileSync(path, JSON.stringify(evidence, null, 2))
+
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass).toBe(false)
+    const check = result.checks.find((c) => c.name === 'evidence.json derived files')
+    expect(check?.status).toBe('fail')
+    expect(check?.reason).toContain('which the verified manifest anchors')
+  })
+
   it('fails a schemaVersion downgraded to hide the exhibits list', () => {
     // `schemaVersion` lives in the same unsigned file as the list it would
     // gate, so the chain is what decides the index owes one.

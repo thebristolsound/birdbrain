@@ -170,7 +170,7 @@ export function CaseOverview() {
 
   return (
     <div className="flex flex-col gap-[var(--d-gap)]" data-testid="case-overview">
-      <CaseSubhead caseData={caseData} glow />
+      <CaseSubhead caseData={caseData} glow={false} />
 
       <MetricRow
         captures={captures.length}

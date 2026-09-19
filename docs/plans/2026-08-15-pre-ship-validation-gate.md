@@ -134,10 +134,14 @@ capture server must answer). A leg whose artifact does not boot uploads nothing,
 that reaches the release page has passed it. Tick the human step anyway: the script proves
 the packaged main process starts, not that the window is usable.
 
-That script launches twice against the same profile and requires the extension folder
-under user data after both, so the folder Chrome was pointed at outlives the AppImage's
-mount (#653). It cannot show that Chrome's loaded extension still runs, which is why the
-load goes through **Open extension folder** below and is re-checked after the relaunch.
+That script launches twice against the same profile and requires the extension folder and
+its `extension-version` stamp under user data after both (#653). On the Ubuntu leg it gives
+each launch its own `TMPDIR`, which is where `--appimage-extract-and-run` unpacks the app,
+and deletes the first one before the second launch; it asserts that the two
+launches really did run from different directories, so the folder the app advertised
+outlived the directory it was serving from. It cannot show that Chrome's loaded extension
+still runs, which is why the load goes through **Open extension folder** below and is
+re-checked after the relaunch.
 
 **Windows (NSIS `.exe`) — must pass**
 

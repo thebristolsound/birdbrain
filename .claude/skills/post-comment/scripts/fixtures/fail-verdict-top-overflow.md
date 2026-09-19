@@ -1,7 +1,15 @@
-**Review verdict: needs work**
+**Review verdict: request changes**
 
 1. The description does not name every place the changed viewer is used, so the evidence review is incomplete.
 2. One new test is titled for a missing-archive case but checks the loading text instead.
+
+Context sentence 1 that belongs in the report.
+Context sentence 2 that belongs in the report.
+Context sentence 3 that belongs in the report.
+Context sentence 4 that belongs in the report.
+Context sentence 5 that belongs in the report.
+Context sentence 6 that belongs in the report.
+Context sentence 7 that belongs in the report.
 
 <details>
 <summary>Full report</summary>

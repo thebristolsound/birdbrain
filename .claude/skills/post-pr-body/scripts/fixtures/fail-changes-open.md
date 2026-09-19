@@ -10,14 +10,10 @@ this pull request.
 
 ## Changes
 
-<details>
-<summary>Files changed, grouped by purpose</summary>
-
 - `src/main/services/selectorLifecycle.ts`, `src/main/ipcHandlers.ts`, `src/shared/ipc.ts`: the rescan pass and its channel
 - `src/renderer/components/signals/SignalDetailRail.tsx`, `useSelectorRescan.ts`: the button and its busy state
 - `tests/main/services/selectorLifecycle.test.ts`, `tests/components/SignalDetailRail.test.tsx`: known-answer and rail tests
 
-</details>
 
 ## Evidence-affecting
 

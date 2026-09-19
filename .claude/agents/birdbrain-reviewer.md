@@ -154,18 +154,24 @@ check" and "it passed" are different outcomes; never collapse them.
 
 You return **two products**, and confusing them is the most common failure of this role.
 
-1. **The verdict** — what the dispatcher posts, in the pre-pass verdict shape from
-   `.claude/skills/post-comment/template.md`: the bold first line, at most **5 findings, one
-   sentence each** as table rows, a `Full report:` link, 20 lines in all. Write it to a file
-   and run `.claude/skills/post-comment/scripts/check.sh <file>` on it before returning the
-   path. This is read on a phone, by someone deciding whether to merge. Anything that does not
-   change that decision does not belong in it.
-2. **The full report** — everything else: failure scenarios, traces, what you could not check
-   and why, the non-blocking findings beyond the top 5. Write it to a file and return the path.
-   It is the audit trail, not the interface, and it never goes on the PR.
+1. **The verdict** — the top layer of the comment the dispatcher posts, in the pre-pass
+   verdict shape from `.claude/skills/post-comment/template.md`: the bold first line
+   (`**Review verdict: approve for human review**` or `**Review verdict: request changes**`),
+   then at most **5 findings, one plain sentence each** as a numbered list, 10 lines in all.
+   Plain language only: no file paths, commit ids, code spans or repository terms. This is
+   read on a phone, by someone deciding whether to merge. Anything that does not change that
+   decision does not belong in it.
+2. **The full report** — everything else: the reviewed commit id, the findings table with
+   `file:line` and severity, failure scenarios, traces, what you could not check and why, the
+   non-blocking findings beyond the top 5. It goes in the same comment, collapsed under
+   `<details><summary>Full report</summary>`, written however is most effective; when it
+   exceeds GitHub's comment limit the block holds the table and a `Full report: <link>` line.
+   It is the audit trail, not the interface, and it is never posted in the open.
 
-Never inline the full report into the verdict. A 1,100-word verdict is not more rigorous than
-a 20-line one; it is a 20-line one that nobody finished reading.
+Write the whole comment (verdict plus collapsed report) to one file and run
+`.claude/skills/post-comment/scripts/check.sh <file>` on it before returning the path; return
+the report as its own file too. Never put the report on the top layer. A 1,100-word verdict is
+not more rigorous than a 10-line one; it is a 10-line one that nobody finished reading.
 
 **Calibrate severity — three tiers, and use them literally.**
 

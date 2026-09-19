@@ -1,6 +1,10 @@
-**Review verdict: needs work**
+**Review verdict: request changes**
 
 1. The description does not name every place the changed viewer is used, so the evidence review is incomplete.
+3. A plain finding.
+4. A plain finding.
+5. A plain finding.
+6. A plain finding.
 2. One new test is titled for a missing-archive case but checks the loading text instead.
 
 <details>

@@ -2,7 +2,7 @@ Closes #829
 
 ## Summary
 
-An existing selector can now be matched again against every capture in a case, from a
+Adds `selectorLifecycle.rescanSelector` in selectorLifecycle.ts so an existing selector can be matched again against every capture in a case, from a
 "Rescan all captures" button on the Signals detail rail. The rescan only adds matches and
 never clears existing ones first, per the wave-4 intake rulings on #829. The button stays
 busy until the rescan reports which selector it finished. The dispatch step opens and labels

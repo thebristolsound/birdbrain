@@ -111,9 +111,14 @@ export const summarizeDiffCoverage = (result) => {
 
 export const formatVerificationBlock = ({ sha, nodeVersion, base, mergeBase, steps }) => {
   const status = steps.some((step) => step.status === 'fail') ? 'fail' : 'pass'
+  // The step list is collapsed under a plain-language summary line: the PR body's top layer
+  // carries no commands, ids or figures (post-pr-body), and the block is pasted verbatim.
   const lines = [
     `<!-- preflight v${BLOCK_VERSION} sha=${sha} status=${status} -->`,
     '## Verification',
+    '',
+    '<details>',
+    `<summary>${status === 'pass' ? 'All pre-merge checks passed' : 'A pre-merge check failed'}</summary>`,
     '',
     `\`pnpm preflight\` at \`${sha}\` on Node v${nodeVersion}; diff scored against ` +
       `\`${base}\` (merge base \`${mergeBase.slice(0, 9)}\`). Result: **${status}**.`,
@@ -123,6 +128,7 @@ export const formatVerificationBlock = ({ sha, nodeVersion, base, mergeBase, ste
     const result = step.status === 'skipped' ? 'skipped' : `${step.status} (exit ${step.exitCode})`
     lines.push(`- \`${step.command}\` - ${result}${step.detail ? ` - ${step.detail}` : ''}`)
   }
+  lines.push('', '</details>')
   return lines.join('\n') + '\n'
 }
 

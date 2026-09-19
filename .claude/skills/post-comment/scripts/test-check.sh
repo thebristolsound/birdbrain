@@ -35,7 +35,7 @@ done
 expect 0 "$(hook "gh issue view 12 --comments")" "hook ignores a read"
 expect 0 "$(hook "gh api repos/o/r/issues/12/comments --paginate")" "hook ignores a comments read"
 expect 0 "$(hook "agh issue comment 12 --body-file pass-claim.md")" "hook allows a passing claim"
-expect 2 "$(hook "gh pr comment 12 --body-file fail-verdict-21-lines.md")" "hook blocks a failing verdict"
+expect 2 "$(hook "gh pr comment 12 --body-file fail-verdict-top-overflow.md")" "hook blocks a failing verdict"
 expect 2 "$(hook "gh issue comment 12 --body 'inline'")" "hook blocks --body"
 expect 2 "$(hook "gh issue comment 12")" "hook blocks a comment with no file"
 expect 0 "$(hook "gh api repos/o/r/issues/12/comments -X POST --input pass-reply.json")" "hook allows a passing api payload"

@@ -1,3 +1,2 @@
-applied 4e9ed05e
-
-Also tightened the helper while there.
+Applied.
+Also I rewrote the helper while I was there.

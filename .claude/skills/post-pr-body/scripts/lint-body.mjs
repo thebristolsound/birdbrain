@@ -5,6 +5,7 @@
 // path uses it. The line, when present, must still be last.
 // Prints one finding per line and exits 1 on any finding.
 import { readFileSync } from 'node:fs'
+import { parseLayers, plainLanguageFindings, summaryFindings } from './layers.mjs'
 
 const MAX_LINES_ABOVE_VERIFICATION = 40
 const MAX_SUMMARY_SENTENCES = 5
@@ -57,21 +58,28 @@ export function lintBody(raw, { anyAuthor = false } = {}) {
   const findings = []
   const text = dropPlatformFooter(raw.replace(/\r\n/g, '\n'))
   const lines = text.split('\n')
-  const visible = stripComments(text).split('\n')
+  const visibleText = stripComments(text).split('\n')
   // A line that stripping emptied was a template prompt; it is not authored text.
-  const fromComment = lines.map((l, i) => l.trim() !== '' && visible[i].trim() === '')
+  const fromComment = lines.map((l, i) => l.trim() !== '' && visibleText[i].trim() === '')
 
   for (const [re, what] of FORBIDDEN) {
     if (re.test(text)) findings.push(`body contains ${what}`)
   }
 
-  const first = (visible.find((l) => l.trim() !== '') || '').trim()
+  // The two layers: `top[i]` is true for a line outside every <details> block.
+  const layers = parseLayers(visibleText)
+  findings.push(...layers.findings)
+  const top = layers.visible
+  const inBlock = (i) => !top[i]
+
+  const firstIdx = visibleText.findIndex((l) => l.trim() !== '')
+  const first = (visibleText[firstIdx] || '').trim()
   if (!/^Closes #\d+(, #\d+)*$/.test(first) && !/^No issue: \S.*$/.test(first)) {
     findings.push(`line 1 must be "Closes #N" (or "No issue: <reason>"), got: "${first.slice(0, 60)}"`)
   }
 
   const headings = []
-  visible.forEach((l, i) => {
+  visibleText.forEach((l, i) => {
     if (/^#{1,6} /.test(l)) headings.push({ line: i, text: l.trim() })
   })
   const h2 = headings.filter((h) => h.text.startsWith('## ')).map((h) => h.text)
@@ -86,38 +94,52 @@ export function lintBody(raw, { anyAuthor = false } = {}) {
     if (/^#{4,} /.test(h.text)) findings.push(`no deep headings: "${h.text}"`)
   }
 
-  const start = (name) => visible.findIndex((l) => l.trim() === name)
+  const start = (name) => visibleText.findIndex((l, i) => top[i] && l.trim() === name)
   const section = (name, next) => {
     const s = start(name)
     if (s < 0) return null
-    let e = next ? start(next) : visible.length
-    if (e < 0 || e < s) e = visible.length
-    return { start: s, end: e, lines: visible.slice(s + 1, e) }
+    let e = next ? start(next) : visibleText.length
+    if (e < 0 || e < s) e = visibleText.length
+    return { start: s, end: e, lines: visibleText.slice(s + 1, e), indexes: [...Array(e - s - 1).keys()].map((k) => s + 1 + k) }
   }
+  const blocksWithin = (sec) => layers.blocks.filter((b) => b.start > sec.start && b.end < sec.end)
 
   const summary = section('## Summary', '## Changes')
   if (summary) {
-    const n = countSentences(summary.lines.join(' '))
+    const n = countSentences(summary.indexes.filter((i) => top[i]).map((i) => visibleText[i]).join(' '))
     if (n > MAX_SUMMARY_SENTENCES) findings.push(`Summary has ${n} sentences; the cap is ${MAX_SUMMARY_SENTENCES}`)
     if (n === 0) findings.push('Summary is empty')
   }
 
   const changes = section('## Changes', '## Evidence-affecting')
   if (changes) {
-    const bad = changes.lines.filter((l) => l.trim() !== '' && !/^\s*- /.test(l))
-    if (bad.length) findings.push(`Changes holds only bullets; found prose: "${bad[0].trim().slice(0, 60)}"`)
-    if (!changes.lines.some((l) => /^\s*- \S/.test(l))) findings.push('Changes has no bullets')
+    const outside = changes.indexes.filter((i) => top[i] && visibleText[i].trim() !== '')
+    if (outside.length) {
+      findings.push(`Changes is one <details> block of file-group bullets; found text outside it: "${visibleText[outside[0]].trim().slice(0, 60)}"`)
+    }
+    const blocks = blocksWithin(changes)
+    if (!blocks.length) {
+      findings.push('Changes has no <details> block; the file-group bullets are collapsed under a plain <summary>')
+    } else {
+      const body = blocks.flatMap((b) => b.lines.slice(b.lines.findIndex((l) => /<summary>/i.test(l)) + 1))
+      const bad = body.filter((l) => l.trim() !== '' && !/^\s*- /.test(l))
+      if (bad.length) findings.push(`Changes holds only bullets; found prose: "${bad[0].trim().slice(0, 60)}"`)
+      if (!body.some((l) => /^\s*- \S/.test(l))) findings.push('Changes has no bullets')
+    }
   }
 
   const evidence = section('## Evidence-affecting', '## Verification')
   if (evidence) {
-    const answer = (evidence.lines.find((l) => l.trim() !== '') || '').trim()
+    const answerIdx = evidence.indexes.find((i) => visibleText[i].trim() !== '')
+    const answer = answerIdx === undefined ? '' : visibleText[answerIdx].trim()
     if (answer !== 'Yes' && answer !== 'No') {
       findings.push(`Evidence-affecting must answer "Yes" or "No" on its first line, got: "${answer.slice(0, 40)}"`)
     }
-    const hasImpact = evidence.lines.some((l) => l.trim() === '### Evidence impact')
+    const impactIdx = evidence.indexes.find((i) => visibleText[i].trim() === '### Evidence impact')
+    const hasImpact = impactIdx !== undefined
     if (answer === 'Yes') {
       if (!hasImpact) findings.push('Evidence-affecting is Yes but "### Evidence impact" is missing')
+      else if (!inBlock(impactIdx)) findings.push('"### Evidence impact" and its four fields sit inside a <details> block')
       const body = evidence.lines.join('\n')
       for (const f of IMPACT_FIELDS) {
         if (!body.includes(f)) findings.push(`Evidence impact is missing the "${f}" field`)
@@ -129,29 +151,57 @@ export function lintBody(raw, { anyAuthor = false } = {}) {
 
   const vStart = start('## Verification')
   if (vStart >= 0) {
-    const above = visible
+    const above = visibleText
       .slice(0, vStart)
-      .filter((l, i) => !fromComment[i] && !PREFLIGHT_MARKER.test(l.trim()))
+      .filter((l, i) => top[i] && !fromComment[i] && !PREFLIGHT_MARKER.test(l.trim()))
     if (above.length > MAX_LINES_ABOVE_VERIFICATION) {
       findings.push(`${above.length} lines above ## Verification; the cap is ${MAX_LINES_ABOVE_VERIFICATION}`)
     }
     if (above.some((l) => /^\s*```/.test(l))) {
       findings.push('fenced output above ## Verification; test output and figures live only in the Verification block')
     }
-    const before = (visible[vStart - 1] || '').trim()
-    const within = visible.slice(vStart + 1).some((l) => PREFLIGHT_MARKER.test(l.trim()))
+    const before = (visibleText[vStart - 1] || '').trim()
+    const within = visibleText.slice(vStart + 1).some((l) => PREFLIGHT_MARKER.test(l.trim()))
     if (!PREFLIGHT_MARKER.test(before) && !within) {
       findings.push('Verification lacks the <!-- preflight v1 sha=... status=... --> marker; paste .preflight/verification.md verbatim')
     }
+    const vBlocks = layers.blocks.filter((b) => b.start > vStart)
+    if (!vBlocks.length) {
+      findings.push('Verification holds the preflight block inside a <details> block; paste .preflight/verification.md verbatim, it is written that way')
+    }
+    const loose = visibleText
+      .slice(vStart + 1)
+      .map((l, k) => ({ l: l.trim(), i: vStart + 1 + k }))
+      .filter(({ l, i }) => top[i] && l !== '' && l !== ATTRIBUTION && !PREFLIGHT_MARKER.test(l))
+    if (loose.length) {
+      findings.push(`line ${loose[0].i + 1}: Verification text outside the <details> block: "${loose[0].l.slice(0, 60)}"`)
+    }
   }
 
-  const last = ([...visible].reverse().find((l) => l.trim() !== '') || '').trim()
-  const hasAttribution = visible.some((l) => l.trim() === ATTRIBUTION)
+  const last = ([...visibleText].reverse().find((l) => l.trim() !== '') || '').trim()
+  const hasAttribution = visibleText.some((l) => l.trim() === ATTRIBUTION)
   if (hasAttribution && last !== ATTRIBUTION) {
     findings.push(`"${ATTRIBUTION}" must be the last line`)
   } else if (!hasAttribution && !anyAuthor) {
     findings.push(`the last line must be exactly "${ATTRIBUTION}"`)
   }
+
+  // The top layer is plain language. Protocol lines are exempt: line 1, the section
+  // headings, the Yes/No answer, the preflight marker and the attribution line.
+  const exempt = (i, l) => {
+    const t = l.trim()
+    return (
+      i === firstIdx ||
+      SECTIONS.includes(t) ||
+      t === 'Yes' ||
+      t === 'No' ||
+      t === ATTRIBUTION ||
+      PREFLIGHT_MARKER.test(t) ||
+      fromComment[i]
+    )
+  }
+  findings.push(...plainLanguageFindings(visibleText, top, exempt))
+  findings.push(...summaryFindings(layers.blocks))
 
   return findings
 }

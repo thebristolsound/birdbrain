@@ -1,6 +1,6 @@
 # One shape per posting surface, checked before the write
 
-**Status:** Accepted
+**Status:** Accepted, amended 2026-09-19 (two layers per post)
 
 **Date:** 2026-08-29
 
@@ -47,8 +47,17 @@ The shapes: a commit is `<type>(<scope>): <subject>` at 72 columns with an optio
 and no closing keyword or trailer. A PR body is `Closes #N`, Summary (5 sentences), Changes
 (bullets), Evidence-affecting (Yes or No, with the four impact fields when Yes), Verification
 (the preflight block verbatim, ADR-0018), the attribution line last, and 40 lines before
-Verification. A comment's first line names its kind, and each kind has a line cap; the pre-pass
-full report never goes on the PR.
+Verification. A comment's first line names its kind, and each kind has a line cap.
+
+**Amended 2026-09-19.** Every PR body and comment has two layers, the way CodeRabbit nests its
+review. The top layer is plain language for a reader outside the repository: no code spans,
+file names or paths, commit ids, ADR numbers, tool names or repository terms, and the linters
+check those as proxies. The detail sits in `<details>` blocks under a plain `<summary>`, where
+the author writes however is most effective, and caps count the top layer only. Under this
+amendment the pre-pass full report goes on the PR collapsed inside the verdict comment (the
+original rule kept it off the PR entirely, after #1125 posted it in the open as a second
+comment); the file-group bullets, the Evidence impact fields and the preflight step list are
+collapsed too, and `scripts/preflight.mjs` writes the block that way.
 
 The PR body shape is the same for humans and agents: `.github/pull_request_template.md` is a
 copy of the skill's template. The one difference is the attribution line: an agent ends with

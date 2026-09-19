@@ -282,9 +282,8 @@ export function DataExplorer() {
   )
 
   const captureIds = useMemo(() => new Set(captureById.keys()), [captureById])
-  const { rowTarget, nodeTarget, ledgerTarget } = useDataContextMenu({
+  const { rowTarget, nodeTarget } = useDataContextMenu({
     rows,
-    entries: snapshot?.entries ?? [],
     context,
     captureIds,
     onOpenCapture: openCapture,
@@ -294,7 +293,6 @@ export function DataExplorer() {
       setSelectedId(null)
     },
     onSetExpanded: setExpandedKeys,
-    onShowRow: showRow,
     onCommit: (id) => commit.mutate([id]),
     onDiscard: requestDiscard
   })
@@ -304,8 +302,7 @@ export function DataExplorer() {
       const targetId = line ? targetExhibitId(line, rows) : null
       if (targetId) showRow(targetId)
     },
-    onCopyHash: (value: string, label: string) => void copyValue(value, label),
-    menuTargetFor: ledgerTarget
+    onCopyHash: (value: string, label: string) => void copyValue(value, label)
   }
 
   if (isLoading) {

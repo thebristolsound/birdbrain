@@ -7,7 +7,6 @@ import {
   entityMenuHeader,
   exhibitMenuEntries,
   isSubmenu,
-  ledgerMenuEntries,
   nodeMenuEntries,
   noteMenuEntries,
   selectorMenuEntries,
@@ -16,7 +15,6 @@ import {
   type CaptureMenuActions,
   type CaptureMenuTarget,
   type ExhibitMenuTarget,
-  type LedgerMenuTarget,
   type NodeMenuTarget,
   type StagedMenuTarget,
   type MenuAction,
@@ -416,18 +414,6 @@ describe('data screen kinds', () => {
       ...overrides
     }
   }
-  function ledgerTarget(overrides: Partial<LedgerMenuTarget> = {}): LedgerMenuTarget {
-    return {
-      kind: 'ledger',
-      index: 3,
-      entryType: 'capture',
-      canShowTarget: true,
-      hasEntryHash: true,
-      hasPrevHash: true,
-      actions: { showTarget: vi.fn(), copyEntryHash: vi.fn(), copyPrevHash: vi.fn() },
-      ...overrides
-    }
-  }
   function stagedTarget(): StagedMenuTarget {
     return {
       kind: 'staged',
@@ -478,7 +464,7 @@ describe('data screen kinds', () => {
     })
   })
 
-  it('node: Show only this, Expand below, Collapse below, Verify, with the last three gated', () => {
+  it('node: Show only this, Expand below, Collapse below, Verify, with the last three left out where they do not apply', () => {
     const target = nodeTarget()
     const entries = nodeMenuEntries(target)
     expect(labels(entries)).toEqual(['Show only this', 'Expand below', 'Collapse below', 'Verify'])
@@ -491,30 +477,21 @@ describe('data screen kinds', () => {
     expect(target.actions.collapseBelow).toHaveBeenCalledOnce()
     expect(target.actions.verify).toHaveBeenCalledOnce()
 
-    const leaf = nodeMenuEntries(nodeTarget({ hasChildren: false, hasExhibits: false }))
-    expect(leaf.map((e) => (e as MenuAction).disabled)).toEqual([undefined, true, true, true])
+    // Nothing is greyed: an item the node cannot take is not offered.
+    expect(labels(nodeMenuEntries(nodeTarget({ hasChildren: false })))).toEqual([
+      'Show only this',
+      'Verify'
+    ])
+    expect(labels(nodeMenuEntries(nodeTarget({ hasExhibits: false })))).toEqual([
+      'Show only this',
+      'Expand below',
+      'Collapse below'
+    ])
+    expect(labels(nodeMenuEntries(nodeTarget({ hasChildren: false, hasExhibits: false })))).toEqual(
+      ['Show only this']
+    )
+    expect(nodeMenuEntries(nodeTarget()).some((e) => (e as MenuAction).disabled)).toBe(false)
     expect(entityMenuHeader(nodeTarget())).toMatchObject({ ariaLabel: 'Node actions: Captures' })
-  })
-
-  it('ledger: Show target, Copy entry hash, Copy previous hash', () => {
-    const target = ledgerTarget()
-    const entries = ledgerMenuEntries(target)
-    expect(labels(entries)).toEqual(['Show target', 'Copy entry hash', 'Copy previous hash'])
-    run(entries, 'ledger-show-target')
-    run(entries, 'ledger-copy-entry-hash')
-    run(entries, 'ledger-copy-prev-hash')
-    expect(target.actions.showTarget).toHaveBeenCalledOnce()
-    expect(target.actions.copyEntryHash).toHaveBeenCalledOnce()
-    expect(target.actions.copyPrevHash).toHaveBeenCalledOnce()
-    const orphan = ledgerMenuEntries(ledgerTarget({ canShowTarget: false }))
-    expect((orphan[0] as MenuAction).disabled).toBe(true)
-    // Genesis has no previous hash; the cell shows none and the item is off.
-    const genesis = ledgerMenuEntries(ledgerTarget({ hasPrevHash: false }))
-    expect((genesis[2] as MenuAction).disabled).toBe(true)
-    expect(entityMenuHeader(ledgerTarget())).toMatchObject({
-      title: 'seq 0003 · capture',
-      ariaLabel: 'Manifest entry actions: seq 3'
-    })
   })
 
   it('staged: Commit, Discard (confirmed), Copy SHA-256 labelled not anchored', () => {
@@ -538,11 +515,10 @@ describe('data screen kinds', () => {
     })
   })
 
-  it('offers no Reveal in folder or absolute-path item on any of the four kinds', () => {
+  it('offers no Reveal in folder or absolute-path item on any of the three kinds', () => {
     const all = [
       ...exhibitMenuEntries(exhibitTarget()),
       ...nodeMenuEntries(nodeTarget()),
-      ...ledgerMenuEntries(ledgerTarget()),
       ...stagedMenuEntries(stagedTarget())
     ]
     expect(all.some((e) => /reveal|folder|absolute/i.test(e.label))).toBe(false)

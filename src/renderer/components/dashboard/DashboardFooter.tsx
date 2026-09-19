@@ -1,4 +1,4 @@
-import { Github } from 'lucide-react'
+import { Code } from 'lucide-react'
 import logoImg from '@renderer/assets/logo.png'
 import { Button } from '@renderer/components/ui'
 
@@ -35,7 +35,7 @@ export function DashboardFooter() {
             size="xs"
             className="gap-1 text-[11px] text-text-faint hover:text-accent no-underline"
           >
-            <Github className="h-3.5 w-3.5" />
+            <Code className="h-3.5 w-3.5" />
             GitHub
           </Button>
         </div>

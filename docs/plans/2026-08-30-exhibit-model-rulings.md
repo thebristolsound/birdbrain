@@ -7,7 +7,7 @@ ingestion, Google Docs import, and Maltego-class depth), and the rounds below se
 model. The decisions are recorded as ADR-0023 (the Exhibit model) and ADR-0024 (the Staging
 Pool); this document is the trail of what was asked, what was answered, and on what grounds.
 
-Numbered X1-X44 to keep them distinct from wave 3's R1-R23 and wave 4's W1-W26, which still
+Numbered X1-X45 to keep them distinct from wave 3's R1-R23 and wave 4's W1-W26, which still
 bind where they do not conflict. Where a ruling below contradicts an earlier ruling, the later
 one wins and the conflict is named. Rulings X28-X32 and X41-X44 were taken by the agent under ADR-0015 and
 are open to veto. Round 5 is the X11 re-ask of the 2026-08-29 round-1 questions, held on
@@ -191,7 +191,7 @@ Files alike, with `Verify all` running a per-Exhibit verify in sequence. Verify 
 with the kind: the model ticket carries `exhibits:verify` delegating to the existing Capture path,
 and the pool ticket extends it to attachments. Pooled rows are excluded (X16).
 
-**X38 (Q6 restated) - backed menu items only, plus the pool actions.** Exhibit or Derived File
+**X38 (Q6 restated, amended by X45) - backed menu items only, plus the pool actions.** Exhibit or Derived File
 row: `Open in viewer`, `Copy SHA-256`, `Copy relative path`, `Verify`. Node: Show only this, Expand or
 Collapse below, Verify. Ledger entry: Show target, Copy entry hash, Copy previous hash. Staged
 row: `Commit`, `Discard` (confirmed), and `Copy SHA-256` carrying the not-anchored label. Group
@@ -247,6 +247,22 @@ package, and a silent omission would be the dishonest third option.
 The `CONTEXT.md` finding (mark Derived File anchoring as planned) was not applied: the glossary
 defines the model and carries no implementation state; the ADR's consequences and X34 carry the
 transition.
+
+## Round 7: the menus as shipped
+
+Ruled 2026-09-18 by the maintainer after #1471 landed X38 and every tree node, group head
+and ledger entry had grown a menu.
+
+**X45 - a menu only where a row has a real action.** A context menu mounts only on an element
+that reads as clickable, and only when it offers an action beyond the click and a copy. On the
+tree that is a row node with a subtree to expand or Exhibits to verify; group heads are
+eyebrows and get none, and a Derived File node or the Manifest Ledger node has nothing to
+offer. A Manifest Ledger entry gets no menu: Show target is the row click and the two hash
+copies are the cells, so the `ledger` kind leaves the registry. Exhibit, Derived File and
+pooled rows keep theirs. An item a node cannot take is left out, not greyed. Amends X38's
+node and ledger lists; the Exhibit, staged, and group action lists stand. Grounds: a menu that
+repeats the click, or holds nothing but Copy SHA-256, is noise, and the maintainer's original
+"every node" ask was wider than intended.
 
 ## Decisions the agent took
 

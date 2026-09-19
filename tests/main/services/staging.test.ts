@@ -489,20 +489,20 @@ describe('staging pool', () => {
           derivedFileId: unanchored.id,
           derivation: 'thumbnail',
           status: 'unverified',
+          unanchoredCause: 'no-entry',
           reason: 'No manifest entry anchors this derived file'
         }
       ])
 
       // An index pointing somewhere real does not rescue it: with no entry
       // naming this parent and path, nothing on the chain is about these bytes.
-      getDb()
-        .prepare('UPDATE derived_files SET manifest_seq = 0 WHERE id = ?')
-        .run(unanchored.id)
+      getDb().prepare('UPDATE derived_files SET manifest_seq = 0 WHERE id = ?').run(unanchored.id)
       expect((await verifyExhibit(caseId, exhibitId)).derived).toEqual([
         {
           derivedFileId: unanchored.id,
           derivation: 'thumbnail',
           status: 'unverified',
+          unanchoredCause: 'no-entry',
           reason: 'Derived file is not anchored in the verified chain'
         }
       ])

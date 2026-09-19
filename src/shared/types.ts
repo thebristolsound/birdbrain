@@ -1221,6 +1221,19 @@ export interface DerivedFileVerification {
   derivation: string
   status: 'verified' | 'tampered' | 'missing' | 'unverified'
   reason?: string
+  /**
+   * Why no `derivation` entry vouches for the bytes, on an `unverified`
+   * outcome. The two causes are different evidentiary states and a caller must
+   * not collapse them:
+   *
+   * - `no-entry`: no line in the manifest names this file for this Exhibit at
+   *   all (X34 — the backfill records a thumbnail whose source screenshot could
+   *   not be verified). The chain is silent about it.
+   * - `chain-unverified`: a line DOES name it, but the chain does not verify,
+   *   so nothing vouches for that line. Saying "no entry states what was
+   *   produced" here would be false about an entry sitting in the same file.
+   */
+  unanchoredCause?: 'no-entry' | 'chain-unverified'
 }
 
 // --- Staging Pool (ADR-0024, #1148) ----------------------------------------

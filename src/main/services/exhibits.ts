@@ -264,15 +264,15 @@ function verifiedEntryAt(
   return parsed.success ? parsed.data : undefined
 }
 
-// The `derivation` entries a verified chain carries, reduced to the three
-// fields a binding may read. Empty when the chain did not verify: every line is
-// then unverified input, and binding a Derived File to one would take a
-// forger's word for what the bytes should be.
-function verifiedDerivations(
-  snapshot: ReturnType<typeof readManifestSnapshot>,
-  chain: ChainVerifyResult
+// Every `derivation` entry in the snapshot, read leniently — schema shape only,
+// no chain verdict. NOTHING read here is treated as evidence: it answers the
+// narrower question "does a line naming this file exist at all", the same
+// question `priorDerivations` in exhibitBackfill.ts and `hasRenumberEntry` ask
+// of a chain that may be broken. What vouches for bytes is the verified set
+// below.
+function readDerivations(
+  snapshot: ReturnType<typeof readManifestSnapshot>
 ): DerivationEntryFacts[] {
-  if (!chain.valid) return []
   const facts: DerivationEntryFacts[] = []
   for (const line of snapshot.entries) {
     const parsed = ManifestEntrySchema.safeParse(line)
@@ -299,7 +299,12 @@ async function verifyDerivedFiles(
   snapshot: ReturnType<typeof readManifestSnapshot>,
   chain: ChainVerifyResult
 ): Promise<DerivedFileVerification[]> {
-  const entries = verifiedDerivations(snapshot, chain)
+  // Two sets, because "the chain has no entry for this file" and "the chain has
+  // one but does not verify" are different findings. Binding uses the verified
+  // set — empty on a broken chain, since an unverified line is a forger's word
+  // — and the lenient set decides only which of the two the caller is told.
+  const present = readDerivations(snapshot)
+  const entries = chain.valid ? present : []
   const imports = importEntriesOf(snapshot)
   const caseDir = store.caseDir(exhibit.caseId)
   // The entry names the parent through the Case's custody records rather than
@@ -330,11 +335,20 @@ async function verifyDerivedFiles(
       { parentMatches }
     )
     if (bound.status === 'unanchored') {
+      const named =
+        !chain.valid &&
+        bindDerivedFile(
+          { parentExhibitId: exhibit.id, storedPath: file.path, computedHash: computed },
+          present,
+          { parentMatches }
+        ).status !== 'unanchored'
       results.push({
         ...base,
         status: 'unverified',
-        reason:
-          file.manifestSeq === null
+        unanchoredCause: named ? 'chain-unverified' : 'no-entry',
+        reason: named
+          ? 'The manifest names this derived file, but the chain does not verify'
+          : file.manifestSeq === null
             ? 'No manifest entry anchors this derived file'
             : 'Derived file is not anchored in the verified chain'
       })

@@ -39,12 +39,20 @@ export interface CertificationInput {
     /** Files the tool computed from an Exhibit and enclosed beside it (X17). */
     derivedFileCount?: number
     /**
-     * Derived Files the case records that the chain does not anchor, and that
+     * Derived Files the case records that NO manifest entry names, and that
      * this package therefore does NOT enclose (X34). Stated rather than left
      * out of the arithmetic: a reader comparing the package against the case
      * has to be told the difference, not left to find it.
      */
     unanchoredDerivedFileCount?: number
+    /**
+     * Derived Files a manifest entry DOES name over a chain that did not
+     * verify. They are enclosed, and this document makes no claim either way
+     * about their anchoring — which is a different statement from the count
+     * above, and collapsing the two told a reader the chain was silent about a
+     * file whose entry is in the same package.
+     */
+    unverifiableDerivedFileCount?: number
   }
   exportTimestamp: string
   installationId: string
@@ -284,11 +292,18 @@ function buildContentsSummary(contents: CertificationInput['contents']): string 
     .map(([kind, count]) => plural(count, kind))
   const derived = contents.derivedFileCount ?? 0
   const unanchored = contents.unanchoredDerivedFileCount ?? 0
+  const unverifiable = contents.unverifiableDerivedFileCount ?? 0
   return [
     plural(contents.captureCount, 'capture'),
     ...byKind,
     plural(contents.screenshotCount, 'screenshot'),
     ...(derived > 0 ? [plural(derived, 'derived file')] : []),
+    ...(unverifiable > 0
+      ? [
+          `${plural(unverifiable, 'derived file')} enclosed whose anchoring could not be ` +
+            'established because the chain did not verify'
+        ]
+      : []),
     ...(unanchored > 0
       ? [`${plural(unanchored, 'unanchored derived file')} recorded and not enclosed`]
       : []),

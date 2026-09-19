@@ -713,13 +713,19 @@ async function verifyFileExhibits(
  * Derived File lands beside its parent under the same directory — the layout
  * evidence.json, VERIFY.md and verify.sh all name.
  *
- * A file the chain does not anchor is NOT packaged, in either export class, and
- * is not listed in evidence.json: the Derived File rows are a database mirror,
- * and bytes covered by nothing but a mirror have no place in a package whose
- * whole claim is that the chain covers what it holds (ADR-0024's rule for
- * pooled files, X41's for an unanchored row). It is still reported — the report
- * and the certification state that it was held back and why — because an
- * omission a reader cannot see is the dishonest option X44 rejected.
+ * A file NO manifest line names is NOT packaged, in either export class, and is
+ * not listed in evidence.json: the Derived File rows are a database mirror, and
+ * bytes covered by nothing but a mirror have no place in a package whose whole
+ * claim is that the chain covers what it holds (ADR-0024's rule for pooled
+ * files, X41's for an unanchored row). The omission is disclosed by whatever
+ * each class carries: the Evidence Package states it in report.html and in the
+ * certification's contents line, and the Working Copy — which has neither
+ * document by design (#399, ADR-0010) — carries the count in
+ * WORKING-COPY.json. An omission a reader cannot see is the dishonest option
+ * X44 rejected.
+ *
+ * A failing chain is NOT that case and does not hold anything back: the entry
+ * is there, nothing vouches for it, and the documents say exactly that.
  */
 function buildDerivedFiles(
   files: DerivedFile[],
@@ -730,19 +736,28 @@ function buildDerivedFiles(
   const byId = new Map((verifications ?? []).map((result) => [result.derivedFileId, result]))
   return files.map((file) => {
     const verification = byId.get(file.id)
-    // 'unverified' is the verify path's word for "no `derivation` entry in the
-    // verified chain names this file" (X34). Every other status — verified,
-    // tampered, missing — means the chain does anchor it, and a tampered one
-    // ships exactly as a tampered Capture does, for the verifiers to catch.
-    const anchored = verification !== undefined && verification.status !== 'unverified'
-    const present = isPackage && anchored && defaultCaptureStore.existsRelative(file.path)
+    // Three states, not two. 'unverified' with cause `no-entry` is X34's case
+    // and is the only one held back; 'chain-unverified' means a `derivation`
+    // entry names the file and the chain does not verify, which is a statement
+    // about the chain and not about the file, so it ships and the documents
+    // say the chain could not be verified. Every other status — verified,
+    // tampered, missing — means the chain anchors it, and a tampered one ships
+    // exactly as a tampered Capture does, for the verifiers to catch.
+    const anchoring: ExportDerivedFile['anchoring'] =
+      verification === undefined || verification.status !== 'unverified'
+        ? 'anchored'
+        : verification.unanchoredCause === 'chain-unverified'
+          ? 'chain-unverified'
+          : 'no-entry'
+    const present =
+      isPackage && anchoring !== 'no-entry' && defaultCaptureStore.existsRelative(file.path)
     return {
       id: file.id,
       derivation: file.derivation,
       toolVersion: file.toolVersion,
       contentHash: file.contentHash,
       storedPath: file.path,
-      anchored,
+      anchoring,
       packagedPath: present ? derivedFilePackagePath(parentDirectory, file.path) : null,
       manifestIndex: file.manifestSeq,
       ...(verification !== undefined ? { verification } : {})
@@ -810,14 +825,17 @@ function exhibitKindCounts(data: ExportData): {
   exhibitCountsByKind: Record<string, number>
   derivedFileCount: number
   unanchoredDerivedFileCount: number
+  unverifiableDerivedFileCount: number
 } {
   const exhibitCountsByKind: Record<string, number> = {}
   let derivedFileCount = 0
   let unanchoredDerivedFileCount = 0
+  let unverifiableDerivedFileCount = 0
   const count = (files: ExportDerivedFile[]): void => {
     for (const file of files) {
-      if (file.anchored) derivedFileCount++
-      else unanchoredDerivedFileCount++
+      if (file.anchoring === 'no-entry') unanchoredDerivedFileCount++
+      else if (file.anchoring === 'chain-unverified') unverifiableDerivedFileCount++
+      else derivedFileCount++
     }
   }
   for (const exhibit of data.fileExhibits) {
@@ -825,7 +843,12 @@ function exhibitKindCounts(data: ExportData): {
     count(exhibit.derivedFiles)
   }
   for (const files of data.derivedFilesByCaptureId.values()) count(files)
-  return { exhibitCountsByKind, derivedFileCount, unanchoredDerivedFileCount }
+  return {
+    exhibitCountsByKind,
+    derivedFileCount,
+    unanchoredDerivedFileCount,
+    unverifiableDerivedFileCount
+  }
 }
 
 /** Derived Files grouped by the Exhibit they were computed from. */
@@ -877,7 +900,7 @@ function addDerivedFiles(
 ): Array<{ derivation: string; contentHash: string; path: string | null }> {
   const rows: Array<{ derivation: string; contentHash: string; path: string | null }> = []
   for (const file of files) {
-    if (!file.anchored) continue
+    if (file.anchoring === 'no-entry') continue
     const bytes = file.packagedPath ? readPackagedFile(file.storedPath) : null
     if (bytes && file.packagedPath) add(file.packagedPath, bytes)
     rows.push({

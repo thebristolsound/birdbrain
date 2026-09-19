@@ -121,12 +121,18 @@ export interface ExportDerivedFile {
   /** Storage-root-relative path, as the `derived_files` row records it. */
   storedPath: string
   /**
-   * Whether a `derivation` entry in the verified chain vouches for this file
-   * (X34). False is the legacy-thumbnail case the backfill records without
-   * anchoring: the package does not enclose it and evidence.json does not list
-   * it, and no document may describe it as anchored.
+   * What the chain says about this file, in three states rather than two:
+   *
+   * - `anchored`: a `derivation` entry on the verified chain vouches for it.
+   * - `no-entry`: no line names it at all (X34 — the legacy thumbnail the
+   *   backfill could not anchor). The package does not enclose it and
+   *   evidence.json does not list it.
+   * - `chain-unverified`: a line names it and the chain does not verify. The
+   *   file still ships, because the hold-back rule keys on a MISSING entry and
+   *   not on a failing chain, and no document may say the entry is absent when
+   *   it is sitting in the same package.
    */
-  anchored: boolean
+  anchoring: 'anchored' | 'no-entry' | 'chain-unverified'
   /** Package-relative path, null when this export encloses nothing for it. */
   packagedPath: string | null
   manifestIndex: number | null
@@ -1334,9 +1340,9 @@ function renderExhibit(e: ExhibitView, total: number): string {
       `Derived file — ${derived.derivation}`,
       derived.packagedPath
         ? esc(derived.packagedPath)
-        : derived.anchored
-          ? 'not enclosed'
-          : 'not enclosed — not anchored in the chain'
+        : derived.anchoring === 'no-entry'
+          ? 'not enclosed — no manifest entry names it'
+          : 'not enclosed'
     ])
   }
 
@@ -1515,37 +1521,78 @@ function renderExhibit(e: ExhibitView, total: number): string {
 /**
  * The derived-file disclosure, for an Exhibit of any kind.
  *
- * Two lists, never one: a file the chain anchors is enclosed and the block says
- * what anchors it, and a file the chain does not anchor is named as held back.
- * This block used to state that every derived file "is anchored in the chain by
- * its own entry" with nothing gating the sentence, so an unanchored legacy
- * thumbnail (X34) shipped under a claim no entry supported and neither verifier
- * looked at. A reader must be able to tell the two apart from the document
- * alone.
+ * Four states, never one sentence over all of them. A derived file is enclosed
+ * and anchored; anchored but absent from the package; named by a manifest line
+ * the chain does not vouch for; or named by no line at all. Each is a different
+ * thing to tell a reader, and two of them were previously told the same way:
+ * an unanchored legacy thumbnail (X34) shipped under an anchoring claim no
+ * entry supported, and then — once that was fixed — a file on a BROKEN chain
+ * was described as one "no entry states what was produced or from which bytes"
+ * for, while its `derivation` entry sat in the same zip saying both.
  */
 function derivedFilesBlock(files: ExportDerivedFile[]): string {
-  const anchored = files.filter((file) => file.anchored)
-  const held = files.filter((file) => !file.anchored)
   if (files.length === 0) return ''
+  const enclosed = files.filter((file) => file.anchoring === 'anchored' && file.packagedPath)
+  const absent = files.filter((file) => file.anchoring === 'anchored' && !file.packagedPath)
+  const unverified = files.filter((file) => file.anchoring === 'chain-unverified')
+  const held = files.filter((file) => file.anchoring === 'no-entry')
 
-  const anchoredBlock =
-    anchored.length === 0
+  const row = (derived: ExportDerivedFile, path: string): string =>
+    `<li><span class="mono">${esc(derived.derivation)}</span> — <span class="mono">${esc(
+      path
+    )}</span><br><span class="sub">Recorded digest ${esc(derived.contentHash)}</span></li>`
+
+  const enclosedBlock =
+    enclosed.length === 0
       ? ''
       : `<div class="note">
     <p class="note-title">Derived files</p>
-    <p>${anchored.length} file${anchored.length === 1 ? ' was' : 's were'} computed from this
+    <p>${enclosed.length} file${enclosed.length === 1 ? ' was' : 's were'} computed from this
     exhibit by the tool and ${
-      anchored.length === 1 ? 'is' : 'are'
+      enclosed.length === 1 ? 'is' : 'are'
     } enclosed beside it. A derived file is cited by its parent and its derivation and carries no
     exhibit number of its own; each of these is anchored in the chain by its own entry, which
     records the digest of what was produced.</p>
-    <ul>${anchored
-      .map(
-        (derived) =>
-          `<li><span class="mono">${esc(derived.derivation)}</span> — <span class="mono">${esc(
-            derived.packagedPath ?? 'not enclosed'
-          )}</span><br><span class="sub">SHA-256 ${esc(derived.contentHash)}</span></li>`
-      )
+    <ul>${enclosed.map((derived) => row(derived, derived.packagedPath ?? '')).join('')}</ul>
+  </div>`
+
+  const absentBlock =
+    absent.length === 0
+      ? ''
+      : `<div class="alert">
+    <p class="alert-title">${absent.length} anchored derived file${
+      absent.length === 1 ? '' : 's'
+    } could not be read and ${absent.length === 1 ? 'is' : 'are'} not enclosed</p>
+    <p>The chain anchors ${absent.length} file${absent.length === 1 ? '' : 's'} computed from this
+    exhibit, and the stored bytes could not be read when this package was assembled, so
+    ${absent.length === 1 ? 'it is' : 'they are'} not enclosed. This is a gap, not a design
+    choice: verification of this package will report the missing ${
+      absent.length === 1 ? 'file' : 'files'
+    } against the entries that anchor ${absent.length === 1 ? 'it' : 'them'}.</p>
+    <ul>${absent.map((derived) => row(derived, 'not enclosed')).join('')}</ul>
+  </div>`
+
+  const unverifiedBlock =
+    unverified.length === 0
+      ? ''
+      : `<div class="alert">
+    <p class="alert-title">The chain does not verify, so the anchoring of ${
+      unverified.length
+    } derived file${unverified.length === 1 ? '' : 's'} could not be established</p>
+    <p>The enclosed manifest names ${unverified.length} file${
+      unverified.length === 1 ? '' : 's'
+    } computed from this exhibit, with the derivation and the digest produced, but the manifest
+    chain itself did not verify for this export. Nothing therefore vouches for ${
+      unverified.length === 1 ? 'that entry' : 'those entries'
+    }, and no statement is made here about whether ${
+      unverified.length === 1 ? 'this file is' : 'these files are'
+    } anchored. ${
+      unverified.length === 1 ? 'It is' : 'They are'
+    } enclosed so that a reviewer can check ${
+      unverified.length === 1 ? 'it' : 'them'
+    } against the manifest directly; the chain failure is reported under “Chain of custody”.</p>
+    <ul>${unverified
+      .map((derived) => row(derived, derived.packagedPath ?? 'not enclosed'))
       .join('')}</ul>
   </div>`
 
@@ -1557,22 +1604,16 @@ function derivedFilesBlock(files: ExportDerivedFile[]): string {
       held.length === 1 ? '' : 's'
     } recorded but not anchored, and therefore not enclosed</p>
     <p>The case records ${held.length} file${held.length === 1 ? '' : 's'} computed from this
-    exhibit that the manifest chain does not anchor: no entry states what was produced or from
+    exhibit that no manifest entry names: nothing in the chain states what was produced or from
     which bytes. ${held.length === 1 ? 'It is' : 'They are'} deliberately not enclosed in this
     package, because a file the chain does not cover cannot be verified against it, and
     ${held.length === 1 ? 'it is' : 'they are'} named here rather than omitted silently. The
     tool produces this state when a thumbnail was found beside a capture whose stored screenshot
     could not be verified.</p>
-    <ul>${held
-      .map(
-        (derived) =>
-          `<li><span class="mono">${esc(derived.derivation)}</span> — not enclosed<br>
-          <span class="sub">Recorded digest ${esc(derived.contentHash)}</span></li>`
-      )
-      .join('')}</ul>
+    <ul>${held.map((derived) => row(derived, 'not enclosed')).join('')}</ul>
   </div>`
 
-  return `${anchoredBlock}${heldBlock}`
+  return `${enclosedBlock}${absentBlock}${unverifiedBlock}${heldBlock}`
 }
 
 /**
@@ -1602,9 +1643,9 @@ function renderFileExhibit(e: FileExhibitView, total: number): string {
       `Derived file — ${derived.derivation}`,
       derived.packagedPath
         ? esc(derived.packagedPath)
-        : derived.anchored
-          ? 'not enclosed'
-          : 'not enclosed — not anchored in the chain'
+        : derived.anchoring === 'no-entry'
+          ? 'not enclosed — no manifest entry names it'
+          : 'not enclosed'
     ])
   }
 

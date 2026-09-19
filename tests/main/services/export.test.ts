@@ -10,6 +10,7 @@ import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase, updateCase } from '@main/services/db/caseRepo'
 import { insertCapture, listCaptures, setCaptureTrustedTime } from '@main/services/db/captureRepo'
 import { listExhibits } from '@main/services/db/exhibitRepo'
+import { listDerivedFilesForCase } from '@main/services/db/derivedFileRepo'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import * as manifest from '@main/services/manifest'
@@ -2399,7 +2400,8 @@ describe('export', () => {
         noteCount: 1,
         exhibitCountsByKind: {},
         derivedFileCount: 0,
-        unanchoredDerivedFileCount: 0
+        unanchoredDerivedFileCount: 0,
+        unverifiableDerivedFileCount: 0
       })
       expect(marker.artifacts.map((a) => a.path).sort()).toEqual([
         'notes.md',
@@ -2805,12 +2807,66 @@ describe('export', () => {
 
       const report = entries.get('report.html')!.toString('utf-8')
       expect(report).toContain('recorded but not anchored, and therefore not enclosed')
-      expect(report).toContain('not enclosed — not anchored in the chain')
+      expect(report).toContain('no manifest entry names it')
+      expect(report).toContain('nothing in the chain states what was produced')
 
       const certification = entries.get('certification.html')!.toString('utf-8')
       expect(certification).toContain('1 unanchored derived file recorded and not enclosed')
       // The anchored thumbnail is still counted, and counted once.
       expect(certification).toContain('1 derived file,')
+    })
+
+    it('does not say an anchored derived file is enclosed when its bytes are gone', async () => {
+      // `anchored` covers verified, tampered AND missing, so the enclosure
+      // sentence has to read the packaged path rather than the anchoring.
+      const thumbnail = listDerivedFilesForCase(fixture.caseId).find(
+        (file) => file.exhibitId === fixture.captureId
+      )!
+      rmSync(join(tempDir, 'captures', thumbnail.path))
+
+      const entries = await exportMixed('mixed-lost-thumb.zip')
+      expect(entries.has(fixture.thumbnailPackagePath)).toBe(false)
+
+      const report = entries.get('report.html')!.toString('utf-8')
+      expect(report).toContain('could not be read and is not enclosed')
+      expect(report).not.toContain('and is enclosed beside it')
+    })
+
+    it('says the chain did not verify rather than that an entry is absent', async () => {
+      // The state the app is most likely to be exporting when it matters: a
+      // manifest that has been altered. The `derivation` entry for the
+      // thumbnail is still in the chain and still states what was produced and
+      // from which bytes, so neither document may say no entry does — and the
+      // file is not held back, because the hold-back rule keys on a missing
+      // entry and not on a failing chain.
+      const manifestPath = join(tempDir, 'captures', fixture.caseId, 'manifest.jsonl')
+      const lines = readFileSync(manifestPath, 'utf-8').trim().split('\n')
+      const edited = JSON.parse(lines[0]) as Record<string, unknown>
+      edited.operatorName = 'TAMPERED'
+      lines[0] = JSON.stringify(edited)
+      writeFileSync(manifestPath, lines.join('\n') + '\n')
+
+      const entries = await exportMixed('mixed-broken-chain.zip')
+
+      // Still enclosed and still indexed: the entry names it.
+      expect(entries.has(fixture.thumbnailPackagePath)).toBe(true)
+      const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+        exhibits: Array<{ id: string; derivedFiles: Array<{ derivation: string }> }>
+      }
+      const captureRow = evidence.exhibits.find((e) => e.id === fixture.captureId)!
+      expect(captureRow.derivedFiles.map((d) => d.derivation)).toEqual(['thumbnail'])
+
+      const report = entries.get('report.html')!.toString('utf-8')
+      expect(report).toContain('The chain does not verify, so the anchoring of')
+      expect(report).toContain('could not be established')
+      expect(report).not.toContain('nothing in the chain states what was produced')
+      expect(report).not.toContain('recorded but not anchored')
+
+      const certification = entries.get('certification.html')!.toString('utf-8')
+      expect(certification).toContain(
+        'whose anchoring could not be established because the chain did not verify'
+      )
+      expect(certification).not.toContain('unanchored derived file')
     })
 
     it('ships the same exhibits and derived files in a Working Copy', async () => {

@@ -126,6 +126,8 @@ const CODE_LABELS: Record<LogCode, string> = {
   'app.bug_report_failed': 'Could not save the diagnostic report',
   'app.installation_id': 'Installation identified',
   'app.extension_sync_failed': "Couldn't prepare the extension folder for this version",
+  'app.extension_sweep_failed': "Couldn't clear an old copy of the extension folder",
+  'app.extension_version_stale': 'The extension folder is still the previous version — reload it',
   // --- appended: labels for the real console.* call sites Task 1 migrated ---
   'captureServer.selector_create_failed': "Couldn't create the selector",
   'captureServer.tag_apply_failed': "Couldn't apply the tag",

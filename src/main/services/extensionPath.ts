@@ -56,16 +56,31 @@ function readStamp(): string | null {
 }
 
 /**
- * Stale means: no manifest at the advertised path, no readable stamp, or a
- * stamp naming another app version. The stamp is written only once the copy it
- * describes is in place, so a sync that died part-way reads as stale on the
- * next launch and is copied again rather than handed to Chrome.
+ * Two questions, deliberately not one.
  *
- * `existsSync` returns false rather than throwing on any error, so this is
+ * Consistent: there is a copy Chrome can load — a manifest at the advertised
+ * path, and a stamp beside it that can be read, which is what says the copy
+ * was finished. This is what the IPC channels ask, so a copy from an earlier
+ * version is still handed out: it is the folder Chrome already has loaded, and
+ * #653's AC 2 is that the extension keeps working across restarts. Taking it
+ * away over a version mismatch would break the capture path to enforce a
+ * freshness the operator never asked for.
+ *
+ * Stale: the copy is not consistent, or its stamp names another app version.
+ * This is what drives the sync attempt, and when a stale copy survives the
+ * attempt the mismatch is logged (`app.extension_version_stale`) rather than
+ * hidden.
+ *
+ * `existsSync` returns false rather than throwing on any error, so both are
  * total as long as `readStamp` is.
  */
+function isCopyConsistent(): boolean {
+  if (!existsSync(join(getExtensionPath(), MANIFEST_FILE))) return false
+  return readStamp() !== null
+}
+
 function isCopyStale(): boolean {
-  if (!existsSync(join(getExtensionPath(), MANIFEST_FILE))) return true
+  if (!isCopyConsistent()) return true
   return readStamp() !== app.getVersion()
 }
 
@@ -89,9 +104,38 @@ function sweepLeftovers(): void {
       }
     }
   } catch (err) {
-    // Housekeeping, not the job: an unreadable user data directory is reported
-    // and the sync still gets its own attempt at the copy.
+    // Housekeeping, not the job, and its own code at its own level: a sweep
+    // that failed says nothing about whether the copy below succeeded, and an
+    // operator reading the Log tab should not be told the folder is broken
+    // because a stray directory could not be listed.
+    logger.warn('app', 'app.extension_sweep_failed', undefined, err)
+  }
+}
+
+// The retired directory holds the folder Chrome has loaded. When the new copy
+// never reached the advertised path, put it back; when even that fails, say so
+// and leave the bytes where they are. Nothing on the failure path deletes them
+// — the next launch's sweep does, after that launch has made its own copy.
+function restoreRetiredCopy(retired: string, target: string): void {
+  try {
+    if (!existsSync(retired) || existsSync(target)) return
+    renameSync(retired, target)
+  } catch (err) {
     logger.error('app', 'app.extension_sync_failed', undefined, err)
+  }
+}
+
+// Whatever came of the attempt: a copy that Chrome can load but that this
+// build did not write stays advertised on purpose, so this entry is where that
+// state is visible. Guarded like every other read here — an unreadable profile
+// has already been reported by the sync's own catch.
+function reportStaleAdvertisedCopy(): void {
+  try {
+    if (isCopyConsistent() && isCopyStale()) {
+      logger.error('app', 'app.extension_version_stale')
+    }
+  } catch {
+    // Already reported.
   }
 }
 
@@ -105,7 +149,7 @@ export function getExtensionPath(): string {
 
 export function extensionPathExists(): boolean {
   if (!app.isPackaged) return existsSync(getExtensionPath())
-  return !isCopyStale()
+  return isCopyConsistent()
 }
 
 /**
@@ -116,14 +160,15 @@ export function extensionPathExists(): boolean {
  * `restoreSnapshotFile` uses (`db/dbSnapshots.ts`): the rename is a
  * same-filesystem move, so the advertised path holds either the previous copy
  * or the whole new one, never a piece of one. The previous copy is moved aside
- * rather than deleted, and its stamp is left alone until the new copy is in
- * place, so a step that fails leaves the folder Chrome already loaded both
- * present and advertised.
+ * rather than deleted, its stamp is left alone until the new copy is in place,
+ * and it is put back if the swap fails — so a failing step leaves the folder
+ * Chrome already loaded present, stamped, and still advertised, and the
+ * mismatch it now has with this build is logged instead.
  *
  * Never throws, and every filesystem call is inside the guarded region for
  * that reason: it runs in the `whenReady` chain, where anything thrown reaches
- * the startup catch and ends the launch. A copy that did not happen costs the
- * Open extension folder buttons (`EXT_NOT_FOUND`) and nothing else.
+ * the startup catch and ends the launch. Only a copy that is missing or
+ * unreadable costs the Open extension folder buttons (`EXT_NOT_FOUND`).
  */
 export function syncPackagedExtension(): void {
   if (!app.isPackaged) return
@@ -143,10 +188,8 @@ export function syncPackagedExtension(): void {
     cpSync(source, staging, { recursive: true })
     if (existsSync(target)) {
       // Moved aside, not removed. On Windows Chrome holds handles into the
-      // folder it loaded, so a removal here can fail — and failing after the
-      // stamp was cleared would leave a loadable copy that the app reports as
-      // EXT_NOT_FOUND. Failing on this rename instead leaves the previous copy
-      // and its stamp exactly as they were.
+      // folder it loaded, so a removal here can fail; failing on this rename
+      // instead leaves the previous copy and its stamp exactly as they were.
       retired = join(userDataPath(), `${RETIRED_PREFIX}${randomBytes(8).toString('hex')}`)
       renameSync(target, retired)
     }
@@ -154,13 +197,15 @@ export function syncPackagedExtension(): void {
     staging = null
     // Last, so the stamp only ever names a copy that is fully in place.
     writeFileSync(stampPath(), app.getVersion(), 'utf-8')
+    // Here and nowhere else: until this line the retired copy is the only one
+    // the operator has, and a failure before it puts that copy back.
+    if (retired) removeQuietly(retired)
+    retired = null
   } catch (err) {
     logger.error('app', 'app.extension_sync_failed', undefined, err)
     if (staging) removeQuietly(staging)
-  } finally {
-    // The previous copy, once it is no longer the advertised one. Also on the
-    // failure path: whatever went wrong, it is not reachable through
-    // `getExtensionPath()` any more, and the next launch recopies.
-    if (retired) removeQuietly(retired)
+    if (retired) restoreRetiredCopy(retired, target)
   }
+
+  reportStaleAdvertisedCopy()
 }

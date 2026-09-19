@@ -536,10 +536,16 @@ export const LOG_CODES = [
   'app.startup_failed',
   'app.bug_report_failed',
   'app.installation_id',
-  // The startup copy of the bundled extension into user data (#653). The sync
-  // is swallowed rather than allowed to end the launch, so this entry is the
-  // only record that Open extension folder is about to report EXT_NOT_FOUND.
+  // The startup copy of the bundled extension into user data (#653). Three
+  // separate things, because the launch continues through all of them and the
+  // operator is left somewhere different in each: a step of the copy or the
+  // swap failed; the housekeeping sweep of leftover directories failed, which
+  // says nothing about the copy; or what is advertised is loadable but was
+  // written by another version, which is deliberate (the folder Chrome has
+  // loaded is not taken away) and is why the mismatch is recorded here.
   'app.extension_sync_failed',
+  'app.extension_sweep_failed',
+  'app.extension_version_stale',
   // The at-rest key-protection gate (#414): recorded either way so the log
   // carries the same signal the Settings/Diagnostics indicator shows live.
   'signingKey.unprotected_key_acknowledged',

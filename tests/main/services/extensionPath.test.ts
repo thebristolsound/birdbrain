@@ -34,7 +34,10 @@ vi.mock('@main/services/logger', () => ({
       logged.push({ level: 'error', code })
       return 'log-id'
     },
-    warn: () => '',
+    warn: (_source: string, code: string) => {
+      logged.push({ level: 'warn', code })
+      return 'log-id'
+    },
     info: () => ''
   }
 }))
@@ -72,6 +75,10 @@ function setResourcesPath(value: string): void {
 describe('extensionPath', () => {
   beforeEach(() => {
     vi.resetModules()
+    // resetModules clears the module registry but not the mock registry, so a
+    // doMock('fs') from one test would otherwise still be in force in the next
+    // and make it pass or fail for the wrong reason.
+    vi.doUnmock('fs')
     logged.length = 0
     root = mkdtempSync(join(tmpdir(), 'birdbrain-extpath-'))
     userData.value = join(root, 'user-data')
@@ -170,7 +177,8 @@ describe('extensionPath', () => {
       rmSync(join(process.resourcesPath, 'extension'), { recursive: true, force: true })
       seedBundledExtension(process.resourcesPath, 'v2')
       version.value = '1.0.1-test'
-      expect(extensionPathExists()).toBe(false)
+      // Stale, and still advertised until the refresh replaces it.
+      expect(extensionPathExists()).toBe(true)
 
       syncPackagedExtension()
 
@@ -289,7 +297,9 @@ describe('extensionPath', () => {
       }
     )
 
-    it('leaves the previous copy and its stamp in place when it cannot be moved aside', async () => {
+    // The folder Chrome has loaded stays loadable AND advertised through a
+    // failed refresh; the version mismatch is reported instead (#1493 round 3).
+    it('leaves the previous copy advertised when it cannot be moved aside', async () => {
       isPackaged.value = true
       seedBundledExtension(process.resourcesPath, 'v2')
       seedExistingCopy('0.9.0-test')
@@ -315,7 +325,100 @@ describe('extensionPath', () => {
       expect(JSON.parse(readFileSync(join(copy, 'manifest.json'), 'utf-8')).marker).toBe('older')
       expect(readFileSync(join(userData.value, 'extension-version'), 'utf-8')).toBe('0.9.0-test')
       expect(readdirSync(userData.value).sort()).toEqual(['extension', 'extension-version'])
+      expect(extensionPathExists()).toBe(true)
+      expect(logged).toEqual([
+        { level: 'error', code: 'app.extension_sync_failed' },
+        { level: 'error', code: 'app.extension_version_stale' }
+      ])
+    })
+
+    it('puts the previous copy back when the new one cannot be swapped in', async () => {
+      isPackaged.value = true
+      seedBundledExtension(process.resourcesPath, 'v2')
+      seedExistingCopy('0.9.0-test')
+      vi.doMock('fs', async () => {
+        const actual = await vi.importActual<typeof import('fs')>('fs')
+        return {
+          ...actual,
+          renameSync: (src: string, dest: string) => {
+            // Only the staging swap fails; the retire and the restore go
+            // through, which is the window the JSDoc claims is covered.
+            if (src.includes('extension-staging-')) {
+              throw new Error('EPERM: operation not permitted, rename')
+            }
+            return actual.renameSync(src, dest)
+          }
+        }
+      })
+      const { syncPackagedExtension, extensionPathExists, getExtensionPath } =
+        await import('@main/services/extensionPath')
+
+      syncPackagedExtension()
+
+      const copy = getExtensionPath()
+      expect(JSON.parse(readFileSync(join(copy, 'manifest.json'), 'utf-8')).marker).toBe('older')
+      expect(readFileSync(join(userData.value, 'extension-version'), 'utf-8')).toBe('0.9.0-test')
+      expect(readdirSync(userData.value).sort()).toEqual(['extension', 'extension-version'])
+      expect(extensionPathExists()).toBe(true)
+      expect(logged).toEqual([
+        { level: 'error', code: 'app.extension_sync_failed' },
+        { level: 'error', code: 'app.extension_version_stale' }
+      ])
+    })
+
+    it('keeps the retired bytes when the restore fails too', async () => {
+      isPackaged.value = true
+      seedBundledExtension(process.resourcesPath, 'v2')
+      seedExistingCopy('0.9.0-test')
+      vi.doMock('fs', async () => {
+        const actual = await vi.importActual<typeof import('fs')>('fs')
+        return {
+          ...actual,
+          renameSync: (src: string, dest: string) => {
+            if (dest === join(userData.value, 'extension')) {
+              throw new Error('EPERM: operation not permitted, rename')
+            }
+            return actual.renameSync(src, dest)
+          }
+        }
+      })
+      const { syncPackagedExtension, extensionPathExists, getExtensionPath } =
+        await import('@main/services/extensionPath')
+
+      syncPackagedExtension()
+
+      expect(existsSync(getExtensionPath())).toBe(false)
+      const retired = readdirSync(userData.value).filter((n) => n.startsWith('extension-retired-'))
+      expect(retired).toHaveLength(1)
+      expect(
+        JSON.parse(readFileSync(join(userData.value, retired[0], 'manifest.json'), 'utf-8')).marker
+      ).toBe('older')
       expect(extensionPathExists()).toBe(false)
+      expect(logged).toEqual([
+        { level: 'error', code: 'app.extension_sync_failed' },
+        { level: 'error', code: 'app.extension_sync_failed' }
+      ])
+    })
+
+    // The guard placement is the structural half of the round-1 fix, and no
+    // other test sees it: `readStamp` is total on its own, so moving the probe
+    // back outside the try left every assertion green (#1493 round 2).
+    it('returns and logs once when the staleness probe itself throws', async () => {
+      isPackaged.value = true
+      seedBundledExtension(process.resourcesPath, 'bundled')
+      vi.doMock('fs', async () => {
+        const actual = await vi.importActual<typeof import('fs')>('fs')
+        return {
+          ...actual,
+          existsSync: () => {
+            throw new Error('EIO: i/o error, stat')
+          }
+        }
+      })
+      const { syncPackagedExtension } = await import('@main/services/extensionPath')
+
+      expect(() => syncPackagedExtension()).not.toThrow()
+
       expect(logged).toEqual([{ level: 'error', code: 'app.extension_sync_failed' }])
     })
 
@@ -334,7 +437,9 @@ describe('extensionPath', () => {
       expect(logged).toEqual([])
     })
 
-    it('logs and still copies when the sweep cannot read the user data directory', async () => {
+    // Its own code at its own level: the copy below succeeded, so telling the
+    // operator the folder could not be prepared would be wrong (#1493 round 2).
+    it('warns and still copies when the sweep cannot read the user data directory', async () => {
       isPackaged.value = true
       seedBundledExtension(process.resourcesPath, 'bundled')
       vi.doMock('fs', async () => {
@@ -352,7 +457,7 @@ describe('extensionPath', () => {
       syncPackagedExtension()
 
       expect(extensionPathExists()).toBe(true)
-      expect(logged).toEqual([{ level: 'error', code: 'app.extension_sync_failed' }])
+      expect(logged).toEqual([{ level: 'warn', code: 'app.extension_sweep_failed' }])
     })
   })
 
@@ -373,6 +478,16 @@ describe('extensionPath', () => {
       })
       const { extensionPathExists } = await import('@main/services/extensionPath')
       expect(extensionPathExists()).toBe(false)
+    })
+
+    // The ruled predicate (#1493 round 3): the channels ask whether there is a
+    // copy Chrome can load, not whether it matches this build. Taking a working
+    // folder away over a version mismatch is the breakage #653 is about.
+    it('advertises a consistent copy left by an earlier version', async () => {
+      isPackaged.value = true
+      seedExistingCopy('0.9.0-test')
+      const { extensionPathExists } = await import('@main/services/extensionPath')
+      expect(extensionPathExists()).toBe(true)
     })
 
     // The IPC handlers gate on this, and the handle() wrapper rethrows anything

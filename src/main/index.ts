@@ -7,6 +7,7 @@ import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { PreMigrationSnapshotError } from '@main/services/db/dbSnapshots'
 import { initStorage } from '@main/services/storage'
 import { seedDemoCaseIfNeeded } from '@main/services/demoCase'
+import { syncPackagedExtension } from '@main/services/extensionPath'
 import {
   CaptureServerBindError,
   startCaptureServer,
@@ -440,6 +441,12 @@ if (!gotSingleInstanceLock) {
       // the window opens and the case tour looks for one. Never throws — a
       // missing or unimportable fixture costs the demo case and nothing else.
       await seedDemoCaseIfNeeded()
+
+      // Copy the bundled extension under user data (#653), before any window
+      // can ask for its path. Synchronous and never throwing: the AppImage's
+      // mount is gone the moment the app quits, so the folder Chrome was
+      // pointed at has to be one that outlives the launch.
+      syncPackagedExtension()
 
       // The data half of the Exhibit-model migration (#1147). It runs HERE, not
       // in `runMigrations`, because it appends to each Case's chain and

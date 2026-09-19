@@ -536,6 +536,10 @@ export const LOG_CODES = [
   'app.startup_failed',
   'app.bug_report_failed',
   'app.installation_id',
+  // The startup copy of the bundled extension into user data (#653). The sync
+  // is swallowed rather than allowed to end the launch, so this entry is the
+  // only record that Open extension folder is about to report EXT_NOT_FOUND.
+  'app.extension_sync_failed',
   // The at-rest key-protection gate (#414): recorded either way so the log
   // carries the same signal the Settings/Diagnostics indicator shows live.
   'signingKey.unprotected_key_acknowledged',

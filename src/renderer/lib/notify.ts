@@ -125,6 +125,7 @@ const CODE_LABELS: Record<LogCode, string> = {
   'app.startup_failed': 'Birdbrain could not start',
   'app.bug_report_failed': 'Could not save the diagnostic report',
   'app.installation_id': 'Installation identified',
+  'app.extension_sync_failed': "Couldn't prepare the extension folder for this version",
   // --- appended: labels for the real console.* call sites Task 1 migrated ---
   'captureServer.selector_create_failed': "Couldn't create the selector",
   'captureServer.tag_apply_failed': "Couldn't apply the tag",

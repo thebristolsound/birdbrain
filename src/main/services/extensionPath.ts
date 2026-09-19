@@ -43,7 +43,7 @@ function stampPath(): string {
 }
 
 // Total by construction, and it has to stay that way: `extensionPathExists()`
-// runs inside the `extension:path` IPC handler, which must answer
+// runs inside the extension IPC handlers (`ipcHandlers.ts`), which answer
 // `EXT_NOT_FOUND` rather than reject, and the startup sync must not end the
 // launch. A stamp that is missing, a directory, or unreadable all mean the same
 // thing here: the copy cannot be shown to be a finished one.
@@ -58,18 +58,15 @@ function readStamp(): string | null {
 /**
  * Two questions, deliberately not one.
  *
- * Consistent: there is a copy Chrome can load — a manifest at the advertised
- * path, and a stamp beside it that can be read, which is what says the copy
- * was finished. This is what the IPC channels ask, so a copy from an earlier
- * version is still handed out: it is the folder Chrome already has loaded, and
- * #653's AC 2 is that the extension keeps working across restarts. Taking it
- * away over a version mismatch would break the capture path to enforce a
- * freshness the operator never asked for.
+ * Consistent: a manifest at the advertised path and a stamp beside it that can
+ * be read, the stamp being written last and so standing for a finished copy.
+ * This is the question the IPC handlers ask, which is the ruling on #653's
+ * AC 2: a copy carrying an earlier version's stamp is still handed out
+ * (`advertises a consistent copy left by an earlier version`).
  *
- * Stale: the copy is not consistent, or its stamp names another app version.
- * This is what drives the sync attempt, and when a stale copy survives the
- * attempt the mismatch is logged (`app.extension_version_stale`) rather than
- * hidden.
+ * Stale: the copy is not consistent, or its stamp is not this version's. This
+ * is what drives the sync attempt, and a stale copy that survives the attempt
+ * is logged as `app.extension_version_stale`.
  *
  * `existsSync` returns false rather than throwing on any error, so both are
  * total as long as `readStamp` is.
@@ -107,10 +104,10 @@ function sweepLeftovers(): void {
       }
     }
   } catch (err) {
-    // Housekeeping, not the job, and its own code at its own level: a sweep
-    // that failed says nothing about the copy, which by here is in place, and
-    // an operator reading the Log tab should not be told the folder is broken
-    // because a stray directory could not be listed.
+    // Housekeeping, not the job: by here the copy is in place, so this failure
+    // gets its own code at its own level rather than the copy's
+    // (`warns and still copies when the sweep cannot read the user data
+    // directory`).
     logger.warn('app', 'app.extension_sweep_failed', undefined, err)
   }
 }
@@ -166,30 +163,37 @@ export function extensionPathExists(): boolean {
  *
  * Staged in a sibling temporary directory and renamed into place, the pattern
  * `restoreSnapshotFile` uses (`db/dbSnapshots.ts`): the rename is a
- * same-filesystem move, so the advertised path never holds a piece of a copy.
- * The previous copy is moved aside rather than deleted and its stamp is left
- * alone until the new copy is in place, which is what the failure states are
- * built out of. A failing step never ends the launch and leaves one of:
+ * same-filesystem move. The previous copy is moved aside rather than deleted
+ * and its stamp is left alone until the new copy is in place. It never throws,
+ * which is why every filesystem call is inside a guard: it runs in the
+ * `whenReady` chain, where anything thrown reaches the startup catch and ends
+ * the launch.
  *
- * - the retire failed: the previous copy is still at the advertised path under
- *   its own stamp, untouched;
- * - the swap failed and the retired copy was put back: the same state;
- * - the swap failed and the restore failed too: those bytes are in the retired
- *   directory, the advertised path is empty, and both buttons report
- *   `EXT_NOT_FOUND` until a later sync succeeds;
- * - only the stamp write failed: the new copy is at the advertised path under
- *   the previous stamp (the restore declines, because the path is not empty),
- *   and the folder that was there stays retired until the next successful sync
- *   sweeps it.
+ * The invariants, each with the test that pins it:
  *
- * Each of them logs `app.extension_sync_failed`, and `app.extension_version_stale`
- * as well whenever what is advertised carries another version's stamp.
- *
- * Never throws, and every filesystem call is inside a guard for that reason:
- * it runs in the `whenReady` chain, where anything thrown reaches the startup
- * catch and ends the launch. A copy that is missing or unreadable
- * costs the Open extension folder buttons (`EXT_NOT_FOUND`); a copy that is
- * merely from another version does not.
+ * - the advertised path never holds a partial copy — `leaves nothing at the
+ *   advertised path when the copy fails part-way`;
+ * - no failure deletes bytes Chrome may have loaded; they are at the advertised
+ *   path or in a retired directory under user data — `leaves the previous copy
+ *   advertised when it cannot be moved aside`, `puts the previous copy back
+ *   when the new one cannot be swapped in`, `keeps the retired bytes when the
+ *   restore fails too`, `advertises the new copy under the previous stamp when
+ *   only the stamp write fails`;
+ * - `extensionPathExists()` is true exactly when a consistent copy (manifest
+ *   present, stamp readable) is at the advertised path — `advertises a
+ *   consistent copy left by an earlier version`, `returns false when the copy
+ *   has a matching stamp but no manifest`, `returns and logs when the stamp is
+ *   a directory`; `ipcHandlers.ts` gates `extension:openFolder` on it, so Open
+ *   extension folder reports `EXT_NOT_FOUND` when it is false;
+ * - every failure is logged, under `app.extension_sync_failed`,
+ *   `app.extension_sweep_failed` or `app.extension_version_stale` — `fails
+ *   loudly when the bundled extension is missing`, `warns and still copies when
+ *   the sweep cannot read the user data directory`, `returns and logs once when
+ *   the staleness probe itself throws`;
+ * - the next launch retries, and a sync that succeeds clears retired and
+ *   staging leftovers — `keeps a retired copy across repeated failures and
+ *   clears it after a success`, `sweeps staging and retired directories left by
+ *   a killed sync`.
  */
 export function syncPackagedExtension(): void {
   if (!app.isPackaged) return
@@ -213,8 +217,9 @@ export function syncPackagedExtension(): void {
     cpSync(source, staging, { recursive: true })
     if (existsSync(target)) {
       // Moved aside, not removed. On Windows Chrome holds handles into the
-      // folder it loaded, so a removal here can fail; failing on this rename
-      // instead leaves the previous copy and its stamp exactly as they were.
+      // folder it loaded, so a removal here can fail; a rename that fails
+      // leaves the previous copy and its stamp untouched (`leaves the previous
+      // copy advertised when it cannot be moved aside`).
       retired = join(userDataPath(), `${RETIRED_PREFIX}${randomBytes(8).toString('hex')}`)
       renameSync(target, retired)
     }

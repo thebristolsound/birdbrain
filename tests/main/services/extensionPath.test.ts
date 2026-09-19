@@ -400,6 +400,45 @@ describe('extensionPath', () => {
       ])
     })
 
+    // The swap succeeds and only the stamp write fails, with the previous
+    // stamp still readable: the new bytes are at the advertised path under it,
+    // and the folder they replaced is in a retired directory (#1493 round 5).
+    it('advertises the new copy under the previous stamp when only the stamp write fails', async () => {
+      isPackaged.value = true
+      seedBundledExtension(process.resourcesPath, 'v2')
+      seedExistingCopy('0.9.0-test')
+      vi.doMock('fs', async () => {
+        const actual = await vi.importActual<typeof import('fs')>('fs')
+        return {
+          ...actual,
+          writeFileSync: (path: string, data: string, options?: unknown) => {
+            if (path === join(userData.value, 'extension-version')) {
+              throw new Error('EROFS: read-only file system, open')
+            }
+            return actual.writeFileSync(path, data, options as never)
+          }
+        }
+      })
+      const { syncPackagedExtension, extensionPathExists, getExtensionPath } =
+        await import('@main/services/extensionPath')
+
+      syncPackagedExtension()
+
+      const copy = getExtensionPath()
+      expect(JSON.parse(readFileSync(join(copy, 'manifest.json'), 'utf-8')).marker).toBe('v2')
+      expect(readFileSync(join(userData.value, 'extension-version'), 'utf-8')).toBe('0.9.0-test')
+      const retired = readdirSync(userData.value).filter((n) => n.startsWith('extension-retired-'))
+      expect(retired).toHaveLength(1)
+      expect(
+        JSON.parse(readFileSync(join(userData.value, retired[0], 'manifest.json'), 'utf-8')).marker
+      ).toBe('older')
+      expect(extensionPathExists()).toBe(true)
+      expect(logged).toEqual([
+        { level: 'error', code: 'app.extension_sync_failed' },
+        { level: 'error', code: 'app.extension_version_stale' }
+      ])
+    })
+
     // The sweep runs only where this launch has a copy of its own, so the one
     // folder the operator still has is not cleared by a launch that then fails
     // to replace it (#1493 round 3).

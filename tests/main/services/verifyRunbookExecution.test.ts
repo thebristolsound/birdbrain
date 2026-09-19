@@ -20,6 +20,9 @@ import { generateReport } from '@main/services/export'
 import { commitStagedFiles, uploadToStaging } from '@main/services/staging'
 import { backfillCase } from '@main/services/exhibitBackfill'
 import { listExhibits } from '@main/services/db/exhibitRepo'
+import { listDerivedFilesForCase } from '@main/services/db/derivedFileRepo'
+import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
+import { seedUnanchoredDerivedFile } from '../../helpers/mixedKindCase'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { VERIFY_RUNBOOK } from '@main/services/verifyRunbook'
@@ -433,6 +436,55 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     // derivation. The parent Capture's number comes off the `renumber` entry.
     expect(run.output).toContain('Exhibit 1, derivation thumbnail')
     expect(run.output).toContain('does not match the outputHash in its signed entry')
+  })
+
+  // #1156 round 4: the two shipped verifiers must return the same verdict on
+  // every package the exporter can produce. The states that reach a Derived
+  // File are: anchored and enclosed (covered above), anchored with its bytes
+  // gone, named by no entry, and named over a chain that does not verify.
+  it.skipIf(!RUNS)('agrees with the binary on a derived file whose bytes are gone', async () => {
+    const thumbnail = listDerivedFilesForCase(caseId).find((file) => file.exhibitId === captureId)!
+    rmSync(join(tempDir, 'captures', thumbnail.path))
+    const dir = await exportPackage('lost-derived')
+
+    // Not enclosed and not indexed, so the only finding is the chain-side one.
+    const evidence = JSON.parse(readFileSync(join(dir, 'evidence.json'), 'utf-8')) as {
+      exhibits: Array<{ id: string; derivedFiles: unknown[] }>
+    }
+    expect(evidence.exhibits.find((e) => e.id === captureId)!.derivedFiles).toEqual([])
+
+    const run = runVerifyScript(dir)
+    expect(run.status, run.output).toBe(1)
+    expect(run.output).toContain('FAIL [step 5]')
+    expect(run.output).toContain('Exhibit 1, derivation thumbnail')
+    expect(run.output).toContain('is missing and nothing signed accounts for its absence')
+
+    // The programmatic verifier is the binary's own core: same verdict, and
+    // the finding names the same file.
+    const result = verifyEvidencePackage(dir)
+    expect(result.pass).toBe(false)
+    const check = result.checks.find((c) => c.name.startsWith('derivation thumbnail'))
+    expect(check?.status).toBe('fail')
+    expect(check?.reason).toContain('is missing from the package')
+  })
+
+  it.skipIf(!RUNS)('agrees with the binary on a derived file no entry names', async () => {
+    const attachment = listExhibits(caseId).find((e) => e.kind !== 'capture')!
+    const unanchored = seedUnanchoredDerivedFile(tempDir, caseId, attachment.id)
+    rmSync(join(tempDir, 'captures', unanchored.storedPath))
+    const dir = await exportPackage('no-entry-derived')
+
+    // Held back, so neither verifier has anything to say about it and the
+    // package is clean on an intact chain. Before the fix the binary FAILed
+    // this package and verify.sh PASSed it.
+    const run = runVerifyScript(dir)
+    expect(run.output).not.toContain('FAIL [step 5]')
+    const result = verifyEvidencePackage(dir)
+    expect(
+      result.checks.filter((c) => c.status === 'fail'),
+      JSON.stringify(result.checks, null, 2)
+    ).toEqual([])
+    expect(result.pass).toBe(true)
   })
 
   it.skipIf(!RUNS)('fails on an edited entry body, naming the recompute step', () => {

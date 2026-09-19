@@ -1522,13 +1522,17 @@ function renderExhibit(e: ExhibitView, total: number): string {
  * The derived-file disclosure, for an Exhibit of any kind.
  *
  * Four states, never one sentence over all of them. A derived file is enclosed
- * and anchored; anchored but absent from the package; named by a manifest line
- * the chain does not vouch for; or named by no line at all. Each is a different
- * thing to tell a reader, and two of them were previously told the same way:
- * an unanchored legacy thumbnail (X34) shipped under an anchoring claim no
- * entry supported, and then — once that was fixed — a file on a BROKEN chain
+ * and anchored; anchored but absent from the package because its stored bytes
+ * could not be read; named by a manifest line the chain does not vouch for; or
+ * named by no line at all. Each is a different thing to tell a reader, and each
+ * has been told wrongly once: an unanchored legacy thumbnail (X34) shipped
+ * under an anchoring claim no entry supported; then a file on a BROKEN chain
  * was described as one "no entry states what was produced or from which bytes"
- * for, while its `derivation` entry sat in the same zip saying both.
+ * for, while its `derivation` entry sat in the same zip saying both; then a
+ * file with NO entry whose bytes were also gone was reported as one the chain
+ * anchors, because the unreadable bytes were classified before the entry
+ * question was asked. Which bucket a file lands in is settled upstream, in
+ * `verifyDerivedFiles`, and read here rather than re-derived.
  */
 function derivedFilesBlock(files: ExportDerivedFile[]): string {
   if (files.length === 0) return ''
@@ -1565,8 +1569,10 @@ function derivedFilesBlock(files: ExportDerivedFile[]): string {
     } could not be read and ${absent.length === 1 ? 'is' : 'are'} not enclosed</p>
     <p>The chain anchors ${absent.length} file${absent.length === 1 ? '' : 's'} computed from this
     exhibit, and the stored bytes could not be read when this package was assembled, so
-    ${absent.length === 1 ? 'it is' : 'they are'} not enclosed. This is a gap, not a design
-    choice: verification of this package will report the missing ${
+    ${absent.length === 1 ? 'it is' : 'they are'} not enclosed and ${
+      absent.length === 1 ? 'is' : 'are'
+    } not listed in <code>evidence.json</code>, which indexes what this package contains. This is
+    a gap, not a design choice: verification of this package will report the missing ${
       absent.length === 1 ? 'file' : 'files'
     } against the entries that anchor ${absent.length === 1 ? 'it' : 'them'}.</p>
     <ul>${absent.map((derived) => row(derived, 'not enclosed')).join('')}</ul>

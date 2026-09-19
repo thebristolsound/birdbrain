@@ -128,19 +128,31 @@ export interface DerivedFileBindingOptions {
  *
  * A path that matches with a hash that does not is `tampered`, never
  * `unanchored`: the chain says what these bytes should be and they are not it.
+ *
+ * `matchDerivationEntries` is the first half on its own, for a caller that has
+ * to answer "does the chain name this file at all" BEFORE it can read the
+ * bytes — a file whose bytes are unreadable still has an entry or it does not,
+ * and deciding that from the read failure classified a file nothing anchors as
+ * anchored.
  */
+export function matchDerivationEntries(
+  file: { parentExhibitId: string; storedPath: string },
+  entries: readonly DerivationEntryFacts[],
+  options: DerivedFileBindingOptions = {}
+): DerivationEntryFacts[] {
+  const parentMatches =
+    options.parentMatches ??
+    ((entry: DerivationEntryFacts): boolean => entry.parentExhibitId === file.parentExhibitId)
+  const wanted = inCasePath(file.storedPath)
+  return entries.filter((entry) => parentMatches(entry) && inCasePath(entry.outputPath) === wanted)
+}
+
 export function bindDerivedFile(
   file: DerivedFileFacts,
   entries: readonly DerivationEntryFacts[],
   options: DerivedFileBindingOptions = {}
 ): DerivedFileBinding {
-  const parentMatches =
-    options.parentMatches ??
-    ((entry: DerivationEntryFacts): boolean => entry.parentExhibitId === file.parentExhibitId)
-  const wanted = inCasePath(file.storedPath)
-  const candidates = entries.filter(
-    (entry) => parentMatches(entry) && inCasePath(entry.outputPath) === wanted
-  )
+  const candidates = matchDerivationEntries(file, entries, options)
   if (candidates.length === 0) {
     return {
       status: 'unanchored',

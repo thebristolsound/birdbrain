@@ -53,6 +53,12 @@ export interface CertificationInput {
      * file whose entry is in the same package.
      */
     unverifiableDerivedFileCount?: number
+    /**
+     * Derived Files the chain anchors whose stored bytes could not be read at
+     * export time. Enclosed by neither the package nor `evidence.json`, so
+     * they are counted apart from the enclosed files rather than inside them.
+     */
+    missingDerivedFileCount?: number
   }
   exportTimestamp: string
   installationId: string
@@ -293,6 +299,7 @@ function buildContentsSummary(contents: CertificationInput['contents']): string 
   const derived = contents.derivedFileCount ?? 0
   const unanchored = contents.unanchoredDerivedFileCount ?? 0
   const unverifiable = contents.unverifiableDerivedFileCount ?? 0
+  const missing = contents.missingDerivedFileCount ?? 0
   return [
     plural(contents.captureCount, 'capture'),
     ...byKind,
@@ -302,6 +309,12 @@ function buildContentsSummary(contents: CertificationInput['contents']): string 
       ? [
           `${plural(unverifiable, 'derived file')} enclosed whose anchoring could not be ` +
             'established because the chain did not verify'
+        ]
+      : []),
+    ...(missing > 0
+      ? [
+          `${plural(missing, 'anchored derived file')} whose stored bytes could not be read ` +
+            'and are not enclosed'
         ]
       : []),
     ...(unanchored > 0

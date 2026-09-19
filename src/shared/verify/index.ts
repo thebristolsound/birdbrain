@@ -24,6 +24,7 @@ export type {
 } from '@shared/verify/manifestChain'
 export {
   bindDerivedFile,
+  matchDerivationEntries,
   derivedFilePackagePath,
   exhibitPackageDirectory,
   exhibitPackagePath,

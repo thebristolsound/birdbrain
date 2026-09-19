@@ -17,7 +17,7 @@ import {
 import { getPublicKeyPem } from '@main/services/signingKey'
 import { defaultCaptureStore, type CaptureStore } from '@main/services/captureStore'
 import { entryDescribesRow, verifyCapture } from '@main/services/captureLifecycle'
-import { bindDerivedFile, type DerivationEntryFacts } from '@shared/verify'
+import { bindDerivedFile, matchDerivationEntries, type DerivationEntryFacts } from '@shared/verify'
 import type {
   CaseInventory,
   DerivedFileVerification,
@@ -322,26 +322,15 @@ async function verifyDerivedFiles(
   const results: DerivedFileVerification[] = []
   for (const file of listDerivedFilesForExhibit(exhibit.id)) {
     const base = { derivedFileId: file.id, derivation: file.derivation }
-    let computed: string
-    try {
-      computed = await hashFile(store.resolveAbsolute(file.path))
-    } catch {
-      results.push({ ...base, status: 'missing', reason: 'Derived file unreadable' })
-      continue
-    }
-    const bound = bindDerivedFile(
-      { parentExhibitId: exhibit.id, storedPath: file.path, computedHash: computed },
-      entries,
-      { parentMatches }
-    )
-    if (bound.status === 'unanchored') {
-      const named =
-        !chain.valid &&
-        bindDerivedFile(
-          { parentExhibitId: exhibit.id, storedPath: file.path, computedHash: computed },
-          present,
-          { parentMatches }
-        ).status !== 'unanchored'
+    const claim = { parentExhibitId: exhibit.id, storedPath: file.path }
+
+    // The entry question FIRST, and independently of whether the bytes can be
+    // read. Hashing first and returning `missing` on a read error — which this
+    // did — skipped the binding entirely, so a file no entry names came back
+    // as anchored-but-unreadable and every document downstream said the chain
+    // anchored it. Whether an entry exists is not a fact about the bytes.
+    if (matchDerivationEntries(claim, entries, { parentMatches }).length === 0) {
+      const named = matchDerivationEntries(claim, present, { parentMatches }).length > 0
       results.push({
         ...base,
         status: 'unverified',
@@ -351,6 +340,28 @@ async function verifyDerivedFiles(
           : file.manifestSeq === null
             ? 'No manifest entry anchors this derived file'
             : 'Derived file is not anchored in the verified chain'
+      })
+      continue
+    }
+
+    // Past this point the verified chain carries an entry for this file, so
+    // `missing` can only mean "anchored, and the stored bytes could not be
+    // read" — which is what every caller of that status now relies on.
+    let computed: string
+    try {
+      computed = await hashFile(store.resolveAbsolute(file.path))
+    } catch {
+      results.push({ ...base, status: 'missing', reason: 'Derived file unreadable' })
+      continue
+    }
+    const bound = bindDerivedFile({ ...claim, computedHash: computed }, entries, { parentMatches })
+    // Unreachable: the same match ran above. Reported rather than assumed away.
+    if (bound.status === 'unanchored') {
+      results.push({
+        ...base,
+        status: 'unverified',
+        unanchoredCause: 'no-entry',
+        reason: bound.reason
       })
       continue
     }

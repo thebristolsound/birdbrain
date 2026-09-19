@@ -2401,7 +2401,8 @@ describe('export', () => {
         exhibitCountsByKind: {},
         derivedFileCount: 0,
         unanchoredDerivedFileCount: 0,
-        unverifiableDerivedFileCount: 0
+        unverifiableDerivedFileCount: 0,
+        missingDerivedFileCount: 0
       })
       expect(marker.artifacts.map((a) => a.path).sort()).toEqual([
         'notes.md',
@@ -2816,20 +2817,57 @@ describe('export', () => {
       expect(certification).toContain('1 derived file,')
     })
 
-    it('does not say an anchored derived file is enclosed when its bytes are gone', async () => {
-      // `anchored` covers verified, tampered AND missing, so the enclosure
-      // sentence has to read the packaged path rather than the anchoring.
+    it('holds back a no-entry derived file whose bytes are gone, with the X34 cause', async () => {
+      // The state that reached neither verifier honestly: no manifest entry
+      // names the file AND its bytes cannot be read. Classifying on the read
+      // failure first called it anchored, so the report said the chain
+      // anchors it and evidence.json listed it with a null path, which the
+      // binary then FAILed as a fabricated row on an intact chain.
+      const unanchored = seedUnanchoredDerivedFile(tempDir, fixture.caseId, fixture.attachment.id)
+      rmSync(join(tempDir, 'captures', unanchored.storedPath))
+
+      const entries = await exportMixed('mixed-noentry-gone.zip')
+      const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+        exhibits: Array<{ id: string; derivedFiles: Array<{ derivation: string }> }>
+      }
+      expect(evidence.exhibits.find((e) => e.id === fixture.attachment.id)!.derivedFiles).toEqual(
+        []
+      )
+
+      const report = entries.get('report.html')!.toString('utf-8')
+      expect(report).toContain('recorded but not anchored, and therefore not enclosed')
+      expect(report).toContain('nothing in the chain states what was produced')
+      expect(report).not.toContain('The chain anchors 1 file')
+
+      const certification = entries.get('certification.html')!.toString('utf-8')
+      expect(certification).toContain('1 unanchored derived file recorded and not enclosed')
+      expect(certification).not.toContain('2 derived files')
+    })
+
+    it('discloses an anchored derived file whose bytes are gone as a gap', async () => {
       const thumbnail = listDerivedFilesForCase(fixture.caseId).find(
         (file) => file.exhibitId === fixture.captureId
       )!
       rmSync(join(tempDir, 'captures', thumbnail.path))
 
-      const entries = await exportMixed('mixed-lost-thumb.zip')
+      const entries = await exportMixed('mixed-anchored-gone.zip')
       expect(entries.has(fixture.thumbnailPackagePath)).toBe(false)
+
+      // Not listed either: a row with a null path is a row the two verifiers
+      // read differently, and both already FAIL through the chain-side check.
+      const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+        exhibits: Array<{ id: string; derivedFiles: unknown[] }>
+      }
+      expect(evidence.exhibits.find((e) => e.id === fixture.captureId)!.derivedFiles).toEqual([])
 
       const report = entries.get('report.html')!.toString('utf-8')
       expect(report).toContain('could not be read and is not enclosed')
-      expect(report).not.toContain('and is enclosed beside it')
+      expect(report).toContain('The chain anchors 1 file')
+
+      const certification = entries.get('certification.html')!.toString('utf-8')
+      expect(certification).toContain(
+        '1 anchored derived file whose stored bytes could not be read and are not enclosed'
+      )
     })
 
     it('says the chain did not verify rather than that an entry is absent', async () => {

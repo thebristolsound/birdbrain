@@ -736,19 +736,26 @@ function buildDerivedFiles(
   const byId = new Map((verifications ?? []).map((result) => [result.derivedFileId, result]))
   return files.map((file) => {
     const verification = byId.get(file.id)
-    // Three states, not two. 'unverified' with cause `no-entry` is X34's case
-    // and is the only one held back; 'chain-unverified' means a `derivation`
-    // entry names the file and the chain does not verify, which is a statement
-    // about the chain and not about the file, so it ships and the documents
-    // say the chain could not be verified. Every other status — verified,
-    // tampered, missing — means the chain anchors it, and a tampered one ships
-    // exactly as a tampered Capture does, for the verifiers to catch.
+    // 'unverified' with cause `no-entry` is X34's case and is the only one
+    // held back; 'chain-unverified' means a `derivation` entry names the file
+    // and the chain does not verify, which is a statement about the chain and
+    // not about the file, so it ships and the documents say so. `verified`,
+    // `tampered` and `missing` all mean the verified chain carries an entry
+    // for it — `missing` is decided AFTER that question, so it means anchored
+    // with unreadable bytes and never "no entry, and unreadable too".
+    //
+    // No verification at all fails closed to `no-entry`: nothing established
+    // an entry, so nothing may be enclosed on the strength of one. Unreachable
+    // today — `verifyCaseDerivedFiles` runs on every export and is total over
+    // the Case's rows — and the conservative answer if that ever changes.
     const anchoring: ExportDerivedFile['anchoring'] =
-      verification === undefined || verification.status !== 'unverified'
-        ? 'anchored'
-        : verification.unanchoredCause === 'chain-unverified'
-          ? 'chain-unverified'
-          : 'no-entry'
+      verification === undefined
+        ? 'no-entry'
+        : verification.status !== 'unverified'
+          ? 'anchored'
+          : verification.unanchoredCause === 'chain-unverified'
+            ? 'chain-unverified'
+            : 'no-entry'
     const present =
       isPackage && anchoring !== 'no-entry' && defaultCaptureStore.existsRelative(file.path)
     return {
@@ -826,16 +833,22 @@ function exhibitKindCounts(data: ExportData): {
   derivedFileCount: number
   unanchoredDerivedFileCount: number
   unverifiableDerivedFileCount: number
+  missingDerivedFileCount: number
 } {
   const exhibitCountsByKind: Record<string, number> = {}
   let derivedFileCount = 0
   let unanchoredDerivedFileCount = 0
   let unverifiableDerivedFileCount = 0
+  let missingDerivedFileCount = 0
   const count = (files: ExportDerivedFile[]): void => {
     for (const file of files) {
       if (file.anchoring === 'no-entry') unanchoredDerivedFileCount++
       else if (file.anchoring === 'chain-unverified') unverifiableDerivedFileCount++
-      else derivedFileCount++
+      else if (file.packagedPath) derivedFileCount++
+      // Anchored, and its stored bytes could not be read. Counted apart from
+      // the enclosed files so the contents line and the enclosed set agree:
+      // this one is in neither the package nor evidence.json.
+      else missingDerivedFileCount++
     }
   }
   for (const exhibit of data.fileExhibits) {
@@ -847,7 +860,8 @@ function exhibitKindCounts(data: ExportData): {
     exhibitCountsByKind,
     derivedFileCount,
     unanchoredDerivedFileCount,
-    unverifiableDerivedFileCount
+    unverifiableDerivedFileCount,
+    missingDerivedFileCount
   }
 }
 
@@ -889,24 +903,34 @@ function readPackagedFile(storedPath: string | null): Buffer | null {
 /**
  * Encloses an Exhibit's Derived Files and returns their index rows (X31).
  *
- * Only the files the chain anchors get either: an unanchored one is neither
- * packaged nor listed, so the index cannot attribute to an Exhibit a file
- * nothing in the chain says was computed from it. The report and the
- * certification are where its omission is disclosed.
+ * The index lists exactly what the package encloses, and nothing else. A file
+ * no entry names is neither packaged nor listed, so the index cannot attribute
+ * to an Exhibit a file nothing in the chain says was computed from it; a file
+ * that IS anchored but whose bytes could not be read is not listed either,
+ * because a row with a null path is a row the two verifiers read differently —
+ * the standalone one calls it a fabricated row the manifest does not anchor at
+ * that path, while verify.sh, which never reads the index, says nothing. Both
+ * still FAIL the package through the chain-side check that the anchored file is
+ * absent, which is the finding that matters and the one they agree on.
+ *
+ * Every omission is disclosed by whatever each class carries: report.html and
+ * the certification's contents line in an Evidence Package, the counts in
+ * WORKING-COPY.json in a Working Copy.
  */
 function addDerivedFiles(
   files: ExportDerivedFile[],
   add: ArtifactAccumulator['add']
-): Array<{ derivation: string; contentHash: string; path: string | null }> {
-  const rows: Array<{ derivation: string; contentHash: string; path: string | null }> = []
+): Array<{ derivation: string; contentHash: string; path: string }> {
+  const rows: Array<{ derivation: string; contentHash: string; path: string }> = []
   for (const file of files) {
-    if (file.anchoring === 'no-entry') continue
-    const bytes = file.packagedPath ? readPackagedFile(file.storedPath) : null
-    if (bytes && file.packagedPath) add(file.packagedPath, bytes)
+    if (file.anchoring === 'no-entry' || !file.packagedPath) continue
+    const bytes = readPackagedFile(file.storedPath)
+    if (!bytes) continue
+    add(file.packagedPath, bytes)
     rows.push({
       derivation: file.derivation,
       contentHash: file.contentHash,
-      path: bytes && file.packagedPath ? file.packagedPath : null
+      path: file.packagedPath
     })
   }
   return rows

@@ -897,9 +897,13 @@ interface EvidenceZipResult {
 }
 
 /**
- * The ONE read of every non-Capture Exhibit and every Derived File this export
- * encloses, and the only place a read failure on those files is interpreted
- * (#1156 round 5).
+ * The one read that decides ENCLOSURE for every non-Capture Exhibit and every
+ * Derived File this export encloses (#1156 round 5). It is not the only read
+ * of those bytes: `verifyCaseDerivedFiles` hashes every chain-anchored Derived
+ * File on every export, and `verifyExhibit` hashes committed Exhibits when the
+ * audit trail is included, and a read failure there is interpreted too — as
+ * the `missing` verification status the documents render. What is decided here
+ * and nowhere else is whether the file is in the package.
  *
  * For those files every downstream fact — the zip entry, the evidence.json
  * row, the report's enclosure sentence, the certification's counts — is
@@ -1538,11 +1542,17 @@ function buildPackagedPaths(
     // The CAPTURE path, which `createPackageReader` deliberately does not
     // cover: `existsSync` here, and a separate `readArtifact` in the zip
     // builders. It predates #1156 and stays as it was, so an archive that can
-    // be large is not held in memory from classification to assembly. The
-    // consequence is stated where the reader is: an unreadable page archive or
-    // screenshot aborts the export with that error rather than narrowing the
-    // package, so the probe cannot leave the report citing a path the zip
-    // lacks — the export produces no zip at all.
+    // be large is not held in memory from classification to assembly.
+    //
+    // A Capture artifact that is present but unreadable when the export
+    // classifies it fails the whole export with that error and writes no
+    // package (test: refuses the export when a capture artifact is present but
+    // unreadable). An artifact that disappears between classification and
+    // assembly is the pre-existing Capture path: the package is written with
+    // the report naming a file the zip lacks, and both verifiers FAIL it on
+    // the missing artifact (evidencePackage.ts:505). The reader closes that
+    // window for non-Capture Exhibits and Derived Files only; closing it for
+    // Captures is the follow-up named in the findings list.
     const { abs } = defaultCaptureStore.artifactPaths(capture.caseId, capture.id, 'mhtml')
     const screenshotDigest = screenshotDigests.get(capture.id)
     paths.set(capture.id, {

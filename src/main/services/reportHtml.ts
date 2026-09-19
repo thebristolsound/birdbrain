@@ -1551,11 +1551,13 @@ function standaloneDerivedRow(derived: ExportDerivedFile): string {
 /**
  * The derived-file disclosure, for an Exhibit of any kind.
  *
- * Two facts decide what is said, and both are settled before this runs: what
- * the chain says about the file (`anchoring`, from `verifyDerivedFiles`) and
- * whether the export actually read its bytes (`packagedPath`, from the single
- * read in export.ts). Nothing here re-derives either, and no sentence about
- * enclosure is printed unless a package was produced.
+ * Three facts decide what is said, and all three are settled before this runs:
+ * what the chain says about the file (`anchoring`, from `verifyDerivedFiles`),
+ * whether the export actually read its bytes for packaging (`packagedPath`,
+ * from the single enclosure read in export.ts), and what the verification run
+ * found in those bytes (`verification.status`, which the standalone branch
+ * renders as the stored-file result). Nothing here re-derives any of them, and
+ * no sentence about enclosure is printed unless a package was produced.
  *
  * Each state has been told wrongly once, which is why they are enumerated:
  * an unanchored legacy thumbnail (X34) shipped under an anchoring claim no

@@ -606,6 +606,180 @@ describe('verifyEvidencePackage', () => {
     expect(result.checks.find((c) => c.name === 'evidence.json head')?.status).toBe('pass')
   })
 
+  // #691 known-answer tests. `parseManifestEntries` stops only on a line it
+  // cannot read, while the chain walk also breaks on an index gap, a linkage or
+  // hash mismatch, a schema downgrade and an invalid signature. For those
+  // reasons every line after the break is still schema-valid, and the verifier
+  // used to derive `deletedIds`, `activeCaptures` and their check rows from them
+  // — reporting per-capture results for entries the same report had just called
+  // untrustworthy. The pair below fixes the answer: the same appended entries
+  // contribute nothing past a break and everything when the chain is intact, so
+  // what excludes them is where they sit, not what they are.
+  describe('entries past a chain break', () => {
+    const APPENDED_ID = 'appended-past-the-break'
+
+    // Appends one entry to the package manifest, correctly linked to its current
+    // head and validly signed by the harness key — a line beyond reproach on its
+    // own terms.
+    function appendSignedLine(body: Record<string, unknown>): void {
+      const p = join(pkgDir, 'manifest.jsonl')
+      const lines = readFileSync(p, 'utf-8').split('\n').filter((l) => l.trim())
+      const head = JSON.parse(lines[lines.length - 1]) as { index: number; entryHash: string }
+      const full = { ...body, index: head.index + 1, prevHash: head.entryHash, schemaVersion: 2 }
+      const entryHash = createHash('sha256').update(canonicalStringify(full)).digest('hex')
+      lines.push(JSON.stringify({ ...full, entryHash, signature: signEntryHash(entryHash) }))
+      writeFileSync(p, lines.join('\n') + '\n')
+    }
+
+    // A deletion for the packaged capture and a capture entry of the attacker's
+    // own, appended in that order after whatever the manifest already holds.
+    function appendDeletionAndCapture(): void {
+      const first = JSON.parse(
+        readFileSync(join(pkgDir, 'manifest.jsonl'), 'utf-8').split('\n').filter((l) => l.trim())[0]
+      )
+      appendSignedLine({
+        type: 'deletion',
+        captureId,
+        caseId,
+        contentHash: first.contentHash,
+        timestamp: '2026-04-05T13:00:00.000Z',
+        operatorId: 'op',
+        operatorName: 'Test Operator',
+        toolVersion: '0.1.0'
+      })
+      appendSignedLine({
+        type: 'capture',
+        captureId: APPENDED_ID,
+        caseId,
+        url: 'https://attacker.example.com/added',
+        timestamp: '2026-04-05T13:01:00.000Z',
+        contentHash: createHash('sha256').update('appended').digest('hex'),
+        sizeBytes: 0,
+        operatorId: 'op',
+        operatorName: 'Test Operator',
+        toolVersion: '0.1.0'
+      })
+    }
+
+    // Replaces the signature at `index` with a real signature over the WRONG
+    // hash: syntactically valid and verifiable against nothing, so the walk
+    // reaches its second pass and breaks on the signature rather than the shape
+    // — a break `parseManifestEntries` does not see. The entryHash is untouched
+    // (it excludes `signature`), so the lines appended after it still link.
+    function forgeSignatureAt(index: number): void {
+      const p = join(pkgDir, 'manifest.jsonl')
+      const lines = readFileSync(p, 'utf-8').split('\n').filter((l) => l.trim())
+      const entry = JSON.parse(lines[index])
+      entry.signature = signEntryHash('f'.repeat(64))
+      lines[index] = JSON.stringify(entry)
+      writeFileSync(p, lines.join('\n') + '\n')
+    }
+
+    it('derives no check row, active capture or deletion from entries past a forged signature', () => {
+      const lines = readFileSync(join(pkgDir, 'manifest.jsonl'), 'utf-8')
+        .split('\n')
+        .filter((l) => l.trim())
+      const breakIndex = lines.findIndex((l) => JSON.parse(l).type === 'timestamp')
+      expect(breakIndex).toBeGreaterThan(0)
+      forgeSignatureAt(breakIndex)
+      appendDeletionAndCapture()
+
+      const result = verifyEvidencePackage(pkgDir)
+
+      // The chain reports the break, and the verdict is FAIL on that ground.
+      expect(result.pass).toBe(false)
+      const chain = result.checks.find((c) => c.name === 'manifest chain')
+      expect(chain?.status).toBe('fail')
+      expect(chain?.reason).toContain(`Invalid signature (at index ${breakIndex})`)
+
+      // Nothing the appended capture entry claims appears anywhere in the report.
+      expect(result.checks.some((c) => c.name.includes(APPENDED_ID))).toBe(false)
+      expect(hasReason(result, APPENDED_ID)).toBe(false)
+
+      // Nor does the appended deletion: the packaged capture is still active, so
+      // it keeps its own rows and evidence.json still reconciles against it.
+      expect(hasReason(result, 'the chain records it as deleted')).toBe(false)
+      expect(result.checks.find((c) => c.name === `capture ${captureId} content`)?.status).toBe(
+        'pass'
+      )
+      const coverage = result.checks.filter((c) => c.name === 'evidence.json coverage')
+      expect(coverage.map((c) => c.status)).toEqual(['pass'])
+
+      // The broken entry itself is past the break too, so the token it carries
+      // no longer satisfies the capture's timestamp check. The SKIP says that,
+      // and does not say the manifest holds no token — it holds one, on a line
+      // this report has just called untrustworthy.
+      const ts = result.checks.find((c) => c.name === `capture ${captureId} timestamp`)
+      expect(ts?.status).toBe('skip')
+      expect(ts?.reason).toBe(
+        `no trustworthy timestamp: the manifest's token for this capture is at or past ` +
+          `the chain break at index ${breakIndex}`
+      )
+    })
+
+    it('keeps the no-token SKIP reason for a capture the manifest never timestamped', () => {
+      // A second capture with no timestamp entry of its own, then a filler
+      // deletion after it whose signature is forged. The break therefore sits
+      // past the appended capture, which stays active and untimestamped — the
+      // discriminator for the reason above is where a token is, not whether the
+      // chain is broken.
+      appendSignedLine({
+        type: 'capture',
+        captureId: APPENDED_ID,
+        caseId,
+        url: 'https://example.com/untimestamped',
+        timestamp: '2026-04-05T13:01:00.000Z',
+        contentHash: createHash('sha256').update('untimestamped').digest('hex'),
+        sizeBytes: 0,
+        operatorId: 'op',
+        operatorName: 'Test Operator',
+        toolVersion: '0.1.0'
+      })
+      appendSignedLine({
+        type: 'deletion',
+        captureId: 'a-capture-this-manifest-never-recorded',
+        caseId,
+        contentHash: createHash('sha256').update('filler').digest('hex'),
+        timestamp: '2026-04-05T13:02:00.000Z',
+        operatorId: 'op',
+        operatorName: 'Test Operator',
+        toolVersion: '0.1.0'
+      })
+      const breakIndex =
+        readFileSync(join(pkgDir, 'manifest.jsonl'), 'utf-8').split('\n').filter((l) => l.trim())
+          .length - 1
+      forgeSignatureAt(breakIndex)
+
+      const result = verifyEvidencePackage(pkgDir)
+
+      expect(result.checks.find((c) => c.name === 'manifest chain')?.status).toBe('fail')
+      const ts = result.checks.find((c) => c.name === `capture ${APPENDED_ID} timestamp`)
+      expect(ts?.status).toBe('skip')
+      expect(ts?.reason).toBe('none — no timestamp token in the manifest')
+      // The packaged capture's own token is before the break and still binds.
+      expect(result.checks.find((c) => c.name === `capture ${captureId} timestamp`)?.status).toBe(
+        'pass'
+      )
+    })
+
+    it('derives those same rows from the same entries when the chain is intact', () => {
+      appendDeletionAndCapture()
+
+      const result = verifyEvidencePackage(pkgDir)
+
+      expect(result.checks.find((c) => c.name === 'manifest chain')?.status).toBe('pass')
+      // The deletion now counts: the packaged capture is inactive and its
+      // presence in the unsigned index is the §7.5 disagreement.
+      expect(hasReason(result, 'the chain records it as deleted')).toBe(true)
+      expect(result.checks.some((c) => c.name === `capture ${captureId} content`)).toBe(false)
+      // And the appended capture is an active capture the package does not hold.
+      expect(result.checks.find((c) => c.name === `capture ${APPENDED_ID} content`)?.status).toBe(
+        'fail'
+      )
+      expect(hasReason(result, `evidence.json omits verified capture ${APPENDED_ID}`)).toBe(true)
+    })
+  })
+
   it('PASSes a package whose capture was deleted (artifacts absent)', () => {
     // Append a deletion entry for the active capture, drop its artifacts and its
     // evidence.json record + artifacts so the package reflects a hard-delete.

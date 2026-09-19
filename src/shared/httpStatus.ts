@@ -6,10 +6,24 @@
 // record distinguishes "the origin answered 0" (impossible) from "no status was
 // recorded", so 0 and any value outside the status range mean unrecorded.
 //
-// Both operator-facing artifacts (report.html, the per-capture PDF cover) and
-// the manifest entry writer read the status through this function, so the code
-// the chain attests to and the code the report prints are the same derivation:
-// a reader can never be shown a status the signed entry omits.
+// report.html, the per-capture PDF cover and the manifest entry writer all read
+// the status through this function, so for a capture ingested by this build or
+// later the status the report prints and the status the chain attests are the
+// same derivation.
+//
+// That equality does NOT reach backwards, and the difference matters in court.
+// Until R7 the extension sent a hard-coded `httpStatus: 200` on every capture
+// request whatever the origin returned, and the manifest entry had no
+// `httpStatus` key at all. So a pre-R7 row holds a fabricated 200 that this
+// function happily returns, and its report prints `HTTP status 200` against a
+// signed entry that says nothing about the status —
+// tests/shared/verify/fixtures/pre-scope-package is exactly such a package.
+// Anyone explaining a status to a reader has to know which side of R7 the
+// capture falls on; the entry is the only side the chain covers.
+//
+// Two in-app rails (ForensicsTab, DataExplorer) still read `capture.httpStatus`
+// off the row without this function. Their truthiness tests drop a 0, which is
+// the only value this build can write that they would otherwise misreport.
 //
 // The range is HTTP semantics' own (RFC 9110 §15: a status code is three
 // digits, 1xx-5xx). A value outside it is not a status, so it is neither

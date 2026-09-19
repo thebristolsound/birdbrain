@@ -3,8 +3,9 @@ import { recordedHttpStatus } from '@shared/httpStatus'
 
 // One derivation feeds three consumers (R7, #797): the signed manifest entry,
 // report.html and the PDF cover. What this function rejects is therefore both
-// unanchored and unprinted, which is the property that stops a reader being
-// shown a status the chain does not attest.
+// unanchored and unprinted for any capture this build ingests. It says nothing
+// about pre-R7 rows, whose hard-coded 200 this function returns and the report
+// prints although no entry anchors it — see src/shared/httpStatus.ts.
 describe('recordedHttpStatus (#797)', () => {
   it('returns a status the origin actually sent', () => {
     expect(recordedHttpStatus(200)).toBe(200)

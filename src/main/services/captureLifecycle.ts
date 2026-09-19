@@ -178,8 +178,10 @@ export async function ingestMhtmlCapture(
     params.headers && Object.keys(params.headers).length > 0 ? params.headers : undefined
 
   // Transaction provenance (R7, #797). The status is anchored only when one was
-  // actually recorded, and the SAME derivation feeds the DB row, so the report
-  // can never print a status the signed entry omits. The final URL is anchored
+  // actually recorded, and the SAME derivation feeds the DB row, so a capture
+  // ingested here has the report printing exactly what the entry anchors. Rows
+  // written before R7 keep their fabricated 200 and are outside that guarantee
+  // — see src/shared/httpStatus.ts. The final URL is anchored
   // exactly as the acquiring path resolved it — an empty string is not a URL,
   // so it is dropped rather than written as a claim about nothing.
   const anchoredHttpStatus = recordedHttpStatus(params.httpStatus)

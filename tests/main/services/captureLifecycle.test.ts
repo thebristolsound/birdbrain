@@ -213,8 +213,9 @@ describe('createCaptureLifecycle.ingest', () => {
       buildIngestParams(caseId, Buffer.from('mhtml-body'), { httpStatus: 404 })
     )
 
-    // The row and the entry come from ONE derivation, so the report cannot
-    // print a status the chain leaves unattested.
+    // The row and the entry come from ONE derivation, so for a capture this
+    // build ingests the report prints exactly what the chain attests. Rows
+    // written before R7 are outside that guarantee (src/shared/httpStatus.ts).
     expect(getCapture(capture.id)!.httpStatus).toBe(404)
     const manifestPath = join(tempDir, 'captures', caseId, 'manifest.jsonl')
     const lines = readFileSync(manifestPath, 'utf-8')

@@ -229,8 +229,11 @@ a capture ended is the operator's only signal that it succeeded.
    when present, and so are the HTTP status and — for a path that resolved one differing from the
    URL it requested, which today is the background renderer — the final post-redirect URL. Each is
    omitted when unknown, never written as `0` or an empty string, so entries that predate them
-   keep their canonical body and their chain hash. The status the entry anchors is the status
-   `report.html` and the PDF print: one derivation (`recordedHttpStatus`) feeds all three.
+   keep their canonical body and their chain hash. For a capture made by this build or later, the
+   status the entry anchors is the status `report.html` and the PDF print: one derivation
+   (`recordedHttpStatus`) feeds all three. Captures made before this are **not** covered by that
+   equivalence — the extension sent a hard-coded `200` regardless of what the origin returned, so
+   their reports print a status their manifest entry never anchored and the chain never attested.
 4. **TLS corroboration re-fetch.** For HTTPS URLs, the main process re-connects to the origin
    after storage and records the certificate chain served *at that moment*. This is corroboration
    only — it binds nothing about the captured transaction (ADR-0002) — and it is fail-soft: a

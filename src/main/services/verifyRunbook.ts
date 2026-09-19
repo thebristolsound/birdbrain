@@ -117,6 +117,8 @@ internal consistency*, **not** timestamp authenticity — this runbook's
 | \`${TSA_INTERMEDIATES_FILENAME}\` | Responder + intermediate certs lifted from the tokens (chain-building only, never trusted on their own) |
 | \`pages/{captureId}.mhtml\` | Captured content (hashed as \`contentHash\`) |
 | \`screenshots/{sha256}.png\` | Captured screenshot (hashed as \`screenshotHash\`) |
+| \`attachments/\`, \`images/\`, \`documents/\` | Committed exhibits of other kinds, one file per exhibit named \`{exhibitId}\` plus its stored extension (hashed as the \`exhibit\` entry's \`contentHash\`) |
+| \`{exhibit directory}/{exhibitId}_{suffix}\` | Derived files, enclosed beside the exhibit they were computed from — a capture's thumbnail sits in \`pages/\` (hashed as the \`derivation\` entry's \`outputHash\`) |
 | \`timestamps/*.tst\` | RFC 3161 tokens (DER), when present |
 | \`evidence.json\` | Unsigned index (reconcile, do not trust) |
 | \`export-entry.json\` | Signed export entry for this package — scope of the enclosed captures (absent only from packages whose \`evidence.json\` states a \`schemaVersion\` below ${EVIDENCE_INDEX_SCHEMA_VERSION}; see Trust model) |
@@ -183,10 +185,12 @@ this you could verify a pristine signed chain yet never confirm the MHTML/PNG
 bytes are the ones it attests.
 
 **Selection-scoped packages:** if a **verified** \`export-entry.json\` (see
-Trust model) carries \`scope: "selection"\`, only the captures listed in its
-\`captureIds\` are enclosed under \`pages/\` — run this step for those and
-expect the others absent. Only the signed entry can account for an absent
-capture; never accept that explanation from \`evidence.json\` or the report.
+Trust model) carries \`scope: "selection"\`, only the exhibits listed in its
+\`captureIds\` are enclosed — run this step for those and expect the others
+absent. That field carries exhibit ids of every kind: a capture's exhibit id IS
+its capture id, so one list scopes the whole package. Only the signed entry can
+account for an absent exhibit; never accept that explanation from
+\`evidence.json\` or the report.
 Without a verified selection scope, every capture entry with no later
 \`deletion\` entry must be present and must match. An **absent**
 \`export-entry.json\` is not a verified whole-case scope: run the era check in
@@ -202,6 +206,49 @@ got=$(sha256sum "pages/$id.mhtml" | cut -d' ' -f1)
 # Screenshot (if the entry has screenshotHash; the file is named by that hash):
 shot=$(echo "$line" | jq -r '.screenshotHash // empty')
 [ -n "$shot" ] && sha256sum "screenshots/$shot.png"   # must equal $shot
+\`\`\`
+
+**Exhibits of other kinds.** A capture is one kind of exhibit; an attachment,
+image or document committed to the case is another, and each has its own signed
+\`exhibit\` entry carrying an exhibit number, the path the tool stores it at and
+its \`contentHash\`. The package encloses those bytes at the part of that path
+inside the case directory — drop the leading case-id segment — so
+\`{caseId}/documents/{exhibitId}.pdf\` is enclosed as
+\`documents/{exhibitId}.pdf\`. Deleted and out-of-selection exhibits are
+expected absent on exactly the same terms as captures.
+
+\`\`\`sh
+jq -c 'select(.type == "exhibit")' manifest.jsonl | while IFS= read -r ex; do
+  rel=$(printf '%s' "$ex" | jq -r '.path' | cut -d/ -f2-)
+  num=$(printf '%s' "$ex" | jq -r '.exhibitNumber')
+  want=$(printf '%s' "$ex" | jq -r '.contentHash')
+  got=$(sha256sum "$rel" | cut -d' ' -f1)
+  [ "$want" = "$got" ] && echo "exhibit $num OK" || echo "EXHIBIT $num MISMATCH"
+done
+\`\`\`
+
+**Derived files.** A derived file is bytes the tool computed FROM an exhibit —
+a thumbnail, extracted text, a metadata sidecar — anchored by its own
+\`derivation\` entry naming the parent exhibit, the derivation, the output path
+and the output hash. It carries no exhibit number of its own: it is cited by its
+parent and its derivation. The package encloses it beside its parent, under the
+parent's directory.
+
+Bind it by the entry that names THAT parent and THAT path, never by an entry's
+position in the file: an index says where an entry sits, not what it is about.
+
+\`\`\`sh
+jq -c 'select(.type == "derivation")' manifest.jsonl | while IFS= read -r d; do
+  parent=$(printf '%s' "$d" | jq -r '.parentExhibitId')
+  ppath=$(jq -rn --arg p "$parent" \\
+    'first(inputs | select(.type == "exhibit" and .exhibitId == $p) | .path) // empty' \\
+    manifest.jsonl)
+  if [ -n "$ppath" ]; then dir=$(dirname "$(printf '%s' "$ppath" | cut -d/ -f2-)"); else dir=pages; fi
+  rel="$dir/$(basename "$(printf '%s' "$d" | jq -r '.outputPath')")"
+  want=$(printf '%s' "$d" | jq -r '.outputHash')
+  got=$(sha256sum "$rel" | cut -d' ' -f1)
+  [ "$want" = "$got" ] && echo "derived $rel OK" || echo "DERIVED FILE MISMATCH: $rel"
+done
 \`\`\`
 
 ## Step 6 — Timestamp (canonical TSA verification)
@@ -235,8 +282,9 @@ trusting them proves nothing.
 \`ls timestamps/\`: every token is also carried base64-encoded in its own signed
 entry (\`jq -r 'select(.type == "timestamp") | "\\(.captureContentHash) \\(.tsaToken)"' manifest.jsonl\`),
 so a \`.tst\` deleted from the package is visible there and invisible in a
-directory listing. Walk the captures step 5 still requires present — active,
-and inside the selection if one is declared — and look up each one's token by
+directory listing. Walk the exhibits step 5 still requires present — captures
+and committed exhibits of every other kind alike, active, and inside the
+selection if one is declared — and look up each one's token by
 its \`contentHash\`: a signed token found that way with no enclosed file is a
 failure, not an absence of work, even when a deleted capture shares that hash.
 A token no such capture leads you to is expected absent, as its page and

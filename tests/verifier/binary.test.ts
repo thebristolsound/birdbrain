@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
+import { cpSync, mkdtempSync, rmSync, readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { join, dirname, resolve } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
@@ -10,16 +10,14 @@ import { createCase } from '@main/services/db/caseRepo'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
 import { appendManifestEntry, initManifest } from '@main/services/manifest'
 import { signEntryHash } from '@main/services/signingKey'
-import {
-  ingestMhtmlCapture,
-  createCaptureLifecycle
-} from '@main/services/captureLifecycle'
+import { ingestMhtmlCapture, createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { generateReport } from '@main/services/export'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { canonicalStringify } from '@shared/verify'
 import { buildSyntheticToken } from '../helpers/timestampFixtures'
+import { seedMixedKindCase, type MixedKindCase } from '../helpers/mixedKindCase'
 import type { ExportOptions } from '@shared/types'
 
 // Integration test for the BUILT SEA binary (#122 §11). It is GATED on the
@@ -64,6 +62,8 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
   let wcPkgDir: string
   let captureId: string
   let unselectedCaptureId: string
+  let mixedPkgDir: string
+  let mixed: MixedKindCase
 
   beforeAll(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'bb-binverify-'))
@@ -143,7 +143,13 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
     const outputPath = join(tempDir, 'evidence.zip')
     const options: ExportOptions = {
       format: 'zip',
-      include: { captures: true, screenshots: true, auditTrail: true, notes: false, annotations: 'none' },
+      include: {
+        captures: true,
+        screenshots: true,
+        auditTrail: true,
+        notes: false,
+        annotations: 'none'
+      },
       exportClass: 'evidence',
       outputPath
     }
@@ -176,6 +182,32 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
     )
     wcPkgDir = mkdtempSync(join(tmpdir(), 'bb-binwcpkg-'))
     unzipToDir(workingCopyPath, wcPkgDir)
+
+    // The shared mixed-kind fixture Case (#1156, D14): a capture with its
+    // thumbnail derived file, plus a committed attachment, image and document.
+    mixed = await seedMixedKindCase({ tempDir, name: 'Binary Mixed Kind Case' })
+    // A token over a committed Exhibit's Content Hash (X26), so the binary has
+    // an exhibit timestamp to bind rather than only a capture's.
+    const mixedCaseDir = join(tempDir, 'captures', mixed.caseId)
+    const documentHash = createHash('sha256').update(mixed.document.bytes).digest('hex')
+    appendManifestEntry(mixedCaseDir, {
+      type: 'timestamp',
+      caseId: mixed.caseId,
+      captureContentHash: documentHash,
+      timestamp: '2026-04-05T12:01:00.000Z',
+      tsaToken: buildSyntheticToken({
+        contentHash: documentHash,
+        genTime: new Date('2026-04-05T12:01:00.000Z'),
+        tsaDnsName: 'tsa.example.com'
+      }).toString('base64'),
+      operatorId: 'op',
+      operatorName: 'Test Operator',
+      toolVersion: '0.1.0'
+    })
+    const mixedPath = join(tempDir, 'mixed-evidence.zip')
+    await generateReport(mixed.caseId, { ...options, outputPath: mixedPath }, captureLifecycle)
+    mixedPkgDir = mkdtempSync(join(tmpdir(), 'bb-binmixedpkg-'))
+    unzipToDir(mixedPath, mixedPkgDir)
   })
 
   afterAll(() => {
@@ -184,6 +216,62 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
     if (pkgDir && existsSync(pkgDir)) rmSync(pkgDir, { recursive: true, force: true })
     if (selPkgDir && existsSync(selPkgDir)) rmSync(selPkgDir, { recursive: true, force: true })
     if (wcPkgDir && existsSync(wcPkgDir)) rmSync(wcPkgDir, { recursive: true, force: true })
+    if (mixedPkgDir && existsSync(mixedPkgDir)) {
+      rmSync(mixedPkgDir, { recursive: true, force: true })
+    }
+  })
+
+  // #1156 through the BUILT binary: the bundled verify-core binds Exhibits of
+  // every kind and the Derived Files computed from them, and names a failure by
+  // the Exhibit Number the chain records.
+  it('exits 0 with a PASS report on a mixed-kind package, naming every exhibit', () => {
+    const proc = spawnSync(binaryPath, [mixedPkgDir], { encoding: 'utf-8' })
+    expect(proc.status, proc.stdout + proc.stderr).toBe(0)
+    expect(proc.stdout).toContain('RESULT: PASS')
+    for (const exhibit of mixed.committed) {
+      expect(proc.stdout).toContain(`[PASS] exhibit ${exhibit.id}`)
+      expect(proc.stdout).toContain(`Exhibit ${exhibit.exhibitNumber} (${exhibit.kind})`)
+    }
+    expect(proc.stdout).toContain(`[PASS] derivation thumbnail of ${mixed.captureId}`)
+    // X26 through the binary: a committed Exhibit's token is bound, not passed
+    // over in silence while verify.sh requires it and the certification
+    // asserts a trusted time off it.
+    expect(proc.stdout).toContain(`[PASS] exhibit ${mixed.document.id} timestamp`)
+    expect(proc.stdout).toContain('structural (imprint + bytes)')
+    // The answer this replaced: one SKIP per exhibit entry deferring the work.
+    expect(proc.stdout).not.toContain('803e')
+  })
+
+  it('exits 1 naming the exhibit number when a committed exhibit is altered', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bb-binmixedtamper-'))
+    try {
+      cpSync(mixedPkgDir, dir, { recursive: true })
+      writeFileSync(join(dir, mixed.document.packagePath), Buffer.from('%PDF-1.7 substituted'))
+
+      const proc = spawnSync(binaryPath, [dir], { encoding: 'utf-8' })
+      expect(proc.status, proc.stdout + proc.stderr).toBe(1)
+      expect(proc.stdout).toContain('RESULT: FAIL')
+      expect(proc.stdout).toContain(`Exhibit ${mixed.document.exhibitNumber}`)
+      expect(proc.stdout).toContain('does not match the contentHash in its signed entry')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('exits 1 naming the parent and derivation when a derived file is altered', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bb-binderivedtamper-'))
+    try {
+      cpSync(mixedPkgDir, dir, { recursive: true })
+      writeFileSync(join(dir, mixed.thumbnailPackagePath), Buffer.from('not the thumbnail'))
+
+      const proc = spawnSync(binaryPath, [dir], { encoding: 'utf-8' })
+      expect(proc.status, proc.stdout + proc.stderr).toBe(1)
+      expect(proc.stdout).toContain('RESULT: FAIL')
+      expect(proc.stdout).toContain('derivation `thumbnail`')
+      expect(proc.stdout).toContain('does not match the outputHash in its signed entry')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   it('--self-check exits 0 and prints canonical bytes identical to the in-app core', () => {
@@ -226,14 +314,7 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
   // package (no export-entry.json, legacy export entry in its chain) must keep
   // passing byte-for-byte unchanged.
   it('exits 0 with a PASS report on the frozen pre-scope fixture package', () => {
-    const fixtureDir = resolve(
-      __dirname,
-      '..',
-      'shared',
-      'verify',
-      'fixtures',
-      'pre-scope-package'
-    )
+    const fixtureDir = resolve(__dirname, '..', 'shared', 'verify', 'fixtures', 'pre-scope-package')
     const proc = spawnSync(binaryPath, [fixtureDir], { encoding: 'utf-8' })
     expect(proc.status, proc.stdout + proc.stderr).toBe(0)
     expect(proc.stdout).toContain('RESULT: PASS')

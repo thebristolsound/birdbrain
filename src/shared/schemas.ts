@@ -750,15 +750,14 @@ export const MANIFEST_ENTRY_TYPES: ReadonlySet<string> = new Set(
 
 // --- Evidence package index (evidence.json) -------------------------------
 
-// The `schemaVersion` buildEvidenceZip stamps into evidence.json. It names the
-// package's ERA, not a shape change: v1 covers both the pre-#398 packages that
-// ship no export-entry.json and the post-#398 ones that do, so a verifier
-// reading a v1 index cannot tell a package that predates export entries from
-// one whose entry was stripped (#853). Every writer from v2 on seals the
-// package with a signed export entry, so a v2 index with no entry beside it is
-// a missing file. Bump only when that era statement changes — adding an
-// informational key does not, since the schema below is deliberately
-// non-strict.
+// The `schemaVersion` buildEvidenceZip stamps into evidence.json. v2 added the
+// `exhibits` list (#1494), and it also names the package's ERA: v1 covers both
+// the pre-#398 packages that ship no export-entry.json and the post-#398 ones
+// that do, so a verifier reading a v1 index cannot tell a package that
+// predates export entries from one whose entry was stripped (#853). Every
+// writer from v2 on seals the package with a signed export entry, so a v2 or
+// later index with no entry beside it is a missing file. A later bump must
+// keep that true — the verifier compares with >=.
 //
 // Defined here rather than in constants.ts so it sits beside the schema whose
 // version it names. Not an import boundary: build-verifier.mjs aliases all of
@@ -790,7 +789,43 @@ const EvidenceCaptureSchema = z.object({
   timestampTokenPaths: z.array(z.string())
 })
 
+// One Derived File as the index lists it, nested under the Exhibit it was
+// computed from (#1156). It carries no Exhibit Number: a Derived File is cited
+// by its parent and its derivation, never numbered of its own (X31).
+const EvidenceDerivedFileSchema = z.object({
+  derivation: z.string(),
+  contentHash: z.string(),
+  path: z.string().nullable()
+})
+
+// One Exhibit of any kind (ADR-0023). `exhibits` is additive: `captures` keeps
+// its shape and its rows, so a verifier built before this list existed reads
+// the same package it always did. The kind vocabulary is an open string here
+// for the same reason it is on the manifest entry — an index naming a kind this
+// build has not heard of is an index from a newer writer, not a malformed one.
+const EvidenceExhibitSchema = z.object({
+  id: z.string(),
+  kind: z.string(),
+  origin: z.string(),
+  exhibitNumber: z.number().int().positive(),
+  name: z.string(),
+  contentHash: z.string(),
+  // Package-relative path of the enclosed bytes, null when the package does not
+  // enclose them (the file was unreadable at export time, and the warnings
+  // block counts it).
+  path: z.string().nullable(),
+  // Where the package encloses this Exhibit's RFC 3161 token, when one is
+  // enclosed. A locating hint only, like the capture row's: the verifier
+  // byte-binds whatever it finds to the token the signed entry carries, so the
+  // path carries no security weight. Optional for an index written before the
+  // field existed.
+  timestampTokenPaths: z.array(z.string()).optional(),
+  derivedFiles: z.array(EvidenceDerivedFileSchema)
+})
+
 export const EvidencePackageSchema = z.object({
+  // 1: `captures` only. 2: the additive `exhibits` list below, which the
+  // verifier reconciles against the chain exactly as it reconciles `captures`.
   schemaVersion: z.number().int().positive(),
   verificationMaterials: z.object({
     manifestPath: z.string(),
@@ -808,6 +843,10 @@ export const EvidencePackageSchema = z.object({
     tsaIntermediatesPath: z.string().optional()
   }),
   captures: z.array(EvidenceCaptureSchema),
+  // Optional so a schemaVersion 1 package — every package written before
+  // #1156 — still parses. The verifier requires it from schemaVersion 2 on,
+  // where its absence is an edited index rather than an older writer.
+  exhibits: z.array(EvidenceExhibitSchema).optional(),
   artifacts: z.array(EvidenceArtifactSchema)
 })
 

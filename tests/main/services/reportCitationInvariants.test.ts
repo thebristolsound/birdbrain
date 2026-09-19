@@ -17,7 +17,7 @@
  * having predicted its specific shape.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, readFileSync } from 'fs'
+import { mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
@@ -34,6 +34,8 @@ import {
 } from '@main/services/captureLifecycle'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { generateReport } from '@main/services/export'
+import { commitStagedFiles, uploadToStaging } from '@main/services/staging'
+import { backfillCase } from '@main/services/exhibitBackfill'
 import { saveAnnotations } from '@main/services/annotations'
 import { createWaybackRef, importWaybackRefRows } from '@main/services/db/waybackRefRepo'
 import { initSettings, updateSettings } from '@main/services/settings'
@@ -66,6 +68,11 @@ function readStoredZipEntries(path: string): Map<string, Buffer> {
  * bare directories `pages/`, `screenshots/` and `timestamps/` in prose, and
  * naming a directory is not a claim that a particular file is present.
  *
+ * The kind directories a committed exhibit ships under (`attachments/`,
+ * `images/`, `documents/`) are matched too (#1156), so an exhibit block citing
+ * a file the package does not enclose fails here like any other dangling
+ * citation.
+ *
  * The pattern is applied to the document with absolute URLs removed rather than
  * being loosened (#401). Pinned archive.org references embed the archived page's
  * own URL, and a page archived from `https://example.com/pages/index.html` is
@@ -75,7 +82,8 @@ function readStoredZipEntries(path: string): Map<string, Buffer> {
  * property silently. Stripping the URLs removes the false positive at its source
  * and leaves the word boundary intact.
  */
-const ARTIFACT_CITATION = /\b(?:pages|screenshots|timestamps)\/[A-Za-z0-9._-]+\.[A-Za-z0-9]+/g
+const ARTIFACT_CITATION =
+  /\b(?:pages|screenshots|timestamps|attachments|images|documents)\/[A-Za-z0-9._-]+\.[A-Za-z0-9]+/g
 
 /** Absolute URLs, which are references to somewhere else and never citations. */
 const ABSOLUTE_URL = /https?:\/\/[^\s"'<>]+/g
@@ -342,6 +350,33 @@ describe('report citation invariants', () => {
           await png()
         )
         pinSnapshot(capture.id, '20250101000000', 'https://example.com/h')
+      }
+    },
+    {
+      // #1156: the property now has to hold over a package carrying exhibits of
+      // every kind and a derived file, which is where a new block citing a path
+      // the packager never wrote would first appear.
+      name: 'committed attachment, image and document with a derived file',
+      include: FULL,
+      setup: async () => {
+        await ingest('<html>mixed</html>', 'https://example.com/mixed', 'Mixed', await png())
+        const uploads = join(tempDir, 'uploads')
+        mkdirSync(uploads, { recursive: true })
+        const write = (name: string, bytes: Buffer): string => {
+          const path = join(uploads, name)
+          writeFileSync(path, bytes)
+          return path
+        }
+        const staged = await uploadToStaging(caseId, [
+          write('bundle.zip', Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x61, 0x62])),
+          write('photo.png', await png()),
+          write('statement.pdf', Buffer.from('%PDF-1.7\n%%EOF\n'))
+        ])
+        await commitStagedFiles(
+          caseId,
+          staged.map((row) => row.id)
+        )
+        await backfillCase(caseId, { toolVersion: '0.1.0' })
       }
     },
     {

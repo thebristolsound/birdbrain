@@ -1011,6 +1011,73 @@ describe('manifest schema 3 — Exhibit and Derived File binding (#1156)', () =>
     expect(result.pass).toBe(false)
   })
 
+  it('skips a Derived File whose parent the chain records as deleted (X29)', () => {
+    // A `derivation` entry outlives its parent: the chain is append-only, so
+    // deleting an Exhibit leaves the entry in place. The package is not
+    // expected to enclose a file derived from an Exhibit it no longer holds,
+    // and binding bytes to that entry would state something about an Exhibit
+    // this package does not contain.
+    const deletion = {
+      type: 'deletion',
+      captureId: EXHIBIT_ID,
+      caseId: CASE_ID,
+      timestamp: '2026-06-01T12:10:00.000Z',
+      contentHash: DOCUMENT_HASH,
+      ...OPERATOR,
+      schemaVersion: 3
+    }
+    const jsonl = buildChain([CAPTURE_ENTRY, EXHIBIT_ENTRY, DERIVATION_ENTRY, deletion])
+    const lines = jsonl.trim().split('\n')
+    const head = JSON.parse(lines[lines.length - 1]) as { index: number; entryHash: string }
+    writeFileSync(join(pkgDir, 'manifest.jsonl'), jsonl, 'utf-8')
+    writeFileSync(join(pkgDir, 'signing-public-key.pem'), getPublicKeyPem(), 'utf-8')
+    mkdirSync(join(pkgDir, 'pages'), { recursive: true })
+    writeFileSync(join(pkgDir, 'pages', `${CAPTURE_ID}.mhtml`), MHTML)
+    writeFileSync(
+      join(pkgDir, 'evidence.json'),
+      JSON.stringify({
+        schemaVersion: 2,
+        verificationMaterials: {
+          manifestPath: 'manifest.jsonl',
+          manifestHeadIndex: head.index,
+          manifestHeadHash: head.entryHash,
+          signingPublicKeyPath: 'signing-public-key.pem'
+        },
+        captures: [
+          {
+            id: CAPTURE_ID,
+            mhtmlPath: `pages/${CAPTURE_ID}.mhtml`,
+            mhtmlSha256: MHTML_HASH,
+            timestampTokenPaths: []
+          }
+        ],
+        exhibits: [
+          {
+            id: CAPTURE_ID,
+            kind: 'capture',
+            origin: 'extension',
+            exhibitNumber: 1,
+            name: 'Page',
+            contentHash: MHTML_HASH,
+            path: `pages/${CAPTURE_ID}.mhtml`,
+            derivedFiles: []
+          }
+        ],
+        artifacts: []
+      }),
+      'utf-8'
+    )
+
+    const result = verifyEvidencePackage(pkgDir)
+    const derivation = checkFor(result, `derivation pdf-metadata of ${EXHIBIT_ID}`)
+    expect(derivation?.status).toBe('skip')
+    expect(derivation?.reason).toContain('no active parent exhibit')
+    // The deleted Exhibit itself gets no row: the chain accounts for it.
+    expect(checkFor(result, `exhibit ${EXHIBIT_ID}`)).toBeUndefined()
+    expect(result.checks.filter((check) => check.status === 'fail')).toEqual([])
+    expect(result.pass).toBe(true)
+  })
+
   it('reports a chain Exhibit the index omits as an evidence.json disagreement', () => {
     writePackage()
     const path = join(pkgDir, 'evidence.json')

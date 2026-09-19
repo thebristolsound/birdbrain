@@ -9,6 +9,7 @@ import sharp from 'sharp'
 import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase, updateCase } from '@main/services/db/caseRepo'
 import { insertCapture, listCaptures, setCaptureTrustedTime } from '@main/services/db/captureRepo'
+import { listExhibits } from '@main/services/db/exhibitRepo'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import * as manifest from '@main/services/manifest'
@@ -282,7 +283,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -314,7 +321,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -426,7 +439,13 @@ describe('export', () => {
     const outputPath = join(tempDir, 'audited-evidence.zip')
     const options: ExportOptions = {
       format: 'zip',
-      include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+      include: {
+        captures: true,
+        screenshots: false,
+        auditTrail: true,
+        notes: false,
+        annotations: 'none'
+      },
       exportClass: 'evidence',
       outputPath
     }
@@ -490,7 +509,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -537,7 +562,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -582,7 +613,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath,
         captureIds: [selected.id]
@@ -669,7 +706,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: false,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath,
         captureIds: [selected.id]
@@ -706,7 +749,13 @@ describe('export', () => {
       caseId,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath,
         captureIds: [selected.id]
@@ -730,7 +779,13 @@ describe('export', () => {
         caseId,
         {
           format: 'zip',
-          include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+          include: {
+            captures: true,
+            screenshots: false,
+            auditTrail: true,
+            notes: false,
+            annotations: 'none'
+          },
           exportClass: 'evidence',
           outputPath: join(tempDir, 'never-written.zip'),
           captureIds: ['not-a-real-capture-id']
@@ -749,7 +804,13 @@ describe('export', () => {
         caseId,
         {
           format: 'zip',
-          include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+          include: {
+            captures: true,
+            screenshots: false,
+            auditTrail: true,
+            notes: false,
+            annotations: 'none'
+          },
           exportClass: 'evidence',
           outputPath: join(tempDir, 'never-written.zip'),
           captureIds: []
@@ -775,7 +836,13 @@ describe('export', () => {
         caseId,
         {
           format: 'zip',
-          include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+          include: {
+            captures: true,
+            screenshots: false,
+            auditTrail: true,
+            notes: false,
+            annotations: 'none'
+          },
           exportClass: 'evidence',
           outputPath: dirAsOutput
         },
@@ -811,7 +878,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: true, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: true,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -883,7 +956,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: true, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: true,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -945,7 +1024,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -976,7 +1061,13 @@ describe('export', () => {
     const outputPath = join(tempDir, 'axes.html')
     const options: ExportOptions = {
       format: 'html',
-      include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+      include: {
+        captures: true,
+        screenshots: false,
+        auditTrail: true,
+        notes: false,
+        annotations: 'none'
+      },
       exportClass: 'evidence',
       outputPath
     }
@@ -1041,7 +1132,13 @@ describe('export', () => {
       caseId,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1098,7 +1195,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1117,44 +1220,58 @@ describe('export', () => {
   // the identification command it now gives against a real mixed chain and check
   // it names the unsigned entry and only that one. If the command drifts from
   // what jq accepts, or from the shape the export actually writes, this fails.
-  it.skipIf(!HAS_JQ)('ships a VERIFY.md whose unsigned-entry command finds the legacy entry', async () => {
-    const caseDir = join(tempDir, 'captures', caseId)
-    await seedLegacyGenesisCapture(caseId, caseDir)
-    await ingest(caseId, '<html><body>Signed</body></html>', 'https://example.com/signed', 'Signed')
+  it.skipIf(!HAS_JQ)(
+    'ships a VERIFY.md whose unsigned-entry command finds the legacy entry',
+    async () => {
+      const caseDir = join(tempDir, 'captures', caseId)
+      await seedLegacyGenesisCapture(caseId, caseDir)
+      await ingest(
+        caseId,
+        '<html><body>Signed</body></html>',
+        'https://example.com/signed',
+        'Signed'
+      )
 
-    const outputPath = join(tempDir, 'runbook-evidence.zip')
-    await generateReport(
-      caseId,
-      {
-        format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
-        exportClass: 'evidence',
-        outputPath
-      },
-      captureLifecycle
-    )
+      const outputPath = join(tempDir, 'runbook-evidence.zip')
+      await generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: {
+            captures: true,
+            screenshots: false,
+            auditTrail: true,
+            notes: false,
+            annotations: 'none'
+          },
+          exportClass: 'evidence',
+          outputPath
+        },
+        captureLifecycle
+      )
 
-    const entries = readStoredZipEntries(outputPath)
-    const runbook = entries.get('VERIFY.md')!.toString('utf-8')
-    expect(runbook).toContain('Not every entry is signed')
+      const entries = readStoredZipEntries(outputPath)
+      const runbook = entries.get('VERIFY.md')!.toString('utf-8')
+      expect(runbook).toContain('Not every entry is signed')
 
-    // Lift the jq filter out of the shipped document rather than restating it,
-    // so the command under test is the one a reader is actually given.
-    const filter = runbook.match(/jq -r '([^']+)' manifest\.jsonl/)?.[1]
-    expect(filter).toBeDefined()
+      // Lift the jq filter out of the shipped document rather than restating it,
+      // so the command under test is the one a reader is actually given.
+      const filter = runbook.match(/jq -r '([^']+)' manifest\.jsonl/)?.[1]
+      expect(filter).toBeDefined()
 
-    const manifestPath = join(tempDir, 'runbook-manifest.jsonl')
-    writeFileSync(manifestPath, entries.get('manifest.jsonl')!)
-    const found = execFileSync('jq', ['-r', filter!, manifestPath], { encoding: 'utf-8' })
-      .trim()
-      .split('\n')
-      .filter(Boolean)
+      const manifestPath = join(tempDir, 'runbook-manifest.jsonl')
+      writeFileSync(manifestPath, entries.get('manifest.jsonl')!)
+      const found = execFileSync('jq', ['-r', filter!, manifestPath], { encoding: 'utf-8' })
+        .trim()
+        .split('\n')
+        .filter(Boolean)
 
-    // Exactly one line. A filter that over-matched — listing the signed entry
-    // too — would send a reader chasing a signature that is legitimately there.
-    expect(found).toHaveLength(1)
-    expect(found[0]).toBe('index 0 capture — unsigned')
-  })
+      // Exactly one line. A filter that over-matched — listing the signed entry
+      // too — would send a reader chasing a signature that is legitimately there.
+      expect(found).toHaveLength(1)
+      expect(found[0]).toBe('index 0 capture — unsigned')
+    }
+  )
 
   // A capture the chain never recorded has no signature to report and must not
   // borrow the signed wording by defaulting.
@@ -1177,7 +1294,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1195,7 +1318,13 @@ describe('export', () => {
     const outputPath = join(tempDir, 'unverified-evidence.zip')
     const options: ExportOptions = {
       format: 'zip',
-      include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+      include: {
+        captures: true,
+        screenshots: false,
+        auditTrail: false,
+        notes: false,
+        annotations: 'none'
+      },
       exportClass: 'evidence',
       outputPath
     }
@@ -1229,7 +1358,13 @@ describe('export', () => {
     const outputPath = join(tempDir, 'orphan-evidence.zip')
     const options: ExportOptions = {
       format: 'zip',
-      include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+      include: {
+        captures: true,
+        screenshots: false,
+        auditTrail: true,
+        notes: false,
+        annotations: 'none'
+      },
       exportClass: 'evidence',
       outputPath
     }
@@ -1278,7 +1413,13 @@ describe('export', () => {
       caseId,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: false,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1361,7 +1502,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: false,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1391,7 +1538,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1430,7 +1583,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1456,7 +1615,13 @@ describe('export', () => {
       caseId,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1511,7 +1676,13 @@ describe('export', () => {
       c.id,
       {
         format: 'html',
-        include: { captures: true, screenshots: true, auditTrail: false, notes: false, annotations: 'burned' },
+        include: {
+          captures: true,
+          screenshots: true,
+          auditTrail: false,
+          notes: false,
+          annotations: 'burned'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1541,7 +1712,13 @@ describe('export', () => {
       c.id,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: false,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1562,7 +1739,13 @@ describe('export', () => {
       caseId,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: false,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1584,7 +1767,13 @@ describe('export', () => {
       caseId,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1610,7 +1799,13 @@ describe('export', () => {
       caseId,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: false,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1650,7 +1845,13 @@ describe('export', () => {
       c.id,
       {
         format: 'html',
-        include: { captures: true, screenshots: true, auditTrail: false, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: true,
+          auditTrail: false,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1691,7 +1892,13 @@ describe('export', () => {
         format: 'zip',
         // auditTrail off, so the claim comes from the manifest fallback rather
         // than from a verification result — the path that read a stale mirror.
-        include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: false,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1735,7 +1942,13 @@ describe('export', () => {
       caseId,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: false,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1793,7 +2006,13 @@ describe('export', () => {
       c.id,
       {
         format: 'html',
-        include: { captures: true, screenshots: true, auditTrail: false, notes: false, annotations: 'burned' },
+        include: {
+          captures: true,
+          screenshots: true,
+          auditTrail: false,
+          notes: false,
+          annotations: 'burned'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1812,7 +2031,13 @@ describe('export', () => {
       caseId,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1834,7 +2059,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: false,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1855,7 +2086,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1880,7 +2117,13 @@ describe('export', () => {
         caseId,
         {
           format: 'html',
-          include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+          include: {
+            captures: true,
+            screenshots: false,
+            auditTrail: false,
+            notes: false,
+            annotations: 'none'
+          },
           exportClass: 'evidence',
           outputPath
         },
@@ -1898,7 +2141,13 @@ describe('export', () => {
         caseId,
         {
           format: 'html',
-          include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+          include: {
+            captures: true,
+            screenshots: false,
+            auditTrail: false,
+            notes: false,
+            annotations: 'none'
+          },
           exportClass: 'evidence',
           outputPath
         },
@@ -1919,7 +2168,13 @@ describe('export', () => {
       caseId,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: false,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1969,7 +2224,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: true, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: true,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -2444,13 +2705,51 @@ describe('export', () => {
         captureIds: string[]
       }
       expect(exportEntry.scope).toBe('selection')
-      expect([...exportEntry.captureIds].sort()).toEqual(
-        [fixture.captureId, selected.id].sort()
-      )
+      expect([...exportEntry.captureIds].sort()).toEqual([fixture.captureId, selected.id].sort())
 
       // #985's disclosure: the count left out is stated, not left to be counted.
       const report = entries.get('report.html')!.toString('utf-8')
       expect(report).toContain('It also leaves out 2 committed exhibit')
+    })
+
+    it('discloses an altered exhibit rather than packaging it silently', async () => {
+      // The export's verification run covers every kind (X37): bytes that no
+      // longer recompute to the digest the chain records are stated as altered
+      // on the exhibit's own page and counted out of the cover tally.
+      const target = fixture.attachment
+      const stored = listExhibits(fixture.caseId).find((e) => e.id === target.id)!
+      writeFileSync(join(tempDir, 'captures', stored.path!), 'substituted attachment bytes')
+
+      const entries = await exportMixed('mixed-altered.zip')
+      const report = entries.get('report.html')!.toString('utf-8')
+
+      expect(report).toContain('Altered')
+      expect(report).toContain(
+        'The stored bytes no longer recompute to the digest recorded for this exhibit'
+      )
+      // Counted over every kind: three of the four exhibits verify.
+      expect(report).toContain('3 / 4')
+    })
+
+    it('states a committed exhibit whose stored bytes are gone as a gap', async () => {
+      const target = fixture.image
+      const stored = listExhibits(fixture.caseId).find((e) => e.id === target.id)!
+      rmSync(join(tempDir, 'captures', stored.path!))
+
+      const entries = await exportMixed('mixed-missing.zip')
+      expect(entries.has(target.packagePath)).toBe(false)
+
+      const report = entries.get('report.html')!.toString('utf-8')
+      expect(report).toContain('Stored file not available')
+      expect(report).toContain('Absent')
+
+      const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+        warnings: { missingContentExhibitCount: number; missingContentExhibitIds: string[] }
+        exhibits: Array<{ id: string; path: string | null }>
+      }
+      expect(evidence.warnings.missingContentExhibitCount).toBe(1)
+      expect(evidence.warnings.missingContentExhibitIds).toEqual([target.id])
+      expect(evidence.exhibits.find((e) => e.id === target.id)!.path).toBeNull()
     })
 
     it('ships the same exhibits and derived files in a Working Copy', async () => {
@@ -2483,11 +2782,7 @@ describe('export', () => {
         document: 1
       })
       expect(marker.contents.derivedFileCount).toBe(1)
-      expect(marker.exhibits.map((e) => e.kind).sort()).toEqual([
-        'attachment',
-        'document',
-        'image'
-      ])
+      expect(marker.exhibits.map((e) => e.kind).sort()).toEqual(['attachment', 'document', 'image'])
     })
   })
 })

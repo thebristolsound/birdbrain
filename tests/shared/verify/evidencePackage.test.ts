@@ -128,7 +128,9 @@ describe('verifyEvidencePackage', () => {
       url: 'https://example.com/page',
       title: 'Page',
       timestamp: '2026-04-05T12:00:00.000Z',
-      stream: Readable.from([Buffer.from('<html><body>Packaged</body></html>')]) as unknown as ReadableStream<Uint8Array>,
+      stream: Readable.from([
+        Buffer.from('<html><body>Packaged</body></html>')
+      ]) as unknown as ReadableStream<Uint8Array>,
       textContent: 'extracted text',
       headers: {},
       browserVersion: '',
@@ -162,7 +164,13 @@ describe('verifyEvidencePackage', () => {
     const outputPath = join(tempDir, 'evidence.zip')
     const options: ExportOptions = {
       format: 'zip',
-      include: { captures: true, screenshots: true, auditTrail: true, notes: false, annotations: 'none' },
+      include: {
+        captures: true,
+        screenshots: true,
+        auditTrail: true,
+        notes: false,
+        annotations: 'none'
+      },
       exportClass: 'evidence',
       outputPath
     }
@@ -204,11 +212,19 @@ describe('verifyEvidencePackage', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: true, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: true,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
-      createCaptureLifecycle({ selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} }) })
+      createCaptureLifecycle({
+        selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} })
+      })
     )
 
     const orphanDir = mkdtempSync(join(tmpdir(), 'bb-pkg-orphan-'))
@@ -265,7 +281,9 @@ describe('verifyEvidencePackage', () => {
     // Drop the timestamp token from the signed entry: the capture is still a v2
     // capture (eligible) but now unstamped → pending, reported as a SKIP.
     const p = join(pkgDir, 'manifest.jsonl')
-    const lines = readFileSync(p, 'utf-8').split('\n').filter((l) => l.trim())
+    const lines = readFileSync(p, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim())
     const kept = lines.filter((l) => JSON.parse(l).type !== 'timestamp')
     writeFileSync(p, kept.join('\n') + '\n')
     const result = verifyEvidencePackage(pkgDir)
@@ -286,7 +304,9 @@ describe('verifyEvidencePackage', () => {
 
   it('FAILs with "Entry hash mismatch" when a manifest body field is mutated', () => {
     const p = join(pkgDir, 'manifest.jsonl')
-    const lines = readFileSync(p, 'utf-8').split('\n').filter((l) => l.trim())
+    const lines = readFileSync(p, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim())
     const entry = JSON.parse(lines[0])
     entry.url = 'https://tampered.example.com'
     lines[0] = JSON.stringify(entry)
@@ -298,7 +318,9 @@ describe('verifyEvidencePackage', () => {
 
   it('FAILs with "Invalid signature" when a signature is stripped', () => {
     const p = join(pkgDir, 'manifest.jsonl')
-    const lines = readFileSync(p, 'utf-8').split('\n').filter((l) => l.trim())
+    const lines = readFileSync(p, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim())
     const entry = JSON.parse(lines[0])
     delete entry.signature
     lines[0] = JSON.stringify(entry)
@@ -567,7 +589,10 @@ describe('verifyEvidencePackage', () => {
 
     const freshManifest = readFileSync(join(caseDir, 'manifest.jsonl'))
     writeFileSync(join(pkgDir, 'manifest.jsonl'), freshManifest)
-    const lines = freshManifest.toString('utf-8').split('\n').filter((l) => l.trim())
+    const lines = freshManifest
+      .toString('utf-8')
+      .split('\n')
+      .filter((l) => l.trim())
     const head = JSON.parse(lines[lines.length - 1])
     const evidence = JSON.parse(readFileSync(join(pkgDir, 'evidence.json'), 'utf-8'))
     const rec = evidence.captures.find((c: { id: string }) => c.id === captureId)
@@ -585,7 +610,9 @@ describe('verifyEvidencePackage', () => {
     )
     evidence.verificationMaterials.manifestHeadIndex = head.index
     evidence.verificationMaterials.manifestHeadHash = head.entryHash
-    const manArtifact = evidence.artifacts.find((a: { path: string }) => a.path === 'manifest.jsonl')
+    const manArtifact = evidence.artifacts.find(
+      (a: { path: string }) => a.path === 'manifest.jsonl'
+    )
     if (manArtifact) {
       manArtifact.sha256 = createHash('sha256').update(freshManifest).digest('hex')
       manArtifact.sizeBytes = freshManifest.length
@@ -625,7 +652,9 @@ describe('verifyEvidencePackage', () => {
     // own terms.
     function appendSignedLine(body: Record<string, unknown>): void {
       const p = join(pkgDir, 'manifest.jsonl')
-      const lines = readFileSync(p, 'utf-8').split('\n').filter((l) => l.trim())
+      const lines = readFileSync(p, 'utf-8')
+        .split('\n')
+        .filter((l) => l.trim())
       const head = JSON.parse(lines[lines.length - 1]) as { index: number; entryHash: string }
       const full = { ...body, index: head.index + 1, prevHash: head.entryHash, schemaVersion: 2 }
       const entryHash = createHash('sha256').update(canonicalStringify(full)).digest('hex')
@@ -637,7 +666,9 @@ describe('verifyEvidencePackage', () => {
     // own, appended in that order after whatever the manifest already holds.
     function appendDeletionAndCapture(): void {
       const first = JSON.parse(
-        readFileSync(join(pkgDir, 'manifest.jsonl'), 'utf-8').split('\n').filter((l) => l.trim())[0]
+        readFileSync(join(pkgDir, 'manifest.jsonl'), 'utf-8')
+          .split('\n')
+          .filter((l) => l.trim())[0]
       )
       appendSignedLine({
         type: 'deletion',
@@ -670,7 +701,9 @@ describe('verifyEvidencePackage', () => {
     // (it excludes `signature`), so the lines appended after it still link.
     function forgeSignatureAt(index: number): void {
       const p = join(pkgDir, 'manifest.jsonl')
-      const lines = readFileSync(p, 'utf-8').split('\n').filter((l) => l.trim())
+      const lines = readFileSync(p, 'utf-8')
+        .split('\n')
+        .filter((l) => l.trim())
       const entry = JSON.parse(lines[index])
       entry.signature = signEntryHash('f'.repeat(64))
       lines[index] = JSON.stringify(entry)
@@ -748,8 +781,9 @@ describe('verifyEvidencePackage', () => {
         toolVersion: '0.1.0'
       })
       const breakIndex =
-        readFileSync(join(pkgDir, 'manifest.jsonl'), 'utf-8').split('\n').filter((l) => l.trim())
-          .length - 1
+        readFileSync(join(pkgDir, 'manifest.jsonl'), 'utf-8')
+          .split('\n')
+          .filter((l) => l.trim()).length - 1
       forgeSignatureAt(breakIndex)
 
       const result = verifyEvidencePackage(pkgDir)
@@ -818,7 +852,10 @@ describe('verifyEvidencePackage', () => {
       if (rel && existsSync(join(pkgDir, rel))) rmSync(join(pkgDir, rel))
     }
     // Reflect the hard-delete in the unsigned index and refresh the head.
-    const lines = freshManifest.toString('utf-8').split('\n').filter((l) => l.trim())
+    const lines = freshManifest
+      .toString('utf-8')
+      .split('\n')
+      .filter((l) => l.trim())
     const head = JSON.parse(lines[lines.length - 1])
     evidence.captures = []
     // The Exhibit list drops the same row: a Capture is an Exhibit (X35), so an
@@ -834,7 +871,9 @@ describe('verifyEvidencePackage', () => {
         !rec.timestampTokenPaths.includes(a.path)
     )
     // The manifest.jsonl artifact digest changed (we appended a deletion entry).
-    const manArtifact = evidence.artifacts.find((a: { path: string }) => a.path === 'manifest.jsonl')
+    const manArtifact = evidence.artifacts.find(
+      (a: { path: string }) => a.path === 'manifest.jsonl'
+    )
     if (manArtifact) {
       manArtifact.sha256 = createHash('sha256').update(freshManifest).digest('hex')
       manArtifact.sizeBytes = freshManifest.length
@@ -891,7 +930,13 @@ describe('verifyEvidencePackage', () => {
         caseId,
         {
           format: 'zip',
-          include: { captures: true, screenshots: true, auditTrail: true, notes: false, annotations: 'none' },
+          include: {
+            captures: true,
+            screenshots: true,
+            auditTrail: true,
+            notes: false,
+            annotations: 'none'
+          },
           exportClass: 'evidence',
           outputPath: selZipPath,
           captureIds: [captureId]
@@ -1019,7 +1064,13 @@ describe('verifyEvidencePackage', () => {
         caseId,
         {
           format: 'zip',
-          include: { captures: true, screenshots: true, auditTrail: true, notes: false, annotations: 'none' },
+          include: {
+            captures: true,
+            screenshots: true,
+            auditTrail: true,
+            notes: false,
+            annotations: 'none'
+          },
           exportClass: 'evidence',
           outputPath: secondZip,
           captureIds: [captureId]
@@ -1109,7 +1160,13 @@ describe('verifyEvidencePackage', () => {
         caseId,
         {
           format: 'zip',
-          include: { captures: true, screenshots: true, auditTrail: true, notes: true, annotations: 'none' },
+          include: {
+            captures: true,
+            screenshots: true,
+            auditTrail: true,
+            notes: true,
+            annotations: 'none'
+          },
           exportClass: 'evidence',
           outputPath: notesZip,
           captureIds: [captureId]
@@ -1174,7 +1231,10 @@ describe('verifyEvidencePackage', () => {
       const result = verifyEvidencePackage(selDir)
       expect(result.pass).toBe(false)
       expect(
-        hasReason(result, `evidence.json lists capture ${captureB} outside the signed export selection`)
+        hasReason(
+          result,
+          `evidence.json lists capture ${captureB} outside the signed export selection`
+        )
       ).toBe(true)
     })
 
@@ -1194,7 +1254,13 @@ describe('verifyEvidencePackage', () => {
         caseId,
         {
           format: 'zip',
-          include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+          include: {
+            captures: true,
+            screenshots: false,
+            auditTrail: false,
+            notes: false,
+            annotations: 'none'
+          },
           exportClass: 'evidence',
           outputPath,
           captureIds: [orphan.id]
@@ -1230,7 +1296,13 @@ describe('verifyEvidencePackage', () => {
         caseId,
         {
           format: 'zip',
-          include: { captures: true, screenshots: true, auditTrail: false, notes: true, annotations: 'none' },
+          include: {
+            captures: true,
+            screenshots: true,
+            auditTrail: false,
+            notes: true,
+            annotations: 'none'
+          },
           exportClass: 'working-copy',
           outputPath
         },
@@ -1304,7 +1376,13 @@ describe('verifyEvidencePackage', () => {
         caseId,
         {
           format: 'zip',
-          include: { captures: true, screenshots: true, auditTrail: true, notes: false, annotations: 'none' },
+          include: {
+            captures: true,
+            screenshots: true,
+            auditTrail: true,
+            notes: false,
+            annotations: 'none'
+          },
           exportClass: 'evidence',
           outputPath
         },
@@ -1484,6 +1562,21 @@ describe('verifyEvidencePackage — exhibits of every kind (#1156)', () => {
     expect(checkNamed(result, `exhibit ${fixture.attachment.id}`)?.reason).toContain(
       'is missing from the package'
     )
+  })
+
+  it('fails an evidence.json that lists an exhibit the chain does not hold', () => {
+    const path = join(pkgDir, 'evidence.json')
+    const evidence = JSON.parse(readFileSync(path, 'utf-8')) as {
+      exhibits: Array<{ id: string; kind: string }>
+    }
+    evidence.exhibits.push({ ...evidence.exhibits[1], id: 'planted-exhibit-id' })
+    writeFileSync(path, JSON.stringify(evidence, null, 2))
+
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass).toBe(false)
+    const check = result.checks.find((c) => c.name === 'evidence.json exhibits')
+    expect(check?.status).toBe('fail')
+    expect(check?.reason).toContain('planted-exhibit-id')
   })
 
   it('passes a selection scoped over mixed kinds and skips what it leaves out', async () => {

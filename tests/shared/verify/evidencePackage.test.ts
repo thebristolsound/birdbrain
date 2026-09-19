@@ -16,9 +16,10 @@ import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { signEntryHash } from '@main/services/signingKey'
 import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
+import type { PackageCheck, PackageVerifyResult } from '@shared/verify/evidencePackage'
 import { canonicalStringify } from '@shared/verify'
 import { packageHash } from '@shared/verify/packageHash'
-import { EvidencePackageSchema } from '@shared/schemas'
+import { EVIDENCE_INDEX_SCHEMA_VERSION, EvidencePackageSchema } from '@shared/schemas'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 import type { ExportOptions } from '@shared/types'
 
@@ -61,6 +62,7 @@ function hasReason(result: { checks: Array<{ reason?: string }> }, needle: strin
 }
 
 interface EvidenceJson {
+  schemaVersion: number
   captures: Array<{ id: string; timestampTokenPaths: string[] }>
   artifacts: Array<{ path: string; sha256?: string; sizeBytes?: number }>
 }
@@ -805,11 +807,16 @@ describe('verifyEvidencePackage', () => {
     // deleted capture's content/screenshot/timestamp files and index entries.
     // The packaged export-entry.json extended the ORIGINAL bundled head, so the
     // hand-rebuilt manifest orphans it; drop it too — the rebuilt package takes
-    // the pre-scope layout, which must keep verifying without one (#398).
+    // the pre-scope layout, which must keep verifying without one (#398). The
+    // index is put back to schema 1 in the same breath, because that layout IS
+    // the pre-scope era and since #853 the index is what states which era a
+    // package belongs to: a post-scope index with no entry beside it is a
+    // stripped package, which the test below pins.
     const freshManifest = readFileSync(join(caseDir, 'manifest.jsonl'))
     writeFileSync(join(pkgDir, 'manifest.jsonl'), freshManifest)
     rmSync(join(pkgDir, 'export-entry.json'))
     const evidence = JSON.parse(readFileSync(join(pkgDir, 'evidence.json'), 'utf-8'))
+    evidence.schemaVersion = 1
     const rec = evidence.captures.find((c: { id: string }) => c.id === captureId)
     // Remove the deleted capture's files.
     for (const rel of [rec.mhtmlPath, rec.screenshotPath, ...rec.timestampTokenPaths]) {
@@ -837,6 +844,92 @@ describe('verifyEvidencePackage', () => {
 
     const result = verifyEvidencePackage(pkgDir)
     expect(result.pass, JSON.stringify(result.checks, null, 2)).toBe(true)
+  })
+
+  // #853. `pkgDir` is a CASE-scoped evidence package: every chain capture is
+  // packaged, so stripping export-entry.json produces no absence for §7.3 to
+  // fire on the way a selection package's unselected captures do. Before the
+  // era gate that strip silently skipped the #836 packageHash binding and the
+  // package still PASSed.
+  describe('export-entry era gate (#853)', () => {
+    const eraCheck = (result: PackageVerifyResult): PackageCheck | undefined =>
+      result.checks.find((c) => c.name === 'export entry')
+
+    it('stamps the post-scope index version into a package it sealed with an entry', () => {
+      // The writer half of the gate: the FAIL below is only sound because every
+      // evidence package this build writes carries both the entry and the
+      // version that says so.
+      const evidence = JSON.parse(readFileSync(join(pkgDir, 'evidence.json'), 'utf-8')) as {
+        schemaVersion: number
+      }
+      expect(evidence.schemaVersion).toBe(EVIDENCE_INDEX_SCHEMA_VERSION)
+      expect(existsSync(join(pkgDir, 'export-entry.json'))).toBe(true)
+    })
+
+    it('FAILs a case-scoped package whose export-entry.json was stripped', () => {
+      rmSync(join(pkgDir, 'export-entry.json'))
+
+      const result = verifyEvidencePackage(pkgDir)
+
+      expect(result.pass).toBe(false)
+      expect(eraCheck(result)?.status).toBe('fail')
+      expect(hasReason(result, 'export-entry.json missing from package')).toBe(true)
+      expect(hasReason(result, 'sealed with a signed export entry')).toBe(true)
+      // Nothing else caught it: the chain is untouched, every packaged file
+      // still matches, and the binding the strip was reaching for never ran.
+      expect(result.checks.find((c) => c.name === 'manifest chain')?.status).toBe('pass')
+      expect(result.checks.find((c) => c.name === 'evidence.json artifact sweep')?.status).toBe(
+        'pass'
+      )
+      expect(result.checks.find((c) => c.name === 'package hash')).toBeUndefined()
+    })
+
+    it('reports the pre-scope era as a visible SKIP rather than silence', () => {
+      // A package that genuinely predates export entries keeps verifying (#398)
+      // — but the report now says which binding that age cost it, instead of
+      // omitting the row.
+      rmSync(join(pkgDir, 'export-entry.json'))
+      mutateEvidenceJson(pkgDir, (evidence) => {
+        evidence.schemaVersion = 1
+      })
+
+      const result = verifyEvidencePackage(pkgDir)
+
+      expect(result.pass, JSON.stringify(result.checks, null, 2)).toBe(true)
+      expect(eraCheck(result)?.status).toBe('skip')
+      expect(eraCheck(result)?.reason).toContain('predates export entries')
+      expect(eraCheck(result)?.reason).toContain('not bound to a signed statement')
+    })
+
+    // The residual, stated as a known answer rather than left to be discovered:
+    // evidence.json is unsigned, so the era claim is the tamperer's to rewrite.
+    // The test above is byte-identical to this tamper — which is the point. The
+    // gate makes the one-file strip loud and forces the second edit; it does not
+    // make the index trustworthy, and no part of this PR claims it does.
+    it('still PASSes when the strip also rewrites the unsigned era claim', () => {
+      rmSync(join(pkgDir, 'export-entry.json'))
+      mutateEvidenceJson(pkgDir, (evidence) => {
+        evidence.schemaVersion = 1
+      })
+
+      const result = verifyEvidencePackage(pkgDir)
+
+      expect(result.pass).toBe(true)
+      expect(result.checks.find((c) => c.name === 'package hash')).toBeUndefined()
+    })
+
+    it('leaves the era ungraded when evidence.json itself is gone', () => {
+      // The era is the index's statement to make. With no index there is no
+      // claim to grade, and the missing-index FAIL is the honest report.
+      rmSync(join(pkgDir, 'export-entry.json'))
+      rmSync(join(pkgDir, 'evidence.json'))
+
+      const result = verifyEvidencePackage(pkgDir)
+
+      expect(result.pass).toBe(false)
+      expect(eraCheck(result)).toBeUndefined()
+      expect(hasReason(result, 'evidence.json missing from package')).toBe(true)
+    })
   })
 
   // #398 selection scope, built on the outer fixture: capture A (the outer
@@ -949,6 +1042,8 @@ describe('verifyEvidencePackage', () => {
       const result = verifyEvidencePackage(selDir)
       expect(result.pass).toBe(false)
       expect(hasReason(result, `capture ${captureB}: content file missing`)).toBe(true)
+      // And since #853 the strip is named for what it is, on both scopes.
+      expect(hasReason(result, 'export-entry.json missing from package')).toBe(true)
     })
 
     // Rebuilds export-entry.json with the harness's real signing key after

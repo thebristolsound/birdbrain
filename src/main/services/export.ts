@@ -44,7 +44,7 @@ import { buildHtmlReport } from '@main/services/reportHtml'
 import type { EntrySignatureStatus, PackagedArtifacts, ReportData } from '@main/services/reportHtml'
 import { VERIFY_RUNBOOK } from '@main/services/verifyRunbook'
 import { VERIFY_SCRIPT, VERIFY_SCRIPT_FILENAME } from '@main/services/verifyScript'
-import { WORKING_COPY_MARKER_FILENAME } from '@shared/schemas'
+import { EVIDENCE_INDEX_SCHEMA_VERSION, WORKING_COPY_MARKER_FILENAME } from '@shared/schemas'
 import type {
   Capture,
   ExportOptions,
@@ -706,7 +706,12 @@ function buildEvidenceZip(
   })
 
   const evidence = {
-    schemaVersion: 1,
+    // The package's era, not its shape (#853). The caller unshifts
+    // export-entry.json into every evidence-class zip, so stamping the
+    // post-scope version here is this index's statement that the package was
+    // sealed with a signed export entry — which is what lets the verifier read
+    // that entry's absence as a stripped file rather than an old package.
+    schemaVersion: EVIDENCE_INDEX_SCHEMA_VERSION,
     generatedBy: 'Birdbrain',
     exportedAt: data.exportTimestamp,
     case: {

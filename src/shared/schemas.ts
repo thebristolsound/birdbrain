@@ -750,6 +750,21 @@ export const MANIFEST_ENTRY_TYPES: ReadonlySet<string> = new Set(
 
 // --- Evidence package index (evidence.json) -------------------------------
 
+// The `schemaVersion` buildEvidenceZip stamps into evidence.json. It names the
+// package's ERA, not a shape change: v1 covers both the pre-#398 packages that
+// ship no export-entry.json and the post-#398 ones that do, so a verifier
+// reading a v1 index cannot tell a package that predates export entries from
+// one whose entry was stripped (#853). Every writer from v2 on seals the
+// package with a signed export entry, so a v2 index with no entry beside it is
+// a missing file. Bump only when that era statement changes — adding an
+// informational key does not, since the schema below is deliberately
+// non-strict.
+//
+// Defined here rather than in constants.ts for the same reason
+// WORKING_COPY_MARKER_FILENAME is: the standalone verifier may import only
+// @shared/verify/** and @shared/schemas.
+export const EVIDENCE_INDEX_SCHEMA_VERSION = 2
+
 // `evidence.json` is the UNSIGNED convenience index emitted by buildEvidenceZip.
 // Only `manifest.jsonl` is signed, so the standalone verifier (#122) treats this
 // index as untrusted: it parses it for structure, then reconciles every field

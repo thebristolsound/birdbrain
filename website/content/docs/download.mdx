@@ -1,0 +1,148 @@
+---
+title: 'Download Birdbrain'
+description: 'Get the public beta build for Windows or Ubuntu, load the Chrome extension, and see what the project wants reported.'
+---
+
+Birdbrain is in public beta. This page covers where the builds are, what each platform gets,
+where security advisories appear, and what to report. For the walkthrough from a fresh install
+to your first capture, read [Install and first capture](./tester-guide.mdx).
+
+Birdbrain is open source, and the source repository opens when the public-readiness effort
+closes. Until then the builds come from a separate public repository that holds releases only,
+so you need no GitHub account and no access to the source to download one.
+
+## Get the build
+
+Every build is on the
+[Birdbrain releases page](https://github.com/thebristolsound/birdbrain-releases/releases). Open
+the latest release there and download the file for your platform. Asset filenames carry the
+version, so no per-file "latest" link exists — bookmark the releases page instead.
+
+The commands below use `<version>` as a placeholder for the version in the filename you
+downloaded.
+
+## Platforms
+
+| Platform | Format | Status |
+| --- | --- | --- |
+| Windows 10 / 11 | NSIS `.exe` | Supported. The installer is unsigned, so SmartScreen warns the first time you run it. Updates install in place. |
+| Ubuntu | AppImage | Supported, and the primary Linux format. Updates replace the file in place. |
+| Ubuntu | `.deb` | Best-effort. Updates download through the in-app updater but install only when you click **Restart to update** and enter your system password, so watch the releases page for updates and advisories. |
+| macOS | none | Not published and unsupported. Notarization is the blocker. |
+
+## Install on Windows
+
+1. Download `Birdbrain-Setup-<version>.exe` and run it.
+2. SmartScreen warns about an unrecognized app, because the builds are not code-signed yet.
+   Click **More info**, then **Run anyway**.
+3. The installer finishes and launches Birdbrain.
+
+## Install on Ubuntu
+
+The AppImage needs the execute bit and FUSE 2 before it will run:
+
+```bash
+chmod +x Birdbrain-<version>.AppImage
+sudo apt install libfuse2t64      # 22.04 and earlier: libfuse2
+./Birdbrain-<version>.AppImage
+```
+
+Ubuntu stopped installing FUSE 2 by default, and without it the app does not start. The error
+reads like a broken download rather than a missing library. If you would rather not install it,
+run the AppImage with `--appimage-extract-and-run` instead:
+
+```bash
+./Birdbrain-<version>.AppImage --appimage-extract-and-run
+```
+
+The `.deb` is the alternative:
+
+```bash
+sudo apt install ./birdbrain_<version>_amd64.deb
+```
+
+Then launch **Birdbrain** from your app launcher, or run `birdbrain` in a terminal. The `.deb`
+is best-effort: it receives updates through the in-app updater, but installing one runs `dpkg`
+behind a system password prompt, so nothing installs until you click **Restart to update**. On
+the `.deb`, watch the releases page rather than waiting for the app to carry a fix to you.
+
+## Install on macOS
+
+No macOS build is published, and macOS is unsupported this beta. Notarization is the blocker:
+macOS refuses an unsigned, un-notarized app on a default install, and signing and notarization
+are deferred to the first non-beta release. There are no builds on request, because there is no
+channel to ask in.
+
+## Load the Chrome extension
+
+The extension is not on the Chrome Web Store yet, so it loads unpacked in developer mode. The
+app walks you through this on first launch. The short version:
+
+1. Open `chrome://extensions` in Chrome.
+2. Switch on **Developer mode**.
+3. In Birdbrain, click **Open extension folder**.
+4. In Chrome, click **Load unpacked** and select the folder the app opened, the one holding
+   `manifest.json`.
+
+After an app update, reload the extension at `chrome://extensions`. Chrome keeps running the
+copy it loaded until you do, so until then the extension is still the previous version.
+[Install and first capture](./tester-guide.mdx) has the long form of both steps.
+
+## Your data
+
+Use synthetic or low-stakes material where you can. Real project data is tolerated, not
+endorsed, and what follows is advice rather than a control.
+
+When a new version needs to upgrade the case database, Birdbrain copies the database first,
+into a `db-snapshots` folder beside it, and applies the upgrade only if that copy succeeded. If
+the copy fails, the upgrade does not run and your data stays as it was. Three limits sit on
+that contract:
+
+- A snapshot covers the database, not capture files.
+- Restoring a snapshot overwrites your current database, and there is no undo.
+- Export is the only backup that includes capture files. **Settings → Database → Utilities →
+  Backup Database** writes a copy of the database only.
+
+Birdbrain does not encrypt the database or capture files at rest. Confidentiality of the live
+store relies on your operating system's full-disk encryption.
+
+## Where advisories appear
+
+If a report implies that captures already taken are not what Birdbrain claimed, the disclosure
+is a pinned issue on the
+[releases repository](https://github.com/thebristolsound/birdbrain-releases/issues) plus a
+patched release through the updater. Windows and AppImage installs pick that release up
+in place. `.deb` installs download it but install it only on **Restart to update**, so on the
+`.deb` you have to look at the releases page yourself.
+
+## What to report
+
+One class of failure matters above all the others: Birdbrain must not silently lose, corrupt,
+or mis-attest evidence. That is the floor the list below refers to. Everything else in the beta
+is rough on purpose.
+
+**Do not report:** layout, spacing, visual design, wording, labels, or a general sense that it
+feels dated. The UI is changing substantially and those decisions are made.
+
+**Do report:**
+
+1. Evidence lost, mangled, or mis-described. Anything that disappeared, came back
+   different, or is described by the app as something other than what it is. This is the
+   floor, and the highest-value report there is.
+2. Sites that fail to capture, capture incompletely, or render wrong in the viewer, with the
+   URL where it can be shared.
+3. Workflow dead-ends, where the tester wanted to do something and there was no path. Awkward
+   is not a dead-end.
+4. Whether the certification and verify output read as true to someone who would have to
+   defend them to a hostile reader.
+
+## Report a problem
+
+Open an issue on the
+[releases repository](https://github.com/thebristolsound/birdbrain-releases/issues). It is
+public, and no response target is stated: the project is one maintainer and a beta.
+
+There is no channel for sending a `.birdbrain` case archive to the maintainer, and a bug report
+never needs one: the diagnostic bundle Birdbrain builds for you excludes your captures and your
+case database. [Install and first capture](./tester-guide.mdx) describes how to create that
+bundle and what it holds.

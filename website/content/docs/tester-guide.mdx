@@ -1,54 +1,17 @@
 ---
-title: 'Tester guide'
-description: 'Install Birdbrain and the companion Chrome extension, run your first capture, and report what you find.'
+title: 'Install and first capture'
+description: 'Install Birdbrain and the companion Chrome extension, take your first capture, and keep the app updated.'
 ---
 
-Welcome, and thanks for testing Birdbrain, an open source web investigation and
-capture tool. The Chrome extension captures pages as you browse. The desktop app
-organizes those captures into investigations you can annotate, search, and export,
-with hashes, timestamps, and audit manifests attached.
+Birdbrain is an open source web investigation and capture tool. The Chrome extension captures
+pages as you browse. The desktop app organizes those captures into investigations you can
+annotate, search, and export, with hashes, timestamps, and audit manifests attached.
 
 **This is beta software.** Expect rough edges, and export anything you can't afford to
 lose (see [Known limitations](#known-limitations)).
 
-## What we're looking for
-
-The UI is changing substantially over the coming months and those decisions are already
-made, so please **don't** report:
-
-- Layout, spacing, and visual design
-- Wording and labels
-- General "this looks dated / this feels clunky" impressions
-
-Nits against the current UI are work for both of us with a known expiry date. What we
-**do** want, in priority order:
-
-1. **Evidence lost, mangled, or mis-described.** Anything that disappeared, came back
-   different, or that the app describes as something other than what it is. This is the
-   highest-value thing you can find.
-2. **Sites that fail to capture.** Pages that won't capture at all, capture incompletely,
-   or render wrong in the viewer. Include the URL where you can share it.
-3. **Workflow dead-ends.** "I wanted to do X and there was no path." Not "X is awkward".
-   *X was not possible*.
-4. **Whether the Certification and verify output read as true.** Read `certification.html`
-   and the in-app verify results as someone who would have to defend them to a hostile
-   reader. Does any of it claim more than you'd be willing to stand behind?
-
-Report in the tester chat. The format is at the bottom of this guide.
-
-## What to expect from us
-
-- **Ordinary bugs.** We acknowledge them best-effort, aiming for about two business days.
-  There is no SLA. We sweep reports into GitHub issues roughly weekly.
-- **One shared private chat** is the channel for everything. You never need a GitHub account.
-  The bug-report format is pinned there.
-- **Escalation.** If any report implies that captures already taken are unreliable, we notify
-  every tester in-channel and advise pausing capture until it's resolved. This is the one
-  path that interrupts everyone.
-- **Releases.** The Windows installer and the AppImage update in place. If you're on the
-  `.deb`, we announce new releases in-channel and you install via **Restart to update**.
-- **Absence.** If the maintainer is unavailable, you'll hear it in-channel. There is no
-  coverage promise.
+[Download Birdbrain](./download.mdx) has the platform table, where security advisories appear,
+and what the project wants reported.
 
 ## Your data and your archives
 
@@ -56,21 +19,20 @@ Use synthetic or low-stakes material where you can. Real project data is tolerat
 endorsed. It goes in at your own risk, and [Updating](#updating) describes what backs
 that risk and where the limits are.
 
-- Send `.birdbrain` case archives **only via the private tester chat**.
 - Birdbrain does **not** encrypt the database or capture files at rest. Confidentiality of
   the live store relies on your operating system's full-disk encryption (BitLocker, LUKS).
-- Diagnostic bundles need no special handling. See
-  [Reporting a problem](#reporting-a-problem) for what they do and don't contain.
+- There is no channel for sending a `.birdbrain` case archive to the maintainer, and a bug
+  report never needs one. See [Reporting a problem](#reporting-a-problem) for what a
+  diagnostic bundle does and doesn't contain.
 
 ## Install the app
 
 Releases live at
 [github.com/thebristolsound/birdbrain-releases/releases](https://github.com/thebristolsound/birdbrain-releases/releases),
 a public repository that holds the builds only. The source repository is private, and you
-need no GitHub account to download from the releases one.
-Take the build at the release link pinned in the tester chat next to this guide. That pin
-decides which build this round is on. Once it's installed, **Settings → About** shows the
-version you're running, so you can confirm you landed on the one you were pointed at.
+need no GitHub account to download from the releases one. Take the current release and the
+file for your platform; [Download Birdbrain](./download.mdx) says which file that is. Once
+it's installed, **Settings → About** shows the version you're running.
 
 ### Windows
 
@@ -81,7 +43,7 @@ version you're running, so you can confirm you landed on the one you were pointe
 
 ### Ubuntu
 
-The AppImage is the preferred build. It needs no install step, and updates replace it
+The AppImage is the primary Linux build. It needs no install step, and updates replace it
 in place:
 
 ```bash
@@ -108,29 +70,12 @@ sudo apt install ./birdbrain_<version>_amd64.deb
 ```
 
 Then launch **Birdbrain** from your app launcher, or run `birdbrain` in a terminal. The
-`.deb` gets best-effort support this round, and installing an update on it needs
-your system password. See [Updating](#updating).
+`.deb` gets best-effort support, and installing an update on it needs your system
+password. See [Updating](#updating).
 
 ### macOS
 
-We don't publish macOS builds by default. Ask in the tester chat and one will be added
-to the release you were pointed at. Take `Birdbrain-<version>-arm64.dmg` on Apple Silicon or
-`Birdbrain-<version>.dmg` on Intel.
-
-Our builds are unsigned and not notarized, so macOS will refuse to open the app on a default
-install. Clearing that is one command:
-
-```bash
-xattr -d com.apple.quarantine /Applications/Birdbrain.app
-```
-
-Run it after dragging the app into **Applications** from the `.dmg`. If macOS says the app is
-*damaged and can't be opened*, that is the same quarantine flag rather than a corrupt
-download. The command above is the fix, not a re-download.
-
-macOS is the least-tested platform this round. Our pre-ship checklist doesn't cover it,
-so you are the first person running it. Report anything platform-specific you hit, including
-the install itself.
+macOS builds are not published, and macOS is unsupported this beta.
 
 ## Install the Chrome extension
 
@@ -142,17 +87,16 @@ The short version:
 
 1. Open `chrome://extensions` in Chrome.
 2. Switch on **Developer mode** (toggle in the top-right corner).
-3. In the app, click **Open extension folder**. This opens the extension that ships
-   inside the Birdbrain build you just installed. Always load this one, not a copy
+3. In the app, click **Open extension folder**. This opens the copy of the extension that
+   belongs to the Birdbrain build you just installed. Always load this one, not a copy
    downloaded or unzipped from somewhere else, so the extension and the desktop app
    stay the same version.
 4. Click **Load unpacked** and select that folder, the one containing `manifest.json`.
 5. The Birdbrain icon appears in your Chrome toolbar. Back in the app, the status
    should flip to **Extension connected**.
 
-Because the extension loads from the app's install folder, updating the app updates
-the files on disk. Chrome keeps running the old copy until you reload it, though (see
-[Updating](#updating)).
+Chrome keeps running the copy it loaded until you reload it, so an app update needs one
+more step from you (see [Updating](#updating)).
 
 The desktop app must be running for the extension to work. The extension talks to it
 locally on `127.0.0.1:19845`, and nothing goes to any external server.
@@ -184,20 +128,25 @@ downloaded update installs when you click **Restart to update**, or quietly at y
 
 **The `.deb` is the exception.** Updates download the same way, but installing one runs
 `dpkg` behind a system password prompt, so it never installs at quit, only when you click
-**Restart to update** and enter your password. That's why the AppImage is the preferred
-Ubuntu build.
+**Restart to update** and enter your password. That's why the AppImage is the primary
+Ubuntu build, and why on the `.deb` it is worth watching the releases page.
 
-We'll still post in the tester chat when a new beta ships. The chat is this round's
-announcement channel, so you hear what changed and whether anything needs your attention
-regardless of what the in-app check has picked up. You can always install by hand instead:
-download from the releases page and install over the old version. Your data survives either
-way. It lives in your user data directory, separate from the app.
+You can always install by hand instead: download from the releases page and install over the
+old version. Your data survives either way. It lives in your user data directory, separate
+from the app.
 
 After every app update, also reload the extension: `chrome://extensions` → click the
-reload icon on the Birdbrain card (or **Load unpacked** again from **Open extension
-folder** if the card shows an error). Chrome does not pick up changed extension files on
+reload icon on the Birdbrain card. Chrome does not pick up changed extension files on
 its own, so until you reload, the extension is still the previous version, and captures it
 makes may not match what the app expects.
+
+The folder **Open extension folder** opens is a copy the app keeps in its user data
+directory and refreshes whenever the app version changes. The path stays the same across
+updates, so a card you loaded from it keeps working after a reload. If you installed
+Birdbrain before that folder moved, though, your card still points at the old app install
+folder: click **Open extension folder** again, **Load unpacked** the folder it opens, and
+remove the older Birdbrain entry pointing somewhere else. Leave both loaded and Chrome runs
+the stale one.
 
 If you put real project data in, this is what stands behind it, and the limits below are
 why we recommend synthetic or low-stakes material instead.
@@ -218,7 +167,8 @@ database, and Birdbrain does not keep the old one anywhere. There is no undo
 button and no aside file to rename back. If you might want the current state
 again, take a copy first with **Settings → Database → Utilities → Backup
 Database**, which writes the database wherever you choose, and export anything
-recorded since the snapshot that matters.
+recorded since the snapshot that matters. Export is the only backup that
+includes capture files; **Backup Database** copies the database alone.
 
 **A failed restore is not a guarantee either.** If the restore fails, treat the
 result as unknown. A restore error does not prove the previous database is still
@@ -240,7 +190,7 @@ Two more things a restore does not do, both worth knowing before you click it:
 - **Unsigned builds.** SmartScreen warnings on Windows are expected.
 - **Updates never restart the app for you.** Installing is your click, or your next quit on
   Windows and the AppImage. The `.deb` never installs at quit; it's always your click plus
-  your system password. We announce new betas in the tester chat as well.
+  your system password.
 - **The extension is sideloaded.** Chrome may occasionally nag about developer-mode
   extensions.
 - **One running copy at a time.** The extension reaches the app on `127.0.0.1:19845`, and only
@@ -249,22 +199,24 @@ Two more things a restore does not do, both worth knowing before you click it:
   yourself. If some other program on your machine is holding that port, Birdbrain refuses to
   start rather than open a window that can't receive captures, and names the port in the error
   it shows. Close whatever is using it, then start Birdbrain again.
-- **Local-only data, no backup.** Captures live only on your machine. Export
-  anything you can't lose before updating or uninstalling.
+- **Local-only data.** Captures live only on your machine, and export is the only backup that
+  includes capture files. Export anything you can't lose before updating or uninstalling.
 - **Deleting a capture is not redacting it.** The files go, but the case manifest is
   append-only: the deleted capture's URL, capture time and hashes stay in it permanently and
   ship in every export that includes the audit trail. If a URL is sensitive, deleting the
   capture does not take it out of the evidence package. Treat a case as contaminated by
   anything you captured into it.
 - **Chrome/Chromium only.** No Firefox or Safari extension yet.
-- **macOS is untested and unsigned.** Built on request, cleared through Gatekeeper by hand,
-  and not covered by the checklist every Windows and Ubuntu build must pass. Auto-update on
-  macOS only works between two releases that both had a macOS build made for them.
+- **macOS is not published.** It is unsupported this beta; notarization is the blocker.
 - **"Verified" is not a live check.** Capture details shows the result of the last
   verification run, not the state of the file right now. Click **Re-verify** to get a
   current statement.
 
 ## Reporting a problem
+
+Report what you find as an issue on the
+[releases repository](https://github.com/thebristolsound/birdbrain-releases/issues). It is
+public, and no response target is stated.
 
 Birdbrain keeps a local diagnostic log and can bundle it into a report for you:
 
@@ -274,10 +226,11 @@ Birdbrain keeps a local diagnostic log and can bundle it into a report for you:
    there and opens the folder for you.
 
 The zip saves **only to your computer**. Birdbrain never uploads it or sends
-it anywhere. Attach it to the tester chat yourself, the same way you'd attach any
+it anywhere. Attach it to the issue yourself, the same way you'd attach any
 other file. It contains the diagnostic log, a few app/session facts (version,
 platform, recent performance stats), and what you typed in the report form. It does
-**not** contain your captures, your case database, or your OpenRouter API key.
+**not** contain your captures, your case database, or your OpenRouter API key. That is why
+no bug report needs a case archive, and there is no channel for sending one.
 
 If Birdbrain closed unexpectedly last time (a crash, a forced quit, a power loss),
 it will offer to create a report automatically the next time you open it. Click
@@ -287,9 +240,7 @@ You can also open **Settings → Diagnostics → Log** any time to see recent lo
 entries in the app itself, filterable by level, with a button to reveal the raw
 log file on disk.
 
-## Reporting bugs
-
-Post in the tester chat with:
+### What to put in the issue
 
 1. **Version.** The build you're running. **Settings → About** shows it, **Settings →
    Diagnostics** repeats it, and it's in the installer filename too.
@@ -298,6 +249,6 @@ Post in the tester chat with:
 4. **What you expected.**
 5. **What happened.** Plus a screenshot if it's visual.
 
-Use **Report a problem** (above) to attach a diagnostic bundle alongside your
-description. Good repro steps plus a report bundle is the single most useful
-thing you can give us. Small, frequent reports beat one big write-up.
+Attach a diagnostic bundle alongside your description. Good repro steps plus a report
+bundle is the single most useful thing you can give us. Small, frequent reports beat one
+big write-up.

@@ -127,11 +127,13 @@ const CODE_LABELS: Record<LogCode, string> = {
   'app.installation_id': 'Installation identified',
   'app.extension_sync_failed': "Couldn't prepare the extension folder for this version",
   'app.extension_sweep_failed': "Couldn't clear an old copy of the extension folder",
-  // Not "reload it": the folder holds the bytes Chrome already has, so a
-  // reload changes nothing. Retrying the copy is what needs the handles on it
-  // released (#1493 round 3).
+  // True in every state that fires it, including the one where the bytes were
+  // replaced but the stamp write failed: what the operator has is a folder this
+  // build did not finish claiming. Retrying the copy is what needs Chrome's
+  // handles released, which is why the advice is quit-then-relaunch and not
+  // "reload it" (#1493 rounds 3 and 4).
   'app.extension_version_stale':
-    "The extension folder couldn't be refreshed for this version, so the copy already loaded stays in use — quit Chrome and relaunch Birdbrain to retry",
+    "The extension folder couldn't be fully refreshed for this version — quit Chrome, relaunch Birdbrain to retry, then load the folder Open extension folder opens",
   // --- appended: labels for the real console.* call sites Task 1 migrated ---
   'captureServer.selector_create_failed': "Couldn't create the selector",
   'captureServer.tag_apply_failed': "Couldn't apply the tag",

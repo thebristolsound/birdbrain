@@ -94,11 +94,11 @@ function removeQuietly(path: string): void {
 }
 
 // Directories an earlier sync left behind: a staging copy from a launch killed
-// mid-copy, or a retired copy whose restore failed. Each is a full copy of the
-// extension and no other path clears those, so they would accumulate under user
-// data. Called only where this launch has a consistent copy of its own — never
-// before an attempt, or two failing launches in a row would take the retired
-// bytes with them.
+// mid-copy, or a copy retired by a launch that then failed to finish. Each is a
+// full copy of the extension and no other path clears those, so they would
+// accumulate under user data. Called only where a copy matching this version is
+// at the advertised path — never before an attempt, or two failing launches in
+// a row would take the retired bytes with them.
 function sweepLeftovers(): void {
   try {
     for (const name of readdirSync(userDataPath())) {
@@ -117,8 +117,12 @@ function sweepLeftovers(): void {
 
 // The retired directory holds the folder Chrome has loaded. When the new copy
 // never reached the advertised path, put it back; when even that fails, say so
-// and leave the bytes where they are. Nothing on the failure path deletes them,
-// and no later launch does either until one of them has made a copy of its own.
+// and leave the bytes where they are. It declines when the advertised path is
+// not empty — a stamp write that failed after the swap leaves the new copy
+// there, and overwriting it with the old one would undo a copy that worked.
+// Nothing on the failure path deletes retired bytes, and no later launch does
+// until one of them has a copy matching this version, whether it made that copy
+// or inherited it.
 function restoreRetiredCopy(retired: string, target: string): void {
   try {
     if (!existsSync(retired) || existsSync(target)) return
@@ -163,13 +167,23 @@ export function extensionPathExists(): boolean {
  * Staged in a sibling temporary directory and renamed into place, the pattern
  * `restoreSnapshotFile` uses (`db/dbSnapshots.ts`): the rename is a
  * same-filesystem move, so the advertised path never holds a piece of a copy.
- * The previous copy is moved aside rather than deleted, its stamp is left
- * alone until the new copy is in place, and it is put back if the swap fails —
- * so a failing step leaves the folder Chrome already loaded present, stamped
- * and still advertised, with the version mismatch logged. The exception is a
- * restore that fails too: then the bytes stay in the retired directory, that
- * failure is logged as well, and the advertised path is empty until a later
- * sync succeeds.
+ * The previous copy is moved aside rather than deleted and its stamp is left
+ * alone until the new copy is in place, which is what the failure states are
+ * built out of. A failing step never ends the launch and leaves one of:
+ *
+ * - the retire failed: the previous copy is still at the advertised path under
+ *   its own stamp, untouched;
+ * - the swap failed and the retired copy was put back: the same state;
+ * - the swap failed and the restore failed too: those bytes are in the retired
+ *   directory, the advertised path is empty, and both buttons report
+ *   `EXT_NOT_FOUND` until a later sync succeeds;
+ * - only the stamp write failed: the new copy is at the advertised path under
+ *   the previous stamp (the restore declines, because the path is not empty),
+ *   and the folder that was there stays retired until the next successful sync
+ *   sweeps it.
+ *
+ * Each of them logs `app.extension_sync_failed`, and `app.extension_version_stale`
+ * as well whenever what is advertised carries another version's stamp.
  *
  * Never throws, and every filesystem call is inside a guard for that reason:
  * it runs in the `whenReady` chain, where anything thrown reaches the startup
@@ -209,10 +223,12 @@ export function syncPackagedExtension(): void {
     // After the swap, so the stamp only ever names a copy that is fully in
     // place.
     writeFileSync(stampPath(), app.getVersion(), 'utf-8')
-    // Past this line and nowhere earlier: until the stamp is written the
-    // retired copy is the only extension the operator has, and a failure
-    // before it puts that copy back. Leftovers from an earlier failed launch
-    // go here or on the nothing-to-do branch above, never on a failure path.
+    // Past this line and nowhere earlier. Between the swap and the write both
+    // copies exist — the new one advertised, the previous one retired — and
+    // until the stamp names this version a launch that stops here is a failure
+    // state the next sync has to be able to finish. Leftovers from an earlier
+    // one go here or on the nothing-to-do branch above, never on a failure
+    // path.
     retired = null
     sweepLeftovers()
   } catch (err) {

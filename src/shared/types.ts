@@ -540,9 +540,10 @@ export const LOG_CODES = [
   // separate things, because the launch continues through all of them and the
   // operator is left somewhere different in each: a step of the copy or the
   // swap failed; the housekeeping sweep of leftover directories failed, which
-  // says nothing about the copy; or what is advertised is loadable but its
-  // stamp does not match this version, which is deliberate (the folder Chrome
-  // has loaded is not taken away) and is why the mismatch is recorded here.
+  // says nothing about the copy; or the advertised copy's stamp does not match
+  // this version, whichever bytes it holds. The last is deliberate — a folder
+  // Chrome can load is never withdrawn over a version mismatch — and recording
+  // it here is what keeps that decision visible.
   'app.extension_sync_failed',
   'app.extension_sweep_failed',
   'app.extension_version_stale',

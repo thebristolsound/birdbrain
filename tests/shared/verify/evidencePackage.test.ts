@@ -930,9 +930,9 @@ describe('verifyEvidencePackage', () => {
     })
 
     it('reports the pre-scope era as a visible SKIP rather than silence', () => {
-      // A package that genuinely predates export entries keeps verifying (#398)
-      // — but the report now says which binding that age cost it, instead of
-      // omitting the row.
+      // A v1 index with no entry keeps verifying (#398) — but the report now
+      // says the verifier cannot tell an old package from a stripped one, and
+      // which binding that cost it, instead of omitting the row.
       rmSync(join(pkgDir, 'export-entry.json'))
       mutateEvidenceJson(pkgDir, (evidence) => {
         evidence.schemaVersion = 1
@@ -942,15 +942,16 @@ describe('verifyEvidencePackage', () => {
 
       expect(result.pass, JSON.stringify(result.checks, null, 2)).toBe(true)
       expect(eraCheck(result)?.status).toBe('skip')
-      expect(eraCheck(result)?.reason).toContain('predates export entries')
+      expect(eraCheck(result)?.reason).toContain('cannot tell which')
       expect(eraCheck(result)?.reason).toContain('not bound to a signed statement')
     })
 
     // The residual, stated as a known answer rather than left to be discovered:
     // evidence.json is unsigned, so the era claim is the tamperer's to rewrite.
     // The test above is byte-identical to this tamper — which is the point. The
-    // gate makes the one-file strip loud and forces the second edit; it does not
-    // make the index trustworthy, and no part of this PR claims it does.
+    // gate makes the one-file strip of a v2 package loud and forces the second
+    // edit; a v1 package sealed with an entry needs no second edit at all. It
+    // does not make the index trustworthy, and no part of this PR claims it does.
     it('still PASSes when the strip also rewrites the unsigned era claim', () => {
       rmSync(join(pkgDir, 'export-entry.json'))
       mutateEvidenceJson(pkgDir, (evidence) => {

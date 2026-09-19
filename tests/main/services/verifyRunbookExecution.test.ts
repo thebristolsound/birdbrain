@@ -706,8 +706,8 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     })
 
     it.skipIf(!RUNS)('notes rather than fails when the index states the pre-scope era', () => {
-      // A package that genuinely predates export entries (#398) still verifies,
-      // and now says so instead of saying nothing.
+      // A v1 index with no entry still verifies (#398), and now says it cannot
+      // tell an old package from a stripped one instead of saying nothing.
       const dir = corruptedCopy('pre-scope-era')
       rmSync(join(dir, 'export-entry.json'))
       setEra(dir, 1)
@@ -715,7 +715,7 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
       const run = runVerifyScript(dir)
       expect(run.status, run.output).toBe(0)
       expect(run.output).toContain('verify.sh: PASS')
-      expect(run.output).toContain('predates export entries')
+      expect(run.output).toContain('cannot tell which')
       expect(run.output).not.toContain('FAIL')
     })
 

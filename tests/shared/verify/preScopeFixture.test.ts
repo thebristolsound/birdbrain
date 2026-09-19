@@ -105,7 +105,7 @@ describe('frozen pre-scope fixture package', () => {
 
     const check = verifyEvidencePackage(FIXTURE_DIR).checks.find((c) => c.name === 'export entry')
     expect(check?.status).toBe('skip')
-    expect(check?.reason).toContain('predates export entries')
+    expect(check?.reason).toContain('cannot tell which')
     expect(check?.reason).toContain('not bound to a signed statement')
   })
 })

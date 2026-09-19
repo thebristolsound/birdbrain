@@ -319,7 +319,7 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
     expect(proc.status, proc.stdout + proc.stderr).toBe(0)
     expect(proc.stdout).toContain('RESULT: PASS')
     // #853: the leniency that PASS rests on is printed, not assumed.
-    expect(proc.stdout).toContain('predates export entries')
+    expect(proc.stdout).toContain('cannot tell which')
   })
 
   // #853 through the BUILT binary: the CLI and the in-app core are one

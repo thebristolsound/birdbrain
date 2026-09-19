@@ -306,7 +306,7 @@ else
     fail "export-entry.json is missing: evidence.json states schema version \${era#sealed }, and every package at or above version ${EVIDENCE_INDEX_SCHEMA_VERSION} was sealed with a signed export entry, so the file was removed rather than never written"
     ;;
   'pre '*)
-    note "no export-entry.json and evidence.json states schema version \${era#pre }, so on that unsigned claim this package predates export entries and its scope is not signed"
+    note "no export-entry.json and evidence.json states schema version \${era#pre }. Packages at that version were written both before export entries and after, so this script cannot tell which this package is: an old one, or one whose entry was removed. Its scope is not signed"
     ;;
   *)
     note 'no export-entry.json, and evidence.json states no readable schema version, so the era of this package cannot be read here'

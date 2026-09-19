@@ -498,22 +498,20 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   // build from EVIDENCE_INDEX_SCHEMA_VERSION on ships an export entry with
   // every evidence package, so an index at or above it states that this package
   // was sealed with one, and the file's absence is a removal rather than an
-  // age. Below it the index claims the package predates export entries (#398),
-  // and on that claim it keeps verifying exactly as before — as a SKIP, not
-  // silence, so the leniency and what it cost are on the report. The SKIP
-  // reason says whose claim it is, because on the residual path below the
-  // package does not predate anything.
+  // age. Below it the index settles nothing: builds before #398 wrote no entry,
+  // but builds from #398 until the bump wrote one under version 1 too, so a v1
+  // package with no entry is either old or stripped. It keeps verifying exactly
+  // as before — as a SKIP, not silence, so the leniency and what it cost are on
+  // the report, and the reason says the verifier cannot tell which.
   //
-  // What this does NOT claim: evidence.json is unsigned (see the trust model
-  // above), so a tamperer who rewrites schemaVersion back to 1 in the same hand
-  // that deletes the entry lands in the SKIP branch and the packageHash binding
-  // is skipped as it was before this gate. That residual is unchanged from
-  // #836, not introduced here, and closing it needs an anchor the package's
-  // SIGNED material carries. What the gate does buy: the one-file strip is now
-  // loud, and the remaining path has to put a false era claim in writing, which
-  // the SKIP row prints back for a reader who knows which build sealed the
-  // package. An unreadable evidence.json gets no era row at all — the era is
-  // its statement to make, and its own FAIL above already stands.
+  // What this does NOT claim: a v1 package sealed with an entry still PASSes
+  // with that one file deleted, and since evidence.json is unsigned (see the
+  // trust model above) a v2 package does too once schemaVersion is also
+  // rewritten to 1. Both residuals are unchanged from #836, not introduced
+  // here, and closing them needs an anchor the package's SIGNED material
+  // carries. What the gate does buy: the strip is loud for every package this
+  // build and later seal. An unreadable evidence.json gets no era row at all —
+  // the era is its statement to make, and its own FAIL above already stands.
   if (evidence && !exportEntryPresent) {
     if (evidence.schemaVersion >= EVIDENCE_INDEX_SCHEMA_VERSION) {
       add(
@@ -529,9 +527,10 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
         'skip',
         `no export-entry.json, and evidence.json states schema version ` +
           `${evidence.schemaVersion}, below the version ${EVIDENCE_INDEX_SCHEMA_VERSION} from ` +
-          'which every package was sealed with one — so on that unsigned claim this package ' +
-          'predates export entries (#398) and its artifact index was not bound to a signed ' +
-          'statement of what was packaged'
+          'which every package was sealed with one. Packages at that version were written ' +
+          'both before export entries (#398) and after, so this verifier cannot tell which ' +
+          'this package is: an old one, or one whose entry was removed. Its artifact index ' +
+          'was not bound to a signed statement of what was packaged'
       )
     }
   }

@@ -90,13 +90,19 @@ jq '.schemaVersion' evidence.json
 Read it as a number: \`2.0\` and \`2e0\` are both version 2. If it prints
 \`null\`, a string, or anything that is not a positive whole number, the index
 states no era and Birdbrain's verifier fails it as malformed; nothing below
-applies. Below ${EVIDENCE_INDEX_SCHEMA_VERSION} the package predates this file and encloses every active capture. At ${EVIDENCE_INDEX_SCHEMA_VERSION}
-or above it was sealed with an export entry, so an absent one is a **removed
-file**, not an age: treat the package as tampered with, and accept no statement
-of its scope. Birdbrain's verifier and \`${VERIFY_SCRIPT_FILENAME}\` both fail such a package; a
-hand check should too. That index is unsigned, so a \`schemaVersion\` edited
-downward looks by hand exactly like a genuinely old package — what settles it is
-knowing which build sealed this one.
+applies. At ${EVIDENCE_INDEX_SCHEMA_VERSION} or above the package was sealed with an export entry, so an
+absent one is a **removed file**, not an age: treat the package as tampered
+with, and accept no statement of its scope. Birdbrain's verifier and
+\`${VERIFY_SCRIPT_FILENAME}\` both fail such a package; a hand check should too.
+
+Below ${EVIDENCE_INDEX_SCHEMA_VERSION} the version does not settle it. Packages that predate this file
+were written at that version, and so were packages sealed with one, so an
+absent entry is either an age or a removed file. Verify the package as enclosing
+every active capture, with no signed statement of its scope, and do not read
+the version as dating it. Nor does a version at or above ${EVIDENCE_INDEX_SCHEMA_VERSION} prove the
+package is new: the index is unsigned, and a version edited downward looks
+exactly like a genuinely old package. What settles either question is knowing
+which build sealed this one.
 
 **What the programmatic/binary verifier does vs. this runbook:** the binary
 checks timestamp tokens **structurally only** (the token's message imprint binds

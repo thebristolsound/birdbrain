@@ -120,6 +120,15 @@ export function initSettings(userDataPath: string): void {
   }
 }
 
+// zod 4 applies a field's `.default()` even under `.partial()`, so a parse
+// fills in every key the input omitted. Keep only the keys the input carried,
+// or an update of one field would reset the rest to their defaults.
+function suppliedKeysOnly<T extends object>(input: object, data: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(data).filter(([key]) => Object.hasOwn(input, key))
+  ) as Partial<T>
+}
+
 export function getSettings(): BirdbrainSettings {
   if (!settingsPath) throw new Error('Settings not initialized')
   if (!existsSync(settingsPath)) {
@@ -133,7 +142,7 @@ export function getSettings(): BirdbrainSettings {
       logger.warn('settings', 'settings.schema_invalid')
       return { ...DEFAULT_SETTINGS }
     }
-    const merged = { ...DEFAULT_SETTINGS, ...parsed.data }
+    const merged = { ...DEFAULT_SETTINGS, ...suppliedKeysOnly(saved as object, parsed.data) }
     merged.openRouterApiKey = decryptApiKey(merged.openRouterApiKey)
     return merged
   } catch {
@@ -149,7 +158,7 @@ export function updateSettings(partial: Partial<BirdbrainSettings>): BirdbrainSe
     )
   }
   const current = getSettings()
-  const updated = { ...current, ...parsed.data }
+  const updated = { ...current, ...suppliedKeysOnly(partial, parsed.data) }
   // Only re-encrypt the API key if it was explicitly changed in this update.
   // Otherwise preserve the raw stored value to avoid data loss when safeStorage
   // is unavailable (the encrypted blob would be unreadable but should not be erased).

@@ -5,6 +5,7 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } f
 import { dirname, join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
+import sharp from 'sharp'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
@@ -16,6 +17,9 @@ import {
 } from '@main/services/captureLifecycle'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { generateReport } from '@main/services/export'
+import { commitStagedFiles, uploadToStaging } from '@main/services/staging'
+import { backfillCase } from '@main/services/exhibitBackfill'
+import { listExhibits } from '@main/services/db/exhibitRepo'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { VERIFY_RUNBOOK } from '@main/services/verifyRunbook'
@@ -150,6 +154,8 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
   let contentHash = ''
   let captureLifecycle: CaptureLifecycle
   let caseId = ''
+  let exhibitId = ''
+  let exhibitNumber = 0
 
   beforeAll(() => {
     if (!RUNS) return
@@ -200,11 +206,36 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
       operatorId: 'op',
       operatorName: 'Test Operator',
       toolVersion: '0.1.0',
-      screenshot: Buffer.from('screenshot-bytes-for-runbook-execution')
+      // A real PNG, because the thumbnail backfill below renders one from it:
+      // the derived file it anchors is what makes step 5's derived-file block
+      // and verify.sh's derived-file loop run over something rather than over
+      // an empty set.
+      screenshot: await sharp({
+        create: { width: 24, height: 24, channels: 4, background: { r: 3, g: 3, b: 3, alpha: 1 } }
+      })
+        .png()
+        .toBuffer()
     })
     captureId = capture.id
     contentHash = capture.hash
     caseId = testCase.id
+
+    // A committed attachment, so the package this runbook is executed against
+    // holds an exhibit of another kind and its own `exhibit` entry (#1156).
+    const uploads = join(tempDir, 'uploads')
+    mkdirSync(uploads)
+    const attachment = join(uploads, 'bundle.zip')
+    writeFileSync(attachment, Buffer.from('PK\u0003\u0004 runbook attachment payload'))
+    const [staged] = await uploadToStaging(testCase.id, [attachment])
+    await commitStagedFiles(testCase.id, [staged.id])
+    const committed = listExhibits(testCase.id).find((e) => e.kind !== 'capture')!
+    exhibitId = committed.id
+    exhibitNumber = committed.exhibitNumber
+
+    // Anchors the capture's thumbnail as a Derived File (X34) and writes the
+    // Case's `renumber` entry, which is where a Capture's Exhibit Number lives
+    // in the chain.
+    await backfillCase(testCase.id, { toolVersion: '0.1.0' })
 
     // A token genuinely issued over THIS capture's content hash, so step 6's
     // `-digest <contentHash>` is fed the digest the signed entry binds. The
@@ -365,6 +396,38 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     expect(run.output).toContain('FAIL [step 5]')
     expect(run.output).toContain('does not match the contentHash in its signed entry')
     expect(run.output).toContain('verify.sh: FAIL')
+  })
+
+  it.skipIf(!RUNS)('binds the committed exhibit and the capture thumbnail', () => {
+    // #1156: verify.sh walks the same set the binary does — every kind of
+    // exhibit, plus the derived files computed from them — so a PASS covers
+    // what the package holds rather than its captures alone.
+    const run = runVerifyScript(packageDir)
+    expect(run.status, run.output).toBe(0)
+    expect(run.output).toContain('1 exhibit(s) of other kinds bound to the signed chain')
+    expect(run.output).toContain('1 derived file(s) bound to the signed chain')
+  })
+
+  it.skipIf(!RUNS)('fails on a substituted exhibit, naming it by its exhibit number', () => {
+    const dir = corruptedCopy('corrupt-exhibit')
+    writeFileSync(join(dir, 'attachments', `${exhibitId}.zip`), 'substituted attachment')
+
+    const run = runVerifyScript(dir)
+    expect(run.status).toBe(1)
+    expect(run.output).toContain('FAIL [step 5]')
+    expect(run.output).toContain(`Exhibit ${exhibitNumber}:`)
+    expect(run.output).toContain('does not match the contentHash in its signed entry')
+  })
+
+  it.skipIf(!RUNS)('fails on a substituted derived file, naming its parent and derivation', () => {
+    const dir = corruptedCopy('corrupt-derived')
+    writeFileSync(join(dir, 'pages', `${captureId}_thumb.jpg`), 'substituted thumbnail')
+
+    const run = runVerifyScript(dir)
+    expect(run.status).toBe(1)
+    expect(run.output).toContain('FAIL [step 5]')
+    expect(run.output).toContain(`derivation thumbnail of exhibit ${captureId}`)
+    expect(run.output).toContain('does not match the outputHash in its signed entry')
   })
 
   it.skipIf(!RUNS)('fails on an edited entry body, naming the recompute step', () => {

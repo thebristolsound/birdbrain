@@ -34,6 +34,7 @@ import {
 import { createNote } from '@main/services/db/noteRepo'
 import { saveAnnotations, upsertPin, deletePin } from '@main/services/annotations'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
+import { seedMixedKindCase, type MixedKindCase } from '../../helpers/mixedKindCase'
 import { initSettings, updateSettings } from '@main/services/settings'
 import {
   getInstallationId,
@@ -98,6 +99,8 @@ async function seedLegacyGenesisCapture(caseId: string, caseDir: string) {
 
   return capture
 }
+
+const sha256Hex = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex')
 
 function readStoredZipEntries(path: string): Map<string, Buffer> {
   const zip = readFileSync(path)
@@ -753,7 +756,7 @@ describe('export', () => {
         },
         captureLifecycle
       )
-    ).rejects.toThrow(/at least one capture/)
+    ).rejects.toThrow(/at least one exhibit/)
   })
 
   it('rolls the export entry back when the zip write fails', async () => {
@@ -1046,7 +1049,7 @@ describe('export', () => {
     )
 
     const content = readFileSync(outputPath, 'utf-8')
-    expect(content).toMatch(/\d+ captures? without trusted time/)
+    expect(content).toMatch(/\d+ exhibits? without trusted time/)
     // Whitespace-tolerant: the sentence wraps across source lines in the
     // template literal, so the emitted HTML carries a newline mid-phrase.
     expect(content).toMatch(/export\s+was\s+not\s+blocked/i)
@@ -2125,7 +2128,13 @@ describe('export', () => {
       expect(marker.case.isDemo).toBe(true)
       expect(marker.case.demoStatement).toContain('fixture data')
       expect(marker.purposeOrAuthority).toBe('Internal review')
-      expect(marker.contents).toEqual({ captureCount: 1, screenshotCount: 0, noteCount: 1 })
+      expect(marker.contents).toEqual({
+        captureCount: 1,
+        screenshotCount: 0,
+        noteCount: 1,
+        exhibitCountsByKind: {},
+        derivedFileCount: 0
+      })
       expect(marker.artifacts.map((a) => a.path).sort()).toEqual([
         'notes.md',
         `pages/${capture.id}.mhtml`
@@ -2303,6 +2312,182 @@ describe('export', () => {
           '\n' +
           '_(no text)_\n'
       )
+    })
+  })
+  // Known-answer tests for the mixed-kind package (#1156). The fixture Case is
+  // the one shared with the package-verifier and built-binary tests, so all
+  // three describe the same object.
+  describe('exhibits of every kind (#1156)', () => {
+    let fixture: MixedKindCase
+
+    beforeEach(async () => {
+      fixture = await seedMixedKindCase({ tempDir })
+    })
+
+    const exportMixed = async (
+      name: string,
+      options: Partial<ExportOptions> = {}
+    ): Promise<Map<string, Buffer>> => {
+      const outputPath = join(tempDir, name)
+      await generateReport(
+        fixture.caseId,
+        {
+          format: 'zip',
+          include: {
+            captures: true,
+            screenshots: true,
+            auditTrail: true,
+            notes: false,
+            annotations: 'none'
+          },
+          exportClass: 'evidence',
+          outputPath,
+          ...options
+        },
+        captureLifecycle
+      )
+      return readStoredZipEntries(outputPath)
+    }
+
+    it('ships every committed exhibit and derived file under its kind directory', async () => {
+      const entries = await exportMixed('mixed-evidence.zip')
+
+      for (const exhibit of fixture.committed) {
+        expect(entries.get(exhibit.packagePath), exhibit.packagePath).toEqual(exhibit.bytes)
+      }
+      // A Capture's thumbnail is a Derived File (X34, D2), so it ships beside
+      // the page archive it was computed from.
+      expect(entries.has(fixture.thumbnailPackagePath)).toBe(true)
+      expect(entries.has(`pages/${fixture.captureId}.mhtml`)).toBe(true)
+
+      const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+        schemaVersion: number
+        exhibits: Array<{
+          id: string
+          kind: string
+          origin: string
+          exhibitNumber: number
+          name: string
+          contentHash: string
+          path: string | null
+          derivedFiles: Array<{ derivation: string; path: string | null; contentHash: string }>
+        }>
+        artifacts: Array<{ path: string }>
+      }
+      expect(evidence.schemaVersion).toBe(2)
+      expect(evidence.exhibits.map((e) => e.kind)).toEqual([
+        'capture',
+        'attachment',
+        'image',
+        'document'
+      ])
+      // Numbers are the ones the `exhibits` table recorded at commit (X18),
+      // never positions in this list.
+      expect(evidence.exhibits.map((e) => e.exhibitNumber)).toEqual([
+        1,
+        ...fixture.committed.map((e) => e.exhibitNumber)
+      ])
+      const capture = evidence.exhibits[0]
+      expect(capture.derivedFiles).toEqual([
+        {
+          derivation: 'thumbnail',
+          path: fixture.thumbnailPackagePath,
+          contentHash: sha256Hex(entries.get(fixture.thumbnailPackagePath)!)
+        }
+      ])
+      expect(evidence.exhibits[1].name).toBe('bundle.zip')
+      expect(evidence.exhibits[1].origin).toBe('manual-upload')
+      // Every enclosed exhibit file is in the artifact index, so packageHash
+      // covers it and step 1 of the runbook re-hashes it.
+      const indexed = new Set(evidence.artifacts.map((a) => a.path))
+      for (const exhibit of fixture.committed) expect(indexed.has(exhibit.packagePath)).toBe(true)
+      expect(indexed.has(fixture.thumbnailPackagePath)).toBe(true)
+    })
+
+    it('renders one report block per exhibit citing its stored exhibit number', async () => {
+      const entries = await exportMixed('mixed-report.zip')
+      const report = entries.get('report.html')!.toString('utf-8')
+
+      for (const exhibit of fixture.committed) {
+        expect(report).toContain(`Exhibit ${exhibit.exhibitNumber}</span>`)
+        expect(report).toContain(exhibit.packagePath)
+      }
+      expect(report).toContain('Supplied to the tool, not captured by it')
+      expect(report).toContain('Kind and origin')
+
+      const certification = entries.get('certification.html')!.toString('utf-8')
+      expect(certification).toContain('1 capture, 1 attachment, 1 document, 1 image')
+      expect(certification).toContain('1 derived file')
+      // The Certification's claims cover every kind, not the captures alone.
+      expect(certification).toMatch(/4\s+exhibits\s+in\s+this\s+export/)
+    })
+
+    it('scopes a selection over mixed kinds and states what it leaves out', async () => {
+      const selected = fixture.document
+      const entries = await exportMixed('mixed-selection.zip', {
+        captureIds: [fixture.captureId, selected.id]
+      })
+
+      expect(entries.has(selected.packagePath)).toBe(true)
+      expect(entries.has(fixture.attachment.packagePath)).toBe(false)
+      expect(entries.has(fixture.image.packagePath)).toBe(false)
+
+      const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+        exhibits: Array<{ id: string }>
+      }
+      expect(evidence.exhibits.map((e) => e.id)).toEqual([fixture.captureId, selected.id])
+
+      // The signed statement of scope carries Exhibit ids of every kind, in the
+      // field it has always had (D3).
+      const exportEntry = JSON.parse(entries.get('export-entry.json')!.toString('utf-8')) as {
+        scope: string
+        captureIds: string[]
+      }
+      expect(exportEntry.scope).toBe('selection')
+      expect([...exportEntry.captureIds].sort()).toEqual(
+        [fixture.captureId, selected.id].sort()
+      )
+
+      // #985's disclosure: the count left out is stated, not left to be counted.
+      const report = entries.get('report.html')!.toString('utf-8')
+      expect(report).toContain('It also leaves out 2 committed exhibit')
+    })
+
+    it('ships the same exhibits and derived files in a Working Copy', async () => {
+      const entries = await exportMixed('mixed-working-copy.zip', {
+        exportClass: 'working-copy',
+        include: {
+          captures: true,
+          screenshots: true,
+          auditTrail: false,
+          notes: false,
+          annotations: 'none'
+        }
+      })
+
+      for (const exhibit of fixture.committed) {
+        expect(entries.get(exhibit.packagePath), exhibit.packagePath).toEqual(exhibit.bytes)
+      }
+      expect(entries.has(fixture.thumbnailPackagePath)).toBe(true)
+      // Still no evidentiary material: the class split is untouched.
+      expect(entries.has('manifest.jsonl')).toBe(false)
+      expect(entries.has('certification.html')).toBe(false)
+
+      const marker = JSON.parse(entries.get('WORKING-COPY.json')!.toString('utf-8')) as {
+        contents: { exhibitCountsByKind: Record<string, number>; derivedFileCount: number }
+        exhibits: Array<{ id: string; kind: string }>
+      }
+      expect(marker.contents.exhibitCountsByKind).toEqual({
+        attachment: 1,
+        image: 1,
+        document: 1
+      })
+      expect(marker.contents.derivedFileCount).toBe(1)
+      expect(marker.exhibits.map((e) => e.kind).sort()).toEqual([
+        'attachment',
+        'document',
+        'image'
+      ])
     })
   })
 })

@@ -16,10 +16,12 @@ import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { signEntryHash } from '@main/services/signingKey'
 import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
+import type { PackageVerifyResult } from '@shared/verify/evidencePackage'
 import { canonicalStringify } from '@shared/verify'
 import { packageHash } from '@shared/verify/packageHash'
 import { EvidencePackageSchema } from '@shared/schemas'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
+import { seedMixedKindCase, type MixedKindCase } from '../../helpers/mixedKindCase'
 import type { ExportOptions } from '@shared/types'
 
 // Parses a Birdbrain stored-ZIP (all entries STORE/method 0) into a name->bytes
@@ -819,6 +821,10 @@ describe('verifyEvidencePackage', () => {
     const lines = freshManifest.toString('utf-8').split('\n').filter((l) => l.trim())
     const head = JSON.parse(lines[lines.length - 1])
     evidence.captures = []
+    // The Exhibit list drops the same row: a Capture is an Exhibit (X35), so an
+    // index that still listed it would disagree with the chain in the second
+    // place the verifier reconciles (#1156).
+    evidence.exhibits = []
     evidence.verificationMaterials.manifestHeadIndex = head.index
     evidence.verificationMaterials.manifestHeadHash = head.entryHash
     evidence.artifacts = evidence.artifacts.filter(
@@ -1201,7 +1207,10 @@ describe('verifyEvidencePackage', () => {
         const result = verifyEvidencePackage(dir)
         expect(result.pass).toBe(false)
         expect(
-          hasReason(result, `selection names capture ${orphan.id} with no active capture entry`)
+          hasReason(
+            result,
+            `selection names exhibit ${orphan.id} with no active capture or exhibit entry`
+          )
         ).toBe(true)
       } finally {
         rmSync(dir, { recursive: true, force: true })
@@ -1371,5 +1380,147 @@ describe('EvidencePackageSchema', () => {
       artifacts: []
     }
     expect(EvidencePackageSchema.safeParse(bad).success).toBe(false)
+  })
+})
+
+// Known-answer tests over the shared mixed-kind fixture Case (#1156, D14): the
+// same Case the export tests and the built-binary tests build their packages
+// from, so the three surfaces describe one object rather than three.
+describe('verifyEvidencePackage — exhibits of every kind (#1156)', () => {
+  let tempDir: string
+  let pkgDir: string
+  let fixture: MixedKindCase
+
+  beforeEach(async () => {
+    tempDir = mkdtempSync(join(tmpdir(), 'bb-mixedverify-'))
+    initStorage(join(tempDir, 'captures'))
+    await initDatabase(':memory:')
+    resetInstallationId()
+    initInstallationId(tempDir)
+    initSettings(tempDir)
+    updateSettings({ operatorName: 'Test Operator', operatorRole: '', operatorOrganization: '' })
+    fixture = await seedMixedKindCase({ tempDir })
+
+    const outputPath = join(tempDir, 'mixed-evidence.zip')
+    await generateReport(
+      fixture.caseId,
+      {
+        format: 'zip',
+        include: {
+          captures: true,
+          screenshots: true,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
+        exportClass: 'evidence',
+        outputPath
+      },
+      createCaptureLifecycle({
+        selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} })
+      })
+    )
+    pkgDir = mkdtempSync(join(tmpdir(), 'bb-mixedpkg-'))
+    unzipToDir(outputPath, pkgDir)
+  })
+
+  afterEach(() => {
+    closeDatabase()
+    rmSync(tempDir, { recursive: true, force: true })
+    if (pkgDir && existsSync(pkgDir)) rmSync(pkgDir, { recursive: true, force: true })
+  })
+
+  const checkNamed = (result: PackageVerifyResult, name: string) =>
+    result.checks.find((c) => c.name === name)
+
+  it('passes a mixed-kind package and binds every exhibit and derived file', () => {
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass, JSON.stringify(result.checks, null, 2)).toBe(true)
+
+    for (const exhibit of fixture.committed) {
+      const check = checkNamed(result, `exhibit ${exhibit.id}`)
+      expect(check?.status, exhibit.kind).toBe('pass')
+      expect(check?.reason).toContain(`Exhibit ${exhibit.exhibitNumber}`)
+      expect(check?.reason).toContain(exhibit.packagePath)
+    }
+    const thumbnail = checkNamed(result, `derivation thumbnail of ${fixture.captureId}`)
+    expect(thumbnail?.status).toBe('pass')
+    expect(checkNamed(result, 'evidence.json exhibits')?.status).toBe('pass')
+  })
+
+  it('fails a tampered derived file as its parent exhibit and derivation (AC 5)', () => {
+    // The Capture's thumbnail, which is the only Derived File that exists at
+    // head (X34) and the one AC 5 names.
+    writeFileSync(join(pkgDir, fixture.thumbnailPackagePath), Buffer.from('not the thumbnail'))
+
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass).toBe(false)
+    const check = checkNamed(result, `derivation thumbnail of ${fixture.captureId}`)
+    expect(check?.status).toBe('fail')
+    expect(check?.reason).toContain('derivation `thumbnail`')
+    expect(check?.reason).toContain('does not match the outputHash in its signed entry')
+    // A Capture's Exhibit Number comes off the chain's `renumber` entry, so the
+    // finding cites it rather than the file's position anywhere.
+    expect(check?.reason).toContain('Exhibit 1,')
+  })
+
+  it('fails a tampered non-capture exhibit by its exhibit number (AC 2)', () => {
+    const target = fixture.document
+    writeFileSync(join(pkgDir, target.packagePath), Buffer.from('%PDF-1.7 substituted'))
+
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass).toBe(false)
+    const check = checkNamed(result, `exhibit ${target.id}`)
+    expect(check?.status).toBe('fail')
+    expect(check?.reason).toContain(`Exhibit ${target.exhibitNumber}`)
+    expect(check?.reason).toContain('does not match the contentHash in its signed entry')
+  })
+
+  it('fails an exhibit the chain anchors and the package does not enclose', () => {
+    rmSync(join(pkgDir, fixture.attachment.packagePath))
+
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass).toBe(false)
+    expect(checkNamed(result, `exhibit ${fixture.attachment.id}`)?.reason).toContain(
+      'is missing from the package'
+    )
+  })
+
+  it('passes a selection scoped over mixed kinds and skips what it leaves out', async () => {
+    const outputPath = join(tempDir, 'mixed-selection.zip')
+    await generateReport(
+      fixture.caseId,
+      {
+        format: 'zip',
+        include: {
+          captures: true,
+          screenshots: true,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
+        exportClass: 'evidence',
+        outputPath,
+        captureIds: [fixture.captureId, fixture.image.id]
+      },
+      createCaptureLifecycle({
+        selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} })
+      })
+    )
+    const selDir = mkdtempSync(join(tmpdir(), 'bb-mixedsel-'))
+    try {
+      unzipToDir(outputPath, selDir)
+      const result = verifyEvidencePackage(selDir)
+      expect(result.pass, JSON.stringify(result.checks, null, 2)).toBe(true)
+      expect(checkNamed(result, 'export scope')?.status).toBe('pass')
+      expect(checkNamed(result, `exhibit ${fixture.image.id}`)?.status).toBe('pass')
+      for (const absent of [fixture.attachment, fixture.document]) {
+        const check = checkNamed(result, `exhibit ${absent.id}`)
+        expect(check?.status).toBe('skip')
+        expect(check?.reason).toContain('outside the signed export selection')
+      }
+    } finally {
+      rmSync(selDir, { recursive: true, force: true })
+    }
   })
 })

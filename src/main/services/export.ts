@@ -1,9 +1,11 @@
-import { existsSync, writeFileSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { createHash } from 'crypto'
 import { join } from 'path'
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
 import { listExhibits } from '@main/services/db/exhibitRepo'
+import { listDerivedFilesForCase } from '@main/services/db/derivedFileRepo'
+import { verifyCaseDerivedFiles, verifyExhibit } from '@main/services/exhibits'
 import * as noteRepo from '@main/services/db/noteRepo'
 import * as waybackRefRepo from '@main/services/db/waybackRefRepo'
 import { getStorageRoot } from '@main/services/storage'
@@ -36,17 +38,30 @@ import {
 } from '@main/services/tsaTrust'
 import {
   buildTrustedTimeIndexFromEntries,
+  derivedFilePackagePath,
+  exhibitPackageDirectory,
+  exhibitPackagePath,
   extractTimestampTokenCertificatesPem
 } from '@shared/verify'
 import type { TrustedTimeResult } from '@shared/verify'
 import { buildCertification, resolveToolVersion } from '@main/services/certification'
 import { buildHtmlReport } from '@main/services/reportHtml'
-import type { EntrySignatureStatus, PackagedArtifacts, ReportData } from '@main/services/reportHtml'
+import type {
+  EntrySignatureStatus,
+  ExportDerivedFile,
+  ExportFileExhibit,
+  PackagedArtifacts,
+  ReportData
+} from '@main/services/reportHtml'
 import { VERIFY_RUNBOOK } from '@main/services/verifyRunbook'
 import { VERIFY_SCRIPT, VERIFY_SCRIPT_FILENAME } from '@main/services/verifyScript'
 import { WORKING_COPY_MARKER_FILENAME } from '@shared/schemas'
 import type {
   Capture,
+  DerivedFile,
+  DerivedFileVerification,
+  Exhibit,
+  ExhibitVerification,
   ExportOptions,
   ExportPreflight,
   HashVerification,
@@ -58,10 +73,32 @@ import type {
 // the two from drifting apart, since every field here exists to be rendered.
 type ExportData = ReportData
 
-/** evidence.json keeps this as a list; a capture has at most one token path. */
-function packagedTimestampTokenPaths(byHash: Map<string, string>, capture: Capture): string[] {
-  const path = byHash.get(capture.hash)
+/** evidence.json keeps this as a list; an Exhibit has at most one token path. */
+function packagedTimestampTokenPaths(byHash: Map<string, string>, contentHash: string): string[] {
+  const path = byHash.get(contentHash)
   return path ? [path] : []
+}
+
+/**
+ * What a timestamp token can be packaged for: any Exhibit, by its Content Hash
+ * (X26). A committed attachment runs the same RFC 3161 path a Capture does, so
+ * its token is packaged and bound the same way — dropping it, which this did
+ * before #1156, left the chain asserting a trusted time whose token the package
+ * did not enclose.
+ */
+interface TokenSubject {
+  id: string
+  contentHash: string
+}
+
+function tokenSubjects(
+  captures: Capture[],
+  exhibits: Array<{ id: string; contentHash: string }>
+): TokenSubject[] {
+  return [
+    ...captures.map((capture) => ({ id: capture.id, contentHash: capture.hash })),
+    ...exhibits.map((exhibit) => ({ id: exhibit.id, contentHash: exhibit.contentHash }))
+  ]
 }
 
 interface ManifestTimestampEntry {
@@ -279,25 +316,17 @@ export async function generateReport(
   const caseData = caseRepo.getCase(caseId)
   if (!caseData) throw new Error(`Case not found: ${caseId}`)
 
-  // X44: the Evidence Package enumerates Captures only until #1156 lands, and
-  // its Certification claims to describe the Case's evidence. A committed
-  // attachment silently left out of a package that makes that claim is the
-  // dishonest third option ADR-0023 rejected, so the export is refused rather
-  // than narrowed. The Working Copy and the standalone report are unchanged.
-  if (options.format === 'zip' && !workingCopy) {
-    const committed = listExhibits(caseId).filter((exhibit) => exhibit.kind !== 'capture')
-    if (committed.length > 0) {
-      throw new Error(
-        `Evidence Package export is refused: this case holds ${committed.length} committed ` +
-          `non-capture exhibit${committed.length === 1 ? '' : 's'} and the package format covers ` +
-          'captures only until #1156 lands. Export a Working Copy instead.'
-      )
-    }
-  }
-
   onProgress?.('Loading captures...', 10)
   const allCaptures = captureRepo.listCaptures(caseId)
-  const captures = resolveScopedCaptures(allCaptures, options.captureIds)
+  const allExhibits = listExhibits(caseId)
+  // Every kind the case holds is packaged, reported and certified (ADR-0023,
+  // #1156). The X44 refusal that stood here until this ticket — an Evidence
+  // Package refused outright while a committed attachment existed — was the
+  // honest answer while the package covered Captures only; it is not needed
+  // once the package covers every kind.
+  const scope = resolveScopedExhibits(allCaptures, allExhibits, options.captureIds)
+  const { captures } = scope
+  const derivedByExhibitId = groupDerivedFiles(listDerivedFilesForCase(caseId))
   const scoped = options.captureIds !== undefined
 
   // Build export data
@@ -338,10 +367,27 @@ export async function generateReport(
     waybackRefsByCaptureId: new Map(
       captures.map((capture) => [capture.id, waybackRefRepo.listWaybackRefs(capture.id)])
     ),
+    fileExhibits: [],
+    exhibitNumberByCaptureId: new Map(
+      allExhibits
+        .filter((exhibit) => exhibit.kind === 'capture')
+        .map((exhibit) => [exhibit.id, exhibit.exhibitNumber])
+    ),
+    derivedFilesByCaptureId: new Map(),
     selectionScope: scoped
-      ? { selectedCaptureCount: captures.length, caseCaptureCount: allCaptures.length }
+      ? {
+          selectedCaptureCount: captures.length,
+          caseCaptureCount: allCaptures.length,
+          excludedExhibitCount: scope.excludedExhibitCount
+        }
       : null
   }
+
+  // Filled by the verification run below when one is asked for; empty otherwise,
+  // which the documents state as "not verified in this export" rather than as a
+  // clean result.
+  let exhibitVerifications = new Map<string, ExhibitVerification>()
+  let derivedVerifications = new Map<string, DerivedFileVerification[]>()
 
   if (options.include.auditTrail) {
     onProgress?.('Verifying capture integrity...', 10)
@@ -350,6 +396,11 @@ export async function generateReport(
     data.verifications = await verifyCaptures(captures, captureLifecycle, (done, total) =>
       onProgress?.(`Verifying capture ${done} of ${total}...`, 10 + Math.round((done / total) * 40))
     )
+    if (scope.fileExhibits.length > 0) {
+      onProgress?.('Verifying exhibit integrity...', 50)
+      exhibitVerifications = await verifyFileExhibits(caseId, scope.fileExhibits)
+    }
+    derivedVerifications = await verifyCaseDerivedFiles(caseId)
   }
 
   // captureId -> sha256 of the raw on-disk screenshot, and whether the copy
@@ -402,22 +453,49 @@ export async function generateReport(
   // package against a stale hash.
   const manifest = readManifestSnapshot(join(getStorageRoot(), caseId))
   data.manifestHead = manifest.head
+  // One token-path resolution over every Exhibit in scope, shared by the
+  // report, evidence.json and the packager (X26).
+  const tokenPaths =
+    options.format === 'zip'
+      ? buildTimestampTokenPaths(
+          tokenSubjects(captures, scope.fileExhibits),
+          manifest.entries.filter(isTimestampEntry)
+        )
+      : new Map<string, string>()
   data.packagedPaths = buildPackagedPaths(
     data,
     options,
-    manifest,
+    tokenPaths,
     screenshotDigests,
     annotatedCaptureIds
   )
 
   // Resolved from the snapshot above and nowhere else — see resolveExportTrustedTime.
-  const trustedTime = resolveExportTrustedTime(
-    captures,
-    buildTrustedTimeIndexFromEntries(manifest.entries)
-  )
+  const trustedTimeByHash = buildTrustedTimeIndexFromEntries(manifest.entries)
+  const trustedTime = resolveExportTrustedTime(captures, trustedTimeByHash)
   data.preflight = trustedTime.preflight
   data.trustedTimeByCaptureId = trustedTime.byCaptureId
   data.entrySignatureByCaptureId = resolveEntrySignatures(captures, manifest.entries)
+  data.fileExhibits = buildFileExhibitRecords(scope.fileExhibits, {
+    derivedByExhibitId,
+    derivedVerifications,
+    verifications: exhibitVerifications,
+    trustedTimeByHash,
+    entrySignatures: resolveExhibitEntrySignatures(scope.fileExhibits, manifest.entries),
+    tokenPaths,
+    isPackage: options.format === 'zip'
+  })
+  data.derivedFilesByCaptureId = new Map(
+    captures.map((capture) => [
+      capture.id,
+      buildDerivedFiles(
+        derivedByExhibitId.get(capture.id) ?? [],
+        exhibitPackageDirectory('capture', capture.mhtmlPath ?? null),
+        options.format === 'zip',
+        derivedVerifications.get(capture.id)
+      )
+    ])
+  )
   // Reconciled against the FULL case, not the exported selection — see the
   // resolver's comment for why a deliberately unselected capture is no orphan.
   data.unreconciledChainCaptureIds = resolveUnreconciledChainCaptures(allCaptures, manifest.entries)
@@ -472,7 +550,22 @@ export async function generateReport(
       verificationResult,
       // Omitted — never ''/[]/null — on case-scoped exports so their entries
       // stay byte-identical to pre-scope ones (#398, ADR-0009).
-      ...(scoped ? { scope: 'selection' as const, captureIds: captures.map((c) => c.id) } : {}),
+      //
+      // The list carries the Exhibit ids in scope, of every kind (#1156, D3):
+      // a Capture's Exhibit id IS its capture id, so the field's name, shape
+      // and meaning are unchanged and a capture-only selection produces the
+      // same entry it always did. It is the package's only signed statement of
+      // what it encloses, so an Exhibit left out has to be accounted for here
+      // or the verifier has nothing to read its absence from.
+      ...(scoped
+        ? {
+            scope: 'selection' as const,
+            captureIds: [
+              ...captures.map((c) => c.id),
+              ...scope.fileExhibits.map((exhibit) => exhibit.id)
+            ]
+          }
+        : {}),
       // Omitted — never 'evidence'/null — on evidence exports, the same
       // omit-when-absent discipline as `scope` (#399, ADR-0010).
       ...(workingCopy ? { exportClass: 'working-copy' as const } : {})
@@ -512,24 +605,209 @@ interface PackageMeta {
   notes: Note[] | null
 }
 
+/** The Exhibits one export covers, and what a selection leaves behind. */
+interface ExportScope {
+  captures: Capture[]
+  /** Committed Exhibits of every other kind, in Exhibit Number order. */
+  fileExhibits: Exhibit[]
+  /** Committed non-Capture Exhibits the case holds and this export omits. */
+  excludedExhibitCount: number
+}
+
 /**
- * Resolves the exported capture set (#398). A selection must name at least one
- * capture and every id must exist in the case: silently narrowing what the
- * operator asked to export would sign a scope the operator never chose.
+ * Resolves the exported Exhibit set (#398, and #1156 D3).
+ *
+ * `captureIds` carries Exhibit ids, not a second id space: a Capture's Exhibit
+ * id IS its capture id (X35), so a selection naming an attachment needs no new
+ * key on ExportOptions and no manifest schema bump — the signed export entry
+ * keeps the field and the shape it has always had.
+ *
+ * A selection must name at least one Exhibit and every id must exist in the
+ * case: silently narrowing what the operator asked to export would sign a scope
+ * the operator never chose.
  */
-function resolveScopedCaptures(allCaptures: Capture[], captureIds?: string[]): Capture[] {
-  if (captureIds === undefined) return allCaptures
+function resolveScopedExhibits(
+  allCaptures: Capture[],
+  allExhibits: Exhibit[],
+  captureIds?: string[]
+): ExportScope {
+  const committed = allExhibits.filter((exhibit) => exhibit.kind !== 'capture')
+  if (captureIds === undefined) {
+    return { captures: allCaptures, fileExhibits: committed, excludedExhibitCount: 0 }
+  }
   if (captureIds.length === 0) {
-    throw new Error('Selection-scoped export requires at least one capture')
+    throw new Error('Selection-scoped export requires at least one exhibit')
   }
   const selected = new Set(captureIds)
   const captures = allCaptures.filter((c) => selected.has(c.id))
-  if (captures.length !== selected.size) {
-    const found = new Set(captures.map((c) => c.id))
+  const fileExhibits = committed.filter((exhibit) => selected.has(exhibit.id))
+  const found = new Set([...captures.map((c) => c.id), ...fileExhibits.map((e) => e.id)])
+  if (found.size !== selected.size) {
     const missing = [...selected].filter((id) => !found.has(id))
-    throw new Error(`Selected captures not found in this case: ${missing.join(', ')}`)
+    throw new Error(`Selected exhibits not found in this case: ${missing.join(', ')}`)
   }
-  return captures
+  return {
+    captures,
+    fileExhibits,
+    excludedExhibitCount: committed.length - fileExhibits.length
+  }
+}
+
+/**
+ * Per-entry signature status for committed Exhibits, read from the same
+ * manifest snapshot `resolveEntrySignatures` reads for Captures and folded the
+ * same way: the LAST `exhibit` entry for an id wins, and an Exhibit with no
+ * entry is stated as `no-entry` rather than left absent.
+ */
+export function resolveExhibitEntrySignatures(
+  exhibits: Exhibit[],
+  entries: Record<string, unknown>[]
+): Map<string, EntrySignatureStatus> {
+  const byExhibitId = new Map<string, EntrySignatureStatus>()
+  for (const entry of entries) {
+    if (entry.type !== 'exhibit' || typeof entry.exhibitId !== 'string') continue
+    // `exhibit` entries are schema 3 by construction, so they are signed or
+    // they are not entries this build wrote; the discriminator is the same one
+    // the capture axis uses rather than the entry type's minimum version.
+    const schemaVersion = typeof entry.schemaVersion === 'number' ? entry.schemaVersion : 1
+    byExhibitId.set(
+      entry.exhibitId,
+      schemaVersion >= 2 && typeof entry.signature === 'string' ? 'signed' : 'unsigned-legacy'
+    )
+  }
+  for (const exhibit of exhibits) {
+    if (!byExhibitId.has(exhibit.id)) byExhibitId.set(exhibit.id, 'no-entry')
+  }
+  return byExhibitId
+}
+
+/**
+ * Verifies committed non-Capture Exhibits through the app's own Exhibit verify
+ * path (X37), so `exhibits:verify` and an export's verification run cannot
+ * report different states for the same bytes. Captures keep the MHTML-aware
+ * capture path above for exactly the same reason.
+ */
+async function verifyFileExhibits(
+  caseId: string,
+  exhibits: Exhibit[],
+  onItem?: (done: number, total: number) => void
+): Promise<Map<string, ExhibitVerification>> {
+  const results = new Map<string, ExhibitVerification>()
+  for (const [index, exhibit] of exhibits.entries()) {
+    results.set(exhibit.id, await verifyExhibit(caseId, exhibit.id))
+    onItem?.(index + 1, exhibits.length)
+  }
+  return results
+}
+
+/**
+ * The Derived Files of one Exhibit, as this export packages and reports them
+ * (X17). `parentDirectory` is where the parent's bytes sit in the package, so a
+ * Derived File lands beside its parent under the same directory — the layout
+ * evidence.json, VERIFY.md and verify.sh all name.
+ */
+function buildDerivedFiles(
+  files: DerivedFile[],
+  parentDirectory: string,
+  isPackage: boolean,
+  verifications: DerivedFileVerification[] | undefined
+): ExportDerivedFile[] {
+  const byId = new Map((verifications ?? []).map((result) => [result.derivedFileId, result]))
+  return files.map((file) => {
+    const present = isPackage && defaultCaptureStore.existsRelative(file.path)
+    const verification = byId.get(file.id)
+    return {
+      id: file.id,
+      derivation: file.derivation,
+      toolVersion: file.toolVersion,
+      contentHash: file.contentHash,
+      storedPath: file.path,
+      packagedPath: present ? derivedFilePackagePath(parentDirectory, file.path) : null,
+      manifestIndex: file.manifestSeq,
+      ...(verification !== undefined ? { verification } : {})
+    }
+  })
+}
+
+/** Everything the report, the certification and evidence.json say about one
+ * committed non-Capture Exhibit, resolved once from the snapshot the package is
+ * built from — the same discipline the capture axes follow (#492, #611). */
+interface FileExhibitInputs {
+  derivedByExhibitId: Map<string, DerivedFile[]>
+  derivedVerifications: Map<string, DerivedFileVerification[]>
+  verifications: Map<string, ExhibitVerification>
+  trustedTimeByHash: Map<string, TrustedTimeResult>
+  entrySignatures: Map<string, EntrySignatureStatus>
+  tokenPaths: Map<string, string>
+  isPackage: boolean
+}
+
+function buildFileExhibitRecords(
+  exhibits: Exhibit[],
+  inputs: FileExhibitInputs
+): ExportFileExhibit[] {
+  const { isPackage } = inputs
+  return exhibits.map((exhibit) => {
+    const directory = exhibitPackageDirectory(exhibit.kind, exhibit.path)
+    // existsSync rather than a read: the packager encloses exactly the files
+    // that are present, and an exhibit can be large.
+    const present = isPackage && defaultCaptureStore.existsRelative(exhibit.path)
+    const verification = inputs.verifications.get(exhibit.id)
+    return {
+      id: exhibit.id,
+      kind: exhibit.kind,
+      origin: exhibit.origin,
+      exhibitNumber: exhibit.exhibitNumber,
+      name: exhibit.name,
+      contentHash: exhibit.contentHash,
+      storedPath: exhibit.path,
+      sizeBytes: exhibit.sizeBytes,
+      committedAt: exhibit.committedAt,
+      manifestIndex: exhibit.manifestSeq,
+      packagedPath: present && exhibit.path ? exhibitPackagePath(exhibit.path) : null,
+      timestampTokenPath: isPackage ? (inputs.tokenPaths.get(exhibit.contentHash) ?? null) : null,
+      derivedFiles: buildDerivedFiles(
+        inputs.derivedByExhibitId.get(exhibit.id) ?? [],
+        directory,
+        isPackage,
+        inputs.derivedVerifications.get(exhibit.id)
+      ),
+      trustedTime: inputs.trustedTimeByHash.get(exhibit.contentHash) ?? UNSTAMPED,
+      entrySignature: inputs.entrySignatures.get(exhibit.id) ?? 'no-entry',
+      ...(verification !== undefined ? { verification } : {})
+    }
+  })
+}
+
+/**
+ * What the package holds, counted by kind (ADR-0023). The Certification's
+ * contents line and the Working Copy marker both state these: "1 capture" over
+ * a package that also encloses three committed documents describes something
+ * the package is not.
+ */
+function exhibitKindCounts(data: ExportData): {
+  exhibitCountsByKind: Record<string, number>
+  derivedFileCount: number
+} {
+  const exhibitCountsByKind: Record<string, number> = {}
+  let derivedFileCount = 0
+  for (const exhibit of data.fileExhibits) {
+    exhibitCountsByKind[exhibit.kind] = (exhibitCountsByKind[exhibit.kind] ?? 0) + 1
+    derivedFileCount += exhibit.derivedFiles.length
+  }
+  for (const files of data.derivedFilesByCaptureId.values()) derivedFileCount += files.length
+  return { exhibitCountsByKind, derivedFileCount }
+}
+
+/** Derived Files grouped by the Exhibit they were computed from. */
+function groupDerivedFiles(files: DerivedFile[]): Map<string, DerivedFile[]> {
+  const byExhibitId = new Map<string, DerivedFile[]>()
+  for (const file of files) {
+    const existing = byExhibitId.get(file.exhibitId)
+    if (existing) existing.push(file)
+    else byExhibitId.set(file.exhibitId, [file])
+  }
+  return byExhibitId
 }
 
 interface EvidenceZipResult {
@@ -539,6 +817,57 @@ interface EvidenceZipResult {
   entries: ArtifactAccumulator['entries']
   packageHash: string
   verificationResult: ExportVerificationResult
+}
+
+/**
+ * Reads an Exhibit's or Derived File's stored bytes for packaging. A file the
+ * row records and the disk no longer holds is a gap the package states — the
+ * warnings block counts it and the exhibit's `path` is null — never a throw
+ * that loses the rest of the export.
+ */
+function readPackagedFile(storedPath: string | null): Buffer | null {
+  if (!storedPath) return null
+  try {
+    return readFileSync(defaultCaptureStore.resolveAbsolute(storedPath))
+  } catch {
+    return null
+  }
+}
+
+/** Encloses an Exhibit's Derived Files and returns their index rows (X31). */
+function addDerivedFiles(
+  files: ExportDerivedFile[],
+  add: ArtifactAccumulator['add']
+): Array<{ derivation: string; contentHash: string; path: string | null }> {
+  return files.map((file) => {
+    const bytes = file.packagedPath ? readPackagedFile(file.storedPath) : null
+    if (bytes && file.packagedPath) add(file.packagedPath, bytes)
+    return {
+      derivation: file.derivation,
+      contentHash: file.contentHash,
+      path: bytes && file.packagedPath ? file.packagedPath : null
+    }
+  })
+}
+
+/** One committed non-Capture Exhibit as evidence.json lists it. */
+function describeExhibit(exhibit: ExportFileExhibit, enclosed: boolean) {
+  return {
+    id: exhibit.id,
+    kind: exhibit.kind,
+    origin: exhibit.origin,
+    exhibitNumber: exhibit.exhibitNumber,
+    name: exhibit.name,
+    contentHash: exhibit.contentHash,
+    path: enclosed ? exhibit.packagedPath : null,
+    sizeBytes: exhibit.sizeBytes,
+    committedAt: exhibit.committedAt,
+    manifestIndex: exhibit.manifestIndex,
+    trustedTime: exhibit.trustedTime.trustedTime,
+    tsaName: exhibit.trustedTime.tsaName,
+    stampedAt: exhibit.trustedTime.stampedAt,
+    timestampTokenPaths: exhibit.timestampTokenPath ? [exhibit.timestampTokenPath] : []
+  }
 }
 
 function buildEvidenceZip(
@@ -554,8 +883,12 @@ function buildEvidenceZip(
   const timestampEntries = manifest.entries.filter(isTimestampEntry)
   const latestManifestEntry = manifest.head
 
-  // Same path rule the report was rendered against — see buildTimestampTokenPaths.
-  const timestampPathsByHash = buildTimestampTokenPaths(data.captures, timestampEntries)
+  // Same path rule the report was rendered against, over the same Exhibits in
+  // the same order — see buildTimestampTokenPaths.
+  const timestampPathsByHash = buildTimestampTokenPaths(
+    tokenSubjects(data.captures, data.fileExhibits),
+    timestampEntries
+  )
   const emittedTokenPaths = new Set<string>()
   // Deduped by PEM block: every token of one authority carries the same
   // responder/intermediate certs, and a chain repeated per token is noise a
@@ -596,7 +929,8 @@ function buildEvidenceZip(
         contents: {
           captureCount: data.captures.length,
           screenshotCount: data.screenshots.size,
-          noteCount: meta.notes?.length ?? 0
+          noteCount: meta.notes?.length ?? 0,
+          ...exhibitKindCounts(data)
         },
         exportTimestamp: data.exportTimestamp,
         installationId: data.installationId,
@@ -606,7 +940,17 @@ function buildEvidenceZip(
         tsaUrl: data.tsaUrl,
         captures: data.captures,
         trustedTimeByCaptureId: data.trustedTimeByCaptureId,
-        entrySignatureByCaptureId: data.entrySignatureByCaptureId
+        entrySignatureByCaptureId: data.entrySignatureByCaptureId,
+        // The same single resolution the report renders, so the two documents
+        // cannot report different states for one Exhibit (#492, #611).
+        exhibits: data.fileExhibits.map((exhibit) => ({
+          id: exhibit.id,
+          kind: exhibit.kind,
+          name: exhibit.name,
+          exhibitNumber: exhibit.exhibitNumber,
+          trustedTime: exhibit.trustedTime,
+          entrySignature: exhibit.entrySignature
+        }))
       },
       resolveToolVersion()
     )
@@ -701,12 +1045,52 @@ function buildEvidenceZip(
       // differs from `capturedAt`. Surfaced labelled as corroboration; both
       // timestamps are present so a reviewer understands the interval.
       tlsCorroboration: capture.tlsCertChain ?? null,
-      timestampTokenPaths: packagedTimestampTokenPaths(timestampPathsByHash, capture)
+      timestampTokenPaths: packagedTimestampTokenPaths(timestampPathsByHash, capture.hash)
+    }
+  })
+
+  // Every committed Exhibit of every other kind, under the kind subdirectory
+  // the Case store uses and keyed by Exhibit id with the stored extension (D1),
+  // with its Derived Files beside it. The paths come from the same helpers the
+  // standalone verifier derives them with, so a file this writes is a file the
+  // verifier looks for.
+  const exhibitsMissingContent: string[] = []
+  const exhibitEvidence = data.fileExhibits.map((exhibit) => {
+    const enclosed = exhibit.packagedPath ? readPackagedFile(exhibit.storedPath) : null
+    if (enclosed && exhibit.packagedPath) add(exhibit.packagedPath, enclosed)
+    else exhibitsMissingContent.push(exhibit.id)
+    return {
+      ...describeExhibit(exhibit, enclosed !== null),
+      derivedFiles: addDerivedFiles(exhibit.derivedFiles, add)
+    }
+  })
+
+  // A Capture is an Exhibit too (X35), so it appears in the same list — the
+  // index a reader consults to see what the package holds is one list over
+  // every kind, not one per kind. Its bytes were enclosed by the capture pass
+  // above; only its Derived Files are added here.
+  const captureExhibits = data.captures.map((capture) => {
+    const derived = data.derivedFilesByCaptureId.get(capture.id) ?? []
+    // Total over the captures by construction: `insertCapture` writes the
+    // Exhibit row in the same transaction, and the v34 migration numbered every
+    // Capture that predates it.
+    const number = data.exhibitNumberByCaptureId.get(capture.id) ?? 0
+    return {
+      id: capture.id,
+      kind: 'capture',
+      origin: capture.method ?? 'extension',
+      exhibitNumber: number,
+      name: capture.title,
+      contentHash: capture.hash,
+      path: capturesMissingContent.includes(capture.id) ? null : `pages/${capture.id}.mhtml`,
+      derivedFiles: addDerivedFiles(derived, add)
     }
   })
 
   const evidence = {
-    schemaVersion: 1,
+    // 2: the additive `exhibits` list below. `captures` is unchanged, so a
+    // verifier built before it still reads this package.
+    schemaVersion: 2,
     generatedBy: 'Birdbrain',
     exportedAt: data.exportTimestamp,
     case: {
@@ -730,6 +1114,10 @@ function buildEvidenceZip(
       pendingCaptureCount: data.preflight.pendingCaptureCount,
       noneCaptureCount: data.preflight.noneCaptureCount,
       missingContentCaptureCount: capturesMissingContent.length,
+      // Committed Exhibits of other kinds whose stored bytes could not be read
+      // at export time, counted rather than left to be noticed by absence.
+      missingContentExhibitCount: exhibitsMissingContent.length,
+      missingContentExhibitIds: exhibitsMissingContent,
       // Captures the chain still claims but the package does not contain (#580).
       unreconciledChainCaptureCount: data.unreconciledChainCaptureIds.length,
       unreconciledChainCaptureIds: data.unreconciledChainCaptureIds,
@@ -750,6 +1138,11 @@ function buildEvidenceZip(
       reportPath: 'report.html'
     },
     captures: captureEvidence,
+    // Every Exhibit the package holds, of every kind, in Exhibit Number order
+    // (ADR-0023). Additive: `captures` above keeps its rows and its shape.
+    exhibits: [...captureExhibits, ...exhibitEvidence].sort(
+      (a, b) => a.exhibitNumber - b.exhibitNumber
+    ),
     artifacts
   }
 
@@ -829,7 +1222,29 @@ function buildWorkingCopyZip(
       url: capture.url,
       capturedAt: capture.timestamp,
       pagePath: mhtml ? pagePath : null,
-      screenshotPath
+      screenshotPath,
+      derivedFiles: addDerivedFiles(data.derivedFilesByCaptureId.get(capture.id) ?? [], add)
+    }
+  })
+
+  // The same committed Exhibits of every other kind the Evidence Package ships
+  // (#1156), in the same layout and with the same Derived Files beside them.
+  // What the Working Copy still does NOT carry is the material that makes a
+  // package verifiable — no manifest, no signed entry, no certification — so
+  // the class split is untouched: this is the operator's working set of the
+  // Case's files, not a second evidentiary object.
+  const exhibitIndex = data.fileExhibits.map((exhibit) => {
+    const bytes = exhibit.packagedPath ? readPackagedFile(exhibit.storedPath) : null
+    if (bytes && exhibit.packagedPath) add(exhibit.packagedPath, bytes)
+    return {
+      id: exhibit.id,
+      kind: exhibit.kind,
+      origin: exhibit.origin,
+      exhibitNumber: exhibit.exhibitNumber,
+      name: exhibit.name,
+      committedAt: exhibit.committedAt,
+      path: bytes && exhibit.packagedPath ? exhibit.packagedPath : null,
+      derivedFiles: addDerivedFiles(exhibit.derivedFiles, add)
     }
   })
 
@@ -866,9 +1281,11 @@ function buildWorkingCopyZip(
     contents: {
       captureCount: data.captures.length,
       screenshotCount: data.screenshots.size,
-      noteCount: meta.notes?.length ?? 0
+      noteCount: meta.notes?.length ?? 0,
+      ...exhibitKindCounts(data)
     },
     captures: captureIndex,
+    exhibits: exhibitIndex,
     artifacts
   }
 
@@ -923,23 +1340,23 @@ export function buildNotesMarkdown(caseName: string, exportedAt: string, notes: 
 }
 
 /**
- * Maps a capture content hash to the single timestamp-token path the package
- * uses for it. Captures that share a content hash share one token file, named
- * after the first such capture — so a per-capture path would be wrong for the
+ * Maps an Exhibit content hash to the single timestamp-token path the package
+ * uses for it. Exhibits that share a content hash share one token file, named
+ * after the first such Exhibit — so a per-Exhibit path would be wrong for the
  * rest. Defined once here and consumed by both the packager and the report to
  * remove any chance of the two disagreeing.
  */
 function buildTimestampTokenPaths(
-  captures: Capture[],
+  subjects: TokenSubject[],
   timestampEntries: ManifestTimestampEntry[]
 ): Map<string, string> {
   const byHash = new Map<string, string>()
   for (const entry of timestampEntries) {
     if (typeof entry.tsaToken !== 'string') continue
-    for (const capture of captures) {
-      if (capture.hash !== entry.captureContentHash) continue
-      if (byHash.has(capture.hash)) break
-      byHash.set(capture.hash, `timestamps/${capture.id}.tst`)
+    for (const subject of subjects) {
+      if (subject.contentHash !== entry.captureContentHash) continue
+      if (byHash.has(subject.contentHash)) break
+      byHash.set(subject.contentHash, `timestamps/${subject.id}.tst`)
       break
     }
   }
@@ -959,15 +1376,12 @@ function buildTimestampTokenPaths(
 function buildPackagedPaths(
   data: ExportData,
   options: ExportOptions,
-  manifest: ManifestSnapshot,
+  tokenPaths: Map<string, string>,
   screenshotDigests: Map<string, string>,
   annotatedCaptureIds: Set<string>
 ): Map<string, PackagedArtifacts> {
   const paths = new Map<string, PackagedArtifacts>()
   const isPackage = options.format === 'zip'
-  const tokenPaths = isPackage
-    ? buildTimestampTokenPaths(data.captures, manifest.entries.filter(isTimestampEntry))
-    : new Map<string, string>()
 
   for (const capture of data.captures) {
     // existsSync rather than a read: the packager skips exactly the artifacts

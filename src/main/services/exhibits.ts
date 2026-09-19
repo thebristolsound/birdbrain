@@ -17,9 +17,11 @@ import {
 import { getPublicKeyPem } from '@main/services/signingKey'
 import { defaultCaptureStore, type CaptureStore } from '@main/services/captureStore'
 import { entryDescribesRow, verifyCapture } from '@main/services/captureLifecycle'
+import { bindDerivedFile, type DerivationEntryFacts } from '@shared/verify'
 import type {
   CaseInventory,
   DerivedFileVerification,
+  Exhibit,
   ExhibitVerification,
   InventoryDerivedFileRow,
   InventoryExhibitRow,
@@ -262,21 +264,72 @@ function verifiedEntryAt(
   return parsed.success ? parsed.data : undefined
 }
 
+// The `derivation` entries a verified chain carries, reduced to the three
+// fields a binding may read. Empty when the chain did not verify: every line is
+// then unverified input, and binding a Derived File to one would take a
+// forger's word for what the bytes should be.
+function verifiedDerivations(
+  snapshot: ReturnType<typeof readManifestSnapshot>,
+  chain: ChainVerifyResult
+): DerivationEntryFacts[] {
+  if (!chain.valid) return []
+  const facts: DerivationEntryFacts[] = []
+  for (const line of snapshot.entries) {
+    const parsed = ManifestEntrySchema.safeParse(line)
+    if (!parsed.success || parsed.data.type !== 'derivation') continue
+    const { parentExhibitId, outputPath, outputHash } = parsed.data
+    facts.push({ parentExhibitId, outputPath, outputHash })
+  }
+  return facts
+}
+
 // One outcome per Derived File (X37). The recorded hash is compared against
 // the `derivation` entry the chain vouches for, never against the row alone:
 // the row is a mirror written in the same seam, and a mirror is what #234
 // showed cannot vouch for bytes. An unanchored file (X34) is reported as such.
+//
+// Which entry vouches is decided by `bindDerivedFile` (#1156, D7) — the same
+// predicate the standalone package verifier uses, so the app and the verifier
+// cannot disagree about the same bytes. It replaces a lookup by the row's
+// manifest index alone, which was the advisory left open on PR #1469: an index
+// says where an entry sits, never that the entry is about this file.
 async function verifyDerivedFiles(
-  exhibitId: string,
+  exhibit: Exhibit,
   store: CaptureStore,
   snapshot: ReturnType<typeof readManifestSnapshot>,
   chain: ChainVerifyResult
 ): Promise<DerivedFileVerification[]> {
+  const entries = verifiedDerivations(snapshot, chain)
+  const imports = importEntriesOf(snapshot)
+  const caseDir = store.caseDir(exhibit.caseId)
+  // The entry names the parent through the Case's custody records rather than
+  // by bare id equality, the same resolution `verifyExhibit` gives an Exhibit:
+  // an archive import keeps the source's id on the entry and only the anchored
+  // id map may reconcile the two.
+  const parentMatches = (entryParentExhibitId: string): boolean =>
+    entryDescribesRow(
+      { caseId: exhibit.caseId, rowId: entryParentExhibitId },
+      exhibit,
+      imports,
+      caseDir
+    )
+
   const results: DerivedFileVerification[] = []
-  for (const file of listDerivedFilesForExhibit(exhibitId)) {
+  for (const file of listDerivedFilesForExhibit(exhibit.id)) {
     const base = { derivedFileId: file.id, derivation: file.derivation }
-    const entry = verifiedEntryAt(snapshot, chain, file.manifestSeq)
-    if (!entry || entry.type !== 'derivation') {
+    let computed: string
+    try {
+      computed = await hashFile(store.resolveAbsolute(file.path))
+    } catch {
+      results.push({ ...base, status: 'missing', reason: 'Derived file unreadable' })
+      continue
+    }
+    const bound = bindDerivedFile(
+      { parentExhibitId: exhibit.id, storedPath: file.path, computedHash: computed },
+      entries,
+      { parentMatches }
+    )
+    if (bound.status === 'unanchored') {
       results.push({
         ...base,
         status: 'unverified',
@@ -287,17 +340,35 @@ async function verifyDerivedFiles(
       })
       continue
     }
-    const abs = store.resolveAbsolute(file.path)
-    let computed: string
-    try {
-      computed = await hashFile(abs)
-    } catch {
-      results.push({ ...base, status: 'missing', reason: 'Derived file unreadable' })
-      continue
-    }
-    results.push({ ...base, status: computed === entry.outputHash ? 'verified' : 'tampered' })
+    results.push({ ...base, status: bound.status })
   }
   return results
+}
+
+/**
+ * Every Derived File a Case holds, verified in ONE pass (X37): one manifest
+ * read and one chain verification for the whole Case, keyed by parent Exhibit.
+ * The export path needs an outcome per Derived File across every kind, and
+ * calling `verifyExhibit` per Exhibit to get it would re-read and re-verify the
+ * chain once per Exhibit — and could resolve two Exhibits against two different
+ * reads of a manifest the timestamp worker appends to.
+ */
+export async function verifyCaseDerivedFiles(
+  caseId: string,
+  store: CaptureStore = defaultCaptureStore
+): Promise<Map<string, DerivedFileVerification[]>> {
+  const byExhibitId = new Map<string, DerivedFileVerification[]>()
+  const exhibits = listExhibits(caseId)
+  if (exhibits.length === 0) return byExhibitId
+  const snapshot = readManifestSnapshot(store.caseDir(caseId))
+  const chain = verifyManifestChainText(snapshot.jsonl.toString('utf-8'), {
+    publicKeyPem: getPublicKeyPem()
+  })
+  for (const exhibit of exhibits) {
+    const results = await verifyDerivedFiles(exhibit, store, snapshot, chain)
+    if (results.length > 0) byExhibitId.set(exhibit.id, results)
+  }
+  return byExhibitId
 }
 
 // Verify one Exhibit (X37). `capture` delegates to the Capture path and returns
@@ -327,7 +398,7 @@ export async function verifyExhibit(
   const chain = verifyManifestChainText(snapshot.jsonl.toString('utf-8'), {
     publicKeyPem: getPublicKeyPem()
   })
-  const derived = await verifyDerivedFiles(exhibitId, store, snapshot, chain)
+  const derived = await verifyDerivedFiles(exhibit, store, snapshot, chain)
   const base = { exhibitId, caseId, kind: exhibit.kind, derived }
 
   if (exhibit.kind === 'capture') {

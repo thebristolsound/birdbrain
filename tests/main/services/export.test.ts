@@ -2824,7 +2824,7 @@ describe('export', () => {
       const certification = entries.get('certification.html')!.toString('utf-8')
       expect(certification).toContain('1 unanchored derived file recorded and not enclosed')
       // The anchored thumbnail is still counted, and counted once.
-      expect(certification).toContain('1 derived file,')
+      expect(certification).toContain('1 derived file enclosed,')
     })
 
     it('holds back a no-entry derived file whose bytes are gone, with the X34 cause', async () => {
@@ -2876,7 +2876,8 @@ describe('export', () => {
 
       const certification = entries.get('certification.html')!.toString('utf-8')
       expect(certification).toContain(
-        '1 anchored derived file whose stored bytes could not be read and are not enclosed'
+        '1 derived file named by a manifest entry whose stored bytes could not be read and are ' +
+          'not enclosed'
       )
     })
 
@@ -2915,6 +2916,46 @@ describe('export', () => {
         'whose anchoring could not be established because the chain did not verify'
       )
       expect(certification).not.toContain('unanchored derived file')
+      // Enclosed, so it is counted as enclosed: the anchoring clause is a
+      // re-count of the same file and never the enclosure statement.
+      expect(certification).toContain('1 derived file enclosed,')
+    })
+
+    it('does not certify a file as enclosed because its chain did not verify', async () => {
+      // The two axes crossed: a broken chain AND bytes the export cannot read.
+      // The zip and the report both omit the file, correctly; counting it as
+      // unverifiable INSTEAD of answering the enclosure question put it under
+      // the certification's enclosed clause, so the document claimed to
+      // contain a file it does not.
+      const thumbnail = listDerivedFilesForCase(fixture.caseId).find(
+        (file) => file.exhibitId === fixture.captureId
+      )!
+      rmSync(join(tempDir, 'captures', thumbnail.path))
+      const manifestPath = join(tempDir, 'captures', fixture.caseId, 'manifest.jsonl')
+      const lines = readFileSync(manifestPath, 'utf-8').trim().split('\n')
+      const edited = JSON.parse(lines[0]) as Record<string, unknown>
+      edited.operatorName = 'TAMPERED'
+      lines[0] = JSON.stringify(edited)
+      writeFileSync(manifestPath, lines.join('\n') + '\n')
+
+      const entries = await exportMixed('mixed-broken-chain-gone.zip')
+      expect(entries.has(fixture.thumbnailPackagePath)).toBe(false)
+      const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+        exhibits: Array<{ id: string; derivedFiles: unknown[] }>
+      }
+      expect(evidence.exhibits.find((e) => e.id === fixture.captureId)!.derivedFiles).toEqual([])
+
+      const certification = entries.get('certification.html')!.toString('utf-8')
+      expect(certification).not.toContain('1 derived file enclosed')
+      expect(certification).toContain(
+        '1 derived file named by a manifest entry whose stored bytes could not be read and are ' +
+          'not enclosed'
+      )
+      // And the anchoring gap is still disclosed, over that same file.
+      expect(certification).toContain(
+        '1 derived file counted above whose anchoring could not be established because the ' +
+          'chain did not verify'
+      )
     })
 
     it('says nothing about enclosure in a standalone HTML report', async () => {

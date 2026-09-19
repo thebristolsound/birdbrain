@@ -36,7 +36,12 @@ export interface CertificationInput {
      * counts above and nothing more.
      */
     exhibitCountsByKind?: Record<string, number>
-    /** Files the tool computed from an Exhibit and enclosed beside it (X17). */
+    /**
+     * Files the tool computed from an Exhibit and enclosed beside it (X17).
+     * ENCLOSURE only, decided by the packaged path the zip and `evidence.json`
+     * are both built from, so this count and the enclosed set cannot disagree
+     * whatever the chain says about anchoring.
+     */
     derivedFileCount?: number
     /**
      * Derived Files the case records that NO manifest entry names, and that
@@ -47,19 +52,20 @@ export interface CertificationInput {
     unanchoredDerivedFileCount?: number
     /**
      * Derived Files a manifest entry DOES name over a chain that did not
-     * verify. They are enclosed, and this document makes no claim either way
-     * about their anchoring — which is a different statement from the count
-     * above, and collapsing the two told a reader the chain was silent about a
-     * file whose entry is in the same package.
+     * verify, and about whose anchoring this document therefore makes no claim
+     * either way. An ANCHORING statement over files already counted under
+     * enclosure above — some enclosed, some unreadable and not — never an
+     * enclosure statement of its own: read as one it said a file the package
+     * does not hold was enclosed.
      */
     unverifiableDerivedFileCount?: number
     /**
-     * Derived Files the chain anchors that this export did not enclose,
+     * Derived Files a manifest entry names that this export did not enclose,
      * because the single read of their stored bytes failed — the file is gone,
      * locked, or unreadable. Enclosed by neither the package nor
-     * `evidence.json`, so they are counted apart from the enclosed files
-     * rather than inside them, and the four counts partition the Case's
-     * Derived Files between them.
+     * `evidence.json`. With the two counts above this partitions the Case's
+     * Derived Files by enclosure; `unverifiableDerivedFileCount` cuts the same
+     * files the other way and is not part of that sum.
      */
     missingDerivedFileCount?: number
   }
@@ -303,25 +309,30 @@ function buildContentsSummary(contents: CertificationInput['contents']): string 
   const unanchored = contents.unanchoredDerivedFileCount ?? 0
   const unverifiable = contents.unverifiableDerivedFileCount ?? 0
   const missing = contents.missingDerivedFileCount ?? 0
+  // Enclosure first and in full — the three clauses that partition the Case's
+  // Derived Files — then the anchoring disclosure over files already counted.
+  // The two were one clause until #1156's fix round, where "N derived files
+  // enclosed whose anchoring could not be established" stated the enclosure of
+  // a file whose bytes the export could not read.
   return [
     plural(contents.captureCount, 'capture'),
     ...byKind,
     plural(contents.screenshotCount, 'screenshot'),
-    ...(derived > 0 ? [plural(derived, 'derived file')] : []),
-    ...(unverifiable > 0
-      ? [
-          `${plural(unverifiable, 'derived file')} enclosed whose anchoring could not be ` +
-            'established because the chain did not verify'
-        ]
-      : []),
+    ...(derived > 0 ? [`${plural(derived, 'derived file')} enclosed`] : []),
     ...(missing > 0
       ? [
-          `${plural(missing, 'anchored derived file')} whose stored bytes could not be read ` +
-            'and are not enclosed'
+          `${plural(missing, 'derived file')} named by a manifest entry whose stored bytes ` +
+            'could not be read and are not enclosed'
         ]
       : []),
     ...(unanchored > 0
       ? [`${plural(unanchored, 'unanchored derived file')} recorded and not enclosed`]
+      : []),
+    ...(unverifiable > 0
+      ? [
+          `${plural(unverifiable, 'derived file')} counted above whose anchoring could not be ` +
+            'established because the chain did not verify'
+        ]
       : []),
     plural(contents.noteCount, 'operator note')
   ].join(', ')

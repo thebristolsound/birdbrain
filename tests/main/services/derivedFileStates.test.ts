@@ -121,8 +121,10 @@ function assertConsistent(options: {
   subjectPath: string
   /** Every derived-file row the Case holds, so the counts can be summed. */
   caseDerivedFileCount: number
+  /** Whether this state's manifest was edited, so anchoring cannot be established. */
+  chainBroken: boolean
 }): void {
-  const { label, entries, subjectPath, caseDerivedFileCount } = options
+  const { label, entries, subjectPath, caseDerivedFileCount, chainBroken } = options
   const report = entries.get('report.html')!.toString('utf-8')
   const certification = entries.get('certification.html')!.toString('utf-8')
   const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as EvidenceIndex
@@ -149,18 +151,41 @@ function assertConsistent(options: {
   const namedEnclosed = report.includes(subjectPath)
   expect(namedEnclosed, `${label}: report cites ${subjectPath} but the zip lacks it`).toBe(inZip)
 
-  // The four counts partition the Case's derived files: each file is in
-  // exactly one, so they sum to the total however the state falls out.
+  // Two axes, asserted separately, because the certification stated them as
+  // one and so described a file it does not enclose as enclosed.
+  //
+  // ENCLOSURE: three clauses that partition the Case's derived files, each
+  // file in exactly one, summing to the total however the state falls out.
   const counts = {
-    derived: countIn(certification, /(\d+) derived files? enclosed whose anchoring/),
-    plain: countIn(certification, /(\d+) derived files?(?!,? enclosed whose)/),
+    enclosed: countIn(certification, /(\d+) derived files? enclosed/),
+    missing: countIn(certification, /(\d+) derived files? named by a manifest entry whose stored/),
     unanchored: countIn(certification, /(\d+) unanchored derived files?/),
-    missing: countIn(certification, /(\d+) anchored derived files? whose stored bytes/)
+    unverifiable: countIn(certification, /(\d+) derived files? counted above whose anchoring/)
   }
-  const stated = counts.derived + counts.plain + counts.unanchored + counts.missing
+  const stated = counts.enclosed + counts.missing + counts.unanchored
   expect(stated, `${label}: certification counts ${stated} of ${caseDerivedFileCount}`).toBe(
     caseDerivedFileCount
   )
+  // And the enclosed count is the zip's own, read off the index that says what
+  // the package holds — not off what the chain said about anchoring.
+  const indexedDerived = evidence.exhibits.reduce(
+    (total, exhibit) => total + exhibit.derivedFiles.length,
+    0
+  )
+  expect(counts.enclosed, `${label}: certification enclosed vs evidence.json rows`).toBe(
+    indexedDerived
+  )
+
+  // DISCLOSURE: anchoring cuts the same files the other way. A broken chain
+  // leaves every entry-named file unvouched for, so the clause is present and
+  // never larger than the files it re-counts; a verified one omits it.
+  expect(counts.unverifiable, `${label}: anchoring disclosure`).toBe(
+    chainBroken ? caseDerivedFileCount - counts.unanchored : 0
+  )
+  expect(
+    counts.unverifiable,
+    `${label}: disclosure is a re-count, not a bucket`
+  ).toBeLessThanOrEqual(counts.enclosed + counts.missing)
 }
 
 /** First capture group of the first match, or 0 when the clause is absent. */
@@ -267,7 +292,8 @@ describe('derived file states, end to end (#1156)', () => {
         label: `evidence package, ${label}`,
         entries: evidenceEntries,
         subjectPath,
-        caseDerivedFileCount
+        caseDerivedFileCount,
+        chainBroken: state.chain === 'broken'
       })
 
       // The Working Copy carries no report and no certification by design
@@ -303,13 +329,19 @@ describe('derived file states, end to end (#1156)', () => {
         wcEntries.has(subjectPath)
       )
       const { contents } = marker
+      // The same two axes as the certification: the three enclosure counts
+      // partition the Case, and the unverifiable count re-cuts them by
+      // anchoring rather than adding a fourth bucket.
       expect(
         contents.derivedFileCount +
           contents.unanchoredDerivedFileCount +
-          contents.unverifiableDerivedFileCount +
           contents.missingDerivedFileCount,
         `${label}: working copy counts`
       ).toBe(caseDerivedFileCount)
+      expect(contents.derivedFileCount, `${label}: working copy enclosure`).toBe(markerPaths.length)
+      expect(contents.unverifiableDerivedFileCount, `${label}: working copy disclosure`).toBe(
+        state.chain === 'broken' ? caseDerivedFileCount - contents.unanchoredDerivedFileCount : 0
+      )
 
       // Both shipped verifiers, on the same package, must reach the same
       // verdict: the app-side core the binary is built from, and verify.sh.

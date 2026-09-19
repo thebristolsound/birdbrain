@@ -850,16 +850,21 @@ function exhibitKindCounts(data: ExportData): {
   let unanchoredDerivedFileCount = 0
   let unverifiableDerivedFileCount = 0
   let missingDerivedFileCount = 0
+  // Two axes, not one. ENCLOSURE is decided by `packagedPath` alone — the same
+  // field the zip and evidence.json are built from — and partitions the Case's
+  // Derived Files three ways. ANCHORING is a separate disclosure over the same
+  // files: counting a `chain-unverified` file as unverifiable INSTEAD of
+  // answering the enclosure question put a file whose bytes could not be read
+  // under the certification's "enclosed" clause, which the zip and the report
+  // both correctly omitted.
   const count = (files: ExportDerivedFile[]): void => {
     for (const file of files) {
-      if (file.anchoring === 'no-entry') unanchoredDerivedFileCount++
-      else if (file.anchoring === 'chain-unverified') unverifiableDerivedFileCount++
-      else if (file.packagedPath) derivedFileCount++
-      // Anchored, and the export's single read of its bytes failed, so it is
-      // in neither the package nor evidence.json. Counted apart from the
-      // enclosed files, off the same `packagedPath` the zip and the index are
-      // built from, so the contents line and the enclosed set cannot disagree.
+      if (file.packagedPath) derivedFileCount++
+      else if (file.anchoring === 'no-entry') unanchoredDerivedFileCount++
+      // A manifest entry names it and the export's single read of its bytes
+      // failed, so it is in neither the package nor evidence.json.
       else missingDerivedFileCount++
+      if (file.anchoring === 'chain-unverified') unverifiableDerivedFileCount++
     }
   }
   for (const exhibit of data.fileExhibits) {

@@ -1745,6 +1745,73 @@ describe('verifyEvidencePackage — exhibits of every kind (#1156)', () => {
     expect(check?.reason).toContain('planted-exhibit-id')
   })
 
+  it('fails an exhibit row whose signed fields were rewritten under a kept id', () => {
+    // The whole row is fabricated except the id, which is what the coverage
+    // loops compare. evidence.json is unsigned and is what report.html and the
+    // certification render, so every field it keeps is a field the chain has to
+    // answer for; `artifacts` is untouched, so the package hash still binds and
+    // nothing else in the verifier can catch this.
+    const path = join(pkgDir, 'evidence.json')
+    const evidence = JSON.parse(readFileSync(path, 'utf-8')) as {
+      exhibits: Array<{
+        id: string
+        kind: string
+        origin: string
+        exhibitNumber: number
+        name: string
+        contentHash: string
+        path: string | null
+      }>
+    }
+    const row = evidence.exhibits.find((e) => e.id === fixture.document.id)!
+    row.contentHash = 'f'.repeat(64)
+    row.exhibitNumber = 99
+    row.kind = 'attachment'
+    row.origin = 'capture'
+    row.name = 'Forged Exhibit'
+    row.path = 'attachments/forged.zip'
+    writeFileSync(path, JSON.stringify(evidence, null, 2))
+
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass).toBe(false)
+    const failures = result.checks.filter(
+      (c) => c.name === 'evidence.json exhibits' && c.status === 'fail'
+    )
+    for (const field of ['contentHash', 'exhibitNumber', 'kind', 'origin', 'name', 'path']) {
+      expect(
+        failures.some((c) => c.reason?.includes(field) && c.reason.includes(fixture.document.id)),
+        `${field} is reconciled and named in the finding`
+      ).toBe(true)
+    }
+    // The package hash still binds: the index's artifact list was not touched,
+    // which is exactly why the fabricated row needed its own check.
+    expect(result.checks.find((c) => c.name === 'package hash')?.status).toBe('pass')
+  })
+
+  it('fails a capture row in the exhibits list whose signed fields were rewritten', () => {
+    const path = join(pkgDir, 'evidence.json')
+    const evidence = JSON.parse(readFileSync(path, 'utf-8')) as {
+      exhibits: Array<{ id: string; kind: string; contentHash: string; path: string | null }>
+    }
+    const row = evidence.exhibits.find((e) => e.id === fixture.captureId)!
+    row.contentHash = 'a'.repeat(64)
+    row.kind = 'document'
+    row.path = 'documents/not-the-capture.pdf'
+    writeFileSync(path, JSON.stringify(evidence, null, 2))
+
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass).toBe(false)
+    const failures = result.checks.filter(
+      (c) => c.name === 'evidence.json exhibits' && c.status === 'fail'
+    )
+    for (const field of ['contentHash', 'kind', 'path']) {
+      expect(
+        failures.some((c) => c.reason?.includes(field) && c.reason.includes(fixture.captureId)),
+        `${field} is reconciled for a capture row`
+      ).toBe(true)
+    }
+  })
+
   it('passes a selection scoped over mixed kinds and skips what it leaves out', async () => {
     const outputPath = join(tempDir, 'mixed-selection.zip')
     await generateReport(

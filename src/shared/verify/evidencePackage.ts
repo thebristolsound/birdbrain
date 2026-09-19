@@ -891,6 +891,63 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
           )
         }
       }
+      // Every SIGNED field of an indexed row against the entry that anchors it.
+      // The loops above compare id SETS only, so a row keeping its id while its
+      // hash, number, kind, origin and path were all rewritten reconciled
+      // clean — and evidence.json is what report.html and the certification
+      // render, so an unchecked field is a fabricated Exhibit behind a PASS.
+      // Only rows the chain answers for are reconciled here: one it does not is
+      // already a coverage FAIL above and has no entry to compare against.
+      const exhibitEntriesById = new Map(activeExhibits.map((e) => [e.exhibitId, e]))
+      const captureEntriesById = new Map(activeCaptures.map((c) => [c.captureId, c]))
+      for (const row of evidence.exhibits ?? []) {
+        const mismatch = (field: string, indexed: unknown, signed: unknown): void => {
+          exhibitCoverageOk = false
+          add(
+            'evidence.json exhibits',
+            'fail',
+            `evidence.json records ${field} \`${String(indexed)}\` for exhibit ${row.id}, but ` +
+              `its signed entry records \`${String(signed)}\``
+          )
+        }
+        const entry = exhibitEntriesById.get(row.id)
+        if (entry) {
+          if (row.contentHash !== entry.contentHash) {
+            mismatch('contentHash', row.contentHash, entry.contentHash)
+          }
+          if (row.kind !== entry.kind) mismatch('kind', row.kind, entry.kind)
+          if (row.origin !== entry.origin) mismatch('origin', row.origin, entry.origin)
+          if (row.name !== entry.name) mismatch('name', row.name, entry.name)
+          // `path` is null when the export could not read the bytes, which the
+          // per-Exhibit check above already FAILs; a non-null path is a claim
+          // about where the package holds them and has to be the one the signed
+          // storage path maps to.
+          const expected = exhibitPackagePath(entry.path)
+          if (row.path !== null && row.path !== expected) mismatch('path', row.path, expected)
+        }
+        const capture = captureEntriesById.get(row.id)
+        if (capture) {
+          if (row.contentHash !== capture.contentHash) {
+            mismatch('contentHash', row.contentHash, capture.contentHash)
+          }
+          if (row.kind !== 'capture') mismatch('kind', row.kind, 'capture')
+          // `method` is optional on a capture entry and omitted when the
+          // acquiring path did not record one, so the row's origin is compared
+          // only where the chain states one to compare it with.
+          if (capture.method !== undefined && row.origin !== capture.method) {
+            mismatch('origin', row.origin, capture.method)
+          }
+          const expected = `${CAPTURE_PACKAGE_DIRECTORY}/${row.id}.mhtml`
+          if (row.path !== null && row.path !== expected) mismatch('path', row.path, expected)
+        }
+        // From the chain's own numbering (X18), which for a Capture committed
+        // after its Case was renumbered holds no number at all — and a citation
+        // nothing signed is not one this check can contradict.
+        const signedNumber = exhibitNumbers.get(row.id)
+        if (signedNumber !== undefined && row.exhibitNumber !== signedNumber) {
+          mismatch('exhibitNumber', row.exhibitNumber, signedNumber)
+        }
+      }
       if (exhibitCoverageOk) add('evidence.json exhibits', 'pass')
 
       // The nested Derived File rows, reconciled in both directions against the

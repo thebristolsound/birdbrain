@@ -265,6 +265,7 @@ independent of the Operator who holds it.
 | `src/main/services/reportHtml.ts` | blocking | Forensic report renderer inside packages |
 | `src/main/services/certification.ts` | blocking | Export certification document |
 | `src/main/services/verifyRunbook.ts` | blocking | By-hand verification runbook shipped in packages |
+| `src/main/services/verifyScript.ts` | blocking | `verify.sh` shipped in packages: runs the runbook's steps and prints PASS or FAIL |
 | `src/main/services/caseArchive.ts` | blocking | Archive export/import with id remapping |
 | `src/main/services/zip.ts` | blocking | Evidence container write |
 | `src/main/services/zipRead.ts` | blocking | Evidence container read |

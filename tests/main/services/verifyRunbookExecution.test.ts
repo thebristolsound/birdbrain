@@ -568,6 +568,23 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
       expect(run.output).not.toContain('verify.sh: PASS')
     })
 
+    it.skipIf(!RUNS)('reads the era as a number, so 2.0 fails as 2 does', () => {
+      // JSON.stringify cannot write 2.0, so the float goes in as text. The
+      // binary parses it to 2 and FAILs; the script must not read "2.0" as
+      // unreadable and PASS the same zip.
+      const dir = corruptedCopy('float-era')
+      rmSync(join(dir, 'export-entry.json'))
+      const path = join(dir, 'evidence.json')
+      const text = readFileSync(path, 'utf-8')
+      writeFileSync(path, text.replace(/"schemaVersion": \d+/, '"schemaVersion": 2.0'))
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      expect(run.output).toContain('FAIL [step 5] export-entry.json is missing')
+      expect(run.output).toContain('states schema version 2,')
+      expect(run.output).not.toContain('verify.sh: PASS')
+    })
+
     it.skipIf(!RUNS)('notes rather than fails when the index states the pre-scope era', () => {
       // A package that genuinely predates export entries (#398) still verifies,
       // and now says so instead of saying nothing.

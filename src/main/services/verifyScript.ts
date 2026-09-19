@@ -279,18 +279,22 @@ else
   # enclosed beside this script also concludes. The index is unsigned (VERIFY.md
   # trust model), so a version edited downward still reaches the lenient branch;
   # reporting whose claim the era is, is what this step can do, not settling it.
+  # jq compares the number, not its text: 2.0 and 2e0 are version 2 to the
+  # binary verifier too.
   era=''
-  [ -f evidence.json ] && era=$(jq -r '.schemaVersion // empty' evidence.json 2>/dev/null)
+  [ -f evidence.json ] && era=$(jq -r '.schemaVersion
+    | select(type == "number" and . == floor and . > 0)
+    | (if . >= ${EVIDENCE_INDEX_SCHEMA_VERSION} then "sealed " else "pre " end) + (. + 0 | tostring)' \\
+    evidence.json 2>/dev/null)
   case "$era" in
-  '' | *[!0-9]*)
-    note 'no export-entry.json, and evidence.json states no readable schema version, so the era of this package cannot be read here'
+  'sealed '*)
+    fail "export-entry.json is missing: evidence.json states schema version \${era#sealed }, and every package at or above version ${EVIDENCE_INDEX_SCHEMA_VERSION} was sealed with a signed export entry, so the file was removed rather than never written"
+    ;;
+  'pre '*)
+    note "no export-entry.json and evidence.json states schema version \${era#pre }, so on that unsigned claim this package predates export entries and its scope is not signed"
     ;;
   *)
-    if [ "$era" -ge ${EVIDENCE_INDEX_SCHEMA_VERSION} ]; then
-      fail "export-entry.json is missing: evidence.json states schema version $era, and every package at or above version ${EVIDENCE_INDEX_SCHEMA_VERSION} was sealed with a signed export entry, so the file was removed rather than never written"
-    else
-      note "no export-entry.json and evidence.json states schema version $era, so on that unsigned claim this package predates export entries and its scope is not signed"
-    fi
+    note 'no export-entry.json, and evidence.json states no readable schema version, so the era of this package cannot be read here'
     ;;
   esac
 fi

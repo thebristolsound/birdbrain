@@ -761,9 +761,8 @@ export const MANIFEST_ENTRY_TYPES: ReadonlySet<string> = new Set(
 // non-strict.
 //
 // Defined here rather than in constants.ts so it sits beside the schema whose
-// version it names, following the WORKING_COPY_MARKER_FILENAME precedent
-// below. Not an import boundary: build-verifier.mjs aliases all of @shared/*
-// into the bundle (its one rule is no electron and no src/main), and
+// version it names. Not an import boundary: build-verifier.mjs aliases all of
+// @shared/* into the bundle (its one rule is no electron and no src/main), and
 // @shared/verify/manifestChain.ts already reaches @shared/constants directly.
 export const EVIDENCE_INDEX_SCHEMA_VERSION = 2
 
@@ -820,8 +819,8 @@ export type EvidencePackage = z.infer<typeof EvidencePackageSchema>
 // the package root. It is UNSIGNED and confers nothing: the verifier reads it
 // only when `manifest.jsonl` is absent, to report "not a verifiable object"
 // instead of FAIL — a present manifest is always verified, so a planted marker
-// can never silence a chain. Defined here (not in constants.ts) because the
-// standalone verifier may import only @shared/verify/** and @shared/schemas.
+// can never silence a chain. Defined here (not in constants.ts) so it sits
+// beside the marker schema it names.
 export const WORKING_COPY_MARKER_FILENAME = 'WORKING-COPY.json'
 
 // Deliberately non-strict, pinning only what the verifier branches on: future

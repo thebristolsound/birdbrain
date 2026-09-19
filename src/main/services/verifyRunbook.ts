@@ -84,10 +84,13 @@ only thing dating it is \`evidence.json\`'s \`schemaVersion\`, which names the e
 the package was sealed in:
 
 \`\`\`sh
-jq -r '.schemaVersion' evidence.json
+jq '.schemaVersion' evidence.json
 \`\`\`
 
-Below ${EVIDENCE_INDEX_SCHEMA_VERSION} the package predates this file and encloses every active capture. At ${EVIDENCE_INDEX_SCHEMA_VERSION}
+Read it as a number: \`2.0\` and \`2e0\` are both version 2. If it prints
+\`null\`, a string, or anything that is not a positive whole number, the index
+states no era and Birdbrain's verifier fails it as malformed; nothing below
+applies. Below ${EVIDENCE_INDEX_SCHEMA_VERSION} the package predates this file and encloses every active capture. At ${EVIDENCE_INDEX_SCHEMA_VERSION}
 or above it was sealed with an export entry, so an absent one is a **removed
 file**, not an age: treat the package as tampered with, and accept no statement
 of its scope. Birdbrain's verifier and \`${VERIFY_SCRIPT_FILENAME}\` both fail such a package; a

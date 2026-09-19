@@ -125,7 +125,7 @@ you nothing checkable about the other.
 not block the release on them. macOS ships as a byproduct and is unsupported — not tested
 here.
 
-Run the same eight steps per platform.
+Run the same nine steps per platform.
 
 The first step, install then launch, also runs by machine on the CI-built artifact:
 `release.yml` runs `scripts/package-smoke.mjs` on each leg between packaging and upload
@@ -134,37 +134,58 @@ capture server must answer). A leg whose artifact does not boot uploads nothing,
 that reaches the release page has passed it. Tick the human step anyway: the script proves
 the packaged main process starts, not that the window is usable.
 
+That script launches twice against the same profile and requires the extension folder and
+its `extension-version` stamp under user data after both (#653). On the Ubuntu leg each
+launch gets its own `TMPDIR`, which is where `--appimage-extract-and-run` unpacks the app;
+the first is deleted before the second launch, and the script asserts that the two launches
+unpacked to different directories and that the first one is gone. What that establishes is
+one thing: the folder under user data is there after a launch from a directory the first
+launch never used. It does not tell a copy that was left alone from one the second launch
+rewrote, and it cannot show that Chrome's loaded extension still runs, which is why the
+load goes through **Open extension folder** below and is re-checked after the relaunch.
+
 **Windows (NSIS `.exe`) — must pass**
 
 - [ ] Install (expect the SmartScreen "More info → Run anyway" click-through; builds are
       unsigned) → launch
 - [ ] Create a case
-- [ ] Sideload the extension from `birdbrain-extension.zip` (`chrome://extensions` →
-      Developer mode → Load unpacked); the dashboard banner flips to **Browser Extension
-      Connected** and the top-bar indicator reads **Connected**
+- [ ] Sideload the extension the way the app documents: **Open extension folder** in
+      Birdbrain, then `chrome://extensions` → Developer mode → Load unpacked on the folder
+      that opened; the dashboard banner flips to **Browser Extension Connected** and the
+      top-bar indicator reads **Connected**
 - [ ] Capture a page (MHTML is the only format the extension produces; there is no
       HTML capture path)
 - [ ] Capture a second, different page
 - [ ] View both captures in the app
 - [ ] Export the case
 - [ ] Quit, relaunch, confirm the case and both captures are still there
+- [ ] After that relaunch, without reloading anything in Chrome: `chrome://extensions`
+      shows the extension with no error, the banner still reads **Browser Extension
+      Connected**, and a third capture arrives (#653)
 
 **Ubuntu (AppImage) — must pass**
 
 - [ ] `chmod +x` → launch
 - [ ] Create a case
-- [ ] Sideload the extension; the dashboard banner flips to **Browser Extension Connected**
-      and the top-bar indicator reads **Connected**
+- [ ] Sideload the extension the way the app documents: **Open extension folder** in
+      Birdbrain, then `chrome://extensions` → Developer mode → Load unpacked on the folder
+      that opened; the dashboard banner flips to **Browser Extension Connected** and the
+      top-bar indicator reads **Connected**
 - [ ] Capture a page (MHTML is the only format the extension produces; there is no
       HTML capture path)
 - [ ] Capture a second, different page
 - [ ] View both captures in the app
 - [ ] Export the case
 - [ ] Quit, relaunch, confirm the case and both captures are still there
+- [ ] After that relaunch, without reloading anything in Chrome: `chrome://extensions`
+      shows the extension with no error, the banner still reads **Browser Extension
+      Connected**, and a third capture arrives. This is the step #653 is about, and the
+      AppImage is the platform it failed on, because its mount is a different directory
+      on every launch
 
 **Ubuntu (`.deb`) — best-effort**
 
-- [ ] `sudo apt install ./birdbrain_<version>_amd64.deb`, then the same eight steps
+- [ ] `sudo apt install ./birdbrain_<version>_amd64.deb`, then the same nine steps
 
 ## 4. Verification — must pass
 
@@ -252,6 +273,10 @@ upgrade demonstrates.
       installer; AppImage: replace the file; do not remove user data) is the fallback, and is
       the only option when the previous beta predates the feed.
 - [ ] Launch. The case and its capture are still there, and the capture still opens.
+- [ ] The extension folder was refreshed for the new version: the `extension-version` file
+      in the user data directory reads the candidate's version, and the folder **Open
+      extension folder** opens holds that build's `manifest.json`. Reload the extension on
+      `chrome://extensions` and confirm it connects again (#653).
 - [ ] A pre-migration snapshot exists in the `db-snapshots` folder next to the database in
       the user data directory, and it is listed under **Settings → Database → Utilities →
       Pre-Migration Snapshots**.

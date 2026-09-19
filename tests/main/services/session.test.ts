@@ -147,8 +147,10 @@ describe('sessionService — extension heartbeat', () => {
     expect(connectionChanges).toEqual([true])
   })
 
+  // The clock advances below are written against a 10 s window, so these pin it
+  // rather than tracking the production default (#628 widened it to 90 s).
   it('goes stale once the timeout elapses', () => {
-    const { service, clock } = setup()
+    const { service, clock } = setup({ extensionTimeoutMs: 10_000 })
     service.touchExtension()
     clock.advance(9_999)
     expect(service.isExtensionConnected()).toBe(true)
@@ -157,7 +159,7 @@ describe('sessionService — extension heartbeat', () => {
   })
 
   it('expiry emits disconnected exactly once', () => {
-    const { service, connectionChanges, clock } = setup()
+    const { service, connectionChanges, clock } = setup({ extensionTimeoutMs: 10_000 })
     service.touchExtension()
     clock.advance(10_001)
 
@@ -196,7 +198,7 @@ describe('sessionService — extension heartbeat', () => {
   })
 
   it('a touch after expiry is a fresh rising edge', () => {
-    const { service, connectionChanges, clock } = setup()
+    const { service, connectionChanges, clock } = setup({ extensionTimeoutMs: 10_000 })
     service.touchExtension()
     clock.advance(10_001)
     service.expireExtensionIfStale()
@@ -210,13 +212,57 @@ describe('sessionService — extension heartbeat', () => {
     clock.advance(51)
     expect(service.isExtensionConnected()).toBe(false)
   })
+
+  // The two tests below run on the production defaults on purpose: the bug in
+  // #628 was that the window was shorter than the extension's 30 s poll, so a
+  // healthy extension flapped. They fail if either default regresses.
+  it('the default window survives 60 s idle and then expires once by 90 s', () => {
+    const { service, connectionChanges, clock } = setup()
+    service.touchExtension()
+
+    // Monitor ticks at the default 15 s poll, with no further touch.
+    for (let elapsed = 15_000; elapsed <= 60_000; elapsed += 15_000) {
+      clock.advance(15_000)
+      service.expireExtensionIfStale()
+      expect(service.isExtensionConnected()).toBe(true)
+    }
+    expect(connectionChanges).toEqual([true])
+
+    for (let elapsed = 75_000; elapsed <= 90_000; elapsed += 15_000) {
+      clock.advance(15_000)
+      service.expireExtensionIfStale()
+    }
+    expect(service.isExtensionConnected()).toBe(false)
+    expect(connectionChanges).toEqual([true, false])
+
+    clock.advance(15_000)
+    service.expireExtensionIfStale()
+    expect(connectionChanges).toEqual([true, false])
+  })
+
+  it('the real 30 s poll cadence stays connected through two minutes', () => {
+    const { service, connectionChanges, clock } = setup()
+    service.touchExtension()
+
+    for (let elapsed = 15_000; elapsed <= 120_000; elapsed += 15_000) {
+      clock.advance(15_000)
+      if (elapsed === 30_000 || elapsed === 60_000) service.touchExtension()
+      service.expireExtensionIfStale()
+      expect(service.isExtensionConnected()).toBe(true)
+    }
+
+    expect(connectionChanges).toEqual([true])
+  })
 })
 
 describe('sessionService — heartbeat monitor', () => {
   it('polls for expiry on the configured interval', () => {
     vi.useFakeTimers()
     try {
-      const { service, connectionChanges, clock } = setup({ heartbeatPollMs: 100 })
+      const { service, connectionChanges, clock } = setup({
+        heartbeatPollMs: 100,
+        extensionTimeoutMs: 10_000
+      })
       service.touchExtension()
       service.startHeartbeatMonitor()
 
@@ -233,7 +279,10 @@ describe('sessionService — heartbeat monitor', () => {
   it('stopping the monitor halts polling', () => {
     vi.useFakeTimers()
     try {
-      const { service, connectionChanges, clock } = setup({ heartbeatPollMs: 100 })
+      const { service, connectionChanges, clock } = setup({
+        heartbeatPollMs: 100,
+        extensionTimeoutMs: 10_000
+      })
       service.touchExtension()
       service.startHeartbeatMonitor()
       service.stopHeartbeatMonitor()
@@ -250,7 +299,10 @@ describe('sessionService — heartbeat monitor', () => {
   it('starting twice does not stack intervals', () => {
     vi.useFakeTimers()
     try {
-      const { service, connectionChanges, clock } = setup({ heartbeatPollMs: 100 })
+      const { service, connectionChanges, clock } = setup({
+        heartbeatPollMs: 100,
+        extensionTimeoutMs: 10_000
+      })
       service.touchExtension()
       service.startHeartbeatMonitor()
       service.startHeartbeatMonitor()

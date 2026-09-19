@@ -38,6 +38,10 @@ _Avoid_: project, folder, workspace.
 The human investigator. Identified by `installationId` (per-install UUID) and the optional operator name, role, and organisation settings; the id and name are written into Manifest entries.
 _Avoid_: user, analyst.
 
+**Persona**:
+A signed-in browser identity, the Operator's own or a pseudonym, registered installation-wide and recorded on each Exhibit it was present for. Orthogonal to the Operator, who is always the human and is always recorded beside it.
+_Avoid_: alias, sock account, profile, identity, account.
+
 **Case Archive**:
 A portable `.birdbrain` file containing one Case's rows and files, chain-verified on import before any data is written.
 _Avoid_: backup, dump, case file.
@@ -262,6 +266,8 @@ _Avoid_: risky change, core change, forensic change.
 - A **Case** owns many **Exhibits**, **Selectors**, and **Notes**; a **Capture** is one kind of **Exhibit**
 - A **Tag** is installation-wide and classifies **Exhibits** and **Notes** in any **Case**; no **Case** owns it
 - A **Capture Lifecycle** operation on an MHTML **Capture** writes a **Manifest** entry attributed to an **Operator**
+- A **Persona** is installation-wide like a **Tag**; an **Exhibit** records at most one, with the label it had at acquisition, and never in place of the **Operator**
+- A background **Recapture** may render through a **Persona**'s browser session and records that it did; an extension **Capture** can only declare which **Persona** the operator says was signed in
 - The **Capture Server** receives raw captures from the Chrome extension and hands them to the **Capture Lifecycle**
 - A **Capture Session** runs against exactly one **Active Case**; the extension attaches a **Tag** or **Note** only to the **Active Case**, capturing the page first when it has no **Capture** yet
 - Each **Manifest Entry** carries an **Entry Hash** over itself and its predecessor's, which is what makes the **Manifest** a chain
@@ -321,6 +327,6 @@ _Avoid_: risky change, core change, forensic change.
 
 - "auto-capture" names four unrelated things: the top-bar switch that starts and stops a **Capture Session** (#813), the Signals card and the `autoCaptureMode` setting that edit a Case's URL exclusion policy (#744), the Capture Server capturing a page before the extension attaches a **Tag** or **Note** to it, and the withdrawn passive capture whose return ADR-0013 scopes to a declared window (#600). Say "Capture Session" for the switch, "exclusion policy" for the card, and "capture-then-attach" for the server path; "passive capture" and its vocabulary stay reserved to ADR-0013 until the restoration lands.
 
-- "session" is four things: a **Capture Session**; one app launch, which the crash-recovery prompt tracks through a lock file; the last Case and screen the app restores on launch ("session restore"); and the browser profile a webview or a background **Recapture** renders in. Unqualified "session" means Capture Session; qualify the other three.
+- "session" is four things: a **Capture Session**; one app launch, which the crash-recovery prompt tracks through a lock file; the last Case and screen the app restores on launch ("session restore"); and the browser profile a webview or a background **Recapture** renders in, which for a **Persona** is its persona session. Unqualified "session" means Capture Session; qualify the other three.
 
 - "staging" and "derivation" are domain terms (**Staging Pool**, **Derivation**) that code comments also use casually: the scratch directory an archive import unpacks into, the scratch file a database snapshot writes through, and any computed value. In prose, reserve both words for the domain terms and say "scratch" or "computed" for the rest.

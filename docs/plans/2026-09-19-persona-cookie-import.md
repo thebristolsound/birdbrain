@@ -34,7 +34,7 @@ guarantees second.
 
 ## Decisions (confirmed 2026-09-19)
 
-Recorded here until the ADR and the `CONTEXT.md` entry for **Persona** land in phase 0.
+Recorded in ADR-0030 and the `CONTEXT.md` entry for **Persona** (phase 0, 2026-09-19).
 
 1. **Persona is a per-Capture provenance attribute, registered per install.** Same shape as
    Operator: registry in the install, stamp on the row and the Manifest Entry. Orthogonal to

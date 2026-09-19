@@ -64,6 +64,23 @@ Verdict values: **Go** means the primary sources give no reason to expect the cu
 
 Reading the table as a whole: for the four social platforms the blocker is the terms, not the fingerprint. Even if the render passed every check, an unattended authenticated capture is the conduct each platform names. The persona map's fallback, "persona mode is label + session context only, with real Chrome profiles doing the browsing" ([#541](https://github.com/thebristolsound/birdbrain/issues/541)), is the option this evidence supports for those four. Telegram Web and ordinary Cloudflare-fronted sites are where the Electron partition is worth building.
 
+## Maintainer ruling (2026-09-19)
+
+The maintainer read the table above and ruled that terms-of-service exposure on a sock account
+is the user's risk to accept, not a reason for the tool to refuse a platform. The verdicts
+therefore split by mechanism, and the terms rows above stay as the disclosure the tester guide
+carries:
+
+| Platform | Unattended render on the persona partition (#1499) | Persona window, human present (#1505, phase 3b) |
+| --- | --- | --- |
+| Facebook, Instagram | Unknown until probed authenticated; the fingerprint rows above are the risk | Go: the user clears any checkpoint by hand |
+| X, LinkedIn | Unknown; Cloudflare layer expected to pass on the stock UA, platform detection unpublished | Go |
+| Telegram Web | Conditional go as above | Go, and the only way to log in, since state is `localStorage` |
+| Cloudflare-fronted site | Conditional go as above | Go; a managed challenge is answered in the window |
+
+No fingerprint spoofing follows from this ruling. The persona window is the path for the four
+social platforms; the unattended render is measured against them once #1499 exists.
+
 ## What trips detection versus what does not
 
 Split as the ticket asked: (a) fires on any Electron render regardless of login, (b) account-level, (c) policy.

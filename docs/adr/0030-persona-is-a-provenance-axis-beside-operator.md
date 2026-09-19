@@ -32,11 +32,20 @@ Persona had when the Exhibit was acquired. A rename never rewrites either.
 pickers; the row stays so historic Exhibits keep their label. Clearing the cookies is the
 security action and is always available.
 
-**Two mechanisms, one attribute.** A background Recapture or add-URL render may run through a
+**Three mechanisms, one attribute.** A background Recapture or add-URL render may run through a
 persistent Electron session seeded for the Persona by cookie-file import or by a sign-in window
-the user completes by hand. An extension Capture can only declare the Persona the operator
-says the tab was signed in as. The Manifest wording differs: "persona session used" for the
-first, "persona declared by operator" for the second.
+the user completes by hand. The same window is a persona browser: the user navigates with the
+session and captures the page in front of them, an operator-witnessed Capture with the method
+`persona-window`. An extension Capture can only declare the Persona the operator says the tab
+was signed in as. The Manifest wording differs: "persona session used" for the unattended
+render, "captured in a persona window" for the second, "persona declared by operator" for the
+third.
+
+**Terms-of-service exposure is the user's.** The #545 spike found that Meta, X and LinkedIn
+forbid automated access to the logged-in service. The maintainer ruled on 2026-09-19 that a
+user working a sock account accepts that risk, so no platform is refused by the tool. The
+tester guide carries the disclosure. Fingerprint or user-agent spoofing stays excluded: it is
+evasion, and the research also shows it breaks Cloudflare challenges.
 
 **No secrets beyond the browser session.** Cookie files are read, loaded into the session, and
 discarded; their bytes are never copied under the install. Passwords are never stored. The
@@ -73,6 +82,8 @@ identity, yours or a pseudonym.
 - The threat-model delta (#546) owes the guarantees: cross-persona linkage on disk, cookie
   theft at rest, wrong-persona capture, and what is not promised (OS-level isolation, network
   attribution, bot detection).
-- Whether an Electron session survives bot detection on the target platforms is open (#545)
-  and gates the session-backed mechanism only; the declared-label mechanism and the registry
-  do not wait on it.
+- Whether an unattended Electron render survives the four social platforms' detection is still
+  unmeasured (#545 probed the fingerprint, not an authenticated session); it gates the
+  unattended mechanism only. The persona window, the declared label and the registry do not
+  wait on it.
+- `CAPTURE_METHODS` grows by one value, which the verifier learns before any build writes it.

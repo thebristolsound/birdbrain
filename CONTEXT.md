@@ -69,7 +69,7 @@ Operations that mutate an MHTML Capture beyond its database row: ingestion (pars
 _Avoid_: capture service, capture manager.
 
 **Capture Method**:
-How a Capture was produced: by the Chrome extension (`extension`, operator-witnessed), by a silent hidden-window render (`background`), or by copying another Capture in the same Case (`duplicate`, which observed nothing).
+How a Capture was produced: by the Chrome extension (`extension`, operator-witnessed), by a silent hidden-window render (`background`), by the Operator capturing the page in front of them in a Persona's browser window (`persona-window`, operator-witnessed), or by copying another Capture in the same Case (`duplicate`, which observed nothing).
 _Avoid_: capture type, capture mode.
 
 **Recapture**:

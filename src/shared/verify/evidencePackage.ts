@@ -412,9 +412,11 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   // build from EVIDENCE_INDEX_SCHEMA_VERSION on ships an export entry with
   // every evidence package, so an index at or above it states that this package
   // was sealed with one, and the file's absence is a removal rather than an
-  // age. Below it the package genuinely predates export entries (#398) and
-  // keeps verifying exactly as before — as a SKIP, not silence, so the
-  // leniency and what it cost are on the report.
+  // age. Below it the index claims the package predates export entries (#398),
+  // and on that claim it keeps verifying exactly as before — as a SKIP, not
+  // silence, so the leniency and what it cost are on the report. The SKIP
+  // reason says whose claim it is, because on the residual path below the
+  // package does not predate anything.
   //
   // What this does NOT claim: evidence.json is unsigned (see the trust model
   // above), so a tamperer who rewrites schemaVersion back to 1 in the same hand
@@ -439,9 +441,11 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
       add(
         'export entry',
         'skip',
-        `no export-entry.json and evidence.json states schema version ` +
-          `${evidence.schemaVersion}, so this package predates export entries (#398) — its ` +
-          'artifact index was not bound to a signed statement of what was packaged'
+        `no export-entry.json, and evidence.json states schema version ` +
+          `${evidence.schemaVersion}, below the version ${EVIDENCE_INDEX_SCHEMA_VERSION} from ` +
+          'which every package was sealed with one — so on that unsigned claim this package ' +
+          'predates export entries (#398) and its artifact index was not bound to a signed ' +
+          'statement of what was packaged'
       )
     }
   }

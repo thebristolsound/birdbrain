@@ -760,9 +760,11 @@ export const MANIFEST_ENTRY_TYPES: ReadonlySet<string> = new Set(
 // informational key does not, since the schema below is deliberately
 // non-strict.
 //
-// Defined here rather than in constants.ts for the same reason
-// WORKING_COPY_MARKER_FILENAME is: the standalone verifier may import only
-// @shared/verify/** and @shared/schemas.
+// Defined here rather than in constants.ts so it sits beside the schema whose
+// version it names, following the WORKING_COPY_MARKER_FILENAME precedent
+// below. Not an import boundary: build-verifier.mjs aliases all of @shared/*
+// into the bundle (its one rule is no electron and no src/main), and
+// @shared/verify/manifestChain.ts already reaches @shared/constants directly.
 export const EVIDENCE_INDEX_SCHEMA_VERSION = 2
 
 // `evidence.json` is the UNSIGNED convenience index emitted by buildEvidenceZip.

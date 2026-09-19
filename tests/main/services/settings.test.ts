@@ -162,9 +162,9 @@ describe('settings', () => {
   })
 
   it('throws on a schema-invalid update rather than persisting garbage', () => {
-    expect(() =>
-      updateSettings({ captureScreenshots: 'yes' as unknown as boolean })
-    ).toThrow(/Invalid settings/)
+    expect(() => updateSettings({ captureScreenshots: 'yes' as unknown as boolean })).toThrow(
+      /Invalid settings/
+    )
     // Nothing was written, so getSettings still yields defaults.
     expect(getSettings().captureScreenshots).toBe(true)
   })
@@ -294,9 +294,19 @@ describe('settings', () => {
       expect(getSettings().onboardingChapters).toEqual({ intro: true, ext: true, case: true })
     })
 
+    it('keeps tour state through an update that does not name it', () => {
+      updateSettings({ isFreshInstall: true, onboardingChapters: { intro: true } })
+      updateSettings({ theme: 'dark' })
+      const settings = getSettings()
+      expect(settings.isFreshInstall).toBe(true)
+      expect(settings.onboardingChapters).toEqual({ intro: true })
+    })
+
     it('rejects a non-boolean chapter value', () => {
       expect(() =>
-        updateSettings({ onboardingChapters: { intro: 'yes' } as unknown as Record<string, boolean> })
+        updateSettings({
+          onboardingChapters: { intro: 'yes' } as unknown as Record<string, boolean>
+        })
       ).toThrow(/Invalid settings/)
     })
 

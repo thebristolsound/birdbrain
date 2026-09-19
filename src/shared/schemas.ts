@@ -311,7 +311,7 @@ export interface ExtensionNoteCreateResult {
 // Chrome extension and existing tests expect. Tests assert on substrings like
 // 'Invalid source', 'caseId', 'pattern', so the mapping is keyed on field path.
 
-export function formatCaptureUploadError(err: z.ZodError): string {
+export function formatCaptureUploadError(err: z.core.$ZodError): string {
   const first = err.issues[0]
   if (!first) return 'Invalid request'
   const path = first.path.join('.')
@@ -322,7 +322,7 @@ export function formatCaptureUploadError(err: z.ZodError): string {
   return first.message || `Invalid field: ${path}`
 }
 
-export function formatSelectorCreateError(err: z.ZodError): string {
+export function formatSelectorCreateError(err: z.core.$ZodError): string {
   const first = err.issues[0]
   if (!first) return 'Invalid request'
   const path = first.path.join('.')
@@ -333,7 +333,7 @@ export function formatSelectorCreateError(err: z.ZodError): string {
 
 // One formatter for the three #392 routes: they share the base shape, and the
 // lookup's two fields are a subset of it.
-export function formatExtensionAttachError(err: z.ZodError): string {
+export function formatExtensionAttachError(err: z.core.$ZodError): string {
   const first = err.issues[0]
   if (!first) return 'Invalid request'
   const path = first.path.join('.')
@@ -734,7 +734,7 @@ export type ManifestEntry = z.infer<typeof ManifestEntrySchema>
 // before parsing it, so a type from a newer writer is reported as "verifier too
 // old" instead of failing the strict parse as a malformed shape (X25).
 export const MANIFEST_ENTRY_TYPES: ReadonlySet<string> = new Set(
-  [...ManifestEntrySchema.optionsMap.keys()].filter((key): key is string => typeof key === 'string')
+  ManifestEntrySchema.options.map((option) => option.shape.type.value)
 )
 
 // --- Evidence package index (evidence.json) -------------------------------

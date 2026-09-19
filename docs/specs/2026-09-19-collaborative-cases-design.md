@@ -48,7 +48,7 @@ Birdbrain.
 | 5   | Invite                                | One-way invite string from the Owner; joiner pastes; Owner approves in-app. Single use, 24-hour expiry, Owner must be online.                |
 | 6   | Member identity                       | Member = installation (existing RSA signing key, `src/main/services/signingKey.ts`). Display name from `operatorName`.                       |
 | 7   | Exhibit Number                        | `<Member Code>-<sequence>`. Sequence is per member. Prefix hidden in the app when the Case has one member; always shown in exports.           |
-| 8   | Member Code                           | Assigned by the Owner at approval, defaults to `operatorName` initials, unique within the Case, recorded in the `member-add` entry.           |
+| 8   | Member Code                           | Assigned by the Owner at approval, defaults to `operatorName` initials, one to three characters from `[A-Z0-9]`, unique within the Case, recorded in the `member-add` entry. |
 | 9   | Working layer (notes, tags, annotations) | Per-author rows, synced append-only with tombstones. No CRDT. Tags merge by name for display.                                            |
 | 10  | Deletion and exclusion                | Only the author writes `deletion` for their Exhibit. The Owner writes `exclude`, which exports honor and list.                              |
 | 11  | Revocation                            | `member-revoke` entry. Peers stop syncing with the member. The member keeps its replica; the UI says so.                                    |
@@ -304,7 +304,7 @@ at-rest encryption, which a hosted relay holding ciphertext would require.
 
 1. Where Iroh persists its node key. It must survive restarts so `nodeId` in `member-add`
    stays valid; if the binding regenerates it, `member-add` needs a rotation path.
-2. Whether an `exclude` entry should change the verifier's pass outcome or only annotate.
-   Proposed: annotate.
+2. Answered 2026-09-19 in the [members mock feasibility assessment](2026-09-19-shared-case-members-feasibility-assessment.md):
+   an `exclude` entry annotates and does not change the verifier's pass outcome.
 3. Relay hosting for testers who cannot reach n0's relays; a self-hosted `iroh-relay` is one
    binary, and whether the project runs one is a maintainer decision.

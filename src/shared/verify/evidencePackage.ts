@@ -11,6 +11,7 @@ import {
 import type { ManifestEntry } from '@shared/schemas'
 import { parseTimestampToken } from '@shared/verify/timestampToken'
 import { describeUnsupportedEntry, verifyManifestChainText } from '@shared/verify/manifestChain'
+import { SHARED_CASE_ENTRY_TYPES, verifySharedCaseReplica } from '@shared/verify/sharedCase'
 import {
   bindDerivedFile,
   derivedFilePackagePath,
@@ -319,6 +320,60 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   const breakIndex = chain.valid ? undefined : (chain.brokenAt ?? 0)
   const entries = breakIndex === undefined ? shippedEntries : shippedEntries.slice(0, breakIndex)
 
+  // §7.1b Shared Case (schema 4). A package of a Shared Case encloses every
+  // other member's chain as `manifest.<installationId>.jsonl` beside the
+  // exporter's own. The package signing key is the exporter's, and the
+  // exporter is any member: when its chain is the Owner's the roster is read
+  // from it directly, otherwise the Owner's chain is located among the others
+  // and its key trusted only once a `merge` the exporter signed anchors it
+  // (`verifySharedCaseReplica`). The walk runs whenever a member chain is
+  // enclosed or the manifest carries a schema-4 entry, so a single-member Case
+  // is verified exactly as before. It does not run over a chain that already
+  // FAILed above: the roster is read from a verified chain or not at all. Each
+  // exclusion the Owner recorded is listed as an annotation, not a verdict: the
+  // excluded Exhibit's entry stays in its author's chain.
+  const memberChainFiles = readdirSync(dir)
+    .map((name) => ({ name, match: /^manifest\.(.+)\.jsonl$/.exec(name) }))
+    .filter((f): f is { name: string; match: RegExpExecArray } => f.match !== null)
+  const isShared =
+    memberChainFiles.length > 0 || entries.some((e) => SHARED_CASE_ENTRY_TYPES.has(e.type))
+  if (isShared && !chain.valid) {
+    add('shared case', 'skip', 'not walked: the manifest chain FAILed, so no roster can be read')
+  } else if (isShared) {
+    const shared = verifySharedCaseReplica({
+      local: { jsonl: manifestJsonl, publicKeyPem },
+      others: memberChainFiles.map(({ name, match }) => ({
+        installationId: match[1],
+        jsonl: readFileSync(join(dir, name), 'utf-8')
+      }))
+    })
+    if (shared.unsupported) {
+      const reason = `${shared.outcome}: ${shared.reason}`
+      add('shared case', 'skip', reason)
+      return { pass: false, checks, unsupported: { reason } }
+    }
+    const roster = shared.members
+      .map(
+        (m) => `${m.memberCode}=${m.installationId}${m.revokedAt === undefined ? '' : ' (revoked)'}`
+      )
+      .join(', ')
+    if (shared.valid) {
+      add('shared case', 'pass', `${shared.members.length} member(s): ${roster}`)
+    } else {
+      for (const finding of shared.findings) {
+        add('shared case', 'fail', `${finding.outcome}: ${finding.reason}`)
+      }
+    }
+    for (const exclusion of shared.exclusions) {
+      const why = exclusion.reason === undefined ? '' : ` — ${exclusion.reason}`
+      add(
+        `exhibit ${exclusion.exhibitId} excluded`,
+        'skip',
+        `excluded by the Owner at index ${exclusion.index} (author ${exclusion.authorInstallationId})${why}`
+      )
+    }
+  }
+
   // §7.2 active-Exhibit set: every `capture` and `exhibit` entry whose id has
   // no later `deletion` entry. Deleted Exhibits are expected absent — not
   // required to have files. A `deletion` entry names any Exhibit id from schema
@@ -383,8 +438,11 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
       outputHash
     }))
 
+  // Content-subject stamps only: a schema-4 `timestamp` with subject `entry`
+  // binds a `merge` entry's hash and vouches for no Exhibit's bytes.
   const timestampEntries = entries.filter(
-    (e): e is Extract<ManifestEntry, { type: 'timestamp' }> => e.type === 'timestamp'
+    (e): e is Extract<ManifestEntry, { type: 'timestamp' }> =>
+      e.type === 'timestamp' && e.subject !== 'entry'
   )
 
   // Content hashes whose only timestamp token sits at or past the break. The
@@ -395,7 +453,7 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   const untrustedTokenHashes = new Set(
     (breakIndex === undefined ? [] : shippedEntries.slice(breakIndex))
       .filter((e): e is Extract<ManifestEntry, { type: 'timestamp' }> => e.type === 'timestamp')
-      .filter((e) => typeof e.tsaToken === 'string')
+      .filter((e) => e.subject !== 'entry' && typeof e.tsaToken === 'string')
       .map((e) => e.captureContentHash)
   )
 

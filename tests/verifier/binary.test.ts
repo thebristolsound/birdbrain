@@ -16,6 +16,7 @@ import { generateReport } from '@main/services/export'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { canonicalStringify } from '@shared/verify'
+import { MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import { buildSyntheticToken } from '../helpers/timestampFixtures'
 import { seedMixedKindCase, type MixedKindCase } from '../helpers/mixedKindCase'
 import type { ExportOptions } from '@shared/types'
@@ -372,7 +373,7 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
     const body = {
       type: 'exhibit',
       caseId: 'from-a-later-build',
-      schemaVersion: 4,
+      schemaVersion: MANIFEST_SCHEMA_VERSION + 1,
       index: head.index + 1,
       prevHash: head.entryHash
     }
@@ -386,6 +387,65 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
     expect(proc.stdout).toContain('supports up to schema version')
     expect(proc.stdout).not.toContain('RESULT: FAIL')
     rmSync(futureDir, { recursive: true, force: true })
+  })
+
+  // Schema 4 through the BUILT binary (#1509): a package enclosing a Shared
+  // Case is walked and a non-pass outcome is named in the report, so a script
+  // reading the output can tell `merge-head-mismatch` from a broken chain.
+  it('exits 1 naming the shared-case outcome when a merge names a missing head', () => {
+    const sharedDir = mkdtempSync(join(tmpdir(), 'bb-binshared-'))
+    try {
+      cpSync(pkgDir, sharedDir, { recursive: true })
+      const manifestPath = join(sharedDir, 'manifest.jsonl')
+      const existing = readFileSync(manifestPath, 'utf-8')
+      const lines = existing.trim().split('\n')
+      let head = JSON.parse(lines[lines.length - 1]) as { index: number; entryHash: string }
+      const append = (body: Record<string, unknown>): string => {
+        const full = { ...body, index: head.index + 1, prevHash: head.entryHash }
+        const entryHash = createHash('sha256').update(canonicalStringify(full)).digest('hex')
+        head = { index: full.index, entryHash }
+        return JSON.stringify({ ...full, entryHash, signature: signEntryHash(entryHash) })
+      }
+      const operator = {
+        operatorId: 'inst-owner',
+        operatorName: 'Test Operator',
+        toolVersion: '0.1.0'
+      }
+      const added = [
+        append({
+          type: 'member-add',
+          caseId: 'shared',
+          memberInstallationId: 'inst-owner',
+          memberPublicKeyPem: readFileSync(join(sharedDir, 'signing-public-key.pem'), 'utf-8'),
+          memberCode: 'CO',
+          memberOperatorName: 'Test Operator',
+          nodeId: 'node-owner',
+          role: 'owner',
+          timestamp: '2026-09-19T12:00:00.000Z',
+          ...operator,
+          schemaVersion: 4
+        }),
+        append({
+          type: 'merge',
+          caseId: 'shared',
+          heads: [
+            { installationId: 'inst-b', index: 0, entryHash: 'a'.repeat(64), entriesReceived: 1 }
+          ],
+          timestamp: '2026-09-19T12:01:00.000Z',
+          ...operator,
+          schemaVersion: 4
+        })
+      ]
+      writeFileSync(manifestPath, existing + added.join('\n') + '\n')
+
+      const proc = spawnSync(binaryPath, [sharedDir], { encoding: 'utf-8' })
+      expect(proc.status, proc.stdout + proc.stderr).toBe(1)
+      expect(proc.stdout).toContain('RESULT: FAIL')
+      expect(proc.stdout).toContain('[FAIL] shared case — merge-head-mismatch: ')
+      expect(proc.stdout).not.toContain('VERIFIER TOO OLD')
+    } finally {
+      rmSync(sharedDir, { recursive: true, force: true })
+    }
   })
 
   // The laundering case, end to end: a tampered entry that also claims a newer

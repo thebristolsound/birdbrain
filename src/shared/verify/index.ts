@@ -37,6 +37,22 @@ export type {
   DerivedFileFacts
 } from '@shared/verify/exhibitBinding'
 export {
+  verifySharedCase,
+  verifySharedCaseReplica,
+  SHARED_CASE_ENTRY_TYPES
+} from '@shared/verify/sharedCase'
+export type {
+  SharedCaseInput,
+  SharedCaseReplicaInput,
+  SharedCaseMemberChain,
+  SharedCaseOutcome,
+  SharedCaseMember,
+  SharedCaseCitation,
+  SharedCaseExclusion,
+  SharedCaseFinding,
+  SharedCaseVerifyResult
+} from '@shared/verify/sharedCase'
+export {
   resolveTrustedTimeFromEntries,
   buildTrustedTimeIndexFromEntries
 } from '@shared/verify/trustedTime'

@@ -40,6 +40,7 @@ type EntryRecord = Record<string, unknown>
 function stampFor(entry: EntryRecord, contentHash: string): TrustedTimeResult | undefined {
   if (
     entry.type !== 'timestamp' ||
+    entry.subject === 'entry' ||
     entry.captureContentHash !== contentHash ||
     typeof entry.tsaToken !== 'string'
   ) {
@@ -112,8 +113,11 @@ export function buildTrustedTimeIndexFromEntries(
   const eligible = new Set<string>()
 
   for (const entry of entries) {
+    // A schema-4 stamp with subject `entry` binds a Manifest Entry's hash for
+    // a `merge`, not an Exhibit's content; it says nothing about any capture.
     if (
       entry.type === 'timestamp' &&
+      entry.subject !== 'entry' &&
       typeof entry.captureContentHash === 'string' &&
       typeof entry.tsaToken === 'string'
     ) {

@@ -65,7 +65,10 @@ export const IMPORT_ID_MAP_FILENAME = 'import-id-map.json'
 // The highest manifest entry schema version this build can READ. Bump whenever
 // the manifest entry schema changes (a new entry type, a new required field).
 // v3 adds the `exhibit`, `derivation` and `renumber` entry types and the
-// "verifier too old" outcome (ADR-0023, X25).
+// "verifier too old" outcome (ADR-0023, X25). v4 adds the Shared Case entry
+// types `member-add`, `member-revoke`, `merge` and `exclude`, the optional
+// `memberCode` on `exhibit` and the optional `subject` on `timestamp`
+// (docs/specs/2026-09-19-collaborative-cases-design.md).
 //
 // A per-entry `schemaVersion` is the MINIMUM reader version that entry needs,
 // NOT this constant: appendManifestEntry stamps each entry from the per-type
@@ -73,7 +76,7 @@ export const IMPORT_ID_MAP_FILENAME = 'import-id-map.json'
 // shapes a schema-2 verifier can still read. That separation is what lets this
 // reader ship before anything writes a v3 entry — a distributed verifier must
 // never meet a version it cannot read before it has had the chance to update.
-export const MANIFEST_SCHEMA_VERSION = 3
+export const MANIFEST_SCHEMA_VERSION = 4
 
 // Default RFC 3161 trusted-timestamp authority (#120, decision D6/#112).
 // DigiCert's unauthenticated endpoint: no account/API key, and its root is

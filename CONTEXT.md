@@ -119,8 +119,20 @@ The hash-chained, operator-attributed audit log written to each Case directory. 
 _Avoid_: audit log, journal, ledger.
 
 **Manifest Entry**:
-One signed line of the Manifest, of type `capture`, `deletion`, `timestamp`, `export`, `archive-export`, or `import`.
+One signed line of the Manifest, of type `capture`, `deletion`, `timestamp`, `export`, `archive-export`, `import`, `exhibit`, `derivation`, `renumber`, `member-add`, `member-revoke`, `merge`, or `exclude`.
 _Avoid_: manifest record, log line.
+
+**Shared Case**:
+A Case held by more than one installation: one Manifest per member, plus `merge` entries naming other members' heads. Verification proves each member's chain under that member's key, that every `merge` names chain states that exist, and that every citation resolves to one Exhibit.
+_Avoid_: team case, synced case, collaborative case (as the term).
+
+**Owner**:
+The installation that created a Shared Case. The only one that writes `member-add`, `member-revoke`, and `exclude`; the roster is read from its Manifest and nowhere else.
+_Avoid_: host, creator, administrator.
+
+**Member Code**:
+The one-to-three character prefix (`[A-Z0-9]`) the Owner assigns a member at approval, recorded in its `member-add`. In a Shared Case a citation is `<Member Code>-<Exhibit Number>`; a Case with no `member-add` has no prefix.
+_Avoid_: member prefix, initials.
 
 **Entry Hash**:
 The hash over a canonicalized Manifest Entry together with its predecessor's Entry Hash - the link that makes the Manifest a chain.

@@ -727,10 +727,34 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
       const run = runVerifyScript(dir)
       expect(run.status, run.output).toBe(1)
       expect(run.output).toContain('no readable schema version')
-      // The unreadable index is its own step 1 failure; the era line does not
-      // add a second verdict on top of it.
-      expect(run.output).not.toContain('FAIL [step 5]')
+      expect(run.output).not.toContain('verify.sh: PASS')
     })
+
+    // Codex review of #1495. The cases above either fail step 1 anyway or state
+    // a readable era; these three do neither. evidence.json is well-formed JSON
+    // whose `artifacts` all match, so step 1 passes, and only `schemaVersion` is
+    // unusable. The binary rejects each of them through EvidencePackageSchema
+    // (`z.number().int().positive()`), so a note here would have the script
+    // print PASS over a package the verifier beside it FAILs.
+    for (const [label, literal] of [
+      ['null', 'null'],
+      ['a string', '"2"'],
+      ['fractional', '1.5']
+    ] as const) {
+      it.skipIf(!RUNS)(`fails, not notes, when the era is ${label}`, () => {
+        const dir = corruptedCopy(`unusable-era-${label.replace(/\W/g, '-')}`)
+        rmSync(join(dir, 'export-entry.json'))
+        const path = join(dir, 'evidence.json')
+        const text = readFileSync(path, 'utf-8')
+        writeFileSync(path, text.replace(/"schemaVersion": \d+/, `"schemaVersion": ${literal}`))
+
+        const run = runVerifyScript(dir)
+        expect(run.status, run.output).toBe(1)
+        expect(run.output).toContain('FAIL [step 5]')
+        expect(run.output).toContain('no readable schema version')
+        expect(run.output).not.toContain('verify.sh: PASS')
+      })
+    }
   })
 
   it.skipIf(!RUNS)('exits 2 rather than passing when a required tool is missing', () => {

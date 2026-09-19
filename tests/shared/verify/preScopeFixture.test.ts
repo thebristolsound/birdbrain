@@ -4,7 +4,7 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
 import { canonicalStringify, verifyManifestChainText } from '@shared/verify'
-import { EVIDENCE_INDEX_SCHEMA_VERSION, ManifestEntrySchema } from '@shared/schemas'
+import { EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION, ManifestEntrySchema } from '@shared/schemas'
 
 // Backward-verification known-answer test (#398). fixtures/pre-scope-package is
 // a REAL evidence package frozen from the tree as it stood before #398 shipped
@@ -94,14 +94,14 @@ describe('frozen pre-scope fixture package', () => {
   // The #853 era gate reads evidence.json's schemaVersion to decide whether an
   // absent export-entry.json is an age or a removal. These frozen bytes are the
   // proof that a real package from the first era answers "age": the index was
-  // written before EVIDENCE_INDEX_SCHEMA_VERSION existed, so the package keeps
+  // written before EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION existed, so the package keeps
   // verifying — and the gate now says on the report which binding that age cost
   // it, instead of omitting the row.
   it('is graded pre-scope by the era gate, with the skipped binding named', () => {
     const evidence = JSON.parse(readFileSync(join(FIXTURE_DIR, 'evidence.json'), 'utf-8')) as {
       schemaVersion: number
     }
-    expect(evidence.schemaVersion).toBeLessThan(EVIDENCE_INDEX_SCHEMA_VERSION)
+    expect(evidence.schemaVersion).toBeLessThan(EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION)
 
     const check = verifyEvidencePackage(FIXTURE_DIR).checks.find((c) => c.name === 'export entry')
     expect(check?.status).toBe('skip')

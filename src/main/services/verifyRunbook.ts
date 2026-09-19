@@ -14,7 +14,7 @@ import {
   TSA_ROOT_FILENAME
 } from '@main/services/tsaTrust'
 import { VERIFY_SCRIPT_FILENAME } from '@main/services/verifyScript'
-import { EVIDENCE_INDEX_SCHEMA_VERSION } from '@shared/schemas'
+import { EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION } from '@shared/schemas'
 
 export const VERIFY_RUNBOOK = `# Verifying this evidence package by hand
 
@@ -89,20 +89,27 @@ jq '.schemaVersion' evidence.json
 
 Read it as a number: \`2.0\` and \`2e0\` are both version 2. If it prints
 \`null\`, a string, or anything that is not a positive whole number, the index
-states no era and Birdbrain's verifier fails it as malformed; nothing below
-applies. At ${EVIDENCE_INDEX_SCHEMA_VERSION} or above the package was sealed with an export entry, so an
+states no era and Birdbrain's verifier fails it as malformed. So does
+\`${VERIFY_SCRIPT_FILENAME}\`, and so should a hand check: there is no stated era
+for the leniency below to rest on, so an absent export entry cannot be excused
+as an age. At ${EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION} or above the package was sealed with an export entry, so an
 absent one is a **removed file**, not an age: treat the package as tampered
 with, and accept no statement of its scope. Birdbrain's verifier and
 \`${VERIFY_SCRIPT_FILENAME}\` both fail such a package; a hand check should too.
 
-Below ${EVIDENCE_INDEX_SCHEMA_VERSION} the version does not settle it. Packages that predate this file
+Below ${EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION} the version does not settle it. Packages that predate this file
 were written at that version, and so were packages sealed with one, so an
 absent entry is either an age or a removed file. Verify the package as enclosing
 every active capture, with no signed statement of its scope, and do not read
-the version as dating it. Nor does a version at or above ${EVIDENCE_INDEX_SCHEMA_VERSION} prove the
-package is new: the index is unsigned, and a version edited downward looks
-exactly like a genuinely old package. What settles either question is knowing
-which build sealed this one.
+the version as dating it. The unsigned index cannot prove an era in either
+direction: a version edited downward from ${EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION} reaches this same lenient
+reading and looks exactly like a genuinely old package, so a version below ${EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION}
+is a claim, not a date. What settles it is knowing which build sealed this one.
+
+This threshold is fixed at ${EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION}. Later index versions raise
+\`schemaVersion\` as the index gains fields, and they stay above it, so a
+package sealed at ${EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION} is never re-admitted to the lenient reading by a
+newer Birdbrain.
 
 **What the programmatic/binary verifier does vs. this runbook:** the binary
 checks timestamp tokens **structurally only** (the token's message imprint binds
@@ -127,7 +134,7 @@ internal consistency*, **not** timestamp authenticity — this runbook's
 | \`{exhibit directory}/{exhibitId}_{suffix}\` | Derived files, enclosed beside the exhibit they were computed from — a capture's thumbnail sits in \`pages/\` (hashed as the \`derivation\` entry's \`outputHash\`) |
 | \`timestamps/*.tst\` | RFC 3161 tokens (DER), when present |
 | \`evidence.json\` | Unsigned index (reconcile, do not trust) |
-| \`export-entry.json\` | Signed export entry for this package — scope of the enclosed captures (absent only from packages whose \`evidence.json\` states a \`schemaVersion\` below ${EVIDENCE_INDEX_SCHEMA_VERSION}; see Trust model) |
+| \`export-entry.json\` | Signed export entry for this package — scope of the enclosed captures (absent only from packages whose \`evidence.json\` states a \`schemaVersion\` below ${EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION}; see Trust model) |
 
 ## Step 1 — File integrity (index self-consistency)
 

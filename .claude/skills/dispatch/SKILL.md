@@ -142,10 +142,13 @@ exits immediately unless `CLAUDE_CODE_REMOTE=true`, by design. So:
 
 - **Every comment you post has a shape.** `.claude/skills/post-comment/SKILL.md` names the
   kinds (cycle claim and release, pre-pass verdict, review reply, give-up, anything else),
-  their line caps, and the rule that a comment names only what you did and saw. Write the
-  comment to a file, run `.claude/skills/post-comment/scripts/check.sh <file>`, then post it
-  with `--body-file` or `--input`; never `--body`. The same skill's template is the one the
-  reviewer's verdict and the implementer's replies are written against.
+  their line caps, and the rule that a comment names only what you did and saw. Every kind
+  has two layers: a plain-language top layer with no paths, commit ids, code spans or
+  repository terms, and the detail collapsed in `<details>` blocks, the way CodeRabbit nests
+  its review. Write the comment to a file, run
+  `.claude/skills/post-comment/scripts/check.sh <file>`, then post it with `--body-file` or
+  `--input`; never `--body`. The same skill's template is the one the reviewer's verdict and
+  the implementer's replies are written against.
 
 ## 1. Slot check
 
@@ -225,9 +228,9 @@ comments. Classify:
   happening — it returns them as text keyed to the comment or thread ids they answer, and
   **you** post them via the write path (locally `gh api .../issues/<n>/comments -X POST
   --input <file>`, or `.../pulls/<n>/comments/<id>/replies` for an inline thread; on the web
-  `mcp__github__add_issue_comment` or `add_reply_to_pull_request_comment`). Each reply is one
-  line in the `post-comment` reply shape, `applied <sha>` or `not applied: <one sentence>`,
-  and `.claude/skills/post-comment/scripts/check.sh <file>` runs on each file before it is
+  `mcp__github__add_issue_comment` or `add_reply_to_pull_request_comment`). Each reply is in the
+  `post-comment` reply shape, `Applied.` with the commit collapsed in a `<details>` block or
+  `Not applied: <one plain sentence>`, and `.claude/skills/post-comment/scripts/check.sh <file>` runs on each file before it is
   posted. Your read of that text before posting is the editorial pass; a subagent that posts directly has bypassed it,
   which is a reportable contract violation even when the content was fine — and it lands under
   the wrong identity, since only the dispatcher holds the machine token. Then run the
@@ -512,8 +515,9 @@ so in your report — do not silently substitute your own judgement for its stat
 
 **The give-up path needs you too.** The implementer cannot comment or relabel, so it returns
 its blockers as text and stops. Via the write path, you post them to the issue in the
-`post-comment` give-up shape (`Give-up: <clause>` first, then `**What:**`, `**Where:**`,
-`**Reproduce:**`, checked with `.claude/skills/post-comment/scripts/check.sh <file>`), swap
+`post-comment` give-up shape (`Give-up: <clause>` first, `**What:**` in plain words on the
+top layer, `**Where:**` and `**Reproduce:**` collapsed in a `<details>` block, checked with
+`.claude/skills/post-comment/scripts/check.sh <file>`), swap
 `ready-for-agent` to `needs-info` (or `ready-for-human`), and remove `agent-wip`:
 
 - Locally: `agh issue comment <n> --body-file <path>`, then `agh issue edit <n>` with
@@ -707,25 +711,33 @@ Post the reviewer's verdict as a **PR comment** via the write path (not as a for
 above), in the pre-pass verdict shape from `.claude/skills/post-comment/template.md`:
 
 ```
-**Reviewer pre-pass (<head-sha>): <verdict>**
+**Review verdict: <verdict>**
+
+1. <one plain sentence: no path, commit id, code span or repository term>
+
+<at most 5 numbered findings. Anything further goes in the collapsed report below.>
+
+<details>
+<summary>Full report</summary>
+
+Reviewed commit: <head-sha>
 
 | # | severity | file:line | finding |
 |---|---|---|---|
-| 1 | blocking | src/x.ts:42 | <one sentence, no rationale> |
+| 1 | blocking | src/x.ts:42 | <the finding, with its failure scenario below the table> |
 
-<at most 5 rows. Anything further goes in the linked full report, not here.>
-
-Full report: <gist url>
+</details>
 ```
 
 where `<verdict>` is `approve for human review` or `request changes`. Run
 `.claude/skills/post-comment/scripts/check.sh <file>` on the comment file before posting it.
-**The full report never goes on the PR**: publish the reviewer's report file as a gist (or
-leave it at a path the maintainer can read) and link it. On #1125 the full report was posted
-as a second PR comment; that is the pattern this rule ends.
+**The full report goes on the PR only collapsed**, inside that `<details>` block; when it
+exceeds GitHub's comment limit the block holds the table and a `Full report: <link>` line
+(the dispatch-run artifact, since the machine token has no gist scope). On #1125 the full
+report was posted in the open as a second PR comment; that is the pattern this rule ends.
 
-**Hard cap: 20 lines.** A pre-pass comment that does not fit is not a thorough pre-pass, it is
-an unread one — the average verdict on PR #423 ran 1,100 words across 14 comments, and 221,867
+**Hard cap: 10 top-layer lines.** A pre-pass comment that does not fit is not a thorough
+pre-pass, it is an unread one — the average verdict on PR #423 ran 1,100 words across 14 comments, and 221,867
 characters of prose accumulated against 2,304 changed lines. One sentence per finding, the
 failure scenario in the linked report. If a finding genuinely needs a paragraph to state, that
 paragraph belongs in the report and the row says which section.

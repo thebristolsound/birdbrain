@@ -80,6 +80,9 @@ describe('formatVerificationBlock', () => {
         `<!-- preflight v${BLOCK_VERSION} sha=${SHA} status=pass -->`,
         '## Verification',
         '',
+        '<details>',
+        '<summary>All pre-merge checks passed</summary>',
+        '',
         '`pnpm preflight` at `' +
           SHA +
           '` on Node v20.20.2; diff scored against `origin/main` (merge base `012345678`). Result: **pass**.',
@@ -90,6 +93,8 @@ describe('formatVerificationBlock', () => {
         '- `pnpm build:extension` - skipped - no extension/ changes',
         '- `pnpm test:coverage` - pass (exit 0) - 2094 passed, 3 skipped (2097), thresholds met',
         '- `pnpm coverage:diff` - pass (exit 0) - 96.30% of 54 changed lines covered (floor 90%)',
+        '',
+        '</details>',
         ''
       ].join('\n')
     )
@@ -107,6 +112,7 @@ describe('formatVerificationBlock', () => {
       steps
     })
     expect(block.split('\n')[0]).toBe(`<!-- preflight v${BLOCK_VERSION} sha=${SHA} status=fail -->`)
+    expect(block).toContain('<summary>A pre-merge check failed</summary>')
     expect(block).toContain('Result: **fail**.')
     expect(block).toContain('- `pnpm typecheck` - fail (exit 2)')
     expect(block).toContain('- `pnpm coverage:diff` - pass (exit 0)')

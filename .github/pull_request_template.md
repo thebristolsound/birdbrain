@@ -3,12 +3,18 @@ Closes #N
 
 ## Summary
 
-<!-- At most 5 sentences: what changed, why, and any handoff (who opens or labels the PR).
-The dispatcher copies this section into the squash-merge commit body. -->
+<!-- At most 5 plain-language sentences: what changed, why, and any handoff (who opens or
+labels the PR). No code spans, file names, commit ids or tool names here; a reader outside the
+repository must follow it. The dispatch step copies this section into the squash-merge commit. -->
 
 ## Changes
 
+<details>
+<summary>Files changed, grouped by purpose</summary>
+
 - <!-- one bullet per file group; no prose, no test output -->
+
+</details>
 
 ## Evidence-affecting
 
@@ -18,17 +24,24 @@ No
 An evidence-affecting change includes acquisition, parsing, extraction, storage, hashing,
 signing, trusted time, manifests, verification, redaction, export, reporting, AI analysis, and
 software distribution when it can alter an evidentiary result or its interpretation.
-If Yes, keep this subsection and fill every field; otherwise delete it.
+If Yes, keep this collapsed subsection and fill every field; otherwise delete it.
+<details>
+<summary>What could change for evidence, and how that is checked</summary>
+
 ### Evidence impact
 
 - Evidentiary result or interpretation that could change:
 - What verification proves and does not prove after this change:
 - Backward verification preserved (existing evidence packages still verify):
 - Known-answer test added or extended, or why none applies:
+
+</details>
 -->
 
 <!-- Paste .preflight/verification.md verbatim below, marker line included, generated at the
-head sha under review. Nothing above this line exceeds 40 lines; these comments do not count. -->
+head sha under review. It already wraps the step list in a <details> block under a plain
+summary line. Nothing above this line exceeds 40 top-layer lines; collapsed lines and these
+comments do not count. -->
 ## Verification
 
 <!-- An agent-written description ends with this line, uncommented and last:

@@ -108,9 +108,13 @@ The record must satisfy the hygiene check mechanically, so these are not stylist
   should not read as though it did.
 - **Every outstanding finding named and dispositioned**, each as `DISPUTED` with a reason or
   `DEFERRED to #N` with the issue link.
+- **Two layers, like every comment (`post-comment`).** The top layer is the first line, one
+  plain sentence per finding with its disposition, and nothing a reader outside the repository
+  cannot follow. The findings verbatim, their `file:line`, the pre-pass link and the reasons go
+  in a `<details>` block under a plain `<summary>`.
 
 Post with `gh pr comment <n> --body-file <path>` — a file, never an inline `--body`, so the
-markdown survives.
+markdown survives — after `.claude/skills/post-comment/scripts/check.sh <path>` exits 0.
 
 Then verify it landed and conforms:
 

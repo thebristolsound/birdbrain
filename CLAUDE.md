@@ -205,7 +205,11 @@ in a skill: `.claude/skills/post-commit-message/`, `post-pr-body/`, `post-commen
 text to a file, run the skill's `scripts/check.sh <file>`, then pass the file (`git commit -F`,
 `--body-file`, `--input`); a `settings.json` hook, gated to the agents each `check.sh` names in
 `bound=`, blocks the inline forms (agent frontmatter `hooks:` do not fire in SDK-driven sessions
-such as t3code). Squash merges land
+such as t3code). Every PR body and comment has two layers, the way CodeRabbit nests its review:
+a plain-language top layer a reader outside the repository can follow (no paths, commit ids,
+code spans, tool names or repository terms), and the detail collapsed in `<details>` blocks
+under a plain `<summary>`, written however the author finds effective. Caps count the top
+layer only; the linters check both layers. Squash merges land
 with the PR title and the body's Summary section (`squash_merge_commit_message = BLANK`, ADR-0022),
 so branch commit bodies are short and the Summary is the permanent record. Merges go through
 `.claude/skills/merge-pr/scripts/merge.sh <n>` (`--cli agh` for the dispatcher), which composes

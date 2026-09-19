@@ -213,14 +213,24 @@ describe('sessionService — extension heartbeat', () => {
     expect(service.isExtensionConnected()).toBe(false)
   })
 
-  // The two tests below run on the production defaults on purpose: the bug in
-  // #628 was that the window was shorter than the extension's 30 s poll, so a
-  // healthy extension flapped. They fail if either default regresses.
+  // The tests below run on the production defaults on purpose: the bug in #628
+  // was that the window was shorter than the extension's 30 s poll, so a healthy
+  // extension flapped. They pin DEFAULT_EXTENSION_TIMEOUT_MS only; the poll
+  // constant is read solely by startHeartbeatMonitor and is pinned there.
+  it('the default window is exactly 90 s', () => {
+    const { service, clock } = setup()
+    service.touchExtension()
+    clock.advance(89_999)
+    expect(service.isExtensionConnected()).toBe(true)
+    clock.advance(1)
+    expect(service.isExtensionConnected()).toBe(false)
+  })
+
   it('the default window survives 60 s idle and then expires once by 90 s', () => {
     const { service, connectionChanges, clock } = setup()
     service.touchExtension()
 
-    // Monitor ticks at the default 15 s poll, with no further touch.
+    // Hand-driven expiry checks in 15 s steps, standing in for the monitor.
     for (let elapsed = 15_000; elapsed <= 60_000; elapsed += 15_000) {
       clock.advance(15_000)
       service.expireExtensionIfStale()
@@ -246,7 +256,7 @@ describe('sessionService — extension heartbeat', () => {
 
     for (let elapsed = 15_000; elapsed <= 120_000; elapsed += 15_000) {
       clock.advance(15_000)
-      if (elapsed === 30_000 || elapsed === 60_000) service.touchExtension()
+      if (elapsed % 30_000 === 0) service.touchExtension()
       service.expireExtensionIfStale()
       expect(service.isExtensionConnected()).toBe(true)
     }
@@ -311,6 +321,28 @@ describe('sessionService — heartbeat monitor', () => {
       vi.advanceTimersByTime(100)
 
       // Two stacked intervals would emit `false` twice on the same tick.
+      expect(connectionChanges).toEqual([true, false])
+      service.stopHeartbeatMonitor()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // Pins DEFAULT_HEARTBEAT_POLL_MS. The tests above inject `heartbeatPollMs`, and
+  // startHeartbeatMonitor is its only reader, so without this a drift in the
+  // default — which sets worst-case disconnect detection — goes unnoticed.
+  it('the default poll interval ticks at 15 s and not before', () => {
+    vi.useFakeTimers()
+    try {
+      const { service, connectionChanges, clock } = setup()
+      service.touchExtension()
+      service.startHeartbeatMonitor()
+
+      clock.advance(90_000)
+      vi.advanceTimersByTime(14_999)
+      expect(connectionChanges).toEqual([true])
+
+      vi.advanceTimersByTime(1)
       expect(connectionChanges).toEqual([true, false])
       service.stopHeartbeatMonitor()
     } finally {

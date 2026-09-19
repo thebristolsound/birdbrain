@@ -374,19 +374,22 @@ parent_dir() {
 # Capture in the one-time \`renumber\` entry. A Capture committed after its Case
 # was renumbered has no number in the chain, and is then named by its id -
 # never by a number counted here, which would cite something nothing signed.
-: >"$tmp/exhibit-numbers.txt"
-jq -r 'select(.type == "exhibit") | "\\(.exhibitId) \\(.exhibitNumber)"' \\
-  manifest.jsonl >>"$tmp/exhibit-numbers.txt"
-jq -r 'select(.type == "renumber") | .assignments[] | "\\(.exhibitId) \\(.exhibitNumber)"' \\
-  manifest.jsonl >>"$tmp/exhibit-numbers.txt"
+# ONE pass, in manifest order, so the last assignment below is the last one the
+# chain made. Two passes - every exhibit entry, then every renumber assignment -
+# would order by category instead, and the last write would then be whichever
+# kind came second in this file rather than in the manifest.
+jq -r '
+  if .type == "exhibit" then "\\(.exhibitId) \\(.exhibitNumber)"
+  elif .type == "renumber" then (.assignments[] | "\\(.exhibitId) \\(.exhibitNumber)")
+  else empty end' manifest.jsonl >"$tmp/exhibit-numbers.txt"
 
 # How a finding cites an Exhibit, matching the binary verifier's wording.
 #
-# The LAST assignment wins, which is what the binary does when it folds the
-# same entries into a map: a Case renumbered after an Exhibit was committed
-# carries both an \`exhibit\` entry and a later \`renumber\` assignment for that
-# id, and taking the first would cite the superseded number here and the
-# current one there.
+# The LAST assignment in manifest order wins, which is exactly what the binary
+# does when it folds the same entries into a map: a Case renumbered after an
+# Exhibit was committed carries both an \`exhibit\` entry and a later
+# \`renumber\` assignment for that id, and taking any other one would cite a
+# superseded number here and the current one there.
 exhibit_label() {
   found=''
   while IFS=' ' read -r numbered_id number; do

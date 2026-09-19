@@ -1,10 +1,8 @@
 import { useCallback } from 'react'
 import type { InventoryRow } from '@shared/types'
-import type { ManifestSnapshotEntry } from '@shared/manifestSnapshot'
 import type {
   EntityMenuTarget,
   ExhibitMenuTarget,
-  LedgerMenuTarget,
   NodeMenuTarget,
   StagedMenuTarget
 } from '@renderer/components/contextmenu/entityMenu'
@@ -15,13 +13,11 @@ import {
   type DataTreeNode
 } from '@renderer/components/data/dataTreeModel'
 import { rowsForNode } from '@renderer/components/data/dataTableModel'
-import { targetExhibitId, type LedgerRow } from '@renderer/components/data/ledgerModel'
 import { copyCaptureHash } from '@renderer/components/captures/useCopyCaptureHash'
 import { copyValue } from '@renderer/components/data/copy'
 
 interface DataContextMenuOptions {
   rows: InventoryRow[]
-  entries: ManifestSnapshotEntry[]
   // What the table knows beyond the inventory, so a node's Verify covers the
   // rows the node actually shows (this session's buckets, a Selector's hits).
   context: RowContext
@@ -31,7 +27,6 @@ interface DataContextMenuOptions {
   onVerify: (exhibitIds: string[]) => void
   onSelectNode: (key: DataNodeKey) => void
   onSetExpanded: (keys: DataNodeKey[], expanded: boolean) => void
-  onShowRow: (rowId: string) => void
   onCommit: (stagingId: string) => void
   onDiscard: (file: { id: string; name: string }) => void
 }
@@ -40,16 +35,21 @@ interface DataContextMenuOptions {
 // screen supplies the callbacks its inline controls already use, so a menu
 // item and the control it accelerates cannot behave differently; this only
 // decides which callback each item reaches and with what.
+//
+// A menu is mounted only on a row that reads as clickable and only when it
+// offers an action beyond the click and a copy. Exhibit rows always have
+// Verify and pooled rows Commit and Discard; a tree node qualifies through a
+// subtree to expand or Exhibits to verify; a Manifest Ledger entry never
+// does (its menu would be the row click and the two hash cells), so it has
+// no menu.
 export function useDataContextMenu({
   rows,
-  entries,
   context,
   captureIds,
   onOpenCapture,
   onVerify,
   onSelectNode,
   onSetExpanded,
-  onShowRow,
   onCommit,
   onDiscard
 }: DataContextMenuOptions) {
@@ -91,16 +91,19 @@ export function useDataContextMenu({
   )
 
   const nodeTarget = useCallback(
-    (node: DataTreeNode): EntityMenuTarget => {
+    (node: DataTreeNode): EntityMenuTarget | null => {
+      // Group heads render as eyebrows, not rows.
+      if (node.group) return null
       const { captures, ...extras } = context
       // The Manifest Ledger node lists entries, not Exhibits, and the pane
-      // header offers no Verify there, so the menu offers none either.
+      // header offers no Verify there, so the node has nothing to offer.
       const exhibitIds =
         node.key === 'manifest-ledger'
           ? []
           : rowsForNode(rows, node.key, captures, extras)
               .filter((row) => row.entity === 'exhibit')
               .map((row) => row.id)
+      if (!node.hasChildren && exhibitIds.length === 0) return null
       const target: NodeMenuTarget = {
         kind: 'node',
         nodeKey: node.key,
@@ -119,31 +122,5 @@ export function useDataContextMenu({
     [rows, context, onSelectNode, onSetExpanded, onVerify]
   )
 
-  const ledgerTarget = useCallback(
-    (row: LedgerRow): EntityMenuTarget => {
-      const line = entries.find((entry) => entry.index === row.index)
-      const named = line ? targetExhibitId(line, rows) : null
-      // A deleted Capture's entry names an id the inventory no longer holds.
-      const targetId = named && rows.some((r) => r.id === named) ? named : null
-      const target: LedgerMenuTarget = {
-        kind: 'ledger',
-        index: row.index,
-        entryType: row.type,
-        canShowTarget: targetId !== null,
-        hasEntryHash: row.entryHash !== '',
-        hasPrevHash: row.prevHash !== '',
-        actions: {
-          showTarget: () => {
-            if (targetId) onShowRow(targetId)
-          },
-          copyEntryHash: () => void copyValue(row.entryHash, 'entry hash'),
-          copyPrevHash: () => void copyValue(row.prevHash, 'previous hash')
-        }
-      }
-      return target
-    },
-    [entries, rows, onShowRow]
-  )
-
-  return { rowTarget, nodeTarget, ledgerTarget }
+  return { rowTarget, nodeTarget }
 }

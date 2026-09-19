@@ -82,6 +82,14 @@ async function openMenu(element: HTMLElement) {
   return screen.findByRole('menu')
 }
 
+// A right-click that mounts nothing. Radix opens its menu synchronously on
+// the event, so a tick later is a settled answer, not a race.
+async function expectNoMenu(element: HTMLElement) {
+  fireEvent.contextMenu(element)
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  expect(screen.queryByRole('menu')).toBeNull()
+}
+
 function item(menu: HTMLElement, id: string) {
   return within(menu).getByTestId(`context-menu-item-${id}`)
 }
@@ -217,10 +225,6 @@ describe('Data screen context menus (#1151)', () => {
     await waitFor(() => expect(verify).toHaveBeenCalledTimes(2))
     expect(verify.mock.calls.map((c) => c[1])).toEqual(['cap-a', 'cap-legacy'])
 
-    const fourth = await openMenu(rail.getByTestId('data-tree-node-staging'))
-    fireEvent.click(item(fourth, 'node-show-only'))
-    expect(screen.getByTestId('data-node-title').textContent).toBe('Staging')
-
     // Shift+click on a twist is the inline route for Expand below.
     fireEvent.click(rail.getByLabelText('Expand Captures'), { shiftKey: true })
     expect(rail.getByTestId('data-tree-node-derived:thumb-a')).toBeTruthy()
@@ -239,18 +243,38 @@ describe('Data screen context menus (#1151)', () => {
     await waitFor(() =>
       expect(rail.getByTestId('data-tree-count-integrity-exceptions').textContent).toBe('0')
     )
-    const second = await openMenu(rail.getByTestId('data-tree-node-integrity-exceptions'))
-    expect(item(second, 'node-verify').getAttribute('data-disabled')).not.toBeNull()
+    // Nothing left to verify and nothing to expand: the node has no menu.
+    await expectNoMenu(rail.getByTestId('data-tree-node-integrity-exceptions'))
   })
 
-  it('node Verify is off on the Manifest Ledger node, which lists entries, not Exhibits', async () => {
+  it('mounts no menu on a group head, on a Derived File node, or on Manifest Ledger', async () => {
     renderExplorer()
     const rail = await tree()
-    const menu = await openMenu(rail.getByTestId('data-tree-node-manifest-ledger'))
-    expect(item(menu, 'node-verify').getAttribute('data-disabled')).not.toBeNull()
-    fireEvent.click(item(menu, 'node-verify'))
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    // Group heads render as eyebrows, not rows; Staging also holds no
+    // Exhibits, so it would offer nothing either way.
+    await expectNoMenu(rail.getByTestId('data-tree-node-data-sources'))
+    await expectNoMenu(rail.getByTestId('data-tree-node-staging'))
+    // The ledger lists entries, not Exhibits, and has no subtree.
+    await expectNoMenu(rail.getByTestId('data-tree-node-manifest-ledger'))
+    // A Derived File node is a leaf and its row is not an Exhibit; the row's
+    // own menu in the table verifies the parent instead.
+    fireEvent.click(rail.getByLabelText('Expand Captures'), { shiftKey: true })
+    await expectNoMenu(rail.getByTestId('data-tree-node-derived:thumb-a'))
     expect(verify).not.toHaveBeenCalled()
+  })
+
+  it('a leaf with Exhibits offers Show only this and Verify, without the subtree items', async () => {
+    renderExplorer()
+    const rail = await tree()
+    fireEvent.click(rail.getByLabelText('Expand File Types'))
+    const menu = await openMenu(rail.getByTestId('data-tree-node-file-type:MHTML'))
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((el) => el.textContent)
+    ).toEqual(['Show only thisEnter', 'Verify'])
+    fireEvent.click(item(menu, 'node-show-only'))
+    expect(screen.getByTestId('data-node-title').textContent).toBe('MHTML')
   })
 
   it('node Verify on a Selector node: the pane header covers exactly the matched rows', async () => {
@@ -313,34 +337,21 @@ describe('Data screen context menus (#1151)', () => {
     await waitFor(() => expect(upload).toHaveBeenCalledWith('case1'))
   })
 
-  it('ledger entry: Show target is off for an id the inventory no longer holds, and Copy previous hash is off on genesis', async () => {
-    renderExplorer()
-    await select('manifest-ledger')
-    const menu = await openMenu(await screen.findByTestId('ledger-row-0'))
-    // seq 0 is the genesis capture entry: a target that exists, no previous hash.
-    expect(item(menu, 'ledger-show-target').getAttribute('data-disabled')).toBeNull()
-    expect(item(menu, 'ledger-copy-prev-hash').getAttribute('data-disabled')).not.toBeNull()
-  })
-
-  it('ledger entry: shows its target, copies the hashes, and the cells copy on click', async () => {
+  it('ledger entry: no menu; the row click shows its target and the cells copy on click', async () => {
     renderExplorer()
     await select('manifest-ledger')
     const row = await screen.findByTestId('ledger-row-0')
-    const menu = await openMenu(row)
-    expect(menu.getAttribute('aria-label')).toBe('Manifest entry actions: seq 0')
-    fireEvent.click(item(menu, 'ledger-copy-entry-hash'))
+    // Everything the entry can do is on the row itself, so a menu would only
+    // repeat it.
+    await expectNoMenu(row)
+    fireEvent.click(within(row).getByTitle(/click to copy/))
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('e'.repeat(64)))
 
-    const second = await openMenu(await screen.findByTestId('ledger-row-0'))
-    fireEvent.click(item(second, 'ledger-show-target'))
+    fireEvent.click(await screen.findByTestId('ledger-row-0'))
     expect(screen.getByTestId('data-node-title').textContent).toBe('Example page')
     expect((await screen.findByTestId('artifact-row-cap-a')).getAttribute('aria-selected')).toBe(
       'true'
     )
-
-    await select('manifest-ledger')
-    fireEvent.click(within(await screen.findByTestId('ledger-row-0')).getByTitle(/click to copy/))
-    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2))
   })
 
   it('ledger row: Enter on a hash cell is that cell’s copy, Enter on the row shows its target', async () => {
@@ -372,12 +383,6 @@ describe('Data screen context menus (#1151)', () => {
     expect(cells('ledger-row-0').slice(4)).toEqual(['e'.repeat(12), 'genesis'])
     expect(cells('ledger-row-1').slice(2)).toEqual(['unreadable', 'bad json', '', ''])
     expect(within(screen.getByTestId('ledger-row-1')).queryByTitle(/click to copy/)).toBeNull()
-
-    const menu = await openMenu(screen.getByTestId('ledger-row-1'))
-    expect(item(menu, 'ledger-copy-entry-hash').getAttribute('data-disabled')).not.toBeNull()
-    expect(item(menu, 'ledger-copy-prev-hash').getAttribute('data-disabled')).not.toBeNull()
-    expect(item(menu, 'ledger-show-target').getAttribute('data-disabled')).not.toBeNull()
-    fireEvent.click(item(menu, 'ledger-copy-entry-hash'))
     expect(writeText).not.toHaveBeenCalled()
   })
 

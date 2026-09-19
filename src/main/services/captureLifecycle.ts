@@ -28,6 +28,7 @@ import type { Capture, CaptureMethod, ConsentSuppression, HashVerification } fro
 import type { BatchDeleteOutcome, BatchDeleteResult, DuplicateCaptureResult } from '@shared/ipc'
 import { IMPORT_ID_MAP_FILENAME } from '@shared/constants'
 import { canonicalStringify } from '@shared/verify'
+import { recordedHttpStatus } from '@shared/httpStatus'
 import { logger } from '@main/services/logger'
 import { ident } from '@main/services/logSafe'
 
@@ -45,7 +46,15 @@ export interface IngestParams {
   headers: Record<string, string>
   browserVersion: string
   userAgent: string
+  // The status the acquiring path recorded for the stored response. 0 is the
+  // wire schema's "no status field arrived" value and is read as unrecorded;
+  // see recordedHttpStatus.
   httpStatus: number
+  // The URL the stored bytes were served from, passed ONLY by a path that
+  // resolved one and saw it differ from the URL it requested (R7, #797). A path
+  // that ingests under the URL it asked for passes nothing: repeating the
+  // requested URL here would claim a redirect that was never observed.
+  finalUrl?: string
   extensionVersion?: string
   operatorId: string
   operatorName: string
@@ -168,6 +177,17 @@ export async function ingestMhtmlCapture(
   const anchoredHeaders =
     params.headers && Object.keys(params.headers).length > 0 ? params.headers : undefined
 
+  // Transaction provenance (R7, #797). The status is anchored only when one was
+  // actually recorded, and the SAME derivation feeds the DB row, so a capture
+  // ingested here has the report printing exactly what the entry anchors. Rows
+  // written before R7 keep their fabricated 200 and are outside that guarantee
+  // — see src/shared/httpStatus.ts. The final URL is anchored
+  // exactly as the acquiring path resolved it — an empty string is not a URL,
+  // so it is dropped rather than written as a claim about nothing.
+  const anchoredHttpStatus = recordedHttpStatus(params.httpStatus)
+  const anchoredFinalUrl =
+    params.finalUrl !== undefined && params.finalUrl !== '' ? params.finalUrl : undefined
+
   // Corroboration-only TLS cert re-fetch (#123, ADR-0002). Runs AFTER the capture
   // content is stored, from the main process — it records whatever cert the origin
   // serves now, NOT the cert bound to the captured transaction. Fail-soft by
@@ -204,6 +224,8 @@ export async function ingestMhtmlCapture(
         screenshotHash,
         textHash,
         headers: anchoredHeaders,
+        httpStatus: anchoredHttpStatus,
+        finalUrl: anchoredFinalUrl,
         tls,
         sizeBytes,
         method: params.method,
@@ -248,7 +270,9 @@ export async function ingestMhtmlCapture(
           extensionVersion: params.extensionVersion,
           browserVersion: params.browserVersion,
           userAgent: params.userAgent,
-          httpStatus: params.httpStatus,
+          // The row mirrors what the entry anchors: an unrecorded status is
+          // stored as absent, never as the 0 the wire coerced it to.
+          httpStatus: anchoredHttpStatus,
           operatorId: params.operatorId,
           operatorName: params.operatorName,
           method: params.method,
@@ -853,6 +877,13 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
               screenshotHash: sourceEntry.screenshotHash,
               textHash: sourceEntry.textHash,
               headers: sourceEntry.headers,
+              // Re-anchored from the source's SIGNED entry, never from its row
+              // (R7, #797). A source captured before R7 anchored no status and
+              // no final URL, so the copy's entry states none either — reading
+              // the hand-editable mirror here would give the copy a chain
+              // anchor its source never had.
+              httpStatus: sourceEntry.httpStatus,
+              finalUrl: sourceEntry.finalUrl,
               tls: sourceEntry.tls,
               method: 'duplicate',
               duplicateOfCaptureId: source.id,
@@ -891,7 +922,9 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
                 extensionVersion: source.extensionVersion,
                 browserVersion: source.browserVersion,
                 userAgent: source.userAgent,
-                httpStatus: source.httpStatus,
+                // Anchored provenance, so the mirror states what the chain
+                // does rather than what the source row happens to hold.
+                httpStatus: sourceEntry.httpStatus,
                 operatorId: getInstallationId(),
                 operatorName,
                 method: 'duplicate',

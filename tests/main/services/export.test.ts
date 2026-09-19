@@ -1,5 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, mkdirSync, rmSync, readFileSync, existsSync, writeFileSync } from 'fs'
+import {
+  accessSync,
+  chmodSync,
+  constants,
+  mkdtempSync,
+  mkdirSync,
+  rmSync,
+  readFileSync,
+  existsSync,
+  writeFileSync
+} from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
@@ -9,6 +19,8 @@ import sharp from 'sharp'
 import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase, updateCase } from '@main/services/db/caseRepo'
 import { insertCapture, listCaptures, setCaptureTrustedTime } from '@main/services/db/captureRepo'
+import { listExhibits } from '@main/services/db/exhibitRepo'
+import { listDerivedFilesForCase } from '@main/services/db/derivedFileRepo'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import * as manifest from '@main/services/manifest'
@@ -34,6 +46,11 @@ import {
 import { createNote } from '@main/services/db/noteRepo'
 import { saveAnnotations, upsertPin, deletePin } from '@main/services/annotations'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
+import {
+  seedMixedKindCase,
+  seedUnanchoredDerivedFile,
+  type MixedKindCase
+} from '../../helpers/mixedKindCase'
 import { initSettings, updateSettings } from '@main/services/settings'
 import {
   getInstallationId,
@@ -98,6 +115,8 @@ async function seedLegacyGenesisCapture(caseId: string, caseDir: string) {
 
   return capture
 }
+
+const sha256Hex = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex')
 
 function readStoredZipEntries(path: string): Map<string, Buffer> {
   const zip = readFileSync(path)
@@ -279,7 +298,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -311,7 +336,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -423,7 +454,13 @@ describe('export', () => {
     const outputPath = join(tempDir, 'audited-evidence.zip')
     const options: ExportOptions = {
       format: 'zip',
-      include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+      include: {
+        captures: true,
+        screenshots: false,
+        auditTrail: true,
+        notes: false,
+        annotations: 'none'
+      },
       exportClass: 'evidence',
       outputPath
     }
@@ -487,7 +524,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -534,7 +577,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -579,7 +628,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath,
         captureIds: [selected.id]
@@ -666,7 +721,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: false,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath,
         captureIds: [selected.id]
@@ -703,7 +764,13 @@ describe('export', () => {
       caseId,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath,
         captureIds: [selected.id]
@@ -727,7 +794,13 @@ describe('export', () => {
         caseId,
         {
           format: 'zip',
-          include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+          include: {
+            captures: true,
+            screenshots: false,
+            auditTrail: true,
+            notes: false,
+            annotations: 'none'
+          },
           exportClass: 'evidence',
           outputPath: join(tempDir, 'never-written.zip'),
           captureIds: ['not-a-real-capture-id']
@@ -746,14 +819,20 @@ describe('export', () => {
         caseId,
         {
           format: 'zip',
-          include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+          include: {
+            captures: true,
+            screenshots: false,
+            auditTrail: true,
+            notes: false,
+            annotations: 'none'
+          },
           exportClass: 'evidence',
           outputPath: join(tempDir, 'never-written.zip'),
           captureIds: []
         },
         captureLifecycle
       )
-    ).rejects.toThrow(/at least one capture/)
+    ).rejects.toThrow(/at least one exhibit/)
   })
 
   it('rolls the export entry back when the zip write fails', async () => {
@@ -772,7 +851,13 @@ describe('export', () => {
         caseId,
         {
           format: 'zip',
-          include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+          include: {
+            captures: true,
+            screenshots: false,
+            auditTrail: true,
+            notes: false,
+            annotations: 'none'
+          },
           exportClass: 'evidence',
           outputPath: dirAsOutput
         },
@@ -808,7 +893,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: true, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: true,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -880,7 +971,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: true, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: true,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -942,7 +1039,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -973,7 +1076,13 @@ describe('export', () => {
     const outputPath = join(tempDir, 'axes.html')
     const options: ExportOptions = {
       format: 'html',
-      include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+      include: {
+        captures: true,
+        screenshots: false,
+        auditTrail: true,
+        notes: false,
+        annotations: 'none'
+      },
       exportClass: 'evidence',
       outputPath
     }
@@ -1038,7 +1147,13 @@ describe('export', () => {
       caseId,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1046,7 +1161,7 @@ describe('export', () => {
     )
 
     const content = readFileSync(outputPath, 'utf-8')
-    expect(content).toMatch(/\d+ captures? without trusted time/)
+    expect(content).toMatch(/\d+ exhibits? without trusted time/)
     // Whitespace-tolerant: the sentence wraps across source lines in the
     // template literal, so the emitted HTML carries a newline mid-phrase.
     expect(content).toMatch(/export\s+was\s+not\s+blocked/i)
@@ -1095,7 +1210,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1114,44 +1235,58 @@ describe('export', () => {
   // the identification command it now gives against a real mixed chain and check
   // it names the unsigned entry and only that one. If the command drifts from
   // what jq accepts, or from the shape the export actually writes, this fails.
-  it.skipIf(!HAS_JQ)('ships a VERIFY.md whose unsigned-entry command finds the legacy entry', async () => {
-    const caseDir = join(tempDir, 'captures', caseId)
-    await seedLegacyGenesisCapture(caseId, caseDir)
-    await ingest(caseId, '<html><body>Signed</body></html>', 'https://example.com/signed', 'Signed')
+  it.skipIf(!HAS_JQ)(
+    'ships a VERIFY.md whose unsigned-entry command finds the legacy entry',
+    async () => {
+      const caseDir = join(tempDir, 'captures', caseId)
+      await seedLegacyGenesisCapture(caseId, caseDir)
+      await ingest(
+        caseId,
+        '<html><body>Signed</body></html>',
+        'https://example.com/signed',
+        'Signed'
+      )
 
-    const outputPath = join(tempDir, 'runbook-evidence.zip')
-    await generateReport(
-      caseId,
-      {
-        format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
-        exportClass: 'evidence',
-        outputPath
-      },
-      captureLifecycle
-    )
+      const outputPath = join(tempDir, 'runbook-evidence.zip')
+      await generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: {
+            captures: true,
+            screenshots: false,
+            auditTrail: true,
+            notes: false,
+            annotations: 'none'
+          },
+          exportClass: 'evidence',
+          outputPath
+        },
+        captureLifecycle
+      )
 
-    const entries = readStoredZipEntries(outputPath)
-    const runbook = entries.get('VERIFY.md')!.toString('utf-8')
-    expect(runbook).toContain('Not every entry is signed')
+      const entries = readStoredZipEntries(outputPath)
+      const runbook = entries.get('VERIFY.md')!.toString('utf-8')
+      expect(runbook).toContain('Not every entry is signed')
 
-    // Lift the jq filter out of the shipped document rather than restating it,
-    // so the command under test is the one a reader is actually given.
-    const filter = runbook.match(/jq -r '([^']+)' manifest\.jsonl/)?.[1]
-    expect(filter).toBeDefined()
+      // Lift the jq filter out of the shipped document rather than restating it,
+      // so the command under test is the one a reader is actually given.
+      const filter = runbook.match(/jq -r '([^']+)' manifest\.jsonl/)?.[1]
+      expect(filter).toBeDefined()
 
-    const manifestPath = join(tempDir, 'runbook-manifest.jsonl')
-    writeFileSync(manifestPath, entries.get('manifest.jsonl')!)
-    const found = execFileSync('jq', ['-r', filter!, manifestPath], { encoding: 'utf-8' })
-      .trim()
-      .split('\n')
-      .filter(Boolean)
+      const manifestPath = join(tempDir, 'runbook-manifest.jsonl')
+      writeFileSync(manifestPath, entries.get('manifest.jsonl')!)
+      const found = execFileSync('jq', ['-r', filter!, manifestPath], { encoding: 'utf-8' })
+        .trim()
+        .split('\n')
+        .filter(Boolean)
 
-    // Exactly one line. A filter that over-matched — listing the signed entry
-    // too — would send a reader chasing a signature that is legitimately there.
-    expect(found).toHaveLength(1)
-    expect(found[0]).toBe('index 0 capture — unsigned')
-  })
+      // Exactly one line. A filter that over-matched — listing the signed entry
+      // too — would send a reader chasing a signature that is legitimately there.
+      expect(found).toHaveLength(1)
+      expect(found[0]).toBe('index 0 capture — unsigned')
+    }
+  )
 
   // A capture the chain never recorded has no signature to report and must not
   // borrow the signed wording by defaulting.
@@ -1174,7 +1309,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1192,7 +1333,13 @@ describe('export', () => {
     const outputPath = join(tempDir, 'unverified-evidence.zip')
     const options: ExportOptions = {
       format: 'zip',
-      include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+      include: {
+        captures: true,
+        screenshots: false,
+        auditTrail: false,
+        notes: false,
+        annotations: 'none'
+      },
       exportClass: 'evidence',
       outputPath
     }
@@ -1226,7 +1373,13 @@ describe('export', () => {
     const outputPath = join(tempDir, 'orphan-evidence.zip')
     const options: ExportOptions = {
       format: 'zip',
-      include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+      include: {
+        captures: true,
+        screenshots: false,
+        auditTrail: true,
+        notes: false,
+        annotations: 'none'
+      },
       exportClass: 'evidence',
       outputPath
     }
@@ -1275,7 +1428,13 @@ describe('export', () => {
       caseId,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: false,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1358,7 +1517,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: false,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1388,7 +1553,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1427,7 +1598,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1453,7 +1630,13 @@ describe('export', () => {
       caseId,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1508,7 +1691,13 @@ describe('export', () => {
       c.id,
       {
         format: 'html',
-        include: { captures: true, screenshots: true, auditTrail: false, notes: false, annotations: 'burned' },
+        include: {
+          captures: true,
+          screenshots: true,
+          auditTrail: false,
+          notes: false,
+          annotations: 'burned'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1538,7 +1727,13 @@ describe('export', () => {
       c.id,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: false,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1559,7 +1754,13 @@ describe('export', () => {
       caseId,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: false,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1581,7 +1782,13 @@ describe('export', () => {
       caseId,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1607,7 +1814,13 @@ describe('export', () => {
       caseId,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: false,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1647,7 +1860,13 @@ describe('export', () => {
       c.id,
       {
         format: 'html',
-        include: { captures: true, screenshots: true, auditTrail: false, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: true,
+          auditTrail: false,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1688,7 +1907,13 @@ describe('export', () => {
         format: 'zip',
         // auditTrail off, so the claim comes from the manifest fallback rather
         // than from a verification result — the path that read a stale mirror.
-        include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: false,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1732,7 +1957,13 @@ describe('export', () => {
       caseId,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: false,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1790,7 +2021,13 @@ describe('export', () => {
       c.id,
       {
         format: 'html',
-        include: { captures: true, screenshots: true, auditTrail: false, notes: false, annotations: 'burned' },
+        include: {
+          captures: true,
+          screenshots: true,
+          auditTrail: false,
+          notes: false,
+          annotations: 'burned'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1809,7 +2046,13 @@ describe('export', () => {
       caseId,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1831,7 +2074,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: false,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1852,7 +2101,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1877,7 +2132,13 @@ describe('export', () => {
         caseId,
         {
           format: 'html',
-          include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+          include: {
+            captures: true,
+            screenshots: false,
+            auditTrail: false,
+            notes: false,
+            annotations: 'none'
+          },
           exportClass: 'evidence',
           outputPath
         },
@@ -1895,7 +2156,13 @@ describe('export', () => {
         caseId,
         {
           format: 'html',
-          include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+          include: {
+            captures: true,
+            screenshots: false,
+            auditTrail: false,
+            notes: false,
+            annotations: 'none'
+          },
           exportClass: 'evidence',
           outputPath
         },
@@ -1916,7 +2183,13 @@ describe('export', () => {
       caseId,
       {
         format: 'html',
-        include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: false,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -1966,7 +2239,13 @@ describe('export', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: true, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: true,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
@@ -2125,7 +2404,16 @@ describe('export', () => {
       expect(marker.case.isDemo).toBe(true)
       expect(marker.case.demoStatement).toContain('fixture data')
       expect(marker.purposeOrAuthority).toBe('Internal review')
-      expect(marker.contents).toEqual({ captureCount: 1, screenshotCount: 0, noteCount: 1 })
+      expect(marker.contents).toEqual({
+        captureCount: 1,
+        screenshotCount: 0,
+        noteCount: 1,
+        exhibitCountsByKind: {},
+        derivedFileCount: 0,
+        unanchoredDerivedFileCount: 0,
+        unverifiableDerivedFileCount: 0,
+        missingDerivedFileCount: 0
+      })
       expect(marker.artifacts.map((a) => a.path).sort()).toEqual([
         'notes.md',
         `pages/${capture.id}.mhtml`
@@ -2303,6 +2591,526 @@ describe('export', () => {
           '\n' +
           '_(no text)_\n'
       )
+    })
+  })
+  // Known-answer tests for the mixed-kind package (#1156). The fixture Case is
+  // the one shared with the package-verifier and built-binary tests, so all
+  // three describe the same object.
+  describe('exhibits of every kind (#1156)', () => {
+    let fixture: MixedKindCase
+
+    beforeEach(async () => {
+      fixture = await seedMixedKindCase({ tempDir })
+    })
+
+    const exportMixed = async (
+      name: string,
+      options: Partial<ExportOptions> = {}
+    ): Promise<Map<string, Buffer>> => {
+      const outputPath = join(tempDir, name)
+      await generateReport(
+        fixture.caseId,
+        {
+          format: 'zip',
+          include: {
+            captures: true,
+            screenshots: true,
+            auditTrail: true,
+            notes: false,
+            annotations: 'none'
+          },
+          exportClass: 'evidence',
+          outputPath,
+          ...options
+        },
+        captureLifecycle
+      )
+      return readStoredZipEntries(outputPath)
+    }
+
+    it('ships every committed exhibit and derived file under its kind directory', async () => {
+      const entries = await exportMixed('mixed-evidence.zip')
+
+      for (const exhibit of fixture.committed) {
+        expect(entries.get(exhibit.packagePath), exhibit.packagePath).toEqual(exhibit.bytes)
+      }
+      // A Capture's thumbnail is a Derived File (X34, D2), so it ships beside
+      // the page archive it was computed from.
+      expect(entries.has(fixture.thumbnailPackagePath)).toBe(true)
+      expect(entries.has(`pages/${fixture.captureId}.mhtml`)).toBe(true)
+
+      const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+        schemaVersion: number
+        exhibits: Array<{
+          id: string
+          kind: string
+          origin: string
+          exhibitNumber: number
+          name: string
+          contentHash: string
+          path: string | null
+          derivedFiles: Array<{ derivation: string; path: string | null; contentHash: string }>
+        }>
+        artifacts: Array<{ path: string }>
+      }
+      expect(evidence.schemaVersion).toBe(2)
+      expect(evidence.exhibits.map((e) => e.kind)).toEqual([
+        'capture',
+        'attachment',
+        'image',
+        'document'
+      ])
+      // Numbers are the ones the `exhibits` table recorded at commit (X18),
+      // never positions in this list.
+      expect(evidence.exhibits.map((e) => e.exhibitNumber)).toEqual([
+        1,
+        ...fixture.committed.map((e) => e.exhibitNumber)
+      ])
+      const capture = evidence.exhibits[0]
+      expect(capture.derivedFiles).toEqual([
+        {
+          derivation: 'thumbnail',
+          path: fixture.thumbnailPackagePath,
+          contentHash: sha256Hex(entries.get(fixture.thumbnailPackagePath)!)
+        }
+      ])
+      expect(evidence.exhibits[1].name).toBe('bundle.zip')
+      expect(evidence.exhibits[1].origin).toBe('manual-upload')
+      // Every enclosed exhibit file is in the artifact index, so packageHash
+      // covers it and step 1 of the runbook re-hashes it.
+      const indexed = new Set(evidence.artifacts.map((a) => a.path))
+      for (const exhibit of fixture.committed) expect(indexed.has(exhibit.packagePath)).toBe(true)
+      expect(indexed.has(fixture.thumbnailPackagePath)).toBe(true)
+    })
+
+    it('renders one report block per exhibit citing its stored exhibit number', async () => {
+      const entries = await exportMixed('mixed-report.zip')
+      const report = entries.get('report.html')!.toString('utf-8')
+
+      for (const exhibit of fixture.committed) {
+        expect(report).toContain(`Exhibit ${exhibit.exhibitNumber}</span>`)
+        expect(report).toContain(exhibit.packagePath)
+      }
+      expect(report).toContain('Supplied to the tool, not captured by it')
+      expect(report).toContain('Kind and origin')
+
+      const certification = entries.get('certification.html')!.toString('utf-8')
+      expect(certification).toContain('1 capture, 1 attachment, 1 document, 1 image')
+      expect(certification).toContain('1 derived file')
+      // The Certification's claims cover every kind, not the captures alone.
+      expect(certification).toMatch(/4\s+exhibits\s+in\s+this\s+export/)
+    })
+
+    it('scopes a selection over mixed kinds and states what it leaves out', async () => {
+      const selected = fixture.document
+      const entries = await exportMixed('mixed-selection.zip', {
+        captureIds: [fixture.captureId, selected.id]
+      })
+
+      expect(entries.has(selected.packagePath)).toBe(true)
+      expect(entries.has(fixture.attachment.packagePath)).toBe(false)
+      expect(entries.has(fixture.image.packagePath)).toBe(false)
+
+      const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+        exhibits: Array<{ id: string }>
+      }
+      expect(evidence.exhibits.map((e) => e.id)).toEqual([fixture.captureId, selected.id])
+
+      // The signed statement of scope carries Exhibit ids of every kind, in the
+      // field it has always had (D3).
+      const exportEntry = JSON.parse(entries.get('export-entry.json')!.toString('utf-8')) as {
+        scope: string
+        captureIds: string[]
+      }
+      expect(exportEntry.scope).toBe('selection')
+      expect([...exportEntry.captureIds].sort()).toEqual([fixture.captureId, selected.id].sort())
+
+      // #985's disclosure: the count left out is stated, not left to be counted.
+      const report = entries.get('report.html')!.toString('utf-8')
+      expect(report).toContain('It also leaves out 2 committed exhibit')
+    })
+
+    it('discloses an altered exhibit rather than packaging it silently', async () => {
+      // The export's verification run covers every kind (X37): bytes that no
+      // longer recompute to the digest the chain records are stated as altered
+      // on the exhibit's own page and counted out of the cover tally.
+      const target = fixture.attachment
+      const stored = listExhibits(fixture.caseId).find((e) => e.id === target.id)!
+      writeFileSync(join(tempDir, 'captures', stored.path!), 'substituted attachment bytes')
+
+      const entries = await exportMixed('mixed-altered.zip')
+      const report = entries.get('report.html')!.toString('utf-8')
+
+      expect(report).toContain('Altered')
+      expect(report).toContain(
+        'The stored bytes no longer recompute to the digest recorded for this exhibit'
+      )
+      // Counted over every kind: three of the four exhibits verify.
+      expect(report).toContain('3 / 4')
+    })
+
+    it('states a committed exhibit whose stored bytes are gone as a gap', async () => {
+      const target = fixture.image
+      const stored = listExhibits(fixture.caseId).find((e) => e.id === target.id)!
+      rmSync(join(tempDir, 'captures', stored.path!))
+
+      const entries = await exportMixed('mixed-missing.zip')
+      expect(entries.has(target.packagePath)).toBe(false)
+
+      const report = entries.get('report.html')!.toString('utf-8')
+      expect(report).toContain('Stored file not available')
+      expect(report).toContain('Absent')
+
+      const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+        warnings: { missingContentExhibitCount: number; missingContentExhibitIds: string[] }
+        exhibits: Array<{ id: string; path: string | null }>
+      }
+      expect(evidence.warnings.missingContentExhibitCount).toBe(1)
+      expect(evidence.warnings.missingContentExhibitIds).toEqual([target.id])
+      expect(evidence.exhibits.find((e) => e.id === target.id)!.path).toBeNull()
+    })
+
+    it('states one verification result on the cover and under chain of custody', async () => {
+      // Two derivations of the same run is what let the cover print "4 / 4
+      // integrity verified - produced by the verification run recorded under
+      // Chain of custody" over a section that said "1 of 1 verified".
+      const entries = await exportMixed('mixed-tally.zip')
+      const report = entries.get('report.html')!.toString('utf-8')
+
+      expect(report).toContain('4 / 4')
+      expect(report).toMatch(/Verification run[\s\S]{0,200}?4 of 4 verified/)
+      expect(report).not.toContain('1 of 1 verified')
+    })
+
+    it('reports the verification run on a selection holding no capture', async () => {
+      const entries = await exportMixed('mixed-exhibits-only.zip', {
+        captureIds: [fixture.document.id]
+      })
+      const report = entries.get('report.html')!.toString('utf-8')
+
+      expect(report).toContain('1 / 1')
+      expect(report).toMatch(/Verification run[\s\S]{0,200}?1 of 1 verified/)
+      // The shape this PR made possible, and the one the cover contradicted:
+      // an export whose only exhibits are committed files did run a
+      // verification, and the custody section has to say so.
+      expect(report).not.toContain('No verification was run for this export')
+    })
+
+    it('holds back an unanchored derived file and discloses the omission', async () => {
+      // X34's case: the backfill records a thumbnail it could not anchor. The
+      // package must not enclose bytes the chain does not cover, evidence.json
+      // must not attribute them to an Exhibit, and the report must not claim
+      // anchoring for them — but the reader has to be told they exist.
+      const unanchored = seedUnanchoredDerivedFile(tempDir, fixture.caseId, fixture.attachment.id)
+      const entries = await exportMixed('mixed-unanchored.zip')
+
+      const names = [...entries.keys()]
+      expect(names.some((name) => name.endsWith('_text.txt'))).toBe(false)
+      expect([...entries.values()].some((bytes) => bytes.equals(unanchored.bytes))).toBe(false)
+
+      const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+        exhibits: Array<{ id: string; derivedFiles: Array<{ derivation: string }> }>
+        artifacts: Array<{ path: string }>
+      }
+      const row = evidence.exhibits.find((e) => e.id === fixture.attachment.id)!
+      expect(row.derivedFiles).toEqual([])
+      expect(evidence.artifacts.some((a) => a.path.endsWith('_text.txt'))).toBe(false)
+
+      const report = entries.get('report.html')!.toString('utf-8')
+      expect(report).toContain('recorded but not anchored, and therefore not enclosed')
+      expect(report).toContain('no manifest entry names it')
+      expect(report).toContain('nothing in the chain states what was produced')
+
+      const certification = entries.get('certification.html')!.toString('utf-8')
+      expect(certification).toContain('1 unanchored derived file recorded and not enclosed')
+      // The anchored thumbnail is still counted, and counted once.
+      expect(certification).toContain('1 derived file enclosed,')
+    })
+
+    it('holds back a no-entry derived file whose bytes are gone, with the X34 cause', async () => {
+      // The state that reached neither verifier honestly: no manifest entry
+      // names the file AND its bytes cannot be read. Classifying on the read
+      // failure first called it anchored, so the report said the chain
+      // anchors it and evidence.json listed it with a null path, which the
+      // binary then FAILed as a fabricated row on an intact chain.
+      const unanchored = seedUnanchoredDerivedFile(tempDir, fixture.caseId, fixture.attachment.id)
+      rmSync(join(tempDir, 'captures', unanchored.storedPath))
+
+      const entries = await exportMixed('mixed-noentry-gone.zip')
+      const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+        exhibits: Array<{ id: string; derivedFiles: Array<{ derivation: string }> }>
+      }
+      expect(evidence.exhibits.find((e) => e.id === fixture.attachment.id)!.derivedFiles).toEqual(
+        []
+      )
+
+      const report = entries.get('report.html')!.toString('utf-8')
+      expect(report).toContain('recorded but not anchored, and therefore not enclosed')
+      expect(report).toContain('nothing in the chain states what was produced')
+      expect(report).not.toContain('The chain anchors 1 file')
+
+      const certification = entries.get('certification.html')!.toString('utf-8')
+      expect(certification).toContain('1 unanchored derived file recorded and not enclosed')
+      expect(certification).not.toContain('2 derived files')
+    })
+
+    it('discloses an anchored derived file whose bytes are gone as a gap', async () => {
+      const thumbnail = listDerivedFilesForCase(fixture.caseId).find(
+        (file) => file.exhibitId === fixture.captureId
+      )!
+      rmSync(join(tempDir, 'captures', thumbnail.path))
+
+      const entries = await exportMixed('mixed-anchored-gone.zip')
+      expect(entries.has(fixture.thumbnailPackagePath)).toBe(false)
+
+      // Not listed either: a row with a null path is a row the two verifiers
+      // read differently, and both already FAIL through the chain-side check.
+      const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+        exhibits: Array<{ id: string; derivedFiles: unknown[] }>
+      }
+      expect(evidence.exhibits.find((e) => e.id === fixture.captureId)!.derivedFiles).toEqual([])
+
+      const report = entries.get('report.html')!.toString('utf-8')
+      expect(report).toContain('could not be read and is not enclosed')
+      expect(report).toContain('The chain anchors 1 file')
+
+      const certification = entries.get('certification.html')!.toString('utf-8')
+      expect(certification).toContain(
+        '1 derived file named by a manifest entry whose stored bytes could not be read and are ' +
+          'not enclosed'
+      )
+    })
+
+    it('says the chain did not verify rather than that an entry is absent', async () => {
+      // The state the app is most likely to be exporting when it matters: a
+      // manifest that has been altered. The `derivation` entry for the
+      // thumbnail is still in the chain and still states what was produced and
+      // from which bytes, so neither document may say no entry does — and the
+      // file is not held back, because the hold-back rule keys on a missing
+      // entry and not on a failing chain.
+      const manifestPath = join(tempDir, 'captures', fixture.caseId, 'manifest.jsonl')
+      const lines = readFileSync(manifestPath, 'utf-8').trim().split('\n')
+      const edited = JSON.parse(lines[0]) as Record<string, unknown>
+      edited.operatorName = 'TAMPERED'
+      lines[0] = JSON.stringify(edited)
+      writeFileSync(manifestPath, lines.join('\n') + '\n')
+
+      const entries = await exportMixed('mixed-broken-chain.zip')
+
+      // Still enclosed and still indexed: the entry names it.
+      expect(entries.has(fixture.thumbnailPackagePath)).toBe(true)
+      const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+        exhibits: Array<{ id: string; derivedFiles: Array<{ derivation: string }> }>
+      }
+      const captureRow = evidence.exhibits.find((e) => e.id === fixture.captureId)!
+      expect(captureRow.derivedFiles.map((d) => d.derivation)).toEqual(['thumbnail'])
+
+      const report = entries.get('report.html')!.toString('utf-8')
+      expect(report).toContain('The chain does not verify, so the anchoring of')
+      expect(report).toContain('could not be established')
+      expect(report).not.toContain('nothing in the chain states what was produced')
+      expect(report).not.toContain('recorded but not anchored')
+
+      const certification = entries.get('certification.html')!.toString('utf-8')
+      expect(certification).toContain(
+        'whose anchoring could not be established because the chain did not verify'
+      )
+      expect(certification).not.toContain('unanchored derived file')
+      // Enclosed, so it is counted as enclosed: the anchoring clause is a
+      // re-count of the same file and never the enclosure statement.
+      expect(certification).toContain('1 derived file enclosed,')
+    })
+
+    it('does not certify a file as enclosed because its chain did not verify', async () => {
+      // The two axes crossed: a broken chain AND bytes the export cannot read.
+      // The zip and the report both omit the file, correctly; counting it as
+      // unverifiable INSTEAD of answering the enclosure question put it under
+      // the certification's enclosed clause, so the document claimed to
+      // contain a file it does not.
+      const thumbnail = listDerivedFilesForCase(fixture.caseId).find(
+        (file) => file.exhibitId === fixture.captureId
+      )!
+      rmSync(join(tempDir, 'captures', thumbnail.path))
+      const manifestPath = join(tempDir, 'captures', fixture.caseId, 'manifest.jsonl')
+      const lines = readFileSync(manifestPath, 'utf-8').trim().split('\n')
+      const edited = JSON.parse(lines[0]) as Record<string, unknown>
+      edited.operatorName = 'TAMPERED'
+      lines[0] = JSON.stringify(edited)
+      writeFileSync(manifestPath, lines.join('\n') + '\n')
+
+      const entries = await exportMixed('mixed-broken-chain-gone.zip')
+      expect(entries.has(fixture.thumbnailPackagePath)).toBe(false)
+      const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+        exhibits: Array<{ id: string; derivedFiles: unknown[] }>
+      }
+      expect(evidence.exhibits.find((e) => e.id === fixture.captureId)!.derivedFiles).toEqual([])
+
+      const certification = entries.get('certification.html')!.toString('utf-8')
+      expect(certification).not.toContain('1 derived file enclosed')
+      expect(certification).toContain(
+        '1 derived file named by a manifest entry whose stored bytes could not be read and are ' +
+          'not enclosed'
+      )
+      // And the anchoring gap is still disclosed, over that same file.
+      expect(certification).toContain(
+        '1 derived file counted above whose anchoring could not be established because the ' +
+          'chain did not verify'
+      )
+    })
+
+    it('says nothing about enclosure in a standalone HTML report', async () => {
+      // A standalone report assembles no package, so every derived file would
+      // otherwise land in the not-enclosed bucket and be described as a gap
+      // over bytes that are on disk and fine. Reached through the IPC handler
+      // rather than the dialog, which pins format: 'zip' today.
+      const outputPath = join(tempDir, 'standalone.html')
+      await generateReport(
+        fixture.caseId,
+        {
+          format: 'html',
+          include: {
+            captures: true,
+            screenshots: true,
+            auditTrail: true,
+            notes: false,
+            annotations: 'none'
+          },
+          exportClass: 'evidence',
+          outputPath
+        },
+        captureLifecycle
+      )
+      const report = readFileSync(outputPath, 'utf-8')
+
+      expect(report).toContain('anchored in the chain by its own entry')
+      expect(report).toContain('the stored bytes recompute to the digest that entry records')
+      expect(report).toContain('This document was exported on its own')
+      // None of the package-only language, in either direction.
+      expect(report).not.toContain('could not be read and is not enclosed')
+      expect(report).not.toContain('is enclosed beside it')
+      expect(report).not.toContain('recorded but not anchored')
+      expect(report).not.toContain('evidence.json</code>, which indexes what this package')
+    })
+
+    it('discloses a lost derived file in a standalone HTML report', async () => {
+      // The chain state alone would leave the operator of a Case with a lost
+      // derived file untold that it is lost; the packaged report says so, and
+      // this one has no reason to be quieter.
+      const thumbnail = listDerivedFilesForCase(fixture.caseId).find(
+        (file) => file.exhibitId === fixture.captureId
+      )!
+      rmSync(join(tempDir, 'captures', thumbnail.path))
+
+      const outputPath = join(tempDir, 'standalone-lost.html')
+      await generateReport(
+        fixture.caseId,
+        {
+          format: 'html',
+          include: {
+            captures: true,
+            screenshots: true,
+            auditTrail: true,
+            notes: false,
+            annotations: 'none'
+          },
+          exportClass: 'evidence',
+          outputPath
+        },
+        captureLifecycle
+      )
+      const report = readFileSync(outputPath, 'utf-8')
+
+      expect(report).toContain('the stored file could not be read')
+      expect(report).toContain('anchored in the chain by its own entry')
+      // The note's own sentence states that this document encloses nothing at
+      // all; what must not appear is a per-file enclosure finding, in either
+      // direction, since there is no package for one to be about.
+      expect(report).toContain('This document was exported on its own')
+      expect(report).not.toContain('could not be read and is not enclosed')
+      expect(report).not.toContain('is enclosed beside it')
+      expect(report).not.toContain('evidence.json</code>, which indexes what this package')
+    })
+
+    it('refuses the export when a capture artifact is present but unreadable', async () => {
+      // The Capture path is outside `createPackageReader` (its artifacts are
+      // probed and read separately, as they were before #1156), so a read
+      // failure there is an error and not a classification: the export fails
+      // and writes nothing, rather than quietly narrowing the package. Pinned
+      // so that behaviour cannot drift into a silent narrowing, and named in
+      // the PR's findings list as a follow-up candidate.
+      const mhtml = join(tempDir, 'captures', fixture.caseId, `${fixture.captureId}.mhtml`)
+      chmodSync(mhtml, 0o000)
+      let stillReadable = false
+      try {
+        accessSync(mhtml, constants.R_OK)
+        stillReadable = true
+      } catch {
+        stillReadable = false
+      }
+      // Root defeats the mode bits and there is no portable way to make a file
+      // unreadable to a process that may read anything.
+      if (stillReadable) {
+        chmodSync(mhtml, 0o644)
+        return
+      }
+
+      const outputPath = join(tempDir, 'capture-unreadable.zip')
+      try {
+        await expect(
+          generateReport(
+            fixture.caseId,
+            {
+              format: 'zip',
+              include: {
+                captures: true,
+                screenshots: false,
+                auditTrail: false,
+                notes: false,
+                annotations: 'none'
+              },
+              exportClass: 'evidence',
+              outputPath
+            },
+            captureLifecycle
+          )
+        ).rejects.toThrow(/EACCES|permission denied/i)
+        expect(existsSync(outputPath)).toBe(false)
+      } finally {
+        chmodSync(mhtml, 0o644)
+      }
+    })
+
+    it('ships the same exhibits and derived files in a Working Copy', async () => {
+      const entries = await exportMixed('mixed-working-copy.zip', {
+        exportClass: 'working-copy',
+        include: {
+          captures: true,
+          screenshots: true,
+          auditTrail: false,
+          notes: false,
+          annotations: 'none'
+        }
+      })
+
+      for (const exhibit of fixture.committed) {
+        expect(entries.get(exhibit.packagePath), exhibit.packagePath).toEqual(exhibit.bytes)
+      }
+      expect(entries.has(fixture.thumbnailPackagePath)).toBe(true)
+      // Still no evidentiary material: the class split is untouched.
+      expect(entries.has('manifest.jsonl')).toBe(false)
+      expect(entries.has('certification.html')).toBe(false)
+
+      const marker = JSON.parse(entries.get('WORKING-COPY.json')!.toString('utf-8')) as {
+        contents: { exhibitCountsByKind: Record<string, number>; derivedFileCount: number }
+        exhibits: Array<{ id: string; kind: string }>
+      }
+      expect(marker.contents.exhibitCountsByKind).toEqual({
+        attachment: 1,
+        image: 1,
+        document: 1
+      })
+      expect(marker.contents.derivedFileCount).toBe(1)
+      expect(marker.exhibits.map((e) => e.kind).sort()).toEqual(['attachment', 'document', 'image'])
     })
   })
 })

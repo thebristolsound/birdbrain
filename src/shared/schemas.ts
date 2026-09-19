@@ -426,6 +426,17 @@ const ManifestCaptureEntrySchema = z
     screenshotHash: z.string().optional(),
     textHash: z.string().optional(),
     headers: z.record(z.string(), z.string()).optional(),
+    // Transaction provenance (R7, #797). `httpStatus` is the status the
+    // acquiring path recorded for the stored response; `finalUrl` is the URL
+    // the stored bytes were served from, written only by a path that resolved
+    // one AND saw it differ from the URL that was requested — its presence is
+    // the entry's statement that a redirect took the capture somewhere other
+    // than where it was aimed. Both optional and OMITTED (never 0 / '' / null)
+    // when unknown, so every entry written before R7 keeps its canonical body
+    // and therefore its chain hash. The status range is HTTP's own (RFC 9110
+    // §15); a value outside it is not a status and is never written.
+    httpStatus: z.number().int().min(100).max(599).optional(),
+    finalUrl: z.string().min(1).optional(),
     tls: TlsCertChainResultSchema.optional(),
     method: z.enum(CAPTURE_METHODS).optional(),
     supersedesCaptureId: z.string().optional(),
@@ -763,7 +774,43 @@ const EvidenceCaptureSchema = z.object({
   timestampTokenPaths: z.array(z.string())
 })
 
+// One Derived File as the index lists it, nested under the Exhibit it was
+// computed from (#1156). It carries no Exhibit Number: a Derived File is cited
+// by its parent and its derivation, never numbered of its own (X31).
+const EvidenceDerivedFileSchema = z.object({
+  derivation: z.string(),
+  contentHash: z.string(),
+  path: z.string().nullable()
+})
+
+// One Exhibit of any kind (ADR-0023). `exhibits` is additive: `captures` keeps
+// its shape and its rows, so a verifier built before this list existed reads
+// the same package it always did. The kind vocabulary is an open string here
+// for the same reason it is on the manifest entry — an index naming a kind this
+// build has not heard of is an index from a newer writer, not a malformed one.
+const EvidenceExhibitSchema = z.object({
+  id: z.string(),
+  kind: z.string(),
+  origin: z.string(),
+  exhibitNumber: z.number().int().positive(),
+  name: z.string(),
+  contentHash: z.string(),
+  // Package-relative path of the enclosed bytes, null when the package does not
+  // enclose them (the file was unreadable at export time, and the warnings
+  // block counts it).
+  path: z.string().nullable(),
+  // Where the package encloses this Exhibit's RFC 3161 token, when one is
+  // enclosed. A locating hint only, like the capture row's: the verifier
+  // byte-binds whatever it finds to the token the signed entry carries, so the
+  // path carries no security weight. Optional for an index written before the
+  // field existed.
+  timestampTokenPaths: z.array(z.string()).optional(),
+  derivedFiles: z.array(EvidenceDerivedFileSchema)
+})
+
 export const EvidencePackageSchema = z.object({
+  // 1: `captures` only. 2: the additive `exhibits` list below, which the
+  // verifier reconciles against the chain exactly as it reconciles `captures`.
   schemaVersion: z.number().int().positive(),
   verificationMaterials: z.object({
     manifestPath: z.string(),
@@ -781,6 +828,10 @@ export const EvidencePackageSchema = z.object({
     tsaIntermediatesPath: z.string().optional()
   }),
   captures: z.array(EvidenceCaptureSchema),
+  // Optional so a schemaVersion 1 package — every package written before
+  // #1156 — still parses. The verifier requires it from schemaVersion 2 on,
+  // where its absence is an edited index rather than an older writer.
+  exhibits: z.array(EvidenceExhibitSchema).optional(),
   artifacts: z.array(EvidenceArtifactSchema)
 })
 

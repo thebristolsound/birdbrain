@@ -15,6 +15,7 @@ import { canonicalStringify, verifyManifestChainText } from '@shared/verify'
 import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
 import { ManifestEntrySchema, MANIFEST_ENTRY_TYPES } from '@shared/schemas'
 import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
+import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 
 // Known-answer tests for manifest schema 3 (ADR-0023, rulings X17/X18/X24/X25).
 //
@@ -29,8 +30,9 @@ import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 //   5. that verdict is not for sale: an entry claiming a newer schema is still
 //      reported as tampering unless it links, hashes and verifies as a genuine
 //      newer writer's entry does;
-//   6. an Exhibit or Derived File this build cannot bind to bytes is reported
-//      as a SKIP naming the ticket that binds it, never passed over in silence.
+//   6. an Exhibit and a Derived File the chain anchors are bound to the bytes a
+//      package encloses, and an altered one FAILs named by its Exhibit Number
+//      (#1156) — never passed over in silence.
 //
 // If a frozen digest fails, the canonical body of that entry type changed and
 // every chain already written with it is now unverifiable — that is the finding,
@@ -60,6 +62,16 @@ const CAPTURE_BODY = {
   index: 0,
   prevHash: '',
   schemaVersion: 2
+}
+
+// The same body once R7 transaction provenance (#797) is on it: the status the
+// origin sent and the URL the bytes were actually served from. Every other
+// field is identical to CAPTURE_BODY above, so the pair pins exactly what the
+// two new fields cost — nothing when absent, a different hash when present.
+const CAPTURE_BODY_R7 = {
+  ...CAPTURE_BODY,
+  httpStatus: 404,
+  finalUrl: 'https://example.com/redirected'
 }
 
 const EXHIBIT_ID = '0196f7a2-aaaa-bbbb-cccc-000000000010'
@@ -127,7 +139,12 @@ const FROZEN_ENTRY_HASHES = {
   capture: 'c993dd9744c9f98bc096939e5d37c7f5b0490b47098dd961a01def5cc2a68ebf',
   exhibit: 'a3088330cefd3f04fe332992d9597cacebf6760c68f528a10b944465fc085431',
   derivation: 'ce3e175420475fcc8e8b4086d51df1f9e5282716affade0d2ec1268ac04b5221',
-  renumber: 'eb23edc7c967c8f6e3114df29f49bc0d989c5cfcc2aa1734f6f1c72ade0b0485'
+  renumber: 'eb23edc7c967c8f6e3114df29f49bc0d989c5cfcc2aa1734f6f1c72ade0b0485',
+  // Frozen at R7 (#797), the first build that could write this body. It is a
+  // new answer, not a moved one: the `capture` digest above is for the same
+  // fields WITHOUT the two new ones and is unchanged, which is the claim that
+  // every chain written before R7 still verifies.
+  captureR7: 'f2e8b2c8d315fa63a0609e7bb321c3146cf786812a1c6478e9c158623c18aa32'
 }
 
 function entryHashOf(body: Record<string, unknown>): string {
@@ -165,6 +182,24 @@ describe('manifest schema 3 — frozen entry hashes', () => {
     expect(parsed.success).toBe(true)
   })
 
+  it('pins the canonical hash of a capture entry carrying R7 provenance (#797)', () => {
+    // The pre-R7 answer is untouched (asserted above), and this is the answer
+    // for the same capture once the status and final URL are on it. The two
+    // differ, which is what makes the provenance attested rather than
+    // decorative: strip either field and the recomputed hash no longer matches
+    // what the entry carries.
+    expect(entryHashOf(CAPTURE_BODY_R7)).toBe(FROZEN_ENTRY_HASHES.captureR7)
+    expect(entryHashOf(CAPTURE_BODY_R7)).not.toBe(FROZEN_ENTRY_HASHES.capture)
+  })
+
+  it('verifies a chain mixing pre-R7 and R7 capture entries (#797)', () => {
+    // The normal state of a case that predates R7: old entries carry no
+    // provenance fields, new ones do, and one verifier reads both.
+    const result = verify(buildChain([CAPTURE_BODY, CAPTURE_BODY_R7]))
+    expect(result.valid).toBe(true)
+    expect(result.unsupported).toBeUndefined()
+  })
+
   it('pins the canonical hash of each new entry type', () => {
     expect(entryHashOf(EXHIBIT_BODY)).toBe(FROZEN_ENTRY_HASHES.exhibit)
     expect(entryHashOf(DERIVATION_BODY)).toBe(FROZEN_ENTRY_HASHES.derivation)
@@ -198,6 +233,36 @@ describe('manifest schema 3 — the schema', () => {
       const parsed = ManifestEntrySchema.safeParse({ ...body, entryHash: 'f'.repeat(64) })
       expect(parsed.success).toBe(true)
     }
+  })
+
+  it('parses a capture entry carrying R7 provenance, and refuses a non-status (#797)', () => {
+    expect(
+      ManifestEntrySchema.safeParse({ ...CAPTURE_BODY_R7, entryHash: 'f'.repeat(64) }).success
+    ).toBe(true)
+    // 0 is the value a missing status field coerces to on the wire and 700 is
+    // not a status code. Neither is a claim the chain will carry: the writer
+    // omits them, and an entry that states one is malformed rather than read
+    // as "the origin answered 0".
+    for (const httpStatus of [0, 700, 200.5]) {
+      expect(
+        ManifestEntrySchema.safeParse({
+          ...CAPTURE_BODY_R7,
+          httpStatus,
+          entryHash: 'f'.repeat(64)
+        }).success
+      ).toBe(false)
+    }
+    // Same rule for the other half of R7: '' is not a URL, so it is not the
+    // entry's statement that a redirect happened. Before R7 the strict schema
+    // refused it as an unknown key; widening the shape must not start reading
+    // it as a valid redirect claim.
+    expect(
+      ManifestEntrySchema.safeParse({
+        ...CAPTURE_BODY_R7,
+        finalUrl: '',
+        entryHash: 'f'.repeat(64)
+      }).success
+    ).toBe(false)
   })
 
   it('rejects a v3 entry type that claims a schema version below 3', () => {
@@ -768,7 +833,7 @@ describe('manifest schema 3 — the too-old verdict is not for sale', () => {
   })
 })
 
-describe('manifest schema 3 — Exhibit entries a package verifier cannot bind', () => {
+describe('manifest schema 3 — Exhibit and Derived File binding (#1156)', () => {
   let pkgDir: string
 
   beforeEach(() => {
@@ -779,37 +844,62 @@ describe('manifest schema 3 — Exhibit entries a package verifier cannot bind',
     rmSync(pkgDir, { recursive: true, force: true })
   })
 
-  it('reports an unbound Exhibit and Derived File as a SKIP naming 803e', () => {
-    // This build reads `exhibit` and `derivation` entries and binds no bytes to
-    // them — 803e (#1156) is what ships and verifies Exhibit files. A silent
-    // PASS over a package holding them would read as "everything the chain
-    // anchors was verified" (X44's dishonest third option), so each one is named
-    // in the report. A SKIP and not a FAIL: the package is not at fault for
-    // being newer than the verifier (X25).
-    const mhtml = Buffer.from('<html><body>packaged</body></html>')
-    const contentHash = createHash('sha256').update(mhtml).digest('hex')
-    const capture = {
-      type: 'capture',
-      captureId: CAPTURE_ID,
-      caseId: CASE_ID,
-      url: 'https://example.com/page',
-      timestamp: '2026-06-01T12:00:00.000Z',
-      contentHash,
-      sizeBytes: mhtml.length,
-      ...OPERATOR,
-      schemaVersion: 2
-    }
-    const jsonl = buildChain([capture, EXHIBIT_BODY, DERIVATION_BODY])
+  const MHTML = Buffer.from('<html><body>packaged</body></html>')
+  const MHTML_HASH = createHash('sha256').update(MHTML).digest('hex')
+  const DOCUMENT = Buffer.from('%PDF-1.7 witness statement')
+  const DOCUMENT_HASH = createHash('sha256').update(DOCUMENT).digest('hex')
+  const SIDECAR = Buffer.from('{"pages":3}')
+  const SIDECAR_HASH = createHash('sha256').update(SIDECAR).digest('hex')
+
+  const CAPTURE_ENTRY = {
+    type: 'capture',
+    captureId: CAPTURE_ID,
+    caseId: CASE_ID,
+    url: 'https://example.com/page',
+    timestamp: '2026-06-01T12:00:00.000Z',
+    contentHash: MHTML_HASH,
+    sizeBytes: MHTML.length,
+    ...OPERATOR,
+    schemaVersion: 2
+  }
+
+  const EXHIBIT_ENTRY = {
+    ...EXHIBIT_BODY,
+    path: `${CASE_ID}/documents/${EXHIBIT_ID}.pdf`,
+    contentHash: DOCUMENT_HASH
+  }
+
+  const DERIVATION_ENTRY = {
+    ...DERIVATION_BODY,
+    parentContentHash: DOCUMENT_HASH,
+    outputHash: SIDECAR_HASH,
+    outputPath: `${CASE_ID}/documents/${EXHIBIT_ID}_pdf-metadata.json`
+  }
+
+  /**
+   * A mixed-kind package written by hand: a capture, a committed document under
+   * its kind directory keyed by Exhibit id, and the document's Derived File
+   * beside it. Written by hand rather than through the exporter because this
+   * file's subject is what the VERIFIER does with schema-3 entries, and a
+   * fixture the exporter produced could only ever agree with itself.
+   */
+  function writePackage(
+    bodies: Record<string, unknown>[] = [CAPTURE_ENTRY, EXHIBIT_ENTRY, DERIVATION_ENTRY]
+  ): void {
+    const jsonl = buildChain(bodies)
     const lines = jsonl.trim().split('\n')
     const head = JSON.parse(lines[lines.length - 1]) as { index: number; entryHash: string }
     writeFileSync(join(pkgDir, 'manifest.jsonl'), jsonl, 'utf-8')
     writeFileSync(join(pkgDir, 'signing-public-key.pem'), getPublicKeyPem(), 'utf-8')
     mkdirSync(join(pkgDir, 'pages'), { recursive: true })
-    writeFileSync(join(pkgDir, 'pages', `${CAPTURE_ID}.mhtml`), mhtml)
+    writeFileSync(join(pkgDir, 'pages', `${CAPTURE_ID}.mhtml`), MHTML)
+    mkdirSync(join(pkgDir, 'documents'), { recursive: true })
+    writeFileSync(join(pkgDir, 'documents', `${EXHIBIT_ID}.pdf`), DOCUMENT)
+    writeFileSync(join(pkgDir, 'documents', `${EXHIBIT_ID}_pdf-metadata.json`), SIDECAR)
     writeFileSync(
       join(pkgDir, 'evidence.json'),
       JSON.stringify({
-        schemaVersion: 1,
+        schemaVersion: 2,
         verificationMaterials: {
           manifestPath: 'manifest.jsonl',
           manifestHeadIndex: head.index,
@@ -820,8 +910,160 @@ describe('manifest schema 3 — Exhibit entries a package verifier cannot bind',
           {
             id: CAPTURE_ID,
             mhtmlPath: `pages/${CAPTURE_ID}.mhtml`,
-            mhtmlSha256: contentHash,
+            mhtmlSha256: MHTML_HASH,
             timestampTokenPaths: []
+          }
+        ],
+        exhibits: [
+          {
+            id: CAPTURE_ID,
+            kind: 'capture',
+            origin: 'extension',
+            exhibitNumber: 1,
+            name: 'Page',
+            contentHash: MHTML_HASH,
+            path: `pages/${CAPTURE_ID}.mhtml`,
+            derivedFiles: []
+          },
+          {
+            id: EXHIBIT_ID,
+            kind: 'document',
+            origin: 'manual-upload',
+            exhibitNumber: 7,
+            name: 'witness-statement.pdf',
+            contentHash: DOCUMENT_HASH,
+            path: `documents/${EXHIBIT_ID}.pdf`,
+            derivedFiles: [
+              {
+                derivation: 'pdf-metadata',
+                contentHash: SIDECAR_HASH,
+                path: `documents/${EXHIBIT_ID}_pdf-metadata.json`
+              }
+            ]
+          }
+        ],
+        artifacts: []
+      }),
+      'utf-8'
+    )
+  }
+
+  function checkFor(result: ReturnType<typeof verifyEvidencePackage>, name: string) {
+    return result.checks.find((check) => check.name === name)
+  }
+
+  it('binds an Exhibit and its Derived File to the chain and passes', () => {
+    // The answer #1156 replaced: this build used to print one SKIP per
+    // `exhibit` and `derivation` entry, naming the ticket that would bind them.
+    // It binds them now, and a package whose Exhibit bytes are the ones the
+    // chain anchors PASSes with those rows stated as passes rather than as work
+    // not done.
+    writePackage()
+    const result = verifyEvidencePackage(pkgDir)
+
+    const exhibit = checkFor(result, `exhibit ${EXHIBIT_ID}`)
+    expect(exhibit?.status).toBe('pass')
+    expect(exhibit?.reason).toContain('Exhibit 7')
+    expect(exhibit?.reason).toContain(`documents/${EXHIBIT_ID}.pdf`)
+
+    const derivation = checkFor(result, `derivation pdf-metadata of ${EXHIBIT_ID}`)
+    expect(derivation?.status).toBe('pass')
+    expect(derivation?.reason).toContain('Exhibit 7, derivation `pdf-metadata`')
+
+    expect(result.checks.filter((check) => check.status === 'fail')).toEqual([])
+    expect(result.pass).toBe(true)
+    // No row anywhere still defers the work to this ticket.
+    expect(result.checks.some((check) => (check.reason ?? '').includes('803e'))).toBe(false)
+  })
+
+  it('fails an altered Exhibit by its Exhibit Number', () => {
+    writePackage()
+    const path = join(pkgDir, 'documents', `${EXHIBIT_ID}.pdf`)
+    writeFileSync(path, Buffer.concat([DOCUMENT, Buffer.from('!')]))
+
+    const result = verifyEvidencePackage(pkgDir)
+    const exhibit = checkFor(result, `exhibit ${EXHIBIT_ID}`)
+    expect(exhibit?.status).toBe('fail')
+    expect(exhibit?.reason).toContain('Exhibit 7')
+    expect(exhibit?.reason).toContain('does not match the contentHash in its signed entry')
+    expect(result.pass).toBe(false)
+  })
+
+  it('fails an altered Derived File as its parent Exhibit and derivation (AC 2)', () => {
+    writePackage()
+    const path = join(pkgDir, 'documents', `${EXHIBIT_ID}_pdf-metadata.json`)
+    writeFileSync(path, Buffer.from('{"pages":4}'))
+
+    const result = verifyEvidencePackage(pkgDir)
+    const derivation = checkFor(result, `derivation pdf-metadata of ${EXHIBIT_ID}`)
+    expect(derivation?.status).toBe('fail')
+    // A Derived File has no Exhibit Number of its own (X31), so it is named by
+    // the Exhibit it came from and the derivation that produced it.
+    expect(derivation?.reason).toContain('Exhibit 7, derivation `pdf-metadata`')
+    expect(result.pass).toBe(false)
+  })
+
+  it('fails an Exhibit the chain anchors and the package does not enclose', () => {
+    writePackage()
+    rmSync(join(pkgDir, 'documents', `${EXHIBIT_ID}.pdf`))
+
+    const result = verifyEvidencePackage(pkgDir)
+    const exhibit = checkFor(result, `exhibit ${EXHIBIT_ID}`)
+    expect(exhibit?.status).toBe('fail')
+    expect(exhibit?.reason).toContain('is missing from the package')
+    expect(result.pass).toBe(false)
+  })
+
+  it('skips a Derived File whose parent the chain records as deleted (X29)', () => {
+    // A `derivation` entry outlives its parent: the chain is append-only, so
+    // deleting an Exhibit leaves the entry in place. The package is not
+    // expected to enclose a file derived from an Exhibit it no longer holds,
+    // and binding bytes to that entry would state something about an Exhibit
+    // this package does not contain.
+    const deletion = {
+      type: 'deletion',
+      captureId: EXHIBIT_ID,
+      caseId: CASE_ID,
+      timestamp: '2026-06-01T12:10:00.000Z',
+      contentHash: DOCUMENT_HASH,
+      ...OPERATOR,
+      schemaVersion: 3
+    }
+    const jsonl = buildChain([CAPTURE_ENTRY, EXHIBIT_ENTRY, DERIVATION_ENTRY, deletion])
+    const lines = jsonl.trim().split('\n')
+    const head = JSON.parse(lines[lines.length - 1]) as { index: number; entryHash: string }
+    writeFileSync(join(pkgDir, 'manifest.jsonl'), jsonl, 'utf-8')
+    writeFileSync(join(pkgDir, 'signing-public-key.pem'), getPublicKeyPem(), 'utf-8')
+    mkdirSync(join(pkgDir, 'pages'), { recursive: true })
+    writeFileSync(join(pkgDir, 'pages', `${CAPTURE_ID}.mhtml`), MHTML)
+    writeFileSync(
+      join(pkgDir, 'evidence.json'),
+      JSON.stringify({
+        schemaVersion: 2,
+        verificationMaterials: {
+          manifestPath: 'manifest.jsonl',
+          manifestHeadIndex: head.index,
+          manifestHeadHash: head.entryHash,
+          signingPublicKeyPath: 'signing-public-key.pem'
+        },
+        captures: [
+          {
+            id: CAPTURE_ID,
+            mhtmlPath: `pages/${CAPTURE_ID}.mhtml`,
+            mhtmlSha256: MHTML_HASH,
+            timestampTokenPaths: []
+          }
+        ],
+        exhibits: [
+          {
+            id: CAPTURE_ID,
+            kind: 'capture',
+            origin: 'extension',
+            exhibitNumber: 1,
+            name: 'Page',
+            contentHash: MHTML_HASH,
+            path: `pages/${CAPTURE_ID}.mhtml`,
+            derivedFiles: []
           }
         ],
         artifacts: []
@@ -830,16 +1072,70 @@ describe('manifest schema 3 — Exhibit entries a package verifier cannot bind',
     )
 
     const result = verifyEvidencePackage(pkgDir)
-    const exhibit = result.checks.find((check) => check.name === `exhibit ${EXHIBIT_ID}`)
-    expect(exhibit?.status).toBe('skip')
-    expect(exhibit?.reason).toContain('Exhibit 7')
-    expect(exhibit?.reason).toContain('803e')
-    const derivation = result.checks.find((check) => check.name.startsWith('derivation '))
+    const derivation = checkFor(result, `derivation pdf-metadata of ${EXHIBIT_ID}`)
     expect(derivation?.status).toBe('skip')
-    expect(derivation?.reason).toContain('803e')
-    // The rest of the package is intact, so the verdict stays PASS: what changed
-    // is that the PASS now says out loud which anchored items it did not bind.
+    expect(derivation?.reason).toContain('no active parent exhibit')
+    // The deleted Exhibit itself gets no row: the chain accounts for it.
+    expect(checkFor(result, `exhibit ${EXHIBIT_ID}`)).toBeUndefined()
     expect(result.checks.filter((check) => check.status === 'fail')).toEqual([])
     expect(result.pass).toBe(true)
+  })
+
+  it('fails a committed Exhibit whose enclosed token attests another digest', () => {
+    // The check that makes token binding mean something: the bytes match the
+    // signed entry, so a byte comparison alone passes, and the token attests a
+    // digest that is not this Exhibit's. Built by hand because reaching it
+    // through the app would mean editing a `timestamp` entry, which breaks the
+    // chain before this check runs.
+    const token = buildSyntheticToken({
+      contentHash: 'f'.repeat(64),
+      genTime: new Date('2026-06-01T12:30:00.000Z'),
+      tsaDnsName: 'tsa.example.com'
+    })
+    const timestamp = {
+      type: 'timestamp',
+      caseId: CASE_ID,
+      captureContentHash: DOCUMENT_HASH,
+      timestamp: '2026-06-01T12:30:00.000Z',
+      tsaToken: token.toString('base64'),
+      ...OPERATOR,
+      schemaVersion: 3
+    }
+    writePackage([CAPTURE_ENTRY, EXHIBIT_ENTRY, DERIVATION_ENTRY, timestamp])
+    mkdirSync(join(pkgDir, 'timestamps'), { recursive: true })
+    writeFileSync(join(pkgDir, 'timestamps', `${EXHIBIT_ID}.tst`), token)
+
+    const result = verifyEvidencePackage(pkgDir)
+    const check = checkFor(result, `exhibit ${EXHIBIT_ID} timestamp`)
+    expect(check?.status).toBe('fail')
+    expect(check?.reason).toContain('timestamp imprint does not bind this exhibit')
+    expect(result.pass).toBe(false)
+  })
+
+  it('fails a Derived File the chain anchors and the package does not enclose', () => {
+    writePackage()
+    rmSync(join(pkgDir, 'documents', `${EXHIBIT_ID}_pdf-metadata.json`))
+
+    const result = verifyEvidencePackage(pkgDir)
+    const derivation = checkFor(result, `derivation pdf-metadata of ${EXHIBIT_ID}`)
+    expect(derivation?.status).toBe('fail')
+    expect(derivation?.reason).toContain('is missing from the package')
+    expect(result.pass).toBe(false)
+  })
+
+  it('reports a chain Exhibit the index omits as an evidence.json disagreement', () => {
+    writePackage()
+    const path = join(pkgDir, 'evidence.json')
+    const evidence = JSON.parse(readFileSync(path, 'utf-8')) as {
+      exhibits: Array<{ id: string }>
+    }
+    evidence.exhibits = evidence.exhibits.filter((row) => row.id !== EXHIBIT_ID)
+    writeFileSync(path, JSON.stringify(evidence))
+
+    const result = verifyEvidencePackage(pkgDir)
+    const check = result.checks.find((c) => c.name === 'evidence.json exhibits')
+    expect(check?.status).toBe('fail')
+    expect(check?.reason).toContain(`omits verified exhibit ${EXHIBIT_ID}`)
+    expect(result.pass).toBe(false)
   })
 })

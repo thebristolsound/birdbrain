@@ -7,6 +7,7 @@ import { createHash } from 'crypto'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
 import { insertCapture } from '@main/services/db/captureRepo'
+import { listExhibits } from '@main/services/db/exhibitRepo'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
 import { appendManifestEntry, initManifest } from '@main/services/manifest'
 import { ingestMhtmlCapture, createCaptureLifecycle } from '@main/services/captureLifecycle'
@@ -16,10 +17,12 @@ import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { signEntryHash } from '@main/services/signingKey'
 import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
+import type { PackageVerifyResult } from '@shared/verify/evidencePackage'
 import { canonicalStringify } from '@shared/verify'
 import { packageHash } from '@shared/verify/packageHash'
 import { EvidencePackageSchema } from '@shared/schemas'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
+import { seedMixedKindCase, type MixedKindCase } from '../../helpers/mixedKindCase'
 import type { ExportOptions } from '@shared/types'
 
 // Parses a Birdbrain stored-ZIP (all entries STORE/method 0) into a name->bytes
@@ -126,7 +129,9 @@ describe('verifyEvidencePackage', () => {
       url: 'https://example.com/page',
       title: 'Page',
       timestamp: '2026-04-05T12:00:00.000Z',
-      stream: Readable.from([Buffer.from('<html><body>Packaged</body></html>')]) as unknown as ReadableStream<Uint8Array>,
+      stream: Readable.from([
+        Buffer.from('<html><body>Packaged</body></html>')
+      ]) as unknown as ReadableStream<Uint8Array>,
       textContent: 'extracted text',
       headers: {},
       browserVersion: '',
@@ -160,7 +165,13 @@ describe('verifyEvidencePackage', () => {
     const outputPath = join(tempDir, 'evidence.zip')
     const options: ExportOptions = {
       format: 'zip',
-      include: { captures: true, screenshots: true, auditTrail: true, notes: false, annotations: 'none' },
+      include: {
+        captures: true,
+        screenshots: true,
+        auditTrail: true,
+        notes: false,
+        annotations: 'none'
+      },
       exportClass: 'evidence',
       outputPath
     }
@@ -202,11 +213,19 @@ describe('verifyEvidencePackage', () => {
       caseId,
       {
         format: 'zip',
-        include: { captures: true, screenshots: true, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: true,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       },
-      createCaptureLifecycle({ selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} }) })
+      createCaptureLifecycle({
+        selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} })
+      })
     )
 
     const orphanDir = mkdtempSync(join(tmpdir(), 'bb-pkg-orphan-'))
@@ -263,7 +282,9 @@ describe('verifyEvidencePackage', () => {
     // Drop the timestamp token from the signed entry: the capture is still a v2
     // capture (eligible) but now unstamped → pending, reported as a SKIP.
     const p = join(pkgDir, 'manifest.jsonl')
-    const lines = readFileSync(p, 'utf-8').split('\n').filter((l) => l.trim())
+    const lines = readFileSync(p, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim())
     const kept = lines.filter((l) => JSON.parse(l).type !== 'timestamp')
     writeFileSync(p, kept.join('\n') + '\n')
     const result = verifyEvidencePackage(pkgDir)
@@ -284,7 +305,9 @@ describe('verifyEvidencePackage', () => {
 
   it('FAILs with "Entry hash mismatch" when a manifest body field is mutated', () => {
     const p = join(pkgDir, 'manifest.jsonl')
-    const lines = readFileSync(p, 'utf-8').split('\n').filter((l) => l.trim())
+    const lines = readFileSync(p, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim())
     const entry = JSON.parse(lines[0])
     entry.url = 'https://tampered.example.com'
     lines[0] = JSON.stringify(entry)
@@ -296,7 +319,9 @@ describe('verifyEvidencePackage', () => {
 
   it('FAILs with "Invalid signature" when a signature is stripped', () => {
     const p = join(pkgDir, 'manifest.jsonl')
-    const lines = readFileSync(p, 'utf-8').split('\n').filter((l) => l.trim())
+    const lines = readFileSync(p, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim())
     const entry = JSON.parse(lines[0])
     delete entry.signature
     lines[0] = JSON.stringify(entry)
@@ -565,7 +590,10 @@ describe('verifyEvidencePackage', () => {
 
     const freshManifest = readFileSync(join(caseDir, 'manifest.jsonl'))
     writeFileSync(join(pkgDir, 'manifest.jsonl'), freshManifest)
-    const lines = freshManifest.toString('utf-8').split('\n').filter((l) => l.trim())
+    const lines = freshManifest
+      .toString('utf-8')
+      .split('\n')
+      .filter((l) => l.trim())
     const head = JSON.parse(lines[lines.length - 1])
     const evidence = JSON.parse(readFileSync(join(pkgDir, 'evidence.json'), 'utf-8'))
     const rec = evidence.captures.find((c: { id: string }) => c.id === captureId)
@@ -583,7 +611,9 @@ describe('verifyEvidencePackage', () => {
     )
     evidence.verificationMaterials.manifestHeadIndex = head.index
     evidence.verificationMaterials.manifestHeadHash = head.entryHash
-    const manArtifact = evidence.artifacts.find((a: { path: string }) => a.path === 'manifest.jsonl')
+    const manArtifact = evidence.artifacts.find(
+      (a: { path: string }) => a.path === 'manifest.jsonl'
+    )
     if (manArtifact) {
       manArtifact.sha256 = createHash('sha256').update(freshManifest).digest('hex')
       manArtifact.sizeBytes = freshManifest.length
@@ -623,7 +653,9 @@ describe('verifyEvidencePackage', () => {
     // own terms.
     function appendSignedLine(body: Record<string, unknown>): void {
       const p = join(pkgDir, 'manifest.jsonl')
-      const lines = readFileSync(p, 'utf-8').split('\n').filter((l) => l.trim())
+      const lines = readFileSync(p, 'utf-8')
+        .split('\n')
+        .filter((l) => l.trim())
       const head = JSON.parse(lines[lines.length - 1]) as { index: number; entryHash: string }
       const full = { ...body, index: head.index + 1, prevHash: head.entryHash, schemaVersion: 2 }
       const entryHash = createHash('sha256').update(canonicalStringify(full)).digest('hex')
@@ -635,7 +667,9 @@ describe('verifyEvidencePackage', () => {
     // own, appended in that order after whatever the manifest already holds.
     function appendDeletionAndCapture(): void {
       const first = JSON.parse(
-        readFileSync(join(pkgDir, 'manifest.jsonl'), 'utf-8').split('\n').filter((l) => l.trim())[0]
+        readFileSync(join(pkgDir, 'manifest.jsonl'), 'utf-8')
+          .split('\n')
+          .filter((l) => l.trim())[0]
       )
       appendSignedLine({
         type: 'deletion',
@@ -668,7 +702,9 @@ describe('verifyEvidencePackage', () => {
     // (it excludes `signature`), so the lines appended after it still link.
     function forgeSignatureAt(index: number): void {
       const p = join(pkgDir, 'manifest.jsonl')
-      const lines = readFileSync(p, 'utf-8').split('\n').filter((l) => l.trim())
+      const lines = readFileSync(p, 'utf-8')
+        .split('\n')
+        .filter((l) => l.trim())
       const entry = JSON.parse(lines[index])
       entry.signature = signEntryHash('f'.repeat(64))
       lines[index] = JSON.stringify(entry)
@@ -746,8 +782,9 @@ describe('verifyEvidencePackage', () => {
         toolVersion: '0.1.0'
       })
       const breakIndex =
-        readFileSync(join(pkgDir, 'manifest.jsonl'), 'utf-8').split('\n').filter((l) => l.trim())
-          .length - 1
+        readFileSync(join(pkgDir, 'manifest.jsonl'), 'utf-8')
+          .split('\n')
+          .filter((l) => l.trim()).length - 1
       forgeSignatureAt(breakIndex)
 
       const result = verifyEvidencePackage(pkgDir)
@@ -816,9 +853,16 @@ describe('verifyEvidencePackage', () => {
       if (rel && existsSync(join(pkgDir, rel))) rmSync(join(pkgDir, rel))
     }
     // Reflect the hard-delete in the unsigned index and refresh the head.
-    const lines = freshManifest.toString('utf-8').split('\n').filter((l) => l.trim())
+    const lines = freshManifest
+      .toString('utf-8')
+      .split('\n')
+      .filter((l) => l.trim())
     const head = JSON.parse(lines[lines.length - 1])
     evidence.captures = []
+    // The Exhibit list drops the same row: a Capture is an Exhibit (X35), so an
+    // index that still listed it would disagree with the chain in the second
+    // place the verifier reconciles (#1156).
+    evidence.exhibits = []
     evidence.verificationMaterials.manifestHeadIndex = head.index
     evidence.verificationMaterials.manifestHeadHash = head.entryHash
     evidence.artifacts = evidence.artifacts.filter(
@@ -828,7 +872,9 @@ describe('verifyEvidencePackage', () => {
         !rec.timestampTokenPaths.includes(a.path)
     )
     // The manifest.jsonl artifact digest changed (we appended a deletion entry).
-    const manArtifact = evidence.artifacts.find((a: { path: string }) => a.path === 'manifest.jsonl')
+    const manArtifact = evidence.artifacts.find(
+      (a: { path: string }) => a.path === 'manifest.jsonl'
+    )
     if (manArtifact) {
       manArtifact.sha256 = createHash('sha256').update(freshManifest).digest('hex')
       manArtifact.sizeBytes = freshManifest.length
@@ -885,7 +931,13 @@ describe('verifyEvidencePackage', () => {
         caseId,
         {
           format: 'zip',
-          include: { captures: true, screenshots: true, auditTrail: true, notes: false, annotations: 'none' },
+          include: {
+            captures: true,
+            screenshots: true,
+            auditTrail: true,
+            notes: false,
+            annotations: 'none'
+          },
           exportClass: 'evidence',
           outputPath: selZipPath,
           captureIds: [captureId]
@@ -1013,7 +1065,13 @@ describe('verifyEvidencePackage', () => {
         caseId,
         {
           format: 'zip',
-          include: { captures: true, screenshots: true, auditTrail: true, notes: false, annotations: 'none' },
+          include: {
+            captures: true,
+            screenshots: true,
+            auditTrail: true,
+            notes: false,
+            annotations: 'none'
+          },
           exportClass: 'evidence',
           outputPath: secondZip,
           captureIds: [captureId]
@@ -1103,7 +1161,13 @@ describe('verifyEvidencePackage', () => {
         caseId,
         {
           format: 'zip',
-          include: { captures: true, screenshots: true, auditTrail: true, notes: true, annotations: 'none' },
+          include: {
+            captures: true,
+            screenshots: true,
+            auditTrail: true,
+            notes: true,
+            annotations: 'none'
+          },
           exportClass: 'evidence',
           outputPath: notesZip,
           captureIds: [captureId]
@@ -1168,7 +1232,10 @@ describe('verifyEvidencePackage', () => {
       const result = verifyEvidencePackage(selDir)
       expect(result.pass).toBe(false)
       expect(
-        hasReason(result, `evidence.json lists capture ${captureB} outside the signed export selection`)
+        hasReason(
+          result,
+          `evidence.json lists capture ${captureB} outside the signed export selection`
+        )
       ).toBe(true)
     })
 
@@ -1188,7 +1255,13 @@ describe('verifyEvidencePackage', () => {
         caseId,
         {
           format: 'zip',
-          include: { captures: true, screenshots: false, auditTrail: false, notes: false, annotations: 'none' },
+          include: {
+            captures: true,
+            screenshots: false,
+            auditTrail: false,
+            notes: false,
+            annotations: 'none'
+          },
           exportClass: 'evidence',
           outputPath,
           captureIds: [orphan.id]
@@ -1201,7 +1274,10 @@ describe('verifyEvidencePackage', () => {
         const result = verifyEvidencePackage(dir)
         expect(result.pass).toBe(false)
         expect(
-          hasReason(result, `selection names capture ${orphan.id} with no active capture entry`)
+          hasReason(
+            result,
+            `selection names exhibit ${orphan.id} with no active capture or exhibit entry`
+          )
         ).toBe(true)
       } finally {
         rmSync(dir, { recursive: true, force: true })
@@ -1221,7 +1297,13 @@ describe('verifyEvidencePackage', () => {
         caseId,
         {
           format: 'zip',
-          include: { captures: true, screenshots: true, auditTrail: false, notes: true, annotations: 'none' },
+          include: {
+            captures: true,
+            screenshots: true,
+            auditTrail: false,
+            notes: true,
+            annotations: 'none'
+          },
           exportClass: 'working-copy',
           outputPath
         },
@@ -1295,7 +1377,13 @@ describe('verifyEvidencePackage', () => {
         caseId,
         {
           format: 'zip',
-          include: { captures: true, screenshots: true, auditTrail: true, notes: false, annotations: 'none' },
+          include: {
+            captures: true,
+            screenshots: true,
+            auditTrail: true,
+            notes: false,
+            annotations: 'none'
+          },
           exportClass: 'evidence',
           outputPath
         },
@@ -1371,5 +1459,394 @@ describe('EvidencePackageSchema', () => {
       artifacts: []
     }
     expect(EvidencePackageSchema.safeParse(bad).success).toBe(false)
+  })
+})
+
+// Known-answer tests over the shared mixed-kind fixture Case (#1156, D14): the
+// same Case the export tests and the built-binary tests build their packages
+// from, so the three surfaces describe one object rather than three.
+describe('verifyEvidencePackage — exhibits of every kind (#1156)', () => {
+  let tempDir: string
+  let pkgDir: string
+  let fixture: MixedKindCase
+
+  beforeEach(async () => {
+    tempDir = mkdtempSync(join(tmpdir(), 'bb-mixedverify-'))
+    initStorage(join(tempDir, 'captures'))
+    await initDatabase(':memory:')
+    resetInstallationId()
+    initInstallationId(tempDir)
+    initSettings(tempDir)
+    updateSettings({ operatorName: 'Test Operator', operatorRole: '', operatorOrganization: '' })
+    fixture = await seedMixedKindCase({ tempDir })
+
+    const outputPath = join(tempDir, 'mixed-evidence.zip')
+    await generateReport(
+      fixture.caseId,
+      {
+        format: 'zip',
+        include: {
+          captures: true,
+          screenshots: true,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
+        exportClass: 'evidence',
+        outputPath
+      },
+      createCaptureLifecycle({
+        selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} })
+      })
+    )
+    pkgDir = mkdtempSync(join(tmpdir(), 'bb-mixedpkg-'))
+    unzipToDir(outputPath, pkgDir)
+  })
+
+  afterEach(() => {
+    closeDatabase()
+    rmSync(tempDir, { recursive: true, force: true })
+    if (pkgDir && existsSync(pkgDir)) rmSync(pkgDir, { recursive: true, force: true })
+  })
+
+  const checkNamed = (result: PackageVerifyResult, name: string) =>
+    result.checks.find((c) => c.name === name)
+
+  it('passes a mixed-kind package and binds every exhibit and derived file', () => {
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass, JSON.stringify(result.checks, null, 2)).toBe(true)
+
+    for (const exhibit of fixture.committed) {
+      const check = checkNamed(result, `exhibit ${exhibit.id}`)
+      expect(check?.status, exhibit.kind).toBe('pass')
+      expect(check?.reason).toContain(`Exhibit ${exhibit.exhibitNumber}`)
+      expect(check?.reason).toContain(exhibit.packagePath)
+    }
+    const thumbnail = checkNamed(result, `derivation thumbnail of ${fixture.captureId}`)
+    expect(thumbnail?.status).toBe('pass')
+    expect(checkNamed(result, 'evidence.json exhibits')?.status).toBe('pass')
+  })
+
+  it('fails a tampered derived file as its parent exhibit and derivation (AC 5)', () => {
+    // The Capture's thumbnail, which is the only Derived File that exists at
+    // head (X34) and the one AC 5 names.
+    writeFileSync(join(pkgDir, fixture.thumbnailPackagePath), Buffer.from('not the thumbnail'))
+
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass).toBe(false)
+    const check = checkNamed(result, `derivation thumbnail of ${fixture.captureId}`)
+    expect(check?.status).toBe('fail')
+    expect(check?.reason).toContain('derivation `thumbnail`')
+    expect(check?.reason).toContain('does not match the outputHash in its signed entry')
+    // A Capture's Exhibit Number comes off the chain's `renumber` entry, so the
+    // finding cites it rather than the file's position anywhere.
+    expect(check?.reason).toContain('Exhibit 1,')
+  })
+
+  it('fails a tampered non-capture exhibit by its exhibit number (AC 2)', () => {
+    const target = fixture.document
+    writeFileSync(join(pkgDir, target.packagePath), Buffer.from('%PDF-1.7 substituted'))
+
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass).toBe(false)
+    const check = checkNamed(result, `exhibit ${target.id}`)
+    expect(check?.status).toBe('fail')
+    expect(check?.reason).toContain(`Exhibit ${target.exhibitNumber}`)
+    expect(check?.reason).toContain('does not match the contentHash in its signed entry')
+  })
+
+  it('fails an exhibit the chain anchors and the package does not enclose', () => {
+    rmSync(join(pkgDir, fixture.attachment.packagePath))
+
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass).toBe(false)
+    expect(checkNamed(result, `exhibit ${fixture.attachment.id}`)?.reason).toContain(
+      'is missing from the package'
+    )
+  })
+
+  it('binds a committed exhibit timestamp token, and fails a tampered or missing one', async () => {
+    // X26: committing an Exhibit runs the same RFC 3161 path ingesting a
+    // Capture does, so its token is bound the same way. The exporter ships it
+    // and the certification asserts a trusted time off it; a verifier that
+    // never looks leaves those two claims unchecked.
+    const target = fixture.document
+    const stored = listExhibits(fixture.caseId).find((e) => e.id === target.id)!
+    const token = buildSyntheticToken({
+      contentHash: stored.contentHash,
+      genTime: new Date('2026-04-05T12:01:00.000Z'),
+      tsaDnsName: 'tsa.example.com'
+    })
+    appendManifestEntry(join(tempDir, 'captures', fixture.caseId), {
+      type: 'timestamp',
+      caseId: fixture.caseId,
+      captureContentHash: stored.contentHash,
+      timestamp: '2026-04-05T12:01:00.000Z',
+      tsaToken: token.toString('base64'),
+      operatorId: 'op',
+      operatorName: 'Test Operator',
+      toolVersion: '0.1.0'
+    })
+
+    const outputPath = join(tempDir, 'mixed-stamped.zip')
+    await generateReport(
+      fixture.caseId,
+      {
+        format: 'zip',
+        include: {
+          captures: true,
+          screenshots: true,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
+        exportClass: 'evidence',
+        outputPath
+      },
+      createCaptureLifecycle({
+        selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} })
+      })
+    )
+    const dir = mkdtempSync(join(tmpdir(), 'bb-mixedstamp-'))
+    try {
+      unzipToDir(outputPath, dir)
+      const tokenPath = join(dir, 'timestamps', `${target.id}.tst`)
+      expect(existsSync(tokenPath)).toBe(true)
+
+      const pass = verifyEvidencePackage(dir)
+      const check = pass.checks.find((c) => c.name === `exhibit ${target.id} timestamp`)
+      expect(check?.status).toBe('pass')
+      expect(check?.reason).toContain(`Exhibit ${target.exhibitNumber}`)
+      expect(check?.reason).toContain('structural (imprint + bytes)')
+      expect(pass.pass, JSON.stringify(pass.checks, null, 2)).toBe(true)
+
+      // A token swapped for one the signed entry does not carry.
+      writeFileSync(
+        tokenPath,
+        buildSyntheticToken({
+          contentHash: stored.contentHash,
+          genTime: new Date('2026-04-05T13:00:00.000Z'),
+          tsaDnsName: 'other.example.com'
+        })
+      )
+      const swapped = verifyEvidencePackage(dir)
+      const swappedCheck = swapped.checks.find((c) => c.name === `exhibit ${target.id} timestamp`)
+      expect(swappedCheck?.status).toBe('fail')
+      expect(swappedCheck?.reason).toContain('does not match the signed manifest')
+
+      // And the token removed entirely.
+      rmSync(tokenPath)
+      const missing = verifyEvidencePackage(dir)
+      const missingCheck = missing.checks.find((c) => c.name === `exhibit ${target.id} timestamp`)
+      expect(missingCheck?.status).toBe('fail')
+      expect(missingCheck?.reason).toContain('timestamp token file missing')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('fails a fabricated derived-file row in evidence.json', () => {
+    // The row is a provenance claim: it says the tool computed this file from
+    // this Exhibit. Nothing in the chain says so, so the index and the chain
+    // disagree and the package must not pass.
+    const path = join(pkgDir, 'evidence.json')
+    const evidence = JSON.parse(readFileSync(path, 'utf-8')) as {
+      exhibits: Array<{
+        id: string
+        derivedFiles: Array<{ derivation: string; contentHash: string; path: string }>
+      }>
+      artifacts: Array<{ path: string; sha256: string; sizeBytes: number }>
+    }
+    const bytes = Buffer.from('forged derivation output')
+    const forgedPath = `documents/forged.txt`
+    writeFileSync(join(pkgDir, forgedPath), bytes)
+    const row = evidence.exhibits.find((e) => e.id === fixture.document.id)!
+    row.derivedFiles.push({
+      derivation: 'text',
+      contentHash: createHash('sha256').update(bytes).digest('hex'),
+      path: forgedPath
+    })
+    // Indexed too, so the artifact sweep is satisfied and only the chain
+    // reconciliation can catch it.
+    evidence.artifacts.push({
+      path: forgedPath,
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+      sizeBytes: bytes.length
+    })
+    writeFileSync(path, JSON.stringify(evidence, null, 2))
+
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass).toBe(false)
+    const check = result.checks.find((c) => c.name === 'evidence.json derived files')
+    expect(check?.status).toBe('fail')
+    expect(check?.reason).toContain('which the verified manifest does not anchor at that path')
+  })
+
+  it('fails an evidence.json row whose derived-file digest is not the signed one', () => {
+    const path = join(pkgDir, 'evidence.json')
+    const evidence = JSON.parse(readFileSync(path, 'utf-8')) as {
+      exhibits: Array<{ id: string; derivedFiles: Array<{ contentHash: string }> }>
+    }
+    const row = evidence.exhibits.find((e) => e.derivedFiles.length > 0)!
+    row.derivedFiles[0].contentHash = 'c'.repeat(64)
+    writeFileSync(path, JSON.stringify(evidence, null, 2))
+
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass).toBe(false)
+    const check = result.checks.find((c) => c.name === 'evidence.json derived files')
+    expect(check?.status).toBe('fail')
+    expect(check?.reason).toContain('records a different digest for derived file')
+  })
+
+  it('fails an evidence.json that omits a derived file the chain anchors', () => {
+    const path = join(pkgDir, 'evidence.json')
+    const evidence = JSON.parse(readFileSync(path, 'utf-8')) as {
+      exhibits: Array<{ id: string; derivedFiles: unknown[] }>
+    }
+    const row = evidence.exhibits.find((e) => e.derivedFiles.length > 0)!
+    row.derivedFiles = []
+    writeFileSync(path, JSON.stringify(evidence, null, 2))
+
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass).toBe(false)
+    const check = result.checks.find((c) => c.name === 'evidence.json derived files')
+    expect(check?.status).toBe('fail')
+    expect(check?.reason).toContain('which the verified manifest anchors')
+  })
+
+  it('fails a schemaVersion downgraded to hide the exhibits list', () => {
+    // `schemaVersion` lives in the same unsigned file as the list it would
+    // gate, so the chain is what decides the index owes one.
+    const path = join(pkgDir, 'evidence.json')
+    const evidence = JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>
+    evidence.schemaVersion = 1
+    delete evidence.exhibits
+    writeFileSync(path, JSON.stringify(evidence, null, 2))
+
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass).toBe(false)
+    const check = result.checks.find((c) => c.name === 'evidence.json exhibits')
+    expect(check?.status).toBe('fail')
+    expect(check?.reason).toContain('the verified manifest anchors exhibits or derived files')
+  })
+
+  it('fails an evidence.json that lists an exhibit the chain does not hold', () => {
+    const path = join(pkgDir, 'evidence.json')
+    const evidence = JSON.parse(readFileSync(path, 'utf-8')) as {
+      exhibits: Array<{ id: string; kind: string }>
+    }
+    evidence.exhibits.push({ ...evidence.exhibits[1], id: 'planted-exhibit-id' })
+    writeFileSync(path, JSON.stringify(evidence, null, 2))
+
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass).toBe(false)
+    const check = result.checks.find((c) => c.name === 'evidence.json exhibits')
+    expect(check?.status).toBe('fail')
+    expect(check?.reason).toContain('planted-exhibit-id')
+  })
+
+  it('fails an exhibit row whose signed fields were rewritten under a kept id', () => {
+    // The whole row is fabricated except the id, which is what the coverage
+    // loops compare. evidence.json is unsigned and is what report.html and the
+    // certification render, so every field it keeps is a field the chain has to
+    // answer for; `artifacts` is untouched, so the package hash still binds and
+    // nothing else in the verifier can catch this.
+    const path = join(pkgDir, 'evidence.json')
+    const evidence = JSON.parse(readFileSync(path, 'utf-8')) as {
+      exhibits: Array<{
+        id: string
+        kind: string
+        origin: string
+        exhibitNumber: number
+        name: string
+        contentHash: string
+        path: string | null
+      }>
+    }
+    const row = evidence.exhibits.find((e) => e.id === fixture.document.id)!
+    row.contentHash = 'f'.repeat(64)
+    row.exhibitNumber = 99
+    row.kind = 'attachment'
+    row.origin = 'capture'
+    row.name = 'Forged Exhibit'
+    row.path = 'attachments/forged.zip'
+    writeFileSync(path, JSON.stringify(evidence, null, 2))
+
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass).toBe(false)
+    const failures = result.checks.filter(
+      (c) => c.name === 'evidence.json exhibits' && c.status === 'fail'
+    )
+    for (const field of ['contentHash', 'exhibitNumber', 'kind', 'origin', 'name', 'path']) {
+      expect(
+        failures.some((c) => c.reason?.includes(field) && c.reason.includes(fixture.document.id)),
+        `${field} is reconciled and named in the finding`
+      ).toBe(true)
+    }
+    // The package hash still binds: the index's artifact list was not touched,
+    // which is exactly why the fabricated row needed its own check.
+    expect(result.checks.find((c) => c.name === 'package hash')?.status).toBe('pass')
+  })
+
+  it('fails a capture row in the exhibits list whose signed fields were rewritten', () => {
+    const path = join(pkgDir, 'evidence.json')
+    const evidence = JSON.parse(readFileSync(path, 'utf-8')) as {
+      exhibits: Array<{ id: string; kind: string; contentHash: string; path: string | null }>
+    }
+    const row = evidence.exhibits.find((e) => e.id === fixture.captureId)!
+    row.contentHash = 'a'.repeat(64)
+    row.kind = 'document'
+    row.path = 'documents/not-the-capture.pdf'
+    writeFileSync(path, JSON.stringify(evidence, null, 2))
+
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.pass).toBe(false)
+    const failures = result.checks.filter(
+      (c) => c.name === 'evidence.json exhibits' && c.status === 'fail'
+    )
+    for (const field of ['contentHash', 'kind', 'path']) {
+      expect(
+        failures.some((c) => c.reason?.includes(field) && c.reason.includes(fixture.captureId)),
+        `${field} is reconciled for a capture row`
+      ).toBe(true)
+    }
+  })
+
+  it('passes a selection scoped over mixed kinds and skips what it leaves out', async () => {
+    const outputPath = join(tempDir, 'mixed-selection.zip')
+    await generateReport(
+      fixture.caseId,
+      {
+        format: 'zip',
+        include: {
+          captures: true,
+          screenshots: true,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
+        exportClass: 'evidence',
+        outputPath,
+        captureIds: [fixture.captureId, fixture.image.id]
+      },
+      createCaptureLifecycle({
+        selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} })
+      })
+    )
+    const selDir = mkdtempSync(join(tmpdir(), 'bb-mixedsel-'))
+    try {
+      unzipToDir(outputPath, selDir)
+      const result = verifyEvidencePackage(selDir)
+      expect(result.pass, JSON.stringify(result.checks, null, 2)).toBe(true)
+      expect(checkNamed(result, 'export scope')?.status).toBe('pass')
+      expect(checkNamed(result, `exhibit ${fixture.image.id}`)?.status).toBe('pass')
+      for (const absent of [fixture.attachment, fixture.document]) {
+        const check = checkNamed(result, `exhibit ${absent.id}`)
+        expect(check?.status).toBe('skip')
+        expect(check?.reason).toContain('outside the signed export selection')
+      }
+    } finally {
+      rmSync(selDir, { recursive: true, force: true })
+    }
   })
 })

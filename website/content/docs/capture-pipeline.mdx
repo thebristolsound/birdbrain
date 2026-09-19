@@ -94,7 +94,14 @@ One multipart/form-data endpoint for all sources, validated by `CaptureUploadSch
 | `screenshot` | Optional PNG file part |
 | `textContent` | `document.body.innerText` at capture time |
 | `headers` | Main-frame response headers, when the cached set still matches the URL |
-| `browserVersion`, `userAgent`, `extensionVersion`, `httpStatus` | Provenance fields |
+| `httpStatus` | The status `webRequest` reported for that main-frame response; omitted when the extension observed none |
+| `browserVersion`, `userAgent`, `extensionVersion` | Provenance fields |
+
+There is no final-URL field. The extension reads `url` from the tab after the navigation has
+settled, so it is already the post-redirect URL and the extension holds no requested URL to
+compare it against. Sending one would restate `url` under a name that claims a redirect was
+observed, so the field stays absent on this path and is written only by the background renderer,
+which knows both URLs.
 
 ### Middleware stack, in order
 
@@ -218,8 +225,15 @@ a capture ended is the operator's only signal that it succeeded.
    *before* the manifest entry is appended, so the same hex binds the signed manifest body and
    the database mirror. Absent artifacts are omitted (`undefined`, never `null` or empty) so
    legacy entry bodies stay byte-stable.
-3. **Anchor the headers.** Captured response headers are embedded in the signed entry when
-   present.
+3. **Anchor the transaction facts.** Captured response headers are embedded in the signed entry
+   when present, and so are the HTTP status and — for a path that resolved one differing from the
+   URL it requested, which today is the background renderer — the final post-redirect URL. Each is
+   omitted when unknown, never written as `0` or an empty string, so entries that predate them
+   keep their canonical body and their chain hash. For a capture made by this build or later, the
+   status the entry anchors is the status `report.html` and the PDF print: one derivation
+   (`recordedHttpStatus`) feeds all three. Captures made before this are **not** covered by that
+   equivalence — the extension sent a hard-coded `200` regardless of what the origin returned, so
+   their reports print a status their manifest entry never anchored and the chain never attested.
 4. **TLS corroboration re-fetch.** For HTTPS URLs, the main process re-connects to the origin
    after storage and records the certificate chain served *at that moment*. This is corroboration
    only — it binds nothing about the captured transaction (ADR-0002) — and it is fail-soft: a

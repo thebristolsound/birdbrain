@@ -438,3 +438,6 @@ LLMs
 ; Identifiers quoted verbatim from cited reports
 Keylog
 strcpy
+Iroh
+Tailscale
+ciphertext

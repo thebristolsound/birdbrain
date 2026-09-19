@@ -31,6 +31,41 @@ jobs:
         run: |
           VERSION="${TAG#v}"
           cat > "$RUNNER_TEMP/release-notes.md" <<EOF
+          ## About this beta
+
+          **What beta means here.** One thing holds and everything else is rough. The one thing:
+          Birdbrain must not silently lose, corrupt, or mis-attest evidence. Screens, wording and
+          workflows are changing on purpose; that floor is not.
+
+          **The installers are unsigned.** On Windows, SmartScreen warns about an unrecognized app;
+          click **More info**, then **Run anyway**. Code signing lands at the first non-beta release.
+
+          **If a capture turns out not to be what Birdbrain claimed**, the advisory is a pinned issue on
+          this repository plus a patched release through the updater. That release reaches Windows and
+          AppImage installs in place. A \`.deb\` install updates only on **Restart to update**, so \`.deb\`
+          users have to look here.
+
+          **Source opens when the public-readiness effort closes.** Birdbrain is built to be an
+          open-source tool; the repository it is built in stays private while that effort runs.
+
+          ### What to report
+
+          Open an issue on this repository.
+
+          **Do not report:** layout, spacing, visual design, wording, labels, or a general sense that it
+          feels dated. The UI is changing substantially and those decisions are made.
+
+          **Do report:**
+
+          1. Evidence lost, mangled, or mis-described — anything that disappeared, came back different,
+             or is described by the app as something other than what it is.
+          2. Sites that fail to capture, capture incompletely, or render wrong in the viewer, with the
+             URL where it can be shared.
+          3. Workflow dead-ends, where you wanted to do something and there was no path. Awkward is not
+             a dead-end.
+          4. Whether the certification and verify output read as true to someone who would have to
+             defend them to a hostile reader.
+
           ## Which file do I download?
 
           | You are on | Download |
@@ -59,16 +94,17 @@ jobs:
           Everything else on this page (\`latest*.yml\`, \`*.blockmap\`) is machinery for
           the in-app updater. Ignore it.
 
-          **On macOS?** Builds are not published here by default — ask in the tester chat
-          and one will be added to this release. They are unsigned, so macOS will refuse
-          to open one until you clear it; the tester guide has the command.
+          **On macOS?** Not published here, and not supported. Notarization is the blocker.
 
           **Already running Birdbrain?** You do not need this page — **Settings → Updates →
           Check for updates** installs this version in place. After it restarts, reload the
           Birdbrain extension at \`chrome://extensions\` — Chrome keeps the old copy loaded
           until you do.
 
-          Full setup instructions, including loading the extension into Chrome:
+          Platform notes, the extension load steps, and where advisories appear:
+          [Download and install](https://thebristolsound.github.io/birdbrain/docs/download/).
+
+          Step by step, from install to first capture:
           [Tester guide](https://thebristolsound.github.io/birdbrain/docs/tester-guide/).
           EOF
 

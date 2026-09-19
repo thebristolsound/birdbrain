@@ -332,9 +332,9 @@ describe('certification', () => {
     expect(html).toMatch(/no\s+trusted\s+timestamp\s+is\s+asserted/i)
 
     // The stamped page appears in the timestamped table; the pending page does not.
-    expect(html).toContain('Timestamped captures')
+    expect(html).toContain('Timestamped exhibits')
     expect(html).toContain('https://example.com/stamped')
-    expect(html).toContain('Captures without trusted time')
+    expect(html).toContain('Exhibits without trusted time')
     expect(html).toContain('https://example.com/pending')
   })
 
@@ -374,10 +374,10 @@ describe('certification', () => {
     })
     const html = entries.get('certification.html')!.toString('utf-8')
 
-    expect(html).toContain('Timestamped captures')
+    expect(html).toContain('Timestamped exhibits')
     expect(html).toContain('https://example.com/stamped')
     // The mirror's verdict must not surface anywhere in the document.
-    expect(html).not.toContain('Captures without trusted time')
+    expect(html).not.toContain('Exhibits without trusted time')
     expect(html).not.toContain('Local clock only')
 
     // #492's second consequence: a manifest-sourced stamped row must still name
@@ -419,10 +419,10 @@ describe('certification', () => {
     )
     const html = readStoredZipEntries(outputPath).get('certification.html')!.toString('utf-8')
 
-    expect(html).toMatch(/All 1 capture in this export carry an/i)
-    expect(html).toContain('Timestamped captures')
+    expect(html).toMatch(/All 1 exhibit in this export carry an/i)
+    expect(html).toContain('Timestamped exhibits')
     expect(html).toContain('tsa.example.com')
-    expect(html).not.toContain('Captures without trusted time')
+    expect(html).not.toContain('Exhibits without trusted time')
     expect(html).not.toMatch(/remaining capture/i)
   })
 
@@ -460,7 +460,7 @@ describe('certification', () => {
       captures: Array<{ id: string; trustedTime: string; tsaName?: string; stampedAt?: string }>
     }
 
-    expect(cert).toMatch(/All 1 capture in this export carry an/i)
+    expect(cert).toMatch(/All 1 exhibit in this export carry an/i)
     expect(cert).toContain('tsa.example.com')
     expect(cert).not.toContain('Token pending')
 
@@ -505,9 +505,9 @@ describe('certification', () => {
       resolveToolVersion()
     )
 
-    expect(html).toContain('Captures without trusted time')
+    expect(html).toContain('Exhibits without trusted time')
     expect(html).toContain('Local clock only')
-    expect(html).not.toContain('Timestamped captures')
+    expect(html).not.toContain('Timestamped exhibits')
     expect(html).not.toMatch(/All \d+ captures? in this export carry an/i)
   })
 
@@ -557,8 +557,8 @@ describe('certification', () => {
       resolveToolVersion()
     )
 
-    expect(html).toMatch(/only<\/strong>\s+for\s+the\s+1\s+capture/i)
-    expect(html).toMatch(/1\s+remaining\s+capture\s+\(1\s+pending,\s+0\s+none\)/i)
+    expect(html).toMatch(/only<\/strong>\s+for\s+the\s+1\s+exhibit/i)
+    expect(html).toMatch(/1\s+remaining\s+exhibit\s+\(1\s+pending,\s+0\s+none\)/i)
     expect(html).toContain('tsa.example.com')
     expect(html).toContain('2026-04-05T12:01:00Z')
   })
@@ -588,7 +588,7 @@ describe('certification', () => {
         /A\s+signature\s+is\s+present\s+on\s+the\s+manifest\s+entry\s+for\s+1\s+of\s+the\s+3/
       )
       expect(cert).toMatch(
-        /remaining\s+2\s+captures\s+\(1\s+with\s+an\s+unsigned\s+entry,\s+1\s+with\s+no\s+manifest\s+entry\)/
+        /remaining\s+2\s+exhibits\s+\(1\s+with\s+an\s+unsigned\s+entry,\s+1\s+with\s+no\s+manifest\s+entry\)/
       )
       expect(cert).toMatch(/no\s+entry\s+signature\s+is\s+asserted/i)
 
@@ -632,7 +632,7 @@ describe('certification', () => {
       const cert = entries.get('certification.html')!.toString('utf-8')
 
       expect(cert).toMatch(
-        /present\s+on\s+the\s+manifest\s+entry\s+for\s+every\s+capture\s+in\s+this\s+export\s+\(2\s+of\s+2\)/
+        /present\s+on\s+the\s+manifest\s+entry\s+for\s+every\s+exhibit\s+in\s+this\s+export\s+\(2\s+of\s+2\)/
       )
       expect(cert).not.toMatch(/no\s+entry\s+signature\s+is\s+asserted/i)
       expect(cert).not.toMatch(/with\s+an\s+unsigned\s+entry/)
@@ -664,7 +664,7 @@ describe('certification', () => {
       const cert = entries.get('certification.html')!.toString('utf-8')
 
       expect(cert).toMatch(
-        /No\s+entry\s+signature\s+is\s+asserted<\/strong>\s+for\s+any\s+of\s+the\s+1\s+capture\s+in\s+this\s+export\s+\(1\s+with\s+an\s+unsigned\s+entry,\s+0\s+with\s+no\s+manifest\s+entry\)/
+        /No\s+entry\s+signature\s+is\s+asserted<\/strong>\s+for\s+any\s+of\s+the\s+1\s+exhibit\s+in\s+this\s+export\s+\(1\s+with\s+an\s+unsigned\s+entry,\s+0\s+with\s+no\s+manifest\s+entry\)/
       )
       expect(cert).not.toMatch(/signature\s+is\s+present/)
     })
@@ -691,7 +691,7 @@ describe('certification', () => {
         resolveToolVersion()
       )
 
-      expect(html).toMatch(/This\s+export\s+contains\s+no\s+captures/)
+      expect(html).toMatch(/This\s+export\s+contains\s+no\s+exhibits/)
       expect(html).not.toMatch(/No\s+entry\s+signature\s+is\s+asserted/)
       expect(html).not.toMatch(/written\s+before\s+per-entry\s+signing/)
       expect(html).not.toMatch(/manifest\s+chain\s+linkage/)

@@ -19,12 +19,14 @@ name: Dispatch
 #
 # Schedule enabled 2026-09-07 at rollout step 4 of the design brief, after three
 # report-only fires and one supervised cycle ran clean on 2026-09-07. Hourly at
-# :43, the cadence #310 chose. A scheduled fire always runs in cycle mode and
-# lets section 3 pick; workflow_dispatch stays for supervised fires.
+# :43 was the cadence #310 chose; every four hours at :43 since 2026-09-16, the
+# maintainer's call while the repository is private and every fire is billed
+# minutes. A scheduled fire always runs in cycle mode and lets section 3 pick;
+# workflow_dispatch stays for supervised fires.
 
 on:
   schedule:
-    - cron: '43 * * * *'
+    - cron: '43 */4 * * *'
   workflow_dispatch:
     inputs:
       mode:

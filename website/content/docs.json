@@ -13,7 +13,7 @@
     "groups": [
       {
         "group": "Get started",
-        "pages": ["docs/index", "docs/tester-guide", "docs/screenshots"]
+        "pages": ["docs/index", "docs/download", "docs/tester-guide", "docs/screenshots"]
       },
       {
         "group": "Architecture",

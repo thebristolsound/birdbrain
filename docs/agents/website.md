@@ -42,7 +42,7 @@ cannot set it.** Two fields matter:
 
 Two known gaps in the mirror, both inherent to serving one content tree through two renderers:
 
-- **Cross-page links render dead on Mintlify.** The 23 internal links use the `./name.mdx`
+- **Cross-page links render dead on Mintlify.** The 30 internal links use the `./name.mdx`
   form that Fumadocs' `createRelativeLink` requires; Mintlify wants extensionless
   root-relative paths. No single syntax satisfies both — fixing one breaks the other.
 - **Screenshots 404 on Mintlify.** `screenshots.mdx` references `/assets/*.png`, served by

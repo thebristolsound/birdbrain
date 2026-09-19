@@ -294,6 +294,13 @@ export type ManifestEntryInput =
       // multi-value joins. OMITTED (never {} / null) when absent so legacy and
       // headerless entries' canonical bodies — and chain hashes — are unchanged.
       headers?: Record<string, string>
+      // Transaction provenance (R7, #797): the recorded HTTP status, and the
+      // URL the stored bytes were served from when the acquiring path resolved
+      // one that differs from the URL requested. OMITTED (never 0 / '' / null)
+      // when unknown so every pre-R7 entry's canonical body — and chain hash —
+      // is unchanged.
+      httpStatus?: number
+      finalUrl?: string
       // Corroboration-only TLS cert chain re-fetched after storage (#123). NOT
       // bound to the captured transaction. OMITTED when not re-fetched so legacy /
       // cert-less entries' canonical bodies — and chain hashes — are unchanged.
@@ -645,6 +652,12 @@ export interface CaptureEntryContext {
   // Captured HTTP response headers (#119); omitted from the manifest body when
   // absent to preserve legacy canonical bodies.
   headers?: Record<string, string>
+  // Transaction provenance (R7, #797); omitted from the manifest body when
+  // absent to preserve pre-R7 canonical bodies. The caller decides what is
+  // known: this seam writes exactly what it is given and nothing when given
+  // undefined.
+  httpStatus?: number
+  finalUrl?: string
   // Corroboration-only TLS cert chain (#123); omitted from the manifest body
   // when absent to preserve legacy canonical bodies.
   tls?: TlsCertChainResult
@@ -686,6 +699,8 @@ export async function withCaptureEntry<T>(
       ...(ctx.screenshotHash !== undefined ? { screenshotHash: ctx.screenshotHash } : {}),
       ...(ctx.textHash !== undefined ? { textHash: ctx.textHash } : {}),
       ...(ctx.headers !== undefined ? { headers: ctx.headers } : {}),
+      ...(ctx.httpStatus !== undefined ? { httpStatus: ctx.httpStatus } : {}),
+      ...(ctx.finalUrl !== undefined ? { finalUrl: ctx.finalUrl } : {}),
       ...(ctx.tls !== undefined ? { tls: ctx.tls } : {}),
       ...(ctx.method !== undefined ? { method: ctx.method } : {}),
       ...(ctx.supersedesCaptureId !== undefined

@@ -690,7 +690,51 @@ describe('withCaptureEntry', () => {
     const body = { ...entry }
     delete body.signature
     delete body.entryHash
-    expect(createHash('sha256').update(canonicalStringify(body)).digest('hex')).toBe(entry.entryHash)
+    expect(createHash('sha256').update(canonicalStringify(body)).digest('hex')).toBe(
+      entry.entryHash
+    )
+    expect(ManifestEntrySchema.safeParse(entry).success).toBe(true)
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
+  })
+
+  it('omits httpStatus and finalUrl when absent (R7 grandfathering, #797)', async () => {
+    // Explicitly undefined, not merely missing: the seam must write nothing for
+    // a field a caller says it does not know, or every pre-R7 entry's canonical
+    // body moves and the chains already written stop verifying.
+    await withCaptureEntry(
+      tempDir,
+      { ...baseCtx, httpStatus: undefined, finalUrl: undefined },
+      () => undefined
+    )
+    const entry = JSON.parse(readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim())
+    expect('httpStatus' in entry).toBe(false)
+    expect('finalUrl' in entry).toBe(false)
+    expect(verifyManifestChain(tempDir).valid).toBe(true)
+  })
+
+  it('anchors httpStatus and finalUrl in the signed body when present (#797)', async () => {
+    await withCaptureEntry(
+      tempDir,
+      {
+        ...baseCtx,
+        captureId: 'cap-r7',
+        httpStatus: 404,
+        finalUrl: 'https://example.com/redirected'
+      },
+      () => undefined
+    )
+    const entry = JSON.parse(readFileSync(join(tempDir, 'manifest.jsonl'), 'utf-8').trim())
+    expect(entry.httpStatus).toBe(404)
+    expect(entry.finalUrl).toBe('https://example.com/redirected')
+    // Inside the signed body, like every other anchored field: a reader who
+    // strips either one recomputes a different entryHash, so the provenance
+    // cannot be edited out of a chain that still verifies.
+    const body = { ...entry }
+    delete body.signature
+    delete body.entryHash
+    expect(createHash('sha256').update(canonicalStringify(body)).digest('hex')).toBe(
+      entry.entryHash
+    )
     expect(ManifestEntrySchema.safeParse(entry).success).toBe(true)
     expect(verifyManifestChain(tempDir).valid).toBe(true)
   })
@@ -768,6 +812,55 @@ describe('withCaptureEntry', () => {
     expect(createHash('sha256').update(canonicalStringify(body)).digest('hex')).toBe(
       'c076682228ff6f44fafd46ae08d4bb1081ce9b7fbfeda53620228a8cdde8d238'
     )
+  })
+
+  it('KAT: an entry written without R7 provenance keeps the pre-R7 chain hash (#797)', async () => {
+    // AC5. The same frozen hex as the pre-#827 KAT above, for the same fields:
+    // it was produced before `httpStatus` and `finalUrl` existed on the entry,
+    // and a capture that knows neither must still hash to it. This is the whole
+    // backward-verification claim — if it moves, every evidence package already
+    // in a recipient's hands reports its chain as broken.
+    const written = await withCaptureEntry(
+      tempDir,
+      {
+        captureId: 'cap-kat',
+        caseId: 'case-kat',
+        url: 'https://example.com/kat',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        contentHash: 'a'.repeat(64),
+        sizeBytes: 1234,
+        operatorId: 'op-kat',
+        operatorName: 'Operator',
+        toolVersion: '1.0.0',
+        httpStatus: undefined,
+        finalUrl: undefined
+      },
+      (r) => r
+    )
+    expect(written.entryHash).toBe(
+      'c076682228ff6f44fafd46ae08d4bb1081ce9b7fbfeda53620228a8cdde8d238'
+    )
+
+    // And the fields are not free: the same entry carrying a status hashes to
+    // something else, which is what makes the status attested rather than
+    // decorative.
+    const withStatus = await withCaptureEntry(
+      tempDir,
+      {
+        captureId: 'cap-kat-2',
+        caseId: 'case-kat',
+        url: 'https://example.com/kat',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        contentHash: 'a'.repeat(64),
+        sizeBytes: 1234,
+        operatorId: 'op-kat',
+        operatorName: 'Operator',
+        toolVersion: '1.0.0',
+        httpStatus: 200
+      },
+      (r) => r
+    )
+    expect(withStatus.entryHash).not.toBe(written.entryHash)
   })
 })
 

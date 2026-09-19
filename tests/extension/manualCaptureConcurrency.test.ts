@@ -17,7 +17,12 @@ vi.mock('@extension/utils/api', () => ({
   createSelector: vi.fn()
 }))
 
-import { getStatus, getActiveSelectors, sendMhtmlCapture, createSelector } from '@extension/utils/api'
+import {
+  getStatus,
+  getActiveSelectors,
+  sendMhtmlCapture,
+  createSelector
+} from '@extension/utils/api'
 import { removeInjectedBirdbrainUi } from '../../extension/src/captureHygiene'
 
 type SendResponse = (response?: unknown) => void
@@ -25,10 +30,28 @@ type Listener = (message: unknown, sender: unknown, sendResponse: SendResponse) 
 
 const EXTENSION_ID = 'birdbrain-test'
 const TAB = { id: 1, url: 'https://example.test/page', title: 'Example', active: true, windowId: 1 }
-const TAB2 = { id: 2, url: 'https://example.test/other', title: 'Other', active: false, windowId: 1 }
+const TAB2 = {
+  id: 2,
+  url: 'https://example.test/other',
+  title: 'Other',
+  active: false,
+  windowId: 1
+}
 
+// The webRequest main-frame listener the worker registers, so a test can feed
+// it a response and watch what the next capture attests (#797).
+type HeadersReceivedListener = (details: {
+  tabId: number
+  url: string
+  statusCode?: number
+  responseHeaders?: Array<{ name: string; value?: string }>
+}) => unknown
+
+let headersReceivedListener: HeadersReceivedListener | undefined
 const runtimeListeners: Listener[] = []
-let contextMenuListener: ((info: { menuItemId: string; selectionText?: string }, tab: typeof TAB) => Promise<void>) | undefined
+let contextMenuListener:
+  | ((info: { menuItemId: string; selectionText?: string }, tab: typeof TAB) => Promise<void>)
+  | undefined
 const sentMessages: Array<{ tabId: number; type: string; status?: string }> = []
 let rejectPrepare = false
 const executeScriptCalls: Array<{ target: { tabId: number }; func: () => unknown }> = []
@@ -134,7 +157,11 @@ beforeAll(async () => {
       onInstalled: { addListener: () => {} }
     },
     webRequest: {
-      onHeadersReceived: { addListener: () => {} },
+      onHeadersReceived: {
+        addListener: (fn: HeadersReceivedListener) => {
+          headersReceivedListener = fn
+        }
+      },
       onBeforeRequest: { addListener: () => {} }
     },
     tabs: {
@@ -154,7 +181,9 @@ beforeAll(async () => {
       sendMessage: (tabId: number, message: { type: string; status?: string }) => {
         sentMessages.push({ tabId, type: message.type, status: message.status })
         if (message.type === 'PREPARE_FOR_CAPTURE') {
-          return rejectPrepare ? Promise.reject(new Error('Receiving end does not exist')) : Promise.resolve({ ok: true })
+          return rejectPrepare
+            ? Promise.reject(new Error('Receiving end does not exist'))
+            : Promise.resolve({ ok: true })
         }
         if (message.type === 'CHECK_SELECTORS') return Promise.resolve([])
         return Promise.resolve(undefined)
@@ -256,7 +285,9 @@ describe('concurrent manual captures on one tab (#379)', () => {
     dispatch({ type: 'MANUAL_CAPTURE', tabId: TAB.id, caseId: 'case-a' })
     await flush()
 
-    const fallbackCalls = executeScriptCalls.filter((call) => call.func === removeInjectedBirdbrainUi)
+    const fallbackCalls = executeScriptCalls.filter(
+      (call) => call.func === removeInjectedBirdbrainUi
+    )
     expect(fallbackCalls).toHaveLength(1)
     expect(fallbackCalls[0].target.tabId).toBe(TAB.id)
     expect(mhtmlCallbacks.length).toBe(3)
@@ -378,5 +409,58 @@ describe('concurrent manual captures on one tab (#379)', () => {
     // ...but no highlights were re-injected into the ignored page
     expect(sentOfTypeTo('CHECK_SELECTORS', TAB2.id)).toBe(baselineCheck)
     tabUrlOverride.delete(TAB2.id)
+  })
+})
+
+// R7 (#797). Until this change every capture request carried a hard-coded
+// httpStatus of 200, and the app now anchors what it is sent into the signed
+// manifest entry — so the status the request builder sends has to be the one
+// webRequest reported for the page being captured, or nothing at all.
+describe('the status a manual capture attests (#797)', () => {
+  const lastUploadPayload = (): Record<string, unknown> => {
+    const calls = vi.mocked(sendMhtmlCapture).mock.calls
+    return calls[calls.length - 1][0] as unknown as Record<string, unknown>
+  }
+
+  async function captureTab(tabId: number): Promise<void> {
+    const cbBase = mhtmlCallbacks.length
+    const upBase = uploadResolvers.length
+    dispatch({ type: 'MANUAL_CAPTURE', tabId, caseId: 'case-a' })
+    await flush()
+    mhtmlCallbacks[cbBase](new Blob(['mhtml-status']))
+    await flush()
+    uploadResolvers[upBase](UPLOAD_RESULT)
+    await flush()
+  }
+
+  it('sends the status and headers webRequest reported for that page', async () => {
+    expect(headersReceivedListener).toBeDefined()
+    headersReceivedListener?.({
+      tabId: TAB.id,
+      url: TAB.url,
+      statusCode: 451,
+      responseHeaders: [{ name: 'Server', value: 'nginx' }]
+    })
+
+    await captureTab(TAB.id)
+    const payload = lastUploadPayload()
+    expect(payload.httpStatus).toBe(451)
+    expect(payload.headers).toEqual({ server: 'nginx' })
+  })
+
+  it('sends no status at all when the response belongs to another page', async () => {
+    headersReceivedListener?.({
+      tabId: TAB.id,
+      url: 'https://example.test/somewhere-else',
+      statusCode: 500,
+      responseHeaders: []
+    })
+
+    await captureTab(TAB.id)
+    const payload = lastUploadPayload()
+    // Absent, not 200: an invented status would be anchored into the chain as
+    // if the origin had sent it.
+    expect('httpStatus' in payload).toBe(false)
+    expect('headers' in payload).toBe(false)
   })
 })

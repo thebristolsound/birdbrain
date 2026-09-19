@@ -13,6 +13,7 @@ import {
 import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
 import { canonicalStringify, verifyManifestChainText } from '@shared/verify'
 import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
+import { packageHash } from '@shared/verify/packageHash'
 import { ManifestEntrySchema, MANIFEST_ENTRY_TYPES } from '@shared/schemas'
 import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
@@ -167,6 +168,39 @@ function buildChain(bodies: Record<string, unknown>[]): string {
       })
       .join('\n') + '\n'
   )
+}
+
+// Writes the chain and the export entry sealing it the way generateReport
+// does: the entry is appended past the shipped head and ships as
+// export-entry.json, not in manifest.jsonl. An evidence.json stating schema 2
+// with no entry beside it reads as a stripped package (#853). Returns the
+// shipped head.
+function sealPackage(
+  pkgDir: string,
+  bodies: Record<string, unknown>[]
+): { index: number; entryHash: string } {
+  const exportBody = {
+    type: 'export',
+    caseId: CASE_ID,
+    timestamp: '2026-06-01T12:30:00.000Z',
+    ...OPERATOR,
+    packageHash: packageHash([]),
+    verificationResult: {
+      overallValid: true,
+      captureCount: 1,
+      verifiedCount: 1,
+      tamperedCount: 0,
+      missingCount: 0
+    },
+    schemaVersion: 2
+  }
+  const lines = buildChain([...bodies, exportBody])
+    .trim()
+    .split('\n')
+  const exportLine = lines.pop()!
+  writeFileSync(join(pkgDir, 'manifest.jsonl'), lines.join('\n') + '\n', 'utf-8')
+  writeFileSync(join(pkgDir, 'export-entry.json'), exportLine, 'utf-8')
+  return JSON.parse(lines[lines.length - 1]) as { index: number; entryHash: string }
 }
 
 function verify(jsonl: string) {
@@ -886,10 +920,7 @@ describe('manifest schema 3 — Exhibit and Derived File binding (#1156)', () =>
   function writePackage(
     bodies: Record<string, unknown>[] = [CAPTURE_ENTRY, EXHIBIT_ENTRY, DERIVATION_ENTRY]
   ): void {
-    const jsonl = buildChain(bodies)
-    const lines = jsonl.trim().split('\n')
-    const head = JSON.parse(lines[lines.length - 1]) as { index: number; entryHash: string }
-    writeFileSync(join(pkgDir, 'manifest.jsonl'), jsonl, 'utf-8')
+    const head = sealPackage(pkgDir, bodies)
     writeFileSync(join(pkgDir, 'signing-public-key.pem'), getPublicKeyPem(), 'utf-8')
     mkdirSync(join(pkgDir, 'pages'), { recursive: true })
     writeFileSync(join(pkgDir, 'pages', `${CAPTURE_ID}.mhtml`), MHTML)
@@ -1029,10 +1060,7 @@ describe('manifest schema 3 — Exhibit and Derived File binding (#1156)', () =>
       ...OPERATOR,
       schemaVersion: 3
     }
-    const jsonl = buildChain([CAPTURE_ENTRY, EXHIBIT_ENTRY, DERIVATION_ENTRY, deletion])
-    const lines = jsonl.trim().split('\n')
-    const head = JSON.parse(lines[lines.length - 1]) as { index: number; entryHash: string }
-    writeFileSync(join(pkgDir, 'manifest.jsonl'), jsonl, 'utf-8')
+    const head = sealPackage(pkgDir, [CAPTURE_ENTRY, EXHIBIT_ENTRY, DERIVATION_ENTRY, deletion])
     writeFileSync(join(pkgDir, 'signing-public-key.pem'), getPublicKeyPem(), 'utf-8')
     mkdirSync(join(pkgDir, 'pages'), { recursive: true })
     writeFileSync(join(pkgDir, 'pages', `${CAPTURE_ID}.mhtml`), MHTML)

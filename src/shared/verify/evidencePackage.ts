@@ -2,6 +2,7 @@ import { createHash } from 'crypto'
 import { existsSync, readFileSync, readdirSync, realpathSync } from 'fs'
 import { join, resolve, sep } from 'path'
 import {
+  EVIDENCE_INDEX_SCHEMA_VERSION,
   EvidencePackageSchema,
   ManifestEntrySchema,
   WORKING_COPY_MARKER_FILENAME,
@@ -405,12 +406,13 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   // pre-scope (or its scope proof was stripped) and verification proceeds
   // unscoped — so a selection package with the file removed FAILs §7.3 for
   // every unselected capture rather than passing with its absences
-  // unexplained.
+  // unexplained. Which of the two it is, is §7.2c's question below.
   let selectionIds: Set<string> | undefined
   // The signed statement of what the package contained when it was sealed.
   let signedPackageHash: string | undefined
   const exportEntryPath = join(dir, 'export-entry.json')
-  if (existsSync(exportEntryPath)) {
+  const exportEntryPresent = existsSync(exportEntryPath)
+  if (exportEntryPresent) {
     // existsSync also passes for a directory or a file this process cannot
     // read; a throwing read must fail this check, not abort verification.
     let rawEntry: string | undefined
@@ -486,6 +488,50 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
           `evidence.json invalid: ${result.error.issues[0]?.message}`
         )
       }
+    }
+  }
+
+  // §7.2c era gate (#853). §7.2b is presence-gated, and a CASE-scoped package
+  // has no unselected captures whose absence would fire §7.3, so deleting
+  // export-entry.json used to skip the §7.5 packageHash binding in silence.
+  // `evidence.json`'s own schemaVersion is what separates the two eras: every
+  // build from EVIDENCE_INDEX_SCHEMA_VERSION on ships an export entry with
+  // every evidence package, so an index at or above it states that this package
+  // was sealed with one, and the file's absence is a removal rather than an
+  // age. Below it the index settles nothing: builds before #398 wrote no entry,
+  // but builds from #398 until the bump wrote one under version 1 too, so a v1
+  // package with no entry is either old or stripped. It keeps verifying exactly
+  // as before — as a SKIP, not silence, so the leniency and what it cost are on
+  // the report, and the reason says the verifier cannot tell which.
+  //
+  // What this does NOT claim: a v1 package sealed with an entry still PASSes
+  // with that one file deleted, and since evidence.json is unsigned (see the
+  // trust model above) a v2 package does too once schemaVersion is also
+  // rewritten to 1. Both residuals are unchanged from #836, not introduced
+  // here, and closing them needs an anchor the package's SIGNED material
+  // carries. What the gate does buy: the strip is loud for every package this
+  // build and later seal. An unreadable evidence.json gets no era row at all —
+  // the era is its statement to make, and its own FAIL above already stands.
+  if (evidence && !exportEntryPresent) {
+    if (evidence.schemaVersion >= EVIDENCE_INDEX_SCHEMA_VERSION) {
+      add(
+        'export entry',
+        'fail',
+        `export-entry.json missing from package: evidence.json states schema version ` +
+          `${evidence.schemaVersion}, and every package at or above version ` +
+          `${EVIDENCE_INDEX_SCHEMA_VERSION} was sealed with a signed export entry`
+      )
+    } else {
+      add(
+        'export entry',
+        'skip',
+        `no export-entry.json, and evidence.json states schema version ` +
+          `${evidence.schemaVersion}, below the version ${EVIDENCE_INDEX_SCHEMA_VERSION} from ` +
+          'which every package was sealed with one. Packages at that version were written ' +
+          'both before export entries (#398) and after, so this verifier cannot tell which ' +
+          'this package is: an old one, or one whose entry was removed. Its artifact index ' +
+          'was not bound to a signed statement of what was packaged'
+      )
     }
   }
 
@@ -1047,7 +1093,10 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
     // has no manifest entry of its own, anchored only by a hash nothing
     // recomputed. Runs only when the package ships a validated export entry:
     // pre-scope packages (#398) carry no such statement, and their absence is
-    // already handled unscoped above, so they are unaffected.
+    // already handled unscoped above. Whether an absent entry is that age or a
+    // removal is §7.2c's question, not this one — reaching here with no
+    // `signedPackageHash` on a package that should have had one means §7.2c
+    // has already FAILed it.
     if (signedPackageHash !== undefined) {
       const recomputed = packageHash(evidence.artifacts)
       if (recomputed === signedPackageHash) {

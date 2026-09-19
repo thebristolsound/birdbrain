@@ -55,7 +55,7 @@ import type {
 } from '@main/services/reportHtml'
 import { VERIFY_RUNBOOK } from '@main/services/verifyRunbook'
 import { VERIFY_SCRIPT, VERIFY_SCRIPT_FILENAME } from '@main/services/verifyScript'
-import { WORKING_COPY_MARKER_FILENAME } from '@shared/schemas'
+import { EVIDENCE_INDEX_SCHEMA_VERSION, WORKING_COPY_MARKER_FILENAME } from '@shared/schemas'
 import type {
   Capture,
   DerivedFile,
@@ -1246,9 +1246,11 @@ function buildEvidenceZip(
   })
 
   const evidence = {
-    // 2: the additive `exhibits` list below. `captures` is unchanged, so a
-    // verifier built before it still reads this package.
-    schemaVersion: 2,
+    // 2: the additive `exhibits` list below, and the package's era (#853).
+    // Every evidence-class zip is sealed with export-entry.json, so this
+    // version is also the index's statement that one was written — which is
+    // what lets the verifier read its absence as a stripped file.
+    schemaVersion: EVIDENCE_INDEX_SCHEMA_VERSION,
     generatedBy: 'Birdbrain',
     exportedAt: data.exportTimestamp,
     case: {

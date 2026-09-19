@@ -750,6 +750,21 @@ export const MANIFEST_ENTRY_TYPES: ReadonlySet<string> = new Set(
 
 // --- Evidence package index (evidence.json) -------------------------------
 
+// The `schemaVersion` buildEvidenceZip stamps into evidence.json. v2 added the
+// `exhibits` list (#1494), and it also names the package's ERA: v1 covers both
+// the pre-#398 packages that ship no export-entry.json and the post-#398 ones
+// that do, so a verifier reading a v1 index cannot tell a package that
+// predates export entries from one whose entry was stripped (#853). Every
+// writer from v2 on seals the package with a signed export entry, so a v2 or
+// later index with no entry beside it is a missing file. A later bump must
+// keep that true — the verifier compares with >=.
+//
+// Defined here rather than in constants.ts so it sits beside the schema whose
+// version it names. Not an import boundary: build-verifier.mjs aliases all of
+// @shared/* into the bundle (its one rule is no electron and no src/main), and
+// @shared/verify/manifestChain.ts already reaches @shared/constants directly.
+export const EVIDENCE_INDEX_SCHEMA_VERSION = 2
+
 // `evidence.json` is the UNSIGNED convenience index emitted by buildEvidenceZip.
 // Only `manifest.jsonl` is signed, so the standalone verifier (#122) treats this
 // index as untrusted: it parses it for structure, then reconciles every field
@@ -843,8 +858,8 @@ export type EvidencePackage = z.infer<typeof EvidencePackageSchema>
 // the package root. It is UNSIGNED and confers nothing: the verifier reads it
 // only when `manifest.jsonl` is absent, to report "not a verifiable object"
 // instead of FAIL — a present manifest is always verified, so a planted marker
-// can never silence a chain. Defined here (not in constants.ts) because the
-// standalone verifier may import only @shared/verify/** and @shared/schemas.
+// can never silence a chain. Defined here (not in constants.ts) so it sits
+// beside the marker schema it names.
 export const WORKING_COPY_MARKER_FILENAME = 'WORKING-COPY.json'
 
 // Deliberately non-strict, pinning only what the verifier branches on: future

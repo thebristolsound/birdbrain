@@ -663,6 +663,76 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     expect(run.output).not.toContain('FAIL')
   })
 
+  // #853 on the shell surface. The binary FAILs a v2 package whose export entry
+  // was deleted; verify.sh ships inside the same zip, so a silent `[ -f ]` here
+  // would have the two enclosed verifiers disagree about the same file.
+  describe('export-entry era gate (#853)', () => {
+    const setEra = (dir: string, version: number): void => {
+      const path = join(dir, 'evidence.json')
+      const evidence = JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>
+      evidence.schemaVersion = version
+      writeFileSync(path, JSON.stringify(evidence, null, 2))
+    }
+
+    it.skipIf(!RUNS)('fails when a package that states the post-scope era has no entry', () => {
+      // evidence.json does not list itself or export-entry.json under
+      // `artifacts`, so neither edit disturbs step 1 — which is exactly why the
+      // strip was quiet before this gate.
+      const dir = corruptedCopy('stripped-export-entry')
+      rmSync(join(dir, 'export-entry.json'))
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      expect(run.output).toContain('FAIL [step 5] export-entry.json is missing')
+      expect(run.output).toContain('was sealed with a signed export entry')
+      expect(run.output).not.toContain('verify.sh: PASS')
+    })
+
+    it.skipIf(!RUNS)('reads the era as a number, so 2.0 fails as 2 does', () => {
+      // JSON.stringify cannot write 2.0, so the float goes in as text. The
+      // binary parses it to 2 and FAILs; the script must not read "2.0" as
+      // unreadable and PASS the same zip.
+      const dir = corruptedCopy('float-era')
+      rmSync(join(dir, 'export-entry.json'))
+      const path = join(dir, 'evidence.json')
+      const text = readFileSync(path, 'utf-8')
+      writeFileSync(path, text.replace(/"schemaVersion": \d+/, '"schemaVersion": 2.0'))
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      expect(run.output).toContain('FAIL [step 5] export-entry.json is missing')
+      expect(run.output).toContain('states schema version 2,')
+      expect(run.output).not.toContain('verify.sh: PASS')
+    })
+
+    it.skipIf(!RUNS)('notes rather than fails when the index states the pre-scope era', () => {
+      // A v1 index with no entry still verifies (#398), and now says it cannot
+      // tell an old package from a stripped one instead of saying nothing.
+      const dir = corruptedCopy('pre-scope-era')
+      rmSync(join(dir, 'export-entry.json'))
+      setEra(dir, 1)
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(0)
+      expect(run.output).toContain('verify.sh: PASS')
+      expect(run.output).toContain('cannot tell which')
+      expect(run.output).not.toContain('FAIL')
+    })
+
+    it.skipIf(!RUNS)('says the era is unreadable rather than guessing it', () => {
+      const dir = corruptedCopy('unreadable-era')
+      rmSync(join(dir, 'export-entry.json'))
+      writeFileSync(join(dir, 'evidence.json'), '{ not json')
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      expect(run.output).toContain('no readable schema version')
+      // The unreadable index is its own step 1 failure; the era line does not
+      // add a second verdict on top of it.
+      expect(run.output).not.toContain('FAIL [step 5]')
+    })
+  })
+
   it.skipIf(!RUNS)('exits 2 rather than passing when a required tool is missing', () => {
     const empty = mkdtempSync(join(tmpdir(), 'bb-no-tools-'))
     try {

@@ -318,6 +318,28 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
     const proc = spawnSync(binaryPath, [fixtureDir], { encoding: 'utf-8' })
     expect(proc.status, proc.stdout + proc.stderr).toBe(0)
     expect(proc.stdout).toContain('RESULT: PASS')
+    // #853: the leniency that PASS rests on is printed, not assumed.
+    expect(proc.stdout).toContain('cannot tell which')
+  })
+
+  // #853 through the BUILT binary: the CLI and the in-app core are one
+  // implementation (cli.ts calls verifyEvidencePackage), and this is the end of
+  // that claim — a case-scoped package with its export entry deleted is a FAIL
+  // here exactly as it is in tests/shared/verify/evidencePackage.test.ts.
+  it('exits 1 when a case-scoped package has had its export entry stripped', () => {
+    const strippedDir = mkdtempSync(join(tmpdir(), 'bb-binstrip-'))
+    for (const [name, bytes] of readStoredZipEntries(join(tempDir, 'evidence.zip'))) {
+      const out = join(strippedDir, name)
+      mkdirSync(dirname(out), { recursive: true })
+      writeFileSync(out, bytes)
+    }
+    rmSync(join(strippedDir, 'export-entry.json'))
+
+    const proc = spawnSync(binaryPath, [strippedDir], { encoding: 'utf-8' })
+    expect(proc.status, proc.stdout + proc.stderr).toBe(1)
+    expect(proc.stdout).toContain('RESULT: FAIL')
+    expect(proc.stdout).toContain('export-entry.json missing from package')
+    rmSync(strippedDir, { recursive: true, force: true })
   })
 
   // #398 selection scope through the BUILT binary: the unselected capture is a

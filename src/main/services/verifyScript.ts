@@ -25,6 +25,7 @@
 // package through the export path and runs both against it.
 
 import { TSA_INTERMEDIATES_FILENAME, TSA_ROOT_FILENAME } from '@main/services/tsaTrust'
+import { EVIDENCE_INDEX_SCHEMA_VERSION } from '@shared/schemas'
 
 /** Name this script is written into the evidence package under. */
 export const VERIFY_SCRIPT_FILENAME = 'verify.sh'
@@ -285,6 +286,32 @@ if [ -f export-entry.json ]; then
   else
     note 'export-entry.json verifies and declares a whole-case package'
   fi
+else
+  # #853: absent is not automatically old, and it must not be silent either.
+  # evidence.json names the era this package was sealed in, and every package
+  # at or above version ${EVIDENCE_INDEX_SCHEMA_VERSION} was sealed with an export entry - so at that
+  # version an absent file is a removed one, which is what the binary verifier
+  # enclosed beside this script also concludes. The index is unsigned (VERIFY.md
+  # trust model), so a version edited downward still reaches the lenient branch;
+  # reporting whose claim the era is, is what this step can do, not settling it.
+  # jq compares the number, not its text: 2.0 and 2e0 are version 2 to the
+  # binary verifier too.
+  era=''
+  [ -f evidence.json ] && era=$(jq -r '.schemaVersion
+    | select(type == "number" and . == floor and . > 0)
+    | (if . >= ${EVIDENCE_INDEX_SCHEMA_VERSION} then "sealed " else "pre " end) + (. + 0 | tostring)' \\
+    evidence.json 2>/dev/null)
+  case "$era" in
+  'sealed '*)
+    fail "export-entry.json is missing: evidence.json states schema version \${era#sealed }, and every package at or above version ${EVIDENCE_INDEX_SCHEMA_VERSION} was sealed with a signed export entry, so the file was removed rather than never written"
+    ;;
+  'pre '*)
+    note "no export-entry.json and evidence.json states schema version \${era#pre }. Packages at that version were written both before export entries and after, so this script cannot tell which this package is: an old one, or one whose entry was removed. Its scope is not signed"
+    ;;
+  *)
+    note 'no export-entry.json, and evidence.json states no readable schema version, so the era of this package cannot be read here'
+    ;;
+  esac
 fi
 
 deleted=$(jq -r 'select(.type == "deletion") | .captureId' manifest.jsonl)

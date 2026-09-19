@@ -47,11 +47,13 @@ capture a pasted list of URLs, or recapture a page later, by rendering it in a h
 hash-chained `manifest.jsonl`. Each entry carries an RSA signature from a per-install key and a
 timestamp token from an RFC 3161 authority, DigiCert by default.
 
-**Verify.** Check a capture inside the app, or export an evidence package. The zip holds
-`manifest.jsonl`, `report.html`, `certification.html`, the public key, the timestamp authority
-certificates, and `VERIFY.md`, a runbook that reproduces the whole check with `sha256sum`,
-`openssl`, and `jq` alone. `verify.sh` ships beside it and runs those same six steps in one
-command, exiting non-zero and naming the step when one fails.
+**Verify.** Check a capture inside the app, or export an evidence package. The zip holds every
+exhibit the case committed: page archives, screenshots and timestamp tokens, plus attachments,
+images and documents under their own directories with the files the tool derived from them. Beside
+them it holds `manifest.jsonl`, `evidence.json`, `report.html`, `certification.html`, the public
+key, the timestamp authority certificates, and `VERIFY.md`, a runbook that reproduces the whole
+check with `sha256sum`, `openssl`, and `jq` alone. `verify.sh` ships beside it and runs those same
+six steps in one command, exiting non-zero and naming the step when one fails.
 
 **Organize.** Group captures into cases and tag them. Write rich-text notes that link to a capture
 or another note with `@`, or to a selector or tag with `#`, and Birdbrain derives a backlink index

@@ -38,6 +38,13 @@ export interface CertificationInput {
     exhibitCountsByKind?: Record<string, number>
     /** Files the tool computed from an Exhibit and enclosed beside it (X17). */
     derivedFileCount?: number
+    /**
+     * Derived Files the case records that the chain does not anchor, and that
+     * this package therefore does NOT enclose (X34). Stated rather than left
+     * out of the arithmetic: a reader comparing the package against the case
+     * has to be told the difference, not left to find it.
+     */
+    unanchoredDerivedFileCount?: number
   }
   exportTimestamp: string
   installationId: string
@@ -276,11 +283,15 @@ function buildContentsSummary(contents: CertificationInput['contents']): string 
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([kind, count]) => plural(count, kind))
   const derived = contents.derivedFileCount ?? 0
+  const unanchored = contents.unanchoredDerivedFileCount ?? 0
   return [
     plural(contents.captureCount, 'capture'),
     ...byKind,
     plural(contents.screenshotCount, 'screenshot'),
     ...(derived > 0 ? [plural(derived, 'derived file')] : []),
+    ...(unanchored > 0
+      ? [`${plural(unanchored, 'unanchored derived file')} recorded and not enclosed`]
+      : []),
     plural(contents.noteCount, 'operator note')
   ].join(', ')
 }

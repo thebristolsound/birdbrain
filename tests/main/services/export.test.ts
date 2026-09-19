@@ -35,7 +35,11 @@ import {
 import { createNote } from '@main/services/db/noteRepo'
 import { saveAnnotations, upsertPin, deletePin } from '@main/services/annotations'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
-import { seedMixedKindCase, type MixedKindCase } from '../../helpers/mixedKindCase'
+import {
+  seedMixedKindCase,
+  seedUnanchoredDerivedFile,
+  type MixedKindCase
+} from '../../helpers/mixedKindCase'
 import { initSettings, updateSettings } from '@main/services/settings'
 import {
   getInstallationId,
@@ -2394,7 +2398,8 @@ describe('export', () => {
         screenshotCount: 0,
         noteCount: 1,
         exhibitCountsByKind: {},
-        derivedFileCount: 0
+        derivedFileCount: 0,
+        unanchoredDerivedFileCount: 0
       })
       expect(marker.artifacts.map((a) => a.path).sort()).toEqual([
         'notes.md',
@@ -2750,6 +2755,62 @@ describe('export', () => {
       expect(evidence.warnings.missingContentExhibitCount).toBe(1)
       expect(evidence.warnings.missingContentExhibitIds).toEqual([target.id])
       expect(evidence.exhibits.find((e) => e.id === target.id)!.path).toBeNull()
+    })
+
+    it('states one verification result on the cover and under chain of custody', async () => {
+      // Two derivations of the same run is what let the cover print "4 / 4
+      // integrity verified - produced by the verification run recorded under
+      // Chain of custody" over a section that said "1 of 1 verified".
+      const entries = await exportMixed('mixed-tally.zip')
+      const report = entries.get('report.html')!.toString('utf-8')
+
+      expect(report).toContain('4 / 4')
+      expect(report).toMatch(/Verification run[\s\S]{0,200}?4 of 4 verified/)
+      expect(report).not.toContain('1 of 1 verified')
+    })
+
+    it('reports the verification run on a selection holding no capture', async () => {
+      const entries = await exportMixed('mixed-exhibits-only.zip', {
+        captureIds: [fixture.document.id]
+      })
+      const report = entries.get('report.html')!.toString('utf-8')
+
+      expect(report).toContain('1 / 1')
+      expect(report).toMatch(/Verification run[\s\S]{0,200}?1 of 1 verified/)
+      // The shape this PR made possible, and the one the cover contradicted:
+      // an export whose only exhibits are committed files did run a
+      // verification, and the custody section has to say so.
+      expect(report).not.toContain('No verification was run for this export')
+    })
+
+    it('holds back an unanchored derived file and discloses the omission', async () => {
+      // X34's case: the backfill records a thumbnail it could not anchor. The
+      // package must not enclose bytes the chain does not cover, evidence.json
+      // must not attribute them to an Exhibit, and the report must not claim
+      // anchoring for them — but the reader has to be told they exist.
+      const unanchored = seedUnanchoredDerivedFile(tempDir, fixture.caseId, fixture.attachment.id)
+      const entries = await exportMixed('mixed-unanchored.zip')
+
+      const names = [...entries.keys()]
+      expect(names.some((name) => name.endsWith('_text.txt'))).toBe(false)
+      expect([...entries.values()].some((bytes) => bytes.equals(unanchored.bytes))).toBe(false)
+
+      const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+        exhibits: Array<{ id: string; derivedFiles: Array<{ derivation: string }> }>
+        artifacts: Array<{ path: string }>
+      }
+      const row = evidence.exhibits.find((e) => e.id === fixture.attachment.id)!
+      expect(row.derivedFiles).toEqual([])
+      expect(evidence.artifacts.some((a) => a.path.endsWith('_text.txt'))).toBe(false)
+
+      const report = entries.get('report.html')!.toString('utf-8')
+      expect(report).toContain('recorded but not anchored, and therefore not enclosed')
+      expect(report).toContain('not enclosed — not anchored in the chain')
+
+      const certification = entries.get('certification.html')!.toString('utf-8')
+      expect(certification).toContain('1 unanchored derived file recorded and not enclosed')
+      // The anchored thumbnail is still counted, and counted once.
+      expect(certification).toContain('1 derived file,')
     })
 
     it('ships the same exhibits and derived files in a Working Copy', async () => {

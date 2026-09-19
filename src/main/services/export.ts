@@ -387,7 +387,6 @@ export async function generateReport(
   // which the documents state as "not verified in this export" rather than as a
   // clean result.
   let exhibitVerifications = new Map<string, ExhibitVerification>()
-  let derivedVerifications = new Map<string, DerivedFileVerification[]>()
 
   if (options.include.auditTrail) {
     onProgress?.('Verifying capture integrity...', 10)
@@ -400,8 +399,16 @@ export async function generateReport(
       onProgress?.('Verifying exhibit integrity...', 50)
       exhibitVerifications = await verifyFileExhibits(caseId, scope.fileExhibits)
     }
-    derivedVerifications = await verifyCaseDerivedFiles(caseId)
   }
+
+  // NOT gated on the audit-trail toggle, because this decides what the package
+  // CONTAINS and not only what it reports: a Derived File the chain does not
+  // anchor (X34 — a legacy thumbnail whose source screenshot could not be
+  // verified) must not ship, and that question has to be answered on every
+  // export. Resolved through the same binding predicate the standalone verifier
+  // uses, so the app and the verifier cannot disagree about which files the
+  // chain covers.
+  const derivedVerifications = await verifyCaseDerivedFiles(caseId)
 
   // captureId -> sha256 of the raw on-disk screenshot, and whether the copy
   // reproduced in the report had annotations burned into its pixels.
@@ -705,6 +712,14 @@ async function verifyFileExhibits(
  * (X17). `parentDirectory` is where the parent's bytes sit in the package, so a
  * Derived File lands beside its parent under the same directory — the layout
  * evidence.json, VERIFY.md and verify.sh all name.
+ *
+ * A file the chain does not anchor is NOT packaged, in either export class, and
+ * is not listed in evidence.json: the Derived File rows are a database mirror,
+ * and bytes covered by nothing but a mirror have no place in a package whose
+ * whole claim is that the chain covers what it holds (ADR-0024's rule for
+ * pooled files, X41's for an unanchored row). It is still reported — the report
+ * and the certification state that it was held back and why — because an
+ * omission a reader cannot see is the dishonest option X44 rejected.
  */
 function buildDerivedFiles(
   files: DerivedFile[],
@@ -714,14 +729,20 @@ function buildDerivedFiles(
 ): ExportDerivedFile[] {
   const byId = new Map((verifications ?? []).map((result) => [result.derivedFileId, result]))
   return files.map((file) => {
-    const present = isPackage && defaultCaptureStore.existsRelative(file.path)
     const verification = byId.get(file.id)
+    // 'unverified' is the verify path's word for "no `derivation` entry in the
+    // verified chain names this file" (X34). Every other status — verified,
+    // tampered, missing — means the chain does anchor it, and a tampered one
+    // ships exactly as a tampered Capture does, for the verifiers to catch.
+    const anchored = verification !== undefined && verification.status !== 'unverified'
+    const present = isPackage && anchored && defaultCaptureStore.existsRelative(file.path)
     return {
       id: file.id,
       derivation: file.derivation,
       toolVersion: file.toolVersion,
       contentHash: file.contentHash,
       storedPath: file.path,
+      anchored,
       packagedPath: present ? derivedFilePackagePath(parentDirectory, file.path) : null,
       manifestIndex: file.manifestSeq,
       ...(verification !== undefined ? { verification } : {})
@@ -788,15 +809,23 @@ function buildFileExhibitRecords(
 function exhibitKindCounts(data: ExportData): {
   exhibitCountsByKind: Record<string, number>
   derivedFileCount: number
+  unanchoredDerivedFileCount: number
 } {
   const exhibitCountsByKind: Record<string, number> = {}
   let derivedFileCount = 0
+  let unanchoredDerivedFileCount = 0
+  const count = (files: ExportDerivedFile[]): void => {
+    for (const file of files) {
+      if (file.anchored) derivedFileCount++
+      else unanchoredDerivedFileCount++
+    }
+  }
   for (const exhibit of data.fileExhibits) {
     exhibitCountsByKind[exhibit.kind] = (exhibitCountsByKind[exhibit.kind] ?? 0) + 1
-    derivedFileCount += exhibit.derivedFiles.length
+    count(exhibit.derivedFiles)
   }
-  for (const files of data.derivedFilesByCaptureId.values()) derivedFileCount += files.length
-  return { exhibitCountsByKind, derivedFileCount }
+  for (const files of data.derivedFilesByCaptureId.values()) count(files)
+  return { exhibitCountsByKind, derivedFileCount, unanchoredDerivedFileCount }
 }
 
 /** Derived Files grouped by the Exhibit they were computed from. */
@@ -834,20 +863,30 @@ function readPackagedFile(storedPath: string | null): Buffer | null {
   }
 }
 
-/** Encloses an Exhibit's Derived Files and returns their index rows (X31). */
+/**
+ * Encloses an Exhibit's Derived Files and returns their index rows (X31).
+ *
+ * Only the files the chain anchors get either: an unanchored one is neither
+ * packaged nor listed, so the index cannot attribute to an Exhibit a file
+ * nothing in the chain says was computed from it. The report and the
+ * certification are where its omission is disclosed.
+ */
 function addDerivedFiles(
   files: ExportDerivedFile[],
   add: ArtifactAccumulator['add']
 ): Array<{ derivation: string; contentHash: string; path: string | null }> {
-  return files.map((file) => {
+  const rows: Array<{ derivation: string; contentHash: string; path: string | null }> = []
+  for (const file of files) {
+    if (!file.anchored) continue
     const bytes = file.packagedPath ? readPackagedFile(file.storedPath) : null
     if (bytes && file.packagedPath) add(file.packagedPath, bytes)
-    return {
+    rows.push({
       derivation: file.derivation,
       contentHash: file.contentHash,
       path: bytes && file.packagedPath ? file.packagedPath : null
-    }
-  })
+    })
+  }
+  return rows
 }
 
 /** One committed non-Capture Exhibit as evidence.json lists it. */

@@ -1,10 +1,11 @@
 import { mkdirSync, writeFileSync } from 'fs'
+import { createHash } from 'crypto'
 import { join } from 'path'
 import { Readable } from 'stream'
 import sharp from 'sharp'
 import { createCase } from '@main/services/db/caseRepo'
 import { listExhibits } from '@main/services/db/exhibitRepo'
-import { listDerivedFilesForCase } from '@main/services/db/derivedFileRepo'
+import { insertDerivedFile, listDerivedFilesForCase } from '@main/services/db/derivedFileRepo'
 import { ensureCaseDir } from '@main/services/storage'
 import { initManifest } from '@main/services/manifest'
 import { ingestMhtmlCapture } from '@main/services/captureLifecycle'
@@ -63,6 +64,32 @@ function fixtureExhibit(exhibit: Exhibit, bytes: Buffer, extension: string): Fix
     bytes,
     packagePath: `${exhibit.kind === 'image' ? 'images' : exhibit.kind + 's'}/${exhibit.id}${extension}`
   }
+}
+
+/**
+ * A Derived File the chain does not anchor, of the exact shape
+ * `exhibitBackfill.ts` writes when a thumbnail's source screenshot is missing
+ * or fails verification (X34). The bytes are on disk and the row exists; no
+ * `derivation` entry names either.
+ */
+export function seedUnanchoredDerivedFile(
+  tempDir: string,
+  caseId: string,
+  exhibitId: string,
+  derivation = 'text'
+): { id: string; storedPath: string; bytes: Buffer } {
+  const bytes = Buffer.from(`unanchored ${derivation} for ${exhibitId}`)
+  const storedPath = join(caseId, `${exhibitId}_${derivation}.txt`)
+  writeFileSync(join(tempDir, 'captures', storedPath), bytes)
+  const row = insertDerivedFile({
+    exhibitId,
+    derivation,
+    toolVersion: '0.1.0',
+    contentHash: createHash('sha256').update(bytes).digest('hex'),
+    path: storedPath,
+    createdAt: '2026-04-05T12:05:00.000Z'
+  })
+  return { id: row.id, storedPath, bytes }
 }
 
 export async function seedMixedKindCase(options: {

@@ -120,6 +120,13 @@ export interface ExportDerivedFile {
   contentHash: string
   /** Storage-root-relative path, as the `derived_files` row records it. */
   storedPath: string
+  /**
+   * Whether a `derivation` entry in the verified chain vouches for this file
+   * (X34). False is the legacy-thumbnail case the backfill records without
+   * anchoring: the package does not enclose it and evidence.json does not list
+   * it, and no document may describe it as anchored.
+   */
+  anchored: boolean
   /** Package-relative path, null when this export encloses nothing for it. */
   packagedPath: string | null
   manifestIndex: number | null
@@ -302,6 +309,25 @@ interface ReportContext {
   fileExhibits: FileExhibitView[]
   /** Modules that actually rendered, in order — used by the contents index. */
   included: ReportModuleId[]
+}
+
+/**
+ * The export's verification result, counted ONCE over the rows both the cover
+ * and the chain-of-custody section print (the #611 pattern the certification
+ * already follows). Two derivations is what let the cover say "4 / 4 integrity
+ * verified · produced by the verification run recorded under Chain of custody"
+ * over a custody section that said "1 of 1 verified" — or, on a selection of
+ * committed Exhibits alone, "No verification was run for this export."
+ */
+function verificationTally(ctx: ReportContext): { verified: number; total: number; ran: boolean } {
+  const rows = exhibitRows(ctx)
+  return {
+    verified: rows.filter((row) => row.view.integrity.label === 'Verified').length,
+    total: rows.length,
+    ran:
+      ctx.data.verifications.length > 0 ||
+      ctx.fileExhibits.some((exhibit) => exhibit.exhibit.verification !== undefined)
+  }
 }
 
 /**
@@ -674,14 +700,11 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
       // covered captures only would report "2 / 2 integrity verified" over a
       // package that also encloses an altered attachment.
       const rows = exhibitRows(ctx)
-      const verified = rows.filter((r) => r.view.integrity.label === 'Verified').length
+      const { verified, total, ran: verificationRan } = verificationTally(ctx)
       const stamped = rows.filter((r) => r.view.time.basis === 'rfc3161').length
       const hosts = new Set(exhibits.map((e) => hostOf(e.capture.url)).filter(Boolean)).size
       const archived = exhibits.filter((e) => !e.pageArchiveMissing).length
-      const total = rows.length
       const packaged = isPackagedExport(options)
-      const verificationRan =
-        data.verifications.length > 0 || fileExhibits.some((e) => e.exhibit.verification)
 
       return `
 <section class="sheet cover">
@@ -922,8 +945,12 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   custody: {
     id: 'custody',
     title: 'Chain of custody and manifest reference',
-    render: ({ data, exhibits, options }) => {
-      const verifiedCount = exhibits.filter((e) => e.integrity.label === 'Verified').length
+    render: (ctx) => {
+      const { data, options } = ctx
+      // The same single derivation the cover prints, over the same rows: the
+      // cover's note points the reader here, so a second count would send them
+      // to a figure that contradicts the one they were sent from.
+      const tally = verificationTally(ctx)
       const packaged = isPackagedExport(options)
       return `
 <section class="sheet">
@@ -946,8 +973,8 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     ${field('Signing key', `<code>signing-public-key.pem</code>`)}
     ${field(
       'Verification run',
-      data.verifications.length > 0
-        ? mono(`${isoUtc(data.exportTimestamp)} · ${verifiedCount} of ${exhibits.length} verified`)
+      tally.ran
+        ? mono(`${isoUtc(data.exportTimestamp)} · ${tally.verified} of ${tally.total} verified`)
         : 'No verification was run for this export.'
     )}
   </div>
@@ -1305,7 +1332,11 @@ function renderExhibit(e: ExhibitView, total: number): string {
   for (const derived of e.derivedFiles) {
     artefacts.push([
       `Derived file — ${derived.derivation}`,
-      derived.packagedPath ? esc(derived.packagedPath) : 'not enclosed'
+      derived.packagedPath
+        ? esc(derived.packagedPath)
+        : derived.anchored
+          ? 'not enclosed'
+          : 'not enclosed — not anchored in the chain'
     ])
   }
 
@@ -1473,11 +1504,75 @@ function renderExhibit(e: ExhibitView, total: number): string {
       ${missingBanner}
       ${image}
       ${legend}
+      ${derivedFilesBlock(e.derivedFiles)}
       ${corroboration}
       ${waybackCorroboration}
     </div>
   </div>
 </section>`
+}
+
+/**
+ * The derived-file disclosure, for an Exhibit of any kind.
+ *
+ * Two lists, never one: a file the chain anchors is enclosed and the block says
+ * what anchors it, and a file the chain does not anchor is named as held back.
+ * This block used to state that every derived file "is anchored in the chain by
+ * its own entry" with nothing gating the sentence, so an unanchored legacy
+ * thumbnail (X34) shipped under a claim no entry supported and neither verifier
+ * looked at. A reader must be able to tell the two apart from the document
+ * alone.
+ */
+function derivedFilesBlock(files: ExportDerivedFile[]): string {
+  const anchored = files.filter((file) => file.anchored)
+  const held = files.filter((file) => !file.anchored)
+  if (files.length === 0) return ''
+
+  const anchoredBlock =
+    anchored.length === 0
+      ? ''
+      : `<div class="note">
+    <p class="note-title">Derived files</p>
+    <p>${anchored.length} file${anchored.length === 1 ? ' was' : 's were'} computed from this
+    exhibit by the tool and ${
+      anchored.length === 1 ? 'is' : 'are'
+    } enclosed beside it. A derived file is cited by its parent and its derivation and carries no
+    exhibit number of its own; each of these is anchored in the chain by its own entry, which
+    records the digest of what was produced.</p>
+    <ul>${anchored
+      .map(
+        (derived) =>
+          `<li><span class="mono">${esc(derived.derivation)}</span> — <span class="mono">${esc(
+            derived.packagedPath ?? 'not enclosed'
+          )}</span><br><span class="sub">SHA-256 ${esc(derived.contentHash)}</span></li>`
+      )
+      .join('')}</ul>
+  </div>`
+
+  const heldBlock =
+    held.length === 0
+      ? ''
+      : `<div class="alert">
+    <p class="alert-title">${held.length} derived file${
+      held.length === 1 ? '' : 's'
+    } recorded but not anchored, and therefore not enclosed</p>
+    <p>The case records ${held.length} file${held.length === 1 ? '' : 's'} computed from this
+    exhibit that the manifest chain does not anchor: no entry states what was produced or from
+    which bytes. ${held.length === 1 ? 'It is' : 'They are'} deliberately not enclosed in this
+    package, because a file the chain does not cover cannot be verified against it, and
+    ${held.length === 1 ? 'it is' : 'they are'} named here rather than omitted silently. The
+    tool produces this state when a thumbnail was found beside a capture whose stored screenshot
+    could not be verified.</p>
+    <ul>${held
+      .map(
+        (derived) =>
+          `<li><span class="mono">${esc(derived.derivation)}</span> — not enclosed<br>
+          <span class="sub">Recorded digest ${esc(derived.contentHash)}</span></li>`
+      )
+      .join('')}</ul>
+  </div>`
+
+  return `${anchoredBlock}${heldBlock}`
 }
 
 /**
@@ -1505,7 +1600,11 @@ function renderFileExhibit(e: FileExhibitView, total: number): string {
   for (const derived of exhibit.derivedFiles) {
     artefacts.push([
       `Derived file — ${derived.derivation}`,
-      derived.packagedPath ? esc(derived.packagedPath) : 'not enclosed'
+      derived.packagedPath
+        ? esc(derived.packagedPath)
+        : derived.anchored
+          ? 'not enclosed'
+          : 'not enclosed — not anchored in the chain'
     ])
   }
 
@@ -1581,28 +1680,7 @@ function renderFileExhibit(e: FileExhibitView, total: number): string {
         digest of the bytes, the point at which they entered the case, and whether the chain still
         reconciles for them.</p>
       </div>
-      ${
-        exhibit.derivedFiles.length > 0
-          ? `<div class="note">
-        <p class="note-title">Derived files</p>
-        <p>${exhibit.derivedFiles.length} file${
-          exhibit.derivedFiles.length === 1 ? ' was' : 's were'
-        } computed from this exhibit by the tool and ${
-          exhibit.derivedFiles.length === 1 ? 'is' : 'are'
-        } enclosed beside it. A derived file is cited by its parent and its derivation and carries
-        no exhibit number of its own; each is anchored in the chain by its own entry, which
-        records the digest of what was produced.</p>
-        <ul>${exhibit.derivedFiles
-          .map(
-            (derived) =>
-              `<li><span class="mono">${esc(derived.derivation)}</span> — <span class="mono">${esc(
-                derived.packagedPath ?? 'not enclosed'
-              )}</span><br><span class="sub">SHA-256 ${esc(derived.contentHash)}</span></li>`
-          )
-          .join('')}</ul>
-      </div>`
-          : ''
-      }
+      ${derivedFilesBlock(exhibit.derivedFiles)}
     </div>
   </div>
 </section>`

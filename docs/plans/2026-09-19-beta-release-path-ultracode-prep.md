@@ -302,3 +302,31 @@ v1 (`docs/plans/2026-08-15-pre-ship-validation-gate.md`) on the CI-built Windows
 AppImage artifacts, including the new Open-extension-folder relaunch check in section 3 and the
 upgrade path in section 5. Run the two observed sessions (#1237) on that candidate; a floor finding
 cancels the cut. Build the verifier locally from the tagged commit for section 4.
+
+## Outcome, 2026-09-19
+
+Every batch produced a PR the same day; none merged, by design.
+
+| Ticket | PR | State at end of session | Pre-pass |
+| --- | --- | --- | --- |
+| #628 | #1490 | ready for review, `evidence-affecting`, CI green | approve, round 2 |
+| #1246 | #1491 | draft, merge-gated on #1493, CI green for a docs-only diff | request changes by design: both pages describe the #653 extension folder, which is true only after #1493 merges; a delta pass follows a back-merge of `main` once it has |
+| #1247 | #1492 | ready for review, CI green including the Package smoke matrix | approve, round 1 |
+| #653 | #1493 | ready for review, `evidence-affecting`, CI green including both smoke legs | approve, round 7; the smoke's second launch now proves the copy persists across launches with different extraction directories |
+| #1156 | #1494 | ready for review, `evidence-affecting`, CI green | approve, round 7; a twelve-state Derived File consistency test pins enclosure, index, report, certification and both verifiers |
+
+Two things happened that the plan did not foresee. GitHub Actions stopped starting jobs at
+09:33 UTC with a billing message and resumed at about 10:00; every run that failed at startup
+was re-run at its head. And the #1156 and #653 review loops each took seven rounds: the code
+verdicts settled by round 3 and 4, and the remaining rounds were sentence accuracy in comments
+and PR bodies, which the reviewer's truth rule treats as blocking on an evidence PR.
+
+Two decisions were taken under ADR-0015 during the loops and are open to veto. Unanchored
+Derived Files (X34) are held back from both export classes and disclosed; on a broken chain the
+files with entries still ship and both documents say the chain did not verify. The extension
+path has two predicates: a consistent copy (manifest present, stamp readable) is advertised even
+when its stamp is stale, and only a missing or inconsistent copy yields the not-found error.
+
+One question stays with the maintainer, restated in full on PR #1494: a Working Copy discloses a
+held-back or lost Derived File only as an integer in `WORKING-COPY.json`, because that class
+carries no report and no certification by design; is that enough disclosure for that class?

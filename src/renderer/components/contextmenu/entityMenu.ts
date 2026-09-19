@@ -26,7 +26,6 @@ import {
   Crosshair as Target,
   FileText,
   Folder,
-  Link,
   ShieldCheck
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -207,24 +206,6 @@ export interface NodeMenuTarget {
   }
 }
 
-export interface LedgerMenuTarget {
-  kind: 'ledger'
-  index: number
-  entryType: string
-  // Absent when the entry names nothing the screen can show (an export, an
-  // unreadable line, a deleted Capture).
-  canShowTarget: boolean
-  // An unreadable line has no entry hash to copy.
-  hasEntryHash: boolean
-  // The genesis entry has no previous hash to copy.
-  hasPrevHash: boolean
-  actions: {
-    showTarget: () => void
-    copyEntryHash: () => void
-    copyPrevHash: () => void
-  }
-}
-
 export interface StagedMenuTarget {
   kind: 'staged'
   stagingId: string
@@ -243,7 +224,6 @@ export type EntityMenuTarget =
   | TagMenuTarget
   | ExhibitMenuTarget
   | NodeMenuTarget
-  | LedgerMenuTarget
   | StagedMenuTarget
 
 /** Derived rather than declared, so the two cannot drift as kinds are added. */
@@ -618,78 +598,50 @@ export function exhibitMenuEntries(target: ExhibitMenuTarget): MenuEntry[] {
 /**
  * Tree nodes on the Data screen. Show only this is the click; Expand and
  * Collapse below are Shift+click on the twist; Verify is the pane header's
- * Verify over the same rows, with two exceptions: on Integrity Exceptions the
+ * Verify over the same rows, except on Integrity Exceptions, where the
  * header's Verify all covers every anchored Exhibit and this covers only the
- * exceptions shown, and on Manifest Ledger, which lists entries rather than
- * Exhibits, neither offers Verify.
+ * exceptions shown. An item the node cannot take is left out rather than
+ * greyed, and a node with nothing beyond Show only this gets no menu at all
+ * (`useDataContextMenu`): a menu that only repeats the click is noise.
  */
 export function nodeMenuEntries(target: NodeMenuTarget): MenuEntry[] {
   const { actions, hasChildren, hasExhibits } = target
-  return [
+  const entries: MenuEntry[] = [
     {
       id: 'node-show-only',
       label: 'Show only this',
       icon: Target,
       shortcut: 'Enter',
       run: actions.showOnly
-    },
-    {
-      id: 'node-expand-below',
-      label: 'Expand below',
-      icon: ChevronsUpDown,
-      separatorBefore: true,
-      disabled: !hasChildren,
-      run: actions.expandBelow
-    },
-    {
-      id: 'node-collapse-below',
-      label: 'Collapse below',
-      icon: ChevronsDownUp,
-      disabled: !hasChildren,
-      run: actions.collapseBelow
-    },
-    {
+    }
+  ]
+  if (hasChildren) {
+    entries.push(
+      {
+        id: 'node-expand-below',
+        label: 'Expand below',
+        icon: ChevronsUpDown,
+        separatorBefore: true,
+        run: actions.expandBelow
+      },
+      {
+        id: 'node-collapse-below',
+        label: 'Collapse below',
+        icon: ChevronsDownUp,
+        run: actions.collapseBelow
+      }
+    )
+  }
+  if (hasExhibits) {
+    entries.push({
       id: 'node-verify',
       label: 'Verify',
       icon: ShieldCheck,
       separatorBefore: true,
-      disabled: !hasExhibits,
       run: actions.verify
-    }
-  ]
-}
-
-/**
- * Manifest Ledger entries. Show target is the row click; the two copies are
- * the hash cells, which copy on click.
- */
-export function ledgerMenuEntries(target: LedgerMenuTarget): MenuEntry[] {
-  const { actions, canShowTarget, hasEntryHash, hasPrevHash } = target
-  return [
-    {
-      id: 'ledger-show-target',
-      label: 'Show target',
-      icon: Link,
-      shortcut: 'Enter',
-      disabled: !canShowTarget,
-      run: actions.showTarget
-    },
-    {
-      id: 'ledger-copy-entry-hash',
-      label: 'Copy entry hash',
-      icon: Hash,
-      separatorBefore: true,
-      disabled: !hasEntryHash,
-      run: actions.copyEntryHash
-    },
-    {
-      id: 'ledger-copy-prev-hash',
-      label: 'Copy previous hash',
-      icon: Hash,
-      disabled: !hasPrevHash,
-      run: actions.copyPrevHash
-    }
-  ]
+    })
+  }
+  return entries
 }
 
 /**
@@ -739,8 +691,6 @@ export function entityMenuEntries(target: EntityMenuTarget): MenuEntry[] {
       return exhibitMenuEntries(target)
     case 'node':
       return nodeMenuEntries(target)
-    case 'ledger':
-      return ledgerMenuEntries(target)
     case 'staged':
       return stagedMenuEntries(target)
   }
@@ -799,13 +749,6 @@ export function entityMenuHeader(target: EntityMenuTarget): MenuHeader {
         title: target.label,
         subtitle: 'node',
         ariaLabel: `Node actions: ${target.label}`
-      }
-    case 'ledger':
-      return {
-        icon: Link,
-        title: `seq ${String(target.index).padStart(4, '0')} · ${target.entryType}`,
-        subtitle: 'manifest entry',
-        ariaLabel: `Manifest entry actions: seq ${target.index}`
       }
     case 'staged':
       return {

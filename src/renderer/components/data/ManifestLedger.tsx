@@ -1,9 +1,6 @@
-import { Fragment, type ReactNode } from 'react'
 import { ShieldAlert, ShieldCheck, ShieldQuestion } from 'lucide-react'
 import type { CaseManifestSnapshot } from '@shared/manifestSnapshot'
 import { cn } from '@renderer/lib/utils'
-import { EntityContextMenu } from '@renderer/components/contextmenu/EntityContextMenu'
-import type { EntityMenuTarget } from '@renderer/components/contextmenu/entityMenu'
 import {
   describeSigner,
   summarizeVerdict,
@@ -50,20 +47,11 @@ export function ChainVerdict({ snapshot }: { snapshot: CaseManifestSnapshot }) {
 
 const COLUMNS = '56px minmax(120px,140px) minmax(90px,120px) minmax(160px,1fr) 110px 110px'
 
-// The row-level routes the ledger menu accelerates (#1151): a row click shows
-// the entry's target, and each hash cell copies on click.
+// The row-level routes (#1151): a row click shows the entry's target, and each
+// hash cell copies on click. No context menu: it would hold only those.
 export interface LedgerRowActions {
   onShowTarget?: (row: LedgerRow) => void
   onCopyHash?: (value: string, label: string) => void
-  menuTargetFor?: (row: LedgerRow) => EntityMenuTarget | null
-}
-
-function MaybeMenu({ target, children }: { target: EntityMenuTarget | null; children: ReactNode }) {
-  return target ? (
-    <EntityContextMenu target={target}>{children}</EntityContextMenu>
-  ) : (
-    <Fragment>{children}</Fragment>
-  )
 }
 
 // An empty hash is only a statement about the chain when the caller says so
@@ -115,43 +103,42 @@ function LedgerRows({ rows, actions = {} }: { rows: LedgerRow[]; actions?: Ledge
         <div className="p-9 text-center text-xs text-text-faint">No entries.</div>
       ) : (
         rows.map((row) => (
-          <MaybeMenu key={row.index} target={actions.menuTargetFor?.(row) ?? null}>
-            <div
-              className={cn(
-                'grid min-h-[var(--d-row)] items-center border-b border-border px-[var(--d-rowpad)] font-mono text-[11px]',
-                row.parsed ? 'text-text-muted' : 'text-warning-fg',
-                actions.onShowTarget && 'cursor-pointer hover:bg-elevated'
-              )}
-              style={{ gridTemplateColumns: COLUMNS }}
-              data-testid={`ledger-row-${row.index}`}
-              data-entry-type={row.type}
-              tabIndex={actions.onShowTarget ? 0 : undefined}
-              onClick={() => actions.onShowTarget?.(row)}
-              onKeyDown={(event) => {
-                // Only the row's own Enter: a keydown bubbling from a hash
-                // cell is that button's copy, not a Show target.
-                if (event.key === 'Enter' && event.target === event.currentTarget) {
-                  actions.onShowTarget?.(row)
-                }
-              }}
-            >
-              <span className="tabular-nums text-text-faint">
-                {String(row.index).padStart(4, '0')}
-              </span>
-              <span className="tabular-nums">{row.time ? formatStamp(row.time) : '—'}</span>
-              <span className="text-text-secondary">{row.type}</span>
-              <span className="truncate" title={row.target}>
-                {row.target}
-              </span>
-              <HashCell value={row.entryHash} label="entry hash" onCopy={actions.onCopyHash} />
-              <HashCell
-                value={row.prevHash}
-                label="previous hash"
-                onCopy={actions.onCopyHash}
-                placeholder={row.parsed ? 'genesis' : undefined}
-              />
-            </div>
-          </MaybeMenu>
+          <div
+            key={row.index}
+            className={cn(
+              'grid min-h-[var(--d-row)] items-center border-b border-border px-[var(--d-rowpad)] font-mono text-[11px]',
+              row.parsed ? 'text-text-muted' : 'text-warning-fg',
+              actions.onShowTarget && 'cursor-pointer hover:bg-elevated'
+            )}
+            style={{ gridTemplateColumns: COLUMNS }}
+            data-testid={`ledger-row-${row.index}`}
+            data-entry-type={row.type}
+            tabIndex={actions.onShowTarget ? 0 : undefined}
+            onClick={() => actions.onShowTarget?.(row)}
+            onKeyDown={(event) => {
+              // Only the row's own Enter: a keydown bubbling from a hash
+              // cell is that button's copy, not a Show target.
+              if (event.key === 'Enter' && event.target === event.currentTarget) {
+                actions.onShowTarget?.(row)
+              }
+            }}
+          >
+            <span className="tabular-nums text-text-faint">
+              {String(row.index).padStart(4, '0')}
+            </span>
+            <span className="tabular-nums">{row.time ? formatStamp(row.time) : '—'}</span>
+            <span className="text-text-secondary">{row.type}</span>
+            <span className="truncate" title={row.target}>
+              {row.target}
+            </span>
+            <HashCell value={row.entryHash} label="entry hash" onCopy={actions.onCopyHash} />
+            <HashCell
+              value={row.prevHash}
+              label="previous hash"
+              onCopy={actions.onCopyHash}
+              placeholder={row.parsed ? 'genesis' : undefined}
+            />
+          </div>
         ))
       )}
     </div>

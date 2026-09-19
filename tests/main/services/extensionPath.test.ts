@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -46,6 +47,15 @@ function seedBundledExtension(resources: string, marker: string): string {
   writeFileSync(join(source, 'background.js'), `// ${marker}`)
   writeFileSync(join(source, 'icons', 'icon-48.png'), marker)
   return source
+}
+
+// A copy an earlier launch left under user data, stamped with `stampedVersion`.
+function seedExistingCopy(stampedVersion: string): string {
+  const copy = join(userData.value, 'extension')
+  mkdirSync(copy, { recursive: true })
+  writeFileSync(join(copy, 'manifest.json'), JSON.stringify({ name: 'Birdbrain', marker: 'older' }))
+  writeFileSync(join(userData.value, 'extension-version'), stampedVersion)
+  return copy
 }
 
 let root = ''
@@ -122,8 +132,12 @@ describe('extensionPath', () => {
       const copy = getExtensionPath()
       expect(readdirSync(copy).sort()).toEqual(['background.js', 'icons', 'manifest.json'])
       expect(readFileSync(join(copy, 'icons', 'icon-48.png'), 'utf-8')).toBe('bundled')
+      expect(readFileSync(join(copy, 'background.js'), 'utf-8')).toBe('// bundled')
+      expect(JSON.parse(readFileSync(join(copy, 'manifest.json'), 'utf-8')).marker).toBe('bundled')
       expect(readFileSync(join(userData.value, 'extension-version'), 'utf-8')).toBe('1.0.0-test')
       expect(extensionPathExists()).toBe(true)
+      // Nothing beside the copy: no staging directory, no retired one.
+      expect(readdirSync(userData.value).sort()).toEqual(['extension', 'extension-version'])
       expect(logged).toEqual([])
     })
 
@@ -164,6 +178,8 @@ describe('extensionPath', () => {
       expect(existsSync(join(copy, 'stale-file.js'))).toBe(false)
       expect(readFileSync(join(userData.value, 'extension-version'), 'utf-8')).toBe('1.0.1-test')
       expect(extensionPathExists()).toBe(true)
+      // The replaced copy is moved aside and then removed, not left behind.
+      expect(readdirSync(userData.value).sort()).toEqual(['extension', 'extension-version'])
     })
 
     it('refreshes the copy when the stamp is missing', async () => {
@@ -237,6 +253,107 @@ describe('extensionPath', () => {
         expect(logged).toEqual([{ level: 'error', code: 'app.extension_sync_failed' }])
       }
     )
+
+    // A stamp that cannot be read used to throw out of here and into the
+    // whenReady catch, which ends the launch (#1493 review).
+    it('returns and logs when the stamp is a directory', async () => {
+      isPackaged.value = true
+      seedBundledExtension(process.resourcesPath, 'bundled')
+      seedExistingCopy('1.0.0-test')
+      rmSync(join(userData.value, 'extension-version'), { force: true })
+      mkdirSync(join(userData.value, 'extension-version'), { recursive: true })
+      const { syncPackagedExtension, extensionPathExists } =
+        await import('@main/services/extensionPath')
+
+      expect(() => syncPackagedExtension()).not.toThrow()
+
+      expect(extensionPathExists()).toBe(false)
+      expect(logged).toEqual([{ level: 'error', code: 'app.extension_sync_failed' }])
+    })
+
+    it.skipIf(process.getuid?.() === 0)(
+      'returns and logs when the stamp cannot be read',
+      async () => {
+        isPackaged.value = true
+        seedBundledExtension(process.resourcesPath, 'bundled')
+        seedExistingCopy('1.0.0-test')
+        chmodSync(join(userData.value, 'extension-version'), 0o000)
+        const { syncPackagedExtension, extensionPathExists } =
+          await import('@main/services/extensionPath')
+
+        expect(() => syncPackagedExtension()).not.toThrow()
+
+        expect(extensionPathExists()).toBe(false)
+        expect(logged).toEqual([{ level: 'error', code: 'app.extension_sync_failed' }])
+        chmodSync(join(userData.value, 'extension-version'), 0o644)
+      }
+    )
+
+    it('leaves the previous copy and its stamp in place when it cannot be moved aside', async () => {
+      isPackaged.value = true
+      seedBundledExtension(process.resourcesPath, 'v2')
+      seedExistingCopy('0.9.0-test')
+      vi.doMock('fs', async () => {
+        const actual = await vi.importActual<typeof import('fs')>('fs')
+        return {
+          ...actual,
+          renameSync: (src: string, dest: string) => {
+            // Windows: Chrome holds handles into the folder it loaded.
+            if (src === join(userData.value, 'extension')) {
+              throw new Error('EPERM: operation not permitted, rename')
+            }
+            return actual.renameSync(src, dest)
+          }
+        }
+      })
+      const { syncPackagedExtension, extensionPathExists, getExtensionPath } =
+        await import('@main/services/extensionPath')
+
+      syncPackagedExtension()
+
+      const copy = getExtensionPath()
+      expect(JSON.parse(readFileSync(join(copy, 'manifest.json'), 'utf-8')).marker).toBe('older')
+      expect(readFileSync(join(userData.value, 'extension-version'), 'utf-8')).toBe('0.9.0-test')
+      expect(readdirSync(userData.value).sort()).toEqual(['extension', 'extension-version'])
+      expect(extensionPathExists()).toBe(false)
+      expect(logged).toEqual([{ level: 'error', code: 'app.extension_sync_failed' }])
+    })
+
+    it('sweeps staging and retired directories left by a killed sync', async () => {
+      isPackaged.value = true
+      seedBundledExtension(process.resourcesPath, 'bundled')
+      for (const leftover of ['extension-staging-aaaaaa', 'extension-retired-bbbbbb']) {
+        mkdirSync(join(userData.value, leftover), { recursive: true })
+        writeFileSync(join(userData.value, leftover, 'manifest.json'), '{}')
+      }
+      const { syncPackagedExtension } = await import('@main/services/extensionPath')
+
+      syncPackagedExtension()
+
+      expect(readdirSync(userData.value).sort()).toEqual(['extension', 'extension-version'])
+      expect(logged).toEqual([])
+    })
+
+    it('logs and still copies when the sweep cannot read the user data directory', async () => {
+      isPackaged.value = true
+      seedBundledExtension(process.resourcesPath, 'bundled')
+      vi.doMock('fs', async () => {
+        const actual = await vi.importActual<typeof import('fs')>('fs')
+        return {
+          ...actual,
+          readdirSync: () => {
+            throw new Error('EACCES: permission denied, scandir')
+          }
+        }
+      })
+      const { syncPackagedExtension, extensionPathExists } =
+        await import('@main/services/extensionPath')
+
+      syncPackagedExtension()
+
+      expect(extensionPathExists()).toBe(true)
+      expect(logged).toEqual([{ level: 'error', code: 'app.extension_sync_failed' }])
+    })
   })
 
   describe('extensionPathExists', () => {
@@ -254,6 +371,18 @@ describe('extensionPath', () => {
         const actual = await vi.importActual<typeof import('fs')>('fs')
         return { ...actual, existsSync: vi.fn().mockReturnValue(false) }
       })
+      const { extensionPathExists } = await import('@main/services/extensionPath')
+      expect(extensionPathExists()).toBe(false)
+    })
+
+    // The IPC handlers gate on this, and the handle() wrapper rethrows anything
+    // that is not an IpcFailure — so a throw here is a rejected channel instead
+    // of the EXT_NOT_FOUND the handlers exist to return (#1493 review).
+    it('reports false rather than throwing when the stamp cannot be read', async () => {
+      isPackaged.value = true
+      seedExistingCopy('1.0.0-test')
+      rmSync(join(userData.value, 'extension-version'), { force: true })
+      mkdirSync(join(userData.value, 'extension-version'), { recursive: true })
       const { extensionPathExists } = await import('@main/services/extensionPath')
       expect(extensionPathExists()).toBe(false)
     })

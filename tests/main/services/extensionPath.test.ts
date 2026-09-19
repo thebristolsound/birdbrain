@@ -400,6 +400,50 @@ describe('extensionPath', () => {
       ])
     })
 
+    // The sweep runs only where this launch has a copy of its own, so the one
+    // folder the operator still has is not cleared by a launch that then fails
+    // to replace it (#1493 round 3).
+    it('keeps a retired copy across repeated failures and clears it after a success', async () => {
+      isPackaged.value = true
+      seedBundledExtension(process.resourcesPath, 'v2')
+      seedExistingCopy('0.9.0-test')
+      vi.doMock('fs', async () => {
+        const actual = await vi.importActual<typeof import('fs')>('fs')
+        return {
+          ...actual,
+          renameSync: (src: string, dest: string) => {
+            // The swap and the restore both fail, every launch.
+            if (dest === join(userData.value, 'extension')) {
+              throw new Error('EPERM: operation not permitted, rename')
+            }
+            return actual.renameSync(src, dest)
+          }
+        }
+      })
+      const failing = await import('@main/services/extensionPath')
+
+      failing.syncPackagedExtension()
+      failing.syncPackagedExtension()
+
+      const retired = readdirSync(userData.value).filter((n) => n.startsWith('extension-retired-'))
+      expect(retired).toHaveLength(1)
+      expect(
+        JSON.parse(readFileSync(join(userData.value, retired[0], 'manifest.json'), 'utf-8')).marker
+      ).toBe('older')
+      expect(failing.extensionPathExists()).toBe(false)
+
+      vi.doUnmock('fs')
+      vi.resetModules()
+      const working = await import('@main/services/extensionPath')
+      working.syncPackagedExtension()
+
+      expect(readdirSync(userData.value).sort()).toEqual(['extension', 'extension-version'])
+      expect(
+        JSON.parse(readFileSync(join(working.getExtensionPath(), 'manifest.json'), 'utf-8')).marker
+      ).toBe('v2')
+      expect(working.extensionPathExists()).toBe(true)
+    })
+
     // The guard placement is the structural half of the round-1 fix, and no
     // other test sees it: `readStamp` is total on its own, so moving the probe
     // back outside the try left every assertion green (#1493 round 2).

@@ -10,8 +10,15 @@
 // after the database open and migration, the signing key, and the server token in
 // src/main/index.ts, so a 200 proves the packaged main process got through startup.
 //
-// It proves launch, nothing more: the rest of section 3 (capture, view, export,
-// relaunch) stays with the human checklist and the Playwright suite.
+// It launches twice against the same userData directory, and the second launch is
+// the point: the AppImage runtime extracts to a fresh directory every run, so a
+// path the app handed out from inside the first one is dead by the second (#653).
+// Both launches must leave <userData>/extension/manifest.json in place. That proves
+// the copy survives a relaunch — not that Chrome's loaded extension keeps working,
+// which no headless probe can show and which stays a human gate step.
+//
+// It proves launch, nothing more beyond that: the rest of section 3 (capture, view,
+// export) stays with the human checklist and the Playwright suite.
 //
 // Two facts about the environment this leans on, both mirrored from
 // e2e/fixtures/electronApp.ts: BIRDBRAIN_USER_DATA relocates the app's data
@@ -124,16 +131,12 @@ async function stop(child) {
   if (process.platform !== 'win32') signalGroup('SIGKILL')
 }
 
-async function main() {
-  if (await statusAnswers()) {
-    fail(`something already answers on ${STATUS_URL}; the probe would prove nothing`)
-  }
-
-  const { command, args } = prepareLaunch()
-  const userData = seedUserData()
+// One launch against `userData`, stopped once the server answers or the budget runs
+// out. Everything the pass condition needs is read before the app is stopped.
+async function launchOnce(command, args, userData, label) {
   const output = []
   const started = Date.now()
-  console.log(`package-smoke: launch ${command} ${args.join(' ')}`)
+  console.log(`package-smoke: ${label} launch ${command} ${args.join(' ')}`)
   const child = spawn(command, [...args, `--user-data-dir=${userData}`], {
     env: { ...process.env, BIRDBRAIN_USER_DATA: userData },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -157,21 +160,62 @@ async function main() {
   }
 
   const elapsed = Date.now() - started
-  const dbPath = join(userData, 'birdbrain.db')
-  const dbExists = existsSync(dbPath)
+  const dbExists = existsSync(join(userData, 'birdbrain.db'))
+  const extensionCopied = existsSync(join(userData, 'extension', 'manifest.json'))
   await stop(child)
-  rmSync(userData, { recursive: true, force: true })
+  return { label, status, output, exited, elapsed, dbExists, extensionCopied }
+}
 
-  if (!status || !dbExists) {
-    console.error('--- app output (tail) ---')
-    console.error(output.join('').split('\n').slice(-40).join('\n'))
-    if (exited) fail(`app exited early (code ${exited.code}, signal ${exited.signal}) after ${elapsed}ms`)
-    if (!status) fail(`no answer from ${STATUS_URL} within ${BUDGET_MS}ms`)
-    fail(`server answered but ${dbPath} was never created`)
+function assertLaunchPassed(run, userData) {
+  const { label, status, output, exited, elapsed, dbExists, extensionCopied } = run
+  if (status && dbExists && extensionCopied) return
+  console.error(`--- app output (${label} launch, tail) ---`)
+  console.error(output.join('').split('\n').slice(-40).join('\n'))
+  if (exited) {
+    fail(`${label} launch: app exited early (code ${exited.code}, signal ${exited.signal}) after ${elapsed}ms`)
   }
-  console.log(
-    `package-smoke: pass in ${elapsed}ms; status keys: ${Object.keys(status).sort().join(', ')}; database created`
+  if (!status) fail(`${label} launch: no answer from ${STATUS_URL} within ${BUDGET_MS}ms`)
+  if (!dbExists) {
+    fail(`${label} launch: server answered but ${join(userData, 'birdbrain.db')} was never created`)
+  }
+  fail(
+    `${label} launch: server answered but ${join(userData, 'extension', 'manifest.json')} does not exist — the bundled extension was not copied under user data (#653)`
   )
+}
+
+// The port the first launch held is released by the OS asynchronously, and a
+// second launch that bound nothing would otherwise be "proved" by the first
+// instance's own answer.
+async function waitForPortFree() {
+  const deadline = Date.now() + 15_000
+  while (Date.now() < deadline) {
+    if (!(await statusAnswers())) return
+    await new Promise((r) => setTimeout(r, POLL_MS))
+  }
+  fail(`${STATUS_URL} still answers after the first launch was stopped`)
+}
+
+async function main() {
+  if (await statusAnswers()) {
+    fail(`something already answers on ${STATUS_URL}; the probe would prove nothing`)
+  }
+
+  const { command, args } = prepareLaunch()
+  const userData = seedUserData()
+  try {
+    const first = await launchOnce(command, args, userData, 'first')
+    assertLaunchPassed(first, userData)
+    await waitForPortFree()
+    // Same user data, fresh AppImage mount: the relaunch the gate's section 3
+    // checks by hand.
+    const second = await launchOnce(command, args, userData, 'second')
+    assertLaunchPassed(second, userData)
+    console.log(
+      `package-smoke: pass in ${first.elapsed}ms + ${second.elapsed}ms; status keys: ${Object.keys(second.status).sort().join(', ')}; database created; extension folder present after both launches`
+    )
+  } finally {
+    rmSync(userData, { recursive: true, force: true })
+  }
   // Explicit: a pipe left open by a grandchild that survived stop() must not turn
   // a pass into a hung job.
   process.exit(0)

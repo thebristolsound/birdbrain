@@ -28,7 +28,7 @@ downloaded.
 | Windows 10 / 11 | NSIS `.exe` | Supported. The installer is unsigned, so SmartScreen warns the first time you run it. Updates install in place. |
 | Ubuntu | AppImage | Supported, and the primary Linux format. Updates replace the file in place. |
 | Ubuntu | `.deb` | Best-effort. Updates download through the in-app updater but install only when you click **Restart to update** and enter your system password, so watch the releases page for updates and advisories. |
-| macOS | none | Not published and unsupported. Notarization is the blocker. |
+| macOS | none | Unsupported. No macOS build is published from this beta on, and notarization is the blocker. |
 
 ## Install on Windows
 
@@ -68,10 +68,11 @@ the `.deb`, watch the releases page rather than waiting for the app to carry a f
 
 ## Install on macOS
 
-No macOS build is published, and macOS is unsupported this beta. Notarization is the blocker:
-macOS refuses an unsigned, un-notarized app on a default install, and signing and notarization
-are deferred to the first non-beta release. There are no builds on request, because there is no
-channel to ask in.
+macOS is not supported. No macOS build is published from this beta on, and any macOS asset
+still sitting on an earlier release is unsupported. Notarization is the blocker: macOS refuses
+an unsigned, un-notarized app on a default install, and signing and notarization are deferred
+to the first non-beta release. There are no builds on request, because there is no channel to
+ask in.
 
 ## Load the Chrome extension
 

@@ -48,7 +48,7 @@ hash-chained `manifest.jsonl`. Each entry carries an RSA signature from a per-in
 timestamp token from an RFC 3161 authority, DigiCert by default.
 
 **Verify.** Check a capture inside the app, or export an evidence package. The zip holds every
-exhibit the case committed: page archives, screenshots and timestamp tokens, plus attachments,
+exhibit the export covers: page archives, screenshots and timestamp tokens, plus attachments,
 images and documents under their own directories with the files the tool derived from them. Beside
 them it holds `manifest.jsonl`, `evidence.json`, `report.html`, `certification.html`, the public
 key, the timestamp authority certificates, and `VERIFY.md`, a runbook that reproduces the whole

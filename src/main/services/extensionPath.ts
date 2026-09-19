@@ -65,8 +65,13 @@ function readStamp(): string | null {
  * (`advertises a consistent copy left by an earlier version`).
  *
  * Stale: the copy is not consistent, or its stamp is not this version's. This
- * is what drives the sync attempt, and a stale copy that survives the attempt
- * is logged as `app.extension_version_stale`.
+ * is what drives the sync attempt. A consistent copy whose stamp differs from
+ * this version is advertised and logged as `app.extension_version_stale`
+ * (test: `advertises the new copy under the previous stamp when only the stamp
+ * write fails`). An inconsistent copy (manifest missing or stamp unreadable) is
+ * not advertised, and the failure that left it is logged as
+ * `app.extension_sync_failed` (tests: `returns and logs when the stamp is a
+ * directory`, `returns and logs when the stamp cannot be read`).
  *
  * `existsSync` returns false rather than throwing on any error, so both are
  * total as long as `readStamp` is.
@@ -179,21 +184,25 @@ export function extensionPathExists(): boolean {
  *   when the new one cannot be swapped in`, `keeps the retired bytes when the
  *   restore fails too`, `advertises the new copy under the previous stamp when
  *   only the stamp write fails`;
- * - `extensionPathExists()` is true exactly when a consistent copy (manifest
- *   present, stamp readable) is at the advertised path — `advertises a
- *   consistent copy left by an earlier version`, `returns false when the copy
- *   has a matching stamp but no manifest`, `returns and logs when the stamp is
- *   a directory`; `ipcHandlers.ts` gates `extension:openFolder` on it, so Open
- *   extension folder reports `EXT_NOT_FOUND` when it is false;
- * - every failure is logged, under `app.extension_sync_failed`,
- *   `app.extension_sweep_failed` or `app.extension_version_stale` — `fails
- *   loudly when the bundled extension is missing`, `warns and still copies when
- *   the sweep cannot read the user data directory`, `returns and logs once when
- *   the staleness probe itself throws`;
- * - the next launch retries, and a sync that succeeds clears retired and
- *   staging leftovers — `keeps a retired copy across repeated failures and
- *   clears it after a success`, `sweeps staging and retired directories left by
- *   a killed sync`.
+ * - in a packaged build, `extensionPathExists()` is true exactly when a
+ *   consistent copy (manifest present, stamp readable) is at the advertised
+ *   path — `advertises a consistent copy left by an earlier version`, `returns
+ *   false when the copy has a matching stamp but no manifest`, `returns and
+ *   logs when the stamp is a directory`; `ipcHandlers.ts` gates
+ *   `extension:openFolder` on it, so Open extension folder reports
+ *   `EXT_NOT_FOUND` when it is false.
+ *
+ * Every failure that stops the sync is logged under one of
+ * `app.extension_sync_failed`, `app.extension_sweep_failed` or
+ * `app.extension_version_stale` (tests: `fails loudly when the bundled
+ * extension is missing`, `warns and still copies when the sweep cannot read the
+ * user data directory`, `returns and logs once when the staleness probe itself
+ * throws`). Housekeeping removals of a retired or staging directory go through
+ * `removeQuietly`, which swallows a failed `rmSync` without logging, so a
+ * successful sync clears retired and staging leftovers on a best-effort basis
+ * and a directory that cannot be removed is left for a later launch (tests:
+ * `sweeps staging and retired directories left by a killed sync`, `keeps a
+ * retired copy across repeated failures and clears it after a success`).
  */
 export function syncPackagedExtension(): void {
   if (!app.isPackaged) return

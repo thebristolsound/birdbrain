@@ -127,10 +127,11 @@ const CODE_LABELS: Record<LogCode, string> = {
   'app.installation_id': 'Installation identified',
   'app.extension_sync_failed': "Couldn't prepare the extension folder for this version",
   'app.extension_sweep_failed': "Couldn't clear an old copy of the extension folder",
-  // Fires when the advertised folder's stamp is not this version's, which
-  // includes a folder this build replaced but could not stamp (pinned by
-  // `advertises the new copy under the previous stamp when only the stamp write
-  // fails`), so the wording claims nothing about which bytes are there. The
+  // Fires when the advertised copy is consistent and its stamp is not this
+  // version's, which includes a folder this build replaced but could not stamp
+  // (pinned by `advertises the new copy under the previous stamp when only the
+  // stamp write fails`), so the wording claims nothing about which bytes are
+  // there. The
   // advice is quit-then-relaunch rather than "reload it" because retrying the
   // copy is what needs Chrome's handles released; a reload re-reads the same
   // path (#1493 rounds 3 to 5).

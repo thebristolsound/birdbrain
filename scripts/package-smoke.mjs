@@ -42,7 +42,18 @@ const { version, build } = JSON.parse(readFileSync(join(root, 'package.json'), '
 const productName = build.productName
 const dist = join(root, build.directories?.output ?? 'dist')
 
+// The throwaway userData directory, removed on the way out of either exit.
+// process.exit() skips finally blocks, so fail() clears it rather than main.
+let scratch = null
+
+function clearScratch() {
+  if (!scratch) return
+  rmSync(scratch, { recursive: true, force: true })
+  scratch = null
+}
+
 function fail(message) {
+  clearScratch()
   console.error(`package-smoke: ${message}`)
   process.exit(1)
 }
@@ -202,20 +213,18 @@ async function main() {
 
   const { command, args } = prepareLaunch()
   const userData = seedUserData()
-  try {
-    const first = await launchOnce(command, args, userData, 'first')
-    assertLaunchPassed(first, userData)
-    await waitForPortFree()
-    // Same user data, fresh AppImage mount: the relaunch the gate's section 3
-    // checks by hand.
-    const second = await launchOnce(command, args, userData, 'second')
-    assertLaunchPassed(second, userData)
-    console.log(
-      `package-smoke: pass in ${first.elapsed}ms + ${second.elapsed}ms; status keys: ${Object.keys(second.status).sort().join(', ')}; database created; extension folder present after both launches`
-    )
-  } finally {
-    rmSync(userData, { recursive: true, force: true })
-  }
+  scratch = userData
+  const first = await launchOnce(command, args, userData, 'first')
+  assertLaunchPassed(first, userData)
+  await waitForPortFree()
+  // Same user data, fresh AppImage mount: the relaunch the gate's section 3
+  // checks by hand.
+  const second = await launchOnce(command, args, userData, 'second')
+  assertLaunchPassed(second, userData)
+  console.log(
+    `package-smoke: pass in ${first.elapsed}ms + ${second.elapsed}ms; status keys: ${Object.keys(second.status).sort().join(', ')}; database created; extension folder present after both launches`
+  )
+  clearScratch()
   // Explicit: a pipe left open by a grandchild that survived stop() must not turn
   // a pass into a hung job.
   process.exit(0)

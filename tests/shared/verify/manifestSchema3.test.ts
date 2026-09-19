@@ -250,6 +250,17 @@ describe('manifest schema 3 — the schema', () => {
         }).success
       ).toBe(false)
     }
+    // Same rule for the other half of R7: '' is not a URL, so it is not the
+    // entry's statement that a redirect happened. Before R7 the strict schema
+    // refused it as an unknown key; widening the shape must not start reading
+    // it as a valid redirect claim.
+    expect(
+      ManifestEntrySchema.safeParse({
+        ...CAPTURE_BODY_R7,
+        finalUrl: '',
+        entryHash: 'f'.repeat(64)
+      }).success
+    ).toBe(false)
   })
 
   it('rejects a v3 entry type that claims a schema version below 3', () => {

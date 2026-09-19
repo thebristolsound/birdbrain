@@ -436,7 +436,7 @@ const ManifestCaptureEntrySchema = z
     // and therefore its chain hash. The status range is HTTP's own (RFC 9110
     // §15); a value outside it is not a status and is never written.
     httpStatus: z.number().int().min(100).max(599).optional(),
-    finalUrl: z.string().optional(),
+    finalUrl: z.string().min(1).optional(),
     tls: TlsCertChainResultSchema.optional(),
     method: z.enum(CAPTURE_METHODS).optional(),
     supersedesCaptureId: z.string().optional(),

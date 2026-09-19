@@ -2,7 +2,7 @@ import { createHash } from 'crypto'
 import { existsSync, readFileSync, readdirSync, realpathSync } from 'fs'
 import { join, resolve, sep } from 'path'
 import {
-  EVIDENCE_INDEX_SCHEMA_VERSION,
+  EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION,
   EvidencePackageSchema,
   ManifestEntrySchema,
   WORKING_COPY_MARKER_FILENAME,
@@ -495,14 +495,17 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   // has no unselected captures whose absence would fire §7.3, so deleting
   // export-entry.json used to skip the §7.5 packageHash binding in silence.
   // `evidence.json`'s own schemaVersion is what separates the two eras: every
-  // build from EVIDENCE_INDEX_SCHEMA_VERSION on ships an export entry with
-  // every evidence package, so an index at or above it states that this package
-  // was sealed with one, and the file's absence is a removal rather than an
-  // age. Below it the index settles nothing: builds before #398 wrote no entry,
-  // but builds from #398 until the bump wrote one under version 1 too, so a v1
-  // package with no entry is either old or stripped. It keeps verifying exactly
-  // as before — as a SKIP, not silence, so the leniency and what it cost are on
-  // the report, and the reason says the verifier cannot tell which.
+  // build from EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION on ships an export entry
+  // with every evidence package, so an index at or above it states that this
+  // package was sealed with one, and the file's absence is a removal rather
+  // than an age. That cutoff is frozen at 2 rather than tracking the writer's
+  // EVIDENCE_INDEX_SCHEMA_VERSION, so a later index bump cannot walk it forward
+  // and re-admit a stripped v2 package. Below it the index settles nothing:
+  // builds before #398 wrote no entry, but builds from #398 until v2 wrote one
+  // under version 1 too, so a v1 package with no entry is either old or
+  // stripped. It keeps verifying exactly as before — as a SKIP, not silence, so
+  // the leniency and what it cost are on the report, and the reason says the
+  // verifier cannot tell which.
   //
   // What this does NOT claim: a v1 package sealed with an entry still PASSes
   // with that one file deleted, and since evidence.json is unsigned (see the
@@ -513,24 +516,25 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   // build and later seal. An unreadable evidence.json gets no era row at all —
   // the era is its statement to make, and its own FAIL above already stands.
   if (evidence && !exportEntryPresent) {
-    if (evidence.schemaVersion >= EVIDENCE_INDEX_SCHEMA_VERSION) {
+    if (evidence.schemaVersion >= EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION) {
       add(
         'export entry',
         'fail',
         `export-entry.json missing from package: evidence.json states schema version ` +
           `${evidence.schemaVersion}, and every package at or above version ` +
-          `${EVIDENCE_INDEX_SCHEMA_VERSION} was sealed with a signed export entry`
+          `${EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION} was sealed with a signed export entry`
       )
     } else {
       add(
         'export entry',
         'skip',
         `no export-entry.json, and evidence.json states schema version ` +
-          `${evidence.schemaVersion}, below the version ${EVIDENCE_INDEX_SCHEMA_VERSION} from ` +
-          'which every package was sealed with one. Packages at that version were written ' +
-          'both before export entries (#398) and after, so this verifier cannot tell which ' +
-          'this package is: an old one, or one whose entry was removed. Its artifact index ' +
-          'was not bound to a signed statement of what was packaged'
+          `${evidence.schemaVersion}, below the version ` +
+          `${EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION} from which every package was sealed with ` +
+          `one. Packages at version ${evidence.schemaVersion} were written both before export ` +
+          'entries (#398) and after, so this verifier cannot tell which this package is: an ' +
+          'old one, or one whose entry was removed. Its artifact index was not bound to a ' +
+          'signed statement of what was packaged'
       )
     }
   }

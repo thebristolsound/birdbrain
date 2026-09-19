@@ -751,19 +751,28 @@ export const MANIFEST_ENTRY_TYPES: ReadonlySet<string> = new Set(
 // --- Evidence package index (evidence.json) -------------------------------
 
 // The `schemaVersion` buildEvidenceZip stamps into evidence.json. v2 added the
-// `exhibits` list (#1494), and it also names the package's ERA: v1 covers both
-// the pre-#398 packages that ship no export-entry.json and the post-#398 ones
-// that do, so a verifier reading a v1 index cannot tell a package that
-// predates export entries from one whose entry was stripped (#853). Every
-// writer from v2 on seals the package with a signed export entry, so a v2 or
-// later index with no entry beside it is a missing file. A later bump must
-// keep that true — the verifier compares with >=.
+// `exhibits` list (#1494). Bump it whenever the index shape changes.
 //
 // Defined here rather than in constants.ts so it sits beside the schema whose
 // version it names. Not an import boundary: build-verifier.mjs aliases all of
 // @shared/* into the bundle (its one rule is no electron and no src/main), and
 // @shared/verify/manifestChain.ts already reaches @shared/constants directly.
 export const EVIDENCE_INDEX_SCHEMA_VERSION = 2
+
+// The first index version whose writer always sealed the package with a signed
+// `export-entry.json`, so an index at or above it with no entry beside it
+// states a removed file rather than an age (#853). v1 covers both the pre-#398
+// packages that ship no entry and the post-#398 ones that do, which is why the
+// era gate can only be lenient below this number.
+//
+// FROZEN at 2 and deliberately NOT `EVIDENCE_INDEX_SCHEMA_VERSION`: the two
+// were equal when the gate shipped, but they answer different questions. The
+// writer version moves with the index shape, and following it would walk the
+// cutoff up with every bump — a v3 writer would push this to 3 and hand back
+// the exact hole the gate closed, since a v2 package stripped of its entry
+// would fall into the lenient branch again. Only ever lower this if a version
+// below 2 is later proved to have always sealed an entry.
+export const EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION = 2
 
 // `evidence.json` is the UNSIGNED convenience index emitted by buildEvidenceZip.
 // Only `manifest.jsonl` is signed, so the standalone verifier (#122) treats this

@@ -20,7 +20,11 @@ import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
 import type { PackageCheck, PackageVerifyResult } from '@shared/verify/evidencePackage'
 import { canonicalStringify } from '@shared/verify'
 import { packageHash } from '@shared/verify/packageHash'
-import { EVIDENCE_INDEX_SCHEMA_VERSION, EvidencePackageSchema } from '@shared/schemas'
+import {
+  EVIDENCE_INDEX_SCHEMA_VERSION,
+  EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION,
+  EvidencePackageSchema
+} from '@shared/schemas'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 import { seedMixedKindCase, type MixedKindCase } from '../../helpers/mixedKindCase'
 import type { ExportOptions } from '@shared/types'
@@ -962,6 +966,35 @@ describe('verifyEvidencePackage', () => {
 
       expect(result.pass).toBe(true)
       expect(result.checks.find((c) => c.name === 'package hash')).toBeUndefined()
+    })
+
+    // Codex review of #1495. The cutoff is a separate frozen constant, not the
+    // writer's current version, and this is the known answer that keeps it that
+    // way: bumping the index to v3 must not carry the cutoff to 3, because a v2
+    // package stripped of its entry would then land in the lenient branch and
+    // get back exactly the silence the gate closed. Only the writer constant
+    // moves with the index shape.
+    it('pins the era cutoff below the writer version, so an index bump cannot lift it', () => {
+      expect(EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION).toBe(2)
+      expect(EVIDENCE_INDEX_SCHEMA_VERSION).toBeGreaterThanOrEqual(
+        EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION
+      )
+    })
+
+    it('FAILs a stripped package stamped at the cutoff even from a later writer', () => {
+      // The same strip as above, but with the index stating exactly the cutoff
+      // rather than whatever this build happens to stamp — the shape a v2
+      // package takes once the writer has moved on to v3.
+      rmSync(join(pkgDir, 'export-entry.json'))
+      mutateEvidenceJson(pkgDir, (evidence) => {
+        evidence.schemaVersion = EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION
+      })
+
+      const result = verifyEvidencePackage(pkgDir)
+
+      expect(result.pass).toBe(false)
+      expect(eraCheck(result)?.status).toBe('fail')
+      expect(hasReason(result, 'export-entry.json missing from package')).toBe(true)
     })
 
     it('leaves the era ungraded when evidence.json itself is gone', () => {

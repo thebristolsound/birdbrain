@@ -25,7 +25,7 @@
 // package through the export path and runs both against it.
 
 import { TSA_INTERMEDIATES_FILENAME, TSA_ROOT_FILENAME } from '@main/services/tsaTrust'
-import { EVIDENCE_INDEX_SCHEMA_VERSION } from '@shared/schemas'
+import { EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION } from '@shared/schemas'
 
 /** Name this script is written into the evidence package under. */
 export const VERIFY_SCRIPT_FILENAME = 'verify.sh'
@@ -289,27 +289,34 @@ if [ -f export-entry.json ]; then
 else
   # #853: absent is not automatically old, and it must not be silent either.
   # evidence.json names the era this package was sealed in, and every package
-  # at or above version ${EVIDENCE_INDEX_SCHEMA_VERSION} was sealed with an export entry - so at that
+  # at or above version ${EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION} was sealed with an export entry - so at that
   # version an absent file is a removed one, which is what the binary verifier
   # enclosed beside this script also concludes. The index is unsigned (VERIFY.md
   # trust model), so a version edited downward still reaches the lenient branch;
   # reporting whose claim the era is, is what this step can do, not settling it.
   # jq compares the number, not its text: 2.0 and 2e0 are version 2 to the
   # binary verifier too.
+  #
+  # An unreadable era is a FAIL, not a note. The binary verifier rejects an
+  # index whose schemaVersion is absent, a string, fractional or non-positive
+  # before it ever reaches this question, so noting it here would let the two
+  # verifiers in one zip disagree: this script would print PASS over a package
+  # the binary FAILs. Leniency needs a stated era to rest on; with none, the
+  # export-entry requirement cannot be settled either way.
   era=''
   [ -f evidence.json ] && era=$(jq -r '.schemaVersion
     | select(type == "number" and . == floor and . > 0)
-    | (if . >= ${EVIDENCE_INDEX_SCHEMA_VERSION} then "sealed " else "pre " end) + (. + 0 | tostring)' \\
+    | (if . >= ${EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION} then "sealed " else "pre " end) + (. + 0 | tostring)' \\
     evidence.json 2>/dev/null)
   case "$era" in
   'sealed '*)
-    fail "export-entry.json is missing: evidence.json states schema version \${era#sealed }, and every package at or above version ${EVIDENCE_INDEX_SCHEMA_VERSION} was sealed with a signed export entry, so the file was removed rather than never written"
+    fail "export-entry.json is missing: evidence.json states schema version \${era#sealed }, and every package at or above version ${EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION} was sealed with a signed export entry, so the file was removed rather than never written"
     ;;
   'pre '*)
-    note "no export-entry.json and evidence.json states schema version \${era#pre }. Packages at that version were written both before export entries and after, so this script cannot tell which this package is: an old one, or one whose entry was removed. Its scope is not signed"
+    note "no export-entry.json and evidence.json states schema version \${era#pre }. Packages at version \${era#pre } were written both before export entries and after, so this script cannot tell which this package is: an old one, or one whose entry was removed. Its scope is not signed"
     ;;
   *)
-    note 'no export-entry.json, and evidence.json states no readable schema version, so the era of this package cannot be read here'
+    fail 'export-entry.json is missing and evidence.json states no readable schema version - absent, not a number, or not a positive whole number - so the era that would excuse the absence cannot be read, and the Birdbrain verifier enclosed beside this script rejects such an index outright'
     ;;
   esac
 fi

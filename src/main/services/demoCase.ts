@@ -39,9 +39,12 @@ export interface DemoCaseSeedResult {
 /**
  * Where the fixture lives, which differs between a packaged app and a checkout.
  *
- * Mirrors `getExtensionPath`: electron-builder copies it into the packaged
- * app's resources directory via `build.extraResources`, and a dev run reads it
- * out of the repository's `resources/`.
+ * electron-builder copies it into the packaged app's resources directory via
+ * `build.extraResources`, and a dev run reads it out of the repository's
+ * `resources/`. No longer the mirror of `getExtensionPath` it used to be: that
+ * one advertises a copy under user data since #653, because Chrome keeps the
+ * folder it was pointed at. This archive is read once, during the launch that
+ * seeds it, so a path inside the AppImage's mount is all it needs.
  */
 export function getDemoCaseArchivePath(): string {
   if (app.isPackaged) {

@@ -163,4 +163,27 @@ describe('package smoke and release workflow consistency', () => {
     expect(smokeRun).not.toBeNull()
     expect(smokeRun).toBe(releaseRun)
   })
+
+  // Nothing in the repo parses release.yml as YAML, so the notes heredoc is only ever
+  // checked as raw text. #1247 pinned four statements the public beta page has to carry.
+  it('keeps the public-beta preamble in the release notes heredoc', () => {
+    const releaseContent = readWorkflow('release.yml')
+
+    expect(releaseContent).toMatch(/^ {10}## About this beta$/m)
+    expect(releaseContent).toMatch(/silently lose, corrupt, or mis-attest evidence/)
+    expect(releaseContent).toMatch(/installers are unsigned/)
+    expect(releaseContent).toMatch(/click \*\*More info\*\*, then \*\*Run anyway\*\*/)
+    expect(releaseContent).toMatch(/advisory is a pinned issue on/)
+    expect(releaseContent).toMatch(/install updates only on \*\*Restart to update\*\*/)
+    expect(releaseContent).toMatch(/Source opens when the public-readiness effort closes/)
+  })
+
+  it('points the release notes at the download page and never at a tester chat', () => {
+    const releaseContent = readWorkflow('release.yml')
+
+    expect(releaseContent).toMatch(
+      /\[Download and install\]\(https:\/\/thebristolsound\.github\.io\/birdbrain\/docs\/download\/\)/
+    )
+    expect(releaseContent).not.toMatch(/tester chat/i)
+  })
 })

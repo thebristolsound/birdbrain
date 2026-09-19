@@ -536,6 +536,17 @@ export const LOG_CODES = [
   'app.startup_failed',
   'app.bug_report_failed',
   'app.installation_id',
+  // The startup copy of the bundled extension into user data (#653). Three
+  // separate things, because the launch continues through all of them and the
+  // operator is left somewhere different in each: a step of the copy or the
+  // swap failed; the housekeeping sweep of leftover directories failed, which
+  // says nothing about the copy; or the advertised copy's stamp does not match
+  // this version, whichever bytes it holds. The last is deliberate — a folder
+  // Chrome can load is never withdrawn over a version mismatch — and recording
+  // it here is what keeps that decision visible.
+  'app.extension_sync_failed',
+  'app.extension_sweep_failed',
+  'app.extension_version_stale',
   // The at-rest key-protection gate (#414): recorded either way so the log
   // carries the same signal the Settings/Diagnostics indicator shows live.
   'signingKey.unprotected_key_acknowledged',

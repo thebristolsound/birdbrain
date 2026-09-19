@@ -35,7 +35,7 @@ import {
   inspectCaseArchive
 } from '@main/services/caseArchive'
 import { createTimestampWorker } from '@main/services/timestampWorker'
-import { createCaptureLifecycle, type CaptureLifecycle } from '@main/services/captureLifecycle'
+import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import {
   appendManifestEntry,
   initManifest,
@@ -447,30 +447,63 @@ describe('staging pool', () => {
       // The parent's own outcome is untouched by its derived files.
       expect((await verifyExhibit(caseId, exhibitId)).status).toBe('verified')
 
-      // Pointed at the parent's `exhibit` entry: the chain vouches for that
-      // line, but it is not a derivation, so nothing anchors the file.
+      // The row's manifest index is NOT what binds (#1156, D7): the binding is
+      // the `derivation` entry that names this parent and this path and carries
+      // the digest of these bytes. Repointing the mirror column at the parent's
+      // own `exhibit` entry, or clearing it, changes nothing the chain says, so
+      // it changes no outcome. Before this the index decided on its own, which
+      // is what let a row be vouched for by an entry written about another
+      // Exhibit's file.
       writeFileSync(join(storageRoot, rel), output)
       const seqAt = (seq: number | null) =>
         getDb()
           .prepare('UPDATE derived_files SET manifest_seq = ? WHERE id = ?')
           .run(seq, derived.id)
       seqAt(exhibit.manifestSeq)
-      expect(await outcome()).toEqual([
+      expect(await outcome()).toMatchObject([{ status: 'verified' }])
+      seqAt(null)
+      expect(await outcome()).toMatchObject([{ status: 'verified' }])
+    })
+
+    it('reports a derived file the chain does not anchor as unverified (X34)', async () => {
+      const exhibitId = await committedAttachment()
+      const rel = join(caseId, 'derived', 'thumb.jpg')
+      mkdirSync(join(caseDir, 'derived'))
+      const bytes = Buffer.from('a thumbnail nothing anchors')
+      writeFileSync(join(storageRoot, rel), bytes)
+
+      // No `derivation` entry was ever written for this file — X34's case, a
+      // legacy thumbnail whose source could not be verified. It is recorded so
+      // the inventory can show it, and reported as unanchored rather than
+      // re-hashed into a claim.
+      const unanchored = insertDerivedFile({
+        exhibitId,
+        derivation: 'thumbnail',
+        toolVersion: '9.9.9-test',
+        contentHash: sha256(bytes),
+        path: rel,
+        createdAt: '2026-09-01T10:00:00.000Z'
+      })
+      expect((await verifyExhibit(caseId, exhibitId)).derived).toEqual([
         {
-          derivedFileId: derived.id,
-          derivation: 'text',
+          derivedFileId: unanchored.id,
+          derivation: 'thumbnail',
           status: 'unverified',
-          reason: 'Derived file is not anchored in the verified chain'
+          unanchoredCause: 'no-entry',
+          reason: 'No manifest entry anchors this derived file'
         }
       ])
 
-      seqAt(null)
-      expect(await outcome()).toEqual([
+      // An index pointing somewhere real does not rescue it: with no entry
+      // naming this parent and path, nothing on the chain is about these bytes.
+      getDb().prepare('UPDATE derived_files SET manifest_seq = 0 WHERE id = ?').run(unanchored.id)
+      expect((await verifyExhibit(caseId, exhibitId)).derived).toEqual([
         {
-          derivedFileId: derived.id,
-          derivation: 'text',
+          derivedFileId: unanchored.id,
+          derivation: 'thumbnail',
           status: 'unverified',
-          reason: 'No manifest entry anchors this derived file'
+          unanchoredCause: 'no-entry',
+          reason: 'Derived file is not anchored in the verified chain'
         }
       ])
     })
@@ -545,7 +578,7 @@ describe('staging pool', () => {
     })
   })
 
-  describe('export guard (X44)', () => {
+  describe('export coverage (X44, #1156)', () => {
     it('never packages pooled bytes in an Evidence Package', async () => {
       await ingestCapture('first')
       const [staged] = await uploadToStaging(caseId, [sourceFile('report.pdf', PDF)])
@@ -579,28 +612,64 @@ describe('staging pool', () => {
       expect(evidence.includes(sha256(PDF))).toBe(false)
     })
 
-    it('refuses an Evidence Package while a committed non-capture exhibit exists', async () => {
+    // The X44 refusal is gone (#1156): the package covers every kind, so an
+    // Evidence Package over a Case holding a committed attachment is produced
+    // and encloses it, rather than being refused to avoid claiming completeness
+    // it could not deliver.
+    it('packages a committed non-capture exhibit instead of refusing the export', async () => {
       const [staged] = await uploadToStaging(caseId, [sourceFile('bundle.zip', ZIP)])
-      await commitStagedFiles(caseId, [staged.id])
-      await expect(
-        generateReport(
-          caseId,
-          {
-            format: 'zip',
-            exportClass: 'evidence',
-            include: {
-              captures: true,
-              screenshots: true,
-              auditTrail: true,
-              notes: false,
-              annotations: 'none'
-            },
-            outputPath: join(tempDir, 'evidence.zip')
+      const [outcome] = (await commitStagedFiles(caseId, [staged.id])).outcomes
+      const exhibitId = outcome.status === 'committed' ? outcome.exhibitId : ''
+      const outputPath = join(tempDir, 'evidence.zip')
+
+      await generateReport(
+        caseId,
+        {
+          format: 'zip',
+          exportClass: 'evidence',
+          include: {
+            captures: true,
+            screenshots: true,
+            auditTrail: true,
+            notes: false,
+            annotations: 'none'
           },
-          {} as CaptureLifecycle
-        )
-      ).rejects.toThrow(/refused.*#1156/s)
-      expect(existsSync(join(tempDir, 'evidence.zip'))).toBe(false)
+          outputPath
+        },
+        createCaptureLifecycle({
+          selectorLifecycle: {
+            runActiveSelectorsForCapture: vi.fn()
+          } as unknown as SelectorLifecycle
+        })
+      )
+
+      const zip = readStoredZip(readFileSync(outputPath))
+      expect(zip.get(`attachments/${exhibitId}.zip`)).toEqual(ZIP)
+      const evidence = JSON.parse(zip.get('evidence.json')!.toString('utf-8')) as {
+        schemaVersion: number
+        exhibits: Array<{
+          id: string
+          kind: string
+          origin: string
+          exhibitNumber: number
+          name: string
+          contentHash: string
+          path: string | null
+          derivedFiles: unknown[]
+        }>
+      }
+      expect(evidence.schemaVersion).toBe(2)
+      expect(evidence.exhibits).toHaveLength(1)
+      expect(evidence.exhibits[0]).toMatchObject({
+        id: exhibitId,
+        kind: 'attachment',
+        origin: 'manual-upload',
+        exhibitNumber: 1,
+        name: 'bundle.zip',
+        contentHash: sha256(ZIP),
+        path: `attachments/${exhibitId}.zip`,
+        derivedFiles: []
+      })
     })
   })
 

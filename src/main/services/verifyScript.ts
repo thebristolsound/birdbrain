@@ -151,6 +151,21 @@ field() { printf '%s' "$1" | jq -r "$2"; }
 
 in_list() { printf '%s\\n' "$1" | grep -qxF -e "$2"; }
 
+# The part of a storage path that lies inside the Case directory:
+# "<caseId>/documents/x.pdf" -> "documents/x.pdf", which is where the package
+# holds it. The first segment is dropped rather than matched against a case id
+# because an imported Case keeps the source Case's path in its signed entries.
+#
+# Backslashes are normalized first, exactly as the binary verifier's
+# inCasePath does: the store writes platform-native paths, so a Case built on
+# Windows signs "<caseId>\\documents\\x.pdf" while the package holds
+# "documents/x.pdf". Stripping only up to a "/" left that path whole and
+# reported every enclosed file of such a package missing.
+in_case_path() {
+  icp_path=$(printf '%s' "$1" | tr '\\\\' '/')
+  printf '%s' "\${icp_path#*/}"
+}
+
 # Verifies one manifest line's RSA signature over its bare entryHash hex with no
 # trailing newline - the recipe VERIFY.md step 2 documents. Prints nothing and
 # returns non-zero on any failure, so each caller words its own finding.
@@ -305,6 +320,133 @@ while IFS= read -r line; do
 done <"$tmp/captures.jsonl"
 note "$bound capture(s) bound to the signed chain"
 
+# Exhibits of every other kind (ADR-0023). The signed entry carries the path the
+# Case store holds the bytes at; the package holds them at the part of that path
+# inside the Case directory, keyed by Exhibit id. Same rule as the captures
+# above: deleted or out-of-selection means expected absent, anything else
+# enclosed and matching its signed contentHash.
+jq -c 'select(.type == "exhibit")' manifest.jsonl >"$tmp/exhibits.jsonl"
+exhibits_bound=0
+while IFS= read -r line; do
+  [ -n "$line" ] || continue
+  id=$(field "$line" '.exhibitId')
+  num=$(field "$line" '.exhibitNumber')
+  if in_list "$deleted" "$id"; then
+    note "Exhibit $num: a later deletion entry accounts for it, so it is expected absent"
+    continue
+  fi
+  if [ "$have_selection" -eq 1 ] && ! in_list "$selection" "$id"; then
+    note "Exhibit $num: outside the signed export selection, so it is expected absent"
+    continue
+  fi
+  rel=$(in_case_path "$(field "$line" '.path')")
+  if [ ! -f "$rel" ]; then
+    fail "Exhibit $num: $rel is missing and nothing signed accounts for its absence"
+  elif [ "$(sha256_of "$rel")" != "$(field "$line" '.contentHash')" ]; then
+    fail "Exhibit $num: $rel does not match the contentHash in its signed entry"
+  else
+    exhibits_bound=$((exhibits_bound + 1))
+  fi
+done <"$tmp/exhibits.jsonl"
+note "$exhibits_bound exhibit(s) of other kinds bound to the signed chain"
+
+# Where each active Exhibit's bytes sit, which is also where its Derived Files
+# sit. A Capture's are under pages/; every other kind's are in its own kind
+# directory, read off the signed path.
+: >"$tmp/parent-dirs.txt"
+while IFS= read -r line; do
+  [ -n "$line" ] || continue
+  id=$(field "$line" '.captureId')
+  in_list "$deleted" "$id" && continue
+  printf '%s pages\\n' "$id" >>"$tmp/parent-dirs.txt"
+done <"$tmp/captures.jsonl"
+while IFS= read -r line; do
+  [ -n "$line" ] || continue
+  id=$(field "$line" '.exhibitId')
+  in_list "$deleted" "$id" && continue
+  rel=$(in_case_path "$(field "$line" '.path')")
+  dir=$(dirname "$rel")
+  [ "$dir" = '.' ] && dir=''
+  printf '%s %s\\n' "$id" "$dir" >>"$tmp/parent-dirs.txt"
+done <"$tmp/exhibits.jsonl"
+
+parent_dir() {
+  while IFS=' ' read -r parent_id parent_path; do
+    [ "$parent_id" = "$1" ] || continue
+    printf '%s' "$parent_path"
+    return 0
+  done <"$tmp/parent-dirs.txt"
+  return 1
+}
+
+# Exhibit Numbers as the chain records them: on an \`exhibit\` entry, and for a
+# Capture in the one-time \`renumber\` entry. A Capture committed after its Case
+# was renumbered has no number in the chain, and is then named by its id -
+# never by a number counted here, which would cite something nothing signed.
+# ONE pass, in manifest order, so the last assignment below is the last one the
+# chain made. Two passes - every exhibit entry, then every renumber assignment -
+# would order by category instead, and the last write would then be whichever
+# kind came second in this file rather than in the manifest.
+jq -r '
+  if .type == "exhibit" then "\\(.exhibitId) \\(.exhibitNumber)"
+  elif .type == "renumber" then (.assignments[] | "\\(.exhibitId) \\(.exhibitNumber)")
+  else empty end' manifest.jsonl >"$tmp/exhibit-numbers.txt"
+
+# How a finding cites an Exhibit, matching the binary verifier's wording.
+#
+# The LAST assignment in manifest order wins, which is exactly what the binary
+# does when it folds the same entries into a map: a Case renumbered after an
+# Exhibit was committed carries both an \`exhibit\` entry and a later
+# \`renumber\` assignment for that id, and taking any other one would cite a
+# superseded number here and the current one there.
+exhibit_label() {
+  found=''
+  while IFS=' ' read -r numbered_id number; do
+    [ "$numbered_id" = "$1" ] || continue
+    found="$number"
+  done <"$tmp/exhibit-numbers.txt"
+  if [ -n "$found" ]; then
+    printf 'Exhibit %s' "$found"
+  else
+    printf 'exhibit %s' "$1"
+  fi
+}
+
+# Derived Files (X17): bytes the tool computed FROM an Exhibit, enclosed beside
+# their parent. A Derived File has no Exhibit Number of its own (X31), so a
+# finding names the parent and the derivation that produced it.
+jq -c 'select(.type == "derivation")' manifest.jsonl >"$tmp/derivations.jsonl"
+derived_bound=0
+while IFS= read -r line; do
+  [ -n "$line" ] || continue
+  parent=$(field "$line" '.parentExhibitId')
+  derivation=$(field "$line" '.derivation')
+  if ! pdir=$(parent_dir "$parent"); then
+    note "derivation $derivation of $parent: no active exhibit entry answers for its parent, so it is expected absent"
+    continue
+  fi
+  if [ "$have_selection" -eq 1 ] && ! in_list "$selection" "$parent"; then
+    note "derivation $derivation of $parent: its parent is outside the signed export selection, so it is expected absent"
+    continue
+  fi
+  base=$(in_case_path "$(field "$line" '.outputPath')")
+  base=\${base##*/}
+  if [ -n "$pdir" ]; then
+    rel="$pdir/$base"
+  else
+    rel="$base"
+  fi
+  label="$(exhibit_label "$parent"), derivation $derivation"
+  if [ ! -f "$rel" ]; then
+    fail "$label: $rel is missing and nothing signed accounts for its absence"
+  elif [ "$(sha256_of "$rel")" != "$(field "$line" '.outputHash')" ]; then
+    fail "$label: $rel does not match the outputHash in its signed entry"
+  else
+    derived_bound=$((derived_bound + 1))
+  fi
+done <"$tmp/derivations.jsonl"
+note "$derived_bound derived file(s) bound to the signed chain"
+
 # --- Step 6 ---------------------------------------------------------------
 begin 6 'timestamp, the canonical TSA verification'
 # The work set comes from the SIGNED manifest, never from listing timestamps/.
@@ -343,6 +485,25 @@ while IFS= read -r line; do
   printf '%s %s %s\\n' "$id" "$imprint" "$encoded" >>"$tmp/required-tokens.txt"
   required_tokens=$((required_tokens + 1))
 done <"$tmp/captures.jsonl"
+
+# The same walk over committed Exhibits of every other kind: committing one runs
+# the same RFC 3161 path ingesting a Capture does (X26), so its token is
+# required on exactly the same terms.
+while IFS= read -r line; do
+  [ -n "$line" ] || continue
+  id=$(field "$line" '.exhibitId')
+  in_list "$deleted" "$id" && continue
+  if [ "$have_selection" -eq 1 ] && ! in_list "$selection" "$id"; then
+    continue
+  fi
+  imprint=$(field "$line" '.contentHash')
+  encoded=$(jq -rn --arg h "$imprint" \\
+    "first(inputs | $signed_token_filter | select(.captureContentHash == \\$h) | .tsaToken) // empty" \\
+    manifest.jsonl)
+  [ -n "$encoded" ] || continue
+  printf '%s %s %s\\n' "$id" "$imprint" "$encoded" >>"$tmp/required-tokens.txt"
+  required_tokens=$((required_tokens + 1))
+done <"$tmp/exhibits.jsonl"
 
 # sha256 of every enclosed token file. A signed entry is matched to a file by
 # its bytes, because nothing signed the file's name.

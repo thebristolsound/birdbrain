@@ -36,6 +36,8 @@
 import type {
   AnnotationPin,
   Capture,
+  DerivedFileVerification,
+  ExhibitVerification,
   ExportOptions,
   ExportPreflight,
   HashVerification,
@@ -106,6 +108,67 @@ export interface PackagedArtifacts {
  */
 export type EntrySignatureStatus = 'signed' | 'unsigned-legacy' | 'no-entry'
 
+/**
+ * One Derived File as this export packages and reports it (X17, X31). It
+ * carries no Exhibit Number of its own: a Derived File is cited by its parent
+ * and its derivation, which is why `derivation` is the name shown.
+ */
+export interface ExportDerivedFile {
+  id: string
+  derivation: string
+  toolVersion: string
+  contentHash: string
+  /** Storage-root-relative path, as the `derived_files` row records it. */
+  storedPath: string
+  /**
+   * What the chain says about this file, in three states rather than two:
+   *
+   * - `anchored`: a `derivation` entry on the verified chain vouches for it.
+   * - `no-entry`: no line names it at all (X34 — the legacy thumbnail the
+   *   backfill could not anchor). The package does not enclose it and
+   *   evidence.json does not list it.
+   * - `chain-unverified`: a line names it and the chain does not verify. The
+   *   file still ships, because the hold-back rule keys on a MISSING entry and
+   *   not on a failing chain, and no document may say the entry is absent when
+   *   it is sitting in the same package.
+   */
+  anchoring: 'anchored' | 'no-entry' | 'chain-unverified'
+  /** Package-relative path, null when this export encloses nothing for it. */
+  packagedPath: string | null
+  manifestIndex: number | null
+  /** Outcome of binding these bytes to the chain; absent when nothing ran. */
+  verification?: DerivedFileVerification
+}
+
+/**
+ * One committed non-Capture Exhibit as this export packages and reports it
+ * (ADR-0023). The Capture fields a report exhibit carries — URL, page title,
+ * capture environment — have no counterpart here: an attachment was supplied to
+ * the operator rather than retrieved by Birdbrain, and the document says so
+ * rather than leaving blanks that read as missing data.
+ */
+export interface ExportFileExhibit {
+  id: string
+  kind: string
+  origin: string
+  exhibitNumber: number
+  name: string
+  contentHash: string
+  storedPath: string | null
+  sizeBytes: number | null
+  committedAt: string
+  manifestIndex: number | null
+  /** Package-relative path, null for a non-package export or unreadable bytes. */
+  packagedPath: string | null
+  /** `timestamps/<id>.tst`, or null when no token is packaged for it. */
+  timestampTokenPath: string | null
+  derivedFiles: ExportDerivedFile[]
+  trustedTime: TrustedTimeResult
+  entrySignature: EntrySignatureStatus
+  /** Outcome of the export's verification run; absent when none ran. */
+  verification?: ExhibitVerification
+}
+
 export interface ReportData {
   caseId: string
   caseName: string
@@ -175,12 +238,41 @@ export interface ReportData {
    */
   waybackRefsByCaptureId: Map<string, WaybackRef[]>
   /**
+   * Committed non-Capture Exhibits in this export, in Exhibit Number order
+   * (ADR-0023, #1156). A Capture is an Exhibit too, and its row lives in
+   * `captures` above — splitting the two here is a rendering convenience, not a
+   * second model: both are numbered from the one `exhibits` table and both are
+   * cited by that number.
+   */
+  fileExhibits: ExportFileExhibit[]
+  /**
+   * Stored Exhibit Number per Capture, read from the `exhibits` table (X18).
+   * Never derived from sort position: a number is a citation, and a citation
+   * that moves when a capture is added or deleted cites nothing.
+   */
+  exhibitNumberByCaptureId: Map<string, number>
+  /**
+   * Derived Files per Capture — the list thumbnail at head (X34) — keyed by
+   * capture id, with the same packaging and verification treatment every other
+   * Exhibit's Derived Files get.
+   */
+  derivedFilesByCaptureId: Map<string, ExportDerivedFile[]>
+  /**
    * Selection scope (#398, ADR-0009): set when the operator exported a
    * selection rather than the whole case. The custody module states that the
    * Manifest covers the whole Case while the artifacts cover the selection, so
    * the mismatch reads as designed behaviour rather than as missing evidence.
+   *
+   * `excludedExhibitCount` states how many committed non-Capture Exhibits the
+   * selection leaves out, the disclosure #985 established for notes: a reader
+   * reconciling the package against the chain must be told the number rather
+   * than left to count it.
    */
-  selectionScope: { selectedCaptureCount: number; caseCaptureCount: number } | null
+  selectionScope: {
+    selectedCaptureCount: number
+    caseCaptureCount: number
+    excludedExhibitCount: number
+  } | null
 }
 
 export type ReportModuleId =
@@ -219,8 +311,49 @@ interface ReportContext {
   data: ReportData
   options: ExportOptions
   exhibits: ExhibitView[]
+  /** Committed non-Capture Exhibits, in Exhibit Number order (#1156). */
+  fileExhibits: FileExhibitView[]
   /** Modules that actually rendered, in order — used by the contents index. */
   included: ReportModuleId[]
+}
+
+/**
+ * The export's verification result, counted ONCE over the rows both the cover
+ * and the chain-of-custody section print (the #611 pattern the certification
+ * already follows). Two derivations is what let the cover say "4 / 4 integrity
+ * verified · produced by the verification run recorded under Chain of custody"
+ * over a custody section that said "1 of 1 verified" — or, on a selection of
+ * committed Exhibits alone, "No verification was run for this export."
+ */
+function verificationTally(ctx: ReportContext): { verified: number; total: number; ran: boolean } {
+  const rows = exhibitRows(ctx)
+  return {
+    verified: rows.filter((row) => row.view.integrity.label === 'Verified').length,
+    total: rows.length,
+    ran:
+      ctx.data.verifications.length > 0 ||
+      ctx.fileExhibits.some((exhibit) => exhibit.exhibit.verification !== undefined)
+  }
+}
+
+/**
+ * Every Exhibit the document lists, in stored Exhibit Number order across
+ * kinds (X18). Captures are dropped when the operator excluded them; the other
+ * kinds are not, because excluding captures is a statement about captures and
+ * a package holding a committed attachment still has to account for it.
+ */
+type ExhibitRow =
+  | { entity: 'capture'; number: number; view: ExhibitView }
+  | { entity: 'file'; number: number; view: FileExhibitView }
+
+function exhibitRows(ctx: ReportContext): ExhibitRow[] {
+  const rows: ExhibitRow[] = ctx.options.include.captures
+    ? ctx.exhibits.map((view) => ({ entity: 'capture' as const, number: view.number, view }))
+    : []
+  for (const view of ctx.fileExhibits) {
+    rows.push({ entity: 'file', number: view.number, view })
+  }
+  return rows.sort((a, b) => a.number - b.number)
 }
 
 // ---------------------------------------------------------------------------
@@ -255,6 +388,48 @@ interface ExhibitView {
   pageArchiveMissing: boolean
   /** Pinned archive.org references for this capture, oldest snapshot first. */
   waybackRefs: WaybackRef[]
+  /** Derived Files computed from this Capture — its thumbnail at head (X34). */
+  derivedFiles: ExportDerivedFile[]
+}
+
+/** A committed non-Capture Exhibit, as the document renders it (#1156). */
+interface FileExhibitView {
+  number: number
+  exhibit: ExportFileExhibit
+  integrity: StateView
+  time: StateView & { basis: TrustedTime }
+  entrySignature: StateView
+  /** True when the package should hold the bytes and does not. */
+  contentMissing: boolean
+}
+
+/**
+ * How an Exhibit is cited. A number is only ever the one the `exhibits` table
+ * recorded at commit (X18); when a row carries none — which no path in this
+ * build produces, and a database restored by hand might — the document says so
+ * rather than counting the exhibit's position and presenting that as a
+ * citation.
+ */
+function exhibitTag(number: number): string {
+  return number > 0 ? `Exhibit ${number}` : 'Exhibit (number not recorded)'
+}
+
+/**
+ * The Exhibit Numbers in this package, stated as a citation range rather than
+ * as "1–N": a selection-scoped export, or a case that has had an Exhibit
+ * deleted, carries numbers with gaps in them and "1–N" would assert a
+ * contiguity the chain does not record.
+ */
+function describeExhibitNumbers(numbers: number[]): string {
+  const known = [...numbers].filter((n) => n > 0).sort((a, b) => a - b)
+  if (known.length === 0) return ''
+  const first = known[0]
+  const last = known[known.length - 1]
+  if (last - first + 1 === known.length) {
+    return known.length === 1 ? ` (Exhibit ${first})` : ` (Exhibits ${first}–${last})`
+  }
+  if (known.length <= 8) return ` (Exhibits ${known.join(', ')})`
+  return ` (Exhibits ${first}–${last}, with gaps; see the exhibit index)`
 }
 
 /**
@@ -279,16 +454,24 @@ const NO_TRUSTED_TIME: TrustedTimeResult = { trustedTime: 'none' }
 
 function buildExhibits(data: ReportData, options: ExportOptions): ExhibitView[] {
   const byCaptureId = new Map(data.verifications.map((v) => [v.captureId, v]))
-  // Captures arrive newest-first from captureRepo; exhibits read chronologically.
-  const ordered = [...data.captures].sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+  // Ordered by the Exhibit Number the `exhibits` table assigned (X18), with
+  // capture time breaking a tie only for a row that carries no number. Sorting
+  // by timestamp and numbering by position — what this did before #1156 — made
+  // "Exhibit 3" mean a different capture in every export it appeared in.
+  const ordered = [...data.captures].sort((a, b) => {
+    const byNumber =
+      (data.exhibitNumberByCaptureId.get(a.id) ?? 0) -
+      (data.exhibitNumberByCaptureId.get(b.id) ?? 0)
+    return byNumber !== 0 ? byNumber : a.timestamp.localeCompare(b.timestamp)
+  })
   const isPackage = options.format === 'zip'
 
-  return ordered.map((capture, index) => {
+  return ordered.map((capture) => {
     const verification = byCaptureId.get(capture.id)
     const trustedTime = data.trustedTimeByCaptureId.get(capture.id) ?? NO_TRUSTED_TIME
     const packaged = data.packagedPaths.get(capture.id) ?? NO_ARTIFACTS
     return {
-      number: index + 1,
+      number: data.exhibitNumberByCaptureId.get(capture.id) ?? 0,
       capture,
       verification,
       integrity: integrityView(verification, capture),
@@ -305,9 +488,85 @@ function buildExhibits(data: ReportData, options: ExportOptions): ExhibitView[] 
       pageArchiveMissing: isPackage && packaged.pageArchive === null,
       waybackRefs: [...(data.waybackRefsByCaptureId.get(capture.id) ?? [])].sort((a, b) =>
         a.snapshotTimestamp.localeCompare(b.snapshotTimestamp)
-      )
+      ),
+      derivedFiles: data.derivedFilesByCaptureId.get(capture.id) ?? []
     }
   })
+}
+
+function buildFileExhibits(data: ReportData, options: ExportOptions): FileExhibitView[] {
+  const isPackage = options.format === 'zip'
+  return [...data.fileExhibits]
+    .sort((a, b) => a.exhibitNumber - b.exhibitNumber)
+    .map((exhibit) => ({
+      number: exhibit.exhibitNumber,
+      exhibit,
+      integrity: exhibitIntegrityView(exhibit),
+      time: { basis: exhibit.trustedTime.trustedTime, ...trustedTimeView(exhibit.trustedTime) },
+      entrySignature: entrySignatureView(exhibit.entrySignature),
+      contentMissing: isPackage && exhibit.packagedPath === null
+    }))
+}
+
+/**
+ * Integrity for a committed Exhibit, worded as the Capture axis is and folded
+ * out of the same verification run. The vocabulary is `verifyExhibit`'s (X37),
+ * including `unsupported`, which is a statement about this build's age and must
+ * never be rendered as tampering (X25).
+ */
+function exhibitIntegrityView(exhibit: ExportFileExhibit): StateView {
+  const verification = exhibit.verification
+  if (!verification) {
+    return {
+      label: 'Not verified in this export',
+      detail:
+        'No verification was run for this exhibit during this export, so no integrity ' +
+        'statement is made here.'
+    }
+  }
+  const at = exhibit.manifestIndex !== null ? ` at manifest entry #${exhibit.manifestIndex}` : ''
+  switch (verification.status) {
+    case 'verified':
+      return {
+        label: 'Verified',
+        detail: `The stored bytes recompute to the digest the manifest chain records${at}.`
+      }
+    case 'tampered':
+      return {
+        label: 'Altered',
+        detail:
+          'The stored bytes no longer recompute to the digest recorded for this exhibit. It ' +
+          'must not be relied upon.'
+      }
+    case 'chain-broken':
+      return {
+        label: 'Chain broken',
+        detail:
+          `The manifest chain does not reconcile${at}, so sequence and custody cannot be ` +
+          `demonstrated for this exhibit.` +
+          (verification.reason ? ` Reported reason: ${verification.reason}.` : '')
+      }
+    case 'missing':
+      return {
+        label: 'Absent',
+        detail:
+          'The stored file could not be read at verification time. This row is retained rather ' +
+          'than removed so that the gap is visible.'
+      }
+    case 'unsupported':
+      return {
+        label: 'Not readable by this build',
+        detail:
+          'The manifest holds an entry written by a newer Birdbrain than the one that produced ' +
+          'this report, so this build makes no integrity statement about this exhibit. That is ' +
+          'not a finding of alteration.'
+      }
+    default:
+      return {
+        label: 'Unknown',
+        detail: 'The verification result for this exhibit could not be interpreted.'
+      }
+  }
 }
 
 function integrityView(verification: HashVerification | undefined, capture: Capture): StateView {
@@ -441,14 +700,17 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   cover: {
     id: 'cover',
     title: 'Cover',
-    render: ({ data, exhibits, options }) => {
-      const verified = exhibits.filter((e) => e.integrity.label === 'Verified').length
-      const stamped = exhibits.filter((e) => e.time.basis === 'rfc3161').length
+    render: (ctx) => {
+      const { data, exhibits, fileExhibits, options } = ctx
+      // Counted over every kind the package holds (ADR-0023): a tally that
+      // covered captures only would report "2 / 2 integrity verified" over a
+      // package that also encloses an altered attachment.
+      const rows = exhibitRows(ctx)
+      const { verified, total, ran: verificationRan } = verificationTally(ctx)
+      const stamped = rows.filter((r) => r.view.time.basis === 'rfc3161').length
       const hosts = new Set(exhibits.map((e) => hostOf(e.capture.url)).filter(Boolean)).size
       const archived = exhibits.filter((e) => !e.pageArchiveMissing).length
-      const total = exhibits.length
       const packaged = isPackagedExport(options)
-      const verificationRan = data.verifications.length > 0
 
       return `
 <section class="sheet cover">
@@ -474,8 +736,18 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     )}
     ${field(
       packaged ? 'Captures in package' : 'Captures described',
-      total > 0 ? `${total} (Exhibits 1–${total})` : 'none'
+      exhibits.length > 0
+        ? `${exhibits.length}${describeExhibitNumbers(exhibits.map((e) => e.number))}`
+        : 'none'
     )}
+    ${
+      fileExhibits.length > 0
+        ? field(
+            packaged ? 'Other exhibits in package' : 'Other exhibits described',
+            `${fileExhibits.length}${describeExhibitNumbers(fileExhibits.map((e) => e.number))}`
+          )
+        : ''
+    }
     ${field('Report generated', mono(`${isoUtc(data.exportTimestamp)} (${local(data.exportTimestamp)})`))}
   </div>
 
@@ -517,7 +789,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
           : tally(`0 / ${total}`, 'Integrity verified')
       }
       ${tally(`${stamped} / ${total}`, 'RFC 3161 trusted time')}
-      ${packaged ? tally(`${archived} / ${total}`, 'Page archive present') : ''}
+      ${packaged ? tally(`${archived} / ${exhibits.length}`, 'Page archive present') : ''}
       ${tally(String(hosts), hosts === 1 ? 'Distinct host' : 'Distinct hosts')}
     </div>
     <p class="box-note">${
@@ -539,17 +811,18 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   contents: {
     id: 'contents',
     title: 'Contents',
-    render: ({ included, exhibits, options, data }) => {
+    render: (ctx) => {
+      const { included, options, data } = ctx
       const listed = included.filter((id) => id !== 'cover' && id !== 'contents')
       if (listed.length === 0) return null
       const rows = listed
         .map((id) => {
           if (id === 'exhibits') {
-            return exhibits
+            return exhibitRows(ctx)
               .map(
-                (e) =>
-                  `<li class="toc-row"><span class="toc-label">Exhibit ${e.number} — ${esc(
-                    e.capture.title
+                (row) =>
+                  `<li class="toc-row"><span class="toc-label">${exhibitTag(row.number)} — ${esc(
+                    row.entity === 'capture' ? row.view.capture.title : row.view.exhibit.name
                   )}</span></li>`
               )
               .join('')
@@ -576,7 +849,20 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     data.tsaTrustAnchorBundled ? ' <code>tsa-root.pem</code>,' : ''
   } <code>VERIFY.md</code>, <code>verify.sh</code>,
   and the <code>pages/</code>, <code>screenshots/</code> and <code>timestamps/</code>
-  directories.</p>`
+  directories${
+    ctx.fileExhibits.length > 0
+      ? `, plus the enclosed bytes of every other exhibit under ${[
+          ...new Set(
+            ctx.fileExhibits
+              .map((e) => (e.exhibit.packagedPath ?? '').split('/')[0])
+              .filter((dir) => dir.length > 0)
+          )
+        ]
+          .sort()
+          .map((dir) => `<code>${esc(dir)}/</code>`)
+          .join(', ')}`
+      : ''
+  }.</p>`
       : `<p class="fine">This is a standalone report, not an evidence package. The stored page
   archives, timestamp tokens, signing key and machine-readable record described in the following
   sections are not enclosed with it; export the case as an evidence package to obtain them.</p>`
@@ -665,8 +951,12 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   custody: {
     id: 'custody',
     title: 'Chain of custody and manifest reference',
-    render: ({ data, exhibits, options }) => {
-      const verifiedCount = exhibits.filter((e) => e.integrity.label === 'Verified').length
+    render: (ctx) => {
+      const { data, options } = ctx
+      // The same single derivation the cover prints, over the same rows: the
+      // cover's note points the reader here, so a second count would send them
+      // to a figure that contradicts the one they were sent from.
+      const tally = verificationTally(ctx)
       const packaged = isPackagedExport(options)
       return `
 <section class="sheet">
@@ -689,8 +979,8 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     ${field('Signing key', `<code>signing-public-key.pem</code>`)}
     ${field(
       'Verification run',
-      data.verifications.length > 0
-        ? mono(`${isoUtc(data.exportTimestamp)} · ${verifiedCount} of ${exhibits.length} verified`)
+      tally.ran
+        ? mono(`${isoUtc(data.exportTimestamp)} · ${tally.verified} of ${tally.total} verified`)
         : 'No verification was run for this export.'
     )}
   </div>
@@ -701,6 +991,14 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     <p class="note-title">Selection-scoped export</p>
     <p>This export covers a selection of ${data.selectionScope.selectedCaptureCount} of the
     case's ${data.selectionScope.caseCaptureCount} captures, chosen by the operator.${
+      data.selectionScope.excludedExhibitCount > 0
+        ? ` It also leaves out ${data.selectionScope.excludedExhibitCount} committed exhibit${
+            data.selectionScope.excludedExhibitCount === 1 ? '' : 's'
+          } of other kinds that the case holds. The number is stated here rather than left to be
+    counted: an exhibit the chain records and this package does not enclose is accounted for by
+    the operator's selection, not missing.`
+        : ''
+    }${
       packaged
         ? ` The enclosed <code>manifest.jsonl</code> deliberately covers the <em>whole case</em> —
     the manifest is never sliced, because its completeness is what makes deletions and omissions
@@ -770,23 +1068,50 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   exhibitIndex: {
     id: 'exhibitIndex',
     title: 'Exhibit index and verification results',
-    render: ({ exhibits, options }) => {
-      if (!options.include.captures || exhibits.length === 0) return null
-      const rows = exhibits
-        .map(
-          (e) => `
+    render: (ctx) => {
+      // Rendered whenever the package holds Exhibits of any kind (#1156, D12).
+      // Gating the whole module on `include.captures`, as this did, left a
+      // package of committed attachments with no index at all.
+      const all = exhibitRows(ctx)
+      if (all.length === 0) return null
+      const rows = all
+        .map((row) =>
+          row.entity === 'capture'
+            ? `
       <tr>
-        <td class="num">${e.number}</td>
-        <td class="mono nowrap">${isoUtc(e.capture.timestamp).replace('T', '<br>')}</td>
+        <td class="num">${row.view.number > 0 ? row.view.number : '—'}</td>
+        <td>capture<span class="state-secondary">${esc(
+          row.view.capture.method ?? 'extension'
+        )}</span></td>
+        <td class="mono nowrap">${isoUtc(row.view.capture.timestamp).replace('T', '<br>')}</td>
         <td>
-          <span class="ex-title">${esc(e.capture.title)}</span>
-          <span class="ex-url mono">${esc(e.capture.url)}</span>
+          <span class="ex-title">${esc(row.view.capture.title)}</span>
+          <span class="ex-url mono">${esc(row.view.capture.url)}</span>
         </td>
-        <td class="mono break">${esc(e.capture.hash.slice(0, 16))}</td>
+        <td class="mono break">${esc(row.view.capture.hash.slice(0, 16))}</td>
         <td class="state">
-          <span class="state-primary">${esc(e.integrity.label)}</span>
+          <span class="state-primary">${esc(row.view.integrity.label)}</span>
           <span class="state-secondary">${esc(
-            e.time.basis === 'rfc3161' ? 'RFC 3161' : e.time.label
+            row.view.time.basis === 'rfc3161' ? 'RFC 3161' : row.view.time.label
+          )}</span>
+        </td>
+      </tr>`
+            : `
+      <tr>
+        <td class="num">${row.view.number > 0 ? row.view.number : '—'}</td>
+        <td>${esc(row.view.exhibit.kind)}<span class="state-secondary">${esc(
+          row.view.exhibit.origin
+        )}</span></td>
+        <td class="mono nowrap">${isoUtc(row.view.exhibit.committedAt).replace('T', '<br>')}</td>
+        <td>
+          <span class="ex-title">${esc(row.view.exhibit.name)}</span>
+          <span class="ex-url mono">${esc(row.view.exhibit.packagedPath ?? 'not enclosed')}</span>
+        </td>
+        <td class="mono break">${esc(row.view.exhibit.contentHash.slice(0, 16))}</td>
+        <td class="state">
+          <span class="state-primary">${esc(row.view.integrity.label)}</span>
+          <span class="state-secondary">${esc(
+            row.view.time.basis === 'rfc3161' ? 'RFC 3161' : row.view.time.label
           )}</span>
         </td>
       </tr>`
@@ -796,21 +1121,19 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
       // Folded out of the rows above rather than read from data.preflight, like
       // the cover tally: a disclosure counted from a second source can go silent
       // while the rows it disclaims still say "Local clock only".
-      const pendingCount = exhibits.filter((e) => e.time.basis === 'pending').length
-      const noneCount = exhibits.filter((e) => e.time.basis === 'none').length
+      const pendingCount = all.filter((r) => r.view.time.basis === 'pending').length
+      const noneCount = all.filter((r) => r.view.time.basis === 'none').length
       const unstamped = pendingCount + noneCount
       const banner =
         unstamped > 0
-          ? `<div class="note"><p class="note-title">${unstamped} capture${
+          ? `<div class="note"><p class="note-title">${unstamped} exhibit${
               unstamped === 1 ? '' : 's'
-            } without trusted time</p><p>${unstamped} capture${
+            } without trusted time</p><p>${unstamped} exhibit${
               unstamped === 1 ? '' : 's'
             } in this package (${pendingCount} pending,
-            ${noneCount} none) carr${
-              unstamped === 1 ? 'ies' : 'y'
-            } no RFC 3161 token. For ${
+            ${noneCount} none) carr${unstamped === 1 ? 'ies' : 'y'} no RFC 3161 token. For ${
               unstamped === 1 ? 'it' : 'those'
-            }, the capture time is the operator's local system clock only. The export was not
+            }, the recorded time is the operator's local system clock only. The export was not
             blocked; the gap is recorded rather than concealed.</p></div>`
           : ''
 
@@ -820,12 +1143,15 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   <div class="rule-medium"></div>
   <p class="fine">Times are UTC. The digest column shows the first 16 hexadecimal characters of a
   64-character SHA-256 digest and is truncated for layout only; the full digest for every exhibit
-  is printed on that exhibit's page and in <code>evidence.json</code>.</p>
+  is printed on that exhibit's page and in <code>evidence.json</code>. Exhibit numbers are the
+  ones recorded when each exhibit was committed to the case; they are not positions in this
+  table, and a package covering a selection carries gaps.</p>
   ${banner}
   <table class="index">
     <thead>
       <tr>
-        <th class="num">Ex.</th><th>Captured (UTC)</th><th>Page title and URL</th>
+        <th class="num">Ex.</th><th>Kind and origin</th><th>Recorded (UTC)</th>
+        <th>Title or file name</th>
         <th>SHA-256 (first 16 of 64)</th><th>State</th>
       </tr>
     </thead>
@@ -848,9 +1174,16 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   exhibits: {
     id: 'exhibits',
     title: 'Exhibits',
-    render: ({ exhibits, options }) => {
-      if (!options.include.captures || exhibits.length === 0) return null
-      return exhibits.map((e) => renderExhibit(e, exhibits.length)).join('\n')
+    render: (ctx) => {
+      const rows = exhibitRows(ctx)
+      if (rows.length === 0) return null
+      return rows
+        .map((row) =>
+          row.entity === 'capture'
+            ? renderExhibit(row.view, rows.length, isPackagedExport(ctx.options))
+            : renderFileExhibit(row.view, rows.length, isPackagedExport(ctx.options))
+        )
+        .join('\n')
     }
   },
 
@@ -965,7 +1298,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
  * dozens of exhibits. The cover sheet stays flush-left ("ruled docket"); only
  * the exhibits use the two-column register.
  */
-function renderExhibit(e: ExhibitView, total: number): string {
+function renderExhibit(e: ExhibitView, total: number, packaged: boolean): string {
   const c = e.capture
   const environment: Array<[string, string]> = []
   const add = (label: string, value: string | number | undefined | null): void => {
@@ -1001,6 +1334,16 @@ function renderExhibit(e: ExhibitView, total: number): string {
   }
   if (c.textHash) {
     artefacts.push(['Text digest', `${esc(c.textHash.slice(0, 16))}… (first 16 of 64)`])
+  }
+  for (const derived of e.derivedFiles) {
+    artefacts.push([
+      `Derived file — ${derived.derivation}`,
+      derived.packagedPath
+        ? esc(derived.packagedPath)
+        : derived.anchoring === 'no-entry'
+          ? 'not enclosed — no manifest entry names it'
+          : 'not enclosed'
+    ])
   }
 
   const tls = c.tlsCertChain
@@ -1071,11 +1414,11 @@ function renderExhibit(e: ExhibitView, total: number): string {
 
   const image = e.screenshot
     ? `<figure class="plate">
-    <div class="plate-frame"><img src="data:image/png;base64,${e.screenshot}" alt="Exhibit ${
+    <div class="plate-frame"><img src="data:image/png;base64,${e.screenshot}" alt="${exhibitTag(
       e.number
-    } screenshot"></div>
+    )} screenshot"></div>
     <figcaption>
-      <span class="cap-text"><strong>Exhibit ${e.number}, image.</strong> Rendered page as
+      <span class="cap-text"><strong>${exhibitTag(e.number)}, image.</strong> Rendered page as
       captured${e.annotationsBurned ? ', with operator annotations burned in for legibility' : ''}.
       ${
         e.annotationsBurned
@@ -1115,7 +1458,7 @@ function renderExhibit(e: ExhibitView, total: number): string {
   return `
 <section class="sheet exhibit">
   <div class="exhibit-head">
-    <span class="exhibit-tag">Exhibit ${e.number}</span>
+    <span class="exhibit-tag">${exhibitTag(e.number)}</span>
     <span class="exhibit-of mono">of ${total} · ${esc(headState)}</span>
   </div>
   <h3 class="exhibit-title">${esc(c.title)}</h3>
@@ -1167,8 +1510,288 @@ function renderExhibit(e: ExhibitView, total: number): string {
       ${missingBanner}
       ${image}
       ${legend}
+      ${derivedFilesBlock(e.derivedFiles, packaged)}
       ${corroboration}
       ${waybackCorroboration}
+    </div>
+  </div>
+</section>`
+}
+
+/**
+ * One derived file in a standalone report: what the chain says about it, and
+ * what the export's verification run found in its stored bytes. Both, because
+ * the chain half alone leaves an operator holding a Case with a LOST derived
+ * file untold that it is lost — the packaged report says so plainly and this
+ * one has no reason to be quieter. Neither half mentions enclosure: a
+ * standalone report encloses nothing.
+ */
+function standaloneDerivedRow(derived: ExportDerivedFile): string {
+  const chainState =
+    derived.anchoring === 'anchored'
+      ? 'anchored in the chain by its own entry'
+      : derived.anchoring === 'chain-unverified'
+        ? 'named by a manifest entry, over a chain that did not verify'
+        : 'named by no manifest entry'
+  // Absent for a file the chain does not vouch for: nothing was hashed against
+  // anything, and the chain half above already says why.
+  const byteState =
+    derived.verification?.status === 'verified'
+      ? 'the stored bytes recompute to the digest that entry records'
+      : derived.verification?.status === 'tampered'
+        ? 'the stored bytes no longer recompute to the digest that entry records'
+        : derived.verification?.status === 'missing'
+          ? 'the stored file could not be read'
+          : null
+  return `<li><span class="mono">${esc(derived.derivation)}</span> — ${esc(chainState)}${
+    byteState ? `; ${esc(byteState)}` : ''
+  }<br><span class="sub">Recorded digest ${esc(derived.contentHash)}</span></li>`
+}
+
+/**
+ * The derived-file disclosure, for an Exhibit of any kind.
+ *
+ * Three facts decide what is said, and all three are settled before this runs:
+ * what the chain says about the file (`anchoring`, from `verifyDerivedFiles`),
+ * whether the export actually read its bytes for packaging (`packagedPath`,
+ * from the single enclosure read in export.ts), and what the verification run
+ * found in those bytes (`verification.status`, which the standalone branch
+ * renders as the stored-file result). Nothing here re-derives any of them, and
+ * no sentence about enclosure is printed unless a package was produced.
+ *
+ * Each state has been told wrongly once, which is why they are enumerated:
+ * an unanchored legacy thumbnail (X34) shipped under an anchoring claim no
+ * entry supported; a file on a BROKEN chain was described as one "no entry
+ * states what was produced" for, while its `derivation` entry sat in the same
+ * zip saying both; a file with no entry whose bytes were also gone was
+ * reported as one the chain anchors; and a file whose bytes existed but could
+ * not be read was named as enclosed at a path the zip did not contain.
+ */
+function derivedFilesBlock(files: ExportDerivedFile[], packaged: boolean): string {
+  if (files.length === 0) return ''
+
+  const row = (derived: ExportDerivedFile, path: string): string =>
+    `<li><span class="mono">${esc(derived.derivation)}</span> — <span class="mono">${esc(
+      path
+    )}</span><br><span class="sub">Recorded digest ${esc(derived.contentHash)}</span></li>`
+
+  // A standalone report encloses nothing, so it says nothing about enclosure:
+  // every file here would otherwise land in the not-enclosed bucket and be
+  // described as a gap, over bytes that are on disk and fine.
+  if (!packaged) {
+    return `<div class="note">
+    <p class="note-title">Derived files</p>
+    <p>${files.length} file${files.length === 1 ? ' was' : 's were'} computed from this exhibit by
+    the tool. A derived file is cited by its parent and its derivation and carries no exhibit
+    number of its own. This document was exported on its own rather than as an evidence package,
+    so ${
+      files.length === 1 ? 'it is' : 'they are'
+    } not enclosed with it and nothing here states otherwise; what is stated is what the case
+    records and what the manifest chain says about ${files.length === 1 ? 'it' : 'them'}.</p>
+    <ul>${files.map(standaloneDerivedRow).join('')}</ul>
+  </div>`
+  }
+
+  const enclosed = files.filter((file) => file.anchoring === 'anchored' && file.packagedPath)
+  const absent = files.filter((file) => file.anchoring === 'anchored' && !file.packagedPath)
+  const unverified = files.filter((file) => file.anchoring === 'chain-unverified')
+  const held = files.filter((file) => file.anchoring === 'no-entry')
+
+  const enclosedBlock =
+    enclosed.length === 0
+      ? ''
+      : `<div class="note">
+    <p class="note-title">Derived files</p>
+    <p>${enclosed.length} file${enclosed.length === 1 ? ' was' : 's were'} computed from this
+    exhibit by the tool and ${
+      enclosed.length === 1 ? 'is' : 'are'
+    } enclosed beside it. A derived file is cited by its parent and its derivation and carries no
+    exhibit number of its own; each of these is anchored in the chain by its own entry, which
+    records the digest of what was produced.</p>
+    <ul>${enclosed.map((derived) => row(derived, derived.packagedPath ?? '')).join('')}</ul>
+  </div>`
+
+  const absentBlock =
+    absent.length === 0
+      ? ''
+      : `<div class="alert">
+    <p class="alert-title">${absent.length} anchored derived file${
+      absent.length === 1 ? '' : 's'
+    } could not be read and ${absent.length === 1 ? 'is' : 'are'} not enclosed</p>
+    <p>The chain anchors ${absent.length} file${absent.length === 1 ? '' : 's'} computed from this
+    exhibit, and the stored bytes could not be read when this package was assembled, so
+    ${absent.length === 1 ? 'it is' : 'they are'} not enclosed and ${
+      absent.length === 1 ? 'is' : 'are'
+    } not listed in <code>evidence.json</code>, which indexes what this package contains. This is
+    a gap, not a design choice: verification of this package will report the missing ${
+      absent.length === 1 ? 'file' : 'files'
+    } against the entries that anchor ${absent.length === 1 ? 'it' : 'them'}.</p>
+    <ul>${absent.map((derived) => row(derived, 'not enclosed')).join('')}</ul>
+  </div>`
+
+  // Worded from the enclosed subset rather than from the bucket: the bytes of
+  // a file named over a broken chain can be unreadable too, and "they are
+  // enclosed so that a reviewer can check them" would then be false.
+  const unverifiedEnclosed = unverified.filter((file) => file.packagedPath).length
+  const unverifiedBlock =
+    unverified.length === 0
+      ? ''
+      : `<div class="alert">
+    <p class="alert-title">The chain does not verify, so the anchoring of ${
+      unverified.length
+    } derived file${unverified.length === 1 ? '' : 's'} could not be established</p>
+    <p>The enclosed manifest names ${unverified.length} file${
+      unverified.length === 1 ? '' : 's'
+    } computed from this exhibit, with the derivation and the digest produced, but the manifest
+    chain itself did not verify for this export. Nothing therefore vouches for ${
+      unverified.length === 1 ? 'that entry' : 'those entries'
+    }, and no statement is made here about whether ${
+      unverified.length === 1 ? 'this file is' : 'these files are'
+    } anchored. ${
+      unverifiedEnclosed === unverified.length
+        ? `${unverified.length === 1 ? 'It is' : 'They are'} enclosed so that a reviewer can check ${
+            unverified.length === 1 ? 'it' : 'them'
+          } against the manifest directly`
+        : unverifiedEnclosed === 0
+          ? `The stored bytes could not be read either, so ${
+              unverified.length === 1 ? 'it is' : 'they are'
+            } not enclosed`
+          : `${unverifiedEnclosed} of ${unverified.length} could be read and ${
+              unverifiedEnclosed === 1 ? 'is' : 'are'
+            } enclosed; the ${unverified.length - unverifiedEnclosed} listed below as not enclosed
+      could not be read`
+    }; the chain failure is reported under “Chain of custody”.</p>
+    <ul>${unverified
+      .map((derived) => row(derived, derived.packagedPath ?? 'not enclosed'))
+      .join('')}</ul>
+  </div>`
+
+  const heldBlock =
+    held.length === 0
+      ? ''
+      : `<div class="alert">
+    <p class="alert-title">${held.length} derived file${
+      held.length === 1 ? '' : 's'
+    } recorded but not anchored, and therefore not enclosed</p>
+    <p>The case records ${held.length} file${held.length === 1 ? '' : 's'} computed from this
+    exhibit that no manifest entry names: nothing in the chain states what was produced or from
+    which bytes. ${held.length === 1 ? 'It is' : 'They are'} deliberately not enclosed in this
+    package, because a file the chain does not cover cannot be verified against it, and
+    ${held.length === 1 ? 'it is' : 'they are'} named here rather than omitted silently. The
+    tool produces this state when a thumbnail was found beside a capture whose stored screenshot
+    could not be verified.</p>
+    <ul>${held.map((derived) => row(derived, 'not enclosed')).join('')}</ul>
+  </div>`
+
+  return `${enclosedBlock}${absentBlock}${unverifiedBlock}${heldBlock}`
+}
+
+/**
+ * One committed non-Capture Exhibit, on the same plate as a Capture exhibit so
+ * a reader meets one document rather than two (ADR-0023).
+ *
+ * What is deliberately absent: a reproduced image, a URL, and a capture
+ * environment. Birdbrain did not retrieve these bytes — the operator supplied
+ * them — so the only things it can attest are the digest, when they were
+ * committed to the case, and what the chain says about them since. The block
+ * states that limit rather than leaving fields blank.
+ */
+function renderFileExhibit(e: FileExhibitView, total: number, packaged: boolean): string {
+  const { exhibit } = e
+  const artefacts: Array<[string, string]> = []
+  if (exhibit.packagedPath) {
+    artefacts.push(['Enclosed file', esc(exhibit.packagedPath)])
+  } else {
+    artefacts.push(['Enclosed file', 'not available'])
+  }
+  if (exhibit.sizeBytes !== null) artefacts.push(['Size', formatBytes(exhibit.sizeBytes)])
+  if (exhibit.timestampTokenPath) {
+    artefacts.push(['Timestamp token', esc(exhibit.timestampTokenPath)])
+  }
+  for (const derived of exhibit.derivedFiles) {
+    artefacts.push([
+      `Derived file — ${derived.derivation}`,
+      derived.packagedPath
+        ? esc(derived.packagedPath)
+        : derived.anchoring === 'no-entry'
+          ? 'not enclosed — no manifest entry names it'
+          : 'not enclosed'
+    ])
+  }
+
+  const missingBanner = e.contentMissing
+    ? `<div class="alert">
+    <p class="alert-title">Stored file not available</p>
+    <p>The stored bytes of this exhibit could not be read when this package was assembled. The
+    record below is reproduced from the case, but the bytes it describes are not present in this
+    package and cannot be independently rehashed. This exhibit is retained rather than removed so
+    that the gap is visible.</p>
+  </div>`
+    : ''
+
+  const headState = [
+    e.integrity.label,
+    e.time.basis === 'rfc3161' ? 'RFC 3161' : e.time.label,
+    isoUtc(exhibit.committedAt)
+  ].join(' · ')
+
+  return `
+<section class="sheet exhibit">
+  <div class="exhibit-head">
+    <span class="exhibit-tag">${exhibitTag(e.number)}</span>
+    <span class="exhibit-of mono">of ${total} · ${esc(headState)}</span>
+  </div>
+  <h3 class="exhibit-title">${esc(exhibit.name)}</h3>
+  <p class="exhibit-url mono">${esc(exhibit.kind)} · ${esc(exhibit.origin)}</p>
+  <div class="rule-medium tight"></div>
+
+  <div class="plate-grid">
+    <aside class="rail">
+      <p class="micro-heading first">Record</p>
+      ${railRow('Exhibit identifier', mono(esc(exhibit.id)))}
+      ${railRow(
+        'Committed at',
+        mono(`${isoUtc(exhibit.committedAt)}<br>${local(exhibit.committedAt)} local`)
+      )}
+      ${railRow('SHA-256 (full)', mono(esc(exhibit.contentHash)))}
+      ${railRow(
+        'Integrity at verification',
+        `<span class="strong">${esc(e.integrity.label)}</span><span class="sub">${esc(
+          e.integrity.detail
+        )}</span>`
+      )}
+      ${railRow(
+        'Trusted time',
+        `<span class="strong">${esc(e.time.label)}</span><span class="sub">${esc(e.time.detail)}</span>`
+      )}
+      ${railRow(
+        'Entry signature',
+        `<span class="strong">${esc(e.entrySignature.label)}</span><span class="sub">${esc(
+          e.entrySignature.detail
+        )}</span>`
+      )}
+      ${railRow(
+        'Manifest entry',
+        exhibit.manifestIndex !== null
+          ? mono(`#${exhibit.manifestIndex}`)
+          : 'none — this exhibit is not anchored in the chain'
+      )}
+
+      <p class="micro-heading">Stored artefacts</p>
+      ${artefacts.map(([l, v]) => railRow(l, mono(v))).join('')}
+    </aside>
+
+    <div class="plate-main">
+      ${missingBanner}
+      <div class="note">
+        <p class="note-title">Supplied to the tool, not captured by it</p>
+        <p>This exhibit is a file the operator committed to the case (recorded origin:
+        ${esc(exhibit.origin)}). Birdbrain did not retrieve it and makes no statement about where
+        it came from or what it shows. What is attested is narrower and is stated above: the
+        digest of the bytes, the point at which they entered the case, and whether the chain still
+        reconciles for them.</p>
+      </div>
+      ${derivedFilesBlock(exhibit.derivedFiles, packaged)}
     </div>
   </div>
 </section>`
@@ -1184,6 +1807,7 @@ export function buildHtmlReport(
   moduleOrder: ReportModuleId[] = DEFAULT_REPORT_MODULES
 ): string {
   const exhibits = buildExhibits(data, options)
+  const fileExhibits = buildFileExhibits(data, options)
 
   // Two passes: the first discovers which modules actually render, so the
   // contents index can list exactly what follows it and nothing else. Contents
@@ -1192,11 +1816,11 @@ export function buildHtmlReport(
   // It may therefore appear in `included` while rendering null in the real pass;
   // that is harmless, because contents is the only reader of `included` and it
   // already excludes itself.
-  const probe: ReportContext = { data, options, exhibits, included: [] }
+  const probe: ReportContext = { data, options, exhibits, fileExhibits, included: [] }
   const included = moduleOrder.filter(
     (id) => id === 'contents' || REPORT_MODULES[id].render(probe) !== null
   )
-  const ctx: ReportContext = { data, options, exhibits, included }
+  const ctx: ReportContext = { data, options, exhibits, fileExhibits, included }
 
   const body = included
     .map((id) => REPORT_MODULES[id].render(ctx))

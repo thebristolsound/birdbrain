@@ -5720,15 +5720,8 @@ packages:
   tldts-core@7.4.13:
     resolution: {integrity: sha512-mbYsrih5FRtGxs3Usvl/PqwJsNpp+jsmrdFviiK02teHDG0/HebBG/pqCylje3kzgXYzuLoHJF/0mz9W53t8Xg==}
 
-  tldts-core@7.4.13:
-    resolution: {integrity: sha512-mbYsrih5FRtGxs3Usvl/PqwJsNpp+jsmrdFviiK02teHDG0/HebBG/pqCylje3kzgXYzuLoHJF/0mz9W53t8Xg==}
-
   tldts-experimental@7.4.12:
     resolution: {integrity: sha512-9ekSzO1PiwKHPS+WfA4EIXj49c8hFLi5TeEnW1xAlc6EufOX4Owp1rSC6HoSWq34z3cFLa7Ov2wUQm4fy+31xA==}
-
-  tldts@7.4.13:
-    resolution: {integrity: sha512-iHtaIWWIbMDkCeJdTBzZFGgbluE5J+oHlb2g7+oAz1S1gpuVpabRZdQyd471Vl8UUkcz2vXSL8xZH2kyCe8tfA==}
-    hasBin: true
 
   tldts@7.4.13:
     resolution: {integrity: sha512-iHtaIWWIbMDkCeJdTBzZFGgbluE5J+oHlb2g7+oAz1S1gpuVpabRZdQyd471Vl8UUkcz2vXSL8xZH2kyCe8tfA==}
@@ -12132,9 +12125,6 @@ snapshots:
 
   tldts-core@7.4.13: {}
 
-  tldts-core@7.4.13:
-    optional: true
-
   tldts-experimental@7.4.12:
     dependencies:
       tldts-core: 7.4.13
@@ -12142,11 +12132,6 @@ snapshots:
   tldts@7.4.13:
     dependencies:
       tldts-core: 7.4.13
-
-  tldts@7.4.13:
-    dependencies:
-      tldts-core: 7.4.13
-    optional: true
 
   tmp-promise@3.0.3:
     dependencies:

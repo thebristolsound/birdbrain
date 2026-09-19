@@ -15,6 +15,7 @@ import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import {
   createRecaptureService,
   looksLikeLoginWall,
+  redirectedFinalUrl,
   type RenderedPage,
   type RenderPage
 } from '@main/services/recapture'
@@ -126,6 +127,47 @@ describe('recapture service', () => {
     expect(getCapture(newCaptures[0].id)!.consentSuppression).toBeUndefined()
     const manifest = readFileSync(join(getStorageRoot(), caseId, MANIFEST_FILENAME), 'utf-8')
     expect(manifest).not.toContain('consentSuppression')
+  })
+
+  it('anchors the final post-redirect URL when the render redirected (#797)', async () => {
+    const svc = makeService(fakeRender({ finalUrl: 'https://example.com/landing' }))
+    svc.enqueue([{ url: 'https://example.com/page', caseId }])
+    await svc.idle()
+
+    // The capture is stored under the URL the bytes came from, as it always
+    // has been. `finalUrl` is what lets a chain reader tell that the stored URL
+    // is a redirect target and not where the operator aimed.
+    expect(getCapture(newCaptures[0].id)!.url).toBe('https://example.com/landing')
+    const manifest = readFileSync(join(getStorageRoot(), caseId, MANIFEST_FILENAME), 'utf-8')
+    expect(manifest).toContain('"finalUrl":"https://example.com/landing"')
+    expect(manifest).toContain('"httpStatus":200')
+    // The verifier's strict entry schema rejects unknown keys as chain-broken,
+    // so this is also the check that the new fields are readable.
+    const verification = await verifyCapture(newCaptures[0].id)
+    expect(verification.status).toBe('verified')
+  })
+
+  it('omits the final URL when the requested URL is what was served (#797)', async () => {
+    const svc = makeService(fakeRender())
+    svc.enqueue([{ url: 'https://example.com/page', caseId }])
+    await svc.idle()
+    const manifest = readFileSync(join(getStorageRoot(), caseId, MANIFEST_FILENAME), 'utf-8')
+    // Writing the requested URL here would claim a redirect that never
+    // happened, so nothing is written at all.
+    expect(manifest).not.toContain('finalUrl')
+  })
+
+  it('omits the final URL when only canonicalization differs (#797)', async () => {
+    // The real renderer returns `wc.getURL()`, which is always canonical; the
+    // operator's pasted URL is not. The fake above echoes its input, so it
+    // cannot reach this case — pin the canonical form explicitly.
+    const svc = makeService(fakeRender({ finalUrl: 'https://example.com/' }))
+    svc.enqueue([{ url: 'https://example.com', caseId }])
+    await svc.idle()
+    const manifest = readFileSync(join(getStorageRoot(), caseId, MANIFEST_FILENAME), 'utf-8')
+    expect(manifest).not.toContain('finalUrl')
+    const verification = await verifyCapture(newCaptures[0].id)
+    expect(verification.status).toBe('verified')
   })
 
   it('runs jobs serially in FIFO order', async () => {
@@ -311,5 +353,33 @@ describe('looksLikeLoginWall', () => {
         title: 'The Document'
       })
     ).toBe(false)
+  })
+})
+
+describe('redirectedFinalUrl (#797)', () => {
+  // Every pair here is the same destination spelled two ways. Reporting any of
+  // them as a redirect would put a false provenance claim in a signed entry.
+  it.each([
+    ['https://example.com', 'https://example.com/'],
+    ['https://Example.COM/Path', 'https://example.com/Path'],
+    ['https://example.com:443/a', 'https://example.com/a'],
+    ['http://example.com:80/a', 'http://example.com/a'],
+    ['https://example.com/página', 'https://example.com/p%C3%A1gina']
+  ])('treats %s and %s as the same destination', (requested, final) => {
+    expect(redirectedFinalUrl(requested, final)).toBeUndefined()
+  })
+
+  it('reports a genuine redirect, verbatim as the renderer resolved it', () => {
+    expect(redirectedFinalUrl('https://example.com/a', 'https://example.com/b')).toBe(
+      'https://example.com/b'
+    )
+    expect(redirectedFinalUrl('https://example.com', 'https://elsewhere.test/')).toBe(
+      'https://elsewhere.test/'
+    )
+  })
+
+  it('compares unparseable input as text rather than throwing', () => {
+    expect(redirectedFinalUrl('not a url', 'not a url')).toBeUndefined()
+    expect(redirectedFinalUrl('not a url', 'https://example.com/')).toBe('https://example.com/')
   })
 })

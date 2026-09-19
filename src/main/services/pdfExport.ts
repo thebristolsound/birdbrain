@@ -2,6 +2,7 @@ import { app, BrowserWindow } from 'electron'
 import type { WebContents } from 'electron'
 import { pathToFileURL } from 'url'
 import type { Capture } from '@shared/types'
+import { recordedHttpStatus } from '@shared/httpStatus'
 import type { TrustedTimeResult } from '@shared/verify/trustedTime'
 import {
   TRUSTED_TIME_UNRECORDED_STAMPED_AT,
@@ -103,7 +104,7 @@ export function buildPdfMetadataRows(
   add('Case ID', capture.caseId)
   add('Format', capture.format === 'mhtml' ? 'MHTML archive' : 'HTML page')
   add('Method', capture.method)
-  add('HTTP status', capture.httpStatus)
+  add('HTTP status', recordedHttpStatus(capture.httpStatus))
   add('SHA-256', capture.hash)
   add('Size', capture.sizeBytes !== undefined ? formatBytes(capture.sizeBytes) : undefined)
   add('Browser', capture.browserVersion)

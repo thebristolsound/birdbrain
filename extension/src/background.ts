@@ -8,7 +8,8 @@ import {
   createNoteOnUrl,
   type AttachCapturePayload
 } from '@extension/utils/api'
-import { normalizeResponseHeaders } from '@extension/utils/headers'
+import { normalizeResponseHeaders, responseFactsForCapture } from '@extension/utils/headers'
+import type { CachedResponse, CaptureResponseFacts } from '@extension/utils/headers'
 import { removeInjectedBirdbrainUi } from '@extension/captureHygiene'
 import { CaptureUiSuppressionError, createCaptureSuppression } from '@extension/captureSuppression'
 import { MAX_SCREENSHOT_BITMAP_BYTES } from '@shared/constants'
@@ -289,19 +290,26 @@ async function restoreSelectorHighlights(tabId: number): Promise<void> {
   }
 }
 
-// --- Response header capture (#119) ---
-// Cache the latest main_frame response headers per tab so the capture paths can
-// attach them. Keyed by tabId; we store the URL alongside the headers and only
-// hand them to a capture when the URL still matches, guarding against a tab that
-// navigated away between onHeadersReceived and the capture call.
-const responseHeadersByTab = new Map<number, { url: string; headers: Record<string, string> }>()
+// --- Response capture (#119 headers, #797 status) ---
+// Cache the latest main_frame response per tab so the capture paths can attach
+// what it said. Keyed by tabId; we store the URL alongside the headers and
+// status and only hand them to a capture when the URL still matches, guarding
+// against a tab that navigated away between onHeadersReceived and the capture
+// call. A redirect is a fresh main_frame request, so what is cached here is
+// always the response that served the page the tab is showing.
+const responseHeadersByTab = new Map<number, CachedResponse>()
 
 chrome.webRequest.onHeadersReceived.addListener(
   (details) => {
     if (details.tabId < 0) return undefined
     responseHeadersByTab.set(details.tabId, {
       url: details.url,
-      headers: normalizeResponseHeaders(details.responseHeaders)
+      headers: normalizeResponseHeaders(details.responseHeaders),
+      // The real status of the response whose bytes are about to be captured.
+      // Until R7 every capture request carried a hard-coded 200, which the app
+      // now anchors into the signed manifest entry — so a guess here would be a
+      // false provenance claim rather than a cosmetic default.
+      status: details.statusCode
     })
     return undefined
   },
@@ -327,12 +335,11 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   selectorSummaryByTab.delete(tabId)
 })
 
-// Returns the cached headers for a tab only when they belong to the URL being
-// captured; otherwise undefined (no headers anchored rather than wrong ones).
-function getHeadersForCapture(tabId: number, url: string): Record<string, string> | undefined {
-  const cached = responseHeadersByTab.get(tabId)
-  if (!cached || cached.url !== url) return undefined
-  return Object.keys(cached.headers).length > 0 ? cached.headers : undefined
+// The headers and status a capture may attest for a tab, from the cached
+// response for the URL being captured; empty when the cache holds another
+// page's response (nothing anchored rather than something wrong).
+function getResponseFactsForCapture(tabId: number, url: string): CaptureResponseFacts {
+  return responseFactsForCapture(responseHeadersByTab.get(tabId), url)
 }
 
 let connected = false
@@ -726,8 +733,7 @@ async function captureTab(tabId: number, url: string): Promise<void> {
       browserVersion: getBrowserVersion(),
       userAgent: getUserAgentString(),
       extensionVersion: getExtensionVersion(),
-      httpStatus: 200,
-      headers: getHeadersForCapture(tabId, url)
+      ...getResponseFactsForCapture(tabId, url)
     })
 
     dedupeMap.set(url, Date.now())
@@ -796,8 +802,7 @@ async function manualCaptureTab(
         browserVersion: getBrowserVersion(),
         userAgent: getUserAgentString(),
         extensionVersion: getExtensionVersion(),
-        httpStatus: 200,
-        headers: getHeadersForCapture(tabId, url)
+        ...getResponseFactsForCapture(tabId, url)
       })
 
       // The only record the extension keeps of a capture. It backs the popup's
@@ -1044,8 +1049,7 @@ async function handleSelectionAction(
           browserVersion: getBrowserVersion(),
           userAgent: getUserAgentString(),
           extensionVersion: getExtensionVersion(),
-          httpStatus: 200,
-          headers: getHeadersForCapture(tabId, url)
+          ...getResponseFactsForCapture(tabId, url)
         },
         tab.title || ''
       )
@@ -1101,8 +1105,7 @@ async function handleSelectorCapture(tabId: number, url: string, caseId: string)
       browserVersion: getBrowserVersion(),
       userAgent: getUserAgentString(),
       extensionVersion: getExtensionVersion(),
-      httpStatus: 200,
-      headers: getHeadersForCapture(tabId, url),
+      ...getResponseFactsForCapture(tabId, url),
       matchedSelectors: []
     })
     selectorDedupeMap.set(caseId + ':' + url, Date.now())

@@ -19,3 +19,42 @@ export function normalizeResponseHeaders(headers: RawHeader[] | undefined): Reco
   }
   return out
 }
+
+// What the background worker caches for one tab's latest main-frame response.
+export interface CachedResponse {
+  url: string
+  headers: Record<string, string>
+  // Absent when webRequest reported no usable status — nothing is invented to
+  // fill it.
+  status?: number
+}
+
+// What a capture may attest about the response it is capturing (R7, #797).
+// Both facts come from the SAME cached main-frame response and are handed over
+// only when that response's URL is still the URL being captured, so a tab that
+// navigated between onHeadersReceived and the capture contributes nothing
+// rather than another page's status.
+//
+// The status is sent so the app can anchor it into the signed manifest entry
+// instead of the constant 200 every capture request used to carry. A capture
+// whose response was never seen — the extension started after the page loaded,
+// or a same-document navigation served no new response — sends no status at
+// all, and the app records the status as unknown. That is the honest reading:
+// an absent status means this build could not observe one.
+export interface CaptureResponseFacts {
+  headers?: Record<string, string>
+  httpStatus?: number
+}
+
+export function responseFactsForCapture(
+  cached: CachedResponse | undefined,
+  url: string
+): CaptureResponseFacts {
+  if (!cached || cached.url !== url) return {}
+  const facts: CaptureResponseFacts = {}
+  if (Object.keys(cached.headers).length > 0) facts.headers = cached.headers
+  if (typeof cached.status === 'number' && Number.isInteger(cached.status)) {
+    facts.httpStatus = cached.status
+  }
+  return facts
+}

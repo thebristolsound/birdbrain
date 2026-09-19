@@ -883,7 +883,10 @@ function createApp(deps: CaptureServerDeps): Hono {
           headers: {},
           browserVersion: '',
           userAgent: '',
-          httpStatus: 200,
+          // The self-test synthesizes its bytes for a birdbrain:// URL — no
+          // HTTP transaction happens, so there is no status to record and none
+          // is anchored (R7, #797).
+          httpStatus: 0,
           extensionVersion: '',
           operatorId: getInstallationId(),
           operatorName,

@@ -74,6 +74,28 @@ export function looksLikeLoginWall(input: {
   return false
 }
 
+// A redirect is a change of destination, not a change of spelling (R7, #797).
+// `job.url` is the operator's raw input — AddUrlsBox trims whitespace and
+// nothing else — while `rendered.finalUrl` is `wc.getURL()`, Chromium's
+// canonical form: it lowercases the host, supplies the empty path, drops a
+// default port and percent-encodes non-ASCII. Comparing the two as strings
+// reports a redirect for `https://example.com` -> `https://example.com/`, and
+// the entry then carries a signed claim that the capture was taken somewhere
+// other than where it was aimed. Canonicalizing both sides first means only a
+// real change of destination is anchored. An unparseable side falls back to its
+// own text, so the comparison still happens and never throws.
+export function redirectedFinalUrl(requestedUrl: string, finalUrl: string): string | undefined {
+  return canonicalizeUrl(finalUrl) === canonicalizeUrl(requestedUrl) ? undefined : finalUrl
+}
+
+function canonicalizeUrl(raw: string): string {
+  try {
+    return new URL(raw).href
+  } catch {
+    return raw
+  }
+}
+
 function validateUrl(raw: string): string | null {
   try {
     const u = new URL(raw)
@@ -159,6 +181,13 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         browserVersion: rendered.browserVersion,
         userAgent: rendered.userAgent,
         httpStatus: rendered.httpStatus,
+        // The renderer is the one acquiring path that knows both URLs, so it is
+        // the one that can state a redirect (R7, #797). The capture is stored
+        // under the URL the bytes came from — `url` above — which on its own
+        // cannot tell a reader whether that is where the operator aimed. When
+        // the two differ as destinations, the entry says so; when they agree,
+        // nothing is written, because there is no redirect to record.
+        finalUrl: redirectedFinalUrl(job.url, rendered.finalUrl),
         operatorId: getInstallationId(),
         operatorName: settings.operatorName ?? '',
         toolVersion: getToolVersion(),

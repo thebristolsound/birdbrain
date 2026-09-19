@@ -23,6 +23,20 @@ export type {
   UnsupportedEntry
 } from '@shared/verify/manifestChain'
 export {
+  bindDerivedFile,
+  matchDerivationEntries,
+  derivedFilePackagePath,
+  exhibitPackageDirectory,
+  exhibitPackagePath,
+  inCasePath,
+  CAPTURE_PACKAGE_DIRECTORY
+} from '@shared/verify/exhibitBinding'
+export type {
+  DerivationEntryFacts,
+  DerivedFileBinding,
+  DerivedFileFacts
+} from '@shared/verify/exhibitBinding'
+export {
   resolveTrustedTimeFromEntries,
   buildTrustedTimeIndexFromEntries
 } from '@shared/verify/trustedTime'

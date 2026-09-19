@@ -17,9 +17,11 @@ import {
 import { getPublicKeyPem } from '@main/services/signingKey'
 import { defaultCaptureStore, type CaptureStore } from '@main/services/captureStore'
 import { entryDescribesRow, verifyCapture } from '@main/services/captureLifecycle'
+import { bindDerivedFile, matchDerivationEntries, type DerivationEntryFacts } from '@shared/verify'
 import type {
   CaseInventory,
   DerivedFileVerification,
+  Exhibit,
   ExhibitVerification,
   InventoryDerivedFileRow,
   InventoryExhibitRow,
@@ -262,42 +264,136 @@ function verifiedEntryAt(
   return parsed.success ? parsed.data : undefined
 }
 
+// Every `derivation` entry in the snapshot, read leniently — schema shape only,
+// no chain verdict. NOTHING read here is treated as evidence: it answers the
+// narrower question "does a line naming this file exist at all", the same
+// question `priorDerivations` in exhibitBackfill.ts and `hasRenumberEntry` ask
+// of a chain that may be broken. What vouches for bytes is the verified set
+// below.
+function readDerivations(
+  snapshot: ReturnType<typeof readManifestSnapshot>
+): DerivationEntryFacts[] {
+  const facts: DerivationEntryFacts[] = []
+  for (const line of snapshot.entries) {
+    const parsed = ManifestEntrySchema.safeParse(line)
+    if (!parsed.success || parsed.data.type !== 'derivation') continue
+    const { caseId, parentExhibitId, outputPath, outputHash } = parsed.data
+    facts.push({ caseId, parentExhibitId, outputPath, outputHash })
+  }
+  return facts
+}
+
 // One outcome per Derived File (X37). The recorded hash is compared against
 // the `derivation` entry the chain vouches for, never against the row alone:
 // the row is a mirror written in the same seam, and a mirror is what #234
 // showed cannot vouch for bytes. An unanchored file (X34) is reported as such.
+//
+// Which entry vouches is decided by `bindDerivedFile` (#1156, D7) — the same
+// predicate the standalone package verifier uses, so the app and the verifier
+// cannot disagree about the same bytes. It replaces a lookup by the row's
+// manifest index alone, which was the advisory left open on PR #1469: an index
+// says where an entry sits, never that the entry is about this file.
 async function verifyDerivedFiles(
-  exhibitId: string,
+  exhibit: Exhibit,
   store: CaptureStore,
   snapshot: ReturnType<typeof readManifestSnapshot>,
   chain: ChainVerifyResult
 ): Promise<DerivedFileVerification[]> {
+  // Two sets, because "the chain has no entry for this file" and "the chain has
+  // one but does not verify" are different findings. Binding uses the verified
+  // set — empty on a broken chain, since an unverified line is a forger's word
+  // — and the lenient set decides only which of the two the caller is told.
+  const present = readDerivations(snapshot)
+  const entries = chain.valid ? present : []
+  const imports = importEntriesOf(snapshot)
+  const caseDir = store.caseDir(exhibit.caseId)
+  // The entry names the parent through the Case's custody records rather than
+  // by bare id equality, the same resolution `verifyExhibit` gives an Exhibit:
+  // an archive import keeps the source's id on the entry and only the anchored
+  // id map may reconcile the two.
+  const parentMatches = (entry: DerivationEntryFacts): boolean =>
+    entryDescribesRow(
+      { caseId: entry.caseId, rowId: entry.parentExhibitId },
+      exhibit,
+      imports,
+      caseDir
+    )
+
   const results: DerivedFileVerification[] = []
-  for (const file of listDerivedFilesForExhibit(exhibitId)) {
+  for (const file of listDerivedFilesForExhibit(exhibit.id)) {
     const base = { derivedFileId: file.id, derivation: file.derivation }
-    const entry = verifiedEntryAt(snapshot, chain, file.manifestSeq)
-    if (!entry || entry.type !== 'derivation') {
+    const claim = { parentExhibitId: exhibit.id, storedPath: file.path }
+
+    // The entry question FIRST, and independently of whether the bytes can be
+    // read. Hashing first and returning `missing` on a read error — which this
+    // did — skipped the binding entirely, so a file no entry names came back
+    // as anchored-but-unreadable and every document downstream said the chain
+    // anchored it. Whether an entry exists is not a fact about the bytes.
+    if (matchDerivationEntries(claim, entries, { parentMatches }).length === 0) {
+      const named = matchDerivationEntries(claim, present, { parentMatches }).length > 0
       results.push({
         ...base,
         status: 'unverified',
-        reason:
-          file.manifestSeq === null
+        unanchoredCause: named ? 'chain-unverified' : 'no-entry',
+        reason: named
+          ? 'The manifest names this derived file, but the chain does not verify'
+          : file.manifestSeq === null
             ? 'No manifest entry anchors this derived file'
             : 'Derived file is not anchored in the verified chain'
       })
       continue
     }
-    const abs = store.resolveAbsolute(file.path)
+
+    // Past this point the verified chain carries an entry for this file, so
+    // `missing` can only mean "anchored, and the stored bytes could not be
+    // read" — which is what every caller of that status now relies on.
     let computed: string
     try {
-      computed = await hashFile(abs)
+      computed = await hashFile(store.resolveAbsolute(file.path))
     } catch {
       results.push({ ...base, status: 'missing', reason: 'Derived file unreadable' })
       continue
     }
-    results.push({ ...base, status: computed === entry.outputHash ? 'verified' : 'tampered' })
+    const bound = bindDerivedFile({ ...claim, computedHash: computed }, entries, { parentMatches })
+    // Unreachable: the same match ran above. Reported rather than assumed away.
+    if (bound.status === 'unanchored') {
+      results.push({
+        ...base,
+        status: 'unverified',
+        unanchoredCause: 'no-entry',
+        reason: bound.reason
+      })
+      continue
+    }
+    results.push({ ...base, status: bound.status })
   }
   return results
+}
+
+/**
+ * Every Derived File a Case holds, verified in ONE pass (X37): one manifest
+ * read and one chain verification for the whole Case, keyed by parent Exhibit.
+ * The export path needs an outcome per Derived File across every kind, and
+ * calling `verifyExhibit` per Exhibit to get it would re-read and re-verify the
+ * chain once per Exhibit — and could resolve two Exhibits against two different
+ * reads of a manifest the timestamp worker appends to.
+ */
+export async function verifyCaseDerivedFiles(
+  caseId: string,
+  store: CaptureStore = defaultCaptureStore
+): Promise<Map<string, DerivedFileVerification[]>> {
+  const byExhibitId = new Map<string, DerivedFileVerification[]>()
+  const exhibits = listExhibits(caseId)
+  if (exhibits.length === 0) return byExhibitId
+  const snapshot = readManifestSnapshot(store.caseDir(caseId))
+  const chain = verifyManifestChainText(snapshot.jsonl.toString('utf-8'), {
+    publicKeyPem: getPublicKeyPem()
+  })
+  for (const exhibit of exhibits) {
+    const results = await verifyDerivedFiles(exhibit, store, snapshot, chain)
+    if (results.length > 0) byExhibitId.set(exhibit.id, results)
+  }
+  return byExhibitId
 }
 
 // Verify one Exhibit (X37). `capture` delegates to the Capture path and returns
@@ -327,7 +423,7 @@ export async function verifyExhibit(
   const chain = verifyManifestChainText(snapshot.jsonl.toString('utf-8'), {
     publicKeyPem: getPublicKeyPem()
   })
-  const derived = await verifyDerivedFiles(exhibitId, store, snapshot, chain)
+  const derived = await verifyDerivedFiles(exhibit, store, snapshot, chain)
   const base = { exhibitId, caseId, kind: exhibit.kind, derived }
 
   if (exhibit.kind === 'capture') {

@@ -30,6 +30,44 @@ export interface CertificationInput {
     captureCount: number
     screenshotCount: number
     noteCount: number
+    /**
+     * Committed Exhibits of every other kind, counted per kind (ADR-0023,
+     * #1156). Absent means none — a package of captures alone states the three
+     * counts above and nothing more.
+     */
+    exhibitCountsByKind?: Record<string, number>
+    /**
+     * Files the tool computed from an Exhibit and enclosed beside it (X17).
+     * ENCLOSURE only, decided by the packaged path the zip and `evidence.json`
+     * are both built from, so this count and the enclosed set cannot disagree
+     * whatever the chain says about anchoring.
+     */
+    derivedFileCount?: number
+    /**
+     * Derived Files the case records that NO manifest entry names, and that
+     * this package therefore does NOT enclose (X34). Stated rather than left
+     * out of the arithmetic: a reader comparing the package against the case
+     * has to be told the difference, not left to find it.
+     */
+    unanchoredDerivedFileCount?: number
+    /**
+     * Derived Files a manifest entry DOES name over a chain that did not
+     * verify, and about whose anchoring this document therefore makes no claim
+     * either way. An ANCHORING statement over files already counted under
+     * enclosure above — some enclosed, some unreadable and not — never an
+     * enclosure statement of its own: read as one it said a file the package
+     * does not hold was enclosed.
+     */
+    unverifiableDerivedFileCount?: number
+    /**
+     * Derived Files a manifest entry names that this export did not enclose,
+     * because the single read of their stored bytes failed — the file is gone,
+     * locked, or unreadable. Enclosed by neither the package nor
+     * `evidence.json`. With the two counts above this partitions the Case's
+     * Derived Files by enclosure; `unverifiableDerivedFileCount` cuts the same
+     * files the other way and is not part of that sum.
+     */
+    missingDerivedFileCount?: number
   }
   exportTimestamp: string
   installationId: string
@@ -70,12 +108,39 @@ export interface CertificationInput {
    * invariant ever broke; see #1110 for that failure on the trusted-time axis.
    */
   entrySignatureByCaptureId: Map<string, EntrySignatureStatus>
+  /**
+   * Committed Exhibits of every other kind (ADR-0023, #1156), each carrying
+   * its own already-resolved trusted-time and entry-signature state. They join
+   * the capture rows below in one table and one set of counts: ADR-0023 makes
+   * the Exhibit the unit this document describes, so a count that covered
+   * captures only would describe part of the package as though it were all of
+   * it. Absent or empty for a package of captures alone.
+   */
+  exhibits?: CertificationExhibitInput[]
+}
+
+/** One committed non-Capture Exhibit, as the certifier states it. */
+export interface CertificationExhibitInput {
+  id: string
+  kind: string
+  /** The recorded display name — never derived from the storage path (X35). */
+  name: string
+  exhibitNumber: number
+  trustedTime: TrustedTimeResult
+  entrySignature: EntrySignatureStatus
 }
 
 const NO_TRUSTED_TIME: TrustedTimeResult = { trustedTime: 'none' }
 
-export interface CertificationCaptureRow {
+/**
+ * One Exhibit's row. `title`/`url` carry a Capture's page title and URL; for
+ * any other kind `title` is the recorded file name and `url` is empty, because
+ * Birdbrain did not retrieve those bytes from anywhere and a blank URL column
+ * would read as missing data rather than as a kind that has none.
+ */
+export interface CertificationExhibitRow {
   id: string
+  kind: string
   title: string
   url: string
   trustedTime: TrustedTime
@@ -108,7 +173,8 @@ export interface CertificationFields {
     noEntryCount: number
     allSigned: boolean
   }
-  captures: CertificationCaptureRow[]
+  /** Every Exhibit in this export, captures first, in the order given. */
+  exhibits: CertificationExhibitRow[]
   exportTimestamp: string
   caseName: string
   caseNumber?: string
@@ -133,7 +199,7 @@ export function buildCertificationFields(
   data: CertificationInput,
   toolVersion: string
 ): CertificationFields {
-  const captures: CertificationCaptureRow[] = data.captures.map((capture) => {
+  const captures: CertificationExhibitRow[] = data.captures.map((capture) => {
     const resolved = data.trustedTimeByCaptureId.get(capture.id) ?? NO_TRUSTED_TIME
     const entrySignature = data.entrySignatureByCaptureId.get(capture.id)
     // No default: the map is total over data.captures, so an absent key is a
@@ -145,6 +211,7 @@ export function buildCertificationFields(
     }
     return {
       id: capture.id,
+      kind: 'capture',
       title: capture.title,
       url: capture.url,
       trustedTime: resolved.trustedTime,
@@ -154,15 +221,32 @@ export function buildCertificationFields(
     }
   })
 
+  // Captures first, then every other kind in the order the export resolved
+  // them (Exhibit Number). One list, because every count below is a claim about
+  // the package and not about one kind within it.
+  const exhibits: CertificationExhibitRow[] = [
+    ...captures,
+    ...(data.exhibits ?? []).map((exhibit) => ({
+      id: exhibit.id,
+      kind: exhibit.kind,
+      title: exhibit.name,
+      url: '',
+      trustedTime: exhibit.trustedTime.trustedTime,
+      tsaName: exhibit.trustedTime.tsaName,
+      stampedAt: exhibit.trustedTime.stampedAt,
+      entrySignature: exhibit.entrySignature
+    }))
+  ]
+
   const counts: Record<TrustedTime, number> = { rfc3161: 0, pending: 0, none: 0 }
-  for (const row of captures) counts[row.trustedTime]++
+  for (const row of exhibits) counts[row.trustedTime]++
 
   const signatureCounts: Record<EntrySignatureStatus, number> = {
     signed: 0,
     'unsigned-legacy': 0,
     'no-entry': 0
   }
-  for (const row of captures) signatureCounts[row.entrySignature]++
+  for (const row of exhibits) signatureCounts[row.entrySignature]++
 
   return {
     toolName: 'Birdbrain',
@@ -185,17 +269,17 @@ export function buildCertificationFields(
       stampedCount: counts.rfc3161,
       pendingCount: counts.pending,
       noneCount: counts.none,
-      allStamped: captures.length > 0 && counts.pending + counts.none === 0
+      allStamped: exhibits.length > 0 && counts.pending + counts.none === 0
     },
     entrySignatures: {
       signedCount: signatureCounts.signed,
       unsignedLegacyCount: signatureCounts['unsigned-legacy'],
       noEntryCount: signatureCounts['no-entry'],
       allSigned:
-        captures.length > 0 &&
+        exhibits.length > 0 &&
         signatureCounts['unsigned-legacy'] + signatureCounts['no-entry'] === 0
     },
-    captures,
+    exhibits,
     exportTimestamp: data.exportTimestamp,
     caseName: data.caseName,
     caseNumber: data.caseNumber,
@@ -209,11 +293,47 @@ export function buildCertificationFields(
 
 // Always all three counts, zeros included: "0 operator notes" on a Court
 // exhibit states the exclusion plainly rather than hiding it.
+//
+// Committed Exhibits of other kinds are appended per kind, and a kind the
+// package does not hold is omitted rather than printed as a zero: the three
+// counts above are fixed categories every package answers for, while the kind
+// vocabulary is open (X43) and listing every kind this build knows about would
+// turn an unremarkable absence into a finding.
 function buildContentsSummary(contents: CertificationInput['contents']): string {
   const plural = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? '' : 's'}`
+  const byKind = Object.entries(contents.exhibitCountsByKind ?? {})
+    .filter(([, count]) => count > 0)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([kind, count]) => plural(count, kind))
+  const derived = contents.derivedFileCount ?? 0
+  const unanchored = contents.unanchoredDerivedFileCount ?? 0
+  const unverifiable = contents.unverifiableDerivedFileCount ?? 0
+  const missing = contents.missingDerivedFileCount ?? 0
+  // Enclosure first and in full — the three clauses that partition the Case's
+  // Derived Files — then the anchoring disclosure over files already counted.
+  // The two were one clause until #1156's fix round, where "N derived files
+  // enclosed whose anchoring could not be established" stated the enclosure of
+  // a file whose bytes the export could not read.
   return [
     plural(contents.captureCount, 'capture'),
+    ...byKind,
     plural(contents.screenshotCount, 'screenshot'),
+    ...(derived > 0 ? [`${plural(derived, 'derived file')} enclosed`] : []),
+    ...(missing > 0
+      ? [
+          `${plural(missing, 'derived file')} named by a manifest entry whose stored bytes ` +
+            'could not be read and are not enclosed'
+        ]
+      : []),
+    ...(unanchored > 0
+      ? [`${plural(unanchored, 'unanchored derived file')} recorded and not enclosed`]
+      : []),
+    ...(unverifiable > 0
+      ? [
+          `${plural(unverifiable, 'derived file')} counted above whose anchoring could not be ` +
+            'established because the chain did not verify'
+        ]
+      : []),
     plural(contents.noteCount, 'operator note')
   ].join(', ')
 }
@@ -235,31 +355,35 @@ export function buildCertification(data: CertificationInput, toolVersion: string
 function renderCertificationHtml(fields: CertificationFields): string {
   const { certifier, trustedTime, entrySignatures } = fields
 
-  const stamped = fields.captures.filter((c) => c.trustedTime === 'rfc3161')
-  const unstamped = fields.captures.filter((c) => c.trustedTime !== 'rfc3161')
+  const stamped = fields.exhibits.filter((c) => c.trustedTime === 'rfc3161')
+  const unstamped = fields.exhibits.filter((c) => c.trustedTime !== 'rfc3161')
 
+  // Worded over exhibits, not captures: ADR-0023 makes the Exhibit the unit
+  // this document describes, and "all 2 captures carry a timestamp" over a
+  // package that also encloses an unstamped attachment invites exactly the
+  // whole-package reading the count does not support.
   const trustedTimeProse = trustedTime.allStamped
-    ? `<p>All ${stamped.length} capture${
+    ? `<p>All ${stamped.length} exhibit${
         stamped.length === 1 ? '' : 's'
       } in this export carry an RFC 3161 trusted timestamp asserting the time at which the
-      capture content digest existed.</p>`
+      exhibit's content digest existed.</p>`
     : stamped.length > 0
       ? `<p>RFC 3161 trusted time is asserted <strong>only</strong> for the ${
           stamped.length
-        } capture${stamped.length === 1 ? '' : 's'} listed as timestamped below. For the ${
+        } exhibit${stamped.length === 1 ? '' : 's'} listed as timestamped below. For the ${
           unstamped.length
-        } remaining capture${unstamped.length === 1 ? '' : 's'} (${
+        } remaining exhibit${unstamped.length === 1 ? '' : 's'} (${
           trustedTime.pendingCount
         } pending, ${trustedTime.noneCount} none), <strong>no trusted timestamp is
-        asserted</strong>; the recorded capture time is the operator's local system clock
+        asserted</strong>; the recorded time is the operator's local system clock
         only.</p>`
       : `<p><strong>No trusted timestamps are asserted</strong> for any of the ${
           unstamped.length
-        } capture${unstamped.length === 1 ? '' : 's'} in this export (${
+        } exhibit${unstamped.length === 1 ? '' : 's'} in this export (${
           trustedTime.pendingCount
         } pending, ${
           trustedTime.noneCount
-        } none). The recorded capture time is the operator's local system clock only.</p>`
+        } none). The recorded time is the operator's local system clock only.</p>`
 
   const stampedRows = stamped
     .map((c) => {
@@ -267,7 +391,7 @@ function renderCertificationHtml(fields: CertificationFields): string {
       const when = c.stampedAt ? isoUtc(c.stampedAt) : ''
       return `<tr>
         <td><span class="ex-title">${esc(c.title)}</span>
-        <span class="ex-url mono">${esc(c.url)}</span></td>
+        <span class="ex-url mono">${esc(c.url || c.kind)}</span></td>
         <td class="mono break">${who}${when ? `<br>${when}` : ''}</td>
       </tr>`
     })
@@ -277,7 +401,7 @@ function renderCertificationHtml(fields: CertificationFields): string {
     .map(
       (c) => `<tr>
         <td><span class="ex-title">${esc(c.title)}</span>
-        <span class="ex-url mono">${esc(c.url)}</span></td>
+        <span class="ex-url mono">${esc(c.url || c.kind)}</span></td>
         <td><span class="state-primary">${esc(
           c.trustedTime === 'pending' ? 'Token pending' : 'Local clock only'
         )}</span><span class="state-secondary">No trusted timestamp asserted</span></td>
@@ -299,24 +423,24 @@ function renderCertificationHtml(fields: CertificationFields): string {
   // for some capture class, and none is in #611's criteria.
   const { signedCount, unsignedLegacyCount, noEntryCount } = entrySignatures
   const unsignedTotal = unsignedLegacyCount + noEntryCount
-  const total = fields.captures.length
+  const total = fields.exhibits.length
   const breakdown = `(${unsignedLegacyCount} with an unsigned entry, ${noEntryCount} with no manifest entry)`
   const perExhibit = 'report.html states the signature status of every exhibit individually.'
 
   const entrySignatureProse =
     total === 0
-      ? `<p>This export contains no captures, so there is no manifest entry for this document to
+      ? `<p>This export contains no exhibits, so there is no manifest entry for this document to
         report a signature for.</p>`
       : entrySignatures.allSigned
-        ? `<p>A signature is present on the manifest entry for every capture in this export
+        ? `<p>A signature is present on the manifest entry for every exhibit in this export
           (${signedCount} of ${total}). ${perExhibit}</p>`
         : signedCount > 0
           ? `<p>A signature is present on the manifest entry for ${signedCount} of the ${total}
-            captures in this export. For the remaining ${unsignedTotal} capture${
+            exhibits in this export. For the remaining ${unsignedTotal} exhibit${
               unsignedTotal === 1 ? '' : 's'
             } ${breakdown},
             <strong>no entry signature is asserted</strong>. ${perExhibit}</p>`
-          : `<p><strong>No entry signature is asserted</strong> for any of the ${total} capture${
+          : `<p><strong>No entry signature is asserted</strong> for any of the ${total} exhibit${
               total === 1 ? '' : 's'
             } in this export ${breakdown}. ${perExhibit}</p>`
 
@@ -405,15 +529,15 @@ function renderCertificationHtml(fields: CertificationFields): string {
   ${trustedTimeProse}
   ${
     stampedRows
-      ? `<p class="micro-heading">Timestamped captures</p>
-  <table class="index"><thead><tr><th>Page title and URL</th>
+      ? `<p class="micro-heading">Timestamped exhibits</p>
+  <table class="index"><thead><tr><th>Title or file name, and URL or kind</th>
   <th>Authority and asserted time (UTC)</th></tr></thead><tbody>${stampedRows}</tbody></table>`
       : ''
   }
   ${
     unstampedRows
-      ? `<p class="micro-heading">Captures without trusted time</p>
-  <table class="index"><thead><tr><th>Page title and URL</th>
+      ? `<p class="micro-heading">Exhibits without trusted time</p>
+  <table class="index"><thead><tr><th>Title or file name, and URL or kind</th>
   <th>Clock basis</th></tr></thead><tbody>${unstampedRows}</tbody></table>`
       : ''
   }

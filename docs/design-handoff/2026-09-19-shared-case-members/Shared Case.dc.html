@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="_ds/birdbrain-ui-9632b0b0-024d-4a3c-94db-688afdd4768f/fonts/fonts.css">
+  <link rel="stylesheet" href="_ds/birdbrain-ui-9632b0b0-024d-4a3c-94db-688afdd4768f/_ds_bundle.css">
+  <link rel="stylesheet" href="_ds/birdbrain-ui-9632b0b0-024d-4a3c-94db-688afdd4768f/styles.css">
+  <style>
+    html,body{margin:0;padding:0;}
+    body{background:var(--color-canvas);}
+    a{color:var(--color-accent);text-decoration:none;}
+    a:hover{color:var(--color-accent-hover);}
+    ::placeholder{color:var(--color-text-faint);}
+    .hovrow:hover{background:var(--color-elevated);}
+    .grp .grp-show{opacity:0;pointer-events:none;transition:opacity .15s;}
+    .grp:hover .grp-show{opacity:1;pointer-events:auto;}
+    .grp .grp-fade{opacity:0;transition:opacity .15s;}
+    .grp:hover .grp-fade{opacity:1;}
+    button:active{filter:brightness(.93)}
+    :focus-visible{outline:2px solid color-mix(in srgb,var(--color-accent) 65%,transparent);outline-offset:1px}
+    @keyframes bbspin{to{transform:rotate(360deg)}}
+    @keyframes bbpulse{0%,100%{opacity:1}50%{opacity:.45}}
+    /* member hues: proposed --color-member-1..4 tokens; the local installation always uses --color-accent */
+    :root{--bb-ok:#047857;--bb-warn:#b45309;--bb-alert:#dc2626;--m1:#0284c7;--m2:#b45309;--m3:#047857;--m4:#be123c;}
+    html.dark{--bb-ok:#34d399;--bb-warn:#fbbf24;--bb-alert:#f87171;--m1:#38bdf8;--m2:#fbbf24;--m3:#34d399;--m4:#fb7185;}
+  </style>
+</helmet>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-chevr" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"></path></symbol>
+    <symbol id="i-chevd" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"></path></symbol>
+    <symbol id="i-chevud" viewBox="0 0 24 24"><path d="m7 15 5 5 5-5"></path><path d="m7 9 5-5 5 5"></path></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></symbol>
+    <symbol id="i-refcw" viewBox="0 0 24 24"><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path><path d="M3 22v-6h6"></path><path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"></path></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"></path><path d="M12 5v14"></path></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></symbol>
+    <symbol id="i-archive" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="5" rx="1"></rect><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"></path><path d="M10 12h4"></path></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></symbol>
+    <symbol id="i-clipboard" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"></rect><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path></symbol>
+    <symbol id="i-qr" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><path d="M14 14h3v3h-3z"></path><path d="M21 14v7h-7"></path><path d="M17 21v-1"></path></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"></path><path d="m21 2-9.6 9.6"></path><circle cx="7.5" cy="15.5" r="5.5"></circle></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"></path><circle cx="12" cy="13" r="3"></circle></symbol>
+    <symbol id="i-note" viewBox="0 0 24 24"><path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"></path><path d="M15 3v4a2 2 0 0 0 2 2h4"></path></symbol>
+    <symbol id="i-tag" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></symbol>
+    <symbol id="i-fileoff" viewBox="0 0 24 24"><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="M4 7V4a2 2 0 0 1 2-2h8.5L20 7.5V20a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-1"></path><path d="m3 13 6 6"></path><path d="m9 13-6 6"></path></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></symbol>
+    <symbol id="i-morev" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="19" r="1"></circle></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></symbol>
+    <symbol id="i-wifioff" viewBox="0 0 24 24"><path d="M12 20h.01"></path><path d="M8.5 16.429a5 5 0 0 1 7 0"></path><path d="M5 12.859a10 10 0 0 1 5.17-2.69"></path><path d="M19 12.859a10 10 0 0 0-2.007-1.523"></path><path d="M2 8.82a15 15 0 0 1 4.177-2.643"></path><path d="M22 8.82a15 15 0 0 0-11.288-3.764"></path><path d="m2 2 20 20"></path></symbol>
+  </defs>
+</svg>
+
+<section style="padding:32px 40px 64px;font-family:var(--font-body);color:var(--color-text-primary);min-width:1280px">
+  <!-- intro -->
+  <div style="max-width:880px;margin-bottom:28px">
+    <div style="font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-faint)">Birdbrain · design mock · 2026-09-19</div>
+    <h1 style="margin:6px 0 8px;font-family:var(--font-display);font-size:22px;font-weight:800;letter-spacing:-0.02em">Shared Case members</h1>
+    <p style="margin:0 0 14px;font-size:12px;line-height:1.6;color:var(--color-text-secondary);text-wrap:pretty">Seven surfaces from the members UI brief, drawn against the shipped Birdbrain UI tokens. Nothing here is implemented; the spec (<code style="font-family:var(--font-mono);font-size:11px">docs/specs/2026-09-19-collaborative-cases-design.md</code>) is the engineering contract. Designer calls the brief left open are settled below.</p>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 24px;font-size:11px;line-height:1.55;color:var(--color-text-secondary)">
+      <div><strong style="color:var(--color-text-primary)">1 · Identity.</strong> The Member Code is the identifier everywhere: a mono chip with a hue dot. Hue is a scanning aid, never the only signal. The local installation is always the accent hue; the other four members take fixed hues 1–4 in join order. Five members, five hues, no collisions.</div>
+      <div><strong style="color:var(--color-text-primary)">2 · Sync indicator.</strong> Top bar, right cluster, beside the extension pill, in the same pill grammar but border-only when idle. A peer dropping mid-sync demotes the pill to “2 of 3 peers” with an amber dot; it never toasts. Click opens Case settings → Members.</div>
+      <div><strong style="color:var(--color-text-primary)">3 · Invite form.</strong> The copyable string is primary: invites travel over Signal or email as text. The QR sits behind a disclosure for the same-room case.</div>
+      <div><strong style="color:var(--color-text-primary)">4 · Join entry.</strong> A third card on the New Case wizard start step (Blank · Import · Join a shared Case) and a ⌘K action. No new route: join runs inside the wizard.</div>
+    </div>
+  </div>
+
+  <!-- ============ 1a Members tab, shared state ============ -->
+  <div style="display:flex;align-items:center;gap:8px;margin:0 0 10px"><a href="#1a" id="1a" style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">1a</a><span style="font-size:12px;font-weight:600">Case settings → Members · shared, Owner’s view</span><span style="font-size:11px;color:var(--color-text-muted)">connected · syncing · offline · pending approval · revoked</span></div>
+  <div style="width:1180px;border:1px solid var(--color-border);border-radius:8px;overflow:hidden;background:var(--color-canvas);box-shadow:var(--shadow-card)">
+    <!-- top bar -->
+    <header style="display:flex;height:48px;align-items:center;gap:12px;border-bottom:1px solid var(--color-border);background:var(--color-surface);padding:0 16px">
+      <div style="display:flex;align-items:center;gap:8px"><img src="src/renderer/assets/logo.png" alt="" style="height:24px;width:24px"><span style="font-family:var(--font-display);font-size:12px;font-weight:800;letter-spacing:-0.025em">Birdbrain</span></div>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevr"></use></svg>
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:6px"><span style="font-family:var(--font-display);font-size:12px;font-weight:700">Operation Nightjar</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevud"></use></svg></div>
+      <div style="flex:1;display:flex;justify-content:center;padding:0 8px"><div style="display:flex;width:100%;max-width:400px;align-items:center;gap:8px;border-radius:4px;border:1px solid var(--color-border-strong);background:var(--color-canvas);padding:4px 10px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-search"></use></svg><span style="flex:1;font-size:12px;color:var(--color-text-faint)">Search this case…</span><span style="border-radius:4px;border:1px solid var(--color-border-strong);background:var(--color-surface);padding:2px 6px;font-family:var(--font-mono);font-size:10px;color:var(--color-text-faint)">Ctrl F</span></div></div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button title="Syncing with M. Brandt · 41 of 63 Exhibits. Click to open Members." style="display:flex;height:28px;align-items:center;gap:6px;border-radius:9999px;border:1px solid var(--color-border-strong);background:transparent;color:var(--color-text-secondary);padding:0 10px;font-size:11px;font-weight:500;cursor:pointer;font-family:var(--font-body)">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="animation:bbspin 1.4s linear infinite"><use href="#i-refcw"></use></svg>
+          <span>Syncing</span><span style="opacity:.6">·</span><span style="font-variant-numeric:tabular-nums">2 of 3 peers</span>
+        </button>
+        <div style="display:flex;height:28px;align-items:center;gap:6px;border-radius:9999px;border:1px solid rgba(16,185,129,.2);background:rgba(16,185,129,.1);color:var(--bb-ok);padding:0 10px;font-size:11px;font-weight:500"><span style="height:6px;width:6px;border-radius:9999px;background:#10b981"></span><span>Connected</span><span style="opacity:.6">·</span><span>12</span></div>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-settings"></use></svg>
+      </div>
+    </header>
+    <div style="display:flex;height:748px;padding:18px;box-sizing:border-box">
+      <nav style="width:176px;flex-shrink:0;border-right:1px solid var(--color-border);padding:8px">
+        <div style="padding:0 10px 8px;font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-faint)">Case settings</div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <div style="display:flex;align-items:center;gap:8px;border-radius:4px;padding:6px 10px;font-size:12px;font-weight:500;color:color-mix(in srgb,var(--color-text-primary) 60%,transparent)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-folder"></use></svg>General</div>
+          <div style="display:flex;align-items:center;gap:8px;border-radius:4px;padding:6px 10px;font-size:12px;font-weight:600;color:var(--color-accent);background:var(--color-accent-subtle)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-users"></use></svg>Members</div>
+          <div style="display:flex;align-items:center;gap:8px;border-radius:4px;padding:6px 10px;font-size:12px;font-weight:500;color:color-mix(in srgb,var(--color-text-primary) 60%,transparent)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-archive"></use></svg>Export</div>
+        </div>
+      </nav>
+      <div style="flex:1;min-width:0;overflow:auto;padding:0 0 0 18px;display:flex;flex-direction:column;gap:12px">
+        <!-- identity + sync row -->
+        <div style="display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:12px">
+          <div style="background:var(--color-card);border:1px solid var(--color-border);border-radius:6px;padding:16px">
+            <h2 style="margin:0 0 12px;font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-faint)">This installation</h2>
+            <div style="display:flex;align-items:flex-start;gap:14px">
+              <span style="display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 8px;border-radius:4px;background:color-mix(in srgb,var(--color-accent) 14%,transparent);border:1px solid color-mix(in srgb,var(--color-accent) 30%,transparent);font-size:12px;font-weight:600;letter-spacing:.02em"><span style="height:6px;width:6px;border-radius:9999px;background:var(--color-accent)"></span>AR</span>
+              <div style="min-width:0;flex:1">
+                <div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:14px;font-weight:600">A. Renner</span><span style="font-size:11px;color:var(--color-text-muted)">Owner · Member Code AR</span></div>
+                <div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                  <span style="font-size:11px;color:var(--color-text-muted)">Key fingerprint</span>
+                  <button onClick="{{ toggleFp }}" title="Show full fingerprint" style="display:inline-flex;align-items:center;gap:6px;border:none;background:transparent;padding:0;cursor:pointer;font-family:var(--font-mono);font-size:11px;color:var(--color-text-secondary)">{{ fpText }}<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transform:{{ fpRot }}"><use href="#i-chevd"></use></svg></button>
+                </div>
+                <p style="margin:8px 0 0;font-size:11px;line-height:1.55;color:var(--color-text-muted);text-wrap:pretty">A fingerprint identifies this installation’s signing key, not a person. Read it aloud to a peer over a channel you already trust if you want them to confirm it is you.</p>
+              </div>
+            </div>
+          </div>
+          <div style="background:var(--color-card);border:1px solid var(--color-border);border-radius:6px;padding:16px;display:flex;flex-direction:column">
+            <h2 style="margin:0 0 12px;font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-faint)">Sync</h2>
+            <div style="display:flex;align-items:center;gap:10px">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="animation:bbspin 1.4s linear infinite;flex-shrink:0"><use href="#i-refcw"></use></svg>
+              <div style="min-width:0;flex:1"><div style="font-size:12px;font-weight:500">Syncing with M. Brandt</div><div style="font-size:11px;color:var(--color-text-muted);font-variant-numeric:tabular-nums">41 of 63 Exhibits received · 2 peers connected</div></div>
+              <button disabled style="height:28px;padding:0 11px;border-radius:4px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-faint);font-size:12px;font-weight:500;font-family:var(--font-body)">Sync now</button>
+            </div>
+            <div style="margin-top:10px;height:2px;border-radius:2px;background:var(--color-elevated);overflow:hidden"><div style="width:65%;height:100%;background:var(--color-accent)"></div></div>
+            <div style="margin-top:auto;padding-top:12px;font-size:11px;color:var(--color-text-muted)">Last completed sync <span style="color:var(--color-text-secondary)">today 14:02</span> · received 4 entries from NK · Manifest entry <span style="font-weight:500">merge #0031</span></div>
+          </div>
+        </div>
+        <!-- member list -->
+        <div style="background:var(--color-card);border:1px solid var(--color-border);border-radius:6px">
+          <div style="display:flex;align-items:center;gap:8px;padding:12px 16px 8px">
+            <h2 style="margin:0;font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-faint)">Members · 5</h2>
+            <span style="flex:1"></span>
+            <button style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border-radius:4px;border:none;background:var(--color-accent);color:#fff;font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font-body)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-plus"></use></svg>Invite</button>
+          </div>
+          <div style="display:grid;grid-template-columns:56px minmax(160px,1fr) 88px 200px 150px 72px;align-items:center;padding:4px 16px;font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-faint);border-bottom:1px solid var(--color-border)"><span>Code</span><span>Operator</span><span>Role</span><span>Connection</span><span>Last synced</span><span></span></div>
+          <sc-for list="{{ members }}" as="m" hint-placeholder-count="5">
+            <div class="grp hovrow" style="display:grid;grid-template-columns:56px minmax(160px,1fr) 88px 200px 150px 72px;align-items:center;min-height:40px;padding:0 16px;border-bottom:1px solid var(--color-border);font-size:12px;opacity:{{ m.opacity }}">
+              <span><span style="display:inline-flex;align-items:center;gap:5px;height:18px;padding:0 6px;border-radius:4px;background:color-mix(in srgb,{{ m.hue }} 14%,transparent);border:1px solid color-mix(in srgb,{{ m.hue }} 30%,transparent);font-size:10px;font-weight:600;letter-spacing:.02em;color:var(--color-text-primary)"><span style="height:6px;width:6px;border-radius:9999px;background:{{ m.hue }}"></span>{{ m.code }}</span></span>
+              <span style="min-width:0;display:flex;align-items:baseline;gap:8px;overflow:hidden"><span style="font-weight:500;white-space:nowrap">{{ m.name }}</span><span style="font-family:var(--font-mono);font-size:10px;color:var(--color-text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.fp }}</span></span>
+              <span style="color:var(--color-text-muted)">{{ m.role }}</span>
+              <span style="display:flex;align-items:center;gap:6px;color:{{ m.stateColor }}"><span style="height:6px;width:6px;border-radius:9999px;background:{{ m.dot }};animation:{{ m.dotAnim }}"></span>{{ m.state }}</span>
+              <span style="color:var(--color-text-muted);font-variant-numeric:tabular-nums">{{ m.synced }}</span>
+              <span style="display:flex;justify-content:flex-end">
+                <sc-if value="{{ m.canRevoke }}" hint-placeholder-val="{{ false }}"><button class="grp-fade" style="height:24px;padding:0 8px;border-radius:4px;border:1px solid var(--color-border);background:transparent;color:var(--bb-alert);font-size:11px;font-weight:500;cursor:pointer;font-family:var(--font-body)">Revoke</button></sc-if>
+                <sc-if value="{{ m.pending }}" hint-placeholder-val="{{ false }}"><button style="height:24px;padding:0 8px;border-radius:4px;border:none;background:var(--color-accent);color:#fff;font-size:11px;font-weight:500;cursor:pointer;font-family:var(--font-body)">Review</button></sc-if>
+              </span>
+            </div>
+          </sc-for>
+          <p style="margin:0;padding:10px 16px 12px;font-size:11px;line-height:1.55;color:var(--color-text-faint);text-wrap:pretty">A member is an installation. One person on two machines appears twice, with two Member Codes. Staging Pool, Selectors, to-do items, and timestamp settings stay on each machine and are not synced.</p>
+        </div>
+        <!-- relay + danger -->
+        <div style="display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:12px">
+          <div style="background:var(--color-card);border:1px solid var(--color-border);border-radius:6px;padding:16px">
+            <h2 style="margin:0 0 12px;font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-faint)">Relay</h2>
+            <label style="display:block;font-size:12px;font-weight:500;margin-bottom:4px">Relay URL</label>
+            <div style="display:flex;gap:8px"><input type="text" value="https://use1-1.relay.n0.iroh-canary.iroh.link" style="flex:1;border-radius:4px;border:1px solid var(--color-border-strong);background:var(--color-canvas);padding:6px 10px;font-family:var(--font-mono);font-size:12px;color:var(--color-text-primary);outline:none"><button style="height:28px;padding:0 11px;border-radius:4px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-secondary);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font-body)">Test</button></div>
+            <p style="margin:8px 0 0;font-size:11px;line-height:1.55;color:var(--color-text-muted);text-wrap:pretty">Peers connect to each other directly. When a direct connection fails, this relay carries the connection instead. The relay can see which installations connected, when, and how much data passed. It cannot read Case content: the connection is encrypted between the two peers. Case files on this disk are not encrypted by Birdbrain.</p>
+          </div>
+          <div style="background:var(--color-card);border:1px solid color-mix(in srgb,var(--bb-alert) 35%,transparent);border-radius:6px;padding:16px">
+            <h2 style="margin:0 0 12px;font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--bb-alert)">Recovery</h2>
+            <div style="display:flex;align-items:flex-start;gap:12px">
+              <div style="min-width:0;flex:1"><div style="font-size:12px;font-weight:500">Create a new Case from my copy</div><p style="margin:4px 0 0;font-size:11px;line-height:1.55;color:var(--color-text-muted);text-wrap:pretty">For when the Owner’s machine is lost. Makes a separate Case from the copy on this machine, with you as Owner and a lineage entry pointing back here. This Case is left as it is.</p></div>
+              <button style="flex-shrink:0;height:28px;padding:0 11px;border-radius:4px;border:1px solid color-mix(in srgb,var(--bb-alert) 45%,transparent);background:transparent;color:var(--bb-alert);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font-body)">Create new Case…</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 1b tab states ============ -->
+  <div style="display:flex;align-items:center;gap:8px;margin:36px 0 10px"><a href="#1b" id="1b" style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">1b</a><span style="font-size:12px;font-weight:600">Members tab · whole-tab states</span></div>
+  <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+    <div style="width:376px;background:var(--color-card);border:1px solid var(--color-border);border-radius:6px;padding:16px">
+      <div style="font-size:10px;color:var(--color-text-faint);margin-bottom:12px">Not shared yet</div>
+      <h2 style="margin:0 0 6px;font-family:var(--font-display);font-size:14px;font-weight:700">This Case is on this machine only</h2>
+      <p style="margin:0 0 12px;font-size:12px;line-height:1.6;color:var(--color-text-secondary);text-wrap:pretty">Share it with up to four peers who run Birdbrain. Each keeps a full copy. Every Capture, note, and tag stays signed by the installation that made it, and Exhibit Numbers gain your Member Code (<span style="font-weight:500">AR-7</span>) so citations stay unique.</p>
+      <ul style="margin:0 0 14px;padding-left:16px;font-size:11px;line-height:1.7;color:var(--color-text-muted)"><li>Peers connect to each other; no server holds the Case.</li><li>You approve every join and can stop syncing with a member later.</li><li>Members who leave keep the copy they already hold.</li></ul>
+      <div style="display:flex;align-items:center;gap:8px"><button style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border-radius:4px;border:none;background:var(--color-accent);color:#fff;font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font-body)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-plus"></use></svg>Invite</button><span style="font-size:11px;color:var(--color-text-faint)">Your Member Code will be <span style="font-weight:600;color:var(--color-text-secondary)">AR</span></span></div>
+    </div>
+    <div style="width:376px;background:var(--color-card);border:1px solid var(--color-border);border-radius:6px;padding:16px">
+      <div style="font-size:10px;color:var(--color-text-faint);margin-bottom:12px">Shared · relay unreachable</div>
+      <div style="display:flex;gap:10px;border-radius:4px;border:1px solid color-mix(in srgb,var(--bb-warn) 40%,transparent);background:color-mix(in srgb,var(--bb-warn) 8%,transparent);padding:10px 12px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--bb-warn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px"><use href="#i-wifioff"></use></svg>
+        <div style="min-width:0"><div style="font-size:12px;font-weight:500">Relay unreachable since 13:48</div><p style="margin:3px 0 0;font-size:11px;line-height:1.55;color:var(--color-text-secondary);text-wrap:pretty">Direct connections still work: NK is connected. MB and SI cannot be reached without the relay. Nothing is lost; sync resumes when the relay answers.</p>
+          <div style="margin-top:8px;display:flex;gap:6px"><button style="height:24px;padding:0 8px;border-radius:4px;border:1px solid var(--color-border);background:var(--color-card);color:var(--color-text-secondary);font-size:11px;font-weight:500;cursor:pointer;font-family:var(--font-body)">Retry</button><button style="height:24px;padding:0 8px;border-radius:4px;border:none;background:transparent;color:var(--color-text-muted);font-size:11px;font-weight:500;cursor:pointer;font-family:var(--font-body)">Change relay</button></div></div>
+      </div>
+      <div style="margin-top:12px;display:flex;flex-direction:column;gap:6px;font-size:12px">
+        <div style="display:flex;align-items:center;gap:8px"><span style="display:inline-flex;align-items:center;gap:5px;height:18px;padding:0 6px;border-radius:4px;background:color-mix(in srgb,var(--m1) 14%,transparent);border:1px solid color-mix(in srgb,var(--m1) 30%,transparent);font-size:10px;font-weight:600;letter-spacing:.02em"><span style="height:6px;width:6px;border-radius:9999px;background:var(--m1)"></span>NK</span><span style="flex:1">N. Kowalski</span><span style="display:flex;align-items:center;gap:6px;color:var(--bb-ok);font-size:11px"><span style="height:6px;width:6px;border-radius:9999px;background:var(--bb-ok)"></span>Connected · direct</span></div>
+        <div style="display:flex;align-items:center;gap:8px"><span style="display:inline-flex;align-items:center;gap:5px;height:18px;padding:0 6px;border-radius:4px;background:color-mix(in srgb,var(--m2) 14%,transparent);border:1px solid color-mix(in srgb,var(--m2) 30%,transparent);font-size:10px;font-weight:600;letter-spacing:.02em"><span style="height:6px;width:6px;border-radius:9999px;background:var(--m2)"></span>MB</span><span style="flex:1">M. Brandt</span><span style="display:flex;align-items:center;gap:6px;color:var(--color-text-muted);font-size:11px"><span style="height:6px;width:6px;border-radius:9999px;background:var(--color-border-strong)"></span>Needs relay · last seen 13:41</span></div>
+        <div style="display:flex;align-items:center;gap:8px"><span style="display:inline-flex;align-items:center;gap:5px;height:18px;padding:0 6px;border-radius:4px;background:color-mix(in srgb,var(--m3) 14%,transparent);border:1px solid color-mix(in srgb,var(--m3) 30%,transparent);font-size:10px;font-weight:600;letter-spacing:.02em"><span style="height:6px;width:6px;border-radius:9999px;background:var(--m3)"></span>SI</span><span style="flex:1">S. Idris</span><span style="display:flex;align-items:center;gap:6px;color:var(--color-text-muted);font-size:11px"><span style="height:6px;width:6px;border-radius:9999px;background:var(--color-border-strong)"></span>Needs relay · last seen yesterday</span></div>
+      </div>
+    </div>
+    <div style="width:376px;background:var(--color-card);border:1px solid var(--color-border);border-radius:6px;padding:16px">
+      <div style="font-size:10px;color:var(--color-text-faint);margin-bottom:12px">Unavailable on this machine</div>
+      <h2 style="margin:0 0 6px;font-family:var(--font-display);font-size:14px;font-weight:700">Sharing is not available on this Mac</h2>
+      <p style="margin:0 0 10px;font-size:12px;line-height:1.6;color:var(--color-text-secondary);text-wrap:pretty">The peer-to-peer library Birdbrain uses has no build for Intel Macs yet. Everything else in this Case works as before. On an Apple silicon Mac, Windows, or Linux this Case can be shared or joined.</p>
+      <p style="margin:0;font-size:11px;line-height:1.55;color:var(--color-text-muted)">To work with a peer today, export a Case Archive and import it on their machine. That is a one-time copy, not a sync.</p>
+      <div style="margin-top:14px;display:flex;gap:8px"><button style="height:28px;padding:0 11px;border-radius:4px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-secondary);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font-body)">Export Case Archive…</button></div>
+    </div>
+  </div>
+
+  <!-- ============ 1c Invite flow ============ -->
+  <div style="display:flex;align-items:center;gap:8px;margin:36px 0 10px"><a href="#1c" id="1c" style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">1c</a><span style="font-size:12px;font-weight:600">Invite flow · Owner side</span><span style="font-size:11px;color:var(--color-text-muted)">dialog, four states left to right</span></div>
+  <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+    <!-- step 1 -->
+    <div style="width:420px;background:var(--color-card);border:1px solid var(--color-border);border-radius:8px;box-shadow:var(--shadow-overlay)">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px 0"><div style="font-family:var(--font-display);font-size:14px;font-weight:700">Invite to Operation Nightjar</div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-x"></use></svg></div>
+      <div style="padding:6px 16px 16px">
+        <p style="margin:0 0 12px;font-size:12px;line-height:1.55;color:var(--color-text-secondary);text-wrap:pretty">Send this to one person over a channel you already use, such as Signal or email. It works once and expires in 24 hours. You need to be online when they use it.</p>
+        <div style="border-radius:4px;border:1px solid var(--color-border-strong);background:var(--color-canvas);padding:10px 12px;font-family:var(--font-mono);font-size:11px;line-height:1.5;color:var(--color-text-secondary);word-break:break-all">bbinvite1MFRGGZDFMZTWQ2LKNNWG2ZLONFXXAYLDMVYGCZLSMFZXI2LPNYQGC3TEEBTG64RANFXHM2LUMU2GKLBAORUGSYZAIFNEG2LTEB2GQZJAMVXGIZLSEBTGS4TFN5UCA</div>
+        <div style="margin-top:10px;display:flex;align-items:center;gap:8px">
+          <button style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border-radius:4px;border:none;background:var(--color-accent);color:#fff;font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font-body)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-clipboard"></use></svg>Copy invite</button>
+          <button onClick="{{ toggleQr }}" style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border-radius:4px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-secondary);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font-body)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-qr"></use></svg>{{ qrLabel }}</button>
+          <span style="flex:1"></span><span style="font-size:11px;color:var(--color-text-faint);font-variant-numeric:tabular-nums">Expires tomorrow 14:07</span>
+        </div>
+        <sc-if value="{{ qrOpen }}" hint-placeholder-val="{{ true }}">
+          <div style="margin-top:12px;display:flex;gap:14px;align-items:center;border-radius:4px;border:1px solid var(--color-border);padding:12px">
+            <div style="flex-shrink:0;padding:6px;background:#fff;border-radius:4px">{{ qr }}</div>
+            <p style="margin:0;font-size:11px;line-height:1.55;color:var(--color-text-muted);text-wrap:pretty">Same invite as the text. Useful when the peer is in the room: they scan it from the Join screen. The code is the invite itself, so treat the screen like the string.</p>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+    <!-- step 2 -->
+    <div style="width:420px;background:var(--color-card);border:1px solid var(--color-border);border-radius:8px;box-shadow:var(--shadow-overlay)">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px 0"><div style="font-family:var(--font-display);font-size:14px;font-weight:700">Invite to Operation Nightjar</div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-x"></use></svg></div>
+      <div style="padding:6px 16px 16px">
+        <div style="display:flex;align-items:center;gap:10px;border-radius:4px;background:var(--color-elevated);padding:12px">
+          <span style="height:8px;width:8px;border-radius:9999px;background:var(--color-accent);animation:bbpulse 2s ease-in-out infinite;flex-shrink:0"></span>
+          <div style="min-width:0;flex:1"><div style="font-size:12px;font-weight:500">Waiting for someone to use this invite</div><div style="margin-top:2px;font-size:11px;color:var(--color-text-muted)">You can close this. The invite stays valid until tomorrow 14:07 or until it is used. A join request will appear in Members.</div></div>
+        </div>
+        <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
+          <button style="height:28px;padding:0 11px;border-radius:4px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-secondary);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font-body)">Copy again</button>
+          <button style="height:28px;padding:0 11px;border-radius:4px;border:none;background:transparent;color:var(--bb-alert);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font-body)">Cancel invite</button>
+          <span style="flex:1"></span>
+          <button style="height:28px;padding:0 11px;border-radius:4px;border:none;background:var(--color-accent);color:#fff;font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font-body)">Done</button>
+        </div>
+      </div>
+    </div>
+    <!-- step 3 -->
+    <div style="width:420px;background:var(--color-card);border:1px solid var(--color-border);border-radius:8px;box-shadow:var(--shadow-overlay)">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px 0"><div style="font-family:var(--font-display);font-size:14px;font-weight:700">Join request</div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-x"></use></svg></div>
+      <div style="padding:6px 16px 16px">
+        <p style="margin:0 0 12px;font-size:12px;line-height:1.55;color:var(--color-text-secondary)">An installation used your invite from 14:07.</p>
+        <div style="display:grid;grid-template-columns:110px 1fr;gap:8px 12px;font-size:12px;align-items:baseline">
+          <span style="color:var(--color-text-muted)">Operator name</span><span style="font-weight:500">J. Okafor</span>
+          <span style="color:var(--color-text-muted)">Key fingerprint</span><span style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-secondary)">7c2f d418 9f3a 1c7e 44b2 08d1 e6a0 5b93</span>
+          <span style="color:var(--color-text-muted)">Member Code</span>
+          <div><div style="display:flex;align-items:center;gap:8px"><input type="text" value="JO" style="width:64px;border-radius:4px;border:1px solid var(--color-border-strong);background:var(--color-canvas);padding:6px 10px;font-size:12px;font-weight:600;letter-spacing:.02em;color:var(--color-text-primary);outline:none;text-transform:uppercase"><span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--bb-ok)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><use href="#i-check"></use></svg>Unique in this Case</span></div><div style="margin-top:4px;font-size:11px;color:var(--color-text-faint)">Their Exhibits will read <span style="font-weight:500">JO-1</span>, <span style="font-weight:500">JO-2</span>… Cannot be changed after approval.</div></div>
+        </div>
+        <div style="margin-top:12px;border-radius:4px;border:1px solid var(--color-border);padding:8px 10px;font-size:11px;line-height:1.55;color:var(--color-text-muted);text-wrap:pretty">The name is what they typed into their own settings. The fingerprint identifies their installation. If you want to be sure this is J. Okafor, ask them to read the fingerprint back over a channel you already trust.</div>
+        <div style="margin-top:12px;display:flex;align-items:center;gap:8px;justify-content:flex-end">
+          <button style="height:28px;padding:0 11px;border-radius:4px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-secondary);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font-body)">Decline</button>
+          <button style="height:28px;padding:0 11px;border-radius:4px;border:none;background:var(--color-accent);color:#fff;font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font-body)">Approve</button>
+        </div>
+      </div>
+    </div>
+    <!-- step 3 error + step 4 -->
+    <div style="width:420px;display:flex;flex-direction:column;gap:16px">
+      <div style="background:var(--color-card);border:1px solid var(--color-border);border-radius:8px;padding:14px 16px">
+        <div style="font-size:10px;color:var(--color-text-faint);margin-bottom:8px">Inline validation · code taken</div>
+        <div style="display:flex;align-items:center;gap:8px"><input type="text" value="MB" style="width:64px;border-radius:4px;border:1px solid var(--bb-alert);background:var(--color-canvas);padding:6px 10px;font-size:12px;font-weight:600;letter-spacing:.02em;color:var(--color-text-primary);outline:none"><span style="font-size:11px;color:var(--bb-alert)">MB is M. Brandt’s code. Try <span style="font-weight:500">MBR</span> or <span style="font-weight:500">MB2</span>.</span></div>
+      </div>
+      <div style="background:var(--color-card);border:1px solid var(--color-border);border-radius:8px;padding:14px 16px">
+        <div style="font-size:10px;color:var(--color-text-faint);margin-bottom:8px">Result · new row in Members, first sync running</div>
+        <div style="display:grid;grid-template-columns:56px 1fr 88px 190px;align-items:center;min-height:40px;font-size:12px;border-radius:4px;background:var(--color-accent-subtle);padding:0 10px">
+          <span><span style="display:inline-flex;align-items:center;gap:5px;height:18px;padding:0 6px;border-radius:4px;background:color-mix(in srgb,var(--m4) 14%,transparent);border:1px solid color-mix(in srgb,var(--m4) 30%,transparent);font-size:10px;font-weight:600;letter-spacing:.02em"><span style="height:6px;width:6px;border-radius:9999px;background:var(--m4)"></span>JO</span></span>
+          <span style="font-weight:500">J. Okafor</span><span style="color:var(--color-text-muted)">Member</span>
+          <span style="display:flex;align-items:center;gap:6px;color:var(--color-text-secondary)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="animation:bbspin 1.4s linear infinite"><use href="#i-refcw"></use></svg>Sending 0 of 63 Exhibits</span>
+        </div>
+        <div style="margin-top:8px;font-size:11px;color:var(--color-text-muted)">Manifest entry <span style="font-weight:500">member-add #0032</span> written to your chain.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 1d Join flow ============ -->
+  <div style="display:flex;align-items:center;gap:8px;margin:36px 0 10px"><a href="#1d" id="1d" style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">1d</a><span style="font-size:12px;font-weight:600">Join flow · peer side</span><span style="font-size:11px;color:var(--color-text-muted)">inside the New Case wizard</span></div>
+  <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+    <!-- entry -->
+    <div style="width:480px;background:var(--color-canvas);border:1px solid var(--color-border);border-radius:8px;padding:28px 20px 20px">
+      <div style="font-size:10px;color:var(--color-text-faint);margin-bottom:14px">New Case wizard · start step</div>
+      <h2 style="margin:0 0 4px;font-family:var(--font-display);font-size:18px;font-weight:800;letter-spacing:-0.02em">Start a Case</h2>
+      <p style="margin:0 0 16px;font-size:12px;color:var(--color-text-muted)">Choose how this Case begins.</p>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;gap:12px;border-radius:6px;border:1px solid var(--color-border);background:var(--color-card);padding:12px 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-folder"></use></svg><div style="flex:1"><div style="font-size:12px;font-weight:600">Blank Case</div><div style="font-size:11px;color:var(--color-text-muted)">Name it and start capturing</div></div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevr"></use></svg></div>
+        <div style="display:flex;align-items:center;gap:12px;border-radius:6px;border:1px solid var(--color-border);background:var(--color-card);padding:12px 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-archive"></use></svg><div style="flex:1"><div style="font-size:12px;font-weight:600">Import a Case Archive</div><div style="font-size:11px;color:var(--color-text-muted)">A one-time copy from a .bbcase file</div></div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevr"></use></svg></div>
+        <div style="display:flex;align-items:center;gap:12px;border-radius:6px;border:1px solid var(--color-accent);background:var(--color-accent-subtle);padding:12px 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-users"></use></svg><div style="flex:1"><div style="font-size:12px;font-weight:600">Join a shared Case</div><div style="font-size:11px;color:var(--color-text-muted)">Paste an invite from the Case’s Owner. Stays in sync.</div></div><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chevr"></use></svg></div>
+      </div>
+      <div style="margin-top:14px;font-size:11px;color:var(--color-text-faint)">Also in ⌘K as “Join a shared Case…”.</div>
+    </div>
+    <!-- paste -->
+    <div style="width:480px;background:var(--color-canvas);border:1px solid var(--color-border);border-radius:8px;padding:28px 20px 20px">
+      <div style="font-size:10px;color:var(--color-text-faint);margin-bottom:14px">Join · paste, invite recognised</div>
+      <h2 style="margin:0 0 4px;font-family:var(--font-display);font-size:18px;font-weight:800;letter-spacing:-0.02em">Join a shared Case</h2>
+      <p style="margin:0 0 14px;font-size:12px;color:var(--color-text-muted)">Paste the invite the Owner sent you.</p>
+      <textarea style="width:100%;height:76px;resize:none;border-radius:4px;border:1px solid var(--color-accent);background:var(--color-canvas);padding:8px 10px;font-family:var(--font-mono);font-size:11px;line-height:1.5;color:var(--color-text-secondary);outline:none;box-sizing:border-box">bbinvite1MFRGGZDFMZTWQ2LKNNWG2ZLONFXXAYLDMVYGCZLSMFZXI2LPNYQGC3TEEBTG64RANFXHM2LUMU2GKLBAORUGSYZAIFNEG2LTEB2GQZJAMVXGIZLSEBTGS4TFN5UCA</textarea>
+      <div style="margin-top:10px;display:grid;grid-template-columns:96px 1fr;gap:6px 12px;font-size:12px;border-radius:4px;border:1px solid var(--color-border);background:var(--color-card);padding:10px 12px">
+        <span style="color:var(--color-text-muted)">From</span><span style="font-weight:500">A. Renner</span>
+        <span style="color:var(--color-text-muted)">Case</span><span>Operation Nightjar</span>
+        <span style="color:var(--color-text-muted)">Valid until</span><span style="font-variant-numeric:tabular-nums">tomorrow 14:07</span>
+      </div>
+      <p style="margin:8px 0 0;font-size:11px;line-height:1.55;color:var(--color-text-faint);text-wrap:pretty">The name comes from the invite, so it is what the sender typed. If it is not who you expected, stop here.</p>
+      <div style="margin-top:14px;display:flex;justify-content:flex-end;gap:8px"><button style="height:28px;padding:0 11px;border-radius:4px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-secondary);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font-body)">Back</button><button style="height:28px;padding:0 11px;border-radius:4px;border:none;background:var(--color-accent);color:#fff;font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font-body)">Join</button></div>
+    </div>
+    <!-- waiting + success -->
+    <div style="width:480px;display:flex;flex-direction:column;gap:16px">
+      <div style="background:var(--color-canvas);border:1px solid var(--color-border);border-radius:8px;padding:20px">
+        <div style="font-size:10px;color:var(--color-text-faint);margin-bottom:12px">Join · connecting, then waiting</div>
+        <div style="display:flex;align-items:center;gap:10px;border-radius:4px;background:var(--color-elevated);padding:12px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="animation:bbspin 1.4s linear infinite;flex-shrink:0"><use href="#i-refcw"></use></svg><div><div style="font-size:12px;font-weight:500">Waiting for A. Renner to approve</div><div style="margin-top:2px;font-size:11px;color:var(--color-text-muted)">Connected to their installation. They see your name and fingerprint and pick your Member Code.</div></div></div>
+        <div style="margin-top:10px;font-size:11px;color:var(--color-text-faint)">Your fingerprint, if they ask: <span style="font-family:var(--font-mono);color:var(--color-text-secondary)">7c2f d418 9f3a 1c7e</span></div>
+      </div>
+      <div style="background:var(--color-canvas);border:1px solid var(--color-border);border-radius:8px;padding:20px">
+        <div style="font-size:10px;color:var(--color-text-faint);margin-bottom:12px">Success · Case card in the list while it fills</div>
+        <div style="border-radius:6px;border:1px solid var(--color-border);background:var(--color-card);padding:12px 14px">
+          <div style="display:flex;align-items:center;gap:8px"><span style="font-family:var(--font-display);font-size:13px;font-weight:700;flex:1">Operation Nightjar</span><span style="display:inline-flex;align-items:center;gap:5px;height:18px;padding:0 6px;border-radius:4px;background:color-mix(in srgb,var(--color-accent) 14%,transparent);border:1px solid color-mix(in srgb,var(--color-accent) 30%,transparent);font-size:10px;font-weight:600;letter-spacing:.02em"><span style="height:6px;width:6px;border-radius:9999px;background:var(--color-accent)"></span>JO</span></div>
+          <div style="margin-top:4px;font-size:11px;color:var(--color-text-muted)">Shared by A. Renner · 5 members · you joined just now</div>
+          <div style="margin-top:10px;display:flex;align-items:center;gap:8px;font-size:11px;color:var(--color-text-secondary)"><span style="flex:1;height:2px;border-radius:2px;background:var(--color-elevated);overflow:hidden;display:block"><span style="display:block;width:38%;height:100%;background:var(--color-accent)"></span></span><span style="font-variant-numeric:tabular-nums">24 of 63 Exhibits received</span></div>
+        </div>
+      </div>
+    </div>
+    <!-- failures -->
+    <div style="width:480px;background:var(--color-canvas);border:1px solid var(--color-border);border-radius:8px;padding:20px">
+      <div style="font-size:10px;color:var(--color-text-faint);margin-bottom:12px">Join · failure states, each with a next step</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <sc-for list="{{ failures }}" as="f" hint-placeholder-count="5">
+          <div style="display:flex;gap:10px;border-radius:4px;border:1px solid var(--color-border);background:var(--color-card);padding:10px 12px">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="{{ f.color }}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px"><use href="{{ f.icon }}"></use></svg>
+            <div style="min-width:0;flex:1"><div style="font-size:12px;font-weight:500">{{ f.title }}</div><div style="margin-top:2px;font-size:11px;line-height:1.5;color:var(--color-text-muted);text-wrap:pretty">{{ f.body }}</div></div>
+            <button style="flex-shrink:0;align-self:center;height:24px;padding:0 8px;border-radius:4px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-secondary);font-size:11px;font-weight:500;cursor:pointer;font-family:var(--font-body);white-space:nowrap">{{ f.action }}</button>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 1e Sync indicator ============ -->
+  <div style="display:flex;align-items:center;gap:8px;margin:36px 0 10px"><a href="#1e" id="1e" style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">1e</a><span style="font-size:12px;font-weight:600">Sync indicator · top bar states</span><span style="font-size:11px;color:var(--color-text-muted)">hidden entirely on a single-member Case</span></div>
+  <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">
+    <sc-for list="{{ syncStates }}" as="ss" hint-placeholder-count="5">
+      <div style="width:220px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;padding:12px">
+        <div style="font-size:10px;color:var(--color-text-faint);margin-bottom:10px">{{ ss.name }}</div>
+        <div style="display:inline-flex;height:28px;align-items:center;gap:6px;border-radius:9999px;border:1px solid {{ ss.border }};background:{{ ss.bg }};color:{{ ss.color }};padding:0 10px;font-size:11px;font-weight:500">
+          <sc-if value="{{ ss.spin }}" hint-placeholder-val="{{ false }}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="animation:bbspin 1.4s linear infinite"><use href="#i-refcw"></use></svg></sc-if>
+          <sc-if value="{{ ss.dot }}" hint-placeholder-val="{{ true }}"><span style="height:6px;width:6px;border-radius:9999px;background:{{ ss.dot }}"></span></sc-if>
+          <span>{{ ss.a }}</span><span style="opacity:.6">·</span><span style="font-variant-numeric:tabular-nums">{{ ss.b }}</span>
+        </div>
+        <div style="margin-top:8px;font-size:11px;line-height:1.5;color:var(--color-text-muted);text-wrap:pretty">{{ ss.note }}</div>
+      </div>
+    </sc-for>
+  </div>
+
+  <!-- ============ 1f Attribution ============ -->
+  <div style="display:flex;align-items:center;gap:8px;margin:36px 0 10px"><a href="#1f" id="1f" style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">1f</a><span style="font-size:12px;font-weight:600">Attribution in existing surfaces</span><span style="font-size:11px;color:var(--color-text-muted)">capture list at its shipped 316px · detail header · tags · notes · exclusion</span></div>
+  <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+    <!-- capture list -->
+    <div style="width:316px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;overflow:hidden">
+      <div style="padding:8px;border-bottom:1px solid var(--color-border);font-size:10px;color:var(--color-text-faint)">Captures · detailed view · Exhibit Number leads the title row</div>
+      <div style="padding:4px;display:flex;flex-direction:column;gap:2px">
+        <sc-for list="{{ caps }}" as="c" hint-placeholder-count="4">
+          <div class="grp" style="position:relative;display:flex;gap:10px;border-radius:4px;padding:10px 12px;background:{{ c.bg }};border:1px solid {{ c.border }};box-sizing:border-box;opacity:{{ c.opacity }}">
+            <span aria-hidden="true" style="position:absolute;left:0;top:6px;bottom:6px;width:2px;border-radius:0 2px 2px 0;background:{{ c.hue }}"></span>
+            <div style="height:36px;width:56px;flex-shrink:0;border-radius:2px;border:1px solid var(--color-border-strong);background:var(--color-elevated);display:grid;place-items:center"><img src="src/renderer/assets/logo.png" alt="" style="height:20px;width:20px;opacity:.28;filter:grayscale(1)"></div>
+            <div style="min-width:0;flex:1">
+              <div style="display:flex;align-items:center;gap:6px">
+                <span title="{{ c.who }}" style="flex-shrink:0;display:inline-flex;align-items:center;gap:4px;height:16px;padding:0 5px;border-radius:3px;background:color-mix(in srgb,{{ c.hue }} 14%,transparent);border:1px solid color-mix(in srgb,{{ c.hue }} 30%,transparent);font-size:10px;font-weight:600;letter-spacing:.02em;font-variant-numeric:tabular-nums">{{ c.num }}</span>
+                <span style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:600">{{ c.title }}</span>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-faint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><use href="#i-star"></use></svg>
+              </div>
+              <div style="margin-top:3px;display:flex;align-items:center;gap:6px;min-width:0"><span style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--color-text-muted)">{{ c.host }}</span><span style="flex-shrink:0;font-size:10px;color:var(--color-text-faint)">{{ c.ago }}</span></div>
+              <sc-if value="{{ c.excluded }}" hint-placeholder-val="{{ false }}"><div style="margin-top:6px;display:inline-flex;align-items:center;gap:4px;border-radius:6px;border:1px solid color-mix(in srgb,var(--bb-warn) 45%,transparent);padding:1px 6px;font-size:10px;font-weight:500;color:var(--bb-warn)"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-fileoff"></use></svg>Excluded from export</div></sc-if>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="padding:8px;border-top:1px solid var(--color-border);font-size:10px;color:var(--color-text-faint)">List view · same chip, 16px tall, before the title</div>
+      <div style="padding:0 4px 4px;display:flex;flex-direction:column;gap:1px">
+        <div style="display:flex;align-items:center;gap:8px;border-radius:4px;padding:5px 10px"><span style="display:inline-flex;align-items:center;height:16px;padding:0 5px;border-radius:3px;background:color-mix(in srgb,var(--m1) 14%,transparent);border:1px solid color-mix(in srgb,var(--m1) 30%,transparent);font-size:10px;font-weight:600;letter-spacing:.02em">NK-12</span><span style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:500">Nightjar panel — admin login</span><span style="font-size:10px;color:var(--color-text-faint)">2d</span></div>
+        <div style="display:flex;align-items:center;gap:8px;border-radius:4px;padding:5px 10px"><span style="display:inline-flex;align-items:center;height:16px;padding:0 5px;border-radius:3px;background:color-mix(in srgb,var(--m2) 14%,transparent);border:1px solid color-mix(in srgb,var(--m2) 30%,transparent);font-size:10px;font-weight:600;letter-spacing:.02em">MB-12</span><span style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:500">paste.ee dump — 9Kx2f</span><span style="font-size:10px;color:var(--color-text-faint)">5d</span></div>
+      </div>
+    </div>
+    <!-- detail header + tags + notes -->
+    <div style="width:520px;display:flex;flex-direction:column;gap:16px">
+      <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;padding:14px 16px">
+        <div style="font-size:10px;color:var(--color-text-faint);margin-bottom:10px">Capture detail header</div>
+        <div style="display:flex;align-items:center;gap:8px"><span style="display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 7px;border-radius:4px;background:color-mix(in srgb,var(--m1) 14%,transparent);border:1px solid color-mix(in srgb,var(--m1) 30%,transparent);font-size:11px;font-weight:600;letter-spacing:.02em"><span style="height:6px;width:6px;border-radius:9999px;background:var(--m1)"></span>NK-12</span><span style="font-family:var(--font-display);font-size:14px;font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Nightjar panel — admin login</span><span style="display:inline-flex;align-items:center;gap:5px;border-radius:9999px;border:1px solid rgba(16,185,129,.2);background:rgba(16,185,129,.1);padding:2px 8px;font-size:10px;font-weight:500;color:var(--bb-ok)">Chain verified</span></div>
+        <div style="margin-top:6px;font-size:11px;color:var(--color-text-muted)">Captured by <span style="color:var(--color-text-secondary);font-weight:500">N. Kowalski</span> (NK, their machine) · 2026-07-29 09:41:55 · received by you 2026-07-29 10:02 in <span style="font-weight:500">merge #0027</span></div>
+        <div style="margin-top:10px;display:flex;gap:10px;border-radius:4px;border:1px solid color-mix(in srgb,var(--bb-warn) 40%,transparent);background:color-mix(in srgb,var(--bb-warn) 8%,transparent);padding:8px 10px;font-size:11px;line-height:1.5"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--bb-warn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:2px"><use href="#i-fileoff"></use></svg><div><span style="font-weight:500;color:var(--color-text-primary)">Excluded from export</span> by A. Renner (Owner) on 2026-08-02 11:20 · “duplicate of NK-11”. The Exhibit stays in the Case and in every member’s copy; exports list it as excluded. <span style="color:var(--color-text-muted)">exclude #0029</span></div></div>
+      </div>
+      <div style="display:flex;gap:16px">
+        <div style="flex:1;background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;padding:14px 16px">
+          <div style="font-size:10px;color:var(--color-text-faint);margin-bottom:10px">Tags · one chip per name, authors on hover</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start">
+            <span style="display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:9999px;border:1px solid color-mix(in srgb,#f59e0b 40%,transparent);background:color-mix(in srgb,#f59e0b 10%,transparent);font-size:11px;font-weight:500"><span style="height:6px;width:6px;border-radius:9999px;background:#f59e0b"></span>phishing</span>
+            <span class="grp" style="position:relative;display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:9999px;border:1px solid color-mix(in srgb,#6467f2 40%,transparent);background:color-mix(in srgb,#6467f2 10%,transparent);font-size:11px;font-weight:500;cursor:default"><span style="height:6px;width:6px;border-radius:9999px;background:#6467f2"></span>infrastructure<span style="font-size:10px;color:var(--color-text-faint)">·2</span>
+              <span class="grp-show" style="position:absolute;left:0;top:calc(100% + 6px);z-index:5;min-width:190px;border-radius:4px;border:1px solid var(--color-border-strong);background:var(--color-elevated);box-shadow:var(--shadow-overlay);padding:8px 10px;font-size:11px;font-weight:400;color:var(--color-text-secondary);white-space:nowrap"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-faint);margin-bottom:6px">Applied by</div><div style="display:flex;flex-direction:column;gap:4px"><div style="display:flex;align-items:center;gap:6px"><span style="height:6px;width:6px;border-radius:9999px;background:var(--color-accent)"></span><span style="font-weight:600">AR</span> A. Renner · 2026-07-28</div><div style="display:flex;align-items:center;gap:6px"><span style="height:6px;width:6px;border-radius:9999px;background:var(--m1)"></span><span style="font-weight:600">NK</span> N. Kowalski · 2026-07-30</div></div><div style="margin-top:6px;color:var(--color-text-faint)">Color from the earliest author.</div></span>
+            </span>
+            <span style="display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:9999px;border:1px solid color-mix(in srgb,#10b981 40%,transparent);background:color-mix(in srgb,#10b981 10%,transparent);font-size:11px;font-weight:500"><span style="height:6px;width:6px;border-radius:9999px;background:#10b981"></span>wallet</span>
+          </div>
+          <div style="margin-top:40px;font-size:10px;color:var(--color-text-faint)">Hover “infrastructure”. The ·2 count appears only when more than one member applied the tag.</div>
+        </div>
+        <div style="flex:1;background:var(--color-surface);border:1px solid var(--color-border);border-radius:6px;padding:14px 16px">
+          <div style="font-size:10px;color:var(--color-text-faint);margin-bottom:10px">Notes · byline and citation</div>
+          <div style="border-radius:4px;border:1px solid var(--color-border);background:var(--color-card);padding:10px 12px">
+            <div style="font-size:12px;font-weight:600">Panel and lure share a cert</div>
+            <div style="margin-top:2px;display:flex;align-items:center;gap:6px;font-size:10px;color:var(--color-text-faint)"><span style="display:inline-flex;align-items:center;gap:4px;height:14px;padding:0 4px;border-radius:3px;background:color-mix(in srgb,var(--m2) 14%,transparent);font-weight:600;color:var(--color-text-primary)">MB</span>M. Brandt · 2026-08-01 · read-only on your machine</div>
+            <p style="margin:8px 0 0;font-size:11px;line-height:1.6;color:var(--color-text-secondary)">Leaf fingerprint on <span style="display:inline-flex;align-items:center;height:16px;padding:0 5px;border-radius:3px;background:color-mix(in srgb,var(--m1) 14%,transparent);border:1px solid color-mix(in srgb,var(--m1) 30%,transparent);font-size:10px;font-weight:600;letter-spacing:.02em;color:var(--color-text-primary);vertical-align:-3px">NK-12</span> matches <span style="display:inline-flex;align-items:center;height:16px;padding:0 5px;border-radius:3px;background:color-mix(in srgb,var(--color-accent) 14%,transparent);border:1px solid color-mix(in srgb,var(--color-accent) 30%,transparent);font-size:10px;font-weight:600;letter-spacing:.02em;color:var(--color-text-primary);vertical-align:-3px">AR-7</span> — same origin IP.</p>
+          </div>
+          <div style="margin-top:8px;font-size:10px;line-height:1.5;color:var(--color-text-faint)">Only the author edits their note. Citations resolve to one Exhibit per Member Code and sequence.</div>
+        </div>
+      </div>
+    </div>
+    <!-- dialogs -->
+    <div style="width:400px;display:flex;flex-direction:column;gap:16px">
+      <div style="display:flex;align-items:center;gap:8px"><a href="#1g" id="1g" style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">1g</a><span style="font-size:12px;font-weight:600">Confirmations</span></div>
+      <div style="background:var(--color-card);border:1px solid var(--color-border);border-radius:8px;box-shadow:var(--shadow-overlay);padding:16px">
+        <div style="font-family:var(--font-display);font-size:14px;font-weight:700">Revoke S. Idris?</div>
+        <p style="margin:8px 0 0;font-size:12px;line-height:1.6;color:var(--color-text-secondary);text-wrap:pretty">S. Idris will stop receiving updates. They keep the copy of this Case they already have. Their 3 Exhibits (<span style="font-weight:500">SI-1</span>–<span style="font-weight:500">SI-3</span>), notes, and tags stay in the Case, attributed to them.</p>
+        <p style="margin:8px 0 0;font-size:11px;color:var(--color-text-muted)">Recorded in your Manifest as <span style="font-weight:500">member-revoke</span>. Cannot be undone; they would need a new invite.</p>
+        <div style="margin-top:14px;display:flex;justify-content:flex-end;gap:8px"><button style="height:28px;padding:0 11px;border-radius:4px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-secondary);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font-body)">Cancel</button><button style="height:28px;padding:0 11px;border-radius:4px;border:none;background:var(--bb-alert);color:#fff;font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font-body)">Revoke</button></div>
+      </div>
+      <div style="background:var(--color-card);border:1px solid var(--color-border);border-radius:8px;box-shadow:var(--shadow-overlay);padding:16px">
+        <div style="font-family:var(--font-display);font-size:14px;font-weight:700">Exclude NK-12 from export?</div>
+        <p style="margin:8px 0 0;font-size:12px;line-height:1.6;color:var(--color-text-secondary);text-wrap:pretty">The Exhibit stays in the Case and in every member’s copy. Exports will list it as excluded, with your name and the time, rather than leave it out silently. Only N. Kowalski can delete it.</p>
+        <label style="display:block;margin-top:10px;font-size:12px;font-weight:500">Reason <span style="font-weight:400;color:var(--color-text-muted)">(optional, recorded)</span></label>
+        <input type="text" value="duplicate of NK-11" style="margin-top:4px;width:100%;border-radius:4px;border:1px solid var(--color-border-strong);background:var(--color-canvas);padding:6px 10px;font-size:12px;color:var(--color-text-primary);outline:none;font-family:var(--font-body);box-sizing:border-box">
+        <div style="margin-top:14px;display:flex;justify-content:flex-end;gap:8px"><button style="height:28px;padding:0 11px;border-radius:4px;border:1px solid var(--color-border);background:transparent;color:var(--color-text-secondary);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font-body)">Cancel</button><button style="height:28px;padding:0 11px;border-radius:4px;border:none;background:var(--color-accent);color:#fff;font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font-body)">Exclude from export</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 1h Manifest ledger ============ -->
+  <div style="display:flex;align-items:center;gap:8px;margin:36px 0 10px"><a href="#1h" id="1h" style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">1h</a><span style="font-size:12px;font-weight:600">Manifest ledger · four new entry kinds</span><span style="font-size:11px;color:var(--color-text-muted)">Data screen, same grid; an Actor column is added</span></div>
+  <div style="width:1180px;border-radius:6px;border:1px solid var(--color-border);overflow:hidden;background:var(--color-card)">
+    <div style="display:grid;grid-template-columns:52px 148px 120px 72px minmax(200px,1fr) 128px 128px;align-items:center;padding:6px 12px;font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-faint);border-bottom:1px solid var(--color-border)"><span>Seq</span><span>Time</span><span>Event</span><span>Actor</span><span>Target</span><span>Entry hash</span><span>Previous</span></div>
+    <sc-for list="{{ ledger }}" as="e" hint-placeholder-count="8">
+      <div class="hovrow" style="display:grid;grid-template-columns:52px 148px 120px 72px minmax(200px,1fr) 128px 128px;align-items:center;min-height:30px;padding:0 12px;border-bottom:1px solid var(--color-border);font-size:11px;background:{{ e.bg }}">
+        <span style="color:var(--color-text-faint);font-variant-numeric:tabular-nums">{{ e.seq }}</span>
+        <span style="color:var(--color-text-muted);font-variant-numeric:tabular-nums">{{ e.time }}</span>
+        <span style="font-family:var(--font-mono);color:{{ e.evColor }};font-weight:{{ e.evWeight }}">{{ e.event }}</span>
+        <span><span style="display:inline-flex;align-items:center;gap:4px;height:16px;padding:0 5px;border-radius:3px;background:color-mix(in srgb,{{ e.hue }} 14%,transparent);border:1px solid color-mix(in srgb,{{ e.hue }} 30%,transparent);font-size:10px;font-weight:600;letter-spacing:.02em;color:var(--color-text-primary)"><span style="height:5px;width:5px;border-radius:9999px;background:{{ e.hue }}"></span>{{ e.actor }}</span></span>
+        <span style="color:var(--color-text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ e.target }}</span>
+        <span style="font-family:var(--font-mono);color:var(--color-text-muted)">{{ e.hash }}</span>
+        <span style="font-family:var(--font-mono);color:var(--color-text-faint)">{{ e.prev }}</span>
+      </div>
+    </sc-for>
+    <p style="margin:0;padding:10px 12px;font-size:11px;line-height:1.6;color:var(--color-text-faint);text-wrap:pretty">Each member’s chain is shown in its own sequence; this view interleaves them by time. A <span style="font-weight:500">merge</span> entry says which members’ chains advanced and by how many entries. Verification shows each chain was not edited without that member’s key and that every merge names a chain state that exists. It does not show who sat at a member’s machine.</p>
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;'dark' | 'light'&quot;,&quot;section&quot;:&quot;Appearance&quot;},&quot;showRevoked&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Members list&quot;}}">
+class Component extends DCLogic {
+  state = { fpOpen: false, qrOpen: true }
+  componentDidMount() { this.applyTheme() }
+  componentDidUpdate() { this.applyTheme() }
+  applyTheme() {
+    const dark = (this.props.theme ?? 'dark') === 'dark'
+    document.documentElement.classList.toggle('dark', dark)
+  }
+  qr() {
+    let s = 7
+    const rnd = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff }
+    const n = 25, cells = []
+    const finder = (x, y) => (x < 7 && y < 7) || (x >= n - 7 && y < 7) || (x < 7 && y >= n - 7)
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      let on
+      if (finder(x, y)) {
+        const lx = x < 7 ? x : x - (n - 7), ly = y < 7 ? y : y - (n - 7)
+        on = lx === 0 || ly === 0 || lx === 6 || ly === 6 || (lx >= 2 && lx <= 4 && ly >= 2 && ly <= 4)
+      } else on = rnd() < 0.45
+      if (on) cells.push(React.createElement('rect', { key: x + '-' + y, x: x * 4, y: y * 4, width: 4, height: 4 }))
+    }
+    return React.createElement('svg', { width: 100, height: 100, viewBox: '0 0 100 100', fill: '#111', 'aria-label': 'QR code for the same invite' }, cells)
+  }
+  renderVals() {
+    const s = this.state
+    const showAll = this.props.showRevoked ?? true
+    const fpFull = '9f3a 1c7e 44b2 08d1 e6a0 5b93 7c2f d418'
+    const members = [
+      { code: 'AR', name: 'A. Renner', fp: '9f3a 1c7e …', role: 'Owner · you', state: 'This machine', stateColor: 'var(--color-text-muted)', dot: 'var(--color-accent)', dotAnim: 'none', synced: '—', hue: 'var(--color-accent)', opacity: '1', canRevoke: false, pending: false },
+      { code: 'NK', name: 'N. Kowalski', fp: '2b91 e0c4 …', role: 'Member', state: 'Connected · direct', stateColor: 'var(--bb-ok)', dot: 'var(--bb-ok)', dotAnim: 'none', synced: '2 min ago', hue: 'var(--m1)', opacity: '1', canRevoke: true, pending: false },
+      { code: 'MB', name: 'M. Brandt', fp: 'c47d 09aa …', role: 'Member', state: 'Syncing · 41 of 63 via relay', stateColor: 'var(--color-text-secondary)', dot: 'var(--color-accent)', dotAnim: 'bbpulse 1.4s ease-in-out infinite', synced: 'in progress', hue: 'var(--m2)', opacity: '1', canRevoke: true, pending: false },
+      { code: 'SI', name: 'S. Idris', fp: '5e10 f8b2 …', role: 'Member', state: 'Offline · last seen yesterday 21:14', stateColor: 'var(--color-text-muted)', dot: 'var(--color-border-strong)', dotAnim: 'none', synced: 'yesterday 21:14', hue: 'var(--m3)', opacity: '1', canRevoke: true, pending: false },
+      { code: 'JO?', name: 'J. Okafor', fp: '7c2f d418 …', role: '—', state: 'Pending your approval', stateColor: 'var(--bb-warn)', dot: 'var(--bb-warn)', dotAnim: 'bbpulse 2s ease-in-out infinite', synced: '—', hue: 'var(--m4)', opacity: '1', canRevoke: false, pending: true },
+      { code: 'TV', name: 'T. Vance', fp: 'a3d0 61ef …', role: 'Member', state: 'Revoked 2026-09-02 · keeps their copy', stateColor: 'var(--color-text-faint)', dot: 'transparent', dotAnim: 'none', synced: '2026-09-02 08:11', hue: 'var(--color-text-faint)', opacity: '.55', canRevoke: false, pending: false }
+    ].filter(m => showAll || m.code !== 'TV')
+    const failures = [
+      { title: 'This invite has expired', body: 'Invites last 24 hours. Ask A. Renner for a new one.', action: 'Paste another', icon: '#i-alert', color: 'var(--bb-warn)' },
+      { title: 'This invite was already used', body: 'Each invite works once. If that was not you, tell A. Renner before asking for another.', action: 'Paste another', icon: '#i-alert', color: 'var(--bb-warn)' },
+      { title: 'A. Renner is not online', body: 'The Owner has to be running Birdbrain to approve you. The invite is still valid until tomorrow 14:07.', action: 'Try again', icon: '#i-wifioff', color: 'var(--color-text-muted)' },
+      { title: 'Cannot reach A. Renner or the relay', body: 'No direct connection and the relay did not answer. Check your network; the relay URL is in Settings.', action: 'Retry', icon: '#i-wifioff', color: 'var(--bb-alert)' },
+      { title: 'A. Renner declined', body: 'Nothing was created on either machine. Contact them outside Birdbrain if this is unexpected.', action: 'Close', icon: '#i-x', color: 'var(--color-text-muted)' }
+    ]
+    const syncStates = [
+      { name: 'Idle · everyone in sync', a: 'Synced', b: '3 peers', border: 'var(--color-border)', bg: 'transparent', color: 'var(--color-text-muted)', dot: 'var(--bb-ok)', spin: false, note: 'Border only, muted text. Reads as status, not a call to action.' },
+      { name: 'Syncing', a: 'Syncing', b: '41 of 63', border: 'var(--color-border-strong)', bg: 'transparent', color: 'var(--color-text-secondary)', dot: '', spin: true, note: 'Spinner replaces the dot. Count is the current transfer.' },
+      { name: 'Peer offline mid-sync', a: 'Syncing', b: '2 of 3 peers', border: 'var(--color-border-strong)', bg: 'transparent', color: 'var(--color-text-secondary)', dot: 'var(--bb-warn)', spin: false, note: 'Amber dot, no toast. The pill keeps counting peers; the dropped member shows offline in the list.' },
+      { name: 'Idle · a peer offline', a: 'Synced', b: '2 of 3 peers', border: 'var(--color-border)', bg: 'transparent', color: 'var(--color-text-muted)', dot: 'var(--bb-warn)', spin: false, note: 'Same as idle but the count is honest about who is reachable.' },
+      { name: 'Error · relay unreachable', a: 'Relay down', b: '1 peer', border: 'color-mix(in srgb,var(--bb-alert) 35%,transparent)', bg: 'color-mix(in srgb,var(--bb-alert) 8%,transparent)', color: 'var(--bb-alert)', dot: 'var(--bb-alert)', spin: false, note: 'The one state with a tinted fill. Direct peers still count.' }
+    ]
+    const caps = [
+      { num: 'AR-7', title: 'Meridian Trust — login', host: 'meridian-trust-secure.com', ago: '3d', hue: 'var(--color-accent)', who: 'Captured by you (AR)', bg: 'var(--color-accent-subtle)', border: 'color-mix(in srgb,var(--color-accent) 40%,transparent)', opacity: '1', excluded: false },
+      { num: 'NK-12', title: 'Nightjar panel — admin login', host: 'nightjar-panel.gg-cdn.net', ago: '2d', hue: 'var(--m1)', who: 'Captured by N. Kowalski (NK)', bg: 'transparent', border: 'transparent', opacity: '1', excluded: true },
+      { num: 'MB-12', title: 'paste.ee dump — 9Kx2f', host: 'paste.ee', ago: '5d', hue: 'var(--m2)', who: 'Captured by M. Brandt (MB)', bg: 'transparent', border: 'transparent', opacity: '1', excluded: false },
+      { num: 'SI-3', title: 'Telegram channel preview — @nightjar_ops', host: 't.me', ago: '9d', hue: 'var(--m3)', who: 'Captured by S. Idris (SI)', bg: 'transparent', border: 'transparent', opacity: '1', excluded: false }
+    ]
+    const hex = (n) => { let h = ''; let x = n * 2654435761; for (let i = 0; i < 8; i++) { x = (x * 1103515245 + 12345) & 0x7fffffff; h += (x % 16).toString(16) } return h }
+    const sh = (n) => hex(n).slice(0, 4) + '…' + hex(n + 99).slice(0, 4)
+    const ledger = [
+      { seq: '0022', time: '2026-08-01 22:17:07', event: 'capture.seal', actor: 'AR', hue: 'var(--color-accent)', target: 'AR-7', s: 80 },
+      { seq: '0024', time: '2026-08-05 16:38:50', event: 'member-add', actor: 'AR', hue: 'var(--color-accent)', target: 'AR · A. Renner · owner (Case becomes shared)', s: 82, hi: true },
+      { seq: '0025', time: '2026-08-05 16:44:12', event: 'member-add', actor: 'AR', hue: 'var(--color-accent)', target: 'NK · N. Kowalski · key 2b91 e0c4 … · node 3f9c…', s: 83, hi: true },
+      { seq: '0027', time: '2026-08-05 16:45:01', event: 'merge', actor: 'AR', hue: 'var(--color-accent)', target: 'NK chain → #0014 · 14 entries received · TSA stamp queued', s: 85, hi: true },
+      { seq: '0009', time: '2026-08-05 16:45:03', event: 'merge', actor: 'NK', hue: 'var(--m1)', target: 'AR chain → #0025 · 25 entries received', s: 91, hi: true },
+      { seq: '0029', time: '2026-08-02 11:20:40', event: 'exclude', actor: 'AR', hue: 'var(--color-accent)', target: 'NK-12 · author NK · “duplicate of NK-11”', s: 87, hi: true },
+      { seq: '0030', time: '2026-09-02 08:11:19', event: 'member-revoke', actor: 'AR', hue: 'var(--color-accent)', target: 'TV · T. Vance · syncing stopped, replica retained', s: 88, hi: true },
+      { seq: '0031', time: '2026-09-19 14:02:11', event: 'merge', actor: 'AR', hue: 'var(--color-accent)', target: 'NK chain → #0018 · 4 entries received', s: 89, hi: true }
+    ].map(e => ({ ...e, hash: sh(e.s), prev: sh(e.s - 1), evColor: e.hi ? 'var(--color-text-primary)' : 'var(--color-text-muted)', evWeight: e.hi ? '600' : '400', bg: e.hi ? 'color-mix(in srgb,var(--color-accent) 5%,transparent)' : 'transparent' }))
+    return {
+      members, failures, syncStates, caps, ledger,
+      fpText: s.fpOpen ? fpFull : fpFull.slice(0, 9) + ' …',
+      fpRot: s.fpOpen ? 'rotate(180deg)' : 'none',
+      toggleFp: () => this.setState({ fpOpen: !s.fpOpen }),
+      qrOpen: s.qrOpen, qrLabel: s.qrOpen ? 'Hide QR' : 'Show QR',
+      toggleQr: () => this.setState({ qrOpen: !s.qrOpen }),
+      qr: this.qr()
+    }
+  }
+}
+</script>
+</body>
+</html>

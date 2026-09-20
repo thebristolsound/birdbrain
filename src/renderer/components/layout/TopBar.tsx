@@ -103,9 +103,11 @@ export function TopBar() {
       {/* Spacer */}
       <div className="flex-1 min-w-0" />
 
-      {/* Centered global search — absolutely positioned to viewport center */}
+      {/* Centered global search — absolutely positioned to viewport center. The
+          transform makes this a stacking context, so it carries the z-index its
+          results dropdown needs to clear sticky headers in the page below. */}
       {activeCaseId && (
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+        <div className="absolute left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
           <div className="pointer-events-auto">
             <SearchBar caseId={activeCaseId} />
           </div>

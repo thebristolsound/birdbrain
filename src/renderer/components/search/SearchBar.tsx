@@ -86,7 +86,10 @@ export function SearchBar({ caseId }: SearchBarProps) {
 
       {/* Results dropdown */}
       {query && (results.length > 0 || noteResults.length > 0 || searching) && (
-        <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded border border-border-strong bg-elevated shadow-lg">
+        <div
+          data-testid="global-search-results"
+          className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded border border-border-strong bg-elevated shadow-lg"
+        >
           {searching && <div className="px-3 py-2 text-xs text-text-muted">Searching...</div>}
           {results.map((cap) => (
             <button

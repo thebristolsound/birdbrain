@@ -32,7 +32,7 @@ import {
   initManifest,
   verifyManifestChain
 } from '@main/services/manifest'
-import { canonicalStringify } from '@shared/verify'
+import { canonicalStringify, parseTimestampToken } from '@shared/verify'
 import { TRUSTED_TIME_LABELS, TRUSTED_TIME_UNNAMED_TSA } from '@shared/trustedTimeDisclosure'
 import { ingestMhtmlCapture } from '@main/services/captureLifecycle'
 import { createCaptureLifecycle, type CaptureLifecycle } from '@main/services/captureLifecycle'
@@ -366,6 +366,10 @@ describe('export', () => {
       'https://example.com/evidence',
       'Evidence Page'
     )
+    // A real DigiCert token, but over the digest in content-hash.txt rather
+    // than this capture's — so it attests other content and is no stamp for it.
+    // Its certificates are still gathered into tsa-intermediates.pem, which is
+    // what the count below reads (#1108).
     const token = readFileSync(join(process.cwd(), 'tests/fixtures/timestamp/digicert-token.der'))
     appendManifestEntry(join(tempDir, 'captures', caseId), {
       type: 'timestamp',
@@ -402,7 +406,7 @@ describe('export', () => {
     expect(entries.has('tsa-root.pem')).toBe(true)
     expect(entries.has('tsa-intermediates.pem')).toBe(true)
     expect(entries.has(`pages/${capture.id}.mhtml`)).toBe(true)
-    expect(entries.get(`timestamps/${capture.id}.tst`)).toEqual(token)
+    expect(entries.has(`timestamps/${capture.id}.tst`)).toBe(false)
     expect(
       entries
         .get('tsa-root.pem')!
@@ -441,7 +445,10 @@ describe('export', () => {
       mhtmlPath: `pages/${capture.id}.mhtml`,
       mhtmlSha256: createHash('sha256').update(mhtml).digest('hex'),
       trustedTime: 'pending',
-      timestampTokenPaths: [`timestamps/${capture.id}.tst`]
+      // Unstamped and cites nothing: the token the manifest carries does not
+      // bind this capture, so the package encloses no token file for it and
+      // the index names none (#1108).
+      timestampTokenPaths: []
     })
   })
 
@@ -1581,7 +1588,13 @@ describe('export', () => {
     const b = await ingest(caseId, payload, 'https://example.com/b', 'B')
     expect(a.capture.hash).toBe(b.capture.hash)
 
-    const token = readFileSync(join(process.cwd(), 'tests/fixtures/timestamp/digicert-token.der'))
+    // A token that actually stamps the shared digest: only an admitted token is
+    // packaged now, so the dedup rule can only be shown with one (#1108).
+    const token = buildSyntheticToken({
+      contentHash: a.capture.hash,
+      genTime: new Date('2026-04-05T12:01:00.000Z'),
+      tsaDnsName: 'tsa.example.com'
+    })
     appendManifestEntry(join(tempDir, 'captures', caseId), {
       type: 'timestamp',
       caseId,
@@ -1930,6 +1943,170 @@ describe('export', () => {
     expect(html).toContain('RFC 3161 token retained')
     expect(html).toContain(TRUSTED_TIME_LABELS.rfc3161)
     expect(html).toContain(packagedTokens[0])
+  })
+
+  it('encloses no token for a capture whose token attests other content (#1108)', async () => {
+    const { capture } = await ingest(caseId, '<html>wrong imprint</html>')
+    // Known answer: the DigiCert fixture stamps the digest recorded beside it
+    // in content-hash.txt, and that digest is not this capture's. The packager
+    // has to read the token the way the resolver does — as no stamp for this
+    // exhibit — or the package encloses a token for a capture its own documents
+    // call unstamped.
+    const token = readFileSync(join(process.cwd(), 'tests/fixtures/timestamp/digicert-token.der'))
+    const stampedDigest = readFileSync(
+      join(process.cwd(), 'tests/fixtures/timestamp/content-hash.txt'),
+      'utf-8'
+    ).trim()
+    expect(parseTimestampToken(token).messageImprintHex).toBe(stampedDigest)
+    expect(stampedDigest).not.toBe(capture.hash)
+    appendManifestEntry(join(tempDir, 'captures', caseId), {
+      type: 'timestamp',
+      caseId,
+      captureContentHash: capture.hash,
+      timestamp: '2026-04-05T12:01:00.000Z',
+      tsaToken: token.toString('base64'),
+      operatorId: 'op',
+      operatorName: 'Test Operator',
+      toolVersion: '0.1.0'
+    })
+
+    const outputPath = join(tempDir, 'wrong-imprint.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
+        exportClass: 'evidence',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const entries = readStoredZipEntries(outputPath)
+    const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+      captures: Array<{ id: string; trustedTime: string; timestampTokenPaths: string[] }>
+      warnings: { unstampedCaptureCount: number }
+    }
+    const html = entries.get('report.html')!.toString('utf-8')
+
+    expect([...entries.keys()].filter((k) => k.startsWith('timestamps/'))).toEqual([])
+    expect(evidence.captures[0]).toMatchObject({
+      id: capture.id,
+      trustedTime: 'pending',
+      timestampTokenPaths: []
+    })
+    expect(evidence.warnings.unstampedCaptureCount).toBe(1)
+    expect(html).not.toMatch(/timestamps\/[\w-]+\.tst/)
+  })
+
+  it('encloses no token for a capture whose token does not parse (#1108)', async () => {
+    const { capture } = await ingest(caseId, '<html>unparseable</html>')
+    // The resolver's other ground for refusing a token: it never parses, so
+    // there is no imprint to compare and the capture stays pending.
+    const token = Buffer.from('this is not a DER timestamp token', 'utf-8')
+    appendManifestEntry(join(tempDir, 'captures', caseId), {
+      type: 'timestamp',
+      caseId,
+      captureContentHash: capture.hash,
+      timestamp: '2026-04-05T12:01:00.000Z',
+      tsaToken: token.toString('base64'),
+      operatorId: 'op',
+      operatorName: 'Test Operator',
+      toolVersion: '0.1.0'
+    })
+
+    const outputPath = join(tempDir, 'unparseable-token.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
+        exportClass: 'evidence',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const entries = readStoredZipEntries(outputPath)
+    const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+      captures: Array<{ id: string; trustedTime: string; timestampTokenPaths: string[] }>
+    }
+
+    expect([...entries.keys()].filter((k) => k.startsWith('timestamps/'))).toEqual([])
+    expect(evidence.captures[0]).toMatchObject({
+      id: capture.id,
+      trustedTime: 'pending',
+      timestampTokenPaths: []
+    })
+  })
+
+  it('encloses the binding token when the manifest also carries one that does not (#1108)', async () => {
+    const { capture } = await ingest(caseId, '<html>two tokens</html>')
+    // The refused token is appended FIRST, so packaging the first entry naming
+    // this digest would enclose bytes that attest something else under a path
+    // the documents cite as this capture's stamp.
+    const refused = readFileSync(join(process.cwd(), 'tests/fixtures/timestamp/digicert-token.der'))
+    const binding = buildSyntheticToken({
+      contentHash: capture.hash,
+      genTime: new Date('2026-04-05T12:01:00.000Z'),
+      tsaDnsName: 'tsa.example.com'
+    })
+    for (const tsaToken of [refused, binding]) {
+      appendManifestEntry(join(tempDir, 'captures', caseId), {
+        type: 'timestamp',
+        caseId,
+        captureContentHash: capture.hash,
+        timestamp: '2026-04-05T12:01:00.000Z',
+        tsaToken: tsaToken.toString('base64'),
+        operatorId: 'op',
+        operatorName: 'Test Operator',
+        toolVersion: '0.1.0'
+      })
+    }
+
+    const outputPath = join(tempDir, 'binding-token.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
+        exportClass: 'evidence',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const entries = readStoredZipEntries(outputPath)
+    const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+      captures: Array<{ id: string; trustedTime: string; timestampTokenPaths: string[] }>
+    }
+
+    const tokenPath = `timestamps/${capture.id}.tst`
+    expect([...entries.keys()].filter((k) => k.startsWith('timestamps/'))).toEqual([tokenPath])
+    expect(entries.get(tokenPath)).toEqual(binding)
+    expect(evidence.captures[0]).toMatchObject({
+      id: capture.id,
+      trustedTime: 'rfc3161',
+      timestampTokenPaths: [tokenPath]
+    })
   })
 
   it('does not name the configured TSA for a token that carries no authority (#519)', async () => {

@@ -33,11 +33,18 @@ type EntryRecord = Record<string, unknown>
 /**
  * Validates a timestamp entry and extracts RFC3161 details if it contains a valid token for the given content hash.
  *
+ * Exported because it is also the export packager's admission rule (#1108):
+ * whether a token is written into a package is decided by the same function
+ * that decides whether the exhibit is called stamped, so a package cannot
+ * enclose a token file for an exhibit its own documents call unstamped. Both
+ * grounds for rejection matter to that caller — a token that does not parse and
+ * a token whose imprint attests other content are equally not a stamp.
+ *
  * @param entry - The manifest entry to validate.
  * @param contentHash - The content hash the timestamp should cover.
  * @returns An RFC3161 result if the entry is valid and the token matches the hash, `undefined` otherwise.
  */
-function stampFor(entry: EntryRecord, contentHash: string): TrustedTimeResult | undefined {
+export function stampFor(entry: EntryRecord, contentHash: string): TrustedTimeResult | undefined {
   if (
     entry.type !== 'timestamp' ||
     entry.subject === 'entry' ||

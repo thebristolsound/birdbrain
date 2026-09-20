@@ -54,7 +54,8 @@ export type {
 } from '@shared/verify/sharedCase'
 export {
   resolveTrustedTimeFromEntries,
-  buildTrustedTimeIndexFromEntries
+  buildTrustedTimeIndexFromEntries,
+  stampFor
 } from '@shared/verify/trustedTime'
 export type { TrustedTimeResult } from '@shared/verify/trustedTime'
 export { ManifestEntrySchema } from '@shared/schemas'

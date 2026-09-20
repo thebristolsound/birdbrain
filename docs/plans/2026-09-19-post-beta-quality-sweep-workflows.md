@@ -115,3 +115,20 @@ times because the background run ends with the session process. Output:
 The Data explorer carries the most rows (64) and the most refutations (11). Every row waits
 on the maintainer's direction: mock, app, or drop.
 
+### Workflow 3, automated UI and UX pass
+
+Run `wf_98f2535d-61b` on 2026-09-20, 31 agents (11 screen drivers, 19 refuters, 1
+synthesizer). The harness lives in the `sweep-ui` worktree on branch `agent/ui-ux-sweep`:
+`@axe-core/playwright` added as a dev dependency, scratch specs under `e2e/.sweep/`, runs
+under `unshare -rn` with loopback up and `xvfb-run`. Output:
+`docs/plans/2026-09-19-ui-ux-pass.md`, 174 findings.
+
+| Severity | Findings |
+| --- | --- |
+| High | 19 (9 refuted, kept in place) |
+| Medium | 80 |
+| Low | 75 |
+
+The report proposes 22 defects, two per screen area, none filed. The extension popup and
+native dialogs were out of reach.
+

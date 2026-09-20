@@ -41,7 +41,8 @@ import {
   derivedFilePackagePath,
   exhibitPackageDirectory,
   exhibitPackagePath,
-  extractTimestampTokenCertificatesPem
+  extractTimestampTokenCertificatesPem,
+  stampFor
 } from '@shared/verify'
 import type { TrustedTimeResult } from '@shared/verify'
 import { buildCertification, resolveToolVersion } from '@main/services/certification'
@@ -1046,6 +1047,11 @@ function buildEvidenceZip(
     timestampEntries
   )
   const emittedTokenPaths = new Set<string>()
+  // Certificate material is gathered from every token the manifest carries,
+  // including one the admission rule below refuses to enclose: the bundle is
+  // chain-building material for the authority rather than a claim about any
+  // Exhibit, and narrowing it is not what #1108 ruled on.
+  //
   // Deduped by PEM block: every token of one authority carries the same
   // responder/intermediate certs, and a chain repeated per token is noise a
   // verifier has to wade through (#579).
@@ -1058,9 +1064,14 @@ function buildEvidenceZip(
         timestampTokenCertPems.add(pem)
       }
     } catch {
-      // Malformed tokens still belong in the evidence package; they simply
-      // cannot contribute certificate material to the TSA chain bundle.
+      // A malformed token contributes no certificate material to the TSA chain
+      // bundle, and the admission rule below keeps it out of the package too.
     }
+    // The same rule the paths were built under, applied per entry so the bytes
+    // enclosed for a content hash are the bytes of the entry that satisfied it:
+    // where a hash carries a rejected token as well as an accepted one, the
+    // first entry naming that hash is not necessarily the accepted one.
+    if (!stampFor(entry, entry.captureContentHash)) continue
     const path = timestampPathsByHash.get(entry.captureContentHash)
     if (path && !emittedTokenPaths.has(path)) {
       add(path, token)
@@ -1505,8 +1516,15 @@ export function buildNotesMarkdown(caseName: string, exportedAt: string, notes: 
  * Maps an Exhibit content hash to the single timestamp-token path the package
  * uses for it. Exhibits that share a content hash share one token file, named
  * after the first such Exhibit — so a per-Exhibit path would be wrong for the
- * rest. Defined once here and consumed by both the packager and the report to
- * remove any chance of the two disagreeing.
+ * rest. Defined once here and consumed by both the packager and the report, so
+ * the file the zip writes and the path the documents cite are one decision.
+ *
+ * That agreement was only ever packager-versus-report. Admission is now the
+ * resolver's own verdict too (#1108): an entry contributes a path only where
+ * `stampFor` — the function the trusted-time axis is resolved with — accepts
+ * it, which it does not for a token that fails to parse or whose message
+ * imprint attests other content. Before this, such a token was enclosed and
+ * cited beside an exhibit the same documents called unstamped.
  */
 function buildTimestampTokenPaths(
   subjects: TokenSubject[],
@@ -1514,7 +1532,7 @@ function buildTimestampTokenPaths(
 ): Map<string, string> {
   const byHash = new Map<string, string>()
   for (const entry of timestampEntries) {
-    if (typeof entry.tsaToken !== 'string') continue
+    if (!stampFor(entry, entry.captureContentHash)) continue
     for (const subject of subjects) {
       if (subject.contentHash !== entry.captureContentHash) continue
       if (byHash.has(subject.contentHash)) break

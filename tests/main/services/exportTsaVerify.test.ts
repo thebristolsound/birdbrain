@@ -6,6 +6,7 @@ import { tmpdir } from 'os'
 import { Readable } from 'stream'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
+import { updateCaptureHash } from '@main/services/db/captureRepo'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
 import { appendManifestEntry, initManifest } from '@main/services/manifest'
 import { ingestMhtmlCapture } from '@main/services/captureLifecycle'
@@ -102,20 +103,23 @@ describe('exported evidence bundle verifies under openssl ts -verify', () => {
   it.skipIf(!HAS_OPENSSL)(
     'openssl verifies the exported .tst with exactly the command VERIFY.md documents',
     async () => {
-      // The fixture token stamps the digest in content-hash.txt, not this
-      // capture's bytes; the manifest still binds it to the capture the way the
-      // export does, and `-digest` below is fed the token's real imprint so the
-      // documented command is exercised end to end (imprint check included).
+      // The fixture token stamps the digest in content-hash.txt, whose preimage
+      // was never kept, so no bytes this test can ingest hash to it. Since the
+      // packager encloses a token only where the imprint binds the exhibit
+      // (#1108), the capture is recorded as holding exactly that digest — the
+      // only way a genuine commercial token reaches the package, which is what
+      // this test needs to run the documented command against what shipped.
       const { capture } = await ingest(caseId, '<html><body>Packaged evidence</body></html>')
       const token = readFileSync(join(FIXTURES, 'digicert-token.der'))
       const imprint = readFileSync(join(FIXTURES, 'content-hash.txt'), 'utf-8').trim()
+      updateCaptureHash(capture.id, imprint)
       // Two timestamp entries for one token: the intermediates file must still
       // carry each certificate once (#579).
       for (const timestamp of ['2026-04-05T12:01:00.000Z', '2026-04-05T12:02:00.000Z']) {
         appendManifestEntry(join(tempDir, 'captures', caseId), {
           type: 'timestamp',
           caseId,
-          captureContentHash: capture.hash,
+          captureContentHash: imprint,
           timestamp,
           tsaToken: token.toString('base64'),
           operatorId: 'op',

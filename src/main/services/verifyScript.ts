@@ -43,6 +43,12 @@ export const VERIFY_SCRIPT = `#!/bin/sh
 # step that failed. VERIFY.md explains what each step proves and states the
 # trust model; this script does not replace reading it.
 #
+# USAGE:
+#   sh verify.sh       The verdict, then a line per check, then the verdict in
+#                      full. A package enclosing a signed selection reports the
+#                      exhibits left behind as one counted line.
+#   sh verify.sh -v    The same, with one line per item that count covers.
+#
 # Exit codes: 0 every check passed, 1 at least one check FAILED, 2 the script
 # could not run at all (a missing tool, or this is not an evidence package),
 # 3 INCOMPLETE - nothing failed, but a check could not be completed, so this is
@@ -65,6 +71,20 @@ export const VERIFY_SCRIPT = `#!/bin/sh
 # package supplied.
 
 set -u
+
+# -v repeats, one line per item, the expected-absent findings that the default
+# output states once as a count. A package holding a small selection out of a
+# large Case otherwise prints one line per Exhibit it deliberately left behind,
+# which reads like a fault report rather than the signed scope it is.
+verbose=0
+case "\${1:-}" in
+-v | --verbose) verbose=1 ;;
+'') ;;
+*)
+  printf 'verify.sh: unknown option "%s". The only option is -v (verbose).\\n' "$1" >&2
+  exit 2
+  ;;
+esac
 
 # The TSA material this package ships, named once so these checks and the
 # commands in VERIFY.md cannot drift apart.
@@ -110,7 +130,36 @@ if [ ! -f manifest.jsonl ]; then
 fi
 
 tmp=$(mktemp -d) || exit 2
-trap 'rm -rf "$tmp"' EXIT HUP INT TERM
+
+# The verdict is not known until the last check has run, so the checks write to
+# a file and the script prints the verdict above that detail at the end. A
+# recipient should not have to read several hundred lines to learn whether the
+# package passed. Nothing is suppressed: every line still reaches stdout in the
+# same order, below the verdict, and the trailing verdict block is unchanged.
+#
+# The EXIT trap dumps the buffer, so an interrupt or an unexpected abort still
+# shows the checks that had run. Between the redirect below and the flush at the
+# end this script has no "exit": the tool and package checks that exit 2 all run
+# above it, on the real stdout.
+detail_file="$tmp/detail.txt"
+detail_dumped=0
+stdout_saved=0
+
+restore_stdout() {
+  [ "$stdout_saved" -eq 1 ] || return 0
+  stdout_saved=0
+  exec 1>&3 2>&4 3>&- 4>&-
+}
+
+dump_detail() {
+  [ "$detail_dumped" -eq 0 ] || return 0
+  detail_dumped=1
+  restore_stdout
+  [ -f "$detail_file" ] && cat "$detail_file"
+  return 0
+}
+
+trap 'dump_detail; rm -rf "$tmp"' EXIT HUP INT TERM
 
 fail_count=0
 incomplete_count=0
@@ -125,6 +174,15 @@ begin() {
 }
 
 note() { printf '   %s\\n' "$*"; }
+
+# One item of a finding the default output reports as a count. Printed only
+# under -v. It always returns 0: there is no "set -e" in this script today, but
+# a helper whose exit status silently tracks a verbosity flag is a trap for
+# whoever adds one.
+detail() {
+  [ "$verbose" -eq 1 ] && printf '   %s\\n' "$*"
+  return 0
+}
 
 fail() {
   printf '   FAIL [step %s] %s\\n' "$step" "$*"
@@ -186,6 +244,10 @@ recompute_entry_hash() {
 }
 
 printf 'verify.sh - Birdbrain evidence package, by-hand verification (see VERIFY.md)\\n'
+
+exec 3>&1 4>&2
+stdout_saved=1
+exec >"$detail_file" 2>&1
 
 # --- Step 1 ---------------------------------------------------------------
 begin 1 'file integrity against the unsigned index'
@@ -271,6 +333,11 @@ fi
 begin 5 'content bind to the signed chain'
 selection=''
 have_selection=0
+# Named scope for the verdict header. Empty until a verified export-entry.json
+# declares one: a package without that file states no scope this script can
+# repeat, and the header stays silent rather than guessing whole-case.
+scope_kind=''
+scope_line=''
 if [ -f export-entry.json ]; then
   export_entry=$(tr -d '\\n' <export-entry.json)
   entry_ok=1
@@ -282,8 +349,10 @@ if [ -f export-entry.json ]; then
   elif [ "$(field "$export_entry" '.scope // empty')" = 'selection' ]; then
     selection=$(field "$export_entry" '.captureIds[]')
     have_selection=1
+    scope_kind=selection
     note 'export-entry.json verifies and declares a selection-scoped package'
   else
+    scope_kind=whole
     note 'export-entry.json verifies and declares a whole-case package'
   fi
 else
@@ -325,15 +394,19 @@ deleted=$(jq -r 'select(.type == "deletion") | .captureId' manifest.jsonl)
 jq -c 'select(.type == "capture")' manifest.jsonl >"$tmp/captures.jsonl"
 
 bound=0
+captures_total=0
+captures_outside=0
 while IFS= read -r line; do
   [ -n "$line" ] || continue
+  captures_total=$((captures_total + 1))
   id=$(field "$line" '.captureId')
   if in_list "$deleted" "$id"; then
     note "capture $id: a later deletion entry accounts for it, so it is expected absent"
     continue
   fi
   if [ "$have_selection" -eq 1 ] && ! in_list "$selection" "$id"; then
-    note "capture $id: outside the signed export selection, so it is expected absent"
+    captures_outside=$((captures_outside + 1))
+    detail "capture $id: outside the signed export selection, so it is expected absent"
     continue
   fi
   if [ ! -f "pages/$id.mhtml" ]; then
@@ -352,6 +425,9 @@ while IFS= read -r line; do
     fi
   fi
 done <"$tmp/captures.jsonl"
+if [ "$captures_outside" -gt 0 ]; then
+  note "$captures_outside of $captures_total capture(s) are outside the signed export selection and expected absent - the omission is declared in a signed entry, not inferred (re-run with -v to list them)"
+fi
 note "$bound capture(s) bound to the signed chain"
 
 # Exhibits of every other kind (ADR-0023). The signed entry carries the path the
@@ -361,8 +437,11 @@ note "$bound capture(s) bound to the signed chain"
 # enclosed and matching its signed contentHash.
 jq -c 'select(.type == "exhibit")' manifest.jsonl >"$tmp/exhibits.jsonl"
 exhibits_bound=0
+exhibits_total=0
+exhibits_outside=0
 while IFS= read -r line; do
   [ -n "$line" ] || continue
+  exhibits_total=$((exhibits_total + 1))
   id=$(field "$line" '.exhibitId')
   num=$(field "$line" '.exhibitNumber')
   if in_list "$deleted" "$id"; then
@@ -370,7 +449,8 @@ while IFS= read -r line; do
     continue
   fi
   if [ "$have_selection" -eq 1 ] && ! in_list "$selection" "$id"; then
-    note "Exhibit $num: outside the signed export selection, so it is expected absent"
+    exhibits_outside=$((exhibits_outside + 1))
+    detail "Exhibit $num: outside the signed export selection, so it is expected absent"
     continue
   fi
   rel=$(in_case_path "$(field "$line" '.path')")
@@ -382,6 +462,9 @@ while IFS= read -r line; do
     exhibits_bound=$((exhibits_bound + 1))
   fi
 done <"$tmp/exhibits.jsonl"
+if [ "$exhibits_outside" -gt 0 ]; then
+  note "$exhibits_outside of $exhibits_total exhibit(s) of other kinds are outside the signed export selection and expected absent (re-run with -v to list them)"
+fi
 note "$exhibits_bound exhibit(s) of other kinds bound to the signed chain"
 
 # Where each active Exhibit's bytes sit, which is also where its Derived Files
@@ -451,6 +534,7 @@ exhibit_label() {
 # finding names the parent and the derivation that produced it.
 jq -c 'select(.type == "derivation")' manifest.jsonl >"$tmp/derivations.jsonl"
 derived_bound=0
+derived_outside=0
 while IFS= read -r line; do
   [ -n "$line" ] || continue
   parent=$(field "$line" '.parentExhibitId')
@@ -460,7 +544,8 @@ while IFS= read -r line; do
     continue
   fi
   if [ "$have_selection" -eq 1 ] && ! in_list "$selection" "$parent"; then
-    note "derivation $derivation of $parent: its parent is outside the signed export selection, so it is expected absent"
+    derived_outside=$((derived_outside + 1))
+    detail "derivation $derivation of $parent: its parent is outside the signed export selection, so it is expected absent"
     continue
   fi
   base=$(in_case_path "$(field "$line" '.outputPath')")
@@ -479,7 +564,19 @@ while IFS= read -r line; do
     derived_bound=$((derived_bound + 1))
   fi
 done <"$tmp/derivations.jsonl"
+if [ "$derived_outside" -gt 0 ]; then
+  note "$derived_outside derived file(s) have a parent outside the signed export selection and are expected absent (re-run with -v to list them)"
+fi
 note "$derived_bound derived file(s) bound to the signed chain"
+
+case "$scope_kind" in
+selection)
+  scope_line="Scope: a signed selection. $captures_outside of $captures_total capture(s) in the chain are outside it and expected absent."
+  ;;
+whole)
+  scope_line="Scope: the whole case, $captures_total capture(s) in the chain."
+  ;;
+esac
 
 # --- Step 6 ---------------------------------------------------------------
 begin 6 'timestamp, the canonical TSA verification'
@@ -630,6 +727,25 @@ while IFS=' ' read -r file_sha file_path; do
   grep -qxF -e "$file_sha" "$tmp/signed-shas.txt" ||
     fail "$file_path: these bytes are not the token of any signed timestamp entry, so nothing states what they attest"
 done <"$tmp/file-index.txt"
+
+# The verdict, above the detail the checks just wrote. Same three outcomes and
+# the same counts as the block at the end of this script, which is unchanged: a
+# reader who scrolls to the bottom still finds the full statement of what a PASS
+# does and does not mean.
+if [ "$fail_count" -gt 0 ]; then
+  verdict_header="verify.sh: FAIL - $fail_count check(s) failed, in step(s):$failed_steps"
+elif [ "$incomplete_count" -gt 0 ]; then
+  verdict_header="verify.sh: INCOMPLETE - $incomplete_count check(s) could not be run, in step(s):$incomplete_steps"
+else
+  verdict_header="verify.sh: PASS - every check succeeded."
+fi
+restore_stdout
+printf '%s\\n' "$verdict_header"
+if [ -n "$scope_line" ]; then
+  printf '%s\\n' "$scope_line"
+fi
+printf 'Every check follows in order, and the full verdict repeats at the end.\\n'
+dump_detail
 
 printf '\\n'
 if [ "$fail_count" -gt 0 ]; then

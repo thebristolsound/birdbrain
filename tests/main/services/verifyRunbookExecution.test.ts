@@ -135,9 +135,9 @@ interface VerifyRun {
   output: string
 }
 
-function runVerifyScript(dir: string, env?: NodeJS.ProcessEnv): VerifyRun {
+function runVerifyScript(dir: string, env?: NodeJS.ProcessEnv, args: string[] = []): VerifyRun {
   try {
-    const stdout = execFileSync('/bin/sh', [VERIFY_SCRIPT_FILENAME], {
+    const stdout = execFileSync('/bin/sh', [VERIFY_SCRIPT_FILENAME, ...args], {
       cwd: dir,
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -645,6 +645,81 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     }
   )
 
+  // The recipient of a selection is the reason this script exists: they are
+  // outside the investigation and reading to decide whether to trust it. A
+  // verdict under several hundred "expected absent" lines is accurate and
+  // unreadable, which is the same as unverified for them.
+  describe('verdict placement and selection reporting', () => {
+    const selectionPackage = async (name: string): Promise<string> => {
+      const payload = '<html><body>capture left out of the selection</body></html>'
+      const { capture: other } = await ingestMhtmlCapture({
+        caseId,
+        url: 'https://example.com/unselected',
+        title: 'Unselected Page',
+        timestamp: '2026-04-05T12:03:00.000Z',
+        stream: Readable.from([Buffer.from(payload)]) as unknown as ReadableStream<Uint8Array>,
+        textContent: payload,
+        headers: {},
+        browserVersion: '',
+        userAgent: '',
+        httpStatus: 200,
+        extensionVersion: '',
+        operatorId: 'op',
+        operatorName: 'Test Operator',
+        toolVersion: '0.1.0'
+      })
+      return exportPackage(name, { captureIds: [other.id] })
+    }
+
+    it.skipIf(!RUNS)('prints the verdict above the checks, not below them', async () => {
+      const dir = await selectionPackage('verdict-first')
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(0)
+
+      const lines = run.output.split('\n')
+      const verdict = lines.findIndex((line) => line.startsWith('verify.sh: PASS'))
+      const firstStep = lines.findIndex((line) => line.startsWith('== Step'))
+      expect(verdict).toBeGreaterThanOrEqual(0)
+      expect(firstStep).toBeGreaterThan(verdict)
+
+      // The trailing block is unchanged, so the verdict still appears twice.
+      expect(lines.filter((line) => line.startsWith('verify.sh: PASS'))).toHaveLength(2)
+      expect(run.output).toContain('Scope: a signed selection.')
+    })
+
+    it.skipIf(!RUNS)('counts the unselected exhibits instead of listing them', async () => {
+      const dir = await selectionPackage('counted')
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(0)
+      expect(run.output).toMatch(/\d+ of \d+ capture\(s\) are outside the signed export selection/)
+      expect(run.output).toContain('re-run with -v to list them')
+      expect(run.output).not.toMatch(/capture \S+: outside the signed export selection/)
+    })
+
+    it.skipIf(!RUNS)('-v restores the per-item lines the count covers', async () => {
+      const dir = await selectionPackage('verbose')
+      const run = runVerifyScript(dir, undefined, ['-v'])
+      expect(run.status, run.output).toBe(0)
+      expect(run.output).toMatch(/capture \S+: outside the signed export selection/)
+      // The count is still stated; -v adds detail rather than replacing it.
+      expect(run.output).toMatch(/\d+ of \d+ capture\(s\) are outside the signed export selection/)
+    })
+
+    it.skipIf(!RUNS)('rejects an unknown option rather than verifying as if it were absent', () => {
+      const run = runVerifyScript(packageDir, undefined, ['--not-an-option'])
+      expect(run.status).toBe(2)
+      expect(run.output).toContain('unknown option')
+      expect(run.output).not.toContain('PASS')
+    })
+
+    it.skipIf(!RUNS)('states whole-case scope when the signed entry declares it', () => {
+      const run = runVerifyScript(packageDir)
+      expect(run.status, run.output).toBe(0)
+      expect(run.output).toContain('Scope: the whole case,')
+      expect(run.output).not.toContain('outside the signed export selection')
+    })
+  })
+
   it.skipIf(!RUNS)('reports INCOMPLETE, not PASS, when no anchor is enclosed', () => {
     // What an operator on a non-default timestamp authority actually gets:
     // getTsaTrustBundle bundles no root, the tokens still ship, and no
@@ -659,6 +734,12 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     expect(run.output).toContain('INCOMPLETE [step 6]')
     expect(run.output).toContain('verify.sh: INCOMPLETE')
     expect(run.output).not.toContain('PASS')
+    // The buffered detail must not swallow a non-zero verdict, and the header
+    // above it must name the same outcome as the block below it.
+    const incompleteLines = run.output.split('\n')
+    const verdict = incompleteLines.findIndex((line) => line.startsWith('verify.sh: INCOMPLETE'))
+    const firstStep = incompleteLines.findIndex((line) => line.startsWith('== Step'))
+    expect(firstStep).toBeGreaterThan(verdict)
     // The token is still bound to its signed entry; only the anchor is gone.
     expect(run.output).not.toContain('FAIL')
   })

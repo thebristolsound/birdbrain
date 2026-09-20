@@ -526,6 +526,13 @@ const ManifestTimestampEntrySchema = z
     entryHash: z.string()
   })
   .strict()
+  // A schema-3 reader's strict timestamp shape has no `subject`, so an entry
+  // carrying one below version 4 would read there as a broken chain rather
+  // than "verifier too old" (ADR-0023, X25). Refused here for the same reason.
+  .refine((entry) => entry.subject === undefined || entry.schemaVersion >= 4, {
+    message: '`subject` requires schemaVersion 4',
+    path: ['schemaVersion']
+  })
 
 // Signed audit record of an evidence-package export (#124). schemaVersion is
 // pinned >=2 so the entry MUST carry a signature, matching the timestamp entry.
@@ -681,6 +688,12 @@ const ManifestExhibitEntrySchema = z
     entryHash: z.string()
   })
   .strict()
+  // Same rule as `subject` on a timestamp: a schema-3 reader has no
+  // `memberCode`, so the field is only ever valid on an entry stamped 4.
+  .refine((entry) => entry.memberCode === undefined || entry.schemaVersion >= 4, {
+    message: '`memberCode` requires schemaVersion 4',
+    path: ['schemaVersion']
+  })
 
 // One Derived File computed from an Exhibit (X17): extracted text, a thumbnail,
 // a PDF metadata sidecar, an enrichment transform's output (`transform:<name>`,

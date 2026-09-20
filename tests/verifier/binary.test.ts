@@ -4,7 +4,7 @@ import { join, dirname, resolve } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
 import { spawnSync } from 'child_process'
-import { createHash } from 'crypto'
+import { createHash, createSign, generateKeyPairSync } from 'crypto'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
@@ -390,61 +390,158 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
   })
 
   // Schema 4 through the BUILT binary (#1509): a package enclosing a Shared
-  // Case is walked and a non-pass outcome is named in the report, so a script
-  // reading the output can tell `merge-head-mismatch` from a broken chain.
-  it('exits 1 naming the shared-case outcome when a merge names a missing head', () => {
-    const sharedDir = mkdtempSync(join(tmpdir(), 'bb-binshared-'))
-    try {
-      cpSync(pkgDir, sharedDir, { recursive: true })
-      const manifestPath = join(sharedDir, 'manifest.jsonl')
-      const existing = readFileSync(manifestPath, 'utf-8')
-      const lines = existing.trim().split('\n')
-      let head = JSON.parse(lines[lines.length - 1]) as { index: number; entryHash: string }
-      const append = (body: Record<string, unknown>): string => {
+  // Case is walked and every non-pass outcome is named in the report, so a
+  // script reading the output can tell each from a broken chain.
+  it('exits 1 naming each shared-case outcome', () => {
+    const existing = readFileSync(join(pkgDir, 'manifest.jsonl'), 'utf-8')
+    const lines = existing.trim().split('\n')
+    const last = JSON.parse(lines[lines.length - 1]) as {
+      index: number
+      entryHash: string
+      caseId: string
+    }
+    const { caseId } = last
+    const ownerPem = readFileSync(join(pkgDir, 'signing-public-key.pem'), 'utf-8')
+    const memberKey = generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: 'spki', format: 'pem' },
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
+    })
+    const signAsMember = (entryHash: string): string =>
+      createSign('sha256').update(entryHash).sign(memberKey.privateKey, 'base64')
+
+    // Appends signed entries after `from`, the way appendManifestEntry links them.
+    const chainOf = (
+      bodies: Record<string, unknown>[],
+      sign: (entryHash: string) => string,
+      from?: { index: number; entryHash: string }
+    ): string[] => {
+      let head = from ?? { index: -1, entryHash: '' }
+      return bodies.map((body) => {
         const full = { ...body, index: head.index + 1, prevHash: head.entryHash }
         const entryHash = createHash('sha256').update(canonicalStringify(full)).digest('hex')
         head = { index: full.index, entryHash }
-        return JSON.stringify({ ...full, entryHash, signature: signEntryHash(entryHash) })
-      }
-      const operator = {
-        operatorId: 'inst-owner',
-        operatorName: 'Test Operator',
-        toolVersion: '0.1.0'
-      }
-      const added = [
-        append({
-          type: 'member-add',
-          caseId: 'shared',
-          memberInstallationId: 'inst-owner',
-          memberPublicKeyPem: readFileSync(join(sharedDir, 'signing-public-key.pem'), 'utf-8'),
-          memberCode: 'CO',
-          memberOperatorName: 'Test Operator',
-          nodeId: 'node-owner',
-          role: 'owner',
-          timestamp: '2026-09-19T12:00:00.000Z',
-          ...operator,
-          schemaVersion: 4
-        }),
-        append({
-          type: 'merge',
-          caseId: 'shared',
-          heads: [
-            { installationId: 'inst-b', index: 0, entryHash: 'a'.repeat(64), entriesReceived: 1 }
-          ],
-          timestamp: '2026-09-19T12:01:00.000Z',
-          ...operator,
-          schemaVersion: 4
-        })
-      ]
-      writeFileSync(manifestPath, existing + added.join('\n') + '\n')
+        return JSON.stringify({ ...full, entryHash, signature: sign(entryHash) })
+      })
+    }
+    const owner = { operatorId: 'inst-owner', operatorName: 'Test Operator', toolVersion: '0.1.0' }
+    const member = { operatorId: 'inst-b', operatorName: 'Test Member', toolVersion: '0.1.0' }
+    const add = (
+      id: string,
+      code: string,
+      pem: string,
+      role: 'owner' | 'member'
+    ): Record<string, unknown> => ({
+      type: 'member-add',
+      caseId,
+      memberInstallationId: id,
+      memberPublicKeyPem: pem,
+      memberCode: code,
+      memberOperatorName: 'Test Operator',
+      nodeId: `node-${id}`,
+      role,
+      timestamp: '2026-09-19T12:00:00.000Z',
+      ...owner,
+      schemaVersion: 4
+    })
+    const ownerAdd = add('inst-owner', 'CO', ownerPem, 'owner')
+    const memberAdd = add('inst-b', 'B', memberKey.publicKey, 'member')
+    const exhibit = (exhibitId: string): Record<string, unknown> => ({
+      type: 'exhibit',
+      exhibitId,
+      caseId,
+      kind: 'document',
+      origin: 'manual-upload',
+      name: 'statement.pdf',
+      exhibitNumber: 900,
+      path: `${caseId}/documents/${exhibitId}.pdf`,
+      contentHash: 'a'.repeat(64),
+      sizeBytes: 1,
+      timestamp: '2026-09-19T12:02:00.000Z',
+      ...member,
+      schemaVersion: 3
+    })
+    const memberChain = (bodies: Record<string, unknown>[], sign = signAsMember): string =>
+      chainOf(bodies, sign).join('\n') + '\n'
 
-      const proc = spawnSync(binaryPath, [sharedDir], { encoding: 'utf-8' })
-      expect(proc.status, proc.stdout + proc.stderr).toBe(1)
-      expect(proc.stdout).toContain('RESULT: FAIL')
-      expect(proc.stdout).toContain('[FAIL] shared case — merge-head-mismatch: ')
-      expect(proc.stdout).not.toContain('VERIFIER TOO OLD')
-    } finally {
-      rmSync(sharedDir, { recursive: true, force: true })
+    const cases: Array<{
+      outcome: string
+      ownerEntries: Record<string, unknown>[]
+      memberFile?: { id: string; jsonl: string }
+    }> = [
+      {
+        outcome: 'merge-head-mismatch',
+        ownerEntries: [
+          ownerAdd,
+          {
+            type: 'merge',
+            caseId,
+            heads: [
+              { installationId: 'inst-x', index: 0, entryHash: 'a'.repeat(64), entriesReceived: 1 }
+            ],
+            timestamp: '2026-09-19T12:01:00.000Z',
+            ...owner,
+            schemaVersion: 4
+          }
+        ]
+      },
+      {
+        outcome: 'entry-after-revocation',
+        ownerEntries: [
+          ownerAdd,
+          memberAdd,
+          {
+            type: 'member-revoke',
+            caseId,
+            memberInstallationId: 'inst-b',
+            timestamp: '2026-09-19T12:03:00.000Z',
+            ...owner,
+            schemaVersion: 4
+          }
+        ],
+        memberFile: { id: 'inst-b', jsonl: memberChain([exhibit('b-1')]) }
+      },
+      {
+        outcome: 'unknown-member',
+        ownerEntries: [ownerAdd],
+        memberFile: { id: 'inst-b', jsonl: memberChain([exhibit('b-1')]) }
+      },
+      {
+        outcome: 'chain-broken',
+        ownerEntries: [ownerAdd, memberAdd],
+        memberFile: { id: 'inst-b', jsonl: memberChain([exhibit('b-1')], signEntryHash) }
+      },
+      { outcome: 'member-chain-missing', ownerEntries: [ownerAdd, memberAdd] },
+      {
+        outcome: 'roster-invalid',
+        ownerEntries: [ownerAdd, add('inst-c', 'C', memberKey.publicKey, 'owner')]
+      },
+      {
+        outcome: 'citation-collision',
+        ownerEntries: [ownerAdd, memberAdd],
+        memberFile: { id: 'inst-b', jsonl: memberChain([exhibit('b-1'), exhibit('b-2')]) }
+      }
+    ]
+
+    for (const { outcome, ownerEntries, memberFile } of cases) {
+      const sharedDir = mkdtempSync(join(tmpdir(), 'bb-binshared-'))
+      try {
+        cpSync(pkgDir, sharedDir, { recursive: true })
+        writeFileSync(
+          join(sharedDir, 'manifest.jsonl'),
+          existing + chainOf(ownerEntries, signEntryHash, last).join('\n') + '\n'
+        )
+        if (memberFile) {
+          writeFileSync(join(sharedDir, `manifest.${memberFile.id}.jsonl`), memberFile.jsonl)
+        }
+        const proc = spawnSync(binaryPath, [sharedDir], { encoding: 'utf-8' })
+        expect(proc.status, outcome + proc.stdout + proc.stderr).toBe(1)
+        expect(proc.stdout, outcome).toContain('RESULT: FAIL')
+        expect(proc.stdout, outcome).toContain(`[FAIL] shared case — ${outcome}: `)
+        expect(proc.stdout, outcome).not.toContain('VERIFIER TOO OLD')
+      } finally {
+        rmSync(sharedDir, { recursive: true, force: true })
+      }
     }
   })
 

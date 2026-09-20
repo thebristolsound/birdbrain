@@ -95,6 +95,50 @@ describe('a schema-3 verifier against a schema-4 chain', () => {
     expect(result.reason).toContain('supports up to schema version 3')
   })
 
+  it('reports a known type carrying a schema-4 field as verifier too old', () => {
+    // `memberCode` and `subject` ride on types a schema-3 verifier knows, so
+    // the version stamp is all that tells it the entry is not broken. That is
+    // why the schema-4 reader refuses either field below 4 (#1518 review).
+    const bodies = [
+      {
+        type: 'exhibit',
+        exhibitId: 'x-2',
+        caseId: CASE_ID,
+        kind: 'document',
+        origin: 'manual-upload',
+        name: 'statement.pdf',
+        exhibitNumber: 2,
+        memberCode: 'CO',
+        path: `${CASE_ID}/documents/x-2.pdf`,
+        contentHash: 'a'.repeat(64),
+        sizeBytes: 1,
+        timestamp: '2026-09-19T12:00:00.000Z',
+        ...OPERATOR,
+        schemaVersion: 4
+      },
+      {
+        type: 'timestamp',
+        caseId: CASE_ID,
+        captureContentHash: 'a'.repeat(64),
+        subject: 'entry',
+        timestamp: '2026-09-19T12:03:00.000Z',
+        ...OPERATOR,
+        schemaVersion: 4
+      }
+    ]
+    for (const body of bodies) {
+      const result = verifyManifestChainText(buildChain([body]), {
+        publicKeyPem: getPublicKeyPem()
+      })
+      expect(result.brokenAt, body.type).toBeUndefined()
+      expect(result.unsupported, body.type).toMatchObject({
+        index: 0,
+        entryType: body.type,
+        schemaVersionSeen: 4
+      })
+    }
+  })
+
   it('still reports a schema-4 entry that fails its signature as tampering', () => {
     // The too-old exculpation costs the signing key under either ceiling.
     const lines = buildChain([

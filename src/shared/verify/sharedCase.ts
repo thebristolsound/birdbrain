@@ -15,7 +15,12 @@ import type { ChainVerifyResult, UnsupportedEntry } from '@shared/verify/manifes
 //   3. check that every `merge` head names an entry that exists, at that index
 //      with that hash, in that member's chain;
 //   4. resolve every Exhibit citation to `<memberCode>-<exhibitNumber>` and
-//      report one that resolves to two entries.
+//      report one that resolves to two entries;
+//   5. check that every `exclude` names an Exhibit its stated author holds.
+//
+// Along the way: every chain's current entries must name the Owner's Case, no
+// two members share a key, and every member the Owner could hold a chain for
+// has one supplied.
 //
 // What this proves: each member's chain was not edited without that member's
 // key; each `merge` names chain states that exist; a citation resolves to one
@@ -56,10 +61,14 @@ export type SharedCaseOutcome =
   // A chain holds an entry from a newer schema. Not a tamper verdict (X25).
   | 'verifier-too-old'
   // The Owner's membership entries do not form a roster this verifier can use,
-  // or a membership entry was written outside the Owner's chain.
+  // a membership entry was written outside the Owner's chain, or a chain
+  // belongs to another Case.
   | 'roster-invalid'
   // A chain is present for an installation no `member-add` names.
   | 'unknown-member'
+  // The roster names a member whose chain was not supplied. A revoked member
+  // the Owner never merged is the one exception: the Owner never held it.
+  | 'member-chain-missing'
   // A revoked member's chain holds an entry past the head the Owner merged
   // before revoking it.
   | 'entry-after-revocation'
@@ -116,16 +125,26 @@ export interface SharedCaseVerifyResult {
   // The first finding's outcome, or `pass`.
   outcome: SharedCaseOutcome
   reason?: string
-  // Every finding, in the order the walk met them. Verification stops only
-  // when the Owner's chain fails or a chain is unreadable; a remote chain's
-  // own failure ends the checks on that chain and no other.
+  // Every finding, in the order the walk met them, `verifier-too-old` last.
+  // Verification stops when the Owner's chain fails, and before the
+  // cross-chain checks when a chain is unreadable; a remote chain's own
+  // failure ends the checks on that chain and no other.
   findings: SharedCaseFinding[]
   owner: ChainVerifyResult
   memberChains: Map<string, ChainVerifyResult>
   members: SharedCaseMember[]
   citations: Map<string, SharedCaseCitation>
   exclusions: SharedCaseExclusion[]
-  // Set with `verifier-too-old`: the entry this build could not read.
+  // The accepted entries of every chain that verified, by installation id (the
+  // Owner's under `owner` when no roster names it). A revoked member's stop at
+  // the head the Owner had merged. What a caller binds artifacts against.
+  entries: Map<string, ManifestEntry[]>
+  // The key `entries` holds the caller's trusted chain under. Set by
+  // `verifySharedCaseReplica` once it knows which member the local chain is.
+  localInstallationId?: string
+  // Set when `verifier-too-old` is the ONLY kind of finding: the entry this
+  // build could not read. A definite failure found beside it is a verdict this
+  // build did reach, and is never downgraded to "too old".
   unsupported?: UnsupportedEntry
 }
 
@@ -170,6 +189,9 @@ function samePem(a: string, b: string): boolean {
 
 interface Roster {
   ownerId?: string
+  // The Shared Case's id: the one the Owner's own `member-add` states. A
+  // joiner adopts it, so every member chain's current entries carry it.
+  caseId?: string
   members: SharedCaseMember[]
   findings: SharedCaseFinding[]
   exclusions: SharedCaseExclusion[]
@@ -183,6 +205,7 @@ function buildRoster(entries: ManifestEntry[], ownerPublicKeyPem: string): Roste
   const findings: SharedCaseFinding[] = []
   const exclusions: SharedCaseExclusion[] = []
   let ownerId: string | undefined
+  let caseId: string | undefined
   const fail = (index: number, reason: string): void => {
     findings.push({ outcome: 'roster-invalid', installationId: ownerId ?? 'owner', index, reason })
   }
@@ -208,6 +231,7 @@ function buildRoster(entries: ManifestEntry[], ownerPublicKeyPem: string): Roste
           continue
         }
         ownerId = memberInstallationId
+        caseId = entry.caseId
       } else if (role === 'owner') {
         fail(index, `a second member-add with role 'owner' (${memberInstallationId})`)
         continue
@@ -224,6 +248,16 @@ function buildRoster(entries: ManifestEntry[], ownerPublicKeyPem: string): Roste
       if (members.some((m) => m.memberCode === memberCode)) {
         // A code is a citation prefix and is never reused, revoked or not.
         fail(index, `member-add reuses Member Code ${memberCode}`)
+        continue
+      }
+      const sameKey = members.find((m) => samePem(m.publicKeyPem, entry.memberPublicKeyPem))
+      if (sameKey) {
+        // The key is the member's identity: one chain under a shared key would
+        // verify as either member and take either code.
+        fail(
+          index,
+          `member-add for ${memberInstallationId} carries the key of ${sameKey.installationId}`
+        )
         continue
       }
       members.push({
@@ -260,7 +294,15 @@ function buildRoster(entries: ManifestEntry[], ownerPublicKeyPem: string): Roste
       )
     }
   }
-  return { ownerId, members, findings, exclusions }
+  return { ownerId, caseId, members, findings, exclusions }
+}
+
+// The first entry of a verified chain's CURRENT segment that names another
+// Case. Entries before the last `import` are the source Case's history and
+// carry its id by design; everything from that `import` on is this Case's.
+function foreignCaseEntry(entries: ManifestEntry[], caseId: string): ManifestEntry | undefined {
+  const lastImport = entries.reduce((at, e) => (e.type === 'import' ? e.index : at), 0)
+  return entries.find((e) => e.index >= lastImport && e.caseId !== caseId)
 }
 
 // The highest head index the Owner's `merge` entries before `before` name for
@@ -294,11 +336,17 @@ export function verifySharedCase(input: SharedCaseInput): SharedCaseVerifyResult
   const findings: SharedCaseFinding[] = []
   const memberChains = new Map<string, ChainVerifyResult>()
   const citations = new Map<string, SharedCaseCitation>()
+  const entriesById = new Map<string, ManifestEntry[]>()
   const finish = (
     owner: ChainVerifyResult,
     roster: Pick<Roster, 'members' | 'exclusions'>,
     unsupported?: UnsupportedEntry
   ): SharedCaseVerifyResult => {
+    // A definite finding leads: `outcome` must not read "too old" when this
+    // build also proved a failure.
+    findings.sort(
+      (a, b) => Number(a.outcome === 'verifier-too-old') - Number(b.outcome === 'verifier-too-old')
+    )
     const first = findings[0]
     return {
       valid: findings.length === 0,
@@ -310,6 +358,7 @@ export function verifySharedCase(input: SharedCaseInput): SharedCaseVerifyResult
       members: roster.members,
       citations,
       exclusions: roster.exclusions,
+      entries: entriesById,
       ...(unsupported ? { unsupported } : {})
     }
   }
@@ -342,16 +391,29 @@ export function verifySharedCase(input: SharedCaseInput): SharedCaseVerifyResult
   const ownerEntries = parseVerifiedChain(input.owner.jsonl)
   const roster = buildRoster(ownerEntries, input.owner.publicKeyPem)
   findings.push(...roster.findings)
-  const { ownerId, members } = roster
+  const { ownerId, caseId, members } = roster
+  if (caseId !== undefined) {
+    const foreign = foreignCaseEntry(ownerEntries, caseId)
+    if (foreign) {
+      findings.push({
+        outcome: 'roster-invalid',
+        installationId: ownerId ?? 'owner',
+        index: foreign.index,
+        reason: `entry ${foreign.index} of the Owner's chain names Case ${foreign.caseId}, the Shared Case is ${caseId}`
+      })
+    }
+  }
   const memberById = new Map(members.map((m) => [m.installationId, m]))
 
   // 2. Each remote chain under its member's key.
   // Verified entries by chain, the input to the cross-chain checks. The
   // Owner's are keyed by its installation id, or `owner` when no roster names
   // one: a single-member Case still resolves its own citations.
-  const entriesById = new Map<string, ManifestEntry[]>()
   entriesById.set(ownerId ?? 'owner', ownerEntries)
   const seenIds = new Set<string>()
+  // Every chain is walked before "too old" is decided, so an unreadable chain
+  // met first cannot hide a broken one met after it, or the reverse.
+  let firstUnsupported: UnsupportedEntry | undefined
   for (const chain of input.members) {
     const { installationId } = chain
     if (seenIds.has(installationId) || installationId === ownerId) {
@@ -384,7 +446,8 @@ export function verifySharedCase(input: SharedCaseInput): SharedCaseVerifyResult
         index: result.unsupported.index,
         reason: result.reason ?? 'verifier too old'
       })
-      return finish(owner, roster, result.unsupported)
+      firstUnsupported ??= result.unsupported
+      continue
     }
     if (!result.valid) {
       findings.push({
@@ -396,6 +459,19 @@ export function verifySharedCase(input: SharedCaseInput): SharedCaseVerifyResult
       continue
     }
     const entries = parseVerifiedChain(chain.jsonl)
+    const foreign = caseId === undefined ? undefined : foreignCaseEntry(entries, caseId)
+    if (foreign) {
+      // Verified under the member's key, and so genuinely that member's — but
+      // of another Case. None of it is accepted: not as a merge target, not
+      // as a citation.
+      findings.push({
+        outcome: 'roster-invalid',
+        installationId,
+        index: foreign.index,
+        reason: `entry ${foreign.index} of ${installationId} (${member.memberCode}) names Case ${foreign.caseId}, the Shared Case is ${caseId}`
+      })
+      continue
+    }
     // A revoked member's entries past what the Owner accepted are reported
     // below and NOT accepted: they satisfy no merge head and claim no
     // citation. Everything the Owner merged before the revocation stands.
@@ -438,6 +514,27 @@ export function verifySharedCase(input: SharedCaseInput): SharedCaseVerifyResult
     }
   }
 
+  // A chain for every member the Owner could have held one for. A revoked
+  // member with no accepted head was never merged, so the Owner never had it.
+  for (const member of members) {
+    if (member.role === 'owner' || seenIds.has(member.installationId)) continue
+    if (member.revokedAt !== undefined && member.acceptedHeadIndex === undefined) continue
+    findings.push({
+      outcome: 'member-chain-missing',
+      installationId: member.installationId,
+      reason: `no chain supplied for member ${member.installationId} (${member.memberCode})`
+    })
+  }
+
+  // An unreadable chain leaves the cross-chain checks nothing sound to say: a
+  // merge naming it would read as a mismatch this build cannot actually judge.
+  // It is "too old" only when nothing definite was found; otherwise the
+  // findings stand as the verdict.
+  if (firstUnsupported) {
+    const definite = findings.some((f) => f.outcome !== 'verifier-too-old')
+    return finish(owner, roster, definite ? undefined : firstUnsupported)
+  }
+
   // 3. Every merge head, in every verified chain.
   for (const [writerId, entries] of entriesById) {
     for (const entry of entries) {
@@ -475,6 +572,27 @@ export function verifySharedCase(input: SharedCaseInput): SharedCaseVerifyResult
     }
   }
 
+  // 5. Every exclusion names an Exhibit its stated author's accepted chain
+  // holds. Skipped for an author whose chain is absent or failed: that is
+  // already a finding, and the target cannot be judged without the chain.
+  for (const exclusion of roster.exclusions) {
+    const authored = entriesById.get(exclusion.authorInstallationId)
+    if (!authored) continue
+    const found = authored.some(
+      (e) =>
+        (e.type === 'exhibit' && e.exhibitId === exclusion.exhibitId) ||
+        (e.type === 'capture' && e.captureId === exclusion.exhibitId)
+    )
+    if (!found) {
+      findings.push({
+        outcome: 'roster-invalid',
+        installationId: ownerId ?? 'owner',
+        index: exclusion.index,
+        reason: `exclude at index ${exclusion.index} names Exhibit ${exclusion.exhibitId}, which the chain of ${exclusion.authorInstallationId} does not hold`
+      })
+    }
+  }
+
   return finish(owner, roster)
 
   function resolveCitation(
@@ -484,16 +602,21 @@ export function verifySharedCase(input: SharedCaseInput): SharedCaseVerifyResult
   ): void {
     const citation = code === undefined ? String(exhibitNumber) : `${code}-${exhibitNumber}`
     const existing = citations.get(citation)
-    if (existing && existing.exhibitId !== at.exhibitId) {
+    if (existing) {
+      // One citation, one ENTRY. A second entry for the same Exhibit id can
+      // state another path or hash, and a reader could not tell which governs.
       findings.push({
         outcome: 'citation-collision',
         installationId: at.installationId,
         index: at.index,
-        reason: `citation ${citation} resolves to exhibits ${existing.exhibitId} and ${at.exhibitId}`
+        reason:
+          existing.exhibitId === at.exhibitId
+            ? `citation ${citation} resolves to two entries for exhibit ${at.exhibitId} (index ${existing.index} of ${existing.installationId} and index ${at.index} of ${at.installationId})`
+            : `citation ${citation} resolves to exhibits ${existing.exhibitId} and ${at.exhibitId}`
       })
       return
     }
-    if (!existing) citations.set(citation, { citation, ...at })
+    citations.set(citation, { citation, ...at })
   }
 }
 
@@ -590,7 +713,11 @@ function readOwnerClaim(chain: SharedCaseMemberChain): OwnerClaim | undefined {
  */
 export function verifySharedCaseReplica(input: SharedCaseReplicaInput): SharedCaseVerifyResult {
   const { local, others } = input
-  const asOwner = (): SharedCaseVerifyResult => verifySharedCase({ owner: local, members: others })
+  const asOwner = (): SharedCaseVerifyResult => {
+    const result = verifySharedCase({ owner: local, members: others })
+    const ownerId = result.members.find((m) => m.role === 'owner')?.installationId
+    return { ...result, localInstallationId: ownerId ?? 'owner' }
+  }
   const localChain = verifyManifestChainText(local.jsonl, { publicKeyPem: local.publicKeyPem })
   if (!localChain.valid) return asOwner()
   const localEntries = parseVerifiedChain(local.jsonl)
@@ -607,7 +734,8 @@ export function verifySharedCaseReplica(input: SharedCaseReplicaInput): SharedCa
     memberChains: new Map(),
     members: [],
     citations: new Map(),
-    exclusions: []
+    exclusions: [],
+    entries: new Map()
   })
   if (claims.length > 1) {
     return unanchored(
@@ -640,13 +768,14 @@ export function verifySharedCaseReplica(input: SharedCaseReplicaInput): SharedCa
   if (localId === undefined) {
     return unanchored("no member-add in the Owner's chain carries the local key")
   }
-  return verifySharedCase({
+  const result = verifySharedCase({
     owner: { jsonl: claim.jsonl, publicKeyPem: claim.publicKeyPem },
     members: [
       { installationId: localId, jsonl: local.jsonl },
       ...others.filter((o) => o.installationId !== claim.installationId)
     ]
   })
+  return { ...result, localInstallationId: localId }
 }
 
 function readMemberIdForKey(jsonl: string, publicKeyPem: string): string | undefined {

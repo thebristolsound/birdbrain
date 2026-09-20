@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { createHash, createSign, generateKeyPairSync } from 'crypto'
-import { mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
@@ -166,7 +166,9 @@ const exhibit = (
   sizeBytes: 2048,
   timestamp: `2026-09-19T12:${String(30 + n).padStart(2, '0')}:00.000Z`,
   ...operator,
-  schemaVersion: 3,
+  // `memberCode` is a schema-4 field: an entry carrying it is stamped 4, which
+  // is what makes a schema-3 verifier answer "too old" and not "broken".
+  schemaVersion: over.memberCode === undefined ? 3 : 4,
   ...over
 })
 
@@ -276,6 +278,31 @@ describe('manifest schema 4 — the schema', () => {
       ManifestEntrySchema.safeParse({ ...base, subject: 'exhibit', entryHash: 'f'.repeat(64) })
         .success
     ).toBe(false)
+  })
+
+  it('refuses memberCode and subject on an entry stamped below 4', () => {
+    // A schema-3 verifier's strict shapes have neither field, so it would call
+    // such an entry broken, not "too old" (X25). This reader refuses it too.
+    const coded = { ...exhibit(1), memberCode: 'CO', index: 0, prevHash: '', schemaVersion: 3 }
+    expect(ManifestEntrySchema.safeParse({ ...coded, entryHash: entryHashOf(coded) }).success).toBe(
+      false
+    )
+    for (const schemaVersion of [2, 3]) {
+      const stamp = {
+        type: 'timestamp',
+        caseId: CASE_ID,
+        captureContentHash: 'a'.repeat(64),
+        subject: 'entry',
+        timestamp: '2026-09-19T13:00:00.000Z',
+        ...OPERATOR,
+        index: 0,
+        prevHash: '',
+        schemaVersion
+      }
+      expect(
+        ManifestEntrySchema.safeParse({ ...stamp, entryHash: entryHashOf(stamp) }).success
+      ).toBe(false)
+    }
   })
 
   it('does not read an entry-subject stamp as trusted time for any content', () => {
@@ -469,8 +496,11 @@ describe('verifySharedCase — non-pass outcomes, each by name', () => {
       owner: { jsonl: owner.jsonl, publicKeyPem: getPublicKeyPem() },
       members: []
     })
-    expect(result.outcome).toBe('merge-head-mismatch')
-    expect(result.reason).toContain('not present')
+    // The missing chain is a finding of its own, and the merge that names it
+    // is still reported.
+    expect(result.outcome).toBe('member-chain-missing')
+    const mismatch = result.findings.find((f) => f.outcome === 'merge-head-mismatch')
+    expect(mismatch?.reason).toContain('not present')
   })
 
   it('checks a member’s merge naming the Owner’s head the same way', () => {
@@ -624,6 +654,164 @@ describe('verifySharedCase — non-pass outcomes, each by name', () => {
   })
 })
 
+describe('verifySharedCase — what a roster member owes', () => {
+  const THIRD_ID = 'inst-third'
+  const THIRD_KEY = keyPair()
+  const THIRD_OPERATOR = { operatorId: THIRD_ID, operatorName: 'Sam Third', toolVersion: '0.5.0' }
+  const THIRD_ADD = (): Record<string, unknown> =>
+    memberAdd(THIRD_ID, 'ST', THIRD_KEY.publicKey, 'member', 2)
+
+  it('reports a roster member whose chain was not supplied', () => {
+    const owner = buildChain([OWNER_ADD(), MEMBER_ADD(), exhibit(1)])
+    const result = verifySharedCase({
+      owner: { jsonl: owner.jsonl, publicKeyPem: getPublicKeyPem() },
+      members: []
+    })
+    expect(result.findings.map((f) => f.outcome)).toEqual(['member-chain-missing'])
+    expect(result.findings[0]).toMatchObject({ installationId: MEMBER_ID })
+  })
+
+  it('does not ask for the chain of a revoked member the Owner never merged', () => {
+    const owner = buildChain([OWNER_ADD(), MEMBER_ADD(), memberRevoke(MEMBER_ID, 41)])
+    const result = verifySharedCase({
+      owner: { jsonl: owner.jsonl, publicKeyPem: getPublicKeyPem() },
+      members: []
+    })
+    expect(result.valid).toBe(true)
+  })
+
+  it('refuses a member chain whose current entries name another Case', () => {
+    const otherCase = '0196f7a2-aaaa-bbbb-cccc-00000000ffff'
+    const member = buildChain(
+      [exhibit(1, MEMBER_OPERATOR, { caseId: otherCase })],
+      signWith(MEMBER_KEY)
+    )
+    const { input } = twoMemberCase(member)
+    const result = verifySharedCase({
+      ...input,
+      owner: {
+        ...input.owner,
+        jsonl: buildChain([
+          OWNER_ADD(),
+          MEMBER_ADD(),
+          merge([{ installationId: MEMBER_ID, index: 0, entryHash: member.hashes[0] }], 40)
+        ]).jsonl
+      }
+    })
+    expect(result.outcome).toBe('roster-invalid')
+    expect(result.reason).toContain(`names Case ${otherCase}`)
+    // Nothing of the foreign chain is accepted: no citation, no merge target.
+    expect(result.citations.has('RM-1')).toBe(false)
+    expect(result.entries.has(MEMBER_ID)).toBe(false)
+    expect(result.findings.map((f) => f.outcome)).toContain('merge-head-mismatch')
+  })
+
+  it('accepts a member chain whose imported history names its source Case', () => {
+    // Entries before an `import` are the source Case's, under the source key;
+    // only what the member wrote from the import on must name this Case.
+    const sourceKey = keyPair()
+    const sourceCase = '0196f7a2-aaaa-bbbb-cccc-00000000eeee'
+    let signed = 0
+    const member = buildChain(
+      [
+        exhibit(1, MEMBER_OPERATOR, { caseId: sourceCase, exhibitNumber: 7 }),
+        {
+          type: 'import',
+          caseId: CASE_ID,
+          sourceCaseId: sourceCase,
+          sourceInstallationId: 'inst-source',
+          sourcePublicKeyPem: sourceKey.publicKey,
+          packageHash: 'c'.repeat(64),
+          idMapSha256: 'd'.repeat(64),
+          verificationResult: {
+            overallValid: true,
+            chainValid: true,
+            artifactCount: 0,
+            artifactFailureCount: 0,
+            captureCount: 0,
+            captureHashFailureCount: 0
+          },
+          timestamp: '2026-09-19T12:20:00.000Z',
+          ...MEMBER_OPERATOR,
+          schemaVersion: 2
+        },
+        exhibit(1, MEMBER_OPERATOR)
+      ],
+      (entryHash) => signWith(signed++ === 0 ? sourceKey : MEMBER_KEY)(entryHash)
+    )
+    const owner = buildChain([
+      OWNER_ADD(),
+      MEMBER_ADD(),
+      merge([{ installationId: MEMBER_ID, index: 2, entryHash: member.hashes[2] }], 40)
+    ])
+    const result = verifySharedCase({
+      owner: { jsonl: owner.jsonl, publicKeyPem: getPublicKeyPem() },
+      members: [{ installationId: MEMBER_ID, jsonl: member.jsonl }]
+    })
+    expect(result.findings).toEqual([])
+  })
+
+  it('refuses an Owner chain whose own entries name another Case', () => {
+    const owner = buildChain([OWNER_ADD(), exhibit(1, OPERATOR, { caseId: 'another-case' })])
+    const result = verifySharedCase({
+      owner: { jsonl: owner.jsonl, publicKeyPem: getPublicKeyPem() },
+      members: []
+    })
+    expect(result.outcome).toBe('roster-invalid')
+    expect(result.reason).toContain('names Case another-case')
+  })
+
+  it('reports two entries for one citation even when they name one Exhibit', () => {
+    const member = buildChain(
+      [exhibit(1, MEMBER_OPERATOR), exhibit(1, MEMBER_OPERATOR, { contentHash: 'b'.repeat(64) })],
+      signWith(MEMBER_KEY)
+    )
+    const result = verifySharedCase(twoMemberCase(member).input)
+    expect(result.outcome).toBe('citation-collision')
+    expect(result.reason).toContain('resolves to two entries for exhibit')
+  })
+
+  it('reports an exclude naming an Exhibit its stated author does not hold', () => {
+    const member = memberChain()
+    const owner = buildChain([
+      OWNER_ADD(),
+      MEMBER_ADD(),
+      exhibit(1),
+      merge([{ installationId: MEMBER_ID, index: 1, entryHash: member.hashes[1] }], 40),
+      // The Owner's own Exhibit, attributed to the member.
+      exclude(`${OWNER_ID}-exhibit-1`, 41)
+    ])
+    const result = verifySharedCase({
+      owner: { jsonl: owner.jsonl, publicKeyPem: getPublicKeyPem() },
+      members: [{ installationId: MEMBER_ID, jsonl: member.jsonl }]
+    })
+    expect(result.outcome).toBe('roster-invalid')
+    expect(result.findings[0]).toMatchObject({ index: 4 })
+    expect(result.reason).toContain(`the chain of ${MEMBER_ID} does not hold`)
+  })
+
+  it('keeps a proven failure when another chain is from a newer schema, in either order', () => {
+    const future = { ...exhibit(2, THIRD_OPERATOR), schemaVersion: MANIFEST_SCHEMA_VERSION + 1 }
+    const tooNew = buildChain([exhibit(1, THIRD_OPERATOR), future], signWith(THIRD_KEY))
+    const forged = memberChain(signWith(keyPair()))
+    const owner = buildChain([OWNER_ADD(), MEMBER_ADD(), THIRD_ADD()])
+    const chains = [
+      { installationId: THIRD_ID, jsonl: tooNew.jsonl },
+      { installationId: MEMBER_ID, jsonl: forged.jsonl }
+    ]
+    for (const members of [chains, [...chains].reverse()]) {
+      const result = verifySharedCase({
+        owner: { jsonl: owner.jsonl, publicKeyPem: getPublicKeyPem() },
+        members
+      })
+      // "Too old" is never the verdict once this build has proved tampering.
+      expect(result.outcome).toBe('chain-broken')
+      expect(result.unsupported).toBeUndefined()
+      expect(result.findings.map((f) => f.outcome)).toEqual(['chain-broken', 'verifier-too-old'])
+    }
+  })
+})
+
 describe('verifySharedCase — the roster', () => {
   const verifyOwner = (bodies: Record<string, unknown>[], members: BuiltChain[] = []) =>
     verifySharedCase({
@@ -648,6 +836,10 @@ describe('verifySharedCase — the roster', () => {
     const reusedCode = memberAdd('inst-c', 'RM', keyPair().publicKey, 'member', 2)
     expect(verifyOwner([OWNER_ADD(), MEMBER_ADD(), reusedCode]).reason).toContain(
       'reuses Member Code RM'
+    )
+    const sharedKey = memberAdd('inst-c', 'C', MEMBER_KEY.publicKey, 'member', 2)
+    expect(verifyOwner([OWNER_ADD(), MEMBER_ADD(), sharedKey]).reason).toContain(
+      `carries the key of ${MEMBER_ID}`
     )
     const readded = memberAdd(MEMBER_ID, 'R2', MEMBER_KEY.publicKey, 'member', 3)
     expect(
@@ -904,6 +1096,7 @@ describe('verifyEvidencePackage — an enclosed Shared Case', () => {
         member
       ],
       ['unknown-member', buildChain([OWNER_ADD()]), member],
+      ['member-chain-missing', buildChain([OWNER_ADD(), MEMBER_ADD()]), undefined],
       ['chain-broken', buildChain([OWNER_ADD(), MEMBER_ADD()]), memberChain(signWith(keyPair()))]
     ]
     for (const [outcome, owner, remote] of cases) {
@@ -920,6 +1113,92 @@ describe('verifyEvidencePackage — an enclosed Shared Case', () => {
       } finally {
         rmSync(dir, { recursive: true, force: true })
       }
+    }
+  })
+
+  it('binds a remote member’s Exhibit to the bytes the package encloses', () => {
+    // The member's verified chain says RM-1 exists, so the package owes its
+    // file exactly as it owes the exporter's own (#1518 review).
+    const member = buildChain([exhibit(1, MEMBER_OPERATOR)], signWith(MEMBER_KEY))
+    const owner = buildChain([
+      OWNER_ADD(),
+      MEMBER_ADD(),
+      merge([{ installationId: MEMBER_ID, index: 0, entryHash: member.hashes[0] }], 40)
+    ])
+    const exhibitId = `${MEMBER_ID}-exhibit-1`
+    const rowFor = (dir: string) =>
+      verifyEvidencePackage(dir).checks.find((c) => c.name === `exhibit ${exhibitId}`)
+
+    const missing = writePackage(owner, member)
+    const present = writePackage(owner, member)
+    try {
+      expect(rowFor(missing)).toMatchObject({ status: 'fail' })
+      expect(rowFor(missing)?.reason).toContain('Exhibit RM-1 (document)')
+
+      mkdirSync(join(present, 'documents'))
+      writeFileSync(join(present, 'documents', `${exhibitId}.pdf`), `${MEMBER_ID}-1`)
+      expect(rowFor(present)).toMatchObject({ status: 'pass' })
+    } finally {
+      rmSync(missing, { recursive: true, force: true })
+      rmSync(present, { recursive: true, force: true })
+    }
+  })
+
+  it('does not let one member’s deletion remove another member’s Exhibit', () => {
+    const member = buildChain([exhibit(1, MEMBER_OPERATOR)], signWith(MEMBER_KEY))
+    const exhibitId = `${MEMBER_ID}-exhibit-1`
+    const owner = buildChain([
+      OWNER_ADD(),
+      MEMBER_ADD(),
+      merge([{ installationId: MEMBER_ID, index: 0, entryHash: member.hashes[0] }], 40),
+      {
+        type: 'deletion',
+        captureId: exhibitId,
+        caseId: CASE_ID,
+        contentHash: createHash('sha256').update(`${MEMBER_ID}-1`).digest('hex'),
+        reason: 'not mine to delete',
+        timestamp: '2026-09-19T12:45:00.000Z',
+        ...OPERATOR,
+        schemaVersion: 3
+      }
+    ])
+    const dir = writePackage(owner, member)
+    try {
+      const result = verifyEvidencePackage(dir)
+      const chainRow = result.checks.find((c) => c.name === 'manifest chain')
+      expect(chainRow?.status).toBe('pass')
+      // Still owed: the file is absent, and the row says so.
+      expect(result.checks.find((c) => c.name === `exhibit ${exhibitId}`)?.status).toBe('fail')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('reports a proven failure as FAIL beside a chain from a newer schema', () => {
+    const thirdKey = keyPair()
+    const future = { ...exhibit(1, MEMBER_OPERATOR), schemaVersion: MANIFEST_SCHEMA_VERSION + 1 }
+    const tooNew = buildChain([future], signWith(thirdKey))
+    const owner = buildChain([
+      OWNER_ADD(),
+      MEMBER_ADD(),
+      memberAdd('inst-third', 'ST', thirdKey.publicKey, 'member', 2)
+    ])
+    const dir = writePackage(owner, memberChain(signWith(keyPair())))
+    try {
+      writeFileSync(join(dir, 'manifest.inst-third.jsonl'), tooNew.jsonl)
+      const result = verifyEvidencePackage(dir)
+      expect(result.unsupported).toBeUndefined()
+      const rows = result.checks.filter((c) => c.name === 'shared case')
+      expect(rows.map((r) => [r.status, r.reason?.split(':')[0]])).toEqual([
+        ['fail', 'chain-broken'],
+        ['skip', 'verifier-too-old']
+      ])
+
+      // Alone, the unreadable chain is "too old" and not a verdict.
+      writeFileSync(join(dir, `manifest.${MEMBER_ID}.jsonl`), memberChain().jsonl)
+      expect(verifyEvidencePackage(dir).unsupported?.reason).toContain('verifier-too-old')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
     }
   })
 

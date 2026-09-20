@@ -10,6 +10,7 @@ import {
 } from '@shared/schemas'
 import type { ManifestEntry } from '@shared/schemas'
 import { parseTimestampToken } from '@shared/verify/timestampToken'
+import type { TrustedTimeResult } from '@shared/verify/trustedTime'
 import { describeUnsupportedEntry, verifyManifestChainText } from '@shared/verify/manifestChain'
 import { SHARED_CASE_ENTRY_TYPES, verifySharedCaseReplica } from '@shared/verify/sharedCase'
 import {
@@ -97,7 +98,7 @@ function sha256File(path: string): string {
  * before #1156 — would put a different number on the same Exhibit in two
  * packages of the same case.
  */
-function exhibitLabel(exhibitId: string, numbers: Map<string, number>): string {
+function exhibitLabel(exhibitId: string, numbers: Map<string, number | string>): string {
   const number = numbers.get(exhibitId)
   return number === undefined ? `exhibit ${exhibitId} (unnumbered)` : `Exhibit ${number}`
 }
@@ -335,6 +336,12 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   const memberChainFiles = readdirSync(dir)
     .map((name) => ({ name, match: /^manifest\.(.+)\.jsonl$/.exec(name) }))
     .filter((f): f is { name: string; match: RegExpExecArray } => f.match !== null)
+  // What the other members' verified chains add to this package's facts: their
+  // accepted entries, the trusted time their stamps carry, and each Exhibit's
+  // citation. Empty for a single-chain package.
+  const remoteEntries: ManifestEntry[] = []
+  const remoteTrustedTimes = new Map<string, TrustedTimeResult>()
+  const citationLabels = new Map<string, string>()
   const isShared =
     memberChainFiles.length > 0 || entries.some((e) => SHARED_CASE_ENTRY_TYPES.has(e.type))
   if (isShared && !chain.valid) {
@@ -347,10 +354,22 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
         jsonl: readFileSync(join(dir, name), 'utf-8')
       }))
     })
+    // Set only when "too old" is the whole of what the walk found: a definite
+    // failure beside an unreadable chain is rendered below as the FAIL it is.
     if (shared.unsupported) {
       const reason = `${shared.outcome}: ${shared.reason}`
       add('shared case', 'skip', reason)
       return { pass: false, checks, unsupported: { reason } }
+    }
+    for (const [installationId, accepted] of shared.entries) {
+      if (installationId !== shared.localInstallationId) remoteEntries.push(...accepted)
+    }
+    for (const result of [shared.owner, ...shared.memberChains.values()]) {
+      if (!result.valid) continue
+      for (const [hash, time] of result.trustedTimes) remoteTrustedTimes.set(hash, time)
+    }
+    for (const { exhibitId, citation } of shared.citations.values()) {
+      citationLabels.set(exhibitId, citation)
     }
     const roster = shared.members
       .map(
@@ -361,7 +380,8 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
       add('shared case', 'pass', `${shared.members.length} member(s): ${roster}`)
     } else {
       for (const finding of shared.findings) {
-        add('shared case', 'fail', `${finding.outcome}: ${finding.reason}`)
+        const status = finding.outcome === 'verifier-too-old' ? 'skip' : 'fail'
+        add('shared case', status, `${finding.outcome}: ${finding.reason}`)
       }
     }
     for (const exclusion of shared.exclusions) {
@@ -378,15 +398,34 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   // no later `deletion` entry. Deleted Exhibits are expected absent — not
   // required to have files. A `deletion` entry names any Exhibit id from schema
   // 3 on (X29), which is why one set of deleted ids covers both.
+  //
+  // In a Shared Case the set spans every member's accepted entries: a verified
+  // remote chain asserts its Exhibits exist exactly as the exporter's does, so
+  // the package owes their bytes and their index rows too. Only an Exhibit's
+  // author deletes it (design decision 10), so a `deletion` written in one
+  // chain does not remove an Exhibit another chain authored.
+  const chains = [entries, remoteEntries]
+  const caseEntries = chains.flat()
+  const authoredIn = (chainEntries: ManifestEntry[]): Set<string> =>
+    new Set(
+      chainEntries.flatMap((e) =>
+        e.type === 'capture' ? [e.captureId] : e.type === 'exhibit' ? [e.exhibitId] : []
+      )
+    )
+  const allAuthored = authoredIn(caseEntries)
   const deletedIds = new Set<string>()
-  for (const e of entries) {
-    if (e.type === 'deletion') deletedIds.add(e.captureId)
+  for (const chainEntries of chains) {
+    const authored = authoredIn(chainEntries)
+    for (const e of chainEntries) {
+      if (e.type !== 'deletion') continue
+      if (authored.has(e.captureId) || !allAuthored.has(e.captureId)) deletedIds.add(e.captureId)
+    }
   }
-  const activeCaptures = entries.filter(
+  const activeCaptures = caseEntries.filter(
     (e): e is Extract<ManifestEntry, { type: 'capture' }> =>
       e.type === 'capture' && !deletedIds.has(e.captureId)
   )
-  const activeExhibits = entries.filter(
+  const activeExhibits = caseEntries.filter(
     (e): e is Extract<ManifestEntry, { type: 'exhibit' }> =>
       e.type === 'exhibit' && !deletedIds.has(e.exhibitId)
   )
@@ -398,7 +437,7 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   // renumbered has no number in the chain at all, and the reports below name it
   // by id rather than inventing one.
   const exhibitNumbers = new Map<string, number>()
-  for (const e of entries) {
+  for (const e of caseEntries) {
     if (e.type === 'exhibit') exhibitNumbers.set(e.exhibitId, e.exhibitNumber)
     else if (e.type === 'renumber') {
       for (const assignment of e.assignments) {
@@ -406,6 +445,12 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
       }
     }
   }
+
+  // How a row names an Exhibit: by its citation in a Shared Case, where two
+  // members each hold an "Exhibit 1", and by its number otherwise.
+  const exhibitLabels = new Map<string, number | string>([...exhibitNumbers, ...citationLabels])
+  // The exporter's chain answers first; another member's fills what it lacks.
+  const trustedTimes = new Map([...remoteTrustedTimes, ...chain.trustedTimes])
 
   // Where each active Exhibit's bytes sit in the package, which is also where
   // its Derived Files sit (D1). Built from the signed entries and the shared
@@ -423,13 +468,13 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   // evidence.json's own `schemaVersion`, is what decides that the index owes an
   // `exhibits` list: the version field is unsigned and a downgrade must not buy
   // a bypass.
-  const chainCarriesExhibitModel = entries.some(
+  const chainCarriesExhibitModel = caseEntries.some(
     (e) => e.type === 'exhibit' || e.type === 'derivation'
   )
 
   // The `derivation` entries the bound predicate may consider: break-bounded,
   // exactly like every other fact this verifier derives about the case.
-  const derivationFacts: DerivationEntryFacts[] = entries
+  const derivationFacts: DerivationEntryFacts[] = caseEntries
     .filter((e): e is Extract<ManifestEntry, { type: 'derivation' }> => e.type === 'derivation')
     .map(({ caseId, parentExhibitId, outputPath, outputHash }) => ({
       caseId,
@@ -440,7 +485,7 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
 
   // Content-subject stamps only: a schema-4 `timestamp` with subject `entry`
   // binds a `merge` entry's hash and vouches for no Exhibit's bytes.
-  const timestampEntries = entries.filter(
+  const timestampEntries = caseEntries.filter(
     (e): e is Extract<ManifestEntry, { type: 'timestamp' }> =>
       e.type === 'timestamp' && e.subject !== 'entry'
   )
@@ -640,7 +685,7 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
     // The trusted-time axis (rfc3161/pending/none) is resolved by verify-core
     // from the same verified entries (#161) and surfaced in the check reason.
     const tsName = `capture ${cap.captureId} timestamp`
-    const axis = chain.trustedTimes.get(cap.contentHash)
+    const axis = trustedTimes.get(cap.contentHash)
     const tsEntry = timestampEntries.find(
       (t) => t.captureContentHash === cap.contentHash && typeof t.tsaToken === 'string'
     )
@@ -719,7 +764,7 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   // capture rows carry.
   for (const exhibit of activeExhibits) {
     const name = `exhibit ${exhibit.exhibitId}`
-    const label = `${exhibitLabel(exhibit.exhibitId, exhibitNumbers)} (${exhibit.kind})`
+    const label = `${exhibitLabel(exhibit.exhibitId, exhibitLabels)} (${exhibit.kind})`
     if (selectionIds && !selectionIds.has(exhibit.exhibitId)) {
       add(name, 'skip', `${label}: outside the signed export selection — not packaged`)
       continue
@@ -744,7 +789,7 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
     // authority is the silence X44 rejects, and it left two shipped verifiers
     // disagreeing about what a package must contain.
     const tsName = `exhibit ${exhibit.exhibitId} timestamp`
-    const axis = chain.trustedTimes.get(exhibit.contentHash)
+    const axis = trustedTimes.get(exhibit.contentHash)
     const tsEntry = timestampEntries.find(
       (t) => t.captureContentHash === exhibit.contentHash && typeof t.tsaToken === 'string'
     )
@@ -811,7 +856,7 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   // can disagree about one file mean one of them mis-attests. A Derived File is
   // cited by its parent and its derivation, never by a number of its own (X31),
   // so that is how a failure names it.
-  for (const derivation of entries) {
+  for (const derivation of caseEntries) {
     if (derivation.type !== 'derivation') continue
     const name = `derivation ${derivation.derivation} of ${derivation.parentExhibitId}`
     // Every derivation the chain carries for a parent this package is expected
@@ -822,7 +867,7 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
       rows.push({ derivation: derivation.derivation, packagePath, entry: derivation })
       requiredDerivedFiles.set(parentId, rows)
     }
-    const label = `${exhibitLabel(derivation.parentExhibitId, exhibitNumbers)}, derivation \`${derivation.derivation}\``
+    const label = `${exhibitLabel(derivation.parentExhibitId, exhibitLabels)}, derivation \`${derivation.derivation}\``
     const parent = parentDirectories.get(derivation.parentExhibitId)
     if (parent === undefined) {
       // No active Capture or Exhibit entry answers for the parent: it was

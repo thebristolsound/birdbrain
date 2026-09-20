@@ -97,3 +97,21 @@ Refuters disputed 16 of the 17 listed beta-blocking rows and 1 of 11 fixed-on-ma
 The dispute pattern is consistent: the code fact holds but the refuter argues the path is
 off the beta floor. Those are the rows the maintainer reads first. Undisputed proposals:
 close 10 as fixed on main, queue #1270.
+
+### Workflow 2, mock reconciliation
+
+Run `wf_7885e646-52c`, 412 agents (11 screen comparisons, 400 refuters, 1 synthesizer), resumed three
+times because the background run ends with the session process. Output:
+`docs/plans/2026-09-19-mock-reconciliation.md`, 400 gap rows, direction column empty.
+
+| Type | Rows |
+| --- | --- |
+| Mock ahead of app | 68 |
+| App ahead of mock | 83 |
+| Drifted | 176 |
+| Absorbed | 73 |
+| Refuted (kept in place) | 53 |
+
+The Data explorer carries the most rows (64) and the most refutations (11). Every row waits
+on the maintainer's direction: mock, app, or drop.
+

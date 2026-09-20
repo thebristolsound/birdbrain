@@ -30,12 +30,17 @@ form of the six steps below. Run it from the unpacked package directory:
 sh ${VERIFY_SCRIPT_FILENAME}
 \`\`\`
 
-It prints a line per check and exits non-zero naming the step that failed — 2 if
+It prints its verdict, then a line per check, then the verdict in full, and exits
+non-zero naming the step that failed — 2 if
 a tool it needs is missing, and 3 (\`INCOMPLETE\`) if a check could not be run at
 all, which this package can cause by enclosing no root for a non-default
 timestamp authority. A skipped check is never folded into its \`PASS\`. It is
 a convenience, not the authority: what makes this package checkable is that every
 step below can be run by hand, which is what the rest of this document is for.
+
+A package that encloses a signed selection reports the exhibits it deliberately
+leaves out as a single counted line. Run \`sh ${VERIFY_SCRIPT_FILENAME} -v\` to
+list them one by one.
 Read step 6a before treating its PASS as proof of trusted time.
 
 ## Trust model (read first)

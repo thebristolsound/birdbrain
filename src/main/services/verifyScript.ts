@@ -493,7 +493,11 @@ begin 6 'timestamp, the canonical TSA verification'
 # the captures that are active and in scope, and take each one's signed token by
 # its contentHash. A deleted or out-of-selection capture is never visited, so
 # its token is expected absent without any exclusion list to get wrong.
-signed_token_filter='select(.type == "timestamp" and (.tsaToken | type) == "string")'
+# A schema-4 stamp with subject "entry" binds a merge entry's Entry Hash, not
+# an Exhibit's content, and the binary excludes it from trusted time. This
+# filter must agree, or the runbook would present a receipt as a capture's
+# timestamp and contradict the binary (#1518 review).
+signed_token_filter='select(.type == "timestamp" and (.subject // "content") == "content" and (.tsaToken | type) == "string")'
 jq -r "$signed_token_filter"' | "\\(.captureContentHash) \\(.tsaToken)"' \\
   manifest.jsonl >"$tmp/signed-tokens.txt"
 

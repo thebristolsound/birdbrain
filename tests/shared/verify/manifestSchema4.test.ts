@@ -305,6 +305,18 @@ describe('manifest schema 4 — the schema', () => {
     }
   })
 
+  it('does not read a stamp whose subject no schema defines as trusted time', () => {
+    // These helpers read LENIENT records — raw manifest lines before the
+    // strict parse — so an unknown value must not fall through to `content`
+    // and stamp evidence the chain walk goes on to reject (#1518 review).
+    const hash = 'a'.repeat(64)
+    const entries = [
+      { type: 'capture', contentHash: hash, schemaVersion: 2 },
+      { type: 'timestamp', subject: 'exhibit', captureContentHash: hash, tsaToken: 'AAAA' }
+    ]
+    expect(buildTrustedTimeIndexFromEntries(entries).get(hash)).toEqual({ trustedTime: 'pending' })
+  })
+
   it('does not read an entry-subject stamp as trusted time for any content', () => {
     // The stamped hash is a Manifest Entry's, not an Exhibit's: a capture whose
     // content hash happened to equal it must not be reported rfc3161 off it.
@@ -660,6 +672,39 @@ describe('verifySharedCase — what a roster member owes', () => {
   const THIRD_OPERATOR = { operatorId: THIRD_ID, operatorName: 'Sam Third', toolVersion: '0.5.0' }
   const THIRD_ADD = (): Record<string, unknown> =>
     memberAdd(THIRD_ID, 'ST', THIRD_KEY.publicKey, 'member', 2)
+
+  it('reports a merge head naming its own writer’s chain', () => {
+    // A `merge` records what a session brought in from ANOTHER member.
+    const owner = buildChain([OWNER_ADD(), exhibit(1)])
+    const selfNamed = buildChain([
+      OWNER_ADD(),
+      exhibit(1),
+      merge([{ installationId: OWNER_ID, index: 1, entryHash: owner.hashes[1] }], 40)
+    ])
+    const result = verifySharedCase({
+      owner: { jsonl: selfNamed.jsonl, publicKeyPem: getPublicKeyPem() },
+      members: []
+    })
+    expect(result.outcome).toBe('merge-head-mismatch')
+    expect(result.reason).toContain('names its own chain as a head')
+  })
+
+  it('reports a merge naming the literal owner key in a Case with no roster', () => {
+    // With no `member-add`, the Owner's entries are keyed by the literal
+    // `owner`; a merge naming it must not resolve against the writer's own
+    // earlier entries and pass as a zero-member Shared Case (#1518 review).
+    const first = buildChain([exhibit(1)])
+    const chain = buildChain([
+      exhibit(1),
+      merge([{ installationId: 'owner', index: 0, entryHash: first.hashes[0] }], 40)
+    ])
+    const result = verifySharedCase({
+      owner: { jsonl: chain.jsonl, publicKeyPem: getPublicKeyPem() },
+      members: []
+    })
+    expect(result.valid).toBe(false)
+    expect(result.outcome).toBe('merge-head-mismatch')
+  })
 
   it('reports a roster member whose chain was not supplied', () => {
     const owner = buildChain([OWNER_ADD(), MEMBER_ADD(), exhibit(1)])
@@ -1141,6 +1186,21 @@ describe('verifyEvidencePackage — an enclosed Shared Case', () => {
     } finally {
       rmSync(missing, { recursive: true, force: true })
       rmSync(present, { recursive: true, force: true })
+    }
+  })
+
+  it('walks a package whose only schema-4 signal is an exhibit’s memberCode', () => {
+    // The entry claims a citation prefix, and only a roster says whose it is:
+    // the single-chain path would keep the prefix unvalidated (#1518 review).
+    const owner = buildChain([exhibit(1, OPERATOR, { memberCode: 'CO' })])
+    const dir = writePackage(owner)
+    try {
+      const rows = sharedRows(dir)
+      expect(rows.map((r) => r.status)).toEqual(['fail'])
+      expect(rows[0].reason).toContain('citation-collision: ')
+      expect(rows[0].reason).toContain('a Case with no roster')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
     }
   })
 

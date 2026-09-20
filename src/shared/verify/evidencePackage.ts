@@ -342,8 +342,16 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   const remoteEntries: ManifestEntry[] = []
   const remoteTrustedTimes = new Map<string, TrustedTimeResult>()
   const citationLabels = new Map<string, string>()
+  // An `exhibit` carrying a `memberCode` is a Shared Case signal of its own: it
+  // claims a citation prefix, and only a roster says whose prefix that is. A
+  // package holding one and nothing else must not take the single-chain path
+  // and keep an unvalidated prefix (#1518 review).
   const isShared =
-    memberChainFiles.length > 0 || entries.some((e) => SHARED_CASE_ENTRY_TYPES.has(e.type))
+    memberChainFiles.length > 0 ||
+    entries.some(
+      (e) =>
+        SHARED_CASE_ENTRY_TYPES.has(e.type) || (e.type === 'exhibit' && e.memberCode !== undefined)
+    )
   if (isShared && !chain.valid) {
     add('shared case', 'skip', 'not walked: the manifest chain FAILed, so no roster can be read')
   } else if (isShared) {

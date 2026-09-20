@@ -629,7 +629,19 @@ function checkMergeHeads(
   for (const head of entry.heads) {
     const target = entriesById.get(head.installationId)
     const found = target?.[head.index]
-    if (!target) {
+    if (head.installationId === writerId) {
+      // A `merge` records what a sync session brought in from ANOTHER member.
+      // A head naming the writer's own chain states nothing — and in a Case
+      // with no roster, where the Owner's entries are keyed by the literal
+      // `owner`, a merge naming `owner` would otherwise resolve against the
+      // writer's own earlier entries and pass (#1518 review).
+      findings.push({
+        outcome: 'merge-head-mismatch',
+        installationId: writerId,
+        index: entry.index,
+        reason: `merge entry ${entry.index} of ${writerId} names its own chain as a head`
+      })
+    } else if (!target) {
       findings.push({
         outcome: 'merge-head-mismatch',
         installationId: writerId,

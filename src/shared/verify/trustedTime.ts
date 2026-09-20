@@ -29,6 +29,16 @@ export interface TrustedTimeResult {
 // rule decoupled from the full discriminated union.
 type EntryRecord = Record<string, unknown>
 
+// Whether a `timestamp` record binds an Exhibit's Content Hash. Absent means
+// `content` (schema 2 and 3 wrote no field); `entry` binds a Manifest Entry's
+// hash for a `merge` and vouches for no Exhibit's bytes. Anything else is a
+// value no schema defines, and these helpers read LENIENT records — a raw
+// manifest line before the strict parse — so it must not fall through to
+// "content" and stamp evidence the chain walk will reject (#1518 review).
+function bindsContent(entry: EntryRecord): boolean {
+  return entry.subject === undefined || entry.subject === 'content'
+}
+
 // True iff the entry is an rfc3161 timestamp whose token attests `contentHash`.
 /**
  * Validates a timestamp entry and extracts RFC3161 details if it contains a valid token for the given content hash.
@@ -47,6 +57,7 @@ type EntryRecord = Record<string, unknown>
 export function stampFor(entry: EntryRecord, contentHash: string): TrustedTimeResult | undefined {
   if (
     entry.type !== 'timestamp' ||
+    !bindsContent(entry) ||
     entry.captureContentHash !== contentHash ||
     typeof entry.tsaToken !== 'string'
   ) {
@@ -121,6 +132,7 @@ export function buildTrustedTimeIndexFromEntries(
   for (const entry of entries) {
     if (
       entry.type === 'timestamp' &&
+      bindsContent(entry) &&
       typeof entry.captureContentHash === 'string' &&
       typeof entry.tsaToken === 'string'
     ) {

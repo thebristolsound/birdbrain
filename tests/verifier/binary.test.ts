@@ -4,7 +4,7 @@ import { join, dirname, resolve } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
 import { spawnSync } from 'child_process'
-import { createHash } from 'crypto'
+import { createHash, createSign, generateKeyPairSync } from 'crypto'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
@@ -16,6 +16,7 @@ import { generateReport } from '@main/services/export'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { canonicalStringify } from '@shared/verify'
+import { MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import { buildSyntheticToken } from '../helpers/timestampFixtures'
 import { seedMixedKindCase, type MixedKindCase } from '../helpers/mixedKindCase'
 import type { ExportOptions } from '@shared/types'
@@ -372,7 +373,7 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
     const body = {
       type: 'exhibit',
       caseId: 'from-a-later-build',
-      schemaVersion: 4,
+      schemaVersion: MANIFEST_SCHEMA_VERSION + 1,
       index: head.index + 1,
       prevHash: head.entryHash
     }
@@ -386,6 +387,162 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
     expect(proc.stdout).toContain('supports up to schema version')
     expect(proc.stdout).not.toContain('RESULT: FAIL')
     rmSync(futureDir, { recursive: true, force: true })
+  })
+
+  // Schema 4 through the BUILT binary (#1509): a package enclosing a Shared
+  // Case is walked and every non-pass outcome is named in the report, so a
+  // script reading the output can tell each from a broken chain.
+  it('exits 1 naming each shared-case outcome', () => {
+    const existing = readFileSync(join(pkgDir, 'manifest.jsonl'), 'utf-8')
+    const lines = existing.trim().split('\n')
+    const last = JSON.parse(lines[lines.length - 1]) as {
+      index: number
+      entryHash: string
+      caseId: string
+    }
+    const { caseId } = last
+    const ownerPem = readFileSync(join(pkgDir, 'signing-public-key.pem'), 'utf-8')
+    const memberKey = generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: 'spki', format: 'pem' },
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
+    })
+    const signAsMember = (entryHash: string): string =>
+      createSign('sha256').update(entryHash).sign(memberKey.privateKey, 'base64')
+
+    // Appends signed entries after `from`, the way appendManifestEntry links them.
+    const chainOf = (
+      bodies: Record<string, unknown>[],
+      sign: (entryHash: string) => string,
+      from?: { index: number; entryHash: string }
+    ): string[] => {
+      let head = from ?? { index: -1, entryHash: '' }
+      return bodies.map((body) => {
+        const full = { ...body, index: head.index + 1, prevHash: head.entryHash }
+        const entryHash = createHash('sha256').update(canonicalStringify(full)).digest('hex')
+        head = { index: full.index, entryHash }
+        return JSON.stringify({ ...full, entryHash, signature: sign(entryHash) })
+      })
+    }
+    const owner = { operatorId: 'inst-owner', operatorName: 'Test Operator', toolVersion: '0.1.0' }
+    const member = { operatorId: 'inst-b', operatorName: 'Test Member', toolVersion: '0.1.0' }
+    const add = (
+      id: string,
+      code: string,
+      pem: string,
+      role: 'owner' | 'member'
+    ): Record<string, unknown> => ({
+      type: 'member-add',
+      caseId,
+      memberInstallationId: id,
+      memberPublicKeyPem: pem,
+      memberCode: code,
+      memberOperatorName: 'Test Operator',
+      nodeId: `node-${id}`,
+      role,
+      timestamp: '2026-09-19T12:00:00.000Z',
+      ...owner,
+      schemaVersion: 4
+    })
+    const ownerAdd = add('inst-owner', 'CO', ownerPem, 'owner')
+    const memberAdd = add('inst-b', 'B', memberKey.publicKey, 'member')
+    const exhibit = (exhibitId: string): Record<string, unknown> => ({
+      type: 'exhibit',
+      exhibitId,
+      caseId,
+      kind: 'document',
+      origin: 'manual-upload',
+      name: 'statement.pdf',
+      exhibitNumber: 900,
+      path: `${caseId}/documents/${exhibitId}.pdf`,
+      contentHash: 'a'.repeat(64),
+      sizeBytes: 1,
+      timestamp: '2026-09-19T12:02:00.000Z',
+      ...member,
+      schemaVersion: 3
+    })
+    const memberChain = (bodies: Record<string, unknown>[], sign = signAsMember): string =>
+      chainOf(bodies, sign).join('\n') + '\n'
+
+    const cases: Array<{
+      outcome: string
+      ownerEntries: Record<string, unknown>[]
+      memberFile?: { id: string; jsonl: string }
+    }> = [
+      {
+        outcome: 'merge-head-mismatch',
+        ownerEntries: [
+          ownerAdd,
+          {
+            type: 'merge',
+            caseId,
+            heads: [
+              { installationId: 'inst-x', index: 0, entryHash: 'a'.repeat(64), entriesReceived: 1 }
+            ],
+            timestamp: '2026-09-19T12:01:00.000Z',
+            ...owner,
+            schemaVersion: 4
+          }
+        ]
+      },
+      {
+        outcome: 'entry-after-revocation',
+        ownerEntries: [
+          ownerAdd,
+          memberAdd,
+          {
+            type: 'member-revoke',
+            caseId,
+            memberInstallationId: 'inst-b',
+            timestamp: '2026-09-19T12:03:00.000Z',
+            ...owner,
+            schemaVersion: 4
+          }
+        ],
+        memberFile: { id: 'inst-b', jsonl: memberChain([exhibit('b-1')]) }
+      },
+      {
+        outcome: 'unknown-member',
+        ownerEntries: [ownerAdd],
+        memberFile: { id: 'inst-b', jsonl: memberChain([exhibit('b-1')]) }
+      },
+      {
+        outcome: 'chain-broken',
+        ownerEntries: [ownerAdd, memberAdd],
+        memberFile: { id: 'inst-b', jsonl: memberChain([exhibit('b-1')], signEntryHash) }
+      },
+      { outcome: 'member-chain-missing', ownerEntries: [ownerAdd, memberAdd] },
+      {
+        outcome: 'roster-invalid',
+        ownerEntries: [ownerAdd, add('inst-c', 'C', memberKey.publicKey, 'owner')]
+      },
+      {
+        outcome: 'citation-collision',
+        ownerEntries: [ownerAdd, memberAdd],
+        memberFile: { id: 'inst-b', jsonl: memberChain([exhibit('b-1'), exhibit('b-2')]) }
+      }
+    ]
+
+    for (const { outcome, ownerEntries, memberFile } of cases) {
+      const sharedDir = mkdtempSync(join(tmpdir(), 'bb-binshared-'))
+      try {
+        cpSync(pkgDir, sharedDir, { recursive: true })
+        writeFileSync(
+          join(sharedDir, 'manifest.jsonl'),
+          existing + chainOf(ownerEntries, signEntryHash, last).join('\n') + '\n'
+        )
+        if (memberFile) {
+          writeFileSync(join(sharedDir, `manifest.${memberFile.id}.jsonl`), memberFile.jsonl)
+        }
+        const proc = spawnSync(binaryPath, [sharedDir], { encoding: 'utf-8' })
+        expect(proc.status, outcome + proc.stdout + proc.stderr).toBe(1)
+        expect(proc.stdout, outcome).toContain('RESULT: FAIL')
+        expect(proc.stdout, outcome).toContain(`[FAIL] shared case — ${outcome}: `)
+        expect(proc.stdout, outcome).not.toContain('VERIFIER TOO OLD')
+      } finally {
+        rmSync(sharedDir, { recursive: true, force: true })
+      }
+    }
   })
 
   // The laundering case, end to end: a tampered entry that also claims a newer

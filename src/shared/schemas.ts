@@ -377,6 +377,16 @@ const schemaVersionField = z.number().int().min(1).max(MANIFEST_SCHEMA_VERSION)
 // construction (verify-core enforces signatures from v2 up).
 const schemaVersion3Field = z.number().int().min(3).max(MANIFEST_SCHEMA_VERSION)
 
+// The Shared Case entry types (schema 4) have no earlier form either, so they
+// are pinned at 4 by the same discipline.
+const schemaVersion4Field = z.number().int().min(4).max(MANIFEST_SCHEMA_VERSION)
+
+// A Member Code as the Owner assigns it: one to three characters from
+// `[A-Z0-9]`, unique within the Case (design decision 8). The prefix of every
+// citation in a Shared Case, `<Member Code>-<sequence>`.
+export const MEMBER_CODE_PATTERN = /^[A-Z0-9]{1,3}$/
+const memberCodeField = z.string().regex(MEMBER_CODE_PATTERN)
+
 // Corroboration-only TLS cert chain re-fetched from the origin AFTER the capture
 // is stored (#123, ADR-0002). NOT bound to the captured transaction — it records
 // whatever cert the origin served at `refetchedAt`, which differs from the
@@ -497,6 +507,13 @@ const ManifestTimestampEntrySchema = z
     type: z.literal('timestamp'),
     caseId: z.string(),
     captureContentHash: z.string(),
+    // What the stamped hash is (schema 4). `content` binds an Exhibit's Content
+    // Hash, the only form before Shared Cases; `entry` binds a Manifest Entry's
+    // Entry Hash, written for a `merge` entry on receipt (design decision 15).
+    // OMITTED when `content`, never written as such, so every schema-2 and
+    // schema-3 token keeps its canonical body and chain hash. A reader treats
+    // absence as `content`.
+    subject: z.enum(['content', 'entry']).optional(),
     timestamp: z.string(),
     tsaToken: z.string().optional(),
     operatorId: z.string(),
@@ -509,6 +526,13 @@ const ManifestTimestampEntrySchema = z
     entryHash: z.string()
   })
   .strict()
+  // A schema-3 reader's strict timestamp shape has no `subject`, so an entry
+  // carrying one below version 4 would read there as a broken chain rather
+  // than "verifier too old" (ADR-0023, X25). Refused here for the same reason.
+  .refine((entry) => entry.subject === undefined || entry.schemaVersion >= 4, {
+    message: '`subject` requires schemaVersion 4',
+    path: ['schemaVersion']
+  })
 
 // Signed audit record of an evidence-package export (#124). schemaVersion is
 // pinned >=2 so the entry MUST carry a signature, matching the timestamp entry.
@@ -637,9 +661,17 @@ const ManifestExhibitEntrySchema = z
     kind: z.string().min(1),
     origin: z.string().min(1),
     name: z.string(),
-    // Sequential per-Case integer assigned at commit and never reused (X18).
-    // Recorded here so a citation ("Exhibit 7") is verifiable from the chain.
+    // Sequential integer assigned at commit and never reused (X18). Recorded
+    // here so a citation ("Exhibit 7") is verifiable from the chain. In a
+    // Shared Case the sequence is per member and the citation is
+    // `<memberCode>-<exhibitNumber>`.
     exhibitNumber: z.number().int().positive(),
+    // The Member Code of the member that committed this Exhibit (schema 4).
+    // OMITTED means "the chain's own writer", whose code the Owner's
+    // `member-add` for that writer carries — which keeps every schema-3 entry
+    // valid and gives a single-member Case the same rule as a shared one. Never
+    // `.default()`: an injected value would change the re-hashed body.
+    memberCode: memberCodeField.optional(),
     // Storage-root-relative path of the stored bytes (`{caseId}/...`), the
     // same form `derivation.outputPath` and the `exhibits` row record.
     path: z.string(),
@@ -656,6 +688,12 @@ const ManifestExhibitEntrySchema = z
     entryHash: z.string()
   })
   .strict()
+  // Same rule as `subject` on a timestamp: a schema-3 reader has no
+  // `memberCode`, so the field is only ever valid on an entry stamped 4.
+  .refine((entry) => entry.memberCode === undefined || entry.schemaVersion >= 4, {
+    message: '`memberCode` requires schemaVersion 4',
+    path: ['schemaVersion']
+  })
 
 // One Derived File computed from an Exhibit (X17): extracted text, a thumbnail,
 // a PDF metadata sidecar, an enrichment transform's output (`transform:<name>`,
@@ -726,6 +764,114 @@ const ManifestRenumberEntrySchema = z
   })
   .strict()
 
+// --- Schema v4: Shared Cases -----------------------------------------------
+//
+// A Shared Case is a set of member chains, one per installation, plus `merge`
+// entries that name other members' heads
+// (docs/specs/2026-09-19-collaborative-cases-design.md). Membership is written
+// by the Owner alone; verify-core builds the roster from the Owner's chain and
+// verifies each remote chain under the key its `member-add` carries
+// (`verifySharedCase`). Every type here is `.strict()` and pinned at 4.
+
+// One member joining the Case. The first one, written when the Case becomes
+// shared, names the Owner itself and fixes the Owner's Member Code. `nodeId` is
+// the transport identity a stolen invite cannot replay without the signing key.
+const ManifestMemberAddEntrySchema = z
+  .object({
+    type: z.literal('member-add'),
+    caseId: z.string(),
+    memberInstallationId: z.string().min(1),
+    memberPublicKeyPem: z.string().min(1),
+    memberCode: memberCodeField,
+    memberOperatorName: z.string(),
+    nodeId: z.string(),
+    role: z.enum(['owner', 'member']),
+    timestamp: z.string(),
+    operatorId: z.string(),
+    operatorName: z.string(),
+    toolVersion: z.string(),
+    index: z.number().int().nonnegative(),
+    prevHash: z.string(),
+    schemaVersion: schemaVersion4Field,
+    signature: z.string().optional(),
+    entryHash: z.string()
+  })
+  .strict()
+
+// The Owner ending a member's participation. Entries of that member the Owner
+// had not merged before this one are reported by verification, not accepted.
+const ManifestMemberRevokeEntrySchema = z
+  .object({
+    type: z.literal('member-revoke'),
+    caseId: z.string(),
+    memberInstallationId: z.string().min(1),
+    timestamp: z.string(),
+    operatorId: z.string(),
+    operatorName: z.string(),
+    toolVersion: z.string(),
+    index: z.number().int().nonnegative(),
+    prevHash: z.string(),
+    schemaVersion: schemaVersion4Field,
+    signature: z.string().optional(),
+    entryHash: z.string()
+  })
+  .strict()
+
+// One remote chain state a sync session brought in: the head the receiver now
+// holds for that member, bound by index AND hash so a later rewrite of the
+// remote chain cannot satisfy the reference.
+const ManifestMergeHeadSchema = z
+  .object({
+    installationId: z.string().min(1),
+    index: z.number().int().nonnegative(),
+    entryHash: z.string(),
+    entriesReceived: z.number().int().positive()
+  })
+  .strict()
+
+// One sync session that brought at least one new remote entry (design decision
+// 14). Any member writes it. Verification checks that every head it names
+// exists in that member's chain with that hash; a head that is absent or
+// differs is `merge-head-mismatch`.
+const ManifestMergeEntrySchema = z
+  .object({
+    type: z.literal('merge'),
+    caseId: z.string(),
+    heads: z.array(ManifestMergeHeadSchema).min(1),
+    timestamp: z.string(),
+    operatorId: z.string(),
+    operatorName: z.string(),
+    toolVersion: z.string(),
+    index: z.number().int().nonnegative(),
+    prevHash: z.string(),
+    schemaVersion: schemaVersion4Field,
+    signature: z.string().optional(),
+    entryHash: z.string()
+  })
+  .strict()
+
+// The Owner excluding another member's Exhibit from the Case's exports. The
+// Exhibit's entry stays in its author's chain and the exclusion is listed, so
+// verification annotates it and the pass outcome is unchanged.
+const ManifestExcludeEntrySchema = z
+  .object({
+    type: z.literal('exclude'),
+    caseId: z.string(),
+    exhibitId: z.string(),
+    authorInstallationId: z.string().min(1),
+    reason: z.string().optional(),
+    timestamp: z.string(),
+    operatorId: z.string(),
+    operatorName: z.string(),
+    toolVersion: z.string(),
+    index: z.number().int().nonnegative(),
+    prevHash: z.string(),
+    schemaVersion: schemaVersion4Field,
+    signature: z.string().optional(),
+    entryHash: z.string()
+  })
+  .strict()
+
 export const ManifestEntrySchema = z.discriminatedUnion('type', [
   ManifestCaptureEntrySchema,
   ManifestDeletionEntrySchema,
@@ -735,7 +881,11 @@ export const ManifestEntrySchema = z.discriminatedUnion('type', [
   ManifestImportEntrySchema,
   ManifestExhibitEntrySchema,
   ManifestDerivationEntrySchema,
-  ManifestRenumberEntrySchema
+  ManifestRenumberEntrySchema,
+  ManifestMemberAddEntrySchema,
+  ManifestMemberRevokeEntrySchema,
+  ManifestMergeEntrySchema,
+  ManifestExcludeEntrySchema
 ])
 
 export type ManifestEntry = z.infer<typeof ManifestEntrySchema>

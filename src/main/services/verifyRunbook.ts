@@ -293,7 +293,7 @@ trusting them proves nothing.
 
 **6b. Verify each token.** Take the list from the signed manifest, not from
 \`ls timestamps/\`: every token is also carried base64-encoded in its own signed
-entry (\`jq -r 'select(.type == "timestamp") | "\\(.captureContentHash) \\(.tsaToken)"' manifest.jsonl\`),
+entry (\`jq -r 'select(.type == "timestamp" and (.subject // "content") == "content") | "\\(.captureContentHash) \\(.tsaToken)"' manifest.jsonl\`),
 so a \`.tst\` deleted from the package is visible there and invisible in a
 directory listing. Walk the exhibits step 5 still requires present — captures
 and committed exhibits of every other kind alike, active, and inside the

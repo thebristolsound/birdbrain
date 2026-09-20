@@ -57,7 +57,7 @@ import { initInstallationId, resetInstallationId } from '@main/services/installa
 import { initSettings, updateSettings } from '@main/services/settings'
 import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
 import { canonicalStringify } from '@shared/verify'
-import { MANIFEST_FILENAME } from '@shared/constants'
+import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import type { InventoryExhibitRow, InventoryStagedRow } from '@shared/types'
 import type { ManifestSnapshotEntry } from '@shared/manifestSnapshot'
@@ -851,7 +851,7 @@ describe('exhibit model', () => {
         operatorId: 'op-1',
         operatorName: 'Test Operator',
         toolVersion: TOOL_VERSION,
-        schemaVersion: 4
+        schemaVersion: MANIFEST_SCHEMA_VERSION + 1
       })
 
       const snapshot = getManifestSnapshot(caseId)
@@ -861,8 +861,8 @@ describe('exhibit model', () => {
       expect(snapshot.chain.unsupported).toEqual({
         index: 1,
         entryType: 'annotation-burn',
-        schemaVersionSeen: 4,
-        supportedSchemaVersion: 3
+        schemaVersionSeen: MANIFEST_SCHEMA_VERSION + 1,
+        supportedSchemaVersion: MANIFEST_SCHEMA_VERSION
       })
       expect(snapshot.chain.brokenAt).toBeUndefined()
       expect(snapshot.chain.reason).toContain('verifier too old')

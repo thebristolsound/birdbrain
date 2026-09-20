@@ -6,6 +6,7 @@ import {
   entryNames,
   rowsNaming,
   summarizeVerdict,
+  targetExhibitId,
   toLedgerRows
 } from '@renderer/components/data/ledgerModel'
 
@@ -187,6 +188,69 @@ describe('toLedgerRows', () => {
     expect(rows[0].schemaVersion).toBe(2)
     expect(rows[2].schemaVersion).toBe(3)
     expect(rows[5].parsed).toBe(false)
+  })
+})
+
+describe('toLedgerRows — schema 4 (#1509)', () => {
+  const shared = { ...chain, ...who, caseId: 'case1', schemaVersion: 4 }
+  const MEMBER_ADD: ManifestEntry = {
+    ...shared,
+    type: 'member-add',
+    index: 10,
+    memberInstallationId: 'inst-b',
+    memberPublicKeyPem: '-----BEGIN PUBLIC KEY-----\nB\n-----END PUBLIC KEY-----\n',
+    memberCode: 'RM',
+    memberOperatorName: 'Robin Member',
+    nodeId: 'node-b',
+    role: 'member',
+    timestamp: '2026-09-19T12:00:00.000Z'
+  }
+  const MEMBER_REVOKE: ManifestEntry = {
+    ...shared,
+    type: 'member-revoke',
+    index: 11,
+    memberInstallationId: 'inst-b',
+    timestamp: '2026-09-19T12:01:00.000Z'
+  }
+  const MERGE: ManifestEntry = {
+    ...shared,
+    type: 'merge',
+    index: 12,
+    heads: [{ installationId: 'inst-b', index: 4, entryHash: 'f'.repeat(64), entriesReceived: 2 }],
+    timestamp: '2026-09-19T12:02:00.000Z'
+  }
+  const EXCLUDE: ManifestEntry = {
+    ...shared,
+    type: 'exclude',
+    index: 13,
+    exhibitId: 'att-1',
+    authorInstallationId: 'inst-b',
+    reason: 'duplicate',
+    timestamp: '2026-09-19T12:03:00.000Z'
+  }
+
+  it('renders the Shared Case entries in the operator’s terms', () => {
+    const rows = toLedgerRows([line(MEMBER_ADD), line(MEMBER_REVOKE), line(MERGE), line(EXCLUDE)])
+    expect(rows.map((r) => [r.type, r.target])).toEqual([
+      ['member-add', 'member RM · Robin Member'],
+      ['member-revoke', 'member inst-b'],
+      ['merge', '1 head'],
+      ['exclude', 'att-1 · duplicate']
+    ])
+    expect(toLedgerRows([line({ ...EXCLUDE, reason: undefined })])[0].target).toBe('att-1')
+    expect(
+      toLedgerRows([line({ ...MERGE, heads: [...MERGE.heads, ...MERGE.heads] })])[0].target
+    ).toBe('2 heads')
+  })
+
+  it('names an Exhibit by id on an exclude, and nothing on the membership entries', () => {
+    const att = { id: 'att-1', contentHash: 'b'.repeat(64) }
+    expect(entryNames(EXCLUDE, att)).toBe(true)
+    expect(entryNames(EXCLUDE, { id: 'other', contentHash: 'b'.repeat(64) })).toBe(false)
+    expect(entryNames(MEMBER_ADD, att)).toBe(false)
+    expect(entryNames(MERGE, att)).toBe(false)
+    expect(targetExhibitId(line(EXCLUDE), [])).toBe('att-1')
+    expect(targetExhibitId(line(MEMBER_REVOKE), [])).toBeNull()
   })
 })
 

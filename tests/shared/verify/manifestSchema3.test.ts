@@ -242,11 +242,13 @@ describe('manifest schema 3 — frozen entry hashes', () => {
 })
 
 describe('manifest schema 3 — the schema', () => {
-  it('reads up to schema version 3', () => {
-    expect(MANIFEST_SCHEMA_VERSION).toBe(3)
+  it('reads up to schema version 4', () => {
+    // Bumped from 3 by the Shared Case entry types (#1509); the schema-3
+    // answers below are unchanged by that bump.
+    expect(MANIFEST_SCHEMA_VERSION).toBe(4)
   })
 
-  it('knows exactly the nine entry types', () => {
+  it('knows exactly the thirteen entry types', () => {
     // Frozen list: adding a type without deciding how a stale verifier meets it
     // fails here, which is the whole point of the too-old screen below.
     expect([...MANIFEST_ENTRY_TYPES].sort()).toEqual([
@@ -254,9 +256,13 @@ describe('manifest schema 3 — the schema', () => {
       'capture',
       'deletion',
       'derivation',
+      'exclude',
       'exhibit',
       'export',
       'import',
+      'member-add',
+      'member-revoke',
+      'merge',
       'renumber',
       'timestamp'
     ])
@@ -466,7 +472,7 @@ describe('manifest schema 3 — the verifier-too-old outcome', () => {
         somethingNew: 'from a later schema',
         timestamp: '2026-06-01T12:10:00.000Z',
         ...OPERATOR,
-        schemaVersion: 4
+        schemaVersion: MANIFEST_SCHEMA_VERSION + 1
       }
     ])
 
@@ -489,7 +495,7 @@ describe('manifest schema 3 — the verifier-too-old outcome', () => {
       index: 1,
       entryType: 'annotation-burn',
       schemaVersionSeen: 3,
-      supportedSchemaVersion: 3
+      supportedSchemaVersion: MANIFEST_SCHEMA_VERSION
     })
     expect(chain.reason).toContain('verifier too old')
     expect(chain.reason).toContain("'annotation-burn'")
@@ -497,15 +503,17 @@ describe('manifest schema 3 — the verifier-too-old outcome', () => {
   })
 
   it('reports a newer schemaVersion on a known type as verifier-too-old', () => {
-    const chain = verify(buildChain([CAPTURE_BODY, { ...CAPTURE_BODY, schemaVersion: 4 }]))
+    const chain = verify(
+      buildChain([CAPTURE_BODY, { ...CAPTURE_BODY, schemaVersion: MANIFEST_SCHEMA_VERSION + 1 }])
+    )
     expect(chain.valid).toBe(false)
     expect(chain.brokenAt).toBeUndefined()
-    expect(chain.unsupported?.schemaVersionSeen).toBe(4)
-    expect(chain.unsupported?.supportedSchemaVersion).toBe(3)
+    expect(chain.unsupported?.schemaVersionSeen).toBe(MANIFEST_SCHEMA_VERSION + 1)
+    expect(chain.unsupported?.supportedSchemaVersion).toBe(MANIFEST_SCHEMA_VERSION)
     // Names the version seen AND the version supported, so a recipient holding a
     // stale verifier can tell what they need.
-    expect(chain.reason).toContain('schema version 4')
-    expect(chain.reason).toContain('supports up to schema version 3')
+    expect(chain.reason).toContain(`schema version ${MANIFEST_SCHEMA_VERSION + 1}`)
+    expect(chain.reason).toContain(`supports up to schema version ${MANIFEST_SCHEMA_VERSION}`)
     expect(chain.reason).toContain('verifier too old')
   })
 
@@ -516,7 +524,7 @@ describe('manifest schema 3 — the verifier-too-old outcome', () => {
     expect(chain.unsupported).toEqual({
       index: 1,
       schemaVersionSeen: 9,
-      supportedSchemaVersion: 3
+      supportedSchemaVersion: MANIFEST_SCHEMA_VERSION
     })
     expect(chain.reason).toContain('states schema version 9')
     expect(chain.reason).toContain('verifier too old')
@@ -531,7 +539,7 @@ describe('manifest schema 3 — the verifier-too-old outcome', () => {
     expect(chain.unsupported).toEqual({
       index: 1,
       entryType: 'exhibit-bundle',
-      supportedSchemaVersion: 3
+      supportedSchemaVersion: MANIFEST_SCHEMA_VERSION
     })
     expect(chain.reason).toContain('states no schema version')
     expect(chain.reason).toContain('verifier too old')
@@ -614,7 +622,7 @@ describe('manifest schema 3 — the too-old verdict is not for sale', () => {
       type: 'exhibit-bundle',
       caseId: CASE_ID,
       ...OPERATOR,
-      schemaVersion: 4,
+      schemaVersion: MANIFEST_SCHEMA_VERSION + 1,
       index: head.index + 1,
       prevHash: head.entryHash
     }
@@ -642,7 +650,7 @@ describe('manifest schema 3 — the too-old verdict is not for sale', () => {
     const planted =
       `{"type":"exhibit-bundle","caseId":${JSON.stringify(CASE_ID)},` +
       `"index":${head.index + 1},"prevHash":${JSON.stringify(head.entryHash)},` +
-      `"schemaVersion":4,"nested":${nested},` +
+      `"schemaVersion":${MANIFEST_SCHEMA_VERSION + 1},"nested":${nested},` +
       `"entryHash":"${'f'.repeat(64)}","signature":"unchecked"}`
     const result = verify(chain + planted + '\n')
     expect(result.unsupported).toBeUndefined()
@@ -651,7 +659,10 @@ describe('manifest schema 3 — the too-old verdict is not for sale', () => {
   })
 
   it('reports a future entry that does not continue the chain as tampering', () => {
-    const lines = buildChain([CAPTURE_BODY, { ...EXHIBIT_BODY, schemaVersion: 4 }])
+    const lines = buildChain([
+      CAPTURE_BODY,
+      { ...EXHIBIT_BODY, schemaVersion: MANIFEST_SCHEMA_VERSION + 1 }
+    ])
       .trim()
       .split('\n')
     const head = JSON.parse(lines[0]) as { entryHash: string }
@@ -721,7 +732,10 @@ describe('manifest schema 3 — the too-old verdict is not for sale', () => {
     // import line appended after it. Nothing at or after the unreadable entry
     // is read, so the forged pem influences nothing: the verdict stays
     // too-old, decided at the genuine unreadable entry.
-    const chain = buildChain([CAPTURE_BODY, { ...EXHIBIT_BODY, schemaVersion: 4 }])
+    const chain = buildChain([
+      CAPTURE_BODY,
+      { ...EXHIBIT_BODY, schemaVersion: MANIFEST_SCHEMA_VERSION + 1 }
+    ])
     const appended = JSON.stringify({
       type: 'import',
       schemaVersion: 99,
@@ -737,7 +751,7 @@ describe('manifest schema 3 — the too-old verdict is not for sale', () => {
     // Every keyless check preceding the unreadable entry still fires: the
     // too-old verdict is decided only after the whole prefix holds. One case
     // per phase-A check, plus the phase-C signature check on a prefix entry.
-    const unreadable = { ...EXHIBIT_BODY, schemaVersion: 4 }
+    const unreadable = { ...EXHIBIT_BODY, schemaVersion: MANIFEST_SCHEMA_VERSION + 1 }
 
     // Index mismatch: the first entry claims a position it does not occupy.
     const misplacedBody = { ...CAPTURE_BODY, index: 5, prevHash: '' }
@@ -811,7 +825,10 @@ describe('manifest schema 3 — the too-old verdict is not for sale', () => {
     // cannot read, the verdict is decided AT that entry. A malformed line
     // further down is not a finding this build is in a position to make, and it
     // must not turn "verifier too old" into a tamper verdict either.
-    const chain = buildChain([CAPTURE_BODY, { ...EXHIBIT_BODY, schemaVersion: 4 }])
+    const chain = buildChain([
+      CAPTURE_BODY,
+      { ...EXHIBIT_BODY, schemaVersion: MANIFEST_SCHEMA_VERSION + 1 }
+    ])
     const result = verify(chain + 'not json at all\n{"type":"capture"}\n')
     expect(result.brokenAt).toBeUndefined()
     expect(result.unsupported?.index).toBe(1)
@@ -851,7 +868,7 @@ describe('manifest schema 3 — the too-old verdict is not for sale', () => {
       ...OPERATOR,
       index: 1,
       prevHash: sourceHash,
-      schemaVersion: 4
+      schemaVersion: MANIFEST_SCHEMA_VERSION + 1
     }
     const importHash = entryHashOf(importBody)
     const importLine = JSON.stringify({
@@ -863,7 +880,7 @@ describe('manifest schema 3 — the too-old verdict is not for sale', () => {
     expect(chain.brokenAt).toBeUndefined()
     expect(chain.reason).toContain('verifier too old')
     expect(chain.unsupported?.index).toBe(1)
-    expect(chain.unsupported?.schemaVersionSeen).toBe(4)
+    expect(chain.unsupported?.schemaVersionSeen).toBe(MANIFEST_SCHEMA_VERSION + 1)
   })
 })
 

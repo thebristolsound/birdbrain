@@ -50,6 +50,14 @@ function targetOf(entry: ManifestEntry): string {
       return `${entry.derivation} of ${entry.parentExhibitId}`
     case 'renumber':
       return `${entry.assignments.length} assignment${entry.assignments.length === 1 ? '' : 's'}`
+    case 'member-add':
+      return `${entry.role} ${entry.memberCode} · ${entry.memberOperatorName}`
+    case 'member-revoke':
+      return `member ${entry.memberInstallationId}`
+    case 'merge':
+      return `${entry.heads.length} head${entry.heads.length === 1 ? '' : 's'}`
+    case 'exclude':
+      return `${entry.exhibitId}${entry.reason ? ` · ${entry.reason}` : ''}`
   }
 }
 
@@ -83,8 +91,8 @@ export function toLedgerRows(entries: ManifestSnapshotEntry[]): LedgerRow[] {
 }
 
 // Whether a parsed entry names the Exhibit: by id on the entries that carry
-// one, by Content Hash on a `timestamp` (which binds a hash, not an id), and
-// by assignment on a `renumber`.
+// one (an `exclude` included), by Content Hash on a `timestamp` (which binds a
+// hash, not an id), and by assignment on a `renumber`.
 export function entryNames(
   entry: ManifestEntry,
   exhibit: { id: string; contentHash: string }
@@ -96,6 +104,7 @@ export function entryNames(
     case 'timestamp':
       return entry.captureContentHash === exhibit.contentHash
     case 'exhibit':
+    case 'exclude':
       return entry.exhibitId === exhibit.id
     case 'derivation':
       return entry.parentExhibitId === exhibit.id || entry.outputHash === exhibit.contentHash
@@ -121,6 +130,7 @@ export function targetExhibitId(
     case 'deletion':
       return entry.captureId
     case 'exhibit':
+    case 'exclude':
       return entry.exhibitId
     case 'derivation':
       return (

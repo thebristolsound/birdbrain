@@ -67,8 +67,12 @@ Recorded in ADR-0030 and the `CONTEXT.md` entry for **Persona** (phase 0, 2026-0
 10. **No persona exists until the user creates one.** No first-run auto-creation; the empty
     state is one "Add persona" button.
 11. **The #545 probe gates phase 3 only.** Targets: Facebook, Instagram, X, LinkedIn, Telegram
-    web, and a Cloudflare-fronted forum. A no-go on a platform is recorded in the tester guide;
-    a no-go everywhere drops partition rendering and ships the label path only.
+    web, and a Cloudflare-fronted forum. Spike result (`docs/specs/2026-09-19-persona-bot-detection-spike.md`):
+    the four social platforms fail on terms, not fingerprint; Telegram Web and Cloudflare sites
+    are conditional go. Ruling: terms exposure on a sock account is the user's risk, so the four
+    platforms stay in scope through a persona window with the human present (phase 3b); the
+    unattended render is measured against them once phase 3 exists. Fingerprint spoofing stays
+    out.
 12. **Sequencing.** Phase 0 starts now. No persona PR takes the dispatch slot until the beta
     PRs (#1490 to #1494) merge and the tag is cut.
 
@@ -146,6 +150,15 @@ Gated on the phase 0 go/no-go.
   that a sign-in window was opened (diagnostic log only).
 - Capture detail shows "persona session used" for these captures.
 
+### Phase 3b: persona window with operator-witnessed capture (#1505)
+
+- The sign-in window becomes a persona browser: URL bar, back, reload, Capture. The user
+  navigates and clears checkpoints by hand; Capture saves MHTML and a screenshot from that
+  window's `webContents` and ingests with `method: 'persona-window'` and the persona stamp.
+- `CAPTURE_METHODS` gains `persona-window` (operator-witnessed, rendered in Birdbrain). The
+  enum value ships in phase 2 so the verifier knows it first.
+- This is the path for Facebook, Instagram, X and LinkedIn.
+
 ### Phase 4: extension label
 
 - `GET /api/status` returns the persona list; `POST /api/captures` accepts optional `personaId`.
@@ -171,7 +184,7 @@ Gated on the phase 0 go/no-go.
 
 ## Out of scope
 
-Password storage, automated login, fingerprint or user-agent spoofing, Chrome `Cookies` DB
+Password storage, automated login, fingerprint or user-agent spoofing (the t3code research also found UA rewriting breaks Turnstile), Chrome `Cookies` DB
 decryption, mounting browser profiles, per-Case persona binding, first-run auto-created
 personas.
 

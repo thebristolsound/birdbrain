@@ -80,4 +80,20 @@ mock and the writing guide.
 
 ## Outcome
 
-Filled in after each run.
+### Workflow 1, defect review
+
+Run `wf_37dd50cc-5e6`, 42 agents (12 bucketing, 29 refuters, 1 synthesizer), resumed once
+after the session that launched it ended. Output: `docs/plans/2026-09-19-defect-review.md`.
+
+| Bucket | Issues |
+| --- | --- |
+| Beta-blocking | 18 |
+| Fixed on main | 11 |
+| Reproducible | 106 |
+| Needs info | 1 |
+| Post-beta | 97 |
+
+Refuters disputed 16 of the 17 listed beta-blocking rows and 1 of 11 fixed-on-main rows.
+The dispute pattern is consistent: the code fact holds but the refuter argues the path is
+off the beta floor. Those are the rows the maintainer reads first. Undisputed proposals:
+close 10 as fixed on main, queue #1270.

@@ -144,7 +144,10 @@ export function NoteEditor({
             {placeholder}
           </p>
         ) : null}
-        <EditorContent editor={editor} className={`note-prose px-3 py-2 ${minHeightClass}`} />
+        <EditorContent
+          editor={editor}
+          className={`note-prose note-editor flex flex-col ${minHeightClass}`}
+        />
         {selectionActions && selection ? (
           <NoteSelectionOverlay
             {...selectionActions}

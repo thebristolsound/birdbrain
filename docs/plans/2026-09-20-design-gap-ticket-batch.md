@@ -1,6 +1,6 @@
 # Design gap ticket batch, 2026-09-20
 
-A draft of the issues that would close every design gap the 2026-09-19 sweep found. Nothing on this page is filed yet. It exists so the grouping can be reviewed once, and then filed in one pass, with a tracking issue that keeps every row accounted for.
+The issues that close every design gap the 2026-09-19 sweep found. The 22 new tickets were filed on 2026-09-21 as #1534 to #1555; the #1526 extension and the tracking issue are not filed. It exists so the grouping can be reviewed once, and then filed in one pass, with a tracking issue that keeps every row accounted for.
 
 Sources: [mock reconciliation](2026-09-19-mock-reconciliation.md) and [UI and UX pass](2026-09-19-ui-ux-pass.md), both at main `5902b28f`.
 
@@ -27,7 +27,7 @@ Not carried: 80 absorbed and 31 not-a-gap rows, which need no work, and 75 low U
 
 ## Tickets
 
-### `feat(theme): open dark by default and cross-fade theme switches like the mock`
+### #1534 `feat(theme): open dark by default and cross-fade theme switches like the mock`
 
 Type: enhancement. 5 gap rows, 1 UI finding. Related open issues: #1336, #1335, #671.
 
@@ -38,7 +38,7 @@ Type: enhancement. 5 gap rows, 1 UI finding. Related open issues: #1336, #1335, 
 - drifted, Data explorer: [Status colours under the light theme](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-mock-reconciliation.md#L331)
 - UI medium, Settings: [No colour scheme is declared, so native controls paint light in dark mode](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L229)
 
-### `fix(theme): light-theme text and controls fail contrast across every screen`
+### #1535 `fix(theme): light-theme text and controls fail contrast across every screen`
 
 Type: bug. 0 gap rows, 11 UI findings. Related open issues: #1524. The export light-theme notice is already #1524 and stays there.
 
@@ -54,7 +54,7 @@ Type: bug. 0 gap rows, 11 UI findings. Related open issues: #1524. The export li
 - UI medium, Data explorer: [Rail group headings and the pane subtitle fail contrast in both themes](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L207)
 - UI medium, Chrome extension install surfaces: [The walkthrough's disclosure link and step copy fail contrast](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L260)
 
-### `fix(a11y): dialogs, menus and the palette drop or hide keyboard focus`
+### #1536 `fix(a11y): dialogs, menus and the palette drop or hide keyboard focus`
 
 Type: bug. 0 gap rows, 12 UI findings. Related open issues: #1290, #1291, #1294. Build on the Dialog focus-trap fixes in #1290, #1291 and #1294 rather than a second primitive.
 
@@ -71,7 +71,7 @@ Type: bug. 0 gap rows, 12 UI findings. Related open issues: #1290, #1291, #1294.
 - UI medium, Captures list: [Keyboard focus is invisible on the list search field and on every themed button](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L129)
 - UI medium, Notes: [Most Notes controls show the browser's default amber focus ring](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L185)
 
-### `fix(a11y): controls across the app have no accessible name, label or state`
+### #1537 `fix(a11y): controls across the app have no accessible name, label or state`
 
 Type: bug. 2 gap rows, 16 UI findings. Related open issues: #938, #1328.
 
@@ -94,7 +94,7 @@ Type: bug. 2 gap rows, 16 UI findings. Related open issues: #938, #1328.
 - UI medium, New Case wizard: [Selector preset chips expose no selected state](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L284)
 - UI medium, Export dialog: [The dropdown declares menu roles and implements no menu keyboard behaviour](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L308)
 
-### `fix(copy): raw error strings and copy that promises things the app cannot do`
+### #1538 `fix(copy): raw error strings and copy that promises things the app cannot do`
 
 Type: bug. 0 gap rows, 13 UI findings. Related open issues: #1178.
 
@@ -112,7 +112,7 @@ Type: bug. 0 gap rows, 13 UI findings. Related open issues: #1178.
 - UI medium, Settings: [Recent slow operations lists operations that took no measurable time](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L238)
 - UI medium, Settings: [The row editor gives no reason a save failed](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L231)
 
-### `fix(layout): screens break or hide their primary actions at the minimum window size`
+### #1539 `fix(layout): screens break or hide their primary actions at the minimum window size`
 
 Type: bug. 3 gap rows, 8 UI findings. Related open issues: #920.
 
@@ -128,7 +128,7 @@ Type: bug. 3 gap rows, 8 UI findings. Related open issues: #920.
 - UI medium, Export dialog: [The archive-saved banner is clipped by its anchor, so the label truncates and the action wraps over it](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L303)
 - UI medium, Captures list: [The compare-pane disclosure truncates mid-sentence at the default width](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L133)
 
-### `feat(density): honour the density steps on Notes, Settings, the extension screen and the Overview strip`
+### #1540 `feat(density): honour the density steps on Notes, Settings, the extension screen and the Overview strip`
 
 Type: enhancement. 2 gap rows, 3 UI findings. Related open issues: #535.
 
@@ -138,7 +138,7 @@ Type: enhancement. 2 gap rows, 3 UI findings. Related open issues: #535.
 - UI medium, Settings: [Density changes nothing inside Settings, but the Appearance helper says it does](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L235)
 - UI medium, Chrome extension install surfaces: [Compact and comfortable render this screen identically](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L258)
 
-### `feat(motion): add the mock's press feedback, entrance staggers and count-ups`
+### #1541 `feat(motion): add the mock's press feedback, entrance staggers and count-ups`
 
 Type: enhancement. 5 gap rows, 0 UI findings. Every animation honours reduced motion, as the mock does.
 
@@ -148,7 +148,7 @@ Type: enhancement. 5 gap rows, 0 UI findings. Every animation honours reduced mo
 - mock-ahead, Case Overview: [Entry motion: metric stagger and link-map reveal](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-mock-reconciliation.md#L130)
 - mock-ahead, Signals: [Signal row entrance animation](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-mock-reconciliation.md#L205)
 
-### `feat(menus): add the missing context menus and the customise-menu footer`
+### #1542 `feat(menus): add the missing context menus and the customise-menu footer`
 
 Type: enhancement. 5 gap rows, 0 UI findings. Related open issues: #938. Menus whose omission is a recorded ruling are on the direction list, not here.
 
@@ -158,7 +158,7 @@ Type: enhancement. 5 gap rows, 0 UI findings. Related open issues: #938. Menus w
 - mock-ahead, Signals: [Tag row context menu](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-mock-reconciliation.md#L208)
 - mock-ahead, Export dialog: [Dialog: pinned Wayback row context menu](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-mock-reconciliation.md#L484)
 
-### `feat(feedback): the mock's toast, completion and banner patterns`
+### #1543 `feat(feedback): the mock's toast, completion and banner patterns`
 
 Type: enhancement. 4 gap rows, 2 UI findings.
 
@@ -169,7 +169,7 @@ Type: enhancement. 4 gap rows, 2 UI findings.
 - UI medium, Export dialog: [Closing the progress dialog mid-run leaves the export going with no completion signal](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L306)
 - UI medium, Export dialog: [The archive success and error banners never dismiss and have no close control](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L307)
 
-### `feat(tokens): type scale, radii, shadows and button metrics drift from the mock`
+### #1544 `feat(tokens): type scale, radii, shadows and button metrics drift from the mock`
 
 Type: enhancement. 10 gap rows, 0 UI findings.
 
@@ -184,7 +184,7 @@ Type: enhancement. 10 gap rows, 0 UI findings.
 - drifted, Case Overview: [Type scale and font-family substitutions](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-mock-reconciliation.md#L139)
 - drifted, Settings: [Appearance: theme swatch buttons](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-mock-reconciliation.md#L359)
 
-### `feat(shell): top-bar search, tooltips, tour step text and the wizard route`
+### #1545 `feat(shell): top-bar search, tooltips, tour step text and the wizard route`
 
 Type: enhancement. 5 gap rows, 3 UI findings.
 
@@ -197,7 +197,7 @@ Type: enhancement. 5 gap rows, 3 UI findings.
 - UI medium, App shell: [The Settings screen hides the REC indicator and the stop control mid-session](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L59)
 - UI medium, New Case wizard: [The wizard route is mistaken for a case, so the top bar shows a dead search field](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L285)
 
-### `feat(dashboard): Quick Start cards, case cards and footer match the mock`
+### #1546 `feat(dashboard): Quick Start cards, case cards and footer match the mock`
 
 Type: enhancement. 8 gap rows, 4 UI findings.
 
@@ -214,7 +214,7 @@ Type: enhancement. 8 gap rows, 4 UI findings.
 - UI medium, Dashboard: [The New Investigation tile is 43px taller than the cards beside it](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L85)
 - UI medium, Dashboard: [The extension banner's two buttons render 38px and 28px tall](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L86)
 
-### `feat(overview): heading, sources, capture strip and tag cards match the mock`
+### #1547 `feat(overview): heading, sources, capture strip and tag cards match the mock`
 
 Type: enhancement. 7 gap rows, 4 UI findings.
 
@@ -230,7 +230,7 @@ Type: enhancement. 7 gap rows, 4 UI findings.
 - UI medium, Case Overview: [The review count double-counts: two new captures are reported as four things to review](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L106)
 - UI medium, Case Overview: [Recent-captures cards lose their shared baseline when one title wraps](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L108)
 
-### `feat(captures): list, viewer tabs, pins and Wayback compare match the mock`
+### #1548 `feat(captures): list, viewer tabs, pins and Wayback compare match the mock`
 
 Type: enhancement. 10 gap rows, 1 UI finding.
 
@@ -246,7 +246,7 @@ Type: enhancement. 10 gap rows, 1 UI finding.
 - drifted, Captures list: [Capture row thumbnail, fallback gradient colour](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-mock-reconciliation.md#L168)
 - UI medium, Captures list: [The paste-URLs box is one row tall and names one rejection reason for every entry](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L132)
 
-### `feat(signals): detail rail and tag list match the mock, and signal edits stop destroying data`
+### #1549 `feat(signals): detail rail and tag list match the mock, and signal edits stop destroying data`
 
 Type: enhancement. 3 gap rows, 4 UI findings.
 
@@ -258,7 +258,7 @@ Type: enhancement. 3 gap rows, 4 UI findings.
 - UI medium, Signals: [A duplicate tag name fails with a generic bug-report toast](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L156)
 - UI medium, Signals: [One key, two names, and the action rewrites what the selector matches](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L158)
 
-### `feat(notes): rebuild Notes as the mock's two-pane workspace`
+### #1550 `feat(notes): rebuild Notes as the mock's two-pane workspace`
 
 Type: enhancement. 11 gap rows, 0 UI findings. Code block stays out of the toolbar; it is schema-disabled by ruling.
 
@@ -274,7 +274,7 @@ Type: enhancement. 11 gap rows, 0 UI findings. Code block stays out of the toolb
 - drifted, Notes: [List row meta line and snippet](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-mock-reconciliation.md#L247)
 - drifted, Notes: [Sidebar header: search field and New note control](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-mock-reconciliation.md#L250)
 
-### `feat(notes): mention inline-create, hover peek and honest dead mentions`
+### #1551 `feat(notes): mention inline-create, hover peek and honest dead mentions`
 
 Type: enhancement. 2 gap rows, 3 UI findings.
 
@@ -284,7 +284,7 @@ Type: enhancement. 2 gap rows, 3 UI findings.
 - UI medium, Notes: [The tag mention popup offers tags that exist only in other cases](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L182)
 - UI medium, Notes: [The tag confirm popover labels a tag name with the selector kind](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L187)
 
-### `feat(data): Data explorer table, detail strip and ledger match the mock`
+### #1552 `feat(data): Data explorer table, detail strip and ledger match the mock`
 
 Type: enhancement. 13 gap rows, 2 UI findings.
 
@@ -304,7 +304,7 @@ Type: enhancement. 13 gap rows, 2 UI findings.
 - UI high, Data explorer: [A capture that lands while the Data screen is open never appears](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L205)
 - UI medium, Data explorer: [Selecting a row opens the detail strip on the second tab, never the leading one](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L209)
 
-### `feat(settings): database integrity check, Diagnostics header and Operator layout`
+### #1553 `feat(settings): database integrity check, Diagnostics header and Operator layout`
 
 Type: enhancement. 3 gap rows, 2 UI findings.
 
@@ -314,7 +314,7 @@ Type: enhancement. 3 gap rows, 2 UI findings.
 - UI medium, Settings: [The Diagnostics tab strip renders as a vertical stack](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L230)
 - UI medium, Settings: [Operator is the only tab with no card and no heading](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L236)
 
-### `feat(extension): popup and in-page capture card match the mock`
+### #1554 `feat(extension): popup and in-page capture card match the mock`
 
 Type: enhancement. 7 gap rows, 2 UI findings.
 
@@ -344,7 +344,7 @@ Type: extend. 9 gap rows, 2 UI findings. Appended to the existing wizard ticket 
 - UI medium, New Case wizard: [A case name that already exists is accepted silently](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L281)
 - UI medium, New Case wizard: [An empty name produces no message, and the disabled button leaves the tab order](https://github.com/thebristolsound/birdbrain/blob/5902b28f0b71/docs/plans/2026-09-19-ui-ux-pass.md#L282)
 
-### `feat(export): export menu wiring and dialog chrome match the mock`
+### #1555 `feat(export): export menu wiring and dialog chrome match the mock`
 
 Type: enhancement. 8 gap rows, 0 UI findings. Related open issues: #1335.
 

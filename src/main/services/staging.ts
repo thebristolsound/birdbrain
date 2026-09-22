@@ -24,7 +24,7 @@ import {
 import { withManifestEntry } from '@main/services/manifest'
 import { getSettings } from '@main/services/settings'
 import { getInstallationId } from '@main/services/installationId'
-import { resolveToolVersion } from '@main/services/certification'
+import { resolveToolVersion } from '@main/services/toolVersion'
 import { logger } from '@main/services/logger'
 import { ident } from '@main/services/logSafe'
 

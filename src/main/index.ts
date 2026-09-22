@@ -478,14 +478,44 @@ if (!gotSingleInstanceLock) {
       const timestampWorker = createTimestampWorker()
       timestampWorker.start()
 
+      // Session state machine (#228). Owns the active case, recording flag,
+      // capture count and extension heartbeat; window access is inverted into
+      // these callbacks so the service itself stays Electron-free.
+      const sessionService = createSessionService({
+        emitSessionChange: (payload) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            sendEvent(mainWindow.webContents, IPC_CHANNELS.SESSION_STATE_CHANGED, payload)
+          }
+        },
+        emitExtensionConnection: (connected) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            sendEvent(mainWindow.webContents, IPC_CHANNELS.EXTENSION_CONNECTION, { connected })
+          }
+        }
+      })
+
+      // The Capture Lifecycle admits every extension route into a case, so it
+      // holds the session (Active Case, capture count) and broadcasts capture
+      // activity to the (lazily created) main window the way the recapture
+      // service below does.
       const captureLifecycle = createCaptureLifecycle({
         selectorLifecycle,
-        enqueueTimestamp: (captureId) => timestampWorker.enqueue(captureId)
+        enqueueTimestamp: (captureId) => timestampWorker.enqueue(captureId),
+        sessionService,
+        emitCaptureEvent: (event) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            sendEvent(mainWindow.webContents, IPC_CHANNELS.CAPTURE_ACTIVITY, event)
+          }
+        },
+        emitNewCapture: (capture) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            sendEvent(mainWindow.webContents, IPC_CHANNELS.NEW_CAPTURE, capture)
+          }
+        }
       })
 
       // Background recapture queue (#recapture). Renders pages in a hidden window
-      // and reuses the capture pipeline's observability events, mirroring how the
-      // capture server broadcasts to the (lazily created) main window.
+      // and reuses the capture pipeline's observability events.
       const recaptureService = createRecaptureService({
         renderPage: renderPageInHiddenWindow,
         captureLifecycle,
@@ -511,22 +541,6 @@ if (!gotSingleInstanceLock) {
         },
         getChannel: () => getSettings().releaseChannel,
         isAutoCheckEnabled: () => getSettings().autoCheckForUpdates
-      })
-
-      // Session state machine (#228). Owns the active case, recording flag,
-      // capture count and extension heartbeat; window access is inverted into
-      // these callbacks so the service itself stays Electron-free.
-      const sessionService = createSessionService({
-        emitSessionChange: (payload) => {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            sendEvent(mainWindow.webContents, IPC_CHANNELS.SESSION_STATE_CHANGED, payload)
-          }
-        },
-        emitExtensionConnection: (connected) => {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            sendEvent(mainWindow.webContents, IPC_CHANNELS.EXTENSION_CONNECTION, { connected })
-          }
-        }
       })
 
       // Register IPC handlers

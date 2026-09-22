@@ -45,7 +45,8 @@ import {
   stampFor
 } from '@shared/verify'
 import type { TrustedTimeResult } from '@shared/verify'
-import { buildCertification, resolveToolVersion } from '@main/services/certification'
+import { buildCertification } from '@main/services/certification'
+import { resolveToolVersion } from '@main/services/toolVersion'
 import { buildHtmlReport } from '@main/services/reportHtml'
 import type {
   EntrySignatureStatus,

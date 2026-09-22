@@ -10,12 +10,7 @@ import * as tagRepo from '@main/services/db/tagRepo'
 import { initStorage } from '@main/services/storage'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
-import {
-  startCaptureServer,
-  stopCaptureServer,
-  resetManualDedup,
-  setMainWindow
-} from '@main/services/captureServer'
+import { startCaptureServer, stopCaptureServer, setMainWindow } from '@main/services/captureServer'
 import type { BrowserWindow } from 'electron'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSessionService, type SessionService } from '@main/services/session'
@@ -54,8 +49,7 @@ vi.mock('@main/ipcWrap', async (importOriginal) => {
 const ATTACH = 'event:extensionAttach'
 const NEW_CAPTURE = 'event:newCapture'
 
-const attachEvents = (): unknown[] =>
-  sent.filter((e) => e.channel === ATTACH).map((e) => e.payload)
+const attachEvents = (): unknown[] => sent.filter((e) => e.channel === ATTACH).map((e) => e.payload)
 
 // Only the two channels this file reasons about; capture-activity events are
 // emitted throughout ingest and would drown the ordering assertion.
@@ -82,16 +76,21 @@ describe('extension attach cache events (#852)', () => {
     resetInstallationId()
     initInstallationId(tempDir)
     sessionService = createSessionService()
-    resetManualDedup()
-    // Without a window the emitters are no-ops, so every assertion below would
-    // pass on an absence rather than on the event.
+    // Without a window the attach emitter is a no-op, so every assertion below
+    // would pass on an absence rather than on the event.
     setMainWindow({
       isDestroyed: () => false,
       webContents: { send: () => {} }
     } as unknown as BrowserWindow)
     baseUrl = `http://127.0.0.1:${port}`
     const selectorLifecycle = createSelectorLifecycle({ emitRematched: () => {} })
-    const captureLifecycle = createCaptureLifecycle({ selectorLifecycle })
+    // The new-capture broadcast is the lifecycle's now; record it into the
+    // same log as the attach event so the ordering assertion still reads both.
+    const captureLifecycle = createCaptureLifecycle({
+      selectorLifecycle,
+      sessionService,
+      emitNewCapture: (capture) => sent.push({ channel: NEW_CAPTURE, payload: capture })
+    })
     await startCaptureServer(
       { selectorLifecycle, captureLifecycle, token: TEST_TOKEN, sessionService },
       port

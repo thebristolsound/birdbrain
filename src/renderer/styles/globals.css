@@ -356,6 +356,12 @@ html.reduce-motion *::after {
 .note-prose p {
   margin: 0 0 0.5rem;
 }
+/* The padding and height live on the contenteditable, not its wrapper, so a
+   click anywhere in the writing area lands in the editor. */
+.note-editor .tiptap {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+}
 .note-prose > *:last-child,
 .note-prose .tiptap > *:last-child {
   margin-bottom: 0;

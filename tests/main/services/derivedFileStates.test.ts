@@ -21,7 +21,7 @@ import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { listDerivedFilesForCase } from '@main/services/db/derivedFileRepo'
 import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
-import { VERIFY_SCRIPT_FILENAME } from '@main/services/verifyScript'
+import { PACKAGE_ROOT_FILES } from '../../../src/packages/evidence-package-layout/index'
 import { HAS_OPENSSL } from '../../helpers/openssl'
 import { HAS_JQ } from '../../helpers/jq'
 import { seedMixedKindCase, seedUnanchoredDerivedFile } from '../../helpers/mixedKindCase'
@@ -43,7 +43,7 @@ import type { ExportOptions } from '@shared/types'
 
 const sh = (dir: string): number => {
   try {
-    execFileSync('/bin/sh', [VERIFY_SCRIPT_FILENAME], {
+    execFileSync('/bin/sh', [PACKAGE_ROOT_FILES.verifyScript], {
       cwd: dir,
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'pipe']

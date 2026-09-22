@@ -22,15 +22,7 @@ export type {
   CaptureChainEntry,
   UnsupportedEntry
 } from '@shared/verify/manifestChain'
-export {
-  bindDerivedFile,
-  matchDerivationEntries,
-  derivedFilePackagePath,
-  exhibitPackageDirectory,
-  exhibitPackagePath,
-  inCasePath,
-  CAPTURE_PACKAGE_DIRECTORY
-} from '@shared/verify/exhibitBinding'
+export { bindDerivedFile, matchDerivationEntries } from '@shared/verify/exhibitBinding'
 export type {
   DerivationEntryFacts,
   DerivedFileBinding,

@@ -24,30 +24,34 @@
 // tests/main/services/verifyRunbookExecution.test.ts, which builds a real
 // package through the export path and runs both against it.
 
-import { TSA_INTERMEDIATES_FILENAME, TSA_ROOT_FILENAME } from '@main/services/tsaTrust'
 import { EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION } from '@shared/schemas'
+import { PACKAGE_ROOT_FILES } from '../../packages/evidence-package-layout/index'
+import { renderShellPathHelpers } from '../../packages/evidence-package-layout/shell'
 
-/** Name this script is written into the evidence package under. */
-export const VERIFY_SCRIPT_FILENAME = 'verify.sh'
+// Every member of the package this script names, read from the Package Layout.
+// The sh block renderShellPathHelpers() embeds below defines the variables
+// ($MANIFEST_FILE, $PAGES_DIR, ...) and helpers (capture_page_path, ...) the
+// checks use; `set -u` makes a name that drifts from that block fail loudly.
+const ROOT = PACKAGE_ROOT_FILES
 
 export const VERIFY_SCRIPT = `#!/bin/sh
-# verify.sh - one-command verification of this Birdbrain evidence package.
+# ${ROOT.verifyScript} - one-command verification of this Birdbrain evidence package.
 #
 # REQUIRED TOOLS. Every tool this script uses is named here and checked for
 # before any check runs; a missing one exits 2 naming it:
 #   jq, openssl, sha256sum (or shasum, on macOS), cut, dirname, grep, rm, tr,
 #   mktemp.
 #
-# This is the executable form of VERIFY.md. It runs the same six steps against
+# This is the executable form of ${ROOT.verifyRunbook}. It runs the same six steps against
 # the package it sits in, prints a line per check, and exits non-zero naming the
-# step that failed. VERIFY.md explains what each step proves and states the
+# step that failed. ${ROOT.verifyRunbook} explains what each step proves and states the
 # trust model; this script does not replace reading it.
 #
 # USAGE:
-#   sh verify.sh       The verdict, then a line per check, then the verdict in
+#   sh ${ROOT.verifyScript}       The verdict, then a line per check, then the verdict in
 #                      full. A package enclosing a signed selection reports the
 #                      exhibits left behind as one counted line.
-#   sh verify.sh -v    The same, with one line per item that count covers.
+#   sh ${ROOT.verifyScript} -v    The same, with one line per item that count covers.
 #
 # Exit codes: 0 every check passed, 1 at least one check FAILED, 2 the script
 # could not run at all (a missing tool, or this is not an evidence package),
@@ -62,7 +66,7 @@ export const VERIFY_SCRIPT = `#!/bin/sh
 # is a FAILURE, not a silence; a deleted or out-of-selection capture's token is
 # expected absent, exactly like its page and screenshot. What exit 0 does NOT
 # mean: it does not recompute a package-wide hash the way the binary verifier
-# does, so a file with no signed entry of its own (report.html) is checked only
+# does, so a file with no signed entry of its own (${ROOT.report}) is checked only
 # against the unsigned index in step 1, and evidence.json, which that index
 # does not list, is not hashed by any step. Nor does it mean the
 # enclosed TSA root is the authority's real root — step 6a prints that root's
@@ -81,20 +85,17 @@ case "\${1:-}" in
 -v | --verbose) verbose=1 ;;
 '') ;;
 *)
-  printf 'verify.sh: unknown option "%s". The only option is -v (verbose).\\n' "$1" >&2
+  printf '${ROOT.verifyScript}: unknown option "%s". The only option is -v (verbose).\\n' "$1" >&2
   exit 2
   ;;
 esac
 
-# The TSA material this package ships, named once so these checks and the
-# commands in VERIFY.md cannot drift apart.
-TSA_ROOT=${TSA_ROOT_FILENAME}
-TSA_INTERMEDIATES=${TSA_INTERMEDIATES_FILENAME}
+${renderShellPathHelpers()}
 
 need() {
   command -v "$1" >/dev/null 2>&1 && return 0
-  printf 'verify.sh: required tool "%s" was not found on PATH.\\n' "$1" >&2
-  printf 'verify.sh: needs jq, openssl, sha256sum (or shasum), cut, dirname, grep, rm, tr, mktemp.\\n' >&2
+  printf '${ROOT.verifyScript}: required tool "%s" was not found on PATH.\\n' "$1" >&2
+  printf '${ROOT.verifyScript}: needs jq, openssl, sha256sum (or shasum), cut, dirname, grep, rm, tr, mktemp.\\n' >&2
   exit 2
 }
 
@@ -124,8 +125,8 @@ fi
 # The package is wherever this script is, not wherever it was invoked from.
 cd "$(dirname "$0")" || exit 2
 
-if [ ! -f manifest.jsonl ]; then
-  printf 'verify.sh: no manifest.jsonl beside this script, so this is not an evidence package.\\n' >&2
+if [ ! -f "$MANIFEST_FILE" ]; then
+  printf "${ROOT.verifyScript}: no $MANIFEST_FILE beside this script, so this is not an evidence package.\\n" >&2
   exit 2
 fi
 
@@ -210,40 +211,25 @@ field() { printf '%s' "$1" | jq -r "$2"; }
 
 in_list() { printf '%s\\n' "$1" | grep -qxF -e "$2"; }
 
-# The part of a storage path that lies inside the Case directory:
-# "<caseId>/documents/x.pdf" -> "documents/x.pdf", which is where the package
-# holds it. The first segment is dropped rather than matched against a case id
-# because an imported Case keeps the source Case's path in its signed entries.
-#
-# Backslashes are normalized first, exactly as the binary verifier's
-# inCasePath does: the store writes platform-native paths, so a Case built on
-# Windows signs "<caseId>\\documents\\x.pdf" while the package holds
-# "documents/x.pdf". Stripping only up to a "/" left that path whole and
-# reported every enclosed file of such a package missing.
-in_case_path() {
-  icp_path=$(printf '%s' "$1" | tr '\\\\' '/')
-  printf '%s' "\${icp_path#*/}"
-}
-
 # Verifies one manifest line's RSA signature over its bare entryHash hex with no
-# trailing newline - the recipe VERIFY.md step 2 documents. Prints nothing and
+# trailing newline - the recipe ${ROOT.verifyRunbook} step 2 documents. Prints nothing and
 # returns non-zero on any failure, so each caller words its own finding.
 verify_line_signature() {
   sig=$(field "$1" '.signature // empty')
   [ -n "$sig" ] || return 1
   field "$1" '.entryHash' | tr -d '\\n' >"$tmp/entryhash.txt"
   printf '%s' "$sig" | openssl base64 -d -A >"$tmp/sig.bin" 2>/dev/null || return 1
-  openssl dgst -sha256 -verify signing-public-key.pem \\
+  openssl dgst -sha256 -verify "$SIGNING_KEY_FILE" \\
     -signature "$tmp/sig.bin" "$tmp/entryhash.txt" >/dev/null 2>&1
 }
 
-# Recomputes one manifest line's entryHash from its body - the recipe VERIFY.md
+# Recomputes one manifest line's entryHash from its body - the recipe ${ROOT.verifyRunbook}
 # step 3 documents. Echoes the hex.
 recompute_entry_hash() {
   printf '%s' "$1" | jq -cS 'del(.entryHash, .signature)' | tr -d '\\n' | sha256_stdin
 }
 
-printf 'verify.sh - Birdbrain evidence package, by-hand verification (see VERIFY.md)\\n'
+printf '${ROOT.verifyScript} - Birdbrain evidence package, by-hand verification (see ${ROOT.verifyRunbook})\\n'
 
 exec 3>&1 4>&2
 stdout_saved=1
@@ -251,23 +237,23 @@ exec >"$detail_file" 2>&1
 
 # --- Step 1 ---------------------------------------------------------------
 begin 1 'file integrity against the unsigned index'
-if [ ! -f evidence.json ]; then
-  fail 'evidence.json is missing, so the enclosed index cannot be checked'
-elif jq -r '.artifacts[] | "\\(.sha256)  \\(.path)"' evidence.json |
+if [ ! -f "$EVIDENCE_INDEX_FILE" ]; then
+  fail "$EVIDENCE_INDEX_FILE is missing, so the enclosed index cannot be checked"
+elif jq -r '.artifacts[] | "\\(.sha256)  \\(.path)"' "$EVIDENCE_INDEX_FILE" |
   sha256_check >"$tmp/step1.out" 2>&1; then
-  note "$(grep -c 'OK$' "$tmp/step1.out") enclosed file(s) match evidence.json"
+  note "$(grep -c 'OK$' "$tmp/step1.out") enclosed file(s) match $EVIDENCE_INDEX_FILE"
 else
   while IFS= read -r bad; do
     [ -n "$bad" ] && printf '   %s\\n' "$bad"
   done <"$tmp/step1.out"
-  fail 'one or more enclosed files do not match evidence.json'
+  fail "one or more enclosed files do not match $EVIDENCE_INDEX_FILE"
 fi
-note 'evidence.json is unsigned - steps 3 and 5 are the authoritative bind'
+note "$EVIDENCE_INDEX_FILE is unsigned - steps 3 and 5 are the authoritative bind"
 
 # --- Step 2 ---------------------------------------------------------------
 begin 2 'entry signatures'
-if [ ! -f signing-public-key.pem ]; then
-  fail 'signing-public-key.pem is missing, so no signature can be checked'
+if [ ! -f "$SIGNING_KEY_FILE" ]; then
+  fail "$SIGNING_KEY_FILE is missing, so no signature can be checked"
 else
   signed_count=0
   unsigned_count=0
@@ -286,9 +272,9 @@ else
     if verify_line_signature "$line"; then
       signed_count=$((signed_count + 1))
     else
-      fail "entry $idx: signature does not verify under signing-public-key.pem"
+      fail "entry $idx: signature does not verify under $SIGNING_KEY_FILE"
     fi
-  done <manifest.jsonl
+  done <"$MANIFEST_FILE"
   note "$signed_count signed entr(ies) verified"
   if [ "$unsigned_count" -gt 0 ]; then
     note "$unsigned_count pre-signing entr(ies) carry no signature - covered by steps 3, 4 and 6"
@@ -304,7 +290,7 @@ while IFS= read -r line; do
   idx=$(field "$line" '.index')
   [ "$(recompute_entry_hash "$line")" = "$(field "$line" '.entryHash')" ] ||
     fail "entry $idx: its body does not hash to its own entryHash"
-done <manifest.jsonl
+done <"$MANIFEST_FILE"
 note "$counted entr(ies) recomputed from their bodies"
 
 # --- Step 4 ---------------------------------------------------------------
@@ -321,9 +307,9 @@ while IFS= read -r line; do
   fi
   head_hash=$(field "$line" '.entryHash')
   expect=$((expect + 1))
-done <manifest.jsonl
+done <"$MANIFEST_FILE"
 if [ "$expect" -eq 0 ]; then
-  fail 'manifest.jsonl holds no entries'
+  fail "$MANIFEST_FILE holds no entries"
 else
   note "$expect entr(ies) linked from index 0"
   note "index 0 prevHash is not compared: a chain continued from an imported case carries the source head there"
@@ -338,29 +324,29 @@ have_selection=0
 # repeat, and the header stays silent rather than guessing whole-case.
 scope_kind=''
 scope_line=''
-if [ -f export-entry.json ]; then
-  export_entry=$(tr -d '\\n' <export-entry.json)
+if [ -f "$EXPORT_ENTRY_FILE" ]; then
+  export_entry=$(tr -d '\\n' <"$EXPORT_ENTRY_FILE")
   entry_ok=1
   verify_line_signature "$export_entry" || entry_ok=0
   [ "$(recompute_entry_hash "$export_entry")" = "$(field "$export_entry" '.entryHash')" ] || entry_ok=0
   [ "$(field "$export_entry" '.prevHash')" = "$head_hash" ] || entry_ok=0
   if [ "$entry_ok" -eq 0 ]; then
-    fail 'export-entry.json does not verify against the enclosed key and the chain head, so its declared scope cannot be trusted'
+    fail "$EXPORT_ENTRY_FILE does not verify against the enclosed key and the chain head, so its declared scope cannot be trusted"
   elif [ "$(field "$export_entry" '.scope // empty')" = 'selection' ]; then
     selection=$(field "$export_entry" '.captureIds[]')
     have_selection=1
     scope_kind=selection
-    note 'export-entry.json verifies and declares a selection-scoped package'
+    note "$EXPORT_ENTRY_FILE verifies and declares a selection-scoped package"
   else
     scope_kind=whole
-    note 'export-entry.json verifies and declares a whole-case package'
+    note "$EXPORT_ENTRY_FILE verifies and declares a whole-case package"
   fi
 else
   # #853: absent is not automatically old, and it must not be silent either.
   # evidence.json names the era this package was sealed in, and every package
   # at or above version ${EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION} was sealed with an export entry - so at that
   # version an absent file is a removed one, which is what the binary verifier
-  # enclosed beside this script also concludes. The index is unsigned (VERIFY.md
+  # enclosed beside this script also concludes. The index is unsigned (${ROOT.verifyRunbook}
   # trust model), so a version edited downward still reaches the lenient branch;
   # reporting whose claim the era is, is what this step can do, not settling it.
   # jq compares the number, not its text: 2.0 and 2e0 are version 2 to the
@@ -373,25 +359,25 @@ else
   # the binary FAILs. Leniency needs a stated era to rest on; with none, the
   # export-entry requirement cannot be settled either way.
   era=''
-  [ -f evidence.json ] && era=$(jq -r '.schemaVersion
+  [ -f "$EVIDENCE_INDEX_FILE" ] && era=$(jq -r '.schemaVersion
     | select(type == "number" and . == floor and . > 0)
     | (if . >= ${EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION} then "sealed " else "pre " end) + (. + 0 | tostring)' \\
-    evidence.json 2>/dev/null)
+    "$EVIDENCE_INDEX_FILE" 2>/dev/null)
   case "$era" in
   'sealed '*)
-    fail "export-entry.json is missing: evidence.json states schema version \${era#sealed }, and every package at or above version ${EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION} was sealed with a signed export entry, so the file was removed rather than never written"
+    fail "$EXPORT_ENTRY_FILE is missing: $EVIDENCE_INDEX_FILE states schema version \${era#sealed }, and every package at or above version ${EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION} was sealed with a signed export entry, so the file was removed rather than never written"
     ;;
   'pre '*)
-    note "no export-entry.json and evidence.json states schema version \${era#pre }. Packages at version \${era#pre } were written both before export entries and after, so this script cannot tell which this package is: an old one, or one whose entry was removed. Its scope is not signed"
+    note "no $EXPORT_ENTRY_FILE and $EVIDENCE_INDEX_FILE states schema version \${era#pre }. Packages at version \${era#pre } were written both before export entries and after, so this script cannot tell which this package is: an old one, or one whose entry was removed. Its scope is not signed"
     ;;
   *)
-    fail 'export-entry.json is missing and evidence.json states no readable schema version - absent, not a number, or not a positive whole number - so the era that would excuse the absence cannot be read, and the Birdbrain verifier enclosed beside this script rejects such an index outright'
+    fail "$EXPORT_ENTRY_FILE is missing and $EVIDENCE_INDEX_FILE states no readable schema version - absent, not a number, or not a positive whole number - so the era that would excuse the absence cannot be read, and the Birdbrain verifier enclosed beside this script rejects such an index outright"
     ;;
   esac
 fi
 
-deleted=$(jq -r 'select(.type == "deletion") | .captureId' manifest.jsonl)
-jq -c 'select(.type == "capture")' manifest.jsonl >"$tmp/captures.jsonl"
+deleted=$(jq -r 'select(.type == "deletion") | .captureId' "$MANIFEST_FILE")
+jq -c 'select(.type == "capture")' "$MANIFEST_FILE" >"$tmp/captures.jsonl"
 
 bound=0
 captures_total=0
@@ -409,19 +395,21 @@ while IFS= read -r line; do
     detail "capture $id: outside the signed export selection, so it is expected absent"
     continue
   fi
-  if [ ! -f "pages/$id.mhtml" ]; then
-    fail "capture $id: pages/$id.mhtml is missing and nothing signed accounts for its absence"
-  elif [ "$(sha256_of "pages/$id.mhtml")" != "$(field "$line" '.contentHash')" ]; then
-    fail "capture $id: pages/$id.mhtml does not match the contentHash in its signed entry"
+  page=$(capture_page_path "$id")
+  if [ ! -f "$page" ]; then
+    fail "capture $id: $page is missing and nothing signed accounts for its absence"
+  elif [ "$(sha256_of "$page")" != "$(field "$line" '.contentHash')" ]; then
+    fail "capture $id: $page does not match the contentHash in its signed entry"
   else
     bound=$((bound + 1))
   fi
   shot=$(field "$line" '.screenshotHash // empty')
   if [ -n "$shot" ]; then
-    if [ ! -f "screenshots/$shot.png" ]; then
-      fail "capture $id: screenshots/$shot.png is missing but its signed entry carries a screenshotHash"
-    elif [ "$(sha256_of "screenshots/$shot.png")" != "$shot" ]; then
-      fail "capture $id: screenshots/$shot.png does not match its own content address"
+    shot_file=$(screenshot_path "$shot")
+    if [ ! -f "$shot_file" ]; then
+      fail "capture $id: $shot_file is missing but its signed entry carries a screenshotHash"
+    elif [ "$(sha256_of "$shot_file")" != "$shot" ]; then
+      fail "capture $id: $shot_file does not match its own content address"
     fi
   fi
 done <"$tmp/captures.jsonl"
@@ -435,7 +423,7 @@ note "$bound capture(s) bound to the signed chain"
 # inside the Case directory, keyed by Exhibit id. Same rule as the captures
 # above: deleted or out-of-selection means expected absent, anything else
 # enclosed and matching its signed contentHash.
-jq -c 'select(.type == "exhibit")' manifest.jsonl >"$tmp/exhibits.jsonl"
+jq -c 'select(.type == "exhibit")' "$MANIFEST_FILE" >"$tmp/exhibits.jsonl"
 exhibits_bound=0
 exhibits_total=0
 exhibits_outside=0
@@ -475,7 +463,7 @@ while IFS= read -r line; do
   [ -n "$line" ] || continue
   id=$(field "$line" '.captureId')
   in_list "$deleted" "$id" && continue
-  printf '%s pages\\n' "$id" >>"$tmp/parent-dirs.txt"
+  printf '%s %s\\n' "$id" "$PAGES_DIR" >>"$tmp/parent-dirs.txt"
 done <"$tmp/captures.jsonl"
 while IFS= read -r line; do
   [ -n "$line" ] || continue
@@ -507,7 +495,7 @@ parent_dir() {
 jq -r '
   if .type == "exhibit" then "\\(.exhibitId) \\(.exhibitNumber)"
   elif .type == "renumber" then (.assignments[] | "\\(.exhibitId) \\(.exhibitNumber)")
-  else empty end' manifest.jsonl >"$tmp/exhibit-numbers.txt"
+  else empty end' "$MANIFEST_FILE" >"$tmp/exhibit-numbers.txt"
 
 # How a finding cites an Exhibit, matching the binary verifier's wording.
 #
@@ -532,7 +520,7 @@ exhibit_label() {
 # Derived Files (X17): bytes the tool computed FROM an Exhibit, enclosed beside
 # their parent. A Derived File has no Exhibit Number of its own (X31), so a
 # finding names the parent and the derivation that produced it.
-jq -c 'select(.type == "derivation")' manifest.jsonl >"$tmp/derivations.jsonl"
+jq -c 'select(.type == "derivation")' "$MANIFEST_FILE" >"$tmp/derivations.jsonl"
 derived_bound=0
 derived_outside=0
 while IFS= read -r line; do
@@ -596,7 +584,7 @@ begin 6 'timestamp, the canonical TSA verification'
 # timestamp and contradict the binary (#1518 review).
 signed_token_filter='select(.type == "timestamp" and (.subject // "content") == "content" and (.tsaToken | type) == "string")'
 jq -r "$signed_token_filter"' | "\\(.captureContentHash) \\(.tsaToken)"' \\
-  manifest.jsonl >"$tmp/signed-tokens.txt"
+  "$MANIFEST_FILE" >"$tmp/signed-tokens.txt"
 
 signed_tokens=0
 while IFS= read -r signed_line; do
@@ -615,7 +603,7 @@ while IFS= read -r line; do
   imprint=$(field "$line" '.contentHash')
   encoded=$(jq -rn --arg h "$imprint" \\
     "first(inputs | $signed_token_filter | select(.captureContentHash == \\$h) | .tsaToken) // empty" \\
-    manifest.jsonl)
+    "$MANIFEST_FILE")
   [ -n "$encoded" ] || continue
   printf '%s %s %s\\n' "$id" "$imprint" "$encoded" >>"$tmp/required-tokens.txt"
   required_tokens=$((required_tokens + 1))
@@ -634,7 +622,7 @@ while IFS= read -r line; do
   imprint=$(field "$line" '.contentHash')
   encoded=$(jq -rn --arg h "$imprint" \\
     "first(inputs | $signed_token_filter | select(.captureContentHash == \\$h) | .tsaToken) // empty" \\
-    manifest.jsonl)
+    "$MANIFEST_FILE")
   [ -n "$encoded" ] || continue
   printf '%s %s %s\\n' "$id" "$imprint" "$encoded" >>"$tmp/required-tokens.txt"
   required_tokens=$((required_tokens + 1))
@@ -643,8 +631,8 @@ done <"$tmp/exhibits.jsonl"
 # sha256 of every enclosed token file. A signed entry is matched to a file by
 # its bytes, because nothing signed the file's name.
 : >"$tmp/file-index.txt"
-if [ -d timestamps ]; then
-  for candidate in timestamps/*; do
+if [ -d "$TIMESTAMPS_DIR" ]; then
+  for candidate in "$TIMESTAMPS_DIR"/*; do
     [ -f "$candidate" ] || continue
     printf '%s %s\\n' "$(sha256_of "$candidate")" "$candidate" >>"$tmp/file-index.txt"
   done
@@ -661,7 +649,7 @@ if [ "$required_tokens" -eq 0 ]; then
   fi
 elif [ ! -f "$TSA_ROOT" ]; then
   note "$TSA_ROOT is absent: this case was configured with a non-default timestamp authority"
-  note "obtain that authority's own root and re-run the step 6b command from VERIFY.md with it as -CAfile"
+  note "obtain that authority's own root and re-run the step 6b command from ${ROOT.verifyRunbook} with it as -CAfile"
   incomplete "$required_tokens signed token(s) were not verified: no anchor is enclosed for this script to name"
 elif openssl x509 -in "$TSA_ROOT" -noout -subject -issuer -fingerprint -sha256 \\
   >"$tmp/anchor.txt" 2>&1; then
@@ -737,11 +725,11 @@ done <"$tmp/file-index.txt"
 # reader who scrolls to the bottom still finds the full statement of what a PASS
 # does and does not mean.
 if [ "$fail_count" -gt 0 ]; then
-  verdict_header="verify.sh: FAIL - $fail_count check(s) failed, in step(s):$failed_steps"
+  verdict_header="${ROOT.verifyScript}: FAIL - $fail_count check(s) failed, in step(s):$failed_steps"
 elif [ "$incomplete_count" -gt 0 ]; then
-  verdict_header="verify.sh: INCOMPLETE - $incomplete_count check(s) could not be run, in step(s):$incomplete_steps"
+  verdict_header="${ROOT.verifyScript}: INCOMPLETE - $incomplete_count check(s) could not be run, in step(s):$incomplete_steps"
 else
-  verdict_header="verify.sh: PASS - every check succeeded."
+  verdict_header="${ROOT.verifyScript}: PASS - every check succeeded."
 fi
 restore_stdout
 printf '%s\\n' "$verdict_header"
@@ -753,20 +741,20 @@ dump_detail
 
 printf '\\n'
 if [ "$fail_count" -gt 0 ]; then
-  printf 'verify.sh: FAIL - %s check(s) failed, in step(s):%s\\n' "$fail_count" "$failed_steps"
-  printf 'Read the FAIL lines above. VERIFY.md explains what each step proves.\\n'
+  printf '${ROOT.verifyScript}: FAIL - %s check(s) failed, in step(s):%s\\n' "$fail_count" "$failed_steps"
+  printf 'Read the FAIL lines above. ${ROOT.verifyRunbook} explains what each step proves.\\n'
   exit 1
 fi
 
 if [ "$incomplete_count" -gt 0 ]; then
-  printf 'verify.sh: INCOMPLETE - nothing failed, but %s check(s) could not be run, in step(s):%s\\n' \\
+  printf '${ROOT.verifyScript}: INCOMPLETE - nothing failed, but %s check(s) could not be run, in step(s):%s\\n' \\
     "$incomplete_count" "$incomplete_steps"
   printf 'This is not a pass. Read the INCOMPLETE lines above and run those checks by hand\\n'
-  printf 'with the material they name; VERIFY.md gives the command for each step.\\n'
+  printf 'with the material they name; ${ROOT.verifyRunbook} gives the command for each step.\\n'
   exit 3
 fi
 
-printf 'verify.sh: PASS - every check above succeeded.\\n'
+printf '${ROOT.verifyScript}: PASS - every check above succeeded.\\n'
 if [ "$verified_count" -gt 0 ]; then
   printf 'That is an integrity and internal-consistency result. It becomes a trusted-time claim\\n'
   printf 'only once the step 6a fingerprint is checked against a source outside this package.\\n'

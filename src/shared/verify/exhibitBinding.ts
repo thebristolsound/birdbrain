@@ -1,78 +1,16 @@
-// Where an Exhibit's bytes sit inside an evidence package, and what binds them
-// to the chain (ADR-0023, #1156).
+// What binds a Derived File to the chain (ADR-0023, #1156). Where an
+// Exhibit's bytes sit inside an evidence package is the Package Layout, held in
+// src/packages/evidence-package-layout; this module only decides whether a
+// `derivation` entry vouches for a file that layout locates.
 //
-// Three callers decide those two questions and they must decide them the same
-// way: the exporter writing the files (`export.ts`), the app's verify path
-// (`exhibits.ts`) and the standalone package verifier (`evidencePackage.ts`).
-// A layout rule held in two places is a file the exporter writes and the
-// verifier reports missing, so it is held here once.
+// The app's verify path (`exhibits.ts`) and the standalone package verifier
+// (`evidencePackage.ts`) both answer that question here, so they cannot
+// disagree about the same bytes.
 //
 // Pure — no `fs`, no `crypto` — so this module stays on the `@shared/verify`
 // barrel and the SEA bundle picks it up with the rest of verify-core.
 
-/** Package directory holding Capture page archives. */
-export const CAPTURE_PACKAGE_DIRECTORY = 'pages'
-
-/**
- * The part of a storage path that lies inside the Case directory:
- * `{caseId}/attachments/x.zip` -> `attachments/x.zip`.
- *
- * The first segment is DROPPED rather than matched against a known caseId. An
- * archive import re-roots a row's path into the new Case (`rerootPath` in
- * exhibitRepo.ts) while the chain entry keeps the source Case's path, so a
- * caseId comparison would un-bind every imported Case's files. Backslashes are
- * normalized because `path.join` produces them on Windows while package entry
- * names and manifest paths are always `/`.
- */
-export function inCasePath(storagePath: string): string {
-  const normalized = storagePath.replace(/\\/g, '/')
-  const slash = normalized.indexOf('/')
-  return slash === -1 ? normalized : normalized.slice(slash + 1)
-}
-
-function baseName(path: string): string {
-  const normalized = path.replace(/\\/g, '/')
-  return normalized.slice(normalized.lastIndexOf('/') + 1)
-}
-
-/**
- * The package directory an Exhibit of `kind` ships under: `pages/` for a
- * Capture, and otherwise the kind subdirectory the Case store already uses,
- * read off the stored path rather than from a kind table — a kind this build
- * has never heard of then lands where its own writer put it (X43).
- *
- * `''` means the package root, which is where an Exhibit stored flat in the
- * Case directory goes.
- */
-export function exhibitPackageDirectory(kind: string, storagePath: string | null): string {
-  if (kind === 'capture') return CAPTURE_PACKAGE_DIRECTORY
-  if (!storagePath) return ''
-  const inCase = inCasePath(storagePath)
-  const slash = inCase.lastIndexOf('/')
-  return slash === -1 ? '' : inCase.slice(0, slash)
-}
-
-/**
- * Where a non-Capture Exhibit's bytes sit in a package: its in-Case path, so
- * `{caseId}/documents/{id}.pdf` ships as `documents/{id}.pdf`, keyed by
- * Exhibit id with the stored extension (D1).
- *
- * Captures are not routed through here: their page archive is `pages/{id}.mhtml`
- * whatever the row records, because the packager encloses the MHTML and a
- * legacy `html` Capture encloses nothing at all.
- */
-export function exhibitPackagePath(storagePath: string): string {
-  return inCasePath(storagePath)
-}
-
-/** Where a Derived File sits: beside its parent, under the parent's directory. */
-export function derivedFilePackagePath(
-  parentDirectory: string,
-  derivedStoragePath: string
-): string {
-  const name = baseName(derivedStoragePath)
-  return parentDirectory ? `${parentDirectory}/${name}` : name
-}
+import { inCasePath } from '../../packages/evidence-package-layout/index'
 
 /** The fields of a `derivation` entry a binding is allowed to read. */
 export interface DerivationEntryFacts {

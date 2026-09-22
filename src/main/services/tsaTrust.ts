@@ -1,4 +1,5 @@
 import { DEFAULT_TSA_URL } from '@shared/constants'
+import { PACKAGE_ROOT_FILES } from '../../packages/evidence-package-layout/index'
 
 const DIGICERT_TRUSTED_ROOT_G4 = `-----BEGIN CERTIFICATE-----
 MIIFkDCCA3igAwIBAgIQBZsbV56OITLiOQe9p3d1XDANBgkqhkiG9w0BAQwFADBi
@@ -42,9 +43,6 @@ gKDWHrO8Dw9TdSmq6hN35N6MgSGtBxBHEa2HPQfRdbzP82Z+
 export const DIGICERT_TRUSTED_ROOT_G4_SHA256 =
   '55:2F:7B:DC:F1:A7:AF:9E:6C:E6:72:01:7F:4F:12:AB:F7:72:40:C7:8E:76:1A:C2:03:D1:D9:D2:0A:C8:99:88'
 
-export const TSA_ROOT_FILENAME = 'tsa-root.pem'
-export const TSA_INTERMEDIATES_FILENAME = 'tsa-intermediates.pem'
-
 export interface TsaTrustBundle {
   pem: string
   bundled: boolean
@@ -60,7 +58,7 @@ export function getTsaTrustBundle(tsaUrl: string): TsaTrustBundle {
       bundled: true,
       rootSha256: DIGICERT_TRUSTED_ROOT_G4_SHA256,
       note:
-        `${TSA_ROOT_FILENAME} is a convenience copy of DigiCert Trusted Root G4 (SHA-256 ` +
+        `${PACKAGE_ROOT_FILES.tsaRoot} is a convenience copy of DigiCert Trusted Root G4 (SHA-256 ` +
         `${DIGICERT_TRUSTED_ROOT_G4_SHA256}). Confirm that fingerprint against DigiCert's ` +
         'published value or your own OS trust store before relying on it as the trust anchor.'
     }

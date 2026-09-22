@@ -21,6 +21,12 @@ import type { BatchDeleteOutcome } from '@shared/ipc'
 import type { Capture } from '@shared/types'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 import { createCaptureLifecycle, BatchCrossCaseError } from '@main/services/captureLifecycle'
+import type { AdmissionRequest } from '@main/services/captureLifecycle'
+import { createSessionService } from '@main/services/session'
+import type { SessionService } from '@main/services/session'
+import { setAutoCapturePolicy, updateCase } from '@main/services/db/caseRepo'
+import type { CaptureEvent } from '@shared/types'
+import { MAX_SCREENSHOT_SIZE } from '@shared/constants'
 import { scanUnreconciledDeletions } from '@main/services/deletionReconciliation'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
@@ -440,6 +446,398 @@ describe('createCaptureLifecycle.ingest', () => {
     const { readdirSync } = await import('fs')
     const files = readdirSync(caseDir).filter((f) => f.endsWith('.mhtml'))
     expect(files).toEqual([])
+  })
+})
+
+// Admission policy (the capture server's former POST /api/captures body),
+// exercised with no HTTP in the loop: every refusal kind, the manual dedup
+// window, the screenshot cap, the session count and the activity events. The
+// status codes those become are pinned in captureServer.test.ts; the policy
+// is pinned here.
+describe('createCaptureLifecycle.admit', () => {
+  let tempDir: string
+  let caseId: string
+  let sessionService: SessionService
+  let events: CaptureEvent[]
+  let newCaptures: Capture[]
+
+  function buildLifecycle() {
+    const selectorStub = {
+      runActiveSelectorsForCapture: vi.fn()
+    } as unknown as SelectorLifecycle
+    return createCaptureLifecycle({
+      selectorLifecycle: selectorStub,
+      sessionService,
+      emitCaptureEvent: (event) => events.push(event),
+      emitNewCapture: (capture) => newCaptures.push(capture)
+    })
+  }
+
+  function request(overrides: Partial<AdmissionRequest> = {}): AdmissionRequest {
+    return {
+      route: 'manual',
+      caseId,
+      url: 'https://example.com/page',
+      title: 'Example',
+      timestamp: '2026-04-05T12:00:00.000Z',
+      stream: Readable.from([
+        Buffer.from('<html>admitted</html>')
+      ]) as unknown as ReadableStream<Uint8Array>,
+      textContent: 'admitted text',
+      headers: {},
+      browserVersion: 'Chrome/120',
+      userAgent: 'Mozilla/5.0',
+      httpStatus: 200,
+      extensionVersion: '0.1.0',
+      ...overrides
+    }
+  }
+
+  async function startSessionOn(id: string): Promise<void> {
+    sessionService.activateCase(id)
+    sessionService.start()
+  }
+
+  beforeEach(async () => {
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-admit-'))
+    initStorage(join(tempDir, 'captures'))
+    initSettings(tempDir)
+    updateSettings({ operatorName: 'Test Operator', ignoredUrlPatterns: [] })
+    resetInstallationId()
+    initInstallationId(tempDir)
+    await initDatabase(':memory:')
+    caseId = createCase({ name: 'Admit' }).id
+    ensureCaseDir(caseId)
+    initManifest(join(tempDir, 'captures', caseId))
+    sessionService = createSessionService()
+    events = []
+    newCaptures = []
+    initLogger(tempDir, 'capture-admit-test-session')
+  })
+
+  afterEach(() => {
+    disposeLogger()
+    closeDatabase()
+    rmSync(tempDir, { recursive: true, force: true })
+    vi.restoreAllMocks()
+  })
+
+  it('admits a manual request: stores the capture, broadcasts it, and reports received then stored', async () => {
+    const lifecycle = buildLifecycle()
+    const outcome = await lifecycle.admit(request())
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) return
+    expect(outcome.contentHash).toMatch(/^[0-9a-f]{64}$/)
+    expect(outcome.screenshotStatus).toBe('none')
+    expect(outcome.screenshotWarning).toBeUndefined()
+    expect(listCaptures(caseId)).toHaveLength(1)
+    expect(listCaptures(caseId)[0].id).toBe(outcome.capture.id)
+    expect(newCaptures.map((c) => c.id)).toEqual([outcome.capture.id])
+    expect(events.map((e) => e.type)).toEqual(['received', 'stored'])
+    expect(events[1].captureId).toBe(outcome.capture.id)
+    expect(events[1].source).toBe('manual')
+    expect(events[1].durationMs).toBeGreaterThanOrEqual(0)
+    expect(sessionService.snapshot().captureCount).toBe(0)
+  })
+
+  it('fills the title and timestamp from the URL and the clock when the request leaves them empty', async () => {
+    const lifecycle = buildLifecycle()
+    const before = Date.now()
+    const outcome = await lifecycle.admit(request({ title: '', timestamp: '' }))
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) return
+    expect(outcome.capture.title).toBe('https://example.com/page')
+    expect(Date.parse(outcome.capture.timestamp)).toBeGreaterThanOrEqual(before)
+  })
+
+  it('records the operator, installation and tool version on the row', async () => {
+    const lifecycle = buildLifecycle()
+    const outcome = await lifecycle.admit(request())
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) return
+    const row = getCapture(outcome.capture.id)!
+    expect(row.operatorName).toBe('Test Operator')
+    expect(row.operatorId).toBeTruthy()
+    expect(row.toolVersion).toBeTruthy()
+    expect(row.method).toBe('extension')
+  })
+
+  it('refuses every route when the operator name is blank or whitespace, and reports the failure', async () => {
+    const lifecycle = buildLifecycle()
+    await startSessionOn(caseId)
+    for (const operatorName of ['', '   ']) {
+      updateSettings({ operatorName })
+      for (const route of ['auto', 'manual', 'selector', 'attach'] as const) {
+        events.length = 0
+        const outcome = await lifecycle.admit(request({ route }))
+        expect(outcome).toEqual({ ok: false, refusal: { kind: 'operator_name_required' } })
+        expect(events).toHaveLength(1)
+        expect(events[0].type).toBe('failed')
+        expect(events[0].error).toBe('Operator name required')
+        expect(events[0].source).toBe(route === 'attach' ? 'manual' : route)
+      }
+    }
+    expect(listCaptures(caseId)).toHaveLength(0)
+  })
+
+  it('auto takes the Active Case from the session and counts into it', async () => {
+    const lifecycle = buildLifecycle()
+    await startSessionOn(caseId)
+    const first = await lifecycle.admit(request({ route: 'auto', caseId: undefined }))
+    const second = await lifecycle.admit(
+      request({ route: 'auto', caseId: undefined, url: 'https://example.com/other' })
+    )
+    expect(first.ok && second.ok).toBe(true)
+    expect(listCaptures(caseId)).toHaveLength(2)
+    expect(sessionService.snapshot().captureCount).toBe(2)
+    expect(events.filter((e) => e.type === 'stored').map((e) => e.source)).toEqual(['auto', 'auto'])
+  })
+
+  it('auto refuses without a running session, then without an Active Case', async () => {
+    const lifecycle = buildLifecycle()
+    sessionService.activateCase(caseId)
+    expect(await lifecycle.admit(request({ route: 'auto' }))).toEqual({
+      ok: false,
+      refusal: { kind: 'no_active_session' }
+    })
+    sessionService.deactivateCase()
+    sessionService.start()
+    expect(await lifecycle.admit(request({ route: 'auto' }))).toEqual({
+      ok: false,
+      refusal: { kind: 'no_active_case' }
+    })
+    expect(events).toEqual([])
+    expect(listCaptures(caseId)).toHaveLength(0)
+  })
+
+  it('manual, selector and attach refuse a missing, unknown or archived case without an event', async () => {
+    const lifecycle = buildLifecycle()
+    const archived = createCase({ name: 'Archived' })
+    updateCase({ id: archived.id, archived: true })
+    for (const route of ['manual', 'selector', 'attach'] as const) {
+      expect(await lifecycle.admit(request({ route, caseId: '' }))).toEqual({
+        ok: false,
+        refusal: { kind: 'missing_case_id' }
+      })
+      expect(await lifecycle.admit(request({ route, caseId: undefined }))).toEqual({
+        ok: false,
+        refusal: { kind: 'missing_case_id' }
+      })
+      expect(await lifecycle.admit(request({ route, caseId: 'no-such-case' }))).toEqual({
+        ok: false,
+        refusal: { kind: 'case_not_found' }
+      })
+      expect(await lifecycle.admit(request({ route, caseId: archived.id }))).toEqual({
+        ok: false,
+        refusal: { kind: 'case_archived' }
+      })
+    }
+    expect(events).toEqual([])
+  })
+
+  it('refuses an excluded URL on every route, naming the pattern and emitting one skipped event', async () => {
+    const lifecycle = buildLifecycle()
+    await startSessionOn(caseId)
+    updateSettings({ ignoredUrlPatterns: ['facebook.com'] })
+    for (const route of ['auto', 'manual', 'selector', 'attach'] as const) {
+      events.length = 0
+      const outcome = await lifecycle.admit(
+        request({ route, url: 'https://facebook.com/some-page' })
+      )
+      expect(outcome).toEqual({ ok: false, refusal: { kind: 'excluded', pattern: 'facebook.com' } })
+      expect(events).toHaveLength(1)
+      expect(events[0].type).toBe('skipped')
+      expect(events[0].skipReason).toBe('Blacklisted: facebook.com')
+      expect(events[0].source).toBe(route === 'attach' ? 'manual' : route)
+    }
+    expect(listCaptures(caseId)).toHaveLength(0)
+    expect(getManifestHead(join(tempDir, 'captures', caseId)).nextIndex).toBe(0)
+  })
+
+  it('admits a URL the list does not match', async () => {
+    const lifecycle = buildLifecycle()
+    updateSettings({ ignoredUrlPatterns: ['facebook.com'] })
+    const outcome = await lifecycle.admit(request({ url: 'https://example.com/fine' }))
+    expect(outcome.ok).toBe(true)
+  })
+
+  // The composed rule (`matchCaseExclusion`) is what runs here, so the
+  // per-case list and its mode apply the same way they do to a recapture.
+  it('reads the case list under its mode: override bypasses the global list, still blocks its own', async () => {
+    const lifecycle = buildLifecycle()
+    updateSettings({ ignoredUrlPatterns: ['global.com'] })
+    setAutoCapturePolicy(caseId, { exclusions: ['caseonly.com'], mode: 'override' })
+    expect((await lifecycle.admit(request({ url: 'https://global.com/x' }))).ok).toBe(true)
+    expect(await lifecycle.admit(request({ url: 'https://caseonly.com/x' }))).toEqual({
+      ok: false,
+      refusal: { kind: 'excluded', pattern: 'caseonly.com' }
+    })
+  })
+
+  it('matches regex and glob patterns, including the single-character wildcard', async () => {
+    const lifecycle = buildLifecycle()
+    updateSettings({ ignoredUrlPatterns: ['/.*\\.pdf$/i', '*.facebook.com*', 'example.com/user?'] })
+    const refused = async (url: string) =>
+      lifecycle.admit(request({ route: 'selector', url })).then((o) => !o.ok && o.refusal.kind)
+    expect(await refused('https://example.com/document.pdf')).toBe('excluded')
+    expect(await refused('https://www.facebook.com/some/page')).toBe('excluded')
+    expect(await refused('https://example.com/userA')).toBe('excluded')
+    // 'users' ends with 's', which the '?' matches — still excluded.
+    expect(await refused('https://example.com/users')).toBe('excluded')
+    expect(await refused('https://example.com/page.html')).toBe(false)
+  })
+
+  // #400 moved the exclusion check to AFTER case resolution, because a case's
+  // 'override' mode has to be able to bypass the global list and the mode is
+  // unknown until the case is. These pin what that reordering changed: an
+  // excluded URL with no usable case answers the case refusal, not the
+  // exclusion one, and leaves no skipped event.
+  it('resolves the case before the exclusion list: an excluded URL with no usable case is a case refusal', async () => {
+    const lifecycle = buildLifecycle()
+    updateSettings({ ignoredUrlPatterns: ['blocked-site.com'] })
+    const archived = createCase({ name: 'Archived' })
+    updateCase({ id: archived.id, archived: true })
+    const url = 'https://blocked-site.com/page'
+    expect(await lifecycle.admit(request({ caseId: '', url }))).toEqual({
+      ok: false,
+      refusal: { kind: 'missing_case_id' }
+    })
+    expect(await lifecycle.admit(request({ caseId: 'no-such-case', url }))).toEqual({
+      ok: false,
+      refusal: { kind: 'case_not_found' }
+    })
+    expect(await lifecycle.admit(request({ caseId: archived.id, url }))).toEqual({
+      ok: false,
+      refusal: { kind: 'case_archived' }
+    })
+    expect(events).toEqual([])
+  })
+
+  it('refuses a second manual capture of the same case and URL inside the dedup window', async () => {
+    const lifecycle = buildLifecycle()
+    expect((await lifecycle.admit(request())).ok).toBe(true)
+    const second = await lifecycle.admit(request())
+    expect(second).toEqual({ ok: false, refusal: { kind: 'duplicate' } })
+    expect(listCaptures(caseId)).toHaveLength(1)
+    const skipped = events.filter((e) => e.type === 'skipped')
+    expect(skipped).toHaveLength(1)
+    expect(skipped[0].skipReason).toBe('Duplicate manual capture')
+  })
+
+  it('admits the same URL again once the dedup window has passed', async () => {
+    const lifecycle = buildLifecycle()
+    expect((await lifecycle.admit(request())).ok).toBe(true)
+    const realNow = Date.now
+    vi.spyOn(Date, 'now').mockImplementation(() => realNow() + 6000)
+    expect((await lifecycle.admit(request())).ok).toBe(true)
+    expect(listCaptures(caseId)).toHaveLength(2)
+  })
+
+  it('keys the dedup window on case and URL together', async () => {
+    const lifecycle = buildLifecycle()
+    const other = createCase({ name: 'Other' }).id
+    ensureCaseDir(other)
+    initManifest(join(tempDir, 'captures', other))
+    expect((await lifecycle.admit(request())).ok).toBe(true)
+    expect((await lifecycle.admit(request({ url: 'https://example.com/page-b' }))).ok).toBe(true)
+    expect((await lifecycle.admit(request({ caseId: other }))).ok).toBe(true)
+    expect(listCaptures(caseId)).toHaveLength(2)
+    expect(listCaptures(other)).toHaveLength(1)
+  })
+
+  it('does not dedup auto, selector or attach captures', async () => {
+    const lifecycle = buildLifecycle()
+    await startSessionOn(caseId)
+    for (const route of ['auto', 'selector', 'attach'] as const) {
+      const url = `https://example.com/${route}`
+      expect((await lifecycle.admit(request({ route, url }))).ok).toBe(true)
+      expect((await lifecycle.admit(request({ route, url }))).ok).toBe(true)
+    }
+    expect(listCaptures(caseId)).toHaveLength(6)
+  })
+
+  it('a manual capture inside the window does not shadow an attach of the same URL', async () => {
+    const lifecycle = buildLifecycle()
+    expect((await lifecycle.admit(request({ route: 'manual' }))).ok).toBe(true)
+    const attach = await lifecycle.admit(request({ route: 'attach' }))
+    expect(attach.ok).toBe(true)
+    if (!attach.ok) return
+    expect(events.filter((e) => e.type === 'stored').map((e) => e.source)).toEqual([
+      'manual',
+      'manual'
+    ])
+  })
+
+  it('a fresh lifecycle starts with an empty dedup window', async () => {
+    expect((await buildLifecycle().admit(request())).ok).toBe(true)
+    expect((await buildLifecycle().admit(request())).ok).toBe(true)
+    expect(listCaptures(caseId)).toHaveLength(2)
+  })
+
+  it('stores a screenshot under the cap, as a Blob or a Buffer', async () => {
+    const lifecycle = buildLifecycle()
+    const asBlob = await lifecycle.admit(
+      request({ screenshot: new Blob([Buffer.from('png-bytes')], { type: 'image/png' }) })
+    )
+    const asBuffer = await lifecycle.admit(
+      request({ url: 'https://example.com/buffer', screenshot: Buffer.from('png-bytes') })
+    )
+    for (const outcome of [asBlob, asBuffer]) {
+      expect(outcome.ok).toBe(true)
+      if (!outcome.ok) return
+      expect(outcome.screenshotStatus).toBe('saved')
+      expect(getCapture(outcome.capture.id)!.screenshotPath).toContain('.png')
+    }
+  })
+
+  it('drops an oversized screenshot, stores the capture, and says so on the outcome and the event', async () => {
+    const lifecycle = buildLifecycle()
+    const oversized = Buffer.alloc(MAX_SCREENSHOT_SIZE + 1, 0x42)
+    const outcome = await lifecycle.admit(request({ screenshot: oversized }))
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) return
+    expect(outcome.screenshotStatus).toBe('dropped')
+    expect(outcome.screenshotWarning).toContain('too large')
+    expect(getCapture(outcome.capture.id)!.screenshotPath).toBeFalsy()
+    const stored = events.find((e) => e.type === 'stored')!
+    expect(stored.screenshotWarning).toBe(outcome.screenshotWarning)
+    expect(listCaptures(caseId)).toHaveLength(1)
+  })
+
+  it('reports a failed ingest as an outcome with the error, emits failed, and leaves nothing behind', async () => {
+    const lifecycle = buildLifecycle()
+    const broken = new Readable({
+      read() {
+        this.destroy(new Error('upload cut'))
+      }
+    })
+    const outcome = await lifecycle.admit(
+      request({ stream: broken as unknown as ReadableStream<Uint8Array> })
+    )
+    expect(outcome.ok).toBe(false)
+    if (outcome.ok) return
+    expect(outcome.refusal.kind).toBe('failed')
+    expect(outcome.refusal.kind === 'failed' && String(outcome.refusal.error)).toContain(
+      'upload cut'
+    )
+    expect(events.map((e) => e.type)).toEqual(['received', 'failed'])
+    expect(events[1].error).toContain('upload cut')
+    expect(newCaptures).toEqual([])
+    expect(listCaptures(caseId)).toHaveLength(0)
+    expect(getManifestHead(join(tempDir, 'captures', caseId)).nextIndex).toBe(0)
+  })
+
+  it('without a session or emitters, auto is refused and the other routes stay silent', async () => {
+    const selectorStub = {
+      runActiveSelectorsForCapture: vi.fn()
+    } as unknown as SelectorLifecycle
+    const headless = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    expect(await headless.admit(request({ route: 'auto' }))).toEqual({
+      ok: false,
+      refusal: { kind: 'no_active_session' }
+    })
+    expect((await headless.admit(request({ route: 'selector' }))).ok).toBe(true)
+    expect(events).toEqual([])
   })
 })
 

@@ -22,8 +22,7 @@ import {
   CaptureServerBindError,
   getCaptureServerPort,
   startCaptureServer,
-  stopCaptureServer,
-  resetManualDedup
+  stopCaptureServer
 } from '@main/services/captureServer'
 import { sanitizeError } from '@main/services/logSafe'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
@@ -66,10 +65,11 @@ describe('captureServer', () => {
     resetInstallationId()
     initInstallationId(tempDir)
     sessionService = createSessionService()
-    resetManualDedup()
     baseUrl = `http://127.0.0.1:${port}`
     const selectorLifecycle = createSelectorLifecycle({ emitRematched: () => {} })
-    const captureLifecycle = createCaptureLifecycle({ selectorLifecycle })
+    // The lifecycle admits every route, so it shares the server's session:
+    // 'auto' takes the Active Case from it and counts into it.
+    const captureLifecycle = createCaptureLifecycle({ selectorLifecycle, sessionService })
     await startCaptureServer(
       { selectorLifecycle, captureLifecycle, token: TEST_TOKEN, sessionService },
       port
@@ -281,33 +281,6 @@ describe('captureServer', () => {
       url: 'https://example.com'
     })
     expect(res.status).toBe(400)
-  })
-
-  it('source=auto increments capture count', async () => {
-    const testCase = createCase({ name: 'Count Test' })
-    await serverPost(`/api/cases/${testCase.id}/activate`)
-    await serverPost('/api/session/start')
-
-    await postCapture(
-      {
-        source: 'auto',
-        url: 'https://a.com',
-        title: 'A'
-      },
-      '<html>a</html>'
-    )
-
-    await postCapture(
-      {
-        source: 'auto',
-        url: 'https://b.com',
-        title: 'B'
-      },
-      '<html>b</html>'
-    )
-
-    const state = sessionService.snapshot()
-    expect(state.captureCount).toBe(2)
   })
 
   it('source=manual stores capture without active session', async () => {
@@ -532,162 +505,6 @@ describe('captureServer', () => {
     expect(data.pattern).toBe('facebook.com')
   })
 
-  it('source=auto allows non-blacklisted URL', async () => {
-    const testCase = createCase({ name: 'Allow Test' })
-    await serverPost(`/api/cases/${testCase.id}/activate`)
-    await serverPost('/api/session/start')
-
-    updateSettings({ ignoredUrlPatterns: ['facebook.com'] })
-
-    const res = await postCapture(
-      {
-        source: 'auto',
-        url: 'https://example.com',
-        title: 'Example'
-      },
-      '<html>example</html>'
-    )
-
-    expect(res.status).toBe(200)
-    const data = await readJson(res)
-    expect(data.status).toBe('ok')
-  })
-
-  it('source=manual blocks blacklisted URL with 403', async () => {
-    const testCase = createCase({ name: 'Manual Blacklist' })
-    updateSettings({ ignoredUrlPatterns: ['blocked-site.com'] })
-
-    const res = await postCapture(
-      {
-        source: 'manual',
-        caseId: testCase.id,
-        url: 'https://blocked-site.com/page'
-      },
-      '<html>blocked</html>'
-    )
-
-    expect(res.status).toBe(403)
-  })
-
-  it('source=selector blocks blacklisted URL with 403', async () => {
-    const testCase = createCase({ name: 'Selector Blacklist' })
-    updateSettings({ ignoredUrlPatterns: ['spam.org'] })
-
-    const res = await postCapture(
-      {
-        source: 'selector',
-        caseId: testCase.id,
-        url: 'https://spam.org/content',
-        title: 'Spam'
-      },
-      '<html>spam</html>'
-    )
-
-    expect(res.status).toBe(403)
-  })
-
-  // #400 moved the exclusion check to AFTER case resolution, because a case's
-  // 'override' mode has to be able to bypass the global list and the mode is
-  // unknown until the case is. These two pin what that reordering changed: an
-  // excluded URL with no usable case now answers the case error, not the
-  // exclusion one. No existing test covered it — every blacklist test above
-  // posts with a real, activated case — so without these the precedence could
-  // move back in silence.
-  it('an excluded URL with a missing caseId answers 400, not 403', async () => {
-    createCase({ name: 'Reorder Missing Case' })
-    updateSettings({ ignoredUrlPatterns: ['blocked-site.com'] })
-
-    const res = await postCapture(
-      { source: 'manual', url: 'https://blocked-site.com/page' },
-      '<html>blocked</html>'
-    )
-
-    expect(res.status).toBe(400)
-    expect((await readJson(res)).error).toBe('Missing required field: caseId')
-  })
-
-  it('an excluded URL with an unknown caseId answers 404, not 403', async () => {
-    updateSettings({ ignoredUrlPatterns: ['blocked-site.com'] })
-
-    const res = await postCapture(
-      { source: 'manual', caseId: 'no-such-case', url: 'https://blocked-site.com/page' },
-      '<html>blocked</html>'
-    )
-
-    expect(res.status).toBe(404)
-    expect((await readJson(res)).error).toBe('Case not found')
-  })
-
-  it('an excluded URL for an archived case answers 400, not 403', async () => {
-    const archived = createCase({ name: 'Reorder Archived' })
-    updateCase({ id: archived.id, archived: true })
-    updateSettings({ ignoredUrlPatterns: ['blocked-site.com'] })
-
-    const res = await postCapture(
-      { source: 'manual', caseId: archived.id, url: 'https://blocked-site.com/page' },
-      '<html>blocked</html>'
-    )
-
-    expect(res.status).toBe(400)
-    expect((await readJson(res)).error).toBe('Case is archived')
-  })
-
-  it('blacklist supports regex patterns', async () => {
-    const testCase = createCase({ name: 'Regex Blacklist' })
-    await serverPost(`/api/cases/${testCase.id}/activate`)
-    await serverPost('/api/session/start')
-
-    updateSettings({ ignoredUrlPatterns: ['/.*\\.pdf$/i'] })
-
-    const blockedRes = await postCapture(
-      {
-        source: 'auto',
-        url: 'https://example.com/document.pdf',
-        title: 'PDF'
-      },
-      '<html>pdf</html>'
-    )
-    expect(blockedRes.status).toBe(403)
-
-    const allowedRes = await postCapture(
-      {
-        source: 'auto',
-        url: 'https://example.com/page.html',
-        title: 'HTML'
-      },
-      '<html>html</html>'
-    )
-    expect(allowedRes.status).toBe(200)
-  })
-
-  it('blacklist supports glob/wildcard patterns', async () => {
-    const testCase = createCase({ name: 'Glob Blacklist' })
-    await serverPost(`/api/cases/${testCase.id}/activate`)
-    await serverPost('/api/session/start')
-
-    updateSettings({ ignoredUrlPatterns: ['*.facebook.com*'] })
-
-    const blockedRes = await postCapture(
-      {
-        source: 'auto',
-        url: 'https://www.facebook.com/some/page',
-        title: 'FB'
-      },
-      '<html>fb</html>'
-    )
-    expect(blockedRes.status).toBe(403)
-
-    const allowedRes = await postCapture(
-      {
-        source: 'auto',
-        url: 'https://example.com/page',
-        title: 'Example'
-      },
-      '<html>ok</html>'
-    )
-    expect(allowedRes.status).toBe(200)
-  })
-
   it('POST /api/captures/test returns pipeline health', async () => {
     createCase({ name: 'Pipeline Test Case' })
 
@@ -770,35 +587,6 @@ describe('captureServer', () => {
     expect(getManifestHead(caseDir).nextIndex).toBe(0)
   })
 
-  it('blacklist glob pattern with ? wildcard matches single character', async () => {
-    const testCase = createCase({ name: 'Glob Question' })
-    await serverPost(`/api/cases/${testCase.id}/activate`)
-    await serverPost('/api/session/start')
-
-    updateSettings({ ignoredUrlPatterns: ['example.com/user?'] })
-
-    const blockedRes = await postCapture(
-      {
-        source: 'auto',
-        url: 'https://example.com/userA',
-        title: 'User A'
-      },
-      '<html>a</html>'
-    )
-    expect(blockedRes.status).toBe(403)
-
-    const allowedRes = await postCapture(
-      {
-        source: 'auto',
-        url: 'https://example.com/users',
-        title: 'Users'
-      },
-      '<html>users</html>'
-    )
-    // 'users' ends with 's' which matches the '?' — still blocked
-    expect(allowedRes.status).toBe(403)
-  })
-
   // --- Manual capture dedup tests ---
 
   it('source=manual rejects duplicate within 5s window', async () => {
@@ -827,172 +615,6 @@ describe('captureServer', () => {
 
     const captures = listCaptures(testCase.id)
     expect(captures).toHaveLength(1)
-  })
-
-  it.skip('source=manual allows same URL after dedup window expires', async () => {
-    const testCase = createCase({ name: 'Dedup Expiry' })
-    const url = 'https://example.com/expiry-test'
-
-    const first = await postCapture({
-      source: 'manual',
-      caseId: testCase.id,
-      url,
-      title: 'Test',
-      timestamp: new Date().toISOString()
-    })
-    expect(first.status).toBe(200)
-
-    // Advance time past the 5s window
-    vi.useFakeTimers({ shouldAdvanceTime: true })
-    vi.advanceTimersByTime(6000)
-    vi.useRealTimers()
-
-    const second = await postCapture({
-      source: 'manual',
-      caseId: testCase.id,
-      url,
-      title: 'Test',
-      timestamp: new Date().toISOString()
-    })
-    expect(second.status).toBe(200)
-
-    const captures = listCaptures(testCase.id)
-    expect(captures).toHaveLength(2)
-  })
-
-  it('source=manual allows different URLs in same case within window', async () => {
-    const testCase = createCase({ name: 'Dedup Diff URL' })
-
-    const first = await postCapture({
-      source: 'manual',
-      caseId: testCase.id,
-      url: 'https://example.com/page-a',
-      title: 'Test',
-      timestamp: new Date().toISOString()
-    })
-    expect(first.status).toBe(200)
-
-    const second = await postCapture({
-      source: 'manual',
-      caseId: testCase.id,
-      url: 'https://example.com/page-b',
-      title: 'Test',
-      timestamp: new Date().toISOString()
-    })
-    expect(second.status).toBe(200)
-
-    const captures = listCaptures(testCase.id)
-    expect(captures).toHaveLength(2)
-  })
-
-  it('source=manual allows same URL in different cases within window', async () => {
-    const caseA = createCase({ name: 'Case A' })
-    const caseB = createCase({ name: 'Case B' })
-    const url = 'https://example.com/shared-page'
-
-    const first = await postCapture({
-      source: 'manual',
-      caseId: caseA.id,
-      url,
-      title: 'Test',
-      timestamp: new Date().toISOString()
-    })
-    expect(first.status).toBe(200)
-
-    const second = await postCapture({
-      source: 'manual',
-      caseId: caseB.id,
-      url,
-      title: 'Test',
-      timestamp: new Date().toISOString()
-    })
-    expect(second.status).toBe(200)
-  })
-
-  it('source=auto is not affected by manual dedup', async () => {
-    const testCase = createCase({ name: 'Auto No Dedup' })
-    await serverPost(`/api/cases/${testCase.id}/activate`)
-    await serverPost('/api/session/start')
-
-    const first = await postCapture(
-      {
-        source: 'auto',
-        url: 'https://example.com/auto-page',
-        title: 'Auto'
-      },
-      '<html>auto</html>'
-    )
-    expect(first.status).toBe(200)
-
-    const second = await postCapture(
-      {
-        source: 'auto',
-        url: 'https://example.com/auto-page',
-        title: 'Auto'
-      },
-      '<html>auto</html>'
-    )
-    expect(second.status).toBe(200)
-
-    const captures = listCaptures(testCase.id)
-    expect(captures).toHaveLength(2)
-  })
-
-  it('source=selector is not affected by manual dedup', async () => {
-    const testCase = createCase({ name: 'Selector No Dedup' })
-
-    const first = await postCapture(
-      {
-        source: 'selector',
-        caseId: testCase.id,
-        url: 'https://example.com/selector-page',
-        title: 'Selector'
-      },
-      '<html>selector</html>'
-    )
-    expect(first.status).toBe(200)
-
-    const second = await postCapture(
-      {
-        source: 'selector',
-        caseId: testCase.id,
-        url: 'https://example.com/selector-page',
-        title: 'Selector'
-      },
-      '<html>selector</html>'
-    )
-    expect(second.status).toBe(200)
-
-    const captures = listCaptures(testCase.id)
-    expect(captures).toHaveLength(2)
-  })
-
-  it('manual dedup state is cleared by resetManualDedup', async () => {
-    const testCase = createCase({ name: 'Dedup Reset' })
-
-    const first = await postCapture({
-      source: 'manual',
-      caseId: testCase.id,
-      url: 'https://example.com/page',
-      title: 'Test',
-      timestamp: new Date().toISOString()
-    })
-    expect(first.status).toBe(200)
-
-    // Without reset, this would be 409
-    // Note: the server holds the instance injected at startCaptureServer in
-    // beforeEach; rebinding sessionService here would be inert. Only
-    // resetManualDedup() is needed.
-    resetManualDedup()
-
-    const second = await postCapture({
-      source: 'manual',
-      caseId: testCase.id,
-      url: 'https://example.com/page',
-      title: 'Test',
-      timestamp: new Date().toISOString()
-    })
-    expect(second.status).toBe(200)
   })
 
   // --- MHTML-specific test ---
@@ -1478,56 +1100,6 @@ describe('captureServer', () => {
     expect(data.error).toMatch(/operator name/i)
   })
 
-  it('POST /api/captures returns 400 when operator name is whitespace-only', async () => {
-    updateSettings({ operatorName: '   ' })
-    const testCase = createCase({ name: 'Whitespace Operator' })
-    const res = await postCapture({
-      source: 'manual',
-      caseId: testCase.id,
-      url: 'https://example.com',
-      title: 'Test'
-    })
-    expect(res.status).toBe(400)
-    const data = await readJson(res)
-    expect(data.error).toMatch(/operator name/i)
-  })
-
-  it('POST /api/captures succeeds when operator name is set', async () => {
-    updateSettings({ operatorName: 'Alex Smith' })
-    const testCase = createCase({ name: 'Named Operator' })
-    const res = await postCapture(
-      {
-        source: 'manual',
-        caseId: testCase.id,
-        url: 'https://example.com',
-        title: 'Test'
-      },
-      '<html>ok</html>'
-    )
-    expect(res.status).toBe(200)
-    const data = await readJson(res)
-    expect(data.status).toBe('ok')
-  })
-
-  it('POST /api/captures auto source returns 400 when operator name is blank', async () => {
-    updateSettings({ operatorName: '' })
-    const testCase = createCase({ name: 'Auto Blank Operator' })
-    await serverPost(`/api/cases/${testCase.id}/activate`)
-    await serverPost('/api/session/start')
-
-    const res = await postCapture(
-      {
-        source: 'auto',
-        url: 'https://example.com',
-        title: 'Test'
-      },
-      '<html>auto</html>'
-    )
-    expect(res.status).toBe(400)
-    const data = await readJson(res)
-    expect(data.error).toMatch(/operator name/i)
-  })
-
   it('POST /api/captures/test returns 400 when operator name is blank', async () => {
     updateSettings({ operatorName: '' })
     createCase({ name: 'Pipeline Test Case' })
@@ -1980,11 +1552,13 @@ describe('captureServer', () => {
         const port = nextPort++
         baseUrl = `http://127.0.0.1:${port}`
         const selectorLifecycle = createSelectorLifecycle({ emitRematched: () => {} })
+        const realLifecycle = createCaptureLifecycle({ selectorLifecycle, sessionService })
         const failingLifecycle = {
-          ...createCaptureLifecycle({ selectorLifecycle }),
-          ingest: async () => {
-            throw new Error('ingest exploded')
-          }
+          ...realLifecycle,
+          admit: async (): ReturnType<typeof realLifecycle.admit> => ({
+            ok: false,
+            refusal: { kind: 'failed', error: new Error('ingest exploded') }
+          })
         }
         await startCaptureServer(
           {
@@ -2019,7 +1593,7 @@ describe('captureServer', () => {
         const port = nextPort++
         baseUrl = `http://127.0.0.1:${port}`
         const selectorLifecycle = createSelectorLifecycle({ emitRematched: () => {} })
-        const realLifecycle = createCaptureLifecycle({ selectorLifecycle })
+        const realLifecycle = createCaptureLifecycle({ selectorLifecycle, sessionService })
         let release!: () => void
         const gate = new Promise<void>((resolve) => {
           release = resolve
@@ -2027,14 +1601,19 @@ describe('captureServer', () => {
         let ingestEntries = 0
         const gatedLifecycle = {
           ...realLifecycle,
-          ingest: async (args: Parameters<typeof realLifecycle.ingest>[0]) => {
+          admit: async (args: Parameters<typeof realLifecycle.admit>[0]) => {
             ingestEntries++
             await gate
-            return realLifecycle.ingest(args)
+            return realLifecycle.admit(args)
           }
         }
         await startCaptureServer(
-          { selectorLifecycle, captureLifecycle: gatedLifecycle, token: TEST_TOKEN, sessionService },
+          {
+            selectorLifecycle,
+            captureLifecycle: gatedLifecycle,
+            token: TEST_TOKEN,
+            sessionService
+          },
           port
         )
 

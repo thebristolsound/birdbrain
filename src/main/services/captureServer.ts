@@ -5,7 +5,6 @@ import { cors } from 'hono/cors'
 import { bodyLimit } from 'hono/body-limit'
 import { zValidator } from '@hono/zod-validator'
 import type { Server } from 'http'
-import { app } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
 import { sendEvent } from '@main/ipcWrap'
@@ -16,6 +15,7 @@ import * as selectorRepo from '@main/services/db/selectorRepo'
 import * as tagRepo from '@main/services/db/tagRepo'
 import { getSettings } from '@main/services/settings'
 import { ingestMhtmlCapture } from '@main/services/captureLifecycle'
+import type { AdmissionRefusal } from '@main/services/captureLifecycle'
 import {
   createPipelineSelfTestSandbox,
   PIPELINE_SELF_TEST_URL,
@@ -23,6 +23,7 @@ import {
 } from '@main/services/pipelineSelfTest'
 import { getInstallationId } from '@main/services/installationId'
 import { getServerToken } from '@main/services/serverToken'
+import { resolveToolVersion } from '@main/services/toolVersion'
 import type { CaptureEvent } from '@shared/types'
 import type { ExtensionAttachEvent } from '@shared/ipc'
 import {
@@ -38,7 +39,6 @@ import {
   type CaptureServerCase,
   type CaptureServerStatus,
   type CaptureUploadResult,
-  type CaptureUploadSource,
   type ExtensionAttachBase,
   type ExtensionNoteCreateResult,
   type ExtensionTagApplyResult,
@@ -52,18 +52,9 @@ import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { createSessionService, type SessionService } from '@main/services/session'
 
-import {
-  CAPTURE_SERVER_PORT,
-  MANUAL_DEDUPE_WINDOW_MS,
-  MAX_SCREENSHOT_SIZE
-} from '@shared/constants'
-import {
-  blockedSkipReason,
-  effectiveIgnorePatternsForCase,
-  isUrlBlacklisted
-} from '@main/services/exclusionPolicy'
+import { CAPTURE_SERVER_PORT } from '@shared/constants'
+import { effectiveIgnorePatternsForCase } from '@main/services/exclusionPolicy'
 import { logger } from '@main/services/logger'
-import { tag } from '@main/services/logSafe'
 export { CAPTURE_SERVER_PORT }
 
 export interface CaptureServerDeps {
@@ -74,14 +65,6 @@ export interface CaptureServerDeps {
   // existing callers keep working; main supplies the real one.
   sessionService?: SessionService
 }
-
-function getToolVersion(): string {
-  if (typeof app?.getVersion === 'function') return app.getVersion()
-  return process.env.npm_package_version ?? '0.0.0'
-}
-
-// Manual capture dedup: "caseId:url" -> timestamp of last accepted capture
-const manualDedup = new Map<string, number>()
 
 const OPERATOR_NAME_REQUIRED_MSG =
   'Operator name required. Configure your name in Birdbrain settings before capturing.'
@@ -99,12 +82,6 @@ let mainWindow: BrowserWindow | null = null
 // wiring's job, so this module's window reference now serves capture events
 // only.
 let sessionService: SessionService = createSessionService()
-
-// Test seam: the manual-capture dedup window is capture-server state, not
-// session state, so it outlives a session service instance.
-export function resetManualDedup(): void {
-  manualDedup.clear()
-}
 
 export function setMainWindow(win: BrowserWindow): void {
   mainWindow = win
@@ -128,6 +105,38 @@ function emitExtensionAttach(event: ExtensionAttachEvent): void {
 
 // The single source of truth for the pipeline self-test route.
 const CAPTURE_TEST_ROUTE = '/api/captures/test'
+
+// The one place an admission refusal becomes a status code. The messages are
+// the wire contract the extension shows the operator, unchanged from when each
+// check lived in the route; the policy itself is the Capture Lifecycle's.
+function refusalResponse(c: Context, refusal: AdmissionRefusal): Response {
+  switch (refusal.kind) {
+    case 'operator_name_required':
+      return c.json({ error: OPERATOR_NAME_REQUIRED_MSG }, 400)
+    case 'no_active_session':
+      return c.json({ error: 'No active session' }, 400)
+    case 'no_active_case':
+      return c.json({ error: 'No active case' }, 400)
+    case 'missing_case_id':
+      return c.json({ error: 'Missing required field: caseId' }, 400)
+    case 'case_not_found':
+      return c.json({ error: 'Case not found' }, 404)
+    case 'case_archived':
+      return c.json({ error: 'Case is archived' }, 400)
+    case 'excluded':
+      return c.json({ error: 'URL blocked by ignored pattern', pattern: refusal.pattern }, 403)
+    case 'duplicate':
+      return c.json({ error: 'Duplicate capture', status: 'skipped' }, 409)
+    case 'failed':
+      return c.json({ error: 'Failed to process capture' }, 500)
+  }
+}
+
+// The multipart field is typed unknown by the schema; anything that is not a
+// file is treated as no screenshot, as it always was.
+function screenshotFileOf(field: unknown): Blob | undefined {
+  return field instanceof File || field instanceof Blob ? field : undefined
+}
 
 function createApp(deps: CaptureServerDeps): Hono {
   const { selectorLifecycle, captureLifecycle, token } = deps
@@ -296,175 +305,35 @@ function createApp(deps: CaptureServerDeps): Hono {
       return undefined
     }),
     async (c) => {
-      const startTime = Date.now()
       const input = c.req.valid('form')
       // The wire union, not the domain one: 'recapture' never arrives here.
-      const source: CaptureUploadSource = input.source
-      const url = input.url
-      const title = input.title || url
-      const timestamp = input.timestamp || new Date().toISOString()
-      const textContent = input.textContent
-      const extensionVersion = input.extensionVersion
-      const browserVersion = input.browserVersion
-      const userAgent = input.userAgent
-      const httpStatus = input.httpStatus
-      const caseIdField = input.caseId
-      const mhtmlField = input.mhtml
-      const capturedUrl = url
-      try {
-        const captureSettings = getSettings()
-        const operatorName = captureSettings.operatorName?.trim() ?? ''
-
-        // Gate: operator name must be set before any capture is stored
-        if (!operatorName) {
-          emitCaptureEvent({
-            type: 'failed',
-            source,
-            url,
-            timestamp: new Date().toISOString(),
-            error: 'Operator name required'
-          })
-          return c.json({ error: OPERATOR_NAME_REQUIRED_MSG }, 400)
-        }
-
-        // Case resolution runs BEFORE the exclusion check (#400), where it used
-        // to run after. Exclusions are per-case now, and 'override' mode has to
-        // be able to bypass the global list, so the mode cannot be known until
-        // the case is. Splitting the check in two — global first, case after —
-        // is not available for the same reason.
-        //
-        // Observable consequence: an excluded URL submitted with a missing,
-        // unknown or archived caseId now answers 400/404 rather than 403, and
-        // emits no 'skipped' event. Nothing is captured either way; what changes
-        // is which refusal the operator is told about. Pinned below and in
-        // tests/main/services/captureServer.test.ts.
-        let caseId = ''
-        if (source === 'auto') {
-          const session = sessionService.snapshot()
-          if (!session.sessionActive) return c.json({ error: 'No active session' }, 400)
-          if (!session.activeCaseId) return c.json({ error: 'No active case' }, 400)
-          caseId = session.activeCaseId
-        } else {
-          if (!caseIdField) return c.json({ error: 'Missing required field: caseId' }, 400)
-          const caseData = caseRepo.getCase(caseIdField)
-          if (!caseData) return c.json({ error: 'Case not found' }, 404)
-          if (caseData.archived) return c.json({ error: 'Case is archived' }, 400)
-          caseId = caseIdField
-        }
-
-        // Ahead of the source branch below, as the global-only check always was:
-        // the list blocks every capture route into this case, manual included
-        // (ruled 2026-08-21). An operator who excludes a URL from a case means
-        // it, and a rule that permits the one route that currently works would
-        // be worse than no rule.
-        const blocked = isUrlBlacklisted(url, effectiveIgnorePatternsForCase(caseId))
-        if (blocked) {
-          emitCaptureEvent({
-            type: 'skipped',
-            source,
-            url,
-            timestamp: new Date().toISOString(),
-            skipReason: blockedSkipReason(blocked)
-          })
-          return c.json({ error: 'URL blocked by ignored pattern', pattern: blocked }, 403)
-        }
-
-        if (source === 'manual') {
-          const dedupeKey = caseId + ':' + url
-          const lastSeen = manualDedup.get(dedupeKey)
-          if (lastSeen && Date.now() - lastSeen < MANUAL_DEDUPE_WINDOW_MS) {
-            emitCaptureEvent({
-              type: 'skipped',
-              source,
-              url,
-              timestamp: new Date().toISOString(),
-              skipReason: 'Duplicate manual capture'
-            })
-            return c.json({ error: 'Duplicate capture', status: 'skipped' }, 409)
-          }
-          manualDedup.set(dedupeKey, Date.now())
-        }
-
-        emitCaptureEvent({ type: 'received', source, url, timestamp: new Date().toISOString() })
-
-        const screenshotField = input.screenshot
-        let screenshotBuffer: Buffer | undefined
-        let screenshotDropReason: string | undefined
-        if (screenshotField instanceof File || screenshotField instanceof Blob) {
-          if (screenshotField.size <= MAX_SCREENSHOT_SIZE) {
-            screenshotBuffer = Buffer.from(await screenshotField.arrayBuffer())
-          } else {
-            screenshotDropReason = `Screenshot too large: ${(screenshotField.size / (1024 * 1024)).toFixed(1)}MB exceeds ${MAX_SCREENSHOT_SIZE / (1024 * 1024)}MB limit`
-            logger.warn('captureServer', 'capture.screenshot_dropped', {
-              reason: tag('too_large', 'screenshotDropReason'),
-              bytes: screenshotField.size
-            })
-          }
-        }
-
-        const operatorId = getInstallationId()
-        const toolVersion = getToolVersion()
-
-        const { capture, contentHash } = await captureLifecycle.ingest({
-          caseId,
-          url,
-          title,
-          timestamp,
-          stream: mhtmlField.stream(),
-          textContent,
-          headers: input.headers ?? {},
-          browserVersion,
-          userAgent,
-          httpStatus,
-          extensionVersion,
-          operatorId,
-          operatorName,
-          toolVersion,
-          screenshot: screenshotBuffer
-        })
-
-        if (source === 'auto') sessionService.countCapture()
-
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          sendEvent(mainWindow.webContents, IPC_CHANNELS.NEW_CAPTURE, capture)
-        }
-
-        const durationMs = Date.now() - startTime
-        emitCaptureEvent({
-          type: 'stored',
-          captureId: capture.id,
-          source,
-          url,
-          timestamp: new Date().toISOString(),
-          durationMs,
-          screenshotWarning: screenshotDropReason
-        })
-
-        const screenshotStatus = screenshotDropReason
-          ? 'dropped'
-          : screenshotBuffer
-            ? 'saved'
-            : 'none'
-        return c.json({
-          captureId: capture.id,
-          hash: contentHash,
-          manifestIndex: capture.manifestIndex,
-          status: 'ok',
-          source,
-          screenshotStatus,
-          screenshotWarning: screenshotDropReason
-        } satisfies CaptureUploadResult)
-      } catch (err) {
-        logger.error('captureServer', 'capture.failed', undefined, err)
-        emitCaptureEvent({
-          type: 'failed',
-          source,
-          url: capturedUrl,
-          timestamp: new Date().toISOString(),
-          error: String(err)
-        })
-        return c.json({ error: 'Failed to process capture' }, 500)
-      }
+      // Everything after parsing is the Capture Lifecycle's: the route hands
+      // over the payload and maps the outcome.
+      const outcome = await captureLifecycle.admit({
+        route: input.source,
+        caseId: input.caseId,
+        url: input.url,
+        title: input.title,
+        timestamp: input.timestamp,
+        stream: input.mhtml.stream(),
+        textContent: input.textContent,
+        headers: input.headers ?? {},
+        browserVersion: input.browserVersion,
+        userAgent: input.userAgent,
+        httpStatus: input.httpStatus,
+        extensionVersion: input.extensionVersion,
+        screenshot: screenshotFileOf(input.screenshot)
+      })
+      if (!outcome.ok) return refusalResponse(c, outcome.refusal)
+      return c.json({
+        captureId: outcome.capture.id,
+        hash: outcome.contentHash,
+        manifestIndex: outcome.capture.manifestIndex,
+        status: 'ok',
+        source: input.source,
+        screenshotStatus: outcome.screenshotStatus,
+        screenshotWarning: outcome.screenshotWarning
+      } satisfies CaptureUploadResult)
     }
   )
 
@@ -556,9 +425,11 @@ function createApp(deps: CaptureServerDeps): Hono {
     const run = (attachChains.get(key) ?? Promise.resolve()).then(() =>
       resolveOrIngestCaptureNow(c, input)
     )
-    const tail: Promise<unknown> = run.catch(() => undefined).finally(() => {
-      if (attachChains.get(key) === tail) attachChains.delete(key)
-    })
+    const tail: Promise<unknown> = run
+      .catch(() => undefined)
+      .finally(() => {
+        if (attachChains.get(key) === tail) attachChains.delete(key)
+      })
     attachChains.set(key, tail)
     return run
   }
@@ -594,109 +465,40 @@ function createApp(deps: CaptureServerDeps): Hono {
       )
     }
 
-    const operatorName = getSettings().operatorName?.trim() ?? ''
-    if (!operatorName) {
-      emitCaptureEvent({
-        type: 'failed',
-        source: 'manual',
-        url,
-        timestamp: new Date().toISOString(),
-        error: 'Operator name required'
-      })
-      return fail(c.json({ error: OPERATOR_NAME_REQUIRED_MSG }, 400))
-    }
-
-    // Checked on the ingest branch only: attaching to a capture the case
-    // already holds acquires nothing, while this branch is a real acquisition
-    // route and must refuse what the case excludes (#400).
-    const blocked = isUrlBlacklisted(url, effectiveIgnorePatternsForCase(caseId))
-    if (blocked) {
-      emitCaptureEvent({
-        type: 'skipped',
-        source: 'manual',
-        url,
-        timestamp: new Date().toISOString(),
-        skipReason: blockedSkipReason(blocked)
-      })
-      return fail(c.json({ error: 'URL blocked by ignored pattern', pattern: blocked }, 403))
-    }
-
-    const startTime = Date.now()
-    emitCaptureEvent({
-      type: 'received',
-      source: 'manual',
+    // The acquisition itself is the Capture Lifecycle's, gate, exclusion and
+    // cap included: this branch is a real acquisition route and must refuse
+    // what the case excludes (#400), where attaching to a capture the case
+    // already holds, above, acquires nothing and is not checked.
+    const outcome = await captureLifecycle.admit({
+      route: 'attach',
+      caseId,
       url,
-      timestamp: new Date().toISOString()
+      title: input.title,
+      timestamp: input.timestamp,
+      stream: mhtmlField.stream(),
+      textContent: input.textContent,
+      headers: input.headers ?? {},
+      browserVersion: input.browserVersion,
+      userAgent: input.userAgent,
+      httpStatus: input.httpStatus,
+      extensionVersion: input.extensionVersion,
+      screenshot: screenshotFileOf(input.screenshot)
     })
-
-    const screenshotField = input.screenshot
-    let screenshotBuffer: Buffer | undefined
-    let screenshotDropReason: string | undefined
-    if (screenshotField instanceof File || screenshotField instanceof Blob) {
-      if (screenshotField.size <= MAX_SCREENSHOT_SIZE) {
-        screenshotBuffer = Buffer.from(await screenshotField.arrayBuffer())
-      } else {
-        // Same wording as POST /api/captures: a silently missing artifact
-        // would let the extension report a clean capture that lost one.
-        screenshotDropReason = `Screenshot too large: ${(screenshotField.size / (1024 * 1024)).toFixed(1)}MB exceeds ${MAX_SCREENSHOT_SIZE / (1024 * 1024)}MB limit`
-        logger.warn('captureServer', 'capture.screenshot_dropped', {
-          reason: tag('too_large', 'screenshotDropReason'),
-          bytes: screenshotField.size
-        })
-      }
+    if (!outcome.ok) {
+      // A failed ingest names what was NOT done: the caller must not retry
+      // with the same annotation against a capture that does not exist.
+      return fail(
+        outcome.refusal.kind === 'failed'
+          ? c.json({ error: 'Failed to capture page; nothing was attached' }, 500)
+          : refusalResponse(c, outcome.refusal)
+      )
     }
-
-    try {
-      // No `method` passed, same as POST /api/captures: the row defaults to
-      // 'extension', which is honest — the bytes came from the operator's own
-      // browser tab (R2), never from a hidden window.
-      const { capture } = await captureLifecycle.ingest({
-        caseId,
-        url,
-        title: input.title || url,
-        timestamp: input.timestamp || new Date().toISOString(),
-        stream: mhtmlField.stream(),
-        textContent: input.textContent,
-        headers: input.headers ?? {},
-        browserVersion: input.browserVersion,
-        userAgent: input.userAgent,
-        httpStatus: input.httpStatus,
-        extensionVersion: input.extensionVersion,
-        operatorId: getInstallationId(),
-        operatorName,
-        toolVersion: getToolVersion(),
-        screenshot: screenshotBuffer
-      })
-
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        sendEvent(mainWindow.webContents, IPC_CHANNELS.NEW_CAPTURE, capture)
-      }
-      emitCaptureEvent({
-        type: 'stored',
-        captureId: capture.id,
-        source: 'manual',
-        url,
-        timestamp: new Date().toISOString(),
-        durationMs: Date.now() - startTime,
-        screenshotWarning: screenshotDropReason
-      })
-      return {
-        ok: true,
-        captureId: capture.id,
-        captured: true,
-        screenshotStatus: screenshotDropReason ? 'dropped' : screenshotBuffer ? 'saved' : 'none',
-        screenshotWarning: screenshotDropReason
-      }
-    } catch (err) {
-      logger.error('captureServer', 'capture.failed', undefined, err)
-      emitCaptureEvent({
-        type: 'failed',
-        source: 'manual',
-        url,
-        timestamp: new Date().toISOString(),
-        error: String(err)
-      })
-      return fail(c.json({ error: 'Failed to capture page; nothing was attached' }, 500))
+    return {
+      ok: true,
+      captureId: outcome.capture.id,
+      captured: true,
+      screenshotStatus: outcome.screenshotStatus,
+      screenshotWarning: outcome.screenshotWarning
     }
   }
 
@@ -812,7 +614,11 @@ function createApp(deps: CaptureServerDeps): Hono {
       } catch (err) {
         logger.error('captureServer', 'captureServer.note_create_failed', undefined, err)
         return c.json(
-          { error: 'Failed to create note', captureId: target.captureId, captured: target.captured },
+          {
+            error: 'Failed to create note',
+            captureId: target.captureId,
+            captured: target.captured
+          },
           500
         )
       }
@@ -890,7 +696,7 @@ function createApp(deps: CaptureServerDeps): Hono {
           extensionVersion: '',
           operatorId: getInstallationId(),
           operatorName,
-          toolVersion: getToolVersion()
+          toolVersion: resolveToolVersion()
         },
         undefined,
         sandbox.store

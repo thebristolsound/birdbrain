@@ -1,4 +1,3 @@
-import { app } from 'electron'
 import { createReadStream, readFileSync } from 'fs'
 import { createHash, randomUUID } from 'crypto'
 import { join } from 'path'
@@ -22,15 +21,32 @@ import type { CaptureChainEntry, ManifestImportEntry } from '@main/services/mani
 import { reconcileCaptureTrustedTime } from '@main/services/trustedTime'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { getSettings } from '@main/services/settings'
+import { resolveToolVersion } from '@main/services/toolVersion'
 import { fetchCertChain as defaultFetchCertChain } from '@main/services/tlsCertChain'
 import type { TlsCertChainResult } from '@main/services/tlsCertChain'
-import type { Capture, CaptureMethod, ConsentSuppression, HashVerification } from '@shared/types'
+import type {
+  Capture,
+  CaptureEvent,
+  CaptureMethod,
+  CaptureSource,
+  ConsentSuppression,
+  HashVerification
+} from '@shared/types'
 import type { BatchDeleteOutcome, BatchDeleteResult, DuplicateCaptureResult } from '@shared/ipc'
-import { IMPORT_ID_MAP_FILENAME } from '@shared/constants'
+import type { CaptureUploadSource, ScreenshotStatus } from '@shared/schemas'
+import {
+  IMPORT_ID_MAP_FILENAME,
+  MANUAL_DEDUPE_WINDOW_MS,
+  MAX_SCREENSHOT_SIZE
+} from '@shared/constants'
 import { canonicalStringify } from '@shared/verify'
 import { recordedHttpStatus } from '@shared/httpStatus'
+import * as caseRepo from '@main/services/db/caseRepo'
+import { blockedSkipReason, matchCaseExclusion } from '@main/services/exclusionPolicy'
+import { createSessionService } from '@main/services/session'
+import type { SessionService } from '@main/services/session'
 import { logger } from '@main/services/logger'
-import { ident } from '@main/services/logSafe'
+import { ident, tag } from '@main/services/logSafe'
 
 // Injectable corroboration-only TLS cert-chain re-fetcher (#123). Defaults to the
 // real Node tls.connect implementation; tests inject a stub to stay hermetic.
@@ -70,6 +86,61 @@ export interface IngestResult {
   contentHash: string
 }
 
+// The route a request-shaped capture arrives by: the three wire sources, plus
+// the capture-then-attach route (#392). The extension reports an attach
+// capture as a manual one, but the manual dedup window must not refuse it: an
+// attach that found no capture is the first sighting on that route, and any
+// manual capture of the URL seconds earlier would have been found by the
+// lookup that precedes it.
+export type AdmissionRoute = CaptureUploadSource | 'attach'
+
+// What an acquiring path hands `admit`: the wire payload minus transport, with
+// no policy applied yet. Everything `IngestParams` derives (operator, tool
+// version, the resolved case) is the lifecycle's to fill in.
+export interface AdmissionRequest {
+  route: AdmissionRoute
+  // Named by every route but 'auto', which takes the Active Case from the
+  // session. Empty and absent both mean "not named".
+  caseId?: string
+  url: string
+  // Empty falls back to the URL, and to the time of admission.
+  title: string
+  timestamp: string
+  stream: ReadableStream<Uint8Array>
+  textContent: string
+  headers: Record<string, string>
+  browserVersion: string
+  userAgent: string
+  httpStatus: number
+  extensionVersion: string
+  // Read whole only once the request is admitted. Oversized is dropped and
+  // reported, never refused.
+  screenshot?: Blob | Buffer
+}
+
+export type AdmissionRefusal =
+  | { kind: 'operator_name_required' }
+  | { kind: 'no_active_session' }
+  | { kind: 'no_active_case' }
+  | { kind: 'missing_case_id' }
+  | { kind: 'case_not_found' }
+  | { kind: 'case_archived' }
+  | { kind: 'excluded'; pattern: string }
+  | { kind: 'duplicate' }
+  // The ingest itself threw. Logged and reported on the activity feed here;
+  // the caller only maps it.
+  | { kind: 'failed'; error: unknown }
+
+export type AdmissionOutcome =
+  | {
+      ok: true
+      capture: Capture
+      contentHash: string
+      screenshotStatus: ScreenshotStatus
+      screenshotWarning?: string
+    }
+  | { ok: false; refusal: AdmissionRefusal }
+
 export interface CaptureLifecycleDeps {
   selectorLifecycle: SelectorLifecycle
   // Non-blocking hand-off to the trusted-timestamp worker (#120). Optional so
@@ -81,10 +152,25 @@ export interface CaptureLifecycleDeps {
   // Capture Store owning on-disk artifact layout (#142). Optional; defaults to
   // the store bound to the storage-root singleton. Tests inject their own.
   store?: CaptureStore
+  // The Active Case and the session capture count, which `admit` reads and
+  // moves (#228). Optional: a lifecycle built without one owns a private
+  // session that never has an Active Case, so an 'auto' capture is refused
+  // rather than filed somewhere. Main supplies the one the server holds.
+  sessionService?: SessionService
+  // Capture activity for the renderer feed, and the new-capture broadcast.
+  // Both optional so a headless lifecycle emits nothing.
+  emitCaptureEvent?: (event: CaptureEvent) => void
+  emitNewCapture?: (capture: Capture) => void
 }
 
 export interface CaptureLifecycle {
   ingest: (params: IngestParams) => Promise<IngestResult>
+  // Admission policy for every route the extension has into a case, then the
+  // ingest: operator gate, case resolution, exclusion, the manual dedup
+  // window, the screenshot cap, the session count and the activity events.
+  // Refusals are outcomes, never throws. The transport that calls this maps
+  // the outcome to a status code and nothing else.
+  admit: (request: AdmissionRequest) => Promise<AdmissionOutcome>
   // `reason` is recorded on the manifest deletion entry. Pass it whenever the
   // deletion is not an operator deleting evidence — a chain reader has no other
   // way to tell such a deletion from a real removal (#580). No caller passes one
@@ -107,11 +193,6 @@ export interface CaptureLifecycle {
   duplicate: (captureId: string) => Promise<DuplicateCaptureResult>
   verify: (captureId: string) => Promise<HashVerification>
   reprocessCase: (caseId: string) => Promise<{ processed: number }>
-}
-
-function getToolVersion(): string {
-  if (typeof app?.getVersion === 'function') return app.getVersion()
-  return process.env.npm_package_version ?? '0.0.0'
 }
 
 // Thrown by deleteMany before any write when an id's row lives in another case.
@@ -545,7 +626,38 @@ function readAnchoredIdMap(
   return { ...remapped }
 }
 
+// The operator gate every ingest and duplicate passes. A signed entry naming
+// no operator would be a weaker record than any capture this app can produce.
+function trimmedOperatorName(): string {
+  return getSettings().operatorName?.trim() ?? ''
+}
+
+// The screenshot cap. An oversized artifact is dropped and reported, never
+// refused: a silently missing artifact would let the extension report a clean
+// capture that lost one.
+async function readScreenshot(
+  field: Blob | Buffer | undefined
+): Promise<{ screenshot?: Buffer; screenshotWarning?: string }> {
+  if (field === undefined) return {}
+  const bytes = Buffer.isBuffer(field) ? field.byteLength : field.size
+  if (bytes > MAX_SCREENSHOT_SIZE) {
+    const screenshotWarning = `Screenshot too large: ${(bytes / (1024 * 1024)).toFixed(1)}MB exceeds ${MAX_SCREENSHOT_SIZE / (1024 * 1024)}MB limit`
+    logger.warn('captureLifecycle', 'capture.screenshot_dropped', {
+      reason: tag('too_large', 'screenshotDropReason'),
+      bytes
+    })
+    return { screenshotWarning }
+  }
+  return { screenshot: Buffer.isBuffer(field) ? field : Buffer.from(await field.arrayBuffer()) }
+}
+
 export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifecycle {
+  const sessionService = deps.sessionService ?? createSessionService()
+  const emitCaptureEvent = deps.emitCaptureEvent ?? (() => {})
+  const emitNewCapture = deps.emitNewCapture ?? (() => {})
+  // Manual capture dedup: "caseId:url" -> timestamp of the last admitted
+  // capture. Instance state, so a fresh lifecycle starts with an empty window.
+  const manualDedup = new Map<string, number>()
   const store = deps.store ?? defaultCaptureStore
 
   function runDataExtraction(captureId: string, caseId: string, url: string): void {
@@ -637,7 +749,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
             contentHash: capture.hash,
             operatorId: getInstallationId(),
             operatorName: getSettings().operatorName ?? '',
-            toolVersion: getToolVersion(),
+            toolVersion: resolveToolVersion(),
             ...(reason !== undefined ? { reason } : {})
           },
           () => {
@@ -685,7 +797,29 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
     return { outcome: { captureId, status: 'deleted_unmanifested' } }
   }
 
-  return {
+  // Which case a request lands in, or why it cannot. Case resolution runs
+  // BEFORE the exclusion check (#400): exclusions are per-case, and 'override'
+  // mode has to be able to bypass the global list, so the mode cannot be known
+  // until the case is. Observable consequence, pinned in the tests: an
+  // excluded URL with a missing, unknown or archived case answers the case
+  // refusal rather than the exclusion one, and emits no 'skipped' event.
+  function resolveAdmittedCase(
+    request: AdmissionRequest
+  ): { caseId: string } | { refusal: AdmissionRefusal } {
+    if (request.route === 'auto') {
+      const session = sessionService.snapshot()
+      if (!session.sessionActive) return { refusal: { kind: 'no_active_session' } }
+      if (!session.activeCaseId) return { refusal: { kind: 'no_active_case' } }
+      return { caseId: session.activeCaseId }
+    }
+    if (!request.caseId) return { refusal: { kind: 'missing_case_id' } }
+    const caseData = caseRepo.getCase(request.caseId)
+    if (!caseData) return { refusal: { kind: 'case_not_found' } }
+    if (caseData.archived) return { refusal: { kind: 'case_archived' } }
+    return { caseId: request.caseId }
+  }
+
+  const lifecycle: CaptureLifecycle = {
     async ingest(params) {
       const result = await ingestMhtmlCapture(
         params,
@@ -696,6 +830,110 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
       deps.enqueueTimestamp?.(result.capture.id)
       runPostCaptureWork(result.capture.id, params.caseId, params.url, params.textContent)
       return result
+    },
+
+    async admit(request) {
+      const { route, url } = request
+      const source: CaptureSource = route === 'attach' ? 'manual' : route
+      const now = (): string => new Date().toISOString()
+      try {
+        const operatorName = trimmedOperatorName()
+        if (!operatorName) {
+          emitCaptureEvent({
+            type: 'failed',
+            source,
+            url,
+            timestamp: now(),
+            error: 'Operator name required'
+          })
+          return { ok: false, refusal: { kind: 'operator_name_required' } }
+        }
+
+        const resolved = resolveAdmittedCase(request)
+        if ('refusal' in resolved) return { ok: false, refusal: resolved.refusal }
+        const { caseId } = resolved
+
+        // The list blocks every capture route into this case, manual included
+        // (ruled 2026-08-21). An operator who excludes a URL from a case means
+        // it, and a rule that permits the one route that currently works would
+        // be worse than no rule.
+        const blocked = matchCaseExclusion(url, caseId)
+        if (blocked) {
+          emitCaptureEvent({
+            type: 'skipped',
+            source,
+            url,
+            timestamp: now(),
+            skipReason: blockedSkipReason(blocked)
+          })
+          return { ok: false, refusal: { kind: 'excluded', pattern: blocked } }
+        }
+
+        if (route === 'manual') {
+          const dedupeKey = caseId + ':' + url
+          const lastSeen = manualDedup.get(dedupeKey)
+          if (lastSeen && Date.now() - lastSeen < MANUAL_DEDUPE_WINDOW_MS) {
+            emitCaptureEvent({
+              type: 'skipped',
+              source,
+              url,
+              timestamp: now(),
+              skipReason: 'Duplicate manual capture'
+            })
+            return { ok: false, refusal: { kind: 'duplicate' } }
+          }
+          manualDedup.set(dedupeKey, Date.now())
+        }
+
+        const startTime = Date.now()
+        emitCaptureEvent({ type: 'received', source, url, timestamp: now() })
+
+        const { screenshot, screenshotWarning } = await readScreenshot(request.screenshot)
+
+        // No `method` passed: the row defaults to 'extension', which is honest
+        // for every route here — the bytes came from the operator's own
+        // browser tab (R2), never from a hidden window.
+        const { capture, contentHash } = await lifecycle.ingest({
+          caseId,
+          url,
+          title: request.title || url,
+          timestamp: request.timestamp || now(),
+          stream: request.stream,
+          textContent: request.textContent,
+          headers: request.headers,
+          browserVersion: request.browserVersion,
+          userAgent: request.userAgent,
+          httpStatus: request.httpStatus,
+          extensionVersion: request.extensionVersion,
+          operatorId: getInstallationId(),
+          operatorName,
+          toolVersion: resolveToolVersion(),
+          screenshot
+        })
+
+        if (route === 'auto') sessionService.countCapture()
+        emitNewCapture(capture)
+        emitCaptureEvent({
+          type: 'stored',
+          captureId: capture.id,
+          source,
+          url,
+          timestamp: now(),
+          durationMs: Date.now() - startTime,
+          screenshotWarning
+        })
+        return {
+          ok: true,
+          capture,
+          contentHash,
+          screenshotStatus: screenshotWarning ? 'dropped' : screenshot ? 'saved' : 'none',
+          screenshotWarning
+        }
+      } catch (err) {
+        logger.error('captureLifecycle', 'capture.failed', undefined, err)
+        emitCaptureEvent({ type: 'failed', source, url, timestamp: now(), error: String(err) })
+        return { ok: false, refusal: { kind: 'failed', error: err } }
+      }
     },
 
     async delete(captureId, reason) {
@@ -771,11 +1009,9 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
     async duplicate(captureId) {
       const probe = captureRepo.getCapture(captureId)
       if (!probe) return { status: 'rejected', reason: 'not_found' }
-      // The gate the capture server applies to every ingest
-      // (captureServer.ts:302). A signed entry naming no operator would be a
-      // weaker record than any capture this app can produce, and the duplicate
-      // is signed by whoever asks for it, not by the source's operator.
-      const operatorName = getSettings().operatorName?.trim() ?? ''
+      // The gate `admit` applies to every ingest. The duplicate is signed by
+      // whoever asks for it, not by the source's operator.
+      const operatorName = trimmedOperatorName()
       if (!operatorName) return { status: 'rejected', reason: 'operator_name_required' }
 
       // Under the case slot for the same reason deletes are: this appends to
@@ -892,7 +1128,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
               sizeBytes: mhtml.sizeBytes,
               operatorId: getInstallationId(),
               operatorName,
-              toolVersion: getToolVersion()
+              toolVersion: resolveToolVersion()
             },
             (manifestResult) =>
               captureRepo.insertCapture({
@@ -918,7 +1154,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
                 entryHash: manifestResult.entryHash,
                 // The tool that made the copy, not the one that made the
                 // capture: this is the entry's own provenance.
-                toolVersion: getToolVersion(),
+                toolVersion: resolveToolVersion(),
                 extensionVersion: source.extensionVersion,
                 browserVersion: source.browserVersion,
                 userAgent: source.userAgent,
@@ -1011,4 +1247,5 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
       return { processed: captures.length }
     }
   }
+  return lifecycle
 }

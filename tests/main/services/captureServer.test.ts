@@ -446,6 +446,36 @@ describe('captureServer', () => {
     expect(data.error).toContain('Invalid source')
   })
 
+  it('answers 500 when the lifecycle reports a failed ingest', async () => {
+    const testCase = createCase({ name: 'Failed Ingest' })
+    // Rebind the server to a lifecycle whose admission fails — the injection
+    // seam the server exposes for exactly this kind of test.
+    await stopCaptureServer()
+    const port = nextPort++
+    baseUrl = `http://127.0.0.1:${port}`
+    const selectorLifecycle = createSelectorLifecycle({ emitRematched: () => {} })
+    const realLifecycle = createCaptureLifecycle({ selectorLifecycle, sessionService })
+    const failingLifecycle = {
+      ...realLifecycle,
+      admit: async (): ReturnType<typeof realLifecycle.admit> => ({
+        ok: false,
+        refusal: { kind: 'failed', error: new Error('ingest exploded') }
+      })
+    }
+    await startCaptureServer(
+      { selectorLifecycle, captureLifecycle: failingLifecycle, token: TEST_TOKEN, sessionService },
+      port
+    )
+    const res = await postCapture({
+      source: 'manual',
+      caseId: testCase.id,
+      url: 'https://example.com/fails'
+    })
+    expect(res.status).toBe(500)
+    expect((await readJson(res)).error).toBe('Failed to process capture')
+    expect(listCaptures(testCase.id)).toHaveLength(0)
+  })
+
   // --- Status endpoint ---
 
   it('GET /api/status without Origin does not update extensionLastSeen', async () => {

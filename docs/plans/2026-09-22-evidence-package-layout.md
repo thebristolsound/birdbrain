@@ -1,7 +1,7 @@
 # Evidence Package layout held once
 
 Settled in a grilling session on 2026-09-22 from the architecture review of 2026-09-21.
-Not started. Blocking-tier evidence path (export, verification), so the PR carries
+Built the same day. Blocking-tier evidence path (export, verification), so the PR carries
 `evidence-affecting` and waits for human review.
 
 ## Decision
@@ -53,8 +53,10 @@ filenames are spread over `constants.ts`, `verifyScript.ts`, `tsaTrust.ts` and l
 
 `shell.ts`:
 
-- `renderShellPathHelpers()`: the sh function block `verify.sh` embeds
-- `renderRunbookLayoutRows()`: the Markdown table rows for the runbook's contents section
+- `renderShellPathHelpers()`: the sh block `verify.sh` embeds, root names and directories
+  as variables plus one function per TS path function
+- The runbook's table rows were not given a renderer: their descriptions are prose, so the
+  runbook interpolates the path functions with `{captureId}`-style placeholders instead
 
 `bindDerivedFile` and `matchDerivationEntries` stay in `exhibitBinding.ts` and import the
 package.
@@ -74,13 +76,13 @@ All through the two entry points.
 
 ## Steps
 
-- [ ] Create the package: `index.ts`, `shell.ts`, `lib/`, `tests/`; move `inCasePath` and the
+- [x] Create the package: `index.ts`, `shell.ts`, `lib/`, `tests/`; move `inCasePath` and the
       directory constants out of `exhibitBinding.ts`.
-- [ ] Add the equivalence test and the literal guard; both red against the current tree.
-- [ ] Move `export.ts`, `evidencePackage.ts`, `exhibits.ts`, `verifyScript.ts`,
+- [x] Add the equivalence test and the literal guard; both red against the current tree.
+- [x] Move `export.ts`, `evidencePackage.ts`, `exhibits.ts`, `verifyScript.ts`,
       `verifyRunbook.ts`, `tsaTrust.ts`, `caseArchive.ts`, `deletionReconciliation.ts`,
       `manifest.ts` and the fifteen test importers onto the package; delete the old exports.
-- [ ] `pnpm lint:boundaries`, `pnpm preflight`.
+- [x] `pnpm lint:boundaries`, `pnpm preflight`.
 - [ ] Draft PR labelled `agent-authored`, `evidence-affecting`.
 
 ## Files touched

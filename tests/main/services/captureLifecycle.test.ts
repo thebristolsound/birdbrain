@@ -550,6 +550,34 @@ describe('createCaptureLifecycle.admit', () => {
     expect(Date.parse(outcome.capture.timestamp)).toBeGreaterThanOrEqual(before)
   })
 
+  // The fallback timestamp is what the manifest entry signs, so it is taken
+  // when the request arrives, not after the policy checks and the screenshot
+  // read have run (Codex review of #1565).
+  it('takes the fallback timestamp at entry, before the screenshot is read', async () => {
+    const lifecycle = buildLifecycle()
+    const entered = new Date('2026-04-05T12:00:00.000Z')
+    const later = new Date('2026-04-05T12:00:05.000Z')
+    // Only Date is faked: the ingest streams to disk on real timers.
+    vi.useFakeTimers({ toFake: ['Date'], now: entered })
+    try {
+      const slowScreenshot = {
+        size: 4,
+        arrayBuffer: async () => {
+          vi.setSystemTime(later)
+          return Buffer.from('png!').buffer
+        }
+      } as unknown as Blob
+      const outcome = await lifecycle.admit(request({ timestamp: '', screenshot: slowScreenshot }))
+      expect(outcome.ok).toBe(true)
+      if (!outcome.ok) return
+      expect(outcome.capture.timestamp).toBe(entered.toISOString())
+      // And the duration covers the whole admission, screenshot read included.
+      expect(events.find((e) => e.type === 'stored')!.durationMs).toBe(5000)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('records the operator, installation and tool version on the row', async () => {
     const lifecycle = buildLifecycle()
     const outcome = await lifecycle.admit(request())

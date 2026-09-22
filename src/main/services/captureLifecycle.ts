@@ -836,6 +836,13 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
       const { route, url } = request
       const source: CaptureSource = route === 'attach' ? 'manual' : route
       const now = (): string => new Date().toISOString()
+      // Both resolved at entry, as the upload route did before admission moved
+      // here: the fallback timestamp is the value the manifest entry signs, so
+      // it must not drift with how long the policy checks or the screenshot
+      // read take, and `durationMs` on the stored event has always covered
+      // that work too.
+      const startTime = Date.now()
+      const timestamp = request.timestamp || now()
       try {
         const operatorName = trimmedOperatorName()
         if (!operatorName) {
@@ -885,7 +892,6 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
           manualDedup.set(dedupeKey, Date.now())
         }
 
-        const startTime = Date.now()
         emitCaptureEvent({ type: 'received', source, url, timestamp: now() })
 
         const { screenshot, screenshotWarning } = await readScreenshot(request.screenshot)
@@ -897,7 +903,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
           caseId,
           url,
           title: request.title || url,
-          timestamp: request.timestamp || now(),
+          timestamp,
           stream: request.stream,
           textContent: request.textContent,
           headers: request.headers,

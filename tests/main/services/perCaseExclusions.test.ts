@@ -7,13 +7,7 @@ import { createCase, setAutoCapturePolicy } from '@main/services/db/caseRepo'
 import { initStorage } from '@main/services/storage'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
-import {
-  startCaptureServer,
-  stopCaptureServer,
-  resetManualDedup,
-  setMainWindow
-} from '@main/services/captureServer'
-import type { BrowserWindow } from 'electron'
+import { startCaptureServer, stopCaptureServer } from '@main/services/captureServer'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSessionService, type SessionService } from '@main/services/session'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
@@ -43,15 +37,6 @@ vi.mock('@main/services/tlsCertChain', async (importOriginal) => {
 // manifest entry is written (ruled 2026-08-21, design question in #694). The
 // events are collected here so both halves of that can be asserted.
 const captureEvents: CaptureEvent[] = []
-vi.mock('@main/ipcWrap', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@main/ipcWrap')>()
-  return {
-    ...actual,
-    sendEvent: (_target: unknown, channel: string, payload: unknown) => {
-      if (channel === 'event:captureActivity') captureEvents.push(payload as CaptureEvent)
-    }
-  }
-})
 
 let nextPort = 19960
 const TEST_TOKEN = 'test-server-token'
@@ -73,16 +58,15 @@ describe('per-case auto-capture exclusions (#400)', () => {
     resetInstallationId()
     initInstallationId(tempDir)
     sessionService = createSessionService()
-    resetManualDedup()
-    // emitCaptureEvent is a no-op without a window, so the skip event below
-    // would be silently absent rather than asserted.
-    setMainWindow({
-      isDestroyed: () => false,
-      webContents: { send: () => {} }
-    } as unknown as BrowserWindow)
     baseUrl = `http://127.0.0.1:${port}`
     const selectorLifecycle = createSelectorLifecycle({ emitRematched: () => {} })
-    const captureLifecycle = createCaptureLifecycle({ selectorLifecycle })
+    // The lifecycle admits the request, so it is where the skip event is
+    // emitted from and where 'auto' reads the Active Case.
+    const captureLifecycle = createCaptureLifecycle({
+      selectorLifecycle,
+      sessionService,
+      emitCaptureEvent: (event) => captureEvents.push(event)
+    })
     await startCaptureServer(
       { selectorLifecycle, captureLifecycle, token: TEST_TOKEN, sessionService },
       port
@@ -143,9 +127,7 @@ describe('per-case auto-capture exclusions (#400)', () => {
       updateSettings({ ignoredUrlPatterns: ['globalonly.com'] })
       setAutoCapturePolicy(caseId, { exclusions: ['caseonly.com'], mode: 'stack' })
 
-      const res = await postCapture(
-        fieldsFor(source, caseId, 'https://globalonly.com/page')
-      )
+      const res = await postCapture(fieldsFor(source, caseId, 'https://globalonly.com/page'))
 
       expect(res.status).toBe(403)
       expect((await readJson(res)).pattern).toBe('globalonly.com')

@@ -10,12 +10,7 @@ import { listCaptures } from '@main/services/db/captureRepo'
 import { initStorage } from '@main/services/storage'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
-import {
-  setMainWindow,
-  startCaptureServer,
-  stopCaptureServer,
-  resetManualDedup
-} from '@main/services/captureServer'
+import { setMainWindow, startCaptureServer, stopCaptureServer } from '@main/services/captureServer'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { createSessionService, type SessionService } from '@main/services/session'
@@ -131,7 +126,6 @@ describe('capture-pipeline self-test sandbox (#614)', () => {
     resetInstallationId()
     initInstallationId(tempDir)
     sessionService = createSessionService()
-    resetManualDedup()
     // Without a window the capture-event emitter is a no-op, so the event
     // assertions below would pass on an absence rather than on the events.
     setMainWindow({
@@ -140,7 +134,9 @@ describe('capture-pipeline self-test sandbox (#614)', () => {
     } as unknown as BrowserWindow)
     baseUrl = `http://127.0.0.1:${port}`
     const selectorLifecycle = createSelectorLifecycle({ emitRematched: () => {} })
-    const captureLifecycle = createCaptureLifecycle({ selectorLifecycle })
+    // The seed below posts an 'auto' capture, which the lifecycle resolves
+    // against the session the server holds.
+    const captureLifecycle = createCaptureLifecycle({ selectorLifecycle, sessionService })
     await startCaptureServer(
       { selectorLifecycle, captureLifecycle, token: TEST_TOKEN, sessionService },
       port

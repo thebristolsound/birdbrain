@@ -1,4 +1,3 @@
-import { app } from 'electron'
 import { REPORT_PAGE_CSS, type EntrySignatureStatus } from '@main/services/reportHtml'
 import type { Capture, TrustedTime } from '@shared/types'
 import type { TrustedTimeResult } from '@shared/verify'
@@ -186,14 +185,6 @@ export interface CertificationFields {
 }
 
 const LAWYER_TBD_MARKER = '[LEGAL WORDING TO BE SUPPLIED BY COUNSEL]'
-
-// Resolve the real application version. The unit-test/vitest harness runs via
-// ELECTRON_RUN_AS_NODE where the electron `app` module is unavailable, so guard
-// the lookup and fall back to a sentinel rather than throwing.
-export function resolveToolVersion(): string {
-  if (typeof app?.getVersion === 'function') return app.getVersion()
-  return process.env.npm_package_version ?? '0.0.0'
-}
 
 export function buildCertificationFields(
   data: CertificationInput,

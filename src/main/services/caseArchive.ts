@@ -49,7 +49,7 @@ import type { PackagedArtifact } from '@main/services/manifest'
 import { createStoredZip } from '@main/services/zip'
 import { readStoredZip } from '@main/services/zipRead'
 import { canonicalStringify } from '@shared/verify'
-import { resolveToolVersion } from '@main/services/certification'
+import { resolveToolVersion } from '@main/services/toolVersion'
 import { IMPORT_ID_MAP_FILENAME, MANIFEST_FILENAME } from '@shared/constants'
 import type {
   ArchiveInspectReport,

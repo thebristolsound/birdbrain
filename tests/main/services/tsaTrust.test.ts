@@ -1,11 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { X509Certificate } from 'crypto'
-import {
-  DIGICERT_TRUSTED_ROOT_G4_SHA256,
-  getTsaTrustBundle,
-  TSA_ROOT_FILENAME
-} from '@main/services/tsaTrust'
+import { DIGICERT_TRUSTED_ROOT_G4_SHA256, getTsaTrustBundle } from '@main/services/tsaTrust'
 import { DEFAULT_TSA_URL } from '@shared/constants'
+import { PACKAGE_ROOT_FILES } from '../../../src/packages/evidence-package-layout/index'
 
 describe('getTsaTrustBundle', () => {
   it('returns the bundled DigiCert root for the default TSA url', () => {
@@ -14,7 +11,7 @@ describe('getTsaTrustBundle', () => {
     expect(bundle.pem).toContain('BEGIN CERTIFICATE')
     expect(bundle.pem).toContain('END CERTIFICATE')
     expect(bundle.rootSha256).toBe(DIGICERT_TRUSTED_ROOT_G4_SHA256)
-    expect(bundle.note).toContain(TSA_ROOT_FILENAME)
+    expect(bundle.note).toContain(PACKAGE_ROOT_FILES.tsaRoot)
     expect(bundle.note).toContain(DIGICERT_TRUSTED_ROOT_G4_SHA256)
   })
 

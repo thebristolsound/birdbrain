@@ -8,26 +8,33 @@
 // step below is what proves TSA authenticity, so a binary PASS is NOT a
 // timestamp-authenticity claim (binary-PASS != runbook-PASS).
 
-import {
-  DIGICERT_TRUSTED_ROOT_G4_SHA256,
-  TSA_INTERMEDIATES_FILENAME,
-  TSA_ROOT_FILENAME
-} from '@main/services/tsaTrust'
-import { VERIFY_SCRIPT_FILENAME } from '@main/services/verifyScript'
+import { DIGICERT_TRUSTED_ROOT_G4_SHA256 } from '@main/services/tsaTrust'
 import { EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION } from '@shared/schemas'
+import {
+  CAPTURE_PACKAGE_DIRECTORY,
+  PACKAGE_ROOT_FILES,
+  TIMESTAMP_PACKAGE_DIRECTORY,
+  capturePagePath,
+  screenshotPath,
+  timestampTokenPath
+} from '../../packages/evidence-package-layout/index'
+
+// Every member of the package this runbook names, read from the Package
+// Layout so the prose, the commands and the files the exporter writes agree.
+const ROOT = PACKAGE_ROOT_FILES
 
 export const VERIFY_RUNBOOK = `# Verifying this evidence package by hand
 
 This package can be re-verified by a third party **without running Birdbrain**,
 using only stock tools: \`sha256sum\`, \`openssl\`, and \`jq\`.
 
-## One command — \`${VERIFY_SCRIPT_FILENAME}\`
+## One command — \`${ROOT.verifyScript}\`
 
-\`${VERIFY_SCRIPT_FILENAME}\` is enclosed with this package and is the executable
+\`${ROOT.verifyScript}\` is enclosed with this package and is the executable
 form of the six steps below. Run it from the unpacked package directory:
 
 \`\`\`sh
-sh ${VERIFY_SCRIPT_FILENAME}
+sh ${ROOT.verifyScript}
 \`\`\`
 
 It prints its verdict, then a line per check, then the verdict in full, and exits
@@ -39,13 +46,13 @@ a convenience, not the authority: what makes this package checkable is that ever
 step below can be run by hand, which is what the rest of this document is for.
 
 A package that encloses a signed selection reports the exhibits it deliberately
-leaves out as a single counted line. Run \`sh ${VERIFY_SCRIPT_FILENAME} -v\` to
+leaves out as a single counted line. Run \`sh ${ROOT.verifyScript} -v\` to
 list them one by one.
 Read step 6a before treating its PASS as proof of trusted time.
 
 ## Trust model (read first)
 
-The signed \`manifest.jsonl\` is the **root of trust**. Every entry carries an
+The signed \`${ROOT.manifest}\` is the **root of trust**. Every entry carries an
 \`entryHash\`; entries are hash-linked (\`prevHash\` == the prior entry's
 \`entryHash\`) and \`index\`-ordered. Entries with \`schemaVersion\` 2 or above
 additionally carry an RSA \`signature\` over that hash.
@@ -58,7 +65,7 @@ later (step 6), not a signature. Step 2 does not apply to them. Identify them
 with:
 
 \`\`\`sh
-jq -r 'select((.schemaVersion // 1) < 2) | "index \\(.index) \\(.type) — unsigned"' manifest.jsonl
+jq -r 'select((.schemaVersion // 1) < 2) | "index \\(.index) \\(.type) — unsigned"' ${ROOT.manifest}
 \`\`\`
 
 A chain may go v1 → v2 as the tool was upgraded. It must never go **back**: a
@@ -66,41 +73,41 @@ A chain may go v1 → v2 as the tool was upgraded. It must never go **back**: a
 rewriting a signed entry as an unsigned one needs no private key. Birdbrain's
 verifier rejects that; a hand check should too.
 
-\`evidence.json\` is an **unsigned convenience index**. Do not trust it on its
+\`${ROOT.evidenceIndex}\` is an **unsigned convenience index**. Do not trust it on its
 own — its own integrity is established by re-deriving everything from the chain.
-The signing key (\`signing-public-key.pem\`) is installation-local and is **not**
+The signing key (\`${ROOT.signingPublicKey}\`) is installation-local and is **not**
 an independent trust anchor; it defeats casual tampering. The independent anchor
 for *timestamped* captures is the RFC 3161 timestamp, verified in step 6.
 
-\`export-entry.json\`, when present, is the **signed export entry for this very
-package** — the one entry the bundled \`manifest.jsonl\` cannot contain, because
+\`${ROOT.exportEntry}\`, when present, is the **signed export entry for this very
+package** — the one entry the bundled \`${ROOT.manifest}\` cannot contain, because
 the manifest copy is sealed just before the entry is appended to the live case
 manifest. Verify it exactly like a manifest line before using anything in it:
 its \`signature\` with the step 2 recipe, its \`entryHash\` with the step 3
 recipe, and its \`prevHash\` must equal the \`entryHash\` of the **last line** of
-\`manifest.jsonl\`. Once verified, its \`scope\` / \`captureIds\` fields are the
+\`${ROOT.manifest}\`. Once verified, its \`scope\` / \`captureIds\` fields are the
 authoritative statement of what this package encloses: \`scope: "selection"\`
 means the operator deliberately exported a subset, and \`captureIds\` lists
 exactly the captures whose files are enclosed. The manifest still covers the
 whole case — the chain is never sliced.
 
-A package with **no** \`export-entry.json\` is not automatically an old one. The
-only thing dating it is \`evidence.json\`'s \`schemaVersion\`, which names the era
+A package with **no** \`${ROOT.exportEntry}\` is not automatically an old one. The
+only thing dating it is \`${ROOT.evidenceIndex}\`'s \`schemaVersion\`, which names the era
 the package was sealed in:
 
 \`\`\`sh
-jq '.schemaVersion' evidence.json
+jq '.schemaVersion' ${ROOT.evidenceIndex}
 \`\`\`
 
 Read it as a number: \`2.0\` and \`2e0\` are both version 2. If it prints
 \`null\`, a string, or anything that is not a positive whole number, the index
 states no era and Birdbrain's verifier fails it as malformed. So does
-\`${VERIFY_SCRIPT_FILENAME}\`, and so should a hand check: there is no stated era
+\`${ROOT.verifyScript}\`, and so should a hand check: there is no stated era
 for the leniency below to rest on, so an absent export entry cannot be excused
 as an age. At ${EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION} or above the package was sealed with an export entry, so an
 absent one is a **removed file**, not an age: treat the package as tampered
 with, and accept no statement of its scope. Birdbrain's verifier and
-\`${VERIFY_SCRIPT_FILENAME}\` both fail such a package; a hand check should too.
+\`${ROOT.verifyScript}\` both fail such a package; a hand check should too.
 
 Below ${EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION} the version does not settle it. Packages that predate this file
 were written at that version, and so were packages sealed with one, so an
@@ -128,26 +135,26 @@ internal consistency*, **not** timestamp authenticity — this runbook's
 
 | File | Role |
 |---|---|
-| \`manifest.jsonl\` | Signed, hash-linked audit chain (root of trust) |
-| \`signing-public-key.pem\` | RSA public key for the per-entry signatures |
-| \`${VERIFY_SCRIPT_FILENAME}\` | The steps below as a runnable script (see above) |
-| \`${TSA_ROOT_FILENAME}\` | Self-signed TSA root — the trust anchor for step 6 (absent when no anchor is bundled for the configured authority) |
-| \`${TSA_INTERMEDIATES_FILENAME}\` | Responder + intermediate certs lifted from the tokens (chain-building only, never trusted on their own) |
-| \`pages/{captureId}.mhtml\` | Captured content (hashed as \`contentHash\`) |
-| \`screenshots/{sha256}.png\` | Captured screenshot (hashed as \`screenshotHash\`) |
+| \`${ROOT.manifest}\` | Signed, hash-linked audit chain (root of trust) |
+| \`${ROOT.signingPublicKey}\` | RSA public key for the per-entry signatures |
+| \`${ROOT.verifyScript}\` | The steps below as a runnable script (see above) |
+| \`${ROOT.tsaRoot}\` | Self-signed TSA root — the trust anchor for step 6 (absent when no anchor is bundled for the configured authority) |
+| \`${ROOT.tsaIntermediates}\` | Responder + intermediate certs lifted from the tokens (chain-building only, never trusted on their own) |
+| \`${capturePagePath('{captureId}')}\` | Captured content (hashed as \`contentHash\`) |
+| \`${screenshotPath('{sha256}')}\` | Captured screenshot (hashed as \`screenshotHash\`) |
 | \`attachments/\`, \`images/\`, \`documents/\` | Committed exhibits of other kinds, one file per exhibit named \`{exhibitId}\` plus its stored extension (hashed as the \`exhibit\` entry's \`contentHash\`) |
-| \`{exhibit directory}/{exhibitId}_{suffix}\` | Derived files, enclosed beside the exhibit they were computed from — a capture's thumbnail sits in \`pages/\` (hashed as the \`derivation\` entry's \`outputHash\`) |
-| \`timestamps/*.tst\` | RFC 3161 tokens (DER), when present |
-| \`evidence.json\` | Unsigned index (reconcile, do not trust) |
-| \`export-entry.json\` | Signed export entry for this package — scope of the enclosed captures (absent only from packages whose \`evidence.json\` states a \`schemaVersion\` below ${EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION}; see Trust model) |
+| \`{exhibit directory}/{exhibitId}_{suffix}\` | Derived files, enclosed beside the exhibit they were computed from — a capture's thumbnail sits in \`${CAPTURE_PACKAGE_DIRECTORY}/\` (hashed as the \`derivation\` entry's \`outputHash\`) |
+| \`${TIMESTAMP_PACKAGE_DIRECTORY}/*.tst\` | RFC 3161 tokens (DER), when present |
+| \`${ROOT.evidenceIndex}\` | Unsigned index (reconcile, do not trust) |
+| \`${ROOT.exportEntry}\` | Signed export entry for this package — scope of the enclosed captures (absent only from packages whose \`${ROOT.evidenceIndex}\` states a \`schemaVersion\` below ${EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION}; see Trust model) |
 
 ## Step 1 — File integrity (index self-consistency)
 
-\`sha256sum\` each artifact and compare to \`evidence.json\`. This only proves the
+\`sha256sum\` each artifact and compare to \`${ROOT.evidenceIndex}\`. This only proves the
 files match the **untrusted** index — the authoritative content bind is step 5.
 
 \`\`\`sh
-jq -r '.artifacts[] | "\\(.sha256)  \\(.path)"' evidence.json | sha256sum -c -
+jq -r '.artifacts[] | "\\(.sha256)  \\(.path)"' ${ROOT.evidenceIndex} | sha256sum -c -
 \`\`\`
 
 ## Step 2 — Entry signature (\`schemaVersion\` 2 and above)
@@ -160,10 +167,10 @@ on steps 3 and 6.
 
 \`\`\`sh
 # Pick an entry (e.g. the first line):
-line=$(sed -n '1p' manifest.jsonl)
+line=$(sed -n '1p' ${ROOT.manifest})
 printf %s "$(echo "$line" | jq -r '.entryHash')" > entryhash.txt   # NO newline
 echo "$line" | jq -r '.signature' | base64 -d > sig.bin
-openssl dgst -sha256 -verify signing-public-key.pem -signature sig.bin entryhash.txt
+openssl dgst -sha256 -verify ${ROOT.signingPublicKey} -signature sig.bin entryhash.txt
 # => "Verified OK"
 \`\`\`
 
@@ -192,38 +199,38 @@ Confirm each entry's \`prevHash\` equals the prior entry's \`entryHash\`, and
 \`index\` increments from 0.
 
 \`\`\`sh
-jq -r '"\\(.index) \\(.prevHash) \\(.entryHash)"' manifest.jsonl
+jq -r '"\\(.index) \\(.prevHash) \\(.entryHash)"' ${ROOT.manifest}
 \`\`\`
 
 ## Step 5 — Content bind (load-bearing for the evidence itself)
 
 For each \`type: "capture"\` entry, confirm the actual captured bytes match the
-hash **inside that signed entry** (NOT the value in \`evidence.json\`). Without
+hash **inside that signed entry** (NOT the value in \`${ROOT.evidenceIndex}\`). Without
 this you could verify a pristine signed chain yet never confirm the MHTML/PNG
 bytes are the ones it attests.
 
-**Selection-scoped packages:** if a **verified** \`export-entry.json\` (see
+**Selection-scoped packages:** if a **verified** \`${ROOT.exportEntry}\` (see
 Trust model) carries \`scope: "selection"\`, only the exhibits listed in its
 \`captureIds\` are enclosed — run this step for those and expect the others
 absent. That field carries exhibit ids of every kind: a capture's exhibit id IS
 its capture id, so one list scopes the whole package. Only the signed entry can
 account for an absent exhibit; never accept that explanation from
-\`evidence.json\` or the report.
+\`${ROOT.evidenceIndex}\` or the report.
 Without a verified selection scope, every capture entry with no later
 \`deletion\` entry must be present and must match. An **absent**
-\`export-entry.json\` is not a verified whole-case scope: run the era check in
+\`${ROOT.exportEntry}\` is not a verified whole-case scope: run the era check in
 Trust model before reading it as one.
 
 \`\`\`sh
 # Content:
 id=$(echo "$line" | jq -r '.captureId')
 want=$(echo "$line" | jq -r '.contentHash')
-got=$(sha256sum "pages/$id.mhtml" | cut -d' ' -f1)
+got=$(sha256sum "${capturePagePath('$id')}" | cut -d' ' -f1)
 [ "$want" = "$got" ] && echo "content OK" || echo "CONTENT MISMATCH"
 
 # Screenshot (if the entry has screenshotHash; the file is named by that hash):
 shot=$(echo "$line" | jq -r '.screenshotHash // empty')
-[ -n "$shot" ] && sha256sum "screenshots/$shot.png"   # must equal $shot
+[ -n "$shot" ] && sha256sum "${screenshotPath('$shot')}"   # must equal $shot
 \`\`\`
 
 **Exhibits of other kinds.** A capture is one kind of exhibit; an attachment,
@@ -236,7 +243,7 @@ inside the case directory — drop the leading case-id segment — so
 expected absent on exactly the same terms as captures.
 
 \`\`\`sh
-jq -c 'select(.type == "exhibit")' manifest.jsonl | while IFS= read -r ex; do
+jq -c 'select(.type == "exhibit")' ${ROOT.manifest} | while IFS= read -r ex; do
   rel=$(printf '%s' "$ex" | jq -r '.path' | cut -d/ -f2-)
   num=$(printf '%s' "$ex" | jq -r '.exhibitNumber')
   want=$(printf '%s' "$ex" | jq -r '.contentHash')
@@ -256,12 +263,12 @@ Bind it by the entry that names THAT parent and THAT path, never by an entry's
 position in the file: an index says where an entry sits, not what it is about.
 
 \`\`\`sh
-jq -c 'select(.type == "derivation")' manifest.jsonl | while IFS= read -r d; do
+jq -c 'select(.type == "derivation")' ${ROOT.manifest} | while IFS= read -r d; do
   parent=$(printf '%s' "$d" | jq -r '.parentExhibitId')
   ppath=$(jq -rn --arg p "$parent" \\
     'first(inputs | select(.type == "exhibit" and .exhibitId == $p) | .path) // empty' \\
-    manifest.jsonl)
-  if [ -n "$ppath" ]; then dir=$(dirname "$(printf '%s' "$ppath" | cut -d/ -f2-)"); else dir=pages; fi
+    ${ROOT.manifest})
+  if [ -n "$ppath" ]; then dir=$(dirname "$(printf '%s' "$ppath" | cut -d/ -f2-)"); else dir=${CAPTURE_PACKAGE_DIRECTORY}; fi
   rel="$dir/$(basename "$(printf '%s' "$d" | jq -r '.outputPath')")"
   want=$(printf '%s' "$d" | jq -r '.outputHash')
   got=$(sha256sum "$rel" | cut -d' ' -f1)
@@ -274,7 +281,7 @@ done
 **This is the authenticity step the binary does NOT perform.** Verify each RFC
 3161 token's CMS signature up to an independently trusted root.
 
-**6a. Confirm the trust anchor before using it.** \`${TSA_ROOT_FILENAME}\` is a
+**6a. Confirm the trust anchor before using it.** \`${ROOT.tsaRoot}\` is a
 convenience copy shipped inside the package; anyone who can rewrite the package
 can swap it. It becomes an anchor only once you have checked its fingerprint
 against a source outside the package — the authority's published value, or the
@@ -286,19 +293,19 @@ SHA-256 ${DIGICERT_TRUSTED_ROOT_G4_SHA256}
 \`\`\`
 
 \`\`\`sh
-openssl x509 -in ${TSA_ROOT_FILENAME} -noout -subject -issuer -fingerprint -sha256
+openssl x509 -in ${ROOT.tsaRoot} -noout -subject -issuer -fingerprint -sha256
 # subject and issuer must be identical (self-signed); fingerprint must match above
 \`\`\`
 
-If \`${TSA_ROOT_FILENAME}\` is absent, the case was configured with a non-default
+If \`${ROOT.tsaRoot}\` is absent, the case was configured with a non-default
 authority and no anchor is bundled: obtain that authority's root yourself and use
-it as \`-CAfile\` below. Never use \`${TSA_INTERMEDIATES_FILENAME}\` as
+it as \`-CAfile\` below. Never use \`${ROOT.tsaIntermediates}\` as
 \`-CAfile\` — those certificates came out of the tokens being checked, so
 trusting them proves nothing.
 
 **6b. Verify each token.** Take the list from the signed manifest, not from
-\`ls timestamps/\`: every token is also carried base64-encoded in its own signed
-entry (\`jq -r 'select(.type == "timestamp" and (.subject // "content") == "content") | "\\(.captureContentHash) \\(.tsaToken)"' manifest.jsonl\`),
+\`ls ${TIMESTAMP_PACKAGE_DIRECTORY}/\`: every token is also carried base64-encoded in its own signed
+entry (\`jq -r 'select(.type == "timestamp" and (.subject // "content") == "content") | "\\(.captureContentHash) \\(.tsaToken)"' ${ROOT.manifest}\`),
 so a \`.tst\` deleted from the package is visible there and invisible in a
 directory listing. Walk the exhibits step 5 still requires present — captures
 and committed exhibits of every other kind alike, active, and inside the
@@ -311,8 +318,8 @@ screenshot are in step 5. The \`.tst\` files are bare RFC 3161 tokens (DER
 required — without it OpenSSL reports an ASN.1 error, not a verdict.
 
 \`\`\`sh
-openssl ts -verify -digest <contentHash> -in timestamps/<token>.tst -token_in \\
-  -CAfile ${TSA_ROOT_FILENAME} -untrusted ${TSA_INTERMEDIATES_FILENAME}
+openssl ts -verify -digest <contentHash> -in ${timestampTokenPath('<token>')} -token_in \\
+  -CAfile ${ROOT.tsaRoot} -untrusted ${ROOT.tsaIntermediates}
 # => "Verification: OK"
 \`\`\`
 

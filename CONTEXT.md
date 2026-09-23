@@ -263,6 +263,10 @@ _Avoid_: validation, authentication.
 The hash over an Evidence Package's contents, recorded in the `export` Manifest Entry that produced it.
 _Avoid_: export hash, bundle hash.
 
+**Package Layout**:
+Where each member of an Evidence Package sits and what it is named: the page archive, screenshot and Timestamp Token of a Capture, the file of any other Exhibit, each Derived File, and the fixed root documents. Held once and read by the writer, by Package Verification, and by the Verify Runbook, so no two of them can name the same member differently.
+_Avoid_: package structure, zip layout, file tree.
+
 **Evidence Profile**:
 The versioned public specification of Birdbrain's evidence protocol - schemas, package layout, canonicalization, verification statuses, and migration rules. Not yet published; required before general forensic-assurance claims ([`ADR-0004`](docs/adr/0004-adopt-osint-assurance-baseline.md)).
 _Avoid_: evidence spec, format version.
@@ -294,6 +298,7 @@ _Avoid_: risky change, core change, forensic change.
 - A **Derived File** is anchored to its parent **Exhibit** through a **Derivation** and is never evidence on its own
 - A file in the **Staging Pool** is hashed but not anchored; committing it makes it an **Exhibit** with an **Exhibit Number** and a **Manifest Entry**, and discarding it writes nothing
 - A **Note** may anchor to a **Capture**, to a region of its screenshot, to a passage of its **Extracted Text**, or to a **Finding**
+- The **Package Layout** names where every member of an **Evidence Package** sits; the writer, **Package Verification** and the **Verify Runbook** all read it from one place
 - An **Evidence Package** contains the **Manifest**, a **Certification**, a **Verify Runbook**, and the exported **Exhibits**; **Package Verification** establishes the chain from the **Manifest** and reconciles the unsigned index against it
 
 ## Example dialogue

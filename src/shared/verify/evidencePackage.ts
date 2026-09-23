@@ -13,13 +13,18 @@ import { parseTimestampToken } from '@shared/verify/timestampToken'
 import type { TrustedTimeResult } from '@shared/verify/trustedTime'
 import { describeUnsupportedEntry, verifyManifestChainText } from '@shared/verify/manifestChain'
 import { SHARED_CASE_ENTRY_TYPES, verifySharedCaseReplica } from '@shared/verify/sharedCase'
+import { bindDerivedFile } from '@shared/verify/exhibitBinding'
 import {
-  bindDerivedFile,
+  CAPTURE_PACKAGE_DIRECTORY,
+  PACKAGE_ROOT_FILES,
+  TIMESTAMP_PACKAGE_DIRECTORY,
+  capturePagePath,
   derivedFilePackagePath,
   exhibitPackageDirectory,
   exhibitPackagePath,
-  CAPTURE_PACKAGE_DIRECTORY
-} from '@shared/verify/exhibitBinding'
+  screenshotPath,
+  timestampTokenPath
+} from '../../packages/evidence-package-layout/index'
 import type { DerivationEntryFacts } from '@shared/verify/exhibitBinding'
 import { canonicalStringify } from '@shared/verify/canonicalJson'
 import { packageHash } from '@shared/verify/packageHash'
@@ -219,8 +224,8 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
     checks.push(reason ? { name, status, reason } : { name, status })
   }
 
-  const manifestPath = join(dir, 'manifest.jsonl')
-  const publicKeyPath = join(dir, 'signing-public-key.pem')
+  const manifestPath = join(dir, PACKAGE_ROOT_FILES.manifest)
+  const publicKeyPath = join(dir, PACKAGE_ROOT_FILES.signingPublicKey)
 
   if (!existsSync(manifestPath)) {
     // Working Copy detection (#399), gated on the manifest's ABSENCE: the
@@ -521,7 +526,7 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   let selectionIds: Set<string> | undefined
   // The signed statement of what the package contained when it was sealed.
   let signedPackageHash: string | undefined
-  const exportEntryPath = join(dir, 'export-entry.json')
+  const exportEntryPath = join(dir, PACKAGE_ROOT_FILES.exportEntry)
   const exportEntryPresent = existsSync(exportEntryPath)
   if (exportEntryPresent) {
     // existsSync also passes for a directory or a file this process cannot
@@ -577,7 +582,7 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   // Untrusted index: parsed for structure, used ONLY to detect index edits and
   // to help LOCATE timestamp files (§7.3). Never used to decide what to check.
   let evidence: ReturnType<typeof EvidencePackageSchema.parse> | undefined
-  const evidencePath = join(dir, 'evidence.json')
+  const evidencePath = join(dir, PACKAGE_ROOT_FILES.evidenceIndex)
   if (!existsSync(evidencePath)) {
     add('evidence.json present', 'fail', 'evidence.json missing from package')
   } else {
@@ -660,7 +665,7 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
       add(`capture ${cap.captureId}`, 'skip', 'outside the signed export selection — not packaged')
       continue
     }
-    const mhtmlPath = join(dir, 'pages', `${cap.captureId}.mhtml`)
+    const mhtmlPath = join(dir, capturePagePath(cap.captureId))
     const name = `capture ${cap.captureId} content`
     if (!existsSync(mhtmlPath)) {
       add(name, 'fail', `capture ${cap.captureId}: content file missing from package`)
@@ -677,7 +682,7 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
     if (cap.screenshotHash === undefined) {
       add(shotName, 'skip')
     } else {
-      const shotPath = join(dir, 'screenshots', `${cap.screenshotHash}.png`)
+      const shotPath = join(dir, screenshotPath(cap.screenshotHash))
       if (!existsSync(shotPath)) {
         add(shotName, 'fail', `capture ${cap.captureId}: screenshot file missing`)
       } else if (sha256File(shotPath) !== cap.screenshotHash) {
@@ -1098,7 +1103,7 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
           if (capture.method !== undefined && row.origin !== capture.method) {
             mismatch('origin', row.origin, capture.method)
           }
-          const expected = `${CAPTURE_PACKAGE_DIRECTORY}/${row.id}.mhtml`
+          const expected = capturePagePath(row.id)
           if (row.path !== null && row.path !== expected) mismatch('path', row.path, expected)
         }
         // From the chain's own numbering (X18), which for a Capture committed
@@ -1244,7 +1249,7 @@ function locateTimestampFile(
   indexedPaths: readonly string[],
   signedToken: Buffer
 ): string | undefined {
-  const ownPath = join(dir, 'timestamps', `${exhibitId}.tst`)
+  const ownPath = join(dir, timestampTokenPath(exhibitId))
   if (existsSync(ownPath)) return ownPath
 
   for (const rel of indexedPaths) {
@@ -1252,7 +1257,7 @@ function locateTimestampFile(
     if (p && existsSync(p)) return p
   }
 
-  const tsDir = join(dir, 'timestamps')
+  const tsDir = join(dir, TIMESTAMP_PACKAGE_DIRECTORY)
   if (!existsSync(tsDir)) return undefined
   for (const file of readdirSync(tsDir)) {
     const p = join(tsDir, file)

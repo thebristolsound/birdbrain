@@ -31,19 +31,21 @@ import type {
   ManifestSnapshot
 } from '@main/services/manifest'
 import { createStoredZip } from '@main/services/zip'
-import {
-  getTsaTrustBundle,
-  TSA_INTERMEDIATES_FILENAME,
-  TSA_ROOT_FILENAME
-} from '@main/services/tsaTrust'
+import { getTsaTrustBundle } from '@main/services/tsaTrust'
 import {
   buildTrustedTimeIndexFromEntries,
-  derivedFilePackagePath,
-  exhibitPackageDirectory,
-  exhibitPackagePath,
   extractTimestampTokenCertificatesPem,
   stampFor
 } from '@shared/verify'
+import {
+  PACKAGE_ROOT_FILES,
+  capturePagePath,
+  derivedFilePackagePath,
+  exhibitPackageDirectory,
+  exhibitPackagePath,
+  screenshotPath as packagedScreenshotPath,
+  timestampTokenPath
+} from '../../packages/evidence-package-layout/index'
 import type { TrustedTimeResult } from '@shared/verify'
 import { buildCertification } from '@main/services/certification'
 import { resolveToolVersion } from '@main/services/toolVersion'
@@ -56,7 +58,7 @@ import type {
   ReportData
 } from '@main/services/reportHtml'
 import { VERIFY_RUNBOOK } from '@main/services/verifyRunbook'
-import { VERIFY_SCRIPT, VERIFY_SCRIPT_FILENAME } from '@main/services/verifyScript'
+import { VERIFY_SCRIPT } from '@main/services/verifyScript'
 import { EVIDENCE_INDEX_SCHEMA_VERSION, WORKING_COPY_MARKER_FILENAME } from '@shared/schemas'
 import type {
   Capture,
@@ -597,7 +599,8 @@ export async function generateReport(
       // Not shipped in a Working Copy: with no bundled manifest or signing key
       // the line proves nothing there, and shipping evidence-shaped material
       // in a non-evidentiary export is exactly what the class split forbids.
-      if (!workingCopy) entries.unshift({ name: 'export-entry.json', data: appended.line })
+      if (!workingCopy)
+        entries.unshift({ name: PACKAGE_ROOT_FILES.exportEntry, data: appended.line })
       writeFileSync(options.outputPath, createStoredZip(entries))
     } catch (err) {
       rollbackManifestEntry(caseDir, appended.anchorBytes)
@@ -1082,10 +1085,10 @@ function buildEvidenceZip(
 
   const publicKeyPem = getPublicKeyPem()
 
-  add('manifest.jsonl', manifestJsonl)
-  add('report.html', reportHtml)
+  add(PACKAGE_ROOT_FILES.manifest, manifestJsonl)
+  add(PACKAGE_ROOT_FILES.report, reportHtml)
   add(
-    'certification.html',
+    PACKAGE_ROOT_FILES.certification,
     buildCertification(
       {
         caseName: data.caseName,
@@ -1123,19 +1126,22 @@ function buildEvidenceZip(
       resolveToolVersion()
     )
   )
-  add('signing-public-key.pem', publicKeyPem)
-  add('VERIFY.md', VERIFY_RUNBOOK)
+  add(PACKAGE_ROOT_FILES.signingPublicKey, publicKeyPem)
+  add(PACKAGE_ROOT_FILES.verifyRunbook, VERIFY_RUNBOOK)
   // The runbook's executable form (#584). Written through add() like every other
   // packaged document, so it lands in artifacts[] and in packageHash: a script
   // that verifies the package is worth no more than the package's own account of
   // it, and step 1 re-hashes it along with everything else.
-  add(VERIFY_SCRIPT_FILENAME, VERIFY_SCRIPT)
+  add(PACKAGE_ROOT_FILES.verifyScript, VERIFY_SCRIPT)
   // Operator notes as package content (#399): written through add() so the
   // file participates in packageHash and the artifact index like every other
   // packaged document. Written even when the case has none — "0 notes existed"
   // must stay distinguishable from "notes were excluded" (the Court exhibit).
   if (meta.notes !== null) {
-    add('notes.md', buildNotesMarkdown(data.caseName, data.exportTimestamp, meta.notes))
+    add(
+      PACKAGE_ROOT_FILES.notes,
+      buildNotesMarkdown(data.caseName, data.exportTimestamp, meta.notes)
+    )
   }
 
   // Anchor and chain-building material ship as separate files (#579): a single
@@ -1143,14 +1149,14 @@ function buildEvidenceZip(
   // one makes `openssl ts -verify -CAfile` resolve the wrong root and fail, and
   // leaves ambiguous which certificate the verifier is being asked to trust.
   const tsaTrust = getTsaTrustBundle(data.tsaUrl)
-  add(TSA_INTERMEDIATES_FILENAME, [...timestampTokenCertPems].join('\n') + '\n')
-  if (tsaTrust.bundled) add(TSA_ROOT_FILENAME, tsaTrust.pem)
+  add(PACKAGE_ROOT_FILES.tsaIntermediates, [...timestampTokenCertPems].join('\n') + '\n')
+  if (tsaTrust.bundled) add(PACKAGE_ROOT_FILES.tsaRoot, tsaTrust.pem)
 
   const capturesMissingContent: string[] = []
   const emittedScreenshotPaths = new Set<string>()
   const captureEvidence = data.captures.map((capture) => {
     const mhtml = defaultCaptureStore.readArtifact(capture.caseId, capture.id, 'mhtml')
-    const mhtmlPath = `pages/${capture.id}.mhtml`
+    const mhtmlPath = capturePagePath(capture.id)
     const mhtmlSha256 = mhtml ? add(mhtmlPath, mhtml) : null
     if (!mhtml) capturesMissingContent.push(capture.id)
     const verification = data.verifications.find((v) => v.captureId === capture.id)
@@ -1180,7 +1186,7 @@ function buildEvidenceZip(
     let screenshotSha256: string | null = null
     if (screenshot) {
       screenshotSha256 = sha256(screenshot)
-      screenshotPath = `screenshots/${screenshotSha256}.png`
+      screenshotPath = packagedScreenshotPath(screenshotSha256)
       // Content-addressed: identical screenshot bytes across captures resolve to
       // the same path. Emit the zip entry once; multiple capture records may
       // still reference it. createStoredZip does not dedupe entry names.
@@ -1252,7 +1258,7 @@ function buildEvidenceZip(
       exhibitNumber: number,
       name: capture.title,
       contentHash: capture.hash,
-      path: capturesMissingContent.includes(capture.id) ? null : `pages/${capture.id}.mhtml`,
+      path: capturesMissingContent.includes(capture.id) ? null : capturePagePath(capture.id),
       derivedFiles: addDerivedFiles(derived, add, reader)
     }
   })
@@ -1296,18 +1302,18 @@ function buildEvidenceZip(
       tsaTrustAnchorNote: tsaTrust.note ?? null
     },
     verificationMaterials: {
-      manifestPath: 'manifest.jsonl',
+      manifestPath: PACKAGE_ROOT_FILES.manifest,
       manifestHeadIndex: latestManifestEntry?.index ?? null,
       manifestHeadHash: latestManifestEntry?.entryHash ?? null,
       // Informational pointer only: the file is unshifted by generateReport
       // after this index is built, and the verifier reads it by its fixed name.
-      exportEntryPath: 'export-entry.json',
-      signingPublicKeyPath: 'signing-public-key.pem',
-      tsaRootPath: tsaTrust.bundled ? TSA_ROOT_FILENAME : null,
+      exportEntryPath: PACKAGE_ROOT_FILES.exportEntry,
+      signingPublicKeyPath: PACKAGE_ROOT_FILES.signingPublicKey,
+      tsaRootPath: tsaTrust.bundled ? PACKAGE_ROOT_FILES.tsaRoot : null,
       tsaRootSha256: tsaTrust.rootSha256 ?? null,
-      tsaIntermediatesPath: TSA_INTERMEDIATES_FILENAME,
+      tsaIntermediatesPath: PACKAGE_ROOT_FILES.tsaIntermediates,
       tsaCaChainBundled: tsaTrust.bundled,
-      reportPath: 'report.html'
+      reportPath: PACKAGE_ROOT_FILES.report
     },
     captures: captureEvidence,
     // Every Exhibit the package holds, of every kind, in Exhibit Number order
@@ -1319,7 +1325,7 @@ function buildEvidenceZip(
   }
 
   entries.unshift({
-    name: 'evidence.json',
+    name: PACKAGE_ROOT_FILES.evidenceIndex,
     data: JSON.stringify(evidence, null, 2)
   })
 
@@ -1377,14 +1383,17 @@ function buildWorkingCopyZip(
 
   const captureIndex = data.captures.map((capture) => {
     const mhtml = defaultCaptureStore.readArtifact(capture.caseId, capture.id, 'mhtml')
-    const pagePath = `pages/${capture.id}.mhtml`
+    const pagePath = capturePagePath(capture.id)
     if (mhtml) add(pagePath, mhtml)
 
     // The operator-facing copy — annotation-burned when the option says so —
     // keyed by capture id. Content addressing and ingest-hash matching are
     // evidence-package concepts; this class ships what the operator works with.
+    // A Working Copy is not a verifiable object (ADR-0010) and has no reader
+    // to agree with, so its id-addressed screenshot is not in the Package
+    // Layout module; see docs/plans/2026-09-22-evidence-package-layout.md.
     const screenshotBase64 = data.screenshots.get(capture.id)
-    const screenshotPath = screenshotBase64 ? `screenshots/${capture.id}.png` : null
+    const screenshotPath = screenshotBase64 ? `screenshots/${capture.id}.png` : null // layout-exempt: Working Copy
     if (screenshotBase64 && screenshotPath) {
       add(screenshotPath, Buffer.from(screenshotBase64, 'base64'))
     }
@@ -1423,7 +1432,10 @@ function buildWorkingCopyZip(
   })
 
   if (meta.notes !== null) {
-    add('notes.md', buildNotesMarkdown(data.caseName, data.exportTimestamp, meta.notes))
+    add(
+      PACKAGE_ROOT_FILES.notes,
+      buildNotesMarkdown(data.caseName, data.exportTimestamp, meta.notes)
+    )
   }
 
   const marker = {
@@ -1537,7 +1549,7 @@ function buildTimestampTokenPaths(
     for (const subject of subjects) {
       if (subject.contentHash !== entry.captureContentHash) continue
       if (byHash.has(subject.contentHash)) break
-      byHash.set(subject.contentHash, `timestamps/${subject.id}.tst`)
+      byHash.set(subject.contentHash, timestampTokenPath(subject.id))
       break
     }
   }
@@ -1582,8 +1594,8 @@ function buildPackagedPaths(
     const { abs } = defaultCaptureStore.artifactPaths(capture.caseId, capture.id, 'mhtml')
     const screenshotDigest = screenshotDigests.get(capture.id)
     paths.set(capture.id, {
-      pageArchive: isPackage && existsSync(abs) ? `pages/${capture.id}.mhtml` : null,
-      screenshot: isPackage && screenshotDigest ? `screenshots/${screenshotDigest}.png` : null,
+      pageArchive: isPackage && existsSync(abs) ? capturePagePath(capture.id) : null,
+      screenshot: isPackage && screenshotDigest ? packagedScreenshotPath(screenshotDigest) : null,
       timestampToken: tokenPaths.get(capture.hash) ?? null,
       // Recorded regardless of format: the exhibit reproduces the image either
       // way, so it must be able to label it with the digest of what it shows.

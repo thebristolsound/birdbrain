@@ -52,7 +52,10 @@ import type {
   TokenUsage,
   UpdateStatus,
   WaybackLookupResult,
-  WaybackSnapshot
+  WaybackSnapshot,
+  Persona,
+  PersonaImportResult,
+  PersonaStorageState
 } from '@shared/types'
 import type { CaseManifestSnapshot } from '@shared/manifestSnapshot'
 
@@ -118,6 +121,15 @@ export const IPC_CHANNELS = {
   TAGS_GET_FOR_NOTE: 'tags:getForNote',
   TAGS_MERGE: 'tags:merge',
   TAGS_CAPTURES_WITH_ANY_TAG: 'tags:capturesWithAnyTag',
+  // Personas (#1497). `persona:import` takes a persona id and opens the
+  // native file dialog in main: the file path never crosses IPC from the
+  // renderer and the file contents never cross it at all.
+  PERSONAS_LIST: 'persona:list',
+  PERSONAS_CREATE: 'persona:create',
+  PERSONAS_UPDATE: 'persona:update',
+  PERSONAS_DELETE: 'persona:delete',
+  PERSONAS_IMPORT: 'persona:import',
+  PERSONAS_STORAGE_STATE: 'persona:storageState',
 
   // Session (renderer-side session control; the extension drives HTTP)
   SESSION_SNAPSHOT: 'session:snapshot',
@@ -378,6 +390,17 @@ export interface UpdateTagParams {
   id: string
   name?: string
   color?: string
+}
+
+export interface CreatePersonaParams {
+  label: string
+  notes?: string
+}
+
+export interface UpdatePersonaParams {
+  id: string
+  label?: string
+  notes?: string
 }
 
 export interface CaptureTagParams {
@@ -822,6 +845,13 @@ export interface IpcInvokeContract {
   // Union, not intersection: the ids of every capture in the case carrying any
   // of these tags (#918). Unbounded, unlike `tags:captureMatrix`.
   'tags:capturesWithAnyTag': { args: [caseId: string, tagIds: string[]]; result: string[] }
+  'persona:list': { args: []; result: Persona[] }
+  'persona:create': { args: [params: CreatePersonaParams]; result: Persona }
+  'persona:update': { args: [params: UpdatePersonaParams]; result: Persona | undefined }
+  'persona:delete': { args: [id: string]; result: boolean }
+  // null when the operator cancelled the file dialog.
+  'persona:import': { args: [personaId: string]; result: PersonaImportResult | null }
+  'persona:storageState': { args: []; result: PersonaStorageState }
 
   'selectors:list': { args: [caseId: string]; result: Selector[] }
   'selectors:get': { args: [id: string]; result: Selector | undefined }

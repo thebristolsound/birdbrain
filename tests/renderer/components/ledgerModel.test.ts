@@ -189,6 +189,11 @@ describe('toLedgerRows', () => {
     expect(rows[2].schemaVersion).toBe(3)
     expect(rows[5].parsed).toBe(false)
   })
+
+  it('cites an exhibit entry by its Member Code when the entry carries one (#1510)', () => {
+    const shared: ManifestEntry = { ...EXHIBIT, schemaVersion: 4, memberCode: 'NK' }
+    expect(toLedgerRows([line(shared)])[0].target).toBe('Exhibit NK-2 · bundle.zip')
+  })
 })
 
 describe('toLedgerRows — schema 4 (#1509)', () => {

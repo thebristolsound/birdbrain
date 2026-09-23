@@ -43,14 +43,14 @@ let onCopyUrl: Mock<() => void>
 let onCopyHash: Mock<() => void>
 let onDuplicate: Mock<() => void>
 
-function renderPanel(props: { isDuplicating?: boolean } = {}) {
+function renderPanel(props: { isDuplicating?: boolean; capture?: Capture } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
   }
   return render(
     <CaptureDetailsPanel
-      capture={capture}
+      capture={props.capture ?? capture}
       caseId="case1"
       onCollapse={vi.fn()}
       onOpenExternal={vi.fn()}
@@ -169,6 +169,18 @@ describe('CaptureDetailsPanel actions menu', () => {
 
     fireEvent.click(item)
     expect(onDuplicate).not.toHaveBeenCalled()
+  })
+})
+
+describe('CaptureDetailsPanel Exhibit citation (#1510)', () => {
+  it('shows the resolved citation beside the heading, and nothing without one', async () => {
+    renderPanel()
+    expect(await screen.findByTestId('capture-details-actions-btn')).toBeTruthy()
+    expect(screen.queryByTestId('capture-details-citation')).toBeNull()
+
+    cleanup()
+    renderPanel({ capture: { ...capture, exhibitNumber: 3, exhibitCitation: 'MB-3' } })
+    expect((await screen.findByTestId('capture-details-citation')).textContent).toBe('MB-3')
   })
 })
 

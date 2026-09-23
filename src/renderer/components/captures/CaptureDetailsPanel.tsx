@@ -81,9 +81,10 @@ export function CaptureDetailsPanel({
   const tagAnchorRef = useRef<HTMLButtonElement>(null)
 
   const [menuOpen, setMenuOpen] = useState(false)
-  const [recaptureError, setRecaptureError] = useState<{ captureId: string; message: string } | null>(
-    null
-  )
+  const [recaptureError, setRecaptureError] = useState<{
+    captureId: string
+    message: string
+  } | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const menuAnchorRef = useRef<HTMLButtonElement>(null)
 
@@ -230,6 +231,15 @@ export function CaptureDetailsPanel({
       <section className="border-b border-border px-5 py-4 [&:last-child]:border-b-0">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold tracking-tight text-text-primary">Capture</h2>
+          {capture.exhibitCitation ? (
+            <span
+              data-testid="capture-details-citation"
+              title="Exhibit Number"
+              className="rounded border border-border-strong px-1.5 font-mono text-[11px] leading-4 text-text-secondary"
+            >
+              {capture.exhibitCitation}
+            </span>
+          ) : null}
           <span
             data-testid="capture-details-provenance-chip"
             className={`flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 ${provenance.bg}`}

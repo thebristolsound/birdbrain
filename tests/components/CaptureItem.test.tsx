@@ -63,6 +63,30 @@ afterEach(() => {
   thumbnail.mockReset()
 })
 
+describe('CaptureItem — Exhibit citation chip (#1510)', () => {
+  it('shows the citation main resolved before the title, in both views', () => {
+    renderItem({ capture: { ...capture, exhibitNumber: 12, exhibitCitation: 'NK-12' } })
+    const detailed = screen.getByTestId('capture-item-citation')
+    expect(detailed.textContent).toBe('NK-12')
+    expect(detailed.getAttribute('title')).toBe('Exhibit Number')
+    expect(detailed.compareDocumentPosition(screen.getByText('Example evidence page'))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    )
+
+    cleanup()
+    renderItem({
+      view: 'list',
+      capture: { ...capture, exhibitNumber: 12, exhibitCitation: 'NK-12' }
+    })
+    expect(screen.getByTestId('capture-item-citation').textContent).toBe('NK-12')
+  })
+
+  it('renders no chip for a row that carries no citation', () => {
+    renderItem()
+    expect(screen.queryByTestId('capture-item-citation')).toBeNull()
+  })
+})
+
 describe('CaptureItem — detailed view', () => {
   it('renders the long relative time with the full UTC timestamp on hover', () => {
     renderItem()

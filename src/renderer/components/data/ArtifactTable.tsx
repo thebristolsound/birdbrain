@@ -116,9 +116,9 @@ export function ArtifactTable({
                   >
                     {row.name}
                   </span>
-                  {row.exhibitNumber !== null && (
+                  {row.citation !== null && (
                     <span className="shrink-0 font-mono text-[10px] text-text-faint">
-                      Exhibit {row.exhibitNumber}
+                      Exhibit {row.citation}
                     </span>
                   )}
                   {row.staged && (

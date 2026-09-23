@@ -49,7 +49,9 @@ const CAPTURES: Capture[] = [
     createdAt: '2026-08-03T00:00:00.000Z',
     format: 'mhtml',
     method: 'extension',
-    lastVerifiedStatus: 'tampered'
+    lastVerifiedStatus: 'tampered',
+    exhibitNumber: 2,
+    exhibitCitation: 'NK-2'
   }
 ]
 
@@ -155,7 +157,9 @@ describe('CaseOverview', () => {
   it('drives the five metrics from the case’s own data', async () => {
     renderOverview()
 
-    await waitFor(() => expect(screen.getByTestId('overview-metric-captures').textContent).toBe('2'))
+    await waitFor(() =>
+      expect(screen.getByTestId('overview-metric-captures').textContent).toBe('2')
+    )
     expect(screen.getByTestId('overview-metric-sources').textContent).toBe('2')
     expect(screen.getByTestId('overview-metric-selectors').textContent).toBe('1')
     expect(screen.getByTestId('overview-metric-tags').textContent).toBe('1')
@@ -206,7 +210,9 @@ describe('CaseOverview', () => {
     await waitFor(() => expect(screen.getByTestId('overview-since-last-visit')).toBeTruthy())
     // Deltas stay in both places, matching the prototype: the metric row's `+2`
     // and the card's tiles are the same fact at two levels of detail.
-    expect(screen.getByTestId('overview-metric-captures').parentElement?.textContent).toContain('+2')
+    expect(screen.getByTestId('overview-metric-captures').parentElement?.textContent).toContain(
+      '+2'
+    )
   })
 
   it('sends both Manage buttons to the signals screen', async () => {
@@ -235,6 +241,14 @@ describe('CaseOverview', () => {
       to: '/cases/$caseId/notes',
       params: { caseId: 'case1' }
     })
+  })
+
+  it('cites a recent capture by the resolved Exhibit citation, and only when it has one (#1510)', async () => {
+    renderOverview()
+
+    await waitFor(() => expect(screen.getAllByTestId('overview-recent-item').length).toBe(2))
+    const chips = screen.getAllByTestId('overview-recent-citation')
+    expect(chips.map((c) => c.textContent)).toEqual(['NK-2'])
   })
 
   it('opens a recent capture into the captures screen', async () => {

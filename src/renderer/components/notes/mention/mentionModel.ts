@@ -210,7 +210,7 @@ export interface MentionCandidate {
 
 /** Everything the popup ranks over, read from the already-cached list queries. */
 export interface MentionSources {
-  captures: Pick<Capture, 'id' | 'title' | 'url'>[]
+  captures: Pick<Capture, 'id' | 'title' | 'url' | 'exhibitCitation'>[]
   notes: Pick<Note, 'id' | 'title'>[]
   selectors: Pick<Selector, 'id' | 'label' | 'pattern'>[]
   tags: Tag[]
@@ -229,9 +229,14 @@ export const EMPTY_MENTION_SOURCES: MentionSources = {
   selectorMatchCounts: {}
 }
 
-/** A capture with no title still has to be pickable; its URL identifies it. */
-function captureLabel(capture: Pick<Capture, 'title' | 'url'>): string {
-  return capture.title || capture.url
+/**
+ * A capture with no title still has to be pickable; its URL identifies it. The
+ * Exhibit citation leads when the row carries one (#1510), so a mention reads
+ * as the citation a report would print: `NK-12 · Example page`.
+ */
+function captureLabel(capture: Pick<Capture, 'title' | 'url' | 'exhibitCitation'>): string {
+  const name = capture.title || capture.url
+  return capture.exhibitCitation ? `${capture.exhibitCitation} · ${name}` : name
 }
 
 /** Mirrors the references index, which coalesces an empty label to the pattern. */

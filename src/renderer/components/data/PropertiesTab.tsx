@@ -29,7 +29,7 @@ export function propertiesFor(row: InventoryRow, rows: InventoryRow[], capture?:
   if (row.entity === 'exhibit') {
     props.push({ label: 'Kind', value: kindSingular(row.kind) })
     props.push({ label: 'Origin', value: row.origin })
-    props.push({ label: 'Exhibit Number', value: `Exhibit ${row.exhibitNumber}` })
+    props.push({ label: 'Exhibit Number', value: `Exhibit ${row.citation}` })
     props.push({
       label: 'Anchoring',
       value:

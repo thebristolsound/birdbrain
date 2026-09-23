@@ -1,4 +1,5 @@
 import type { ManifestEntry } from '@shared/schemas'
+import { formatExhibitCitation } from '@shared/exhibitCitation'
 import type {
   CaseManifestSnapshot,
   ManifestChainVerdict,
@@ -45,7 +46,9 @@ function targetOf(entry: ManifestEntry): string {
     case 'import':
       return `from case ${entry.sourceCaseId}`
     case 'exhibit':
-      return `Exhibit ${entry.exhibitNumber} · ${entry.name}`
+      // The ledger shows the entry as written: a schema-4 entry that carries a
+      // Member Code is cited with it, whatever the roster looks like today.
+      return `Exhibit ${formatExhibitCitation(entry, { prefixed: true })} · ${entry.name}`
     case 'derivation':
       return `${entry.derivation} of ${entry.parentExhibitId}`
     case 'renumber':

@@ -25,6 +25,9 @@ export interface ArtifactRow {
   staged: boolean
   exists: boolean
   exhibitNumber: number | null
+  // The number as the app cites it (`NK-12` in a Shared Case, `12` otherwise);
+  // resolved in the main process. Null wherever exhibitNumber is.
+  citation: string | null
   path: string | null
   raw: InventoryRow
 }
@@ -72,7 +75,8 @@ export function toArtifactRow(
       capturedAt: row.committedAt,
       anchored: row.anchored,
       staged: false,
-      exhibitNumber: row.exhibitNumber
+      exhibitNumber: row.exhibitNumber,
+      citation: row.citation
     }
   }
   if (row.entity === 'derived-file') {
@@ -84,7 +88,8 @@ export function toArtifactRow(
       capturedAt: row.createdAt,
       anchored: row.anchored,
       staged: false,
-      exhibitNumber: null
+      exhibitNumber: null,
+      citation: null
     }
   }
   return {
@@ -94,7 +99,8 @@ export function toArtifactRow(
     capturedAt: row.arrivedAt,
     anchored: false,
     staged: true,
-    exhibitNumber: null
+    exhibitNumber: null,
+    citation: null
   }
 }
 
@@ -241,6 +247,7 @@ export function filterRows(rows: ArtifactRow[], query: string): ArtifactRow[] {
     if (kindLabel(row.kind).toLowerCase().includes(q)) return true
     if (hashLike && row.hash.toLowerCase().includes(q)) return true
     if (row.exhibitNumber !== null && String(row.exhibitNumber) === number) return true
+    if (row.citation !== null && row.citation.toLowerCase() === number) return true
     return false
   })
 }

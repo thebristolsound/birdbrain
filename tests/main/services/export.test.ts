@@ -2825,6 +2825,60 @@ describe('export', () => {
 
       expect(md).toContain('1 note in the case is not included')
     })
+
+    // The same frozen known answer for a note carrying an anchor (#985): the
+    // anchored capture is printed when the row pointer does not already name
+    // it, and is left unstated when the two agree.
+    it('buildNotesMarkdown states an anchored capture the row does not name', () => {
+      const md = buildNotesMarkdown('Case X', '2026-08-24T00:00:00.000Z', [
+        {
+          id: 'n1',
+          caseId: 'c1',
+          title: 'Anchored only',
+          body: 'Body text.',
+          anchor: { kind: 'capture', captureId: 'cap-9' },
+          createdAt: '2026-08-01T10:00:00.000Z',
+          updatedAt: '2026-08-02T11:00:00.000Z'
+        }
+      ])
+
+      expect(md).toBe(
+        '# Operator notes — Case X\n' +
+          '\n' +
+          'Exported 2026-08-24T00:00:00.000Z. 1 note.\n' +
+          '\n' +
+          'Operator work product: these notes were written by the operator in Birdbrain. They are\n' +
+          'not captured page content and are not anchored in the capture manifest chain.\n' +
+          '\n' +
+          '---\n' +
+          '\n' +
+          '## Anchored only\n' +
+          '\n' +
+          '- Created: 2026-08-01T10:00:00.000Z\n' +
+          '- Updated: 2026-08-02T11:00:00.000Z\n' +
+          '- Anchored to capture: cap-9\n' +
+          '\n' +
+          'Body text.\n'
+      )
+    })
+
+    it('states the anchored capture once when both pointers agree', () => {
+      const md = buildNotesMarkdown('Case X', '2026-08-24T00:00:00.000Z', [
+        {
+          id: 'n1',
+          caseId: 'c1',
+          title: 'Both pointers',
+          body: 'Body text.',
+          captureId: 'cap-1',
+          anchor: { kind: 'capture', captureId: 'cap-1' },
+          createdAt: '2026-08-01T10:00:00.000Z',
+          updatedAt: '2026-08-02T11:00:00.000Z'
+        }
+      ])
+
+      expect(md).toContain('- Attached to capture: cap-1\n')
+      expect(md).not.toContain('- Anchored to capture:')
+    })
   })
 
   // #985: a selection-scoped export ships the notes attached to the selected
@@ -3024,6 +3078,101 @@ describe('export', () => {
 
       const certification = entries.get('certification.html')!.toString('utf-8')
       expect(certification).toContain('3 operator notes')
+    })
+
+    // A note carries two independent pointers at a capture and the two can
+    // disagree: assertAnchorInCase requires only that both sit in the note's
+    // own case, and the archive importer and the Database Admin hatch both
+    // write anchor_json without touching capture_id. The scope reads both and
+    // requires both, so neither direction can go wrong unnoticed.
+    it('ships a note anchored to a selected capture that has no capture_id', async () => {
+      const { selected } = await seedTwoCapturesAndThreeNotes()
+      createNote({
+        caseId,
+        title: 'Anchored to the selected capture',
+        body: 'travels on its anchor alone',
+        anchor: JSON.stringify({ kind: 'capture', captureId: selected.id })
+      })
+
+      const outputPath = join(tempDir, 'anchor-only-included.zip')
+      await generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: NOTES_INCLUDE,
+          exportClass: 'evidence',
+          outputPath,
+          captureIds: [selected.id]
+        },
+        captureLifecycle
+      )
+
+      const notesMd = readStoredZipEntries(outputPath).get('notes.md')!.toString('utf-8')
+      expect(notesMd).toContain('## Anchored to the selected capture')
+      expect(notesMd).toContain('travels on its anchor alone')
+      // The attachment it travelled on is printed, so the file never shows a
+      // note with no stated tie to the selection its header claims to cover.
+      expect(notesMd).toContain(`- Anchored to capture: ${selected.id}`)
+      expect(notesMd).toContain('2 notes.')
+      expect(notesMd).toContain('2 notes in the case are not included')
+    })
+
+    it('withholds a note whose anchor points outside the selection', async () => {
+      const { selected, unselected } = await seedTwoCapturesAndThreeNotes()
+      createNote({
+        caseId,
+        captureId: selected.id,
+        title: 'Row says selected, anchor says otherwise',
+        body: 'quotes the withheld page',
+        anchor: JSON.stringify({ kind: 'capture', captureId: unselected.id })
+      })
+
+      const outputPath = join(tempDir, 'anchor-outside-withheld.zip')
+      await generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: NOTES_INCLUDE,
+          exportClass: 'evidence',
+          outputPath,
+          captureIds: [selected.id]
+        },
+        captureLifecycle
+      )
+
+      const notesMd = readStoredZipEntries(outputPath).get('notes.md')!.toString('utf-8')
+      expect(notesMd).not.toContain('Row says selected, anchor says otherwise')
+      expect(notesMd).not.toContain('quotes the withheld page')
+      expect(notesMd).toContain('1 note.')
+      expect(notesMd).toContain('3 notes in the case are not included')
+    })
+
+    it('withholds a note anchored only to an unselected capture', async () => {
+      const { selected, unselected } = await seedTwoCapturesAndThreeNotes()
+      createNote({
+        caseId,
+        title: 'Anchored to the unselected capture',
+        body: 'names the withheld subject',
+        anchor: JSON.stringify({ kind: 'capture', captureId: unselected.id })
+      })
+
+      const outputPath = join(tempDir, 'anchor-only-withheld.zip')
+      await generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: NOTES_INCLUDE,
+          exportClass: 'evidence',
+          outputPath,
+          captureIds: [selected.id]
+        },
+        captureLifecycle
+      )
+
+      const notesMd = readStoredZipEntries(outputPath).get('notes.md')!.toString('utf-8')
+      expect(notesMd).not.toContain('Anchored to the unselected capture')
+      expect(notesMd).not.toContain('names the withheld subject')
+      expect(notesMd).toContain('3 notes in the case are not included')
     })
   })
   // Known-answer tests for the mixed-kind package (#1156). The fixture Case is

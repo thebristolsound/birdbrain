@@ -26,7 +26,7 @@ import { seedUnanchoredDerivedFile } from '../../helpers/mixedKindCase'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { VERIFY_RUNBOOK } from '@main/services/verifyRunbook'
-import { VERIFY_SCRIPT_FILENAME } from '@main/services/verifyScript'
+import { PACKAGE_ROOT_FILES } from '../../../src/packages/evidence-package-layout/index'
 import { HAS_OPENSSL } from '../../helpers/openssl'
 import { HAS_JQ, jqIsRequired } from '../../helpers/jq'
 import { createLocalTsa, type LocalTsa } from '../../helpers/localTsa'
@@ -137,7 +137,7 @@ interface VerifyRun {
 
 function runVerifyScript(dir: string, env?: NodeJS.ProcessEnv, args: string[] = []): VerifyRun {
   try {
-    const stdout = execFileSync('/bin/sh', [VERIFY_SCRIPT_FILENAME, ...args], {
+    const stdout = execFileSync('/bin/sh', [PACKAGE_ROOT_FILES.verifyScript, ...args], {
       cwd: dir,
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -362,7 +362,7 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
   })
 
   it.skipIf(!RUNS)('ships verify.sh and passes it on a good package', () => {
-    expect(entries.has(VERIFY_SCRIPT_FILENAME)).toBe(true)
+    expect(entries.has(PACKAGE_ROOT_FILES.verifyScript)).toBe(true)
 
     const run = runVerifyScript(packageDir)
     expect(run.status, run.output).toBe(0)
@@ -377,16 +377,19 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
       artifacts: Array<{ path: string; sha256: string; sizeBytes: number }>
     }
-    const artifact = evidence.artifacts.find((a) => a.path === VERIFY_SCRIPT_FILENAME)
+    const artifact = evidence.artifacts.find((a) => a.path === PACKAGE_ROOT_FILES.verifyScript)
     expect(artifact).toBeDefined()
-    expect(artifact!.sha256).toBe(sha256(entries.get(VERIFY_SCRIPT_FILENAME)!))
+    expect(artifact!.sha256).toBe(sha256(entries.get(PACKAGE_ROOT_FILES.verifyScript)!))
 
     // Self-describing means self-checking: step 1 re-hashes the script along
     // with everything else, so an edited verify.sh fails the package it claims
     // to verify instead of quietly reporting on its own terms.
     const dir = corruptedCopy('edited-script')
-    const script = readFileSync(join(dir, VERIFY_SCRIPT_FILENAME), 'utf-8')
-    writeFileSync(join(dir, VERIFY_SCRIPT_FILENAME), `${script}\n# edited after packaging\n`)
+    const script = readFileSync(join(dir, PACKAGE_ROOT_FILES.verifyScript), 'utf-8')
+    writeFileSync(
+      join(dir, PACKAGE_ROOT_FILES.verifyScript),
+      `${script}\n# edited after packaging\n`
+    )
     const run = runVerifyScript(dir)
     expect(run.status).toBe(1)
     expect(run.output).toContain('FAIL [step 1]')
@@ -854,8 +857,8 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     const dir = mkdtempSync(join(tmpdir(), 'bb-not-a-package-'))
     try {
       writeFileSync(
-        join(dir, VERIFY_SCRIPT_FILENAME),
-        readFileSync(join(packageDir, VERIFY_SCRIPT_FILENAME))
+        join(dir, PACKAGE_ROOT_FILES.verifyScript),
+        readFileSync(join(packageDir, PACKAGE_ROOT_FILES.verifyScript))
       )
       const run = runVerifyScript(dir)
       expect(run.status).toBe(2)

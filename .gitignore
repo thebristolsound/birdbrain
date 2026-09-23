@@ -110,3 +110,4 @@ report-*.html
 
 # pnpm preflight output (sha-stamped verification block for the PR body, never committed)
 .preflight/
+.health/

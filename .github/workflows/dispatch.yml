@@ -101,6 +101,18 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
+      # Before apt and pnpm install, because a dead token failed 39 fires in a
+      # row between 2026-09-20 and 2026-09-23, each one after a full toolchain
+      # install. The probe is one Haiku call; see the script.
+      - name: Claude credential
+        if: steps.gate.outputs.run == 'true'
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          CLAUDE_CODE_OAUTH_TOKEN_EXPIRES: ${{ vars.CLAUDE_CODE_OAUTH_TOKEN_EXPIRES }}
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          bash .github/scripts/health/claude-token.sh
+
       - name: Install system dependencies
         if: steps.gate.outputs.run == 'true'
         timeout-minutes: 5
@@ -116,7 +128,6 @@ jobs:
         run: |
           pnpm install
           openssl version
-          npm install -g @anthropic-ai/claude-code
 
       - name: Run one cycle
         if: steps.gate.outputs.run == 'true'

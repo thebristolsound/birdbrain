@@ -333,6 +333,34 @@ export async function generateReport(
   const derivedByExhibitId = groupDerivedFiles(listDerivedFilesForCase(caseId))
   const scoped = options.captureIds !== undefined
 
+  // Operator notes as package content (#399). Null means excluded; an empty
+  // array means the toggle was on and the case simply has none — notes.md is
+  // still written then, so "no notes existed" stays distinguishable from
+  // "notes were excluded".
+  //
+  // Scoped with the Exhibits on a selection export (#985, maintainer ruling
+  // 2026-08-30): a note travels only when the Capture it is attached to is in
+  // the selection, and a note attached to no Capture is left behind even though
+  // the Case holds it. An unattached note can name a Capture the operator
+  // deliberately excluded, so shipping every one of them discloses the very
+  // thing the selection was drawn to withhold. The predicate reads `captureId`,
+  // the attachment the app itself lists a Capture's notes by; `anchor` is not
+  // consulted, because no write path sets one and every anchor kind embeds the
+  // same capture id this filter already tests.
+  const caseNotes = options.include.notes ? noteRepo.listNotes(caseId) : null
+  const selectedCaptureIds = new Set(captures.map((capture) => capture.id))
+  const notes =
+    caseNotes !== null && scoped
+      ? caseNotes.filter(
+          (note) => note.captureId !== undefined && selectedCaptureIds.has(note.captureId)
+        )
+      : caseNotes
+  // Stated rather than left to be counted, exactly as the excluded-Exhibit count
+  // is: without it a notes.md holding three of the Case's ten notes reads as the
+  // operator's complete work product.
+  const omittedNoteCount =
+    caseNotes !== null && notes !== null ? caseNotes.length - notes.length : 0
+
   // Build export data
   const data: ExportData = {
     caseId,
@@ -382,7 +410,8 @@ export async function generateReport(
       ? {
           selectedCaptureCount: captures.length,
           caseCaptureCount: allCaptures.length,
-          excludedExhibitCount: scope.excludedExhibitCount
+          excludedExhibitCount: scope.excludedExhibitCount,
+          omittedNoteCount
         }
       : null
   }
@@ -450,12 +479,6 @@ export async function generateReport(
       data.screenshots.set(cap.id, finalBuffer.toString('base64'))
     }
   }
-
-  // Operator notes as package content (#399). Null means excluded; an empty
-  // array means the toggle was on and the case simply has none — notes.md is
-  // still written then, so "no notes existed" stays distinguishable from
-  // "notes were excluded".
-  const notes = options.include.notes ? noteRepo.listNotes(caseId) : null
 
   // One manifest snapshot, taken after every awaited stage and shared by the
   // report and the package. Reading it twice would let the timestamp worker
@@ -1140,7 +1163,7 @@ function buildEvidenceZip(
   if (meta.notes !== null) {
     add(
       PACKAGE_ROOT_FILES.notes,
-      buildNotesMarkdown(data.caseName, data.exportTimestamp, meta.notes)
+      buildNotesMarkdown(data.caseName, data.exportTimestamp, meta.notes, data.selectionScope)
     )
   }
 
@@ -1434,7 +1457,7 @@ function buildWorkingCopyZip(
   if (meta.notes !== null) {
     add(
       PACKAGE_ROOT_FILES.notes,
-      buildNotesMarkdown(data.caseName, data.exportTimestamp, meta.notes)
+      buildNotesMarkdown(data.caseName, data.exportTimestamp, meta.notes, data.selectionScope)
     )
   }
 
@@ -1487,11 +1510,32 @@ function buildWorkingCopyZip(
 }
 
 /**
+ * What a selection export's notes.md says about its own scope (#985). A subset
+ * of the report's `selectionScope`, so both documents state one derivation.
+ */
+export interface NotesSelectionScope {
+  selectedCaptureCount: number
+  caseCaptureCount: number
+  omittedNoteCount: number
+}
+
+/**
  * Operator notes rendered as one Markdown document (#399). Notes are operator
  * work product: the header says so, and says what integrity cover the file has
  * (packageHash + the artifact index) and has not (the capture manifest chain).
+ *
+ * On a selection export the header also says that the file is a subset and how
+ * many of the Case's notes the scope left out (#985). The Working Copy carries
+ * no report and no certification, so for that class this header is the only
+ * place a recipient can read the omission — which is why the statement lives
+ * here and not only in report.html.
  */
-export function buildNotesMarkdown(caseName: string, exportedAt: string, notes: Note[]): string {
+export function buildNotesMarkdown(
+  caseName: string,
+  exportedAt: string,
+  notes: Note[],
+  scope?: NotesSelectionScope | null
+): string {
   const oneLine = (s: string): string => s.replace(/\s+/g, ' ').trim()
   const head = [
     `# Operator notes — ${oneLine(caseName)}`,
@@ -1499,7 +1543,19 @@ export function buildNotesMarkdown(caseName: string, exportedAt: string, notes: 
     `Exported ${exportedAt}. ${notes.length} note${notes.length === 1 ? '' : 's'}.`,
     '',
     'Operator work product: these notes were written by the operator in Birdbrain. They are',
-    'not captured page content and are not anchored in the capture manifest chain.'
+    'not captured page content and are not anchored in the capture manifest chain.',
+    ...(scope
+      ? [
+          '',
+          `Selection-scoped export: this export covers ${scope.selectedCaptureCount} of the ` +
+            `case's ${scope.caseCaptureCount} captures, and this`,
+          `file holds the notes attached to them. ${scope.omittedNoteCount} ` +
+            `note${scope.omittedNoteCount === 1 ? '' : 's'} in the case ` +
+            `${scope.omittedNoteCount === 1 ? 'is' : 'are'} not included`,
+          'here: a note attached to a capture outside the selection, or to no capture at all, is',
+          'left behind by the scope.'
+        ]
+      : [])
   ]
   const sections = notes.map((note) => {
     const facts = [

@@ -2769,6 +2769,262 @@ describe('export', () => {
           '_(no text)_\n'
       )
     })
+
+    // The same frozen known answer for the scoped header (#985): a scope
+    // argument adds the subset statement and changes nothing else, so the bytes
+    // a recipient reads are pinned for both shapes of the file.
+    it('buildNotesMarkdown states the selection scope byte-for-byte when one is given', () => {
+      const md = buildNotesMarkdown(
+        'Case X',
+        '2026-08-24T00:00:00.000Z',
+        [
+          {
+            id: 'n1',
+            caseId: 'c1',
+            title: 'First finding',
+            body: 'Body text.',
+            captureId: 'cap-1',
+            createdAt: '2026-08-01T10:00:00.000Z',
+            updatedAt: '2026-08-02T11:00:00.000Z'
+          }
+        ],
+        { selectedCaptureCount: 1, caseCaptureCount: 4, omittedNoteCount: 3 }
+      )
+
+      expect(md).toBe(
+        '# Operator notes — Case X\n' +
+          '\n' +
+          'Exported 2026-08-24T00:00:00.000Z. 1 note.\n' +
+          '\n' +
+          'Operator work product: these notes were written by the operator in Birdbrain. They are\n' +
+          'not captured page content and are not anchored in the capture manifest chain.\n' +
+          '\n' +
+          "Selection-scoped export: this export covers 1 of the case's 4 captures, and this\n" +
+          'file holds the notes attached to them. 3 notes in the case are not included\n' +
+          'here: a note attached to a capture outside the selection, or to no capture at all, is\n' +
+          'left behind by the scope.\n' +
+          '\n' +
+          '---\n' +
+          '\n' +
+          '## First finding\n' +
+          '\n' +
+          '- Created: 2026-08-01T10:00:00.000Z\n' +
+          '- Updated: 2026-08-02T11:00:00.000Z\n' +
+          '- Attached to capture: cap-1\n' +
+          '\n' +
+          'Body text.\n'
+      )
+    })
+
+    it('reads a single omitted note in the singular', () => {
+      const md = buildNotesMarkdown('Case X', '2026-08-24T00:00:00.000Z', [], {
+        selectedCaptureCount: 2,
+        caseCaptureCount: 3,
+        omittedNoteCount: 1
+      })
+
+      expect(md).toContain('1 note in the case is not included')
+    })
+  })
+
+  // #985: a selection-scoped export ships the notes attached to the selected
+  // captures and nothing else, and says how many it left behind.
+  describe('notes follow the selection scope (#985)', () => {
+    const NOTES_INCLUDE: ExportOptions['include'] = {
+      captures: true,
+      screenshots: false,
+      auditTrail: true,
+      notes: true,
+      annotations: 'none'
+    }
+
+    async function seedTwoCapturesAndThreeNotes(): Promise<{
+      selected: { id: string }
+      unselected: { id: string }
+    }> {
+      const { capture: selected } = await ingest(
+        caseId,
+        '<html><body>Selected</body></html>',
+        'https://example.com/selected',
+        'Selected'
+      )
+      const { capture: unselected } = await ingest(
+        caseId,
+        '<html><body>Unselected</body></html>',
+        'https://example.com/unselected',
+        'Unselected'
+      )
+      createNote({
+        caseId,
+        captureId: selected.id,
+        title: 'Note on the selected capture',
+        body: 'about the exported page'
+      })
+      createNote({
+        caseId,
+        captureId: unselected.id,
+        title: 'Note on the unselected capture',
+        body: 'names an unrelated subject'
+      })
+      createNote({
+        caseId,
+        title: 'Unattached case note',
+        body: 'a hypothesis about a third party'
+      })
+      return { selected, unselected }
+    }
+
+    it('an Evidence Package ships only the selected captures notes', async () => {
+      const { selected } = await seedTwoCapturesAndThreeNotes()
+
+      const outputPath = join(tempDir, 'scoped-notes.zip')
+      await generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: NOTES_INCLUDE,
+          exportClass: 'evidence',
+          outputPath,
+          captureIds: [selected.id]
+        },
+        captureLifecycle
+      )
+
+      const notesMd = readStoredZipEntries(outputPath).get('notes.md')!.toString('utf-8')
+      expect(notesMd).toContain('## Note on the selected capture')
+      expect(notesMd).toContain('about the exported page')
+      // The two the selection withholds, body text included: the disclosure
+      // this ticket exists to stop is the note text, not just its title.
+      expect(notesMd).not.toContain('Note on the unselected capture')
+      expect(notesMd).not.toContain('names an unrelated subject')
+      expect(notesMd).not.toContain('Unattached case note')
+      expect(notesMd).not.toContain('a hypothesis about a third party')
+      // ...and the file says it is a subset rather than leaving the recipient
+      // to read one note as the case's whole work product.
+      expect(notesMd).toContain('Exported')
+      expect(notesMd).toContain('1 note.')
+      expect(notesMd).toContain('2 notes in the case are not included')
+    })
+
+    it('the certification counts the notes the package actually holds', async () => {
+      const { selected } = await seedTwoCapturesAndThreeNotes()
+
+      const outputPath = join(tempDir, 'scoped-notes-cert.zip')
+      await generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: NOTES_INCLUDE,
+          exportClass: 'evidence',
+          outputPath,
+          captureIds: [selected.id]
+        },
+        captureLifecycle
+      )
+
+      const certification = readStoredZipEntries(outputPath)
+        .get('certification.html')!
+        .toString('utf-8')
+      expect(certification).toContain('1 operator note')
+      expect(certification).not.toContain('3 operator notes')
+    })
+
+    it('the report states how many notes the scope left out', async () => {
+      const { selected } = await seedTwoCapturesAndThreeNotes()
+
+      const outputPath = join(tempDir, 'scoped-notes-report.zip')
+      await generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: NOTES_INCLUDE,
+          exportClass: 'evidence',
+          outputPath,
+          captureIds: [selected.id]
+        },
+        captureLifecycle
+      )
+
+      const report = readStoredZipEntries(outputPath).get('report.html')!.toString('utf-8')
+      expect(report).toContain('Selection-scoped export')
+      expect(report).toContain('<code>notes.md</code> follows the same scope')
+      expect(report).toContain('leaves out 2')
+    })
+
+    it('says nothing about notes in the report when the export excludes them', async () => {
+      const { selected } = await seedTwoCapturesAndThreeNotes()
+
+      const outputPath = join(tempDir, 'court-scoped.zip')
+      await generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: { ...NOTES_INCLUDE, notes: false },
+          exportClass: 'evidence',
+          outputPath,
+          captureIds: [selected.id]
+        },
+        captureLifecycle
+      )
+
+      const entries = readStoredZipEntries(outputPath)
+      expect([...entries.keys()]).not.toContain('notes.md')
+      const report = entries.get('report.html')!.toString('utf-8')
+      expect(report).toContain('Selection-scoped export')
+      expect(report).not.toContain('follows the same scope')
+    })
+
+    it('a scoped Working Copy scopes notes.md and counts it in the marker', async () => {
+      const { selected } = await seedTwoCapturesAndThreeNotes()
+
+      const outputPath = join(tempDir, 'scoped-working-copy.zip')
+      await generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: { ...NOTES_INCLUDE, auditTrail: false },
+          exportClass: 'working-copy',
+          outputPath,
+          captureIds: [selected.id]
+        },
+        captureLifecycle
+      )
+
+      const entries = readStoredZipEntries(outputPath)
+      const notesMd = entries.get('notes.md')!.toString('utf-8')
+      expect(notesMd).toContain('## Note on the selected capture')
+      expect(notesMd).not.toContain('Unattached case note')
+      // The Working Copy has no report and no certification, so the header is
+      // the only place its recipient can read the omission.
+      expect(notesMd).toContain('2 notes in the case are not included')
+
+      const marker = JSON.parse(entries.get('WORKING-COPY.json')!.toString('utf-8')) as {
+        contents: { noteCount: number }
+      }
+      expect(marker.contents.noteCount).toBe(1)
+    })
+
+    it('a whole-case export still ships every note, with no scope statement', async () => {
+      await seedTwoCapturesAndThreeNotes()
+
+      const outputPath = join(tempDir, 'whole-case-notes.zip')
+      await generateReport(
+        caseId,
+        { format: 'zip', include: NOTES_INCLUDE, exportClass: 'evidence', outputPath },
+        captureLifecycle
+      )
+
+      const entries = readStoredZipEntries(outputPath)
+      const notesMd = entries.get('notes.md')!.toString('utf-8')
+      expect(notesMd).toContain('## Note on the selected capture')
+      expect(notesMd).toContain('## Note on the unselected capture')
+      expect(notesMd).toContain('## Unattached case note')
+      expect(notesMd).toContain('3 notes.')
+      expect(notesMd).not.toContain('Selection-scoped export')
+
+      const certification = entries.get('certification.html')!.toString('utf-8')
+      expect(certification).toContain('3 operator notes')
+    })
   })
   // Known-answer tests for the mixed-kind package (#1156). The fixture Case is
   // the one shared with the package-verifier and built-binary tests, so all

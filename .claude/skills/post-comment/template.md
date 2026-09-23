@@ -5,6 +5,12 @@ this repository's tooling. Everything else (file paths, commit ids, tables, comm
 test output) goes inside a `<details>` block under a plain `<summary>`, the way CodeRabbit nests
 its review. Line caps count the top layer only.
 
+## Bot trigger (1 line, the command alone)
+
+```
+@coderabbitai full review
+```
+
 ## Cycle claim (3 lines, first line machine-read)
 
 ```

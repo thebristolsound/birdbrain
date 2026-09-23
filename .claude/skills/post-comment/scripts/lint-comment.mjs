@@ -8,6 +8,7 @@ import { parseLayers, plainLanguageFindings, summaryFindings } from '../../post-
 const GENERIC_CAP = 20
 const VERDICT_MAX_FINDINGS = 5
 const COMMIT_ID = /\b[0-9a-f]{7,40}\b/
+const BOT_TRIGGER = /^@(coderabbitai|codex) (review|full review|security review)$/
 const FORBIDDEN = [
   [/co-authored-by/i, 'a Co-authored-by trailer'],
   [/Generated (with|by) \[Claude Code\]/, 'the platform attribution footer'],
@@ -18,6 +19,9 @@ const FORBIDDEN = [
 // marks a first line a script reads back (cleanup.sh, the override hygiene check), which is
 // exempt from the plain-language check. `details` is 'required', 'optional' or 'none'.
 const KINDS = [
+  // A review-bot trigger is the command alone: the bot reads it back, so it is
+  // exempt from the plain-language check and from the CodeRabbit-text rule.
+  { name: 'bot trigger', first: BOT_TRIGGER, cap: 1, machineFirst: true, details: 'none' },
   { name: 'cycle claim', first: /^Cycle claim: PR #\d+$/, cap: 3, machineFirst: true, details: 'optional' },
   { name: 'cycle release', first: /^Cycle release: PR #\d+$/, cap: 2, machineFirst: true, details: 'none' },
   {
@@ -95,7 +99,10 @@ export function lintComment(raw) {
   while (all.length && all[0].trim() === '') all.shift()
   if (!all.length) return ['comment is empty']
 
+  const first = all[0].trim()
+  const kind = KINDS.find((k) => k.first.test(first))
   for (const [re, what] of FORBIDDEN) {
+    if (kind && kind.name === 'bot trigger' && what === 'CodeRabbit text') continue
     if (re.test(text)) findings.push(`comment contains ${what}`)
   }
 
@@ -104,8 +111,6 @@ export function lintComment(raw) {
   const top = layers.visible
   const blocks = layers.blocks
 
-  const first = all[0].trim()
-  const kind = KINDS.find((k) => k.first.test(first))
   if (!kind && VERDICT_LOOKALIKE.test(first)) {
     findings.push('a verdict first line is "**Review verdict: approve for human review**" or "**Review verdict: request changes**"; the commit id goes in the full report')
   }

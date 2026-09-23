@@ -30,6 +30,7 @@ checked as top layer.
 
 | kind | first line | top-layer cap | detail | rule |
 |---|---|---|---|---|
+| bot trigger | `@coderabbitai review`, `@coderabbitai full review`, `@codex review`, `@codex security review` | 1 line | none | the command alone; exempt from the CodeRabbit-text rule |
 | cycle claim | `Cycle claim: PR #<n>` | 3 lines | optional | which action is claimed |
 | cycle release | `Cycle release: PR #<n>` | 2 lines | none | none |
 | pre-pass verdict | `**Review verdict: <verdict>**` | 10 lines | required | at most 5 numbered findings, one plain sentence each; the block's summary starts `Full report` and names the reviewed commit id |
@@ -44,6 +45,7 @@ line instead. It never goes in the open and never as a second comment.
 
 The two cycle first lines and the override record's first line are read back by scripts
 (`cleanup.sh`, the override hygiene check), so they are exempt from the plain-language check.
+A bot trigger is read back by the review bot it names, so it is exempt the same way.
 
 Rules for every kind:
 

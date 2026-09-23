@@ -10,12 +10,17 @@ import type {
 } from '@shared/ipc'
 import { getDb, type ImportCtx } from '@main/services/db/core'
 
+// The wire shape of a Tag is these three columns. `tags` also carries the
+// Shared Case sync columns since v35 (#1510), which are storage and never
+// part of what the renderer receives.
+const TAG_COLUMNS = 'id, name, color'
+
 export function listTags(): Tag[] {
-  return getDb().prepare('SELECT * FROM tags ORDER BY name').all() as Tag[]
+  return getDb().prepare(`SELECT ${TAG_COLUMNS} FROM tags ORDER BY name`).all() as Tag[]
 }
 
 export function getTag(id: string): Tag | undefined {
-  return getDb().prepare('SELECT * FROM tags WHERE id = ?').get(id) as Tag | undefined
+  return getDb().prepare(`SELECT ${TAG_COLUMNS} FROM tags WHERE id = ?`).get(id) as Tag | undefined
 }
 
 export function createTag(params: CreateTagParams): Tag {
@@ -27,13 +32,14 @@ export function createTag(params: CreateTagParams): Tag {
 }
 
 export function updateTag(params: UpdateTagParams): Tag | undefined {
-  const existing = getDb().prepare('SELECT * FROM tags WHERE id = ?').get(params.id) as
-    Tag | undefined
+  const existing = getDb()
+    .prepare(`SELECT ${TAG_COLUMNS} FROM tags WHERE id = ?`)
+    .get(params.id) as Tag | undefined
   if (!existing) return undefined
   getDb()
     .prepare('UPDATE tags SET name = ?, color = ? WHERE id = ?')
     .run(params.name ?? existing.name, params.color ?? existing.color ?? null, params.id)
-  return getDb().prepare('SELECT * FROM tags WHERE id = ?').get(params.id) as Tag
+  return getDb().prepare(`SELECT ${TAG_COLUMNS} FROM tags WHERE id = ?`).get(params.id) as Tag
 }
 
 export function deleteTag(id: string): boolean {
@@ -144,8 +150,10 @@ export function mergeTags(params: MergeTagsParams): MergeTagsResult | undefined 
   if (sourceId === targetId) return undefined
   const d = getDb()
   const run = d.transaction((): MergeTagsResult | undefined => {
-    const source = d.prepare('SELECT * FROM tags WHERE id = ?').get(sourceId) as Tag | undefined
-    const target = d.prepare('SELECT * FROM tags WHERE id = ?').get(targetId) as Tag | undefined
+    const source = d.prepare(`SELECT ${TAG_COLUMNS} FROM tags WHERE id = ?`).get(sourceId) as
+      Tag | undefined
+    const target = d.prepare(`SELECT ${TAG_COLUMNS} FROM tags WHERE id = ?`).get(targetId) as
+      Tag | undefined
     if (!source || !target) return undefined
     d.prepare(
       `INSERT OR IGNORE INTO exhibit_tags (exhibit_id, tag_id)
@@ -213,7 +221,7 @@ export function removeTagFromNote(params: NoteTagParams): void {
 export function getTagsForNote(noteId: string): Tag[] {
   return getDb()
     .prepare(
-      `SELECT t.* FROM tags t
+      `SELECT t.id, t.name, t.color FROM tags t
        JOIN note_tags nt ON t.id = nt.tag_id
        WHERE nt.note_id = ?
        ORDER BY t.name`
@@ -224,7 +232,7 @@ export function getTagsForNote(noteId: string): Tag[] {
 export function getTagsForCapture(captureId: string): Tag[] {
   return getDb()
     .prepare(
-      `SELECT t.* FROM tags t
+      `SELECT t.id, t.name, t.color FROM tags t
        JOIN exhibit_tags ct ON t.id = ct.tag_id
        WHERE ct.exhibit_id = ?
        ORDER BY t.name`

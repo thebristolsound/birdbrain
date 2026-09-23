@@ -3,6 +3,7 @@ import { createReadStream } from 'fs'
 import { ManifestEntrySchema } from '@shared/schemas'
 import type { ManifestEntry } from '@shared/schemas'
 import { getExhibit, listExhibits } from '@main/services/db/exhibitRepo'
+import { exhibitCitationResolver } from '@main/services/db/caseMemberRepo'
 import {
   listDerivedFilesForCase,
   listDerivedFilesForExhibit
@@ -48,6 +49,7 @@ export function getCaseInventory(
   store: CaptureStore = defaultCaptureStore
 ): CaseInventory {
   const rows: InventoryRow[] = []
+  const cite = exhibitCitationResolver(caseId, 'app')
 
   for (const exhibit of listExhibits(caseId)) {
     const row: InventoryExhibitRow = {
@@ -58,6 +60,7 @@ export function getCaseInventory(
       kind: exhibit.kind,
       origin: exhibit.origin,
       exhibitNumber: exhibit.exhibitNumber,
+      citation: cite(exhibit),
       name: exhibit.name,
       contentHash: exhibit.contentHash,
       path: exhibit.path,

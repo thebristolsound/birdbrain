@@ -190,9 +190,9 @@ describe('exhibit model', () => {
     it('creates the three tables, retargets the tag relation and drops the old one', () => {
       const db = getDb()
       const tables = (
-        db
-          .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
-          .all() as Array<{ name: string }>
+        db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{
+          name: string
+        }>
       ).map((row) => row.name)
       expect(tables).toEqual(expect.arrayContaining(['exhibits', 'derived_files', 'staging_files']))
       expect(tables).toContain('exhibit_tags')
@@ -212,7 +212,9 @@ describe('exhibit model', () => {
         'path',
         'size_bytes',
         'committed_at',
-        'manifest_seq'
+        'manifest_seq',
+        'member_code',
+        'author_installation_id'
       ])
       expect(columns('derived_files')).toEqual([
         'id',
@@ -237,7 +239,14 @@ describe('exhibit model', () => {
         'source_url',
         'source_claims'
       ])
-      expect(columns('exhibit_tags')).toEqual(['exhibit_id', 'tag_id'])
+      expect(columns('exhibit_tags')).toEqual([
+        'exhibit_id',
+        'tag_id',
+        'author_installation_id',
+        'version',
+        'deleted_at',
+        'row_signature'
+      ])
     })
 
     it('refuses a second Exhibit with the same number in a case', () => {
@@ -288,6 +297,16 @@ describe('exhibit model', () => {
     function windBackToV33(dbPath: string): void {
       const raw = new Database(dbPath)
       raw.pragma('foreign_keys = OFF')
+      // v35 first (#1510): the roster table and the per-author columns, so
+      // the v34 and v35 blocks both run again against a real v33 shape.
+      raw.exec('DROP TABLE case_members')
+      for (const table of ['notes', 'annotations', 'tags', 'note_tags']) {
+        for (const column of ['author_installation_id', 'version', 'deleted_at', 'row_signature']) {
+          raw.exec(`ALTER TABLE ${table} DROP COLUMN ${column}`)
+        }
+      }
+      raw.exec('ALTER TABLE cases DROP COLUMN shared_at')
+      raw.exec('ALTER TABLE cases DROP COLUMN owner_installation_id')
       raw.exec(`
         CREATE TABLE capture_tags (
           capture_id TEXT NOT NULL,
@@ -347,7 +366,13 @@ describe('exhibit model', () => {
       }))
       expect(assigned).toEqual([
         { id: 'cap-first', exhibitNumber: 1, manifestSeq: 2, kind: 'capture', origin: 'extension' },
-        { id: 'cap-second', exhibitNumber: 2, manifestSeq: 5, kind: 'capture', origin: 'extension' },
+        {
+          id: 'cap-second',
+          exhibitNumber: 2,
+          manifestSeq: 5,
+          kind: 'capture',
+          origin: 'extension'
+        },
         {
           id: 'cap-legacy',
           exhibitNumber: 3,
@@ -797,13 +822,18 @@ describe('exhibit model', () => {
       const snapshot = getManifestSnapshot(caseId)
 
       expect(snapshot.caseId).toBe(caseId)
-      expect(snapshot.entries.map((entry) => (entry.parsed ? entry.entry.type : 'unparsed'))).toEqual(
-        ['capture', 'renumber']
-      )
+      expect(
+        snapshot.entries.map((entry) => (entry.parsed ? entry.entry.type : 'unparsed'))
+      ).toEqual(['capture', 'renumber'])
       expect(snapshot.chain).toEqual({ valid: true })
       expect(snapshot.head?.index).toBe(1)
       expect(snapshot.signers).toEqual([
-        { fromIndex: 0, toIndex: 1, fingerprint: spkiFingerprint(getPublicKeyPem()), source: 'local' }
+        {
+          fromIndex: 0,
+          toIndex: 1,
+          fingerprint: spkiFingerprint(getPublicKeyPem()),
+          source: 'local'
+        }
       ])
     })
 
@@ -875,10 +905,7 @@ describe('exhibit model', () => {
         timestamp: '2026-04-05T12:00:00.000Z'
       })
       const path = join(caseDir, MANIFEST_FILENAME)
-      writeFileSync(
-        path,
-        readFileSync(path, 'utf-8').replace('unsigned-signers', 'something-else')
-      )
+      writeFileSync(path, readFileSync(path, 'utf-8').replace('unsigned-signers', 'something-else'))
 
       const snapshot = getManifestSnapshot(caseId)
 

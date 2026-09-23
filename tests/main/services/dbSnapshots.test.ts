@@ -48,6 +48,9 @@ function seedLegacyDb(dbPath: string): void {
     CREATE TABLE selectors (id TEXT PRIMARY KEY, case_id TEXT NOT NULL, pattern TEXT NOT NULL,
       is_regex INTEGER DEFAULT 0, enabled INTEGER DEFAULT 1, label TEXT, created_at TEXT NOT NULL);
     CREATE TABLE tags (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, color TEXT);
+    CREATE TABLE annotations (capture_id TEXT PRIMARY KEY, schema_version INTEGER NOT NULL,
+      shapes_json TEXT NOT NULL, image_width INTEGER NOT NULL, image_height INTEGER NOT NULL,
+      updated_at TEXT NOT NULL, updated_by TEXT);
     CREATE TABLE capture_tags (capture_id TEXT NOT NULL REFERENCES captures(id) ON DELETE CASCADE,
       tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE, PRIMARY KEY (capture_id, tag_id));
     CREATE VIRTUAL TABLE captures_fts USING fts5(title, url, content);

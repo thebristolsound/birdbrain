@@ -24,8 +24,7 @@ export function listCases(): Case[] {
 
 export function getCase(id: string): Case | undefined {
   const row = getDb().prepare('SELECT * FROM cases WHERE id = ?').get(id) as
-    | Record<string, unknown>
-    | undefined
+    Record<string, unknown> | undefined
   return row ? rowToCase(row) : undefined
 }
 
@@ -55,7 +54,7 @@ export function updateCase(params: UpdateCaseParams): Case | undefined {
       // case number is "never assigned", not a value (#399).
       params.caseNumber !== undefined
         ? params.caseNumber.trim() || null
-        : existing.caseNumber ?? null,
+        : (existing.caseNumber ?? null),
       params.archived !== undefined ? (params.archived ? 1 : 0) : existing.archived ? 1 : 0,
       now,
       params.id
@@ -171,6 +170,8 @@ function rowToCase(row: Record<string, unknown>): Case {
     type: (row.type as Case['type']) || 'custom',
     caseNumber: (row.case_number as string) || undefined,
     isDemo: row.is_demo === 1,
+    sharedAt: (row.shared_at as string) || undefined,
+    ownerInstallationId: (row.owner_installation_id as string) || undefined,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
     archived: row.archived === 1
@@ -184,8 +185,7 @@ function rowToCase(row: Record<string, unknown>): Case {
 
 export function collectCaseRow(caseId: string): Record<string, unknown> {
   const row = getDb().prepare('SELECT * FROM cases WHERE id = ?').get(caseId) as
-    | Record<string, unknown>
-    | undefined
+    Record<string, unknown> | undefined
   if (!row) throw new Error(`Case not found: ${caseId}`)
   return row
 }

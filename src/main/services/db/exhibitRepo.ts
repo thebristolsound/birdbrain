@@ -17,6 +17,8 @@ interface ExhibitRow {
   size_bytes: number | null
   committed_at: string
   manifest_seq: number | null
+  member_code: string | null
+  author_installation_id: string | null
 }
 
 function toExhibit(row: ExhibitRow): Exhibit {
@@ -31,7 +33,9 @@ function toExhibit(row: ExhibitRow): Exhibit {
     path: row.path,
     sizeBytes: row.size_bytes,
     committedAt: row.committed_at,
-    manifestSeq: row.manifest_seq
+    manifestSeq: row.manifest_seq,
+    memberCode: row.member_code,
+    authorInstallationId: row.author_installation_id
   }
 }
 
@@ -244,8 +248,9 @@ export function importExhibitRows(rows: Record<string, unknown>[], ctx: ImportCt
   const insert = getDb().prepare(
     `INSERT INTO exhibits (
        id, case_id, kind, origin, exhibit_number, name,
-       content_hash, path, size_bytes, committed_at, manifest_seq
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       content_hash, path, size_bytes, committed_at, manifest_seq,
+       member_code, author_installation_id
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
   for (const row of rows) {
     const oldId = row.id as string
@@ -262,7 +267,11 @@ export function importExhibitRows(rows: Record<string, unknown>[], ctx: ImportCt
       oldPath ? rerootPath(oldPath, ctx.newCaseId, oldId, newId) : null,
       row.size_bytes ?? null,
       row.committed_at,
-      row.manifest_seq ?? null
+      row.manifest_seq ?? null,
+      // Pre-#1510 archives carry neither column; NULL is "this installation",
+      // which is what an import from a single-member Case is.
+      row.member_code ?? null,
+      row.author_installation_id ?? null
     )
   }
 }

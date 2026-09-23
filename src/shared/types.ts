@@ -21,9 +21,29 @@ export interface Case {
    * never handed over as evidence by accident.
    */
   isDemo: boolean
+  // Set when the Case became a Shared Case (#1510); absent for a Case nobody
+  // shared. `ownerInstallationId` names whose chain carries the roster.
+  sharedAt?: string
+  ownerInstallationId?: string
   createdAt: string
   updatedAt: string
   archived: boolean
+}
+
+// One row of a Shared Case's roster cache (#1510): the `member-add` entry in
+// the Owner's chain as the screens read it. Derived from the chain, never
+// authoritative; `revokedAtIndex` is the `member-revoke` entry's index when
+// the member was revoked.
+export interface CaseMember {
+  caseId: string
+  installationId: string
+  publicKeyPem: string
+  memberCode: string
+  operatorName: string
+  nodeId: string
+  role: 'owner' | 'member'
+  addedAtIndex: number
+  revokedAtIndex: number | null
 }
 
 // How a case's own exclusion list relates to the operator's global ignore list
@@ -111,6 +131,12 @@ export interface Capture {
   // Forensic MHTML fields (populated for format='mhtml', undefined for legacy 'html')
   format: CaptureFormat
   method: CaptureMethod
+  // The Capture's Exhibit Number and its citation as the app writes it
+  // (`NK-12` in a Shared Case with more than one member, `12` otherwise).
+  // Joined from `exhibits` by the list and single reads; absent from batch
+  // reads that never show one.
+  exhibitNumber?: number
+  exhibitCitation?: string
   // Set when this capture was created by "Recapture" of an existing capture.
   // The original is never touched — linked sibling, both fully visible.
   supersedesCaptureId?: string
@@ -1093,8 +1119,16 @@ export interface Exhibit {
   kind: string
   origin: string
   // Sequential per-Case integer, assigned at commit (at ingest for Captures)
-  // and recorded in the Manifest Entry so a citation is verifiable (X18).
+  // and recorded in the Manifest Entry so a citation is verifiable (X18). In a
+  // Shared Case the sequence is per member (decision 7).
   exhibitNumber: number
+  // Shared Case attribution (#1510). Both null for a row this installation
+  // committed: the local member's code comes from the roster at read time, so
+  // a Case that becomes shared later never rewrites a row. A row received from
+  // another member carries that member's installation id and the code it was
+  // received under.
+  memberCode: string | null
+  authorInstallationId: string | null
   // The original or display name, recorded — never derived from the storage
   // path (X35).
   name: string
@@ -1168,6 +1202,10 @@ export interface InventoryExhibitRow extends InventoryRowCommon {
   kind: string
   origin: string
   exhibitNumber: number
+  // The number as the app cites it: `NK-12` in a Shared Case with more than
+  // one member, `12` otherwise (decision 7). Resolved in the main process;
+  // the renderer prints it and never builds it.
+  citation: string
   committedAt: string
   manifestSeq: number | null
   // manifestSeq !== null. Stated as its own field so a consumer never has to

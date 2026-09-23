@@ -213,3 +213,22 @@ above about MCP writes remain accurate for non-dispatch work.
   as the machine account over HTTPS, and commit author and committer are set to it.
 - Serena is not installed. Project MCP servers are disabled for the cycle.
 - The end-of-cycle report lands in the run's step summary; the raw result is a run artifact.
+- A credential step probes `CLAUDE_CODE_OAUTH_TOKEN` with one Haiku call before the toolchain
+  installs, and reads the optional variable `CLAUDE_CODE_OAUTH_TOKEN_EXPIRES` (YYYY-MM-DD)
+  the way the identity step reads the GitHub token's date. A token that is rejected or past
+  its date fails the fire in under a minute.
+
+## The health workflow
+
+`.github/workflows/health.yml` runs daily at 06:20 UTC and on demand. It checks both
+credentials (rejected, wrong login, expired, or within 14 days of the expiry variable) and the
+scheduled run history of `dispatch.yml`, `doc-curator.yml` and `stale-agent-issues.yml` (two
+or more consecutive scheduled runs without a success). Any finding opens one issue labelled
+`health-alert` and `process`, assigned to the repository owner, and fails the run; the issue is
+rewritten on every later run, gets a comment when the findings change, and closes itself on
+the first clean run. Scripts live in `.github/scripts/health/`; `claude-token.sh` is the same
+probe the dispatch workflow runs.
+
+Rotating the Claude token: `claude setup-token` on the subscription account, then
+`gh secret set CLAUDE_CODE_OAUTH_TOKEN --body "$(cat file)"` (the substitution strips the
+trailing newline a pasted token carries; a stored newline is a 401) and `gh variable set CLAUDE_CODE_OAUTH_TOKEN_EXPIRES --body YYYY-MM-DD`.

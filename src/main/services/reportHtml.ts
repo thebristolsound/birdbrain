@@ -1011,8 +1011,10 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
         ? ` The enclosed <code>notes.md</code> follows the same scope: it holds the operator notes
     attached to the selected captures, and leaves out ${data.selectionScope.omittedNoteCount}
     note${data.selectionScope.omittedNoteCount === 1 ? '' : 's'} the case holds. A note attached
-    to a capture outside the selection, or to no capture at all, is left behind by the scope;
-    the number is stated here so the file is not read as the operator's complete work product.`
+    to no capture, or to a capture outside the selection, is left behind by the scope, as is a
+    note attached to a selected capture that also points at another of the case's captures this
+    export leaves out; the number is stated here so the file is not read as the operator's
+    complete work product.`
         : ''
     }${
       packaged

@@ -18,7 +18,12 @@ import { execFileSync } from 'child_process'
 import sharp from 'sharp'
 import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase, updateCase } from '@main/services/db/caseRepo'
-import { insertCapture, listCaptures, setCaptureTrustedTime } from '@main/services/db/captureRepo'
+import {
+  deleteCapture,
+  insertCapture,
+  listCaptures,
+  setCaptureTrustedTime
+} from '@main/services/db/captureRepo'
 import { listExhibits } from '@main/services/db/exhibitRepo'
 import { listDerivedFilesForCase } from '@main/services/db/derivedFileRepo'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
@@ -41,7 +46,8 @@ import {
   verifyCaptures,
   generateReport,
   getExportPreflight,
-  buildNotesMarkdown
+  buildNotesMarkdown,
+  noteTravelsWithSelection
 } from '@main/services/export'
 import { createNote } from '@main/services/db/noteRepo'
 import { saveAnnotations, upsertPin, deletePin } from '@main/services/annotations'
@@ -2801,8 +2807,9 @@ describe('export', () => {
           '\n' +
           "Selection-scoped export: this export covers 1 of the case's 4 captures, and this\n" +
           'file holds the notes attached to them. 3 notes in the case are not included\n' +
-          'here: a note attached to a capture outside the selection, or to no capture at all, is\n' +
-          'left behind by the scope.\n' +
+          'here: a note attached to no capture, or to a capture outside the selection, is left\n' +
+          'behind by the scope, and so is a note attached to a selected capture that also points\n' +
+          "at another of the case's captures this export leaves out.\n" +
           '\n' +
           '---\n' +
           '\n' +
@@ -3085,16 +3092,21 @@ describe('export', () => {
     // own case, and the archive importer and the Database Admin hatch both
     // write anchor_json without touching capture_id. The scope reads both and
     // requires both, so neither direction can go wrong unnoticed.
-    it('ships a note anchored to a selected capture that has no capture_id', async () => {
+    // Attachment is `capture_id` (maintainer correction, 2026-08-31), so an
+    // anchor on its own does not carry a note into the package. The direction
+    // matters: this is the shape the predicate withholds and a `capture_id`
+    // reading would ship, which is why it is pinned rather than left to the
+    // subset property below.
+    it('withholds a note that names no capture, whatever its anchor points at', async () => {
       const { selected } = await seedTwoCapturesAndThreeNotes()
       createNote({
         caseId,
         title: 'Anchored to the selected capture',
-        body: 'travels on its anchor alone',
+        body: 'carries no capture_id',
         anchor: JSON.stringify({ kind: 'capture', captureId: selected.id })
       })
 
-      const outputPath = join(tempDir, 'anchor-only-included.zip')
+      const outputPath = join(tempDir, 'anchor-only-withheld-null-row.zip')
       await generateReport(
         caseId,
         {
@@ -3108,13 +3120,89 @@ describe('export', () => {
       )
 
       const notesMd = readStoredZipEntries(outputPath).get('notes.md')!.toString('utf-8')
-      expect(notesMd).toContain('## Anchored to the selected capture')
-      expect(notesMd).toContain('travels on its anchor alone')
-      // The attachment it travelled on is printed, so the file never shows a
-      // note with no stated tie to the selection its header claims to cover.
-      expect(notesMd).toContain(`- Anchored to capture: ${selected.id}`)
-      expect(notesMd).toContain('2 notes.')
-      expect(notesMd).toContain('2 notes in the case are not included')
+      expect(notesMd).not.toContain('Anchored to the selected capture')
+      expect(notesMd).not.toContain('carries no capture_id')
+      expect(notesMd).toContain('1 note.')
+      expect(notesMd).toContain('3 notes in the case are not included')
+    })
+
+    // `notes.capture_id` is ON DELETE SET NULL while `anchor_json` is plain
+    // TEXT that keeps the deleted id, so a stale anchor is a dangling pointer
+    // rather than a statement about the selection. Treating it as one would
+    // withhold the note from every scoped export, including select-all, and
+    // the header would attribute the omission to a capture the case no longer
+    // holds.
+    it('ships a note whose anchor names a capture the case no longer holds', async () => {
+      const { selected, unselected } = await seedTwoCapturesAndThreeNotes()
+      createNote({
+        caseId,
+        captureId: selected.id,
+        title: 'Anchor outlived its capture',
+        body: 'attached to the exported page',
+        anchor: JSON.stringify({ kind: 'capture', captureId: unselected.id })
+      })
+      expect(deleteCapture(unselected.id)).toBe(true)
+
+      const outputPath = join(tempDir, 'stale-anchor-included.zip')
+      await generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: NOTES_INCLUDE,
+          exportClass: 'evidence',
+          outputPath,
+          captureIds: [selected.id]
+        },
+        captureLifecycle
+      )
+
+      const notesMd = readStoredZipEntries(outputPath).get('notes.md')!.toString('utf-8')
+      expect(notesMd).toContain('## Anchor outlived its capture')
+      expect(notesMd).toContain(`- Attached to capture: ${selected.id}`)
+      expect(notesMd).toContain(`- Anchored to capture: ${unselected.id}`)
+    })
+
+    // The claim the predicate's docblock makes, pinned as a test rather than
+    // asserted in prose: against both live candidate answers to maintainer
+    // question 1 of 2026-08-31, this predicate ships a subset. It withholds
+    // where they ship and never the reverse, so answering the question cannot
+    // turn a package already exported under it into an over-disclosure.
+    it('ships a subset of both candidate answers to the open scope question', () => {
+      const selected = new Set(['cap-in'])
+      const inCase = new Set(['cap-in', 'cap-out'])
+      const base = {
+        id: 'n1',
+        caseId: 'c1',
+        title: 't',
+        body: 'b',
+        createdAt: '2026-08-01T10:00:00.000Z',
+        updatedAt: '2026-08-01T10:00:00.000Z'
+      }
+      const pointers = [undefined, 'cap-in', 'cap-out', 'cap-deleted']
+      const shapes: Note[] = pointers.flatMap((captureId) =>
+        pointers.map((anchored) => ({
+          ...base,
+          ...(captureId === undefined ? {} : { captureId }),
+          ...(anchored === undefined
+            ? {}
+            : { anchor: { kind: 'capture' as const, captureId: anchored } })
+        }))
+      )
+      // (B) read the row pointer; (C) read either pointer. The third candidate,
+      // reading the anchor alone, was withdrawn on 2026-08-31 as one that ships
+      // an empty notes.md for every export the shipped interface can produce.
+      const readsRowPointer = (note: Note): boolean =>
+        note.captureId !== undefined && selected.has(note.captureId)
+      const readsEitherPointer = (note: Note): boolean =>
+        (note.captureId !== undefined && selected.has(note.captureId)) ||
+        (note.anchor !== undefined && selected.has(note.anchor.captureId))
+
+      const shipped = shapes.filter((note) => noteTravelsWithSelection(note, selected, inCase))
+      expect(shipped.length).toBeGreaterThan(0)
+      for (const note of shipped) {
+        expect(readsRowPointer(note)).toBe(true)
+        expect(readsEitherPointer(note)).toBe(true)
+      }
     })
 
     it('withholds a note whose anchor points outside the selection', async () => {

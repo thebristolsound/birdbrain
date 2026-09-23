@@ -298,39 +298,49 @@ export function getExportPreflight(caseId: string, captureIds?: string[]): Expor
 }
 
 /**
- * Every Capture a note points at (#985).
+ * Whether a note travels with a selection export (#985).
  *
- * A note carries two independent pointers. `capture_id` is the column the app
- * lists a Capture's notes by; `anchor` is the structured pointer, and all four
- * anchor kinds embed a `captureId`. Four write paths set `notes.anchor_json` —
- * `createNote`, `updateNote`, the archive importer and the Database Admin
- * hatch — and `assertAnchorInCase` requires only that the anchored Capture
- * belong to the note's own Case, so a stored row may legitimately carry an
- * anchor and a NULL `capture_id`, or two pointers naming different Captures.
- * Neither shape is a corruption to be ignored.
- */
-function noteCaptureIds(note: Note): string[] {
-  const ids: string[] = []
-  if (note.captureId !== undefined) ids.push(note.captureId)
-  if (note.anchor !== undefined) ids.push(note.anchor.captureId)
-  return ids
-}
-
-/**
- * Whether a note travels with a selection export (#985): it points at at least
- * one Capture, and every Capture it points at is in the selection.
+ * A note carries two independent pointers at a Capture. `capture_id` is the
+ * column the app itself lists a Capture's notes by (`CaptureDetailsPanel`);
+ * `anchor` is the structured pointer, and all four anchor kinds embed a
+ * `captureId`. Four write paths set `notes.anchor_json` — `createNote`,
+ * `updateNote`, the archive importer and the Database Admin hatch — and
+ * `assertAnchorInCase` requires only that the anchored Capture belong to the
+ * note's own Case, so a stored row may carry an anchor and a NULL
+ * `capture_id`, or two pointers naming different Captures. Neither shape is a
+ * corruption to be ignored.
  *
- * Which single pointer the scope rule should read is maintainer question 1 of
- * 2026-08-31 and is still open. Requiring all of them is the intersection of
- * every candidate answer, so this predicate can never ship a note that the
- * answer, once given, would have withheld — and the subset statement notes.md
- * and report.html carry is true under it in both directions: nothing here is
- * attached outside the selection, and nothing omitted was attached wholly
- * inside it.
+ * Attachment is `capture_id`, per the maintainer correction of 2026-08-31,
+ * which names that column as the app's own definition of a Capture's notes and
+ * withdraws the anchor-only reading as one that would ship an empty notes.md
+ * for every export the shipped interface can produce. The anchor is read, but
+ * only to withhold: a note attached to a selected Capture that also points at
+ * another of the Case's Captures the export leaves out does not travel, which
+ * is the 2026-08-30 ruling's own ground — a note that names a withheld Capture
+ * discloses what the selection was drawn to withhold.
+ *
+ * An anchor naming a Capture the Case no longer holds is ignored rather than
+ * treated as outside the selection. `notes.capture_id` is `ON DELETE SET NULL`
+ * while `anchor_json` is plain TEXT that keeps the deleted id, so a stale
+ * anchor is a dangling pointer, not a statement about the selection.
+ *
+ * The predicate is a strict subset of both live candidate answers to
+ * maintainer question 1 — read `capture_id`, or read either pointer — so every
+ * note it withholds that those answers would ship is withheld, and it ships
+ * nothing either of them would hold back. `notes follow the selection scope`
+ * pins that property against both predicates rather than leaving it asserted
+ * here. It is not a subset of the withdrawn anchor-only reading, and it does
+ * not settle the question: answering it narrows or widens this one expression.
  */
-function noteTravelsWithSelection(note: Note, selectedCaptureIds: ReadonlySet<string>): boolean {
-  const pointers = noteCaptureIds(note)
-  return pointers.length > 0 && pointers.every((id) => selectedCaptureIds.has(id))
+export function noteTravelsWithSelection(
+  note: Note,
+  selectedCaptureIds: ReadonlySet<string>,
+  caseCaptureIds: ReadonlySet<string>
+): boolean {
+  if (note.captureId === undefined || !selectedCaptureIds.has(note.captureId)) return false
+  const anchored = note.anchor?.captureId
+  if (anchored === undefined || !caseCaptureIds.has(anchored)) return true
+  return selectedCaptureIds.has(anchored)
 }
 
 export async function generateReport(
@@ -375,16 +385,20 @@ export async function generateReport(
   // "notes were excluded".
   //
   // Scoped with the Exhibits on a selection export (#985, maintainer ruling
-  // 2026-08-30): a note travels only when every Capture it points at is in the
-  // selection, and a note that points at no Capture is left behind even though
-  // the Case holds it. An unattached note can name a Capture the operator
-  // deliberately excluded, so shipping every one of them discloses the very
-  // thing the selection was drawn to withhold.
+  // 2026-08-30): a note travels only when it is attached to a selected Capture,
+  // and a note attached to no Capture is left behind even though the Case holds
+  // it. An unattached note can name a Capture the operator deliberately
+  // excluded, so shipping every one of them discloses the very thing the
+  // selection was drawn to withhold. See `noteTravelsWithSelection` for which
+  // pointer counts as the attachment and what the anchor does.
   const caseNotes = options.include.notes ? noteRepo.listNotes(caseId) : null
   const selectedCaptureIds = new Set(captures.map((capture) => capture.id))
+  const caseCaptureIds = new Set(allCaptures.map((capture) => capture.id))
   const notes =
     caseNotes !== null && scoped
-      ? caseNotes.filter((note) => noteTravelsWithSelection(note, selectedCaptureIds))
+      ? caseNotes.filter((note) =>
+          noteTravelsWithSelection(note, selectedCaptureIds, caseCaptureIds)
+        )
       : caseNotes
   // Stated rather than left to be counted, exactly as the excluded-Exhibit count
   // is: without it a notes.md holding three of the Case's ten notes reads as the
@@ -1588,8 +1602,9 @@ export function buildNotesMarkdown(
           `file holds the notes attached to them. ${scope.omittedNoteCount} ` +
             `note${scope.omittedNoteCount === 1 ? '' : 's'} in the case ` +
             `${scope.omittedNoteCount === 1 ? 'is' : 'are'} not included`,
-          'here: a note attached to a capture outside the selection, or to no capture at all, is',
-          'left behind by the scope.'
+          'here: a note attached to no capture, or to a capture outside the selection, is left',
+          'behind by the scope, and so is a note attached to a selected capture that also points',
+          "at another of the case's captures this export leaves out."
         ]
       : [])
   ]
@@ -1598,12 +1613,12 @@ export function buildNotesMarkdown(
       `- Created: ${note.createdAt}`,
       `- Updated: ${note.updatedAt}`,
       ...(note.captureId ? [`- Attached to capture: ${note.captureId}`] : []),
-      // The anchor is a second, independent pointer at a Capture, and it is
-      // one of the two the selection scope reads (#985), so a recipient has to
-      // be able to see it — otherwise a note that travelled on the strength of
-      // its anchor alone would show no attachment at all under a header saying
-      // the file holds the notes attached to the selected captures. Printed
-      // only when it names a Capture the line above does not.
+      // The anchor is a second, independent pointer at a Capture, and the
+      // selection scope reads it to withhold (#985), so a recipient has to be
+      // able to see it: on a scoped package it is either a second selected
+      // Capture or a Capture the Case no longer holds, and in both cases the
+      // reader can only reconcile the note against the header by reading it.
+      // Printed only when it names a Capture the line above does not.
       ...(note.anchor && note.anchor.captureId !== note.captureId
         ? [`- Anchored to capture: ${note.anchor.captureId}`]
         : []),

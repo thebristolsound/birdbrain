@@ -1,5 +1,4 @@
 import { join } from 'path'
-import { app } from 'electron'
 import * as captureRepo from '@main/services/db/captureRepo'
 import * as caseRepo from '@main/services/db/caseRepo'
 import { getExhibit, listExhibits } from '@main/services/db/exhibitRepo'
@@ -14,6 +13,7 @@ import { requestTimestamp } from '@main/services/timestamp'
 import { parseTimestampToken } from '@shared/verify'
 import { getSettings } from '@main/services/settings'
 import { getStorageRoot } from '@main/services/storage'
+import { resolveToolVersion } from '@main/services/toolVersion'
 import { getInstallationId } from '@main/services/installationId'
 import { DEFAULT_TSA_URL } from '@shared/constants'
 import { logger } from '@main/services/logger'
@@ -46,10 +46,6 @@ export interface TimestampWorker {
 
 const RETRY_INTERVAL_MS = 5 * 60 * 1000
 
-function getToolVersion(): string {
-  if (typeof app?.getVersion === 'function') return app.getVersion()
-  return process.env.npm_package_version ?? '0.0.0'
-}
 
 export function createTimestampWorker(deps: TimestampWorkerDeps = {}): TimestampWorker {
   const requestToken = deps.requestToken ?? requestTimestamp
@@ -89,7 +85,7 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
         tsaToken: token.toString('base64'),
         operatorId: getInstallationId(),
         operatorName: settings.operatorName ?? '',
-        toolVersion: getToolVersion()
+        toolVersion: resolveToolVersion()
       })
       captureRepo.setCaptureTrustedTime(captureId, 'rfc3161')
       return true
@@ -138,7 +134,7 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
           tsaToken: token.toString('base64'),
           operatorId: getInstallationId(),
           operatorName: settings.operatorName ?? '',
-          toolVersion: getToolVersion()
+          toolVersion: resolveToolVersion()
         },
         { minReaderSchemaVersion: 3 }
       )

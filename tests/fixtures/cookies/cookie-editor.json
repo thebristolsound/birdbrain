@@ -1,0 +1,58 @@
+[
+  {
+    "domain": ".example.com",
+    "expirationDate": 4102444800,
+    "hostOnly": false,
+    "httpOnly": true,
+    "name": "sid",
+    "path": "/",
+    "sameSite": "lax",
+    "secure": true,
+    "session": false,
+    "storeId": null,
+    "value": "SENTINEL-JSON-7c1d"
+  },
+  {
+    "domain": "forum.example.org",
+    "httpOnly": false,
+    "name": "view",
+    "path": "/threads",
+    "sameSite": null,
+    "secure": false,
+    "session": true,
+    "value": "session-only"
+  },
+  {
+    "domain": ".example.com",
+    "expirationDate": 4102444800,
+    "httpOnly": false,
+    "name": "strict",
+    "path": "/",
+    "sameSite": "Strict",
+    "secure": true,
+    "value": "strict-value"
+  },
+  {
+    "domain": ".example.com",
+    "expirationDate": 1000000000,
+    "name": "old",
+    "path": "/",
+    "sameSite": "no_restriction",
+    "secure": true,
+    "value": "expired-value"
+  },
+  {
+    "domain": ".example.com",
+    "expirationDate": 4102444800,
+    "name": "odd",
+    "path": "/",
+    "sameSite": "sometimes",
+    "secure": true,
+    "value": "unknown-same-site"
+  },
+  {
+    "domain": ".example.com",
+    "path": "/",
+    "value": "no-name"
+  }
+]

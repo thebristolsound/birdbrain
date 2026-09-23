@@ -53,7 +53,7 @@ A snapshot of a single web page (HTML or MHTML, optionally with screenshot and e
 _Avoid_: page, snapshot, record.
 
 **Capture Server**:
-The Hono HTTP server in the main process (port 19845) that the Chrome extension posts captures to. The extension's only way into the ingest path of the Capture Lifecycle; a background Recapture reaches that path without the server.
+The Hono HTTP server in the main process (port 19845) that the Chrome extension posts captures to. The extension's only way into the ingest path of the Capture Lifecycle; a background Recapture reaches that path without the server. Transport only: a route parses the request, hands it to the Capture Lifecycle, and maps the outcome to a status code. It holds no admission policy.
 _Avoid_: ingest server, capture API.
 
 **Active Case**:
@@ -65,7 +65,7 @@ The state between the Operator starting and stopping capture into the Active Cas
 _Avoid_: session (unqualified), auto-capture, recording.
 
 **Capture Lifecycle**:
-Operations that mutate an MHTML Capture beyond its database row: ingestion (parse, hash, store, schedule selector matching), duplication, deletion (manifest entry + DB row + on-disk files, one at a time or as a batch), verification, and case-wide re-extraction. The forensic-bearing path. Legacy HTML Captures (pre-migration v11) appear in deletion and verification but have no manifest entry and no ingest path; new Captures are MHTML-only.
+Operations that mutate an MHTML Capture beyond its database row: admission of a request from any extension route (operator gate, Active Case resolution, exclusion, the manual dedup window, the screenshot cap, the session count, the activity events), ingestion (parse, hash, store, schedule selector matching), duplication, deletion (manifest entry + DB row + on-disk files, one at a time or as a batch), verification, and case-wide re-extraction. The forensic-bearing path. Legacy HTML Captures (pre-migration v11) appear in deletion and verification but have no manifest entry and no ingest path; new Captures are MHTML-only.
 _Avoid_: capture service, capture manager.
 
 **Capture Method**:

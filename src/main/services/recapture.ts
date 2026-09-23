@@ -1,9 +1,9 @@
-import { app } from 'electron'
 import * as captureRepo from '@main/services/db/captureRepo'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import { blockedSkipReason, matchCaseExclusion } from '@main/services/exclusionPolicy'
 import { getInstallationId } from '@main/services/installationId'
 import { getSettings } from '@main/services/settings'
+import { resolveToolVersion } from '@main/services/toolVersion'
 import type { Capture, CaptureEvent, ConsentSuppression } from '@shared/types'
 import type { EnqueueResult, RecaptureQueueStatus } from '@shared/ipc'
 
@@ -106,10 +106,6 @@ function validateUrl(raw: string): string | null {
   }
 }
 
-function getToolVersion(): string {
-  if (typeof app?.getVersion === 'function') return app.getVersion()
-  return process.env.npm_package_version ?? '0.0.0'
-}
 
 export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
   const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS
@@ -190,7 +186,7 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         finalUrl: redirectedFinalUrl(job.url, rendered.finalUrl),
         operatorId: getInstallationId(),
         operatorName: settings.operatorName ?? '',
-        toolVersion: getToolVersion(),
+        toolVersion: resolveToolVersion(),
         screenshot: rendered.screenshot,
         method: 'background',
         supersedesCaptureId: job.supersedesCaptureId,

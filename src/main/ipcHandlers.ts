@@ -14,6 +14,8 @@ import type {
   NoteTagParams,
   ApplyTagToNoteParams,
   MergeTagsParams,
+  CreatePersonaParams,
+  UpdatePersonaParams,
   CreateSelectorParams,
   UpdateSelectorParams,
   CreateNoteParams,
@@ -47,6 +49,9 @@ import * as activityRepo from '@main/services/db/activityRepo'
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
 import * as tagRepo from '@main/services/db/tagRepo'
+import * as personaRepo from '@main/services/db/personaRepo'
+import * as personaSessions from '@main/services/persona/personaSessions'
+import { UnsupportedCookieFileError } from '@main/services/persona/cookieFiles'
 import * as selectorRepo from '@main/services/db/selectorRepo'
 import * as noteRepo from '@main/services/db/noteRepo'
 import * as noteReferenceRepo from '@main/services/db/noteReferenceRepo'
@@ -487,6 +492,45 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.TAGS_CAPTURES_WITH_ANY_TAG, (_, caseId: string, tagIds: string[]) =>
     tagRepo.getCapturesWithAnyTag(caseId, tagIds)
   )
+
+  // Personas (#1497). The file dialog opens here so the renderer never names
+  // a path and the file's bytes never cross IPC; the service reads, loads
+  // into the partition and drops them. Delete clears the partition first.
+  handle(IPC_CHANNELS.PERSONAS_LIST, () => personaRepo.listPersonas())
+  handle(IPC_CHANNELS.PERSONAS_CREATE, (_, params: CreatePersonaParams) => {
+    const label = params.label.trim()
+    if (!label) throw new IpcFailure('A persona needs a label', 'PERSONA_LABEL_REQUIRED')
+    return personaRepo.createPersona({ label, notes: params.notes })
+  })
+  handle(IPC_CHANNELS.PERSONAS_UPDATE, (_, params: UpdatePersonaParams) => {
+    const label = params.label?.trim()
+    if (label === '') throw new IpcFailure('A persona needs a label', 'PERSONA_LABEL_REQUIRED')
+    return personaRepo.updatePersona({ ...params, ...(label !== undefined ? { label } : {}) })
+  })
+  handle(IPC_CHANNELS.PERSONAS_DELETE, (_, id: string) => personaSessions.clearPersona(id))
+  handle(IPC_CHANNELS.PERSONAS_IMPORT, async (_, personaId: string) => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      title: 'Import cookies',
+      filters: [
+        { name: 'Cookie exports', extensions: ['txt', 'json'] },
+        { name: 'All files', extensions: ['*'] }
+      ],
+      properties: ['openFile']
+    })
+    if (canceled || filePaths.length === 0) return null
+    try {
+      return await personaSessions.importCookies(personaId, filePaths[0])
+    } catch (err) {
+      if (err instanceof UnsupportedCookieFileError) {
+        throw new IpcFailure(err.message, 'PERSONA_COOKIE_FILE_UNSUPPORTED')
+      }
+      if (err instanceof personaSessions.PersonaNotFoundError) {
+        throw new IpcFailure(err.message, 'PERSONA_NOT_FOUND')
+      }
+      throw err
+    }
+  })
+  handle(IPC_CHANNELS.PERSONAS_STORAGE_STATE, () => personaSessions.getPersonaStorageState())
   // Note-level tags (#391). A payload channel, so it gets the same shape check
   // the other payload channels get: a missing noteId would otherwise reach the
   // repo and come back as a foreign-key error the renderer cannot interpret.

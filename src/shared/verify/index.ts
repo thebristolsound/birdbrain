@@ -16,7 +16,10 @@ export {
   COMMON_NAME_OID
 } from '@shared/verify/timestampToken'
 export type { ParsedTimestampToken } from '@shared/verify/timestampToken'
-export { checkDerStrictness, checkTimestampTokenDerStrictness } from '@shared/verify/derStrictness'
+// `checkDerStrictness`, the schema-free walker underneath this one, stays off
+// the barrel: nothing needs a DER scan that cannot name a CMS field, and an
+// entry point with no caller is a surface to keep working for nothing.
+export { checkTimestampTokenDerStrictness } from '@shared/verify/derStrictness'
 export type {
   DerDeviation,
   DerDeviationKind,

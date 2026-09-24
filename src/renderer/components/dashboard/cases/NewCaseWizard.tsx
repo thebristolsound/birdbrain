@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useCasesMutations, useSettingsMutations } from '@renderer/lib/queries'
 import { createSelector } from '@renderer/lib/api/selectors'
+import { notify } from '@renderer/lib/notify'
 import { FolderPlus, ArrowLeft } from 'lucide-react'
 import { Card, Button, Input, Textarea, Label } from '@renderer/components/ui'
 
@@ -68,6 +69,7 @@ export function NewCaseWizard() {
 
       await updateSettings.mutateAsync({ hasCompletedOnboarding: true })
 
+      let armed = 0
       for (const presetId of selectedSelectors) {
         const preset = SELECTOR_PRESETS.find((p) => p.id === presetId)
         if (preset) {
@@ -78,9 +80,13 @@ export function NewCaseWizard() {
             label: preset.label,
             origin: 'manual'
           })
+          armed++
         }
       }
 
+      notify.success('Investigation created', {
+        description: `“${name.trim()}” is ready — ${armed} selector${armed === 1 ? '' : 's'} armed.`
+      })
       navigate({ to: '/cases/$caseId', params: { caseId: newCase.id } })
     } catch {
       setSubmitting(false)

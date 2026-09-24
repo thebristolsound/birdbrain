@@ -330,9 +330,10 @@ canonical proof of trusted time.
 
 **6c. A strict-DER parser may refuse to read the token. That is an encoding
 deviation by the authority, not tampering.** RFC 3161 tokens are DER, and DER
-requires the members of every \`SET\` to appear sorted by their encodings
-(X.690 §11.6). Birdbrain's default authority, DigiCert, returns tokens whose CMS
-\`certificates\` set is not sorted that way, so a library that enforces the rule
+requires the members of a \`SET OF\` — which is what the CMS \`certificates\`
+field carrying the responder's chain is — to appear sorted by their encodings
+(X.690 §11.6). Birdbrain's default authority, DigiCert, returns tokens whose
+\`certificates\` are not in that order, so a library that enforces the rule
 rejects the token outright instead of reporting a verdict — \`rfc3161-client\`,
 for one, raises \`Invalid Set Ordering Error\`. The bytes are exactly as the TSA
 emitted and signed them.
@@ -343,10 +344,21 @@ signature covers, so its order can neither break nor repair that signature, and
 the imprint that binds the token to the content hash is untouched by it. Treat
 \`openssl ts -verify\` (step 6b) as the reference check: it accepts the encoding,
 and it is what proves trusted time for this package. A strict parser's refusal is
-a statement about the issuing authority's encoder. Tokens from authorities that
-do sort their sets — IdenTrust's, for one — parse under both kinds of library, so
-a package timestamped by such an authority will not show this at all. To see
-which authority issued a token, read it with
-\`openssl ts -reply -in <token> -token_in -text\`, which is lenient in the same
-way \`openssl ts -verify\` is.
+a statement about the issuing authority's encoder.
+
+Which authority issued a token is carried by the responder certificate embedded
+in the token, not by its \`TSTInfo\`: DigiCert leaves \`TSTInfo\`'s optional
+\`tsa\` field unset, so \`openssl ts -reply -text\` prints \`TSA: unspecified\`
+for it and names nobody. Read the embedded certificates instead — the authority
+appears in their subject lines:
+
+\`\`\`sh
+openssl pkcs7 -inform DER -in ${timestampTokenPath('<token>')} -print_certs -noout
+\`\`\`
+
+Birdbrain measures this deviation over its own sample tokens: the DigiCert
+samples carry it and the IdenTrust and SINPE samples do not, so an authority of
+the latter kind is not expected to produce it. That measurement covers \`SET\`
+ordering and length form only, so a token it finds clean is not thereby
+guaranteed to satisfy every DER rule.
 `

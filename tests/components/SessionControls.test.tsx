@@ -7,8 +7,10 @@ import { render, screen, cleanup } from '@testing-library/react'
 vi.mock('@tanstack/react-query', () => ({
   useQuery: () => ({ data: [{ id: 'case-a', name: 'Case A' }] })
 }))
+const route = vi.hoisted(() => ({ caseId: 'case-a' as string | undefined }))
+
 vi.mock('@tanstack/react-router', () => ({
-  useParams: () => ({ caseId: 'case-a' })
+  useParams: () => ({ caseId: route.caseId })
 }))
 vi.mock('@renderer/lib/queries', () => ({
   casesQueryOptions: {},
@@ -23,6 +25,7 @@ import { SessionControls } from '@renderer/components/status/SessionControls'
 import { useAppStore } from '@renderer/stores/appStore'
 
 beforeEach(() => {
+  route.caseId = 'case-a'
   useAppStore.setState({ connectedToExtension: true, sessionActive: false })
 })
 
@@ -45,5 +48,24 @@ describe('SessionControls', () => {
     render(<SessionControls />)
 
     expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('true')
+  })
+
+  // Off a case route (Settings) a running session still has to be stoppable;
+  // only starting one needs a case to activate.
+  it('leaves a running session stoppable off a case route', () => {
+    route.caseId = undefined
+    useAppStore.setState({ sessionActive: true })
+
+    render(<SessionControls />)
+
+    expect((screen.getByRole('switch') as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('cannot start a session off a case route', () => {
+    route.caseId = undefined
+
+    render(<SessionControls />)
+
+    expect((screen.getByRole('switch') as HTMLButtonElement).disabled).toBe(true)
   })
 })

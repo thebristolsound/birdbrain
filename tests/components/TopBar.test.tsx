@@ -95,3 +95,27 @@ describe('the case chrome', () => {
     expect(screen.queryByTestId('global-search-input')).toBeNull()
   })
 })
+
+describe('the settings header', () => {
+  it('keeps the REC indicator and the session control while a session runs', () => {
+    useAppStore.setState({ sessionActive: true })
+    renderAt('/settings')
+    expect(screen.getByText('Return to Birdbrain')).toBeTruthy()
+    expect(screen.getByTestId('topbar-rec')).toBeTruthy()
+    expect(screen.getByTestId('session-controls')).toBeTruthy()
+  })
+
+  it('shows neither when no session is running', () => {
+    renderAt('/settings')
+    expect(screen.queryByTestId('topbar-rec')).toBeNull()
+    expect(screen.queryByTestId('session-controls')).toBeNull()
+  })
+})
+
+describe('the REC indicator', () => {
+  it('shows in the normal header while a session runs', () => {
+    useAppStore.setState({ sessionActive: true })
+    renderAt('/cases/case1/captures')
+    expect(screen.getByTestId('topbar-rec')).toBeTruthy()
+  })
+})

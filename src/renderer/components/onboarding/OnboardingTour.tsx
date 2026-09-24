@@ -7,6 +7,7 @@ import { casesQueryOptions, useCasesMutations } from '@renderer/lib/api/cases'
 import { capturesQueryOptions } from '@renderer/lib/api/captures'
 import { presets } from '@renderer/lib/motion'
 import { useAppStore } from '@renderer/stores/appStore'
+import { trapTab, useModalEscape, useModalFocus } from '@renderer/components/ui'
 import { useTourEngine } from '@renderer/components/onboarding/useTourEngine'
 import { shouldAutoFire } from '@renderer/components/onboarding/tourSteps'
 import { dimOpacity, type Viewport } from '@renderer/components/onboarding/tourGeometry'
@@ -157,10 +158,35 @@ export function OnboardingTour() {
   // then jump to the target a frame later.
   const placed = Boolean(rect) || anchorMissing
 
+  // The tour is modal for the keyboard, on the dialog primitive's hooks: focus
+  // moves in when it opens and back to the opener when it closes, Tab stays
+  // inside, and Escape is the skip link. Registering as an open dialog also
+  // keeps the captures list from clearing its selection on the same Escape.
+  const tourRef = useRef<HTMLDivElement>(null)
+  useModalFocus(Boolean(step), tourRef)
+  useModalEscape(Boolean(step), skip)
+
+  // Each step lands on its forward action, the last control on every card, once
+  // the card is on screen: a step change can unmount the focused Next under the
+  // keyboard, and an anchored card only appears after its anchor is measured.
+  useEffect(() => {
+    if (!kind) return
+    const buttons = tourRef.current?.querySelectorAll<HTMLButtonElement>('button:not([disabled])')
+    buttons?.[buttons.length - 1]?.focus()
+  }, [chapter, stepIndex, kind, placed])
+
   return (
     <AnimatePresence>
       {step ? (
-        <motion.div key="tour" {...presets.overlay} data-testid="onboarding-tour">
+        <motion.div
+          key="tour"
+          {...presets.overlay}
+          data-testid="onboarding-tour"
+          ref={tourRef}
+          // A fallback landing while an anchored card is still being placed.
+          tabIndex={-1}
+          onKeyDown={(e) => trapTab(e, tourRef.current)}
+        >
           <div
             data-testid="tour-dim"
             className="pointer-events-none fixed inset-0 z-[70]"

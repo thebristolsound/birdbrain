@@ -43,7 +43,7 @@ export function CommandPalette() {
   // The dialog primitive's focus half: the input takes focus as the first
   // control inside, and closing hands focus back to whatever opened the
   // palette. Escape stays with useCommandPalette, which owns the Ctrl+K toggle.
-  useModalFocus(open, panelRef)
+  const openerRef = useModalFocus(open, panelRef)
 
   // Reset state when palette opens
   useEffect(() => {
@@ -188,6 +188,9 @@ export function CommandPalette() {
                 data-testid="palette-replay-tour"
                 className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-text-secondary transition-colors hover:bg-elevated"
                 onClick={() => {
+                  // The tour records whatever holds focus as its opener, and
+                  // this button is about to unmount: hand it the palette's.
+                  openerRef.current?.focus()
                   setOpen(false)
                   startTour('intro')
                 }}

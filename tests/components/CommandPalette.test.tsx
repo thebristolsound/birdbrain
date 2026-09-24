@@ -16,6 +16,7 @@ vi.mock('@tanstack/react-router', () => ({
 
 import { CommandPalette } from '@renderer/components/layout/CommandPalette'
 import { useAppStore } from '@renderer/stores/appStore'
+import { TOUR_EVENT } from '@renderer/components/onboarding/startTour'
 
 const CASES: Case[] = []
 
@@ -124,6 +125,21 @@ describe('the command palette focus', () => {
     fireEvent.keyDown(last, { key: 'Tab' })
 
     expect(document.activeElement).toBe(screen.getByPlaceholderText('Switch investigation...'))
+  })
+
+  // The tour records whatever holds focus as its opener. The Replay button
+  // unmounts with the palette, so the palette's own opener is handed over.
+  it('hands its opener to the tour it replays', () => {
+    const opener = renderWithOpener()
+    let focusedAtStart: Element | null = null
+    const onTour = () => (focusedAtStart = document.activeElement)
+    window.addEventListener(TOUR_EVENT, onTour)
+
+    fireEvent.click(screen.getByTestId('palette-replay-tour'))
+
+    window.removeEventListener(TOUR_EVENT, onTour)
+    expect(focusedAtStart).toBe(opener)
+    expect(useAppStore.getState().commandPaletteOpen).toBe(false)
   })
 
   it('wraps Shift-Tab from the input round to the last action', () => {

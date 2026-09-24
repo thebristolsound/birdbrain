@@ -94,8 +94,14 @@ function useModalEscape(open: boolean, onClose: () => void) {
  * Half of the modal focus contract: focus moves into `contentRef` on open and
  * goes back to whatever opened it on close. The other half — Tab staying
  * inside — is `trapTab`, run from the content node's own keydown.
+ *
+ * Returns the recorded opener, for a modal that closes by handing over to
+ * another one and wants the next modal to inherit where focus came from.
  */
-function useModalFocus(open: boolean, contentRef: RefObject<HTMLElement | null>) {
+function useModalFocus(
+  open: boolean,
+  contentRef: RefObject<HTMLElement | null>
+): RefObject<HTMLElement | null> {
   const openerRef = useRef<HTMLElement | null>(null)
 
   // Keyed on `open` rather than on the content unmounting, so the hand-back
@@ -164,6 +170,8 @@ function useModalFocus(open: boolean, contentRef: RefObject<HTMLElement | null>)
     document.addEventListener('keydown', handleKey)
     return () => document.removeEventListener('keydown', handleKey)
   }, [open, contentRef])
+
+  return openerRef
 }
 
 /**

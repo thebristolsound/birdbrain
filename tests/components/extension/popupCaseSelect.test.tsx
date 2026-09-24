@@ -21,8 +21,8 @@ import { getStatus, getCases, activateCase, stopSession } from '@extension/utils
 import { Popup } from '@extension/popup/PopupApp'
 
 const CASES: CaptureServerCase[] = [
-  { id: 'case-a', name: 'Operation Nightjar', captureCount: 12 },
-  { id: 'case-b', name: 'Kestrel', captureCount: 3 }
+  { id: 'case-a', name: 'Operation Nightjar', captureCount: 12, type: 'crypto' },
+  { id: 'case-b', name: 'Kestrel', captureCount: 3, type: 'malware' }
 ]
 
 const CLEAN_URL = 'https://cracked-forum.example.net/threads/88213'
@@ -182,11 +182,10 @@ describe('popup case select', () => {
     // The deep link was replaced, not supplemented: app settings are reached
     // from the options page's own footnote now (#406).
     expect(createdTabs).toEqual([])
-    // HOTFIX semantics: Stop appears only while a session is actually running.
-    expect(screen.queryByRole('button', { name: 'Stop session' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Stop session' })).toBeTruthy()
   })
 
-  it('offers Stop session only while a session is running', async () => {
+  it('stops an active session', async () => {
     vi.mocked(getStatus).mockResolvedValue(status({ sessionActive: true }))
     await renderPopup()
 
@@ -209,6 +208,38 @@ describe('popup case select', () => {
 })
 
 describe('popup page status', () => {
+  it('uses the shipped bitmap and type colors for both selected and other cases', async () => {
+    await renderPopup()
+    fireEvent.click(await screen.findByRole('button', { name: /Operation Nightjar/ }))
+    expect(document.querySelector('img')?.getAttribute('src')).toBe('/icons/icon-48.png')
+    const rows = screen.getAllByRole('menuitem')
+    expect((rows[0].firstElementChild as HTMLElement).style.background).toBe('rgb(245, 158, 11)')
+    expect((rows[1].firstElementChild as HTMLElement).style.background).toBe('rgb(14, 165, 233)')
+  })
+
+  it('hides Capture now in the just-captured state', async () => {
+    backgroundReplies = {
+      GET_PAGE_STATUS: pageStatus({ lastCapture: { at: Date.now(), manifestIndex: 42 } })
+    }
+    await renderPopup()
+    expect(await screen.findByText('Captured just now')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Capture now' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Stop session' })).toBeTruthy()
+  })
+
+  it('does not invent an uncaptured result when stored lookup fails', async () => {
+    backgroundReplies = { GET_PAGE_STATUS: pageStatus({ lookupFailed: true }) }
+    await renderPopup()
+    expect(await screen.findByText('Capture status unavailable')).toBeTruthy()
+  })
+
+  it('shows stop failures to the operator', async () => {
+    vi.mocked(stopSession).mockRejectedValueOnce(new Error('offline'))
+    await renderPopup()
+    fireEvent.click(await screen.findByRole('button', { name: 'Stop session' }))
+    expect(await screen.findByRole('alert')).toBeTruthy()
+  })
+
   it('hides Capture now and says why when the page is ignored by an operator rule', async () => {
     backgroundReplies = {
       GET_PAGE_STATUS: pageStatus({ blocked: { reason: 'user', pattern: 'secret.example.*' } })
@@ -219,9 +250,8 @@ describe('popup page status', () => {
     expect(screen.getByText('Ignored by your rule: secret.example.*')).toBeTruthy()
     expect(screen.getByText("Selectors don't run on ignored pages.")).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Capture now' })).toBeNull()
-    // The context-menu route runs the same rules, so pointing the operator at
-    // it here would be pointing at a menu item that does nothing.
-    expect(screen.queryByText(/Right-click the page to capture/)).toBeNull()
+    expect(screen.getByText(/Right-click the page to capture/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Stop session' })).toBeTruthy()
   })
 
   it('names the built-in scheme list rather than a pattern for a chrome:// page', async () => {
@@ -234,7 +264,7 @@ describe('popup page status', () => {
     expect(screen.getByText('Browser, extension and local pages are always ignored.')).toBeTruthy()
   })
 
-  it('reports a capture it made rather than implying a lookup it cannot do', async () => {
+  it('reports a stored capture with its manifest index', async () => {
     const at = Date.now() - 4 * 60 * 1000
     backgroundReplies = {
       GET_PAGE_STATUS: pageStatus({ lastCapture: { at, manifestIndex: 36 } })
@@ -245,11 +275,11 @@ describe('popup page status', () => {
     expect(screen.getByText('MHTML · sha256 recorded · index #36')).toBeTruthy()
   })
 
-  it('discloses that an absent record is not proof the page was never captured', async () => {
+  it('invites a capture after the stored lookup finds none', async () => {
     await renderPopup()
 
     expect(await screen.findByText('Not captured yet')).toBeTruthy()
-    expect(screen.getByText("Captures made earlier aren't tracked here.")).toBeTruthy()
+    expect(screen.getByText('Right-click to capture this page.')).toBeTruthy()
   })
 
   it('says the status is unavailable rather than inventing one when nothing answers', async () => {
@@ -342,6 +372,10 @@ describe('popup page status', () => {
     expect(await screen.findByText('Capturing…')).toBeTruthy()
     expect(screen.getByText('Serializing page and assets')).toBeTruthy()
     // A second click must not queue a second capture of the same page.
-    expect(screen.getByRole('button', { name: 'Capture now' }).hasAttribute('disabled')).toBe(true)
+    expect(screen.queryByRole('button', { name: 'Capture now' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Stop capture' }))
+    await waitFor(() =>
+      expect(sentMessages.some((m) => m.type === 'STOP_CAPTURE' && m.tabId === 7)).toBe(true)
+    )
   })
 })

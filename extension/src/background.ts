@@ -1,5 +1,7 @@
 import {
   getStatus,
+  getCaptureCard,
+  setCaptureCardTag,
   sendMhtmlCapture,
   getActiveSelectors,
   createSelector,
@@ -16,7 +18,12 @@ import { MAX_SCREENSHOT_BITMAP_BYTES } from '@shared/constants'
 import { matchIgnoredUrl } from '@shared/urlPatterns'
 import { selectionToTagName } from '@shared/selectionKind'
 import { canonicalizeUrl } from '@shared/urlCanonicalize'
-import type { ActiveSelectorsResult, ScreenshotStatus, SelectorMatchInfo } from '@shared/schemas'
+import type {
+  CaptureCardDetails,
+  ActiveSelectorsResult,
+  ScreenshotStatus,
+  SelectorMatchInfo
+} from '@shared/schemas'
 import type {
   ManualCaptureResponse,
   PopupBlock,
@@ -179,6 +186,10 @@ const selectorDedupeMap = new Map<string, number>()
 
 // Manual capture in-flight guard: tabId:caseId -> true while capture is in progress
 const pendingManualCaptures = new Set<string>()
+const cancelledManualCaptures = new Set<string>()
+const uploadingManualCaptures = new Set<string>()
+// Only the originating tab may act on a card; never accept arbitrary capture ids from page UI.
+const captureCardByTab = new Map<number, CaptureCardDetails>()
 
 function isCapturingTab(tabId: number): boolean {
   const prefix = `${tabId}:`
@@ -188,10 +199,7 @@ function isCapturingTab(tabId: number): boolean {
   return false
 }
 
-// What the popup's page-status block is answered from. Both maps are service
-// worker memory and nothing more: MV3 evicts the worker and they go with it,
-// which is why the popup treats a miss as "not seen here" rather than as
-// "never captured" (there is no capture lookup by URL — see #392).
+// Recent worker captures supplement the persisted URL lookup.
 const lastCaptureByTab = new Map<
   number,
   { url: string; at: number; manifestIndex: number | null }
@@ -332,6 +340,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   responseHeadersByTab.delete(tabId)
   heldToastByTab.delete(tabId)
   lastCaptureByTab.delete(tabId)
+  captureCardByTab.delete(tabId)
   selectorSummaryByTab.delete(tabId)
 })
 
@@ -656,8 +665,7 @@ function blockedCaptureReason(url: string): PopupBlock | null {
   return pattern === null ? null : { reason: 'user', pattern }
 }
 
-// The popup's view of one tab. Read-only: taking it must not scan the page or
-// touch the network, because it runs every time the popup polls.
+// The synchronous worker view supplements the authenticated stored lookup below.
 function pageStatusForTab(tabId: number, url: string | undefined): PopupPageStatus {
   const activeSelectorCount = activeSelectors.reduce((sum, g) => sum + g.selectors.length, 0)
   if (!url) {
@@ -766,6 +774,8 @@ async function manualCaptureTab(
   const key = `${tabId}:${caseId}`
   if (pendingManualCaptures.has(key)) return
   pendingManualCaptures.add(key)
+  let card: CaptureCardDetails | undefined
+  let outcome: Record<string, unknown> | undefined
   try {
     // The whole capture runs inside the suppression boundary: injected
     // extension UI (toast, selector highlights) is stripped before any frame or
@@ -790,6 +800,8 @@ async function manualCaptureTab(
       // The last capture to finish collecting frames owns the upload toast.
       if (lastOnTab) sendToastWhenCaptureIdle(tabId, { type: 'SHOW_CAPTURE_TOAST' })
 
+      if (cancelledManualCaptures.has(key)) return
+      uploadingManualCaptures.add(key)
       const result = await sendMhtmlCapture({
         source: 'manual',
         caseId,
@@ -818,13 +830,35 @@ async function manualCaptureTab(
       const toastMessage =
         result.screenshotStatus === 'dropped' ? 'Captured (screenshot too large)' : undefined
       if (lastOnTab) {
-        sendCaptureOutcomeToast(tabId, {
-          type: 'UPDATE_CAPTURE_TOAST',
-          status: toastStatus,
-          message: toastMessage
-        })
+        card = {
+          caseId,
+          captureId: result.captureId,
+          caseName: availableCases.find((entry) => entry.id === caseId)?.name ?? 'case',
+          title: tab.title || url,
+          format: 'mhtml',
+          hash: result.hash,
+          manifestIndex: result.manifestIndex ?? null,
+          tags: []
+        }
+        outcome = { type: 'UPDATE_CAPTURE_TOAST', status: toastStatus, message: toastMessage }
       }
     })
+    // The card mounts only after upload AND suppression restoration have settled.
+    if (card && outcome) {
+      try {
+        card = await getCaptureCard(caseId, card.captureId)
+      } catch {
+        /* Stored capture still succeeded. */
+      }
+      captureCardByTab.set(tabId, card)
+      sendCaptureOutcomeToast(tabId, { ...outcome, card, scrolling })
+    } else if (cancelledManualCaptures.has(key)) {
+      sendCaptureOutcomeToast(tabId, {
+        type: 'UPDATE_CAPTURE_TOAST',
+        status: 'skipped',
+        message: 'Capture stopped — nothing saved'
+      })
+    }
   } catch (err) {
     console.error('[Birdbrain] Manual capture failed:', err)
     let message = 'Capture failed'
@@ -846,6 +880,8 @@ async function manualCaptureTab(
     sendCaptureOutcomeToast(tabId, { type: 'UPDATE_CAPTURE_TOAST', status: 'error', message })
   } finally {
     pendingManualCaptures.delete(key)
+    cancelledManualCaptures.delete(key)
+    uploadingManualCaptures.delete(key)
   }
 }
 
@@ -1265,9 +1301,82 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'GET_PAGE_STATUS' && typeof message.tabId === 'number') {
-    chrome.tabs.get(message.tabId, (tab) => {
-      sendResponse(pageStatusForTab(message.tabId, tab?.url))
+    chrome.tabs.get(message.tabId, async (tab) => {
+      const status = pageStatusForTab(message.tabId, tab?.url)
+      const caseId = activeCaseId
+      if (caseId && status.url && status.rulesLoaded && !status.blocked && !status.capturing) {
+        try {
+          const lookup = await lookupCaptureByUrl({ caseId, url: status.url })
+          // An activation during lookup must not publish the previous case's result.
+          if (caseId !== activeCaseId) {
+            sendResponse(pageStatusForTab(message.tabId, tab?.url))
+            return
+          }
+          status.lastCapture = lookup.capture
+            ? {
+                at: Date.parse(lookup.capture.timestamp),
+                manifestIndex: lookup.capture.manifestIndex ?? null,
+                format: lookup.capture.format
+              }
+            : null
+        } catch {
+          status.lookupFailed = true
+        }
+      }
+      sendResponse(status)
     })
+    return true
+  }
+
+  if (message.type === 'STOP_CAPTURE' && typeof message.tabId === 'number') {
+    let uploading = false
+    for (const key of pendingManualCaptures) {
+      if (!key.startsWith(`${message.tabId}:`)) continue
+      if (uploadingManualCaptures.has(key)) uploading = true
+      else cancelledManualCaptures.add(key)
+    }
+    sendResponse({
+      message: uploading
+        ? 'Capture is already saving; its result will be shown.'
+        : 'Stopping capture before saving.'
+    })
+    return true
+  }
+
+  if (message.type === 'CAPTURE_CARD_ACTION') {
+    const tabId = sender.tab?.id
+    const card = tabId === undefined ? undefined : captureCardByTab.get(tabId)
+    if (!card || tabId === undefined || message.captureId !== card.captureId) {
+      sendResponse({ ok: false, error: 'This capture card has expired.' })
+      return true
+    }
+    if (message.action === 'view') {
+      void chrome.tabs.create({
+        url: `birdbrain://capture?caseId=${encodeURIComponent(card.caseId)}&captureId=${encodeURIComponent(card.captureId)}`
+      })
+      sendResponse({ ok: true })
+    } else if (message.action === 'recapture') {
+      const url = sender.tab?.url
+      if (!url || !ignoreRulesLoaded || blockedCaptureReason(url)) {
+        sendResponse({ ok: false, error: 'This page cannot be captured now.' })
+      } else {
+        void manualCaptureTab(tabId, url, card.caseId, message.scrolling === true)
+        sendResponse({ ok: true })
+      }
+    } else if (
+      message.action === 'tag' &&
+      card.tags.some((tag) => tag.id === message.tagId) &&
+      typeof message.applied === 'boolean'
+    ) {
+      setCaptureCardTag({
+        caseId: card.caseId,
+        captureId: card.captureId,
+        tagId: message.tagId,
+        applied: message.applied
+      })
+        .then(() => sendResponse({ ok: true }))
+        .catch(() => sendResponse({ ok: false, error: 'Could not update this tag. Try again.' }))
+    } else sendResponse({ ok: false, error: 'Unknown capture action.' })
     return true
   }
 

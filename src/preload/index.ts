@@ -112,6 +112,14 @@ const birdbrain = {
     merge: bridge(IPC_CHANNELS.TAGS_MERGE),
     capturesWithAnyTag: bridge(IPC_CHANNELS.TAGS_CAPTURES_WITH_ANY_TAG)
   },
+  persona: {
+    list: bridge(IPC_CHANNELS.PERSONAS_LIST),
+    create: bridge(IPC_CHANNELS.PERSONAS_CREATE),
+    update: bridge(IPC_CHANNELS.PERSONAS_UPDATE),
+    delete: bridge(IPC_CHANNELS.PERSONAS_DELETE),
+    import: bridge(IPC_CHANNELS.PERSONAS_IMPORT),
+    storageState: bridge(IPC_CHANNELS.PERSONAS_STORAGE_STATE)
+  },
   selectors: {
     list: bridge(IPC_CHANNELS.SELECTORS_LIST),
     get: bridge(IPC_CHANNELS.SELECTORS_GET),

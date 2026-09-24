@@ -104,6 +104,77 @@ describe('captureServer', () => {
     })
   }
 
+  it('returns stored capture card facts and toggles tags on that exact capture only', async () => {
+    const caseData = createCase({ name: 'Card case', type: 'malware' })
+    const otherCase = createCase({ name: 'Other' })
+    const tag = createTag({ name: 'Evidence', color: '#f59e0b' })
+    createTag({ name: 'Review' })
+    const result = await readJson(
+      await postCapture(
+        {
+          source: 'manual',
+          caseId: caseData.id,
+          url: 'https://example.com/card',
+          title: 'Saved title'
+        },
+        '<html>Known answer</html>'
+      )
+    )
+    const payload = { caseId: caseData.id, captureId: result.captureId }
+    const post = (path: string, body: unknown) =>
+      serverPost(path, {
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+    const card = await readJson(await post('/api/captures/card', payload))
+    expect(card).toMatchObject({
+      ...payload,
+      caseName: 'Card case',
+      title: 'Saved title',
+      format: 'mhtml',
+      hash: result.hash,
+      manifestIndex: result.manifestIndex
+    })
+    expect(card.tags).toContainEqual({ ...tag, applied: false })
+    expect(
+      (await post('/api/captures/card/tag', { ...payload, tagId: tag.id, applied: true })).status
+    ).toBe(200)
+    expect(getTagsForCapture(result.captureId)).toEqual([tag])
+    const applied = await readJson(await post('/api/captures/card', payload))
+    expect(applied.tags[0].applied).toBe(true)
+    expect(
+      (await post('/api/captures/card/tag', { ...payload, tagId: tag.id, applied: false })).status
+    ).toBe(200)
+    expect(getTagsForCapture(result.captureId)).toEqual([])
+    const lookup = await readJson(
+      await post('/api/captures/lookup', { caseId: caseData.id, url: 'https://example.com/card' })
+    )
+    expect(lookup.capture.manifestIndex).toBe(result.manifestIndex)
+    expect(lookup.capture.format).toBe('mhtml')
+    const cases = await readJson(await fetch(`${baseUrl}/api/cases`))
+    expect(cases).toContainEqual(expect.objectContaining({ id: caseData.id, type: 'malware' }))
+    for (const path of ['/api/captures/card', '/api/captures/card/tag']) {
+      expect(
+        (await post(path, { ...payload, caseId: otherCase.id, tagId: tag.id, applied: true }))
+          .status
+      ).toBe(404)
+      expect((await post(path, {})).status).toBe(400)
+      expect(
+        (
+          await fetch(`${baseUrl}${path}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          })
+        ).status
+      ).toBe(401)
+    }
+    expect(
+      (await post('/api/captures/card/tag', { ...payload, tagId: 'missing', applied: true })).status
+    ).toBe(404)
+    expect(listCaptures(caseData.id)).toHaveLength(1)
+  })
+
   it('GET /api/status returns running state', async () => {
     const res = await fetch(`${baseUrl}/api/status`)
     const data = await readJson(res)

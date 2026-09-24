@@ -128,7 +128,11 @@ export function DataExplorer() {
   const captureFacts = useMemo(() => {
     const map = new Map<string, CaptureFacts>()
     for (const capture of captures) {
-      map.set(capture.id, { url: capture.url, lastVerifiedStatus: capture.lastVerifiedStatus })
+      map.set(capture.id, {
+        url: capture.url,
+        lastVerifiedStatus: capture.lastVerifiedStatus,
+        capturedAt: capture.timestamp
+      })
     }
     return map
   }, [captures])

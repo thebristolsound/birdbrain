@@ -1,10 +1,16 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, within } from '@testing-library/react'
 import { ArtifactTable } from '@renderer/components/data/ArtifactTable'
 import { ArtifactTabs } from '@renderer/components/data/ArtifactTabs'
 import { toArtifactRow } from '@renderer/components/data/dataTableModel'
-import { INVENTORY, STAGED_PDF } from '../renderer/dataFixtures'
+import {
+  CAPTURE_A,
+  CAPTURE_A_CAPTURED_AT,
+  INVENTORY,
+  STAGED_PDF,
+  THUMB_A
+} from '../renderer/dataFixtures'
 
 afterEach(() => cleanup())
 
@@ -50,6 +56,28 @@ describe('ArtifactTable staging actions', () => {
       <ArtifactTable rows={[]} selectedId={null} onSelect={vi.fn()} emptyMessage="Nothing here." />
     )
     expect(screen.getByText('Nothing here.')).toBeTruthy()
+  })
+})
+
+describe('ArtifactTable CAPTURED cell (#1552)', () => {
+  it('shows a capture time bare and names any other clock on the cell', () => {
+    const facts = new Map([['cap-a', { capturedAt: CAPTURE_A_CAPTURED_AT }]])
+    render(
+      <ArtifactTable
+        rows={[CAPTURE_A, THUMB_A, STAGED_PDF].map((row) => toArtifactRow(row, INVENTORY, facts))}
+        selectedId={null}
+        onSelect={vi.fn()}
+        emptyMessage="none"
+      />
+    )
+    for (const id of ['cap-a', 'thumb-a']) {
+      const row = screen.getByTestId(`artifact-row-${id}`)
+      expect(row.textContent).toContain('2026-09-01 09:58')
+      expect(screen.queryByTestId(`captured-clock-${id}`)).toBeNull()
+      expect(within(row).getByTitle('Captured 2026-09-01T09:58:12.000Z')).toBeTruthy()
+    }
+    expect(screen.getByTestId('artifact-row-staged-1').textContent).toContain('2026-09-10 12:00')
+    expect(screen.getByTestId('captured-clock-staged-1').textContent).toBe('arrived')
   })
 })
 

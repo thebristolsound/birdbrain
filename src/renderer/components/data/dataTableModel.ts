@@ -1,4 +1,9 @@
-import type { ExhibitVerification, HashVerification, InventoryRow } from '@shared/types'
+import type {
+  ExhibitVerification,
+  HashVerification,
+  InventoryExhibitRow,
+  InventoryRow
+} from '@shared/types'
 import { fileTypeOf, kindLabel, type DataNodeKey } from '@renderer/components/data/dataTreeModel'
 
 // The artifact table as a pure function of the inventory and the selected
@@ -18,7 +23,10 @@ export interface ArtifactRow {
   kind: string
   sizeBytes: number | null
   hash: string
+  // CAPTURED: the instant `capturedClock` names. Only `captured` is a capture
+  // instant; every other clock is stated on the cell, never passed off as one.
   capturedAt: string
+  capturedClock: CapturedClock
   // Whether the chain covers this row. False for every pooled row and for an
   // Exhibit or Derived File with no Manifest Entry (X41, X34).
   anchored: boolean
@@ -29,14 +37,25 @@ export interface ArtifactRow {
   raw: InventoryRow
 }
 
+// Which clock the CAPTURED cell carries (#1552). `captured` is the Capture's
+// own observation time, the value the Evidence Package writes as
+// `capturedAt`; a Derived File of a Capture shows its parent's. An Exhibit of
+// another kind has no capture instant, so it and its Derived Files show the
+// commit time; a pooled file shows its arrival; a Derived File whose parent
+// is not in the inventory shows its own creation time.
+export type CapturedClock = 'captured' | 'committed' | 'arrived' | 'created'
+
 export interface CaptureFacts {
   url?: string
   lastVerifiedStatus?: HashVerification['status']
+  // `Capture.timestamp`: the capture time the capturing machine asserted.
+  capturedAt?: string
 }
 
 // Per-Capture facts the inventory does not carry but the table wants: the URL
-// for SOURCE and the persisted verify state for Integrity Exceptions. Keyed by
-// capture id, which is the Exhibit id for a Capture.
+// behind SOURCE, the capture time for CAPTURED, and the persisted verify state
+// for Integrity Exceptions. Keyed by capture id, which is the Exhibit id for a
+// Capture.
 export type CaptureFactsById = ReadonlyMap<string, CaptureFacts>
 
 function hostOf(url: string | undefined): string {
@@ -46,6 +65,18 @@ function hostOf(url: string | undefined): string {
   } catch {
     return url
   }
+}
+
+// The acquisition instant of an Exhibit: its capture time when it is a
+// Capture whose facts are loaded, and otherwise the commit time, named as such.
+function exhibitInstant(
+  row: InventoryExhibitRow,
+  captures: CaptureFactsById
+): { capturedAt: string; capturedClock: CapturedClock } {
+  const capturedAt = row.kind === 'capture' ? captures.get(row.id)?.capturedAt : undefined
+  return capturedAt
+    ? { capturedAt, capturedClock: 'captured' }
+    : { capturedAt: row.committedAt, capturedClock: 'committed' }
 }
 
 export function toArtifactRow(
@@ -69,19 +100,23 @@ export function toArtifactRow(
       ...common,
       source: row.kind === 'capture' ? hostOf(facts?.url) || row.origin : row.origin,
       kind: row.kind,
-      capturedAt: row.committedAt,
+      ...exhibitInstant(row, captures),
       anchored: row.anchored,
       staged: false,
       exhibitNumber: row.exhibitNumber
     }
   }
   if (row.entity === 'derived-file') {
-    const parent = rows.find((r) => r.entity === 'exhibit' && r.id === row.parentExhibitId)
+    const parent = rows.find(
+      (r): r is InventoryExhibitRow => r.entity === 'exhibit' && r.id === row.parentExhibitId
+    )
     return {
       ...common,
       source: parent?.name ?? row.parentExhibitId,
       kind: row.derivation,
-      capturedAt: row.createdAt,
+      ...(parent
+        ? exhibitInstant(parent, captures)
+        : { capturedAt: row.createdAt, capturedClock: 'created' as const }),
       anchored: row.anchored,
       staged: false,
       exhibitNumber: null
@@ -92,6 +127,7 @@ export function toArtifactRow(
     source: row.sourceUrl ? hostOf(row.sourceUrl) : row.origin,
     kind: row.kind,
     capturedAt: row.arrivedAt,
+    capturedClock: 'arrived',
     anchored: false,
     staged: true,
     exhibitNumber: null
@@ -264,6 +300,21 @@ export function formatStamp(iso: string): string {
   const ts = new Date(iso)
   if (Number.isNaN(ts.getTime())) return iso
   return ts.toISOString().slice(0, 16).replace('T', ' ')
+}
+
+// The hover title for CAPTURED: the full ISO value and the clock it is, so a
+// non-capture clock is named in words and not only by the cell's qualifier.
+export function capturedTitle({ capturedAt, capturedClock }: ArtifactRow): string {
+  switch (capturedClock) {
+    case 'captured':
+      return `Captured ${capturedAt}`
+    case 'committed':
+      return `Committed ${capturedAt}; no capture time is shown for this file`
+    case 'arrived':
+      return `Arrived in the pool ${capturedAt}; not captured and not anchored`
+    case 'created':
+      return `Created ${capturedAt}; its parent Exhibit is not in this case's inventory`
+  }
 }
 
 export function shortHash(hash: string): string {

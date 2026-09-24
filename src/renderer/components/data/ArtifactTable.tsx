@@ -5,6 +5,7 @@ import { cn } from '@renderer/lib/utils'
 import { EntityContextMenu } from '@renderer/components/contextmenu/EntityContextMenu'
 import type { EntityMenuTarget } from '@renderer/components/contextmenu/entityMenu'
 import {
+  capturedTitle,
   formatBytes,
   formatStamp,
   shortHash,
@@ -143,7 +144,17 @@ export function ArtifactTable({
                   {shortHash(row.hash)}
                 </span>
                 <span className="flex items-center gap-2 truncate text-[11px] tabular-nums text-text-faint">
-                  <span title={row.capturedAt}>{formatStamp(row.capturedAt)}</span>
+                  <span className="flex min-w-0 flex-col" title={capturedTitle(row)}>
+                    <span className="truncate">{formatStamp(row.capturedAt)}</span>
+                    {row.capturedClock !== 'captured' && (
+                      <span
+                        className="truncate text-[10px]"
+                        data-testid={`captured-clock-${row.id}`}
+                      >
+                        {row.capturedClock}
+                      </span>
+                    )}
+                  </span>
                   {row.staged && (
                     <span
                       className="ml-auto flex shrink-0 gap-1"

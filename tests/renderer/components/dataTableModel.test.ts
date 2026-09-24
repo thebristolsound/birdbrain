@@ -1,7 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import type { ExhibitVerification } from '@shared/types'
+import type {
+  ExhibitVerification,
+  InventoryDerivedFileRow,
+  InventoryExhibitRow,
+  InventoryRow
+} from '@shared/types'
 import {
   bucketForRow,
+  capturedTitle,
   filterRows,
   formatBytes,
   integrityCounts,
@@ -10,7 +16,8 @@ import {
   rowsForNode,
   shortHash,
   toArtifactRow,
-  type CaptureFacts
+  type CaptureFacts,
+  type CaptureFactsById
 } from '@renderer/components/data/dataTableModel'
 import { CAPTURE_A, CAPTURE_LEGACY, HASH_A, INVENTORY, STAGED_PDF, THUMB_A } from '../dataFixtures'
 
@@ -47,11 +54,87 @@ describe('toArtifactRow', () => {
     const anchored = toArtifactRow(CAPTURE_A, INVENTORY, FACTS)
     expect(anchored).toMatchObject({ staged: false, anchored: true, exhibitNumber: 1 })
   })
+})
 
-  it('takes CAPTURED from the entity’s own time column', () => {
-    expect(toArtifactRow(CAPTURE_A, INVENTORY, FACTS).capturedAt).toBe(CAPTURE_A.committedAt)
-    expect(toArtifactRow(THUMB_A, INVENTORY, FACTS).capturedAt).toBe(THUMB_A.createdAt)
-    expect(toArtifactRow(STAGED_PDF, INVENTORY, FACTS).capturedAt).toBe(STAGED_PDF.arrivedAt)
+// Known answers for CAPTURED per row kind (#1552). The column used to show the
+// commit, creation and arrival times under the one heading; it now shows the
+// capture time wherever one exists and names any other clock it shows.
+describe('CAPTURED known answers', () => {
+  const CAPTURED_AT = '2026-09-01T09:58:12.000Z'
+  const facts = new Map<string, CaptureFacts>([
+    ['cap-a', { url: 'https://example.com/page', capturedAt: CAPTURED_AT }]
+  ])
+  const DOC: InventoryExhibitRow = {
+    ...CAPTURE_A,
+    id: 'doc-1',
+    kind: 'document',
+    origin: 'manual-upload',
+    exhibitNumber: 3,
+    name: 'report.pdf',
+    committedAt: '2026-09-12T08:00:00.000Z'
+  }
+  const DOC_TEXT: InventoryDerivedFileRow = {
+    ...THUMB_A,
+    id: 'doc-text',
+    parentExhibitId: 'doc-1',
+    derivation: 'text',
+    name: 'text',
+    createdAt: '2026-09-12T08:00:03.000Z'
+  }
+  const ORPHAN: InventoryDerivedFileRow = { ...THUMB_A, id: 'orphan', parentExhibitId: 'gone' }
+  const inventory: InventoryRow[] = [...INVENTORY, DOC, DOC_TEXT, ORPHAN]
+  const cell = (row: InventoryRow, captureFacts: CaptureFactsById = facts) => {
+    const artifact = toArtifactRow(row, inventory, captureFacts)
+    return [artifact.capturedClock, formatStamp(artifact.capturedAt), capturedTitle(artifact)]
+  }
+
+  it('shows a Capture its own capture time, not its commit time', () => {
+    expect(cell(CAPTURE_A)).toEqual([
+      'captured',
+      '2026-09-01 09:58',
+      'Captured 2026-09-01T09:58:12.000Z'
+    ])
+  })
+
+  it('shows a Derived File of a Capture its parent’s capture time, not its creation time', () => {
+    expect(cell(THUMB_A)).toEqual([
+      'captured',
+      '2026-09-01 09:58',
+      'Captured 2026-09-01T09:58:12.000Z'
+    ])
+  })
+
+  it('names the commit time on an Exhibit that has no capture time, and on its Derived Files', () => {
+    const committed = [
+      'committed',
+      '2026-09-12 08:00',
+      'Committed 2026-09-12T08:00:00.000Z; no capture time is shown for this file'
+    ]
+    expect(cell(DOC)).toEqual(committed)
+    expect(cell(DOC_TEXT)).toEqual(committed)
+    // A Capture whose facts have not loaded is never given its commit time as
+    // a capture time.
+    expect(cell(CAPTURE_A, new Map())).toEqual([
+      'committed',
+      '2026-09-01 10:00',
+      'Committed 2026-09-01T10:00:00.000Z; no capture time is shown for this file'
+    ])
+  })
+
+  it('names the arrival time on a pooled file', () => {
+    expect(cell(STAGED_PDF)).toEqual([
+      'arrived',
+      '2026-09-10 12:00',
+      'Arrived in the pool 2026-09-10T12:00:00.000Z; not captured and not anchored'
+    ])
+  })
+
+  it('names the creation time on a Derived File whose parent is not in the inventory', () => {
+    expect(cell(ORPHAN)).toEqual([
+      'created',
+      '2026-09-01 10:00',
+      "Created 2026-09-01T10:00:05.000Z; its parent Exhibit is not in this case's inventory"
+    ])
   })
 })
 

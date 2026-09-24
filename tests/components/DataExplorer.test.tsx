@@ -105,6 +105,10 @@ describe('DataExplorer (#1149)', () => {
     expect(text(table.getByTestId('artifact-row-cap-a'))).toContain(HASH_A.slice(0, 12))
     expect(text(table.getByTestId('artifact-row-cap-a'))).toContain('Exhibit 1')
     expect(text(table.getByTestId('artifact-row-thumb-a'))).toContain('thumbnail')
+    // CAPTURED is the Capture's capture time on the Capture and on its Derived
+    // File, read from the Capture row and not the inventory's commit time.
+    expect(text(table.getByTestId('artifact-row-cap-a'))).toContain('2026-09-01 09:58')
+    expect(text(table.getByTestId('artifact-row-thumb-a'))).toContain('2026-09-01 09:58')
     expect(table.queryByTestId('artifact-row-staged-1')).toBeNull()
 
     // A legacy Capture with no entry and no file says both.

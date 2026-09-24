@@ -317,7 +317,7 @@ describe('rankMentionCandidates', () => {
     notes: [note('n1', 'Nightjar timeline'), note('n2', 'Other')],
     selectors: [selector('s1', 'nightjar', 'Handle'), selector('s2', 'kestrel')],
     tags: [tag('t1', 'suspect'), tag('t2', 'nightjar-linked')],
-    tagUsage: { t1: 4 },
+    tagUsage: { t1: 4, t2: 1 },
     selectorMatchCounts: { s1: 12 }
   })
 
@@ -343,13 +343,25 @@ describe('rankMentionCandidates', () => {
     expect(rows.find((r) => r.targetId === 't1')?.meta).toBe('tag')
   })
 
-  it('ranks tags this case already uses above the rest, then alphabetically', () => {
+  it('ranks tags by how many captures in this case carry them, then alphabetically', () => {
     const many = sources({
       tags: [tag('t1', 'zebra'), tag('t2', 'alpha'), tag('t3', 'beta')],
-      tagUsage: { t1: 9 }
+      tagUsage: { t1: 9, t2: 1, t3: 1 }
     })
     const rows = rankMentionCandidates({ sigil: '#', query: '', sources: many })
     expect(rows.map((r) => r.label)).toEqual(['zebra', 'alpha', 'beta'])
+  })
+
+  it('does not offer a tag that no capture in this case carries', () => {
+    // Tags are installation-wide, so the list holds every case's. The finding
+    // behind this: a case with one untagged capture offered two tags from
+    // another case under # while @ offered nothing.
+    const mixed = sources({
+      tags: [tag('t1', 'suspect'), tag('t9', 'suspect-elsewhere')],
+      tagUsage: { t1: 2 }
+    })
+    const rows = rankMentionCandidates({ sigil: '#', query: 'suspect', sources: mixed })
+    expect(rows.map((r) => r.targetId)).toEqual(['t1'])
   })
 
   it('does not offer the note being written as a target of itself', () => {

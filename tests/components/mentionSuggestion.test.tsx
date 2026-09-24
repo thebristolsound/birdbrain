@@ -45,8 +45,8 @@ const otherCapture: Capture = { ...capture, id: 'cap9', caseId: 'case9', title: 
 
 const otherSelector: Selector = { ...selector, id: 's9', caseId: 'case9', label: 'Decoy handle' }
 
-// Tags are global by design — the backend accepts any tag id — so a tag has no
-// case to be filtered by. What is per-case is the usage that orders them.
+// Tags are installation-wide, so the list query returns this one whatever the
+// case. What is per-case is the usage that decides whether the popup offers it.
 const otherTag: Tag = { id: 't9', name: 'suspect-decoy', color: '#ef4444' }
 
 function capturesFor(caseId: string): Capture[] {
@@ -171,17 +171,14 @@ describe('the @ and # autocompletes', () => {
     expect(usageCounts).toHaveBeenCalledWith('case1')
   })
 
-  it('ranks the tags this case uses above the ones it does not', async () => {
+  it('offers only the tags a capture in this case carries', async () => {
     const instance = await mountEditor()
 
     await type(instance, '#sus')
 
     await screen.findByTestId('mention-option-tag-t1')
     const rows = screen.getAllByTestId(/^mention-option-/)
-    expect(rows.map((row) => row.getAttribute('data-testid'))).toEqual([
-      'mention-option-tag-t1',
-      'mention-option-tag-t9'
-    ])
+    expect(rows.map((row) => row.getAttribute('data-testid'))).toEqual(['mention-option-tag-t1'])
   })
 
   it('stays shut mid-word, so an email address is not read as a Mention', async () => {

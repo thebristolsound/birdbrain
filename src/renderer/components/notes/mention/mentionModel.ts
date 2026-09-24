@@ -214,7 +214,7 @@ export interface MentionSources {
   notes: Pick<Note, 'id' | 'title'>[]
   selectors: Pick<Selector, 'id' | 'label' | 'pattern'>[]
   tags: Tag[]
-  /** tagId -> how many captures in this case carry it. Orders the `#` popup. */
+  /** tagId -> how many captures in this case carry it. Narrows and orders the `#` popup. */
   tagUsage: Record<string, number>
   /** selectorId -> match count, the mock's `N hits` column. */
   selectorMatchCounts: Record<string, number>
@@ -270,10 +270,12 @@ function candidatesForKind(
         color: mentionColor('selector')
       }))
     case 'tag':
-      // Tags are global by design — the backend deliberately accepts any tag
-      // id — so this popup is the only narrowing there is. Rank the ones this
-      // case already uses first rather than pretending the rest do not exist.
-      return [...tags]
+      // Tags are installation-wide, so the list query returns every case's.
+      // Only a tag some capture in this case carries is offered: one that
+      // exists only in another case is noise here, and the @ sigil already
+      // offers nothing from another case.
+      return tags
+        .filter((t) => (tagUsage[t.id] ?? 0) > 0)
         .sort((a, b) => {
           const used = (tagUsage[b.id] ?? 0) - (tagUsage[a.id] ?? 0)
           return used !== 0 ? used : a.name.localeCompare(b.name)

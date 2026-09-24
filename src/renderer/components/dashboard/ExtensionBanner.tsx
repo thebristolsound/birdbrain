@@ -21,7 +21,7 @@ export function ExtensionBanner({ connected }: ExtensionBannerProps) {
   // banner it is actually describing — present in both connected states, and on
   // the dashboard route the step already declares. Sent back as #707.
   return (
-    <Card data-tour="browser" className="mt-8 p-6 flex items-center justify-between">
+    <Card data-tour="browser" className="mt-8 p-[var(--d-card)] flex items-center justify-between">
       {connected ? (
         <>
           <div className="flex items-center gap-5">

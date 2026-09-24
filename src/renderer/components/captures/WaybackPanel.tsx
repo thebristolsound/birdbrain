@@ -20,6 +20,8 @@ import {
 } from '@renderer/lib/api/wayback'
 import { openCaptureExternal } from '@renderer/lib/api/system'
 import { notify } from '@renderer/lib/notify'
+import { EntityContextMenu } from '@renderer/components/contextmenu/EntityContextMenu'
+import { copyCaptureUrl } from '@renderer/components/captures/useCopyCaptureUrl'
 import { useAppStore } from '@renderer/stores/appStore'
 import {
   buildWaybackList,
@@ -465,80 +467,96 @@ function SnapshotRow({
   onOpen: () => void
 }) {
   return (
-    <div
-      data-testid="wayback-snapshot-row"
-      role="button"
-      tabIndex={0}
-      aria-current={isSelected}
-      onClick={onSelect}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault()
-          onSelect()
+    <EntityContextMenu
+      target={{
+        kind: 'snapshot',
+        label: `${row.date} ${row.time} UTC`,
+        pinned: isPinned,
+        actions: {
+          open: onOpen,
+          copyUrl: () => void copyCaptureUrl(row.key),
+          togglePin: onTogglePin,
+          compare: onSelect
         }
       }}
-      className={`flex cursor-pointer flex-col gap-0.5 border-b border-l-2 border-border px-3.5 py-2 ${
-        isSelected ? 'border-l-accent bg-accent-subtle' : 'border-l-transparent'
-      }`}
     >
-      <div className="flex items-center gap-2">
-        <span className="shrink-0 text-xs font-medium text-text-primary">{row.date}</span>
-        <span className="shrink-0 text-[11px] tabular-nums text-text-muted">{row.time} UTC</span>
-        {row.isClosest && (
-          <span className="shrink-0 rounded bg-accent px-1.5 py-px text-[10px] font-semibold text-white">
-            closest
-          </span>
-        )}
-        <div className="min-w-[4px] flex-1" />
-        <button
-          type="button"
-          aria-pressed={isPinned}
-          aria-label={isPinned ? 'Unpin snapshot' : 'Pin snapshot'}
-          title={isPinned ? 'Unpin from case' : 'Pin to case'}
-          onClick={(e) => {
-            e.stopPropagation()
-            onTogglePin()
-          }}
-          className={`grid h-5 w-5 shrink-0 place-items-center rounded ${
-            isPinned ? 'text-accent' : 'text-text-faint hover:text-text-primary'
-          }`}
-        >
-          <Pin className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          aria-label="Open snapshot"
-          title="Open snapshot at archive.org"
-          onClick={(e) => {
-            e.stopPropagation()
-            onOpen()
-          }}
-          className="grid h-5 w-5 shrink-0 place-items-center rounded text-text-muted hover:text-accent"
-        >
-          <ExternalLink className="h-3.5 w-3.5" />
-        </button>
-      </div>
-      <div className="flex min-w-0 items-center gap-2">
-        {row.snapshot.mimeType && (
-          <span className="shrink-0 font-mono text-[11px] text-text-faint">
-            {row.snapshot.mimeType}
-          </span>
-        )}
-        {row.snapshot.statusCode !== undefined && row.band && (
-          <span className={`shrink-0 font-mono text-[11px] font-semibold ${BAND_CLASS[row.band]}`}>
-            {row.snapshot.statusCode}
-          </span>
-        )}
-        {row.delta && (
-          <span
-            className={`min-w-0 truncate text-[11px] ${
-              row.isClosest ? 'text-text-primary' : 'text-text-muted'
+      <div
+        data-testid="wayback-snapshot-row"
+        role="button"
+        tabIndex={0}
+        aria-current={isSelected}
+        onClick={onSelect}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onSelect()
+          }
+        }}
+        className={`flex cursor-pointer flex-col gap-0.5 border-b border-l-2 border-border px-3.5 py-2 ${
+          isSelected ? 'border-l-accent bg-accent-subtle' : 'border-l-transparent'
+        }`}
+      >
+        <div className="flex items-center gap-2">
+          <span className="shrink-0 text-xs font-medium text-text-primary">{row.date}</span>
+          <span className="shrink-0 text-[11px] tabular-nums text-text-muted">{row.time} UTC</span>
+          {row.isClosest && (
+            <span className="shrink-0 rounded bg-accent px-1.5 py-px text-[10px] font-semibold text-white">
+              closest
+            </span>
+          )}
+          <div className="min-w-[4px] flex-1" />
+          <button
+            type="button"
+            aria-pressed={isPinned}
+            aria-label={isPinned ? 'Unpin snapshot' : 'Pin snapshot'}
+            title={isPinned ? 'Unpin from case' : 'Pin to case'}
+            onClick={(e) => {
+              e.stopPropagation()
+              onTogglePin()
+            }}
+            className={`grid h-5 w-5 shrink-0 place-items-center rounded ${
+              isPinned ? 'text-accent' : 'text-text-faint hover:text-text-primary'
             }`}
           >
-            {row.delta}
-          </span>
-        )}
+            <Pin className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            aria-label="Open snapshot"
+            title="Open snapshot at archive.org"
+            onClick={(e) => {
+              e.stopPropagation()
+              onOpen()
+            }}
+            className="grid h-5 w-5 shrink-0 place-items-center rounded text-text-muted hover:text-accent"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <div className="flex min-w-0 items-center gap-2">
+          {row.snapshot.mimeType && (
+            <span className="shrink-0 font-mono text-[11px] text-text-faint">
+              {row.snapshot.mimeType}
+            </span>
+          )}
+          {row.snapshot.statusCode !== undefined && row.band && (
+            <span
+              className={`shrink-0 font-mono text-[11px] font-semibold ${BAND_CLASS[row.band]}`}
+            >
+              {row.snapshot.statusCode}
+            </span>
+          )}
+          {row.delta && (
+            <span
+              className={`min-w-0 truncate text-[11px] ${
+                row.isClosest ? 'text-text-primary' : 'text-text-muted'
+              }`}
+            >
+              {row.delta}
+            </span>
+          )}
+        </div>
       </div>
-    </div>
+    </EntityContextMenu>
   )
 }

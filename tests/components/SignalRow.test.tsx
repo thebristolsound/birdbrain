@@ -50,19 +50,16 @@ function renderRow(signal: Signal = selectorSignal, overrides: Record<string, un
     onShowMatches: vi.fn(),
     onExportMatches: vi.fn(),
     onFilterCaptures: vi.fn(),
+    onDuplicateTag: vi.fn(),
+    onExportTag: vi.fn(),
+    onCopyTagMarkdown: vi.fn(),
     onSetColor: vi.fn(),
     onMerge: vi.fn(),
     onFocusSibling: vi.fn(),
     registerRow: vi.fn()
   }
   render(
-    <SignalRow
-      signal={signal}
-      captures={captures}
-      selected={false}
-      {...handlers}
-      {...overrides}
-    />
+    <SignalRow signal={signal} captures={captures} selected={false} {...handlers} {...overrides} />
   )
   return handlers
 }

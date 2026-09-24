@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { motion, AnimatePresence } from 'motion/react'
+import { motion, AnimatePresence, useIsPresent } from 'motion/react'
 import { useQuery } from '@tanstack/react-query'
 import { Archive, ChevronDown, ShieldCheck, TriangleAlert } from 'lucide-react'
 import type { ExportClass, ExportOptions } from '@shared/types'
@@ -120,12 +120,16 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
   const [showChecklist, setShowChecklist] = useState(false)
   const [progress, setProgress] = useState({ step: 'Preparing export…', percent: 0 })
   const panelRef = useRef<HTMLDivElement>(null)
+  // Mounted only while open, so presence stands in for `open`: it turns false
+  // when the export menu's AnimatePresence starts the exit, which hands focus
+  // back then rather than when the exit ends. Outside a presence it stays
+  // true, and the hand-back happens on unmount instead.
+  const present = useIsPresent()
 
-  // Focus, Tab and Escape only. Mounted only while open, so `open` is fixed
-  // true and focus goes back to the opener when the dialog unmounts. Escape
-  // does what Cancel, Close and Done already do in every phase: close.
-  useModalFocus(true, panelRef)
-  useModalEscape(true, onClose)
+  // Focus, Tab and Escape only. Escape does what Cancel, Close and Done
+  // already do in every phase: close.
+  useModalFocus(present, panelRef)
+  useModalEscape(present, onClose)
 
   const { celebrate, celebrationProps } = useCompletionCelebration({ style: 'ripple' })
 

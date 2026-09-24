@@ -42,7 +42,11 @@ vi.mock('motion/react', async () => {
       }
     )
   }
-  return { motion, AnimatePresence: ({ children }: { children: ReactNode }) => children }
+  return {
+    motion,
+    AnimatePresence: ({ children }: { children: ReactNode }) => children,
+    useIsPresent: () => true
+  }
 })
 
 import { ExportMenu } from '@renderer/components/export/ExportMenu'

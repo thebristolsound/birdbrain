@@ -38,16 +38,41 @@ function resolveSession(personaId: string, deps: PersonaSessionDeps): Session {
   return fromPartition(partitionForPersona(personaId))
 }
 
+// Import and delete for one persona run one at a time. Without this a delete
+// could clear the partition while an import still had `cookies.set` calls
+// to make, leaving cookies in the partition of a deleted persona.
+const personaQueues = new Map<string, Promise<unknown>>()
+
+function serialised<T>(personaId: string, run: () => Promise<T>): Promise<T> {
+  const next = (personaQueues.get(personaId) ?? Promise.resolve()).then(run)
+  const tail = next.catch(() => undefined)
+  personaQueues.set(personaId, tail)
+  void tail.then(() => {
+    if (personaQueues.get(personaId) === tail) personaQueues.delete(personaId)
+  })
+  return next
+}
+
 // Reads the file, loads every accepted cookie into the Persona's partition,
 // records the count and time on the row, and returns what was and was not
 // loaded. A cookie Chromium itself refuses (a `__Host-` name on an insecure
 // URL, say) joins the rejection list as `rejected-by-session` rather than
 // failing the whole import, so the operator learns exactly which rows the
-// session will not carry.
-export async function importCookies(
+// session will not carry. The store is flushed before the row records the
+// import, since Chromium defers cookie writes and a quit in between would
+// otherwise leave a recorded import with nothing on disk.
+export function importCookies(
   personaId: string,
   filePath: string,
   deps: PersonaSessionDeps = {}
+): Promise<PersonaImportResult> {
+  return serialised(personaId, () => runImport(personaId, filePath, deps))
+}
+
+async function runImport(
+  personaId: string,
+  filePath: string,
+  deps: PersonaSessionDeps
 ): Promise<PersonaImportResult> {
   if (!personaRepo.getPersona(personaId)) throw new PersonaNotFoundError(personaId)
   const nowSeconds = deps.nowSeconds ?? (() => Math.floor(Date.now() / 1000))
@@ -55,13 +80,13 @@ export async function importCookies(
   const ses = resolveSession(personaId, deps)
   const rejected: CookieRejection[] = [...parsed.rejected]
   let accepted = 0
-  for (const [index, cookie] of parsed.cookies.entries()) {
+  for (const cookie of parsed.cookies) {
     try {
       await ses.cookies.set({
         url: cookieUrl(cookie),
         name: cookie.name,
         value: cookie.value,
-        domain: cookie.domain,
+        ...(cookie.hostOnly ? {} : { domain: cookie.domain }),
         path: cookie.path,
         secure: cookie.secure,
         httpOnly: cookie.httpOnly,
@@ -70,11 +95,10 @@ export async function importCookies(
       })
       accepted += 1
     } catch {
-      // The parser numbered rejections by file line; a set failure has only
-      // the accepted-cookie index, so it is reported by position among those.
-      rejected.push({ line: index + 1, reason: 'rejected-by-session' })
+      rejected.push({ line: cookie.line, reason: 'rejected-by-session' })
     }
   }
+  await ses.cookies.flushStore()
   const importedAt = new Date().toISOString()
   personaRepo.recordImport(personaId, accepted, importedAt)
   return { accepted, rejected, importedAt }
@@ -83,13 +107,12 @@ export async function importCookies(
 // Clearing the partition is the security action and always runs first
 // (ADR-0030): a delete that soft-deleted the row and then failed to clear
 // would hide a Persona whose cookies were still on disk.
-export async function clearPersona(
-  personaId: string,
-  deps: PersonaSessionDeps = {}
-): Promise<boolean> {
-  if (!personaRepo.getPersona(personaId)) return false
-  await resolveSession(personaId, deps).clearStorageData()
-  return personaRepo.softDeletePersona(personaId)
+export function clearPersona(personaId: string, deps: PersonaSessionDeps = {}): Promise<boolean> {
+  return serialised(personaId, async () => {
+    if (!personaRepo.getPersona(personaId)) return false
+    await resolveSession(personaId, deps).clearStorageData()
+    return personaRepo.softDeletePersona(personaId)
+  })
 }
 
 // Same answer `signingKey.ts` gives for the key: Electron documents this as a

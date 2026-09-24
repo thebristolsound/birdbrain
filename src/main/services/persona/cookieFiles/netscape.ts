@@ -7,9 +7,8 @@ import { isExpired } from '@main/services/persona/cookieFiles/types'
 // Comment lines start with `#`, except the `#HttpOnly_` prefix curl writes on
 // a domain to mark an HttpOnly cookie, which is data. `expiry` 0 is a session
 // cookie. The format carries no SameSite, so every cookie is `unspecified`.
-//
-// The include-subdomains flag is not mapped: Chromium derives it from whether
-// the domain starts with a dot, which is how the exporting browser wrote it.
+// Any include-subdomains value but `TRUE` reads as host-only, the narrower
+// scope.
 const HTTP_ONLY_PREFIX = '#HttpOnly_'
 
 export function parseNetscapeCookies(text: string, nowSeconds: number): CookieParseResult {
@@ -32,16 +31,18 @@ export function parseNetscapeCookies(text: string, nowSeconds: number): CookiePa
       rejected.push({ line, reason: 'malformed' })
       return
     }
-    const [domain, , path, secureField, expiryField, name, value] = fields
+    const [domain, subdomainsField, path, secureField, expiryField, name, value] = fields
     const expiry = Number(expiryField)
     if (domain === '' || name === '' || !Number.isFinite(expiry) || expiry < 0) {
       rejected.push({ line, reason: 'malformed' })
       return
     }
     const cookie: ImportedCookie = {
+      line,
       name,
       value,
       domain,
+      hostOnly: subdomainsField.toUpperCase() !== 'TRUE',
       path: path === '' ? '/' : path,
       secure: secureField.toUpperCase() === 'TRUE',
       httpOnly,

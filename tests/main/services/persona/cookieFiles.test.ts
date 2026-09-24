@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'fs'
+import { mkdtempSync, mkdirSync, rmSync, truncateSync, writeFileSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import Database from 'better-sqlite3'
 import { parseNetscapeCookies } from '@main/services/persona/cookieFiles/netscape'
 import { parseJsonCookies } from '@main/services/persona/cookieFiles/json'
 import {
+  COOKIE_FILE_TOO_LARGE_MESSAGE,
+  MAX_COOKIE_FILE_BYTES,
   readCookieFile,
   UnsupportedCookieFileError,
   UNSUPPORTED_COOKIE_FILE_MESSAGE
@@ -32,9 +34,11 @@ describe('parseNetscapeCookies', () => {
   it('maps every field, reads the #HttpOnly_ prefix as data and expiry 0 as a session cookie', () => {
     const { cookies } = parseNetscapeCookies(text, NOW)
     expect(cookies[0]).toEqual({
+      line: 4,
       name: 'sid',
       value: 'SENTINEL-NETSCAPE-9f3a',
       domain: '.example.com',
+      hostOnly: false,
       path: '/',
       secure: true,
       httpOnly: false,
@@ -43,9 +47,11 @@ describe('parseNetscapeCookies', () => {
     })
     expect(cookies[1]).toMatchObject({ name: 'auth', httpOnly: true, domain: '.example.com' })
     expect(cookies[2]).toEqual({
+      line: 6,
       name: 'view',
       value: 'session-only',
       domain: 'forum.example.org',
+      hostOnly: true,
       path: '/threads',
       secure: false,
       httpOnly: false,
@@ -67,13 +73,21 @@ describe('parseNetscapeCookies', () => {
     ])
   })
 
+  it('reads any include-subdomains value but TRUE as host-only', () => {
+    const rows = ['.a.com\tTRUE\t/\tFALSE\t0\tx\tv', 'a.com\tFALSE\t/\tFALSE\t0\ty\tv']
+    const { cookies } = parseNetscapeCookies(rows.join('\n'), NOW)
+    expect(cookies.map((c) => c.hostOnly)).toEqual([false, true])
+  })
+
   it('defaults an empty path to / and tolerates CRLF line endings', () => {
     const { cookies } = parseNetscapeCookies('.a.com\tTRUE\t\tFALSE\t0\tn\tv\r\n', NOW)
     expect(cookies).toEqual([
       {
+        line: 1,
         name: 'n',
         value: 'v',
         domain: '.a.com',
+        hostOnly: false,
         path: '/',
         secure: false,
         httpOnly: false,
@@ -99,9 +113,11 @@ describe('parseJsonCookies', () => {
   it('maps sameSite null to unspecified, lowercases a cased value and honours session: true', () => {
     const { cookies } = parseJsonCookies(text, NOW)
     expect(cookies[0]).toEqual({
+      line: 1,
       name: 'sid',
       value: 'SENTINEL-JSON-7c1d',
       domain: '.example.com',
+      hostOnly: false,
       path: '/',
       secure: true,
       httpOnly: true,
@@ -109,9 +125,11 @@ describe('parseJsonCookies', () => {
       expirationDate: 4102444800
     })
     expect(cookies[1]).toEqual({
+      line: 2,
       name: 'view',
       value: 'session-only',
       domain: 'forum.example.org',
+      hostOnly: true,
       path: '/threads',
       secure: false,
       httpOnly: false,
@@ -144,15 +162,48 @@ describe('parseJsonCookies', () => {
     ])
   })
 
+  it('rejects a non-boolean secure, httpOnly or hostOnly rather than reading it as false', () => {
+    const rows = JSON.stringify([
+      { name: 'a', value: 'v', domain: 'd', secure: 'true' },
+      { name: 'b', value: 'v', domain: 'd', httpOnly: 1 },
+      { name: 'c', value: 'v', domain: 'd', hostOnly: 'false' }
+    ])
+    expect(parseJsonCookies(rows, NOW)).toEqual({
+      cookies: [],
+      rejected: [
+        { line: 1, reason: 'malformed' },
+        { line: 2, reason: 'malformed' },
+        { line: 3, reason: 'malformed' }
+      ]
+    })
+  })
+
+  it('takes hostOnly when given and otherwise reads it from the leading dot', () => {
+    const rows = JSON.stringify([
+      { name: 'a', value: 'v', domain: '.d.com', hostOnly: true },
+      { name: 'b', value: 'v', domain: 'd.com', hostOnly: false },
+      { name: 'c', value: 'v', domain: '.d.com' },
+      { name: 'd', value: 'v', domain: 'd.com' }
+    ])
+    expect(parseJsonCookies(rows, NOW).cookies.map((c) => c.hostOnly)).toEqual([
+      true,
+      false,
+      false,
+      true
+    ])
+  })
+
   it('treats a missing path as / and a missing expiry as a session cookie', () => {
     const { cookies } = parseJsonCookies(
       JSON.stringify([{ name: 'a', value: 'v', domain: 'd' }]),
       NOW
     )
     expect(cookies[0]).toEqual({
+      line: 1,
       name: 'a',
       value: 'v',
       domain: 'd',
+      hostOnly: true,
       path: '/',
       secure: false,
       httpOnly: false,
@@ -197,6 +248,17 @@ describe('readCookieFile', () => {
     const renamed = join(dir, 'export.txt')
     writeFileSync(renamed, readFileSync(chrome))
     expect(() => readCookieFile(renamed, NOW)).toThrow(UnsupportedCookieFileError)
+  })
+
+  it('refuses a file over the size cap before reading it', () => {
+    const big = join(dir, 'huge.txt')
+    writeFileSync(big, '')
+    truncateSync(big, MAX_COOKIE_FILE_BYTES + 1)
+    expect(() => readCookieFile(big, NOW)).toThrow(COOKIE_FILE_TOO_LARGE_MESSAGE)
+    const atCap = join(dir, 'at-cap.txt')
+    writeFileSync(atCap, '')
+    truncateSync(atCap, MAX_COOKIE_FILE_BYTES)
+    expect(readCookieFile(atCap, NOW).cookies).toEqual([])
   })
 
   it('refuses a file named like a browser cookie database even when it is text', () => {

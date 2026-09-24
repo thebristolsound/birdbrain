@@ -10,7 +10,11 @@ const ctl = vi.hoisted(() => ({
   stores: new Map<string, Map<string, Record<string, unknown>>>(),
   cleared: [] as string[],
   rejectNames: new Set<string>(),
-  encryptionAvailable: true
+  encryptionAvailable: true,
+  // When set, every `cookies.set` waits on it, holding an import mid-flight.
+  gate: null as Promise<void> | null,
+  flushes: [] as Array<{ partition: string; storedCookies: number }>,
+  onFlush: null as (() => void) | null
 }))
 
 vi.mock('electron', () => ({
@@ -21,12 +25,17 @@ vi.mock('electron', () => ({
       return {
         cookies: {
           set: async (details: Record<string, unknown>) => {
+            if (ctl.gate) await ctl.gate
             if (ctl.rejectNames.has(details.name as string)) {
               throw new Error(`Failed to set cookie ${String(details.name)}`)
             }
             store.set(`${String(details.domain)}|${String(details.name)}`, details)
           },
-          get: async () => [...store.values()]
+          get: async () => [...store.values()],
+          flushStore: async () => {
+            ctl.flushes.push({ partition, storedCookies: store.size })
+            ctl.onFlush?.()
+          }
         },
         clearStorageData: async () => {
           ctl.cleared.push(partition)
@@ -63,6 +72,9 @@ beforeEach(async () => {
   ctl.cleared.length = 0
   ctl.rejectNames.clear()
   ctl.encryptionAvailable = true
+  ctl.gate = null
+  ctl.flushes.length = 0
+  ctl.onFlush = null
   userData = mkdtempSync(join(tmpdir(), 'birdbrain-persona-userdata-'))
   await initDatabase(join(userData, 'birdbrain.db'))
 })
@@ -146,7 +158,6 @@ describe('importCookies', () => {
         url: 'http://forum.example.org/threads',
         name: 'view',
         value: 'session-only',
-        domain: 'forum.example.org',
         path: '/threads',
         secure: false,
         httpOnly: false,
@@ -202,7 +213,7 @@ describe('importCookies', () => {
     ctl.rejectNames.add('auth')
     const result = await importCookies(p.id, join(FIXTURES, 'netscape.txt'), deps)
     expect(result.accepted).toBe(2)
-    expect(result.rejected).toContainEqual({ line: 2, reason: 'rejected-by-session' })
+    expect(result.rejected).toContainEqual({ line: 5, reason: 'rejected-by-session' })
     expect((await cookiesOn(p.id)).map((c) => c.name)).toEqual(['sid', 'view'])
     expect(getPersona(p.id)?.lastImportCount).toBe(2)
   })
@@ -228,13 +239,39 @@ describe('importCookies', () => {
   it('uses the injected partition factory when one is given', async () => {
     const p = createPersona({ label: 'injected' })
     const set = vi.fn(async () => undefined)
-    const fromPartition = vi.fn(() => ({ cookies: { set }, clearStorageData: vi.fn() }))
+    const flushStore = vi.fn(async () => undefined)
+    const fromPartition = vi.fn(() => ({
+      cookies: { set, flushStore },
+      clearStorageData: vi.fn()
+    }))
     await importCookies(p.id, join(FIXTURES, 'netscape.txt'), {
       ...deps,
       fromPartition: fromPartition as unknown as (partition: string) => Electron.Session
     })
     expect(fromPartition).toHaveBeenCalledWith(partitionForPersona(p.id))
     expect(set).toHaveBeenCalledTimes(3)
+    expect(flushStore).toHaveBeenCalledTimes(1)
+  })
+
+  it('omits domain for a host-only cookie so it is not widened to subdomains', async () => {
+    const p = createPersona({ label: 'host-only' })
+    await importCookies(p.id, join(FIXTURES, 'cookie-editor.json'), deps)
+    const byName = new Map((await cookiesOn(p.id)).map((c) => [c.name, c]))
+    expect(byName.get('view')).not.toHaveProperty('domain')
+    expect(byName.get('view')?.url).toBe('http://forum.example.org/threads')
+    expect(byName.get('sid')?.domain).toBe('.example.com')
+  })
+
+  it('flushes the cookie store after the last set and before recording the import', async () => {
+    const p = createPersona({ label: 'flushed' })
+    let recordedAtFlush: string | null | undefined
+    ctl.onFlush = () => {
+      recordedAtFlush = getPersona(p.id)?.lastImportAt
+    }
+    await importCookies(p.id, join(FIXTURES, 'netscape.txt'), deps)
+    expect(ctl.flushes).toEqual([{ partition: partitionForPersona(p.id), storedCookies: 3 }])
+    expect(recordedAtFlush).toBeNull()
+    expect(getPersona(p.id)?.lastImportCount).toBe(3)
   })
 })
 
@@ -253,6 +290,32 @@ describe('clearPersona', () => {
       deleted_at: string | null
     }
     expect(row.deleted_at).not.toBeNull()
+  })
+
+  it('waits for an in-flight import so no cookie lands after the clear', async () => {
+    const p = createPersona({ label: 'racing' })
+    let release!: () => void
+    ctl.gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const importing = importCookies(p.id, join(FIXTURES, 'netscape.txt'), deps)
+    const deleting = clearPersona(p.id)
+    await Promise.resolve()
+    expect(ctl.cleared).toEqual([])
+    release()
+    await expect(importing).resolves.toMatchObject({ accepted: 3 })
+    await expect(deleting).resolves.toBe(true)
+    expect(await cookiesOn(p.id)).toEqual([])
+    expect(getPersona(p.id)).toBeUndefined()
+  })
+
+  it('refuses an import queued behind a delete of the same persona', async () => {
+    const p = createPersona({ label: 'queued' })
+    const deleting = clearPersona(p.id)
+    const importing = importCookies(p.id, join(FIXTURES, 'netscape.txt'), deps)
+    await expect(deleting).resolves.toBe(true)
+    await expect(importing).rejects.toThrow(PersonaNotFoundError)
+    expect(await cookiesOn(p.id)).toEqual([])
   })
 
   it('returns false and clears nothing for an unknown or already deleted persona', async () => {

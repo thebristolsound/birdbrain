@@ -4,7 +4,10 @@ import type { Capture, Note, Selector, Tag } from '@shared/types'
 import {
   EMPTY_MENTION_SOURCES,
   MAX_MENTION_LABEL,
+  MAX_MENTION_ROWS,
+  MENTION_CREATE_KIND,
   MENTION_ROUTES,
+  MIN_CREATE_QUERY_LENGTH,
   MENTION_SCOPE_LABEL,
   MENTION_SELECTIONS,
   MENTION_SIGIL,
@@ -417,5 +420,85 @@ describe('rankMentionCandidates', () => {
     expect(
       rankMentionCandidates({ sigil: '@', query: 'x', sources: EMPTY_MENTION_SOURCES })
     ).toEqual([])
+  })
+})
+
+describe('the create row', () => {
+  const populated = sources({
+    captures: [capture('cap1', 'Nightjar thread')],
+    selectors: [selector('s1', 'kestrel')]
+  })
+
+  it('offers to create a note behind @ when nothing is called that', () => {
+    const rows = rankMentionCandidates({
+      sigil: '@',
+      query: 'Pivot',
+      sources: populated,
+      allowCreate: true
+    })
+    expect(rows).toEqual([
+      {
+        targetType: 'note',
+        targetId: '',
+        label: 'Pivot',
+        meta: 'new',
+        color: 'var(--color-accent)',
+        create: true
+      }
+    ])
+  })
+
+  it('offers a selector behind #, after the partial matches', () => {
+    const rows = rankMentionCandidates({
+      sigil: '#',
+      query: 'kes',
+      sources: populated,
+      allowCreate: true
+    })
+    expect(rows.map((r) => [r.targetType, r.create ?? false])).toEqual([
+      ['selector', false],
+      ['selector', true]
+    ])
+  })
+
+  it('is not offered for a one-character query, which is still being typed', () => {
+    expect(MIN_CREATE_QUERY_LENGTH).toBe(2)
+    // Padding does not count towards the length.
+    for (const query of ['z', ' z ']) {
+      expect(
+        rankMentionCandidates({ sigil: '@', query, sources: populated, allowCreate: true })
+      ).toEqual([])
+    }
+  })
+
+  it('is not offered when a target with exactly that name exists, in any case', () => {
+    const rows = rankMentionCandidates({
+      sigil: '#',
+      query: 'KESTREL',
+      sources: populated,
+      allowCreate: true
+    })
+    expect(rows.some((r) => r.create)).toBe(false)
+  })
+
+  it('checks for an exact name below the six-row cap too', () => {
+    const captures = Array.from({ length: 8 }, (_, i) => capture(`cap${i}`, `page ${i}`))
+    captures[7] = capture('cap7', 'page')
+    const rows = rankMentionCandidates({
+      sigil: '@',
+      query: 'page',
+      sources: sources({ captures }),
+      allowCreate: true
+    })
+    expect(rows).toHaveLength(MAX_MENTION_ROWS)
+    expect(rows.some((r) => r.create)).toBe(false)
+  })
+
+  it('is not offered by a surface that cannot create', () => {
+    expect(rankMentionCandidates({ sigil: '@', query: 'Pivot', sources: populated })).toEqual([])
+  })
+
+  it('maps each sigil to the kind the mock creates', () => {
+    expect(MENTION_CREATE_KIND).toEqual({ '@': 'note', '#': 'selector' })
   })
 })

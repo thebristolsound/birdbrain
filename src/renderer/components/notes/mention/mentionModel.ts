@@ -206,6 +206,12 @@ export interface MentionCandidate {
   /** Right-aligned hint: the kind, or a selector's live match count. */
   meta: string
   color: string
+  /**
+   * Set on the row that creates its target rather than naming one that
+   * exists. `label` is then the typed query, and `targetId` stays empty until
+   * the entity has been written.
+   */
+  create?: boolean
 }
 
 /** Everything the popup ranks over, read from the already-cached list queries. */
@@ -365,6 +371,28 @@ export interface RankMentionCandidatesArgs {
   sources: MentionSources
   /** The note being written. A note cannot usefully mention itself. */
   excludeNoteId?: string
+  /** Whether the popup can offer to create the target it did not find. */
+  allowCreate?: boolean
+}
+
+/** A query shorter than this is still being typed, so it offers no create row. */
+export const MIN_CREATE_QUERY_LENGTH = 2
+
+/** What a create row makes: the mock's split, a note behind `@` and a selector behind `#`. */
+export const MENTION_CREATE_KIND = {
+  '@': 'note',
+  '#': 'selector'
+} as const satisfies Record<MentionSigil, MentionTargetType>
+
+function createCandidate(sigil: MentionSigil, query: string): MentionCandidate {
+  return {
+    targetType: MENTION_CREATE_KIND[sigil],
+    targetId: '',
+    label: query,
+    meta: 'new',
+    color: 'var(--color-accent)',
+    create: true
+  }
 }
 
 /**
@@ -379,12 +407,19 @@ export function rankMentionCandidates({
   sigil,
   query,
   sources,
-  excludeNoteId
+  excludeNoteId,
+  allowCreate = false
 }: RankMentionCandidatesArgs): MentionCandidate[] {
-  const needle = query.trim().toLowerCase()
+  const typed = query.trim()
+  const needle = typed.toLowerCase()
   const rows = MENTION_KINDS[sigil].flatMap((kind) => candidatesForKind(kind, sources))
-  return rows
+  const matches = rows
     .filter((row) => !(row.targetType === 'note' && row.targetId === excludeNoteId))
     .filter((row) => !needle || row.label.toLowerCase().includes(needle))
-    .slice(0, MAX_MENTION_ROWS)
+  const shown = matches.slice(0, MAX_MENTION_ROWS)
+  // Checked against every match, not only the rows shown: an exact hit below
+  // the cap is still an existing entity, and creating it again is a duplicate.
+  const exists = matches.some((row) => row.label.toLowerCase() === needle)
+  if (!allowCreate || typed.length < MIN_CREATE_QUERY_LENGTH || exists) return shown
+  return [...shown, createCandidate(sigil, typed)]
 }

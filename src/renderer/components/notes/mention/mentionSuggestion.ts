@@ -1,7 +1,8 @@
-import { Extension } from '@tiptap/core'
-import { PluginKey } from '@tiptap/pm/state'
+import { Extension, type Editor, type Range } from '@tiptap/core'
+import { PluginKey, type Transaction } from '@tiptap/pm/state'
 import { ReactRenderer } from '@tiptap/react'
 import Suggestion, { type SuggestionProps } from '@tiptap/suggestion'
+import type { MentionTargetType } from '@shared/noteDoc'
 import {
   MENTION_SIGILS,
   EMPTY_MENTION_SOURCES,
@@ -46,6 +47,74 @@ export interface MentionSuggestionOptions {
    * investigator is typing into.
    */
   getExcludeNoteId: () => string | undefined
+  /**
+   * Writes the entity a create row names and reports what the Mention should
+   * point at. Null leaves the popup offering existing targets only.
+   */
+  createTarget: MentionCreate | null
+}
+
+export interface MentionCreateResult {
+  targetId: string
+  label: string
+}
+
+export type MentionCreate = (
+  targetType: MentionTargetType,
+  query: string
+) => Promise<MentionCreateResult>
+
+interface MentionAttrs {
+  targetType: MentionTargetType
+  targetId: string
+  label: string
+}
+
+function insertMention(editor: Editor, range: Range, attrs: MentionAttrs): void {
+  editor
+    .chain()
+    .focus()
+    .insertContentAt(range, [
+      { type: 'mention', attrs },
+      // A trailing space so the caret lands outside the atom and the next
+      // character typed is not read as a fresh query.
+      { type: 'text', text: ' ' }
+    ])
+    .run()
+}
+
+/**
+ * Create the target, then insert the Mention where the query was typed.
+ *
+ * The query text goes first, so the popup closes and the row cannot be picked
+ * twice while main writes the entity. The position is then carried through
+ * every transaction that lands during the write, so text typed meanwhile does
+ * not move the Mention. A failed write puts the query back; the mutation layer
+ * has already reported the failure.
+ */
+async function createAndInsertMention(
+  editor: Editor,
+  range: Range,
+  sigil: MentionSigil,
+  row: MentionCandidate,
+  create: MentionCreate
+): Promise<void> {
+  let pos = range.from
+  const track = ({ transaction }: { transaction: Transaction }) => {
+    pos = transaction.mapping.map(pos)
+  }
+  editor.chain().focus().deleteRange(range).run()
+  editor.on('transaction', track)
+  try {
+    const { targetId, label } = await create(row.targetType, row.label)
+    if (editor.isDestroyed) return
+    insertMention(editor, { from: pos, to: pos }, { targetType: row.targetType, targetId, label })
+  } catch {
+    if (editor.isDestroyed) return
+    editor.chain().insertContentAt(pos, `${sigil}${row.label}`).run()
+  } finally {
+    editor.off('transaction', track)
+  }
 }
 
 type MentionRenderer = ReactRenderer<MentionSuggestionListHandle, MentionSuggestionListProps>
@@ -103,11 +172,15 @@ export const MentionSuggestion = Extension.create<MentionSuggestionOptions>({
   name: 'mentionSuggestion',
 
   addOptions() {
-    return { getSources: () => EMPTY_MENTION_SOURCES, getExcludeNoteId: () => undefined }
+    return {
+      getSources: () => EMPTY_MENTION_SOURCES,
+      getExcludeNoteId: () => undefined,
+      createTarget: null
+    }
   },
 
   addProseMirrorPlugins() {
-    const { getSources, getExcludeNoteId } = this.options
+    const { getSources, getExcludeNoteId, createTarget } = this.options
     const { editor } = this
 
     return MENTION_SIGILS.map((sigil) =>
@@ -121,25 +194,16 @@ export const MentionSuggestion = Extension.create<MentionSuggestionOptions>({
             sigil,
             query,
             sources: getSources(),
-            excludeNoteId: getExcludeNoteId()
+            excludeNoteId: getExcludeNoteId(),
+            allowCreate: createTarget !== null
           }),
         command: ({ editor: ed, range, props }) => {
-          ed.chain()
-            .focus()
-            .insertContentAt(range, [
-              {
-                type: 'mention',
-                attrs: {
-                  targetType: props.targetType,
-                  targetId: props.targetId,
-                  label: props.label
-                }
-              },
-              // A trailing space so the caret lands outside the atom and the
-              // next character typed is not read as a fresh query.
-              { type: 'text', text: ' ' }
-            ])
-            .run()
+          if (props.create && createTarget) {
+            void createAndInsertMention(ed, range, sigil, props, createTarget)
+            return
+          }
+          const { targetType, targetId, label } = props
+          insertMention(ed, range, { targetType, targetId, label })
         },
         render: () => renderPopup(sigil)
       })

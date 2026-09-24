@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
-import { Camera, Crosshair, StickyNote, Tag, type LucideIcon } from 'lucide-react'
+import { Camera, Crosshair, Plus, StickyNote, Tag, type LucideIcon } from 'lucide-react'
 import type { MentionTargetType } from '@shared/noteDoc'
 import {
   MENTION_SCOPE_LABEL,
@@ -109,14 +109,20 @@ export const MentionSuggestionList = forwardRef<
 
       <div className="max-h-[210px] overflow-y-auto p-1">
         {items.map((item, i) => {
-          const Icon = iconForKind(item.targetType)
+          const Icon = item.create ? Plus : iconForKind(item.targetType)
           return (
             <button
-              key={`${item.targetType}:${item.targetId}`}
+              key={
+                item.create ? `create:${item.targetType}` : `${item.targetType}:${item.targetId}`
+              }
               type="button"
               role="option"
               aria-selected={i === selected}
-              data-testid={`mention-option-${item.targetType}-${item.targetId}`}
+              data-testid={
+                item.create
+                  ? 'mention-option-create'
+                  : `mention-option-${item.targetType}-${item.targetId}`
+              }
               // Taking focus would collapse the selection the insert replaces.
               onMouseDown={(e) => e.preventDefault()}
               onMouseEnter={() => setRawIndex(i)}
@@ -131,8 +137,12 @@ export const MentionSuggestionList = forwardRef<
                 style={{ color: item.color }}
                 aria-hidden="true"
               />
-              <span className="min-w-0 flex-1 truncate text-[12px] text-text-secondary">
-                {item.label}
+              <span
+                className={`min-w-0 flex-1 truncate text-[12px] ${
+                  item.create ? 'text-accent' : 'text-text-secondary'
+                }`}
+              >
+                {item.create ? `Create "${item.label}" as ${item.targetType}` : item.label}
               </span>
               <span className="shrink-0 text-[10px] text-text-faint">{item.meta}</span>
             </button>

@@ -9,6 +9,7 @@ import {
 } from '@renderer/components/notes/mention/mentionModel'
 import { rendererNoteExtensions } from '@renderer/components/notes/mention/rendererNoteExtensions'
 import { useMentionSources } from '@renderer/components/notes/mention/useMentionSources'
+import { useMentionCreate } from '@renderer/components/notes/mention/useMentionCreate'
 
 export interface UseNoteEditorArgs {
   /** Which case's entities the @/# autocompletes offer. */
@@ -64,6 +65,7 @@ export function useNoteEditor({
   noteId
 }: UseNoteEditorArgs): Editor | null {
   const { ref: sourcesRef } = useMentionSources(caseId)
+  const createTarget = useMentionCreate(caseId)
 
   // Behind a ref for the same reason the sources are, plus one of its own: the
   // inline editor on a capture has no note to exclude until autosave creates
@@ -81,9 +83,10 @@ export function useNoteEditor({
       rendererNoteExtensions({
         caseId,
         getSources: () => sourcesRef.current,
-        getExcludeNoteId: () => excludeRef.current
+        getExcludeNoteId: () => excludeRef.current,
+        createTarget
       }),
-    [caseId, sourcesRef]
+    [caseId, sourcesRef, createTarget]
   )
 
   return useEditor(

@@ -64,12 +64,7 @@ export function TopBar() {
           </div>
         )}
 
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={toggleTheme}
-          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-        >
+        <Button variant="ghost" size="icon-sm" onClick={toggleTheme} title="Toggle theme">
           {theme === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
         </Button>
       </header>
@@ -152,12 +147,7 @@ export function TopBar() {
           )}
         </Button>
 
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={toggleTheme}
-          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-        >
+        <Button variant="ghost" size="icon-sm" onClick={toggleTheme} title="Toggle theme">
           {theme === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
         </Button>
       </div>

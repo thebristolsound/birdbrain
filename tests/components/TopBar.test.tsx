@@ -112,6 +112,18 @@ describe('the settings header', () => {
   })
 })
 
+describe('the theme toggle', () => {
+  it('carries one static title in the normal header', () => {
+    renderAt('/')
+    expect(screen.getByTitle('Toggle theme')).toBeTruthy()
+  })
+
+  it('carries the same title in the settings header', () => {
+    renderAt('/settings')
+    expect(screen.getByTitle('Toggle theme')).toBeTruthy()
+  })
+})
+
 describe('the REC indicator', () => {
   it('shows in the normal header while a session runs', () => {
     useAppStore.setState({ sessionActive: true })

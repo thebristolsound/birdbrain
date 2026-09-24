@@ -22,7 +22,7 @@ test.describe('App Lifecycle', () => {
     await page.waitForFunction(() => !document.documentElement.classList.contains('dark'))
 
     // Click the theme toggle and wait for the dark class to appear
-    const themeToggle = page.locator('button[title="Switch to dark mode"]')
+    const themeToggle = page.locator('button[title="Toggle theme"]')
     await themeToggle.click()
     await page.waitForFunction(() => document.documentElement.classList.contains('dark'))
 

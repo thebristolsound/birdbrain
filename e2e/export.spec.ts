@@ -84,11 +84,12 @@ async function openExportDialog(page: Page): Promise<void> {
 }
 
 // A written export closes the dialog and names its path in a toast. The path is
-// what tells this run's toast from the previous run's, still on screen.
+// what tells this run's toast from the previous run's, still on screen. The
+// dialog animates out, so wait for it to be gone before the next one opens.
 async function runExport(page: Page, filePath: string): Promise<void> {
   await page.getByTestId('export-submit').click()
   await expect(page.getByText(`· ${filePath}`)).toBeVisible({ timeout: 15000 })
-  await expect(page.getByRole('heading', { name: 'Exporting case' })).toBeHidden()
+  await expect(page.getByRole('heading', { name: /^Export(ing)? case$/ })).toHaveCount(0)
 }
 
 // #399 AC 6: preset selection and both export classes' outputs, proven on the

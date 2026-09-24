@@ -431,6 +431,9 @@ describe('ExportDialog', () => {
     expect(opts.description).toBe('Evidence package · Case_One_evidence.zip')
     expect(opts.action.label).toBe('Show in folder')
     expect(onClose).toHaveBeenCalledOnce()
+    // Held on the progress view while the dialog animates out, never the form.
+    expect(screen.getByText('Exporting case')).toBeDefined()
+    expect(screen.queryByTestId('export-submit')).toBeNull()
 
     opts.action.onClick()
     expect(showItemInFolder).toHaveBeenCalledWith('Case_One_evidence.zip')

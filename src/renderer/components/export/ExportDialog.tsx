@@ -111,6 +111,7 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
   const [purposeOrAuthority, setPurposeOrAuthority] = useState('')
   const [showChecklist, setShowChecklist] = useState(false)
   const [progress, setProgress] = useState({ step: 'Preparing export…', percent: 0 })
+  const [closing, setClosing] = useState(false)
 
   // A failed preflight leaves `data` undefined, which reads the same as "no
   // warning to show" — the same silent fallback the mount effect had, minus
@@ -135,12 +136,11 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
   const scopedCount = selectedCaptureIds?.length
 
   // The phase is a reading of the mutation, not a machine kept alongside it. A
-  // canceled save dialog resolves rather than throws, so it lands as a success
-  // that must not be read as a written package. A written one closes the
-  // dialog, so it holds the progress view through the exit animation.
-  const result = generate.data
-  const written = !!result && !result.canceled
-  const phase: Phase = generate.isPending || written ? 'exporting' : 'form'
+  // canceled save dialog resolves rather than throws, so it falls back to the
+  // form. A written package closes the dialog, and `closing` holds the progress
+  // view through the exit animation: the promise settles before the mutation's
+  // own success render, which would otherwise flash the form on the way out.
+  const phase: Phase = generate.isPending || closing ? 'exporting' : 'form'
   const exportError = generate.error ? `Error: ${generate.error.message}` : ''
 
   useEffect(() => {
@@ -175,6 +175,7 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
         if (canceled || !filePath) return
         const kind = workingCopy ? 'Working copy' : 'Evidence package'
         notifyExportWritten('Export written', `${kind} · ${filePath}`, filePath)
+        setClosing(true)
         onClose()
       })
       // A failure is already surfaced: inline below while the dialog is open,

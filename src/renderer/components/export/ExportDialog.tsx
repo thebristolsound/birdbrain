@@ -5,10 +5,9 @@ import { Archive, ChevronDown, ShieldCheck, TriangleAlert } from 'lucide-react'
 import type { ExportClass, ExportOptions } from '@shared/types'
 import { safeFilename } from '@shared/safeFilename'
 import { presets } from '@renderer/lib/motion'
-import { useCompletionCelebration } from '@renderer/hooks/useCompletionCelebration'
 import { Button, Input, Label } from '@renderer/components/ui'
 import { ExportProgress } from '@renderer/components/export/ExportProgress'
-import { ExportComplete } from '@renderer/components/export/ExportComplete'
+import { notifyExportWritten } from '@renderer/components/export/exportNotice'
 import { exportPreflightQueryOptions, useExportMutations } from '@renderer/lib/api/export'
 import { caseQueryOptions } from '@renderer/lib/api/cases'
 import { waybackCasePinsQueryOptions } from '@renderer/lib/api/wayback'
@@ -24,7 +23,7 @@ interface ExportDialogProps {
   onClose: () => void
 }
 
-type Phase = 'form' | 'exporting' | 'complete'
+type Phase = 'form' | 'exporting'
 
 // What the operator has selected: the export class plus the item set. The two
 // travel together because the class decides which items exist at all.
@@ -113,8 +112,6 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
   const [showChecklist, setShowChecklist] = useState(false)
   const [progress, setProgress] = useState({ step: 'Preparing export…', percent: 0 })
 
-  const { celebrate, celebrationProps } = useCompletionCelebration({ style: 'ripple' })
-
   // A failed preflight leaves `data` undefined, which reads the same as "no
   // warning to show" — the same silent fallback the mount effect had, minus
   // the alive flag, since an unmounted query cannot write to state.
@@ -139,14 +136,11 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
 
   // The phase is a reading of the mutation, not a machine kept alongside it. A
   // canceled save dialog resolves rather than throws, so it lands as a success
-  // that must not be read as a written package.
+  // that must not be read as a written package. A written one closes the
+  // dialog, so it holds the progress view through the exit animation.
   const result = generate.data
-  const phase: Phase = generate.isPending
-    ? 'exporting'
-    : result && !result.canceled
-      ? 'complete'
-      : 'form'
-  const filePath = result?.filePath ?? ''
+  const written = !!result && !result.canceled
+  const phase: Phase = generate.isPending || written ? 'exporting' : 'form'
   const exportError = generate.error ? `Error: ${generate.error.message}` : ''
 
   useEffect(() => {
@@ -171,14 +165,21 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
     }
 
     setProgress({ step: 'Preparing export…', percent: 0 })
-    generate.mutate(
-      { caseId, options },
-      {
-        onSuccess: (exported) => {
-          if (!exported.canceled) celebrate()
-        }
-      }
-    )
+    // The promise, not mutate's per-call onSuccess: React Query drops that
+    // callback once the dialog unmounts, and Close mid-run unmounts it. The
+    // promise still settles, so the completion notice reaches an operator who
+    // closed the dialog while the package was being written.
+    generate
+      .mutateAsync({ caseId, options })
+      .then(({ canceled, filePath }) => {
+        if (canceled || !filePath) return
+        const kind = workingCopy ? 'Working copy' : 'Evidence package'
+        notifyExportWritten('Export written', `${kind} · ${filePath}`, filePath)
+        onClose()
+      })
+      // A failure is already surfaced: inline below while the dialog is open,
+      // and by the app-wide mutation error toast whether or not it is.
+      .catch(() => undefined)
   }
 
   const applyPreset = (id: ExportPresetId) => {
@@ -204,18 +205,14 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
         {...presets.modal}
       >
         <AnimatePresence mode="wait">
-          {phase === 'complete' ? (
-            <motion.div key="complete" {...presets.fadeIn}>
-              <ExportComplete
-                filePath={filePath}
-                onClose={onClose}
-                celebrationProps={celebrationProps}
-              />
-            </motion.div>
-          ) : phase === 'exporting' ? (
+          {phase === 'exporting' ? (
             <motion.div key="exporting" {...presets.fadeIn}>
               <h2 className="mb-4 text-lg font-semibold text-text-primary">Exporting case</h2>
               <ExportProgress step={progress.step} percent={progress.percent} />
+              <p className="mb-4 text-xs text-text-muted" data-testid="export-close-note">
+                Closing this window does not stop the export. A notice with the file&apos;s location
+                appears when it has been written.
+              </p>
               <div className="flex justify-end">
                 <Button variant="ghost" size="sm" onClick={onClose}>
                   Close

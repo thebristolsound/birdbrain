@@ -1,17 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import {
-  FileOutput,
-  ChevronDown,
-  FileText,
-  Archive,
-  Loader2,
-  CheckCircle2
-} from 'lucide-react'
+import { FileOutput, ChevronDown, FileText, Archive, Loader2, X } from 'lucide-react'
 import { AnimatePresence } from 'motion/react'
 import { Button } from '@renderer/components/ui'
 import { ExportDialog } from '@renderer/components/export/ExportDialog'
 import { useCasesMutations } from '@renderer/lib/queries'
-import { revealInFolder } from '@renderer/lib/api/system'
+import { notifyExportWritten } from '@renderer/components/export/exportNotice'
 
 interface ExportMenuProps {
   caseId: string
@@ -22,7 +15,6 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
   const [open, setOpen] = useState(false)
   const [showReport, setShowReport] = useState(false)
   const { exportArchive } = useCasesMutations()
-  const [archiveResult, setArchiveResult] = useState<{ filePath: string } | null>(null)
   const [archiveError, setArchiveError] = useState('')
   const [archiveProgress, setArchiveProgress] = useState<{ step: string; percent: number } | null>(
     null
@@ -39,7 +31,6 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
   useEffect(() => {
     caseIdRef.current = caseId
     // Switching cases must not carry a stale export banner/progress across.
-    setArchiveResult(null)
     setArchiveError('')
     setArchiveProgress(null)
     setExportingCaseId(null)
@@ -79,16 +70,13 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
     setOpen(false)
     const exportCaseId = caseId
     setArchiveError('')
-    setArchiveResult(null)
     setArchiveProgress({ step: 'Preparing archive…', percent: 0 })
     setExportingCaseId(exportCaseId)
     try {
-      const result = await exportArchive.mutateAsync(exportCaseId)
-      // Ignore a completion that lands after the user switched cases.
-      if (caseIdRef.current !== exportCaseId) return
-      if (!result.canceled && result.filePath) {
-        setArchiveResult({ filePath: result.filePath })
-      }
+      const { canceled, filePath } = await exportArchive.mutateAsync(exportCaseId)
+      // The notice is app-wide and names its path, so it is raised even when the
+      // operator has since switched cases: that is when it is most needed.
+      if (!canceled && filePath) notifyExportWritten('Archive saved', filePath, filePath)
     } catch (err) {
       if (caseIdRef.current !== exportCaseId) return
       setArchiveError(err instanceof Error ? err.message : String(err))
@@ -97,21 +85,6 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
         setArchiveProgress(null)
         setExportingCaseId(null)
       }
-    }
-  }
-
-  // Reveal is the only way back to the archive from this banner, so a failed
-  // one has to say so — reusing the export banner rather than adding a second
-  // error surface, the same way ExportComplete reuses its actionError. The
-  // message may name the archive path: this is local component state, never
-  // logged or serialised, which is the same latitude ExportComplete takes and
-  // the same latitude handleExportArchive above already takes on this banner.
-  async function handleReveal(filePath: string) {
-    setArchiveError('')
-    try {
-      await revealInFolder(filePath)
-    } catch (err) {
-      setArchiveError(err instanceof Error ? err.message : String(err))
     }
   }
 
@@ -168,36 +141,23 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
         </div>
       )}
 
-      {(archiveResult || archiveError) && (
-        <div className="absolute right-0 top-full z-40 mt-1 flex flex-col items-end gap-1.5">
-          {archiveResult && (
-            <div
-              role="status"
-              aria-live="polite"
-              className="flex items-center gap-2 rounded border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-400"
-            >
-              <CheckCircle2 size={12} strokeWidth={1.8} className="shrink-0" />
-              <span className="max-w-[220px] truncate" title={archiveResult.filePath}>
-                Archive saved
-              </span>
-              <button
-                type="button"
-                className="font-semibold underline underline-offset-2 hover:text-emerald-300"
-                onClick={() => void handleReveal(archiveResult.filePath)}
-              >
-                Show in folder
-              </button>
-            </div>
-          )}
-          {archiveError && (
-            <div
-              role="alert"
-              aria-live="assertive"
-              className="max-w-[260px] rounded border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-xs text-red-400"
-            >
-              {archiveError}
-            </div>
-          )}
+      {/* A failed archive stays up until dismissed rather than timing out:
+          the mock has no failure path, and an error is not a transient notice. */}
+      {archiveError && (
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="absolute right-0 top-full z-40 mt-1 flex max-w-[260px] items-start gap-1.5 rounded border border-red-500/30 bg-red-500/10 py-1 pr-1 pl-2.5 text-xs text-red-400"
+        >
+          <span className="min-w-0 flex-1">{archiveError}</span>
+          <button
+            type="button"
+            aria-label="Dismiss"
+            className="grid h-4 w-4 shrink-0 place-items-center rounded hover:bg-red-500/20"
+            onClick={() => setArchiveError('')}
+          >
+            <X size={11} strokeWidth={2} />
+          </button>
         </div>
       )}
 

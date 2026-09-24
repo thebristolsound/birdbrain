@@ -19,6 +19,11 @@ vi.mock('@renderer/lib/queries', () => ({
   })
 }))
 
+const notifySuccess = vi.hoisted(() => vi.fn())
+vi.mock('@renderer/lib/notify', () => ({
+  notify: { success: notifySuccess, error: vi.fn() }
+}))
+
 vi.mock('@renderer/components/export/ExportDialog', () => ({
   ExportDialog: () => null
 }))
@@ -52,6 +57,7 @@ describe('ExportMenu', () => {
     updateMutateSpy.mockReset()
     exportArchiveMutateSpy.mockReset()
     exportArchiveIsPending = false
+    notifySuccess.mockReset()
     progressCb = null
     onArchiveProgress = vi.fn((cb: (event: ArchiveProgressEvent) => void) => {
       progressCb = cb
@@ -111,7 +117,7 @@ describe('ExportMenu', () => {
     gate.resolve({ canceled: false, filePath: 'archive.birdbrain' })
   })
 
-  it('shows the saved archive banner on success', async () => {
+  it('raises the saved archive toast on success', async () => {
     exportArchiveMutateSpy.mockResolvedValue({
       canceled: false,
       filePath: 'archive.birdbrain'
@@ -120,9 +126,12 @@ describe('ExportMenu', () => {
 
     await clickExportCaseFile()
 
-    expect(await screen.findByText('Archive saved')).toBeDefined()
+    await waitFor(() => expect(notifySuccess).toHaveBeenCalledOnce())
+    const [title, opts] = notifySuccess.mock.calls[0]
+    expect(title).toBe('Archive saved')
+    expect(opts.description).toBe('archive.birdbrain')
 
-    fireEvent.click(screen.getByText('Show in folder'))
+    opts.action.onClick()
     expect(showItemInFolder).toHaveBeenCalledWith('archive.birdbrain')
   })
 

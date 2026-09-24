@@ -165,8 +165,7 @@ test.describe('Round-1 observed session, by machine', () => {
       await expect(page.getByRole('radio', { name: /Full evidence bundle/ })).toBeChecked()
       await stubSaveDialog(electronApp, bundlePath)
       await page.getByTestId('export-submit').click()
-      await expect(page.getByText('Export complete')).toBeVisible({ timeout: 15000 })
-      await page.getByRole('button', { name: 'Done' }).click()
+      await expect(page.getByText(`· ${bundlePath}`)).toBeVisible({ timeout: 15000 })
       expect(existsSync(bundlePath)).toBe(true)
       const names = readStoredZipNames(bundlePath)
       for (const name of ['manifest.jsonl', 'certification.html', 'signing-public-key.pem']) {

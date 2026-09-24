@@ -152,4 +152,21 @@ describe('ArtifactTabs', () => {
     expect(screen.getByText('second')).toBeTruthy()
     expect(screen.queryByText('alpha body')).toBeNull()
   })
+
+  it('follows the leading tab until one is picked, then keeps the pick while it exists', () => {
+    const tab = (id: string) => ({ id, label: id, content: <p>{id} body</p> })
+    const { rerender } = render(
+      <ArtifactTabs title="file" subtitle="path" tabs={[tab('b'), tab('c')]} />
+    )
+    expect(screen.getByText('b body')).toBeTruthy()
+    // A tab arriving ahead of the others becomes the one shown.
+    rerender(<ArtifactTabs title="file" subtitle="path" tabs={[tab('a'), tab('b'), tab('c')]} />)
+    expect(screen.getByText('a body')).toBeTruthy()
+    fireEvent.click(screen.getByRole('tab', { name: 'c' }))
+    rerender(<ArtifactTabs title="file" subtitle="path" tabs={[tab('a'), tab('c')]} />)
+    expect(screen.getByText('c body')).toBeTruthy()
+    // A picked tab the row does not have falls back to the leading one.
+    rerender(<ArtifactTabs title="file" subtitle="path" tabs={[tab('a'), tab('b')]} />)
+    expect(screen.getByText('a body')).toBeTruthy()
+  })
 })

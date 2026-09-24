@@ -15,6 +15,7 @@ import {
   isIntegrityException,
   rowsForNode,
   shortHash,
+  stripBreadcrumb,
   toArtifactRow,
   type CaptureFacts,
   type CaptureFactsById
@@ -143,6 +144,15 @@ describe('CAPTURED known answers', () => {
       '2026-09-01 10:00',
       "Created 2026-09-01T10:00:05.000Z; its parent Exhibit is not in this case's inventory"
     ])
+  })
+})
+
+describe('stripBreadcrumb', () => {
+  it('reads the SOURCE citation and the row’s group, as the mock’s capture and group', () => {
+    const crumb = (row: InventoryRow) => stripBreadcrumb(toArtifactRow(row, INVENTORY, FACTS))
+    expect(crumb(CAPTURE_A)).toBe('Exhibit 1 / raw')
+    expect(crumb(THUMB_A)).toBe('Exhibit 1 / derived')
+    expect(crumb(STAGED_PDF)).toBe('manual-upload / staging')
   })
 })
 

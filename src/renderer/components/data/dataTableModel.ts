@@ -310,6 +310,14 @@ export function formatStamp(iso: string): string {
   return ts.toISOString().slice(0, 16).replace('T', ' ')
 }
 
+// The strip header's breadcrumb, the mock's capture and group (#1552): the
+// SOURCE citation, then whether the row is the Exhibit's own bytes, a Derived
+// File, or a pooled file.
+export function stripBreadcrumb({ source, entity }: ArtifactRow): string {
+  const group = entity === 'exhibit' ? 'raw' : entity === 'derived-file' ? 'derived' : 'staging'
+  return `${source} / ${group}`
+}
+
 // The hover title for CAPTURED: the full ISO value and the clock it is, so a
 // non-capture clock is named in words and not only by the cell's qualifier.
 export function capturedTitle({ capturedAt, capturedClock }: ArtifactRow): string {

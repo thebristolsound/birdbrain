@@ -47,6 +47,7 @@ import {
   filterRows,
   integrityCounts,
   rowsForNode,
+  stripBreadcrumb,
   toArtifactRow,
   type CaptureFacts,
   type RowContext
@@ -187,8 +188,11 @@ export function DataExplorer() {
   )
 
   // Resolved from the table as filtered, so a row the search has hidden does
-  // not keep its strip open.
-  const selectedRow = tableRows.find((row) => row.id === selectedId)?.raw ?? null
+  // not keep its strip open. With nothing selected the strip shows the table's
+  // first row, as the mock does (#1552), so it is absent only when the table
+  // is empty.
+  const shownRow = tableRows.find((row) => row.id === selectedId) ?? tableRows[0]
+  const selectedRow = shownRow?.raw ?? null
   const selectedCapture =
     selectedRow?.entity === 'exhibit' ? captureById.get(selectedRow.id) : undefined
   const { data: extractedText } = useQuery({
@@ -558,10 +562,10 @@ export function DataExplorer() {
                 </>
               )}
             </section>
-            {selectedRow && node !== 'manifest-ledger' && (
+            {shownRow && selectedRow && node !== 'manifest-ledger' && (
               <ArtifactTabs
                 title={selectedRow.name}
-                subtitle={selectedRow.path ?? 'no file recorded'}
+                subtitle={stripBreadcrumb(shownRow)}
                 tabs={tabs}
                 action={
                   selectedExhibitId ? (

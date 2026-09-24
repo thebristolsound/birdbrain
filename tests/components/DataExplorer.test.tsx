@@ -155,11 +155,33 @@ describe('DataExplorer (#1149)', () => {
     expect(await screen.findByText('No files match this search.')).toBeTruthy()
   })
 
-  it('closes the strip when the search hides the selected row', async () => {
+  // The strip used to close when the search hid the selected row and to be
+  // absent until a row was clicked; the mock falls back to the first file
+  // (#1552), and the strip is now absent only when the table is empty.
+  it('shows the first row in the strip with nothing selected, with the breadcrumb', async () => {
     renderExplorer()
-    fireEvent.click(await screen.findByTestId('artifact-row-cap-a'))
-    expect(await screen.findByTestId('artifact-tabs')).toBeTruthy()
+    const strip = within(await screen.findByTestId('artifact-tabs'))
+    expect(strip.getByText('Example page')).toBeTruthy()
+    expect(text(strip.getByTestId('artifact-tabs-subtitle'))).toBe('Exhibit 1 / raw')
+    expect(screen.getByTestId('artifact-row-cap-a').getAttribute('aria-selected')).toBe('false')
+    // The strip is the larger pane, as in the mock.
+    expect(screen.getByTestId('artifact-tabs').className).toContain('flex-[1.2]')
+
+    fireEvent.click(screen.getByTestId('artifact-row-thumb-a'))
+    await waitFor(() =>
+      expect(text(screen.getByTestId('artifact-tabs-subtitle'))).toBe('Exhibit 1 / derived')
+    )
+  })
+
+  it('falls back to the first visible row when the search hides the selected one', async () => {
+    renderExplorer()
+    fireEvent.click(await screen.findByTestId('artifact-row-thumb-a'))
     fireEvent.change(screen.getByTestId('data-search'), { target: { value: 'Old page' } })
+    await waitFor(() =>
+      expect(within(screen.getByTestId('artifact-tabs')).getByText('Old page')).toBeTruthy()
+    )
+    expect(text(screen.getByTestId('artifact-tabs-subtitle'))).toBe('Exhibit 2 / raw')
+    fireEvent.change(screen.getByTestId('data-search'), { target: { value: 'zzz' } })
     await waitFor(() => expect(screen.queryByTestId('artifact-tabs')).toBeNull())
   })
 
@@ -282,6 +304,7 @@ describe('DataExplorer (#1149)', () => {
       (await tree()).getByTestId('data-tree-node-staging').querySelector('button:last-of-type')!
     )
     fireEvent.click(await screen.findByTestId('artifact-row-staged-1'))
+    expect(text(screen.getByTestId('artifact-tabs-subtitle'))).toBe('manual-upload / staging')
     // A pooled row has nothing but Properties (#1150).
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Properties'])
     const props = within(await screen.findByTestId('properties-tab'))

@@ -188,8 +188,11 @@ describe('DataExplorer results and tabs (#1150)', () => {
     // No MHTML Parts tab: #991 owns it, and a tab with no data is absent.
     expect(strip.queryByRole('tab', { name: /MHTML/ })).toBeNull()
 
-    // The strip keeps whichever tab was active when the text arrived.
-    fireEvent.click(strip.getByRole('tab', { name: 'Extracted Text' }))
+    // The strip opens on the leading tab once the text arrives; it used to
+    // keep the tab that was first when it mounted, before the text (#1552).
+    expect(strip.getByRole('tab', { name: 'Extracted Text' }).getAttribute('aria-selected')).toBe(
+      'true'
+    )
     const textTab = within(strip.getByTestId('extracted-text-tab'))
     expect(text(textTab.getByText('mail me at proton.me today'))).toBeTruthy()
     expect(getContent).toHaveBeenCalledWith('cap-a', 'txt')

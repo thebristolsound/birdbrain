@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
 import type { Capture } from '@shared/types'
 import { SignalRow } from '@renderer/components/signals/SignalRow'
 import type { Signal } from '@renderer/components/signals/signalsModel'
@@ -48,6 +48,8 @@ function renderRow(signal: Signal = selectorSignal, overrides: Record<string, un
     onRename: vi.fn(),
     onDelete: vi.fn(),
     onShowMatches: vi.fn(),
+    onDuplicate: vi.fn(),
+    onCopyPattern: vi.fn(),
     onExportMatches: vi.fn(),
     onFilterCaptures: vi.fn(),
     onSetColor: vi.fn(),
@@ -56,13 +58,7 @@ function renderRow(signal: Signal = selectorSignal, overrides: Record<string, un
     registerRow: vi.fn()
   }
   render(
-    <SignalRow
-      signal={signal}
-      captures={captures}
-      selected={false}
-      {...handlers}
-      {...overrides}
-    />
+    <SignalRow signal={signal} captures={captures} selected={false} {...handlers} {...overrides} />
   )
   return handlers
 }
@@ -107,6 +103,49 @@ describe('SignalRow keyboard model', () => {
 
     expect(onRename).not.toHaveBeenCalled()
     expect(screen.queryByLabelText('Edit selector pattern')).toBeNull()
+  })
+
+  // #1549: a pre-selected pattern was replaced whole by the first keystroke,
+  // and a changed pattern clears and re-runs every persisted match.
+  it('opens the editor with the caret after the pattern, not the pattern selected', () => {
+    renderRow()
+    fireEvent.keyDown(screen.getByTestId('signal-row-s1'), { key: 'Enter' })
+
+    const input = screen.getByLabelText('Edit selector pattern') as HTMLInputElement
+    expect(document.activeElement).toBe(input)
+    expect(input.selectionStart).toBe('acme'.length)
+    expect(input.selectionEnd).toBe('acme'.length)
+  })
+
+  it('writes nothing when the editor closes on an unchanged value', () => {
+    const { onRename } = renderRow()
+    fireEvent.keyDown(screen.getByTestId('signal-row-s1'), { key: 'Enter' })
+
+    fireEvent.blur(screen.getByLabelText('Edit selector pattern'))
+
+    expect(onRename).not.toHaveBeenCalled()
+    expect(screen.queryByLabelText('Edit selector pattern')).toBeNull()
+  })
+
+  it('copies a selector pattern with the copy chord, and does nothing for a tag', () => {
+    const { onCopyPattern } = renderRow()
+    fireEvent.keyDown(screen.getByTestId('signal-row-s1'), { key: 'c', ctrlKey: true })
+    fireEvent.keyDown(screen.getByTestId('signal-row-s1'), { key: 'C', metaKey: true })
+    expect(onCopyPattern).toHaveBeenCalledTimes(2)
+
+    // Another accelerator's chord, and a plain c, are not this one.
+    fireEvent.keyDown(screen.getByTestId('signal-row-s1'), {
+      key: 'c',
+      ctrlKey: true,
+      shiftKey: true
+    })
+    fireEvent.keyDown(screen.getByTestId('signal-row-s1'), { key: 'c' })
+    expect(onCopyPattern).toHaveBeenCalledTimes(2)
+
+    cleanup()
+    const tag = renderRow(tagSignal)
+    fireEvent.keyDown(screen.getByTestId('signal-row-t1'), { key: 'c', ctrlKey: true })
+    expect(tag.onCopyPattern).not.toHaveBeenCalled()
   })
 
   it('does not act on arrow keys while editing', () => {
@@ -231,6 +270,9 @@ describe('SignalRow rendering', () => {
     fireEvent.click(screen.getByTestId('context-menu-item-selector-edit'))
 
     const input = await screen.findByLabelText('Edit selector pattern')
+    // The editor keeps focus once the menu has closed: handing it back to the
+    // row would blur the editor, and a blur commits it.
+    await waitFor(() => expect(document.activeElement).toBe(input))
     fireEvent.change(input, { target: { value: 'acme corp' } })
     fireEvent.keyDown(input, { key: 'Enter' })
     expect(onRename).toHaveBeenCalledWith('acme corp')
@@ -280,17 +322,31 @@ describe('SignalRow rendering', () => {
   })
 
   // Ruling 3: the menu is an accelerator, so nothing may appear in it that the
-  // app cannot reach another way. These four are the ones the mock offers and
-  // the app has no route for, and each is a live divergence rather than an
-  // oversight — see the registry's own notes.
+  // app cannot reach another way. Backfill stays on the rail by the 2026-09-23
+  // ruling (#1549), and Export… is #830's per-entity export.
   it('offers no action the app has no inline route for', async () => {
     renderRow()
     fireEvent.contextMenu(screen.getByTestId('signal-row-s1'))
     await screen.findByRole('menu')
 
-    expect(screen.queryByText('Duplicate')).toBeNull()
-    expect(screen.queryByText('Copy pattern')).toBeNull()
     expect(screen.queryByText('Backfill existing captures')).toBeNull()
     expect(screen.queryByText('Export…')).toBeNull()
+  })
+
+  // #1549 added these two. Duplicate's inline route is the add row it fills;
+  // Copy pattern's is the row's copy chord.
+  it('runs Duplicate and Copy pattern from the selector menu', async () => {
+    const { onDuplicate, onCopyPattern } = renderRow()
+    fireEvent.contextMenu(screen.getByTestId('signal-row-s1'))
+    await screen.findByRole('menu')
+    fireEvent.click(screen.getByTestId('context-menu-item-selector-duplicate'))
+    // Deferred until the menu has closed, since it moves focus to the add row.
+    await waitFor(() => expect(onDuplicate).toHaveBeenCalledOnce())
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
+
+    fireEvent.contextMenu(screen.getByTestId('signal-row-s1'))
+    await screen.findByRole('menu')
+    fireEvent.click(screen.getByTestId('context-menu-item-selector-copy-pattern'))
+    expect(onCopyPattern).toHaveBeenCalledOnce()
   })
 })

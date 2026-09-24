@@ -7,6 +7,8 @@ import {
   buildTagSignals,
   exclusionFooter,
   exclusionSummary,
+  findDuplicateSelector,
+  findTagByName,
   nextTagColor,
   parseBulkPatterns,
   parseSelectorInput,
@@ -284,5 +286,50 @@ describe('parseBulkPatterns', () => {
 
   it('handles CRLF input', () => {
     expect(parseBulkPatterns('alpha\r\nbeta', [], false).unique).toEqual(['alpha', 'beta'])
+  })
+})
+
+// #1549: the inline add row refuses on the same rule bulk import applies, so
+// the two routes in one card cannot disagree about what a duplicate is.
+describe('findDuplicateSelector', () => {
+  it('agrees with bulk import on every pairing', () => {
+    const existing = [
+      selector({ id: 'a', pattern: 'Alpha' }),
+      selector({ id: 'b', pattern: 'Beta', isRegex: true })
+    ]
+    const cases: Array<[string, boolean]> = [
+      ['alpha', false],
+      ['ALPHA', false],
+      ['alpha', true],
+      ['Beta', true],
+      ['beta', true],
+      ['Beta', false],
+      ['gamma', false]
+    ]
+    for (const [pattern, isRegex] of cases) {
+      const bulkSaysDuplicate = parseBulkPatterns(pattern, existing, isRegex).existingDuplicates > 0
+      expect(Boolean(findDuplicateSelector(existing, pattern, isRegex))).toBe(bulkSaysDuplicate)
+    }
+  })
+
+  it('returns the selector it collides with', () => {
+    const existing = [selector({ id: 'a', pattern: 'Alpha' })]
+    expect(findDuplicateSelector(existing, 'alpha', false)?.id).toBe('a')
+  })
+})
+
+describe('findTagByName', () => {
+  const tags = [tag({ id: 't1', name: 'evidence' }), tag({ id: 't2', name: 'Finance' })]
+
+  // Case-insensitive, the rule main's find-or-create reuses a tag on.
+  it('finds a taken name whatever its letter case', () => {
+    expect(findTagByName(tags, 'EVIDENCE')?.id).toBe('t1')
+    expect(findTagByName(tags, 'finance')?.id).toBe('t2')
+    expect(findTagByName(tags, 'other')).toBeUndefined()
+  })
+
+  it('leaves out the tag being renamed', () => {
+    expect(findTagByName(tags, 'Evidence', 't1')).toBeUndefined()
+    expect(findTagByName(tags, 'evidence', 't2')?.id).toBe('t1')
   })
 })

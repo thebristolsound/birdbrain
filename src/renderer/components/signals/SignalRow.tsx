@@ -17,6 +17,10 @@ interface SignalRowProps {
   onDelete: () => void
   /** Selectors only: filter the captures list by this selector and go there. */
   onShowMatches: () => void
+  /** Selectors only: start a new selector from this one's pattern. */
+  onDuplicate: () => void
+  /** Selectors only: put the pattern on the clipboard. */
+  onCopyPattern: () => void
   /** Selectors only: write this selector's matches out as CSV. */
   onExportMatches: () => void
   /** Tags only: narrow the captures list by this tag and go there (#918). */
@@ -28,6 +32,16 @@ interface SignalRowProps {
   /** Move focus to the row above/below, or out of the list at the top. */
   onFocusSibling: (direction: -1 | 1) => void
   registerRow: (element: HTMLDivElement | null) => void
+}
+
+// Cmd on macOS, Ctrl elsewhere, with no other modifier: the copy chord the
+// menu's Copy pattern item names. Text the operator has selected is what they
+// meant to copy, so a live selection falls through to the browser.
+function isCopyChord(event: KeyboardEvent<HTMLDivElement>): boolean {
+  if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey) return false
+  if (event.key !== 'c' && event.key !== 'C') return false
+  const selection = window.getSelection()
+  return !selection || selection.isCollapsed
 }
 
 // One row on either card. Selectors and Tags share it because they are the same
@@ -48,6 +62,8 @@ export function SignalRow({
   onRename,
   onDelete,
   onShowMatches,
+  onDuplicate,
+  onCopyPattern,
   onExportMatches,
   onFilterCaptures,
   onSetColor,
@@ -60,25 +76,38 @@ export function SignalRow({
   const inputRef = useRef<HTMLInputElement>(null)
   const isSelector = signal.kind === 'selector'
 
+  const original = isSelector ? signal.sub : signal.name
+
+  // Caret at the end rather than the whole value selected (#1549): with the
+  // pattern pre-selected, the first keystroke replaced it, and a changed
+  // pattern clears and re-runs every persisted match.
   useEffect(() => {
-    if (editing) inputRef.current?.select()
+    const input = inputRef.current
+    if (!editing || !input) return
+    input.focus()
+    input.setSelectionRange(input.value.length, input.value.length)
   }, [editing])
 
   function beginEdit() {
-    setDraft(isSelector ? signal.sub : signal.name)
+    setDraft(original)
     setEditing(true)
     onSelect()
   }
 
+  // An unchanged value writes nothing, so leaving the editor by blur is never
+  // an edit.
   function commit() {
     setEditing(false)
     const value = draft.trim()
-    if (value) onRename(value)
+    if (value && value !== original) onRename(value)
   }
 
   function handleKey(event: KeyboardEvent<HTMLDivElement>) {
     if (editing) return
-    if (event.key === 'ArrowDown') {
+    if (isSelector && isCopyChord(event)) {
+      event.preventDefault()
+      onCopyPattern()
+    } else if (event.key === 'ArrowDown') {
       event.preventDefault()
       onFocusSibling(1)
     } else if (event.key === 'ArrowUp') {
@@ -111,7 +140,9 @@ export function SignalRow({
         actions: {
           editPattern: beginEdit,
           toggleEnabled: onToggleEnabled,
+          duplicate: onDuplicate,
           showMatches: onShowMatches,
+          copyPattern: onCopyPattern,
           exportMatches: onExportMatches,
           remove: onDelete
         }

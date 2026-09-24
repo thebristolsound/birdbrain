@@ -5,7 +5,6 @@ import { Download, ListPlus } from 'lucide-react'
 import { SIGNAL_COVERAGE_CAPTURES } from '@shared/constants'
 import { capturesQueryOptions } from '@renderer/lib/api/captures'
 import {
-  deleteSelector,
   exportSelectorMatches,
   selectorCaptureMatrixQueryOptions,
   selectorMatchCountsQueryOptions,
@@ -24,9 +23,11 @@ import { notify } from '@renderer/lib/notify'
 import { useAppStore } from '@renderer/stores/appStore'
 import { CreateSelectorCard } from '@renderer/components/selectors/CreateSelectorCard'
 import { AutoCaptureCard } from '@renderer/components/signals/AutoCaptureCard'
-import { AddSelectorRow } from '@renderer/components/signals/AddSelectorRow'
+import { copyValue } from '@renderer/components/data/copy'
+import { AddSelectorRow, type SelectorPrefill } from '@renderer/components/signals/AddSelectorRow'
 import { AddTagRow } from '@renderer/components/signals/AddTagRow'
 import { BulkImportDrawer } from '@renderer/components/signals/BulkImportDrawer'
+import { DeleteSelectorDialog } from '@renderer/components/signals/DeleteSelectorDialog'
 import { DeleteTagDialog } from '@renderer/components/signals/DeleteTagDialog'
 import { MergeTagDialog } from '@renderer/components/signals/MergeTagDialog'
 import { SignalRow } from '@renderer/components/signals/SignalRow'
@@ -34,6 +35,8 @@ import { SignalDetailRail } from '@renderer/components/signals/SignalDetailRail'
 import {
   buildSelectorSignals,
   buildTagSignals,
+  findDuplicateSelector,
+  findTagByName,
   nextTagColor,
   type Signal
 } from '@renderer/components/signals/signalsModel'
@@ -44,7 +47,9 @@ const COVERAGE_CAPTION = `coverage · ${SIGNAL_COVERAGE_CAPTURES} most recent ca
 
 const KEYBOARD_LEGEND = [
   ['↑↓', 'move'],
-  ['↵', 'rename'],
+  // The menu item and the editor's label both say edit pattern, and the
+  // action changes what the selector matches, not what it is called.
+  ['↵', 'edit pattern'],
   ['space', 'enable'],
   ['⌫', 'delete'],
   ['/…/', 'regex']
@@ -88,6 +93,14 @@ export function SignalsOverview() {
   const [pendingTagDelete, setPendingTagDelete] = useState<{ id: string; name: string } | null>(
     null
   )
+  // The selector counterpart (#1549): a selector's delete takes its persisted
+  // matches with it, so all three routes stop at a dialog naming it.
+  const [pendingSelectorDelete, setPendingSelectorDelete] = useState<{
+    id: string
+    name: string
+    matchCount: number
+  } | null>(null)
+  const [selectorPrefill, setSelectorPrefill] = useState<SelectorPrefill | null>(null)
   // The tag a merge was started from, by the detail rail's button or by a row's
   // context menu. One dialog for both routes, mounted here rather than in the
   // rail, so the two cannot drift apart.
@@ -153,21 +166,49 @@ export function SignalsOverview() {
     }
   }
 
-  async function handleAddSelector(pattern: string, isRegex: boolean) {
+  // The same refusal bulk import applies (#1549): a second selector on one
+  // pattern doubles every count downstream of it. The existing one is selected
+  // so the operator lands on what they were about to recreate.
+  function refuseDuplicateSelector(pattern: string, isRegex: boolean, exceptId?: string) {
+    const others = exceptId ? selectors.filter((s) => s.id !== exceptId) : selectors
+    const duplicate = findDuplicateSelector(others, pattern, isRegex)
+    if (!duplicate) return false
+    notify.info(`‘${pattern}’ is already a selector in this case`)
+    setSelectedId(duplicate.id)
+    return true
+  }
+
+  function handleAddSelector(pattern: string, isRegex: boolean): boolean {
+    if (refuseDuplicateSelector(pattern, isRegex)) return false
     // 'manual' (#395): typed into this case by the operator, with no capture or
     // note behind it.
-    const created = await createSelectorMutation.mutateAsync({
-      caseId,
-      pattern,
-      isRegex,
-      origin: 'manual'
-    })
-    setSelectedId(created.id)
+    createSelectorMutation.mutate(
+      { caseId, pattern, isRegex, origin: 'manual' },
+      { onSuccess: (created) => setSelectedId(created.id) }
+    )
+    return true
   }
 
   async function handleRenameSelector(signal: Signal, value: string) {
+    if (refuseDuplicateSelector(value, signal.isRegex, signal.id)) return
     await updateSelector({ id: signal.id, pattern: value })
     refreshSelectors()
+  }
+
+  // Checked here rather than left to the UNIQUE constraint, which reaches the
+  // operator as the generic could-not-create toast with a bug-report action
+  // (#1549, the operator half of #811). A name a stale list missed still falls
+  // through to that toast.
+  function refuseTakenTagName(name: string, exceptId?: string): boolean {
+    if (!findTagByName(tags, name, exceptId)) return false
+    notify.info(`A tag named ‘${name}’ already exists`)
+    return true
+  }
+
+  function handleAddTag(name: string): boolean {
+    if (refuseTakenTagName(name)) return false
+    createTag.mutate({ name, color: nextTagColor(tags.length) })
+    return true
   }
 
   async function handleExportAll() {
@@ -188,6 +229,17 @@ export function SignalsOverview() {
   function showSelectorMatches(signal: Signal) {
     addSelectorFilter(signal.id)
     navigate({ to: '/cases/$caseId/captures', params: { caseId } })
+  }
+
+  // Duplicate opens the add row on this pattern rather than writing a copy: an
+  // identical selector is exactly what the row refuses, so the operator edits
+  // it into the new one first.
+  function duplicateSelector(signal: Signal) {
+    setSelectorPrefill((previous) => ({
+      pattern: signal.sub,
+      isRegex: signal.isRegex,
+      seq: (previous?.seq ?? 0) + 1
+    }))
   }
 
   function filterCapturesByTag(signal: Signal) {
@@ -228,16 +280,23 @@ export function SignalsOverview() {
           void updateSelector({ id: signal.id, isRegex: !signal.isRegex }).then(refreshSelectors)
         }}
         onRename={(value) => {
-          if (signal.kind === 'tag') updateTag.mutate({ id: signal.id, name: value })
-          else void handleRenameSelector(signal, value)
+          if (signal.kind === 'selector') void handleRenameSelector(signal, value)
+          else if (!refuseTakenTagName(value, signal.id)) {
+            updateTag.mutate({ id: signal.id, name: value })
+          }
         }}
         onDelete={() => {
-          // Tags are app-global, so this reaches every case and asks first
-          // (#957). A selector belongs to this case and is unchanged.
+          // Both kinds ask first. Tags are app-global, so the tag dialog warns
+          // about every case (#957); a selector's delete takes its persisted
+          // matches with it (#1549).
           if (signal.kind === 'tag') setPendingTagDelete({ id: signal.id, name: signal.name })
-          else void deleteSelector(signal.id).then(refreshSelectors)
+          else {
+            setPendingSelectorDelete({ id: signal.id, name: signal.name, matchCount: signal.count })
+          }
         }}
         onShowMatches={() => showSelectorMatches(signal)}
+        onDuplicate={() => duplicateSelector(signal)}
+        onCopyPattern={() => void copyValue(signal.sub, 'pattern')}
         onExportMatches={() => void exportSignalMatches(signal)}
         onFilterCaptures={() => filterCapturesByTag(signal)}
         onSetColor={(color) => updateTag.mutate({ id: signal.id, color })}
@@ -294,7 +353,8 @@ export function SignalsOverview() {
 
               <AddSelectorRow
                 ref={selectorInputRef}
-                onAdd={(pattern, isRegex) => void handleAddSelector(pattern, isRegex)}
+                prefill={selectorPrefill}
+                onAdd={handleAddSelector}
                 onFocusList={() =>
                   selectorSignals[0] && rowRefs.current.get(selectorSignals[0].id)?.focus()
                 }
@@ -346,13 +406,13 @@ export function SignalsOverview() {
               <AddTagRow
                 ref={tagInputRef}
                 nextColor={nextTagColor(tags.length)}
-                onAdd={(name) => createTag.mutate({ name, color: nextTagColor(tags.length) })}
+                onAdd={handleAddTag}
                 onFocusList={() => tagSignals[0] && rowRefs.current.get(tagSignals[0].id)?.focus()}
               />
 
               <div
                 data-testid="signals-tag-list"
-                className="flex max-h-64 flex-col gap-0.5 overflow-y-auto"
+                className="flex max-h-[260px] flex-col gap-0.5 overflow-y-auto"
               >
                 {renderRows(tagSignals, 'No tags yet — name one above to add the first.')}
               </div>
@@ -381,6 +441,17 @@ export function SignalsOverview() {
             if (!next) setPendingTagDelete(null)
           }}
           tag={pendingTagDelete}
+        />
+      )}
+
+      {pendingSelectorDelete && (
+        <DeleteSelectorDialog
+          caseId={caseId}
+          open
+          onOpenChange={(next) => {
+            if (!next) setPendingSelectorDelete(null)
+          }}
+          selector={pendingSelectorDelete}
         />
       )}
 

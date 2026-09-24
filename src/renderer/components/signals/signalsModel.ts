@@ -218,6 +218,38 @@ export function slugifyTagName(raw: string): string {
   return raw.trim().replace(/^#/, '').replace(/\s+/g, '-').toLowerCase()
 }
 
+/**
+ * The identity two selectors share when they would match the same text: the
+ * pattern, compared case-insensitively unless it is a regex. Bulk import and
+ * the inline add row both refuse on it, so the two routes cannot disagree
+ * about what a duplicate is.
+ */
+export function selectorPatternKey(pattern: string, isRegex: boolean): string {
+  return isRegex ? pattern : pattern.toLowerCase()
+}
+
+/** The selector of the same kind this pattern would duplicate, if any. */
+export function findDuplicateSelector(
+  existing: Selector[],
+  pattern: string,
+  isRegex: boolean
+): Selector | undefined {
+  const key = selectorPatternKey(pattern, isRegex)
+  return existing.find(
+    (s) => s.isRegex === isRegex && selectorPatternKey(s.pattern, isRegex) === key
+  )
+}
+
+/**
+ * The tag already holding this name, compared case-insensitively — the rule
+ * main's find-or-create applies, so a name the picker would reuse is a name
+ * the Signals screen calls taken. `exceptId` leaves out the tag being renamed.
+ */
+export function findTagByName(tags: Tag[], name: string, exceptId?: string): Tag | undefined {
+  const wanted = name.toLowerCase()
+  return tags.find((tag) => tag.id !== exceptId && tag.name.toLowerCase() === wanted)
+}
+
 export interface BulkParseResult {
   /** Patterns that are new to this case, in the order they were pasted. */
   unique: string[]
@@ -239,7 +271,7 @@ export function parseBulkPatterns(
   existingSelectors: Selector[],
   isRegex: boolean
 ): BulkParseResult {
-  const key = (value: string): string => (isRegex ? value : value.toLowerCase())
+  const key = (value: string): string => selectorPatternKey(value, isRegex)
   const seen = new Set<string>()
   const pasted: string[] = []
   let blankCount = 0

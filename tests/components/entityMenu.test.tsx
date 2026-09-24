@@ -73,7 +73,9 @@ const selectorTarget: SelectorMenuTarget = {
   actions: {
     editPattern: vi.fn(),
     toggleEnabled: vi.fn(),
+    duplicate: vi.fn(),
     showMatches: vi.fn(),
+    copyPattern: vi.fn(),
     exportMatches: vi.fn(),
     remove: vi.fn()
   }
@@ -286,6 +288,30 @@ describe('note, selector and tag menus', () => {
       actionById(selectorMenuEntries({ ...selectorTarget, enabled: false }), 'selector-toggle')
         .label
     ).toBe('Start watching')
+  })
+
+  // The mock's order less Backfill, which stays on the rail (#1549). Delete
+  // carries an ellipsis now that it confirms, as the tag one does.
+  it('offers seven selector actions in the designed order', () => {
+    expect(labels(selectorMenuEntries(selectorTarget))).toEqual([
+      'Edit pattern',
+      'Stop watching',
+      'Duplicate…',
+      'Show matches in Captures',
+      'Copy pattern',
+      'Export matches to CSV',
+      'Delete selector…'
+    ])
+  })
+
+  it('names the copy chord on Copy pattern and runs the supplied callbacks', () => {
+    const entries = selectorMenuEntries(selectorTarget)
+    expect(actionById(entries, 'selector-copy-pattern').shortcut).toMatch(/^(Ctrl\+C|⌘C)$/)
+
+    actionById(entries, 'selector-copy-pattern').run()
+    actionById(entries, 'selector-duplicate').run()
+    expect(selectorTarget.actions.copyPattern).toHaveBeenCalledOnce()
+    expect(selectorTarget.actions.duplicate).toHaveBeenCalledOnce()
   })
 
   it('disables the CSV export for a selector that has matched nothing', () => {

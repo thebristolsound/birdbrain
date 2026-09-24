@@ -16,8 +16,10 @@ vi.mock('@tanstack/react-router', () => ({
 }))
 
 const notifyError = vi.hoisted(() => vi.fn())
+const notifyInfo = vi.hoisted(() => vi.fn())
+const notifySuccess = vi.hoisted(() => vi.fn())
 vi.mock('@renderer/lib/notify', () => ({
-  notify: { success: vi.fn(), error: notifyError, warn: vi.fn(), info: vi.fn() }
+  notify: { success: notifySuccess, error: notifyError, warn: vi.fn(), info: notifyInfo }
 }))
 
 // The rail has its own test file and drags in the Foreground Match Preview's
@@ -111,6 +113,8 @@ beforeEach(() => {
   install()
   navigate.mockReset()
   notifyError.mockReset()
+  notifyInfo.mockReset()
+  notifySuccess.mockReset()
 })
 
 afterEach(() => {
@@ -235,32 +239,6 @@ describe('SignalsOverview', () => {
     fireEvent.click(within(row).getByText('Aa'))
 
     await waitFor(() => expect(update).toHaveBeenCalledWith({ id: 's1', isRegex: true }))
-  })
-
-  // #957 AC6: a selector belongs to one case, so it keeps the unguarded
-  // delete the tag rows lost. The dialog assertion is the pin — without it
-  // this passes whether or not a confirm step leaked onto selectors.
-  it('deletes a selector from its row with no confirmation', async () => {
-    const removeSelector = vi.fn(async () => true)
-    install({ selectors: { delete: removeSelector } })
-    renderScreen()
-    await screen.findByTestId('signal-row-s1')
-
-    fireEvent.click(screen.getByLabelText('Delete Acme mentions'))
-
-    await waitFor(() => expect(removeSelector).toHaveBeenCalledWith('s1'))
-    expect(screen.queryByTestId('delete-tag-dialog')).toBeNull()
-  })
-
-  it('deletes a selector from the keyboard with no confirmation', async () => {
-    const removeSelector = vi.fn(async () => true)
-    install({ selectors: { delete: removeSelector } })
-    renderScreen()
-
-    fireEvent.keyDown(await screen.findByTestId('signal-row-s1'), { key: 'Backspace' })
-
-    await waitFor(() => expect(removeSelector).toHaveBeenCalledWith('s1'))
-    expect(screen.queryByTestId('delete-tag-dialog')).toBeNull()
   })
 
   it('renames a selector by its pattern and a tag by its name', async () => {
@@ -510,5 +488,266 @@ describe('SignalsOverview row context menus', () => {
 
     await waitFor(() => expect(notifyError).toHaveBeenCalled())
     expect(String(notifyError.mock.calls[0][0])).toContain('export')
+  })
+})
+
+// #1549. A selector's delete cascades its persisted matches, with no trash to
+// restore them, so all three routes into it stop at a dialog naming the
+// selector — the tag rows' shape (#957). This replaces #957 AC6, which pinned
+// the unguarded selector delete this ticket removes.
+describe('SignalsOverview selector delete confirmation', () => {
+  async function openConfirm(via: 'button' | 'keyboard' | 'menu') {
+    renderScreen()
+    const row = await screen.findByTestId('signal-row-s1')
+    // The match count lands in its own query; wait so the dialog copy has it.
+    await waitFor(() => expect(within(row).getByTestId('signal-count').textContent).toBe('4'))
+    if (via === 'button') fireEvent.click(screen.getByLabelText('Delete Acme mentions'))
+    else if (via === 'keyboard') fireEvent.keyDown(row, { key: 'Backspace' })
+    else {
+      fireEvent.contextMenu(row)
+      await screen.findByRole('menu')
+      fireEvent.click(screen.getByTestId('context-menu-item-selector-delete'))
+    }
+    return screen.findByTestId('delete-selector-dialog')
+  }
+
+  it.each(['button', 'keyboard', 'menu'] as const)(
+    'asks before deleting from the %s route, and deletes on confirm',
+    async (via) => {
+      const removeSelector = vi.fn(async () => true)
+      install({ selectors: { delete: removeSelector } })
+      await openConfirm(via)
+
+      expect(removeSelector).not.toHaveBeenCalled()
+      fireEvent.click(screen.getByTestId('delete-selector-confirm'))
+
+      await waitFor(() => expect(removeSelector).toHaveBeenCalledWith('s1'))
+      await waitFor(() => expect(screen.queryByTestId('delete-selector-dialog')).toBeNull())
+    }
+  )
+
+  it('deletes nothing when the confirmation is cancelled', async () => {
+    const removeSelector = vi.fn(async () => true)
+    install({ selectors: { delete: removeSelector } })
+    await openConfirm('keyboard')
+
+    fireEvent.click(screen.getByTestId('delete-selector-cancel'))
+
+    await waitFor(() => expect(screen.queryByTestId('delete-selector-dialog')).toBeNull())
+    expect(removeSelector).not.toHaveBeenCalled()
+  })
+
+  it('names the selector and the matches that go with it', async () => {
+    const dialog = await openConfirm('button')
+
+    expect(within(dialog).getByText(/Delete ‘Acme mentions’\?/)).toBeTruthy()
+    expect(dialog.textContent).toContain('Its matches on 4 captures in this case are deleted')
+    expect(dialog.textContent).toContain('The captures themselves are not deleted')
+  })
+
+  it('says so when the selector has matched nothing', async () => {
+    renderScreen()
+    fireEvent.click(await screen.findByLabelText('Delete bc1[a-z0-9]+'))
+
+    const dialog = await screen.findByTestId('delete-selector-dialog')
+    expect(dialog.textContent).toContain('It has not matched any captures yet.')
+  })
+
+  it('keeps the dialog open when the delete fails', async () => {
+    const removeSelector = vi.fn(async () => {
+      throw new Error('locked')
+    })
+    install({ selectors: { delete: removeSelector } })
+    await openConfirm('button')
+
+    fireEvent.click(screen.getByTestId('delete-selector-confirm'))
+
+    await waitFor(() => expect(removeSelector).toHaveBeenCalled())
+    expect(screen.getByTestId('delete-selector-dialog')).toBeTruthy()
+  })
+})
+
+// #1549: the inline add row refuses what bulk import refuses, and a taken tag
+// name is reported as taken rather than as a failure to report.
+describe('SignalsOverview duplicates', () => {
+  it('refuses a selector the case already holds, case-insensitively, and selects it', async () => {
+    const create = vi.fn(async () => selectors[0])
+    install({ selectors: { create } })
+    renderScreen()
+    await screen.findByTestId('signal-row-s1')
+    fireEvent.click(screen.getByTestId('signal-row-t1'))
+
+    const input = screen.getByTestId('add-selector-input') as HTMLInputElement
+    fireEvent.change(input, { target: { value: 'ACME' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(create).not.toHaveBeenCalled()
+    expect(notifyInfo).toHaveBeenCalledWith('‘ACME’ is already a selector in this case')
+    expect(screen.getByTestId('rail').textContent).toBe('Acme mentions')
+    expect(input.value).toBe('ACME')
+  })
+
+  it('compares a regex exactly and only against other regexes', async () => {
+    const create = vi.fn(async () => ({ ...selectors[1], id: 's3' }))
+    install({ selectors: { create } })
+    renderScreen()
+    await screen.findByTestId('signal-row-s2')
+    const input = screen.getByTestId('add-selector-input')
+
+    fireEvent.change(input, { target: { value: '/bc1[a-z0-9]+/' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(create).not.toHaveBeenCalled()
+    expect(screen.getByTestId('rail').textContent).toBe('bc1[a-z0-9]+')
+
+    // The same text as exact text is a different selector.
+    fireEvent.change(input, { target: { value: 'bc1[a-z0-9]+' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith({
+        caseId: 'case-1',
+        pattern: 'bc1[a-z0-9]+',
+        isRegex: false,
+        origin: 'manual'
+      })
+    )
+  })
+
+  it('lets an edit through when no other selector holds the pattern', async () => {
+    const update = vi.fn(async () => selectors[0])
+    install({ selectors: { update } })
+    renderScreen()
+    await screen.findByTestId('signal-row-s1')
+
+    fireEvent.doubleClick(screen.getByTestId('signal-row-s2'))
+    const input = screen.getByLabelText('Edit selector pattern')
+    fireEvent.change(input, { target: { value: 'bc1[a-z0-9]+x' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ id: 's2', pattern: 'bc1[a-z0-9]+x' }))
+    update.mockClear()
+
+    fireEvent.doubleClick(screen.getByTestId('signal-row-s1'))
+    const again = screen.getByLabelText('Edit selector pattern')
+    fireEvent.change(again, { target: { value: 'ACME' } })
+    fireEvent.keyDown(again, { key: 'Enter' })
+    // Its own pattern in different letter case is an edit, not a duplicate.
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ id: 's1', pattern: 'ACME' }))
+  })
+
+  it('refuses an edit onto a pattern another selector holds', async () => {
+    const update = vi.fn(async () => selectors[0])
+    install({
+      selectors: {
+        update,
+        list: vi.fn(async () => [
+          selectors[0],
+          { ...selectors[1], isRegex: false, pattern: 'beta' }
+        ])
+      }
+    })
+    renderScreen()
+    await screen.findByTestId('signal-row-s2')
+
+    fireEvent.doubleClick(screen.getByTestId('signal-row-s2'))
+    const input = screen.getByLabelText('Edit selector pattern')
+    fireEvent.change(input, { target: { value: 'Acme' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(notifyInfo).toHaveBeenCalledWith('‘Acme’ is already a selector in this case')
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('says a taken tag name is taken, without trying the create', async () => {
+    const create = vi.fn(async () => tags[0])
+    install({ tags: { create } })
+    renderScreen()
+    await screen.findByTestId('signal-row-t1')
+
+    const input = screen.getByTestId('add-tag-input') as HTMLInputElement
+    fireEvent.change(input, { target: { value: 'Evidence' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(create).not.toHaveBeenCalled()
+    expect(notifyInfo).toHaveBeenCalledWith('A tag named ‘evidence’ already exists')
+    expect(notifyError).not.toHaveBeenCalled()
+    expect(input.value).toBe('Evidence')
+  })
+
+  it('refuses to rename a tag onto another tag’s name', async () => {
+    const updateTag = vi.fn(async () => tags[0])
+    install({
+      tags: {
+        list: vi.fn(async () => [...tags, { id: 't2', name: 'finance', color: '#3b82f6' }]),
+        update: updateTag
+      }
+    })
+    renderScreen()
+    await screen.findByTestId('signal-row-t2')
+
+    fireEvent.doubleClick(screen.getByTestId('signal-row-t2'))
+    const input = screen.getByLabelText('Edit tag name')
+    fireEvent.change(input, { target: { value: 'EVIDENCE' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(notifyInfo).toHaveBeenCalledWith('A tag named ‘EVIDENCE’ already exists')
+    expect(updateTag).not.toHaveBeenCalled()
+  })
+})
+
+describe('SignalsOverview selector menu additions (#1549)', () => {
+  it('duplicates a selector into the add row, where the unchanged copy is refused', async () => {
+    const create = vi.fn(async () => selectors[0])
+    install({ selectors: { create } })
+    renderScreen()
+
+    fireEvent.contextMenu(await screen.findByTestId('signal-row-s2'))
+    await screen.findByRole('menu')
+    fireEvent.click(screen.getByTestId('context-menu-item-selector-duplicate'))
+
+    const input = screen.getByTestId('add-selector-input') as HTMLInputElement
+    await waitFor(() => expect(input.value).toBe('bc1[a-z0-9]+'))
+    expect(screen.getByTestId('add-selector-mode').textContent).toBe('.*')
+
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(create).not.toHaveBeenCalled()
+
+    fireEvent.change(input, { target: { value: 'bc1q[a-z0-9]+' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith({
+        caseId: 'case-1',
+        pattern: 'bc1q[a-z0-9]+',
+        isRegex: true,
+        origin: 'manual'
+      })
+    )
+  })
+
+  it('copies the pattern, not the label, from the menu', async () => {
+    const writeText = vi.fn(async () => undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    renderScreen()
+
+    fireEvent.contextMenu(await screen.findByTestId('signal-row-s1'))
+    await screen.findByRole('menu')
+    fireEvent.click(screen.getByTestId('context-menu-item-selector-copy-pattern'))
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('acme'))
+    expect(notifySuccess).toHaveBeenCalledWith('Copied pattern')
+  })
+})
+
+describe('SignalsOverview layout against the mock (#1549)', () => {
+  it('calls Enter edit pattern in the legend, as the menu and the editor do', async () => {
+    renderScreen()
+    await screen.findByTestId('signal-row-s1')
+
+    expect(screen.getByText('edit pattern')).toBeTruthy()
+    expect(screen.queryByText('rename')).toBeNull()
+  })
+
+  it('caps the tag list at the mock’s 260px', async () => {
+    renderScreen()
+
+    expect((await screen.findByTestId('signals-tag-list')).className).toContain('max-h-[260px]')
   })
 })

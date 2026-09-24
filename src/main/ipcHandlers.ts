@@ -1283,6 +1283,8 @@ export function registerIpcHandlers(deps: {
     closeDatabase()
     copyFileSync(filePaths[0], dbPath)
     await initDatabase(dbPath)
+    // As for a snapshot restore below: an older file drops newer personas.
+    await personaSessions.clearOrphanedPartitions(userDataPath)
 
     return { restored: true }
   })
@@ -1353,6 +1355,10 @@ export function registerIpcHandlers(deps: {
         'DB_REOPEN_FAILED'
       )
     }
+
+    // A snapshot older than a persona brings back a database without its row,
+    // leaving that persona's cookies where nothing else can clear them.
+    await personaSessions.clearOrphanedPartitions(userDataPath)
 
     // Reported as a fixed message rather than the underlying one: the failures
     // here come from copyFileSync/rmSync and carry absolute paths, and

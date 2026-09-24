@@ -121,13 +121,15 @@ vi.mock('@main/services/waybackMachine', async (importActual) => {
 const importCookies = vi.fn()
 const clearPersona = vi.fn()
 const getPersonaStorageState = vi.fn()
+const clearOrphanedPartitions = vi.fn()
 vi.mock('@main/services/persona/personaSessions', async (importActual) => {
   const actual = await importActual<typeof import('@main/services/persona/personaSessions')>()
   return {
     ...actual,
     importCookies: (...a: unknown[]) => importCookies(...a),
     clearPersona: (...a: unknown[]) => clearPersona(...a),
-    getPersonaStorageState: (...a: unknown[]) => getPersonaStorageState(...a)
+    getPersonaStorageState: (...a: unknown[]) => getPersonaStorageState(...a),
+    clearOrphanedPartitions: (...a: unknown[]) => clearOrphanedPartitions(...a)
   }
 })
 
@@ -2219,6 +2221,7 @@ describe('ipcHandlers — database admin', () => {
       await invoke(IPC_CHANNELS.DB_RESTORE_SNAPSHOT, { fileName: listed[0].fileName })
     )
     expect(restored.restored).toBe(true)
+    expect(clearOrphanedPartitions).toHaveBeenCalledWith(userDataPath)
     expect(expectOk(await invoke(IPC_CHANNELS.CASES_GET, afterSnapshot.id))).toBeUndefined()
     // The database is open again on the other side of the restore.
     expectOk(await invoke(IPC_CHANNELS.DB_STATS))
@@ -2242,6 +2245,7 @@ describe('ipcHandlers — database admin', () => {
     const res = expectOk<{ restored: boolean }>(await invoke(IPC_CHANNELS.DB_RESTORE))
 
     expect(res.restored).toBe(true)
+    expect(clearOrphanedPartitions).toHaveBeenCalledWith(userDataPath)
     // Re-opened on the other side, and holding the backup rather than the
     // database that was running when it was chosen.
     expectOk(await invoke(IPC_CHANNELS.DB_STATS))

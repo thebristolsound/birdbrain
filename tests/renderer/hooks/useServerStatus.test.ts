@@ -134,6 +134,9 @@ describe('useServerStatus', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.captureCounts })
     // The dashboard feed does not remount while it is being looked at (#403).
     expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.recentActivityAll })
+    // An open Data screen refetches its inventory and ledger (#1552).
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.exhibitInventory('case-1') })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.manifestSnapshot('case-1') })
   })
 
   it('seeds a fresh list when no captures were cached', () => {

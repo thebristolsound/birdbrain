@@ -209,6 +209,17 @@ html[data-density='comfortable'] {
   --d-listgap: 5px;
 }
 
+/* === Colour scheme ===
+   Tells the platform which chrome to paint native controls (selects, radios,
+   scrollbars) with, so they follow the app theme rather than rendering light
+   against a dark card. */
+:root {
+  color-scheme: light;
+}
+html.dark {
+  color-scheme: dark;
+}
+
 /* === Theme swap cross-fade ===
    useTheme adds the class for the length of the swap and skips it under
    reduced motion. Only colour properties transition, so layout never animates. */

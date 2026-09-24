@@ -384,13 +384,8 @@ export async function generateReport(
   // still written then, so "no notes existed" stays distinguishable from
   // "notes were excluded".
   //
-  // Scoped with the Exhibits on a selection export (#985, maintainer ruling
-  // 2026-08-30): a note travels only when it is attached to a selected Capture,
-  // and a note attached to no Capture is left behind even though the Case holds
-  // it. An unattached note can name a Capture the operator deliberately
-  // excluded, so shipping every one of them discloses the very thing the
-  // selection was drawn to withhold. See `noteTravelsWithSelection` for which
-  // pointer counts as the attachment and what the anchor does.
+  // Scoped with the Exhibits on a selection export (#985): `noteTravelsWithSelection`
+  // holds the rule and its grounds.
   const caseNotes = options.include.notes ? noteRepo.listNotes(caseId) : null
   const selectedCaptureIds = new Set(captures.map((capture) => capture.id))
   const caseCaptureIds = new Set(allCaptures.map((capture) => capture.id))

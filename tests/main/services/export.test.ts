@@ -3087,16 +3087,6 @@ describe('export', () => {
       expect(certification).toContain('3 operator notes')
     })
 
-    // A note carries two independent pointers at a capture and the two can
-    // disagree: assertAnchorInCase requires only that both sit in the note's
-    // own case, and the archive importer and the Database Admin hatch both
-    // write anchor_json without touching capture_id. The scope reads both and
-    // requires both, so neither direction can go wrong unnoticed.
-    // Attachment is `capture_id` (maintainer correction, 2026-08-31), so an
-    // anchor on its own does not carry a note into the package. The direction
-    // matters: this is the shape the predicate withholds and a `capture_id`
-    // reading would ship, which is why it is pinned rather than left to the
-    // subset property below.
     it('withholds a note that names no capture, whatever its anchor points at', async () => {
       const { selected } = await seedTwoCapturesAndThreeNotes()
       createNote({
@@ -3162,14 +3152,11 @@ describe('export', () => {
       expect(notesMd).toContain(`- Anchored to capture: ${unselected.id}`)
     })
 
-    // The claim the predicate's docblock makes, pinned as a test rather than
-    // asserted in prose: against both live candidate answers to maintainer
-    // question 1 of 2026-08-31, this predicate ships a subset. It withholds
-    // where they ship and never the reverse, so answering the question cannot
-    // turn a package already exported under it into an over-disclosure.
     it('ships a subset of both candidate answers to the open scope question', () => {
-      const selected = new Set(['cap-in'])
-      const inCase = new Set(['cap-in', 'cap-out'])
+      // Two selected captures, so the enumeration below reaches the shape where
+      // both pointers are selected but name different captures.
+      const selected = new Set(['cap-in', 'cap-also-in'])
+      const inCase = new Set(['cap-in', 'cap-also-in', 'cap-out'])
       const base = {
         id: 'n1',
         caseId: 'c1',
@@ -3178,7 +3165,7 @@ describe('export', () => {
         createdAt: '2026-08-01T10:00:00.000Z',
         updatedAt: '2026-08-01T10:00:00.000Z'
       }
-      const pointers = [undefined, 'cap-in', 'cap-out', 'cap-deleted']
+      const pointers = [undefined, 'cap-in', 'cap-also-in', 'cap-out', 'cap-deleted']
       const shapes: Note[] = pointers.flatMap((captureId) =>
         pointers.map((anchored) => ({
           ...base,

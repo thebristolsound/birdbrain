@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { NodeViewProps } from '@tiptap/react'
@@ -12,8 +12,10 @@ vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigateSpy }))
 
 import {
   MentionChipView,
+  PEEK_CLOSE_DELAY,
   createMentionNodeView
 } from '@renderer/components/notes/mention/MentionChip'
+import { PEEK_WIDTH, peekPosition } from '@renderer/components/notes/mention/MentionPeekCard'
 import { useAppStore } from '@renderer/stores/appStore'
 import { fakeBridge } from '../renderer/fakeBridge'
 
@@ -347,5 +349,206 @@ describe('the Mention node view', () => {
     })
     expect(container.querySelector('[data-mention-broken]')).not.toBeNull()
     expect(container.textContent).toBe('@mention')
+  })
+})
+
+describe('the peek card', () => {
+  const peek = { title: 'Nightjar thread', meta: 'capture · example.com' }
+
+  function renderChip(onOpen = vi.fn()) {
+    const utils = render(
+      <MentionChipView
+        targetType="capture"
+        targetId="cap1"
+        label="Nightjar thread"
+        broken={false}
+        onOpen={onOpen}
+        peek={peek}
+      />
+    )
+    const chip = utils.container.querySelector('[data-mention-chip]') as HTMLElement
+    return { ...utils, chip, onOpen }
+  }
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('opens on hover with the title, the meta line and both actions', () => {
+    const { chip } = renderChip()
+    expect(screen.queryByTestId('mention-peek')).toBeNull()
+
+    fireEvent.mouseEnter(chip)
+
+    const card = screen.getByTestId('mention-peek')
+    expect(screen.getByTestId('mention-peek-title').textContent).toBe('Nightjar thread')
+    expect(screen.getByTestId('mention-peek-meta').textContent).toBe('capture · example.com')
+    expect(screen.getByTestId('mention-peek-open').textContent).toBe('Open')
+    expect(screen.getByTestId('mention-peek-pin').textContent).toBe('Pin')
+    // Described by the card, and no native tooltip opening on top of it.
+    expect(chip.getAttribute('aria-describedby')).toBe(card.id)
+    expect(chip.getAttribute('title')).toBeNull()
+  })
+
+  it('closes a moment after the pointer leaves, unless it moves onto the card', () => {
+    vi.useFakeTimers()
+    const { chip } = renderChip()
+    fireEvent.mouseEnter(chip)
+
+    fireEvent.mouseLeave(chip)
+    fireEvent.mouseEnter(screen.getByTestId('mention-peek'))
+    act(() => {
+      vi.advanceTimersByTime(PEEK_CLOSE_DELAY * 2)
+    })
+    expect(screen.queryByTestId('mention-peek')).not.toBeNull()
+
+    fireEvent.mouseLeave(screen.getByTestId('mention-peek'))
+    act(() => {
+      vi.advanceTimersByTime(PEEK_CLOSE_DELAY)
+    })
+    expect(screen.queryByTestId('mention-peek')).toBeNull()
+  })
+
+  it('opens on keyboard focus and closes on blur', () => {
+    vi.useFakeTimers()
+    const { chip } = renderChip()
+
+    fireEvent.focus(chip)
+    expect(screen.queryByTestId('mention-peek')).not.toBeNull()
+
+    fireEvent.blur(chip)
+    act(() => {
+      vi.advanceTimersByTime(PEEK_CLOSE_DELAY)
+    })
+    expect(screen.queryByTestId('mention-peek')).toBeNull()
+  })
+
+  it('opens the target once from Open and closes the card', () => {
+    const { chip, onOpen } = renderChip()
+    fireEvent.mouseEnter(chip)
+
+    fireEvent.click(screen.getByTestId('mention-peek-open'))
+
+    // Once: the click must not also bubble through the portal to the chip.
+    expect(onOpen).toHaveBeenCalledTimes(1)
+    expect(screen.queryByTestId('mention-peek')).toBeNull()
+  })
+
+  it('stays open once pinned, and closes on a press elsewhere', () => {
+    vi.useFakeTimers()
+    const { chip, onOpen } = renderChip()
+    fireEvent.mouseEnter(chip)
+
+    fireEvent.click(screen.getByTestId('mention-peek-pin'))
+    expect(onOpen).not.toHaveBeenCalled()
+    expect(screen.getByTestId('mention-peek-pin').getAttribute('aria-pressed')).toBe('true')
+    fireEvent.mouseLeave(chip)
+    act(() => {
+      vi.advanceTimersByTime(PEEK_CLOSE_DELAY * 4)
+    })
+    expect(screen.queryByTestId('mention-peek')).not.toBeNull()
+
+    // A press on the card or on the chip is not "elsewhere".
+    fireEvent.mouseDown(screen.getByTestId('mention-peek-title'))
+    fireEvent.mouseDown(chip)
+    expect(screen.queryByTestId('mention-peek')).not.toBeNull()
+
+    fireEvent.mouseDown(document.body)
+    expect(screen.queryByTestId('mention-peek')).toBeNull()
+  })
+
+  it('unpins, and then closes like an unpinned card', () => {
+    vi.useFakeTimers()
+    const { chip } = renderChip()
+    fireEvent.mouseEnter(chip)
+    fireEvent.click(screen.getByTestId('mention-peek-pin'))
+
+    fireEvent.click(screen.getByTestId('mention-peek-pin'))
+    expect(screen.getByTestId('mention-peek-pin').getAttribute('aria-pressed')).toBe('false')
+    fireEvent.mouseLeave(chip)
+    act(() => {
+      vi.advanceTimersByTime(PEEK_CLOSE_DELAY)
+    })
+    expect(screen.queryByTestId('mention-peek')).toBeNull()
+  })
+
+  it('follows the chip when the note scrolls', () => {
+    const { chip } = renderChip()
+    fireEvent.mouseEnter(chip)
+    chip.getBoundingClientRect = () => ({ left: 40, top: 300, bottom: 320 }) as DOMRect
+
+    fireEvent.scroll(window)
+
+    const card = screen.getByTestId('mention-peek')
+    expect(card.style.left).toBe('40px')
+    expect(card.style.top).toBe('292px')
+  })
+
+  it('raises nothing over a broken chip', () => {
+    const { container } = render(
+      <MentionChipView targetType="capture" targetId="c1" label="Thread" broken peek={peek} />
+    )
+    fireEvent.mouseEnter(container.querySelector('[data-mention-chip]') as HTMLElement)
+    expect(screen.queryByTestId('mention-peek')).toBeNull()
+  })
+
+  it('raises nothing when no peek was supplied, and keeps the tooltip', () => {
+    const { container } = render(
+      <MentionChipView targetType="capture" targetId="c1" label="Thread" broken={false} />
+    )
+    const chip = container.querySelector('[data-mention-chip]') as HTMLElement
+    fireEvent.mouseEnter(chip)
+    expect(screen.queryByTestId('mention-peek')).toBeNull()
+    expect(chip.getAttribute('title')).toBe('capture · Thread — click to open')
+  })
+})
+
+describe('the node view peek', () => {
+  it('peeks at a resolved target with its current title and a meta line', async () => {
+    const Chip = createMentionNodeView('case1')
+    render(<Chip {...nodeProps({ targetType: 'capture', targetId: 'cap1', label: 'Old' })} />, {
+      wrapper: Wrapper
+    })
+
+    fireEvent.mouseEnter(await screen.findByText('@Nightjar thread'))
+
+    expect(screen.getByTestId('mention-peek-title').textContent).toBe('Nightjar thread')
+    expect(screen.getByTestId('mention-peek-meta').textContent).toBe('capture · example.com')
+  })
+
+  it('does not peek while the lists are still in flight', () => {
+    const Chip = createMentionNodeView('case1')
+    render(<Chip {...nodeProps({ targetType: 'capture', targetId: 'cap1', label: 'Old' })} />, {
+      wrapper: Wrapper
+    })
+
+    fireEvent.mouseEnter(screen.getByText('@Old'))
+
+    expect(screen.queryByTestId('mention-peek')).toBeNull()
+  })
+})
+
+describe('peekPosition', () => {
+  it('sits above the chip, left-aligned with it', () => {
+    expect(peekPosition({ left: 100, top: 400, bottom: 420 }, 1200)).toEqual({
+      left: 100,
+      top: 392,
+      placement: 'above'
+    })
+  })
+
+  it('opens below a chip too near the top of the window', () => {
+    expect(peekPosition({ left: 100, top: 40, bottom: 60 }, 1200)).toEqual({
+      left: 100,
+      top: 68,
+      placement: 'below'
+    })
+  })
+
+  it('keeps the card inside both window edges', () => {
+    expect(peekPosition({ left: 1100, top: 400, bottom: 420 }, 1200).left).toBe(
+      1200 - PEEK_WIDTH - 8
+    )
+    expect(peekPosition({ left: -20, top: 400, bottom: 420 }, 1200).left).toBe(8)
   })
 })

@@ -423,3 +423,37 @@ export function rankMentionCandidates({
   if (!allowCreate || typed.length < MIN_CREATE_QUERY_LENGTH || exists) return shown
   return [...shown, createCandidate(sigil, typed)]
 }
+
+/**
+ * The peek card's mono line: the kind, then the one fact the cached lists
+ * hold about the target.
+ */
+export function mentionPeekMeta(
+  targetType: MentionTargetType,
+  targetId: string,
+  sources: MentionSources
+): string {
+  switch (targetType) {
+    case 'capture': {
+      const hit = sources.captures.find((c) => c.id === targetId)
+      const host = hit ? hostnameOf(hit.url) : ''
+      return host ? `capture · ${host}` : 'capture'
+    }
+    case 'selector':
+      return `selector · ${sources.selectorMatchCounts[targetId] ?? 0} hits`
+    case 'tag': {
+      const used = sources.tagUsage[targetId] ?? 0
+      return `tag · ${used} ${used === 1 ? 'capture' : 'captures'}`
+    }
+    default:
+      return 'note'
+  }
+}
+
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname
+  } catch {
+    return ''
+  }
+}

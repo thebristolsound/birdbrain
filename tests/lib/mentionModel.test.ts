@@ -14,6 +14,7 @@ import {
   isMentionTargetType,
   maskMention,
   mentionColor,
+  mentionPeekMeta,
   mentionPlainText,
   mentionRoute,
   mentionSelection,
@@ -500,5 +501,36 @@ describe('the create row', () => {
 
   it('maps each sigil to the kind the mock creates', () => {
     expect(MENTION_CREATE_KIND).toEqual({ '@': 'note', '#': 'selector' })
+  })
+})
+
+describe('mentionPeekMeta', () => {
+  const live = sources({
+    captures: [
+      capture('cap1', 'Thread', 'https://forum.example.net/t/1'),
+      capture('cap2', 'x', 'nope')
+    ],
+    tagUsage: { t1: 1, t2: 3 },
+    selectorMatchCounts: { s1: 8 }
+  })
+
+  it('names a capture by its host', () => {
+    expect(mentionPeekMeta('capture', 'cap1', live)).toBe('capture · forum.example.net')
+  })
+
+  it('drops a host it cannot parse rather than showing a blank', () => {
+    expect(mentionPeekMeta('capture', 'cap2', live)).toBe('capture')
+    expect(mentionPeekMeta('capture', 'gone', live)).toBe('capture')
+  })
+
+  it("gives a selector its live match count and a tag this case's capture count", () => {
+    expect(mentionPeekMeta('selector', 's1', live)).toBe('selector · 8 hits')
+    expect(mentionPeekMeta('selector', 's2', live)).toBe('selector · 0 hits')
+    expect(mentionPeekMeta('tag', 't1', live)).toBe('tag · 1 capture')
+    expect(mentionPeekMeta('tag', 't2', live)).toBe('tag · 3 captures')
+  })
+
+  it('names a note by its kind', () => {
+    expect(mentionPeekMeta('note', 'n1', live)).toBe('note')
   })
 })

@@ -19,7 +19,7 @@ const ICONS: Record<MentionTargetType, LucideIcon> = {
 // walk the prototype chain and would render `Object.prototype.toString` as a
 // component. `note`'s icon is the fallback the chip already uses for a kind it
 // cannot name.
-function iconForKind(targetType: MentionTargetType): LucideIcon {
+export function iconForKind(targetType: MentionTargetType): LucideIcon {
   return Object.hasOwn(ICONS, targetType) ? ICONS[targetType] : StickyNote
 }
 

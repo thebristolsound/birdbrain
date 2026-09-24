@@ -287,3 +287,66 @@ describe('CaptureViewer archived-copy banner (#704)', () => {
     expect(screen.queryByTestId('archived-copy-banner')).toBeNull()
   })
 })
+
+describe('CaptureViewer pager', () => {
+  const second = { ...capture, id: 'cap2', title: 'Second page' }
+  const third = { ...capture, id: 'cap3', title: 'Third page' }
+
+  beforeEach(() => {
+    fakeBridge({ captures: { list: vi.fn(async () => [capture, second, third]), getContent } })
+  })
+
+  afterEach(() => {
+    useAppStore.getState().setDisplayedCaptureIds(null)
+  })
+
+  it('counts and steps through the list as displayed, not the whole case', async () => {
+    // The list shows two of the three, newest-first order reversed by a sort.
+    useAppStore.getState().setDisplayedCaptureIds(['cap3', 'cap1'])
+    renderViewer()
+
+    expect((await screen.findByTestId('capture-pager-count')).textContent).toBe('2 / 2')
+    expect(screen.getByTitle('Next capture (→)')).toHaveProperty('disabled', true)
+
+    fireEvent.click(screen.getByTitle('Previous capture (←)'))
+    expect(useAppStore.getState().selectedCaptureId).toBe('cap3')
+  })
+
+  it('never steps onto a capture the list is hiding', async () => {
+    useAppStore.getState().setDisplayedCaptureIds(['cap1', 'cap3'])
+    renderViewer()
+    await screen.findByTestId('capture-pager-count')
+
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    expect(useAppStore.getState().selectedCaptureId).toBe('cap3')
+  })
+
+  it('walks the whole case when no list is mounted', async () => {
+    renderViewer()
+    expect((await screen.findByTestId('capture-pager-count')).textContent).toBe('1 / 3')
+
+    fireEvent.click(screen.getByTitle('Next capture (→)'))
+    expect(useAppStore.getState().selectedCaptureId).toBe('cap2')
+  })
+})
+
+describe('CaptureViewer Text tab', () => {
+  it('lays the extracted text out as prose under the capture title', async () => {
+    getContent.mockResolvedValue('First line\nsame paragraph\n\n\nSecond paragraph\r\n\r\nThird')
+    useAppStore.getState().setActiveViewerTab('text')
+    renderViewer()
+
+    const panel = await screen.findByTestId('extracted-text')
+    expect(panel.querySelector('h2')?.textContent).toBe('Example evidence page')
+    const paragraphs = [...panel.querySelectorAll('p')].map((p) => p.textContent)
+    // Blank lines become breaks; a single line break stays inside its paragraph.
+    expect(paragraphs).toEqual(['First line\nsame paragraph', 'Second paragraph', 'Third'])
+    expect(panel.firstElementChild?.className).toContain('max-w-[660px]')
+  })
+
+  it('says so when the capture has no extracted text', async () => {
+    useAppStore.getState().setActiveViewerTab('text')
+    renderViewer()
+    expect(await screen.findByText('No text content available')).toBeDefined()
+  })
+})

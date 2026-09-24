@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useAppStore, type CaptureViewerTab } from '@renderer/stores/appStore'
@@ -83,14 +83,21 @@ export function CaptureViewer() {
     enabled: !!shouldFetchContent
   })
 
-  // Navigation
-  const currentIndex = captures.findIndex((c) => c.id === selectedCaptureId)
+  // Navigation walks the list as displayed: its narrowings and its sort. With
+  // no list mounted (collapsed to the rail) nothing is narrowed on screen, so
+  // the whole case is the list.
+  const displayedCaptureIds = useAppStore((s) => s.displayedCaptureIds)
+  const pagerIds = useMemo(
+    () => displayedCaptureIds ?? captures.map((c) => c.id),
+    [displayedCaptureIds, captures]
+  )
+  const currentIndex = selectedCaptureId ? pagerIds.indexOf(selectedCaptureId) : -1
   const goPrev = useCallback(() => {
-    if (currentIndex > 0) selectCapture(captures[currentIndex - 1].id)
-  }, [currentIndex, captures, selectCapture])
+    if (currentIndex > 0) selectCapture(pagerIds[currentIndex - 1])
+  }, [currentIndex, pagerIds, selectCapture])
   const goNext = useCallback(() => {
-    if (currentIndex < captures.length - 1) selectCapture(captures[currentIndex + 1].id)
-  }, [currentIndex, captures, selectCapture])
+    if (currentIndex < pagerIds.length - 1) selectCapture(pagerIds[currentIndex + 1])
+  }, [currentIndex, pagerIds, selectCapture])
 
   // Keyboard navigation
   useEffect(() => {
@@ -266,15 +273,15 @@ export function CaptureViewer() {
         >
           <ChevronLeft className="h-3.5 w-3.5" />
         </Button>
-        <span className="shrink-0 text-[11px] text-text-faint">
-          {currentIndex + 1} / {captures.length}
+        <span data-testid="capture-pager-count" className="shrink-0 text-[11px] text-text-faint">
+          {currentIndex + 1} / {pagerIds.length}
         </span>
         <Button
           variant="ghost"
           size="icon-sm"
           className="shrink-0"
           onClick={goNext}
-          disabled={currentIndex >= captures.length - 1}
+          disabled={currentIndex >= pagerIds.length - 1}
           title="Next capture (→)"
         >
           <ChevronRight className="h-3.5 w-3.5" />
@@ -315,11 +322,7 @@ export function CaptureViewer() {
           {activeTab === 'wayback' && <WaybackCompare capture={capture} />}
           {activeTab === 'text' &&
             (content ? (
-              <div className="h-full overflow-y-auto p-4">
-                <pre className="whitespace-pre-wrap font-mono text-sm text-text-muted">
-                  {content}
-                </pre>
-              </div>
+              <ExtractedTextPanel heading={capture.title || hostname} text={content} />
             ) : (
               <div className="p-4 text-text-muted">No text content available</div>
             ))}
@@ -354,6 +357,34 @@ function ArchivedCopyBanner({ timestamp }: { timestamp: string }) {
       <span className="min-w-0 flex-1 truncate text-xs text-text-muted">
         Captured {formatCaptureTimestampFull(timestamp)}
       </span>
+    </div>
+  )
+}
+
+/**
+ * The extracted text laid out as prose. Blank lines become paragraph breaks;
+ * every other character, single line breaks included, renders as extracted.
+ */
+function ExtractedTextPanel({ heading, text }: { heading: string; text: string }) {
+  const paragraphs = text
+    .split(/\n[^\S\n]*\n/)
+    .map((p) => p.replace(/^\n+/, '').trimEnd())
+    .filter((p) => p.trim() !== '')
+  return (
+    <div data-testid="extracted-text" className="h-full overflow-y-auto px-7 pb-7 pt-6">
+      <div className="max-w-[660px]">
+        <h2 className="font-display text-[17px] font-bold tracking-[-0.025em] text-text-primary">
+          {heading}
+        </h2>
+        {paragraphs.map((p, i) => (
+          <p
+            key={i}
+            className="mt-3.5 whitespace-pre-wrap text-[13px] leading-[1.8] text-text-secondary"
+          >
+            {p}
+          </p>
+        ))}
+      </div>
     </div>
   )
 }

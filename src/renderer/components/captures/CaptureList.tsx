@@ -158,6 +158,15 @@ export function CaptureList({
   )
 
   const displayedIds = useMemo(() => displayedCaptures.map((c) => c.id), [displayedCaptures])
+
+  // The viewer's pager walks this list, not the whole case, so Previous and
+  // Next never land on a capture the list is hiding. Cleared on unmount: with
+  // the list collapsed nothing is being narrowed on screen.
+  const setDisplayedCaptureIds = useAppStore((s) => s.setDisplayedCaptureIds)
+  useEffect(() => {
+    setDisplayedCaptureIds(displayedIds)
+  }, [displayedIds, setDisplayedCaptureIds])
+  useEffect(() => () => setDisplayedCaptureIds(null), [setDisplayedCaptureIds])
   const {
     selectedCaptureIds,
     visibleSelectedIds,
@@ -514,24 +523,11 @@ export function CaptureList({
         {/* A case with no captures at all gets the first-run guidance whatever is
             typed in the list search: nothing is being hidden, and the narrowed
             copy would both say so falsely and displace the onboarding state. */}
-        {displayedCaptures.length === 0 &&
-          (isNarrowed && captures.length > 0 ? (
-            <div
-              data-testid="capture-list-narrowed-empty"
-              className="flex flex-1 flex-col items-center justify-center gap-2.5 px-5 py-8 text-center"
-            >
-              <div className="text-xs font-semibold text-text-secondary">No captures match</div>
-              <p className="max-w-[220px] text-[11px] leading-relaxed text-text-faint">
-                {captures.length} capture{captures.length !== 1 ? 's' : ''} in this case
-                {captures.length !== 1 ? ' are' : ' is'} hidden by {narrowings.join(' · ')}.
-              </p>
-              <Button variant="outline" size="sm" onClick={clearNarrowing}>
-                {CLEAR_NARROWING_LABEL}
-              </Button>
-            </div>
-          ) : (
-            <CaptureListEmptyState />
-          ))}
+        {displayedCaptures.length === 0 && (
+          <CaptureListEmptyState
+            onClearNarrowing={isNarrowed && captures.length > 0 ? clearNarrowing : undefined}
+          />
+        )}
       </div>
 
       {/* Footer */}

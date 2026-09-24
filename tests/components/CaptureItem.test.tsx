@@ -76,6 +76,15 @@ describe('CaptureItem — detailed view', () => {
     expect(screen.getByTestId('capture-thumb-fallback')).toBeDefined()
   })
 
+  it('draws the fallback tile from theme tokens, the same for every URL', () => {
+    renderItem()
+    const tile = screen.getByTestId('capture-thumb-fallback-tile')
+    // Token classes swap with the theme; a hashed inline tint could not.
+    expect(tile.className).toContain('from-elevated')
+    expect(tile.className).toContain('to-surface')
+    expect(tile.getAttribute('style')).toBeNull()
+  })
+
   it('uses the stored thumbnail when one exists', () => {
     thumbnail.mockReturnValue({ thumbnail: 'data:image/jpeg;base64,zz', loading: false })
     renderItem()

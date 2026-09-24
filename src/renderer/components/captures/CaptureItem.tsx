@@ -10,25 +10,6 @@ import {
 } from '@renderer/lib/formatRelativeTime'
 import logoImg from '@renderer/assets/logo.png'
 
-const THUMB_COLORS = [
-  { from: 'rgba(49,46,129,0.3)', to: 'rgba(30,27,75,0.2)', bar: 'rgba(129,140,248,0.25)' },
-  { from: 'rgba(6,78,59,0.3)', to: 'rgba(4,47,36,0.2)', bar: 'rgba(52,211,153,0.25)' },
-  { from: 'rgba(124,45,18,0.25)', to: 'rgba(67,20,7,0.15)', bar: 'rgba(251,146,60,0.25)' },
-  { from: 'rgba(12,74,110,0.25)', to: 'rgba(7,47,75,0.15)', bar: 'rgba(56,189,248,0.25)' },
-  { from: 'rgba(76,29,149,0.25)', to: 'rgba(46,16,101,0.15)', bar: 'rgba(167,139,250,0.25)' },
-  { from: 'rgba(136,19,55,0.25)', to: 'rgba(76,5,25,0.15)', bar: 'rgba(251,113,133,0.25)' },
-  { from: 'rgba(19,78,74,0.25)', to: 'rgba(4,47,46,0.15)', bar: 'rgba(45,212,191,0.25)' },
-  { from: 'rgba(51,65,85,1)', to: 'rgba(30,41,59,1)', bar: 'rgba(100,116,139,0.3)' }
-]
-
-function getThumbColor(url: string) {
-  let hash = 0
-  for (let i = 0; i < url.length; i++) {
-    hash = ((hash << 5) - hash + url.charCodeAt(i)) | 0
-  }
-  return THUMB_COLORS[Math.abs(hash) % THUMB_COLORS.length]
-}
-
 interface CaptureItemProps {
   capture: Capture
   isSelected: boolean
@@ -72,7 +53,6 @@ export function CaptureItem({
     hostname = capture.url
   }
 
-  const color = getThumbColor(capture.url)
   const provenance = getProvenanceColor(capture.lastVerifiedStatus)
   const now = nowMs ?? Date.now()
   const fullTimestamp = `Captured ${formatCaptureTimestampFull(capture.timestamp)}`
@@ -199,11 +179,10 @@ export function CaptureItem({
         {thumbnail ? (
           <img src={thumbnail} alt="" className="h-full w-full object-cover object-top" />
         ) : (
+          // One neutral token pair for every row, so the tile follows the theme.
           <div
-            className="grid h-full w-full place-items-center"
-            style={{
-              background: `linear-gradient(to bottom right, ${color.from}, ${color.to})`
-            }}
+            data-testid="capture-thumb-fallback-tile"
+            className="grid h-full w-full place-items-center bg-gradient-to-br from-elevated to-surface"
           >
             <img
               src={logoImg}

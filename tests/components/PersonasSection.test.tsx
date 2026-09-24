@@ -43,6 +43,14 @@ function bridge(personas: Persona[], encryptionAvailable = true) {
   })
 }
 
+// Import stays disabled until the storage state has loaded, so a click
+// waits for the button to enable.
+async function enabledImportButton() {
+  const button = (await screen.findByTestId('persona-import')) as HTMLButtonElement
+  await waitFor(() => expect(button.disabled).toBe(false))
+  return button
+}
+
 beforeEach(() => bridge([]))
 
 afterEach(() => {
@@ -103,12 +111,22 @@ describe('PersonasSection rows', () => {
     fireEvent.change(input, { target: { value: ' Renamed ' } })
     fireEvent.blur(input)
     await waitFor(() => expect(update).toHaveBeenCalledWith({ id: 'p-1', label: 'Renamed' }))
+    expect(input.value).toBe('Renamed')
 
     fireEvent.change(input, { target: { value: '   ' } })
     fireEvent.blur(input)
     await waitFor(() => expect(input.value).toBe('Research account'))
     fireEvent.blur(input)
     expect(update).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows the trimmed label when the trimmed value is unchanged', async () => {
+    renderSection()
+    const input = (await screen.findByTestId('persona-label')) as HTMLInputElement
+    fireEvent.change(input, { target: { value: '  Research account  ' } })
+    fireEvent.blur(input)
+    await waitFor(() => expect(input.value).toBe('Research account'))
+    expect(update).not.toHaveBeenCalled()
   })
 
   it('imports through the bridge and summarises accepted and skipped rows', async () => {
@@ -123,7 +141,7 @@ describe('PersonasSection rows', () => {
       importedAt: '2026-09-23T12:00:00.000Z'
     })
     renderSection()
-    fireEvent.click(await screen.findByTestId('persona-import'))
+    fireEvent.click(await enabledImportButton())
     await waitFor(() => expect(importCookies).toHaveBeenCalledWith('p-1'))
     await waitFor(() =>
       expect(screen.getByTestId('persona-import-summary').textContent).toBe(
@@ -134,7 +152,7 @@ describe('PersonasSection rows', () => {
 
   it('leaves the summary alone when the file dialog is cancelled', async () => {
     renderSection()
-    fireEvent.click(await screen.findByTestId('persona-import'))
+    fireEvent.click(await enabledImportButton())
     await waitFor(() => expect(importCookies).toHaveBeenCalled())
     expect(screen.getByTestId('persona-import-summary').textContent).toBe(
       'No cookies imported yet.'
@@ -185,6 +203,26 @@ describe('PersonasSection unprotected cookie store (#414)', () => {
     await waitFor(() => expect(importButton.disabled).toBe(false))
     fireEvent.click(importButton)
     await waitFor(() => expect(importCookies).toHaveBeenCalledWith('p-1'))
+  })
+
+  it('blocks import with no warning while the storage state is unknown', async () => {
+    storageState.mockImplementation(() => new Promise(() => undefined))
+    renderSection()
+    const importButton = (await screen.findByTestId('persona-import')) as HTMLButtonElement
+    expect(importButton.disabled).toBe(true)
+    expect(importButton.title).toMatch(/Checking whether the cookie store is protected/)
+    expect(screen.queryByTestId('persona-unprotected-warning')).toBeNull()
+  })
+
+  it('keeps import blocked when the storage state cannot be read', async () => {
+    storageState.mockRejectedValue(new Error('ipc down'))
+    renderSection()
+    const importButton = (await screen.findByTestId('persona-import')) as HTMLButtonElement
+    await waitFor(() => expect(storageState).toHaveBeenCalled())
+    await new Promise((r) => setTimeout(r, 0))
+    expect(importButton.disabled).toBe(true)
+    fireEvent.click(importButton)
+    expect(importCookies).not.toHaveBeenCalled()
   })
 
   it('shows no warning when the store is protected', async () => {

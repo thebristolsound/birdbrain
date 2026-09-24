@@ -39,8 +39,11 @@ export function PersonasSection() {
     result: PersonaImportResult
   } | null>(null)
 
-  const encryptionAvailable = storage?.encryptionAvailable ?? true
-  const importBlocked = !encryptionAvailable && !unprotectedAcknowledged
+  // Unknown (still loading, or the read failed) blocks import like an
+  // unprotected store does, so no cookie is written before the answer.
+  const storageKnown = storage !== undefined
+  const encryptionAvailable = storage?.encryptionAvailable ?? false
+  const importBlocked = !storageKnown || (!encryptionAvailable && !unprotectedAcknowledged)
 
   async function submitCreate(e: FormEvent) {
     e.preventDefault()
@@ -70,7 +73,7 @@ export function PersonasSection() {
         </p>
       </div>
 
-      {!encryptionAvailable && (
+      {storageKnown && !encryptionAvailable && (
         <div
           role="alert"
           data-testid="persona-unprotected-warning"
@@ -115,6 +118,7 @@ export function PersonasSection() {
               key={persona.id}
               persona={persona}
               importBlocked={importBlocked}
+              storageKnown={storageKnown}
               importing={importCookies.isPending && importCookies.variables === persona.id}
               lastImport={lastImport?.personaId === persona.id ? lastImport.result : null}
               onImport={() => void runImport(persona.id)}
@@ -179,6 +183,7 @@ export function PersonasSection() {
 interface PersonaRowProps {
   persona: Persona
   importBlocked: boolean
+  storageKnown: boolean
   importing: boolean
   lastImport: PersonaImportResult | null
   onImport: () => void
@@ -188,6 +193,7 @@ interface PersonaRowProps {
 function PersonaRow({
   persona,
   importBlocked,
+  storageKnown,
   importing,
   lastImport,
   onImport,
@@ -202,6 +208,7 @@ function PersonaRow({
       setLabel(persona.label)
       return
     }
+    setLabel(next)
     if (next === persona.label) return
     await update.mutateAsync({ id: persona.id, label: next })
   }
@@ -225,9 +232,11 @@ function PersonaRow({
           data-testid="persona-import"
           disabled={importBlocked || importing}
           title={
-            importBlocked
-              ? 'Acknowledge the unprotected cookie store above to import'
-              : 'Load a cookie file into this persona'
+            !storageKnown
+              ? 'Checking whether the cookie store is protected'
+              : importBlocked
+                ? 'Acknowledge the unprotected cookie store above to import'
+                : 'Load a cookie file into this persona'
           }
           onClick={onImport}
         >

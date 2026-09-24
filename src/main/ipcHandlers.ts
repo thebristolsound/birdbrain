@@ -92,6 +92,7 @@ import { handle, IpcFailure, sendEvent } from '@main/ipcWrap'
 import { diagnosticsService } from '@main/services/diagnostics'
 import { scanUnreconciledDeletions } from '@main/services/deletionReconciliation'
 import { flushSync, getLogDir, getLogPath, logger, readRecentEntries } from '@main/services/logger'
+import { buildLogExport } from '@main/services/logExport'
 import { takeUncleanSession } from '@main/services/sessionLog'
 import { buildBugReport, bugReportFilename } from '@main/services/bugReport'
 import { ValidatedError, context, errorName, ident, isLogCode } from '@main/services/logSafe'
@@ -1131,6 +1132,20 @@ export function registerIpcHandlers(deps: {
     if (path) shell.showItemInFolder(path)
   })
 
+  handle(IPC_CHANNELS.DIAGNOSTICS_EXPORT_LOGS, async () => {
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: 'Export logs',
+      defaultPath: 'birdbrain-logs.zip',
+      filters: [{ name: 'Zip archive', extensions: ['zip'] }]
+    })
+    if (canceled || !filePath) return null
+    flushSync()
+    const { writeFileSync } = await import('fs')
+    writeFileSync(filePath, buildLogExport(getLogDir()))
+    shell.showItemInFolder(filePath)
+    return { path: filePath }
+  })
+
   // Storage root is opened on its own channel, like the log above, rather than
   // through shell:openPath. The reveal allowlist models per-export files this
   // process just wrote; the root is a long-lived, operator-configurable
@@ -1249,6 +1264,8 @@ export function registerIpcHandlers(deps: {
   })
 
   handle(IPC_CHANNELS.DB_REBUILD_FTS, () => dbAdmin.rebuildFts())
+
+  handle(IPC_CHANNELS.DB_INTEGRITY_CHECK, () => dbAdmin.checkIntegrity())
 
   handle(IPC_CHANNELS.DB_PURGE_ARCHIVED, () => dbAdmin.purgeArchived())
 

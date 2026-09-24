@@ -13,6 +13,7 @@ import {
   updateRow,
   deleteRow,
   vacuumDb,
+  checkIntegrity,
   rebuildFts,
   purgeArchived,
   findOrphans,
@@ -26,6 +27,45 @@ describe('dbAdmin', () => {
 
   afterEach(() => {
     closeDatabase()
+  })
+
+  describe('checkIntegrity', () => {
+    it('passes for a populated database without changing its records', () => {
+      createCase({ name: 'Integrity fixture' })
+      const db = getDb()
+      const before = db.prepare('SELECT total_changes() AS count').get()
+      const cases = listCases()
+      expect(checkIntegrity()).toEqual({ ok: true, issues: [] })
+      expect(listCases()).toEqual(cases)
+      expect(db.prepare('SELECT total_changes() AS count').get()).toEqual(before)
+    })
+
+    it('reports a known broken constraint without repairing the row', () => {
+      const db = getDb()
+      db.exec('CREATE TABLE integrity_fixture (value INTEGER CHECK (value > 0))')
+      db.pragma('ignore_check_constraints = ON')
+      db.exec('INSERT INTO integrity_fixture VALUES (-1)')
+      db.pragma('ignore_check_constraints = OFF')
+      expect(checkIntegrity()).toEqual({
+        ok: false,
+        issues: ['CHECK constraint failed in integrity_fixture']
+      })
+      expect(db.prepare('SELECT value FROM integrity_fixture').get()).toEqual({ value: -1 })
+    })
+
+    it('reports foreign-key violations even when SQLite structural integrity passes', () => {
+      const db = getDb()
+      db.exec('CREATE TABLE integrity_child (parent TEXT REFERENCES cases(id))')
+      db.pragma('foreign_keys = OFF')
+      db.exec("INSERT INTO integrity_child VALUES ('missing-case')")
+      db.pragma('foreign_keys = ON')
+      expect(checkIntegrity()).toEqual({
+        ok: false,
+        issues: [
+          'Foreign key violation in integrity_child, row 1, referencing cases (constraint 0).'
+        ]
+      })
+    })
   })
 
   describe('getDbStats', () => {

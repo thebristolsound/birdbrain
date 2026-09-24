@@ -55,6 +55,10 @@ export function dbAdminMutationOptions(queryClient: QueryClient) {
       onSuccess: invalidateStats,
       meta: { action: 'vacuum the database' }
     },
+    integrityCheck: {
+      mutationFn: () => window.birdbrain.db.integrityCheck(),
+      meta: { action: 'check database integrity' }
+    },
     rebuildFts: {
       mutationFn: () => window.birdbrain.db.rebuildFts(),
       onSuccess: invalidateStats,
@@ -137,6 +141,7 @@ export function useDbAdminMutations() {
   return {
     vacuum: useMutation(opts.vacuum),
     rebuildFts: useMutation(opts.rebuildFts),
+    integrityCheck: useMutation(opts.integrityCheck),
     purgeArchived: useMutation(opts.purgeArchived),
     findOrphans: useMutation(opts.findOrphans),
     cleanOrphans: useMutation(opts.cleanOrphans),

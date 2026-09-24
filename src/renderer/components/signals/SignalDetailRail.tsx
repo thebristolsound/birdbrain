@@ -288,10 +288,10 @@ export function SignalDetailRail({
           )}
         </div>
 
+        {/* The mock's footer (#1549): the same two buttons for every signal.
+            Both kinds narrow the captures list (#918); until the tag branch
+            existed this navigated for a tag and applied nothing. */}
         <div className="flex gap-2">
-          {/* Both kinds narrow now (#918). Until the tag branch existed this
-              button navigated for a tag and applied nothing, which read as a
-              filter that had run and matched everything. */}
           <button
             type="button"
             data-testid="signal-filter-in-captures"
@@ -304,33 +304,36 @@ export function SignalDetailRail({
           >
             Filter in Captures
           </button>
-          {/* Selectors only. The CSV joins selector_matches to captures, so a
-              tag has nothing to export through it — offering the button would
-              promise a file this path cannot write. */}
-          {isSelector && (
-            <button
-              type="button"
-              data-testid="signal-export-csv"
-              onClick={handleExport}
-              disabled={exporting || signal.count === 0}
-              className="h-7 flex-1 rounded border border-border-strong text-xs font-medium text-text-primary hover:bg-elevated disabled:opacity-50"
-            >
-              {exporting ? 'Exporting…' : 'Export CSV'}
-            </button>
-          )}
-          {/* Tags only (#828): the merge-tags inline route. The dialog holds
-              the target pick and the confirm; this button only opens it. */}
-          {!isSelector && (
-            <button
-              type="button"
-              data-testid="signal-merge-tag"
-              onClick={() => onMerge(signal)}
-              className="h-7 flex-1 rounded border border-border-strong text-xs font-medium text-text-primary hover:bg-elevated"
-            >
-              Merge into…
-            </button>
-          )}
+          {/* Drawn for a tag too, as the mock draws it, but disabled there: the
+              CSV joins selector_matches to captures, so a tag has nothing to
+              export through it. Tag export is #830's per-entity export. */}
+          <button
+            type="button"
+            data-testid="signal-export-csv"
+            onClick={handleExport}
+            disabled={!isSelector || exporting || signal.count === 0}
+            title={isSelector ? undefined : 'Exporting a tag is not available yet'}
+            className="h-7 flex-1 rounded border border-border-strong text-xs font-medium text-text-primary hover:bg-elevated disabled:opacity-50"
+          >
+            {exporting ? 'Exporting…' : 'Export CSV'}
+          </button>
         </div>
+
+        {/* Tags only (#828), below the footer the way Rescan is for a
+            selector. The mock keeps merge in the row menu alone, but that menu
+            is an accelerator and never the only route (ruling 3 in the menu
+            registry), so the rail keeps this one. The dialog holds the target
+            pick and the confirm; this button only opens it. */}
+        {!isSelector && (
+          <button
+            type="button"
+            data-testid="signal-merge-tag"
+            onClick={() => onMerge(signal)}
+            className="h-7 w-full rounded border border-border-strong text-xs font-medium text-text-primary hover:bg-elevated"
+          >
+            Merge into…
+          </button>
+        )}
 
         {/* Selectors only (#829). Ingest already matches enabled selectors as
             captures arrive, so this is for the captures it did not reach —

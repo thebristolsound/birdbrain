@@ -179,13 +179,20 @@ describe('SignalDetailRail branches', () => {
     expect(screen.getByText('Applied to 1 of 4 captures')).toBeTruthy()
   })
 
-  it('offers Export CSV for a selector only', () => {
+  // #1549: the mock draws Filter in Captures and Export CSV for every signal.
+  // A tag's is drawn disabled and says why: the CSV path joins selector
+  // matches, so it has nothing to write for a tag.
+  it('draws the same two footer buttons for both kinds, export live for a selector only', () => {
     renderRail(selectorSignal)
-    expect(screen.getByTestId('signal-export-csv')).toBeTruthy()
+    expect(screen.getByTestId('signal-filter-in-captures')).toBeTruthy()
+    expect(screen.getByTestId('signal-export-csv')).toHaveProperty('disabled', false)
 
     cleanup()
     renderRail(tagSignal)
-    expect(screen.queryByTestId('signal-export-csv')).toBeNull()
+    expect(screen.getByTestId('signal-filter-in-captures')).toBeTruthy()
+    const exportButton = screen.getByTestId('signal-export-csv')
+    expect(exportButton).toHaveProperty('disabled', true)
+    expect(exportButton.getAttribute('title')).toBe('Exporting a tag is not available yet')
   })
 
   it('lists the captures the signal appears in, newest label and host', () => {
@@ -502,9 +509,12 @@ describe('SignalDetailRail colour picker (#472)', () => {
 })
 
 describe('SignalDetailRail merge (#828)', () => {
-  it('offers Merge into… for a tag and not for a selector', () => {
+  // Out of the footer slot the mock gives Export CSV, but still on the rail:
+  // the row menu is an accelerator and may not be the only route to merge.
+  it('offers Merge into… for a tag and not for a selector, outside the footer', () => {
     renderRail(tagSignal)
-    expect(screen.getByTestId('signal-merge-tag')).toBeTruthy()
+    const merge = screen.getByTestId('signal-merge-tag')
+    expect(merge.parentElement).not.toBe(screen.getByTestId('signal-export-csv').parentElement)
 
     cleanup()
     renderRail(selectorSignal)

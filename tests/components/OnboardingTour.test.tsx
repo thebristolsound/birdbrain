@@ -218,6 +218,22 @@ describe('replay', () => {
     expect(screen.getByTestId('tour-count').textContent).toContain('1 of 1')
   })
 
+  // The design prints each step's brief alone: no bold title and dash ahead of
+  // it, which made the second step name Load unpacked twice.
+  it('prints each install step as its brief alone', async () => {
+    anchor('browser')
+    renderTour()
+    act(() => startTour('ext'))
+
+    await screen.findByTestId('tour-mark')
+    const steps = screen.getAllByTestId('tour-install-step').map((s) => s.textContent)
+    expect(steps).toEqual([
+      '1Open chrome://extensions and switch on Developer mode (top right).',
+      '2Click Load unpacked in the toolbar that appears.',
+      '3Pick the folder holding manifest.json — no restart needed. Pin it from the puzzle-piece menu.'
+    ])
+  })
+
   // AC: replay never resets completion state — so it must not write it either.
   it('writes no completion state, however it is closed', async () => {
     anchor('browser')

@@ -99,8 +99,6 @@ export function CoachMark({
                     {i + 1}
                   </span>
                   <span className="text-[11px] leading-normal text-text-muted">
-                    <span className="font-semibold text-text-secondary">{installStep.title}</span>
-                    {' — '}
                     {installStep.brief}
                   </span>
                 </div>

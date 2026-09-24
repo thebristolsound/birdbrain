@@ -1,0 +1,97 @@
+// @vitest-environment jsdom
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { ReactNode } from 'react'
+import { fakeBridge } from '../renderer/fakeBridge'
+import { stubMatchMedia } from './matchMediaStub'
+import { useAppStore } from '@renderer/stores/appStore'
+
+const routerState = vi.hoisted(() => ({ pathname: '/' }))
+
+// Mirrors the three patterns the bar asks about. `/cases/$caseId` matches any
+// segment, `new` included, which is the collision the wizard route guards against.
+function matchRoute({ to, fuzzy }: { to: string; fuzzy?: boolean }) {
+  const { pathname } = routerState
+  if (to === '/cases/$caseId') {
+    const match = pathname.match(fuzzy ? /^\/cases\/([^/]+)/ : /^\/cases\/([^/]+)$/)
+    return match ? { caseId: match[1] } : false
+  }
+  return pathname === to ? {} : false
+}
+
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => vi.fn(),
+  useRouter: () => ({ history: { back: vi.fn() } }),
+  useMatchRoute: () => matchRoute
+}))
+vi.mock('@renderer/hooks/useTheme', () => ({
+  useTheme: () => ({ theme: 'dark', toggleTheme: vi.fn() })
+}))
+vi.mock('@renderer/hooks/useUpdateStatus', () => ({
+  useUpdateStatus: () => ({ status: null })
+}))
+vi.mock('@renderer/hooks/useSearch', () => ({
+  useSearch: () => ({
+    results: [],
+    noteResults: [],
+    searching: false,
+    search: vi.fn(),
+    clear: vi.fn()
+  })
+}))
+vi.mock('@renderer/components/status/SessionControls', () => ({
+  SessionControls: () => <div data-testid="session-controls" />
+}))
+vi.mock('@renderer/components/status/ConnectionStatus', () => ({ ConnectionStatus: () => null }))
+vi.mock('@renderer/components/status/CaptureHealth', () => ({ CaptureHealth: () => null }))
+vi.mock('@renderer/components/export/ExportMenu', () => ({ ExportMenu: () => null }))
+
+import { TopBar } from '@renderer/components/layout/TopBar'
+
+function renderAt(pathname: string) {
+  routerState.pathname = pathname
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  function Wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  }
+  return render(<TopBar />, { wrapper: Wrapper })
+}
+
+let getCase: ReturnType<typeof vi.fn>
+
+beforeEach(() => {
+  stubMatchMedia(false)
+  getCase = vi.fn(async () => ({ id: 'case1', name: 'Operation Kestrel' }))
+  fakeBridge({ cases: { get: getCase } })
+  useAppStore.setState({ sessionActive: false })
+})
+
+afterEach(() => {
+  cleanup()
+})
+
+describe('the case chrome', () => {
+  it('shows the case switcher, search and session controls inside a case', async () => {
+    renderAt('/cases/case1/overview')
+    await waitFor(() =>
+      expect(screen.getByTestId('topbar-case-name').textContent).toContain('Operation Kestrel')
+    )
+    expect(screen.getByTestId('global-search-input')).toBeTruthy()
+    expect(screen.getByTestId('session-controls')).toBeTruthy()
+  })
+
+  it('treats the new-case wizard as no case, like the dashboard', () => {
+    renderAt('/cases/new')
+    expect(screen.queryByTestId('topbar-case-name')).toBeNull()
+    expect(screen.queryByTestId('global-search-input')).toBeNull()
+    expect(screen.queryByTestId('session-controls')).toBeNull()
+    expect(getCase).not.toHaveBeenCalled()
+  })
+
+  it('shows neither control on the dashboard', () => {
+    renderAt('/')
+    expect(screen.queryByTestId('topbar-case-name')).toBeNull()
+    expect(screen.queryByTestId('global-search-input')).toBeNull()
+  })
+})

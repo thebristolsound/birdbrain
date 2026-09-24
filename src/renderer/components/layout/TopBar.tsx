@@ -26,7 +26,9 @@ export function TopBar() {
     updateStatus?.state === 'available' || updateStatus?.state === 'downloaded'
 
   const isOnSettings = Boolean(matchRoute({ to: '/settings' }))
-  const caseMatch = matchRoute({ to: '/cases/$caseId', fuzzy: true })
+  // The pattern also matches the wizard's literal `new` segment, which is not a case.
+  const isOnWizard = Boolean(matchRoute({ to: '/cases/new' }))
+  const caseMatch = isOnWizard ? false : matchRoute({ to: '/cases/$caseId', fuzzy: true })
   const activeCaseId = caseMatch ? (caseMatch as { caseId: string }).caseId : null
 
   const { data: activeCase } = useQuery({

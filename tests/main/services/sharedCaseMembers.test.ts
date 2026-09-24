@@ -34,7 +34,7 @@ import type { CaseMember, ExportOptions } from '@shared/types'
 // Shared Cases, step 2 (#1510): the roster cache, the widened Exhibit Number
 // rule and the read-time citation. Three answers are frozen here:
 //
-//   1. MIGRATION. A v34 database reaches v35 with every Exhibit keeping its
+//   1. MIGRATION. A v35 database reaches v36 with every Exhibit keeping its
 //      number and null member columns, and — because the rebuild drops the
 //      old `exhibits` table — every Derived File and tag application still
 //      attached. Losing those rows would be silent evidence loss.
@@ -112,10 +112,10 @@ describe('shared case members (#1510)', () => {
     rmSync(tempDir, { recursive: true, force: true })
   })
 
-  describe('migration v35', () => {
-    // A real v34 database: the same schema this build creates, wound back by
-    // dropping what v35 added and rebuilding `exhibits` with the v34 UNIQUE.
-    function windBackToV34(dbPath: string): void {
+  describe('migration v36', () => {
+    // A real v35 database: the same schema this build creates, wound back by
+    // dropping what v36 added and rebuilding `exhibits` with the v35 UNIQUE.
+    function windBackToV35(dbPath: string): void {
       const raw = new Database(dbPath)
       raw.pragma('foreign_keys = OFF')
       raw.exec('DROP TABLE case_members')
@@ -127,7 +127,7 @@ describe('shared case members (#1510)', () => {
       raw.exec('ALTER TABLE cases DROP COLUMN shared_at')
       raw.exec('ALTER TABLE cases DROP COLUMN owner_installation_id')
       raw.exec(`
-        CREATE TABLE exhibits_v34 (
+        CREATE TABLE exhibits_v35 (
           id TEXT PRIMARY KEY,
           case_id TEXT NOT NULL,
           kind TEXT NOT NULL,
@@ -142,20 +142,20 @@ describe('shared case members (#1510)', () => {
           UNIQUE (case_id, exhibit_number),
           FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
         );
-        INSERT INTO exhibits_v34
+        INSERT INTO exhibits_v35
           SELECT id, case_id, kind, origin, exhibit_number, name, content_hash, path,
                  size_bytes, committed_at, manifest_seq FROM exhibits;
         DROP TABLE exhibits;
-        ALTER TABLE exhibits_v34 RENAME TO exhibits;
+        ALTER TABLE exhibits_v35 RENAME TO exhibits;
         CREATE INDEX idx_exhibits_case_id ON exhibits(case_id);
       `)
-      raw.pragma('user_version = 34')
+      raw.pragma('user_version = 35')
       raw.close()
     }
 
     it('keeps every Exhibit, its Derived Files and its tags across the rebuild', async () => {
       closeDatabase()
-      const dbPath = join(tempDir, 'v34.db')
+      const dbPath = join(tempDir, 'v35.db')
       await initDatabase(dbPath)
       const migrated = createCase({ name: 'Migrated' }).id
       const first = insertCapture({
@@ -186,7 +186,7 @@ describe('shared case members (#1510)', () => {
       })
       closeDatabase()
 
-      windBackToV34(dbPath)
+      windBackToV35(dbPath)
       await initDatabase(dbPath)
 
       expect(getDb().pragma('user_version', { simple: true })).toBe(LATEST_SCHEMA_VERSION)

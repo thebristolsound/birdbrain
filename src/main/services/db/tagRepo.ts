@@ -11,7 +11,7 @@ import type {
 import { getDb, type ImportCtx } from '@main/services/db/core'
 
 // The wire shape of a Tag is these three columns. `tags` also carries the
-// Shared Case sync columns since v35 (#1510), which are storage and never
+// Shared Case sync columns since v36 (#1510), which are storage and never
 // part of what the renderer receives.
 const TAG_COLUMNS = 'id, name, color'
 

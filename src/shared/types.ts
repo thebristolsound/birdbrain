@@ -226,6 +226,44 @@ export interface Tag {
   color?: string
 }
 
+// A Persona is a signed-in browser identity, yours or a pseudonym (ADR-0030):
+// installation-wide like a Tag, stamped on Captures from phase 2 on. The
+// import fields say when its browser session was last seeded and with how
+// many cookies; the cookie values live only in Chromium's store for the
+// partition, never in a row.
+export interface Persona {
+  id: string
+  label: string
+  notes: string
+  createdAt: string
+  lastImportAt: string | null
+  lastImportCount: number | null
+}
+
+// Why a cookie-file row was not loaded (#1497). Counted and reported, never
+// silently dropped: an operator who imported 40 of 42 has to know which two.
+export type CookieRejectionReason =
+  'malformed' | 'expired' | 'unknown-same-site' | 'rejected-by-session'
+
+export interface CookieRejection {
+  // 1-based line in the file (Netscape) or index in the array (JSON).
+  line: number
+  reason: CookieRejectionReason
+}
+
+export interface PersonaImportResult {
+  accepted: number
+  rejected: CookieRejection[]
+  importedAt: string
+}
+
+// Whether the OS key `safeStorage.isEncryptionAvailable()` reports on
+// protects the partition's cookie store (#414). False means the import UI
+// warns and requires acknowledgement before loading anything.
+export interface PersonaStorageState {
+  encryptionAvailable: boolean
+}
+
 export interface CaptureTag {
   captureId: string
   tagId: string

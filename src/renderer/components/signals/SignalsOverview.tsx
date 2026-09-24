@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Download, ListPlus } from 'lucide-react'
+import { ExportDialog } from '@renderer/components/export/ExportDialog'
+import { caseQueryOptions } from '@renderer/lib/api/cases'
+import { duplicateTagName, tagCapturesMarkdown } from '@renderer/components/signals/tagMenuActions'
 import { SIGNAL_COVERAGE_CAPTURES } from '@shared/constants'
 import { capturesQueryOptions } from '@renderer/lib/api/captures'
 import {
@@ -14,6 +17,7 @@ import {
   useSelectorsMutations
 } from '@renderer/lib/api/selectors'
 import {
+  getCapturesForTag,
   tagCaptureMatrixQueryOptions,
   tagUsageCountsForCaseQueryOptions,
   tagsQueryOptions,
@@ -63,6 +67,13 @@ export function SignalsOverview() {
   const addSelectorFilter = useAppStore((s) => s.addSelectorFilter)
   const addTagFilter = useAppStore((s) => s.addTagFilter)
 
+  const { data: caseData } = useQuery(caseQueryOptions(caseId))
+  const [exportCaptureIds, setExportCaptureIds] = useState<string[] | null>(null)
+  const exportCaseRef = useRef(caseId)
+  useEffect(() => {
+    exportCaseRef.current = caseId
+    setExportCaptureIds(null)
+  }, [caseId])
   const { data: selectors = [] } = useQuery(selectorsQueryOptions(caseId))
   const { data: matchCounts = {} } = useQuery(selectorMatchCountsQueryOptions(caseId))
   const { data: selectorMatrix = {} } = useQuery(selectorCaptureMatrixQueryOptions(caseId))
@@ -206,6 +217,40 @@ export function SignalsOverview() {
     }
   }
 
+  async function duplicateTag(signal: Signal) {
+    try {
+      const created = await createTag.mutateAsync({
+        name: duplicateTagName(
+          signal.name,
+          tags.map((tag) => tag.name)
+        ),
+        color: tags.find((tag) => tag.id === signal.id)?.color
+      })
+      setSelectedId(created.id)
+    } catch (cause) {
+      notify.error("Couldn't duplicate the tag", { cause })
+    }
+  }
+
+  async function exportTag(signal: Signal, markdown: boolean) {
+    try {
+      const taggedCaptures = await getCapturesForTag(caseId, signal.id)
+      if (exportCaseRef.current !== caseId) return
+      if (taggedCaptures.length === 0) {
+        notify.info('This tag has no captures in this case')
+        return
+      }
+      if (markdown) {
+        await navigator.clipboard.writeText(tagCapturesMarkdown(signal.name, taggedCaptures))
+        notify.success('Copied tagged captures as markdown')
+      } else {
+        setExportCaptureIds(taggedCaptures.map((capture) => capture.id))
+      }
+    } catch (cause) {
+      notify.error("Couldn't export the tag's captures", { cause })
+    }
+  }
+
   function renderRows(list: Signal[], emptyCopy: string) {
     if (list.length === 0) {
       return <div className="px-0.5 py-2.5 text-[11px] text-text-faint">{emptyCopy}</div>
@@ -240,6 +285,9 @@ export function SignalsOverview() {
         onShowMatches={() => showSelectorMatches(signal)}
         onExportMatches={() => void exportSignalMatches(signal)}
         onFilterCaptures={() => filterCapturesByTag(signal)}
+        onDuplicateTag={() => void duplicateTag(signal)}
+        onExportTag={() => void exportTag(signal, false)}
+        onCopyTagMarkdown={() => void exportTag(signal, true)}
         onSetColor={(color) => updateTag.mutate({ id: signal.id, color })}
         onMerge={() => setMergeSource({ id: signal.id, name: signal.name })}
       />
@@ -371,6 +419,15 @@ export function SignalsOverview() {
           onMerge={(signal) => setMergeSource({ id: signal.id, name: signal.name })}
         />
       </div>
+
+      {exportCaptureIds && (
+        <ExportDialog
+          caseId={caseId}
+          caseName={caseData?.name ?? 'Case'}
+          selectedCaptureIds={exportCaptureIds}
+          onClose={() => setExportCaptureIds(null)}
+        />
+      )}
 
       {/* Mounted only while a delete is pending, so the dialog holds no state
           between two different tags. */}

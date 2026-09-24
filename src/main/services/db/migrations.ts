@@ -873,6 +873,29 @@ export function runMigrations(db: Database.Database): void {
   }
 
   if (version < 35) {
+    db.transaction(() => {
+      // The Persona registry (ADR-0030, #1497): a signed-in browser identity,
+      // registered per install like a Tag. Soft delete: `deleted_at` hides a
+      // row from pickers while historic Captures keep the label they were
+      // stamped with (phase 2). The cookie values themselves never touch this
+      // table; only the import count and time do, so a row says when the
+      // partition was last seeded and nothing about what it holds.
+      db.exec(`
+        CREATE TABLE personas (
+          id TEXT PRIMARY KEY,
+          label TEXT NOT NULL,
+          notes TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL,
+          last_import_at TEXT,
+          last_import_count INTEGER,
+          deleted_at TEXT
+        );
+      `)
+      db.pragma('user_version = 35')
+    })()
+  }
+
+  if (version < 36) {
     // `foreign_keys` is ON for the connection, and with it ON a DROP TABLE runs
     // an implicit DELETE that cascades: dropping `exhibits` below would take
     // every `derived_files` and `exhibit_tags` row with it. The pragma is a
@@ -971,9 +994,9 @@ export function runMigrations(db: Database.Database): void {
 
         const violations = db.pragma('foreign_key_check') as unknown[]
         if (violations.length > 0) {
-          throw new Error(`Migration 35 left ${violations.length} foreign key violation(s)`)
+          throw new Error(`Migration 36 left ${violations.length} foreign key violation(s)`)
         }
-        db.pragma('user_version = 35')
+        db.pragma('user_version = 36')
       })()
     } finally {
       db.pragma('foreign_keys = ON')

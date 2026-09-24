@@ -5,6 +5,7 @@
 // restore path would otherwise bake extension UI into the in-flight one.
 import { describe, it, expect, vi, beforeAll } from 'vitest'
 import type {
+  CaptureCardDetails,
   ActiveSelectorsResult,
   CaptureServerStatus,
   CaptureUploadResult
@@ -14,14 +15,18 @@ vi.mock('@extension/utils/api', () => ({
   getStatus: vi.fn(),
   getActiveSelectors: vi.fn(),
   sendMhtmlCapture: vi.fn(),
-  createSelector: vi.fn()
+  createSelector: vi.fn(),
+  getCaptureCard: vi.fn(),
+  setCaptureCardTag: vi.fn()
 }))
 
 import {
   getStatus,
   getActiveSelectors,
   sendMhtmlCapture,
-  createSelector
+  createSelector,
+  getCaptureCard,
+  setCaptureCardTag
 } from '@extension/utils/api'
 import { removeInjectedBirdbrainUi } from '../../extension/src/captureHygiene'
 
@@ -52,7 +57,12 @@ const runtimeListeners: Listener[] = []
 let contextMenuListener:
   | ((info: { menuItemId: string; selectionText?: string }, tab: typeof TAB) => Promise<void>)
   | undefined
-const sentMessages: Array<{ tabId: number; type: string; status?: string }> = []
+const sentMessages: Array<{
+  tabId: number
+  type: string
+  status?: string
+  card?: CaptureCardDetails
+}> = []
 let rejectPrepare = false
 const executeScriptCalls: Array<{ target: { tabId: number }; func: () => unknown }> = []
 // One pending saveAsMHTML callback per in-flight capture, in start order —
@@ -127,6 +137,7 @@ const UPLOAD_RESULT: CaptureUploadResult = {
 }
 
 beforeAll(async () => {
+  vi.mocked(getCaptureCard).mockRejectedValue(new Error('metadata unavailable'))
   vi.mocked(getStatus).mockResolvedValue(STATUS)
   vi.mocked(getActiveSelectors).mockResolvedValue(SELECTOR_GROUPS)
   vi.mocked(sendMhtmlCapture).mockImplementation(
@@ -165,6 +176,7 @@ beforeAll(async () => {
       onBeforeRequest: { addListener: () => {} }
     },
     tabs: {
+      create: vi.fn().mockResolvedValue(TAB),
       onRemoved: { addListener: () => {} },
       onUpdated: { addListener: () => {} },
       query: (_query: unknown, callback: (tabs: unknown[]) => void) => callback([]),
@@ -178,8 +190,11 @@ beforeAll(async () => {
         }
         return Promise.resolve(tab)
       },
-      sendMessage: (tabId: number, message: { type: string; status?: string }) => {
-        sentMessages.push({ tabId, type: message.type, status: message.status })
+      sendMessage: (
+        tabId: number,
+        message: { type: string; status?: string; card?: CaptureCardDetails }
+      ) => {
+        sentMessages.push({ tabId, ...message })
         if (message.type === 'PREPARE_FOR_CAPTURE') {
           return rejectPrepare
             ? Promise.reject(new Error('Receiving end does not exist'))
@@ -462,5 +477,99 @@ describe('the status a manual capture attests (#797)', () => {
     // if the origin had sent it.
     expect('httpStatus' in payload).toBe(false)
     expect('headers' in payload).toBe(false)
+  })
+})
+
+describe('capture card acquisition boundary', () => {
+  function askCard(
+    message: Record<string, unknown>,
+    tabId = TAB.id
+  ): Promise<{ ok: boolean; error?: string }> {
+    return new Promise((resolve) => {
+      for (const listener of runtimeListeners)
+        listener(
+          { captureId: 'cap-card', ...message },
+          { id: EXTENSION_ID, tab: { ...TAB, id: tabId } },
+          (r) => resolve(r as { ok: boolean })
+        )
+    })
+  }
+
+  it('delivers card only after upload and release, then persists tag changes against the saved capture', async () => {
+    const cb = mhtmlCallbacks.length
+    const up = uploadResolvers.length
+    const start = sentMessages.length
+    const card: CaptureCardDetails = {
+      caseId: 'case-a',
+      captureId: 'cap-card',
+      caseName: 'Case A',
+      title: 'Example',
+      format: 'mhtml',
+      hash: 'abc',
+      manifestIndex: 42,
+      tags: [{ id: 'tag-1', name: 'Evidence', color: '#f59e0b', applied: false }]
+    }
+    vi.mocked(getCaptureCard).mockResolvedValueOnce(card)
+    dispatch({ type: 'MANUAL_CAPTURE', tabId: TAB.id, caseId: 'case-a' })
+    await flush()
+    expect(sentMessages.slice(start).some((message) => message.card)).toBe(false)
+    mhtmlCallbacks[cb](new Blob(['known MHTML']))
+    await flush()
+    expect(sentMessages.slice(start).some((message) => message.card)).toBe(false)
+    dispatch({ type: 'STOP_CAPTURE', tabId: TAB.id })
+    uploadResolvers[up]({ ...UPLOAD_RESULT, captureId: 'cap-card' })
+    await flush()
+    const messages = sentMessages.slice(start)
+    const cardIndex = messages.findIndex((message) => message.card)
+    expect(cardIndex).toBeGreaterThan(
+      messages.findIndex((message) => message.type === 'RELEASE_CAPTURE_UI')
+    )
+    expect(messages[cardIndex].card).toEqual(card)
+    expect(await askCard({ type: 'CAPTURE_CARD_ACTION', action: 'view' })).toEqual({ ok: true })
+    expect(chrome.tabs.create).toHaveBeenCalledWith({
+      url: 'birdbrain://capture?caseId=case-a&captureId=cap-card'
+    })
+    expect(
+      (await askCard({ type: 'CAPTURE_CARD_ACTION', captureId: 'stale-card', action: 'view' })).ok
+    ).toBe(false)
+    vi.mocked(setCaptureCardTag).mockResolvedValueOnce({ ok: true })
+    expect(
+      await askCard({ type: 'CAPTURE_CARD_ACTION', action: 'tag', tagId: 'tag-1', applied: true })
+    ).toEqual({ ok: true })
+    expect(setCaptureCardTag).toHaveBeenCalledWith({
+      caseId: 'case-a',
+      captureId: 'cap-card',
+      tagId: 'tag-1',
+      applied: true
+    })
+    vi.mocked(setCaptureCardTag).mockRejectedValueOnce(new Error('offline'))
+    expect(
+      (
+        await askCard({
+          type: 'CAPTURE_CARD_ACTION',
+          action: 'tag',
+          tagId: 'tag-1',
+          applied: false
+        })
+      ).error
+    ).toBe('Could not update this tag. Try again.')
+
+    expect(
+      (await askCard({ type: 'CAPTURE_CARD_ACTION', action: 'tag', tagId: 'other', applied: true }))
+        .ok
+    ).toBe(false)
+    expect((await askCard({ type: 'CAPTURE_CARD_ACTION', action: 'view' }, 999)).ok).toBe(false)
+  })
+
+  it('stops during acquisition without uploading any acquired bytes', async () => {
+    const cb = mhtmlCallbacks.length
+    const uploads = uploadResolvers.length
+    dispatch({ type: 'MANUAL_CAPTURE', tabId: TAB.id, caseId: 'case-a' })
+    await flush()
+    dispatch({ type: 'STOP_CAPTURE', tabId: TAB.id })
+    mhtmlCallbacks[cb](new Blob(['must not be stored']))
+    await flush()
+    expect(uploadResolvers).toHaveLength(uploads)
+    expect(sentMessages.at(-1)).toMatchObject({ type: 'UPDATE_CAPTURE_TOAST', status: 'skipped' })
   })
 })

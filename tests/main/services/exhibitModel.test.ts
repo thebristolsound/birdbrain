@@ -292,13 +292,14 @@ describe('exhibit model', () => {
   // The v34 block's SQL is what runs on a real upgrade, so it is exercised
   // against a real pre-v34 schema rather than a hand-written minimal one: the
   // database is migrated forward, then wound back to v33 exactly as v34 found
-  // it, then reopened.
+  // it (so every table a later migration creates is dropped too), then
+  // reopened.
   describe('renumber migration (X18, X41)', () => {
     function windBackToV33(dbPath: string): void {
       const raw = new Database(dbPath)
       raw.pragma('foreign_keys = OFF')
-      // v35 first (#1510): the roster table and the per-author columns, so
-      // the v34 and v35 blocks both run again against a real v33 shape.
+      // v36 first (#1510): the roster table and the per-author columns, so
+      // the v34 to v36 blocks all run again against a real v33 shape.
       raw.exec('DROP TABLE case_members')
       for (const table of ['notes', 'annotations', 'tags', 'note_tags']) {
         for (const column of ['author_installation_id', 'version', 'deleted_at', 'row_signature']) {
@@ -321,6 +322,7 @@ describe('exhibit model', () => {
         DROP TABLE derived_files;
         DROP TABLE staging_files;
         DROP TABLE exhibits;
+        DROP TABLE personas;
         CREATE INDEX idx_capture_tags_tag_id ON capture_tags(tag_id);
       `)
       raw.pragma('user_version = 33')

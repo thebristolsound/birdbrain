@@ -21,7 +21,7 @@ describe('migration v25: capture_texts', () => {
     // alters notes and v29 alters selectors. v34 reads `captures.method`,
     // `mhtml_path`, `size_bytes` and `manifest_index` and rebuilds
     // `capture_tags`, all of which a real v24 database has (v11 and v23), so
-    // they are declared here rather than worked around in the migration. v35
+    // they are declared here rather than worked around in the migration. v36
     // adds columns to `annotations` (v17) for the same reason.
     raw.exec(`
       CREATE TABLE cases (id TEXT PRIMARY KEY, name TEXT, description TEXT, type TEXT,

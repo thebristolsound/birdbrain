@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   Camera,
   Globe,
@@ -48,10 +49,14 @@ const STEPS = [
 export function CapturesGettingStarted() {
   const reduce = useReduceMotion()
 
+  const [folderError, setFolderError] = useState<string | null>(null)
+
   const handleInstall = async () => {
+    setFolderError(null)
     try {
       await openExtensionFolder()
     } catch (err) {
+      setFolderError('Could not open the extension folder. Reinstall Birdbrain, then try again.')
       console.error('Failed to open extension folder:', err)
     }
   }
@@ -130,6 +135,15 @@ export function CapturesGettingStarted() {
           ))}
         </div>
 
+        <p className="text-xs text-text-muted">
+          Open extension folder reveals the bundled files in your file manager. Use the Setup Guide
+          to load them in your browser.
+        </p>
+        {folderError && (
+          <p role="alert" className="text-xs text-red-400">
+            {folderError}
+          </p>
+        )}
         {/* CTA */}
         <div className="flex items-center justify-center gap-3">
           <Button
@@ -138,7 +152,7 @@ export function CapturesGettingStarted() {
             className="gap-2"
           >
             <Download className="h-4 w-4" />
-            Install Extension
+            Open extension folder
           </Button>
           <button
             data-testid="captures-getting-started-learn-more-btn"

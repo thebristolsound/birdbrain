@@ -12,7 +12,7 @@ the PR carries `evidence-affecting` and waits for human review. Plan approval al
 
 ## Scope held to the ticket
 
-- One migration, v35, created with `pnpm db:migration:new shared-cases`.
+- One migration, v36 (v35 became the persona registry while this was in review), created with `pnpm db:migration:new shared-cases`.
 - The citation rule, applied on the surfaces the ticket lists: capture list, capture detail,
   Overview, note citations and exports.
 - Member Code validation reuses `MEMBER_CODE_PATTERN` from `src/shared/schemas.ts`; nothing
@@ -23,7 +23,7 @@ Manifest `exhibit` entry (nothing makes a Case shared until step 5, so the first
 `member-add` owns that), row signing on the working layer (step 4), every `sharing:` IPC
 channel (steps 4 and 5), the Members UI (step 6).
 
-## Migration v35
+## Migration v36
 
 1. `case_members`: `case_id`, `installation_id`, `public_key_pem`, `member_code`,
    `operator_name`, `node_id`, `role`, `added_at_index`, `revoked_at_index NULL`. Primary key
@@ -41,7 +41,7 @@ channel (steps 4 and 5), the Members UI (step 6).
    class: installed-API usage (ADR-0015), grounded in the SQLite NULL rule.
 4. Working layer: `notes`, `annotations`, `tags`, `exhibit_tags` and `note_tags` each gain
    `author_installation_id TEXT NULL`, `version INTEGER NOT NULL DEFAULT 0`, `deleted_at TEXT
-   NULL`, `row_signature TEXT NULL` by `ALTER TABLE ADD COLUMN`. Both tag-application tables
+NULL`, `row_signature TEXT NULL` by `ALTER TABLE ADD COLUMN`. Both tag-application tables
    are included because the spec says "tag applications" and the repo has two.
 5. `cases` gains `shared_at TEXT NULL` and `owner_installation_id TEXT NULL`.
 6. No row is rewritten. Every existing Exhibit keeps null member columns, read as "this
@@ -77,7 +77,7 @@ channel (steps 4 and 5), the Members UI (step 6).
 
 ## Tests
 
-- Migration fixture v34 to v35 in `tests/main/services/exhibitModel.test.ts`: existing
+- Migration fixture v35 to v36 in `tests/main/services/exhibitModel.test.ts`: existing
   Exhibits keep bare citations and null member columns; the column lists for the six tables
   and `cases` are pinned.
 - Uniqueness: `NK-12` and `MB-12` coexist in one Case; a duplicate within one author, and a

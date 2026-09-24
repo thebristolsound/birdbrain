@@ -46,7 +46,7 @@ describe('note_tags schema (v32)', () => {
     expect(LATEST_SCHEMA_VERSION).toBeGreaterThanOrEqual(32)
     expect(getDb().pragma('user_version', { simple: true })).toBe(LATEST_SCHEMA_VERSION)
     const columns = getDb().pragma('table_info(note_tags)') as Array<{ name: string; pk: number }>
-    // The four sync columns after the keys are v35 (#1510), not this table's.
+    // The four sync columns after the keys are v36 (#1510), not this table's.
     expect(columns.map((c) => c.name)).toEqual([
       'note_id',
       'tag_id',

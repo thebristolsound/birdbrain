@@ -69,7 +69,17 @@ export function useServerStatus() {
 
     // Deep links (birdbrain://) from the extension popup route the window here.
     const unsubDeepLink = window.birdbrain.onDeepLinkNavigate((target) => {
-      router.navigate({ to: target === 'settings' ? '/settings' : '/' })
+      if (typeof target === 'object') {
+        void router
+          .navigate({
+            to: '/cases/$caseId/captures',
+            params: { caseId: target.caseId },
+            search: { captureId: target.captureId }
+          })
+          .then(() => {
+            useAppStore.getState().setSelectedCaptureId(target.captureId)
+          })
+      } else router.navigate({ to: target === 'settings' ? '/settings' : '/' })
     })
 
     return () => {

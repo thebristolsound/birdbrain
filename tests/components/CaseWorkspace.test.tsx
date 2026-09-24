@@ -10,6 +10,7 @@ let currentCaseId = 'case-1'
 
 vi.mock('@tanstack/react-router', () => ({
   useParams: () => ({ caseId: currentCaseId }),
+  useSearch: () => ({}),
   useMatchRoute: () => () => false,
   Outlet: () => null
 }))

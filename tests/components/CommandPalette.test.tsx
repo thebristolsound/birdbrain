@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { Case } from '@shared/types'
@@ -82,6 +82,56 @@ describe('the command palette panel', () => {
   it('exposes no dialog at all while closed', () => {
     render(<CommandPalette />, { wrapper: Wrapper })
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+})
+
+// The palette is hand-rolled, so the dialog primitive's focus half reaches it
+// only through useModalFocus and trapTab (#1536).
+describe('the command palette focus', () => {
+  function renderWithOpener() {
+    render(
+      <>
+        <button data-testid="opener">Notes</button>
+        <CommandPalette />
+      </>,
+      { wrapper: Wrapper }
+    )
+    const opener = screen.getByTestId('opener')
+    opener.focus()
+    act(() => useAppStore.setState({ commandPaletteOpen: true }))
+    return opener
+  }
+
+  it('moves focus into the search input when it opens', () => {
+    renderWithOpener()
+
+    expect(document.activeElement).toBe(screen.getByPlaceholderText('Switch investigation...'))
+  })
+
+  it('hands focus back to whatever opened it when it closes', () => {
+    const opener = renderWithOpener()
+
+    act(() => useAppStore.setState({ commandPaletteOpen: false }))
+
+    expect(document.activeElement).toBe(opener)
+  })
+
+  it('keeps Tab inside the palette, wrapping from the last action to the input', () => {
+    renderWithOpener()
+    const last = screen.getByText('Report a problem').closest('button') as HTMLButtonElement
+    last.focus()
+
+    fireEvent.keyDown(last, { key: 'Tab' })
+
+    expect(document.activeElement).toBe(screen.getByPlaceholderText('Switch investigation...'))
+  })
+
+  it('wraps Shift-Tab from the input round to the last action', () => {
+    renderWithOpener()
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Tab', shiftKey: true })
+
+    expect(document.activeElement).toBe(screen.getByText('Report a problem').closest('button'))
   })
 })
 

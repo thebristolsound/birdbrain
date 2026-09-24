@@ -28,6 +28,9 @@ import type { CaptureEvent } from '@shared/types'
 import type { ExtensionAttachEvent } from '@shared/ipc'
 import {
   CaptureUploadSchema,
+  CaptureCardSchema,
+  CaptureCardTagSchema,
+  type CaptureCardDetails,
   ExtensionNoteCreateSchema,
   ExtensionTagApplySchema,
   SelectorCreateSchema,
@@ -263,6 +266,7 @@ function createApp(deps: CaptureServerDeps): Hono {
           ({
             id: cs.id,
             name: cs.name,
+            type: cs.type,
             captureCount: captureRepo.getCaptureCount(cs.id)
           }) satisfies CaptureServerCase
       )
@@ -520,13 +524,56 @@ function createApp(deps: CaptureServerDeps): Hono {
         return c.json({ error: 'Case not found' }, 404)
       }
       const hit = resolveCaptureForUrl(url, captureRepo.listCaptureUrlCandidates(caseId))
+      const capture = hit ? captureRepo.getCapture(hit.id) : undefined
       return c.json({
         found: hit !== null,
         canonicalUrl: canonicalizeUrl(url),
         capture: hit
+          ? {
+              ...hit,
+              manifestIndex: capture?.manifestIndex,
+              format: capture?.format
+            }
+          : null
       } satisfies UrlLookupResult)
     }
   )
+
+  // Reads use authenticated POSTs, like URL lookup. No acquisition occurs here.
+  app.post('/api/captures/card', zValidator('json', CaptureCardSchema), (c) => {
+    const { caseId, captureId } = c.req.valid('json')
+    const capture = captureRepo.getCapture(captureId)
+    const caseData = caseRepo.getCase(caseId)
+    if (!capture || !caseData || capture.caseId !== caseId) {
+      return c.json({ error: 'Capture not found in this case' }, 404)
+    }
+    const applied = new Set(tagRepo.getTagsForCapture(captureId).map((tag) => tag.id))
+    return c.json({
+      caseId,
+      captureId,
+      caseName: caseData.name,
+      title: capture.title,
+      format: capture.format,
+      hash: capture.hash,
+      manifestIndex: capture.manifestIndex ?? null,
+      tags: tagRepo
+        .listTags()
+        .slice(0, 3)
+        .map((tag) => ({ ...tag, color: tag.color ?? '#94a3b8', applied: applied.has(tag.id) }))
+    } satisfies CaptureCardDetails)
+  })
+
+  app.post('/api/captures/card/tag', zValidator('json', CaptureCardTagSchema), (c) => {
+    const { caseId, captureId, tagId, applied } = c.req.valid('json')
+    const capture = captureRepo.getCapture(captureId)
+    if (!capture || capture.caseId !== caseId || !tagRepo.getTag(tagId)) {
+      return c.json({ error: 'Capture or tag not found' }, 404)
+    }
+    if (applied) tagRepo.addTagToCapture({ captureId, tagId })
+    else tagRepo.removeTagFromCapture({ captureId, tagId })
+    emitExtensionAttach({ kind: 'tag', caseId, captureId })
+    return c.json({ ok: true })
+  })
 
   // Apply a Tag to the Capture of a URL, auto-capturing first when the case
   // holds none (#392). Find-or-create by case-insensitive name, matching the

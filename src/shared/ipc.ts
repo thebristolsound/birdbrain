@@ -344,7 +344,7 @@ export interface ExtensionAttachEvent {
 }
 
 // Deep-link (birdbrain://) navigation targets pushed from main to the renderer
-export type DeepLinkTarget = 'dashboard' | 'settings'
+export type DeepLinkTarget = 'dashboard' | 'settings' | { caseId: string; captureId: string }
 
 // Payload types for IPC calls
 export interface CreateCaseParams {

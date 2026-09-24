@@ -1,12 +1,3 @@
-// The popup's page-status derivations, kept out of the component so they can be
-// asserted directly.
-//
-// Every line here is answered from state the extension actually holds. The
-// prototype's "Captured 4 min ago · MHTML · sha256 verified · index #36" for an
-// arbitrary page needs a capture lookup by URL that no endpoint offers yet
-// (#392); until it does, the popup reports only the four states with data
-// behind them — capturing, captured by this worker, not seen here, and refused
-// before it starts — and says so rather than implying a lookup happened.
 import type { PopupPageStatus } from '@extension/messages'
 
 export type PageStatusTone = 'blocked' | 'capturing' | 'captured' | 'idle' | 'unknown'
@@ -69,7 +60,7 @@ export function derivePageStatus(status: PopupPageStatus | null, now: number): P
     return { tone: 'capturing', text: 'Capturing…', sub: 'Serializing page and assets' }
   }
   if (status.lastCapture) {
-    const { at, manifestIndex } = status.lastCapture
+    const { at, manifestIndex, format = 'mhtml' } = status.lastCapture
     return {
       tone: 'captured',
       text: formatCapturedAt(at, now),
@@ -78,18 +69,17 @@ export function derivePageStatus(status: PopupPageStatus | null, now: number): P
       // Verification is the app's Verify action and says so there.
       sub:
         manifestIndex === null
-          ? 'MHTML · sha256 recorded'
-          : `MHTML · sha256 recorded · index #${manifestIndex}`
+          ? `${format.toUpperCase()} · sha256 recorded`
+          : `${format.toUpperCase()} · sha256 recorded · index #${manifestIndex}`
     }
   }
-  return {
-    tone: 'idle',
-    text: 'Not captured yet',
-    // The disclaimer is the point: an absent record means this worker has not
-    // captured the page, which is not the same as the case having no capture
-    // of it.
-    sub: "Captures made earlier aren't tracked here."
-  }
+  return status.lookupFailed
+    ? {
+        tone: 'unknown',
+        text: 'Capture status unavailable',
+        sub: 'Could not check earlier captures. Reopen the popup to retry.'
+      }
+    : { tone: 'idle', text: 'Not captured yet', sub: 'Right-click to capture this page.' }
 }
 
 /**

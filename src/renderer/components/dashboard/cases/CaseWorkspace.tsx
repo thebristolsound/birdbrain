@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useParams, Outlet, useMatchRoute } from '@tanstack/react-router'
+import { useParams, useSearch, Outlet, useMatchRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { casesQueryOptions } from '@renderer/lib/api/cases'
 import { useSessionMutations } from '@renderer/lib/api/session'
@@ -13,6 +13,7 @@ import { Skeleton } from '@renderer/components/ui'
 export function CaseWorkspace() {
   const { caseId } = useParams({ from: '/cases/$caseId' })
   const matchRoute = useMatchRoute()
+  const { captureId } = useSearch({ strict: false })
   const { data: cases = [], isLoading } = useQuery(casesQueryOptions)
   const { activateCase } = useSessionMutations()
   const { update } = useSettingsMutations()
@@ -30,6 +31,12 @@ export function CaseWorkspace() {
     store.clearSelectorFilters()
     store.clearTagFilters()
   }, [caseId])
+
+  // Apply capture links after the reset above, including when the destination
+  // case mounts after navigation has already resolved.
+  useEffect(() => {
+    if (captureId) useAppStore.getState().setSelectedCaptureId(captureId)
+  }, [caseId, captureId])
 
   // Activate case in the session service + persist session state
   useEffect(() => {

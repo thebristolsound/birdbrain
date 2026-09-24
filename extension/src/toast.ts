@@ -1,10 +1,13 @@
-import { registerCaptureUiTeardown } from './captureSuppression'
+import { isCaptureUiSuppressed, registerCaptureUiTeardown } from './captureSuppression'
+import type { CaptureCardDetails } from '@shared/schemas'
 
 const TOAST_ID = 'birdbrain-capture-toast'
 
 interface ToastOptions {
   status: 'capturing' | 'success' | 'degraded' | 'error' | 'skipped'
   message?: string
+  card?: CaptureCardDetails
+  scrolling?: boolean
 }
 
 let removeTimeout: ReturnType<typeof setTimeout> | null = null
@@ -131,6 +134,10 @@ export function updateToast(options: ToastOptions): void {
     removeTimeout = null
   }
 
+  if (options.card) {
+    showCaptureCard(options.card, options.scrolling ?? false, options.message)
+    return
+  }
   showToast(options)
 
   const dismissMs =
@@ -174,4 +181,112 @@ export function removeToast(): void {
     toast.classList.remove('visible')
     setTimeout(() => host.remove(), 200)
   }
+}
+
+// Text from pages, cases and tags is assigned through textContent, never markup.
+function showCaptureCard(card: CaptureCardDetails, scrolling: boolean, warning?: string): void {
+  if (isCaptureUiSuppressed()) return
+  const shadow = getOrCreateHost()
+  shadow.innerHTML = `
+    <style>${TOAST_STYLES}
+      .card { display: block; box-sizing: border-box; width: 296px; max-width: calc(100vw - 32px); padding: 0;
+        bottom: 16px; right: 16px; border-radius: 6px; overflow: hidden; line-height: 1.5; }
+      .heading { display: flex; align-items: center; gap: 8px; padding: 10px 12px 0; font-size: 12px; font-weight: 600; }
+      .check { display: inline-flex; align-items: center; justify-content: center; width: 16px;
+        height: 16px; flex-shrink: 0; border-radius: 50%; background: #10b98124; color: #34d399; }
+      .heading-text { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+      button { font: inherit; cursor: pointer; color: #a1a1aa; background: transparent;
+        border: 1px solid #3f3f46; border-radius: 4px; }
+      button:hover { background: #27272a; }
+      button:focus-visible { outline: 2px solid #818cf8; outline-offset: 1px; }
+      button:disabled { opacity: .5; cursor: wait; }
+      .dismiss { width: 20px; height: 20px; border: 0; padding: 0; }
+      .title { margin: 6px 12px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: #a1a1aa; }
+      .facts, .warning, .error { margin: 3px 12px 0; font-size: 10px; color: #71717a; }
+      .warning, .error { color: #fbbf24; }
+      .tags { margin: 9px 12px 0; display: flex; flex-wrap: wrap; gap: 5px; }
+      .tag { display: inline-flex; align-items: center; gap: 5px; border-radius: 9999px;
+        padding: 2px 9px; font-size: 10px; font-weight: 500; }
+      .tag[aria-pressed=true] { color: #fafafa; background: #27272a; }
+      .dot { width: 5px; height: 5px; border-radius: 50%; }
+      .actions { display: flex; gap: 7px; margin-top: 10px; padding: 8px 12px;
+        background: #18181b; border-top: 1px solid #27272a; }
+      .actions button { height: 28px; font-size: 12px; padding: 0 11px; }
+      .actions .view { flex: 1; background: #6467f2; border: 0; color: white; font-weight: 600; }
+      @media (prefers-reduced-motion: reduce) { .toast { transition: none; transform: none; } }
+    </style>
+    <section class="toast card visible" aria-label="Capture saved">
+      <div class="heading"><span class="check" aria-hidden="true">✓</span><span class="heading-text"></span><button class="dismiss" aria-label="Dismiss">×</button></div>
+      <div class="title"></div><div class="facts"></div><div class="warning"></div>
+      <div class="tags"></div><div class="error" role="alert"></div>
+      <div class="actions"><button class="view">View in Birdbrain</button><button class="recapture">Recapture</button></div>
+    </section>`
+  const root = shadow.querySelector<HTMLElement>('.card')!
+  shadow.querySelector('.heading-text')!.textContent = `Captured to ${card.caseName}`
+  const title = shadow.querySelector<HTMLElement>('.title')!
+  title.textContent = card.title
+  title.title = card.title
+  const facts = shadow.querySelector<HTMLElement>('.facts')!
+  facts.textContent = `${scrolling ? 'Full page (scrolling)' : 'Full page'} · ${card.format.toUpperCase()} · sha256 recorded${card.manifestIndex === null ? '' : ` · #${card.manifestIndex}`}`
+  facts.title = `SHA-256: ${card.hash}`
+  shadow.querySelector('.warning')!.textContent = warning ?? ''
+  const error = shadow.querySelector('.error')!
+  const pause = (): void => {
+    if (removeTimeout) clearTimeout(removeTimeout)
+    removeTimeout = null
+  }
+  const resume = (): void => {
+    pause()
+    removeTimeout = setTimeout(removeToast, 5000)
+  }
+  root.addEventListener('mouseenter', pause)
+  root.addEventListener('mouseleave', resume)
+  root.addEventListener('focusin', pause)
+  root.addEventListener('focusout', resume)
+  shadow.querySelector('.dismiss')!.addEventListener('click', removeToastImmediately)
+  const act = async (action: string, values: Record<string, unknown> = {}): Promise<boolean> => {
+    error.textContent = ''
+    pause()
+    try {
+      const reply = await chrome.runtime.sendMessage({
+        type: 'CAPTURE_CARD_ACTION',
+        captureId: card.captureId,
+        action,
+        ...values
+      })
+      if (!reply?.ok) throw new Error(reply?.error ?? 'Birdbrain did not answer. Try again.')
+      return true
+    } catch (err) {
+      error.textContent = err instanceof Error ? err.message : 'Could not complete this action.'
+      return false
+    } finally {
+      resume()
+    }
+  }
+  for (const tag of card.tags) {
+    const button = document.createElement('button')
+    button.className = 'tag'
+    button.setAttribute('aria-pressed', String(tag.applied))
+    const dot = document.createElement('span')
+    dot.className = 'dot'
+    dot.style.backgroundColor = tag.applied ? tag.color : 'transparent'
+    button.append(dot, document.createTextNode(tag.name))
+    button.addEventListener('click', async () => {
+      button.disabled = true
+      const applied = button.getAttribute('aria-pressed') !== 'true'
+      if (await act('tag', { tagId: tag.id, applied })) {
+        button.setAttribute('aria-pressed', String(applied))
+        dot.style.backgroundColor = applied ? tag.color : 'transparent'
+      }
+      button.disabled = false
+    })
+    shadow.querySelector('.tags')!.append(button)
+  }
+  shadow.querySelector('.view')!.addEventListener('click', async () => {
+    if (await act('view')) removeToastImmediately()
+  })
+  shadow.querySelector('.recapture')!.addEventListener('click', async () => {
+    if (await act('recapture', { scrolling })) removeToastImmediately()
+  })
+  resume()
 }

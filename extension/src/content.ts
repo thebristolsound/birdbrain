@@ -542,7 +542,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.type === 'UPDATE_CAPTURE_TOAST') {
-    updateToast({ status: message.status, message: message.message })
+    updateToast({
+      status: message.status,
+      message: message.message,
+      card: message.card,
+      scrolling: message.scrolling
+    })
     sendResponse({ ok: true })
     return
   }

@@ -260,6 +260,9 @@ const overviewRoute = createRoute({
 const capturesRoute = createRoute({
   getParentRoute: () => caseRoute,
   path: '/captures',
+  validateSearch: (search: Record<string, unknown>): { captureId?: string } => ({
+    captureId: typeof search.captureId === 'string' ? search.captureId : undefined
+  }),
   component: CapturesRoute,
   errorComponent: RouteErrorComponent
 })

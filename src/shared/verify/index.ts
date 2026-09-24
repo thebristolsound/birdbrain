@@ -16,6 +16,12 @@ export {
   COMMON_NAME_OID
 } from '@shared/verify/timestampToken'
 export type { ParsedTimestampToken } from '@shared/verify/timestampToken'
+export { checkDerStrictness, checkTimestampTokenDerStrictness } from '@shared/verify/derStrictness'
+export type {
+  DerDeviation,
+  DerDeviationKind,
+  DerStrictnessReport
+} from '@shared/verify/derStrictness'
 export { verifyManifestChainText, describeUnsupportedEntry } from '@shared/verify/manifestChain'
 export type {
   ChainVerifyResult,

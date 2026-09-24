@@ -144,7 +144,7 @@ internal consistency*, **not** timestamp authenticity — this runbook's
 | \`${screenshotPath('{sha256}')}\` | Captured screenshot (hashed as \`screenshotHash\`) |
 | \`attachments/\`, \`images/\`, \`documents/\` | Committed exhibits of other kinds, one file per exhibit named \`{exhibitId}\` plus its stored extension (hashed as the \`exhibit\` entry's \`contentHash\`) |
 | \`{exhibit directory}/{exhibitId}_{suffix}\` | Derived files, enclosed beside the exhibit they were computed from — a capture's thumbnail sits in \`${CAPTURE_PACKAGE_DIRECTORY}/\` (hashed as the \`derivation\` entry's \`outputHash\`) |
-| \`${TIMESTAMP_PACKAGE_DIRECTORY}/*.tst\` | RFC 3161 tokens (DER), when present |
+| \`${TIMESTAMP_PACKAGE_DIRECTORY}/*.tst\` | RFC 3161 tokens, when present (see step 6c on their encoding) |
 | \`${ROOT.evidenceIndex}\` | Unsigned index (reconcile, do not trust) |
 | \`${ROOT.exportEntry}\` | Signed export entry for this package — scope of the enclosed captures (absent only from packages whose \`${ROOT.evidenceIndex}\` states a \`schemaVersion\` below ${EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION}; see Trust model) |
 
@@ -327,4 +327,26 @@ A token whose imprint matches the content hash but whose TSA signature is invali
 (a forged token) PASSES the binary's structural check and is caught **only**
 here. That is why this runbook's \`openssl ts -verify\` — not the binary — is the
 canonical proof of trusted time.
+
+**6c. A strict-DER parser may refuse to read the token. That is an encoding
+deviation by the authority, not tampering.** RFC 3161 tokens are DER, and DER
+requires the members of every \`SET\` to appear sorted by their encodings
+(X.690 §11.6). Birdbrain's default authority, DigiCert, returns tokens whose CMS
+\`certificates\` set is not sorted that way, so a library that enforces the rule
+rejects the token outright instead of reporting a verdict — \`rfc3161-client\`,
+for one, raises \`Invalid Set Ordering Error\`. The bytes are exactly as the TSA
+emitted and signed them.
+
+Such a refusal is **not** evidence that this package was altered, and it is not a
+failed verification. The \`certificates\` set sits outside the data the TSA's
+signature covers, so its order can neither break nor repair that signature, and
+the imprint that binds the token to the content hash is untouched by it. Treat
+\`openssl ts -verify\` (step 6b) as the reference check: it accepts the encoding,
+and it is what proves trusted time for this package. A strict parser's refusal is
+a statement about the issuing authority's encoder. Tokens from authorities that
+do sort their sets — IdenTrust's, for one — parse under both kinds of library, so
+a package timestamped by such an authority will not show this at all. To see
+which authority issued a token, read it with
+\`openssl ts -reply -in <token> -token_in -text\`, which is lenient in the same
+way \`openssl ts -verify\` is.
 `

@@ -216,8 +216,9 @@ export const INSTALL_STEPS: InstallStep[] = [
     ),
     brief: (
       <>
-        Pick the folder holding <span className="font-mono text-text-secondary">manifest.json</span>{' '}
-        — no restart needed. Pin it from the puzzle-piece menu.
+        Use Open extension folder on the dashboard to reveal the Birdbrain extension in your file
+        manager. Pick that folder containing{' '}
+        <span className="font-mono text-text-secondary">manifest.json</span>.
       </>
     ),
     Visual: SelectFolderVisual

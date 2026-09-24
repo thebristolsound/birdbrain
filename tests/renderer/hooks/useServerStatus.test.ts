@@ -23,7 +23,7 @@ import { useAppStore } from '@renderer/stores/appStore'
 import { queryClient } from '@renderer/lib/queryClient'
 import { queryKeys } from '@renderer/lib/queries'
 import type { Capture } from '@shared/types'
-import type { ExtensionAttachEvent } from '@shared/ipc'
+import type { DeepLinkTarget, ExtensionAttachEvent } from '@shared/ipc'
 import { fakeBridge } from '../fakeBridge'
 
 // Registry of the callbacks the hook subscribes with, keyed by channel.
@@ -34,7 +34,7 @@ type Handlers = {
   newCapture?: (c: Capture) => void
   extensionAttach?: (e: ExtensionAttachEvent) => void
   selectorRematched?: (p: { caseId: string }) => void
-  deepLink?: (t: string) => void
+  deepLink?: (t: DeepLinkTarget) => void
 }
 
 function installBirdbrain(handlers: Handlers, unsubs: Record<string, ReturnType<typeof vi.fn>>) {
@@ -86,6 +86,18 @@ describe('useServerStatus', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+  })
+
+  it('opens and selects the exact capture requested by a card', async () => {
+    navigate.mockResolvedValueOnce(undefined)
+    renderHook(() => useServerStatus())
+    await act(async () => handlers.deepLink?.({ caseId: 'case-4', captureId: 'cap-9' }))
+    expect(navigate).toHaveBeenCalledWith({
+      to: '/cases/$caseId/captures',
+      params: { caseId: 'case-4' },
+      search: { captureId: 'cap-9' }
+    })
+    expect(useAppStore.getState().selectedCaptureId).toBe('cap-9')
   })
 
   it('mirrors extension connection state into the store', () => {
@@ -207,7 +219,7 @@ describe('useServerStatus', () => {
     renderHook(() => useServerStatus())
     act(() => handlers.deepLink?.('settings'))
     expect(navigate).toHaveBeenCalledWith({ to: '/settings' })
-    act(() => handlers.deepLink?.('home'))
+    act(() => handlers.deepLink?.('dashboard'))
     expect(navigate).toHaveBeenCalledWith({ to: '/' })
   })
 

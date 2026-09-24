@@ -14,12 +14,16 @@ import { ContentInfo, SignedData, id_signedData } from '@peculiar/asn1-cms'
 // library's serializer preserves the deviation rather than normalising it, and a
 // round-trip comparison would call every token canonical.
 //
-// What is checked: the ordering of every `SET` this code can identify
-// (X.690 §11.5 and §11.6), definite-length form (§8.1.3.2(a)) and minimal length
-// encoding (§10.1). What is NOT checked: the primitive-value rules (§11.1–§11.4,
-// §11.7–§11.9) and any structure nested inside an OCTET STRING or BIT STRING.
-// A `strict: true` report therefore means "no deviation of the kinds below was
-// found", not a proof of full canonicality.
+// What is checked: the ordering of every `SET` this code can identify (X.690
+// §11.6 "Set-of components" for a `SET OF`, §10.3 "Set components" for a `SET`),
+// and definite-length form encoded in the fewest octets (§10.1 "Length forms").
+// What is NOT checked: the default-value omission rule (§11.5), the
+// primitive-value rules (§11.1–§11.4, §11.7–§11.9), any structure nested inside
+// an OCTET STRING or BIT STRING, and the siblings that follow an
+// indefinite-length element — an indefinite length has no computable end, so the
+// walk stops at it and the deviation list from there on is partial (`strict` is
+// already false by then). A `strict: true` report therefore means "no deviation
+// of the kinds above was found", not a proof of full canonicality.
 
 export type DerDeviationKind = 'set-order' | 'indefinite-length' | 'non-minimal-length'
 
@@ -113,6 +117,9 @@ function childrenOf(der: Buffer, node: Tlv): Tlv[] {
   while (pos < node.contentEnd) {
     const child = readTlv(der, pos)
     children.push(child)
+    // No computable end, so the next sibling cannot be located without walking
+    // to this one's EOC: the rest of the list is left unscanned, and the report
+    // is partial from here (see the header).
     if (child.indefinite) break
     pos = child.contentEnd
   }
@@ -121,9 +128,9 @@ function childrenOf(der: Buffer, node: Tlv): Tlv[] {
 
 /**
  * X.690 §11.6 ordering: encodings compared as octet strings, the shorter padded
- * at its trailing end with zero octets. The same comparison settles §11.5's
- * tag order for a `SET`, since its components carry distinct tags and the tag
- * is the leading octet.
+ * at its trailing end with zero octets. The same comparison settles §10.3's tag
+ * order for a `SET`, since its components carry distinct tags and the tag is the
+ * leading octet.
  */
 function compareEncodings(a: Buffer, b: Buffer): number {
   const width = Math.max(a.length, b.length)

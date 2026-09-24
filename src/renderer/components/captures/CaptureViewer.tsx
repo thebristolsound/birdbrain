@@ -15,6 +15,7 @@ import {
   type LucideIcon
 } from 'lucide-react'
 import { MhtmlViewer } from '@renderer/components/captures/MhtmlViewer'
+import { CaptureTextPanel } from '@renderer/components/captures/CaptureTextPanel'
 import { LegacyHtmlViewer } from '@renderer/components/captures/LegacyHtmlViewer'
 import { AnnotationEditor } from '@renderer/components/captures/annotation/AnnotationEditor'
 import { CapturesGettingStarted } from '@renderer/components/captures/CapturesGettingStarted'
@@ -315,11 +316,12 @@ export function CaptureViewer() {
           {activeTab === 'wayback' && <WaybackCompare capture={capture} />}
           {activeTab === 'text' &&
             (content ? (
-              <div className="h-full overflow-y-auto p-4">
-                <pre className="whitespace-pre-wrap font-mono text-sm text-text-muted">
-                  {content}
-                </pre>
-              </div>
+              <CaptureTextPanel
+                key={capture.id}
+                caseId={caseId}
+                captureId={capture.id}
+                content={content}
+              />
             ) : (
               <div className="p-4 text-text-muted">No text content available</div>
             ))}

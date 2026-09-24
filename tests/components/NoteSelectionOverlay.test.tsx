@@ -134,6 +134,12 @@ describe('NoteSelectionConfirm', () => {
     expect(screen.getByTestId('note-selection-value').textContent).toBe('meridian-trust-com')
   })
 
+  it("states the mount's own answer to where a tag lands", () => {
+    renderConfirm({ mode: 'tag', tagHint: 'Applies to this capture.' })
+    expect(screen.getByText('Applies to this capture.')).toBeTruthy()
+    expect(screen.queryByText(/Applies to this note/)).toBeNull()
+  })
+
   it('cancels on Escape as well as on the button', () => {
     const onCancel = vi.fn()
     renderConfirm({ onCancel })

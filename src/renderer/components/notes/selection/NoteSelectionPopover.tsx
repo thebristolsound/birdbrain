@@ -98,7 +98,12 @@ interface ConfirmProps extends SelectionOverlayPosition {
   onToggleWatch: () => void
   onCancel: () => void
   onConfirm: () => void
+  /** Where an applied tag lands, in tag mode. Defaults to the note editor's answer. */
+  tagHint?: string
 }
+
+export const NOTE_TAG_HINT =
+  'Applies to this note, and to its capture when the note has one. An unsaved note is saved first — a tag cannot attach to a note that does not exist.'
 
 export function NoteSelectionConfirm({
   x,
@@ -109,7 +114,8 @@ export function NoteSelectionConfirm({
   pending,
   onToggleWatch,
   onCancel,
-  onConfirm
+  onConfirm,
+  tagHint = NOTE_TAG_HINT
 }: ConfirmProps) {
   const { value, kind, note } = classifySelection(text)
   const tagName = selectionToTagName(text)
@@ -179,10 +185,7 @@ export function NoteSelectionConfirm({
           />
         </>
       ) : (
-        <p className="px-3 pb-1.5 text-[11px] leading-relaxed text-text-muted">
-          Applies to this note, and to its capture when the note has one. An unsaved note is saved
-          first — a tag cannot attach to a note that does not exist.
-        </p>
+        <p className="px-3 pb-1.5 text-[11px] leading-relaxed text-text-muted">{tagHint}</p>
       )}
 
       <div className="flex items-center justify-between gap-2 border-t border-border bg-elevated px-2.5 py-2">

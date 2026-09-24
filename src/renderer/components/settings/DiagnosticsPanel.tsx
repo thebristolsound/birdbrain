@@ -299,7 +299,7 @@ export function DiagnosticsPanel() {
 
   return (
     <Card>
-      <CardContent>
+      <CardContent className="p-[var(--d-card)]">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-lg font-semibold text-text-primary">
             <Activity className="h-4 w-4" />

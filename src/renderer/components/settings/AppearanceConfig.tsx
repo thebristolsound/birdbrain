@@ -41,7 +41,7 @@ export function AppearanceConfig() {
 
   return (
     <Card>
-      <CardContent>
+      <CardContent className="p-[var(--d-card)]">
         <h2 className="mb-4 text-lg font-semibold text-text-primary">Appearance</h2>
         <div className="space-y-4">
           <div>

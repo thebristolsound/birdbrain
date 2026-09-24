@@ -2,7 +2,11 @@ import { useMemo } from 'react'
 import { renderToReactElement } from '@tiptap/static-renderer/pm/react'
 import { noteExtensions } from '@shared/noteDoc'
 import type { Note } from '@shared/types'
-import { isMentionTargetType, maskMention } from '@renderer/components/notes/mention/mentionModel'
+import {
+  isMentionTargetType,
+  maskMention,
+  mentionTooltip
+} from '@renderer/components/notes/mention/mentionModel'
 import type { MentionResolver } from '@renderer/components/notes/mention/useMentionSources'
 
 interface NoteBodyProps {
@@ -43,7 +47,19 @@ export function NoteBody({ note, className = '', resolveMention }: NoteBodyProps
               if (!isMentionTargetType(targetType)) return typeof label === 'string' ? label : ''
               const stored = typeof label === 'string' && label ? label : targetType
               const current = resolveMention?.(targetType, String(node.attrs.targetId ?? ''))
-              return maskMention(targetType, current?.label ?? stored)
+              const text = maskMention(targetType, current?.label ?? stored)
+              if (current?.status !== 'missing') return text
+              // A deleted target has to read as one here too, the way the
+              // editor's chip does, or the saved note cites it as live.
+              return (
+                <span
+                  data-mention-broken=""
+                  title={mentionTooltip(targetType, stored, true)}
+                  className="text-danger-fg line-through"
+                >
+                  {text}
+                </span>
+              )
             }
           }
         }

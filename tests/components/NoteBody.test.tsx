@@ -135,6 +135,35 @@ describe('NoteBody Mentions', () => {
     )
 
     expect(container.textContent).toBe('@Old')
+    expect(container.querySelector('[data-mention-broken]')).toBeNull()
+  })
+
+  it('reads a Mention whose target was deleted as dead, the way the editor chip does', () => {
+    const resolveMention = () => ({ status: 'missing' as const, label: null, color: null })
+    const { container } = render(
+      <NoteBody
+        note={{ body: '', bodyDoc: docWithMentionLabel('Old') }}
+        resolveMention={resolveMention}
+      />
+    )
+
+    const dead = container.querySelector('[data-mention-broken]') as HTMLElement
+    expect(dead.textContent).toBe('@Old')
+    expect(dead.className).toContain('line-through')
+    expect(dead.className).toContain('text-danger-fg')
+    expect(dead.getAttribute('title')).toBe('capture · Old — target deleted')
+  })
+
+  it('leaves a live Mention as plain prose', () => {
+    const resolveMention = () => ({ status: 'resolved' as const, label: 'Old', color: null })
+    const { container } = render(
+      <NoteBody
+        note={{ body: '', bodyDoc: docWithMentionLabel('Old') }}
+        resolveMention={resolveMention}
+      />
+    )
+
+    expect(container.querySelector('[data-mention-broken]')).toBeNull()
   })
 
   it('names a Mention by its kind when it was written without a label', () => {

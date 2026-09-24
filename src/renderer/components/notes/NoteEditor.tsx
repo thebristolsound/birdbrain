@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 import { EditorContent, type Editor } from '@tiptap/react'
-import { NoteToolbar } from './NoteToolbar'
+import { NoteToolbar } from '@renderer/components/notes/NoteToolbar'
 import { useNoteSelection } from '@renderer/components/notes/selection/useNoteSelection'
 import {
   NoteSelectionOverlay,

@@ -17,15 +17,15 @@ import { Button } from '@renderer/components/ui'
 import { NOTE_COMPOSER_EVENT } from '@renderer/components/onboarding/tourEffects'
 import { useAppStore } from '@renderer/stores/appStore'
 import { EMPTY_NOTE_DOC } from '@shared/noteDoc'
-import { NoteWorkspaceDetail } from './NoteWorkspaceDetail'
-import { NoteListRow } from './NoteListRow'
-import { useMentionResolver } from './mention/useMentionSources'
+import { NoteWorkspaceDetail } from '@renderer/components/notes/NoteWorkspaceDetail'
+import { NoteListRow } from '@renderer/components/notes/NoteListRow'
+import { useMentionResolver } from '@renderer/components/notes/mention/useMentionSources'
 import {
   filterNotes,
   usedNoteTags,
   type NoteSort,
   type NoteDateFilter
-} from './notesWorkspaceModel'
+} from '@renderer/components/notes/notesWorkspaceModel'
 
 const menuClass =
   'z-50 min-w-44 rounded-md border border-border bg-surface p-1 text-xs text-text-secondary shadow-xl'

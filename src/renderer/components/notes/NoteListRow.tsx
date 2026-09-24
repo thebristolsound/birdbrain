@@ -2,8 +2,8 @@ import { useQuery } from '@tanstack/react-query'
 import { StickyNote } from 'lucide-react'
 import type { Note } from '@shared/types'
 import { captureThumbnailQueryOptions } from '@renderer/lib/api/captures'
-import { noteAge, noteSource, noteSnippet } from './notesWorkspaceModel'
-import type { MentionResolver } from './mention/useMentionSources'
+import { noteAge, noteSource, noteSnippet } from '@renderer/components/notes/notesWorkspaceModel'
+import type { MentionResolver } from '@renderer/components/notes/mention/useMentionSources'
 
 export function NoteListRow({
   note,

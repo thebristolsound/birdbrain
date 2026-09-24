@@ -5,12 +5,12 @@ import type { Note } from '@shared/types'
 import type { MentionTargetType } from '@shared/noteDoc'
 import { useNotesMutations } from '@renderer/lib/api/notes'
 import { useAppStore } from '@renderer/stores/appStore'
-import { NoteEditor } from './NoteEditor'
-import { useNoteEditor } from './useNoteEditor'
-import { useNoteAutosave } from './useNoteAutosave'
-import { noteAge, noteMentions } from './notesWorkspaceModel'
-import { useMentionResolver } from './mention/useMentionSources'
-import { mentionRoute, mentionSelection } from './mention/mentionModel'
+import { NoteEditor } from '@renderer/components/notes/NoteEditor'
+import { useNoteEditor } from '@renderer/components/notes/useNoteEditor'
+import { useNoteAutosave } from '@renderer/components/notes/useNoteAutosave'
+import { noteAge, noteMentions } from '@renderer/components/notes/notesWorkspaceModel'
+import { useMentionResolver } from '@renderer/components/notes/mention/useMentionSources'
+import { mentionRoute, mentionSelection } from '@renderer/components/notes/mention/mentionModel'
 
 export interface NoteWorkspaceDetailProps {
   requestDelete?: boolean

@@ -183,6 +183,14 @@ export function removeToast(): void {
   }
 }
 
+// The visited page can reach an open shadow tree. Only browser-generated
+// input may cross from this page-exposed UI into privileged extension actions.
+function onCardClick(element: Element, action: () => void | Promise<void>): void {
+  element.addEventListener('click', (event) => {
+    if (event.isTrusted) void action()
+  })
+}
+
 // Text from pages, cases and tags is assigned through textContent, never markup.
 function showCaptureCard(card: CaptureCardDetails, scrolling: boolean, warning?: string): void {
   if (isCaptureUiSuppressed()) return
@@ -271,7 +279,7 @@ function showCaptureCard(card: CaptureCardDetails, scrolling: boolean, warning?:
     dot.className = 'dot'
     dot.style.backgroundColor = tag.applied ? tag.color : 'transparent'
     button.append(dot, document.createTextNode(tag.name))
-    button.addEventListener('click', async () => {
+    onCardClick(button, async () => {
       button.disabled = true
       const applied = button.getAttribute('aria-pressed') !== 'true'
       if (await act('tag', { tagId: tag.id, applied })) {
@@ -282,10 +290,10 @@ function showCaptureCard(card: CaptureCardDetails, scrolling: boolean, warning?:
     })
     shadow.querySelector('.tags')!.append(button)
   }
-  shadow.querySelector('.view')!.addEventListener('click', async () => {
+  onCardClick(shadow.querySelector('.view')!, async () => {
     if (await act('view')) removeToastImmediately()
   })
-  shadow.querySelector('.recapture')!.addEventListener('click', async () => {
+  onCardClick(shadow.querySelector('.recapture')!, async () => {
     if (await act('recapture', { scrolling })) removeToastImmediately()
   })
   resume()

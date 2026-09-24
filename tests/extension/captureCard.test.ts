@@ -20,13 +20,30 @@ const card: CaptureCardDetails = {
 }
 const send = vi.fn()
 const shadow = () => document.getElementById('birdbrain-capture-toast')!.shadowRoot!
-const click = (selector: string) => shadow().querySelector<HTMLButtonElement>(selector)!.click()
+let clickListeners: WeakMap<EventTarget, EventListener>
+// Unit-level browser input: jsdom cannot create trusted DOM events. The browser
+// harness separately proves real pointer input passes and page script cannot.
+const click = (selector: string): void => {
+  const button = shadow().querySelector<HTMLButtonElement>(selector)!
+  clickListeners.get(button)!.call(button, { isTrusted: true } as MouseEvent)
+}
 const settle = async () => {
   for (let i = 0; i < 5; i++) await Promise.resolve()
 }
 
 beforeEach(() => {
   vi.useFakeTimers()
+  clickListeners = new WeakMap()
+  const addListener = EventTarget.prototype.addEventListener
+  vi.spyOn(EventTarget.prototype, 'addEventListener').mockImplementation(function (
+    this: EventTarget,
+    type,
+    listener,
+    options
+  ) {
+    if (type === 'click' && typeof listener === 'function') clickListeners.set(this, listener)
+    return addListener.call(this, type, listener, options)
+  })
   releaseCaptureUiSuppression()
   document.body.innerHTML = '<main><p>Original evidence</p></main>'
   send.mockReset().mockResolvedValue({ ok: true })
@@ -35,11 +52,23 @@ beforeEach(() => {
 afterEach(() => {
   suppressCaptureUi()
   releaseCaptureUiSuppression()
+  vi.restoreAllMocks()
   vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
 describe('post-capture card', () => {
+  it('rejects page-script clicks on every privileged card action', async () => {
+    updateToast({ status: 'success', card })
+    for (const selector of ['.tag', '.view', '.recapture']) {
+      shadow().querySelector<HTMLButtonElement>(selector)!.click()
+    }
+    await settle()
+    expect(send).not.toHaveBeenCalled()
+    expect(shadow().querySelector('.tag')!.getAttribute('aria-pressed')).toBe('false')
+    expect(shadow().querySelector('.card')).not.toBeNull()
+  })
+
   it('renders saved facts as inert text, three real tag toggles, and full-page mode', async () => {
     updateToast({ status: 'success', card })
     expect(shadow().textContent).toContain('Captured to Nightjar')

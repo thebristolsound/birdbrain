@@ -9,9 +9,8 @@ export interface PageStatusView {
 }
 
 /**
- * Relative age of a capture this popup's service worker performed. The instant
- * is the extension's own record of when the upload succeeded, not a stored
- * capture timestamp.
+ * Relative age from the stored capture timestamp, with recent worker upload
+ * completion as a fallback when the persisted lookup is unavailable.
  */
 export function formatCapturedAt(at: number, now: number): string {
   const seconds = Math.max(0, Math.floor((now - at) / 1000))

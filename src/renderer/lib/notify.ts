@@ -16,6 +16,12 @@ export interface NotifyOpts {
   correlationId?: string
 }
 
+// The mock's toast carries a subtitle line and at most one action.
+export interface NotifySuccessOpts {
+  description?: string
+  action?: { label: string; onClick: () => void }
+}
+
 // A retry loop would otherwise fire dozens of toasts and bury the app, so
 // identical messages collapse onto one sonner id and repeat in place.
 function toastId(message: string): string {
@@ -93,8 +99,8 @@ export const notify = {
     toastWithReport('warning', message, opts)
   },
 
-  success(message: string): void {
-    toast.success(message, { id: toastId(message) })
+  success(message: string, { description, action }: NotifySuccessOpts = {}): void {
+    toast.success(message, { id: toastId(message), description, action })
   },
 
   info(message: string): void {

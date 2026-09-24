@@ -25,7 +25,7 @@ import { useSessionRestore } from '@renderer/hooks/useSessionRestore'
 import { useCommandPalette } from '@renderer/hooks/useCommandPalette'
 import { CommandPalette } from '@renderer/components/layout/CommandPalette'
 import { OnboardingTour } from '@renderer/components/onboarding/OnboardingTour'
-import { Toaster } from 'sonner'
+import { AppToaster } from '@renderer/components/ui'
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
 import { subscribeToMainLog } from '@renderer/lib/mainLogBridge'
 import { ReportProblemDialog } from '@renderer/components/diagnostics/ReportProblemDialog'
@@ -146,17 +146,7 @@ const rootRoute = createRootRoute({
             mutation, a query, or the main-process bridge survives navigation —
             and kept OUTSIDE the boundary above so the toast describing a shell
             crash can still render after that shell is gone. */}
-        <Toaster
-          position="bottom-right"
-          closeButton
-          toastOptions={{
-            classNames: {
-              toast: 'bg-surface border border-border text-text-primary',
-              description: 'text-text-muted',
-              actionButton: 'bg-accent text-white'
-            }
-          }}
-        />
+        <AppToaster />
         <Suspense>
           <ReactQueryDevtools buttonPosition="bottom-left" />
           <TanStackRouterDevtools position="bottom-right" />

@@ -150,6 +150,29 @@ describe('PersonasSection rows', () => {
     )
   })
 
+  it('shows the supported-format message on the row when the file is refused', async () => {
+    const refused = Object.assign(new Error('Only a Netscape cookies.txt export ...'), {
+      code: 'PERSONA_COOKIE_FILE_UNSUPPORTED'
+    })
+    importCookies.mockRejectedValueOnce(refused)
+    renderSection()
+    fireEvent.click(await enabledImportButton())
+    const error = await screen.findByTestId('persona-import-error')
+    expect(error.textContent).toBe('Only a Netscape cookies.txt export ...')
+
+    fireEvent.click(await enabledImportButton())
+    await waitFor(() => expect(screen.queryByTestId('persona-import-error')).toBeNull())
+  })
+
+  it('leaves any other import failure to the toast', async () => {
+    importCookies.mockRejectedValueOnce(new Error('disk full'))
+    renderSection()
+    fireEvent.click(await enabledImportButton())
+    await waitFor(() => expect(importCookies).toHaveBeenCalled())
+    await waitFor(() => expect(importCookies.mock.results[0]?.type).toBe('return'))
+    expect(screen.queryByTestId('persona-import-error')).toBeNull()
+  })
+
   it('leaves the summary alone when the file dialog is cancelled', async () => {
     renderSection()
     fireEvent.click(await enabledImportButton())

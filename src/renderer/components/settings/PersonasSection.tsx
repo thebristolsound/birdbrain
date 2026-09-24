@@ -38,6 +38,9 @@ export function PersonasSection() {
     personaId: string
     result: PersonaImportResult
   } | null>(null)
+  const [importError, setImportError] = useState<{ personaId: string; message: string } | null>(
+    null
+  )
 
   // Unknown (still loading, or the read failed) blocks import like an
   // unprotected store does, so no cookie is written before the answer.
@@ -54,9 +57,16 @@ export function PersonasSection() {
     setAdding(false)
   }
 
+  // A refused file carries a message naming the supported exports, shown on
+  // the row; every other failure is left to the mutation toast.
   async function runImport(personaId: string) {
-    const result = await importCookies.mutateAsync(personaId)
-    if (result) setLastImport({ personaId, result })
+    setImportError(null)
+    try {
+      const result = await importCookies.mutateAsync(personaId)
+      if (result) setLastImport({ personaId, result })
+    } catch (err) {
+      if (isUnsupportedFileError(err)) setImportError({ personaId, message: err.message })
+    }
   }
 
   if (!personas) return <div className="text-text-muted">Loading...</div>
@@ -121,6 +131,7 @@ export function PersonasSection() {
               storageKnown={storageKnown}
               importing={importCookies.isPending && importCookies.variables === persona.id}
               lastImport={lastImport?.personaId === persona.id ? lastImport.result : null}
+              importError={importError?.personaId === persona.id ? importError.message : null}
               onImport={() => void runImport(persona.id)}
               onDelete={() => setPendingDelete(persona)}
             />
@@ -186,6 +197,7 @@ interface PersonaRowProps {
   storageKnown: boolean
   importing: boolean
   lastImport: PersonaImportResult | null
+  importError: string | null
   onImport: () => void
   onDelete: () => void
 }
@@ -196,6 +208,7 @@ function PersonaRow({
   storageKnown,
   importing,
   lastImport,
+  importError,
   onImport,
   onDelete
 }: PersonaRowProps) {
@@ -249,7 +262,22 @@ function PersonaRow({
       <p className="mt-2 text-[11px] text-text-muted" data-testid="persona-import-summary">
         {describeImport(persona, lastImport)}
       </p>
+      {importError && (
+        <p
+          role="alert"
+          className="mt-1 text-[11px] text-red-400"
+          data-testid="persona-import-error"
+        >
+          {importError}
+        </p>
+      )}
     </li>
+  )
+}
+
+function isUnsupportedFileError(err: unknown): err is Error {
+  return (
+    err instanceof Error && (err as { code?: string }).code === 'PERSONA_COOKIE_FILE_UNSUPPORTED'
   )
 }
 

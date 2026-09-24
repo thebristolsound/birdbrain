@@ -59,6 +59,58 @@ describe('ArtifactTable staging actions', () => {
   })
 })
 
+describe('ArtifactTable selection (#1552)', () => {
+  const rows = [CAPTURE_A, THUMB_A].map((row) => toArtifactRow(row, INVENTORY, new Map()))
+
+  it('toggles the multi-selection on a modifier-click and selects on a plain click', () => {
+    const onSelect = vi.fn()
+    const onToggleMulti = vi.fn()
+    render(
+      <ArtifactTable
+        rows={rows}
+        selectedId={null}
+        onSelect={onSelect}
+        onToggleMulti={onToggleMulti}
+        emptyMessage="none"
+      />
+    )
+    fireEvent.click(screen.getByTestId('artifact-row-cap-a'), { metaKey: true })
+    fireEvent.click(screen.getByTestId('artifact-row-thumb-a'), { ctrlKey: true })
+    expect(onToggleMulti.mock.calls).toEqual([['cap-a'], ['thumb-a']])
+    expect(onSelect).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByTestId('artifact-row-cap-a'))
+    expect(onSelect).toHaveBeenCalledWith('cap-a')
+  })
+
+  it('marks the selected and the multi-selected rows with the accent bar', () => {
+    render(
+      <ArtifactTable
+        rows={rows}
+        selectedId="cap-a"
+        onSelect={vi.fn()}
+        multiSelectedIds={new Set(['thumb-a'])}
+        emptyMessage="none"
+      />
+    )
+    const selected = screen.getByTestId('artifact-row-cap-a')
+    const multi = screen.getByTestId('artifact-row-thumb-a')
+    expect(selected.className).toContain('border-l-accent')
+    expect(selected.className).toContain('bg-accent-subtle')
+    expect(selected.getAttribute('data-multi-selected')).toBeNull()
+    expect(multi.className).toContain('border-l-accent')
+    expect(multi.getAttribute('data-multi-selected')).toBe('true')
+    expect(multi.getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('without a toggle handler a modifier-click is a plain select', () => {
+    const onSelect = vi.fn()
+    render(<ArtifactTable rows={rows} selectedId={null} onSelect={onSelect} emptyMessage="none" />)
+    fireEvent.click(screen.getByTestId('artifact-row-cap-a'), { ctrlKey: true })
+    expect(onSelect).toHaveBeenCalledWith('cap-a')
+    expect(screen.getByTestId('artifact-row-thumb-a').className).toContain('border-l-transparent')
+  })
+})
+
 describe('ArtifactTable CAPTURED cell (#1552)', () => {
   it('shows a capture time bare and names any other clock on the cell', () => {
     const facts = new Map([['cap-a', { capturedAt: CAPTURE_A_CAPTURED_AT }]])

@@ -246,6 +246,26 @@ describe('DataExplorer (#1149)', () => {
     expect(rail.queryByTestId('data-tree-node-exhibit:cap-a')).toBeNull()
   })
 
+  it('modifier-click builds a multi-selection that a node change clears (#1552)', async () => {
+    renderExplorer()
+    fireEvent.click(await screen.findByTestId('artifact-row-cap-a'), { ctrlKey: true })
+    fireEvent.click(screen.getByTestId('artifact-row-thumb-a'), { metaKey: true })
+    const multi = () =>
+      ['cap-a', 'cap-legacy', 'thumb-a'].filter(
+        (id) =>
+          screen.getByTestId(`artifact-row-${id}`).getAttribute('data-multi-selected') === 'true'
+      )
+    expect(multi()).toEqual(['cap-a', 'thumb-a'])
+    fireEvent.click(screen.getByTestId('artifact-row-cap-a'), { ctrlKey: true })
+    expect(multi()).toEqual(['thumb-a'])
+    fireEvent.click(
+      (await tree())
+        .getByTestId('data-tree-node-kind:capture')
+        .querySelector('button:last-of-type')!
+    )
+    await waitFor(() => expect(multi()).toEqual([]))
+  })
+
   it('clears the search from its button', async () => {
     renderExplorer()
     const input = (await screen.findByTestId('data-search')) as HTMLInputElement

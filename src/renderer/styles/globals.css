@@ -209,11 +209,17 @@ html[data-density='comfortable'] {
   --d-listgap: 5px;
 }
 
-/* === Suppress transitions during theme swap === */
-html.no-transitions,
-html.no-transitions * {
-  transition: none !important;
-  animation: none !important;
+/* === Theme swap cross-fade ===
+   useTheme adds the class for the length of the swap and skips it under
+   reduced motion. Only colour properties transition, so layout never animates. */
+html.theme-fading,
+html.theme-fading * {
+  transition:
+    background-color 0.2s cubic-bezier(0.16, 0.84, 0.32, 1),
+    color 0.2s cubic-bezier(0.16, 0.84, 0.32, 1),
+    border-color 0.2s cubic-bezier(0.16, 0.84, 0.32, 1),
+    fill 0.2s,
+    stroke 0.2s !important;
 }
 
 /* === Base styles === */

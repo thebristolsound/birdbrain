@@ -115,7 +115,7 @@ SQLite via better-sqlite3. The data-access layer lives in `src/main/services/db/
 Light/dark theme support using CSS custom properties and Tailwind v4:
 
 - **CSS tokens** (`src/renderer/styles/globals.css`) - `@theme` block defines semantic color variables (canvas, text, accent, border, surface, etc.) with light/dark variants via `.dark` class
-- **useTheme hook** (`src/renderer/hooks/useTheme.ts`) - Manages theme state, localStorage persistence, `dark` class on `<html>`, 400ms transition animations, and IPC sync to settings
+- **useTheme hook** (`src/renderer/hooks/useTheme.ts`) - Manages theme state, localStorage persistence, `dark` class on `<html>`, a 240ms colour cross-fade on switch (skipped under reduced motion), and IPC sync to settings. A first run opens dark
 - **Flash prevention** - Inline script in HTML prevents theme flicker on load
 - **Component convention** - Prefer semantic token classes (e.g., `bg-canvas`, `text-text-primary`, `border-border`) over raw Tailwind colors; exceptions include overlays (`bg-black`) and status/severity colors (`bg-red-600`, etc.)
 

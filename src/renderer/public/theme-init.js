@@ -3,7 +3,9 @@
 // flash. Loaded as an external classic script so the renderer CSP can drop
 // script-src 'unsafe-inline' in production (see index.html + the strict-prod-csp
 // plugin in electron.vite.config.ts).
-if (localStorage.getItem('theme') === 'dark') {
+// Only an explicit light choice opens light: the first-run theme is dark
+// (DEFAULT_THEME in src/renderer/hooks/useTheme.ts).
+if (localStorage.getItem('theme') !== 'light') {
   document.documentElement.classList.add('dark')
 }
 if (localStorage.getItem('reduceMotion') === 'true') {

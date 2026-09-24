@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test'
+import type { BirdbrainAPI } from '@shared/birdbrainApi'
 import { test, expect } from './fixtures/electronApp'
 
 interface SelectorBridge {
@@ -205,13 +206,14 @@ test('two-pane workspace keeps one editor and saves a formatted image note', asy
   page
 }, testInfo) => {
   const ids = await page.evaluate(async () => {
-    const c = await window.birdbrain.cases.create({ name: 'Meridian investigation' })
-    const related = await window.birdbrain.notes.create({
+    const bb = (window as unknown as { birdbrain: BirdbrainAPI }).birdbrain
+    const c = await bb.cases.create({ name: 'Meridian investigation' })
+    const related = await bb.notes.create({
       caseId: c.id,
       title: 'Source timeline',
       body: 'Compare the registration dates and changes in page ownership.'
     })
-    const active = await window.birdbrain.notes.create({
+    const active = await bb.notes.create({
       caseId: c.id,
       title: 'Working observations',
       bodyDoc: JSON.stringify({
@@ -254,7 +256,7 @@ test('two-pane workspace keeps one editor and saves a formatted image note', asy
         ]
       })
     })
-    await window.birdbrain.notes.create({
+    await bb.notes.create({
       caseId: c.id,
       title: 'Questions to revisit',
       body: 'Which source first used the handle? Is the contact address still present?'
@@ -292,8 +294,10 @@ test('two-pane workspace keeps one editor and saves a formatted image note', asy
   await expect
     .poll(async () =>
       page.evaluate(
-        async ({ caseId, activeId }) =>
-          (await window.birdbrain.notes.list(caseId)).find((n) => n.id === activeId)?.bodyDoc,
+        async ({ caseId, activeId }) => {
+          const bb = (window as unknown as { birdbrain: BirdbrainAPI }).birdbrain
+          return (await bb.notes.list(caseId)).find((n) => n.id === activeId)?.bodyDoc
+        },
         ids
       )
     )

@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from 'react'
+import { Fragment, useRef, type ReactNode } from 'react'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -25,14 +25,16 @@ interface EntityContextMenuProps {
   children: ReactNode
 }
 
-function ActionItem({ action }: { action: MenuAction }) {
+type Defer = (run: () => void) => void
+
+function ActionItem({ action, defer }: { action: MenuAction; defer: Defer }) {
   const Icon = action.icon
   return (
     <ContextMenuItem
       danger={action.danger}
       disabled={action.disabled}
       data-testid={`context-menu-item-${action.id}`}
-      onSelect={action.run}
+      onSelect={() => (action.takesFocus ? defer(action.run) : action.run())}
     >
       <Icon aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-text-muted" strokeWidth={1.8} />
       <span className="min-w-0 flex-1 truncate">{action.label}</span>
@@ -41,8 +43,8 @@ function ActionItem({ action }: { action: MenuAction }) {
   )
 }
 
-function Entry({ entry }: { entry: MenuEntry }) {
-  if (!isSubmenu(entry)) return <ActionItem action={entry} />
+function Entry({ entry, defer }: { entry: MenuEntry; defer: Defer }) {
+  if (!isSubmenu(entry)) return <ActionItem action={entry} defer={defer} />
   const Icon = entry.icon
   return (
     <ContextMenuSub>
@@ -60,7 +62,7 @@ function Entry({ entry }: { entry: MenuEntry }) {
           // that can never run still reaches the roving focus order.
           <p className="px-2 py-1.5 text-[11px] text-text-faint">{entry.emptyLabel}</p>
         ) : (
-          entry.items.map((item) => <ActionItem key={item.id} action={item} />)
+          entry.items.map((item) => <ActionItem key={item.id} action={item} defer={defer} />)
         )}
       </ContextMenuSubContent>
     </ContextMenuSub>
@@ -78,6 +80,14 @@ export function EntityContextMenu({ target, children }: EntityContextMenuProps) 
   const header = entityMenuHeader(target)
   const entries = entityMenuEntries(target)
   const HeaderIcon = header.icon
+  // An item that moves focus into an inline editor runs once the menu has
+  // closed, in place of handing focus back to the row. Run on select, the
+  // editor focuses while the menu still traps focus, loses it straight back,
+  // and a blur commits the editor.
+  const deferred = useRef<(() => void) | null>(null)
+  const defer: Defer = (run) => {
+    deferred.current = run
+  }
 
   return (
     <ContextMenu>
@@ -87,7 +97,16 @@ export function EntityContextMenu({ target, children }: EntityContextMenuProps) 
       <ContextMenuTrigger asChild>
         <div data-context-menu-kind={target.kind}>{children}</div>
       </ContextMenuTrigger>
-      <ContextMenuContent aria-label={header.ariaLabel}>
+      <ContextMenuContent
+        aria-label={header.ariaLabel}
+        onCloseAutoFocus={(event) => {
+          const run = deferred.current
+          if (!run) return
+          deferred.current = null
+          event.preventDefault()
+          run()
+        }}
+      >
         <ContextMenuHeader
           icon={<HeaderIcon className="h-3.5 w-3.5" strokeWidth={2} />}
           title={header.title}
@@ -99,7 +118,7 @@ export function EntityContextMenu({ target, children }: EntityContextMenuProps) 
           // its length.
           <Fragment key={entry.id}>
             {entry.separatorBefore && <ContextMenuSeparator />}
-            <Entry entry={entry} />
+            <Entry entry={entry} defer={defer} />
           </Fragment>
         ))}
       </ContextMenuContent>

@@ -54,6 +54,11 @@ export interface MenuAction {
   danger?: boolean
   separatorBefore?: boolean
   disabled?: boolean
+  /**
+   * The action moves focus somewhere of its own, such as an inline editor. It
+   * runs after the menu has closed, and focus is not handed back to the row.
+   */
+  takesFocus?: boolean
   run: () => void
 }
 
@@ -454,6 +459,7 @@ export function selectorMenuEntries(target: SelectorMenuTarget): MenuEntry[] {
       label: 'Edit pattern',
       icon: Pencil,
       shortcut: 'Enter',
+      takesFocus: true,
       run: actions.editPattern
     },
     {
@@ -515,6 +521,7 @@ export function tagMenuEntries(target: TagMenuTarget): MenuEntry[] {
       icon: Pencil,
       shortcut: 'Enter',
       separatorBefore: true,
+      takesFocus: true,
       run: actions.rename
     },
     {

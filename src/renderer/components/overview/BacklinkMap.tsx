@@ -70,7 +70,7 @@ export function BacklinkMap({ notes, edges, labels, onOpenNote, onAllNotes }: Ba
         </span>
         <span
           data-testid="overview-map-count"
-          className="truncate font-mono text-[10px] text-text-faint"
+          className="truncate text-[10px] tabular-nums text-text-faint"
         >
           {model.countLabel}
         </span>

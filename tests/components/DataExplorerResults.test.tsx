@@ -215,7 +215,41 @@ describe('DataExplorer results and tabs (#1150)', () => {
     const ledger = within(strip.getByTestId('manifest-ledger-tab'))
     expect(ledger.getByTestId('ledger-row-0').getAttribute('data-entry-type')).toBe('capture')
     expect(ledger.getByTestId('ledger-row-1').getAttribute('data-entry-type')).toBe('derivation')
-    expect(text(ledger.getByTestId('chain-verdict'))).toBe('Chain intact through seq 1')
+    expect(text(ledger.getByTestId('chain-verdict'))).toBe('Chain intact through seq 0001')
+  })
+
+  // The tab used to list only the entries naming the row; the mock shows the
+  // whole ledger and tints those entries instead (#1552).
+  it('shows the whole ledger in the row’s tab and tints the entries naming the row', async () => {
+    const [capture, other] = SNAPSHOT.entries
+    if (!other.parsed || other.entry.type !== 'derivation') throw new Error('fixture shape')
+    snapshotStub = {
+      ...SNAPSHOT,
+      entries: [
+        capture,
+        {
+          ...other,
+          entry: { ...other.entry, parentExhibitId: 'cap-other', outputHash: 'd'.repeat(64) }
+        }
+      ]
+    }
+    renderExplorer()
+    fireEvent.click(await screen.findByTestId('artifact-row-cap-a'))
+    fireEvent.click(await screen.findByRole('tab', { name: 'Manifest Ledger' }))
+    const ledger = within(await screen.findByTestId('manifest-ledger-tab'))
+    expect(ledger.getByTestId('ledger-row-0').getAttribute('data-highlighted')).toBe('true')
+    expect(ledger.getByTestId('ledger-row-0').className).toContain('bg-accent-subtle')
+    expect(ledger.getByTestId('ledger-row-1').getAttribute('data-highlighted')).toBeNull()
+    expect(text(ledger.getByTestId('ledger-row-1'))).toContain('0001')
+    const heads = ledger.getByTestId('ledger-rows').firstElementChild
+    expect(Array.from(heads?.children ?? []).map((el) => el.textContent)).toEqual([
+      'Seq',
+      'Time (UTC)',
+      'Event',
+      'Target',
+      'Entry hash',
+      'Prev hash'
+    ])
   })
 
   it('gives a legacy Capture with no text and no headers only the Properties tab', async () => {
@@ -261,7 +295,7 @@ describe('DataExplorer results and tabs (#1150)', () => {
     expect(text(strip.getByTestId('bucket-unverified'))).toBe('2 unverified')
     expect(screen.getByTestId('artifact-row-cap-a')).toBeTruthy()
     expect(screen.queryByTestId('artifact-row-thumb-a')).toBeNull()
-    expect(text(screen.getByTestId('chain-verdict'))).toBe('Chain intact through seq 1')
+    expect(text(screen.getByTestId('chain-verdict'))).toBe('Chain intact through seq 0001')
 
     // Sequential (X37): the second verify is not requested until the first
     // resolves, and the progress counter advances between them.
@@ -337,7 +371,7 @@ describe('DataExplorer results and tabs (#1150)', () => {
     renderExplorer()
     await select('manifest-ledger')
     const view = within(await screen.findByTestId('manifest-ledger-view'))
-    expect(text(view.getByTestId('chain-verdict'))).toBe('Chain intact through seq 1')
+    expect(text(view.getByTestId('chain-verdict'))).toBe('Chain intact through seq 0001')
     expect(text(view.getByTestId('ledger-signer'))).toBe(
       'seq 0–1: abababababab (this installation)'
     )

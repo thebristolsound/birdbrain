@@ -3,6 +3,7 @@ import type { CaseManifestSnapshot } from '@shared/manifestSnapshot'
 import { cn } from '@renderer/lib/utils'
 import {
   describeSigner,
+  formatSeq,
   summarizeVerdict,
   toLedgerRows,
   rowsNaming,
@@ -85,7 +86,16 @@ function HashCell({
   )
 }
 
-function LedgerRows({ rows, actions = {} }: { rows: LedgerRow[]; actions?: LedgerRowActions }) {
+function LedgerRows({
+  rows,
+  actions = {},
+  highlighted
+}: {
+  rows: LedgerRow[]
+  actions?: LedgerRowActions
+  // Indexes of the entries naming the selected row, tinted in place (#1552).
+  highlighted?: ReadonlySet<number>
+}) {
   return (
     <div className="min-h-0 flex-1 overflow-y-auto" data-testid="ledger-rows">
       <div
@@ -93,11 +103,11 @@ function LedgerRows({ rows, actions = {} }: { rows: LedgerRow[]; actions?: Ledge
         style={{ gridTemplateColumns: COLUMNS }}
       >
         <span>Seq</span>
-        <span>Time</span>
-        <span>Type</span>
+        <span>Time (UTC)</span>
+        <span>Event</span>
         <span>Target</span>
         <span>Entry hash</span>
-        <span>Previous</span>
+        <span>Prev hash</span>
       </div>
       {rows.length === 0 ? (
         <div className="p-9 text-center text-xs text-text-faint">No entries.</div>
@@ -108,11 +118,13 @@ function LedgerRows({ rows, actions = {} }: { rows: LedgerRow[]; actions?: Ledge
             className={cn(
               'grid min-h-[var(--d-row)] items-center border-b border-border px-[var(--d-rowpad)] font-mono text-[11px]',
               row.parsed ? 'text-text-muted' : 'text-warning-fg',
+              highlighted?.has(row.index) && 'bg-accent-subtle',
               actions.onShowTarget && 'cursor-pointer hover:bg-elevated'
             )}
             style={{ gridTemplateColumns: COLUMNS }}
             data-testid={`ledger-row-${row.index}`}
             data-entry-type={row.type}
+            data-highlighted={highlighted?.has(row.index) || undefined}
             tabIndex={actions.onShowTarget ? 0 : undefined}
             onClick={() => actions.onShowTarget?.(row)}
             onKeyDown={(event) => {
@@ -123,9 +135,7 @@ function LedgerRows({ rows, actions = {} }: { rows: LedgerRow[]; actions?: Ledge
               }
             }}
           >
-            <span className="tabular-nums text-text-faint">
-              {String(row.index).padStart(4, '0')}
-            </span>
+            <span className="tabular-nums text-text-faint">{formatSeq(row.index)}</span>
             <span className="tabular-nums">{row.time ? formatStamp(row.time) : '—'}</span>
             <span className="text-text-secondary">{row.type}</span>
             <span className="truncate" title={row.target}>
@@ -178,7 +188,8 @@ export function ManifestLedgerView({
   )
 }
 
-// The per-row tab: only the entries that name this Exhibit.
+// The per-row tab: the whole ledger, with the entries that name this row
+// tinted rather than the rest filtered out, as in the mock (#1552).
 export function ManifestLedgerTab({
   snapshot,
   exhibit,
@@ -193,7 +204,11 @@ export function ManifestLedgerTab({
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-3.5 py-2">
         <ChainVerdict snapshot={snapshot} />
       </div>
-      <LedgerRows rows={rowsNaming(snapshot.entries, exhibit)} actions={actions} />
+      <LedgerRows
+        rows={toLedgerRows(snapshot.entries)}
+        actions={actions}
+        highlighted={new Set(rowsNaming(snapshot.entries, exhibit).map((row) => row.index))}
+      />
     </div>
   )
 }

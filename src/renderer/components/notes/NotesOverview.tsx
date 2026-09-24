@@ -113,7 +113,7 @@ export function NotesOverview() {
             : 'No notes yet. Create one to record observations.'}
         </p>
       ) : (
-        <div data-testid="notes-list" className="space-y-3">
+        <div data-testid="notes-list" className="flex flex-col gap-[var(--d-listgap)]">
           <AnimatePresence mode="popLayout">
             {notes.map((note) => (
               <motion.div

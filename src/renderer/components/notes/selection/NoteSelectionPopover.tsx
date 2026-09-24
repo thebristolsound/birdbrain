@@ -139,7 +139,10 @@ export function NoteSelectionConfirm({
           data-testid="note-selection-kind"
           className="shrink-0 rounded-full border border-accent/30 bg-accent-subtle px-1.5 py-px font-mono text-[10px] font-semibold uppercase tracking-wide text-accent"
         >
-          {kind}
+          {/* The pill names what the value beside it is. In tag mode that is
+              the tag name, not the raw selection's kind: a slugified hostname
+              is not a domain. */}
+          {mode === 'tag' ? 'tag' : kind}
         </span>
         <span
           data-testid="note-selection-value"

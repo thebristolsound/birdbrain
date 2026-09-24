@@ -126,6 +126,14 @@ describe('NoteSelectionConfirm', () => {
     expect(screen.queryByTestId('note-selection-backfill')).toBeNull()
   })
 
+  it('labels a tag name as a tag, not with the kind of the raw selection', () => {
+    // A hostname slugifies to a tag name that is no longer a domain, so the
+    // selector kind beside it would describe something the value is not.
+    renderConfirm({ mode: 'tag', text: 'meridian-trust.com' })
+    expect(screen.getByTestId('note-selection-kind').textContent).toBe('tag')
+    expect(screen.getByTestId('note-selection-value').textContent).toBe('meridian-trust-com')
+  })
+
   it('cancels on Escape as well as on the button', () => {
     const onCancel = vi.fn()
     renderConfirm({ onCancel })

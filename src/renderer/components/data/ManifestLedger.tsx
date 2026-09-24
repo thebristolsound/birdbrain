@@ -9,7 +9,7 @@ import {
   type LedgerRow,
   type VerdictTone
 } from '@renderer/components/data/ledgerModel'
-import { formatStamp } from '@renderer/components/data/dataTableModel'
+import { formatStamp, shortHash } from '@renderer/components/data/dataTableModel'
 
 const TONE_CLASSES: Record<VerdictTone, string> = {
   intact: 'border-success-line bg-success-surface text-success-fg',
@@ -80,7 +80,7 @@ function HashCell({
         onCopy?.(value, label)
       }}
     >
-      {value.slice(0, 12)}
+      {shortHash(value)}
     </button>
   )
 }

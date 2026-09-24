@@ -293,8 +293,11 @@ describe('formatting', () => {
     expect(formatStamp('not a date')).toBe('not a date')
   })
 
-  it('shortens a hash for the column without changing it', () => {
-    expect(shortHash(HASH_A)).toBe(HASH_A.slice(0, 12))
+  // Twelve characters and no ellipsis before #1552, the superseded form.
+  it('shortens a hash to 14 characters and an ellipsis, and leaves a short one whole', () => {
+    expect(shortHash(HASH_A)).toBe('a1b2c3d4e5f607…')
+    expect(shortHash(HASH_A.slice(0, 14))).toBe(HASH_A.slice(0, 14))
     expect(shortHash('abc')).toBe('abc')
+    expect(shortHash('')).toBe('')
   })
 })

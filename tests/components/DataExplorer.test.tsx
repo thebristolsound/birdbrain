@@ -103,7 +103,7 @@ describe('DataExplorer (#1149)', () => {
     }
     expect(text(table.getByTestId('artifact-row-cap-a'))).not.toContain('example.com')
     expect(text(table.getByTestId('artifact-row-thumb-a'))).toContain('Exhibit 1')
-    expect(text(table.getByTestId('artifact-row-cap-a'))).toContain(HASH_A.slice(0, 12))
+    expect(text(table.getByTestId('artifact-row-cap-a'))).toContain(`${HASH_A.slice(0, 14)}…`)
     expect(text(table.getByTestId('artifact-row-cap-a'))).toContain('Exhibit 1')
     expect(text(table.getByTestId('artifact-row-thumb-a'))).toContain('thumbnail')
     // CAPTURED is the Capture's capture time on the Capture and on its Derived

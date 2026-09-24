@@ -325,6 +325,10 @@ export function capturedTitle({ capturedAt, capturedClock }: ArtifactRow): strin
   }
 }
 
+// The mock's truncated digest (#1552): 14 hex characters and an ellipsis, so
+// a shortened hash reads as shortened. The full value sits on the hover title.
+export const SHORT_HASH_LENGTH = 14
+
 export function shortHash(hash: string): string {
-  return hash.length > 12 ? hash.slice(0, 12) : hash
+  return hash.length > SHORT_HASH_LENGTH ? `${hash.slice(0, SHORT_HASH_LENGTH)}…` : hash
 }

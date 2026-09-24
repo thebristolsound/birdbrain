@@ -65,13 +65,15 @@ async function tree() {
 }
 
 describe('DataExplorer (#1149)', () => {
-  it('renders the four groups with counts and the kind subgroup', async () => {
+  it('renders the four groups without counts, and counts on the rows under them', async () => {
     renderExplorer()
     const rail = await tree()
     expect(text(rail.getByTestId('data-tree-node-data-sources'))).toContain('Data Sources')
-    expect(text(rail.getByTestId('data-tree-count-data-sources'))).toContain('3')
     expect(text(rail.getByTestId('data-tree-node-staging'))).toContain('Staging')
-    expect(text(rail.getByTestId('data-tree-count-staging'))).toContain('1')
+    for (const group of ['data-sources', 'staging', 'views', 'results']) {
+      expect(rail.queryByTestId(`data-tree-count-${group}`)).toBeNull()
+    }
+    expect(text(rail.getByTestId('data-tree-count-kind:capture'))).toContain('3')
     expect(rail.getByTestId('data-tree-node-views')).toBeTruthy()
     expect(rail.getByTestId('data-tree-node-results')).toBeTruthy()
     expect(text(rail.getByTestId('data-tree-node-kind:capture'))).toContain('Captures')

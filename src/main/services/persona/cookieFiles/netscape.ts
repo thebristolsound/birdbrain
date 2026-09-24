@@ -8,7 +8,8 @@ import { isExpired } from '@main/services/persona/cookieFiles/types'
 // a domain to mark an HttpOnly cookie, which is data. `expiry` 0 is a session
 // cookie. The format carries no SameSite, so every cookie is `unspecified`.
 // Any include-subdomains value but `TRUE` reads as host-only, the narrower
-// scope.
+// scope. The secure field must be `TRUE` or `FALSE`: reading an unknown token
+// as false would let an HTTPS-only cookie travel over HTTP.
 const HTTP_ONLY_PREFIX = '#HttpOnly_'
 
 export function parseNetscapeCookies(text: string, nowSeconds: number): CookieParseResult {
@@ -33,7 +34,14 @@ export function parseNetscapeCookies(text: string, nowSeconds: number): CookiePa
     }
     const [domain, subdomainsField, path, secureField, expiryField, name, value] = fields
     const expiry = Number(expiryField)
-    if (domain === '' || name === '' || !Number.isFinite(expiry) || expiry < 0) {
+    const secure = secureField.toUpperCase()
+    if (
+      domain === '' ||
+      name === '' ||
+      !Number.isFinite(expiry) ||
+      expiry < 0 ||
+      (secure !== 'TRUE' && secure !== 'FALSE')
+    ) {
       rejected.push({ line, reason: 'malformed' })
       return
     }
@@ -44,7 +52,7 @@ export function parseNetscapeCookies(text: string, nowSeconds: number): CookiePa
       domain,
       hostOnly: subdomainsField.toUpperCase() !== 'TRUE',
       path: path === '' ? '/' : path,
-      secure: secureField.toUpperCase() === 'TRUE',
+      secure: secure === 'TRUE',
       httpOnly,
       sameSite: 'unspecified',
       ...(expiry > 0 ? { expirationDate: expiry } : {})

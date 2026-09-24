@@ -73,6 +73,13 @@ describe('parseNetscapeCookies', () => {
     ])
   })
 
+  it('rejects a secure field that is neither TRUE nor FALSE', () => {
+    const rows = ['.a.com\tTRUE\t/\tyes\t0\tx\tv', '.a.com\tTRUE\t/\tfalse\t0\ty\tv']
+    const { cookies, rejected } = parseNetscapeCookies(rows.join('\n'), NOW)
+    expect(rejected).toEqual([{ line: 1, reason: 'malformed' }])
+    expect(cookies.map((c) => [c.name, c.secure])).toEqual([['y', false]])
+  })
+
   it('reads any include-subdomains value but TRUE as host-only', () => {
     const rows = ['.a.com\tTRUE\t/\tFALSE\t0\tx\tv', 'a.com\tFALSE\t/\tFALSE\t0\ty\tv']
     const { cookies } = parseNetscapeCookies(rows.join('\n'), NOW)
@@ -162,19 +169,17 @@ describe('parseJsonCookies', () => {
     ])
   })
 
-  it('rejects a non-boolean secure, httpOnly or hostOnly rather than reading it as false', () => {
+  it('rejects a non-boolean flag or non-string path rather than defaulting it', () => {
     const rows = JSON.stringify([
       { name: 'a', value: 'v', domain: 'd', secure: 'true' },
       { name: 'b', value: 'v', domain: 'd', httpOnly: 1 },
-      { name: 'c', value: 'v', domain: 'd', hostOnly: 'false' }
+      { name: 'c', value: 'v', domain: 'd', hostOnly: 'false' },
+      { name: 'e', value: 'v', domain: 'd', session: 'true', expirationDate: 4102444800 },
+      { name: 'f', value: 'v', domain: 'd', path: 7 }
     ])
     expect(parseJsonCookies(rows, NOW)).toEqual({
       cookies: [],
-      rejected: [
-        { line: 1, reason: 'malformed' },
-        { line: 2, reason: 'malformed' },
-        { line: 3, reason: 'malformed' }
-      ]
+      rejected: [1, 2, 3, 4, 5].map((line) => ({ line, reason: 'malformed' }))
     })
   })
 

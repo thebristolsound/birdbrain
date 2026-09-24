@@ -12,9 +12,10 @@ import { isExpired, SAME_SITE_VALUES } from '@main/services/persona/cookieFiles/
 // `"unspecified"`; both read as `unspecified`. Any other string is a value
 // this build does not know how to set, so the row is rejected rather than
 // guessed at. `line` in a rejection is the element's 1-based index.
-// `secure`, `httpOnly` and `hostOnly`, when present, must be booleans: a
-// string `"true"` is malformed rather than read as false, which would widen
-// the cookie. A missing `hostOnly` falls back to the domain's leading dot.
+// `secure`, `httpOnly`, `hostOnly` and `session`, when present, must be
+// booleans and `path` a string: a string `"true"` or a numeric path is
+// malformed rather than defaulted, which would widen the cookie or keep it
+// longer. A missing `hostOnly` falls back to the domain's leading dot.
 //
 // Chrome's own export dialogs do not produce JSON; the SQLite `Cookies` file
 // is refused before this parser is reached (see `readCookieFile`).
@@ -57,8 +58,14 @@ function toCookie(
     return 'malformed'
   }
   if (name === '' || domain === '') return 'malformed'
-  const { secure, httpOnly, hostOnly } = rec
-  if (!isOptionalBoolean(secure) || !isOptionalBoolean(httpOnly) || !isOptionalBoolean(hostOnly)) {
+  const { secure, httpOnly, hostOnly, session, path } = rec
+  if (
+    !isOptionalBoolean(secure) ||
+    !isOptionalBoolean(httpOnly) ||
+    !isOptionalBoolean(hostOnly) ||
+    !isOptionalBoolean(session) ||
+    !isOptionalString(path)
+  ) {
     return 'malformed'
   }
   const sameSite = readSameSite(rec.sameSite)
@@ -71,7 +78,7 @@ function toCookie(
     value,
     domain,
     hostOnly: hostOnly ?? !domain.startsWith('.'),
-    path: typeof rec.path === 'string' && rec.path !== '' ? rec.path : '/',
+    path: path ? path : '/',
     secure: secure === true,
     httpOnly: httpOnly === true,
     sameSite,
@@ -81,6 +88,10 @@ function toCookie(
 
 function isOptionalBoolean(raw: unknown): raw is boolean | undefined {
   return raw === undefined || typeof raw === 'boolean'
+}
+
+function isOptionalString(raw: unknown): raw is string | undefined {
+  return raw === undefined || typeof raw === 'string'
 }
 
 function readSameSite(raw: unknown): CookieSameSite | undefined {

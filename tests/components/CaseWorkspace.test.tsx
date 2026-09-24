@@ -11,6 +11,7 @@ let currentSection = ''
 
 vi.mock('@tanstack/react-router', () => ({
   useParams: () => ({ caseId: currentCaseId }),
+  useSearch: () => ({}),
   useMatchRoute:
     () =>
     ({ to }: { to: string }) =>

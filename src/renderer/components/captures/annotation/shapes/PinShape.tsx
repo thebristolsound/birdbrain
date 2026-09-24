@@ -1,5 +1,6 @@
 import { Circle, Group, Text } from 'react-konva'
 import type { AnnotationShape } from '@shared/types'
+import { PIN_RADIUS } from '@renderer/components/captures/annotation/pinGeometry'
 
 interface Props {
   shape: Extract<AnnotationShape, { kind: 'pin' }>
@@ -10,7 +11,7 @@ interface Props {
   selected?: boolean
 }
 
-const RADIUS = 14
+const RADIUS = PIN_RADIUS
 
 export function PinShape({
   shape,

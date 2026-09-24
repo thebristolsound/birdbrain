@@ -15,7 +15,7 @@ vi.mock('@renderer/lib/notify', () => ({
 }))
 
 import { DataExplorer } from '@renderer/components/dashboard/cases/DataExplorer'
-import { parseHeaders } from '@renderer/components/data/HeadersTlsTab'
+import { certRole, commonName, parseHeaders } from '@renderer/components/data/HeadersTlsTab'
 import { splitLine, highlightRegex } from '@renderer/components/data/ExtractedTextTab'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { CAPTURES, HASH_A, INVENTORY } from '../renderer/dataFixtures'
@@ -201,7 +201,14 @@ describe('DataExplorer results and tabs (#1150)', () => {
     const headers = within(strip.getByTestId('headers-tls-tab'))
     expect(text(headers.getByText('server').nextSibling)).toBe('nginx')
     expect(headers.getByTestId('tls-chain')).toBeTruthy()
-    expect(headers.getByText('CN=example.com')).toBeTruthy()
+    // The card heads with the role pill and the common name, the full subject
+    // on its title, then labelled issuer, validity and fingerprint (#1552).
+    const cert = within(headers.getByTestId('tls-cert-0'))
+    expect(text(cert.getByTestId('tls-cert-role'))).toBe('leaf')
+    expect(text(cert.getByTitle('CN=example.com'))).toBe('example.com')
+    expect(text(cert.getByText('issuer').nextSibling)).toBe('CN=Test CA')
+    expect(text(cert.getByText('valid').nextSibling)).toBe('2026-01-01 → 2027-01-01')
+    expect(text(cert.getByText('fingerprint').nextSibling)).toBe('ab'.repeat(32))
     expect(headers.getByText(/Corroboration only/)).toBeTruthy()
 
     fireEvent.click(strip.getByRole('tab', { name: 'Manifest Ledger' }))
@@ -368,6 +375,35 @@ describe('DataExplorer results and tabs (#1150)', () => {
     expect(text(verdict)).not.toMatch(/broken|tamper/i)
     expect(text(view.getByTestId('ledger-signers'))).toBe('Signers not attributed on this chain.')
     expect(view.getByTestId('ledger-row-2').getAttribute('data-entry-type')).toBe('unreadable')
+  })
+})
+
+describe('TLS card helpers (#1552)', () => {
+  const cert = (subject: string, issuer: string) => ({
+    subject,
+    issuer,
+    validFrom: '',
+    validTo: '',
+    fingerprint256: '',
+    serialNumber: '',
+    subjectAltNames: []
+  })
+
+  it('reads the role from the chain position and a self-named issuer only', () => {
+    expect(certRole(cert('CN=a.example', 'CN=R11'), 0)).toBe('leaf')
+    // A self-named leaf is still the leaf: position 0 is what was served.
+    expect(certRole(cert('CN=self', 'CN=self'), 0)).toBe('leaf')
+    expect(certRole(cert('CN=R11', 'CN=ISRG Root X1'), 1)).toBe('intermediate')
+    expect(certRole(cert('CN=ISRG Root X1', 'CN=ISRG Root X1'), 2)).toBe('root')
+    // A chain the origin sent without its root ends on an intermediate.
+    expect(certRole(cert('CN=R11', 'CN=ISRG Root X1'), 2)).toBe('intermediate')
+  })
+
+  it('takes the common name from a recorded name, or keeps the whole name', () => {
+    expect(commonName('C=US, CN=R11, O=Let’s Encrypt')).toBe('R11')
+    expect(commonName('CN=*.example.com')).toBe('*.example.com')
+    expect(commonName('O=No CN Here')).toBe('O=No CN Here')
+    expect(commonName('')).toBe('')
   })
 })
 

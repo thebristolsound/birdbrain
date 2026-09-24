@@ -87,9 +87,10 @@ test.describe('Case archive export/import round-trip', () => {
       await page.click('button[aria-label="Notes"]')
       await page.waitForURL(/#\/cases\/.+\/notes/)
       await page.getByTestId('notes-new-button').click()
-      await page.getByTestId('create-note-title').fill('Roundtrip note')
-      await page.getByTestId('create-note-body').fill('Note body for archive round-trip')
-      await page.getByTestId('create-note-submit').click()
+      await page.getByTestId('note-title-input').fill('Roundtrip note')
+      await page.getByTestId('note-body-input').fill('Note body for archive round-trip')
+      await page.getByTestId('note-body-input').blur()
+      await expect(page.getByRole('status').filter({ hasText: 'Saved just now' })).toBeVisible()
       await expect(page.getByText('Roundtrip note')).toBeVisible()
 
       await page.click('button[aria-label="Signals"]')

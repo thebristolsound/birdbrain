@@ -30,20 +30,28 @@ const rows = (key: Parameters<typeof rowsForNode>[1]) =>
   rowsForNode(INVENTORY, key, FACTS).map((row) => toArtifactRow(row, INVENTORY, FACTS))
 
 describe('toArtifactRow', () => {
-  it('derives SOURCE per entity: URL host, parent Exhibit, origin', () => {
-    expect(toArtifactRow(CAPTURE_A, INVENTORY, FACTS).source).toBe('example.com')
-    expect(toArtifactRow(THUMB_A, INVENTORY, FACTS).source).toBe('Example page')
-    expect(toArtifactRow(STAGED_PDF, INVENTORY, FACTS).source).toBe('manual-upload')
+  // SOURCE printed the URL host, the parent's name or the origin before
+  // #1552; the mock prints the capture id, which is the Exhibit citation here.
+  it('cites the Exhibit a row belongs to in SOURCE, the parent’s for a Derived File', () => {
+    const source = (row: InventoryRow) => {
+      const { source, sourceDetail } = toArtifactRow(row, INVENTORY, FACTS)
+      return [source, sourceDetail]
+    }
+    expect(source(CAPTURE_A)).toEqual(['Exhibit 1', 'https://example.com/page'])
+    expect(source(CAPTURE_LEGACY)).toEqual(['Exhibit 2', 'https://old.example.org/'])
+    expect(source(THUMB_A)).toEqual(['Exhibit 1', 'Example page'])
+    expect(source(STAGED_PDF)).toEqual(['manual-upload', 'manual-upload'])
   })
 
-  it('falls back to the raw URL when it does not parse, and to origin when there is none', () => {
-    const facts = new Map<string, CaptureFacts>([['cap-a', { url: 'not a url' }]])
-    expect(toArtifactRow(CAPTURE_A, INVENTORY, facts).source).toBe('not a url')
-    expect(toArtifactRow(CAPTURE_A, INVENTORY, new Map()).source).toBe('extension')
-    expect(
-      toArtifactRow({ ...STAGED_PDF, sourceUrl: 'https://drive.example/x' }, INVENTORY, facts)
-        .source
-    ).toBe('drive.example')
+  it('falls back to origin behind SOURCE, and a pooled file keeps its stated host', () => {
+    expect(toArtifactRow(CAPTURE_A, INVENTORY, new Map()).sourceDetail).toBe('extension')
+    const orphan = { ...THUMB_A, parentExhibitId: 'gone' }
+    expect(toArtifactRow(orphan, INVENTORY, FACTS).source).toBe('gone')
+    const stated = { ...STAGED_PDF, sourceUrl: 'https://drive.example/x' }
+    expect(toArtifactRow(stated, INVENTORY, FACTS).source).toBe('drive.example')
+    expect(toArtifactRow(stated, INVENTORY, FACTS).sourceDetail).toBe('https://drive.example/x')
+    const unparsed = { ...STAGED_PDF, sourceUrl: 'not a url' }
+    expect(toArtifactRow(unparsed, INVENTORY, FACTS).source).toBe('not a url')
   })
 
   it('carries anchoring and pooled state separately from kind', () => {
@@ -260,9 +268,9 @@ describe('filterRows', () => {
   })
 
   it('does not search the URL behind SOURCE, only the four fields (R21)', () => {
-    // SOURCE renders "example.com" for cap-a, so a search over rendered cells
-    // or over the row's URL would return it; the field is not searchable.
-    expect(all.find((r) => r.id === 'cap-a')?.source).toBe('example.com')
+    // SOURCE's hover title carries cap-a's URL, so a search over the row's
+    // URL would return it; the field is not searchable.
+    expect(all.find((r) => r.id === 'cap-a')?.sourceDetail).toBe('https://example.com/page')
     expect(filterRows(all, 'example.com')).toEqual([])
     expect(filterRows(all, 'manual-upload')).toEqual([])
   })

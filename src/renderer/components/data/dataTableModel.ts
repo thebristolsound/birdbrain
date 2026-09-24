@@ -14,9 +14,14 @@ export interface ArtifactRow {
   id: string
   entity: InventoryRow['entity']
   name: string
-  // SOURCE: a Capture's URL host, a Derived File's parent Exhibit, a pooled or
-  // non-Capture row's origin.
+  // SOURCE, as the mock prints its capture id (#1552): the Exhibit a row
+  // belongs to, cited by number, which for a Derived File is its parent's. A
+  // pooled file belongs to no Exhibit, so it keeps its stated source host or
+  // its origin.
   source: string
+  // The hover title behind SOURCE: a Capture's URL, a Derived File's parent
+  // name, a non-Capture Exhibit's origin, a pooled file's stated URL.
+  sourceDetail: string
   // KIND as displayed: the Exhibit kind, `derivation` for a Derived File, and
   // the pooled file's detected kind with its not-anchored state carried
   // separately so the chip is never mistaken for a kind.
@@ -98,7 +103,8 @@ export function toArtifactRow(
     const facts = captures.get(row.id)
     return {
       ...common,
-      source: row.kind === 'capture' ? hostOf(facts?.url) || row.origin : row.origin,
+      source: `Exhibit ${row.exhibitNumber}`,
+      sourceDetail: (row.kind === 'capture' && facts?.url) || row.origin,
       kind: row.kind,
       ...exhibitInstant(row, captures),
       anchored: row.anchored,
@@ -112,7 +118,8 @@ export function toArtifactRow(
     )
     return {
       ...common,
-      source: parent?.name ?? row.parentExhibitId,
+      source: parent ? `Exhibit ${parent.exhibitNumber}` : row.parentExhibitId,
+      sourceDetail: parent?.name ?? row.parentExhibitId,
       kind: row.derivation,
       ...(parent
         ? exhibitInstant(parent, captures)
@@ -125,6 +132,7 @@ export function toArtifactRow(
   return {
     ...common,
     source: row.sourceUrl ? hostOf(row.sourceUrl) : row.origin,
+    sourceDetail: row.sourceUrl ?? row.origin,
     kind: row.kind,
     capturedAt: row.arrivedAt,
     capturedClock: 'arrived',

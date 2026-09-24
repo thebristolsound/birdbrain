@@ -101,7 +101,8 @@ describe('DataExplorer (#1149)', () => {
     for (const head of ['Source', 'Kind', 'Size', 'SHA-256', 'Captured']) {
       expect(table.getByText(head)).toBeTruthy()
     }
-    expect(text(table.getByTestId('artifact-row-cap-a'))).toContain('example.com')
+    expect(text(table.getByTestId('artifact-row-cap-a'))).not.toContain('example.com')
+    expect(text(table.getByTestId('artifact-row-thumb-a'))).toContain('Exhibit 1')
     expect(text(table.getByTestId('artifact-row-cap-a'))).toContain(HASH_A.slice(0, 12))
     expect(text(table.getByTestId('artifact-row-cap-a'))).toContain('Exhibit 1')
     expect(text(table.getByTestId('artifact-row-thumb-a'))).toContain('thumbnail')

@@ -117,11 +117,6 @@ export function ArtifactTable({
                   >
                     {row.name}
                   </span>
-                  {row.exhibitNumber !== null && (
-                    <span className="shrink-0 font-mono text-[10px] text-text-faint">
-                      Exhibit {row.exhibitNumber}
-                    </span>
-                  )}
                   {row.staged && (
                     <Badge variant="warning" data-testid={`not-anchored-${row.id}`}>
                       not anchored
@@ -133,7 +128,10 @@ export function ArtifactTable({
                     </Badge>
                   )}
                 </span>
-                <span className="truncate font-mono text-[11px] text-text-muted" title={row.source}>
+                <span
+                  className="truncate font-mono text-[11px] text-text-muted"
+                  title={row.sourceDetail}
+                >
                   {row.source}
                 </span>
                 <span className="truncate text-xs text-text-muted">{row.kind}</span>

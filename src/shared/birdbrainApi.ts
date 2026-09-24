@@ -173,7 +173,10 @@ export interface BirdbrainAPI {
     coverage(caseId: string): Promise<{ matched: number; total: number }>
     captureMatrix(caseId: string, limit: number): Promise<Record<string, string[]>>
     bulkCreate(params: BulkCreateSelectorsParams): Promise<Selector[]>
-    exportMatches(caseId: string, selectorId?: string): Promise<{ exported: boolean; path?: string }>
+    exportMatches(
+      caseId: string,
+      selectorId?: string
+    ): Promise<{ exported: boolean; path?: string }>
   }
   notes: {
     list(caseId: string): Promise<Note[]>
@@ -250,6 +253,7 @@ export interface BirdbrainAPI {
     log(payload: RendererLogPayload): Promise<string>
     recentEntries(limit: number): Promise<LogEntry[]>
     revealLog(): Promise<void>
+    exportLogs(): Promise<{ path: string } | null>
     openStorageRoot(): Promise<void>
     lastSession(): Promise<SessionRecord | null>
     createReport(input: BugReportInput): Promise<BugReportResult | null>
@@ -274,6 +278,7 @@ export interface BirdbrainAPI {
     deleteRow(params: DbRowIdentifier): Promise<boolean>
     vacuum(): Promise<{ freedBytes: number }>
     rebuildFts(): Promise<{ rowsIndexed: number; textsHealed: number }>
+    integrityCheck(): Promise<{ ok: boolean; issues: string[] }>
     purgeArchived(): Promise<{ casesDeleted: number; capturesDeleted: number }>
     findOrphans(): Promise<OrphanReport>
     cleanOrphans(report: OrphanReport): Promise<{ dbRecordsRemoved: number; filesRemoved: number }>

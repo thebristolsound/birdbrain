@@ -13,6 +13,7 @@ import {
   writeFileSync
 } from 'fs'
 import { join } from 'path'
+import { readStoredZip } from '@main/services/zipRead'
 import { tmpdir } from 'os'
 import { pathToFileURL } from 'url'
 import type { IpcMainInvokeEvent } from 'electron'
@@ -2593,6 +2594,38 @@ describe('ipcHandlers — diagnostics logging', () => {
       await invoke(IPC_CHANNELS.DIAGNOSTICS_RECENT, 'not-a-number')
     )
     expect(viaStringLimit).toHaveLength(3)
+  })
+
+  it('exports only current and rotated logs, including buffered entries', async () => {
+    const target = join(userDataPath, 'logs.zip')
+    const logDir = join(userDataPath, 'logs')
+    mkdirSync(logDir, { recursive: true })
+    writeFileSync(join(logDir, 'birdbrain.log.1'), 'rotated-log-fixture')
+    writeFileSync(join(logDir, 'settings.json'), 'private-settings-fixture')
+    await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, { level: 'info', code: 'query.failed' })
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: target })
+
+    expect(expectOk(await invoke(IPC_CHANNELS.DIAGNOSTICS_EXPORT_LOGS))).toEqual({ path: target })
+    const exported = readStoredZip(readFileSync(target))
+    expect([...exported.keys()].sort()).toEqual(['birdbrain.log', 'birdbrain.log.1'])
+    expect(exported.get('birdbrain.log')?.toString()).toContain('query.failed')
+    expect(exported.get('birdbrain.log.1')?.toString()).toBe('rotated-log-fixture')
+    expect(showItemInFolder).toHaveBeenCalledWith(target)
+  })
+
+  it('cancels log export without writing or revealing a file', async () => {
+    const target = join(userDataPath, 'cancelled-logs.zip')
+    showSaveDialog.mockResolvedValueOnce({ canceled: true, filePath: target })
+    expect(expectOk(await invoke(IPC_CHANNELS.DIAGNOSTICS_EXPORT_LOGS))).toBeNull()
+    expect(existsSync(target)).toBe(false)
+    expect(showItemInFolder).not.toHaveBeenCalled()
+  })
+
+  it('returns the database integrity check over its dedicated channel', async () => {
+    expect(expectOk(await invoke(IPC_CHANNELS.DB_INTEGRITY_CHECK))).toEqual({
+      ok: true,
+      issues: []
+    })
   })
 
   it('diagnostics:revealLog reveals the current log file via the shell', async () => {

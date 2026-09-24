@@ -221,6 +221,7 @@ export const IPC_CHANNELS = {
   DIAGNOSTICS_LOG: 'diagnostics:log',
   DIAGNOSTICS_RECENT: 'diagnostics:recent',
   DIAGNOSTICS_REVEAL_LOG: 'diagnostics:revealLog',
+  DIAGNOSTICS_EXPORT_LOGS: 'diagnostics:exportLogs',
   DIAGNOSTICS_OPEN_STORAGE_ROOT: 'diagnostics:openStorageRoot',
   DIAGNOSTICS_LAST_SESSION: 'diagnostics:lastSession',
   DIAGNOSTICS_CREATE_REPORT: 'diagnostics:createReport',
@@ -265,6 +266,7 @@ export const IPC_CHANNELS = {
   DB_DELETE_ROW: 'db:deleteRow',
   DB_VACUUM: 'db:vacuum',
   DB_REBUILD_FTS: 'db:rebuildFts',
+  DB_INTEGRITY_CHECK: 'db:integrityCheck',
   DB_PURGE_ARCHIVED: 'db:purgeArchived',
   DB_FIND_ORPHANS: 'db:findOrphans',
   DB_CLEAN_ORPHANS: 'db:cleanOrphans',
@@ -914,6 +916,7 @@ export interface IpcInvokeContract {
   'db:deleteRow': { args: [params: DbRowIdentifier]; result: boolean }
   'db:vacuum': { args: []; result: { freedBytes: number } }
   'db:rebuildFts': { args: []; result: { rowsIndexed: number; textsHealed: number } }
+  'db:integrityCheck': { args: []; result: { ok: boolean; issues: string[] } }
   'db:purgeArchived': { args: []; result: { casesDeleted: number; capturesDeleted: number } }
   'db:findOrphans': { args: []; result: OrphanReport }
   'db:cleanOrphans': {
@@ -960,6 +963,7 @@ export interface IpcInvokeContract {
   'diagnostics:log': { args: [payload: RendererLogPayload]; result: string }
   'diagnostics:recent': { args: [limit: number]; result: LogEntry[] }
   'diagnostics:revealLog': { args: []; result: void }
+  'diagnostics:exportLogs': { args: []; result: { path: string } | null }
   'diagnostics:openStorageRoot': { args: []; result: void }
   'diagnostics:lastSession': { args: []; result: SessionRecord | null }
   'diagnostics:createReport': {

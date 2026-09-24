@@ -3,6 +3,7 @@ import type { WaybackSnapshot } from '@shared/types'
 import { formatSnapshotDelta, snapshotDeltaMs } from '@shared/wayback'
 import {
   buildWaybackList,
+  calendarHint,
   footerLine,
   formatCheckedAgo,
   formatRangeLabel,
@@ -111,6 +112,20 @@ describe('presets and ranges', () => {
     const range = rangeFromDays(b, a)
     expect(new Date(range.fromMs).toISOString()).toBe('2026-06-10T00:00:00.000Z')
     expect(new Date(range.toMs).toISOString()).toBe('2026-06-12T23:59:59.999Z')
+  })
+
+  it('names the range in force in the calendar footer, preset in words', () => {
+    const hint = (preset: 'all' | 'around-capture' | 'capture-year', ts = CAPTURE_AT) =>
+      calendarHint({ preset, customRange: null, captureTimestamp: ts })
+    expect(hint('all')).toBe('Range: all snapshots')
+    expect(hint('around-capture')).toBe('Range: capture date ± 30d')
+    expect(hint('capture-year')).toBe('Range: 2026')
+    expect(hint('capture-year', 'nonsense')).toBe('Range: capture year')
+    // Days the operator applied themselves win over whichever preset was last.
+    const customRange = rangeFromDays(Date.UTC(2026, 5, 10), Date.UTC(2026, 5, 12))
+    expect(calendarHint({ preset: 'all', customRange, captureTimestamp: CAPTURE_AT })).toBe(
+      'Range: Jun 10, 2026 – Jun 12, 2026'
+    )
   })
 
   it('labels a range, and all-time when there is none', () => {
@@ -222,10 +237,20 @@ describe('buildWaybackList', () => {
 describe('summary and footer lines', () => {
   it('states the pre-lookup, empty and populated cases distinctly', () => {
     expect(
-      summaryLine({ snapshots: [], closestIndex: null, captureTimestamp: CAPTURE_AT, hasResult: false })
+      summaryLine({
+        snapshots: [],
+        closestIndex: null,
+        captureTimestamp: CAPTURE_AT,
+        hasResult: false
+      })
     ).toBe('Not looked up yet')
     expect(
-      summaryLine({ snapshots: [], closestIndex: null, captureTimestamp: CAPTURE_AT, hasResult: true })
+      summaryLine({
+        snapshots: [],
+        closestIndex: null,
+        captureTimestamp: CAPTURE_AT,
+        hasResult: true
+      })
     ).toBe('No snapshots found')
     expect(
       summaryLine({

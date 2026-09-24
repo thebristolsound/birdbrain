@@ -401,6 +401,33 @@ describe('SignalsOverview tag delete confirmation', () => {
     expect(screen.getByTestId('signal-row-t1')).toBeTruthy()
   })
 
+  // The dialog is mounted only while a delete is pending, so it is unmounted
+  // rather than closed; focus still has to come back to the row (#1536).
+  it('hands focus back to the row when Escape dismisses the Delete-key confirmation', async () => {
+    renderScreen()
+    const row = await screen.findByTestId('signal-row-t1')
+    row.focus()
+    fireEvent.keyDown(row, { key: 'Backspace' })
+    expect(screen.getByTestId('delete-tag-dialog').contains(document.activeElement)).toBe(true)
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    expect(screen.queryByTestId('delete-tag-dialog')).toBeNull()
+    expect(document.activeElement).toBe(row)
+  })
+
+  it('hands focus back to the row button when the confirmation is cancelled', async () => {
+    renderScreen()
+    await screen.findByTestId('signal-row-t1')
+    const button = screen.getByLabelText('Delete evidence')
+    button.focus()
+    fireEvent.click(button)
+
+    fireEvent.click(screen.getByTestId('delete-tag-cancel'))
+
+    expect(document.activeElement).toBe(button)
+  })
+
   it('names the tag the row asked about', async () => {
     await openConfirm('button')
 

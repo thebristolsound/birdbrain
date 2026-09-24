@@ -301,6 +301,52 @@ export function getExportPreflight(caseId: string, captureIds?: string[]): Expor
     .preflight
 }
 
+/**
+ * Whether a note travels with a selection export (#985).
+ *
+ * A note carries two independent pointers at a Capture. `capture_id` is the
+ * column the app itself lists a Capture's notes by (`CaptureDetailsPanel`);
+ * `anchor` is the structured pointer, and all four anchor kinds embed a
+ * `captureId`. Four write paths set `notes.anchor_json` — `createNote`,
+ * `updateNote`, the archive importer and the Database Admin hatch — and
+ * `assertAnchorInCase` requires only that the anchored Capture belong to the
+ * note's own Case, so a stored row may carry an anchor and a NULL
+ * `capture_id`, or two pointers naming different Captures. Neither shape is a
+ * corruption to be ignored.
+ *
+ * Attachment is `capture_id`, per the maintainer correction of 2026-08-31,
+ * which names that column as the app's own definition of a Capture's notes and
+ * withdraws the anchor-only reading as one that would ship an empty notes.md
+ * for every export the shipped interface can produce. The anchor is read, but
+ * only to withhold: a note attached to a selected Capture that also points at
+ * another of the Case's Captures the export leaves out does not travel, which
+ * is the 2026-08-30 ruling's own ground — a note that names a withheld Capture
+ * discloses what the selection was drawn to withhold.
+ *
+ * An anchor naming a Capture the Case no longer holds is ignored rather than
+ * treated as outside the selection. `notes.capture_id` is `ON DELETE SET NULL`
+ * while `anchor_json` is plain TEXT that keeps the deleted id, so a stale
+ * anchor is a dangling pointer, not a statement about the selection.
+ *
+ * The predicate is a strict subset of both live candidate answers to
+ * maintainer question 1 — read `capture_id`, or read either pointer — so every
+ * note it withholds that those answers would ship is withheld, and it ships
+ * nothing either of them would hold back. `notes follow the selection scope`
+ * pins that property against both predicates rather than leaving it asserted
+ * here. It is not a subset of the withdrawn anchor-only reading, and it does
+ * not settle the question: answering it narrows or widens this one expression.
+ */
+export function noteTravelsWithSelection(
+  note: Note,
+  selectedCaptureIds: ReadonlySet<string>,
+  caseCaptureIds: ReadonlySet<string>
+): boolean {
+  if (note.captureId === undefined || !selectedCaptureIds.has(note.captureId)) return false
+  const anchored = note.anchor?.captureId
+  if (anchored === undefined || !caseCaptureIds.has(anchored)) return true
+  return selectedCaptureIds.has(anchored)
+}
+
 export async function generateReport(
   caseId: string,
   options: ExportOptions,
@@ -339,6 +385,28 @@ export async function generateReport(
   const { captures } = scope
   const derivedByExhibitId = groupDerivedFiles(listDerivedFilesForCase(caseId))
   const scoped = options.captureIds !== undefined
+
+  // Operator notes as package content (#399). Null means excluded; an empty
+  // array means the toggle was on and the case simply has none — notes.md is
+  // still written then, so "no notes existed" stays distinguishable from
+  // "notes were excluded".
+  //
+  // Scoped with the Exhibits on a selection export (#985): `noteTravelsWithSelection`
+  // holds the rule and its grounds.
+  const caseNotes = options.include.notes ? noteRepo.listNotes(caseId) : null
+  const selectedCaptureIds = new Set(captures.map((capture) => capture.id))
+  const caseCaptureIds = new Set(allCaptures.map((capture) => capture.id))
+  const notes =
+    caseNotes !== null && scoped
+      ? caseNotes.filter((note) =>
+          noteTravelsWithSelection(note, selectedCaptureIds, caseCaptureIds)
+        )
+      : caseNotes
+  // Stated rather than left to be counted, exactly as the excluded-Exhibit count
+  // is: without it a notes.md holding three of the Case's ten notes reads as the
+  // operator's complete work product.
+  const omittedNoteCount =
+    caseNotes !== null && notes !== null ? caseNotes.length - notes.length : 0
 
   // Build export data
   const data: ExportData = {
@@ -394,7 +462,8 @@ export async function generateReport(
       ? {
           selectedCaptureCount: captures.length,
           caseCaptureCount: allCaptures.length,
-          excludedExhibitCount: scope.excludedExhibitCount
+          excludedExhibitCount: scope.excludedExhibitCount,
+          omittedNoteCount
         }
       : null
   }
@@ -462,12 +531,6 @@ export async function generateReport(
       data.screenshots.set(cap.id, finalBuffer.toString('base64'))
     }
   }
-
-  // Operator notes as package content (#399). Null means excluded; an empty
-  // array means the toggle was on and the case simply has none — notes.md is
-  // still written then, so "no notes existed" stays distinguishable from
-  // "notes were excluded".
-  const notes = options.include.notes ? noteRepo.listNotes(caseId) : null
 
   // One manifest snapshot, taken after every awaited stage and shared by the
   // report and the package. Reading it twice would let the timestamp worker
@@ -1155,7 +1218,7 @@ function buildEvidenceZip(
   if (meta.notes !== null) {
     add(
       PACKAGE_ROOT_FILES.notes,
-      buildNotesMarkdown(data.caseName, data.exportTimestamp, meta.notes)
+      buildNotesMarkdown(data.caseName, data.exportTimestamp, meta.notes, data.selectionScope)
     )
   }
 
@@ -1449,7 +1512,7 @@ function buildWorkingCopyZip(
   if (meta.notes !== null) {
     add(
       PACKAGE_ROOT_FILES.notes,
-      buildNotesMarkdown(data.caseName, data.exportTimestamp, meta.notes)
+      buildNotesMarkdown(data.caseName, data.exportTimestamp, meta.notes, data.selectionScope)
     )
   }
 
@@ -1502,11 +1565,37 @@ function buildWorkingCopyZip(
 }
 
 /**
+ * What a selection export's notes.md says about its own scope (#985). The
+ * fields are a subset of the report's `selectionScope` and are read from that
+ * same object, so the two documents cannot state different numbers. They do
+ * not state them in the same places: report.html mentions notes.md only when
+ * the scope actually left a note out, matching how it treats the excluded
+ * Exhibit count, while this header states the scope on every selection export
+ * — a Working Copy has no report, so "none left out" has to be legible here.
+ */
+export interface NotesSelectionScope {
+  selectedCaptureCount: number
+  caseCaptureCount: number
+  omittedNoteCount: number
+}
+
+/**
  * Operator notes rendered as one Markdown document (#399). Notes are operator
  * work product: the header says so, and says what integrity cover the file has
  * (packageHash + the artifact index) and has not (the capture manifest chain).
+ *
+ * On a selection export the header also says that the file is a subset and how
+ * many of the Case's notes the scope left out (#985). The Working Copy carries
+ * no report and no certification, so for that class this header is the only
+ * place a recipient can read the omission — which is why the statement lives
+ * here and not only in report.html.
  */
-export function buildNotesMarkdown(caseName: string, exportedAt: string, notes: Note[]): string {
+export function buildNotesMarkdown(
+  caseName: string,
+  exportedAt: string,
+  notes: Note[],
+  scope?: NotesSelectionScope | null
+): string {
   const oneLine = (s: string): string => s.replace(/\s+/g, ' ').trim()
   const head = [
     `# Operator notes — ${oneLine(caseName)}`,
@@ -1514,13 +1603,35 @@ export function buildNotesMarkdown(caseName: string, exportedAt: string, notes: 
     `Exported ${exportedAt}. ${notes.length} note${notes.length === 1 ? '' : 's'}.`,
     '',
     'Operator work product: these notes were written by the operator in Birdbrain. They are',
-    'not captured page content and are not anchored in the capture manifest chain.'
+    'not captured page content and are not anchored in the capture manifest chain.',
+    ...(scope
+      ? [
+          '',
+          `Selection-scoped export: this export covers ${scope.selectedCaptureCount} of the ` +
+            `case's ${scope.caseCaptureCount} captures, and this`,
+          `file holds the notes attached to them. ${scope.omittedNoteCount} ` +
+            `note${scope.omittedNoteCount === 1 ? '' : 's'} in the case ` +
+            `${scope.omittedNoteCount === 1 ? 'is' : 'are'} not included`,
+          'here: a note attached to no capture, or to a capture outside the selection, is left',
+          'behind by the scope, and so is a note attached to a selected capture that also points',
+          "at another of the case's captures this export leaves out."
+        ]
+      : [])
   ]
   const sections = notes.map((note) => {
     const facts = [
       `- Created: ${note.createdAt}`,
       `- Updated: ${note.updatedAt}`,
       ...(note.captureId ? [`- Attached to capture: ${note.captureId}`] : []),
+      // The anchor is a second, independent pointer at a Capture, and the
+      // selection scope reads it to withhold (#985), so a recipient has to be
+      // able to see it: on a scoped package it is either a second selected
+      // Capture or a Capture the Case no longer holds, and in both cases the
+      // reader can only reconcile the note against the header by reading it.
+      // Printed only when it names a Capture the line above does not.
+      ...(note.anchor && note.anchor.captureId !== note.captureId
+        ? [`- Anchored to capture: ${note.anchor.captureId}`]
+        : []),
       ...(note.sourceUrl ? [`- Source URL: ${note.sourceUrl}`] : [])
     ]
     // The blank line before '---' matters: a rule directly under a text line

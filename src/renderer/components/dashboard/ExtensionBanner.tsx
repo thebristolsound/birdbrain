@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { Puzzle, FolderOpen, CheckCircle, BookOpen } from 'lucide-react'
-import { Card, Button } from '@renderer/components/ui'
+import { Badge, Card, Button } from '@renderer/components/ui'
 import { openExtensionFolder } from '@renderer/lib/api/system'
 import { startTour } from '@renderer/components/onboarding/startTour'
 
@@ -8,10 +9,14 @@ interface ExtensionBannerProps {
 }
 
 export function ExtensionBanner({ connected }: ExtensionBannerProps) {
+  const [folderError, setFolderError] = useState<string | null>(null)
+
   const handleOpenFolder = async () => {
+    setFolderError(null)
     try {
       await openExtensionFolder()
     } catch (err) {
+      setFolderError('Could not open the extension folder. Reinstall Birdbrain, then try again.')
       console.error('Failed to open extension folder:', err)
     }
   }
@@ -25,7 +30,7 @@ export function ExtensionBanner({ connected }: ExtensionBannerProps) {
       {connected ? (
         <>
           <div className="flex items-center gap-5">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center flex-shrink-0 shadow-lg shadow-emerald-500/10">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center flex-shrink-0">
               <CheckCircle className="h-6 w-6 text-emerald-500" />
             </div>
             <div>
@@ -38,16 +43,20 @@ export function ExtensionBanner({ connected }: ExtensionBannerProps) {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <span className="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 font-display font-bold text-xs rounded-xl">
+            <Badge
+              variant="success"
+              size="pill"
+              className="h-auto px-3 py-1 font-display text-[11px] font-semibold"
+            >
               <CheckCircle className="h-3.5 w-3.5" />
               Connected
-            </span>
+            </Badge>
           </div>
         </>
       ) : (
         <>
           <div className="flex items-center gap-5">
-            <div className="w-12 h-12 rounded-2xl bg-accent-subtle border border-accent/20 flex items-center justify-center flex-shrink-0 shadow-lg shadow-indigo-500/10">
+            <div className="w-12 h-12 rounded-2xl bg-accent-subtle border border-accent/20 flex items-center justify-center flex-shrink-0">
               <Puzzle className="h-6 w-6 text-accent" />
             </div>
             <div>
@@ -55,25 +64,31 @@ export function ExtensionBanner({ connected }: ExtensionBannerProps) {
                 Install the Browser Extension
               </h4>
               <p className="text-[11px] text-text-muted leading-relaxed">
-                Capture pages from Chrome, Edge, and Brave while the desktop app is running.
+                Open extension folder reveals the bundled files in your file manager. Follow the
+                Setup Guide to load them in your browser.
               </p>
+              {folderError && (
+                <p role="alert" className="mt-2 text-xs text-red-400">
+                  {folderError}
+                </p>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-3">
             <button
               data-testid="extension-banner-setup-guide"
               onClick={() => startTour('ext')}
-              className="flex items-center gap-2 px-4 py-2.5 font-display font-medium text-xs rounded-xl border border-border-strong text-text-muted hover:bg-elevated hover:text-text-primary transition-colors"
+              className="flex h-7 items-center gap-2 px-[11px] font-display font-medium text-xs rounded-md border border-border-strong text-text-muted hover:bg-elevated hover:text-text-primary transition-colors"
             >
               <BookOpen className="h-3.5 w-3.5" />
               Setup Guide
             </button>
             <Button
               onClick={handleOpenFolder}
-              className="gap-2 px-5 py-2.5 font-display font-bold text-xs rounded-xl shadow-lg shadow-indigo-500/30 active:scale-[0.98]"
+              className="gap-2 px-3.5 font-display font-bold active:scale-[0.98]"
             >
               <FolderOpen className="h-3.5 w-3.5" />
-              Install Extension
+              Open extension folder
             </Button>
           </div>
         </>

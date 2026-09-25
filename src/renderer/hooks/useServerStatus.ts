@@ -41,6 +41,12 @@ export function useServerStatus() {
       // A capture arriving while the dashboard is open must land in its
       // cross-case feed (#403); nothing else remounts it.
       queryClient.invalidateQueries({ queryKey: queryKeys.recentActivityAll })
+      // An open Data screen reads the case through these two, and nothing else
+      // refetched them, so a capture landing there never appeared (#1552).
+      // Refetched rather than seeded: the inventory row and the chain entry
+      // are the main process's account, not this event's.
+      queryClient.invalidateQueries({ queryKey: queryKeys.exhibitInventory(capture.caseId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.manifestSnapshot(capture.caseId) })
     })
 
     // The extension attach routes write Tags and Notes through the repos, so
@@ -69,7 +75,17 @@ export function useServerStatus() {
 
     // Deep links (birdbrain://) from the extension popup route the window here.
     const unsubDeepLink = window.birdbrain.onDeepLinkNavigate((target) => {
-      router.navigate({ to: target === 'settings' ? '/settings' : '/' })
+      if (typeof target === 'object') {
+        void router
+          .navigate({
+            to: '/cases/$caseId/captures',
+            params: { caseId: target.caseId },
+            search: { captureId: target.captureId }
+          })
+          .then(() => {
+            useAppStore.getState().setSelectedCaptureId(target.captureId)
+          })
+      } else router.navigate({ to: target === 'settings' ? '/settings' : '/' })
     })
 
     return () => {

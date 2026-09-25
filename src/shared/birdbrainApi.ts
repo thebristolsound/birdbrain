@@ -42,7 +42,10 @@ import type {
   ExhibitVerification,
   StagingCommitResult,
   StagingDiscardResult,
-  StagingFile
+  StagingFile,
+  Persona,
+  PersonaImportResult,
+  PersonaStorageState
 } from '@shared/types'
 import type { CaseManifestSnapshot } from '@shared/manifestSnapshot'
 import type {
@@ -57,6 +60,8 @@ import type {
   ApplyTagToNoteResult,
   MergeTagsParams,
   MergeTagsResult,
+  CreatePersonaParams,
+  UpdatePersonaParams,
   CreateSelectorParams,
   UpdateSelectorParams,
   CreateNoteParams,
@@ -160,6 +165,14 @@ export interface BirdbrainAPI {
     merge(params: MergeTagsParams): Promise<MergeTagsResult>
     capturesWithAnyTag(caseId: string, tagIds: string[]): Promise<string[]>
   }
+  persona: {
+    list(): Promise<Persona[]>
+    create(params: CreatePersonaParams): Promise<Persona>
+    update(params: UpdatePersonaParams): Promise<Persona | undefined>
+    delete(id: string): Promise<boolean>
+    import(personaId: string): Promise<PersonaImportResult | null>
+    storageState(): Promise<PersonaStorageState>
+  }
   selectors: {
     list(caseId: string): Promise<Selector[]>
     get(id: string): Promise<Selector | undefined>
@@ -173,7 +186,10 @@ export interface BirdbrainAPI {
     coverage(caseId: string): Promise<{ matched: number; total: number }>
     captureMatrix(caseId: string, limit: number): Promise<Record<string, string[]>>
     bulkCreate(params: BulkCreateSelectorsParams): Promise<Selector[]>
-    exportMatches(caseId: string, selectorId?: string): Promise<{ exported: boolean; path?: string }>
+    exportMatches(
+      caseId: string,
+      selectorId?: string
+    ): Promise<{ exported: boolean; path?: string }>
   }
   notes: {
     list(caseId: string): Promise<Note[]>
@@ -250,6 +266,7 @@ export interface BirdbrainAPI {
     log(payload: RendererLogPayload): Promise<string>
     recentEntries(limit: number): Promise<LogEntry[]>
     revealLog(): Promise<void>
+    exportLogs(): Promise<{ path: string } | null>
     openStorageRoot(): Promise<void>
     lastSession(): Promise<SessionRecord | null>
     createReport(input: BugReportInput): Promise<BugReportResult | null>
@@ -274,6 +291,7 @@ export interface BirdbrainAPI {
     deleteRow(params: DbRowIdentifier): Promise<boolean>
     vacuum(): Promise<{ freedBytes: number }>
     rebuildFts(): Promise<{ rowsIndexed: number; textsHealed: number }>
+    integrityCheck(): Promise<{ ok: boolean; issues: string[] }>
     purgeArchived(): Promise<{ casesDeleted: number; capturesDeleted: number }>
     findOrphans(): Promise<OrphanReport>
     cleanOrphans(report: OrphanReport): Promise<{ dbRecordsRemoved: number; filesRemoved: number }>

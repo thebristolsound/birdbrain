@@ -147,7 +147,8 @@ export async function uploadToStaging(
       // so, because the caller gets no list back from a rejected upload.
       throw new Error(
         `${name}: ${err instanceof Error ? err.message : String(err)}` +
-          (staged.length > 0 ? ` (${staged.length} earlier file(s) were added to the pool)` : '')
+          (staged.length > 0 ? ` (${staged.length} earlier file(s) were added to the pool)` : ''),
+        { cause: err }
       )
     }
     const { hash, sizeBytes } = copied

@@ -73,9 +73,11 @@ function extractWithCli(zipPath) {
     execFileSync(tool, args, { stdio: 'inherit' })
   } catch (err) {
     if (err.code === 'ENOENT') {
-      throw new Error(`\`${tool}\` was not found on PATH`)
+      throw new Error(`\`${tool}\` was not found on PATH`, { cause: err })
     }
-    throw new Error(`\`${tool}\` failed to extract the archive: ${err.message}`)
+    throw new Error(`\`${tool}\` failed to extract the archive: ${err.message}`, {
+      cause: err
+    })
   }
 }
 

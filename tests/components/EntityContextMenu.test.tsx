@@ -38,6 +38,9 @@ function tagTarget(setColor = vi.fn()): EntityMenuTarget {
     ],
     actions: {
       filterCaptures: vi.fn(),
+      duplicate: vi.fn(),
+      exportCaptures: vi.fn(),
+      copyMarkdown: vi.fn(),
       rename: vi.fn(),
       setColor,
       merge: vi.fn(),
@@ -61,6 +64,7 @@ function openMenu() {
 
 afterEach(() => {
   cleanup()
+  localStorage.clear()
   vi.restoreAllMocks()
 })
 
@@ -82,7 +86,8 @@ describe('EntityContextMenu semantics', () => {
     expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
       'Edit note',
       'Open source URL',
-      'Delete note…'
+      'Delete note…',
+      'Customise this menu…'
     ])
   })
 
@@ -214,5 +219,58 @@ describe('EntityContextMenu submenus', () => {
     // Nothing focusable inside it: an item that can never run would still join
     // the roving focus order and read as an offer.
     expect(submenu.querySelectorAll('[role="menuitem"]')).toHaveLength(0)
+  })
+})
+
+describe('menu customisation and export drill-in', () => {
+  it('hides an action without running it, persists it, and lets it be restored', async () => {
+    const remove = vi.fn()
+    const first = renderMenu(noteTarget({ remove }))
+    await openMenu()
+    fireEvent.click(screen.getByText('Customise this menu…'))
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Delete note…' }))
+    expect(remove).not.toHaveBeenCalled()
+    expect(
+      screen.getByRole('menuitemcheckbox', { name: 'Delete note…' }).getAttribute('aria-checked')
+    ).toBe('false')
+    fireEvent.click(screen.getByText('Done — hidden actions can be restored here'))
+    expect(screen.queryByTestId('context-menu-item-note-delete')).toBeNull()
+    first.unmount()
+
+    renderMenu(noteTarget({ remove }))
+    await openMenu()
+    expect(screen.queryByTestId('context-menu-item-note-delete')).toBeNull()
+    fireEvent.click(screen.getByText('Customise this menu…'))
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Delete note…' }))
+    fireEvent.click(screen.getByText('Done — hidden actions can be restored here'))
+    fireEvent.click(screen.getByTestId('context-menu-item-note-delete'))
+    expect(remove).toHaveBeenCalledOnce()
+  })
+
+  it('keeps the footer reachable after hiding every action', async () => {
+    renderMenu()
+    await openMenu()
+    fireEvent.click(screen.getByText('Customise this menu…'))
+    for (const item of screen.getAllByRole('menuitemcheckbox')) fireEvent.click(item)
+    fireEvent.click(screen.getByText('Done — hidden actions can be restored here'))
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      'Customise this menu…'
+    ])
+  })
+
+  it('drills into backed tag exports and returns through Back', async () => {
+    const target = tagTarget()
+    if (target.kind !== 'tag') throw new Error('expected tag')
+    renderMenu(target)
+    await openMenu()
+    fireEvent.click(screen.getByTestId('context-menu-item-tag-export'))
+    expect(screen.getAllByRole('menu')).toHaveLength(1)
+    expect(screen.getByText('export destination')).toBeDefined()
+    expect(screen.getByRole('menuitem', { name: 'ZIP + manifest' })).toBeDefined()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Back' }))
+    expect(screen.getByTestId('context-menu-item-tag-duplicate')).toBeDefined()
+    fireEvent.click(screen.getByTestId('context-menu-item-tag-export'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Copy as markdown' }))
+    expect(target.actions.copyMarkdown).toHaveBeenCalledOnce()
   })
 })

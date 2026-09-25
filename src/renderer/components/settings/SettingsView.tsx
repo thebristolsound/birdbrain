@@ -7,6 +7,7 @@ import { CapturePreferences } from '@renderer/components/settings/CapturePrefere
 import { StorageConfig } from '@renderer/components/settings/StorageConfig'
 import { AppearanceConfig } from '@renderer/components/settings/AppearanceConfig'
 import { OperatorConfig } from '@renderer/components/settings/OperatorConfig'
+import { PersonasSection } from '@renderer/components/settings/PersonasSection'
 import { UpdatesConfig } from '@renderer/components/settings/UpdatesConfig'
 import { About } from '@renderer/components/settings/About'
 import { DiagnosticsPanel } from '@renderer/components/settings/DiagnosticsPanel'
@@ -17,6 +18,7 @@ import {
   Palette,
   Info,
   UserCircle,
+  Users,
   Database,
   RefreshCw,
   Activity
@@ -30,6 +32,7 @@ type SettingsTab =
   | 'storage'
   | 'appearance'
   | 'operator'
+  | 'personas'
   | 'database'
   | 'updates'
   | 'diagnostics'
@@ -41,6 +44,7 @@ const settingsTabs: { id: SettingsTab; label: string; icon: typeof Key }[] = [
   { id: 'storage', label: 'Storage', icon: HardDrive },
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'operator', label: 'Operator', icon: UserCircle },
+  { id: 'personas', label: 'Personas', icon: Users },
   { id: 'database', label: 'Database', icon: Database },
   { id: 'updates', label: 'Updates', icon: RefreshCw },
   { id: 'diagnostics', label: 'Diagnostics', icon: Activity },
@@ -99,6 +103,9 @@ export function SettingsView() {
         </TabsContent>
         <TabsContent value="operator" className="mt-0">
           <OperatorConfig />
+        </TabsContent>
+        <TabsContent value="personas" className="mt-0">
+          <PersonasSection />
         </TabsContent>
         <TabsContent value="database" className="mt-0">
           <DatabaseAdmin />

@@ -6,6 +6,7 @@ import { Search, Plus, Clock, Compass, MessageSquareWarning } from 'lucide-react
 import { useAppStore } from '@renderer/stores/appStore'
 import { casesQueryOptions, captureCountsQueryOptions } from '@renderer/lib/queries'
 import { presets } from '@renderer/lib/motion'
+import { trapTab, useModalFocus } from '@renderer/components/ui'
 import { startTour } from '@renderer/components/onboarding/startTour'
 
 function pluralCaptures(n: number): string {
@@ -32,20 +33,23 @@ export function CommandPalette() {
 
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
 
   const { data: cases = [] } = useQuery(casesQueryOptions)
   const { data: captureCounts = {} } = useQuery(captureCountsQueryOptions)
 
   const filtered = cases.filter((c) => c.name.toLowerCase().includes(query.toLowerCase()))
 
+  // The dialog primitive's focus half: the input takes focus as the first
+  // control inside, and closing hands focus back to whatever opened the
+  // palette. Escape stays with useCommandPalette, which owns the Ctrl+K toggle.
+  const openerRef = useModalFocus(open, panelRef)
+
   // Reset state when palette opens
   useEffect(() => {
     if (open) {
       setQuery('')
       setSelectedIndex(0)
-      // Defer focus slightly so AnimatePresence renders the input first
-      setTimeout(() => inputRef.current?.focus(), 0)
     }
   }, [open])
 
@@ -96,15 +100,19 @@ export function CommandPalette() {
             role="dialog"
             aria-modal="true"
             aria-label="Command palette"
+            // Focusable for the same reason as the dialog primitive's content:
+            // a fallback landing when nothing inside can take focus.
+            tabIndex={-1}
+            ref={panelRef}
             className="h-fit w-full max-w-lg rounded-xl neu-overlay"
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => trapTab(e, panelRef.current)}
             {...presets.modal}
           >
             {/* Search input */}
             <div className="flex items-center gap-3 border-b border-border px-4 py-3">
               <Search className="h-4 w-4 shrink-0 text-text-faint" />
               <input
-                ref={inputRef}
                 type="text"
                 value={query}
                 onChange={(e) => {
@@ -180,6 +188,9 @@ export function CommandPalette() {
                 data-testid="palette-replay-tour"
                 className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-text-secondary transition-colors hover:bg-elevated"
                 onClick={() => {
+                  // The tour records whatever holds focus as its opener, and
+                  // this button is about to unmount: hand it the palette's.
+                  openerRef.current?.focus()
                   setOpen(false)
                   startTour('intro')
                 }}

@@ -333,7 +333,8 @@ export function updateRow(
         // or the operator reads a schema error about one they never touched.
         throw new Error(
           `notes.body_doc for this row does not parse, so its Mentions cannot be checked ` +
-            `against the destination case: ${(err as Error).message}`
+            `against the destination case: ${(err as Error).message}`,
+          { cause: err }
         )
       }
       assertMentionsInCase(mentions, data.case_id as string)
@@ -379,6 +380,27 @@ export function deleteRow(table: string, pk: Record<string, string>): boolean {
 
   const result = run()
   return result.changes > 0
+}
+
+// These PRAGMAs only inspect SQLite records. They do not verify capture files,
+// signed manifests or timestamps, and never attempt repairs.
+export function checkIntegrity(): { ok: boolean; issues: string[] } {
+  const db = getDb()
+  const integrity = db.pragma('integrity_check') as Array<{ integrity_check: string }>
+  const foreignKeys = db.pragma('foreign_key_check') as Array<{
+    table: string
+    rowid: number | null
+    parent: string
+    fkid: number
+  }>
+  const issues = integrity.map((row) => row.integrity_check).filter((message) => message !== 'ok')
+  for (const violation of foreignKeys) {
+    issues.push(
+      `Foreign key violation in ${violation.table}, row ${violation.rowid ?? 'unknown'}, ` +
+        `referencing ${violation.parent} (constraint ${violation.fkid}).`
+    )
+  }
+  return { ok: integrity.length > 0 && issues.length === 0, issues }
 }
 
 export function vacuumDb(dbPath: string): { freedBytes: number } {

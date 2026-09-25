@@ -122,7 +122,7 @@ describe('the dashboard extension banner', () => {
     expect(navigate).not.toHaveBeenCalled()
   })
 
-  it('still opens the extension folder from Install Extension', () => {
+  it('opens the extension folder from the labelled folder action', () => {
     const mockBridge = fakeBridge({
       cases: { list: vi.fn(async () => CASES) },
       captures: { countsByCase: vi.fn(async () => ({})) },
@@ -130,7 +130,7 @@ describe('the dashboard extension banner', () => {
       extension: { openFolder: vi.fn(async () => undefined) }
     })
     render(<ExtensionBanner connected={false} />, { wrapper: Wrapper })
-    fireEvent.click(screen.getByText('Install Extension'))
+    fireEvent.click(screen.getByRole('button', { name: 'Open extension folder' }))
     expect(mockBridge.extension.openFolder).toHaveBeenCalled()
   })
 })

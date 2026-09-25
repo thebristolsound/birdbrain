@@ -1,0 +1,9 @@
+# Netscape HTTP Cookie File
+# Exported for the persona import tests (#1497). Values are fixtures, not secrets.
+
+.example.com	TRUE	/	TRUE	4102444800	sid	SENTINEL-NETSCAPE-9f3a
+#HttpOnly_.example.com	TRUE	/	TRUE	4102444800	auth	http-only-value
+forum.example.org	FALSE	/threads	FALSE	0	view	session-only
+.example.com	TRUE	/	TRUE	1000000000	old	expired-value
+.example.com	TRUE	/	TRUE	notanumber	bad	value
+.example.com	TRUE	/	six	fields	only

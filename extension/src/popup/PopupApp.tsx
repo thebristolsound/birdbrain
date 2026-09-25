@@ -120,23 +120,10 @@ const Gear = ({ className }: { className?: string }) => (
 )
 
 const Logo = () => (
-  <span className="flex h-[21px] w-[21px] shrink-0 items-center justify-center rounded bg-accent">
-    <svg
-      className="h-3 w-3 text-white"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="12" r="10" />
-      <circle cx="12" cy="12" r="6" />
-      <circle cx="12" cy="12" r="2" />
-    </svg>
-  </span>
+  <img src="/icons/icon-48.png" alt="" className="h-[21px] w-[21px] shrink-0 rounded" />
 )
+
+const CASE_COLORS = { crypto: '#f59e0b', malware: '#0ea5e9', fraud: '#ec4899', custom: '#94a3b8' }
 
 // ---------- Chrome ----------
 
@@ -255,7 +242,8 @@ function CaseMenu({
             className="flex w-full cursor-pointer items-center gap-2 border-none bg-transparent px-3 py-1.5 text-left font-body hover:bg-surface"
           >
             <span
-              className={`h-1.5 w-1.5 shrink-0 rounded-full ${current ? 'bg-accent' : 'bg-text-faint'}`}
+              className="h-1.5 w-1.5 shrink-0 rounded-full"
+              style={{ background: CASE_COLORS[entry.type ?? 'custom'] }}
             />
             <span className="min-w-0 flex-1 truncate text-xs text-text-secondary">
               {entry.name}
@@ -331,6 +319,15 @@ export function Popup(): React.JSX.Element {
     return () => clearInterval(timer)
   }, [capturing, refreshPageStatus])
 
+  const lastCapturedAt = pageStatus?.lastCapture?.at
+  useEffect(() => {
+    if (lastCapturedAt == null) return
+    const delay = lastCapturedAt + 60_000 - Date.now()
+    if (delay <= 0) return
+    const timer = setTimeout(() => setNow(Date.now()), delay)
+    return () => clearTimeout(timer)
+  }, [lastCapturedAt])
+
   useEffect(() => {
     if (!menuOpen) return
     function onPointerDown(event: MouseEvent): void {
@@ -362,9 +359,21 @@ export function Popup(): React.JSX.Element {
   }
 
   async function handleStopSession(): Promise<void> {
-    await stopSession()
-    setSessionActive(false)
-    chrome.runtime.sendMessage({ type: 'SESSION_STOPPED' })
+    try {
+      if (capturing) {
+        const tab = await currentTab()
+        const reply = await askBackground<{ message: string }>({
+          type: 'STOP_CAPTURE',
+          tabId: tab?.id
+        })
+        if (reply) setBlockedNotice(reply.message)
+      }
+      await stopSession()
+      setSessionActive(false)
+      chrome.runtime.sendMessage({ type: 'SESSION_STOPPED' })
+    } catch {
+      setBlockedNotice('Could not stop the session. Try again.')
+    }
   }
 
   async function handleCaptureNow(): Promise<void> {
@@ -476,9 +485,8 @@ export function Popup(): React.JSX.Element {
           <div className="mt-[9px] flex items-start gap-[7px] rounded-md border border-border bg-canvas px-[10px] py-2">
             <Lock className="mt-px shrink-0 text-text-faint" />
             <span className="text-[11px] leading-[1.5] text-text-faint">
-              Nothing you capture or select leaves Birdbrain. The extension reads your case
-              list so you can pick one here, and sends captures only to the app on this
-              machine.
+              Nothing you capture or select leaves Birdbrain. The extension reads your case list so
+              you can pick one here, and sends captures only to the app on this machine.
             </span>
           </div>
         </div>
@@ -497,6 +505,7 @@ export function Popup(): React.JSX.Element {
     pageStatus.url !== null &&
     pageStatus.rulesLoaded &&
     pageStatus.blocked === null
+  const justCaptured = pageStatus?.lastCapture != null && now - pageStatus.lastCapture.at < 60_000
   const StatusIcon =
     status.tone === 'captured' ? CheckCircle : status.tone === 'blocked' ? Ban : Clock
 
@@ -552,15 +561,10 @@ export function Popup(): React.JSX.Element {
             {matchSummary}
           </div>
         )}
-        {/* Withheld on a page that cannot be captured: the context-menu route
-            runs the same ignore rules, so the hint would only send the operator
-            to a menu item that does nothing. */}
-        {capturable && (
-          <p className="mt-2 text-[11px] leading-[1.6] text-text-faint">
-            Right-click the page to capture — full page or scrolling — or right-click selected text
-            to create a selector.
-          </p>
-        )}
+        <p className="mt-2 text-[11px] leading-[1.6] text-text-faint">
+          Right-click the page to capture — full page or scrolling — or right-click selected text to
+          create a selector.
+        </p>
         {blockedNotice && (
           <p role="alert" className="mt-2 break-words text-[11px] leading-[1.5] text-amber-500">
             {blockedNotice}
@@ -568,31 +572,24 @@ export function Popup(): React.JSX.Element {
         )}
       </div>
 
-      {(sessionActive || capturable) && (
-        <div className="flex shrink-0 gap-[7px] border-t border-border px-[13px] py-[10px]">
-          {/* HOTFIX: Start Capture removed while auto-capture is disabled; Stop remains so an
-              already-recording session can still be ended */}
-          {sessionActive && (
-            <button
-              type="button"
-              onClick={handleStopSession}
-              className="h-7 flex-1 cursor-pointer rounded border border-red-500/35 bg-transparent font-body text-xs font-semibold text-red-400 hover:bg-red-500/10"
-            >
-              Stop session
-            </button>
-          )}
-          {capturable && (
-            <button
-              type="button"
-              onClick={handleCaptureNow}
-              disabled={capturing}
-              className="h-7 shrink-0 cursor-pointer rounded border border-border-strong bg-transparent px-3 font-body text-xs font-medium text-text-primary hover:bg-surface disabled:cursor-default disabled:opacity-40"
-            >
-              Capture now
-            </button>
-          )}
-        </div>
-      )}
+      <div className="flex shrink-0 gap-[7px] border-t border-border px-[13px] py-[10px]">
+        <button
+          type="button"
+          onClick={handleStopSession}
+          className="h-7 flex-1 cursor-pointer rounded border border-red-500/35 bg-transparent font-body text-xs font-semibold text-red-400 hover:bg-red-500/10"
+        >
+          {capturing ? 'Stop capture' : 'Stop session'}
+        </button>
+        {capturable && !capturing && !justCaptured && (
+          <button
+            type="button"
+            onClick={handleCaptureNow}
+            className="h-7 shrink-0 cursor-pointer rounded border border-border-strong bg-transparent px-3 font-body text-xs font-medium text-text-primary hover:bg-surface"
+          >
+            Capture now
+          </button>
+        )}
+      </div>
 
       <Footer version={version} />
     </Shell>

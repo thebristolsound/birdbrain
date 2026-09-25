@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { Capture, Case, Note, Selector, Tag } from '@shared/types'
 
+vi.mock('@renderer/hooks/useReduceMotion', () => ({ useReduceMotion: () => true }))
+
 const navigate = vi.hoisted(() => vi.fn())
 
 vi.mock('@tanstack/react-router', () => ({
@@ -155,7 +157,9 @@ describe('CaseOverview', () => {
   it('drives the five metrics from the case’s own data', async () => {
     renderOverview()
 
-    await waitFor(() => expect(screen.getByTestId('overview-metric-captures').textContent).toBe('2'))
+    await waitFor(() =>
+      expect(screen.getByTestId('overview-metric-captures').textContent).toBe('2')
+    )
     expect(screen.getByTestId('overview-metric-sources').textContent).toBe('2')
     expect(screen.getByTestId('overview-metric-selectors').textContent).toBe('1')
     expect(screen.getByTestId('overview-metric-tags').textContent).toBe('1')
@@ -206,7 +210,9 @@ describe('CaseOverview', () => {
     await waitFor(() => expect(screen.getByTestId('overview-since-last-visit')).toBeTruthy())
     // Deltas stay in both places, matching the prototype: the metric row's `+2`
     // and the card's tiles are the same fact at two levels of detail.
-    expect(screen.getByTestId('overview-metric-captures').parentElement?.textContent).toContain('+2')
+    expect(screen.getByTestId('overview-metric-captures').parentElement?.textContent).toContain(
+      '+2'
+    )
   })
 
   it('sends both Manage buttons to the signals screen', async () => {

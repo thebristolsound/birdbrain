@@ -146,7 +146,13 @@ describe('Data screen context menus (#1151)', () => {
       within(menu)
         .getAllByRole('menuitem')
         .map((el) => el.textContent)
-    ).toEqual(['Open in viewerEnter', 'Copy SHA-256', 'Copy relative path', 'Verify'])
+    ).toEqual([
+      'Open in viewerEnter',
+      'Copy SHA-256',
+      'Copy relative path',
+      'Verify',
+      'Customise this menu…'
+    ])
 
     fireEvent.click(item(menu, 'exhibit-copy-hash'))
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(HASH_A))
@@ -272,7 +278,7 @@ describe('Data screen context menus (#1151)', () => {
       within(menu)
         .getAllByRole('menuitem')
         .map((el) => el.textContent)
-    ).toEqual(['Show only thisEnter', 'Verify'])
+    ).toEqual(['Show only thisEnter', 'Verify', 'Customise this menu…'])
     fireEvent.click(item(menu, 'node-show-only'))
     expect(screen.getByTestId('data-node-title').textContent).toBe('MHTML')
   })
@@ -380,7 +386,7 @@ describe('Data screen context menus (#1151)', () => {
     await select('manifest-ledger')
     const cells = (id: string) =>
       Array.from(screen.getByTestId(id).children).map((el) => el.textContent)
-    expect(cells('ledger-row-0').slice(4)).toEqual(['e'.repeat(12), 'genesis'])
+    expect(cells('ledger-row-0').slice(4)).toEqual([`${'e'.repeat(14)}…`, 'genesis'])
     expect(cells('ledger-row-1').slice(2)).toEqual(['unreadable', 'bad json', '', ''])
     expect(within(screen.getByTestId('ledger-row-1')).queryByTitle(/click to copy/)).toBeNull()
     expect(writeText).not.toHaveBeenCalled()

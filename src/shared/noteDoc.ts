@@ -167,7 +167,9 @@ function checkedNoteNode(doc: JSONContent): Node {
     node = Node.fromJSON(noteSchema(), doc)
     node.check()
   } catch (e) {
-    throw new Error(`Note body does not fit the note schema: ${(e as Error).message}`)
+    throw new Error(`Note body does not fit the note schema: ${(e as Error).message}`, {
+      cause: e
+    })
   }
   node.descendants((child) => {
     if (child.type.name !== 'mention') return true

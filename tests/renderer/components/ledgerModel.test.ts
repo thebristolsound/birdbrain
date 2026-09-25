@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { ManifestEntry } from '@shared/schemas'
 import type { ManifestSnapshotEntry } from '@shared/manifestSnapshot'
+import type { ExhibitCitationRule } from '@shared/exhibitCitation'
 import {
   describeSigner,
   entryNames,
@@ -13,6 +14,9 @@ import {
 
 const chain = { index: 0, prevHash: '', schemaVersion: 3, entryHash: 'e'.repeat(64) }
 const who = { operatorId: 'op', operatorName: 'Op', toolVersion: '1.0.0' }
+
+// A Case nobody shared: no roster, so every citation is bare.
+const UNSHARED: ExhibitCitationRule = { prefixed: false, localMemberCode: null }
 
 function line(entry: ManifestEntry): ManifestSnapshotEntry {
   return { index: entry.index, parsed: true, entry }
@@ -152,18 +156,21 @@ const UNREADABLE: ManifestSnapshotEntry = {
 
 describe('toLedgerRows', () => {
   it('renders every entry in sequence with a target in the operator’s terms', () => {
-    const rows = toLedgerRows([
-      line(CAPTURE),
-      line(TIMESTAMP),
-      line(EXHIBIT),
-      line(DERIVATION),
-      line(RENUMBER),
-      UNREADABLE,
-      line(DELETION),
-      line(EXPORT),
-      line(ARCHIVE_EXPORT),
-      line(IMPORT)
-    ])
+    const rows = toLedgerRows(
+      [
+        line(CAPTURE),
+        line(TIMESTAMP),
+        line(EXHIBIT),
+        line(DERIVATION),
+        line(RENUMBER),
+        UNREADABLE,
+        line(DELETION),
+        line(EXPORT),
+        line(ARCHIVE_EXPORT),
+        line(IMPORT)
+      ],
+      UNSHARED
+    )
     expect(rows.map((r) => [r.index, r.type, r.target])).toEqual([
       [0, 'capture', 'cap-a · https://example.com/page'],
       [1, 'timestamp', 'hash aaaaaaaaaaaa'],
@@ -178,17 +185,35 @@ describe('toLedgerRows', () => {
     ])
     // The wording that flips per field: an unstamped timestamp, a case-scoped
     // evidence export.
-    expect(toLedgerRows([line({ ...TIMESTAMP, tsaToken: undefined })])[0].target).toBe(
+    expect(toLedgerRows([line({ ...TIMESTAMP, tsaToken: undefined })], UNSHARED)[0].target).toBe(
       'hash aaaaaaaaaaaa · no token'
     )
     expect(
-      toLedgerRows([
-        line({ ...EXPORT, scope: undefined, captureIds: undefined, exportClass: undefined })
-      ])[0].target
+      toLedgerRows(
+        [line({ ...EXPORT, scope: undefined, captureIds: undefined, exportClass: undefined })],
+        UNSHARED
+      )[0].target
     ).toBe('package 111111111111')
     expect(rows[0].schemaVersion).toBe(2)
     expect(rows[2].schemaVersion).toBe(3)
     expect(rows[5].parsed).toBe(false)
+  })
+
+  it('cites an exhibit entry by its Member Code when the entry carries one (#1510)', () => {
+    const shared: ManifestEntry = { ...EXHIBIT, schemaVersion: 4, memberCode: 'NK' }
+    const rule = { prefixed: true, localMemberCode: 'NK' }
+    expect(toLedgerRows([line(shared)], rule)[0].target).toBe('Exhibit NK-2 · bundle.zip')
+  })
+
+  // An entry written before the Case was shared records no Member Code. It is
+  // the chain writer's, so it cites with the local member's code, as the
+  // inventory and the report cite the same Exhibit, and not as a bare `2` that
+  // another member's `2` would share.
+  it('cites a pre-sharing exhibit entry through the roster, as every other surface does', () => {
+    const target = (rule: ExhibitCitationRule) => toLedgerRows([line(EXHIBIT)], rule)[0].target
+    expect(target({ prefixed: true, localMemberCode: 'NK' })).toBe('Exhibit NK-2 · bundle.zip')
+    expect(target({ prefixed: false, localMemberCode: 'NK' })).toBe('Exhibit 2 · bundle.zip')
+    expect(target(UNSHARED)).toBe('Exhibit 2 · bundle.zip')
   })
 })
 
@@ -231,16 +256,22 @@ describe('toLedgerRows — schema 4 (#1509)', () => {
   }
 
   it('renders the Shared Case entries in the operator’s terms', () => {
-    const rows = toLedgerRows([line(MEMBER_ADD), line(MEMBER_REVOKE), line(MERGE), line(EXCLUDE)])
+    const rows = toLedgerRows(
+      [line(MEMBER_ADD), line(MEMBER_REVOKE), line(MERGE), line(EXCLUDE)],
+      UNSHARED
+    )
     expect(rows.map((r) => [r.type, r.target])).toEqual([
       ['member-add', 'member RM · Robin Member'],
       ['member-revoke', 'member inst-b'],
       ['merge', '1 head'],
       ['exclude', 'att-1 · duplicate']
     ])
-    expect(toLedgerRows([line({ ...EXCLUDE, reason: undefined })])[0].target).toBe('att-1')
+    expect(toLedgerRows([line({ ...EXCLUDE, reason: undefined })], UNSHARED)[0].target).toBe(
+      'att-1'
+    )
     expect(
-      toLedgerRows([line({ ...MERGE, heads: [...MERGE.heads, ...MERGE.heads] })])[0].target
+      toLedgerRows([line({ ...MERGE, heads: [...MERGE.heads, ...MERGE.heads] })], UNSHARED)[0]
+        .target
     ).toBe('2 heads')
   })
 
@@ -272,7 +303,8 @@ describe('entryNames', () => {
   it('rowsNaming keeps only the naming entries, unreadable lines excluded', () => {
     const rows = rowsNaming(
       [line(CAPTURE), line(TIMESTAMP), line(EXHIBIT), line(DERIVATION), line(RENUMBER), UNREADABLE],
-      capA
+      capA,
+      UNSHARED
     )
     expect(rows.map((r) => r.index)).toEqual([0, 1, 3, 4])
   })

@@ -152,6 +152,8 @@ export interface ExportFileExhibit {
   kind: string
   origin: string
   exhibitNumber: number
+  /** The number as the document cites it: prefixed by Member Code in a Shared Case (#1510). */
+  citation: string
   name: string
   contentHash: string
   storedPath: string | null
@@ -252,6 +254,12 @@ export interface ReportData {
    */
   exhibitNumberByCaptureId: Map<string, number>
   /**
+   * The citation per Capture (#1510): `NK-12` in a Shared Case, `12`
+   * otherwise. An export always carries the Member Code when the Case has a
+   * roster (decision 7); the number above still orders the rows.
+   */
+  exhibitCitationByCaptureId: Map<string, string>
+  /**
    * Derived Files per Capture — the list thumbnail at head (X34) — keyed by
    * capture id, with the same packaging and verification treatment every other
    * Exhibit's Derived Files get.
@@ -349,15 +357,20 @@ function verificationTally(ctx: ReportContext): { verified: number; total: numbe
  * a package holding a committed attachment still has to account for it.
  */
 type ExhibitRow =
-  | { entity: 'capture'; number: number; view: ExhibitView }
-  | { entity: 'file'; number: number; view: FileExhibitView }
+  | { entity: 'capture'; number: number; citation: string; view: ExhibitView }
+  | { entity: 'file'; number: number; citation: string; view: FileExhibitView }
 
 function exhibitRows(ctx: ReportContext): ExhibitRow[] {
   const rows: ExhibitRow[] = ctx.options.include.captures
-    ? ctx.exhibits.map((view) => ({ entity: 'capture' as const, number: view.number, view }))
+    ? ctx.exhibits.map((view) => ({
+        entity: 'capture' as const,
+        number: view.number,
+        citation: view.citation,
+        view
+      }))
     : []
   for (const view of ctx.fileExhibits) {
-    rows.push({ entity: 'file', number: view.number, view })
+    rows.push({ entity: 'file', number: view.number, citation: view.citation, view })
   }
   return rows.sort((a, b) => a.number - b.number)
 }
@@ -375,6 +388,7 @@ interface StateView {
 
 interface ExhibitView {
   number: number
+  citation: string
   capture: Capture
   verification?: HashVerification
   integrity: StateView
@@ -401,6 +415,7 @@ interface ExhibitView {
 /** A committed non-Capture Exhibit, as the document renders it (#1156). */
 interface FileExhibitView {
   number: number
+  citation: string
   exhibit: ExportFileExhibit
   integrity: StateView
   time: StateView & { basis: TrustedTime }
@@ -414,10 +429,10 @@ interface FileExhibitView {
  * recorded at commit (X18); when a row carries none — which no path in this
  * build produces, and a database restored by hand might — the document says so
  * rather than counting the exhibit's position and presenting that as a
- * citation.
+ * citation. Escaped: a Member Code can arrive in an imported archive.
  */
-function exhibitTag(number: number): string {
-  return number > 0 ? `Exhibit ${number}` : 'Exhibit (number not recorded)'
+function exhibitTag(citation: string): string {
+  return citation ? `Exhibit ${esc(citation)}` : 'Exhibit (number not recorded)'
 }
 
 /**
@@ -425,16 +440,24 @@ function exhibitTag(number: number): string {
  * as "1–N": a selection-scoped export, or a case that has had an Exhibit
  * deleted, carries numbers with gaps in them and "1–N" would assert a
  * contiguity the chain does not record.
+ *
+ * A Shared Case cites `NK-12` and each member's sequence is its own, so a
+ * numeric range across members would assert an order nobody recorded: the
+ * citations are listed, or the reader is sent to the index.
  */
-function describeExhibitNumbers(numbers: number[]): string {
-  const known = [...numbers].filter((n) => n > 0).sort((a, b) => a - b)
+function describeExhibitNumbers(views: Array<{ number: number; citation: string }>): string {
+  const known = views.filter((v) => v.number > 0).sort((a, b) => a.number - b.number)
   if (known.length === 0) return ''
-  const first = known[0]
-  const last = known[known.length - 1]
+  if (known.some((v) => v.citation !== String(v.number))) {
+    if (known.length <= 8) return ` (Exhibits ${known.map((v) => esc(v.citation)).join(', ')})`
+    return ` (${known.length} cited by Member Code; see the exhibit index)`
+  }
+  const first = known[0].number
+  const last = known[known.length - 1].number
   if (last - first + 1 === known.length) {
     return known.length === 1 ? ` (Exhibit ${first})` : ` (Exhibits ${first}–${last})`
   }
-  if (known.length <= 8) return ` (Exhibits ${known.join(', ')})`
+  if (known.length <= 8) return ` (Exhibits ${known.map((v) => v.number).join(', ')})`
   return ` (Exhibits ${first}–${last}, with gaps; see the exhibit index)`
 }
 
@@ -476,8 +499,10 @@ function buildExhibits(data: ReportData, options: ExportOptions): ExhibitView[] 
     const verification = byCaptureId.get(capture.id)
     const trustedTime = data.trustedTimeByCaptureId.get(capture.id) ?? NO_TRUSTED_TIME
     const packaged = data.packagedPaths.get(capture.id) ?? NO_ARTIFACTS
+    const number = data.exhibitNumberByCaptureId.get(capture.id) ?? 0
     return {
-      number: data.exhibitNumberByCaptureId.get(capture.id) ?? 0,
+      number,
+      citation: number > 0 ? (data.exhibitCitationByCaptureId.get(capture.id) ?? `${number}`) : '',
       capture,
       verification,
       integrity: integrityView(verification, capture),
@@ -506,6 +531,7 @@ function buildFileExhibits(data: ReportData, options: ExportOptions): FileExhibi
     .sort((a, b) => a.exhibitNumber - b.exhibitNumber)
     .map((exhibit) => ({
       number: exhibit.exhibitNumber,
+      citation: exhibit.exhibitNumber > 0 ? exhibit.citation : '',
       exhibit,
       integrity: exhibitIntegrityView(exhibit),
       time: { basis: exhibit.trustedTime.trustedTime, ...trustedTimeView(exhibit.trustedTime) },
@@ -742,15 +768,13 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     )}
     ${field(
       packaged ? 'Captures in package' : 'Captures described',
-      exhibits.length > 0
-        ? `${exhibits.length}${describeExhibitNumbers(exhibits.map((e) => e.number))}`
-        : 'none'
+      exhibits.length > 0 ? `${exhibits.length}${describeExhibitNumbers(exhibits)}` : 'none'
     )}
     ${
       fileExhibits.length > 0
         ? field(
             packaged ? 'Other exhibits in package' : 'Other exhibits described',
-            `${fileExhibits.length}${describeExhibitNumbers(fileExhibits.map((e) => e.number))}`
+            `${fileExhibits.length}${describeExhibitNumbers(fileExhibits)}`
           )
         : ''
     }
@@ -827,7 +851,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
             return exhibitRows(ctx)
               .map(
                 (row) =>
-                  `<li class="toc-row"><span class="toc-label">${exhibitTag(row.number)} — ${esc(
+                  `<li class="toc-row"><span class="toc-label">${exhibitTag(row.citation)} — ${esc(
                     row.entity === 'capture' ? row.view.capture.title : row.view.exhibit.name
                   )}</span></li>`
               )
@@ -1097,7 +1121,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
           row.entity === 'capture'
             ? `
       <tr>
-        <td class="num">${row.view.number > 0 ? row.view.number : '—'}</td>
+        <td class="num">${row.view.number > 0 ? esc(row.citation) : '—'}</td>
         <td>capture<span class="state-secondary">${esc(
           row.view.capture.method ?? 'extension'
         )}</span></td>
@@ -1116,7 +1140,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
       </tr>`
             : `
       <tr>
-        <td class="num">${row.view.number > 0 ? row.view.number : '—'}</td>
+        <td class="num">${row.view.number > 0 ? esc(row.citation) : '—'}</td>
         <td>${esc(row.view.exhibit.kind)}<span class="state-secondary">${esc(
           row.view.exhibit.origin
         )}</span></td>
@@ -1433,10 +1457,10 @@ function renderExhibit(e: ExhibitView, total: number, packaged: boolean): string
   const image = e.screenshot
     ? `<figure class="plate">
     <div class="plate-frame"><img src="data:image/png;base64,${e.screenshot}" alt="${exhibitTag(
-      e.number
+      e.citation
     )} screenshot"></div>
     <figcaption>
-      <span class="cap-text"><strong>${exhibitTag(e.number)}, image.</strong> Rendered page as
+      <span class="cap-text"><strong>${exhibitTag(e.citation)}, image.</strong> Rendered page as
       captured${e.annotationsBurned ? ', with operator annotations burned in for legibility' : ''}.
       ${
         e.annotationsBurned
@@ -1476,7 +1500,7 @@ function renderExhibit(e: ExhibitView, total: number, packaged: boolean): string
   return `
 <section class="sheet exhibit">
   <div class="exhibit-head">
-    <span class="exhibit-tag">${exhibitTag(e.number)}</span>
+    <span class="exhibit-tag">${exhibitTag(e.citation)}</span>
     <span class="exhibit-of mono">of ${total} · ${esc(headState)}</span>
   </div>
   <h3 class="exhibit-title">${esc(c.title)}</h3>
@@ -1756,7 +1780,7 @@ function renderFileExhibit(e: FileExhibitView, total: number, packaged: boolean)
   return `
 <section class="sheet exhibit">
   <div class="exhibit-head">
-    <span class="exhibit-tag">${exhibitTag(e.number)}</span>
+    <span class="exhibit-tag">${exhibitTag(e.citation)}</span>
     <span class="exhibit-of mono">of ${total} · ${esc(headState)}</span>
   </div>
   <h3 class="exhibit-title">${esc(exhibit.name)}</h3>

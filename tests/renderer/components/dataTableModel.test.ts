@@ -270,6 +270,23 @@ describe('filterRows', () => {
     expect(filterRows(all, 'Captures').map((r) => r.id)).toEqual(['cap-a', 'cap-legacy'])
   })
 
+  it('matches the prefixed citation of a Shared Case row (#1510)', () => {
+    const shared = all.map((row) => (row.id === 'cap-a' ? { ...row, citation: 'NK-1' } : row))
+    expect(filterRows(shared, 'nk-1').map((r) => r.id)).toEqual(['cap-a'])
+    expect(filterRows(shared, 'Exhibit NK-1').map((r) => r.id)).toEqual(['cap-a'])
+    expect(toArtifactRow({ ...CAPTURE_A, citation: 'NK-1' }, INVENTORY, FACTS).citation).toBe(
+      'NK-1'
+    )
+    expect(toArtifactRow(THUMB_A, INVENTORY, FACTS).citation).toBeNull()
+  })
+
+  it('cites a Shared Case row by its prefixed citation in SOURCE, the parent’s for a Derived File', () => {
+    const prefixed = { ...CAPTURE_A, citation: 'NK-1' }
+    const inventory = INVENTORY.map((row) => (row.id === 'cap-a' ? prefixed : row))
+    expect(toArtifactRow(prefixed, inventory, FACTS).source).toBe('Exhibit NK-1')
+    expect(toArtifactRow(THUMB_A, inventory, FACTS).source).toBe('Exhibit NK-1')
+  })
+
   it('reads a short hex query as a number, not a hash fragment', () => {
     // Every fixture hash contains a "2"; only Exhibit 2 may answer to it.
     expect(filterRows(all, '2').map((r) => r.id)).toEqual(['cap-legacy'])

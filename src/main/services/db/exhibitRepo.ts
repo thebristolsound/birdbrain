@@ -1,4 +1,5 @@
 import { getDb, type ImportCtx } from '@main/services/db/core'
+import { MEMBER_CODE_PATTERN } from '@shared/schemas'
 import type { Exhibit } from '@shared/types'
 
 // The identity and numbering rows of the Exhibit model (ADR-0023). A Capture's
@@ -17,6 +18,8 @@ interface ExhibitRow {
   size_bytes: number | null
   committed_at: string
   manifest_seq: number | null
+  member_code: string | null
+  author_installation_id: string | null
 }
 
 function toExhibit(row: ExhibitRow): Exhibit {
@@ -31,7 +34,9 @@ function toExhibit(row: ExhibitRow): Exhibit {
     path: row.path,
     sizeBytes: row.size_bytes,
     committedAt: row.committed_at,
-    manifestSeq: row.manifest_seq
+    manifestSeq: row.manifest_seq,
+    memberCode: row.member_code,
+    authorInstallationId: row.author_installation_id
   }
 }
 
@@ -51,7 +56,9 @@ export interface InsertExhibitParams {
   exhibitNumber?: number
 }
 
-// The next Exhibit Number for a Case.
+// The next Exhibit Number this installation takes in a Case. Numbers are per
+// member (decision 7), so a remote member's rows, which carry their author, do
+// not advance the local sequence; NULL is this installation's.
 //
 // KNOWN GAP, reported with #1147 rather than papered over: this is MAX + 1, so
 // deleting the highest-numbered Exhibit and committing another reuses its
@@ -65,7 +72,10 @@ export interface InsertExhibitParams {
 // made against a number.
 export function nextExhibitNumber(caseId: string): number {
   const row = getDb()
-    .prepare('SELECT COALESCE(MAX(exhibit_number), 0) AS max FROM exhibits WHERE case_id = ?')
+    .prepare(
+      `SELECT COALESCE(MAX(exhibit_number), 0) AS max FROM exhibits
+        WHERE case_id = ? AND author_installation_id IS NULL`
+    )
     .get(caseId) as { max: number }
   return row.max + 1
 }
@@ -244,11 +254,21 @@ export function importExhibitRows(rows: Record<string, unknown>[], ctx: ImportCt
   const insert = getDb().prepare(
     `INSERT INTO exhibits (
        id, case_id, kind, origin, exhibit_number, name,
-       content_hash, path, size_bytes, committed_at, manifest_seq
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       content_hash, path, size_bytes, committed_at, manifest_seq,
+       member_code, author_installation_id
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
   for (const row of rows) {
     const oldId = row.id as string
+    // Every citation surface prints the code, so a code the roster rule would
+    // refuse is refused here too rather than stored for them to render.
+    const memberCode = row.member_code ?? null
+    if (
+      memberCode !== null &&
+      (typeof memberCode !== 'string' || !MEMBER_CODE_PATTERN.test(memberCode))
+    ) {
+      throw new Error(`Exhibit ${oldId} carries an invalid Member Code`)
+    }
     const newId = ctx.mapId(oldId)
     const oldPath = row.path as string | null
     insert.run(
@@ -262,7 +282,11 @@ export function importExhibitRows(rows: Record<string, unknown>[], ctx: ImportCt
       oldPath ? rerootPath(oldPath, ctx.newCaseId, oldId, newId) : null,
       row.size_bytes ?? null,
       row.committed_at,
-      row.manifest_seq ?? null
+      row.manifest_seq ?? null,
+      // Pre-#1510 archives carry neither column; NULL is "this installation",
+      // which is what an import from a single-member Case is.
+      memberCode,
+      row.author_installation_id ?? null
     )
   }
 }

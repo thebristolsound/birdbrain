@@ -894,4 +894,112 @@ export function runMigrations(db: Database.Database): void {
       db.pragma('user_version = 35')
     })()
   }
+
+  if (version < 36) {
+    // `foreign_keys` is ON for the connection, and with it ON a DROP TABLE runs
+    // an implicit DELETE that cascades: dropping `exhibits` below would take
+    // every `derived_files` and `exhibit_tags` row with it. The pragma is a
+    // no-op inside a transaction, so it is switched around the transaction and
+    // the rebuilt table is checked before the keys come back on.
+    db.pragma('foreign_keys = OFF')
+    try {
+      db.transaction(() => {
+        // Shared Cases, step 2 (#1510, docs/specs/2026-09-19-collaborative-cases-
+        // design.md "Database"). Storage only: nothing here makes a Case shared,
+        // and no row is rewritten. NULL in every new column means "this
+        // installation", which is true of every row that existed before now.
+        //
+        // `case_members` caches the roster the Owner's chain carries in its
+        // `member-add` and `member-revoke` entries. Derived, never authoritative:
+        // verify-core rebuilds it from the chain and the cache is what the
+        // screens read.
+        db.exec(`
+          CREATE TABLE case_members (
+            case_id TEXT NOT NULL,
+            installation_id TEXT NOT NULL,
+            public_key_pem TEXT NOT NULL,
+            member_code TEXT NOT NULL,
+            operator_name TEXT NOT NULL,
+            node_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            added_at_index INTEGER NOT NULL,
+            revoked_at_index INTEGER,
+            PRIMARY KEY (case_id, installation_id),
+            FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+          );
+        `)
+
+        // Exhibit Numbers are per member in a Shared Case (decision 7), so the
+        // uniqueness rule widens from (case, number) to (case, author, number).
+        // SQLite cannot alter a table constraint, so the table is rebuilt the way
+        // v34 rebuilt the tag relation; the copy keeps every row's id and number.
+        //
+        // The rule is a unique index over COALESCE(author_installation_id, ''),
+        // not a table UNIQUE: SQLite treats NULLs as distinct inside a unique
+        // constraint, so `UNIQUE (case_id, author_installation_id,
+        // exhibit_number)` would let two local Exhibits share a number the moment
+        // the author column went nullable. The index is what keeps the v34 test
+        // "refuses a second Exhibit with the same number in a case" true.
+        db.exec(`
+          CREATE TABLE exhibits_new (
+            id TEXT PRIMARY KEY,
+            case_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            origin TEXT NOT NULL,
+            exhibit_number INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            path TEXT,
+            size_bytes INTEGER,
+            committed_at TEXT NOT NULL,
+            manifest_seq INTEGER,
+            member_code TEXT,
+            author_installation_id TEXT,
+            FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+          );
+          INSERT INTO exhibits_new (
+            id, case_id, kind, origin, exhibit_number, name,
+            content_hash, path, size_bytes, committed_at, manifest_seq
+          )
+            SELECT id, case_id, kind, origin, exhibit_number, name,
+                   content_hash, path, size_bytes, committed_at, manifest_seq
+              FROM exhibits;
+          DROP TABLE exhibits;
+          ALTER TABLE exhibits_new RENAME TO exhibits;
+          CREATE INDEX idx_exhibits_case_id ON exhibits(case_id);
+          CREATE UNIQUE INDEX idx_exhibits_author_number
+            ON exhibits(case_id, COALESCE(author_installation_id, ''), exhibit_number);
+        `)
+
+        // Working-layer rows (notes, annotations, tags and both tag relations)
+        // are per author and synced append-only with tombstones (decision 9).
+        // `version` is monotonic per author and starts at 0 for every row this
+        // installation wrote before it could sign one; `row_signature` stays NULL
+        // until the sync step signs local rows on write.
+        for (const table of ['notes', 'annotations', 'tags', 'exhibit_tags', 'note_tags']) {
+          db.exec(`
+            ALTER TABLE ${table} ADD COLUMN author_installation_id TEXT;
+            ALTER TABLE ${table} ADD COLUMN version INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE ${table} ADD COLUMN deleted_at TEXT;
+            ALTER TABLE ${table} ADD COLUMN row_signature TEXT;
+          `)
+        }
+
+        // `shared_at` is when the Case became shared and `owner_installation_id`
+        // whose chain carries the roster. Both NULL for a Case nobody shared.
+        db.exec(`
+          ALTER TABLE cases ADD COLUMN shared_at TEXT;
+          ALTER TABLE cases ADD COLUMN owner_installation_id TEXT;
+        `)
+
+        const violations = db.pragma('foreign_key_check') as unknown[]
+        if (violations.length > 0) {
+          throw new Error(`Migration 36 left ${violations.length} foreign key violation(s)`)
+        }
+        db.pragma('user_version = 36')
+      })()
+    } finally {
+      db.pragma('foreign_keys = ON')
+    }
+  }
 }

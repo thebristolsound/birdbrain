@@ -62,7 +62,17 @@ function RecentCaptureCard({
           {capture.title || hostOf(capture.url)}
         </div>
         <div className="mt-1 flex items-center gap-1.5">
-          <span className="truncate font-body text-[10px] text-text-muted">{hostOf(capture.url)}</span>
+          {capture.exhibitCitation ? (
+            <span
+              data-testid="overview-recent-citation"
+              className="shrink-0 rounded border border-border-strong px-1 font-mono text-[10px] leading-4 text-text-secondary"
+            >
+              {capture.exhibitCitation}
+            </span>
+          ) : null}
+          <span className="truncate font-body text-[10px] text-text-muted">
+            {hostOf(capture.url)}
+          </span>
           <span className="shrink-0 font-body text-[10px] text-text-faint">
             · {formatRelativeTime(capture.createdAt)}
           </span>

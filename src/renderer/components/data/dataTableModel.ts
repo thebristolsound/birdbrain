@@ -38,6 +38,9 @@ export interface ArtifactRow {
   staged: boolean
   exists: boolean
   exhibitNumber: number | null
+  // The number as the app cites it (`NK-12` in a Shared Case, `12` otherwise);
+  // resolved in the main process. Null wherever exhibitNumber is.
+  citation: string | null
   path: string | null
   raw: InventoryRow
 }
@@ -103,13 +106,14 @@ export function toArtifactRow(
     const facts = captures.get(row.id)
     return {
       ...common,
-      source: `Exhibit ${row.exhibitNumber}`,
+      source: `Exhibit ${row.citation}`,
       sourceDetail: (row.kind === 'capture' && facts?.url) || row.origin,
       kind: row.kind,
       ...exhibitInstant(row, captures),
       anchored: row.anchored,
       staged: false,
-      exhibitNumber: row.exhibitNumber
+      exhibitNumber: row.exhibitNumber,
+      citation: row.citation
     }
   }
   if (row.entity === 'derived-file') {
@@ -118,7 +122,7 @@ export function toArtifactRow(
     )
     return {
       ...common,
-      source: parent ? `Exhibit ${parent.exhibitNumber}` : row.parentExhibitId,
+      source: parent ? `Exhibit ${parent.citation}` : row.parentExhibitId,
       sourceDetail: parent?.name ?? row.parentExhibitId,
       kind: row.derivation,
       ...(parent
@@ -126,7 +130,8 @@ export function toArtifactRow(
         : { capturedAt: row.createdAt, capturedClock: 'created' as const }),
       anchored: row.anchored,
       staged: false,
-      exhibitNumber: null
+      exhibitNumber: null,
+      citation: null
     }
   }
   return {
@@ -138,7 +143,8 @@ export function toArtifactRow(
     capturedClock: 'arrived',
     anchored: false,
     staged: true,
-    exhibitNumber: null
+    exhibitNumber: null,
+    citation: null
   }
 }
 
@@ -285,6 +291,7 @@ export function filterRows(rows: ArtifactRow[], query: string): ArtifactRow[] {
     if (kindLabel(row.kind).toLowerCase().includes(q)) return true
     if (hashLike && row.hash.toLowerCase().includes(q)) return true
     if (row.exhibitNumber !== null && String(row.exhibitNumber) === number) return true
+    if (row.citation !== null && row.citation.toLowerCase() === number) return true
     return false
   })
 }

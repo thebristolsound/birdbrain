@@ -58,6 +58,18 @@ export function CaptureItem({
   const fullTimestamp = `Captured ${formatCaptureTimestampFull(capture.timestamp)}`
   const shownSelectors = matchingSelectors.slice(0, 2)
   const overflowSelectors = matchingSelectors.slice(2)
+  // The Exhibit citation as a 16px chip before the title (assessment item 22):
+  // `NK-12` in a Shared Case with more than one member, `12` otherwise. Main
+  // resolved the string; the row only prints it.
+  const citation = capture.exhibitCitation ? (
+    <span
+      data-testid="capture-item-citation"
+      title="Exhibit Number"
+      className="h-4 shrink-0 rounded border border-border-strong px-1 font-mono text-[10px] leading-[15px] text-text-secondary"
+    >
+      {capture.exhibitCitation}
+    </span>
+  ) : null
 
   const rowClass = `group relative w-full cursor-pointer rounded-[4px] border text-left transition-colors ${
     isSelected ? 'border-accent/35' : isMultiSelected ? 'border-accent/20' : 'border-transparent'
@@ -134,6 +146,7 @@ export function CaptureItem({
           className={`h-1.5 w-1.5 shrink-0 rounded-full ${provenance.dot}`}
           title={provenance.label}
         />
+        {citation}
         <span
           className="min-w-0 flex-1 truncate text-xs font-medium text-text-primary"
           title={capture.title || hostname}
@@ -202,6 +215,7 @@ export function CaptureItem({
       {/* Text */}
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-1.5">
+          {citation}
           <span
             className="min-w-0 flex-1 truncate text-xs font-semibold text-text-primary"
             title={capture.title || hostname}

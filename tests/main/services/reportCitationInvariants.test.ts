@@ -22,7 +22,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
 import sharp from 'sharp'
-import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
 import { defaultCaptureStore } from '@main/services/captureStore'
@@ -564,6 +564,31 @@ describe('report citation invariants', () => {
       expect(cited.some((path) => path.startsWith('screenshots/'))).toBe(true)
       expect(cited).not.toContain('screenshots/t.png')
     })
+  })
+
+  /**
+   * Known answer for an Exhibit whose row carries no number, which a database
+   * restored by hand or an imported archive row can hold: the report says the
+   * number was not recorded rather than citing "Exhibit 0". A file Exhibit
+   * follows the capture rule here, as it did before Member Code citations.
+   */
+  it('cites a file Exhibit with no recorded number as not recorded', async () => {
+    const uploads = join(tempDir, 'uploads')
+    mkdirSync(uploads, { recursive: true })
+    const path = join(uploads, 'zero.pdf')
+    writeFileSync(path, Buffer.from('%PDF-1.7\n%%EOF\n'))
+    const staged = await uploadToStaging(caseId, [path])
+    await commitStagedFiles(
+      caseId,
+      staged.map((row) => row.id)
+    )
+    getDb().prepare('UPDATE exhibits SET exhibit_number = 0 WHERE case_id = ?').run(caseId)
+
+    const report = (await exportZip(FULL, 'unnumbered')).get('report.html')!.toString('utf-8')
+
+    expect(report).toContain('Exhibit (number not recorded) — zero.pdf')
+    expect(report).toContain('<span class="exhibit-tag">Exhibit (number not recorded)</span>')
+    expect(report).not.toMatch(/Exhibit 0\b/)
   })
 
   it('detects a dangling citation when one is introduced', async () => {

@@ -183,7 +183,7 @@ export function ManifestLedgerView({
           ))
         )}
       </div>
-      <LedgerRows rows={toLedgerRows(snapshot.entries)} actions={actions} />
+      <LedgerRows rows={toLedgerRows(snapshot.entries, snapshot.citationRule)} actions={actions} />
     </div>
   )
 }
@@ -205,9 +205,13 @@ export function ManifestLedgerTab({
         <ChainVerdict snapshot={snapshot} />
       </div>
       <LedgerRows
-        rows={toLedgerRows(snapshot.entries)}
+        rows={toLedgerRows(snapshot.entries, snapshot.citationRule)}
         actions={actions}
-        highlighted={new Set(rowsNaming(snapshot.entries, exhibit).map((row) => row.index))}
+        highlighted={
+          new Set(
+            rowsNaming(snapshot.entries, exhibit, snapshot.citationRule).map((row) => row.index)
+          )
+        }
       />
     </div>
   )

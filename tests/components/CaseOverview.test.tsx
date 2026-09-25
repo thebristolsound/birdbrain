@@ -51,7 +51,9 @@ const CAPTURES: Capture[] = [
     createdAt: '2026-08-03T00:00:00.000Z',
     format: 'mhtml',
     method: 'extension',
-    lastVerifiedStatus: 'tampered'
+    lastVerifiedStatus: 'tampered',
+    exhibitNumber: 2,
+    exhibitCitation: 'NK-2'
   }
 ]
 
@@ -241,6 +243,14 @@ describe('CaseOverview', () => {
       to: '/cases/$caseId/notes',
       params: { caseId: 'case1' }
     })
+  })
+
+  it('cites a recent capture by the resolved Exhibit citation, and only when it has one (#1510)', async () => {
+    renderOverview()
+
+    await waitFor(() => expect(screen.getAllByTestId('overview-recent-item').length).toBe(2))
+    const chips = screen.getAllByTestId('overview-recent-citation')
+    expect(chips.map((c) => c.textContent)).toEqual(['NK-2'])
   })
 
   it('opens a recent capture into the captures screen', async () => {

@@ -15,18 +15,50 @@ import {
   backfillExhibitsForCaptures,
   insertExhibitForCapture
 } from '@main/services/db/exhibitRepo'
+import {
+  exhibitCitationResolver,
+  type ExhibitCitationResolver
+} from '@main/services/db/caseMemberRepo'
+
+// The list and single reads join the Capture's Exhibit row so the screens can
+// cite it (#1510). A Capture's Exhibit id IS its capture id, so the join is by
+// equality; LEFT, because a row the backfill has not reached yet still lists.
+const CAPTURE_WITH_EXHIBIT_SQL = `
+  SELECT c.*, e.exhibit_number, e.member_code, e.author_installation_id
+    FROM captures c
+    LEFT JOIN exhibits e ON e.id = c.id`
 
 export function listCaptures(caseId: string): Capture[] {
   const rows = getDb()
-    .prepare('SELECT * FROM captures WHERE case_id = ? ORDER BY timestamp DESC')
+    .prepare(`${CAPTURE_WITH_EXHIBIT_SQL} WHERE c.case_id = ? ORDER BY c.timestamp DESC`)
     .all(caseId) as Array<Record<string, unknown>>
-  return rows.map(rowToCapture)
+  const cite = exhibitCitationResolver(caseId, 'app')
+  return rows.map((row) => withCitation(rowToCapture(row), row, cite))
 }
 
 export function getCapture(id: string): Capture | undefined {
-  const row = getDb().prepare('SELECT * FROM captures WHERE id = ?').get(id) as
+  const row = getDb().prepare(`${CAPTURE_WITH_EXHIBIT_SQL} WHERE c.id = ?`).get(id) as
     Record<string, unknown> | undefined
-  return row ? rowToCapture(row) : undefined
+  if (!row) return undefined
+  return withCitation(rowToCapture(row), row, exhibitCitationResolver(row.case_id as string, 'app'))
+}
+
+function withCitation(
+  capture: Capture,
+  row: Record<string, unknown>,
+  cite: ExhibitCitationResolver
+): Capture {
+  const exhibitNumber = row.exhibit_number as number | null | undefined
+  if (exhibitNumber === null || exhibitNumber === undefined) return capture
+  return {
+    ...capture,
+    exhibitNumber,
+    exhibitCitation: cite({
+      exhibitNumber,
+      memberCode: (row.member_code as string | null) ?? null,
+      authorInstallationId: (row.author_installation_id as string | null) ?? null
+    })
+  }
 }
 
 // One query for a batch snapshot (#394). Unordered and deduplicated by the

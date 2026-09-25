@@ -212,7 +212,9 @@ describe('exhibit model', () => {
         'path',
         'size_bytes',
         'committed_at',
-        'manifest_seq'
+        'manifest_seq',
+        'member_code',
+        'author_installation_id'
       ])
       expect(columns('derived_files')).toEqual([
         'id',
@@ -237,7 +239,14 @@ describe('exhibit model', () => {
         'source_url',
         'source_claims'
       ])
-      expect(columns('exhibit_tags')).toEqual(['exhibit_id', 'tag_id'])
+      expect(columns('exhibit_tags')).toEqual([
+        'exhibit_id',
+        'tag_id',
+        'author_installation_id',
+        'version',
+        'deleted_at',
+        'row_signature'
+      ])
     })
 
     it('refuses a second Exhibit with the same number in a case', () => {
@@ -289,6 +298,16 @@ describe('exhibit model', () => {
     function windBackToV33(dbPath: string): void {
       const raw = new Database(dbPath)
       raw.pragma('foreign_keys = OFF')
+      // v36 first (#1510): the roster table and the per-author columns, so
+      // the v34 to v36 blocks all run again against a real v33 shape.
+      raw.exec('DROP TABLE case_members')
+      for (const table of ['notes', 'annotations', 'tags', 'note_tags']) {
+        for (const column of ['author_installation_id', 'version', 'deleted_at', 'row_signature']) {
+          raw.exec(`ALTER TABLE ${table} DROP COLUMN ${column}`)
+        }
+      }
+      raw.exec('ALTER TABLE cases DROP COLUMN shared_at')
+      raw.exec('ALTER TABLE cases DROP COLUMN owner_installation_id')
       raw.exec(`
         CREATE TABLE capture_tags (
           capture_id TEXT NOT NULL,

@@ -4,6 +4,10 @@ import { join } from 'path'
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
 import { listExhibits } from '@main/services/db/exhibitRepo'
+import {
+  exhibitCitationResolver,
+  type ExhibitCitationResolver
+} from '@main/services/db/caseMemberRepo'
 import { listDerivedFilesForCase } from '@main/services/db/derivedFileRepo'
 import { verifyCaseDerivedFiles, verifyExhibit } from '@main/services/exhibits'
 import * as noteRepo from '@main/services/db/noteRepo'
@@ -369,6 +373,9 @@ export async function generateReport(
   onProgress?.('Loading captures...', 10)
   const allCaptures = captureRepo.listCaptures(caseId)
   const allExhibits = listExhibits(caseId)
+  // An export always shows the Member Code when the Case has a roster
+  // (decision 7); the app's one-member hiding rule does not apply here.
+  const cite = exhibitCitationResolver(caseId, 'export')
   // Every kind the case holds is packaged, reported and certified (ADR-0023,
   // #1156). The X44 refusal that stood here until this ticket — an Evidence
   // Package refused outright while a committed attachment existed — was the
@@ -444,6 +451,11 @@ export async function generateReport(
       allExhibits
         .filter((exhibit) => exhibit.kind === 'capture')
         .map((exhibit) => [exhibit.id, exhibit.exhibitNumber])
+    ),
+    exhibitCitationByCaptureId: new Map(
+      allExhibits
+        .filter((exhibit) => exhibit.kind === 'capture')
+        .map((exhibit) => [exhibit.id, cite(exhibit)])
     ),
     derivedFilesByCaptureId: new Map(),
     selectionScope: scoped
@@ -563,7 +575,8 @@ export async function generateReport(
     entrySignatures: resolveExhibitEntrySignatures(scope.fileExhibits, manifest.entries),
     tokenPaths,
     isPackage: options.format === 'zip',
-    reader
+    reader,
+    cite
   })
   data.derivedFilesByCaptureId = new Map(
     captures.map((capture) => [
@@ -860,6 +873,7 @@ interface FileExhibitInputs {
   tokenPaths: Map<string, string>
   isPackage: boolean
   reader: PackageReader
+  cite: ExhibitCitationResolver
 }
 
 function buildFileExhibitRecords(
@@ -878,6 +892,7 @@ function buildFileExhibitRecords(
       kind: exhibit.kind,
       origin: exhibit.origin,
       exhibitNumber: exhibit.exhibitNumber,
+      citation: inputs.cite(exhibit),
       name: exhibit.name,
       contentHash: exhibit.contentHash,
       storedPath: exhibit.path,

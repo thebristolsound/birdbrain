@@ -68,7 +68,8 @@ const SNAPSHOT: CaseManifestSnapshot = {
   ],
   chain: { valid: true },
   signers: [{ fromIndex: 0, toIndex: 1, fingerprint: 'ab'.repeat(32), source: 'local' }],
-  head: { index: 1, entryHash: 'f'.repeat(64) }
+  head: { index: 1, entryHash: 'f'.repeat(64) },
+  citationRule: { prefixed: false, localMemberCode: null }
 }
 
 const SELECTORS = [

@@ -46,7 +46,15 @@ describe('note_tags schema (v32)', () => {
     expect(LATEST_SCHEMA_VERSION).toBeGreaterThanOrEqual(32)
     expect(getDb().pragma('user_version', { simple: true })).toBe(LATEST_SCHEMA_VERSION)
     const columns = getDb().pragma('table_info(note_tags)') as Array<{ name: string; pk: number }>
-    expect(columns.map((c) => c.name)).toEqual(['note_id', 'tag_id'])
+    // The four sync columns after the keys are v36 (#1510), not this table's.
+    expect(columns.map((c) => c.name)).toEqual([
+      'note_id',
+      'tag_id',
+      'author_installation_id',
+      'version',
+      'deleted_at',
+      'row_signature'
+    ])
     // Composite primary key over both foreign keys, like capture_tags: no
     // surrogate id, which is why the table stays out of ID_PROBE_TABLES.
     expect(columns.filter((c) => c.pk > 0).map((c) => c.name)).toEqual(['note_id', 'tag_id'])

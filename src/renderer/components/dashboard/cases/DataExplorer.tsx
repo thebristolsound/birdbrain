@@ -82,7 +82,7 @@ function nodeTitle(key: DataNodeKey, rows: InventoryRow[]): { title: string; sub
     const id = key.slice('exhibit:'.length)
     const row = rows.find((r) => r.entity === 'exhibit' && r.id === id)
     return row && row.entity === 'exhibit'
-      ? { title: row.name, subtitle: `Exhibit ${row.exhibitNumber}` }
+      ? { title: row.name, subtitle: `Exhibit ${row.citation}` }
       : { title: 'Exhibit', subtitle: '' }
   }
   if (key.startsWith('derived:')) {
@@ -374,8 +374,11 @@ export function DataExplorer() {
     if (
       snapshot &&
       selectedRow.rowType === 'anchored' &&
-      rowsNaming(snapshot.entries, { id: selectedRow.id, contentHash: selectedRow.contentHash })
-        .length > 0
+      rowsNaming(
+        snapshot.entries,
+        { id: selectedRow.id, contentHash: selectedRow.contentHash },
+        snapshot.citationRule
+      ).length > 0
     ) {
       tabs.push({
         id: 'ledger',

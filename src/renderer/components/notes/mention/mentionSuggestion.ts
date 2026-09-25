@@ -90,7 +90,9 @@ function insertMention(editor: Editor, range: Range, attrs: MentionAttrs): void 
  * twice while main writes the entity. The position is then carried through
  * every transaction that lands during the write, so text typed meanwhile does
  * not move the Mention. A failed write puts the query back; the mutation layer
- * has already reported the failure.
+ * has already reported the failure. The same catch covers the insert after a
+ * successful write, where a throw would put the query back beside the created
+ * entity and report nothing.
  */
 async function createAndInsertMention(
   editor: Editor,

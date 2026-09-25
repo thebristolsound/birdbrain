@@ -1,5 +1,5 @@
 import type { ManifestEntry } from '@shared/schemas'
-import { formatExhibitCitation } from '@shared/exhibitCitation'
+import { citeLocalExhibit, type ExhibitCitationRule } from '@shared/exhibitCitation'
 import type {
   CaseManifestSnapshot,
   ManifestChainVerdict,
@@ -37,7 +37,7 @@ function short(hash: string): string {
   return hash.length > 12 ? hash.slice(0, 12) : hash
 }
 
-function targetOf(entry: ManifestEntry): string {
+function targetOf(entry: ManifestEntry, rule: ExhibitCitationRule): string {
   switch (entry.type) {
     case 'capture':
       return `${entry.captureId} · ${entry.url}`
@@ -52,9 +52,10 @@ function targetOf(entry: ManifestEntry): string {
     case 'import':
       return `from case ${entry.sourceCaseId}`
     case 'exhibit':
-      // The ledger shows the entry as written: a schema-4 entry that carries a
-      // Member Code is cited with it, whatever the roster looks like today.
-      return `Exhibit ${formatExhibitCitation(entry, { prefixed: true })} · ${entry.name}`
+      // The number as written, cited the way every other surface cites it: an
+      // entry from before the Case was shared records no Member Code and is
+      // the chain writer's, so the roster supplies it.
+      return `Exhibit ${citeLocalExhibit(entry, rule)} · ${entry.name}`
     case 'derivation':
       return `${entry.derivation} of ${entry.parentExhibitId}`
     case 'renumber':
@@ -70,7 +71,10 @@ function targetOf(entry: ManifestEntry): string {
   }
 }
 
-export function toLedgerRows(entries: ManifestSnapshotEntry[]): LedgerRow[] {
+export function toLedgerRows(
+  entries: ManifestSnapshotEntry[],
+  rule: ExhibitCitationRule
+): LedgerRow[] {
   return entries.map((line) => {
     if (!line.parsed) {
       return {
@@ -90,7 +94,7 @@ export function toLedgerRows(entries: ManifestSnapshotEntry[]): LedgerRow[] {
       index: line.index,
       type: entry.type,
       time: entry.timestamp,
-      target: targetOf(entry),
+      target: targetOf(entry, rule),
       entryHash: entry.entryHash,
       prevHash: entry.prevHash,
       schemaVersion: entry.schemaVersion,
@@ -155,10 +159,11 @@ export function targetExhibitId(
 
 export function rowsNaming(
   entries: ManifestSnapshotEntry[],
-  exhibit: { id: string; contentHash: string }
+  exhibit: { id: string; contentHash: string },
+  rule: ExhibitCitationRule
 ): LedgerRow[] {
   const naming = entries.filter((line) => line.parsed && entryNames(line.entry, exhibit))
-  return toLedgerRows(naming)
+  return toLedgerRows(naming, rule)
 }
 
 export type VerdictTone = 'intact' | 'broken' | 'unsupported' | 'empty'

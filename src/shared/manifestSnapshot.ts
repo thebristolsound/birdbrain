@@ -1,4 +1,5 @@
 import type { ManifestEntry } from '@shared/schemas'
+import type { ExhibitCitationRule } from '@shared/exhibitCitation'
 
 // The wire shape of `manifest:snapshot` (X36). Kept out of `types.ts` because
 // it names `ManifestEntry`, and `schemas.ts` imports `types.ts` — putting it
@@ -54,4 +55,7 @@ export interface CaseManifestSnapshot {
   chain: ManifestChainVerdict
   signers: ManifestSignerSegment[]
   head: { index: number; entryHash: string } | null
+  // How the ledger cites an `exhibit` entry, the rule every other app surface
+  // cites by (#1510). A display rule read off the roster, not a chain claim.
+  citationRule: ExhibitCitationRule
 }

@@ -23,7 +23,7 @@ import {
   memberCodeProblem,
   upsertCaseMember
 } from '@main/services/db/caseMemberRepo'
-import { getCaseInventory } from '@main/services/exhibits'
+import { getCaseInventory, getManifestSnapshot } from '@main/services/exhibits'
 import { ensureCaseDir, initStorage } from '@main/services/storage'
 import { initManifest } from '@main/services/manifest'
 import { ingestMhtmlCapture } from '@main/services/captureLifecycle'
@@ -499,6 +499,21 @@ describe('shared case members (#1510)', () => {
       expect(html).not.toContain('<i>-1')
       expect(html).toContain('Exhibit &lt;i&gt;-1')
       expect(html).toContain('(Exhibits &lt;i&gt;-1)')
+    })
+
+    // The ledger cites a pre-sharing `exhibit` entry through the rule the
+    // snapshot carries, so it agrees with the inventory and the report.
+    it('carries the app citation rule on the manifest snapshot', () => {
+      expect(getManifestSnapshot(caseId).citationRule).toEqual({
+        prefixed: false,
+        localMemberCode: null
+      })
+      upsertCaseMember(member(caseId))
+      upsertCaseMember(remoteMember(caseId))
+      expect(getManifestSnapshot(caseId).citationRule).toEqual({
+        prefixed: true,
+        localMemberCode: 'NK'
+      })
     })
   })
 })

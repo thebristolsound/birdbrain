@@ -374,8 +374,11 @@ export function DataExplorer() {
     if (
       snapshot &&
       selectedRow.rowType === 'anchored' &&
-      rowsNaming(snapshot.entries, { id: selectedRow.id, contentHash: selectedRow.contentHash })
-        .length > 0
+      rowsNaming(
+        snapshot.entries,
+        { id: selectedRow.id, contentHash: selectedRow.contentHash },
+        snapshot.citationRule
+      ).length > 0
     ) {
       tabs.push({
         id: 'ledger',

@@ -46,7 +46,8 @@ const SNAPSHOT: CaseManifestSnapshot = {
   ],
   chain: { valid: true },
   signers: [],
-  head: { index: 0, entryHash: 'e'.repeat(64) }
+  head: { index: 0, entryHash: 'e'.repeat(64) },
+  citationRule: { prefixed: false, localMemberCode: null }
 }
 
 let verify: ReturnType<typeof vi.fn>

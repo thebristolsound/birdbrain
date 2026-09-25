@@ -69,6 +69,34 @@ describe('AppToaster', () => {
     expect(onClick).toHaveBeenCalledOnce()
   })
 
+  it('keeps two same-titled exports as separate notices, each with its own action', async () => {
+    const first = vi.fn()
+    const second = vi.fn()
+    render(<AppToaster />)
+    act(() => {
+      notify.success('Export written', {
+        description: 'Evidence package · /tmp/a.zip',
+        action: { label: 'Show in folder', onClick: first }
+      })
+      notify.success('Export written', {
+        description: 'Evidence package · /tmp/b.zip',
+        action: { label: 'Show in folder', onClick: second }
+      })
+    })
+
+    await screen.findByText('Evidence package · /tmp/b.zip')
+    expect(screen.getByText('Evidence package · /tmp/a.zip')).toBeTruthy()
+    const firstItem = screen
+      .getByText('Evidence package · /tmp/a.zip')
+      .closest('[data-sonner-toast]') as HTMLElement
+    const firstAction = Array.from(firstItem.querySelectorAll('button')).find(
+      (b) => b.textContent === 'Show in folder'
+    ) as HTMLElement
+    fireEvent.click(firstAction)
+    expect(first).toHaveBeenCalledOnce()
+    expect(second).not.toHaveBeenCalled()
+  })
+
   it('tints error toasts with the danger medallion', async () => {
     render(<AppToaster />)
     act(() => {

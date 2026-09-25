@@ -100,7 +100,10 @@ export const notify = {
   },
 
   success(message: string, { description, action }: NotifySuccessOpts = {}): void {
-    toast.success(message, { id: toastId(message), description, action })
+    // The subtitle joins the id because it can name a distinct result (two exports'
+    // paths): keyed on the title alone, the second would overwrite the first.
+    const id = toastId(description === undefined ? message : `${message}\n${description}`)
+    toast.success(message, { id, description, action })
   },
 
   info(message: string): void {

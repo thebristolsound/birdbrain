@@ -56,7 +56,9 @@ export interface InsertExhibitParams {
   exhibitNumber?: number
 }
 
-// The next Exhibit Number for a Case.
+// The next Exhibit Number this installation takes in a Case. Numbers are per
+// member (decision 7), so a remote member's rows, which carry their author, do
+// not advance the local sequence; NULL is this installation's.
 //
 // KNOWN GAP, reported with #1147 rather than papered over: this is MAX + 1, so
 // deleting the highest-numbered Exhibit and committing another reuses its
@@ -70,7 +72,10 @@ export interface InsertExhibitParams {
 // made against a number.
 export function nextExhibitNumber(caseId: string): number {
   const row = getDb()
-    .prepare('SELECT COALESCE(MAX(exhibit_number), 0) AS max FROM exhibits WHERE case_id = ?')
+    .prepare(
+      `SELECT COALESCE(MAX(exhibit_number), 0) AS max FROM exhibits
+        WHERE case_id = ? AND author_installation_id IS NULL`
+    )
     .get(caseId) as { max: number }
   return row.max + 1
 }

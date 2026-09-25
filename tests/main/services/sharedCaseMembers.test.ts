@@ -14,7 +14,8 @@ import {
   getExhibit,
   importExhibitRows,
   insertExhibit,
-  listExhibits
+  listExhibits,
+  nextExhibitNumber
 } from '@main/services/db/exhibitRepo'
 import {
   exhibitCitationResolver,
@@ -273,6 +274,23 @@ describe('shared case members (#1510)', () => {
           exhibitNumber: 1
         })
       ).toThrow(/UNIQUE/i)
+    })
+
+    // A member joining a Case the Owner has numbered to 20 starts its own
+    // sequence at 1: remote rows carry their author and are not this
+    // installation's to count.
+    it('allocates the next local number from local rows only', () => {
+      remoteExhibit(caseId, 20)
+      expect(nextExhibitNumber(caseId)).toBe(1)
+      const local = insertCapture({
+        caseId,
+        url: 'https://example.com/first',
+        title: 'First',
+        hash: 'a'.repeat(64),
+        timestamp: '2026-01-01T00:00:00.000Z'
+      })
+      expect(getExhibit(local.id)!.exhibitNumber).toBe(1)
+      expect(nextExhibitNumber(caseId)).toBe(2)
     })
   })
 

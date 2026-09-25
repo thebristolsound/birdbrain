@@ -122,6 +122,59 @@ describe('settings', () => {
     expect(settings.operatorName).toBe('Keep Me')
   })
 
+  // #1169. Trusted timestamping is on unless the operator says otherwise, and
+  // the switch has to survive everything that can happen to a settings file,
+  // because failing open puts a declined operator back on the network silently.
+  describe('trusted-timestamping opt-out', () => {
+    it('is enabled on a fresh install', () => {
+      expect(getSettings().tsaEnabled).toBe(true)
+    })
+
+    it('round-trips the opt-out and the opt-back-in', () => {
+      updateSettings({ tsaEnabled: false })
+      expect(getSettings().tsaEnabled).toBe(false)
+      updateSettings({ tsaEnabled: true })
+      expect(getSettings().tsaEnabled).toBe(true)
+    })
+
+    it('stays enabled for a settings file written before the switch existed', () => {
+      writeFileSync(settingsFile, JSON.stringify({ theme: 'light' }), 'utf-8')
+      expect(getSettings().tsaEnabled).toBe(true)
+    })
+
+    it('rejects a non-boolean rather than coercing it', () => {
+      expect(() =>
+        updateSettings({ tsaEnabled: 'no' as unknown as boolean })
+      ).toThrow(/tsaEnabled/)
+      expect(getSettings().tsaEnabled).toBe(true)
+    })
+
+    it('keeps the opt-out when another field makes the whole file unparseable', () => {
+      // Every other setting falls back to its default here. This one must not:
+      // the operator declined, and a corrupt neighbouring field is not consent.
+      writeFileSync(
+        settingsFile,
+        JSON.stringify({ tsaEnabled: false, dedupeWindowSeconds: 'soon' }),
+        'utf-8'
+      )
+      const settings = getSettings()
+      expect(settings.tsaEnabled).toBe(false)
+      expect(settings.dedupeWindowSeconds).toBe(60)
+    })
+
+    it('does not invent an opt-out from an unparseable file that never had one', () => {
+      writeFileSync(settingsFile, JSON.stringify({ dedupeWindowSeconds: 'soon' }), 'utf-8')
+      expect(getSettings().tsaEnabled).toBe(true)
+    })
+
+    it('does not read a non-boolean as an opt-out', () => {
+      // 'false' the string is not a decision the file records, so the default
+      // stands rather than a coercion nobody asked for.
+      writeFileSync(settingsFile, JSON.stringify({ tsaEnabled: 'false' }), 'utf-8')
+      expect(getSettings().tsaEnabled).toBe(true)
+    })
+  })
+
   it('preserves ignored URL patterns', () => {
     updateSettings({ ignoredUrlPatterns: ['*.google.com', '*.bing.com'] })
     const settings = getSettings()

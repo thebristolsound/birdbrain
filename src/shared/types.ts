@@ -304,6 +304,14 @@ export interface BirdbrainSettings {
   operatorOrganization: string
   // RFC 3161 trusted-timestamp authority endpoint (#120). Defaults to DigiCert.
   tsaUrl: string
+  // Whether this installation asks a TSA to timestamp anything at all (#1169).
+  // Defaults to true, which is the pre-#1169 behaviour. Off is an operator
+  // privacy decision, not a degraded mode: every TSA request discloses the
+  // capture's content hash, the operator's IP address and the capture timing to
+  // a third party, and for some operators that disclosure is itself the risk.
+  // Global rather than per-case, so one place answers "does this installation
+  // talk to a timestamp authority".
+  tsaEnabled: boolean
   autoCaptureMode: AutoCaptureMode
   lastActiveCaseId: string | null
   // 'selectors' and 'tags' are retired routes (#400/#700) kept in the union
@@ -432,6 +440,13 @@ export interface DiagnosticsSnapshot {
   keyProtection: {
     signingKey: KeyProtectionState
     openRouterKey: KeyProtectionState
+  }
+  // Whether this installation contacts a timestamp authority at all (#1169).
+  // Diagnostics is where an operator checks what the app does on their behalf,
+  // and a capture path with a mandatory outbound request has to be visible
+  // there rather than only in the setting that governs it.
+  trustedTimestamping: {
+    enabled: boolean
   }
 }
 

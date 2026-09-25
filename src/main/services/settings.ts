@@ -63,6 +63,7 @@ const DEFAULT_SETTINGS: BirdbrainSettings = {
   operatorRole: '',
   operatorOrganization: '',
   tsaUrl: DEFAULT_TSA_URL,
+  tsaEnabled: true,
   autoCaptureMode: 'notify',
   lastActiveCaseId: null,
   lastActiveSection: 'captures',
@@ -129,6 +130,22 @@ function suppliedKeysOnly<T extends object>(input: object, data: T): Partial<T> 
   ) as Partial<T>
 }
 
+// Every other setting fails open to its default when the file will not parse.
+// The trusted-timestamping opt-out must not: falling back to the enabled default
+// would put an operator who declined TSA disclosure back on the network without
+// telling them, and the failure mode of the control is the whole point of it
+// (#1169). So an explicit `false` anywhere in the readable JSON survives the
+// whole-file fallback. Anything else — absent, or a value the schema rejected —
+// keeps the default, because "not off" is the only reading that does not invent
+// an intent the file does not carry.
+function declinedTimestamping(saved: unknown): boolean {
+  return (
+    typeof saved === 'object' &&
+    saved !== null &&
+    (saved as { tsaEnabled?: unknown }).tsaEnabled === false
+  )
+}
+
 export function getSettings(): BirdbrainSettings {
   if (!settingsPath) throw new Error('Settings not initialized')
   if (!existsSync(settingsPath)) {
@@ -140,7 +157,7 @@ export function getSettings(): BirdbrainSettings {
     const parsed = PartialBirdbrainSettingsSchema.safeParse(saved)
     if (!parsed.success) {
       logger.warn('settings', 'settings.schema_invalid')
-      return { ...DEFAULT_SETTINGS }
+      return { ...DEFAULT_SETTINGS, tsaEnabled: !declinedTimestamping(saved) }
     }
     const merged = { ...DEFAULT_SETTINGS, ...suppliedKeysOnly(saved as object, parsed.data) }
     merged.openRouterApiKey = decryptApiKey(merged.openRouterApiKey)

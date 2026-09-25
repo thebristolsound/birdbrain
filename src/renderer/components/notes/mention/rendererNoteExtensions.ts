@@ -6,7 +6,10 @@ import {
   isMentionTargetType,
   type MentionSources
 } from '@renderer/components/notes/mention/mentionModel'
-import { MentionSuggestion } from '@renderer/components/notes/mention/mentionSuggestion'
+import {
+  MentionSuggestion,
+  type MentionCreate
+} from '@renderer/components/notes/mention/mentionSuggestion'
 
 export interface RendererNoteExtensionsArgs {
   caseId: string
@@ -14,6 +17,8 @@ export interface RendererNoteExtensionsArgs {
   getSources: () => MentionSources
   /** Reads the note being written at call time; see MentionSuggestionOptions. */
   getExcludeNoteId?: () => string | undefined
+  /** Backs the popup's create row; see MentionSuggestionOptions. */
+  createTarget?: MentionCreate | null
 }
 
 /**
@@ -93,11 +98,12 @@ function withMentionChip(node: TiptapNode, component: Parameters<typeof ReactNod
 export function rendererNoteExtensions({
   caseId,
   getSources,
-  getExcludeNoteId = () => undefined
+  getExcludeNoteId = () => undefined,
+  createTarget = null
 }: RendererNoteExtensionsArgs): Extensions {
   const MentionChip = createMentionNodeView(caseId)
   const base = noteExtensions().map((extension) =>
     extension.name === 'mention' ? withMentionChip(extension as TiptapNode, MentionChip) : extension
   )
-  return [...base, MentionSuggestion.configure({ getSources, getExcludeNoteId })]
+  return [...base, MentionSuggestion.configure({ getSources, getExcludeNoteId, createTarget })]
 }

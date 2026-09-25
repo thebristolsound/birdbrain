@@ -287,3 +287,17 @@ describe('CaptureViewer archived-copy banner (#704)', () => {
     expect(screen.queryByTestId('archived-copy-banner')).toBeNull()
   })
 })
+
+describe('CaptureViewer Text tab', () => {
+  it('shows the extracted text in the panel that carries the selection bar', async () => {
+    getContent.mockImplementation(async (_id: string, kind: string) =>
+      kind === 'txt' ? 'funds moved to meridian-trust.com' : null
+    )
+    useAppStore.getState().setActiveViewerTab('text')
+    renderViewer()
+
+    const panel = await screen.findByTestId('capture-text')
+    expect(panel.textContent).toBe('funds moved to meridian-trust.com')
+    expect(getContent).toHaveBeenCalledWith('cap1', 'txt')
+  })
+})

@@ -1300,6 +1300,21 @@ describe('ipcHandlers — selectors', () => {
     expectOk(await invoke(IPC_CHANNELS.SELECTORS_DELETE, sel.id))
   })
 
+  // An empty pattern matches every capture and stalls the extension's page scan.
+  it('refuses to create a selector with an empty or blank pattern, and writes no row', async () => {
+    for (const pattern of ['', '   ', undefined]) {
+      const res = await invoke<{ ok: boolean; code?: string }>(IPC_CHANNELS.SELECTORS_CREATE, {
+        caseId,
+        pattern,
+        isRegex: false,
+        origin: 'note'
+      })
+      expect(res.ok).toBe(false)
+      expect(res.code).toBe('SELECTOR_PATTERN_EMPTY')
+    }
+    expect(expectOk<unknown[]>(await invoke(IPC_CHANNELS.SELECTORS_LIST, caseId))).toHaveLength(0)
+  })
+
   // #829. The channel answers once the pass is scheduled, so the boolean is the
   // whole contract: true for a selector that exists, false for one that does not.
   it('schedules a rescan for a known selector and refuses an unknown id', async () => {
@@ -1347,8 +1362,13 @@ describe('ipcHandlers — notes', () => {
     expect(expectOk(await invoke(IPC_CHANNELS.NOTES_GET, note.id))).toBeDefined()
     expect(expectOk<number>(await invoke(IPC_CHANNELS.NOTES_COUNT, caseId))).toBe(1)
     expect(expectOk(await invoke(IPC_CHANNELS.NOTES_SEARCH, caseId, 'finding'))).toBeDefined()
-    // Malformed FTS query is swallowed and returns [].
-    expect(expectOk(await invoke(IPC_CHANNELS.NOTES_SEARCH, caseId, '"unbalanced'))).toEqual([])
+    // A query FTS5 cannot parse is reported as a failure, not as zero matches.
+    const bad = (await invoke(IPC_CHANNELS.NOTES_SEARCH, caseId, 'example.com')) as {
+      ok: boolean
+      code?: string
+    }
+    expect(bad.ok).toBe(false)
+    expect(bad.code).toBe('SEARCH_FAILED')
 
     expectOk(await invoke(IPC_CHANNELS.NOTES_DELETE, note.id))
     expect(expectOk<number>(await invoke(IPC_CHANNELS.NOTES_COUNT, caseId))).toBe(0)
@@ -1528,9 +1548,16 @@ describe('ipcHandlers — annotations', () => {
 })
 
 describe('ipcHandlers — search', () => {
-  it('searches captures and swallows malformed FTS queries', async () => {
+  it('searches captures and reports a query FTS5 cannot parse as a failure', async () => {
     expect(expectOk(await invoke(IPC_CHANNELS.SEARCH, 'case-1', 'hello'))).toBeDefined()
-    expect(expectOk(await invoke(IPC_CHANNELS.SEARCH, 'case-1', '"unbalanced'))).toEqual([])
+    for (const query of ['"unbalanced', 'example.com', 'alice@example.org']) {
+      const res = (await invoke(IPC_CHANNELS.SEARCH, 'case-1', query)) as {
+        ok: boolean
+        code?: string
+      }
+      expect(res.ok).toBe(false)
+      expect(res.code).toBe('SEARCH_FAILED')
+    }
   })
 })
 

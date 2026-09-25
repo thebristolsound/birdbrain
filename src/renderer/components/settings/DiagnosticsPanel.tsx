@@ -400,6 +400,20 @@ export function DiagnosticsPanel() {
               )}
             </Section>
 
+            <Section title="Trusted timestamping">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <StatBlock
+                  label="Timestamp authority requests"
+                  value={snap.trustedTimestamping.enabled ? 'Enabled' : 'Disabled'}
+                />
+              </div>
+              <p className="mt-2 text-xs text-text-muted">
+                {snap.trustedTimestamping.enabled
+                  ? 'Each capture’s content hash is sent to the configured RFC 3161 authority, which also sees this device’s IP address and the time of the request.'
+                  : 'No capture is sent to a timestamp authority, and no trusted time is asserted. Change this under Settings → Operator.'}
+              </p>
+            </Section>
+
             <Section title="Responsiveness">
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 <StatBlock

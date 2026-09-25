@@ -66,6 +66,7 @@ const settings = {
   operatorRole: '',
   operatorOrganization: '',
   tsaUrl: 'http://tsa.example.test',
+  tsaEnabled: true,
   autoCaptureMode: 'notify',
   lastActiveCaseId: null,
   lastActiveSection: 'overview',

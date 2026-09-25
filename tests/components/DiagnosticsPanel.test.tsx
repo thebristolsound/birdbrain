@@ -89,7 +89,8 @@ const snapshot: DiagnosticsSnapshot = {
     extractedData: 0
   },
   slowOps: [],
-  keyProtection: { signingKey: 'protected', openRouterKey: 'not-set' }
+  keyProtection: { signingKey: 'protected', openRouterKey: 'not-set' },
+  trustedTimestamping: { enabled: true }
 }
 
 const cleanReport: UnreconciledDeletionReport = {
@@ -209,6 +210,35 @@ describe('DiagnosticsPanel storage folder action', () => {
     renderPanel()
     expect(await screen.findByText('Unprotected')).toBeDefined()
     expect(await screen.findByText(/was written to disk unprotected/)).toBeDefined()
+  })
+
+  // #1169. Both branches are pinned: the enabled one has to name what is
+  // disclosed and to whom, and the declined one has to say plainly that nothing
+  // is sent, or the panel is worth nothing to the operator checking it.
+  it('states what the timestamp authority sees while timestamping is on', async () => {
+    renderPanel()
+    expect(await screen.findByText('Enabled')).toBeDefined()
+    expect(await screen.findByText(/IP address and the time of the request/)).toBeDefined()
+  })
+
+  it('states that nothing is sent when timestamping is declined', async () => {
+    fakeBridge({
+      diagnostics: {
+        get: vi.fn().mockResolvedValue({
+          ...snapshot,
+          trustedTimestamping: { enabled: false }
+        }),
+        log,
+        openStorageRoot,
+        unreconciledDeletions
+      },
+      shell: { openPath }
+    })
+    renderPanel()
+    expect(await screen.findByText('Disabled')).toBeDefined()
+    expect(
+      await screen.findByText(/No capture is sent to a timestamp authority/)
+    ).toBeDefined()
   })
 
   // #363: the root is opened on its own main-derived channel. The generic

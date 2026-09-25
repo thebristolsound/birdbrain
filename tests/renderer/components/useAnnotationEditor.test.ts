@@ -112,6 +112,21 @@ describe('useAnnotationEditor', () => {
     expect(result.current.shapes).toEqual([keep])
   })
 
+  it('discardShape keeps a moved shape out of undo and re-marks a saved editor dirty', () => {
+    const keep = { kind: 'pin' as const, id: 'keep', pinId: 'p1', number: 1, x: 0, y: 0 }
+    const gone = { kind: 'pin' as const, id: 'gone', pinId: 'p2', number: 2, x: 5, y: 5 }
+    const { result } = renderHook(() => useAnnotationEditor({ initialShapes: [keep] }))
+    act(() => result.current.beginDraft(gone))
+    act(() => result.current.commitDraft())
+    act(() => result.current.updateShape({ ...gone, x: 9 }))
+    act(() => result.current.clearDirty())
+    act(() => result.current.discardShape('gone'))
+
+    expect(result.current.dirty).toBe(true)
+    act(() => result.current.undo())
+    expect(result.current.shapes).toEqual([keep])
+  })
+
   it('cancelDraft clears the draft without committing', () => {
     const { result } = renderHook(() => useAnnotationEditor({ initialShapes: [] }))
     act(() =>

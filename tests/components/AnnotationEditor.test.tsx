@@ -14,6 +14,7 @@ vi.mock('@renderer/components/captures/annotation/AnnotationCanvas', () => ({
     onSelect?: (id: string | null) => void
     onPinDrop?: (x: number, y: number) => void
     onPinClick?: (pinId: string) => void
+    onShapeChange?: (next: AnnotationShape) => void
   }) => (
     <div>
       <button onClick={() => props.onPinDrop?.(400, 100)}>drop near top</button>
@@ -29,6 +30,13 @@ vi.mock('@renderer/components/captures/annotation/AnnotationCanvas', () => ({
             }}
           >
             {`canvas pin ${s.number}`}
+          </button>
+        ) : null
+      )}
+      {props.shapes.map((s) =>
+        s.kind === 'pin' ? (
+          <button key={`drag-${s.id}`} onClick={() => props.onShapeChange?.({ ...s, x: s.x + 20 })}>
+            {`drag pin ${s.number}`}
           </button>
         ) : null
       )}
@@ -64,6 +72,7 @@ let shapes: AnnotationShape[]
 let upsertPin: ReturnType<typeof vi.fn>
 let deletePin: ReturnType<typeof vi.fn>
 let getAnnotations: ReturnType<typeof vi.fn>
+let save: ReturnType<typeof vi.fn>
 
 function bundle(): AnnotationsBundle {
   return {
@@ -123,10 +132,11 @@ beforeEach(() => {
   })
   deletePin = vi.fn(async () => undefined)
   getAnnotations = vi.fn(async () => bundle())
+  save = vi.fn(async () => bundle().annotations)
   fakeBridge({
     annotations: {
       get: getAnnotations,
-      save: vi.fn(async () => bundle().annotations),
+      save,
       upsertPin,
       deletePin
     }
@@ -319,5 +329,44 @@ describe('AnnotationEditor pin popover', () => {
       expect(screen.getByText('canvas pin 1')).toBeDefined()
       expect(screen.getByText('canvas pin 2')).toBeDefined()
     }
+  })
+
+  it('keeps a cancelled new pin out of undo after it was moved', async () => {
+    renderEditor()
+    await screen.findByTestId('pin-legend')
+    fireEvent.click(screen.getByText('drop near bottom'))
+    await screen.findByPlaceholderText('What does this pin mark?')
+
+    // Clicking the new pin keeps its note box a draft; dragging it then puts
+    // a snapshot holding it on the undo stack.
+    fireEvent.click(screen.getByText('canvas pin 3'))
+    fireEvent.click(screen.getByText('drag pin 3'))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(deletePin).toHaveBeenCalledTimes(1))
+
+    for (let i = 0; i < 2; i++) {
+      fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+      expect(screen.queryByText('canvas pin 3')).toBeNull()
+      expect(screen.getByText('canvas pin 1')).toBeDefined()
+      expect(screen.getByText('canvas pin 2')).toBeDefined()
+    }
+  })
+
+  it('saves the canvas again when a new pin is cancelled after the autosave', async () => {
+    renderEditor()
+    await screen.findByTestId('pin-legend')
+    fireEvent.click(screen.getByText('drop near bottom'))
+    await screen.findByPlaceholderText('What does this pin mark?')
+    const newId = upsertPin.mock.calls[0][0].id as string
+
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1), { timeout: 3000 })
+    // Let the save settle so the editor is clean before the note is cancelled.
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(2), { timeout: 3000 })
+    const saved = save.mock.calls[1][0].shapes as AnnotationShape[]
+    expect(saved.map((s) => (s.kind === 'pin' ? s.pinId : s.id)).sort()).toEqual(['p1', 'p2'])
+    expect(saved.some((s) => s.kind === 'pin' && s.pinId === newId)).toBe(false)
   })
 })

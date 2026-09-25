@@ -1,10 +1,16 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, within } from '@testing-library/react'
 import { ArtifactTable } from '@renderer/components/data/ArtifactTable'
 import { ArtifactTabs } from '@renderer/components/data/ArtifactTabs'
 import { toArtifactRow } from '@renderer/components/data/dataTableModel'
-import { INVENTORY, STAGED_PDF } from '../renderer/dataFixtures'
+import {
+  CAPTURE_A,
+  CAPTURE_A_CAPTURED_AT,
+  INVENTORY,
+  STAGED_PDF,
+  THUMB_A
+} from '../renderer/dataFixtures'
 
 afterEach(() => cleanup())
 
@@ -53,6 +59,80 @@ describe('ArtifactTable staging actions', () => {
   })
 })
 
+describe('ArtifactTable selection (#1552)', () => {
+  const rows = [CAPTURE_A, THUMB_A].map((row) => toArtifactRow(row, INVENTORY, new Map()))
+
+  it('toggles the multi-selection on a modifier-click and selects on a plain click', () => {
+    const onSelect = vi.fn()
+    const onToggleMulti = vi.fn()
+    render(
+      <ArtifactTable
+        rows={rows}
+        selectedId={null}
+        onSelect={onSelect}
+        onToggleMulti={onToggleMulti}
+        emptyMessage="none"
+      />
+    )
+    fireEvent.click(screen.getByTestId('artifact-row-cap-a'), { metaKey: true })
+    fireEvent.click(screen.getByTestId('artifact-row-thumb-a'), { ctrlKey: true })
+    expect(onToggleMulti.mock.calls).toEqual([['cap-a'], ['thumb-a']])
+    expect(onSelect).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByTestId('artifact-row-cap-a'))
+    expect(onSelect).toHaveBeenCalledWith('cap-a')
+  })
+
+  it('marks the selected and the multi-selected rows with the accent bar', () => {
+    render(
+      <ArtifactTable
+        rows={rows}
+        selectedId="cap-a"
+        onSelect={vi.fn()}
+        multiSelectedIds={new Set(['thumb-a'])}
+        emptyMessage="none"
+      />
+    )
+    const selected = screen.getByTestId('artifact-row-cap-a')
+    const multi = screen.getByTestId('artifact-row-thumb-a')
+    expect(selected.className).toContain('border-l-accent')
+    expect(selected.className).toContain('bg-accent-subtle')
+    expect(selected.getAttribute('data-multi-selected')).toBeNull()
+    expect(multi.className).toContain('border-l-accent')
+    expect(multi.getAttribute('data-multi-selected')).toBe('true')
+    expect(multi.getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('without a toggle handler a modifier-click is a plain select', () => {
+    const onSelect = vi.fn()
+    render(<ArtifactTable rows={rows} selectedId={null} onSelect={onSelect} emptyMessage="none" />)
+    fireEvent.click(screen.getByTestId('artifact-row-cap-a'), { ctrlKey: true })
+    expect(onSelect).toHaveBeenCalledWith('cap-a')
+    expect(screen.getByTestId('artifact-row-thumb-a').className).toContain('border-l-transparent')
+  })
+})
+
+describe('ArtifactTable CAPTURED cell (#1552)', () => {
+  it('shows a capture time bare and names any other clock on the cell', () => {
+    const facts = new Map([['cap-a', { capturedAt: CAPTURE_A_CAPTURED_AT }]])
+    render(
+      <ArtifactTable
+        rows={[CAPTURE_A, THUMB_A, STAGED_PDF].map((row) => toArtifactRow(row, INVENTORY, facts))}
+        selectedId={null}
+        onSelect={vi.fn()}
+        emptyMessage="none"
+      />
+    )
+    for (const id of ['cap-a', 'thumb-a']) {
+      const row = screen.getByTestId(`artifact-row-${id}`)
+      expect(row.textContent).toContain('2026-09-01 09:58')
+      expect(screen.queryByTestId(`captured-clock-${id}`)).toBeNull()
+      expect(within(row).getByTitle('Captured 2026-09-01T09:58:12.000Z')).toBeTruthy()
+    }
+    expect(screen.getByTestId('artifact-row-staged-1').textContent).toContain('2026-09-10 12:00')
+    expect(screen.getByTestId('captured-clock-staged-1').textContent).toBe('arrived')
+  })
+})
+
 describe('ArtifactTabs', () => {
   it('switches tabs and shows the active tab’s hint', () => {
     render(
@@ -71,5 +151,22 @@ describe('ArtifactTabs', () => {
     expect(screen.getByText('beta body')).toBeTruthy()
     expect(screen.getByText('second')).toBeTruthy()
     expect(screen.queryByText('alpha body')).toBeNull()
+  })
+
+  it('follows the leading tab until one is picked, then keeps the pick while it exists', () => {
+    const tab = (id: string) => ({ id, label: id, content: <p>{id} body</p> })
+    const { rerender } = render(
+      <ArtifactTabs title="file" subtitle="path" tabs={[tab('b'), tab('c')]} />
+    )
+    expect(screen.getByText('b body')).toBeTruthy()
+    // A tab arriving ahead of the others becomes the one shown.
+    rerender(<ArtifactTabs title="file" subtitle="path" tabs={[tab('a'), tab('b'), tab('c')]} />)
+    expect(screen.getByText('a body')).toBeTruthy()
+    fireEvent.click(screen.getByRole('tab', { name: 'c' }))
+    rerender(<ArtifactTabs title="file" subtitle="path" tabs={[tab('a'), tab('c')]} />)
+    expect(screen.getByText('c body')).toBeTruthy()
+    // A picked tab the row does not have falls back to the leading one.
+    rerender(<ArtifactTabs title="file" subtitle="path" tabs={[tab('a'), tab('b')]} />)
+    expect(screen.getByText('a body')).toBeTruthy()
   })
 })

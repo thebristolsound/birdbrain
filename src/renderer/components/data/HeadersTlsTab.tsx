@@ -1,4 +1,5 @@
-import type { Capture, TlsCertChainResult } from '@shared/types'
+import type { ReactNode } from 'react'
+import type { Capture, TlsCertChainResult, TlsCertSummary } from '@shared/types'
 
 // The response headers and the corroboration-only TLS chain a Capture
 // recorded (#119, #123). Both are read off the Capture row, which mirrors the
@@ -27,6 +28,33 @@ export function hasHeadersOrTls(capture: Capture): boolean {
   return parseHeaders(capture.headers).length > 0 || capture.tlsCertChain !== undefined
 }
 
+export type CertRole = 'leaf' | 'intermediate' | 'root'
+
+// The card's role pill (#1552), read from the chain alone: the re-fetch
+// records it leaf first, so position 0 is the leaf, a later certificate that
+// names itself as issuer is the root, and anything between is an
+// intermediate. Nothing here checks a signature.
+export function certRole(cert: TlsCertSummary, index: number): CertRole {
+  if (index === 0) return 'leaf'
+  return cert.subject === cert.issuer ? 'root' : 'intermediate'
+}
+
+// The common name from a recorded distinguished name, for the card heading;
+// the full name when there is no CN part.
+export function commonName(name: string): string {
+  const match = /(?:^|,\s*)CN=([^,]+)/.exec(name)
+  return match ? match[1].trim() : name
+}
+
+function CertField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex gap-2.5 font-mono text-[11px] leading-[1.7]">
+      <span className="w-[66px] shrink-0 text-text-faint">{label}</span>
+      <span className="min-w-0 break-all text-text-muted">{children}</span>
+    </div>
+  )
+}
+
 function TlsBlock({ tls }: { tls: TlsCertChainResult }) {
   if ('error' in tls) {
     return (
@@ -40,15 +68,29 @@ function TlsBlock({ tls }: { tls: TlsCertChainResult }) {
       {tls.chain.map((cert, index) => (
         <li
           key={cert.fingerprint256}
-          className="rounded border border-border bg-card p-2 font-mono text-[11px] text-text-secondary"
+          className="rounded border border-border bg-card px-3 py-2.5"
           style={{ marginLeft: index * 12 }}
+          data-testid={`tls-cert-${index}`}
         >
-          <div className="text-text-primary">{cert.subject}</div>
-          <div className="text-text-muted">issuer {cert.issuer}</div>
-          <div className="text-text-muted">
-            valid {cert.validFrom} → {cert.validTo}
+          <div className="mb-1.5 flex items-center gap-2">
+            <span
+              className="shrink-0 rounded bg-elevated px-1.5 py-px font-mono text-[10px] text-text-muted"
+              data-testid="tls-cert-role"
+            >
+              {certRole(cert, index)}
+            </span>
+            <span
+              className="min-w-0 truncate font-mono text-xs font-semibold text-text-primary"
+              title={cert.subject}
+            >
+              {commonName(cert.subject)}
+            </span>
           </div>
-          <div className="break-all text-text-faint">sha256 {cert.fingerprint256}</div>
+          <CertField label="issuer">{cert.issuer}</CertField>
+          <CertField label="valid">
+            {cert.validFrom} → {cert.validTo}
+          </CertField>
+          <CertField label="fingerprint">{cert.fingerprint256}</CertField>
         </li>
       ))}
     </ol>

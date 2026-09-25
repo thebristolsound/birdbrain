@@ -201,8 +201,12 @@ describe('AnnotationEditor pin popover', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete pin' }))
 
     await waitFor(() => expect(deletePin).toHaveBeenCalledWith('p1'))
+    expect(deletePin).toHaveBeenCalledTimes(1)
     expect(screen.queryByTestId('pin-popover')).toBeNull()
     expect(screen.queryByText('canvas pin 1')).toBeNull()
+    expect(screen.getByText('canvas pin 2')).toBeDefined()
+    const legend = screen.getByTestId('pin-legend')
+    expect(within(legend).getAllByRole('button').map((r) => r.textContent)).toEqual(['2No note'])
   })
 
   it('still lets a saved note be corrected', async () => {
@@ -277,8 +281,11 @@ describe('AnnotationEditor pin popover', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
 
     await waitFor(() => expect(deletePin).toHaveBeenCalledWith(newId))
+    expect(deletePin).toHaveBeenCalledTimes(1)
     expect(screen.queryByTestId('pin-popover')).toBeNull()
     expect(screen.queryByText('canvas pin 3')).toBeNull()
+    expect(screen.getByText('canvas pin 1')).toBeDefined()
+    expect(screen.getByText('canvas pin 2')).toBeDefined()
   })
 
   it('discards a new pin on Escape as well', async () => {
@@ -291,5 +298,9 @@ describe('AnnotationEditor pin popover', () => {
 
     const newId = upsertPin.mock.calls[0][0].id as string
     await waitFor(() => expect(deletePin).toHaveBeenCalledWith(newId))
+    expect(deletePin).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText('canvas pin 3')).toBeNull()
+    expect(screen.getByText('canvas pin 1')).toBeDefined()
+    expect(screen.getByText('canvas pin 2')).toBeDefined()
   })
 })

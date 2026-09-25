@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { Capture, Case, Note, Selector, Tag } from '@shared/types'
 
+vi.mock('@renderer/hooks/useReduceMotion', () => ({ useReduceMotion: () => true }))
+
 const navigate = vi.hoisted(() => vi.fn())
 
 vi.mock('@tanstack/react-router', () => ({

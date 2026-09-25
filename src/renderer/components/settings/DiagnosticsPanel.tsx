@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Activity, Check, Copy, MessageSquareWarning, RefreshCw } from 'lucide-react'
+import { Check, Copy, MessageSquareWarning, RefreshCw } from 'lucide-react'
 import type {
   DiagnosticsSnapshot,
   KeyProtectionState,
@@ -19,6 +19,7 @@ import { cn } from '@renderer/lib/utils'
 import { LogTab } from '@renderer/components/diagnostics/LogTab'
 import {
   diagnosticsQueryOptions,
+  exportLogs,
   openStorageRoot,
   unreconciledDeletionsQueryOptions
 } from '@renderer/lib/api/diagnostics'
@@ -233,6 +234,19 @@ function ManifestReconciliation({ report }: { report: UnreconciledDeletionReport
 
 export function DiagnosticsPanel() {
   const [copied, setCopied] = useState(false)
+  const [exporting, setExporting] = useState(false)
+
+  async function handleExportLogs() {
+    setExporting(true)
+    try {
+      const result = await exportLogs()
+      if (result) notify.success('Logs exported')
+    } catch (error) {
+      notify.error('Could not export logs', { cause: error })
+    } finally {
+      setExporting(false)
+    }
+  }
   const { data, refetch, isFetching } = useQuery({
     ...diagnosticsQueryOptions,
     refetchInterval: POLL_MS
@@ -301,34 +315,15 @@ export function DiagnosticsPanel() {
     <Card>
       <CardContent>
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="flex items-center gap-2 text-lg font-semibold text-text-primary">
-            <Activity className="h-4 w-4" />
+          <h2 className="font-display text-[10px] font-semibold uppercase tracking-wider text-text-faint">
             Diagnostics
           </h2>
           <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                void refetch()
-                void refetchReconciliation()
-              }}
-              disabled={isFetching}
-              className="gap-1.5"
-            >
-              <RefreshCw className={cn('h-3.5 w-3.5', isFetching && 'animate-spin')} />
-              Refresh
-            </Button>
-            <Button variant="ghost" size="sm" onClick={handleCopy} className="gap-1.5">
-              {copied ? (
-                <Check className="h-3.5 w-3.5 text-green-500" />
-              ) : (
-                <Copy className="h-3.5 w-3.5" />
-              )}
-              {copied ? 'Copied' : 'Copy report'}
+            <Button variant="outline" size="sm" onClick={handleExportLogs} disabled={exporting}>
+              {exporting ? 'Exporting…' : 'Export logs'}
             </Button>
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
               className="gap-1.5"
               onClick={() =>
@@ -348,6 +343,29 @@ export function DiagnosticsPanel() {
           </TabsList>
 
           <TabsContent value="snapshot" className="space-y-6">
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  void refetch()
+                  void refetchReconciliation()
+                }}
+                disabled={isFetching}
+                className="gap-1.5"
+              >
+                <RefreshCw className={cn('h-3.5 w-3.5', isFetching && 'animate-spin')} />
+                Refresh
+              </Button>
+              <Button variant="ghost" size="sm" onClick={handleCopy} className="gap-1.5">
+                {copied ? (
+                  <Check className="h-3.5 w-3.5 text-green-500" />
+                ) : (
+                  <Copy className="h-3.5 w-3.5" />
+                )}
+                {copied ? 'Copied' : 'Copy report'}
+              </Button>
+            </div>
             <Section title="Environment">
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 <StatBlock label="Version" value={snap.app.version} />

@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -52,12 +61,14 @@ vi.mock('electron', () => ({
 import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createPersona, getPersona, listPersonas } from '@main/services/db/personaRepo'
 import {
+  clearOrphanedPartitions,
   clearPersona,
   cookieUrl,
   getPersonaStorageState,
   importCookies,
   partitionForPersona,
-  PersonaNotFoundError
+  PersonaNotFoundError,
+  removeOrphanedPartitions
 } from '@main/services/persona/personaSessions'
 import { UnsupportedCookieFileError } from '@main/services/persona/cookieFiles'
 
@@ -324,6 +335,78 @@ describe('clearPersona', () => {
     await clearPersona(p.id)
     expect(await clearPersona(p.id)).toBe(false)
     expect(ctl.cleared).toHaveLength(1)
+  })
+})
+
+// The folders Chromium would have made for three personas: one live, one
+// deleted through the app, and one whose row a snapshot restore dropped.
+function seedPartitionFolders() {
+  const live = createPersona({ label: 'live' })
+  const deleted = createPersona({ label: 'deleted' })
+  const orphan = '0f8e2c1a-1b2c-4d5e-9f00-aabbccddeeff'
+  const root = join(userData, 'Partitions')
+  for (const id of [live.id, deleted.id, orphan]) {
+    mkdirSync(join(root, `persona-${id}`), { recursive: true })
+    writeFileSync(join(root, `persona-${id}`, 'Cookies'), 'x')
+  }
+  mkdirSync(join(root, 'other-partition'))
+  return { live: live.id, deleted: deleted.id, orphan, root }
+}
+
+describe('removeOrphanedPartitions', () => {
+  it('removes only the folder of a persona with no row, live or deleted', async () => {
+    const { live, deleted, orphan, root } = seedPartitionFolders()
+    await clearPersona(deleted)
+    removeOrphanedPartitions(userData, { sessionDataPath: userData })
+    expect(readdirSync(root).sort()).toEqual(
+      ['other-partition', `persona-${deleted}`, `persona-${live}`].sort()
+    )
+    expect(existsSync(join(root, `persona-${orphan}`))).toBe(false)
+  })
+
+  it('touches nothing when the database is not beside the session folders', () => {
+    const { root } = seedPartitionFolders()
+    const before = readdirSync(root).sort()
+    removeOrphanedPartitions(userData, { sessionDataPath: join(userData, 'elsewhere') })
+    removeOrphanedPartitions(join(userData, 'elsewhere'), { sessionDataPath: userData })
+    expect(readdirSync(root).sort()).toEqual(before)
+  })
+
+  it('does nothing when there are no partition folders, or they cannot be listed', () => {
+    expect(() => removeOrphanedPartitions(userData, { sessionDataPath: userData })).not.toThrow()
+    writeFileSync(join(userData, 'Partitions'), 'not a folder')
+    expect(() => removeOrphanedPartitions(userData, { sessionDataPath: userData })).not.toThrow()
+  })
+})
+
+describe('clearOrphanedPartitions', () => {
+  it("clears an orphan's storage through its session and leaves live personas alone", async () => {
+    const { live, orphan, root } = seedPartitionFolders()
+    await clearOrphanedPartitions(userData, { sessionDataPath: userData })
+    expect(ctl.cleared).toEqual([partitionForPersona(orphan)])
+    expect(ctl.cleared).not.toContain(partitionForPersona(live))
+    expect(existsSync(join(root, `persona-${orphan}`))).toBe(true)
+  })
+
+  it('keeps going past a session that fails to clear', async () => {
+    seedPartitionFolders()
+    const clearStorageData = vi.fn(async () => {
+      throw new Error('locked')
+    })
+    const fromPartition = vi.fn(() => ({ clearStorageData }))
+    await expect(
+      clearOrphanedPartitions(userData, {
+        sessionDataPath: userData,
+        fromPartition: fromPartition as unknown as (partition: string) => Electron.Session
+      })
+    ).resolves.toBeUndefined()
+    expect(clearStorageData).toHaveBeenCalledTimes(1)
+  })
+
+  it('touches nothing when the database is not beside the session folders', async () => {
+    seedPartitionFolders()
+    await clearOrphanedPartitions(userData, { sessionDataPath: join(userData, 'elsewhere') })
+    expect(ctl.cleared).toEqual([])
   })
 })
 

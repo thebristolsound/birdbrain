@@ -43,7 +43,9 @@ let onCopyUrl: Mock<() => void>
 let onCopyHash: Mock<() => void>
 let onDuplicate: Mock<() => void>
 
-function renderPanel(props: { isDuplicating?: boolean; capture?: Capture } = {}) {
+function renderPanel(
+  props: { isDuplicating?: boolean; onDelete?: () => void; capture?: Capture } = {}
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
@@ -58,7 +60,7 @@ function renderPanel(props: { isDuplicating?: boolean; capture?: Capture } = {})
       onCopyHash={onCopyHash}
       onDuplicate={onDuplicate}
       isDuplicating={props.isDuplicating ?? false}
-      onDelete={vi.fn()}
+      onDelete={props.onDelete ?? vi.fn()}
       onOpenAddNote={vi.fn()}
     />,
     { wrapper: Wrapper }
@@ -83,6 +85,22 @@ afterEach(() => {
 })
 
 describe('CaptureDetailsPanel actions menu', () => {
+  // The item unmounts with the menu. The delete dialog records whatever holds
+  // focus as it opens, and hands focus back there on close (#1536).
+  it('puts focus back on the menu trigger before opening the delete dialog', async () => {
+    let focusedAtDelete: Element | null = null
+    renderPanel({ onDelete: () => (focusedAtDelete = document.activeElement) })
+    const trigger = await screen.findByTestId('capture-details-actions-btn')
+    fireEvent.click(trigger)
+    const item = screen.getByText('Delete capture').closest('button') as HTMLButtonElement
+    item.focus()
+
+    fireEvent.click(item)
+
+    expect(focusedAtDelete).toBe(trigger)
+    expect(document.activeElement).toBe(trigger)
+  })
+
   it('offers Copy URL with its accelerator, and closes the menu on use', async () => {
     renderPanel()
 

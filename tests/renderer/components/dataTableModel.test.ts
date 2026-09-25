@@ -1,7 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import type { ExhibitVerification } from '@shared/types'
+import type {
+  ExhibitVerification,
+  InventoryDerivedFileRow,
+  InventoryExhibitRow,
+  InventoryRow
+} from '@shared/types'
 import {
   bucketForRow,
+  capturedTitle,
   filterRows,
   formatBytes,
   integrityCounts,
@@ -9,8 +15,10 @@ import {
   isIntegrityException,
   rowsForNode,
   shortHash,
+  stripBreadcrumb,
   toArtifactRow,
-  type CaptureFacts
+  type CaptureFacts,
+  type CaptureFactsById
 } from '@renderer/components/data/dataTableModel'
 import { CAPTURE_A, CAPTURE_LEGACY, HASH_A, INVENTORY, STAGED_PDF, THUMB_A } from '../dataFixtures'
 
@@ -23,20 +31,28 @@ const rows = (key: Parameters<typeof rowsForNode>[1]) =>
   rowsForNode(INVENTORY, key, FACTS).map((row) => toArtifactRow(row, INVENTORY, FACTS))
 
 describe('toArtifactRow', () => {
-  it('derives SOURCE per entity: URL host, parent Exhibit, origin', () => {
-    expect(toArtifactRow(CAPTURE_A, INVENTORY, FACTS).source).toBe('example.com')
-    expect(toArtifactRow(THUMB_A, INVENTORY, FACTS).source).toBe('Example page')
-    expect(toArtifactRow(STAGED_PDF, INVENTORY, FACTS).source).toBe('manual-upload')
+  // SOURCE printed the URL host, the parent's name or the origin before
+  // #1552; the mock prints the capture id, which is the Exhibit citation here.
+  it('cites the Exhibit a row belongs to in SOURCE, the parent’s for a Derived File', () => {
+    const source = (row: InventoryRow) => {
+      const { source, sourceDetail } = toArtifactRow(row, INVENTORY, FACTS)
+      return [source, sourceDetail]
+    }
+    expect(source(CAPTURE_A)).toEqual(['Exhibit 1', 'https://example.com/page'])
+    expect(source(CAPTURE_LEGACY)).toEqual(['Exhibit 2', 'https://old.example.org/'])
+    expect(source(THUMB_A)).toEqual(['Exhibit 1', 'Example page'])
+    expect(source(STAGED_PDF)).toEqual(['manual-upload', 'manual-upload'])
   })
 
-  it('falls back to the raw URL when it does not parse, and to origin when there is none', () => {
-    const facts = new Map<string, CaptureFacts>([['cap-a', { url: 'not a url' }]])
-    expect(toArtifactRow(CAPTURE_A, INVENTORY, facts).source).toBe('not a url')
-    expect(toArtifactRow(CAPTURE_A, INVENTORY, new Map()).source).toBe('extension')
-    expect(
-      toArtifactRow({ ...STAGED_PDF, sourceUrl: 'https://drive.example/x' }, INVENTORY, facts)
-        .source
-    ).toBe('drive.example')
+  it('falls back to origin behind SOURCE, and a pooled file keeps its stated host', () => {
+    expect(toArtifactRow(CAPTURE_A, INVENTORY, new Map()).sourceDetail).toBe('extension')
+    const orphan = { ...THUMB_A, parentExhibitId: 'gone' }
+    expect(toArtifactRow(orphan, INVENTORY, FACTS).source).toBe('gone')
+    const stated = { ...STAGED_PDF, sourceUrl: 'https://drive.example/x' }
+    expect(toArtifactRow(stated, INVENTORY, FACTS).source).toBe('drive.example')
+    expect(toArtifactRow(stated, INVENTORY, FACTS).sourceDetail).toBe('https://drive.example/x')
+    const unparsed = { ...STAGED_PDF, sourceUrl: 'not a url' }
+    expect(toArtifactRow(unparsed, INVENTORY, FACTS).source).toBe('not a url')
   })
 
   it('carries anchoring and pooled state separately from kind', () => {
@@ -47,11 +63,96 @@ describe('toArtifactRow', () => {
     const anchored = toArtifactRow(CAPTURE_A, INVENTORY, FACTS)
     expect(anchored).toMatchObject({ staged: false, anchored: true, exhibitNumber: 1 })
   })
+})
 
-  it('takes CAPTURED from the entity’s own time column', () => {
-    expect(toArtifactRow(CAPTURE_A, INVENTORY, FACTS).capturedAt).toBe(CAPTURE_A.committedAt)
-    expect(toArtifactRow(THUMB_A, INVENTORY, FACTS).capturedAt).toBe(THUMB_A.createdAt)
-    expect(toArtifactRow(STAGED_PDF, INVENTORY, FACTS).capturedAt).toBe(STAGED_PDF.arrivedAt)
+// Known answers for CAPTURED per row kind (#1552). The column used to show the
+// commit, creation and arrival times under the one heading; it now shows the
+// capture time wherever one exists and names any other clock it shows.
+describe('CAPTURED known answers', () => {
+  const CAPTURED_AT = '2026-09-01T09:58:12.000Z'
+  const facts = new Map<string, CaptureFacts>([
+    ['cap-a', { url: 'https://example.com/page', capturedAt: CAPTURED_AT }]
+  ])
+  const DOC: InventoryExhibitRow = {
+    ...CAPTURE_A,
+    id: 'doc-1',
+    kind: 'document',
+    origin: 'manual-upload',
+    exhibitNumber: 3,
+    name: 'report.pdf',
+    committedAt: '2026-09-12T08:00:00.000Z'
+  }
+  const DOC_TEXT: InventoryDerivedFileRow = {
+    ...THUMB_A,
+    id: 'doc-text',
+    parentExhibitId: 'doc-1',
+    derivation: 'text',
+    name: 'text',
+    createdAt: '2026-09-12T08:00:03.000Z'
+  }
+  const ORPHAN: InventoryDerivedFileRow = { ...THUMB_A, id: 'orphan', parentExhibitId: 'gone' }
+  const inventory: InventoryRow[] = [...INVENTORY, DOC, DOC_TEXT, ORPHAN]
+  const cell = (row: InventoryRow, captureFacts: CaptureFactsById = facts) => {
+    const artifact = toArtifactRow(row, inventory, captureFacts)
+    return [artifact.capturedClock, formatStamp(artifact.capturedAt), capturedTitle(artifact)]
+  }
+
+  it('shows a Capture its own capture time, not its commit time', () => {
+    expect(cell(CAPTURE_A)).toEqual([
+      'captured',
+      '2026-09-01 09:58',
+      'Captured 2026-09-01T09:58:12.000Z'
+    ])
+  })
+
+  it('shows a Derived File of a Capture its parent’s capture time, not its creation time', () => {
+    expect(cell(THUMB_A)).toEqual([
+      'captured',
+      '2026-09-01 09:58',
+      'Captured 2026-09-01T09:58:12.000Z'
+    ])
+  })
+
+  it('names the commit time on an Exhibit that has no capture time, and on its Derived Files', () => {
+    const committed = [
+      'committed',
+      '2026-09-12 08:00',
+      'Committed 2026-09-12T08:00:00.000Z; no capture time is shown for this file'
+    ]
+    expect(cell(DOC)).toEqual(committed)
+    expect(cell(DOC_TEXT)).toEqual(committed)
+    // A Capture whose facts have not loaded is never given its commit time as
+    // a capture time.
+    expect(cell(CAPTURE_A, new Map())).toEqual([
+      'committed',
+      '2026-09-01 10:00',
+      'Committed 2026-09-01T10:00:00.000Z; no capture time is shown for this file'
+    ])
+  })
+
+  it('names the arrival time on a pooled file', () => {
+    expect(cell(STAGED_PDF)).toEqual([
+      'arrived',
+      '2026-09-10 12:00',
+      'Arrived in the pool 2026-09-10T12:00:00.000Z; not captured and not anchored'
+    ])
+  })
+
+  it('names the creation time on a Derived File whose parent is not in the inventory', () => {
+    expect(cell(ORPHAN)).toEqual([
+      'created',
+      '2026-09-01 10:00',
+      "Created 2026-09-01T10:00:05.000Z; its parent Exhibit is not in this case's inventory"
+    ])
+  })
+})
+
+describe('stripBreadcrumb', () => {
+  it('reads the SOURCE citation and the row’s group, as the mock’s capture and group', () => {
+    const crumb = (row: InventoryRow) => stripBreadcrumb(toArtifactRow(row, INVENTORY, FACTS))
+    expect(crumb(CAPTURE_A)).toBe('Exhibit 1 / raw')
+    expect(crumb(THUMB_A)).toBe('Exhibit 1 / derived')
+    expect(crumb(STAGED_PDF)).toBe('manual-upload / staging')
   })
 })
 
@@ -179,6 +280,13 @@ describe('filterRows', () => {
     expect(toArtifactRow(THUMB_A, INVENTORY, FACTS).citation).toBeNull()
   })
 
+  it('cites a Shared Case row by its prefixed citation in SOURCE, the parent’s for a Derived File', () => {
+    const prefixed = { ...CAPTURE_A, citation: 'NK-1' }
+    const inventory = INVENTORY.map((row) => (row.id === 'cap-a' ? prefixed : row))
+    expect(toArtifactRow(prefixed, inventory, FACTS).source).toBe('Exhibit NK-1')
+    expect(toArtifactRow(THUMB_A, inventory, FACTS).source).toBe('Exhibit NK-1')
+  })
+
   it('reads a short hex query as a number, not a hash fragment', () => {
     // Every fixture hash contains a "2"; only Exhibit 2 may answer to it.
     expect(filterRows(all, '2').map((r) => r.id)).toEqual(['cap-legacy'])
@@ -187,9 +295,9 @@ describe('filterRows', () => {
   })
 
   it('does not search the URL behind SOURCE, only the four fields (R21)', () => {
-    // SOURCE renders "example.com" for cap-a, so a search over rendered cells
-    // or over the row's URL would return it; the field is not searchable.
-    expect(all.find((r) => r.id === 'cap-a')?.source).toBe('example.com')
+    // SOURCE's hover title carries cap-a's URL, so a search over the row's
+    // URL would return it; the field is not searchable.
+    expect(all.find((r) => r.id === 'cap-a')?.sourceDetail).toBe('https://example.com/page')
     expect(filterRows(all, 'example.com')).toEqual([])
     expect(filterRows(all, 'manual-upload')).toEqual([])
   })
@@ -212,8 +320,11 @@ describe('formatting', () => {
     expect(formatStamp('not a date')).toBe('not a date')
   })
 
-  it('shortens a hash for the column without changing it', () => {
-    expect(shortHash(HASH_A)).toBe(HASH_A.slice(0, 12))
+  // Twelve characters and no ellipsis before #1552, the superseded form.
+  it('shortens a hash to 14 characters and an ellipsis, and leaves a short one whole', () => {
+    expect(shortHash(HASH_A)).toBe('a1b2c3d4e5f607…')
+    expect(shortHash(HASH_A.slice(0, 14))).toBe(HASH_A.slice(0, 14))
     expect(shortHash('abc')).toBe('abc')
+    expect(shortHash('')).toBe('')
   })
 })

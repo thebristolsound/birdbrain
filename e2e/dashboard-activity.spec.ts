@@ -156,7 +156,7 @@ test.describe('Dashboard recent activity', () => {
 
     await page.waitForURL(/#\/cases\/.+\/notes/, { timeout: 10000 })
     expect(page.url()).toContain(`/cases/${caseId}/notes`)
-    const card = page.getByTestId(`note-card-${noteId}`)
+    const card = page.getByTestId(`note-row-${noteId}`)
     await expect(card).toBeVisible({ timeout: 10000 })
     await expect(card).toHaveAttribute('aria-current', 'true')
   })

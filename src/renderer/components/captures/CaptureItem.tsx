@@ -65,7 +65,7 @@ export function CaptureItem({
 }: CaptureItemProps) {
   const { thumbnail } = useCaptureThumbnail(capture.id)
 
-  let hostname = ''
+  let hostname: string
   try {
     hostname = new URL(capture.url).hostname
   } catch {

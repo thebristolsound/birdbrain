@@ -16,6 +16,10 @@ export const HASH_LEGACY = 'ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766
 export const HASH_THUMB = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
 export const HASH_STAGED = 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
 
+// cap-a's capture time, earlier than its commit time as a real capture's is:
+// the two differ so a test can tell which clock a cell shows (#1552).
+export const CAPTURE_A_CAPTURED_AT = '2026-09-01T09:58:12.000Z'
+
 export const CAPTURE_A: InventoryExhibitRow = {
   rowType: 'anchored',
   entity: 'exhibit',
@@ -107,6 +111,7 @@ function capture(overrides: Partial<Capture> & Pick<Capture, 'id'>): Capture {
 export const CAPTURES: Capture[] = [
   capture({
     id: 'cap-a',
+    timestamp: CAPTURE_A_CAPTURED_AT,
     toolVersion: '1.4.2',
     extensionVersion: '1.4.0',
     browserVersion: 'Chrome 140',

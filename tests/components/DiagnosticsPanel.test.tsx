@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { DiagnosticsSnapshot, UnreconciledDeletionReport } from '@shared/types'
@@ -137,6 +137,55 @@ describe('DiagnosticsPanel storage folder action', () => {
 
   afterEach(() => {
     cleanup()
+  })
+
+  it('puts exactly the two mock actions in the header and exports logs', async () => {
+    const exportLogs = vi.fn().mockResolvedValue({ path: '/tmp/logs.zip' })
+    fakeBridge({
+      diagnostics: { get: vi.fn().mockResolvedValue(snapshot), unreconciledDeletions, exportLogs }
+    })
+    renderPanel()
+    const heading = await screen.findByRole('heading', { name: 'Diagnostics' })
+    const header = within(heading.parentElement!)
+    expect(header.getAllByRole('button').map((button) => button.textContent)).toEqual([
+      'Export logs',
+      'Report a problem'
+    ])
+    expect(heading.querySelector('svg')).toBeNull()
+    fireEvent.click(header.getByRole('button', { name: 'Export logs' }))
+    await waitFor(() => expect(exportLogs).toHaveBeenCalledOnce())
+    await waitFor(() => expect(toastFns.success).toHaveBeenCalled())
+  })
+
+  it('does not report cancelled exports as successful', async () => {
+    fakeBridge({
+      diagnostics: {
+        get: vi.fn().mockResolvedValue(snapshot),
+        unreconciledDeletions,
+        exportLogs: vi.fn().mockResolvedValue(null)
+      }
+    })
+    renderPanel()
+    fireEvent.click(await screen.findByRole('button', { name: 'Export logs' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Export logs' })).toBeDefined())
+    expect(toastFns.success).not.toHaveBeenCalled()
+  })
+
+  it('shows export failure and makes the action usable again', async () => {
+    fakeBridge({
+      diagnostics: {
+        get: vi.fn().mockResolvedValue(snapshot),
+        unreconciledDeletions,
+        log,
+        exportLogs: vi.fn().mockRejectedValue(new Error('Disk is full'))
+      }
+    })
+    renderPanel()
+    fireEvent.click(await screen.findByRole('button', { name: 'Export logs' }))
+    await waitFor(() => expect(toastFns.error).toHaveBeenCalled())
+    expect(
+      (screen.getByRole('button', { name: 'Export logs' }) as HTMLButtonElement).disabled
+    ).toBe(false)
   })
 
   it('shows the signing key as protected from the snapshot', async () => {

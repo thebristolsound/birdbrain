@@ -511,6 +511,7 @@ export const LOG_SOURCES = [
   'demoCase',
   'exhibits',
   'staging',
+  'persona',
   'renderer'
 ] as const
 export type LogSource = (typeof LOG_SOURCES)[number]
@@ -645,7 +646,14 @@ export const LOG_CODES = [
   'staging.commit_failed',
   // A pooled file that could not be unlinked on discard; the row is kept so
   // the bytes stay declared.
-  'staging.discard_failed'
+  'staging.discard_failed',
+  // A persona session folder whose persona is not in the database, as after
+  // restoring a snapshot that predates it (#1497). Cleared because nothing
+  // else can reach those cookies; skipped when the database and the session
+  // folders live in different places, where absence proves nothing.
+  'persona.orphan_partitions_cleared',
+  'persona.orphan_partition_clear_failed',
+  'persona.orphan_sweep_skipped'
 ] as const
 export type LogCode = (typeof LOG_CODES)[number]
 

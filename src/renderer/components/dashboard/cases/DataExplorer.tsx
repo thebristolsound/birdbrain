@@ -47,6 +47,7 @@ import {
   filterRows,
   integrityCounts,
   rowsForNode,
+  stripBreadcrumb,
   toArtifactRow,
   type CaptureFacts,
   type RowContext
@@ -100,6 +101,9 @@ export function DataExplorer() {
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(DEFAULT_EXPANDED)
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // The modifier-click multi-selection (#1552), apart from the single
+  // selection the strip follows, and cleared with it on a node change.
+  const [multiIds, setMultiIds] = useState<ReadonlySet<string>>(() => new Set())
   const [discardTarget, setDiscardTarget] = useState<{ id: string; name: string } | null>(null)
   const navigate = useNavigate()
   const selectCapture = useAppStore((s) => s.selectCapture)
@@ -128,7 +132,11 @@ export function DataExplorer() {
   const captureFacts = useMemo(() => {
     const map = new Map<string, CaptureFacts>()
     for (const capture of captures) {
-      map.set(capture.id, { url: capture.url, lastVerifiedStatus: capture.lastVerifiedStatus })
+      map.set(capture.id, {
+        url: capture.url,
+        lastVerifiedStatus: capture.lastVerifiedStatus,
+        capturedAt: capture.timestamp
+      })
     }
     return map
   }, [captures])
@@ -180,8 +188,11 @@ export function DataExplorer() {
   )
 
   // Resolved from the table as filtered, so a row the search has hidden does
-  // not keep its strip open.
-  const selectedRow = tableRows.find((row) => row.id === selectedId)?.raw ?? null
+  // not keep its strip open. With nothing selected the strip shows the table's
+  // first row, as the mock does (#1552), so it is absent only when the table
+  // is empty.
+  const shownRow = tableRows.find((row) => row.id === selectedId) ?? tableRows[0]
+  const selectedRow = shownRow?.raw ?? null
   const selectedCapture =
     selectedRow?.entity === 'exhibit' ? captureById.get(selectedRow.id) : undefined
   const { data: extractedText } = useQuery({
@@ -249,6 +260,20 @@ export function DataExplorer() {
     [selectCapture, navigate, caseId]
   )
 
+  const selectNode = useCallback((key: DataNodeKey) => {
+    setNode(key)
+    setSelectedId(null)
+    setMultiIds(new Set())
+  }, [])
+  const toggleMulti = useCallback((id: string) => {
+    setMultiIds((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
   function toggle(key: DataNodeKey) {
     setExpanded((current) => {
       const next = new Set(current)
@@ -274,11 +299,16 @@ export function DataExplorer() {
     (rowId: string) => {
       const row = rows.find((r) => r.id === rowId)
       if (!row) return
-      if (row.rowType === 'staged') setNode('staging')
-      else setNode(row.entity === 'derived-file' ? `derived:${row.id}` : `exhibit:${row.id}`)
+      selectNode(
+        row.rowType === 'staged'
+          ? 'staging'
+          : row.entity === 'derived-file'
+            ? `derived:${row.id}`
+            : `exhibit:${row.id}`
+      )
       setSelectedId(row.id)
     },
-    [rows]
+    [rows, selectNode]
   )
 
   const captureIds = useMemo(() => new Set(captureById.keys()), [captureById])
@@ -288,10 +318,7 @@ export function DataExplorer() {
     captureIds,
     onOpenCapture: openCapture,
     onVerify: verifyIds,
-    onSelectNode: (key) => {
-      setNode(key)
-      setSelectedId(null)
-    },
+    onSelectNode: selectNode,
     onSetExpanded: setExpandedKeys,
     onCommit: (id) => commit.mutate([id]),
     onDiscard: requestDiscard
@@ -427,10 +454,7 @@ export function DataExplorer() {
           <DataTree
             nodes={tree}
             selected={node}
-            onSelect={(key) => {
-              setNode(key)
-              setSelectedId(null)
-            }}
+            onSelect={selectNode}
             onToggle={toggle}
             onToggleBelow={(key, open) =>
               setExpandedKeys([key, ...descendantKeys(rows, key)], open)
@@ -514,6 +538,8 @@ export function DataExplorer() {
                     rows={tableRows}
                     selectedId={selectedId}
                     onSelect={setSelectedId}
+                    multiSelectedIds={multiIds}
+                    onToggleMulti={toggleMulti}
                     onOpen={(row) => {
                       const parent =
                         row.raw.entity === 'derived-file' ? row.raw.parentExhibitId : row.id
@@ -536,10 +562,10 @@ export function DataExplorer() {
                 </>
               )}
             </section>
-            {selectedRow && node !== 'manifest-ledger' && (
+            {shownRow && selectedRow && node !== 'manifest-ledger' && (
               <ArtifactTabs
                 title={selectedRow.name}
-                subtitle={selectedRow.path ?? 'no file recorded'}
+                subtitle={stripBreadcrumb(shownRow)}
                 tabs={tabs}
                 action={
                   selectedExhibitId ? (

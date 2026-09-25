@@ -42,7 +42,7 @@ function RecentCaptureCard({
       data-testid="overview-recent-item"
       className="w-[172px] shrink-0 text-left"
     >
-      <div className="relative aspect-[172/107] w-full overflow-hidden rounded-xl border border-border-strong bg-elevated">
+      <div className="relative aspect-[172/107] w-full overflow-hidden rounded-md border border-border-strong bg-elevated">
         {thumbnail ? (
           <img src={thumbnail} alt="" className="h-full w-full object-cover object-top" />
         ) : (
@@ -52,13 +52,13 @@ function RecentCaptureCard({
           <ShieldIcon size={11} strokeWidth={2} className={shieldColor} />
         </span>
         {isNew ? (
-          <span className="absolute left-1.5 top-1.5 rounded-full border border-sky-400/40 bg-sky-400/15 px-1.5 py-px font-display text-[8px] font-bold tracking-wide text-sky-400">
+          <span className="absolute left-1.5 top-1.5 rounded-full border border-sky-400/40 bg-sky-400/15 px-1.5 py-px font-display text-[10px] font-bold tracking-wide text-sky-400">
             NEW
           </span>
         ) : null}
       </div>
       <div className="mt-2">
-        <div className="line-clamp-2 font-display text-[11.5px] font-semibold leading-snug text-text-primary">
+        <div className="line-clamp-2 font-display text-[11px] font-semibold leading-snug text-text-primary">
           {capture.title || hostOf(capture.url)}
         </div>
         <div className="mt-1 flex items-center gap-1.5">
@@ -70,7 +70,7 @@ function RecentCaptureCard({
               {capture.exhibitCitation}
             </span>
           ) : null}
-          <span className="truncate font-mono text-[10px] text-text-muted">
+          <span className="truncate font-body text-[10px] text-text-muted">
             {hostOf(capture.url)}
           </span>
           <span className="shrink-0 font-body text-[10px] text-text-faint">

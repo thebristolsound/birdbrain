@@ -1,8 +1,11 @@
-import { session, safeStorage } from 'electron'
+import { readdirSync, rmSync } from 'fs'
+import { join, resolve } from 'path'
+import { app, session, safeStorage } from 'electron'
 import type { Session } from 'electron'
 import type { CookieRejection, PersonaImportResult, PersonaStorageState } from '@shared/types'
 import * as personaRepo from '@main/services/db/personaRepo'
 import { readCookieFile, type ImportedCookie } from '@main/services/persona/cookieFiles'
+import { logger } from '@main/services/logger'
 
 // One persistent Electron partition per Persona (ADR-0030, mechanism). The
 // partition is the only place a cookie value lives after import: Chromium
@@ -113,6 +116,79 @@ export function clearPersona(personaId: string, deps: PersonaSessionDeps = {}): 
     await resolveSession(personaId, deps).clearStorageData()
     return personaRepo.softDeletePersona(personaId)
   })
+}
+
+// Chromium keeps `persist:<name>` under `<sessionData>/Partitions/<name>`,
+// lowercased; persona ids are lowercase UUIDs, so the folder name maps back.
+const PARTITION_FOLDER_PREFIX = 'persona-'
+
+export interface OrphanSweepDeps extends PersonaSessionDeps {
+  sessionDataPath?: string
+}
+
+// A persona folder with no row at all, live or deleted, is an orphan:
+// restoring a database snapshot that predates the persona drops the row but
+// not the folder, and nothing in the app can reach its cookies after that.
+// When the database is not beside the session folders (BIRDBRAIN_USER_DATA
+// without a matching --user-data-dir) absence from this database proves
+// nothing, so nothing is swept.
+function findOrphans(userDataPath: string, deps: OrphanSweepDeps): string[] | null {
+  const sessionDataPath = deps.sessionDataPath ?? app.getPath('sessionData')
+  if (resolve(sessionDataPath) !== resolve(userDataPath)) {
+    logger.info('persona', 'persona.orphan_sweep_skipped')
+    return null
+  }
+  let names: string[]
+  try {
+    names = readdirSync(join(sessionDataPath, 'Partitions'))
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return []
+    logger.warn('persona', 'persona.orphan_partition_clear_failed', undefined, err)
+    return null
+  }
+  return names
+    .filter((name) => name.startsWith(PARTITION_FOLDER_PREFIX))
+    .map((name) => name.slice(PARTITION_FOLDER_PREFIX.length))
+    .filter((id) => personaRepo.getPersonaLabel(id) === undefined)
+}
+
+// At startup, before any session has opened an orphan's partition, so the
+// folder can go outright.
+export function removeOrphanedPartitions(userDataPath: string, deps: OrphanSweepDeps = {}): void {
+  const orphans = findOrphans(userDataPath, deps)
+  if (!orphans) return
+  const root = join(deps.sessionDataPath ?? app.getPath('sessionData'), 'Partitions')
+  let removed = 0
+  for (const id of orphans) {
+    try {
+      rmSync(join(root, `${PARTITION_FOLDER_PREFIX}${id}`), { recursive: true, force: true })
+      removed += 1
+    } catch (err) {
+      logger.warn('persona', 'persona.orphan_partition_clear_failed', undefined, err)
+    }
+  }
+  if (removed > 0) logger.info('persona', 'persona.orphan_partitions_cleared')
+}
+
+// After a snapshot restore the orphan's session may already be open, so its
+// storage is cleared through the session; the empty folder goes at the next
+// startup.
+export async function clearOrphanedPartitions(
+  userDataPath: string,
+  deps: OrphanSweepDeps = {}
+): Promise<void> {
+  const orphans = findOrphans(userDataPath, deps)
+  if (!orphans) return
+  let cleared = 0
+  for (const id of orphans) {
+    try {
+      await serialised(id, () => resolveSession(id, deps).clearStorageData())
+      cleared += 1
+    } catch (err) {
+      logger.warn('persona', 'persona.orphan_partition_clear_failed', undefined, err)
+    }
+  }
+  if (cleared > 0) logger.info('persona', 'persona.orphan_partitions_cleared')
 }
 
 // Same answer `signingKey.ts` gives for the key: Electron documents this as a

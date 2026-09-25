@@ -1,4 +1,5 @@
 import { getDb, type ImportCtx } from '@main/services/db/core'
+import { MEMBER_CODE_PATTERN } from '@shared/schemas'
 import type { Exhibit } from '@shared/types'
 
 // The identity and numbering rows of the Exhibit model (ADR-0023). A Capture's
@@ -254,6 +255,15 @@ export function importExhibitRows(rows: Record<string, unknown>[], ctx: ImportCt
   )
   for (const row of rows) {
     const oldId = row.id as string
+    // Every citation surface prints the code, so a code the roster rule would
+    // refuse is refused here too rather than stored for them to render.
+    const memberCode = row.member_code ?? null
+    if (
+      memberCode !== null &&
+      (typeof memberCode !== 'string' || !MEMBER_CODE_PATTERN.test(memberCode))
+    ) {
+      throw new Error(`Exhibit ${oldId} carries an invalid Member Code`)
+    }
     const newId = ctx.mapId(oldId)
     const oldPath = row.path as string | null
     insert.run(
@@ -270,7 +280,7 @@ export function importExhibitRows(rows: Record<string, unknown>[], ctx: ImportCt
       row.manifest_seq ?? null,
       // Pre-#1510 archives carry neither column; NULL is "this installation",
       // which is what an import from a single-member Case is.
-      row.member_code ?? null,
+      memberCode,
       row.author_installation_id ?? null
     )
   }

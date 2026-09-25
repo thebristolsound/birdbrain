@@ -10,7 +10,12 @@ import { createCase, getCase } from '@main/services/db/caseRepo'
 import { getCapture, insertCapture, listCaptures } from '@main/services/db/captureRepo'
 import { addTagToCapture, createTag, getTagsForCapture, listTags } from '@main/services/db/tagRepo'
 import { insertDerivedFile, listDerivedFilesForExhibit } from '@main/services/db/derivedFileRepo'
-import { getExhibit, insertExhibit, listExhibits } from '@main/services/db/exhibitRepo'
+import {
+  getExhibit,
+  importExhibitRows,
+  insertExhibit,
+  listExhibits
+} from '@main/services/db/exhibitRepo'
 import {
   exhibitCitationResolver,
   listCaseMembers,
@@ -271,6 +276,49 @@ describe('shared case members (#1510)', () => {
     })
   })
 
+  describe('archive import', () => {
+    const ctx = () => ({
+      newCaseId: caseId,
+      mapId: (id: string) => id,
+      mapTag: (id: string) => id,
+      getText: () => ''
+    })
+    const row = (memberCode: string | null) => ({
+      id: 'imported-1',
+      kind: 'attachment',
+      origin: 'manual-upload',
+      exhibit_number: 1,
+      name: 'imported',
+      content_hash: 'c'.repeat(64),
+      path: null,
+      committed_at: '2026-01-01T00:00:00.000Z',
+      member_code: memberCode,
+      author_installation_id: REMOTE_ID
+    })
+
+    it('keeps a well-formed Member Code and refuses one the roster rule would refuse', () => {
+      expect(() => importExhibitRows([row('<b>x</b>')], ctx())).toThrow(/invalid Member Code/)
+      expect(() => importExhibitRows([row('ABCD')], ctx())).toThrow(/invalid Member Code/)
+      expect(() => importExhibitRows([{ ...row(null), member_code: 7 }], ctx())).toThrow(
+        /invalid Member Code/
+      )
+      expect(getExhibit('imported-1')).toBeUndefined()
+      importExhibitRows([row('MB')], ctx())
+      expect(getExhibit('imported-1')).toMatchObject({ memberCode: 'MB' })
+    })
+
+    it('imports a pre-#1510 row with no member columns as this installation’s', () => {
+      const legacy: Record<string, unknown> = row(null)
+      delete legacy.member_code
+      delete legacy.author_installation_id
+      importExhibitRows([legacy], ctx())
+      expect(getExhibit('imported-1')).toMatchObject({
+        memberCode: null,
+        authorInstallationId: null
+      })
+    })
+  })
+
   describe('roster', () => {
     it('validates a Member Code by shape and by uniqueness within the Case', () => {
       upsertCaseMember(member(caseId))
@@ -364,12 +412,31 @@ describe('shared case members (#1510)', () => {
   })
 
   describe('report', () => {
-    it('cites every Exhibit by Member Code in a Shared Case export', async () => {
-      ensureCaseDir(caseId)
-      initManifest(join(tempDir, 'captures', caseId))
+    async function exportReport(): Promise<string> {
       const captureLifecycle = {
         selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} })
       }
+      const outputPath = join(tempDir, 'report.html')
+      const options: ExportOptions = {
+        format: 'html',
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: false,
+          notes: false,
+          annotations: 'none'
+        },
+        exportClass: 'evidence',
+        outputPath
+      }
+      const { createCaptureLifecycle } = await import('@main/services/captureLifecycle')
+      await generateReport(caseId, options, createCaptureLifecycle(captureLifecycle))
+      return readFileSync(outputPath, 'utf-8')
+    }
+
+    beforeEach(async () => {
+      ensureCaseDir(caseId)
+      initManifest(join(tempDir, 'captures', caseId))
       const payload = 'From: <Saved by Chrome>\n\nshared bytes'
       const result = await ingestMhtmlCapture({
         caseId,
@@ -388,28 +455,26 @@ describe('shared case members (#1510)', () => {
         toolVersion: '0.1.0'
       })
       expect(result.capture).toBeDefined()
-      upsertCaseMember(member(caseId))
+    })
 
-      const outputPath = join(tempDir, 'report.html')
-      const options: ExportOptions = {
-        format: 'html',
-        include: {
-          captures: true,
-          screenshots: false,
-          auditTrail: false,
-          notes: false,
-          annotations: 'none'
-        },
-        exportClass: 'evidence',
-        outputPath
-      }
-      const { createCaptureLifecycle } = await import('@main/services/captureLifecycle')
-      await generateReport(caseId, options, createCaptureLifecycle(captureLifecycle))
-      const html = readFileSync(outputPath, 'utf-8')
+    it('cites every Exhibit by Member Code in a Shared Case export', async () => {
+      upsertCaseMember(member(caseId))
+      const html = await exportReport()
       expect(html).toContain('Exhibit NK-1')
       expect(html).toContain('(Exhibits NK-1)')
       expect(html).not.toMatch(/Exhibit 1\b/)
       expect(createHash('sha256').update(html).digest('hex')).toHaveLength(64)
+    })
+
+    // A Member Code is a recorded string like a title or a URL, and a row
+    // stored before import validation existed can hold anything.
+    it('escapes a citation in every HTML context it reaches', async () => {
+      upsertCaseMember(member(caseId))
+      getDb().prepare('UPDATE exhibits SET member_code = ? WHERE case_id = ?').run('<i>', caseId)
+      const html = await exportReport()
+      expect(html).not.toContain('<i>-1')
+      expect(html).toContain('Exhibit &lt;i&gt;-1')
+      expect(html).toContain('(Exhibits &lt;i&gt;-1)')
     })
   })
 })

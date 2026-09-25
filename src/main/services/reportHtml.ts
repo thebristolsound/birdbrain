@@ -429,10 +429,10 @@ interface FileExhibitView {
  * recorded at commit (X18); when a row carries none — which no path in this
  * build produces, and a database restored by hand might — the document says so
  * rather than counting the exhibit's position and presenting that as a
- * citation.
+ * citation. Escaped: a Member Code can arrive in an imported archive.
  */
 function exhibitTag(citation: string): string {
-  return citation ? `Exhibit ${citation}` : 'Exhibit (number not recorded)'
+  return citation ? `Exhibit ${esc(citation)}` : 'Exhibit (number not recorded)'
 }
 
 /**
@@ -449,7 +449,7 @@ function describeExhibitNumbers(views: Array<{ number: number; citation: string 
   const known = views.filter((v) => v.number > 0).sort((a, b) => a.number - b.number)
   if (known.length === 0) return ''
   if (known.some((v) => v.citation !== String(v.number))) {
-    if (known.length <= 8) return ` (Exhibits ${known.map((v) => v.citation).join(', ')})`
+    if (known.length <= 8) return ` (Exhibits ${known.map((v) => esc(v.citation)).join(', ')})`
     return ` (${known.length} cited by Member Code; see the exhibit index)`
   }
   const first = known[0].number

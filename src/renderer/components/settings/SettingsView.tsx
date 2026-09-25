@@ -88,7 +88,7 @@ export function SettingsView() {
         </TabsList>
       </nav>
 
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto p-[var(--d-pad)]">
         <TabsContent value="ai" className="mt-0">
           <AIConfig settings={settings} onUpdate={handleUpdate} />
         </TabsContent>

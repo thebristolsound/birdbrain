@@ -87,7 +87,10 @@ export function RecentCapturesStrip({ captures, lastVisitAt, onOpen }: RecentCap
     return <p className="font-body text-xs text-text-faint">No captures yet.</p>
   }
   return (
-    <div className="flex gap-4 overflow-x-auto pb-1" data-testid="overview-recent-captures">
+    <div
+      className="flex gap-[var(--d-gap)] overflow-x-auto pb-1"
+      data-testid="overview-recent-captures"
+    >
       {captures.map((cap) => (
         <RecentCaptureCard
           key={cap.id}

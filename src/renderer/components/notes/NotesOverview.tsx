@@ -303,7 +303,7 @@ function NotesWorkspace({ caseId }: { caseId: string }) {
         </div>
         <div
           data-testid="notes-list"
-          className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-2 py-1"
+          className="flex min-h-0 flex-1 flex-col gap-[var(--d-listgap)] overflow-y-auto px-2 py-[var(--d-listgap)]"
         >
           {debouncedQuery && search.isError ? (
             <div className="p-4 text-xs text-red-400">

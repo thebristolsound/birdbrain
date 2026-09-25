@@ -49,6 +49,12 @@ vi.mock('motion/react', async () => {
   }
 })
 
+const notifySuccess = vi.hoisted(() => vi.fn())
+const notifyError = vi.hoisted(() => vi.fn())
+vi.mock('@renderer/lib/notify', () => ({
+  notify: { success: notifySuccess, error: notifyError }
+}))
+
 import { ExportMenu } from '@renderer/components/export/ExportMenu'
 import { fakeBridge } from '../renderer/fakeBridge'
 
@@ -62,13 +68,20 @@ function renderMenu() {
   return render(<ExportMenu caseId="case-1" caseName="Case One" />, { wrapper: Wrapper })
 }
 
-// Drives the menu to the state where the "Show in folder" affordance exists:
-// it only appears on the success banner of a completed archive export.
-async function exportArchiveThen() {
-  renderMenu()
+function chooseExportCaseFile() {
   fireEvent.click(screen.getByRole('button', { name: 'Export' }))
   fireEvent.click(screen.getByRole('menuitem', { name: /export case file/i }))
-  expect(await screen.findByText('Archive saved')).toBeDefined()
+}
+
+// Drives the menu to a completed archive export and returns the toast's
+// options, where the "Show in folder" affordance now lives.
+async function exportArchiveThen() {
+  renderMenu()
+  chooseExportCaseFile()
+  await waitFor(() => expect(notifySuccess).toHaveBeenCalledOnce())
+  const [title, opts] = notifySuccess.mock.calls[0]
+  expect(title).toBe('Archive saved')
+  return opts
 }
 
 describe('ExportMenu', () => {
@@ -90,31 +103,55 @@ describe('ExportMenu', () => {
   afterEach(() => {
     cleanup()
     vi.restoreAllMocks()
+    notifySuccess.mockReset()
+    notifyError.mockReset()
   })
 
-  it('reveals the exported archive with no error banner on success', async () => {
-    await exportArchiveThen()
+  // The mock reports an archive as a transient toast with the path as its
+  // subtitle (Birdbrain.dc.html 3907-3918), not an anchored banner.
+  it('reports a saved archive as a toast with the path and a reveal action', async () => {
+    const opts = await exportArchiveThen()
 
-    fireEvent.click(screen.getByText('Show in folder'))
-
-    await waitFor(() => expect(showItemInFolder).toHaveBeenCalledWith(ARCHIVE_PATH))
+    expect(opts.description).toBe(ARCHIVE_PATH)
+    expect(screen.queryByText('Archive saved')).toBeNull()
     expect(screen.queryByRole('alert')).toBeNull()
+
+    opts.action.onClick()
+    await waitFor(() => expect(showItemInFolder).toHaveBeenCalledWith(ARCHIVE_PATH))
   })
 
-  it('surfaces a failed reveal through the export error banner', async () => {
-    // Path-bearing on purpose: a real shell error names the path it failed on.
+  it('surfaces a failed reveal as an error toast', async () => {
     showItemInFolder.mockRejectedValue(new Error(`no such directory: ${ARCHIVE_PATH}`))
-    await exportArchiveThen()
+    const opts = await exportArchiveThen()
 
-    fireEvent.click(screen.getByText('Show in folder'))
+    opts.action.onClick()
+
+    await waitFor(() => expect(notifyError).toHaveBeenCalledOnce())
+    expect(notifyError.mock.calls[0][0]).toBe("Couldn't show the file in its folder.")
+  })
+
+  it('raises no toast when the save dialog is canceled', async () => {
+    exportArchive.mockResolvedValue({ canceled: true } satisfies ArchiveExportResult)
+    renderMenu()
+    chooseExportCaseFile()
+
+    await waitFor(() => expect(exportArchive).toHaveBeenCalledOnce())
+    expect(notifySuccess).not.toHaveBeenCalled()
+  })
+
+  // UI pass finding: the failure banner had no close control and outlived
+  // navigation. It stays until dismissed, and now it can be.
+  it('keeps a failed archive on screen until the operator dismisses it', async () => {
+    exportArchive.mockRejectedValue(new Error('disk full'))
+    renderMenu()
+    chooseExportCaseFile()
 
     const alert = await screen.findByRole('alert')
-    expect(alert.textContent).toContain('no such directory')
-    // The banner is local component state, which #350's third criterion
-    // explicitly permits to show the path — same as ExportComplete's
-    // actionError, the reference implementation the issue names. Asserted so
-    // the decision is pinned rather than ambient.
-    expect(alert.textContent).toContain(ARCHIVE_PATH)
+    expect(alert.textContent).toContain('disk full')
+    expect(notifySuccess).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 
   // The menu item unmounts with the menu, so the dialog would record a

@@ -41,7 +41,7 @@ describe('settings', () => {
     expect(settings.defaultModel).toBe('anthropic/claude-sonnet-4')
     expect(settings.captureScreenshots).toBe(true)
     expect(settings.dedupeWindowSeconds).toBe(60)
-    expect(settings.theme).toBe('light')
+    expect(settings.theme).toBe('dark')
   })
 
   it('updates settings and persists them', () => {
@@ -79,19 +79,19 @@ describe('settings', () => {
     writeFileSync(settingsFile, '{invalid json', 'utf-8')
     const settings = getSettings()
     // Falls back to defaults
-    expect(settings.theme).toBe('light')
+    expect(settings.theme).toBe('dark')
   })
 
   it('falls back to defaults when stored settings have wrong-typed fields', () => {
     writeFileSync(
       settingsFile,
-      JSON.stringify({ dedupeWindowSeconds: 'not-a-number', theme: 'dark' }),
+      JSON.stringify({ dedupeWindowSeconds: 'not-a-number', theme: 'light' }),
       'utf-8'
     )
     const settings = getSettings()
     // Entire saved object rejected by schema → defaults returned
     expect(settings.dedupeWindowSeconds).toBe(60)
-    expect(settings.theme).toBe('light')
+    expect(settings.theme).toBe('dark')
   })
 
   it('defaults the TSA endpoint to DigiCert', () => {
@@ -113,12 +113,12 @@ describe('settings', () => {
     // trigger the whole-file reset that a genuinely wrong-typed field does.
     writeFileSync(
       settingsFile,
-      JSON.stringify({ tsaUrl: 'not a url', theme: 'dark', operatorName: 'Keep Me' }),
+      JSON.stringify({ tsaUrl: 'not a url', theme: 'light', operatorName: 'Keep Me' }),
       'utf-8'
     )
     const settings = getSettings()
     expect(settings.tsaUrl).toBe(DEFAULT_TSA_URL)
-    expect(settings.theme).toBe('dark')
+    expect(settings.theme).toBe('light')
     expect(settings.operatorName).toBe('Keep Me')
   })
 
@@ -271,12 +271,12 @@ describe('settings', () => {
     // and the rest of the file survives untouched.
     writeFileSync(
       settingsFile,
-      JSON.stringify({ theme: 'dark', operatorName: 'Alex Smith' }),
+      JSON.stringify({ theme: 'light', operatorName: 'Alex Smith' }),
       'utf-8'
     )
     const settings = getSettings()
     expect(settings.density).toBe('compact')
-    expect(settings.theme).toBe('dark')
+    expect(settings.theme).toBe('light')
     expect(settings.operatorName).toBe('Alex Smith')
   })
 
@@ -311,11 +311,11 @@ describe('settings', () => {
     })
 
     it('supplies both keys for a settings file written before they existed', () => {
-      writeFileSync(settingsFile, JSON.stringify({ theme: 'dark' }), 'utf-8')
+      writeFileSync(settingsFile, JSON.stringify({ theme: 'light' }), 'utf-8')
       const settings = getSettings()
       expect(settings.onboardingChapters).toEqual({})
       expect(settings.isFreshInstall).toBe(false)
-      expect(settings.theme).toBe('dark')
+      expect(settings.theme).toBe('light')
     })
   })
 })

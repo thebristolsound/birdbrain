@@ -132,7 +132,7 @@ export function UpdatesConfig({ settings, onUpdate }: UpdatesConfigProps) {
 
   return (
     <Card>
-      <CardContent>
+      <CardContent className="p-[var(--d-card)]">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-text-primary">Updates</h2>
           <Button

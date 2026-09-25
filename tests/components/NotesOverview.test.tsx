@@ -305,6 +305,14 @@ describe('NotesOverview density', () => {
 
     const list = await screen.findByTestId('notes-list')
     expect(list.className).toContain('gap-[var(--d-listgap)]')
-    expect(list.className).not.toContain('space-y-3')
+    expect(list.className).toContain('py-[var(--d-listgap)]')
+    expect(list.className).not.toContain('gap-1 ')
+
+    // As on the mock's list row, only the horizontal inset scales; the
+    // vertical one stays 9px at every step.
+    const { className } = await screen.findByTestId('note-row-n1')
+    expect(className).toContain('px-[var(--d-itemx)]')
+    expect(className).toContain('py-[9px]')
+    expect(className).not.toContain('px-3')
   })
 })

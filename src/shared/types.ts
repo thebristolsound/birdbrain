@@ -637,6 +637,13 @@ export const LOG_CODES = [
   // Diagnostics "not-set" it falls back to is otherwise indistinguishable
   // from a key that was genuinely never saved.
   'settings.key_protection_state_unreadable',
+  // A settings.json that exists and will not read or parse at all (#1169).
+  // Distinct from settings.schema_invalid, which fires when the JSON parsed and
+  // the schema rejected it: there the stored timestamping preference is still
+  // legible, here nothing is, so trusted timestamping falls closed rather than
+  // open. This line is the only trace that the operator's other settings were
+  // replaced by defaults and that timestamping was switched off for them.
+  'settings.unreadable_timestamping_fail_closed',
   // The first-launch settings.json seed that latches the fresh-install flag
   // (#404). Failing it costs only the onboarding tour, so init swallows the
   // error — this is the record that it happened.

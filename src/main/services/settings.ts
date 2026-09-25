@@ -130,14 +130,21 @@ function suppliedKeysOnly<T extends object>(input: object, data: T): Partial<T> 
   ) as Partial<T>
 }
 
-// Every other setting fails open to its default when the file will not parse.
+// Every other setting fails open to its default when the file will not load.
 // The trusted-timestamping opt-out must not: falling back to the enabled default
 // would put an operator who declined TSA disclosure back on the network without
 // telling them, and the failure mode of the control is the whole point of it
-// (#1169). So an explicit `false` anywhere in the readable JSON survives the
-// whole-file fallback. Anything else — absent, or a value the schema rejected —
-// keeps the default, because "not off" is the only reading that does not invent
-// an intent the file does not carry.
+// (#1169). Two failures, and the difference between them is whether the stored
+// preference is visible at all:
+//
+//   - The JSON parsed but the schema rejected it. Every key is legible, so the
+//     preference is known: an explicit `false` survives the fallback, and
+//     anything else keeps the default, because "not off" is the only reading
+//     that does not invent an intent the file does not carry.
+//   - The file exists and could not be read or parsed at all. Nothing is
+//     legible, so the preference is unknown rather than known-absent, and the
+//     only safe reading of an unknown privacy preference is the restrictive one
+//     — see the catch in getSettings().
 function declinedTimestamping(saved: unknown): boolean {
   return (
     typeof saved === 'object' &&
@@ -163,7 +170,15 @@ export function getSettings(): BirdbrainSettings {
     merged.openRouterApiKey = decryptApiKey(merged.openRouterApiKey)
     return merged
   } catch {
-    return { ...DEFAULT_SETTINGS }
+    // A file that exists but will not read or parse — truncated by a kill
+    // mid-write (updateSettings persists with a plain writeFileSync), trailing
+    // garbage, a transient read failure. The operator's timestamping preference
+    // is unknown here, not absent, so it falls closed: an activist who declined
+    // must not be put back in contact with the TSA by a half-written file. Every
+    // other setting still falls open, and the resulting state is visible in
+    // Settings and Diagnostics and reversible with the switch.
+    logger.warn('settings', 'settings.unreadable_timestamping_fail_closed')
+    return { ...DEFAULT_SETTINGS, tsaEnabled: false }
   }
 }
 

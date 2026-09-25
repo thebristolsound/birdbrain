@@ -173,6 +173,52 @@ describe('settings', () => {
       writeFileSync(settingsFile, JSON.stringify({ tsaEnabled: 'false' }), 'utf-8')
       expect(getSettings().tsaEnabled).toBe(true)
     })
+
+    // The schema-invalid branch above can still read the stored preference. This
+    // one cannot: JSON.parse throws, so nothing in the file is legible and the
+    // preference is unknown rather than known-absent. Falling open there is the
+    // exact failure the opt-out exists to prevent — updateSettings persists with
+    // a plain writeFileSync, so a kill mid-write leaves truncated JSON, and the
+    // next launch would put a declined operator back in contact with the TSA.
+    describe('a settings file that cannot be parsed at all', () => {
+      const unreadable = [
+        ['truncated mid-write', '{"tsaEnabled": false, "theme": "da'],
+        ['trailing garbage', '{"tsaEnabled": false}}}'],
+        ['not JSON at all', 'not json'],
+        ['empty', '']
+      ] as const
+
+      for (const [label, contents] of unreadable) {
+        it(`falls closed for timestamping when the file is ${label}`, () => {
+          writeFileSync(settingsFile, contents, 'utf-8')
+          expect(getSettings().tsaEnabled).toBe(false)
+        })
+      }
+
+      it('still falls open for every other setting', () => {
+        writeFileSync(settingsFile, '{"theme": "light", "dedupeWin', 'utf-8')
+        const settings = getSettings()
+        expect(settings.theme).toBe('dark')
+        expect(settings.dedupeWindowSeconds).toBe(60)
+        expect(settings.tsaUrl).toBe(DEFAULT_TSA_URL)
+      })
+
+      it('logs the fail-closed read rather than degrading silently', () => {
+        writeFileSync(settingsFile, '{truncated', 'utf-8')
+        getSettings()
+        expect(loggerWarn).toHaveBeenCalledWith(
+          'settings',
+          'settings.unreadable_timestamping_fail_closed'
+        )
+      })
+
+      it('leaves the switch usable, so the state is recoverable', () => {
+        writeFileSync(settingsFile, '{truncated', 'utf-8')
+        expect(getSettings().tsaEnabled).toBe(false)
+        updateSettings({ tsaEnabled: true })
+        expect(getSettings().tsaEnabled).toBe(true)
+      })
+    })
   })
 
   it('preserves ignored URL patterns', () => {

@@ -215,9 +215,13 @@ function collectEnv(): DiagnosticsEnv {
 }
 
 // Diagnostics is read before settings are initialized in some start-up orders,
-// and an unreadable setting must not take the whole snapshot down. Unknown reads
-// as enabled, matching the default — the panel would otherwise tell an operator
-// nothing is sent to a timestamp authority on the strength of a failed read.
+// and an unreadable setting must not take the whole snapshot down. That ordering
+// is the ONLY thing left in the catch: getSettings() falls closed and logs
+// rather than throwing for a settings file it cannot read or parse (#1169), so a
+// corrupt file reports 'Disabled' here, which is what the app is actually doing.
+// Uninitialised reads as enabled, matching the default — the panel would
+// otherwise tell an operator nothing is sent to a timestamp authority on the
+// strength of settings not being loaded yet.
 function readTimestampingEnabled(): boolean {
   try {
     return getSettings().tsaEnabled

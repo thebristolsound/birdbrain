@@ -313,7 +313,7 @@ export function DiagnosticsPanel() {
 
   return (
     <Card>
-      <CardContent>
+      <CardContent className="p-[var(--d-card)]">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="font-display text-[10px] font-semibold uppercase tracking-wider text-text-faint">
             Diagnostics

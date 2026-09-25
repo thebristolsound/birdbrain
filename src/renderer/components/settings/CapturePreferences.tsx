@@ -27,7 +27,7 @@ export function CapturePreferences({ settings, onUpdate }: CapturePreferencesPro
 
   return (
     <Card>
-      <CardContent>
+      <CardContent className="p-[var(--d-card)]">
         <h2 className="mb-4 text-lg font-semibold text-text-primary">Capture Preferences</h2>
 
         <div className="space-y-4">

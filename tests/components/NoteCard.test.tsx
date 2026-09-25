@@ -89,6 +89,16 @@ describe('NoteCard', () => {
     expect(screen.getByTestId('note-card-note1').getAttribute('aria-current')).toBe('true')
   })
 
+  // The mock's list row scales only its horizontal inset; the vertical one is a
+  // fixed 9px at every step (#1540).
+  it('takes its horizontal inset from the density item step', () => {
+    renderCard()
+    const { className } = screen.getByTestId('note-card-note1')
+    expect(className).toContain('px-[var(--d-itemx)]')
+    expect(className).toContain('py-[9px]')
+    expect(className).not.toContain('p-4')
+  })
+
   it('says nothing when the source URL opens successfully', async () => {
     openExternal.mockResolvedValue(undefined)
     renderCard()

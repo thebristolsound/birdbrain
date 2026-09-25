@@ -154,7 +154,7 @@ export function NoteCard({ note, caseId, selected = false }: NoteCardProps) {
         key={note.id}
         data-testid={`note-card-${note.id}`}
         aria-current={selected ? 'true' : undefined}
-        className={`flex gap-3 rounded-2xl border bg-surface p-4 ${
+        className={`flex gap-3 rounded-2xl border bg-surface px-[var(--d-itemx)] py-[9px] ${
           selected ? 'border-accent/60 ring-1 ring-accent/30' : 'border-border'
         }`}
       >

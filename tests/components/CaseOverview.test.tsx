@@ -256,6 +256,16 @@ describe('CaseOverview', () => {
     })
   })
 
+  // Its siblings all read the gap step; a literal here left the strip at the
+  // comfortable spacing on every step (#1540).
+  it('spaces the recent captures strip with the density gap', async () => {
+    renderOverview()
+
+    const strip = await screen.findByTestId('overview-recent-captures')
+    expect(strip.className).toContain('gap-[var(--d-gap)]')
+    expect(strip.className).not.toContain('gap-4')
+  })
+
   it('writes a selector toggle back through the mutation', async () => {
     renderOverview()
 

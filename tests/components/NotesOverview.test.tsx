@@ -278,3 +278,41 @@ describe('Notes workspace', () => {
     await screen.findByText('No notes match')
   })
 })
+
+describe('NotesOverview density', () => {
+  // The list gap was a literal, so the list measured the same on every step
+  // (#1540).
+  it('spaces the note list with the density list gap', async () => {
+    fakeBridge({
+      notes: {
+        list: vi.fn(async () => [
+          {
+            id: 'n1',
+            caseId: 'case-1',
+            title: 'A note',
+            body: 'body text',
+            createdAt: '2026-08-01T00:00:00.000Z',
+            updatedAt: '2026-08-01T00:00:00.000Z'
+          }
+        ]),
+        search: vi.fn(async () => [])
+      },
+      captures: { list: vi.fn(async () => []) },
+      selectors: { list: vi.fn(async () => []), matchCounts: vi.fn(async () => ({})) },
+      tags: { list: vi.fn(async () => []), usageCountsForCase: vi.fn(async () => ({})) }
+    })
+    renderNotes()
+
+    const list = await screen.findByTestId('notes-list')
+    expect(list.className).toContain('gap-[var(--d-listgap)]')
+    expect(list.className).toContain('py-[var(--d-listgap)]')
+    expect(list.className).not.toContain('gap-1 ')
+
+    // As on the mock's list row, only the horizontal inset scales; the
+    // vertical one stays 9px at every step.
+    const { className } = await screen.findByTestId('note-row-n1')
+    expect(className).toContain('px-[var(--d-itemx)]')
+    expect(className).toContain('py-[9px]')
+    expect(className).not.toContain('px-3')
+  })
+})

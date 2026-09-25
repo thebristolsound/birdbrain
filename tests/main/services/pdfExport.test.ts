@@ -134,9 +134,22 @@ describe('buildPdfMetadataRows — trusted time (#509)', () => {
     const row = trustedTimeRow('rfc3161', { trustedTime: 'pending' })
 
     expect(row).toBe(
-      'Local clock — token pending: an RFC 3161 token was requested but has not been obtained'
+      'Local clock — token pending: no RFC 3161 token is recorded for this capture, and the ' +
+        'manifest does not state whether one was requested'
     )
     expect(row.startsWith(TRUSTED_TIME_LABELS.none)).toBe(false)
+  })
+
+  // The detail may not assert that a token was ever asked for. The manifest
+  // records tokens, not requests, and since #1169 an installation can decline
+  // trusted timestamping outright — in which case no request was made for any
+  // capture the package holds, and the old phrasing was simply false.
+  it('does not claim a token was requested for a capture that carries none (#1169)', () => {
+    for (const resolved of [{ trustedTime: 'pending' }, { trustedTime: 'none' }] as const) {
+      const row = trustedTimeRow('rfc3161', resolved)
+      expect(row).not.toMatch(/was requested but/i)
+      expect(row).not.toMatch(/awaiting/i)
+    }
   })
 
   it('leads every row with the label report.html uses for the same axis (#519)', () => {

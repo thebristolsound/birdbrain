@@ -1,4 +1,5 @@
 import { REPORT_PAGE_CSS, type EntrySignatureStatus } from '@main/services/reportHtml'
+import { TRUSTED_TIME_AUTHORITY_DECLINED } from '@shared/trustedTimeDisclosure'
 import type { Capture, TrustedTime } from '@shared/types'
 import type { TrustedTimeResult } from '@shared/verify'
 
@@ -74,6 +75,11 @@ export interface CertificationInput {
   operatorRole: string
   operatorOrganization: string
   tsaUrl: string
+  /**
+   * Whether the installation submits anything to the authority named by `tsaUrl`
+   * (#1169). Optional and true when absent, matching the settings default.
+   */
+  tsaEnabled?: boolean
   captures: Capture[]
   /**
    * The export's single trusted-time resolution, keyed by capture id — see
@@ -249,7 +255,11 @@ export function buildCertificationFields(
       'any later alteration of a capture or of the manifest is detectable. Where enabled, the ' +
       'capture content hash was submitted to an RFC 3161 Time-Stamping Authority and the ' +
       'returned timestamp token was retained alongside the capture.',
-    tsaIdentity: data.tsaUrl,
+    // A declined installation names no authority (#1169): the process paragraph
+    // above already hedges with "Where enabled", and printing an endpoint beside
+    // it is what turns that hedge into an apparent statement that this export's
+    // hashes went there.
+    tsaIdentity: data.tsaEnabled === false ? TRUSTED_TIME_AUTHORITY_DECLINED : data.tsaUrl,
     certifier: {
       operatorName: data.operatorName,
       operatorRole: data.operatorRole,

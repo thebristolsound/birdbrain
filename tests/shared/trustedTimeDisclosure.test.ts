@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  TRUSTED_TIME_AUTHORITY_DECLINED,
   TRUSTED_TIME_LABELS,
   TRUSTED_TIME_UNNAMED_TSA,
   trustedTimeAttestingParty,
@@ -46,5 +47,17 @@ describe('trusted-time disclosure vocabulary (#519)', () => {
     expect(who).toBe(TRUSTED_TIME_UNNAMED_TSA)
     expect(who).toContain('not recorded in the retained token')
     expect(who).not.toContain('configured')
+  })
+
+  // #1169. The declined phrasing replaces the endpoint in the packaged
+  // documents' configured-authority field, so it has to be a statement about
+  // this installation's configuration and nothing else. A package can hold
+  // tokens obtained before the operator switched timestamping off, so any claim
+  // here about what was or was not submitted would be false for that package.
+  it('says only that the installation declined, never what was submitted', () => {
+    expect(TRUSTED_TIME_AUTHORITY_DECLINED).toContain('switched off for this installation')
+    expect(TRUSTED_TIME_AUTHORITY_DECLINED).not.toMatch(/submitted|sent|requested|no capture/i)
+    // Nothing in it may be mistaken for an authority's name.
+    expect(TRUSTED_TIME_AUTHORITY_DECLINED).not.toMatch(/https?:/)
   })
 })

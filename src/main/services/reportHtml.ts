@@ -48,6 +48,7 @@ import type { TrustedTimeResult } from '@shared/verify'
 import { recordedHttpStatus } from '@shared/httpStatus'
 import { formatSnapshotDelta } from '@shared/wayback'
 import {
+  TRUSTED_TIME_AUTHORITY_DECLINED,
   TRUSTED_TIME_UNRECORDED_STAMPED_AT,
   trustedTimeAttestingParty,
   trustedTimeLabel
@@ -188,6 +189,14 @@ export interface ReportData {
   operatorRole: string
   operatorOrganization: string
   tsaUrl: string
+  /**
+   * Whether the installation submits anything to the authority named by `tsaUrl`
+   * (#1169). Optional and true when absent, matching the settings default: a
+   * caller that predates the opt-out described an installation that timestamped.
+   * Naming a configured authority under a declined opt-out would have the
+   * document assert a relationship with a third party the operator refused.
+   */
+  tsaEnabled?: boolean
   /**
    * The same resolution `trustedTimeByCaptureId` carries, pre-counted. Nothing in
    * this renderer reads it — every figure printed here is folded out of the rows
@@ -709,9 +718,15 @@ function trustedTimeView(resolved: TrustedTimeResult): StateView {
     case 'pending':
       return {
         label,
+        // Never "a timestamp was requested": the manifest records tokens, not
+        // requests, and trusted timestamping can be declined for the whole
+        // installation (#1169), in which case no request was ever made. The
+        // axis means only that this capture is of a class that can be stamped
+        // and carries no token.
         detail:
-          'A trusted timestamp was requested but has not been obtained. The capture time ' +
-          "shown is the operator's local system clock and carries no independent corroboration."
+          'No RFC 3161 token is recorded for this capture; the manifest does not state ' +
+          "whether one was ever requested. The capture time shown is the operator's local " +
+          'system clock and carries no independent corroboration.'
       }
     case 'none':
     default:
@@ -805,7 +820,11 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     }
     ${field(
       'Time-stamping authority (configured)',
-      data.tsaUrl ? mono(esc(data.tsaUrl)) : 'none configured',
+      data.tsaEnabled === false
+        ? esc(TRUSTED_TIME_AUTHORITY_DECLINED)
+        : data.tsaUrl
+          ? mono(esc(data.tsaUrl))
+          : 'none configured',
       true
     )}
   </div>

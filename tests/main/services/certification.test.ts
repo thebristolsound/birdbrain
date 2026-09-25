@@ -564,6 +564,68 @@ describe('certification', () => {
     expect(html).toContain('2026-04-05T12:01:00Z')
   })
 
+  // #1169. An operator who declined trusted timestamping never contacted the
+  // configured authority, so no packaged document may name one. Printing the
+  // endpoint beside a process paragraph about hashes being submitted to a TSA is
+  // what turns "Where enabled" into an apparent claim about this export.
+  describe('an installation that declined trusted timestamping', () => {
+    it('names no authority in either packaged document', async () => {
+      await ingest(
+        caseId,
+        '<html><body>Declined</body></html>',
+        'https://example.com/declined',
+        'Declined Page'
+      )
+      updateSettings({ tsaEnabled: false })
+
+      const entries = await exportZip()
+      const certification = entries.get('certification.html')!.toString('utf-8')
+      const report = entries.get('report.html')!.toString('utf-8')
+
+      for (const html of [certification, report]) {
+        expect(html).toContain('Time-stamping authority (configured)')
+        expect(html).toContain('trusted timestamping is switched off for this installation')
+        expect(html).not.toContain('https://tsa.example/timestamp')
+      }
+    })
+
+    it('still names the authority when timestamping is left on', async () => {
+      await ingest(
+        caseId,
+        '<html><body>Enabled</body></html>',
+        'https://example.com/enabled',
+        'Enabled Page'
+      )
+
+      const entries = await exportZip()
+      const certification = entries.get('certification.html')!.toString('utf-8')
+      const report = entries.get('report.html')!.toString('utf-8')
+
+      for (const html of [certification, report]) {
+        expect(html).toContain('https://tsa.example/timestamp')
+        expect(html).not.toContain('switched off for this installation')
+      }
+    })
+
+    it('does not tell a reader that a timestamp was requested for an unstamped exhibit', async () => {
+      // The manifest records tokens, not requests. With timestamping declined no
+      // request was made at all, so prose asserting one is simply false — and it
+      // was already unsupported before the opt-out existed.
+      await ingest(
+        caseId,
+        '<html><body>Unstamped</body></html>',
+        'https://example.com/unstamped',
+        'Unstamped Page'
+      )
+      updateSettings({ tsaEnabled: false })
+
+      const report = (await exportZip()).get('report.html')!.toString('utf-8')
+
+      expect(report).toContain('No RFC 3161 token is recorded for this capture')
+      expect(report).not.toMatch(/timestamp was requested but/i)
+    })
+  })
+
   // #611. The signature axis gets the #492 treatment the trusted-time axis has:
   // one map in, summary folded out of the same rows report.html states per
   // exhibit. A package cannot then say "all signed" over a report that names a

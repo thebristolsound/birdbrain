@@ -8,39 +8,45 @@ import type { ArchiveExportResult } from '@shared/ipc'
 // Strips the animation-only props (they are not valid DOM attributes) and
 // forwards the rest — Button renders through motion.button, so dropping props
 // here would silently drop its onClick.
+//
+// One component per tag, cached: a fresh forwardRef on every property read is
+// a new component type on every render, so React would remount the Export
+// trigger each time and a focus hand-back would aim at a detached node.
 vi.mock('motion/react', async () => {
   const React = await import('react')
+  const components = new Map<string, unknown>()
   const motion = new Proxy(
     {},
     {
-      get: (_, tag: string) =>
-        React.forwardRef<HTMLElement, Record<string, unknown> & { children?: ReactNode }>(
-          ({ children, ...props }, ref) => {
-            const {
-              initial,
-              animate,
-              exit,
-              transition,
-              whileTap,
-              whileHover,
-              layout,
-              ...domProps
-            } = props
-            void initial
-            void animate
-            void exit
-            void transition
-            void whileTap
-            void whileHover
-            void layout
-            // forwardRef wraps P in PropsWithoutRef, which collapses an index-signature
-            // props type through Omit and widens children to unknown. Narrow it back.
-            return React.createElement(tag, { ...domProps, ref }, children as ReactNode)
-          }
-        )
+      get: (_, tag: string) => {
+        if (!components.has(tag)) components.set(tag, makeMotionComponent(tag))
+        return components.get(tag)
+      }
     }
   )
-  return { motion, AnimatePresence: ({ children }: { children: ReactNode }) => children }
+  function makeMotionComponent(tag: string) {
+    return React.forwardRef<HTMLElement, Record<string, unknown> & { children?: ReactNode }>(
+      ({ children, ...props }, ref) => {
+        const { initial, animate, exit, transition, whileTap, whileHover, layout, ...domProps } =
+          props
+        void initial
+        void animate
+        void exit
+        void transition
+        void whileTap
+        void whileHover
+        void layout
+        // forwardRef wraps P in PropsWithoutRef, which collapses an index-signature
+        // props type through Omit and widens children to unknown. Narrow it back.
+        return React.createElement(tag, { ...domProps, ref }, children as ReactNode)
+      }
+    )
+  }
+  return {
+    motion,
+    AnimatePresence: ({ children }: { children: ReactNode }) => children,
+    useIsPresent: () => true
+  }
 })
 
 const notifySuccess = vi.hoisted(() => vi.fn())
@@ -146,5 +152,31 @@ describe('ExportMenu', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  // The menu item unmounts with the menu, so the dialog would record a
+  // detached opener. The trigger stands in for it, and gets focus back when
+  // the dialog closes (#1536).
+  it('hands focus back to the Export trigger when the report dialog closes', () => {
+    fakeBridge({
+      cases: { exportArchive, get: vi.fn(async () => null) },
+      shell: { showItemInFolder },
+      export: { preflight: vi.fn(async () => null) },
+      wayback: { listForCase: vi.fn(async () => []) }
+    })
+    renderMenu()
+    const trigger = screen.getByRole('button', { name: 'Export' })
+    fireEvent.click(trigger)
+    const item = screen.getByRole('menuitem', { name: /export evidence report/i })
+    item.focus()
+
+    fireEvent.click(item)
+    const dialog = screen.getByRole('dialog', { name: 'Export case' })
+    expect(dialog.contains(document.activeElement)).toBe(true)
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(document.activeElement).toBe(trigger)
   })
 })

@@ -386,7 +386,7 @@ describe('Data screen context menus (#1151)', () => {
     await select('manifest-ledger')
     const cells = (id: string) =>
       Array.from(screen.getByTestId(id).children).map((el) => el.textContent)
-    expect(cells('ledger-row-0').slice(4)).toEqual(['e'.repeat(12), 'genesis'])
+    expect(cells('ledger-row-0').slice(4)).toEqual([`${'e'.repeat(14)}…`, 'genesis'])
     expect(cells('ledger-row-1').slice(2)).toEqual(['unreadable', 'bad json', '', ''])
     expect(within(screen.getByTestId('ledger-row-1')).queryByTitle(/click to copy/)).toBeNull()
     expect(writeText).not.toHaveBeenCalled()

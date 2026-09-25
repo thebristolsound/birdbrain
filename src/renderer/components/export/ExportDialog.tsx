@@ -1,11 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
-import { motion, AnimatePresence } from 'motion/react'
+import { motion, AnimatePresence, useIsPresent } from 'motion/react'
 import { useQuery } from '@tanstack/react-query'
 import { Archive, ChevronDown, ShieldCheck, TriangleAlert } from 'lucide-react'
 import type { CaseWaybackRef, ExportClass, ExportOptions } from '@shared/types'
 import { safeFilename } from '@shared/safeFilename'
 import { presets } from '@renderer/lib/motion'
-import { Button, Input, Label } from '@renderer/components/ui'
+import {
+  Button,
+  Input,
+  Label,
+  trapTab,
+  useModalEscape,
+  useModalFocus
+} from '@renderer/components/ui'
 import { ExportProgress } from '@renderer/components/export/ExportProgress'
 import { notifyExportWritten } from '@renderer/components/export/exportNotice'
 import { exportPreflightQueryOptions, useExportMutations } from '@renderer/lib/api/export'
@@ -122,6 +129,17 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
       mounted.current = false
     }
   }, [])
+  const panelRef = useRef<HTMLDivElement>(null)
+  // Mounted only while open, so presence stands in for `open`: it turns false
+  // when the export menu's AnimatePresence starts the exit, which hands focus
+  // back then rather than when the exit ends. Outside a presence it stays
+  // true, and the hand-back happens on unmount instead.
+  const present = useIsPresent()
+
+  // Focus, Tab and Escape only. Escape does what Cancel and Close already do
+  // in both phases: close.
+  useModalFocus(present, panelRef)
+  useModalEscape(present, onClose)
 
   // A failed preflight leaves `data` undefined, which reads the same as "no
   // warning to show" — the same silent fallback the mount effect had, minus
@@ -212,8 +230,15 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
       {...presets.overlay}
     >
       <motion.div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        // One name for both phases: each phase swaps its own heading in.
+        aria-label="Export case"
+        tabIndex={-1}
         className="neu-overlay max-h-[85vh] w-[30rem] overflow-y-auto rounded-2xl p-6"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => trapTab(e, panelRef.current)}
         {...presets.modal}
       >
         <AnimatePresence mode="wait">

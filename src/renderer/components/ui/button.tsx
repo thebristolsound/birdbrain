@@ -4,8 +4,12 @@ import { motion, type HTMLMotionProps } from 'motion/react'
 import { cn } from '@renderer/lib/utils'
 import { presets } from '@renderer/lib/motion'
 
+// The focus ring is an outline, not a box-shadow ring: the default variant's
+// shadow-[var(--shadow-btn)] resolves to `none`, which invalidates the whole
+// composed box-shadow list, so a ring there painted nothing. An outline also
+// takes no layout, so it cannot move the control metric below.
 const buttonVariants = cva(
-  'inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:pointer-events-none',
+  'inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50 disabled:pointer-events-none',
   {
     variants: {
       variant: {

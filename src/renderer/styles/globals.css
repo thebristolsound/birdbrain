@@ -222,6 +222,19 @@ body {
   font-family: var(--font-body);
 }
 
+/* === Keyboard focus ring ===
+   Every control that draws no focus style of its own gets the accent ring
+   token, the same outline the shared button primitive draws. Without it such a
+   control falls back to Chromium's user-agent ring, an amber the app otherwise
+   reserves for integrity warnings. Layered as base so any utility on a control
+   (outline-none, a ring of its own) still wins. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+}
+
 /* === Section label ===
    The eyebrow treatment every panel head uses. <SectionLabel> is the TSX
    surface; this class is for the places where only a DOM node is available.

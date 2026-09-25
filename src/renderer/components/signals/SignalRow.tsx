@@ -64,10 +64,25 @@ export function SignalRow({
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
+  const rowRef = useRef<HTMLDivElement | null>(null)
+  // Set when Enter or Escape ends the edit, and read once the input is gone:
+  // focusing the row while the input is still mounted would blur it into a
+  // second commit.
+  const refocusRowRef = useRef(false)
   const isSelector = signal.kind === 'selector'
 
   useEffect(() => {
-    if (editing) inputRef.current?.select()
+    if (editing) {
+      inputRef.current?.select()
+      return
+    }
+    // The input unmounts under the keyboard's focus, which would drop it to the
+    // top of the document. A blur commit is left alone: focus already went
+    // where the operator sent it.
+    if (refocusRowRef.current) {
+      refocusRowRef.current = false
+      rowRef.current?.focus()
+    }
   }, [editing])
 
   function beginEdit() {
@@ -143,7 +158,10 @@ export function SignalRow({
   return (
     <EntityContextMenu target={menuTarget}>
       <div
-        ref={registerRow}
+        ref={(element) => {
+          rowRef.current = element
+          registerRow(element)
+        }}
         role="button"
         tabIndex={0}
         data-testid={`signal-row-${signal.id}`}
@@ -199,8 +217,14 @@ export function SignalRow({
             onBlur={commit}
             onKeyDown={(event) => {
               event.stopPropagation()
-              if (event.key === 'Escape') setEditing(false)
-              if (event.key === 'Enter') commit()
+              if (event.key === 'Escape') {
+                refocusRowRef.current = true
+                setEditing(false)
+              }
+              if (event.key === 'Enter') {
+                refocusRowRef.current = true
+                commit()
+              }
             }}
             className="min-w-0 flex-1 rounded border border-accent bg-canvas px-2 py-1 font-mono text-xs text-text-primary outline-none"
           />

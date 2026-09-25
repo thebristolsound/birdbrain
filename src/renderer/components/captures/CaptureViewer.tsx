@@ -115,7 +115,7 @@ export function CaptureViewer() {
     )
   }
 
-  let hostname = ''
+  let hostname: string
   try {
     hostname = new URL(capture.url).hostname
   } catch {

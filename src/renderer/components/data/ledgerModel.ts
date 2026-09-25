@@ -26,6 +26,12 @@ export interface LedgerRow {
   reason?: string
 }
 
+// A sequence number as the mock prints it everywhere on the screen, the Seq
+// column and the verdict chip alike (#1552): four digits, zero-padded.
+export function formatSeq(index: number): string {
+  return String(index).padStart(4, '0')
+}
+
 function short(hash: string): string {
   return hash.length > 12 ? hash.slice(0, 12) : hash
 }
@@ -177,15 +183,15 @@ export function summarizeVerdict(
         : `schema version ${schemaVersionSeen}`
     return {
       tone: 'unsupported',
-      text: `${what} from a newer schema at seq ${index}; verifier too old (${seen}, this build reads up to ${supportedSchemaVersion})`
+      text: `${what} from a newer schema at seq ${formatSeq(index)}; verifier too old (${seen}, this build reads up to ${supportedSchemaVersion})`
     }
   }
   if (!chain.valid) {
-    const where = chain.brokenAt !== undefined ? ` at seq ${chain.brokenAt}` : ''
+    const where = chain.brokenAt !== undefined ? ` at seq ${formatSeq(chain.brokenAt)}` : ''
     return { tone: 'broken', text: `Chain broken${where}: ${chain.reason ?? 'unknown reason'}` }
   }
   if (!head) return { tone: 'empty', text: 'No entries yet' }
-  return { tone: 'intact', text: `Chain intact through seq ${head.index}` }
+  return { tone: 'intact', text: `Chain intact through seq ${formatSeq(head.index)}` }
 }
 
 export function describeSigner(segment: ManifestSignerSegment): string {

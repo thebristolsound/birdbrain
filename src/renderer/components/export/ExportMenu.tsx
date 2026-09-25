@@ -123,6 +123,9 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
             role="menuitem"
             onClick={() => {
               setOpen(false)
+              // The item unmounts with the menu, so the dialog would record a
+              // detached opener and have nowhere to hand focus back to.
+              anchorRef.current?.focus()
               setShowReport(true)
             }}
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary hover:bg-elevated"

@@ -345,6 +345,10 @@ export function CaptureDetailsPanel({
                     role="menuitem"
                     onClick={() => {
                       setMenuOpen(false)
+                      // The item unmounts with the menu, so the confirm dialog
+                      // would record a detached opener and have nowhere to hand
+                      // focus back to. The menu's own trigger is where it goes.
+                      menuAnchorRef.current?.focus()
                       onDelete()
                     }}
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-red-400 hover:bg-elevated"

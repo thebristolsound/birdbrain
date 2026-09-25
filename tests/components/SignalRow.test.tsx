@@ -106,6 +106,51 @@ describe('SignalRow keyboard model', () => {
     expect(screen.queryByLabelText('Edit selector pattern')).toBeNull()
   })
 
+  // The input unmounts under the keyboard's focus; without a hand-back the next
+  // Tab starts from the top of the document (#1536).
+  it('returns focus to the row after Escape ends a rename', () => {
+    const { registerRow } = renderRow()
+    const row = screen.getByTestId('signal-row-s1')
+    row.focus()
+
+    fireEvent.keyDown(row, { key: 'Enter' })
+    fireEvent.keyDown(screen.getByLabelText('Edit selector pattern'), { key: 'Escape' })
+
+    expect(document.activeElement).toBe(row)
+    expect(registerRow).toHaveBeenLastCalledWith(row)
+  })
+
+  it('returns focus to the row after Enter commits, writing once', () => {
+    const { onRename } = renderRow()
+    const row = screen.getByTestId('signal-row-s1')
+    row.focus()
+
+    fireEvent.keyDown(row, { key: 'Enter' })
+    const input = screen.getByLabelText('Edit selector pattern')
+    fireEvent.change(input, { target: { value: 'acme corp' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(document.activeElement).toBe(row)
+    expect(onRename).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves focus where it went when a blur commits the rename', () => {
+    const { onRename } = renderRow()
+    const row = screen.getByTestId('signal-row-s1')
+    const elsewhere = document.createElement('button')
+    document.body.appendChild(elsewhere)
+
+    fireEvent.keyDown(row, { key: 'Enter' })
+    const input = screen.getByLabelText('Edit selector pattern')
+    input.focus()
+    fireEvent.change(input, { target: { value: 'acme corp' } })
+    elsewhere.focus()
+
+    expect(onRename).toHaveBeenCalledWith('acme corp')
+    expect(document.activeElement).toBe(elsewhere)
+    elsewhere.remove()
+  })
+
   it('does not act on arrow keys while editing', () => {
     const { onFocusSibling } = renderRow()
     const row = screen.getByTestId('signal-row-s1')

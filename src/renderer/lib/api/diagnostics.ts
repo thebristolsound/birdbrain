@@ -51,3 +51,8 @@ export function lastSession(): Promise<SessionRecord | null> {
 export function createBugReport(input: BugReportInput): Promise<BugReportResult | null> {
   return window.birdbrain.diagnostics.createReport(input)
 }
+
+// Saves only the current and rotated logs to a local archive chosen by the operator.
+export function exportLogs(): Promise<{ path: string } | null> {
+  return window.birdbrain.diagnostics.exportLogs()
+}

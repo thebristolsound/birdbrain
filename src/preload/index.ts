@@ -112,6 +112,14 @@ const birdbrain = {
     merge: bridge(IPC_CHANNELS.TAGS_MERGE),
     capturesWithAnyTag: bridge(IPC_CHANNELS.TAGS_CAPTURES_WITH_ANY_TAG)
   },
+  persona: {
+    list: bridge(IPC_CHANNELS.PERSONAS_LIST),
+    create: bridge(IPC_CHANNELS.PERSONAS_CREATE),
+    update: bridge(IPC_CHANNELS.PERSONAS_UPDATE),
+    delete: bridge(IPC_CHANNELS.PERSONAS_DELETE),
+    import: bridge(IPC_CHANNELS.PERSONAS_IMPORT),
+    storageState: bridge(IPC_CHANNELS.PERSONAS_STORAGE_STATE)
+  },
   selectors: {
     list: bridge(IPC_CHANNELS.SELECTORS_LIST),
     get: bridge(IPC_CHANNELS.SELECTORS_GET),
@@ -213,6 +221,7 @@ const birdbrain = {
     log: bridge(IPC_CHANNELS.DIAGNOSTICS_LOG),
     recentEntries: bridge(IPC_CHANNELS.DIAGNOSTICS_RECENT),
     revealLog: bridge(IPC_CHANNELS.DIAGNOSTICS_REVEAL_LOG),
+    exportLogs: bridge(IPC_CHANNELS.DIAGNOSTICS_EXPORT_LOGS),
     openStorageRoot: bridge(IPC_CHANNELS.DIAGNOSTICS_OPEN_STORAGE_ROOT),
     lastSession: bridge(IPC_CHANNELS.DIAGNOSTICS_LAST_SESSION),
     createReport: bridge(IPC_CHANNELS.DIAGNOSTICS_CREATE_REPORT),
@@ -234,6 +243,7 @@ const birdbrain = {
     deleteRow: bridge(IPC_CHANNELS.DB_DELETE_ROW),
     vacuum: bridge(IPC_CHANNELS.DB_VACUUM),
     rebuildFts: bridge(IPC_CHANNELS.DB_REBUILD_FTS),
+    integrityCheck: bridge(IPC_CHANNELS.DB_INTEGRITY_CHECK),
     purgeArchived: bridge(IPC_CHANNELS.DB_PURGE_ARCHIVED),
     findOrphans: bridge(IPC_CHANNELS.DB_FIND_ORPHANS),
     cleanOrphans: bridge(IPC_CHANNELS.DB_CLEAN_ORPHANS),

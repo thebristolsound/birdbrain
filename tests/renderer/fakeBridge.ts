@@ -17,6 +17,7 @@ const NAMESPACES = [
   'captures',
   'recapture',
   'tags',
+  'persona',
   'selectors',
   'notes',
   'wayback',

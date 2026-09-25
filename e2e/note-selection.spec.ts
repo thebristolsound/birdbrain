@@ -4,7 +4,9 @@ import { test, expect } from './fixtures/electronApp'
 interface SelectionBridge {
   birdbrain: {
     selectors: {
-      list: (caseId: string) => Promise<
+      list: (
+        caseId: string
+      ) => Promise<
         Array<{ id: string; pattern: string; label?: string; origin?: string; enabled: boolean }>
       >
     }
@@ -62,10 +64,10 @@ test.describe('Note selection actions', () => {
     await page.waitForURL(/#\/cases\/.+\/notes/)
 
     await page.getByTestId('notes-new-button').click()
-    await page.getByTestId('create-note-title').fill('Selection observation')
-    await page.getByTestId('create-note-body').fill('meridian-trust.com')
+    await page.getByTestId('note-title-input').fill('Selection observation')
+    await page.getByTestId('note-body-input').fill('meridian-trust.com')
 
-    await selectNoteBody(page, 'create-note-body')
+    await selectNoteBody(page, 'note-body-input')
 
     // The bar offers two actions here and only two — a Quote action in the
     // note editor would be a note quoting itself.
@@ -118,10 +120,10 @@ test.describe('Note selection actions', () => {
     await page.waitForURL(/#\/cases\/.+\/notes/)
 
     await page.getByTestId('notes-new-button').click()
-    await page.getByTestId('create-note-title').fill('Tag observation')
-    await page.getByTestId('create-note-body').fill('Meridian Trust')
+    await page.getByTestId('note-title-input').fill('Tag observation')
+    await page.getByTestId('note-body-input').fill('Meridian Trust')
 
-    await selectNoteBody(page, 'create-note-body')
+    await selectNoteBody(page, 'note-body-input')
     await page.getByTestId('note-selection-tag').click()
     await expect(page.getByTestId('note-selection-value')).toHaveText('meridian-trust')
     await page.getByTestId('note-selection-confirm-submit').click()

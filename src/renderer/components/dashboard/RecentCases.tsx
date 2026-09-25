@@ -1,7 +1,6 @@
 import { Plus } from 'lucide-react'
-import { motion } from 'motion/react'
 import type { Case } from '@shared/types'
-import { presets, STAGGER_INTERVAL, STAGGER_VISIBLE_CAP } from '@renderer/lib/motion'
+import { useScreenEntrance } from '@renderer/lib/motion/entrance'
 import { CaseCard } from '@renderer/components/dashboard/CaseCard'
 
 interface RecentCasesProps {
@@ -21,6 +20,7 @@ export function RecentCases({
   onRenameCase,
   onDeleteCase
 }: RecentCasesProps) {
+  const entering = useScreenEntrance('dashboard')
   return (
     <section className="px-8 pb-12">
       <div className="max-w-5xl mx-auto">
@@ -28,22 +28,16 @@ export function RecentCases({
           <h2 className="font-display font-bold text-lg tracking-tight text-text-primary">
             Recent Cases
           </h2>
-          <span className="rounded-full border border-border-strong bg-surface px-2 py-0.5 font-mono text-[10px] font-medium text-text-muted">
+          <span className="rounded-full border border-border-strong bg-surface px-2 py-0.5 text-[10px] font-medium tabular-nums text-text-muted">
             {cases.length} {cases.length === 1 ? 'case' : 'cases'}
           </span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-          {cases.slice(0, 3).map((c, i) => (
-            <motion.div
-              key={c.id}
-              initial={presets.fadeUp.initial}
-              animate={presets.fadeUp.animate}
-              transition={{
-                ...presets.fadeUp.transition,
-                delay: i < STAGGER_VISIBLE_CAP ? i * STAGGER_INTERVAL : 0
-              }}
-            >
+        <div
+          className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 ${entering ? 'screen-stagger' : ''}`}
+        >
+          {cases.slice(0, 3).map((c) => (
+            <div key={c.id}>
               <CaseCard
                 caseData={c}
                 isRecording={false}
@@ -53,7 +47,7 @@ export function RecentCases({
                 onRename={onRenameCase}
                 onDelete={onDeleteCase}
               />
-            </motion.div>
+            </div>
           ))}
 
           <div

@@ -429,8 +429,7 @@ describe('SELECTION_ACTION: tag and quote ride the #392 attach endpoints', () =>
 
     expect(response).toEqual({
       ok: true,
-      detail:
-        'Tagged "evil-example-com" — Screenshot too large (12 MB); capture stored without it',
+      detail: 'Tagged "evil-example-com" — Screenshot too large (12 MB); capture stored without it',
       captured: true
     })
   })
@@ -457,6 +456,7 @@ describe('SELECTION_ACTION: tag and quote ride the #392 attach endpoints', () =>
       error: 'Failed to apply tag — the page was captured, but nothing was attached to it',
       captureId: 'cap-stored'
     })
+    vi.mocked(lookupCaptureByUrl).mockRejectedValueOnce(new Error('offline'))
     const status = (await dispatchWithResponse({
       type: 'GET_PAGE_STATUS',
       tabId: senderTab.id
@@ -532,6 +532,7 @@ describe('SELECTION_ACTION: tag and quote ride the #392 attach endpoints', () =>
       text: 'The quoted passage.'
     })
 
+    vi.mocked(lookupCaptureByUrl).mockRejectedValueOnce(new Error('offline'))
     const status = (await dispatchWithResponse({
       type: 'GET_PAGE_STATUS',
       tabId: TAB.id

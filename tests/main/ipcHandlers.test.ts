@@ -13,6 +13,7 @@ import {
   writeFileSync
 } from 'fs'
 import { join } from 'path'
+import { readStoredZip } from '@main/services/zipRead'
 import { tmpdir } from 'os'
 import { pathToFileURL } from 'url'
 import type { IpcMainInvokeEvent } from 'electron'
@@ -115,6 +116,24 @@ vi.mock('@main/services/waybackMachine', async (importActual) => {
   }
 })
 
+// The persona session service needs Electron's `session` and `safeStorage`,
+// neither of which the mock above provides; the handlers' routing and the
+// dialog handshake are what this file checks, so the service is a stub.
+const importCookies = vi.fn()
+const clearPersona = vi.fn()
+const getPersonaStorageState = vi.fn()
+const clearOrphanedPartitions = vi.fn()
+vi.mock('@main/services/persona/personaSessions', async (importActual) => {
+  const actual = await importActual<typeof import('@main/services/persona/personaSessions')>()
+  return {
+    ...actual,
+    importCookies: (...a: unknown[]) => importCookies(...a),
+    clearPersona: (...a: unknown[]) => clearPersona(...a),
+    getPersonaStorageState: (...a: unknown[]) => getPersonaStorageState(...a),
+    clearOrphanedPartitions: (...a: unknown[]) => clearOrphanedPartitions(...a)
+  }
+})
+
 // --- Real services ----------------------------------------------------------
 import { IPC_CHANNELS } from '@shared/ipc'
 import { MAX_BATCH_CAPTURE_IDS } from '@shared/constants'
@@ -165,6 +184,9 @@ import { appendManifestEntry, initManifest } from '@main/services/manifest'
 import { buildPdfMetadataRows } from '@main/services/pdfExport'
 import type { TrustedTimeResult } from '@shared/verify/trustedTime'
 import { buildSyntheticToken } from '../helpers/timestampFixtures'
+import * as personaRepo from '@main/services/db/personaRepo'
+import { UnsupportedCookieFileError } from '@main/services/persona/cookieFiles'
+import type { Persona, PersonaImportResult } from '@shared/types'
 
 const fakeEvent = {} as IpcMainInvokeEvent
 
@@ -2200,6 +2222,7 @@ describe('ipcHandlers — database admin', () => {
       await invoke(IPC_CHANNELS.DB_RESTORE_SNAPSHOT, { fileName: listed[0].fileName })
     )
     expect(restored.restored).toBe(true)
+    expect(clearOrphanedPartitions).toHaveBeenCalledWith(userDataPath)
     expect(expectOk(await invoke(IPC_CHANNELS.CASES_GET, afterSnapshot.id))).toBeUndefined()
     // The database is open again on the other side of the restore.
     expectOk(await invoke(IPC_CHANNELS.DB_STATS))
@@ -2223,6 +2246,7 @@ describe('ipcHandlers — database admin', () => {
     const res = expectOk<{ restored: boolean }>(await invoke(IPC_CHANNELS.DB_RESTORE))
 
     expect(res.restored).toBe(true)
+    expect(clearOrphanedPartitions).toHaveBeenCalledWith(userDataPath)
     // Re-opened on the other side, and holding the backup rather than the
     // database that was running when it was chosen.
     expectOk(await invoke(IPC_CHANNELS.DB_STATS))
@@ -2595,6 +2619,38 @@ describe('ipcHandlers — diagnostics logging', () => {
     expect(viaStringLimit).toHaveLength(3)
   })
 
+  it('exports only current and rotated logs, including buffered entries', async () => {
+    const target = join(userDataPath, 'logs.zip')
+    const logDir = join(userDataPath, 'logs')
+    mkdirSync(logDir, { recursive: true })
+    writeFileSync(join(logDir, 'birdbrain.log.1'), 'rotated-log-fixture')
+    writeFileSync(join(logDir, 'settings.json'), 'private-settings-fixture')
+    await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, { level: 'info', code: 'query.failed' })
+    showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: target })
+
+    expect(expectOk(await invoke(IPC_CHANNELS.DIAGNOSTICS_EXPORT_LOGS))).toEqual({ path: target })
+    const exported = readStoredZip(readFileSync(target))
+    expect([...exported.keys()].sort()).toEqual(['birdbrain.log', 'birdbrain.log.1'])
+    expect(exported.get('birdbrain.log')?.toString()).toContain('query.failed')
+    expect(exported.get('birdbrain.log.1')?.toString()).toBe('rotated-log-fixture')
+    expect(showItemInFolder).toHaveBeenCalledWith(target)
+  })
+
+  it('cancels log export without writing or revealing a file', async () => {
+    const target = join(userDataPath, 'cancelled-logs.zip')
+    showSaveDialog.mockResolvedValueOnce({ canceled: true, filePath: target })
+    expect(expectOk(await invoke(IPC_CHANNELS.DIAGNOSTICS_EXPORT_LOGS))).toBeNull()
+    expect(existsSync(target)).toBe(false)
+    expect(showItemInFolder).not.toHaveBeenCalled()
+  })
+
+  it('returns the database integrity check over its dedicated channel', async () => {
+    expect(expectOk(await invoke(IPC_CHANNELS.DB_INTEGRITY_CHECK))).toEqual({
+      ok: true,
+      issues: []
+    })
+  })
+
   it('diagnostics:revealLog reveals the current log file via the shell', async () => {
     await invoke(IPC_CHANNELS.DIAGNOSTICS_LOG, { level: 'info', code: 'query.failed' })
     expectOk(await invoke(IPC_CHANNELS.DIAGNOSTICS_REVEAL_LOG))
@@ -2750,5 +2806,101 @@ describe('ipcHandlers — diagnostics create report', () => {
 
     expect(result).toBeNull()
     expect(showItemInFolder).not.toHaveBeenCalled()
+  })
+})
+
+describe('ipcHandlers — personas (#1497)', () => {
+  beforeEach(() => {
+    importCookies.mockReset()
+    clearPersona.mockReset()
+    getPersonaStorageState.mockReset()
+  })
+
+  it('creates with a trimmed label, lists, and refuses an empty label', async () => {
+    const created = expectOk<Persona>(
+      await invoke(IPC_CHANNELS.PERSONAS_CREATE, { label: '  Research account  ' })
+    )
+    expect(created.label).toBe('Research account')
+    expect(expectOk<Persona[]>(await invoke(IPC_CHANNELS.PERSONAS_LIST))).toEqual([created])
+
+    const res = (await invoke(IPC_CHANNELS.PERSONAS_CREATE, { label: '   ' })) as {
+      ok: boolean
+      code?: string
+    }
+    expect(res.ok).toBe(false)
+    expect(res.code).toBe('PERSONA_LABEL_REQUIRED')
+  })
+
+  it('renames with a trimmed label and refuses a blank one', async () => {
+    const created = personaRepo.createPersona({ label: 'before' })
+    const renamed = expectOk<Persona | undefined>(
+      await invoke(IPC_CHANNELS.PERSONAS_UPDATE, { id: created.id, label: ' after ' })
+    )
+    expect(renamed?.label).toBe('after')
+    const res = (await invoke(IPC_CHANNELS.PERSONAS_UPDATE, { id: created.id, label: ' ' })) as {
+      ok: boolean
+      code?: string
+    }
+    expect(res.ok).toBe(false)
+    expect(res.code).toBe('PERSONA_LABEL_REQUIRED')
+    expect(personaRepo.getPersona(created.id)?.label).toBe('after')
+  })
+
+  it('delete goes through the session service, which clears the partition first', async () => {
+    clearPersona.mockResolvedValueOnce(true)
+    expect(expectOk<boolean>(await invoke(IPC_CHANNELS.PERSONAS_DELETE, 'p-1'))).toBe(true)
+    expect(clearPersona).toHaveBeenCalledWith('p-1')
+  })
+
+  it('import opens the file dialog and returns null when it is cancelled', async () => {
+    showOpenDialog.mockResolvedValueOnce({ canceled: true, filePaths: [] })
+    expect(expectOk(await invoke(IPC_CHANNELS.PERSONAS_IMPORT, 'p-1'))).toBeNull()
+    expect(importCookies).not.toHaveBeenCalled()
+    const options = showOpenDialog.mock.calls.at(-1)?.[0] as { properties: string[] }
+    expect(options.properties).toEqual(['openFile'])
+  })
+
+  it('import hands the chosen path, never its contents, to the service', async () => {
+    const result: PersonaImportResult = {
+      accepted: 2,
+      rejected: [{ line: 3, reason: 'expired' }],
+      importedAt: '2026-09-23T12:00:00.000Z'
+    }
+    showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: ['/tmp/cookies.txt'] })
+    importCookies.mockResolvedValueOnce(result)
+    expect(expectOk(await invoke(IPC_CHANNELS.PERSONAS_IMPORT, 'p-1'))).toEqual(result)
+    expect(importCookies).toHaveBeenCalledWith('p-1', '/tmp/cookies.txt')
+  })
+
+  it('import maps an unsupported file and a missing persona to coded failures', async () => {
+    showOpenDialog.mockResolvedValue({ canceled: false, filePaths: ['/tmp/Cookies'] })
+    importCookies.mockRejectedValueOnce(new UnsupportedCookieFileError())
+    const unsupported = (await invoke(IPC_CHANNELS.PERSONAS_IMPORT, 'p-1')) as {
+      ok: boolean
+      code?: string
+      error?: string
+    }
+    expect(unsupported.ok).toBe(false)
+    expect(unsupported.code).toBe('PERSONA_COOKIE_FILE_UNSUPPORTED')
+    expect(unsupported.error).toMatch(/Netscape cookies.txt/)
+
+    const { PersonaNotFoundError } = await import('@main/services/persona/personaSessions')
+    importCookies.mockRejectedValueOnce(new PersonaNotFoundError('p-1'))
+    const missing = (await invoke(IPC_CHANNELS.PERSONAS_IMPORT, 'p-1')) as {
+      ok: boolean
+      code?: string
+    }
+    expect(missing.ok).toBe(false)
+    expect(missing.code).toBe('PERSONA_NOT_FOUND')
+
+    importCookies.mockRejectedValueOnce(new Error('disk on fire'))
+    await expect(invoke(IPC_CHANNELS.PERSONAS_IMPORT, 'p-1')).rejects.toThrow('disk on fire')
+  })
+
+  it('storage state comes from the session service', async () => {
+    getPersonaStorageState.mockReturnValueOnce({ encryptionAvailable: false })
+    expect(expectOk(await invoke(IPC_CHANNELS.PERSONAS_STORAGE_STATE))).toEqual({
+      encryptionAvailable: false
+    })
   })
 })

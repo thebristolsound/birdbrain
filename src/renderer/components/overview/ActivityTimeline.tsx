@@ -16,7 +16,7 @@ export function ActivityTimeline({ days, rangeDays }: ActivityTimelineProps) {
         {days.map((d, i) => (
           <div key={i} className="flex h-full flex-1 flex-col justify-end">
             <div
-              className={`min-h-[4px] rounded ${d.fresh ? 'bg-accent' : 'bg-accent/30'}`}
+              className={`min-h-[4px] rounded-md ${d.fresh ? 'bg-accent' : 'bg-accent/30'}`}
               style={{ height: `${Math.max(6, (d.count / max) * 100)}%` }}
               title={`${d.count} ${d.count === 1 ? 'capture' : 'captures'}`}
             />

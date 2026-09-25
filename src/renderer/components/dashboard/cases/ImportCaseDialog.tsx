@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { motion } from 'motion/react'
 import { ShieldCheck, ShieldAlert } from 'lucide-react'
 import type { ArchiveInspectReport } from '@shared/types'
 import { presets } from '@renderer/lib/motion'
 import { useCasesMutations } from '@renderer/lib/queries'
-import { Button } from '@renderer/components/ui'
+import { Button, trapTab, useModalEscape, useModalFocus } from '@renderer/components/ui'
 import { ExportProgress } from '@renderer/components/export/ExportProgress'
 
 interface ImportCaseDialogProps {
@@ -20,8 +20,26 @@ export function ImportCaseDialog({ report, onClose }: ImportCaseDialogProps) {
   const { importArchive } = useCasesMutations()
   const navigate = useNavigate()
 
+  const panelRef = useRef<HTMLDivElement>(null)
+  const cancelRef = useRef<HTMLButtonElement>(null)
+  const titleId = useId()
+
   const { verification } = report
   const canImport = verification.overallValid || overrideTamper
+
+  // Mounted only while open, so the modal hooks run with `open` fixed true and
+  // hand focus back when the dialog unmounts. Escape follows the overlay
+  // click: it cannot abandon an import that is already running.
+  useModalFocus(true, panelRef)
+  useModalEscape(true, () => {
+    if (!importArchive.isPending) onClose()
+  })
+
+  // Lands on Cancel rather than the first control, which on a failing archive
+  // is the tamper override: one reflexive Space must not tick it.
+  useEffect(() => {
+    cancelRef.current?.focus()
+  }, [])
 
   // Always-on subscription (matching CaseSubhead) so a progress event fired
   // immediately after mutateAsync can't be missed. Import events carry no
@@ -55,11 +73,19 @@ export function ImportCaseDialog({ report, onClose }: ImportCaseDialogProps) {
       {...presets.overlay}
     >
       <motion.div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
         className="neu-overlay w-[30rem] rounded-2xl p-6"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => trapTab(e, panelRef.current)}
         {...presets.modal}
       >
-        <h2 className="mb-4 text-lg font-semibold text-text-primary">Import Case Archive</h2>
+        <h2 id={titleId} className="mb-4 text-lg font-semibold text-text-primary">
+          Import Case Archive
+        </h2>
 
         <div className="mb-4">
           <p className="font-display text-base font-bold text-text-primary">{report.caseName}</p>
@@ -139,7 +165,13 @@ export function ImportCaseDialog({ report, onClose }: ImportCaseDialogProps) {
         )}
 
         <div className="flex justify-end gap-2">
-          <Button variant="ghost" size="sm" onClick={onClose} disabled={importArchive.isPending}>
+          <Button
+            ref={cancelRef}
+            variant="ghost"
+            size="sm"
+            onClick={onClose}
+            disabled={importArchive.isPending}
+          >
             Cancel
           </Button>
           <Button

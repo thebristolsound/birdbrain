@@ -195,8 +195,11 @@ describe('WaybackPanel', () => {
     expect(screen.getAllByTestId('wayback-snapshot-row')).toHaveLength(6)
 
     fireEvent.click(screen.getByTestId('wayback-calendar-toggle'))
+    const calendar = screen.getByTestId('wayback-calendar')
+    expect(calendar.textContent).toContain('Range: capture date ± 30d')
     fireEvent.click(screen.getByLabelText('Previous month'))
     fireEvent.click(screen.getByLabelText('May 2026 3'))
+    expect(calendar.textContent).toContain('Pick the end of the range')
     fireEvent.click(screen.getByLabelText('May 2026 5'))
     fireEvent.click(screen.getByTestId('wayback-calendar-apply'))
 

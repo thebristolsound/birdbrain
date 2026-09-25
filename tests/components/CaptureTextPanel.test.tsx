@@ -23,7 +23,7 @@ function renderPanel() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
-      <CaptureTextPanel caseId="case1" captureId="cap1" content={TEXT} />
+      <CaptureTextPanel caseId="case1" captureId="cap1" heading="Evidence page" content={TEXT} />
     </QueryClientProvider>
   )
 }
@@ -38,7 +38,7 @@ function selectInPanel(text: string) {
   vi.spyOn(window, 'getSelection').mockReturnValue({
     isCollapsed: false,
     rangeCount: 1,
-    anchorNode: host.querySelector('pre')?.firstChild ?? null,
+    anchorNode: host.querySelector('p')?.firstChild ?? null,
     removeAllRanges: vi.fn(),
     toString: () => text,
     getRangeAt: () => ({ getBoundingClientRect: () => ({ left: 40, bottom: 30 }) })
@@ -66,7 +66,9 @@ afterEach(() => {
 describe('CaptureTextPanel', () => {
   it('renders the extracted text with no bar until something is selected', () => {
     renderPanel()
-    expect(screen.getByTestId('capture-text').textContent).toBe(TEXT)
+    const host = screen.getByTestId('capture-text')
+    expect(host.querySelector('h2')?.textContent).toBe('Evidence page')
+    expect([...host.querySelectorAll('p')].map((p) => p.textContent)).toEqual([TEXT])
     expect(screen.queryByTestId('note-selection-bar')).toBeNull()
   })
 

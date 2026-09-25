@@ -25,6 +25,7 @@ import { copyCaptureUrl } from '@renderer/components/captures/useCopyCaptureUrl'
 import { useAppStore } from '@renderer/stores/appStore'
 import {
   buildWaybackList,
+  calendarHint,
   DAY_OF_WEEK_NAMES,
   footerLine,
   formatRangeLabel,
@@ -363,7 +364,9 @@ export function WaybackPanel({ capture, onClose }: Props) {
             </div>
             <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-border pt-2.5">
               <span className="text-[11px] text-text-muted">
-                {pendingFromMs !== null ? 'Pick the end of the range' : formatRangeLabel(range)}
+                {pendingFromMs !== null
+                  ? 'Pick the end of the range'
+                  : calendarHint({ preset, customRange, captureTimestamp: capture.timestamp })}
               </span>
               <button
                 type="button"

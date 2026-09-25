@@ -4,6 +4,13 @@ import type { AnnotationShape } from '@shared/types'
 import { annotationsQueryOptions, useAnnotationsMutations } from '@renderer/lib/queries'
 import { AnnotationCanvas } from '@renderer/components/captures/annotation/AnnotationCanvas'
 import { PinCommentPopover } from '@renderer/components/captures/annotation/PinCommentPopover'
+import { PinLegend, type PinLegendRow } from '@renderer/components/captures/annotation/PinLegend'
+import {
+  isPin,
+  pinPopoverStyle,
+  type PinAnnotation
+} from '@renderer/components/captures/annotation/pinGeometry'
+import { formatRelativeTime } from '@renderer/lib/formatRelativeTime'
 import { useAnnotationKeyboardShortcuts } from '@renderer/components/captures/annotation/keyboardShortcuts'
 import type { useAnnotationEditor } from '@renderer/components/captures/annotation/useAnnotationEditor'
 import type { useZoomPan } from '@renderer/components/captures/annotation/useZoomPan'
@@ -43,6 +50,9 @@ export function AnnotationEditor(props: Props) {
   const { setShapes, select, dirty } = editor
 
   const [popoverPinShapeId, setPopoverPinShapeId] = useState<string | null>(null)
+  // The pin dropped in this sitting whose note has not been added yet.
+  const [draftPinShapeId, setDraftPinShapeId] = useState<string | null>(null)
+  const [legendOpenShapeId, setLegendOpenShapeId] = useState<string | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const syncedAnnotationsVersionRef = useRef<string | null>(null)
   const annotationsVersion = bundle?.annotations?.updatedAt ?? EMPTY_ANNOTATIONS_VERSION_MARKER
@@ -55,7 +65,14 @@ export function AnnotationEditor(props: Props) {
     syncedAnnotationsVersionRef.current = annotationsVersion
   }, [isSuccess, dirty, setShapes, select, bundle?.annotations?.shapes, annotationsVersion])
 
-  const closePopover = () => setPopoverPinShapeId(null)
+  const closePopover = () => {
+    setPopoverPinShapeId(null)
+    setDraftPinShapeId(null)
+  }
+  const removePin = (shape: PinAnnotation) => {
+    editor.removeShape(shape.id)
+    mutations.deletePin.mutate(shape.pinId)
+  }
   const handleZoomAt = (delta: number, cx: number, cy: number) => {
     closePopover()
     zoomPan.zoomAt(delta, cx, cy)
@@ -73,13 +90,18 @@ export function AnnotationEditor(props: Props) {
     enabled: true,
     setTool: editor.setTool,
     getTool: () => editor.tool,
-    deselect: () => editor.select(null),
+    deselect: () => {
+      editor.select(null)
+      closePopover()
+    },
     removeSelected: () => {
       if (!editor.selectedId) return
       const shape = editor.shapes.find((s) => s.id === editor.selectedId)
-      editor.removeShape(editor.selectedId)
-      if (shape && shape.kind === 'pin') {
-        mutations.deletePin.mutate(shape.pinId)
+      if (shape && isPin(shape)) {
+        removePin(shape)
+        if (shape.id === popoverPinShapeId) closePopover()
+      } else {
+        editor.removeShape(editor.selectedId)
       }
     },
     undo: editor.undo,
@@ -138,11 +160,30 @@ export function AnnotationEditor(props: Props) {
     editor.beginDraft(draft)
     editor.commitDraft()
     setPopoverPinShapeId(draft.id)
+    setDraftPinShapeId(draft.id)
   }
 
-  const popoverShape = editor.shapes.find((s) => s.id === popoverPinShapeId && s.kind === 'pin') as
-    | Extract<AnnotationShape, { kind: 'pin' }>
-    | undefined
+  const pinShapes = editor.shapes.filter(isPin).sort((a, b) => a.number - b.number)
+  const pinMeta = (shape: PinAnnotation) => {
+    const pin = bundle?.pins.find((p) => p.id === shape.pinId)
+    const when = pin ? formatRelativeTime(pin.createdAt) : ''
+    return when ? `Pin ${shape.number} · ${when}` : `Pin ${shape.number}`
+  }
+  const legendRows: PinLegendRow[] = pinShapes.map((shape) => ({
+    shapeId: shape.id,
+    number: shape.number,
+    body: bundle?.pins.find((p) => p.id === shape.pinId)?.body ?? '',
+    meta: pinMeta(shape)
+  }))
+  const toggleLegendRow = (shapeId: string) => {
+    const next = legendOpenShapeId === shapeId ? null : shapeId
+    setLegendOpenShapeId(next)
+    // Selecting the pin draws its ring on the canvas, which is how the open
+    // row points at the mark it describes.
+    editor.select(next)
+  }
+
+  const popoverShape = pinShapes.find((s) => s.id === popoverPinShapeId)
   const popoverPin = popoverShape
     ? bundle?.pins.find((p) => p.id === popoverShape.pinId)
     : undefined
@@ -156,7 +197,10 @@ export function AnnotationEditor(props: Props) {
         shapes={overlayVisible ? editor.shapes : []}
         draft={overlayVisible ? editor.draft : null}
         selectedId={editor.selectedId}
-        onSelect={editor.select}
+        onSelect={(id) => {
+          editor.select(id)
+          if (id === null) closePopover()
+        }}
         onShapeChange={editor.updateShape}
         editable={overlayVisible}
         tool={editor.tool}
@@ -167,8 +211,10 @@ export function AnnotationEditor(props: Props) {
         onDraftCommit={editor.commitDraft}
         onPinDrop={onPinDrop}
         onPinClick={(pinId) => {
-          const shape = editor.shapes.find((s) => s.kind === 'pin' && s.pinId === pinId)
-          if (shape) setPopoverPinShapeId(shape.id)
+          const shape = pinShapes.find((s) => s.pinId === pinId)
+          if (!shape) return
+          setPopoverPinShapeId(shape.id)
+          if (shape.id !== draftPinShapeId) setDraftPinShapeId(null)
         }}
         containerWidth={containerWidth}
         containerHeight={containerHeight}
@@ -179,17 +225,40 @@ export function AnnotationEditor(props: Props) {
         onPan={handlePan}
         onResetView={handleResetView}
       />
+      {overlayVisible && legendRows.length > 0 && (
+        <PinLegend rows={legendRows} openShapeId={legendOpenShapeId} onToggle={toggleLegendRow} />
+      )}
       <PinCommentPopover
-        open={popoverPinShapeId != null}
-        pinNumber={popoverShape?.number || null}
+        // Remounted per pin, so moving straight from one pin to another never
+        // carries the first one's half-typed note or edit state across.
+        key={popoverShape?.id ?? 'none'}
+        open={overlayVisible && popoverShape !== undefined}
+        isDraft={popoverShape !== undefined && popoverShape.id === draftPinShapeId}
         initialBody={popoverPin?.body ?? ''}
+        meta={popoverShape ? pinMeta(popoverShape) : ''}
+        style={
+          popoverShape
+            ? pinPopoverStyle(popoverShape, zoomPan, imageHeight, containerWidth)
+            : undefined
+        }
         saving={mutations.upsertPin.isPending}
         onSave={(body) => {
           if (!popoverShape) return
           mutations.upsertPin.mutate({ captureId, id: popoverShape.pinId, body })
-          setPopoverPinShapeId(null)
+          closePopover()
         }}
-        onClose={() => setPopoverPinShapeId(null)}
+        onCancelDraft={() => {
+          if (popoverShape) {
+            editor.discardShape(popoverShape.id)
+            mutations.deletePin.mutate(popoverShape.pinId)
+          }
+          closePopover()
+        }}
+        onDelete={() => {
+          if (popoverShape) removePin(popoverShape)
+          closePopover()
+        }}
+        onClose={closePopover}
       />
     </div>
   )

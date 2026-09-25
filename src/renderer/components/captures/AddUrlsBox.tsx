@@ -7,48 +7,59 @@ interface AddUrlsBoxProps {
   onQueued?: () => void
 }
 
-// Paste one or many URLs (whitespace-separated); they are captured
-// silently in the background by the recapture queue. Rendered inside the
-// Capture menu's dialog.
+interface Feedback {
+  summary: string
+  rejected: Array<{ url: string; reason: string }>
+}
+
+// One entry per line. Splitting on any whitespace turned one malformed line
+// into several rejections, none of which matched what the operator pasted.
+function parseUrlEntries(value: string): string[] {
+  return [
+    ...new Set(
+      value
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .filter(Boolean)
+    )
+  ]
+}
+
+// Paste one or many URLs, one per line; they are captured silently in the
+// background by the recapture queue. Rendered inside the Capture menu's dialog.
 export function AddUrlsBox({ caseId, onQueued }: AddUrlsBoxProps) {
   const [value, setValue] = useState('')
-  const [feedback, setFeedback] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<Feedback | null>(null)
   const { enqueue } = useRecaptureMutations(caseId)
 
   async function submit() {
-    const urls = [
-      ...new Set(
-        value
-          .split(/\s+/)
-          .map((s) => s.trim())
-          .filter(Boolean)
-      )
-    ]
+    const urls = parseUrlEntries(value)
     if (urls.length === 0) return
     try {
-      const result = await enqueue.mutateAsync({ urls })
-      const parts = [`${result.accepted} queued`]
-      if (result.rejected.length > 0) {
-        parts.push(`${result.rejected.length} rejected (${result.rejected[0].reason})`)
-      }
-      setFeedback(parts.join(', '))
-      if (result.accepted > 0) setValue('')
+      const { accepted, rejected } = await enqueue.mutateAsync({ urls })
+      const parts = [`${accepted} queued`]
+      if (rejected.length > 0) parts.push(`${rejected.length} rejected`)
+      setFeedback({ summary: parts.join(', '), rejected })
+      if (accepted > 0) setValue('')
       // Everything queued cleanly — dismiss the dialog. Keep it open when
       // some URLs were rejected so the feedback stays readable.
-      if (result.accepted > 0 && result.rejected.length === 0) onQueued?.()
+      if (accepted > 0 && rejected.length === 0) onQueued?.()
     } catch (err) {
-      setFeedback(err instanceof Error ? err.message : 'Failed to queue captures')
+      setFeedback({
+        summary: err instanceof Error ? err.message : 'Failed to queue captures',
+        rejected: []
+      })
     }
   }
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex gap-2">
+      <div className="flex items-start gap-2">
         <Textarea
           data-testid="add-urls-input"
           className="min-h-0 flex-1 resize-y py-1.5 text-xs"
-          placeholder="Paste URLs to capture in the background..."
-          rows={1}
+          placeholder="Paste URLs to capture in the background, one per line..."
+          rows={4}
           value={value}
           onChange={(e) => {
             setValue(e.target.value)
@@ -66,9 +77,18 @@ export function AddUrlsBox({ caseId, onQueued }: AddUrlsBoxProps) {
         </Button>
       </div>
       {feedback && (
-        <span data-testid="add-urls-feedback" className="text-xs text-text-secondary">
-          {feedback}
-        </span>
+        <div data-testid="add-urls-feedback" className="text-xs text-text-secondary">
+          <span>{feedback.summary}</span>
+          {feedback.rejected.length > 0 && (
+            <ul data-testid="add-urls-rejections" className="mt-1 flex flex-col gap-0.5">
+              {feedback.rejected.map(({ url, reason }) => (
+                <li key={url} className="min-w-0 break-all text-text-muted">
+                  <span className="font-mono text-text-secondary">{url}</span>: {reason}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </div>
   )

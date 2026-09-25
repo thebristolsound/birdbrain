@@ -9,6 +9,7 @@ import {
 interface CaptureTextPanelProps {
   caseId: string
   captureId: string
+  heading: string
   content: string
 }
 
@@ -19,11 +20,15 @@ export const CAPTURE_TAG_HINT =
  * The Text tab's extracted text, with the note editor's Selector and Tag bar
  * over a selection in it, so the gesture is the same here as in a note.
  *
+ * The text is laid out as prose. Blank lines become paragraph breaks and
+ * trailing whitespace at each paragraph's end is dropped; every other
+ * character, single line breaks included, renders as extracted.
+ *
  * The Page tab has no bar. Its document renders in a guest with scripts off
  * and navigation blocked, and reading a selection out of it would mean
  * putting something into the captured page.
  */
-export function CaptureTextPanel({ caseId, captureId, content }: CaptureTextPanelProps) {
+export function CaptureTextPanel({ caseId, captureId, heading, content }: CaptureTextPanelProps) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const { selection, onSelectionEnd, openConfirm, dismiss } = useNoteSelection(hostRef)
   const { findOrCreate, addToCapture } = useTagsMutations(caseId)
@@ -37,15 +42,32 @@ export function CaptureTextPanel({ caseId, captureId, content }: CaptureTextPane
     }
   }
 
+  const paragraphs = content
+    .split(/\n[^\S\n]*\n/)
+    .map((p) => p.replace(/^\n+/, '').trimEnd())
+    .filter((p) => p.trim() !== '')
+
   return (
     <div
       ref={hostRef}
       data-testid="capture-text"
-      className="relative h-full overflow-y-auto p-4"
+      className="relative h-full overflow-y-auto px-7 pb-7 pt-6"
       onMouseUp={onSelectionEnd}
       onKeyUp={onSelectionEnd}
     >
-      <pre className="whitespace-pre-wrap font-mono text-sm text-text-muted">{content}</pre>
+      <div className="max-w-[660px]">
+        <h2 className="font-display text-[17px] font-bold tracking-[-0.025em] text-text-primary">
+          {heading}
+        </h2>
+        {paragraphs.map((p, i) => (
+          <p
+            key={i}
+            className="mt-3.5 whitespace-pre-wrap text-[13px] leading-[1.8] text-text-secondary"
+          >
+            {p}
+          </p>
+        ))}
+      </div>
       {selection ? (
         <SelectionActionsOverlay
           caseId={caseId}

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useAppStore, type CaptureViewerTab } from '@renderer/stores/appStore'
@@ -84,14 +84,21 @@ export function CaptureViewer() {
     enabled: !!shouldFetchContent
   })
 
-  // Navigation
-  const currentIndex = captures.findIndex((c) => c.id === selectedCaptureId)
+  // Navigation walks the list as displayed: its narrowings and its sort. With
+  // no list mounted (collapsed to the rail) nothing is narrowed on screen, so
+  // the whole case is the list.
+  const displayedCaptureIds = useAppStore((s) => s.displayedCaptureIds)
+  const pagerIds = useMemo(
+    () => displayedCaptureIds ?? captures.map((c) => c.id),
+    [displayedCaptureIds, captures]
+  )
+  const currentIndex = selectedCaptureId ? pagerIds.indexOf(selectedCaptureId) : -1
   const goPrev = useCallback(() => {
-    if (currentIndex > 0) selectCapture(captures[currentIndex - 1].id)
-  }, [currentIndex, captures, selectCapture])
+    if (currentIndex > 0) selectCapture(pagerIds[currentIndex - 1])
+  }, [currentIndex, pagerIds, selectCapture])
   const goNext = useCallback(() => {
-    if (currentIndex < captures.length - 1) selectCapture(captures[currentIndex + 1].id)
-  }, [currentIndex, captures, selectCapture])
+    if (currentIndex < pagerIds.length - 1) selectCapture(pagerIds[currentIndex + 1])
+  }, [currentIndex, pagerIds, selectCapture])
 
   // Keyboard navigation
   useEffect(() => {
@@ -267,15 +274,15 @@ export function CaptureViewer() {
         >
           <ChevronLeft className="h-3.5 w-3.5" />
         </Button>
-        <span className="shrink-0 text-[11px] text-text-faint">
-          {currentIndex + 1} / {captures.length}
+        <span data-testid="capture-pager-count" className="shrink-0 text-[11px] text-text-faint">
+          {currentIndex + 1} / {pagerIds.length}
         </span>
         <Button
           variant="ghost"
           size="icon-sm"
           className="shrink-0"
           onClick={goNext}
-          disabled={currentIndex >= captures.length - 1}
+          disabled={currentIndex >= pagerIds.length - 1}
           title="Next capture (→)"
         >
           <ChevronRight className="h-3.5 w-3.5" />
@@ -320,6 +327,7 @@ export function CaptureViewer() {
                 key={capture.id}
                 caseId={caseId}
                 captureId={capture.id}
+                heading={capture.title || hostname}
                 content={content}
               />
             ) : (

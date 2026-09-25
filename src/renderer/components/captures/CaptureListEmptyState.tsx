@@ -1,32 +1,48 @@
-import { Layers, Plus } from 'lucide-react'
+import { Camera } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useReduceMotion } from '@renderer/hooks/useReduceMotion'
+import { CLEAR_NARROWING_LABEL } from '@renderer/components/captures/captureListModel'
 
-export function CaptureListEmptyState() {
+interface CaptureListEmptyStateProps {
+  // Set when the case has captures and a narrowing hides every one of them.
+  // The narrowing strip above the list already names each narrowing, so this
+  // state only says that nothing matches and offers the one clear control.
+  onClearNarrowing?: () => void
+}
+
+export function CaptureListEmptyState({ onClearNarrowing }: CaptureListEmptyStateProps) {
   const reduce = useReduceMotion()
+  const narrowed = onClearNarrowing !== undefined
 
   return (
     <div
-      data-testid="capture-list-empty-state"
-      className="flex flex-1 flex-col items-center justify-center px-8 py-10"
+      data-testid={narrowed ? 'capture-list-narrowed-empty' : 'capture-list-empty-state'}
+      className="flex flex-1 flex-col items-center justify-center gap-2.5 px-5 py-8 text-center"
     >
-      <div className="relative mb-5">
-        <motion.div
-          className="flex h-20 w-20 items-center justify-center rounded-2xl bg-accent-subtle"
-          animate={reduce ? undefined : { y: [0, -8, 0] }}
-          transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-        >
-          <Layers className="h-7 w-7 text-accent" />
-        </motion.div>
-        <div className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full border border-amber-500/20 bg-amber-500/10">
-          <Plus className="h-3 w-3 text-amber-500" />
-        </div>
-      </div>
-      <h3 className="mb-1.5 text-sm font-semibold text-text-primary">No captures yet</h3>
-      <p className="max-w-[240px] text-center text-xs leading-relaxed text-text-muted">
-        Browse the web with the Birdbrain extension active to start collecting captures for this
-        case.
+      <motion.div
+        className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-canvas"
+        animate={reduce ? undefined : { y: [0, -4, 0] }}
+        transition={{ duration: 4.5, repeat: Infinity, ease: 'easeInOut' }}
+      >
+        <Camera className="h-4 w-4 text-text-faint" strokeWidth={1.6} />
+      </motion.div>
+      <h3 className="text-xs font-semibold text-text-secondary">
+        {narrowed ? 'No captures match' : 'No captures yet'}
+      </h3>
+      <p className="max-w-[200px] text-[11px] leading-[1.6] text-text-faint">
+        {narrowed
+          ? 'Nothing in this case matches the current filters.'
+          : 'Browse the web with the Birdbrain extension active to start collecting captures for this case.'}
       </p>
+      {narrowed && (
+        <button
+          type="button"
+          onClick={onClearNarrowing}
+          className="mt-0.5 rounded border border-border px-2.5 py-[5px] text-[11px] text-text-secondary hover:bg-elevated"
+        >
+          {CLEAR_NARROWING_LABEL}
+        </button>
+      )}
     </div>
   )
 }

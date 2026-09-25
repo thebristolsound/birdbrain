@@ -117,6 +117,22 @@ export function formatRangeLabel(range: WaybackRange | null): string {
   )}`
 }
 
+/**
+ * The calendar footer's name for the range in force: the preset in words, or
+ * the span itself once the operator has applied days of their own.
+ */
+export function calendarHint(input: {
+  preset: WaybackPresetId
+  customRange: WaybackRange | null
+  captureTimestamp: string
+}): string {
+  const { preset, customRange, captureTimestamp } = input
+  if (customRange) return `Range: ${formatRangeLabel(customRange)}`
+  if (preset === 'all') return 'Range: all snapshots'
+  if (preset === 'around-capture') return 'Range: capture date ± 30d'
+  return `Range: ${presetLabel(preset, captureTimestamp).toLowerCase()}`
+}
+
 /** HTTP status band, used only to colour the row. Null when the CDX row had none. */
 export type StatusBand = 'ok' | 'redirect' | 'error'
 
@@ -278,7 +294,8 @@ export function monthGrid(input: {
     cells.push({
       day,
       ms,
-      inRange: input.range !== null && ms + DAY_MS - 1 >= input.range.fromMs && ms <= input.range.toMs,
+      inRange:
+        input.range !== null && ms + DAY_MS - 1 >= input.range.fromMs && ms <= input.range.toMs,
       isCaptureDay: captureDayMs !== null && ms === captureDayMs,
       isEndpoint: input.pendingFromMs !== null && startOfUtcDay(input.pendingFromMs) === ms
     })

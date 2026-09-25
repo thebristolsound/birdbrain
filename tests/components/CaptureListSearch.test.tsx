@@ -157,6 +157,17 @@ describe('CaptureList per-list search', () => {
     await settledTitles(3)
   })
 
+  it('publishes the displayed rows for the viewer pager, and withdraws them on unmount', async () => {
+    const { unmount } = renderList()
+    await titles()
+    type('acme')
+    await settledTitles(2)
+    expect(useAppStore.getState().displayedCaptureIds).toEqual(['cap-a', 'cap-b'])
+
+    unmount()
+    expect(useAppStore.getState().displayedCaptureIds).toBeNull()
+  })
+
   it('counts only the displayed captures in the footer', async () => {
     renderList()
     await titles()
@@ -173,7 +184,11 @@ describe('CaptureList per-list search', () => {
     expect(screen.queryByTestId('capture-list-empty-state')).toBeNull()
     const empty = screen.getByTestId('capture-list-narrowed-empty')
     expect(within(empty).getByText('No captures match')).toBeDefined()
-    expect(empty.textContent).toContain('Search "zebra"')
+    expect(
+      within(empty).getByText('Nothing in this case matches the current filters.')
+    ).toBeDefined()
+    // The design's empty state does not enumerate; the strip above it does.
+    expect(screen.getByTestId('capture-list-narrowing').textContent).toContain('Search "zebra"')
   })
 
   it('still shows the first-run empty state when the case has no captures at all', async () => {
@@ -220,8 +235,8 @@ describe('CaptureList per-list search', () => {
     type('zebra')
 
     await settledTitles(0)
-    const empty = await screen.findByTestId('capture-list-narrowed-empty')
-    expect(empty.textContent).toContain('3 captures in this case are hidden')
+    expect(await screen.findByTestId('capture-list-narrowed-empty')).toBeDefined()
+    expect(screen.getByTestId('capture-list-narrowing').textContent).toContain('Search "zebra"')
     expect(screen.queryByTestId('capture-list-empty-state')).toBeNull()
   })
 

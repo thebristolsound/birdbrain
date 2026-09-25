@@ -44,6 +44,10 @@ interface AppState {
   // list is no longer applying.
   activeTagFilters: string[]
   tagFilteredCaptureIds: string[] | null
+  // The capture list's rows in display order, after every narrowing and the
+  // sort, or null while no list is mounted. The viewer's pager reads it; the
+  // list's own filters are component state it could not otherwise see.
+  displayedCaptureIds: string[] | null
   captureEvents: CaptureEvent[]
   captureStats: {
     successCount: number
@@ -94,6 +98,7 @@ interface AppState {
   removeTagFilter: (tagId: string) => void
   clearTagFilters: () => void
   setTagFilteredCaptureIds: (ids: string[] | null) => void
+  setDisplayedCaptureIds: (ids: string[] | null) => void
   addCaptureEvent: (event: CaptureEvent) => void
   clearCaptureEvents: () => void
 }
@@ -112,6 +117,7 @@ export const useAppStore = create<AppState>((set) => ({
   filteredCaptureIds: null,
   activeTagFilters: [],
   tagFilteredCaptureIds: null,
+  displayedCaptureIds: null,
   captureEvents: [],
   captureStats: { successCount: 0, failCount: 0, skipCount: 0 },
   commandPaletteOpen: false,
@@ -235,6 +241,7 @@ export const useAppStore = create<AppState>((set) => ({
   clearTagFilters: () => set({ activeTagFilters: [], tagFilteredCaptureIds: null }),
 
   setTagFilteredCaptureIds: (ids) => set({ tagFilteredCaptureIds: ids }),
+  setDisplayedCaptureIds: (ids) => set({ displayedCaptureIds: ids }),
 
   addCaptureEvent: (event) =>
     set((s) => {

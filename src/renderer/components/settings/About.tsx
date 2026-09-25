@@ -8,7 +8,7 @@ export function About() {
 
   return (
     <Card>
-      <CardContent>
+      <CardContent className="p-[var(--d-card)]">
         <h2 className="mb-4 text-lg font-semibold text-text-primary">About</h2>
         <div className="space-y-2 text-sm text-text-muted">
           <p>

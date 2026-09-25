@@ -102,6 +102,15 @@ describe('the dashboard extension banner', () => {
     expect(container.querySelector('[data-tour="browser"]')).not.toBeNull()
   })
 
+  // The banner padding was a literal, so the screen rendered identically on
+  // every step (#1540).
+  it('pads the banner from the density card step', () => {
+    const { container } = render(<ExtensionBanner connected={false} />, { wrapper: Wrapper })
+    const { className } = container.querySelector('[data-tour="browser"]')!
+    expect(className).toContain('p-[var(--d-card)]')
+    expect(className).not.toContain('p-6')
+  })
+
   // Replaces the deleted /extension-setup route: the same button now replays
   // the tour's extension chapter, install steps expanded.
   it('replays the extension chapter from Setup Guide', () => {

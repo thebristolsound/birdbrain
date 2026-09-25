@@ -56,7 +56,7 @@ const DEFAULT_SETTINGS: BirdbrainSettings = {
   dedupeWindowSeconds: DEFAULT_DEDUPE_WINDOW_SECONDS,
   ignoredUrlPatterns: [],
   storagePath: '',
-  theme: 'light',
+  theme: 'dark',
   reduceMotion: false,
   density: DEFAULT_UI_DENSITY,
   operatorName: '',

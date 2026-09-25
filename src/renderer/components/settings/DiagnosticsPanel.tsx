@@ -407,10 +407,15 @@ export function DiagnosticsPanel() {
                   value={snap.trustedTimestamping.enabled ? 'Enabled' : 'Disabled'}
                 />
               </div>
+              {/* Scoped the same way as the Settings copy (#1169 review): tokens
+                  obtained before the switch went off still assert trusted time in
+                  the badge and in every export, so a flat "no trusted time is
+                  asserted" would misdescribe evidence the operator already holds.
+                  Only MHTML captures are eligible, per stampCapture. */}
               <p className="mt-2 text-xs text-text-muted">
                 {snap.trustedTimestamping.enabled
-                  ? 'Each capture’s content hash is sent to the configured RFC 3161 authority, which also sees this device’s IP address and the time of the request.'
-                  : 'No capture is sent to a timestamp authority, and no trusted time is asserted. Change this under Settings → Operator.'}
+                  ? 'Each MHTML capture’s content hash is sent to the configured RFC 3161 authority, which also sees this device’s IP address and the time of the request.'
+                  : 'No capture is sent to a timestamp authority, and captures made while it is off assert no trusted time; timestamps already obtained are kept. Change this under Settings → Operator.'}
               </p>
             </Section>
 

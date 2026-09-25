@@ -175,7 +175,13 @@ const DIRECT_INPUT_EXTRAS = {
 
 const ZIP_OPTIONS: ExportOptions = {
   format: 'zip',
-  include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+  include: {
+    captures: true,
+    screenshots: false,
+    auditTrail: true,
+    notes: false,
+    annotations: 'none'
+  },
   exportClass: 'evidence',
   outputPath: ''
 }
@@ -571,7 +577,7 @@ describe('certification', () => {
   // endpoint beside a process paragraph about hashes being submitted to a TSA is
   // what turns "Where enabled" into an apparent claim about this export.
   describe('an installation that declined trusted timestamping', () => {
-    it('names no authority in either packaged document', async () => {
+    it('names the configured authority and says it was not contacted', async () => {
       await ingest(
         caseId,
         '<html><body>Declined</body></html>',
@@ -586,8 +592,15 @@ describe('certification', () => {
 
       for (const html of [certification, report]) {
         expect(html).toContain('Time-stamping authority (configured)')
-        expect(html).toContain('trusted timestamping is switched off for this installation')
-        expect(html).not.toContain('https://tsa.example/timestamp')
+        expect(html).toContain(
+          'Not contacted — trusted timestamping is switched off for this installation'
+        )
+        // The endpoint stays on the page (#1169 round-2 review): the same document
+        // tells a reader to obtain a trust anchor from the authority that issued
+        // the retained tokens, so a cover that denied one was configured made the
+        // document contradict itself.
+        expect(html).toContain('https://tsa.example/timestamp')
+        expect(html).not.toContain('None — trusted timestamping is switched off')
       }
     })
 
@@ -652,10 +665,10 @@ describe('certification', () => {
       }
     })
 
-    // The configured-authority field takes a sentence here, not a URL, so the
-    // monospace run that exists to make an endpoint transcribable must not swallow
-    // it. report.html already sets the same string as prose.
-    it('sets the declined sentence as prose, not as a monospaced endpoint', async () => {
+    // The configured-authority field carries the endpoint and a note under it, so
+    // the monospace run that exists to make an endpoint transcribable must cover
+    // the endpoint and not the note. report.html sets the same pair the same way.
+    it('sets the not-contacted note as prose, not as a monospaced endpoint', async () => {
       await ingest(
         caseId,
         '<html><body>Declined</body></html>',
@@ -667,10 +680,10 @@ describe('certification', () => {
       const certification = (await exportZip()).get('certification.html')!.toString('utf-8')
 
       expect(certification).toContain(
-        'None — trusted timestamping is switched off for this installation'
+        '<span class="mono break">https://tsa.example/timestamp</span><br>Not contacted — trusted timestamping is switched off for this installation'
       )
       expect(certification).not.toContain(
-        '<span class="mono break">None — trusted timestamping is switched off'
+        '<span class="mono break">Not contacted — trusted timestamping is switched off'
       )
     })
   })

@@ -236,9 +236,15 @@ describe('DiagnosticsPanel storage folder action', () => {
     })
     renderPanel()
     expect(await screen.findByText('Disabled')).toBeDefined()
-    expect(
-      await screen.findByText(/No capture is sent to a timestamp authority/)
-    ).toBeDefined()
+    const copy = await screen.findByText(/No capture is sent to a timestamp authority/)
+    expect(copy).toBeDefined()
+    // Scoped to captures made while the switch is off, the way the Settings copy
+    // is (#1169 review). Tokens obtained earlier still assert trusted time in the
+    // badge and in every export, so a flat claim over the installation's evidence
+    // would tell an operator their retained timestamps assert nothing.
+    expect(copy.textContent).toContain('captures made while it is off assert no trusted time')
+    expect(copy.textContent).toContain('timestamps already obtained are kept')
+    expect(copy.textContent).not.toMatch(/and no trusted time is asserted\./)
   })
 
   // #363: the root is opened on its own main-derived channel. The generic

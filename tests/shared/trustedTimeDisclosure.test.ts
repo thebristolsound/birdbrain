@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  TRUSTED_TIME_AUTHORITY_DECLINED,
+  TRUSTED_TIME_AUTHORITY_NOT_CONTACTED,
   TRUSTED_TIME_LABELS,
   TRUSTED_TIME_UNNAMED_TSA,
   trustedTimeAttestingParty,
@@ -49,16 +49,21 @@ describe('trusted-time disclosure vocabulary (#519)', () => {
     expect(who).not.toContain('configured')
   })
 
-  // #1169. The declined phrasing replaces the endpoint in the packaged
-  // documents' configured-authority field, so it has to be a statement about
-  // this installation's configuration and nothing else. A package can hold
-  // tokens obtained before the operator switched timestamping off, so any claim
-  // here about what was or was not submitted would be false for that package.
-  it('says only that the installation declined, never what was submitted', () => {
-    expect(TRUSTED_TIME_AUTHORITY_DECLINED).toContain('switched off for this installation')
-    expect(TRUSTED_TIME_AUTHORITY_DECLINED).not.toMatch(/submitted|sent|requested|no capture/i)
-    // Nothing in it may be mistaken for an authority's name.
-    expect(TRUSTED_TIME_AUTHORITY_DECLINED).not.toMatch(/https?:/)
+  // #1169. The not-contacted note sits under the endpoint in the packaged
+  // documents' configured-authority field, so it has to be a statement about this
+  // installation's configuration and nothing else. A package can hold tokens
+  // obtained before the operator switched timestamping off, so any claim here
+  // about what was or was not submitted would be false for that package.
+  it('says only that the installation switched it off, never what was submitted', () => {
+    expect(TRUSTED_TIME_AUTHORITY_NOT_CONTACTED).toContain('switched off for this installation')
+    expect(TRUSTED_TIME_AUTHORITY_NOT_CONTACTED).not.toMatch(/submitted|requested|no capture/i)
+    // The note carries no identity of its own; the endpoint above it is the only
+    // authority the field names.
+    expect(TRUSTED_TIME_AUTHORITY_NOT_CONTACTED).not.toMatch(/https?:/)
+    // It must not read as a denial that an authority is configured — the same
+    // document's verification section sends the reader to that authority for a
+    // trust anchor (#1169 round-2 review).
+    expect(TRUSTED_TIME_AUTHORITY_NOT_CONTACTED).not.toMatch(/^none\b/i)
   })
 
   // #1169 fix round. These labels are resolved from the manifest alone, which

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, rmSync, existsSync } from 'fs'
+import { mkdtempSync, rmSync, existsSync, chmodSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { writeFileSync } from 'fs'
@@ -143,9 +143,7 @@ describe('settings', () => {
     })
 
     it('rejects a non-boolean rather than coercing it', () => {
-      expect(() =>
-        updateSettings({ tsaEnabled: 'no' as unknown as boolean })
-      ).toThrow(/tsaEnabled/)
+      expect(() => updateSettings({ tsaEnabled: 'no' as unknown as boolean })).toThrow(/tsaEnabled/)
       expect(getSettings().tsaEnabled).toBe(true)
     })
 
@@ -218,6 +216,42 @@ describe('settings', () => {
         updateSettings({ tsaEnabled: true })
         expect(getSettings().tsaEnabled).toBe(true)
       })
+    })
+
+    // A file whose bytes are intact but which this process cannot read right now:
+    // EACCES, EBUSY, an antivirus lock. The session falls closed the same way,
+    // because the stored preference is illegible either way — but the decline must
+    // not be written back, or a transient lock plus one routine settings write
+    // persists an opt-out the operator never chose and blanks every other setting
+    // with it (#1169 round-2 review). Skipped as root, which reads a 0o000 file.
+    describe('a settings file that cannot be read', () => {
+      it.skipIf(process.getuid?.() === 0)('falls closed for timestamping', () => {
+        writeFileSync(settingsFile, JSON.stringify({ tsaEnabled: true }), 'utf-8')
+        chmodSync(settingsFile, 0o000)
+        try {
+          expect(getSettings().tsaEnabled).toBe(false)
+        } finally {
+          chmodSync(settingsFile, 0o600)
+        }
+      })
+
+      it.skipIf(process.getuid?.() === 0)(
+        'refuses the write, leaving the stored preference intact',
+        () => {
+          writeFileSync(settingsFile, JSON.stringify({ tsaEnabled: true, theme: 'light' }), 'utf-8')
+          chmodSync(settingsFile, 0o000)
+          try {
+            expect(() => updateSettings({ operatorName: 'Someone' })).toThrow(
+              /refusing to overwrite/
+            )
+          } finally {
+            chmodSync(settingsFile, 0o600)
+          }
+          const recovered = getSettings()
+          expect(recovered.tsaEnabled).toBe(true)
+          expect(recovered.theme).toBe('light')
+        }
+      )
     })
   })
 

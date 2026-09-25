@@ -2307,10 +2307,13 @@ describe('export', () => {
   // #1169 fix round. The cover's configured-authority field states what this
   // installation had set when the package was built. An operator who stamped
   // through a custom authority and later switched timestamping off exports a
-  // package whose retained tokens still need that authority's root, and the
-  // cover no longer names it — so the canonical procedure must not send the
-  // reader there. The tokens name their own issuer and that is what it cites.
-  it('derives the trust anchor from the tokens, not from the cover (declined, custom TSA)', async () => {
+  // package whose retained tokens still need that authority's root, so the cover
+  // names the endpoint and marks it not contacted rather than denying one is
+  // configured — the round-2 review found the denial contradicting the
+  // verification section of the same document two pages later. The procedure still
+  // cites the tokens' own issuer, because the cover states configuration and not
+  // who signed a token retained from earlier.
+  it('names the configured authority as not contacted and still derives the anchor from the tokens (declined, custom TSA)', async () => {
     updateSettings({ tsaUrl: 'https://tsa.example.org/timestamp' })
     await ingest(caseId, '<html>tsa</html>')
     updateSettings({ tsaEnabled: false })
@@ -2333,12 +2336,19 @@ describe('export', () => {
     )
 
     const html = readStoredZipEntries(outputPath).get('report.html')!.toString('utf-8')
-    expect(html).toContain('trusted timestamping is switched off for this installation')
+    expect(html).toContain(
+      'Not contacted — trusted timestamping is switched off for this installation'
+    )
+    expect(html).toContain('https://tsa.example.org/timestamp')
+    // The document may not both deny and assert that an authority is configured.
+    expect(html).not.toContain('None — trusted timestamping is switched off')
     expect(html).toContain('No trust anchor is bundled for the configured authority')
-    // The cover names no authority in this state, so neither the step nor the
-    // alert may point the reader at it.
+    // The cover states configuration, not who signed a retained token, so neither
+    // the step nor the alert may take the issuer from it — and the issuer the
+    // tokens name is a self-assertion until the independent anchor validates it.
     expect(html).not.toContain('from the authority named on the cover')
     expect(html).toContain('from the authority that issued the tokens')
+    expect(html).toContain('a name the token asserts about itself')
   })
 
   // --- Operator identity gating and report rendering ---

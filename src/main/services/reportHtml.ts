@@ -48,7 +48,7 @@ import type { TrustedTimeResult } from '@shared/verify'
 import { recordedHttpStatus } from '@shared/httpStatus'
 import { formatSnapshotDelta } from '@shared/wayback'
 import {
-  TRUSTED_TIME_AUTHORITY_DECLINED,
+  TRUSTED_TIME_AUTHORITY_NOT_CONTACTED,
   TRUSTED_TIME_UNRECORDED_STAMPED_AT,
   trustedTimeAttestingParty,
   trustedTimeLabel
@@ -823,8 +823,16 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     }
     ${field(
       'Time-stamping authority (configured)',
+      // A declined installation still names its configured endpoint, with the
+      // not-contacted note under it (#1169 round-2 review): the verification
+      // section below tells a reader to obtain a trust anchor from the authority
+      // that issued the retained tokens, and a package built after the switch was
+      // thrown can still enclose that authority's root and a runbook naming it.
+      // Suppressing the endpoint here made the one document contradict itself.
       data.tsaEnabled === false
-        ? esc(TRUSTED_TIME_AUTHORITY_DECLINED)
+        ? `${data.tsaUrl ? `${mono(esc(data.tsaUrl))}<br>` : ''}${esc(
+            TRUSTED_TIME_AUTHORITY_NOT_CONTACTED
+          )}`
         : data.tsaUrl
           ? mono(esc(data.tsaUrl))
           : 'none configured',
@@ -1229,7 +1237,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     ${legendRow('Chain broken', 'Bytes match, but the manifest chain does not reconcile at or before this entry.')}
     ${legendRow('Absent', 'The stored artefact could not be read at verification time. The row is retained rather than removed.')}
     ${legendRow('Legacy record', 'The capture predates the hash-chained manifest; its digest is recorded but not chain-bound.')}
-    ${legendRow('Local clock', "No RFC 3161 token is retained; the capture time is the operator's system clock only.")}
+    ${legendRow('Local clock', "No RFC 3161 token attesting this capture's content digest is retained; the capture time is the operator's system clock only.")}
   </div>
 </section>`
     }
@@ -1293,10 +1301,12 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     value or your own trust store first (<code>VERIFY.md</code> step 6a prints the expected
     fingerprint and the exact <code>openssl</code> command)`
         : `a trust anchor you obtain independently from the authority that issued the tokens.
-    That authority is named inside each token, in the signing certificate carried in
-    <code>tsa-intermediates.pem</code>; do not take it from this report's cover, which states
-    what this installation had configured when the package was built and not who signed a
-    token retained from earlier`
+    Each token names its issuer inside itself, in the signing certificate carried in
+    <code>tsa-intermediates.pem</code> — a name the token asserts about itself, which is a
+    starting point for finding the authority and not evidence that it signed anything until
+    the chain validates against the anchor you obtained. Do not take the issuer from this
+    report's cover either: the cover states what this installation had configured when the
+    package was built, not who signed a token retained from earlier`
     }.</li>
     <li><strong>Match the screenshots.</strong> Each file name in <code>screenshots/</code> is its
     own digest; recomputing it confirms that the packaged image is the one the exhibit cites.</li>
@@ -1315,8 +1325,9 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     themselves. Validating a token against certificates it
     supplied is circular and establishes nothing about who issued it. Step 4 therefore requires a
     root obtained independently from the authority that issued the tokens, which each token names
-    in its own signing certificate; until one is used, the tokens demonstrate internal consistency
-    but not authenticity.</p>
+    in its own signing certificate — a name the token asserts about itself, to be used for
+    finding the authority and not as proof it issued anything; until such a root is used, the
+    tokens demonstrate internal consistency but not authenticity.</p>
   </div>`
   }
 </section>`

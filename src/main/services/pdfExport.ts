@@ -315,7 +315,10 @@ async function runPdfJob(
     const metrics = (await wc.debugger.sendCommand('Page.getLayoutMetrics')) as {
       cssContentSize?: { width: number; height: number }
     }
-    const contentWidthPx = Math.max(RENDER_WIDTH_PX, Math.ceil(metrics.cssContentSize?.width ?? 0))
+    const contentWidthPx = Math.max(
+      RENDER_WIDTH_PX,
+      Math.ceil(metrics.cssContentSize?.width ?? 0)
+    )
     const contentHeightPx = Math.max(1, Math.ceil(metrics.cssContentSize?.height ?? 0))
     // Fit the full content width onto A4-width paper; height follows the same
     // scale (+0.1in slack so sub-pixel rounding can't spill a trailing page).
@@ -323,7 +326,10 @@ async function runPdfJob(
       MAX_PRINT_SCALE,
       Math.max(MIN_PRINT_SCALE, PAGE_WIDTH_INCHES / (contentWidthPx / CSS_PX_PER_INCH))
     )
-    const height = Math.min(MAX_PAGE_INCHES, (contentHeightPx / CSS_PX_PER_INCH) * scale + 0.1)
+    const height = Math.min(
+      MAX_PAGE_INCHES,
+      (contentHeightPx / CSS_PX_PER_INCH) * scale + 0.1
+    )
 
     return wc.printToPDF({
       printBackground: true,

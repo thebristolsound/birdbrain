@@ -37,18 +37,20 @@ export const TRUSTED_TIME_UNNAMED_TSA =
 
 export const TRUSTED_TIME_UNRECORDED_STAMPED_AT = 'the time recorded in the retained token'
 
-// What report.html and certification.html print in the "Time-stamping authority
-// (configured)" field when the installation has declined trusted timestamping
-// (#1169). Printing the endpoint there instead would have the document name a
-// third party the operator refused to contact, beside a process paragraph that
-// describes hashes being submitted to one.
+// What report.html and certification.html print beneath the endpoint in the
+// "Time-stamping authority (configured)" field when the installation has declined
+// trusted timestamping (#1169). The endpoint is still printed: suppressing it left
+// the cover stating that no authority was configured while the verification
+// section of the same document stated that a different authority was, and left a
+// package enclosing the default authority's root certificate and a runbook naming
+// it beside a cover that named nobody.
 //
-// Worded as a statement about the installation's configuration at generation
-// time, and nothing more. A package can hold tokens obtained before the operator
-// switched timestamping off, so any claim here about what was or was not
-// submitted would be false for that package; the per-exhibit rows carry that.
-export const TRUSTED_TIME_AUTHORITY_DECLINED =
-  'None — trusted timestamping is switched off for this installation'
+// Worded as a statement about this installation at generation time, and nothing
+// more. A package can hold tokens obtained before the operator switched
+// timestamping off, so any claim here about what was or was not submitted would be
+// false for that package; the per-exhibit rows carry that.
+export const TRUSTED_TIME_AUTHORITY_NOT_CONTACTED =
+  'Not contacted — trusted timestamping is switched off for this installation'
 
 export function trustedTimeLabel(resolved: TrustedTimeDisclosureInput): string {
   return TRUSTED_TIME_LABELS[resolved.trustedTime] ?? TRUSTED_TIME_LABELS.none

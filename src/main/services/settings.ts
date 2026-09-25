@@ -158,8 +158,20 @@ export function getSettings(): BirdbrainSettings {
   if (!existsSync(settingsPath)) {
     return { ...DEFAULT_SETTINGS }
   }
+  let raw: string
   try {
-    const raw = readFileSync(settingsPath, 'utf-8')
+    raw = readFileSync(settingsPath, 'utf-8')
+  } catch (err) {
+    // The file's bytes are intact; this process cannot read them right now
+    // (EACCES, EBUSY, an antivirus lock). The stored preference is unknown, so
+    // the session falls closed like the parse failure below — but the decline is
+    // not allowed to persist: updateSettings refuses to write over a file it
+    // cannot read, so the operator's real preference is still on disk when the
+    // lock clears (#1169 round-2 review).
+    logger.warn('settings', 'settings.unreadable_timestamping_fail_closed', undefined, err)
+    return { ...DEFAULT_SETTINGS, tsaEnabled: false }
+  }
+  try {
     const saved: unknown = JSON.parse(raw)
     const parsed = PartialBirdbrainSettingsSchema.safeParse(saved)
     if (!parsed.success) {
@@ -170,10 +182,10 @@ export function getSettings(): BirdbrainSettings {
     merged.openRouterApiKey = decryptApiKey(merged.openRouterApiKey)
     return merged
   } catch {
-    // A file that exists but will not read or parse — truncated by a kill
-    // mid-write (updateSettings persists with a plain writeFileSync), trailing
-    // garbage, a transient read failure. The operator's timestamping preference
-    // is unknown here, not absent, so it falls closed: an activist who declined
+    // A file that reads but will not parse — truncated by a kill mid-write
+    // (updateSettings persists with a plain writeFileSync), trailing garbage,
+    // not JSON at all. The operator's timestamping preference is unknown here,
+    // not absent, so it falls closed: an activist who declined
     // must not be put back in contact with the TSA by a half-written file. Every
     // other setting still falls open, and the resulting state is visible in
     // Settings and Diagnostics and reversible with the switch.
@@ -188,6 +200,20 @@ export function updateSettings(partial: Partial<BirdbrainSettings>): BirdbrainSe
     throw new Error(
       `Invalid settings: ${parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`
     )
+  }
+  // Refuse to overwrite a settings file this process cannot read (#1169 round-2
+  // review). The merge below is built on getSettings(), which falls back to the
+  // defaults plus tsaEnabled: false when the read throws, so writing it would
+  // persist an opt-out the operator never chose — and blank every other setting —
+  // because of a transient lock. A file that will not parse is already lost and is
+  // still rewritten: that is the recovery path the switch depends on.
+  if (existsSync(settingsPath)) {
+    try {
+      readFileSync(settingsPath, 'utf-8')
+    } catch (err) {
+      logger.warn('settings', 'settings.unreadable_timestamping_fail_closed', undefined, err)
+      throw new Error('Settings file could not be read; refusing to overwrite it', { cause: err })
+    }
   }
   const current = getSettings()
   const updated = { ...current, ...suppliedKeysOnly(partial, parsed.data) }

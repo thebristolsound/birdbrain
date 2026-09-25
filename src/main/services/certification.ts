@@ -1,5 +1,8 @@
 import { REPORT_PAGE_CSS, type EntrySignatureStatus } from '@main/services/reportHtml'
-import { TRUSTED_TIME_AUTHORITY_DECLINED, TRUSTED_TIME_LABELS } from '@shared/trustedTimeDisclosure'
+import {
+  TRUSTED_TIME_AUTHORITY_NOT_CONTACTED,
+  TRUSTED_TIME_LABELS
+} from '@shared/trustedTimeDisclosure'
 import type { Capture, TrustedTime } from '@shared/types'
 import type { TrustedTimeResult } from '@shared/verify'
 
@@ -160,6 +163,8 @@ export interface CertificationFields {
   hashAlgorithm: 'SHA-256'
   processDescription: string
   tsaIdentity: string
+  /** False when the installation had trusted timestamping switched off (#1169). */
+  tsaContacted: boolean
   certifier: {
     operatorName: string
     operatorRole: string
@@ -255,11 +260,13 @@ export function buildCertificationFields(
       'any later alteration of a capture or of the manifest is detectable. Where enabled, the ' +
       'capture content hash was submitted to an RFC 3161 Time-Stamping Authority and the ' +
       'returned timestamp token was retained alongside the capture.',
-    // A declined installation names no authority (#1169): the process paragraph
-    // above already hedges with "Where enabled", and printing an endpoint beside
-    // it is what turns that hedge into an apparent statement that this export's
-    // hashes went there.
-    tsaIdentity: data.tsaEnabled === false ? TRUSTED_TIME_AUTHORITY_DECLINED : data.tsaUrl,
+    // A declined installation still names its configured endpoint and says it was
+    // not contacted (#1169 round-2 review). The process paragraph above hedges
+    // with "Where enabled"; `tsaContacted` is what stops the endpoint beside it
+    // reading as a statement that this export's hashes went there, without
+    // suppressing an identity the package's own verification instructions need.
+    tsaIdentity: data.tsaUrl,
+    tsaContacted: data.tsaEnabled !== false,
     certifier: {
       operatorName: data.operatorName,
       operatorRole: data.operatorRole,
@@ -407,9 +414,12 @@ function renderCertificationHtml(fields: CertificationFields): string {
 
   // The shared axis vocabulary, not a paraphrase (#1169): this document, the
   // report and the PDF cover render the same capture from one set of strings, so
-  // a package cannot call an exhibit 'Token pending' here while the report and
-  // the in-app chip say no token exists. It also keeps the request claim out —
-  // the manifest records tokens, and a declined installation asked for none.
+  // a package cannot call an exhibit 'Token pending' here while the other two say
+  // no token exists. It also keeps the request claim out — the manifest records
+  // tokens, and a declined installation asked for none. The in-app chip carries
+  // its own literals and is not rendered from this table: with timestamping on it
+  // reads 'Timestamp pending', which is a live queue state no exported document
+  // can assert.
   const unstampedRows = unstamped
     .map(
       (c) => `<tr>
@@ -530,13 +540,11 @@ function renderCertificationHtml(fields: CertificationFields): string {
     <div class="field"><div class="field-label">Time-stamping authority (configured)</div>
       <div class="field-value">${
         // Monospace is for the endpoint, which is a URL a reader may need to
-        // transcribe character by character. The declined sentence is prose and
+        // transcribe character by character. The not-contacted note is prose and
         // is set as prose, the way report.html already sets it.
-        fields.tsaIdentity === TRUSTED_TIME_AUTHORITY_DECLINED
-          ? esc(fields.tsaIdentity)
-          : `<span class="mono break">${
-              fields.tsaIdentity ? esc(fields.tsaIdentity) : 'none configured'
-            }</span>`
+        `<span class="mono break">${
+          fields.tsaIdentity ? esc(fields.tsaIdentity) : 'none configured'
+        }</span>${fields.tsaContacted ? '' : `<br>${esc(TRUSTED_TIME_AUTHORITY_NOT_CONTACTED)}`}`
       }</div></div>
   </div>
 

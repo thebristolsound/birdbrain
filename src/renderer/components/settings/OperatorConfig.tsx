@@ -136,9 +136,15 @@ export function OperatorConfig() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className="text-xs font-medium text-text-secondary">Trusted timestamping</div>
+                {/* Scoped to captures made while the switch is off (#1169 review):
+                    tokens obtained earlier stay valid and their captures keep
+                    asserting trusted time in the badge and in every export, so a
+                    flat "no trusted time is asserted" would misdescribe evidence
+                    the operator already holds. */}
                 <p className="mt-1 text-[11px] text-text-muted">
-                  With this off, no capture is sent to a timestamp authority and no trusted time is
-                  asserted. Captures made while it is off are timestamped if you turn it back on.
+                  With this off, nothing is sent to a timestamp authority and captures made while it
+                  is off assert no trusted time; they are timestamped if you turn it back on.
+                  Timestamps already obtained are kept.
                 </p>
               </div>
               <button
@@ -165,20 +171,25 @@ export function OperatorConfig() {
             <Label htmlFor="operator-tsa" className="text-xs font-medium text-text-secondary">
               Trusted Timestamp Authority
             </Label>
+            {/* Editable while timestamping is off (#1169 review). Disabling it
+                forced the only order that can leak: an operator wanting a
+                different authority had to switch timestamping on first, and the
+                worker's retry tick or the next capture could reach the old
+                endpoint before the new URL was typed and saved on blur. Nothing
+                is sent while the switch is off, so editing it here is free. */}
             <Input
               id="operator-tsa"
               type="text"
               value={tsaUrl}
               onChange={(e) => setTsaUrl(e.target.value)}
               onBlur={saveTsaUrl}
-              disabled={!tsaEnabled}
               placeholder={DEFAULT_TSA_URL}
-              className="border-border bg-surface font-mono text-[11px] disabled:opacity-50"
+              className="border-border bg-surface font-mono text-[11px]"
             />
             <p className="mt-1 text-[11px] text-text-muted">
               {tsaEnabled
                 ? 'RFC 3161 endpoint used to trusted-timestamp captures. Defaults to DigiCert. Captures never block on it; un-stamped captures are timestamped when the TSA is reachable. Each request discloses the capture content hash, this device’s IP address and the time of the request to that authority.'
-                : 'Not in use while trusted timestamping is off. Nothing is sent to this endpoint.'}
+                : 'Not in use while trusted timestamping is off. Nothing is sent to this endpoint. Change it here so the authority is already the one you want when you switch timestamping back on.'}
             </p>
           </div>
           <div>

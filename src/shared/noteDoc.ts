@@ -108,8 +108,50 @@ function mentionNode() {
   })
 }
 
+/** Embedded raster images are local note content; opening a note never fetches an image. */
+export function isNoteImageSource(src: unknown): src is string {
+  return (
+    typeof src === 'string' &&
+    src.length <= 3_000_000 &&
+    /^data:image\/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(src)
+  )
+}
+
+function imageNode() {
+  return TiptapNode.create({
+    name: 'image',
+    group: 'block',
+    atom: true,
+    addAttributes() {
+      return { src: { default: '' }, alt: { default: '' } }
+    },
+    parseHTML() {
+      return [
+        {
+          tag: 'img[src]',
+          getAttrs: (element: { getAttribute: (name: string) => string | null }) =>
+            isNoteImageSource(element.getAttribute('src')) ? null : false
+        }
+      ]
+    },
+    renderHTML({ node }) {
+      return [
+        'img',
+        {
+          src: isNoteImageSource(node.attrs.src) ? node.attrs.src : '',
+          alt: typeof node.attrs.alt === 'string' ? node.attrs.alt : '',
+          style: 'max-width:100%;height:auto'
+        }
+      ]
+    },
+    renderText({ node }) {
+      return node.attrs.alt || '[Image]'
+    }
+  })
+}
+
 /**
- * Notes are prose, not documents: no headings above h3, no code blocks.
+ * Notes support three heading levels and embedded raster images, but no code blocks.
  *
  * StarterKit's view-layer plugins (dropcursor, gapcursor, trailing node) stay
  * enabled. They contribute nothing to the schema and load without a DOM, so
@@ -123,7 +165,8 @@ export function noteExtensions(): Extensions {
       codeBlock: false,
       horizontalRule: false
     }),
-    mentionNode()
+    mentionNode(),
+    imageNode()
   ]
 }
 
@@ -167,9 +210,17 @@ function checkedNoteNode(doc: JSONContent): Node {
     node = Node.fromJSON(noteSchema(), doc)
     node.check()
   } catch (e) {
-    throw new Error(`Note body does not fit the note schema: ${(e as Error).message}`)
+    throw new Error(`Note body does not fit the note schema: ${(e as Error).message}`, {
+      cause: e
+    })
   }
   node.descendants((child) => {
+    if (child.type.name === 'image') {
+      if (!isNoteImageSource(child.attrs.src) || typeof child.attrs.alt !== 'string') {
+        throw new Error('Note body contains an invalid embedded image')
+      }
+      return false
+    }
     if (child.type.name !== 'mention') return true
     const { targetType, targetId } = child.attrs
     if (!(MENTION_TARGET_TYPES as readonly string[]).includes(targetType)) {

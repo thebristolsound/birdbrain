@@ -127,6 +127,7 @@ export interface CaptureServerCaseRef {
 
 /** A case as returned by GET /api/cases — identity plus its capture count. */
 export interface CaptureServerCase extends CaptureServerCaseRef {
+  type?: 'crypto' | 'malware' | 'fraud' | 'custom'
   captureCount: number
 }
 
@@ -276,7 +277,34 @@ export interface UrlLookupResult {
   found: boolean
   /** What the url resolved to under @shared/urlCanonicalize's rules. */
   canonicalUrl: string
-  capture: { id: string; url: string; title: string; timestamp: string } | null
+  capture: {
+    id: string
+    url: string
+    title: string
+    timestamp: string
+    manifestIndex?: number
+    format?: string
+  } | null
+}
+
+/** Post-capture controls name immutable capture identity, never a latest URL match. */
+export const CaptureCardSchema = z.object({
+  caseId: z.string().min(1),
+  captureId: z.string().min(1)
+})
+export const CaptureCardTagSchema = CaptureCardSchema.extend({
+  tagId: z.string().min(1),
+  applied: z.boolean()
+})
+export interface CaptureCardDetails {
+  caseId: string
+  captureId: string
+  caseName: string
+  title: string
+  format: string
+  hash: string
+  manifestIndex: number | null
+  tags: Array<{ id: string; name: string; color: string; applied: boolean }>
 }
 
 /** POST /api/tags/apply — success body. */

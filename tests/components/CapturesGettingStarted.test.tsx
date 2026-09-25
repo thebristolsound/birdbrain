@@ -63,9 +63,9 @@ describe('CapturesGettingStarted', () => {
     expect(panel.className).not.toMatch(/\bitems-center\b(?!-safe)/)
   })
 
-  it('opens the extension folder when Install Extension clicked', async () => {
+  it('opens the extension folder from the labelled folder action', async () => {
     render(<CapturesGettingStarted />)
-    fireEvent.click(screen.getByTestId('captures-getting-started-install-btn'))
+    fireEvent.click(screen.getByRole('button', { name: 'Open extension folder' }))
     expect(openFolder).toHaveBeenCalledTimes(1)
   })
 

@@ -63,7 +63,14 @@ export function ScreenCard({
               style={{ top: layout.notchTop }}
             />
           ) : null}
-          <div className="rounded-md border border-border-strong bg-elevated p-5 shadow-[0_16px_40px_rgba(0,0,0,0.5)]">
+          <div
+            // Modal for the keyboard, like the coach mark: OnboardingTour holds
+            // focus inside the tour and dismisses it on Escape.
+            role="dialog"
+            aria-modal="true"
+            aria-label={step.screen}
+            className="rounded-md border border-border-strong bg-elevated p-5 shadow-[0_16px_40px_rgba(0,0,0,0.5)]"
+          >
             <div
               data-testid="tour-screen-count"
               className="mb-2 font-display text-[10px] font-semibold uppercase tracking-[0.08em] text-accent"

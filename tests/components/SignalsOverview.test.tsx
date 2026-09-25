@@ -36,6 +36,21 @@ vi.mock('@renderer/components/signals/AutoCaptureCard', () => ({
   AutoCaptureCard: () => <div data-testid="auto-capture-card" />
 }))
 
+vi.mock('@renderer/components/export/ExportDialog', () => ({
+  ExportDialog: ({
+    selectedCaptureIds,
+    onClose
+  }: {
+    selectedCaptureIds?: string[]
+    onClose: () => void
+  }) => (
+    <div data-testid="tag-export-dialog">
+      {selectedCaptureIds?.join(',')}
+      <button onClick={onClose}>Close scoped export</button>
+    </div>
+  )
+}))
+
 import { SignalsOverview } from '@renderer/components/signals/SignalsOverview'
 
 const selectors: Selector[] = [
@@ -76,6 +91,7 @@ const captures: Capture[] = [
 
 function install(overrides: Record<string, unknown> = {}) {
   return fakeBridge({
+    cases: { get: vi.fn(async () => ({ id: 'case-1', name: 'Case One' })) },
     selectors: {
       list: vi.fn(async () => selectors),
       matchCounts: vi.fn(async () => ({ s1: 4 })),
@@ -90,12 +106,13 @@ function install(overrides: Record<string, unknown> = {}) {
       list: vi.fn(async () => tags),
       usageCountsForCase: vi.fn(async () => ({ t1: 1 })),
       captureMatrix: vi.fn(async () => ({ t1: ['c1'] })),
+      capturesWithAnyTag: vi.fn(async () => ['c1']),
       create: vi.fn(async () => tags[0]),
       update: vi.fn(async () => tags[0]),
       delete: vi.fn(async () => true),
       ...(overrides.tags as object)
     },
-    captures: { list: vi.fn(async () => captures) }
+    captures: { list: vi.fn(async () => captures), ...(overrides.captures as object) }
   })
 }
 
@@ -401,6 +418,33 @@ describe('SignalsOverview tag delete confirmation', () => {
     expect(screen.getByTestId('signal-row-t1')).toBeTruthy()
   })
 
+  // The dialog is mounted only while a delete is pending, so it is unmounted
+  // rather than closed; focus still has to come back to the row (#1536).
+  it('hands focus back to the row when Escape dismisses the Delete-key confirmation', async () => {
+    renderScreen()
+    const row = await screen.findByTestId('signal-row-t1')
+    row.focus()
+    fireEvent.keyDown(row, { key: 'Backspace' })
+    expect(screen.getByTestId('delete-tag-dialog').contains(document.activeElement)).toBe(true)
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    expect(screen.queryByTestId('delete-tag-dialog')).toBeNull()
+    expect(document.activeElement).toBe(row)
+  })
+
+  it('hands focus back to the row button when the confirmation is cancelled', async () => {
+    renderScreen()
+    await screen.findByTestId('signal-row-t1')
+    const button = screen.getByLabelText('Delete evidence')
+    button.focus()
+    fireEvent.click(button)
+
+    fireEvent.click(screen.getByTestId('delete-tag-cancel'))
+
+    expect(document.activeElement).toBe(button)
+  })
+
   it('names the tag the row asked about', async () => {
     await openConfirm('button')
 
@@ -510,5 +554,83 @@ describe('SignalsOverview row context menus', () => {
 
     await waitFor(() => expect(notifyError).toHaveBeenCalled())
     expect(String(notifyError.mock.calls[0][0])).toContain('export')
+  })
+})
+
+describe('tag menu additions', () => {
+  async function openTagMenu() {
+    fireEvent.contextMenu(await screen.findByTestId('signal-row-t1'))
+    await screen.findByRole('menu')
+  }
+
+  it('duplicates the clicked tag with a new name and the same colour', async () => {
+    const create = vi.fn().mockResolvedValue({ ...tags[0], id: 'copy', name: 'evidence-copy' })
+    install({ tags: { create } })
+    renderScreen()
+    await openTagMenu()
+    fireEvent.click(screen.getByTestId('context-menu-item-tag-duplicate'))
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith({ name: 'evidence-copy', color: '#22c55e' })
+    )
+  })
+
+  it('exports every tagged capture beyond the coverage preview and excludes other tags', async () => {
+    const all = Array.from({ length: 30 }, (_, index) => ({ ...captures[0], id: `cap-${index}` }))
+    const ids = all.slice(1).map((capture) => capture.id)
+    const capturesWithAnyTag = vi.fn().mockResolvedValue(ids)
+    install({ tags: { capturesWithAnyTag }, captures: { list: vi.fn().mockResolvedValue(all) } })
+    renderScreen()
+    await openTagMenu()
+    fireEvent.click(screen.getByTestId('context-menu-item-tag-export'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'ZIP + manifest' }))
+    const dialog = await screen.findByTestId('tag-export-dialog')
+    expect(capturesWithAnyTag).toHaveBeenCalledWith('case-1', ['t1'])
+    expect(dialog.textContent).toContain(ids.join(','))
+    expect(dialog.textContent).not.toContain('cap-0,')
+    fireEvent.click(screen.getByRole('button', { name: 'Close scoped export' }))
+    expect(screen.queryByTestId('tag-export-dialog')).toBeNull()
+  })
+
+  it('copies a scoped Markdown reference list without opening an evidence export', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    renderScreen()
+    await openTagMenu()
+    fireEvent.click(screen.getByTestId('context-menu-item-tag-export'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Copy as markdown' }))
+    await waitFor(() => expect(writeText).toHaveBeenCalledOnce())
+    expect(writeText.mock.calls[0][0]).toContain('Page A')
+    expect(writeText.mock.calls[0][0]).toContain('not a verified evidence package')
+    expect(screen.queryByTestId('tag-export-dialog')).toBeNull()
+  })
+
+  it('never falls back to whole-case export when a tag has no captures', async () => {
+    install({ tags: { capturesWithAnyTag: vi.fn().mockResolvedValue([]) } })
+    renderScreen()
+    await openTagMenu()
+    fireEvent.click(screen.getByTestId('context-menu-item-tag-export'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'ZIP + manifest' }))
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
+    expect(screen.queryByTestId('tag-export-dialog')).toBeNull()
+  })
+
+  it('reports a rejected export read', async () => {
+    install({
+      tags: { capturesWithAnyTag: vi.fn().mockRejectedValue(new Error('DB unavailable')) }
+    })
+    renderScreen()
+    await openTagMenu()
+    fireEvent.click(screen.getByTestId('context-menu-item-tag-export'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'ZIP + manifest' }))
+    await waitFor(() => expect(notifyError).toHaveBeenCalled())
+    expect(screen.queryByTestId('tag-export-dialog')).toBeNull()
+  })
+
+  it('reports a rejected duplicate', async () => {
+    install({ tags: { create: vi.fn().mockRejectedValue(new Error('Duplicate name')) } })
+    renderScreen()
+    await openTagMenu()
+    fireEvent.click(screen.getByTestId('context-menu-item-tag-duplicate'))
+    await waitFor(() => expect(notifyError).toHaveBeenCalled())
   })
 })

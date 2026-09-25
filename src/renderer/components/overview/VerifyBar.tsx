@@ -20,12 +20,12 @@ export function VerifyBar({ verified, unverified, tampered }: VerifyBarProps) {
 
   return (
     <div>
-      <div className="flex h-2 gap-0.5 overflow-hidden rounded-full">
+      <div className="flex h-2 gap-0.5 overflow-hidden rounded-sm">
         {SEGMENTS.filter((s) => counts[s.key] > 0).map((s) => (
           <div
             key={s.key}
             title={`${s.label}: ${counts[s.key]}`}
-            className={`${s.color} rounded-full`}
+            className={`${s.color} rounded-sm`}
             style={{ flexGrow: counts[s.key] }}
           />
         ))}
@@ -34,8 +34,8 @@ export function VerifyBar({ verified, unverified, tampered }: VerifyBarProps) {
         {SEGMENTS.map((s) => (
           <div key={s.key} className="inline-flex items-center gap-1.5">
             <span className={`h-[7px] w-[7px] rounded-full ${s.color}`} />
-            <span className="font-mono text-[11.5px] text-text-secondary">{counts[s.key]}</span>
-            <span className="font-body text-[11.5px] text-text-faint">{s.label}</span>
+            <span className="text-[11px] tabular-nums text-text-secondary">{counts[s.key]}</span>
+            <span className="font-body text-[11px] text-text-faint">{s.label}</span>
           </div>
         ))}
       </div>

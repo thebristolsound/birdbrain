@@ -114,6 +114,20 @@ describe('rich-text notes', () => {
     expect(updated!.bodyDoc).toBe(JSON.stringify(DOC))
   })
 
+  it('stores embedded image bytes and indexes their alternate text without trusting caller prose', () => {
+    const bodyDoc = JSON.stringify({
+      type: 'doc',
+      content: [
+        { type: 'image', attrs: { src: 'data:image/png;base64,aGVsbG8=', alt: 'Meridian diagram' } }
+      ]
+    })
+    const note = createNote({ caseId, title: 'Diagram', body: 'Forged prose', bodyDoc })
+    expect(getNote(note.id)?.bodyDoc).toBe(bodyDoc)
+    expect(getNote(note.id)?.body).toBe('Meridian diagram')
+    expect(searchNotes(caseId, 'Meridian').map((row) => row.id)).toContain(note.id)
+    expect(searchNotes(caseId, 'Forged')).toHaveLength(0)
+  })
+
   it('drops the document when a note is overwritten as plain text', () => {
     const note = createNote({ caseId, title: 'WHOIS', bodyDoc: JSON.stringify(DOC) })
 
@@ -173,6 +187,26 @@ describe('rich-text notes', () => {
       expect(imported.body).toBe(DOC_TEXT)
       expect(searchNotes(caseId, 'Acme')).toHaveLength(1)
       expect(searchNotes(caseId, 'claims')).toHaveLength(0)
+    })
+
+    it('preserves embedded image content through an archive import and rejects external image sources', () => {
+      const doc = (src: string) =>
+        JSON.stringify({
+          type: 'doc',
+          content: [{ type: 'image', attrs: { src, alt: 'Recorded diagram' } }]
+        })
+      const local = doc('data:image/png;base64,aGVsbG8=')
+      importRow({ id: 'image-note', title: 'Image', body: 'Untrusted', body_doc: local })
+      expect(getNote('image-note')?.bodyDoc).toBe(local)
+      expect(getNote('image-note')?.body).toBe('Recorded diagram')
+      expect(() =>
+        importRow({
+          id: 'remote-image',
+          title: 'Remote',
+          body_doc: doc('https://example.com/live.png')
+        })
+      ).toThrow('invalid embedded image')
+      expect(getNote('remote-image')).toBeUndefined()
     })
 
     it('imports a pre-v26 row, which has no body_doc at all, as plain text', () => {

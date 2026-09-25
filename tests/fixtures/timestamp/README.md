@@ -84,6 +84,12 @@ Why these matter to #1142: DigiCert's responses carry BER-ordered `SET`s that
 strict-DER parsers reject; IdenTrust's do not. Having both in the corpus lets a
 test show which property the in-app parser actually enforces.
 
+`timestampTokenDerStrictness.test.ts` pins that property per fixture: the
+DigiCert token is not strict DER (two out-of-order members in the CMS
+`certificates` set, and nothing else), and all three tokens above are. It also
+pins that `AsnConvert` round-trips the DigiCert token byte for byte, which is why
+the checker reads the encoding rather than re-encoding and comparing.
+
 ### What these fixtures do not cover
 
 One thread of trailofbits/rfc3161-client#104 is a client that assumed the signer

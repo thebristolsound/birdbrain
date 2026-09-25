@@ -239,6 +239,19 @@ body {
   font-family: var(--font-body);
 }
 
+/* === Keyboard focus ring ===
+   Every control that draws no focus style of its own gets the accent ring
+   token, the same outline the shared button primitive draws. Without it such a
+   control falls back to Chromium's user-agent ring, an amber the app otherwise
+   reserves for integrity warnings. Layered as base so any utility on a control
+   (outline-none, a ring of its own) still wins. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+}
+
 /* === Section label ===
    The eyebrow treatment every panel head uses. <SectionLabel> is the TSX
    surface; this class is for the places where only a DOM node is available.
@@ -480,3 +493,36 @@ html.reduce-motion *::after {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+/* Mock entrance timings; transforms never change the final layout or map opacity. */
+@keyframes screen-rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes map-fade { from { opacity: 0; } }
+@keyframes map-pop { from { opacity: 0; scale: .8; } }
+@keyframes match-mode-slide { from { opacity: 0; transform: translateY(-4px); } }
+.screen-stagger > * {
+  animation: screen-rise 200ms cubic-bezier(.16,.84,.32,1) backwards;
+}
+.screen-stagger > :nth-child(2) { animation-delay: 25ms; }
+.screen-stagger > :nth-child(3) { animation-delay: 50ms; }
+.screen-stagger > :nth-child(4) { animation-delay: 75ms; }
+.screen-stagger > :nth-child(5) { animation-delay: 100ms; }
+.map-edges-enter { animation: map-fade 420ms cubic-bezier(.16,.84,.32,1) 120ms backwards; }
+.map-node-enter { animation: map-pop 240ms cubic-bezier(.16,.84,.32,1) backwards; }
+.signal-enter { animation: screen-rise 150ms cubic-bezier(.16,.84,.32,1) backwards; }
+.match-mode-enter { animation: match-mode-slide 150ms cubic-bezier(.16,.84,.32,1) backwards; }
+.rail-button:enabled:active { transform: scale(.92); }
+@media (prefers-reduced-motion: reduce) {
+  .screen-stagger > *, .map-edges-enter, .map-node-enter, .signal-enter, .match-mode-enter {
+    animation: none;
+  }
+  .rail-button:enabled:active { transform: none; }
+}
+html.reduce-motion .screen-stagger > *,
+html.reduce-motion .map-edges-enter,
+html.reduce-motion .map-node-enter,
+html.reduce-motion .signal-enter,
+html.reduce-motion .match-mode-enter { animation: none !important; }
+html.reduce-motion .rail-button:enabled:active { transform: none; }

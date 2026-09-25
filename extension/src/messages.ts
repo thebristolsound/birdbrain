@@ -16,14 +16,7 @@ export interface PopupBlock {
   pattern: string | null
 }
 
-/**
- * What the background knows about one tab, for the popup's page-status block.
- *
- * Everything here is answered from the service worker's own memory. There is
- * no capture lookup by URL (#392 adds one), so `lastCapture` reports only a
- * capture this worker performed and still remembers: absent means "not seen
- * here", never "never captured".
- */
+/** Current tab status, including the active case's persisted URL lookup. */
 export interface PopupPageStatus {
   /** The tab's URL when the status was taken; null when it could not be read. */
   url: string | null
@@ -32,7 +25,8 @@ export interface PopupPageStatus {
   /** A manual capture of this tab is between request and settle. */
   capturing: boolean
   /** The last successful manual capture of this exact URL in this tab. */
-  lastCapture: { at: number; manifestIndex: number | null } | null
+  lastCapture: { at: number; manifestIndex: number | null; format?: string } | null
+  lookupFailed?: boolean
   /** Selector hits from the last scan of this URL; null when never scanned. */
   selectorSummary: { selectors: number; hits: number } | null
   /** Enabled selectors on the active case, across all its groups. */

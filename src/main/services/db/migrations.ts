@@ -871,4 +871,27 @@ export function runMigrations(db: Database.Database): void {
       db.pragma('user_version = 34')
     })()
   }
+
+  if (version < 35) {
+    db.transaction(() => {
+      // The Persona registry (ADR-0030, #1497): a signed-in browser identity,
+      // registered per install like a Tag. Soft delete: `deleted_at` hides a
+      // row from pickers while historic Captures keep the label they were
+      // stamped with (phase 2). The cookie values themselves never touch this
+      // table; only the import count and time do, so a row says when the
+      // partition was last seeded and nothing about what it holds.
+      db.exec(`
+        CREATE TABLE personas (
+          id TEXT PRIMARY KEY,
+          label TEXT NOT NULL,
+          notes TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL,
+          last_import_at TEXT,
+          last_import_count INTEGER,
+          deleted_at TEXT
+        );
+      `)
+      db.pragma('user_version = 35')
+    })()
+  }
 }

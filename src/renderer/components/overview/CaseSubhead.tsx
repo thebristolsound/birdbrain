@@ -131,7 +131,7 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
                   setEditingName(false)
                 }
               }}
-              className="rounded border border-accent bg-elevated px-2 py-0.5 font-display text-2xl font-extrabold leading-tight tracking-tight text-text-primary focus:outline-none"
+              className="rounded border border-accent bg-elevated px-2 py-0.5 font-display text-lg font-extrabold leading-tight tracking-tight text-text-primary focus:outline-none"
             />
           ) : (
             <button
@@ -140,7 +140,7 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
               onClick={() => setEditingName(true)}
               title="Click to edit"
             >
-              <h1 className="min-w-0 truncate font-display text-2xl font-extrabold leading-tight tracking-tight">
+              <h1 className="min-w-0 truncate font-display text-lg font-extrabold leading-tight tracking-tight">
                 <span className={glow ? 'shimmer-text' : 'text-text-primary'}>{caseData.name}</span>
               </h1>
               <Pencil
@@ -208,12 +208,12 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
               }
             }}
             rows={2}
-            className="mt-2 w-full max-w-[760px] resize-none rounded border border-accent bg-elevated px-2 py-1 font-body text-[12.5px] leading-relaxed text-text-secondary focus:outline-none"
+            className="mt-2 w-full max-w-[760px] resize-none rounded border border-accent bg-elevated px-2 py-1 font-body text-xs leading-relaxed text-text-secondary focus:outline-none"
           />
         ) : (
           <button
             type="button"
-            className="mt-2 block max-w-[760px] cursor-pointer text-left font-body text-[12.5px] leading-relaxed text-text-muted hover:text-text-secondary"
+            className="mt-2 block max-w-[760px] cursor-pointer text-left font-body text-xs leading-relaxed text-text-muted hover:text-text-secondary"
             onClick={() => setEditingDesc(true)}
             title="Click to edit"
           >
@@ -226,7 +226,7 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
         )}
       </div>
       <div className="flex shrink-0 flex-col items-end gap-2.5">
-        <span className="font-mono text-[10.5px] text-text-faint">
+        <span className="text-[10px] tabular-nums text-text-faint">
           Opened {formatRelativeTime(caseData.createdAt)}
         </span>
       </div>

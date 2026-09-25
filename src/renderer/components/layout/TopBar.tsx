@@ -26,7 +26,9 @@ export function TopBar() {
     updateStatus?.state === 'available' || updateStatus?.state === 'downloaded'
 
   const isOnSettings = Boolean(matchRoute({ to: '/settings' }))
-  const caseMatch = matchRoute({ to: '/cases/$caseId', fuzzy: true })
+  // The pattern also matches the wizard's literal `new` segment, which is not a case.
+  const isOnWizard = Boolean(matchRoute({ to: '/cases/new' }))
+  const caseMatch = isOnWizard ? false : matchRoute({ to: '/cases/$caseId', fuzzy: true })
   const activeCaseId = caseMatch ? (caseMatch as { caseId: string }).caseId : null
 
   const { data: activeCase } = useQuery({
@@ -54,13 +56,15 @@ export function TopBar() {
 
         <div className="flex-1" />
 
-        {/* Theme toggle only */}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={toggleTheme}
-          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-        >
+        {/* A running session keeps its indicator and stop control here too. */}
+        {sessionActive && (
+          <div className="flex items-center gap-2">
+            <SessionControls />
+            <RecIndicator />
+          </div>
+        )}
+
+        <Button variant="ghost" size="icon-sm" onClick={toggleTheme} title="Toggle theme">
           {theme === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
         </Button>
       </header>
@@ -118,12 +122,7 @@ export function TopBar() {
       <div className="flex items-center gap-2">
         {activeCaseId && <SessionControls />}
 
-        {sessionActive && (
-          <div className="flex items-center gap-1.5 rounded-full border border-red-500/20 bg-red-500/10 px-2 py-0.5">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" />
-            <span className="text-[10px] font-medium text-red-400">REC</span>
-          </div>
-        )}
+        {sessionActive && <RecIndicator />}
 
         <ConnectionStatus />
         <CaptureHealth />
@@ -148,15 +147,22 @@ export function TopBar() {
           )}
         </Button>
 
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={toggleTheme}
-          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-        >
+        <Button variant="ghost" size="icon-sm" onClick={toggleTheme} title="Toggle theme">
           {theme === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
         </Button>
       </div>
     </header>
+  )
+}
+
+function RecIndicator() {
+  return (
+    <div
+      data-testid="topbar-rec"
+      className="flex items-center gap-1.5 rounded-full border border-red-500/20 bg-red-500/10 px-2 py-0.5"
+    >
+      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" />
+      <span className="text-[10px] font-medium text-red-400">REC</span>
+    </div>
   )
 }

@@ -4,10 +4,12 @@ import { searchQueryOptions, notesSearchQueryOptions } from '@renderer/lib/queri
 
 export function useSearch(caseId: string) {
   const [query, setQuery] = useState('')
-  const { data: results = [], isLoading } = useQuery(searchQueryOptions(caseId, query))
-  const { data: noteResults = [], isLoading: notesLoading } = useQuery(
-    notesSearchQueryOptions(caseId, query)
-  )
+  const { data: results = [], isLoading, isError } = useQuery(searchQueryOptions(caseId, query))
+  const {
+    data: noteResults = [],
+    isLoading: notesLoading,
+    isError: notesError
+  } = useQuery(notesSearchQueryOptions(caseId, query))
 
   const search = useCallback((q: string) => {
     setQuery(q.trim())
@@ -17,5 +19,12 @@ export function useSearch(caseId: string) {
     setQuery('')
   }, [])
 
-  return { results, noteResults, searching: isLoading || notesLoading, search, clear }
+  return {
+    results,
+    noteResults,
+    searching: isLoading || notesLoading,
+    failed: isError || notesError,
+    search,
+    clear
+  }
 }

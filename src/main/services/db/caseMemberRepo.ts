@@ -1,7 +1,11 @@
 import { getDb } from '@main/services/db/core'
 import { getInstallationId } from '@main/services/installationId'
 import { MEMBER_CODE_PATTERN } from '@shared/schemas'
-import { formatExhibitCitation } from '@shared/exhibitCitation'
+import {
+  citeLocalExhibit,
+  formatExhibitCitation,
+  type ExhibitCitationRule
+} from '@shared/exhibitCitation'
 import type { CaseMember, Exhibit } from '@shared/types'
 
 // The roster cache of a Shared Case (#1510). `case_members` mirrors the
@@ -97,11 +101,26 @@ export function upsertCaseMember(member: CaseMember): CaseMember {
 // The read-time citation rule for one Case, resolved once per read so a list
 // of a thousand rows costs one roster query.
 //
+// `prefixed` is decision 7: the app hides the prefix while the roster names
+// one member, an export shows it whenever the Case has a roster at all. A
+// revoked member still counts: its Exhibits stay in the Case, and dropping the
+// prefix would cite its `MB-1` and the Owner's `NK-1` both as `1`.
+export function exhibitCitationRule(
+  caseId: string,
+  surface: 'app' | 'export'
+): ExhibitCitationRule {
+  const members = listCaseMembers(caseId)
+  if (members.length === 0) return { prefixed: false, localMemberCode: null }
+  const localId = getInstallationId()
+  return {
+    prefixed: surface === 'export' || members.length > 1,
+    localMemberCode: members.find((m) => m.installationId === localId)?.memberCode ?? null
+  }
+}
+
 // A row whose `author_installation_id` is NULL is this installation's, and its
 // code is the local member's from the roster; a remote row carries the code it
-// was received with. `prefixed` is decision 7: the app hides the prefix while
-// the Case has one unrevoked member, an export shows it whenever the Case has
-// a roster at all.
+// was received with.
 export interface ExhibitCitationResolver {
   (exhibit: Pick<Exhibit, 'exhibitNumber' | 'memberCode' | 'authorInstallationId'>): string
 }
@@ -110,23 +129,9 @@ export function exhibitCitationResolver(
   caseId: string,
   surface: 'app' | 'export'
 ): ExhibitCitationResolver {
-  const members = listCaseMembers(caseId)
-  if (members.length === 0) {
-    return (exhibit) => formatExhibitCitation(exhibit, { prefixed: false })
-  }
-  const localId = getInstallationId()
-  const localCode = members.find((m) => m.installationId === localId)?.memberCode ?? null
-  const active = members.filter((m) => m.revokedAtIndex === null).length
-  const prefixed = surface === 'export' || active > 1
+  const rule = exhibitCitationRule(caseId, surface)
   return (exhibit) =>
-    formatExhibitCitation(
-      {
-        exhibitNumber: exhibit.exhibitNumber,
-        memberCode:
-          exhibit.authorInstallationId === null
-            ? (exhibit.memberCode ?? localCode)
-            : exhibit.memberCode
-      },
-      { prefixed }
-    )
+    exhibit.authorInstallationId === null
+      ? citeLocalExhibit(exhibit, rule)
+      : formatExhibitCitation(exhibit, { prefixed: rule.prefixed })
 }

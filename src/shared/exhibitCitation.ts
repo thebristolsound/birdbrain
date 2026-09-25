@@ -21,3 +21,21 @@ export function formatExhibitCitation(
   const { exhibitNumber, memberCode } = source
   return options.prefixed && memberCode ? `${memberCode}-${exhibitNumber}` : `${exhibitNumber}`
 }
+
+// How one Case cites, resolved in the main process from the roster: whether
+// the app or export prefixes, and the local member's code for a row or chain
+// entry that recorded none.
+export interface ExhibitCitationRule {
+  prefixed: boolean
+  localMemberCode: string | null
+}
+
+// A local row, or an entry in this installation's own chain: no recorded code
+// means the local member's (decision 7, and "Verification" step 4 of the spec).
+export function citeLocalExhibit(source: ExhibitCitationSource, rule: ExhibitCitationRule): string {
+  const { exhibitNumber, memberCode } = source
+  return formatExhibitCitation(
+    { exhibitNumber, memberCode: memberCode ?? rule.localMemberCode },
+    { prefixed: rule.prefixed }
+  )
+}

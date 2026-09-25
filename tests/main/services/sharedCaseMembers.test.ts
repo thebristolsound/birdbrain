@@ -410,10 +410,16 @@ describe('shared case members (#1510)', () => {
       expect(cite(getExhibit('remote-1')!)).toBe('MB-1')
     })
 
-    it('counts a revoked member out of the prefix rule', () => {
+    // A revoked member's Exhibits stay in the Case. Counting only unrevoked
+    // members dropped the prefix on revocation and cited its `MB-1` and the
+    // Owner's `NK-1` both as `1`.
+    it('keeps the prefix after a member is revoked, its Exhibits remaining', () => {
       upsertCaseMember(member(caseId))
       upsertCaseMember(remoteMember(caseId, { revokedAtIndex: 4 }))
-      expect(exhibitCitationResolver(caseId, 'app')(getExhibit(localId)!)).toBe('1')
+      remoteExhibit(caseId, 1)
+      const cite = exhibitCitationResolver(caseId, 'app')
+      expect(cite(getExhibit(localId)!)).toBe('NK-1')
+      expect(cite(getExhibit('remote-1')!)).toBe('MB-1')
       expect(exhibitCitationResolver(caseId, 'export')(getExhibit(localId)!)).toBe('NK-1')
     })
 

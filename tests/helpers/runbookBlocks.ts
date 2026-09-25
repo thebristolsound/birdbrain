@@ -139,7 +139,7 @@ export function runRunbookBlocks(
     })
   }
 
-  let stdout = ''
+  let stdout: string
   let stderr = ''
   let status = 0
   try {

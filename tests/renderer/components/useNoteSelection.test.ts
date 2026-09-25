@@ -152,6 +152,40 @@ describe('useNoteSelection', () => {
     expect(result.current.selection).toBeNull()
   })
 
+  // The popover unmounts under its own focused button, so dismissing it from
+  // the keyboard would otherwise leave focus on the body mid-sentence (#1536).
+  it('dismiss returns focus from the overlay to the editor', () => {
+    const editable = document.createElement('div')
+    editable.setAttribute('contenteditable', 'true')
+    editable.tabIndex = 0
+    const overlay = document.createElement('div')
+    overlay.setAttribute(SELECTION_UI_ATTR, '1')
+    const cancel = document.createElement('button')
+    overlay.appendChild(cancel)
+    host.append(editable, overlay)
+    const { result } = setup()
+    cancel.focus()
+
+    act(() => result.current.dismiss())
+
+    expect(document.activeElement).toBe(editable)
+  })
+
+  it('dismiss leaves focus alone when it is not in the overlay', () => {
+    const editable = document.createElement('div')
+    editable.setAttribute('contenteditable', 'true')
+    editable.tabIndex = 0
+    host.appendChild(editable)
+    const elsewhere = document.createElement('button')
+    document.body.appendChild(elsewhere)
+    const { result } = setup()
+    elsewhere.focus()
+
+    act(() => result.current.dismiss())
+
+    expect(document.activeElement).toBe(elsewhere)
+  })
+
   it('clears when the host has gone away', () => {
     stubSelection({ text: 'meridian-trust.com' })
     const ref = { current: null as HTMLElement | null }

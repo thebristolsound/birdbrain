@@ -22,18 +22,20 @@ describe('buildDataTree', () => {
     ])
   })
 
-  it('counts every node: anchored rows, pooled rows, file types and the Results nodes', () => {
+  it('counts every selectable row and no group head: file types and the Results nodes', () => {
     const nodes = buildDataTree({
       rows: INVENTORY,
       expanded: new Set([...DEFAULT_EXPANDED, 'file-types']),
       results: RESULTS
     })
     const count = (key: string) => nodes.find((n) => n.key === key)?.count
+    // The mock draws no count on a group eyebrow (#1552); the four heads
+    // carried one before, which was the superseded design.
+    for (const group of ['data-sources', 'staging', 'views', 'results']) {
+      expect(count(group)).toBeNull()
+    }
     // Two Captures and one thumbnail are anchored rows; the pooled PDF is not,
-    // and it is counted under Staging and nowhere else (X16).
-    expect(count('data-sources')).toBe(3)
-    expect(count('staging')).toBe(1)
-    expect(count('views')).toBe(3)
+    // and no file-type count includes it (X16).
     expect(count('file-types')).toBe(3)
     expect(count('file-type:MHTML')).toBe(1)
     expect(nodes.find((n) => n.key === 'file-type:PDF')).toBeUndefined()

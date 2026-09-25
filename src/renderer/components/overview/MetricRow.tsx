@@ -1,5 +1,6 @@
 import { Camera, Globe, Target, Tags, FileText } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { useCountUpProgress, useScreenEntrance } from '@renderer/lib/motion/entrance'
 
 type MetricKey = 'captures' | 'sources' | 'selectors' | 'tags' | 'notes'
 
@@ -20,10 +21,19 @@ const DEFS: { key: MetricKey; label: string; icon: LucideIcon }[] = [
   { key: 'notes', label: 'Notes', icon: FileText }
 ]
 
-export function MetricRow({ captures, sources, selectors, tags, notes, deltas = {} }: MetricRowProps) {
+export function MetricRow({
+  captures,
+  sources,
+  selectors,
+  tags,
+  notes,
+  deltas = {}
+}: MetricRowProps) {
+  const entering = useScreenEntrance('overview')
+  const progress = useCountUpProgress(entering)
   const values: Record<MetricKey, number> = { captures, sources, selectors, tags, notes }
   return (
-    <div className="flex gap-[var(--d-gap)]">
+    <div className={`flex gap-[var(--d-gap)] ${entering ? 'screen-stagger' : ''}`}>
       {DEFS.map(({ key, label, icon: Icon }) => {
         const delta = deltas[key]
         return (
@@ -33,18 +43,22 @@ export function MetricRow({ captures, sources, selectors, tags, notes, deltas = 
           >
             <div className="flex items-center gap-1.5">
               <Icon size={13} strokeWidth={1.8} className="text-text-faint" />
-              <span className="font-display text-[10.5px] font-semibold uppercase tracking-[0.06em] text-text-muted">
+              <span className="font-display text-[10px] font-semibold uppercase tracking-[0.06em] text-text-muted">
                 {label}
               </span>
             </div>
             <div className="flex items-baseline gap-2">
               <span
                 data-testid={`overview-metric-${key}`}
+                aria-hidden="true"
                 className="font-display text-[length:var(--d-metric)] font-extrabold leading-none tracking-tight text-text-primary"
               >
-                {values[key]}
+                {Math.round(values[key] * progress)}
               </span>
-              {delta ? <span className="font-mono text-[11px] text-emerald-400">+{delta}</span> : null}
+              <span className="sr-only">{values[key]}</span>
+              {delta ? (
+                <span className="font-mono text-[11px] text-emerald-400">+{delta}</span>
+              ) : null}
             </div>
           </div>
         )

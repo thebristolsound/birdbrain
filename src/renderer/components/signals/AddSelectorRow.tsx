@@ -125,7 +125,7 @@ export const AddSelectorRow = forwardRef<HTMLInputElement, AddSelectorRowProps>(
           <div
             role="radiogroup"
             aria-label="Match mode"
-            className="mt-2 flex gap-1.5 border-t border-dashed border-border pt-2"
+            className="match-mode-enter mt-2 flex gap-1.5 border-t border-dashed border-border pt-2"
           >
             {MODE_CARDS.map((card) => (
               <button

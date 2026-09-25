@@ -20,6 +20,11 @@ export function parseDeepLink(url: string): DeepLinkTarget | null {
   switch (parsed.hostname.toLowerCase()) {
     case 'open':
       return 'dashboard'
+    case 'capture': {
+      const caseId = parsed.searchParams.get('caseId')
+      const captureId = parsed.searchParams.get('captureId')
+      return caseId && captureId ? { caseId, captureId } : null
+    }
     case 'settings':
       return 'settings'
     default:

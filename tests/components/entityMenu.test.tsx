@@ -92,6 +92,9 @@ const tagTarget: TagMenuTarget = {
   ],
   actions: {
     filterCaptures: vi.fn(),
+    duplicate: vi.fn(),
+    exportCaptures: vi.fn(),
+    copyMarkdown: vi.fn(),
     rename: vi.fn(),
     setColor: vi.fn(),
     merge: vi.fn(),
@@ -332,15 +335,16 @@ describe('note, selector and tag menus', () => {
   })
 
   // First, where the mock puts it, and live since #918 gave the capture list a
-  // tag filter to drive. Duplicate and Export stay absent: the app offers
-  // neither for a tag anywhere.
+  // tag filter to drive. The missing Duplicate and Export actions join it in #1542.
   it('leads with the capture filter, then the edits, merge and delete', () => {
     const shown = labels(tagMenuEntries(tagTarget))
     expect(shown).toEqual([
       'Filter captures by tag',
       'Rename',
+      'Duplicate',
       'Change color',
       'Merge into…',
+      'Export…',
       'Delete tag…'
     ])
   })

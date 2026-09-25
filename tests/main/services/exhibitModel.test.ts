@@ -190,9 +190,9 @@ describe('exhibit model', () => {
     it('creates the three tables, retargets the tag relation and drops the old one', () => {
       const db = getDb()
       const tables = (
-        db
-          .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
-          .all() as Array<{ name: string }>
+        db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{
+          name: string
+        }>
       ).map((row) => row.name)
       expect(tables).toEqual(expect.arrayContaining(['exhibits', 'derived_files', 'staging_files']))
       expect(tables).toContain('exhibit_tags')
@@ -283,7 +283,8 @@ describe('exhibit model', () => {
   // The v34 block's SQL is what runs on a real upgrade, so it is exercised
   // against a real pre-v34 schema rather than a hand-written minimal one: the
   // database is migrated forward, then wound back to v33 exactly as v34 found
-  // it, then reopened.
+  // it (so every table a later migration creates is dropped too), then
+  // reopened.
   describe('renumber migration (X18, X41)', () => {
     function windBackToV33(dbPath: string): void {
       const raw = new Database(dbPath)
@@ -302,6 +303,7 @@ describe('exhibit model', () => {
         DROP TABLE derived_files;
         DROP TABLE staging_files;
         DROP TABLE exhibits;
+        DROP TABLE personas;
         CREATE INDEX idx_capture_tags_tag_id ON capture_tags(tag_id);
       `)
       raw.pragma('user_version = 33')
@@ -347,7 +349,13 @@ describe('exhibit model', () => {
       }))
       expect(assigned).toEqual([
         { id: 'cap-first', exhibitNumber: 1, manifestSeq: 2, kind: 'capture', origin: 'extension' },
-        { id: 'cap-second', exhibitNumber: 2, manifestSeq: 5, kind: 'capture', origin: 'extension' },
+        {
+          id: 'cap-second',
+          exhibitNumber: 2,
+          manifestSeq: 5,
+          kind: 'capture',
+          origin: 'extension'
+        },
         {
           id: 'cap-legacy',
           exhibitNumber: 3,
@@ -797,13 +805,18 @@ describe('exhibit model', () => {
       const snapshot = getManifestSnapshot(caseId)
 
       expect(snapshot.caseId).toBe(caseId)
-      expect(snapshot.entries.map((entry) => (entry.parsed ? entry.entry.type : 'unparsed'))).toEqual(
-        ['capture', 'renumber']
-      )
+      expect(
+        snapshot.entries.map((entry) => (entry.parsed ? entry.entry.type : 'unparsed'))
+      ).toEqual(['capture', 'renumber'])
       expect(snapshot.chain).toEqual({ valid: true })
       expect(snapshot.head?.index).toBe(1)
       expect(snapshot.signers).toEqual([
-        { fromIndex: 0, toIndex: 1, fingerprint: spkiFingerprint(getPublicKeyPem()), source: 'local' }
+        {
+          fromIndex: 0,
+          toIndex: 1,
+          fingerprint: spkiFingerprint(getPublicKeyPem()),
+          source: 'local'
+        }
       ])
     })
 
@@ -875,10 +888,7 @@ describe('exhibit model', () => {
         timestamp: '2026-04-05T12:00:00.000Z'
       })
       const path = join(caseDir, MANIFEST_FILENAME)
-      writeFileSync(
-        path,
-        readFileSync(path, 'utf-8').replace('unsigned-signers', 'something-else')
-      )
+      writeFileSync(path, readFileSync(path, 'utf-8').replace('unsigned-signers', 'something-else'))
 
       const snapshot = getManifestSnapshot(caseId)
 

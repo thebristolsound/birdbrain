@@ -4,6 +4,7 @@ import type { ManifestSnapshotEntry } from '@shared/manifestSnapshot'
 import {
   describeSigner,
   entryNames,
+  formatSeq,
   rowsNaming,
   summarizeVerdict,
   targetExhibitId,
@@ -277,11 +278,13 @@ describe('entryNames', () => {
   })
 })
 
+// The verdict printed unpadded sequence numbers under a padded Seq column
+// before #1552; the mock pads both.
 describe('summarizeVerdict', () => {
   it('reports intact through the head, and never claims it without a head', () => {
     expect(summarizeVerdict({ valid: true }, { index: 4, entryHash: 'x' })).toEqual({
       tone: 'intact',
-      text: 'Chain intact through seq 4'
+      text: 'Chain intact through seq 0004'
     })
     expect(summarizeVerdict({ valid: true }, null)).toEqual({
       tone: 'empty',
@@ -292,7 +295,7 @@ describe('summarizeVerdict', () => {
   it('reports a broken chain at its index with the reason', () => {
     expect(
       summarizeVerdict({ valid: false, brokenAt: 2, reason: 'Invalid signature' }, null)
-    ).toEqual({ tone: 'broken', text: 'Chain broken at seq 2: Invalid signature' })
+    ).toEqual({ tone: 'broken', text: 'Chain broken at seq 0002: Invalid signature' })
   })
 
   it('reports verifier too old as its own outcome, never as broken (X25)', () => {
@@ -311,8 +314,16 @@ describe('summarizeVerdict', () => {
     expect(verdict.tone).toBe('unsupported')
     expect(verdict.text).toContain('verifier too old')
     expect(verdict.text).toContain("'hologram'")
-    expect(verdict.text).toContain('seq 3')
+    expect(verdict.text).toContain('seq 0003')
     expect(verdict.text).not.toMatch(/broken|tamper/i)
+  })
+})
+
+describe('formatSeq', () => {
+  it('pads to four digits and leaves a longer number whole', () => {
+    expect(formatSeq(0)).toBe('0000')
+    expect(formatSeq(24)).toBe('0024')
+    expect(formatSeq(12345)).toBe('12345')
   })
 })
 

@@ -26,7 +26,11 @@ import {
   Crosshair as Target,
   FileText,
   Folder,
-  ShieldCheck
+  ShieldCheck,
+  Archive,
+  Pin,
+  Columns2,
+  Activity
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { accelerator } from '@renderer/lib/accelerator'
@@ -39,10 +43,9 @@ import { accelerator } from '@renderer/lib/accelerator'
  * pure function of its target: the surfaces supply the callbacks, this module
  * decides the labels, the order, the separators and which items exist at all.
  *
- * **Every item here has an inline or keyboard route elsewhere in the app.**
- * That is ruling 3 on the ticket — the menu is an accelerator, never the sole
- * way to reach a capability — and it is why several of the mock's items are
- * absent rather than stubbed. Each builder documents its own omissions.
+ * Actions invoke the app's real operations. #1542 adds the approved tag,
+ * snapshot and event menus; unsupported generic export destinations stay
+ * outside this registry under the separately recorded #830 ruling.
  */
 
 export interface MenuAction {
@@ -70,6 +73,8 @@ export interface MenuSubmenu {
   /** Rendered in place of the items when there are none. */
   emptyLabel: string
   items: MenuAction[]
+  /** Replace this menu with the destination list instead of opening a side menu. */
+  drill?: boolean
 }
 
 export type MenuEntry = MenuAction | MenuSubmenu
@@ -163,10 +168,42 @@ export interface TagMenuTarget {
   palette: { value: string; label: string }[]
   actions: {
     filterCaptures: () => void
+    duplicate: () => void
+    exportCaptures: () => void
+    copyMarkdown: () => void
     rename: () => void
     setColor: (color: string) => void
     merge: () => void
     remove: () => void
+  }
+}
+
+export type SnapshotMenuTarget = {
+  kind: 'snapshot'
+  label: string
+} & (
+  | { exportRow: true; actions: { unpin: () => void } }
+  | {
+      exportRow?: false
+      pinned: boolean
+      actions: {
+        open: () => void
+        copyUrl: () => void
+        togglePin: () => void
+        compare: () => void
+      }
+    }
+)
+
+export interface EventMenuTarget {
+  kind: 'event'
+  host: string
+  hasCapture: boolean
+  actions: {
+    open: () => void
+    copyUrl: () => void
+    recapture: () => void
+    clear: () => void
   }
 }
 
@@ -232,6 +269,8 @@ export type EntityMenuTarget =
   | ExhibitMenuTarget
   | NodeMenuTarget
   | StagedMenuTarget
+  | SnapshotMenuTarget
+  | EventMenuTarget
 
 /** Derived rather than declared, so the two cannot drift as kinds are added. */
 export type EntityKind = EntityMenuTarget['kind']
@@ -518,14 +557,7 @@ export function selectorMenuEntries(target: SelectorMenuTarget): MenuEntry[] {
   ]
 }
 
-/**
- * Tag rows on the Signals screen.
- *
- * Missing from the mock's seven: Duplicate and Export, which the app does not
- * offer for a tag anywhere. "Filter captures by tag" was the third omission
- * until the capture list grew a tag filter (#918); it is now the first item,
- * where the mock puts it, and shares the detail rail's route into the list.
- */
+/** Tag rows on the Signals screen, including the scoped export drill-in. */
 export function tagMenuEntries(target: TagMenuTarget): MenuEntry[] {
   const { actions, palette, color } = target
   return [
@@ -543,6 +575,12 @@ export function tagMenuEntries(target: TagMenuTarget): MenuEntry[] {
       separatorBefore: true,
       takesFocus: true,
       run: actions.rename
+    },
+    {
+      id: 'tag-duplicate',
+      label: 'Duplicate',
+      icon: CopyPlus,
+      run: actions.duplicate
     },
     {
       id: 'tag-color',
@@ -565,6 +603,29 @@ export function tagMenuEntries(target: TagMenuTarget): MenuEntry[] {
       icon: Merge,
       separatorBefore: true,
       run: actions.merge
+    },
+    {
+      id: 'tag-export',
+      label: 'Export…',
+      icon: Download,
+      separatorBefore: true,
+      drill: true,
+      emptyLabel: 'No export destinations',
+      // Other generic destinations remain under the recorded #830 ruling.
+      items: [
+        {
+          id: 'tag-export-evidence',
+          label: 'ZIP + manifest',
+          icon: Archive,
+          run: actions.exportCaptures
+        },
+        {
+          id: 'tag-copy-markdown',
+          label: 'Copy as markdown',
+          icon: Clipboard,
+          run: actions.copyMarkdown
+        }
+      ]
     },
     {
       id: 'tag-delete',
@@ -703,9 +764,69 @@ export function stagedMenuEntries(target: StagedMenuTarget): MenuEntry[] {
   ]
 }
 
+export function snapshotMenuEntries(target: SnapshotMenuTarget): MenuEntry[] {
+  if (target.exportRow) {
+    return [{ id: 'snapshot-pin', label: 'Unpin from case', icon: Pin, run: target.actions.unpin }]
+  }
+  const pin: MenuAction = {
+    id: 'snapshot-pin',
+    label: target.pinned ? 'Unpin from case' : 'Pin to case',
+    icon: Pin,
+    run: target.actions.togglePin
+  }
+  return [
+    {
+      id: 'snapshot-open',
+      label: 'Open at archive.org',
+      icon: ExternalLink,
+      run: target.actions.open
+    },
+    {
+      id: 'snapshot-copy-url',
+      label: 'Copy snapshot URL',
+      icon: Clipboard,
+      run: target.actions.copyUrl
+    },
+    pin,
+    {
+      id: 'snapshot-compare',
+      label: 'Compare with your capture',
+      icon: Columns2,
+      separatorBefore: true,
+      run: target.actions.compare
+    }
+  ]
+}
+
+export function eventMenuEntries(target: EventMenuTarget): MenuEntry[] {
+  return [
+    {
+      id: 'event-open',
+      label: 'Open capture',
+      icon: Eye,
+      disabled: !target.hasCapture,
+      run: target.actions.open
+    },
+    { id: 'event-copy-url', label: 'Copy URL', icon: Clipboard, run: target.actions.copyUrl },
+    {
+      id: 'event-recapture',
+      label: 'Recapture',
+      icon: RefreshCcw,
+      separatorBefore: true,
+      disabled: !target.hasCapture,
+      run: target.actions.recapture
+    },
+    { id: 'event-clear', label: 'Clear entry', icon: X, run: target.actions.clear }
+  ]
+}
+
 /** The registry proper: one kind, one action set, one place to change it. */
 export function entityMenuEntries(target: EntityMenuTarget): MenuEntry[] {
   switch (target.kind) {
+    case 'event':
+      return eventMenuEntries(target)
+    case 'snapshot':
+      return snapshotMenuEntries(target)
     case 'capture':
       return captureMenuEntries(target)
     case 'note':
@@ -725,6 +846,20 @@ export function entityMenuEntries(target: EntityMenuTarget): MenuEntry[] {
 
 export function entityMenuHeader(target: EntityMenuTarget): MenuHeader {
   switch (target.kind) {
+    case 'event':
+      return {
+        icon: Activity,
+        title: target.host,
+        subtitle: 'event',
+        ariaLabel: `Event actions: ${target.host}`
+      }
+    case 'snapshot':
+      return {
+        icon: Archive,
+        title: target.label,
+        subtitle: 'snapshot',
+        ariaLabel: `Snapshot actions: ${target.label}`
+      }
     case 'capture': {
       const count = target.targetIds.length
       if (count > 1) {

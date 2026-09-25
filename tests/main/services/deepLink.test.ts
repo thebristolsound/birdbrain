@@ -9,6 +9,14 @@ describe('deepLink', () => {
   })
 
   describe('parseDeepLink', () => {
+    it('names an exact capture and rejects incomplete capture targets', () => {
+      expect(parseDeepLink('birdbrain://capture?caseId=case-1&captureId=cap-2')).toEqual({
+        caseId: 'case-1',
+        captureId: 'cap-2'
+      })
+      expect(parseDeepLink('birdbrain://capture?caseId=case-1')).toBeNull()
+    })
+
     it('maps birdbrain://open to dashboard', () => {
       expect(parseDeepLink('birdbrain://open')).toBe('dashboard')
     })

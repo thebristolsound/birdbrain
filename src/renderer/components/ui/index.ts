@@ -7,7 +7,10 @@ export {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-  DialogFooter
+  DialogFooter,
+  useModalEscape,
+  useModalFocus,
+  trapTab
 } from '@renderer/components/ui/dialog'
 export {
   Card,

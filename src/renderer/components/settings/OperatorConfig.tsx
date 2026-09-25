@@ -5,7 +5,7 @@ import {
   settingsQueryOptions,
   useSettingsMutations
 } from '@renderer/lib/queries'
-import { Input, Label } from '@renderer/components/ui'
+import { Card, CardContent, Input, Label } from '@renderer/components/ui'
 import { DEFAULT_TSA_URL } from '@shared/constants'
 
 export function OperatorConfig() {
@@ -55,84 +55,112 @@ export function OperatorConfig() {
   if (!identity) return <div className="text-text-muted">Loading...</div>
 
   return (
-    <div className="space-y-4">
-      <div>
-        <Label className="text-xs font-medium text-text-secondary">
-          Operator Name <span className="text-red-500">*</span>
-        </Label>
-        <Input
-          type="text"
-          value={operatorName}
-          onChange={(e) => {
-            setOperatorName(e.target.value)
-            if (e.target.value.trim()) setNameError('')
-          }}
-          onBlur={save}
-          placeholder="e.g. Alex Smith"
-          className={`border-border bg-surface${nameError ? ' border-red-500' : ''}`}
-        />
-        {nameError ? (
-          <p className="mt-1 text-[11px] text-red-500">{nameError}</p>
-        ) : (
-          <p className="mt-1 text-[11px] text-text-muted">
-            Required. Recorded in every capture's audit manifest and export report.
-          </p>
-        )}
-        {update.isPending && <p className="text-[11px] text-text-faint">Saving...</p>}
-      </div>
-      <div>
-        <Label className="text-xs font-medium text-text-secondary">Role</Label>
-        <Input
-          type="text"
-          value={operatorRole}
-          onChange={(e) => setOperatorRole(e.target.value)}
-          onBlur={save}
-          placeholder="e.g. Researcher, Analyst"
-          className="border-border bg-surface"
-        />
-        <p className="mt-1 text-[11px] text-text-muted">Optional. Included in the export report.</p>
-      </div>
-      <div>
-        <Label className="text-xs font-medium text-text-secondary">Organization</Label>
-        <Input
-          type="text"
-          value={operatorOrganization}
-          onChange={(e) => setOperatorOrganization(e.target.value)}
-          onBlur={save}
-          placeholder="e.g. Independent Research Group"
-          className="border-border bg-surface"
-        />
-        <p className="mt-1 text-[11px] text-text-muted">Optional. Included in the export report.</p>
-      </div>
-      <div>
-        <Label className="text-xs font-medium text-text-secondary">
-          Trusted Timestamp Authority
-        </Label>
-        <Input
-          type="text"
-          value={tsaUrl}
-          onChange={(e) => setTsaUrl(e.target.value)}
-          onBlur={saveTsaUrl}
-          placeholder={DEFAULT_TSA_URL}
-          className="border-border bg-surface font-mono text-[11px]"
-        />
-        <p className="mt-1 text-[11px] text-text-muted">
-          RFC 3161 endpoint used to trusted-timestamp captures. Defaults to DigiCert. Captures never
-          block on it; un-stamped captures are timestamped when the TSA is reachable.
-        </p>
-      </div>
-      <div>
-        <Label className="text-xs font-medium text-text-secondary">Installation ID</Label>
-        <Input
-          type="text"
-          readOnly
-          value={identity.installationId}
-          className="font-mono text-[11px] text-text-muted"
-        />
-        <p className="mt-1 text-[11px] text-text-muted">
-          Stable device identifier - stamped on every capture and export. Cannot be changed.
-        </p>
-      </div>
-    </div>
+    <Card>
+      <CardContent>
+        <h2 className="mb-4 font-display text-[10px] font-semibold uppercase tracking-wider text-text-faint">
+          Operator
+        </h2>
+        <div className="flex max-w-[560px] flex-col gap-4">
+          <div>
+            <Label htmlFor="operator-name" className="text-xs font-medium text-text-secondary">
+              Operator Name <span className="text-red-500">*</span>
+            </Label>
+            <Input
+              id="operator-name"
+              type="text"
+              value={operatorName}
+              onChange={(e) => {
+                setOperatorName(e.target.value)
+                if (e.target.value.trim()) setNameError('')
+              }}
+              onBlur={save}
+              placeholder="e.g. Alex Smith"
+              className={`border-border bg-surface${nameError ? ' border-red-500' : ''}`}
+            />
+            {nameError ? (
+              <p className="mt-1 text-[11px] text-red-500">{nameError}</p>
+            ) : (
+              <p className="mt-1 text-[11px] text-text-muted">
+                Required. Recorded in every capture's audit manifest and export report.
+              </p>
+            )}
+            {update.isPending && <p className="text-[11px] text-text-faint">Saving...</p>}
+          </div>
+          <div>
+            <Label htmlFor="operator-role" className="text-xs font-medium text-text-secondary">
+              Role
+            </Label>
+            <Input
+              id="operator-role"
+              type="text"
+              value={operatorRole}
+              onChange={(e) => setOperatorRole(e.target.value)}
+              onBlur={save}
+              placeholder="e.g. Researcher, Analyst"
+              className="border-border bg-surface"
+            />
+            <p className="mt-1 text-[11px] text-text-muted">
+              Optional. Included in the export report.
+            </p>
+          </div>
+          <div>
+            <Label
+              htmlFor="operator-organization"
+              className="text-xs font-medium text-text-secondary"
+            >
+              Organization
+            </Label>
+            <Input
+              id="operator-organization"
+              type="text"
+              value={operatorOrganization}
+              onChange={(e) => setOperatorOrganization(e.target.value)}
+              onBlur={save}
+              placeholder="e.g. Independent Research Group"
+              className="border-border bg-surface"
+            />
+            <p className="mt-1 text-[11px] text-text-muted">
+              Optional. Included in the export report.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="operator-tsa" className="text-xs font-medium text-text-secondary">
+              Trusted Timestamp Authority
+            </Label>
+            <Input
+              id="operator-tsa"
+              type="text"
+              value={tsaUrl}
+              onChange={(e) => setTsaUrl(e.target.value)}
+              onBlur={saveTsaUrl}
+              placeholder={DEFAULT_TSA_URL}
+              className="border-border bg-surface font-mono text-[11px]"
+            />
+            <p className="mt-1 text-[11px] text-text-muted">
+              RFC 3161 endpoint used to trusted-timestamp captures. Defaults to DigiCert. Captures
+              never block on it; un-stamped captures are timestamped when the TSA is reachable.
+            </p>
+          </div>
+          <div>
+            <Label
+              htmlFor="operator-installation"
+              className="text-xs font-medium text-text-secondary"
+            >
+              Installation ID
+            </Label>
+            <Input
+              id="operator-installation"
+              type="text"
+              readOnly
+              value={identity.installationId}
+              className="font-mono text-[11px] text-text-muted"
+            />
+            <p className="mt-1 text-[11px] text-text-muted">
+              Stable device identifier - stamped on every capture and export. Cannot be changed.
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   )
 }

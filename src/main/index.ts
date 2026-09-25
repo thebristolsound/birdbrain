@@ -4,6 +4,7 @@ import { app, BrowserWindow, dialog, shell, session as electronSession } from 'e
 import { join, resolve } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { removeOrphanedPartitions } from '@main/services/persona/personaSessions'
 import { PreMigrationSnapshotError } from '@main/services/db/dbSnapshots'
 import { initStorage } from '@main/services/storage'
 import { seedDemoCaseIfNeeded } from '@main/services/demoCase'
@@ -407,6 +408,8 @@ if (!gotSingleInstanceLock) {
       // Awaited: initDatabase takes the pre-migration snapshot (#413) before it
       // migrates, and the snapshot is an async online backup.
       await initDatabase(join(userDataPath, 'birdbrain.db'))
+      // Before anything opens a persona session, so an orphan's folder can go.
+      removeOrphanedPartitions(userDataPath)
       initSettings(userDataPath)
       initInstallationId(userDataPath)
       // Splitting this into a second entry is the cost of initialising the

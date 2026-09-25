@@ -319,7 +319,8 @@ export function importNoteRows(rows: Record<string, unknown>[], ctx: ImportCtx):
       // The failure takes the whole import with it, so name the note — a
       // refused archive is untriageable from a bare schema message.
       throw new Error(
-        `Note ${String(n.id)} ("${String(n.title ?? '')}"): ${(err as Error).message}`
+        `Note ${String(n.id)} ("${String(n.title ?? '')}"): ${(err as Error).message}`,
+        { cause: err }
       )
     }
     const { body, bodyDoc, mentions } = resolvedBody

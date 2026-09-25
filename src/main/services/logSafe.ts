@@ -222,6 +222,7 @@ export const QUERY_DOMAINS = [
   'manifest',
   'notes',
   'openRouterModels',
+  'persona',
   'recaptureQueue',
   'search',
   'selectors',

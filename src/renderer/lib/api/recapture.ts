@@ -52,3 +52,7 @@ export function useRecaptureMutations(caseId: string) {
   })
   return { enqueue, enqueueCaptures }
 }
+
+export function enqueueEventRecapture(caseId: string, captureId: string): Promise<EnqueueResult> {
+  return window.birdbrain.recapture.enqueueCaptures({ caseId, captureIds: [captureId] })
+}

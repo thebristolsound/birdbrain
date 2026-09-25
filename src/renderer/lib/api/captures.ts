@@ -67,6 +67,10 @@ export const searchQueryOptions = (caseId: string, query: string) =>
 // Uncached counterparts to the two query factories above, for the foreground
 // match preview: it walks every candidate capture's text on demand and would
 // otherwise park a case's worth of capture bodies in the cache.
+export function getCapture(captureId: string): Promise<Capture | undefined> {
+  return window.birdbrain.captures.get(captureId)
+}
+
 export function listCaptures(caseId: string): Promise<Capture[]> {
   return window.birdbrain.captures.list(caseId)
 }

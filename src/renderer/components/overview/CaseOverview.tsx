@@ -6,9 +6,9 @@ import {
   Camera,
   ChevronRight,
   Crosshair,
-  FileText,
   Globe,
   ShieldCheck,
+  StickyNote,
   Tags
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -192,7 +192,12 @@ export function CaseOverview() {
           />
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-[var(--d-gap)]">
-          <SectionCard icon={FileText} title="Quick notes" action="All notes" onAction={goToNotes}>
+          <SectionCard
+            icon={StickyNote}
+            title="Quick notes"
+            action="All notes"
+            onAction={goToNotes}
+          >
             <QuickNotesBlock caseId={caseId} notes={notes} />
           </SectionCard>
           {showBanner ? (

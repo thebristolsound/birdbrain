@@ -103,7 +103,7 @@ describe('NoteCard', () => {
 // #701. The card is its own adoption point, so every menu item lands on the
 // control beside it rather than on a second implementation.
 describe('NoteCard context menu', () => {
-  it('names the note and offers only what the card can already do', async () => {
+  it('names the note and offers its actions with menu customisation', async () => {
     renderCard()
     const menu = await openCardMenu()
 
@@ -111,7 +111,8 @@ describe('NoteCard context menu', () => {
     expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
       'Edit note',
       'Open source URL',
-      'Delete note…'
+      'Delete note…',
+      'Customise this menu…'
     ])
   })
 

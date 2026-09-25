@@ -55,7 +55,7 @@ export const runChecks = ({ checks, ctx }) =>
     try {
       return check.run(ctx)
     } catch (error) {
-      throw new Error(`check ${check.id} failed: ${error.message}`)
+      throw new Error(`check ${check.id} failed: ${error.message}`, { cause: error })
     }
   })
 

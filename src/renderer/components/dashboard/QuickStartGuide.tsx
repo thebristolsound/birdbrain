@@ -60,7 +60,7 @@ export function QuickStartGuide() {
               <Card className="h-full">
                 <CardContent>
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-8 h-8 rounded-xl bg-accent flex items-center justify-center text-white font-display font-extrabold text-xs flex-shrink-0 shadow-md shadow-indigo-500/20">
+                    <div className="w-8 h-8 rounded-xl bg-accent flex items-center justify-center text-white font-display font-extrabold text-xs flex-shrink-0">
                       {step.number}
                     </div>
                     {step.number < 4 && <div className="flex-1 step-connector" />}

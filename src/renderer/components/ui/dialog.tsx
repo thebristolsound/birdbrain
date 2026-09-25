@@ -1,6 +1,7 @@
 import {
   createContext,
   forwardRef,
+  useCallback,
   useContext,
   useEffect,
   useLayoutEffect,
@@ -38,20 +39,30 @@ function tabbables(root: HTMLElement): HTMLElement[] {
       !el.hasAttribute('disabled') &&
       !el.hasAttribute('hidden') &&
       el.getAttribute('aria-hidden') !== 'true' &&
-      el.getAttribute('tabindex') !== '-1'
+      el.getAttribute('tabindex') !== '-1' &&
+      !isSkippedRadio(el, root)
   )
 }
 
-interface DialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  children: ReactNode
+// A native radio group is one Tab stop, its checked radio, with the arrow keys
+// moving inside it. Cycling through every radio would give the trap a longer
+// walk than the browser's own and land on radios Tab never reaches.
+function isSkippedRadio(el: HTMLElement, root: HTMLElement): boolean {
+  if (!(el instanceof HTMLInputElement) || el.type !== 'radio' || el.checked || !el.name) {
+    return false
+  }
+  return Array.from(root.querySelectorAll<HTMLInputElement>('input[type="radio"]')).some(
+    (radio) => radio.name === el.name && radio.checked
+  )
 }
 
-function Dialog({ open, onOpenChange, children }: DialogProps) {
-  const contentRef = useRef<HTMLDivElement | null>(null)
-  const openerRef = useRef<HTMLElement | null>(null)
-
+/**
+ * Escape-to-close plus the open-dialog registration (#686), for a surface that
+ * is modal while `open` is true. Dialog runs on it; the modals that cannot take
+ * Dialog's markup (the command palette, the tour, the import and export
+ * panels) run on it too, rather than on a second copy.
+ */
+function useModalEscape(open: boolean, onClose: () => void) {
   useEffect(() => {
     if (!open) return
     function handleKey(e: KeyboardEvent) {
@@ -59,11 +70,11 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
       // autocomplete dismissing itself, say — must not also close the dialog
       // and discard whatever was being written into it.
       if (e.defaultPrevented) return
-      if (e.key === 'Escape') onOpenChange(false)
+      if (e.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [open, onOpenChange])
+  }, [open, onClose])
 
   // AnimatePresence keeps the content mounted for the exit animation, so the
   // element carrying role="dialog" outlives `open` by roughly 150ms. Anything
@@ -77,13 +88,25 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
     registerOpenDialog()
     return unregisterOpenDialog
   }, [open])
+}
 
-  // Half of the modal focus contract: focus moves into the dialog on open and
-  // goes back to whatever opened it on close. Keyed on `open` like the two
-  // effects above rather than on the content unmounting, so the hand-back
+/**
+ * Half of the modal focus contract: focus moves into `contentRef` on open and
+ * goes back to whatever opened it on close. The other half — Tab staying
+ * inside — is `trapTab`, run from the content node's own keydown.
+ *
+ * Returns the recorded opener, for a modal that closes by handing over to
+ * another one and wants the next modal to inherit where focus came from.
+ */
+function useModalFocus(
+  open: boolean,
+  contentRef: RefObject<HTMLElement | null>
+): RefObject<HTMLElement | null> {
+  const openerRef = useRef<HTMLElement | null>(null)
+
+  // Keyed on `open` rather than on the content unmounting, so the hand-back
   // happens when the dialog stops owning the keyboard instead of ~150ms later
-  // when AnimatePresence finishes the exit animation. The other half — Tab
-  // staying inside — is DialogContent's, which owns the node.
+  // when AnimatePresence finishes the exit animation.
   //
   // A layout effect, not a passive one, for the sake of the dialogs that pick
   // their own landing control (ConfirmDialog, RowEditModal): those run in a
@@ -101,7 +124,7 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
     openerRef.current = active
     const firstInside = tabbables(content)[0] ?? content
     firstInside.focus()
-  }, [open])
+  }, [open, contentRef])
 
   // The hand-back is a passive effect rather than the cleanup of the layout
   // effect above, because React restores the pre-commit selection between the
@@ -113,12 +136,82 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
     return () => {
       const opener = openerRef.current
       openerRef.current = null
-      // Only take focus back if the dialog still holds it; something that
-      // moved focus elsewhere on its way out gets to keep it.
       if (!content || !opener?.isConnected) return
-      if (content.contains(document.activeElement)) opener.focus()
+      // A dialog its parent unmounts while still open never sees `open` turn
+      // false: by the time this runs its content is gone, and focus has fallen
+      // to the body or been left on a detached node. That is a drop rather
+      // than a choice, so it is handed back as well.
+      const active = document.activeElement
+      const dropped = !active || active === document.body || !active.isConnected
+      // Otherwise only take focus back if the dialog still holds it; something
+      // that moved focus elsewhere on its way out gets to keep it.
+      if (dropped || content.contains(active)) opener.focus()
     }
-  }, [open])
+  }, [open, contentRef])
+
+  // Focus can also fall out while the dialog stays open, when the control
+  // holding it unmounts: a panel swapping one step's content for the next. The
+  // next Tab would then start from the body and walk the page behind, so it is
+  // brought back in. Only a Tab from nowhere: one from a real node belongs to
+  // `trapTab`, or to whoever owns that node.
+  useEffect(() => {
+    if (!open) return
+    function handleKey(e: KeyboardEvent) {
+      if (e.key !== 'Tab' || e.defaultPrevented) return
+      const active = document.activeElement
+      if (active && active !== document.body && active.isConnected) return
+      const content = contentRef.current
+      if (!content) return
+      e.preventDefault()
+      const targets = tabbables(content)
+      const landing = (e.shiftKey ? targets[targets.length - 1] : targets[0]) ?? content
+      landing.focus()
+    }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [open, contentRef])
+
+  return openerRef
+}
+
+/**
+ * Keeps Tab inside `content`, cycling from the last control to the first and
+ * back. Call it from the content node's React `onKeyDown`.
+ *
+ * Handled there rather than on a window listener so React's own bubbling
+ * settles first: a Tab something inside already acted on — the Mention
+ * autocomplete accepting the highlighted suggestion, or a nested dialog's
+ * trap — arrives already defaultPrevented and is not ours to redirect.
+ */
+function trapTab(e: ReactKeyboardEvent<HTMLElement>, content: HTMLElement | null) {
+  if (!content || e.key !== 'Tab' || e.defaultPrevented) return
+  e.preventDefault()
+  const targets = tabbables(content)
+  if (targets.length === 0) {
+    content.focus()
+    return
+  }
+  const last = targets.length - 1
+  const index = targets.indexOf(document.activeElement as HTMLElement)
+  // index === -1 is focus sitting on the container itself, which is where
+  // it lands when the dialog opened with nothing tabbable in it.
+  const step = e.shiftKey ? -1 : 1
+  const from = index === -1 ? (e.shiftKey ? 0 : last) : index
+  targets[(from + step + targets.length) % targets.length].focus()
+}
+
+interface DialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  children: ReactNode
+}
+
+function Dialog({ open, onOpenChange, children }: DialogProps) {
+  const contentRef = useRef<HTMLDivElement | null>(null)
+  const close = useCallback(() => onOpenChange(false), [onOpenChange])
+
+  useModalEscape(open, close)
+  useModalFocus(open, contentRef)
 
   return (
     <DialogContentRefContext.Provider value={contentRef}>
@@ -158,28 +251,9 @@ const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
       else if (ref) ref.current = node
     }
 
-    // Tab is handled here rather than on a window listener so React's own
-    // bubbling settles first: a Tab something inside already acted on — the
-    // Mention autocomplete accepting the highlighted suggestion, or a nested
-    // dialog's trap — arrives already defaultPrevented and is not ours to
-    // redirect.
     function handleKeyDown(e: ReactKeyboardEvent<HTMLDivElement>) {
       onKeyDown?.(e)
-      const content = nodeRef.current
-      if (!content || e.key !== 'Tab' || e.defaultPrevented) return
-      e.preventDefault()
-      const targets = tabbables(content)
-      if (targets.length === 0) {
-        content.focus()
-        return
-      }
-      const last = targets.length - 1
-      const index = targets.indexOf(document.activeElement as HTMLElement)
-      // index === -1 is focus sitting on the container itself, which is where
-      // it lands when the dialog opened with nothing tabbable in it.
-      const step = e.shiftKey ? -1 : 1
-      const from = index === -1 ? (e.shiftKey ? 0 : last) : index
-      targets[(from + step + targets.length) % targets.length].focus()
+      trapTab(e, nodeRef.current)
     }
 
     return (
@@ -240,4 +314,14 @@ const DialogFooter = forwardRef<HTMLDivElement, ComponentPropsWithoutRef<'div'>>
 )
 DialogFooter.displayName = 'DialogFooter'
 
-export { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter }
+export {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  useModalEscape,
+  useModalFocus,
+  trapTab
+}

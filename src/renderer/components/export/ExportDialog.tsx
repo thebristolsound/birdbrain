@@ -1,12 +1,19 @@
-import { useEffect, useState } from 'react'
-import { motion, AnimatePresence } from 'motion/react'
+import { useEffect, useRef, useState } from 'react'
+import { motion, AnimatePresence, useIsPresent } from 'motion/react'
 import { useQuery } from '@tanstack/react-query'
 import { Archive, ChevronDown, ShieldCheck, TriangleAlert } from 'lucide-react'
 import type { CaseWaybackRef, ExportClass, ExportOptions } from '@shared/types'
 import { safeFilename } from '@shared/safeFilename'
 import { presets } from '@renderer/lib/motion'
 import { useCompletionCelebration } from '@renderer/hooks/useCompletionCelebration'
-import { Button, Input, Label } from '@renderer/components/ui'
+import {
+  Button,
+  Input,
+  Label,
+  trapTab,
+  useModalEscape,
+  useModalFocus
+} from '@renderer/components/ui'
 import { ExportProgress } from '@renderer/components/export/ExportProgress'
 import { ExportComplete } from '@renderer/components/export/ExportComplete'
 import { exportPreflightQueryOptions, useExportMutations } from '@renderer/lib/api/export'
@@ -113,6 +120,17 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
   const [purposeOrAuthority, setPurposeOrAuthority] = useState('')
   const [showChecklist, setShowChecklist] = useState(false)
   const [progress, setProgress] = useState({ step: 'Preparing export…', percent: 0 })
+  const panelRef = useRef<HTMLDivElement>(null)
+  // Mounted only while open, so presence stands in for `open`: it turns false
+  // when the export menu's AnimatePresence starts the exit, which hands focus
+  // back then rather than when the exit ends. Outside a presence it stays
+  // true, and the hand-back happens on unmount instead.
+  const present = useIsPresent()
+
+  // Focus, Tab and Escape only. Escape does what Cancel, Close and Done
+  // already do in every phase: close.
+  useModalFocus(present, panelRef)
+  useModalEscape(present, onClose)
 
   const { celebrate, celebrationProps } = useCompletionCelebration({ style: 'ripple' })
 
@@ -200,8 +218,15 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
       {...presets.overlay}
     >
       <motion.div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        // One name for all three phases: each phase swaps its own heading in.
+        aria-label="Export case"
+        tabIndex={-1}
         className="neu-overlay max-h-[85vh] w-[30rem] overflow-y-auto rounded-2xl p-6"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => trapTab(e, panelRef.current)}
         {...presets.modal}
       >
         <AnimatePresence mode="wait">

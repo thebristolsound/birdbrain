@@ -281,3 +281,101 @@ describe('ImportCaseDialog', () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 })
+
+// Focus, Tab and Escape only (#1536). The tamper override and the import call
+// are pinned above; these pin that the keyboard reaches neither by accident.
+describe('ImportCaseDialog keyboard', () => {
+  const failing = {
+    overallValid: false,
+    chainValid: false,
+    chainReason: 'signature mismatch',
+    artifactCount: 42,
+    artifactFailureCount: 2,
+    captureCount: 42,
+    captureHashFailureCount: 1
+  }
+
+  beforeEach(() => {
+    importMutateSpy.mockReset()
+    importIsPending = false
+    fakeBridge({ onArchiveProgress: vi.fn(() => vi.fn()) })
+  })
+
+  afterEach(() => {
+    cleanup()
+  })
+
+  it('is a modal dialog named by its heading', () => {
+    render(<ImportCaseDialog report={makeReport()} onClose={vi.fn()} />)
+
+    const dialog = screen.getByRole('dialog', { name: 'Import Case Archive' })
+    expect(dialog.getAttribute('aria-modal')).toBe('true')
+  })
+
+  it('lands on Cancel, not on the tamper override, when a failing archive opens', () => {
+    render(<ImportCaseDialog report={makeReport({ verification: failing })} onClose={vi.fn()} />)
+
+    expect(document.activeElement).toBe(screen.getByText('Cancel'))
+    expect((screen.getByRole('checkbox') as HTMLInputElement).checked).toBe(false)
+  })
+
+  it('closes on Escape without importing', () => {
+    const onClose = vi.fn()
+    render(<ImportCaseDialog report={makeReport()} onClose={onClose} />)
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(importMutateSpy).not.toHaveBeenCalled()
+  })
+
+  it('ignores Escape while an import is running, as the overlay click does', () => {
+    importIsPending = true
+    const onClose = vi.fn()
+    render(<ImportCaseDialog report={makeReport()} onClose={onClose} />)
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('keeps Tab inside the panel and leaves the override unticked', () => {
+    render(<ImportCaseDialog report={makeReport({ verification: failing })} onClose={vi.fn()} />)
+    const cancel = screen.getByText('Cancel')
+    const checkbox = screen.getByRole('checkbox') as HTMLInputElement
+
+    // Import case is disabled on a failing archive, so Cancel is the last stop
+    // and Tab wraps round to the override, the first.
+    fireEvent.keyDown(cancel, { key: 'Tab' })
+    expect(document.activeElement).toBe(checkbox)
+
+    fireEvent.keyDown(checkbox, { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(cancel)
+    expect(checkbox.checked).toBe(false)
+  })
+
+  it('hands focus back to the opener when the parent unmounts it', () => {
+    const { rerender } = render(
+      <>
+        <button data-testid="opener">Import</button>
+      </>
+    )
+    const opener = screen.getByTestId('opener')
+    opener.focus()
+    rerender(
+      <>
+        <button data-testid="opener">Import</button>
+        <ImportCaseDialog report={makeReport()} onClose={vi.fn()} />
+      </>
+    )
+    expect(document.activeElement).toBe(screen.getByText('Cancel'))
+
+    rerender(
+      <>
+        <button data-testid="opener">Import</button>
+      </>
+    )
+
+    expect(document.activeElement).toBe(opener)
+  })
+})

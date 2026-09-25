@@ -5,6 +5,8 @@ import { render, screen, fireEvent, cleanup, waitFor, act, within } from '@testi
 import type { Case, ExportOptions, ExportPreflight } from '@shared/types'
 import type { ExportProgressEvent, ExportResult } from '@shared/ipc'
 
+const presence = vi.hoisted(() => ({ present: true }))
+
 vi.mock('motion/react', async () => {
   const React = await import('react')
   const motion = new Proxy(
@@ -40,7 +42,9 @@ vi.mock('motion/react', async () => {
 
   return {
     motion,
-    AnimatePresence: ({ children }: { children: React.ReactNode }) => children
+    AnimatePresence: ({ children }: { children: React.ReactNode }) => children,
+    // The export menu's AnimatePresence flips this false when the exit starts.
+    useIsPresent: () => presence.present
   }
 })
 
@@ -480,6 +484,145 @@ describe('ExportDialog', () => {
 
     expect(await screen.findByText(/disk full/)).toBeDefined()
     expect(screen.getByText('Try again')).toBeDefined()
+  })
+
+  // Focus, Tab and Escape only (#1536). The known answers are the export
+  // options: walking the dialog by keyboard must leave them what the preset
+  // table says.
+  describe('keyboard', () => {
+    function tabStops(): HTMLElement[] {
+      const stops: HTMLElement[] = [document.activeElement as HTMLElement]
+      for (let i = 0; i < 10; i++) {
+        fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Tab' })
+        if (document.activeElement === stops[0]) break
+        stops.push(document.activeElement as HTMLElement)
+      }
+      return stops
+    }
+
+    it('is a modal dialog with a name for every phase', () => {
+      renderDialog()
+
+      const dialog = screen.getByRole('dialog', { name: 'Export case' })
+      expect(dialog.getAttribute('aria-modal')).toBe('true')
+    })
+
+    it('moves focus onto the checked preset when it opens', () => {
+      renderDialog()
+
+      const full = screen.getByRole('radio', { name: /Full evidence bundle/ })
+      expect(document.activeElement).toBe(full)
+    })
+
+    it('walks its own five controls and wraps, with the preset group as one stop', () => {
+      renderDialog()
+
+      const stops = tabStops()
+
+      const label = (el: HTMLElement) =>
+        el.tagName === 'INPUT' ? el.getAttribute('type') : el.textContent
+      expect(stops.map(label)).toEqual(['radio', 'Customise contents', 'text', 'Cancel', 'Export'])
+      expect(document.activeElement).toBe(stops[0])
+    })
+
+    it('closes on Escape without exporting', () => {
+      const onClose = vi.fn()
+      renderDialog(onClose)
+
+      fireEvent.keyDown(window, { key: 'Escape' })
+
+      expect(onClose).toHaveBeenCalledTimes(1)
+      expect(generateReport).not.toHaveBeenCalled()
+    })
+
+    it('leaves the export options at the preset after a full keyboard walk', async () => {
+      renderDialog()
+      tabStops()
+      fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Tab', shiftKey: true })
+
+      fireEvent.click(screen.getByTestId('export-submit'))
+
+      await waitFor(() => expect(generateReport).toHaveBeenCalledTimes(1))
+      const options = lastOptions(generateReport)
+      expect(options.exportClass).toBe(EXPORT_PRESETS.full.selection.exportClass)
+      expect(options.include).toEqual(EXPORT_PRESETS.full.selection.include)
+      expect(options.purposeOrAuthority).toBeUndefined()
+    })
+
+    // The Export button unmounts when the progress phase replaces the form, so
+    // focus falls to the body with the dialog still up.
+    it('brings Tab back into the dialog after the form gives way to progress', async () => {
+      const gate = deferred<ExportResult>()
+      generateReport.mockReturnValue(gate.promise)
+      renderDialog()
+      screen.getByTestId('export-submit').focus()
+
+      fireEvent.click(screen.getByTestId('export-submit'))
+      await screen.findByText('Exporting case')
+      expect(document.activeElement).toBe(document.body)
+
+      fireEvent.keyDown(document.body, { key: 'Tab' })
+
+      expect(document.activeElement).toBe(screen.getByText('Close'))
+      gate.resolve({ canceled: false, filePath: 'Case_One_evidence.zip' })
+    })
+
+    // In the export menu the dialog sits in an AnimatePresence, which keeps it
+    // mounted through the exit. Focus and Escape go when the exit starts.
+    it('hands focus back and lets go of Escape once its exit starts', () => {
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
+      })
+      const onClose = vi.fn()
+      function Host({ open }: { open: boolean }) {
+        return (
+          <QueryClientProvider client={client}>
+            <button data-testid="opener">Export</button>
+            {open && <ExportDialog caseId="case-1" caseName="Case One" onClose={onClose} />}
+          </QueryClientProvider>
+        )
+      }
+      const { rerender } = render(<Host open={false} />)
+      const opener = screen.getByTestId('opener')
+      opener.focus()
+      rerender(<Host open />)
+      expect(document.activeElement).not.toBe(opener)
+
+      try {
+        presence.present = false
+        rerender(<Host open />)
+
+        expect(screen.getByRole('dialog', { name: 'Export case' })).toBeTruthy()
+        expect(document.activeElement).toBe(opener)
+        fireEvent.keyDown(window, { key: 'Escape' })
+        expect(onClose).not.toHaveBeenCalled()
+      } finally {
+        presence.present = true
+      }
+    })
+
+    it('hands focus back to the opener when the parent unmounts it', () => {
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
+      })
+      function Host({ open }: { open: boolean }) {
+        return (
+          <QueryClientProvider client={client}>
+            <button data-testid="opener">Export</button>
+            {open && <ExportDialog caseId="case-1" caseName="Case One" onClose={vi.fn()} />}
+          </QueryClientProvider>
+        )
+      }
+      const { rerender } = render(<Host open={false} />)
+      const opener = screen.getByTestId('opener')
+      opener.focus()
+      rerender(<Host open />)
+      expect(document.activeElement).not.toBe(opener)
+
+      rerender(<Host open={false} />)
+
+      expect(document.activeElement).toBe(opener)
+    })
   })
 })
 

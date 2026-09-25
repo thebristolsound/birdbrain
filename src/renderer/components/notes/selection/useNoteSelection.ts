@@ -52,8 +52,16 @@ export function useNoteSelection(hostRef: RefObject<HTMLElement | null>): UseNot
   const [selection, setSelection] = useState<NoteSelectionState | null>(null)
 
   const dismiss = useCallback(() => {
+    // The overlay unmounts under its own focused control, which would drop a
+    // keyboard operator to the top of the document mid-sentence. The editor
+    // is where they were. Focus that is not in the overlay is left alone.
+    const host = hostRef.current
+    const active = document.activeElement
+    if (host && active && host.contains(active) && active.closest(`[${SELECTION_UI_ATTR}]`)) {
+      host.querySelector<HTMLElement>('[contenteditable="true"]')?.focus()
+    }
     setSelection(null)
-  }, [])
+  }, [hostRef])
 
   const onSelectionEnd = useCallback(
     (event: { target: EventTarget | null }) => {

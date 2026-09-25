@@ -52,8 +52,22 @@ export function CoachMark({
   const demoEnding = Boolean(step.final && onDeleteDemo)
 
   const card = (
-    <div className="rounded-md border border-border-strong bg-elevated px-3.5 py-3 shadow-[0_12px_32px_rgba(0,0,0,0.45)]">
-      <div className="text-xs leading-relaxed text-text-secondary">
+    <div
+      // Modal for the keyboard: OnboardingTour holds focus inside the tour and
+      // dismisses it on Escape, so assistive tech is told the same.
+      role="dialog"
+      aria-modal="true"
+      aria-label={step.title ?? 'Walkthrough'}
+      className="rounded-md border border-border-strong bg-elevated px-3.5 py-3 shadow-[0_12px_32px_rgba(0,0,0,0.45)]"
+    >
+      {/* A live region because the card stays mounted from one mark to the
+          next: moving to a new step changes no focus, so nothing else would
+          announce the new copy. */}
+      <div
+        aria-live="polite"
+        data-testid="tour-copy"
+        className="text-xs leading-relaxed text-text-secondary"
+      >
         {/* Inline with the body copy by design, so it carries heading semantics
             rather than an <h*> element, which would force a block break. */}
         {step.title ? (

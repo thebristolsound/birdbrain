@@ -26,9 +26,9 @@ export function CaptureListEmptyState({ onClearNarrowing }: CaptureListEmptyStat
       >
         <Camera className="h-4 w-4 text-text-faint" strokeWidth={1.6} />
       </motion.div>
-      <div className="text-xs font-semibold text-text-secondary">
+      <h3 className="text-xs font-semibold text-text-secondary">
         {narrowed ? 'No captures match' : 'No captures yet'}
-      </div>
+      </h3>
       <p className="max-w-[200px] text-[11px] leading-[1.6] text-text-faint">
         {narrowed
           ? 'Nothing in this case matches the current filters.'

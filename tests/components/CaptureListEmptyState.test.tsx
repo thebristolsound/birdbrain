@@ -20,6 +20,16 @@ describe('CaptureListEmptyState', () => {
     expect(screen.getByText(/Browse the web with the Birdbrain extension active/i)).toBeDefined()
   })
 
+  // The design restyles the title but does not demote it; the empty-state e2e
+  // and screen readers find it by its heading role.
+  it('keeps the title a heading in both states', () => {
+    render(<CaptureListEmptyState />)
+    expect(screen.getByRole('heading', { name: 'No captures yet' })).toBeDefined()
+    cleanup()
+    render(<CaptureListEmptyState onClearNarrowing={vi.fn()} />)
+    expect(screen.getByRole('heading', { name: 'No captures match' })).toBeDefined()
+  })
+
   it('exposes a stable test id for layout', () => {
     render(<CaptureListEmptyState />)
     expect(screen.getByTestId('capture-list-empty-state')).toBeDefined()

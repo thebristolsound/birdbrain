@@ -1,4 +1,5 @@
 import { queryOptions, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import type { Capture } from '@shared/types'
 import type {
   BatchCountResult,
   CreateTagParams,
@@ -225,4 +226,15 @@ export function useTagsMutations(caseId?: string) {
     applyToNote,
     merge
   }
+}
+
+// Read at action time; the coverage strip is intentionally capped and cannot
+// define an export's scope. The case's full capture list also excludes stale IDs.
+export async function getCapturesForTag(caseId: string, tagId: string): Promise<Capture[]> {
+  const [ids, captures] = await Promise.all([
+    window.birdbrain.tags.capturesWithAnyTag(caseId, [tagId]),
+    window.birdbrain.captures.list(caseId)
+  ])
+  const included = new Set(ids)
+  return captures.filter((capture) => included.has(capture.id))
 }

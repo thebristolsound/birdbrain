@@ -303,3 +303,37 @@ describe('WaybackPanel', () => {
     expect(onClose).toHaveBeenCalledOnce()
   })
 })
+
+it('runs the snapshot menu against the clicked row without changing comparison on right-click', async () => {
+  await renderWithResult()
+  const initial = useAppStore.getState().waybackSelection?.snapshotUrl
+  const row = screen.getAllByTestId('wayback-snapshot-row')[0]
+  fireEvent.contextMenu(row)
+  expect(await screen.findByRole('menu')).toBeDefined()
+  expect(useAppStore.getState().waybackSelection?.snapshotUrl).toBe(initial)
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Pin to case' }))
+  await waitFor(() => expect(wayback.pin).toHaveBeenCalled())
+  expect(wayback.pin.mock.calls[0][0]).toMatchObject({
+    captureId: capture.id,
+    snapshot: SNAPSHOTS[0]
+  })
+
+  fireEvent.contextMenu(row)
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Compare with your capture' }))
+  expect(useAppStore.getState().waybackSelection?.snapshotUrl).toBe(SNAPSHOTS[0].snapshotUrl)
+})
+
+it('copies and opens the snapshot archive URL from its context menu', async () => {
+  const writeText = vi.fn().mockResolvedValue(undefined)
+  const openExternal = vi.fn().mockResolvedValue(undefined)
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+  fakeBridge({ wayback, captures: { openExternal } })
+  await renderWithResult()
+  const row = screen.getAllByTestId('wayback-snapshot-row')[0]
+  fireEvent.contextMenu(row)
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Copy snapshot URL' }))
+  await waitFor(() => expect(writeText).toHaveBeenCalledWith(SNAPSHOTS[0].snapshotUrl))
+  fireEvent.contextMenu(row)
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Open at archive.org' }))
+  await waitFor(() => expect(openExternal).toHaveBeenCalledWith(SNAPSHOTS[0].snapshotUrl))
+})

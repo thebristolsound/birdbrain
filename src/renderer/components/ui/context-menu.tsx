@@ -56,6 +56,30 @@ function ContextMenuItem({
   )
 }
 
+function ContextMenuCheckboxItem({
+  className,
+  ...props
+}: ComponentPropsWithoutRef<typeof ContextMenuPrimitive.CheckboxItem>) {
+  return (
+    <ContextMenuPrimitive.CheckboxItem
+      className={cn(ITEM_CLASS, 'text-text-secondary', className)}
+      {...props}
+    />
+  )
+}
+
+function ContextMenuFooter(props: ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Item>) {
+  return (
+    <ContextMenuPrimitive.Item
+      {...props}
+      className={cn(
+        ITEM_CLASS,
+        '-mx-1 -mb-1 mt-1 w-[calc(100%+8px)] rounded-none border-t border-border text-text-faint'
+      )}
+    />
+  )
+}
+
 function ContextMenuSubTrigger({
   className,
   ...props
@@ -131,6 +155,8 @@ export {
   ContextMenuTrigger,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuCheckboxItem,
+  ContextMenuFooter,
   ContextMenuSub,
   ContextMenuSubTrigger,
   ContextMenuSubContent,

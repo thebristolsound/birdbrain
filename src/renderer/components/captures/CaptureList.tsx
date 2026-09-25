@@ -237,7 +237,7 @@ export function CaptureList({
               placeholder="Search captures…"
               aria-label="Filter captures in this list"
               data-testid="capture-list-search"
-              className="w-full rounded border border-border-strong bg-canvas py-1.5 pl-7 pr-2.5 text-xs text-text-primary outline-none placeholder:text-text-faint"
+              className="w-full rounded border border-border-strong bg-canvas py-1.5 pl-7 pr-2.5 text-xs text-text-primary placeholder:text-text-faint"
             />
           </div>
           <button

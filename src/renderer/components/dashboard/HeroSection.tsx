@@ -20,7 +20,7 @@ export function HeroSection({ onNewInvestigation, onOpenRecent, onImportCase }: 
           Welcome to <span className="shimmer-text">Birdbrain</span>
         </h1>
 
-        <p className="text-base text-text-muted max-w-lg mx-auto leading-relaxed mb-10">
+        <p className="text-sm text-text-muted max-w-lg mx-auto leading-relaxed mb-10">
           Capture web pages, organize evidence by case, and verify what changed over time.
         </p>
 
@@ -29,24 +29,24 @@ export function HeroSection({ onNewInvestigation, onOpenRecent, onImportCase }: 
             data-testid="new-case-btn"
             data-tour="newcase"
             onClick={onNewInvestigation}
-            className="group flex items-center gap-3 px-7 py-4 bg-accent hover:bg-accent-hover text-white font-display font-bold text-sm rounded-2xl shadow-lg shadow-indigo-500/40 hover:shadow-xl hover:shadow-indigo-500/50 transition-[transform,box-shadow,background-color] active:scale-[0.98]"
+            className="group flex items-center gap-2 px-5 py-3 bg-accent hover:bg-accent-hover text-white font-display font-bold text-sm rounded-2xl transition-[transform,background-color] active:scale-[0.98]"
           >
-            <PlusCircle className="h-5 w-5 group-hover:rotate-90 transition-transform duration-300" />
+            <PlusCircle className="h-4 w-4 group-hover:rotate-90 transition-transform duration-300" />
             Start New Investigation
           </button>
           <button
             onClick={onOpenRecent}
-            className="flex items-center gap-3 px-6 py-4 border border-border-strong hover:border-accent hover:bg-accent-subtle text-text-primary font-display font-semibold text-sm rounded-2xl transition-[transform,border-color,background-color] active:scale-[0.98]"
+            className="flex items-center gap-2 px-5 py-3 border border-border-strong hover:border-accent hover:bg-accent-subtle text-text-primary font-display font-semibold text-sm rounded-2xl transition-[transform,border-color,background-color] active:scale-[0.98]"
           >
-            <FolderOpen className="h-5 w-5 text-accent" />
+            <FolderOpen className="h-4 w-4 text-accent" />
             Open Recent Case
           </button>
           <button
             data-testid="import-case-btn"
             onClick={onImportCase}
-            className="flex items-center gap-3 px-6 py-4 border border-border-strong hover:border-accent hover:bg-accent-subtle text-text-primary font-display font-semibold text-sm rounded-2xl transition-[transform,border-color,background-color] active:scale-[0.98]"
+            className="flex items-center gap-2 px-5 py-3 border border-border-strong hover:border-accent hover:bg-accent-subtle text-text-primary font-display font-semibold text-sm rounded-2xl transition-[transform,border-color,background-color] active:scale-[0.98]"
           >
-            <Archive className="h-5 w-5 text-accent" />
+            <Archive className="h-4 w-4 text-accent" />
             Import Case…
           </button>
         </div>

@@ -19,9 +19,9 @@ export function SourcesBlock({ sources }: SourcesBlockProps) {
         <div key={s.host} className="flex items-center gap-2.5">
           <span className="h-[7px] w-[7px] shrink-0 rounded-full" style={{ background: s.tone }} />
           <span className="w-36 shrink-0 truncate font-mono text-xs text-text-secondary">{s.host}</span>
-          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-elevated">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-sm bg-elevated">
             <div
-              className="h-full rounded-full"
+              className="h-full rounded-sm"
               style={{ width: `${(s.count / max) * 100}%`, background: s.tone, opacity: 0.75 }}
             />
           </div>

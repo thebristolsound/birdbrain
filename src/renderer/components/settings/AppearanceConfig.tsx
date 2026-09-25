@@ -50,7 +50,7 @@ export function AppearanceConfig() {
               <button
                 onClick={() => theme !== 'light' && toggleTheme()}
                 className={cn(
-                  'flex-1 rounded-xl border-2 p-3 text-center text-sm font-medium transition-colors',
+                  'flex-1 rounded-md border-2 p-2.5 text-center text-xs font-medium transition-colors',
                   theme === 'light'
                     ? 'border-accent bg-accent-subtle text-accent'
                     : 'border-border-strong bg-card text-text-muted hover:border-accent/30'
@@ -61,7 +61,7 @@ export function AppearanceConfig() {
               <button
                 onClick={() => theme !== 'dark' && toggleTheme()}
                 className={cn(
-                  'flex-1 rounded-xl border-2 p-3 text-center text-sm font-medium transition-colors',
+                  'flex-1 rounded-md border-2 p-2.5 text-center text-xs font-medium transition-colors',
                   theme === 'dark'
                     ? 'border-accent bg-accent-subtle text-accent'
                     : 'border-border-strong bg-card text-text-muted hover:border-accent/30'

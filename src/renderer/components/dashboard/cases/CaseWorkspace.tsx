@@ -85,10 +85,8 @@ export function CaseWorkspace() {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Signals joins the full-height branch: it is a split view with its own
-          scroll regions, and the padded/scrolling wrapper below would stop its
-          360px rail pinning to the window. */}
-      {isCaptures || isData || isSignals ? (
+      {/* Split workspaces own their scroll regions and fill the available height. */}
+      {isCaptures || isData || isSignals || isNotes ? (
         <div className="flex-1 overflow-hidden">
           <Outlet />
         </div>

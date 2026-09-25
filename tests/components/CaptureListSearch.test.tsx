@@ -122,6 +122,15 @@ describe('CaptureList per-list search', () => {
     expect(screen.queryByLabelText('Search case captures')).toBeNull()
   })
 
+  // `outline-none` with nothing in its place left keyboard focus invisible
+  // here; the app-wide accent ring only reaches a field that does not opt out
+  // of it (#1536).
+  it('does not suppress the focus outline on the search field', async () => {
+    renderList()
+    await screen.findByText('Acme quarterly')
+    expect(searchInput().className).not.toMatch(/(^|\s)outline-none(\s|$)/)
+  })
+
   it('keeps the collapse control the layout suite clicks', async () => {
     renderList()
     await screen.findByText('Acme quarterly')

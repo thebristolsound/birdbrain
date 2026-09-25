@@ -65,13 +65,15 @@ async function tree() {
 }
 
 describe('DataExplorer (#1149)', () => {
-  it('renders the four groups with counts and the kind subgroup', async () => {
+  it('renders the four groups without counts, and counts on the rows under them', async () => {
     renderExplorer()
     const rail = await tree()
     expect(text(rail.getByTestId('data-tree-node-data-sources'))).toContain('Data Sources')
-    expect(text(rail.getByTestId('data-tree-count-data-sources'))).toContain('3')
     expect(text(rail.getByTestId('data-tree-node-staging'))).toContain('Staging')
-    expect(text(rail.getByTestId('data-tree-count-staging'))).toContain('1')
+    for (const group of ['data-sources', 'staging', 'views', 'results']) {
+      expect(rail.queryByTestId(`data-tree-count-${group}`)).toBeNull()
+    }
+    expect(text(rail.getByTestId('data-tree-count-kind:capture'))).toContain('3')
     expect(rail.getByTestId('data-tree-node-views')).toBeTruthy()
     expect(rail.getByTestId('data-tree-node-results')).toBeTruthy()
     expect(text(rail.getByTestId('data-tree-node-kind:capture'))).toContain('Captures')
@@ -99,10 +101,15 @@ describe('DataExplorer (#1149)', () => {
     for (const head of ['Source', 'Kind', 'Size', 'SHA-256', 'Captured']) {
       expect(table.getByText(head)).toBeTruthy()
     }
-    expect(text(table.getByTestId('artifact-row-cap-a'))).toContain('example.com')
-    expect(text(table.getByTestId('artifact-row-cap-a'))).toContain(HASH_A.slice(0, 12))
+    expect(text(table.getByTestId('artifact-row-cap-a'))).not.toContain('example.com')
+    expect(text(table.getByTestId('artifact-row-thumb-a'))).toContain('Exhibit 1')
+    expect(text(table.getByTestId('artifact-row-cap-a'))).toContain(`${HASH_A.slice(0, 14)}…`)
     expect(text(table.getByTestId('artifact-row-cap-a'))).toContain('Exhibit 1')
     expect(text(table.getByTestId('artifact-row-thumb-a'))).toContain('thumbnail')
+    // CAPTURED is the Capture's capture time on the Capture and on its Derived
+    // File, read from the Capture row and not the inventory's commit time.
+    expect(text(table.getByTestId('artifact-row-cap-a'))).toContain('2026-09-01 09:58')
+    expect(text(table.getByTestId('artifact-row-thumb-a'))).toContain('2026-09-01 09:58')
     expect(table.queryByTestId('artifact-row-staged-1')).toBeNull()
 
     // A legacy Capture with no entry and no file says both.
@@ -148,11 +155,33 @@ describe('DataExplorer (#1149)', () => {
     expect(await screen.findByText('No files match this search.')).toBeTruthy()
   })
 
-  it('closes the strip when the search hides the selected row', async () => {
+  // The strip used to close when the search hid the selected row and to be
+  // absent until a row was clicked; the mock falls back to the first file
+  // (#1552), and the strip is now absent only when the table is empty.
+  it('shows the first row in the strip with nothing selected, with the breadcrumb', async () => {
     renderExplorer()
-    fireEvent.click(await screen.findByTestId('artifact-row-cap-a'))
-    expect(await screen.findByTestId('artifact-tabs')).toBeTruthy()
+    const strip = within(await screen.findByTestId('artifact-tabs'))
+    expect(strip.getByText('Example page')).toBeTruthy()
+    expect(text(strip.getByTestId('artifact-tabs-subtitle'))).toBe('Exhibit 1 / raw')
+    expect(screen.getByTestId('artifact-row-cap-a').getAttribute('aria-selected')).toBe('false')
+    // The strip is the larger pane, as in the mock.
+    expect(screen.getByTestId('artifact-tabs').className).toContain('flex-[1.2]')
+
+    fireEvent.click(screen.getByTestId('artifact-row-thumb-a'))
+    await waitFor(() =>
+      expect(text(screen.getByTestId('artifact-tabs-subtitle'))).toBe('Exhibit 1 / derived')
+    )
+  })
+
+  it('falls back to the first visible row when the search hides the selected one', async () => {
+    renderExplorer()
+    fireEvent.click(await screen.findByTestId('artifact-row-thumb-a'))
     fireEvent.change(screen.getByTestId('data-search'), { target: { value: 'Old page' } })
+    await waitFor(() =>
+      expect(within(screen.getByTestId('artifact-tabs')).getByText('Old page')).toBeTruthy()
+    )
+    expect(text(screen.getByTestId('artifact-tabs-subtitle'))).toBe('Exhibit 2 / raw')
+    fireEvent.change(screen.getByTestId('data-search'), { target: { value: 'zzz' } })
     await waitFor(() => expect(screen.queryByTestId('artifact-tabs')).toBeNull())
   })
 
@@ -239,6 +268,26 @@ describe('DataExplorer (#1149)', () => {
     expect(rail.queryByTestId('data-tree-node-exhibit:cap-a')).toBeNull()
   })
 
+  it('modifier-click builds a multi-selection that a node change clears (#1552)', async () => {
+    renderExplorer()
+    fireEvent.click(await screen.findByTestId('artifact-row-cap-a'), { ctrlKey: true })
+    fireEvent.click(screen.getByTestId('artifact-row-thumb-a'), { metaKey: true })
+    const multi = () =>
+      ['cap-a', 'cap-legacy', 'thumb-a'].filter(
+        (id) =>
+          screen.getByTestId(`artifact-row-${id}`).getAttribute('data-multi-selected') === 'true'
+      )
+    expect(multi()).toEqual(['cap-a', 'thumb-a'])
+    fireEvent.click(screen.getByTestId('artifact-row-cap-a'), { ctrlKey: true })
+    expect(multi()).toEqual(['thumb-a'])
+    fireEvent.click(
+      (await tree())
+        .getByTestId('data-tree-node-kind:capture')
+        .querySelector('button:last-of-type')!
+    )
+    await waitFor(() => expect(multi()).toEqual([]))
+  })
+
   it('clears the search from its button', async () => {
     renderExplorer()
     const input = (await screen.findByTestId('data-search')) as HTMLInputElement
@@ -255,6 +304,7 @@ describe('DataExplorer (#1149)', () => {
       (await tree()).getByTestId('data-tree-node-staging').querySelector('button:last-of-type')!
     )
     fireEvent.click(await screen.findByTestId('artifact-row-staged-1'))
+    expect(text(screen.getByTestId('artifact-tabs-subtitle'))).toBe('manual-upload / staging')
     // A pooled row has nothing but Properties (#1150).
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Properties'])
     const props = within(await screen.findByTestId('properties-tab'))

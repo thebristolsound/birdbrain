@@ -15,6 +15,14 @@ import { SearchBar } from '@renderer/components/search/SearchBar'
 
 let captureHits: Array<{ id: string; caseId: string; title: string; url: string }>
 let noteHits: Array<{ id: string; caseId: string; title: string; body: string }>
+let captureSearchFails: boolean
+let noteSearchFails: boolean
+
+// The IPC layer rejects when full-text search cannot parse the text (a domain,
+// an email address), rather than returning an empty list.
+function failedSearch(): Promise<never> {
+  return Promise.reject(new Error('Search could not run'))
+}
 
 function renderBar() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -31,10 +39,14 @@ function type(value: string) {
 beforeEach(() => {
   captureHits = []
   noteHits = []
+  captureSearchFails = false
+  noteSearchFails = false
   navigate.mockClear()
   fakeBridge({
-    search: vi.fn(async () => captureHits),
-    notes: { search: vi.fn(async () => noteHits) }
+    search: vi.fn(() => (captureSearchFails ? failedSearch() : Promise.resolve(captureHits))),
+    notes: {
+      search: vi.fn(() => (noteSearchFails ? failedSearch() : Promise.resolve(noteHits)))
+    }
   })
 })
 
@@ -57,6 +69,25 @@ describe('the top-bar search', () => {
     expect(screen.getByTestId('global-search-results').textContent).toBe('Searching...')
     expect(await screen.findByText('No matches in this case')).toBeTruthy()
     expect(screen.queryByText('Searching...')).toBeNull()
+  })
+
+  it('says the search could not run, not that nothing matched, when it fails', async () => {
+    captureSearchFails = true
+    noteSearchFails = true
+    renderBar()
+    type('example.com')
+
+    expect(await screen.findByText('Search could not run on this text')).toBeTruthy()
+    expect(screen.queryByText('No matches in this case')).toBeNull()
+  })
+
+  it('withholds the empty row when only the note search failed', async () => {
+    noteSearchFails = true
+    renderBar()
+    type('kestrel')
+
+    expect(await screen.findByText('Search could not run on this text')).toBeTruthy()
+    expect(screen.queryByText('No matches in this case')).toBeNull()
   })
 
   it('lists capture and note hits without the empty row', async () => {

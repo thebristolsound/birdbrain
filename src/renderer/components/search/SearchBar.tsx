@@ -16,7 +16,7 @@ export function SearchBar({ caseId }: SearchBarProps) {
   // True between a keystroke and the debounced search it schedules, so the
   // empty state never flashes for a query that has not been sent yet.
   const [pending, setPending] = useState(false)
-  const { results, noteResults, searching, search, clear } = useSearch(caseId)
+  const { results, noteResults, searching, failed, search, clear } = useSearch(caseId)
   const navigate = useNavigate()
   const setSearchQuery = useAppStore((s) => s.setSearchQuery)
   const selectCapture = useAppStore((s) => s.selectCapture)
@@ -100,7 +100,12 @@ export function SearchBar({ caseId }: SearchBarProps) {
           className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded border border-border-strong bg-elevated shadow-lg"
         >
           {busy && <div className="px-3 py-2 text-xs text-text-muted">Searching...</div>}
-          {!busy && results.length === 0 && noteResults.length === 0 && (
+          {!busy && failed && (
+            <div className="px-3 py-2 text-xs text-text-muted">
+              Search could not run on this text
+            </div>
+          )}
+          {!busy && !failed && results.length === 0 && noteResults.length === 0 && (
             <div className="px-3 py-2 text-xs text-text-muted">No matches in this case</div>
           )}
           {results.map((cap) => (

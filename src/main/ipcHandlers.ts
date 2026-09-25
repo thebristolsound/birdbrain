@@ -739,9 +739,9 @@ export function registerIpcHandlers(deps: {
     try {
       return noteRepo.searchNotes(caseId, query)
     } catch {
-      // FTS5 can throw on malformed queries (e.g. unmatched quotes, reserved keywords).
-      // Return empty results so the UI gracefully handles bad input.
-      return []
+      // FTS5 throws on some input (unmatched quotes, `.` or `@` in a bareword). An empty
+      // array here would read as "no matches", so report the failure instead.
+      throw new IpcFailure('Search could not run', 'SEARCH_FAILED')
     }
   })
 
@@ -926,9 +926,8 @@ export function registerIpcHandlers(deps: {
     try {
       return captureRepo.searchCaptures(query, caseId)
     } catch {
-      // FTS5 can throw on malformed queries (e.g. unmatched quotes, reserved keywords).
-      // Return empty results so the UI gracefully handles bad input.
-      return []
+      // See NOTES_SEARCH: a failed search must not look like an empty one.
+      throw new IpcFailure('Search could not run', 'SEARCH_FAILED')
     }
   })
 

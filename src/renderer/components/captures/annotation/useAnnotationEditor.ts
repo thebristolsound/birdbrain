@@ -80,6 +80,18 @@ export function useAnnotationEditor({ initialShapes }: Options) {
     [shapes]
   )
 
+  // For a shape whose backing record no longer exists, such as a pin cancelled
+  // before its note was added: undo must not restore it, so it leaves the
+  // history as well as the canvas.
+  const discardShape = useCallback((id: string) => {
+    const without = (arr: AnnotationShape[]) => arr.filter((s) => s.id !== id)
+    setShapes(without)
+    setUndoStack((stack) => stack.map(without))
+    setRedoStack((stack) => stack.map(without))
+    setSelectedId((prev) => (prev === id ? null : prev))
+    setDirty(true)
+  }, [])
+
   const undo = useCallback(() => {
     setUndoStack((stack) => {
       if (stack.length === 0) return stack
@@ -129,6 +141,7 @@ export function useAnnotationEditor({ initialShapes }: Options) {
     commitDraft,
     updateShape,
     removeShape,
+    discardShape,
     undo,
     redo,
     canUndo: undoStack.length > 0,

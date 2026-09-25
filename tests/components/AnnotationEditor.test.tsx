@@ -303,4 +303,21 @@ describe('AnnotationEditor pin popover', () => {
     expect(screen.getByText('canvas pin 1')).toBeDefined()
     expect(screen.getByText('canvas pin 2')).toBeDefined()
   })
+
+  it('keeps a cancelled new pin out of undo, since its record is gone', async () => {
+    renderEditor()
+    await screen.findByTestId('pin-legend')
+    fireEvent.click(screen.getByText('drop near bottom'))
+
+    await screen.findByPlaceholderText('What does this pin mark?')
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(deletePin).toHaveBeenCalledTimes(1))
+
+    for (let i = 0; i < 2; i++) {
+      fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+      expect(screen.queryByText('canvas pin 3')).toBeNull()
+      expect(screen.getByText('canvas pin 1')).toBeDefined()
+      expect(screen.getByText('canvas pin 2')).toBeDefined()
+    }
+  })
 })

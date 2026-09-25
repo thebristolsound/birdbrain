@@ -248,7 +248,10 @@ export function AnnotationEditor(props: Props) {
           closePopover()
         }}
         onCancelDraft={() => {
-          if (popoverShape) removePin(popoverShape)
+          if (popoverShape) {
+            editor.discardShape(popoverShape.id)
+            mutations.deletePin.mutate(popoverShape.pinId)
+          }
           closePopover()
         }}
         onDelete={() => {

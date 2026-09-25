@@ -1121,7 +1121,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
           row.entity === 'capture'
             ? `
       <tr>
-        <td class="num">${row.view.number > 0 ? row.view.number : '—'}</td>
+        <td class="num">${row.view.number > 0 ? esc(row.citation) : '—'}</td>
         <td>capture<span class="state-secondary">${esc(
           row.view.capture.method ?? 'extension'
         )}</span></td>
@@ -1140,7 +1140,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
       </tr>`
             : `
       <tr>
-        <td class="num">${row.view.number > 0 ? row.view.number : '—'}</td>
+        <td class="num">${row.view.number > 0 ? esc(row.citation) : '—'}</td>
         <td>${esc(row.view.exhibit.kind)}<span class="state-secondary">${esc(
           row.view.exhibit.origin
         )}</span></td>

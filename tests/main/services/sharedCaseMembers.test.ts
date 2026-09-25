@@ -486,6 +486,7 @@ describe('shared case members (#1510)', () => {
       const html = await exportReport()
       expect(html).toContain('Exhibit NK-1')
       expect(html).toContain('(Exhibits NK-1)')
+      expect(html).toContain('<td class="num">NK-1</td>')
       expect(html).not.toMatch(/Exhibit 1\b/)
       expect(createHash('sha256').update(html).digest('hex')).toHaveLength(64)
     })
@@ -499,6 +500,7 @@ describe('shared case members (#1510)', () => {
       expect(html).not.toContain('<i>-1')
       expect(html).toContain('Exhibit &lt;i&gt;-1')
       expect(html).toContain('(Exhibits &lt;i&gt;-1)')
+      expect(html).toContain('<td class="num">&lt;i&gt;-1</td>')
     })
 
     // The ledger cites a pre-sharing `exhibit` entry through the rule the

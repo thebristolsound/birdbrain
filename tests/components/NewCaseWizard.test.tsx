@@ -7,9 +7,15 @@ import { NewCaseWizard } from '@renderer/components/dashboard/cases/NewCaseWizar
 // assertions read, and so `create` can resolve to a case with an id.
 const createCase = vi.hoisted(() => vi.fn(async () => ({ id: 'case-1' })))
 const createSelector = vi.hoisted(() => vi.fn())
+const navigate = vi.hoisted(() => vi.fn())
+const notifySuccess = vi.hoisted(() => vi.fn())
 
 vi.mock('@tanstack/react-router', () => ({
-  useNavigate: () => vi.fn()
+  useNavigate: () => navigate
+}))
+
+vi.mock('@renderer/lib/notify', () => ({
+  notify: { success: notifySuccess }
 }))
 
 vi.mock('@renderer/lib/queries', () => ({
@@ -24,6 +30,8 @@ vi.mock('@renderer/lib/api/selectors', () => ({
 afterEach(() => {
   cleanup()
   createSelector.mockReset()
+  navigate.mockReset()
+  notifySuccess.mockReset()
   vi.restoreAllMocks()
 })
 
@@ -70,6 +78,36 @@ describe('NewCaseWizard', () => {
     await waitFor(() => expect(createSelector).toHaveBeenCalledOnce())
     expect(createSelector).toHaveBeenCalledWith(
       expect.objectContaining({ caseId: 'case-1', label: 'Email Addresses', origin: 'manual' })
+    )
+  })
+
+  // The mock's post-create confirmation (Birdbrain.dc.html 5872): the case name
+  // and how many selectors the wizard armed, pluralised the same way.
+  it('confirms the new case and its armed selector count in a toast', async () => {
+    render(<NewCaseWizard />)
+
+    fireEvent.change(screen.getByTestId('case-name-input'), { target: { value: '  Nightjar ' } })
+    fireEvent.click(screen.getByText('Email Addresses'))
+    fireEvent.click(screen.getByText('IP Addresses'))
+    fireEvent.click(screen.getByTestId('case-create-btn'))
+
+    await waitFor(() => expect(notifySuccess).toHaveBeenCalledOnce())
+    expect(notifySuccess).toHaveBeenCalledWith('Investigation created', {
+      description: '“Nightjar” is ready — 2 selectors armed.'
+    })
+    expect(navigate).toHaveBeenCalledWith({ to: '/cases/$caseId', params: { caseId: 'case-1' } })
+  })
+
+  it('uses the singular for one armed selector', async () => {
+    render(<NewCaseWizard />)
+
+    fireEvent.change(screen.getByTestId('case-name-input'), { target: { value: 'Nightjar' } })
+    fireEvent.click(screen.getByText('Usernames'))
+    fireEvent.click(screen.getByTestId('case-create-btn'))
+
+    await waitFor(() => expect(notifySuccess).toHaveBeenCalledOnce())
+    expect(notifySuccess.mock.calls[0][1].description).toBe(
+      '“Nightjar” is ready — 1 selector armed.'
     )
   })
 })

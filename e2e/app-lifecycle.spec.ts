@@ -18,16 +18,16 @@ test.describe('App Lifecycle', () => {
   })
 
   test('theme toggle persists between reloads', async ({ page }) => {
-    // Should start in light mode (Chromium profile is fresh per test via --user-data-dir).
-    await page.waitForFunction(() => !document.documentElement.classList.contains('dark'))
-
-    // Click the theme toggle and wait for the dark class to appear
-    const themeToggle = page.locator('button[title="Switch to dark mode"]')
-    await themeToggle.click()
+    // Should start in dark mode (Chromium profile is fresh per test via --user-data-dir).
     await page.waitForFunction(() => document.documentElement.classList.contains('dark'))
+
+    // Click the theme toggle and wait for the dark class to go
+    const themeToggle = page.locator('button[title="Toggle theme"]')
+    await themeToggle.click()
+    await page.waitForFunction(() => !document.documentElement.classList.contains('dark'))
 
     // Reload and verify persistence
     await page.reload()
-    await page.waitForFunction(() => document.documentElement.classList.contains('dark'))
+    await page.waitForFunction(() => !document.documentElement.classList.contains('dark'))
   })
 })

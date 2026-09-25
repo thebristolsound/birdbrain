@@ -57,6 +57,11 @@ export interface MenuAction {
   danger?: boolean
   separatorBefore?: boolean
   disabled?: boolean
+  /**
+   * The action moves focus somewhere of its own, such as an inline editor. It
+   * runs after the menu has closed, and focus is not handed back to the row.
+   */
+  takesFocus?: boolean
   run: () => void
 }
 
@@ -146,7 +151,9 @@ export interface SelectorMenuTarget {
   actions: {
     editPattern: () => void
     toggleEnabled: () => void
+    duplicate: () => void
     showMatches: () => void
+    copyPattern: () => void
     exportMatches: () => void
     remove: () => void
   }
@@ -480,10 +487,14 @@ export function noteMenuEntries(target: NoteMenuTarget): MenuEntry[] {
 /**
  * Selector rows on the Signals screen.
  *
- * Missing from the mock's eight: Duplicate and Copy pattern, neither of which
- * the app offers anywhere; and "Backfill existing captures", which is #829 and
- * had not landed. Export here is the selector-match CSV the detail rail
- * already writes, not the evidence package of #830.
+ * Seven of the mock's eight. "Backfill existing captures" is the one left out:
+ * the backfill shipped as the detail rail's Rescan button (#829), and the
+ * maintainer ruled on 2026-09-23 that it stays there (#1549). Duplicate opens
+ * the add row pre-filled rather than writing a copy, because an identical
+ * selector is exactly what that row refuses; the ellipsis says so. Copy
+ * pattern's keyboard route is the focused row's copy chord. Export here is the
+ * selector-match CSV the detail rail already writes, not the evidence package
+ * of #830.
  */
 export function selectorMenuEntries(target: SelectorMenuTarget): MenuEntry[] {
   const { actions, enabled, matchCount } = target
@@ -493,6 +504,7 @@ export function selectorMenuEntries(target: SelectorMenuTarget): MenuEntry[] {
       label: 'Edit pattern',
       icon: Pencil,
       shortcut: 'Enter',
+      takesFocus: true,
       run: actions.editPattern
     },
     {
@@ -503,11 +515,25 @@ export function selectorMenuEntries(target: SelectorMenuTarget): MenuEntry[] {
       run: actions.toggleEnabled
     },
     {
+      id: 'selector-duplicate',
+      label: 'Duplicate…',
+      icon: CopyPlus,
+      takesFocus: true,
+      run: actions.duplicate
+    },
+    {
       id: 'selector-show-matches',
       label: 'Show matches in Captures',
       icon: Search,
       separatorBefore: true,
       run: actions.showMatches
+    },
+    {
+      id: 'selector-copy-pattern',
+      label: 'Copy pattern',
+      icon: Clipboard,
+      shortcut: accelerator('C'),
+      run: actions.copyPattern
     },
     {
       id: 'selector-export',
@@ -521,7 +547,7 @@ export function selectorMenuEntries(target: SelectorMenuTarget): MenuEntry[] {
     },
     {
       id: 'selector-delete',
-      label: 'Delete selector',
+      label: 'Delete selector…',
       icon: Trash2,
       shortcut: 'Backspace',
       danger: true,
@@ -547,6 +573,7 @@ export function tagMenuEntries(target: TagMenuTarget): MenuEntry[] {
       icon: Pencil,
       shortcut: 'Enter',
       separatorBefore: true,
+      takesFocus: true,
       run: actions.rename
     },
     {

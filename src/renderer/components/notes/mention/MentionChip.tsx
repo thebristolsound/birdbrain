@@ -1,4 +1,14 @@
-import type { CSSProperties, KeyboardEvent, MouseEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type MouseEvent,
+  type SyntheticEvent
+} from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react'
 import type { MentionTargetType } from '@shared/noteDoc'
@@ -8,11 +18,17 @@ import {
   isMentionTargetType,
   maskMention,
   mentionColor,
+  mentionPeekMeta,
   mentionRoute,
   mentionSelection,
-  mentionTooltip
+  mentionTooltip,
+  resolveMention
 } from '@renderer/components/notes/mention/mentionModel'
-import { useMentionResolver } from '@renderer/components/notes/mention/useMentionSources'
+import { useMentionSources } from '@renderer/components/notes/mention/useMentionSources'
+import {
+  MentionPeekCard,
+  type PeekAnchor
+} from '@renderer/components/notes/mention/MentionPeekCard'
 
 export interface MentionChipViewProps {
   targetType: MentionTargetType
@@ -23,6 +39,21 @@ export interface MentionChipViewProps {
   /** A tag's own colour, when one is known. */
   tagColor?: string | null
   onOpen?: () => void
+  /** What the hover card shows. Absent while the target is unresolved. */
+  peek?: MentionPeek
+}
+
+export interface MentionPeek {
+  title: string
+  meta: string
+}
+
+/** Long enough to cross the gap from the chip to its card without the card closing. */
+export const PEEK_CLOSE_DELAY = 150
+
+function anchorOf(el: HTMLElement): PeekAnchor {
+  const { left, top, bottom } = el.getBoundingClientRect()
+  return { left, top, bottom }
 }
 
 /**
@@ -38,9 +69,79 @@ export function MentionChipView({
   label,
   broken,
   tagColor,
-  onOpen
+  onOpen,
+  peek
 }: MentionChipViewProps) {
   const color = broken ? MENTION_BROKEN_COLOR : mentionColor(targetType, tagColor)
+  const peekId = useId()
+  const [anchor, setAnchor] = useState<PeekAnchor | null>(null)
+  const [pinned, setPinned] = useState(false)
+  const chipEl = useRef<HTMLElement | null>(null)
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // A broken chip opens nothing, so it is not a control and does not take
+  // focus: a keyboard user tabbing through a note would otherwise stop on it
+  // and find that nothing happens. It has nothing to peek at either.
+  const interactive = !broken
+  const peekOpen = interactive && peek !== undefined && anchor !== null
+
+  const cancelClose = useCallback(() => {
+    if (closeTimer.current === null) return
+    clearTimeout(closeTimer.current)
+    closeTimer.current = null
+  }, [])
+
+  const closePeek = useCallback(() => {
+    cancelClose()
+    setAnchor(null)
+    setPinned(false)
+  }, [cancelClose])
+
+  function showPeek(el: HTMLElement) {
+    if (!interactive || !peek) return
+    cancelClose()
+    chipEl.current = el
+    setAnchor(anchorOf(el))
+  }
+
+  function scheduleClose() {
+    if (pinned) return
+    cancelClose()
+    closeTimer.current = setTimeout(() => {
+      closeTimer.current = null
+      setAnchor(null)
+    }, PEEK_CLOSE_DELAY)
+  }
+
+  useEffect(() => cancelClose, [cancelClose])
+
+  // The card is fixed and the chip scrolls with the note, so the card follows.
+  useEffect(() => {
+    if (!peekOpen) return
+    function follow() {
+      if (chipEl.current) setAnchor(anchorOf(chipEl.current))
+    }
+    window.addEventListener('scroll', follow, true)
+    window.addEventListener('resize', follow)
+    return () => {
+      window.removeEventListener('scroll', follow, true)
+      window.removeEventListener('resize', follow)
+    }
+  }, [peekOpen])
+
+  // A pinned card stays until it is unpinned or a press lands elsewhere.
+  useEffect(() => {
+    if (!pinned) return
+    function onPress(e: globalThis.MouseEvent) {
+      const { target } = e
+      if (!(target instanceof Node)) return
+      if (chipEl.current?.contains(target)) return
+      if (document.getElementById(peekId)?.contains(target)) return
+      closePeek()
+    }
+    document.addEventListener('mousedown', onPress)
+    return () => document.removeEventListener('mousedown', onPress)
+  }, [pinned, peekId, closePeek])
 
   function handleClick(e: MouseEvent) {
     // Inside a contenteditable a click would otherwise also move the caret.
@@ -60,10 +161,9 @@ export function MentionChipView({
     onOpen?.()
   }
 
-  // A broken chip opens nothing, so it is not a control and does not take
-  // focus: a keyboard user tabbing through a note would otherwise stop on it
-  // and find that nothing happens.
-  const interactive = !broken
+  function showFromEvent(e: SyntheticEvent<HTMLElement>) {
+    showPeek(e.currentTarget)
+  }
 
   return (
     <NodeViewWrapper
@@ -75,13 +175,37 @@ export function MentionChipView({
       data-mention-broken={broken ? '' : undefined}
       className={broken ? 'mention-chip mention-chip-broken' : 'mention-chip'}
       style={{ '--mention-color': color } as CSSProperties}
-      title={mentionTooltip(targetType, label, broken)}
+      // The peek card says everything the tooltip did, and a native tooltip
+      // would open on top of it.
+      title={interactive && peek ? undefined : mentionTooltip(targetType, label, broken)}
       role={interactive ? 'button' : undefined}
       tabIndex={interactive ? 0 : undefined}
+      aria-describedby={peekOpen ? peekId : undefined}
       onClick={interactive ? handleClick : undefined}
       onKeyDown={interactive ? handleKeyDown : undefined}
+      onMouseEnter={interactive ? showFromEvent : undefined}
+      onMouseLeave={interactive ? scheduleClose : undefined}
+      onFocus={interactive ? showFromEvent : undefined}
+      onBlur={interactive ? scheduleClose : undefined}
     >
       {maskMention(targetType, label)}
+      {peekOpen ? (
+        <MentionPeekCard
+          id={peekId}
+          targetType={targetType}
+          title={peek.title}
+          meta={peek.meta}
+          anchor={anchor}
+          pinned={pinned}
+          onOpen={() => {
+            closePeek()
+            onOpen?.()
+          }}
+          onTogglePin={() => setPinned((p) => !p)}
+          onPointerEnter={cancelClose}
+          onPointerLeave={scheduleClose}
+        />
+      ) : null}
     </NodeViewWrapper>
   )
 }
@@ -97,7 +221,7 @@ export function MentionChipView({
 export function createMentionNodeView(caseId: string) {
   function MentionChip({ node }: NodeViewProps) {
     const navigate = useNavigate()
-    const resolve = useMentionResolver(caseId)
+    const { sources, loaded } = useMentionSources(caseId)
 
     const rawType = node.attrs.targetType
     const targetId = typeof node.attrs.targetId === 'string' ? node.attrs.targetId : ''
@@ -118,7 +242,7 @@ export function createMentionNodeView(caseId: string) {
     }
 
     const targetType: MentionTargetType = rawType
-    const resolution = resolve(targetType, targetId)
+    const resolution = resolveMention(targetType, targetId, sources, loaded)
     const broken = resolution.status === 'missing'
 
     function handleOpen() {
@@ -154,6 +278,11 @@ export function createMentionNodeView(caseId: string) {
         broken={broken}
         tagColor={resolution.color}
         onOpen={handleOpen}
+        peek={
+          resolution.status === 'resolved' && resolution.label !== null
+            ? { title: resolution.label, meta: mentionPeekMeta(targetType, targetId, sources) }
+            : undefined
+        }
       />
     )
   }

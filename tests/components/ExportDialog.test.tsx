@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { useState } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, fireEvent, cleanup, waitFor, act, within } from '@testing-library/react'
 import type { Case, ExportOptions, ExportPreflight } from '@shared/types'
@@ -48,8 +49,10 @@ vi.mock('motion/react', async () => {
   }
 })
 
-vi.mock('@renderer/hooks/useCompletionCelebration', () => ({
-  useCompletionCelebration: () => ({ celebrate: vi.fn(), celebrationProps: {} })
+const notifySuccess = vi.hoisted(() => vi.fn())
+const notifyError = vi.hoisted(() => vi.fn())
+vi.mock('@renderer/lib/notify', () => ({
+  notify: { success: notifySuccess, error: notifyError }
 }))
 
 import {
@@ -144,6 +147,8 @@ describe('ExportDialog', () => {
 
   afterEach(() => {
     cleanup()
+    notifySuccess.mockReset()
+    notifyError.mockReset()
   })
 
   // Pinned Wayback references (#401): corroboration the package's report will
@@ -450,30 +455,133 @@ describe('ExportDialog', () => {
     gate.resolve({ canceled: false, filePath: 'Case_One_evidence.zip' })
   })
 
-  it('shows the completion screen with file actions on success', async () => {
-    renderDialog()
+  // The mock's completion (Birdbrain.dc.html 6160): the dialog closes and a
+  // toast names what was written and where, in place of an in-dialog panel.
+  it('closes and raises an Export written toast naming the class and path', async () => {
+    const onClose = vi.fn()
+    renderDialog(onClose)
 
     fireEvent.click(screen.getByText('Export'))
 
-    expect(await screen.findByText('Export complete')).toBeDefined()
-    expect(screen.getByText('Case_One_evidence.zip')).toBeDefined()
+    await waitFor(() => expect(notifySuccess).toHaveBeenCalledOnce())
+    const [title, opts] = notifySuccess.mock.calls[0]
+    expect(title).toBe('Export written')
+    expect(opts.description).toBe('Evidence package · Case_One_evidence.zip')
+    expect(opts.action.label).toBe('Show in folder')
+    expect(onClose).toHaveBeenCalledOnce()
+    // Held on the progress view while the dialog animates out, never the form.
+    expect(screen.getByText('Exporting case')).toBeDefined()
+    expect(screen.queryByTestId('export-submit')).toBeNull()
 
-    fireEvent.click(screen.getByText('Reveal in folder'))
+    opts.action.onClick()
     expect(showItemInFolder).toHaveBeenCalledWith('Case_One_evidence.zip')
+    expect(openPath).not.toHaveBeenCalled()
+  })
 
-    fireEvent.click(screen.getByText('Open file'))
-    expect(openPath).toHaveBeenCalledWith('Case_One_evidence.zip')
+  it('names a working copy as such in the toast', async () => {
+    generateReport.mockResolvedValue({
+      canceled: false,
+      filePath: '/out/Case_One_working_copy.zip'
+    })
+    renderDialog()
+
+    fireEvent.click(screen.getByLabelText(/Working copy/))
+    fireEvent.click(screen.getByText('Export'))
+
+    await waitFor(() => expect(notifySuccess).toHaveBeenCalledOnce())
+    const [title, opts] = notifySuccess.mock.calls[0]
+    expect(title).toBe('Export written')
+    expect(opts.description).toBe('Working copy · /out/Case_One_working_copy.zip')
+    expect(opts.action.label).toBe('Show in folder')
+    opts.action.onClick()
+    expect(showItemInFolder).toHaveBeenCalledWith('/out/Case_One_working_copy.zip')
+  })
+
+  it('reports a failed reveal from the toast action instead of dropping it', async () => {
+    showItemInFolder.mockRejectedValue(new Error('no such directory'))
+    renderDialog()
+
+    fireEvent.click(screen.getByText('Export'))
+    await waitFor(() => expect(notifySuccess).toHaveBeenCalledOnce())
+    notifySuccess.mock.calls[0][1].action.onClick()
+
+    await waitFor(() => expect(notifyError).toHaveBeenCalledOnce())
+    expect(notifyError.mock.calls[0][0]).toBe("Couldn't show the file in its folder.")
+  })
+
+  // UI pass finding: Close mid-run left the export going with no completion
+  // signal at all. The dialog now says the run continues, and the toast still
+  // arrives after the dialog has unmounted.
+  it('still raises the toast when the dialog was closed mid-run', async () => {
+    const gate = deferred<ExportResult>()
+    generateReport.mockReturnValue(gate.promise)
+    const onClose = vi.fn()
+    const { unmount } = renderDialog(onClose)
+
+    fireEvent.click(screen.getByText('Export'))
+    expect((await screen.findByTestId('export-close-note')).textContent).toMatch(
+      /does not stop the export/
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(onClose).toHaveBeenCalledOnce()
+    unmount()
+
+    await act(async () => {
+      gate.resolve({ canceled: false, filePath: 'Case_One_evidence.zip' })
+    })
+
+    await waitFor(() => expect(notifySuccess).toHaveBeenCalledOnce())
+    expect(notifySuccess.mock.calls[0][0]).toBe('Export written')
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  // Review finding on #1578: both parents pass a plain setter, so a first run
+  // finishing after Close used to close the window the operator had reopened.
+  it('leaves a reopened dialog open when the earlier export finishes', async () => {
+    const gate = deferred<ExportResult>()
+    generateReport.mockReturnValueOnce(gate.promise)
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
+    })
+    function Host() {
+      const [open, setOpen] = useState(true)
+      return (
+        <QueryClientProvider client={client}>
+          <button onClick={() => setOpen(true)}>Reopen</button>
+          {open && (
+            <ExportDialog caseId="case-1" caseName="Case One" onClose={() => setOpen(false)} />
+          )}
+        </QueryClientProvider>
+      )
+    }
+    render(<Host />)
+
+    fireEvent.click(screen.getByText('Export'))
+    await screen.findByTestId('export-close-note')
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(screen.queryByText('Exporting case')).toBeNull()
+    fireEvent.click(screen.getByText('Reopen'))
+    expect(await screen.findByText('Export case')).toBeDefined()
+
+    await act(async () => {
+      gate.resolve({ canceled: false, filePath: 'Case_One_evidence.zip' })
+    })
+
+    await waitFor(() => expect(notifySuccess).toHaveBeenCalledOnce())
+    expect(screen.getByText('Export case')).toBeDefined()
   })
 
   it('returns to the form when the save dialog is canceled (no false success)', async () => {
     generateReport.mockResolvedValue({ canceled: true } satisfies ExportResult)
-    renderDialog()
+    const onClose = vi.fn()
+    renderDialog(onClose)
 
     fireEvent.click(screen.getByText('Export'))
 
     await waitFor(() => expect(generateReport).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(screen.getByText('Export')).toBeDefined())
-    expect(screen.queryByText('Export complete')).toBeNull()
+    expect(notifySuccess).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
   })
 
   it('surfaces an error and offers retry', async () => {
@@ -484,6 +592,7 @@ describe('ExportDialog', () => {
 
     expect(await screen.findByText(/disk full/)).toBeDefined()
     expect(screen.getByText('Try again')).toBeDefined()
+    expect(notifySuccess).not.toHaveBeenCalled()
   })
 
   // Focus, Tab and Escape only (#1536). The known answers are the export

@@ -4,10 +4,16 @@ import { render, screen, cleanup, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { EditorContent, type Editor } from '@tiptap/react'
 import type { ReactNode } from 'react'
-import type { Capture, Selector, Tag } from '@shared/types'
+import type { Capture, Note, Selector, Tag } from '@shared/types'
 import { parseNoteDoc } from '@shared/noteDoc'
 
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => vi.fn() }))
+
+const notifySuccess = vi.hoisted(() => vi.fn())
+
+vi.mock('@renderer/lib/notify', () => ({
+  notify: { error: vi.fn(), warn: vi.fn(), success: notifySuccess, info: vi.fn() }
+}))
 
 import { useNoteEditor } from '@renderer/components/notes/useNoteEditor'
 import { useMentionSources } from '@renderer/components/notes/mention/useMentionSources'
@@ -45,9 +51,25 @@ const otherCapture: Capture = { ...capture, id: 'cap9', caseId: 'case9', title: 
 
 const otherSelector: Selector = { ...selector, id: 's9', caseId: 'case9', label: 'Decoy handle' }
 
-// Tags are global by design — the backend accepts any tag id — so a tag has no
-// case to be filtered by. What is per-case is the usage that orders them.
+// Tags are installation-wide, so the list query returns this one whatever the
+// case. What is per-case is the usage that decides whether the popup offers it.
 const otherTag: Tag = { id: 't9', name: 'suspect-decoy', color: '#ef4444' }
+
+const newNote: Note = {
+  id: 'n-new',
+  caseId: 'case1',
+  title: 'Pivot',
+  body: '',
+  createdAt: '2026-08-01T00:00:00.000Z',
+  updatedAt: '2026-08-01T00:00:00.000Z'
+}
+
+const newSelector: Selector = {
+  ...selector,
+  id: 's-new',
+  pattern: 'crow.example',
+  label: 'crow.example'
+}
 
 function capturesFor(caseId: string): Capture[] {
   return [capture, otherCapture].filter((c) => c.caseId === caseId)
@@ -67,6 +89,8 @@ let listNotes: ReturnType<typeof vi.fn>
 let listSelectors: ReturnType<typeof vi.fn>
 let matchCounts: ReturnType<typeof vi.fn>
 let usageCounts: ReturnType<typeof vi.fn>
+let createNote: ReturnType<typeof vi.fn>
+let createSelector: ReturnType<typeof vi.fn>
 
 function Harness() {
   const instance = useNoteEditor({ caseId: 'case1', testId: 'body' })
@@ -121,10 +145,13 @@ beforeEach(() => {
   listSelectors = vi.fn(async (caseId: string) => selectorsFor(caseId))
   matchCounts = vi.fn(async (caseId: string) => (caseId === 'case1' ? { s1: 7 } : { s9: 99 }))
   usageCounts = vi.fn(async (caseId: string) => (caseId === 'case1' ? { t1: 4 } : {}))
+  createNote = vi.fn(async () => newNote)
+  createSelector = vi.fn(async () => newSelector)
+  notifySuccess.mockClear()
   fakeBridge({
     captures: { list: listCaptures },
-    notes: { list: listNotes },
-    selectors: { list: listSelectors, matchCounts },
+    notes: { list: listNotes, create: createNote },
+    selectors: { list: listSelectors, matchCounts, create: createSelector },
     tags: { list: vi.fn(async () => [tag, otherTag]), usageCountsForCase: usageCounts }
   })
 })
@@ -171,7 +198,7 @@ describe('the @ and # autocompletes', () => {
     expect(usageCounts).toHaveBeenCalledWith('case1')
   })
 
-  it('ranks the tags this case uses above the ones it does not', async () => {
+  it('offers only the tags a capture in this case carries', async () => {
     const instance = await mountEditor()
 
     await type(instance, '#sus')
@@ -180,7 +207,8 @@ describe('the @ and # autocompletes', () => {
     const rows = screen.getAllByTestId(/^mention-option-/)
     expect(rows.map((row) => row.getAttribute('data-testid'))).toEqual([
       'mention-option-tag-t1',
-      'mention-option-tag-t9'
+      // Not an existing target called exactly "sus", so the create row follows.
+      'mention-option-create'
     ])
   })
 
@@ -193,13 +221,125 @@ describe('the @ and # autocompletes', () => {
     expect(screen.queryByTestId('mention-popup')).toBeNull()
   })
 
-  it('shows no popup when nothing matched', async () => {
+  it('shows no popup when a one-character query matched nothing', async () => {
     const instance = await mountEditor()
 
-    await type(instance, '@zzzz')
+    await type(instance, '@z')
 
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(screen.queryByTestId('mention-popup')).toBeNull()
+  })
+
+  it('offers to create a note when a longer query matched nothing', async () => {
+    const instance = await mountEditor()
+
+    await type(instance, '@Pivot')
+
+    const row = await screen.findByTestId('mention-option-create')
+    expect(row.textContent).toContain('Create "Pivot" as note')
+    expect(row.textContent).toContain('new')
+  })
+
+  it('creates the note and inserts a Mention of it in one keystroke', async () => {
+    const instance = await mountEditor()
+    // The refetch the create starts never lands, so a live chip below can only
+    // come from the created note being seeded into the cached list.
+    listNotes.mockImplementation(() => new Promise(() => {}))
+    await type(instance, '@Pivot')
+    await screen.findByTestId('mention-option-create')
+
+    await pressInEditor(instance, 'Enter')
+
+    await waitFor(() => expect(instance.getText()).toContain('@Pivot'))
+    expect(createNote).toHaveBeenCalledWith({ caseId: 'case1', title: 'Pivot' })
+    const json = JSON.stringify(instance.getJSON())
+    expect(json).toContain('"targetType":"note"')
+    expect(json).toContain('"targetId":"n-new"')
+    expect(() => parseNoteDoc(json)).not.toThrow()
+    expect(notifySuccess).toHaveBeenCalledWith('Note created — Pivot')
+    // The created note is in the list the chip resolves against, so the chip
+    // is live straight away rather than reading as a deleted target.
+    await waitFor(() => expect(document.querySelector('[data-mention-broken]')).toBeNull())
+    expect(document.querySelector('[data-mention-chip][data-target-id="n-new"]')).not.toBeNull()
+  })
+
+  it('creates a selector behind #, through the selection path and its note origin', async () => {
+    const instance = await mountEditor()
+    await type(instance, '#crow.example')
+    await screen.findByTestId('mention-option-create')
+
+    await pressInEditor(instance, 'Enter')
+
+    await waitFor(() => expect(instance.getText()).toContain('#crow.example'))
+    expect(createSelector).toHaveBeenCalledWith({
+      caseId: 'case1',
+      pattern: 'crow.example',
+      isRegex: false,
+      label: 'crow.example',
+      origin: 'note',
+      enabled: true
+    })
+    expect(JSON.stringify(instance.getJSON())).toContain('"targetId":"s-new"')
+  })
+
+  it('puts the query back when the create fails', async () => {
+    createNote.mockRejectedValueOnce(new Error('disk full'))
+    const instance = await mountEditor()
+    await type(instance, '@Pivot')
+    await screen.findByTestId('mention-option-create')
+
+    await pressInEditor(instance, 'Enter')
+
+    await waitFor(() => expect(createNote).toHaveBeenCalled())
+    await waitFor(() => expect(instance.getText()).toBe('@Pivot'))
+    expect(JSON.stringify(instance.getJSON())).not.toContain('"type":"mention"')
+  })
+
+  it('keeps the Mention where the query was when text lands during the write', async () => {
+    let finish: (note: unknown) => void = () => {}
+    createNote.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+    const instance = await mountEditor()
+    await type(instance, 'See @Pivot')
+    await screen.findByTestId('mention-option-create')
+    await pressInEditor(instance, 'Enter')
+    await waitFor(() => expect(createNote).toHaveBeenCalled())
+
+    await act(async () => {
+      // Position 1 is the start of the first paragraph's text.
+      instance.commands.insertContentAt(1, 'Now: ')
+    })
+    await act(async () => {
+      finish({ ...newNote })
+    })
+
+    await waitFor(() => expect(instance.getText()).toBe('Now: See @Pivot '))
+  })
+
+  it('does not insert into an editor that was torn down during the write', async () => {
+    let finish: (note: unknown) => void = () => {}
+    createNote.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+    const instance = await mountEditor()
+    await type(instance, '@Pivot')
+    await screen.findByTestId('mention-option-create')
+    await pressInEditor(instance, 'Enter')
+    await waitFor(() => expect(createNote).toHaveBeenCalled())
+
+    instance.destroy()
+    await act(async () => {
+      finish({ ...newNote })
+    })
+
+    expect(instance.isDestroyed).toBe(true)
   })
 
   it('inserts a Mention the note can be saved with, and a space after it', async () => {

@@ -35,7 +35,7 @@ export function NoteListRow({
       data-testid={`note-row-${note.id}`}
       onClick={onSelect}
       aria-current={selected ? 'true' : undefined}
-      className={`flex w-full shrink-0 gap-2 rounded-md border px-3 py-2 text-left ${selected ? 'border-accent/35 bg-accent/10' : 'border-transparent hover:bg-elevated'}`}
+      className={`flex w-full shrink-0 gap-2 rounded-md border px-[var(--d-itemx)] py-[9px] text-left ${selected ? 'border-accent/35 bg-accent/10' : 'border-transparent hover:bg-elevated'}`}
     >
       <span
         className={

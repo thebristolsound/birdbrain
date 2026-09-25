@@ -78,6 +78,19 @@ describe('useSearch', () => {
     expect(result.current.results).toEqual([])
   })
 
+  it('reports a failed search separately from an empty one', async () => {
+    searchMock.mockRejectedValueOnce(new Error('Search could not run'))
+    const { result } = renderHook(() => useSearch(CASE_ID), { wrapper: withClient(newClient()) })
+    expect(result.current.failed).toBe(false)
+
+    act(() => {
+      result.current.search('example.com')
+    })
+
+    await waitFor(() => expect(result.current.failed).toBe(true))
+    expect(result.current.results).toEqual([])
+  })
+
   it('clear() resets the query so results return to empty', async () => {
     const { result } = renderHook(() => useSearch(CASE_ID), { wrapper: withClient(newClient()) })
 

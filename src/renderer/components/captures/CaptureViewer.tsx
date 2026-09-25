@@ -15,6 +15,7 @@ import {
   type LucideIcon
 } from 'lucide-react'
 import { MhtmlViewer } from '@renderer/components/captures/MhtmlViewer'
+import { CaptureTextPanel } from '@renderer/components/captures/CaptureTextPanel'
 import { LegacyHtmlViewer } from '@renderer/components/captures/LegacyHtmlViewer'
 import { AnnotationEditor } from '@renderer/components/captures/annotation/AnnotationEditor'
 import { CapturesGettingStarted } from '@renderer/components/captures/CapturesGettingStarted'
@@ -322,7 +323,13 @@ export function CaptureViewer() {
           {activeTab === 'wayback' && <WaybackCompare capture={capture} />}
           {activeTab === 'text' &&
             (content ? (
-              <ExtractedTextPanel heading={capture.title || hostname} text={content} />
+              <CaptureTextPanel
+                key={capture.id}
+                caseId={caseId}
+                captureId={capture.id}
+                heading={capture.title || hostname}
+                content={content}
+              />
             ) : (
               <div className="p-4 text-text-muted">No text content available</div>
             ))}
@@ -357,35 +364,6 @@ function ArchivedCopyBanner({ timestamp }: { timestamp: string }) {
       <span className="min-w-0 flex-1 truncate text-xs text-text-muted">
         Captured {formatCaptureTimestampFull(timestamp)}
       </span>
-    </div>
-  )
-}
-
-/**
- * The extracted text laid out as prose. Blank lines become paragraph breaks and
- * trailing whitespace at each paragraph's end is dropped; every other
- * character, single line breaks included, renders as extracted.
- */
-function ExtractedTextPanel({ heading, text }: { heading: string; text: string }) {
-  const paragraphs = text
-    .split(/\n[^\S\n]*\n/)
-    .map((p) => p.replace(/^\n+/, '').trimEnd())
-    .filter((p) => p.trim() !== '')
-  return (
-    <div data-testid="extracted-text" className="h-full overflow-y-auto px-7 pb-7 pt-6">
-      <div className="max-w-[660px]">
-        <h2 className="font-display text-[17px] font-bold tracking-[-0.025em] text-text-primary">
-          {heading}
-        </h2>
-        {paragraphs.map((p, i) => (
-          <p
-            key={i}
-            className="mt-3.5 whitespace-pre-wrap text-[13px] leading-[1.8] text-text-secondary"
-          >
-            {p}
-          </p>
-        ))}
-      </div>
     </div>
   )
 }

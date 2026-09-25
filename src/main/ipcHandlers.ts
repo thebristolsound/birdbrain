@@ -609,9 +609,15 @@ export function registerIpcHandlers(deps: {
   // Selectors
   handle(IPC_CHANNELS.SELECTORS_LIST, (_, caseId: string) => selectorRepo.listSelectors(caseId))
   handle(IPC_CHANNELS.SELECTORS_GET, (_, id: string) => selectorRepo.getSelector(id))
-  handle(IPC_CHANNELS.SELECTORS_CREATE, (_, params: CreateSelectorParams) =>
-    selectorLifecycle.createSelector(params)
-  )
+  handle(IPC_CHANNELS.SELECTORS_CREATE, (_, params: CreateSelectorParams) => {
+    // An empty pattern is a substring of every text: it would match every
+    // capture, and the extension's page scan never advances past it. The
+    // extension's HTTP route already refuses one through its schema.
+    if (typeof params?.pattern !== 'string' || params.pattern.trim() === '') {
+      throw new IpcFailure('A selector needs a pattern', 'SELECTOR_PATTERN_EMPTY')
+    }
+    return selectorLifecycle.createSelector(params)
+  })
   handle(IPC_CHANNELS.SELECTORS_BULK_CREATE, (_, params: BulkCreateSelectorsParams) =>
     selectorLifecycle.bulkCreateSelectors(params)
   )
@@ -739,9 +745,9 @@ export function registerIpcHandlers(deps: {
     try {
       return noteRepo.searchNotes(caseId, query)
     } catch {
-      // FTS5 can throw on malformed queries (e.g. unmatched quotes, reserved keywords).
-      // Return empty results so the UI gracefully handles bad input.
-      return []
+      // FTS5 throws on some input (unmatched quotes, `.` or `@` in a bareword). An empty
+      // array here would read as "no matches", so report the failure instead.
+      throw new IpcFailure('Search could not run', 'SEARCH_FAILED')
     }
   })
 
@@ -926,9 +932,8 @@ export function registerIpcHandlers(deps: {
     try {
       return captureRepo.searchCaptures(query, caseId)
     } catch {
-      // FTS5 can throw on malformed queries (e.g. unmatched quotes, reserved keywords).
-      // Return empty results so the UI gracefully handles bad input.
-      return []
+      // See NOTES_SEARCH: a failed search must not look like an empty one.
+      throw new IpcFailure('Search could not run', 'SEARCH_FAILED')
     }
   })
 

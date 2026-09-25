@@ -336,12 +336,26 @@ describe('CaptureViewer Text tab', () => {
     useAppStore.getState().setActiveViewerTab('text')
     renderViewer()
 
-    const panel = await screen.findByTestId('extracted-text')
+    const panel = await screen.findByTestId('capture-text')
     expect(panel.querySelector('h2')?.textContent).toBe('Example evidence page')
     const paragraphs = [...panel.querySelectorAll('p')].map((p) => p.textContent)
     // Blank lines become breaks; a single line break stays inside its paragraph.
     expect(paragraphs).toEqual(['First line\nsame paragraph', 'Second paragraph', 'Third'])
     expect(panel.firstElementChild?.className).toContain('max-w-[660px]')
+  })
+
+  it('reads the text sidecar into the panel that carries the selection bar', async () => {
+    getContent.mockImplementation(async (_id: string, kind: string) =>
+      kind === 'txt' ? 'funds moved to meridian-trust.com' : null
+    )
+    useAppStore.getState().setActiveViewerTab('text')
+    renderViewer()
+
+    const panel = await screen.findByTestId('capture-text')
+    expect([...panel.querySelectorAll('p')].map((p) => p.textContent)).toEqual([
+      'funds moved to meridian-trust.com'
+    ])
+    expect(getContent).toHaveBeenCalledWith('cap1', 'txt')
   })
 
   it('says so when the capture has no extracted text', async () => {

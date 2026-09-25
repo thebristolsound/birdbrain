@@ -53,7 +53,7 @@ export function SessionControls() {
           aria-checked={sessionActive}
           aria-label="Capture Session"
           onClick={handleToggleSession}
-          disabled={!activeCaseId || toggling}
+          disabled={toggling || (!sessionActive && !activeCaseId)}
           className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-50 ${
             sessionActive ? 'bg-accent' : 'bg-text-faint'
           }`}

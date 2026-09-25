@@ -2,7 +2,8 @@ import { forwardRef, useState, type KeyboardEvent } from 'react'
 import { slugifyTagName } from '@renderer/components/signals/signalsModel'
 
 interface AddTagRowProps {
-  onAdd: (name: string) => void
+  /** Returns false when the name was refused, so the typed value stays. */
+  onAdd: (name: string) => boolean
   onFocusList: () => void
   /** The colour the next tag will take, previewed in the gutter. */
   nextColor: string
@@ -27,8 +28,7 @@ export const AddTagRow = forwardRef<HTMLInputElement, AddTagRowProps>(function A
     if (event.key !== 'Enter') return
     const name = slugifyTagName(value)
     if (!name) return
-    setValue('')
-    onAdd(name)
+    if (onAdd(name)) setValue('')
   }
 
   return (

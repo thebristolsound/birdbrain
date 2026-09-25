@@ -172,7 +172,7 @@ test.describe('Wayback panel, compare and pinned references', () => {
 
       // 6. And the report ships it as a corroboration reference, not as content.
       await page.getByTestId('export-submit').click()
-      await expect(page.getByText('Export complete')).toBeVisible({ timeout: 30000 })
+      await expect(page.getByText(`· ${zipPath}`)).toBeVisible({ timeout: 30000 })
 
       const entries = readStoredZipEntries(zipPath)
       const report = entries.get('report.html')!

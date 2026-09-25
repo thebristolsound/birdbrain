@@ -1,11 +1,28 @@
-import { forwardRef, useState, type KeyboardEvent } from 'react'
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type KeyboardEvent
+} from 'react'
 import { Plus } from 'lucide-react'
 import { parseSelectorInput } from '@renderer/components/signals/signalsModel'
 
+/** A pattern to load into the row, from a selector's Duplicate action. */
+export interface SelectorPrefill {
+  pattern: string
+  isRegex: boolean
+  /** Changes on every request, so duplicating the same selector twice refills. */
+  seq: number
+}
+
 interface AddSelectorRowProps {
-  onAdd: (pattern: string, isRegex: boolean) => void
+  /** Returns false when the pattern was refused, so the typed value stays. */
+  onAdd: (pattern: string, isRegex: boolean) => boolean
   /** ArrowDown from the input moves into the list. */
   onFocusList: () => void
+  prefill?: SelectorPrefill | null
 }
 
 const MODE_CARDS = [
@@ -27,10 +44,19 @@ const MODE_CARDS = [
 // cards, because "is this exact text or a pattern?" is the only question a new
 // selector needs answered and it is easy to get wrong silently.
 export const AddSelectorRow = forwardRef<HTMLInputElement, AddSelectorRowProps>(
-  function AddSelectorRow({ onAdd, onFocusList }, ref) {
+  function AddSelectorRow({ onAdd, onFocusList, prefill }, ref) {
     const [value, setValue] = useState('')
     const [regexMode, setRegexMode] = useState(false)
     const [drawerOpen, setDrawerOpen] = useState(false)
+    const inputRef = useRef<HTMLInputElement>(null)
+    useImperativeHandle(ref, () => inputRef.current as HTMLInputElement)
+
+    useEffect(() => {
+      if (!prefill) return
+      setValue(prefill.pattern)
+      setRegexMode(prefill.isRegex)
+      inputRef.current?.focus()
+    }, [prefill])
 
     function handleKey(event: KeyboardEvent<HTMLInputElement>) {
       if (event.key === 'Escape') {
@@ -47,8 +73,7 @@ export const AddSelectorRow = forwardRef<HTMLInputElement, AddSelectorRowProps>(
       if (!parsed) return
       // Cleared but still focused: adding selectors is a typing run, and the
       // design's placeholder says so ("Enter to save and keep typing").
-      setValue('')
-      onAdd(parsed.pattern, parsed.isRegex)
+      if (onAdd(parsed.pattern, parsed.isRegex)) setValue('')
     }
 
     return (
@@ -58,7 +83,7 @@ export const AddSelectorRow = forwardRef<HTMLInputElement, AddSelectorRowProps>(
             <Plus className="h-3.5 w-3.5 text-text-faint" strokeWidth={2} />
           </span>
           <input
-            ref={ref}
+            ref={inputRef}
             value={value}
             onChange={(event) => setValue(event.target.value)}
             onKeyDown={handleKey}

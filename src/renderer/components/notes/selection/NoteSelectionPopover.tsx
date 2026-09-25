@@ -98,7 +98,12 @@ interface ConfirmProps extends SelectionOverlayPosition {
   onToggleWatch: () => void
   onCancel: () => void
   onConfirm: () => void
+  /** Where an applied tag lands, in tag mode. Defaults to the note editor's answer. */
+  tagHint?: string
 }
+
+export const NOTE_TAG_HINT =
+  'Applies to this note, and to its capture when the note has one. An unsaved note is saved first — a tag cannot attach to a note that does not exist.'
 
 export function NoteSelectionConfirm({
   x,
@@ -109,7 +114,8 @@ export function NoteSelectionConfirm({
   pending,
   onToggleWatch,
   onCancel,
-  onConfirm
+  onConfirm,
+  tagHint = NOTE_TAG_HINT
 }: ConfirmProps) {
   const { value, kind, note } = classifySelection(text)
   const tagName = selectionToTagName(text)
@@ -139,7 +145,10 @@ export function NoteSelectionConfirm({
           data-testid="note-selection-kind"
           className="shrink-0 rounded-full border border-accent/30 bg-accent-subtle px-1.5 py-px font-mono text-[10px] font-semibold uppercase tracking-wide text-accent"
         >
-          {kind}
+          {/* The pill names what the value beside it is. In tag mode that is
+              the tag name, not the raw selection's kind: a slugified hostname
+              is not a domain. */}
+          {mode === 'tag' ? 'tag' : kind}
         </span>
         <span
           data-testid="note-selection-value"
@@ -176,10 +185,7 @@ export function NoteSelectionConfirm({
           />
         </>
       ) : (
-        <p className="px-3 pb-1.5 text-[11px] leading-relaxed text-text-muted">
-          Applies to this note, and to its capture when the note has one. An unsaved note is saved
-          first — a tag cannot attach to a note that does not exist.
-        </p>
+        <p className="px-3 pb-1.5 text-[11px] leading-relaxed text-text-muted">{tagHint}</p>
       )}
 
       <div className="flex items-center justify-between gap-2 border-t border-border bg-elevated px-2.5 py-2">

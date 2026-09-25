@@ -609,9 +609,15 @@ export function registerIpcHandlers(deps: {
   // Selectors
   handle(IPC_CHANNELS.SELECTORS_LIST, (_, caseId: string) => selectorRepo.listSelectors(caseId))
   handle(IPC_CHANNELS.SELECTORS_GET, (_, id: string) => selectorRepo.getSelector(id))
-  handle(IPC_CHANNELS.SELECTORS_CREATE, (_, params: CreateSelectorParams) =>
-    selectorLifecycle.createSelector(params)
-  )
+  handle(IPC_CHANNELS.SELECTORS_CREATE, (_, params: CreateSelectorParams) => {
+    // An empty pattern is a substring of every text: it would match every
+    // capture, and the extension's page scan never advances past it. The
+    // extension's HTTP route already refuses one through its schema.
+    if (typeof params?.pattern !== 'string' || params.pattern.trim() === '') {
+      throw new IpcFailure('A selector needs a pattern', 'SELECTOR_PATTERN_EMPTY')
+    }
+    return selectorLifecycle.createSelector(params)
+  })
   handle(IPC_CHANNELS.SELECTORS_BULK_CREATE, (_, params: BulkCreateSelectorsParams) =>
     selectorLifecycle.bulkCreateSelectors(params)
   )

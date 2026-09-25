@@ -1300,6 +1300,21 @@ describe('ipcHandlers — selectors', () => {
     expectOk(await invoke(IPC_CHANNELS.SELECTORS_DELETE, sel.id))
   })
 
+  // An empty pattern matches every capture and stalls the extension's page scan.
+  it('refuses to create a selector with an empty or blank pattern, and writes no row', async () => {
+    for (const pattern of ['', '   ', undefined]) {
+      const res = await invoke<{ ok: boolean; code?: string }>(IPC_CHANNELS.SELECTORS_CREATE, {
+        caseId,
+        pattern,
+        isRegex: false,
+        origin: 'note'
+      })
+      expect(res.ok).toBe(false)
+      expect(res.code).toBe('SELECTOR_PATTERN_EMPTY')
+    }
+    expect(expectOk<unknown[]>(await invoke(IPC_CHANNELS.SELECTORS_LIST, caseId))).toHaveLength(0)
+  })
+
   // #829. The channel answers once the pass is scheduled, so the boolean is the
   // whole contract: true for a selector that exists, false for one that does not.
   it('schedules a rescan for a known selector and refuses an unknown id', async () => {

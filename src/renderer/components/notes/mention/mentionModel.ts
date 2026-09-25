@@ -15,6 +15,7 @@
  * scope label) and is the later artefact, so it wins.
  */
 import { MENTION_SIGIL, MENTION_SIGILS, type MentionSigil } from '@shared/noteDoc'
+import { classifySelection } from '@shared/selectionKind'
 import type { MentionTargetType } from '@shared/noteDoc'
 import type { Capture, Note, Selector, Tag } from '@shared/types'
 
@@ -206,6 +207,12 @@ export interface MentionCandidate {
   /** Right-aligned hint: the kind, or a selector's live match count. */
   meta: string
   color: string
+  /**
+   * Set on the row that creates its target rather than naming one that
+   * exists. `label` is then the typed query, and `targetId` stays empty until
+   * the entity has been written.
+   */
+  create?: boolean
 }
 
 /** Everything the popup ranks over, read from the already-cached list queries. */
@@ -214,7 +221,7 @@ export interface MentionSources {
   notes: Pick<Note, 'id' | 'title'>[]
   selectors: Pick<Selector, 'id' | 'label' | 'pattern'>[]
   tags: Tag[]
-  /** tagId -> how many captures in this case carry it. Orders the `#` popup. */
+  /** tagId -> how many captures in this case carry it. Narrows and orders the `#` popup. */
   tagUsage: Record<string, number>
   /** selectorId -> match count, the mock's `N hits` column. */
   selectorMatchCounts: Record<string, number>
@@ -270,10 +277,12 @@ function candidatesForKind(
         color: mentionColor('selector')
       }))
     case 'tag':
-      // Tags are global by design — the backend deliberately accepts any tag
-      // id — so this popup is the only narrowing there is. Rank the ones this
-      // case already uses first rather than pretending the rest do not exist.
-      return [...tags]
+      // Tags are installation-wide, so the list query returns every case's.
+      // Only a tag some capture in this case carries is offered: one that
+      // exists only in another case is noise here, and the @ sigil already
+      // offers nothing from another case.
+      return tags
+        .filter((t) => (tagUsage[t.id] ?? 0) > 0)
         .sort((a, b) => {
           const used = (tagUsage[b.id] ?? 0) - (tagUsage[a.id] ?? 0)
           return used !== 0 ? used : a.name.localeCompare(b.name)
@@ -363,6 +372,28 @@ export interface RankMentionCandidatesArgs {
   sources: MentionSources
   /** The note being written. A note cannot usefully mention itself. */
   excludeNoteId?: string
+  /** Whether the popup can offer to create the target it did not find. */
+  allowCreate?: boolean
+}
+
+/** A query shorter than this is still being typed, so it offers no create row. */
+export const MIN_CREATE_QUERY_LENGTH = 2
+
+/** What a create row makes: the mock's split, a note behind `@` and a selector behind `#`. */
+export const MENTION_CREATE_KIND = {
+  '@': 'note',
+  '#': 'selector'
+} as const satisfies Record<MentionSigil, MentionTargetType>
+
+function createCandidate(sigil: MentionSigil, query: string): MentionCandidate {
+  return {
+    targetType: MENTION_CREATE_KIND[sigil],
+    targetId: '',
+    label: query,
+    meta: 'new',
+    color: 'var(--color-accent)',
+    create: true
+  }
 }
 
 /**
@@ -377,12 +408,56 @@ export function rankMentionCandidates({
   sigil,
   query,
   sources,
-  excludeNoteId
+  excludeNoteId,
+  allowCreate = false
 }: RankMentionCandidatesArgs): MentionCandidate[] {
-  const needle = query.trim().toLowerCase()
+  const typed = query.trim()
+  const needle = typed.toLowerCase()
   const rows = MENTION_KINDS[sigil].flatMap((kind) => candidatesForKind(kind, sources))
-  return rows
+  const matches = rows
     .filter((row) => !(row.targetType === 'note' && row.targetId === excludeNoteId))
     .filter((row) => !needle || row.label.toLowerCase().includes(needle))
-    .slice(0, MAX_MENTION_ROWS)
+  const shown = matches.slice(0, MAX_MENTION_ROWS)
+  // Checked against every match, not only the rows shown: an exact hit below
+  // the cap is still an existing entity, and creating it again is a duplicate.
+  const exists = matches.some((row) => row.label.toLowerCase() === needle)
+  // Measured on what the write will save: a selector drops trailing
+  // punctuation, so `#..` would otherwise save an empty pattern.
+  const saved = MENTION_CREATE_KIND[sigil] === 'selector' ? classifySelection(typed).value : typed
+  if (!allowCreate || saved.length < MIN_CREATE_QUERY_LENGTH || exists) return shown
+  return [...shown, createCandidate(sigil, typed)]
+}
+
+/**
+ * The peek card's mono line: the kind, then the one fact the cached lists
+ * hold about the target.
+ */
+export function mentionPeekMeta(
+  targetType: MentionTargetType,
+  targetId: string,
+  sources: MentionSources
+): string {
+  switch (targetType) {
+    case 'capture': {
+      const hit = sources.captures.find((c) => c.id === targetId)
+      const host = hit ? hostnameOf(hit.url) : ''
+      return host ? `capture · ${host}` : 'capture'
+    }
+    case 'selector':
+      return `selector · ${sources.selectorMatchCounts[targetId] ?? 0} hits`
+    case 'tag': {
+      const used = sources.tagUsage[targetId] ?? 0
+      return `tag · ${used} ${used === 1 ? 'capture' : 'captures'}`
+    }
+    default:
+      return 'note'
+  }
+}
+
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname
+  } catch {
+    return ''
+  }
 }

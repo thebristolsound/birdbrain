@@ -127,6 +127,21 @@ describe('useAnnotationEditor', () => {
     expect(result.current.shapes).toEqual([keep])
   })
 
+  it('discardShape leaves no undo step that changes nothing', () => {
+    const keep = { kind: 'pin' as const, id: 'keep', pinId: 'p1', number: 1, x: 0, y: 0 }
+    const gone = { kind: 'pin' as const, id: 'gone', pinId: 'p2', number: 2, x: 5, y: 5 }
+    const { result } = renderHook(() => useAnnotationEditor({ initialShapes: [keep] }))
+    act(() => result.current.updateShape({ ...keep, x: 3 }))
+    act(() => result.current.beginDraft(gone))
+    act(() => result.current.commitDraft())
+    act(() => result.current.discardShape('gone'))
+
+    // One press undoes the move made before the pin was dropped.
+    act(() => result.current.undo())
+    expect(result.current.shapes).toEqual([keep])
+    expect(result.current.canUndo).toBe(false)
+  })
+
   it('cancelDraft clears the draft without committing', () => {
     const { result } = renderHook(() => useAnnotationEditor({ initialShapes: [] }))
     act(() =>

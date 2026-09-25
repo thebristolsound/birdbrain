@@ -18,6 +18,16 @@ function readStroke(): number {
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_STROKE
 }
 
+function sameShapes(a: AnnotationShape[], b: AnnotationShape[]): boolean {
+  return a.length === b.length && a.every((s, i) => s === b[i])
+}
+
+// Taking a shape out of every snapshot can leave a snapshot equal to the step
+// after it, or to the canvas, which would make an undo press that changes nothing.
+function pruneHistory(stack: AnnotationShape[][], current: AnnotationShape[]) {
+  return stack.filter((snap, i) => !sameShapes(snap, stack[i + 1] ?? current))
+}
+
 interface Options {
   initialShapes: AnnotationShape[]
 }
@@ -83,14 +93,18 @@ export function useAnnotationEditor({ initialShapes }: Options) {
   // For a shape whose backing record no longer exists, such as a pin cancelled
   // before its note was added: undo must not restore it, so it leaves the
   // history as well as the canvas.
-  const discardShape = useCallback((id: string) => {
-    const without = (arr: AnnotationShape[]) => arr.filter((s) => s.id !== id)
-    setShapes(without)
-    setUndoStack((stack) => stack.map(without))
-    setRedoStack((stack) => stack.map(without))
-    setSelectedId((prev) => (prev === id ? null : prev))
-    setDirty(true)
-  }, [])
+  const discardShape = useCallback(
+    (id: string) => {
+      const without = (arr: AnnotationShape[]) => arr.filter((s) => s.id !== id)
+      const next = without(shapes)
+      setShapes(next)
+      setUndoStack((stack) => pruneHistory(stack.map(without), next))
+      setRedoStack((stack) => pruneHistory(stack.map(without), next))
+      setSelectedId((prev) => (prev === id ? null : prev))
+      setDirty(true)
+    },
+    [shapes]
+  )
 
   const undo = useCallback(() => {
     setUndoStack((stack) => {

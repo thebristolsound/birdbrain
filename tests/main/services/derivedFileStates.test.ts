@@ -247,7 +247,7 @@ describe('derived file states, end to end (#1156)', () => {
       if (state.bytes === 'gone') rmSync(absolute)
       if (state.bytes === 'unreadable') {
         chmodSync(absolute, 0o000)
-        let stillReadable = false
+        let stillReadable: boolean
         try {
           accessSync(absolute, constants.R_OK)
           stillReadable = true

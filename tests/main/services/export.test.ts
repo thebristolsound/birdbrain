@@ -3217,7 +3217,7 @@ describe('export', () => {
       // the PR's findings list as a follow-up candidate.
       const mhtml = join(tempDir, 'captures', fixture.caseId, `${fixture.captureId}.mhtml`)
       chmodSync(mhtml, 0o000)
-      let stillReadable = false
+      let stillReadable: boolean
       try {
         accessSync(mhtml, constants.R_OK)
         stillReadable = true

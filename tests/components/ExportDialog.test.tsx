@@ -485,9 +485,12 @@ describe('ExportDialog', () => {
     fireEvent.click(screen.getByText('Export'))
 
     await waitFor(() => expect(notifySuccess).toHaveBeenCalledOnce())
-    expect(notifySuccess.mock.calls[0][1].description).toBe(
-      'Working copy · /out/Case_One_working_copy.zip'
-    )
+    const [title, opts] = notifySuccess.mock.calls[0]
+    expect(title).toBe('Export written')
+    expect(opts.description).toBe('Working copy · /out/Case_One_working_copy.zip')
+    expect(opts.action.label).toBe('Show in folder')
+    opts.action.onClick()
+    expect(showItemInFolder).toHaveBeenCalledWith('/out/Case_One_working_copy.zip')
   })
 
   it('reports a failed reveal from the toast action instead of dropping it', async () => {

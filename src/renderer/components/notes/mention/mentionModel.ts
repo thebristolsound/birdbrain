@@ -15,6 +15,7 @@
  * scope label) and is the later artefact, so it wins.
  */
 import { MENTION_SIGIL, MENTION_SIGILS, type MentionSigil } from '@shared/noteDoc'
+import { classifySelection } from '@shared/selectionKind'
 import type { MentionTargetType } from '@shared/noteDoc'
 import type { Capture, Note, Selector, Tag } from '@shared/types'
 
@@ -420,7 +421,10 @@ export function rankMentionCandidates({
   // Checked against every match, not only the rows shown: an exact hit below
   // the cap is still an existing entity, and creating it again is a duplicate.
   const exists = matches.some((row) => row.label.toLowerCase() === needle)
-  if (!allowCreate || typed.length < MIN_CREATE_QUERY_LENGTH || exists) return shown
+  // Measured on what the write will save: a selector drops trailing
+  // punctuation, so `#..` would otherwise save an empty pattern.
+  const saved = MENTION_CREATE_KIND[sigil] === 'selector' ? classifySelection(typed).value : typed
+  if (!allowCreate || saved.length < MIN_CREATE_QUERY_LENGTH || exists) return shown
   return [...shown, createCandidate(sigil, typed)]
 }
 

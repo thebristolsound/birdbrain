@@ -472,6 +472,37 @@ describe('the create row', () => {
     }
   })
 
+  // A selector is saved without its trailing punctuation, so a query of only
+  // punctuation would save an empty pattern, which matches every capture.
+  it('is not offered behind # when the saved selector would be shorter than the minimum', () => {
+    for (const query of ['..', '...', ',,', ';;', '.:', 'z.']) {
+      const rows = rankMentionCandidates({
+        sigil: '#',
+        query,
+        sources: EMPTY_MENTION_SOURCES,
+        allowCreate: true
+      })
+      expect(rows.some((r) => r.create)).toBe(false)
+    }
+    const rows = rankMentionCandidates({
+      sigil: '#',
+      query: 'zz.',
+      sources: EMPTY_MENTION_SOURCES,
+      allowCreate: true
+    })
+    expect(rows.filter((r) => r.create)).toHaveLength(1)
+  })
+
+  it('still offers a note behind @ whose title is only punctuation', () => {
+    const rows = rankMentionCandidates({
+      sigil: '@',
+      query: '..',
+      sources: EMPTY_MENTION_SOURCES,
+      allowCreate: true
+    })
+    expect(rows.filter((r) => r.create)).toHaveLength(1)
+  })
+
   it('is not offered when a target with exactly that name exists, in any case', () => {
     const rows = rankMentionCandidates({
       sigil: '#',

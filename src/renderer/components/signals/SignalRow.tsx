@@ -152,7 +152,7 @@ export function SignalRow({
         onDoubleClick={beginEdit}
         onKeyDown={handleKey}
         className={[
-          'group flex cursor-pointer items-center gap-3 rounded px-[10px] py-2 transition-colors',
+          'signal-enter group flex cursor-pointer items-center gap-3 rounded px-[10px] py-2 transition-colors',
           'outline-none focus:border-accent focus:bg-accent-subtle',
           selected ? 'border border-accent/35 bg-accent-subtle' : 'border border-transparent'
         ].join(' ')}

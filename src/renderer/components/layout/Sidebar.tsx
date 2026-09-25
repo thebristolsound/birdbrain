@@ -48,7 +48,7 @@ export function Sidebar() {
           <button
             onClick={() => navigate({ to: '/' })}
             className={[
-              'relative flex h-10 w-10 items-center justify-center rounded transition-colors',
+              'rail-button relative flex h-10 w-10 items-center justify-center rounded transition-colors',
               isOnHome
                 ? 'bg-accent-subtle text-accent'
                 : 'text-text-muted hover:bg-elevated hover:text-text-secondary'
@@ -80,7 +80,7 @@ export function Sidebar() {
                 onClick={() => handleNavClick(id)}
                 disabled={disabled}
                 className={[
-                  'relative flex h-10 w-10 items-center justify-center rounded transition-colors',
+                  'rail-button relative flex h-10 w-10 items-center justify-center rounded transition-colors',
                   active
                     ? 'bg-accent-subtle text-accent'
                     : disabled

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ChevronRight, Link as LinkIcon } from 'lucide-react'
+import { useScreenEntrance } from '@renderer/lib/motion/entrance'
 import type { NoteReferenceEdge } from '@shared/types'
 import {
   computeBacklinkMap,
@@ -41,6 +42,7 @@ function noticeCopy(notice: MapNotice, nodeCount: number): string {
  * never make the map claim the case holds less than it does.
  */
 export function BacklinkMap({ notes, edges, labels, onOpenNote, onAllNotes }: BacklinkMapProps) {
+  const entering = useScreenEntrance('overview')
   const [focus, setFocus] = useState<string | null>(null)
   const [hover, setHover] = useState<string | null>(null)
   const [typesOff, setTypesOff] = useState<Partial<Record<MapNodeType, boolean>>>({})
@@ -126,7 +128,7 @@ export function BacklinkMap({ notes, edges, labels, onOpenNote, onAllNotes }: Ba
               viewBox="0 0 100 100"
               preserveAspectRatio="none"
               aria-hidden="true"
-              className="pointer-events-none absolute inset-0"
+              className={`pointer-events-none absolute inset-0 ${entering ? 'map-edges-enter' : ''}`}
             >
               {model.edges.map((edge) => (
                 <path
@@ -143,7 +145,7 @@ export function BacklinkMap({ notes, edges, labels, onOpenNote, onAllNotes }: Ba
                 />
               ))}
             </svg>
-            {model.nodes.map((node) => (
+            {model.nodes.map((node, index) => (
               <button
                 key={node.key}
                 data-testid="overview-map-node"
@@ -159,8 +161,9 @@ export function BacklinkMap({ notes, edges, labels, onOpenNote, onAllNotes }: Ba
                 onMouseLeave={() => setHover(null)}
                 onFocus={() => setHover(node.key)}
                 onBlur={() => setHover(null)}
-                className="absolute flex max-w-[118px] -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 rounded-full border py-1 pl-2 pr-2.5 font-body shadow-[var(--shadow-card)] transition-[opacity,background-color,border-color] duration-150"
+                className={`absolute flex max-w-[118px] -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 rounded-full border py-1 pl-2 pr-2.5 font-body shadow-[var(--shadow-card)] transition-[opacity,background-color,border-color] duration-150 ${entering ? 'map-node-enter' : ''}`}
                 style={{
+                  animationDelay: entering ? `${120 + index * 24}ms` : undefined,
                   left: node.left,
                   top: node.top,
                   opacity: node.opacity,

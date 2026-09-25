@@ -181,7 +181,8 @@ describe('SignalDetailRail branches', () => {
 
   // #1549: the mock draws Filter in Captures and Export CSV for every signal.
   // A tag's is drawn disabled and says why: the CSV path joins selector
-  // matches, so it has nothing to write for a tag.
+  // matches, so it has nothing to write for a tag. The title points at the
+  // tag menu's export, which #1542 added.
   it('draws the same two footer buttons for both kinds, export live for a selector only', () => {
     renderRail(selectorSignal)
     expect(screen.getByTestId('signal-filter-in-captures')).toBeTruthy()
@@ -192,7 +193,9 @@ describe('SignalDetailRail branches', () => {
     expect(screen.getByTestId('signal-filter-in-captures')).toBeTruthy()
     const exportButton = screen.getByTestId('signal-export-csv')
     expect(exportButton).toHaveProperty('disabled', true)
-    expect(exportButton.getAttribute('title')).toBe('Exporting a tag is not available yet')
+    expect(exportButton.getAttribute('title')).toBe(
+      'CSV export is for selectors. Right-click the tag to export its captures.'
+    )
   })
 
   it('lists the captures the signal appears in, newest label and host', () => {

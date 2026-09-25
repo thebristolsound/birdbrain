@@ -306,13 +306,17 @@ export function SignalDetailRail({
           </button>
           {/* Drawn for a tag too, as the mock draws it, but disabled there: the
               CSV joins selector_matches to captures, so a tag has nothing to
-              export through it. Tag export is #830's per-entity export. */}
+              export through it. A tag exports from its row menu (#1542). */}
           <button
             type="button"
             data-testid="signal-export-csv"
             onClick={handleExport}
             disabled={!isSelector || exporting || signal.count === 0}
-            title={isSelector ? undefined : 'Exporting a tag is not available yet'}
+            title={
+              isSelector
+                ? undefined
+                : 'CSV export is for selectors. Right-click the tag to export its captures.'
+            }
             className="h-7 flex-1 rounded border border-border-strong text-xs font-medium text-text-primary hover:bg-elevated disabled:opacity-50"
           >
             {exporting ? 'Exporting…' : 'Export CSV'}
@@ -321,8 +325,8 @@ export function SignalDetailRail({
 
         {/* Tags only (#828), below the footer the way Rescan is for a
             selector. The mock keeps merge in the row menu alone, but that menu
-            is an accelerator and never the only route (ruling 3 in the menu
-            registry), so the rail keeps this one. The dialog holds the target
+            is an accelerator and never the only route (ruling 3 on #701), so
+            the rail keeps this one. The dialog holds the target
             pick and the confirm; this button only opens it. */}
         {!isSelector && (
           <button

@@ -60,4 +60,15 @@ describe('trusted-time disclosure vocabulary (#519)', () => {
     // Nothing in it may be mistaken for an authority's name.
     expect(TRUSTED_TIME_AUTHORITY_DECLINED).not.toMatch(/https?:/)
   })
+
+  // #1169 fix round. These labels are resolved from the manifest alone, which
+  // records tokens rather than requests and carries no record of whether the
+  // installation had timestamping switched on. 'Local clock — token pending'
+  // therefore told every reader of a declined installation's export that a token
+  // was on its way from an authority that was never contacted.
+  it('states what the manifest holds, never that a token is on its way', () => {
+    for (const axis of AXES) {
+      expect(TRUSTED_TIME_LABELS[axis]).not.toMatch(/pending|awaiting|requested|in progress/i)
+    }
+  })
 })

@@ -1,5 +1,5 @@
 import { REPORT_PAGE_CSS, type EntrySignatureStatus } from '@main/services/reportHtml'
-import { TRUSTED_TIME_AUTHORITY_DECLINED } from '@shared/trustedTimeDisclosure'
+import { TRUSTED_TIME_AUTHORITY_DECLINED, TRUSTED_TIME_LABELS } from '@shared/trustedTimeDisclosure'
 import type { Capture, TrustedTime } from '@shared/types'
 import type { TrustedTimeResult } from '@shared/verify'
 
@@ -363,6 +363,14 @@ function renderCertificationHtml(fields: CertificationFields): string {
   // this document describes, and "all 2 captures carry a timestamp" over a
   // package that also encloses an unstamped attachment invites exactly the
   // whole-package reading the count does not support.
+  // The breakdown partitions the unstamped exhibits by eligibility, which is all
+  // the axis distinguishes. It read "(N pending, M none)" until #1169: for an
+  // installation that declined timestamping, "pending" told a court each exhibit
+  // was awaiting a token from an authority this same document, two fields above,
+  // reports as switched off.
+  const unstampedBreakdown =
+    `${trustedTime.pendingCount} eligible for timestamping, ` + `${trustedTime.noneCount} not`
+
   const trustedTimeProse = trustedTime.allStamped
     ? `<p>All ${stamped.length} exhibit${
         stamped.length === 1 ? '' : 's'
@@ -373,18 +381,17 @@ function renderCertificationHtml(fields: CertificationFields): string {
           stamped.length
         } exhibit${stamped.length === 1 ? '' : 's'} listed as timestamped below. For the ${
           unstamped.length
-        } remaining exhibit${unstamped.length === 1 ? '' : 's'} (${
-          trustedTime.pendingCount
-        } pending, ${trustedTime.noneCount} none), <strong>no trusted timestamp is
+        } remaining exhibit${
+          unstamped.length === 1 ? '' : 's'
+        } (${unstampedBreakdown}), <strong>no trusted timestamp is
         asserted</strong>; the recorded time is the operator's local system clock
         only.</p>`
       : `<p><strong>No trusted timestamps are asserted</strong> for any of the ${
           unstamped.length
-        } exhibit${unstamped.length === 1 ? '' : 's'} in this export (${
-          trustedTime.pendingCount
-        } pending, ${
-          trustedTime.noneCount
-        } none). The recorded time is the operator's local system clock only.</p>`
+        } exhibit${
+          unstamped.length === 1 ? '' : 's'
+        } in this export (${unstampedBreakdown}). The recorded time is the operator's local
+        system clock only.</p>`
 
   const stampedRows = stamped
     .map((c) => {
@@ -398,13 +405,18 @@ function renderCertificationHtml(fields: CertificationFields): string {
     })
     .join('')
 
+  // The shared axis vocabulary, not a paraphrase (#1169): this document, the
+  // report and the PDF cover render the same capture from one set of strings, so
+  // a package cannot call an exhibit 'Token pending' here while the report and
+  // the in-app chip say no token exists. It also keeps the request claim out —
+  // the manifest records tokens, and a declined installation asked for none.
   const unstampedRows = unstamped
     .map(
       (c) => `<tr>
         <td><span class="ex-title">${esc(c.title)}</span>
         <span class="ex-url mono">${esc(c.url || c.kind)}</span></td>
         <td><span class="state-primary">${esc(
-          c.trustedTime === 'pending' ? 'Token pending' : 'Local clock only'
+          TRUSTED_TIME_LABELS[c.trustedTime]
         )}</span><span class="state-secondary">No trusted timestamp asserted</span></td>
       </tr>`
     )
@@ -516,9 +528,16 @@ function renderCertificationHtml(fields: CertificationFields): string {
     <div class="field"><div class="field-label">Hash algorithm</div>
       <div class="field-value">${esc(fields.hashAlgorithm)}</div></div>
     <div class="field"><div class="field-label">Time-stamping authority (configured)</div>
-      <div class="field-value"><span class="mono break">${
-        fields.tsaIdentity ? esc(fields.tsaIdentity) : 'none configured'
-      }</span></div></div>
+      <div class="field-value">${
+        // Monospace is for the endpoint, which is a URL a reader may need to
+        // transcribe character by character. The declined sentence is prose and
+        // is set as prose, the way report.html already sets it.
+        fields.tsaIdentity === TRUSTED_TIME_AUTHORITY_DECLINED
+          ? esc(fields.tsaIdentity)
+          : `<span class="mono break">${
+              fields.tsaIdentity ? esc(fields.tsaIdentity) : 'none configured'
+            }</span>`
+      }</div></div>
   </div>
 
   <h2 style="margin-top:22pt">Process</h2>

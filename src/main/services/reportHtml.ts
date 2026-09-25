@@ -722,11 +722,14 @@ function trustedTimeView(resolved: TrustedTimeResult): StateView {
         // requests, and trusted timestamping can be declined for the whole
         // installation (#1169), in which case no request was ever made. The
         // axis means only that this capture is of a class that can be stamped
-        // and carries no token.
+        // and carries no token that attests it — a token that does not parse, or
+        // whose imprint attests other bytes, resolves here too and stays in the
+        // manifest, so a flat "no token is recorded" would be the wrong claim
+        // for that capture.
         detail:
-          'No RFC 3161 token is recorded for this capture; the manifest does not state ' +
-          "whether one was ever requested. The capture time shown is the operator's local " +
-          'system clock and carries no independent corroboration.'
+          "No RFC 3161 token attesting this capture's content digest is recorded; the " +
+          'manifest does not state whether one was ever requested. The capture time shown ' +
+          "is the operator's local system clock and carries no independent corroboration."
       }
     case 'none':
     default:
@@ -1191,8 +1194,8 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
               unstamped === 1 ? '' : 's'
             } without trusted time</p><p>${unstamped} exhibit${
               unstamped === 1 ? '' : 's'
-            } in this package (${pendingCount} pending,
-            ${noneCount} none) carr${unstamped === 1 ? 'ies' : 'y'} no RFC 3161 token. For ${
+            } in this package (${pendingCount} eligible for timestamping,
+            ${noneCount} not) carr${unstamped === 1 ? 'ies' : 'y'} no RFC 3161 token. For ${
               unstamped === 1 ? 'it' : 'those'
             }, the recorded time is the operator's local system clock only. The export was not
             blocked; the gap is recorded rather than concealed.</p></div>`
@@ -1289,7 +1292,11 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     not an independent anchor: check its SHA-256 fingerprint against the authority’s published
     value or your own trust store first (<code>VERIFY.md</code> step 6a prints the expected
     fingerprint and the exact <code>openssl</code> command)`
-        : 'a trust anchor you obtain independently from the authority named on the cover'
+        : `a trust anchor you obtain independently from the authority that issued the tokens.
+    That authority is named inside each token, in the signing certificate carried in
+    <code>tsa-intermediates.pem</code>; do not take it from this report's cover, which states
+    what this installation had configured when the package was built and not who signed a
+    token retained from earlier`
     }.</li>
     <li><strong>Match the screenshots.</strong> Each file name in <code>screenshots/</code> is its
     own digest; recomputing it confirms that the packaged image is the one the exhibit cites.</li>
@@ -1307,8 +1314,9 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     <code>tsa-intermediates.pem</code> holds only certificates carried inside the tokens
     themselves. Validating a token against certificates it
     supplied is circular and establishes nothing about who issued it. Step 4 therefore requires a
-    root obtained independently from the authority named on the cover; until one is used, the
-    tokens demonstrate internal consistency but not authenticity.</p>
+    root obtained independently from the authority that issued the tokens, which each token names
+    in its own signing certificate; until one is used, the tokens demonstrate internal consistency
+    but not authenticity.</p>
   </div>`
   }
 </section>`

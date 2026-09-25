@@ -9,14 +9,20 @@ export interface TrustedTimeDisclosureInput {
 }
 
 // The one home for the trusted-time axis vocabulary that reaches operator-facing
-// artifacts (report.html and the per-capture PDF cover). Both render the axis
-// from these strings so the same capture is never labelled 'Local clock only'
-// in one artifact and 'Local clock — token pending' in the other. Each artifact
-// still phrases its own trailing explanation; only the leading label and the
-// two token-fallback phrases are shared.
+// artifacts (report.html, certification.html and the per-capture PDF cover).
+// All three render the axis from these strings so the same capture is never
+// labelled 'Local clock only' in one artifact and something else in another.
+// Each artifact still phrases its own trailing explanation; only the leading
+// label and the two token-fallback phrases are shared.
+//
+// The 'pending' label says what the manifest holds, never that a token is on its
+// way (#1169). These strings are resolved from the manifest alone, which records
+// tokens and not requests and carries no record of whether the installation had
+// timestamping switched on; an installation that declined it never asked for a
+// token, so 'token pending' was false for every capture it holds.
 export const TRUSTED_TIME_LABELS: Readonly<Record<TrustedTime, string>> = {
   rfc3161: 'RFC 3161 token retained',
-  pending: 'Local clock — token pending',
+  pending: 'Local clock — no RFC 3161 token',
   none: 'Local clock only'
 }
 

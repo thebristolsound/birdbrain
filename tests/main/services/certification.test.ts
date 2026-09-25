@@ -463,10 +463,10 @@ describe('certification', () => {
 
     expect(cert).toMatch(/All 1 exhibit in this export carry an/i)
     expect(cert).toContain('tsa.example.com')
-    expect(cert).not.toContain('Token pending')
+    expect(cert).not.toContain('Local clock — no RFC 3161 token')
 
     expect(report).toContain('RFC 3161 token retained')
-    expect(report).not.toContain('Local clock — token pending')
+    expect(report).not.toContain('Local clock — no RFC 3161 token')
 
     expect(evidence.captures).toHaveLength(1)
     expect(evidence.captures[0]).toMatchObject({
@@ -559,7 +559,9 @@ describe('certification', () => {
     )
 
     expect(html).toMatch(/only<\/strong>\s+for\s+the\s+1\s+exhibit/i)
-    expect(html).toMatch(/1\s+remaining\s+exhibit\s+\(1\s+pending,\s+0\s+none\)/i)
+    expect(html).toMatch(
+      /1\s+remaining\s+exhibit\s+\(1\s+eligible\s+for\s+timestamping,\s+0\s+not\)/i
+    )
     expect(html).toContain('tsa.example.com')
     expect(html).toContain('2026-04-05T12:01:00Z')
   })
@@ -621,8 +623,55 @@ describe('certification', () => {
 
       const report = (await exportZip()).get('report.html')!.toString('utf-8')
 
-      expect(report).toContain('No RFC 3161 token is recorded for this capture')
+      expect(report).toContain("No RFC 3161 token attesting this capture's content digest")
       expect(report).not.toMatch(/timestamp was requested but/i)
+    })
+
+    // The fix round's finding: the detail sentences were reworded but the axis
+    // LABELS were not, so the certification told a court each exhibit's token was
+    // "pending" from an authority the same document, two fields above, reports as
+    // switched off. Every packaged document is checked, because the label is
+    // shared and a divergence between two of them is the defect.
+    it('never calls an exhibit pending in any packaged document', async () => {
+      await ingest(
+        caseId,
+        '<html><body>Declined</body></html>',
+        'https://example.com/declined-pending',
+        'Declined Page'
+      )
+      updateSettings({ tsaEnabled: false })
+
+      const entries = await exportZip()
+      const certification = entries.get('certification.html')!.toString('utf-8')
+      const report = entries.get('report.html')!.toString('utf-8')
+
+      for (const html of [certification, report]) {
+        expect(html).toContain('Local clock — no RFC 3161 token')
+        expect(html).not.toMatch(/token pending/i)
+        expect(html).not.toMatch(/\d+ pending,/i)
+      }
+    })
+
+    // The configured-authority field takes a sentence here, not a URL, so the
+    // monospace run that exists to make an endpoint transcribable must not swallow
+    // it. report.html already sets the same string as prose.
+    it('sets the declined sentence as prose, not as a monospaced endpoint', async () => {
+      await ingest(
+        caseId,
+        '<html><body>Declined</body></html>',
+        'https://example.com/declined-mono',
+        'Declined Page'
+      )
+      updateSettings({ tsaEnabled: false })
+
+      const certification = (await exportZip()).get('certification.html')!.toString('utf-8')
+
+      expect(certification).toContain(
+        'None — trusted timestamping is switched off for this installation'
+      )
+      expect(certification).not.toContain(
+        '<span class="mono break">None — trusted timestamping is switched off'
+      )
     })
   })
 

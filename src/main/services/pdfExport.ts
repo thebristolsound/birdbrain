@@ -43,10 +43,13 @@ const MAX_PRINT_SCALE = 2
 // local clock — so it is stated, never omitted.
 // Never "a token was requested": the manifest records tokens, not requests, and
 // an installation can decline trusted timestamping outright (#1169), in which
-// case no request was made for any capture it holds.
+// case no request was made for any capture it holds. "Attesting this capture's
+// content digest" rather than a flat "no token is recorded", because a token
+// that does not parse or that attests other bytes resolves 'pending' too and
+// stays in the manifest.
 const TRUSTED_TIME_PENDING_DETAIL =
-  'no RFC 3161 token is recorded for this capture, and the manifest does not state whether ' +
-  'one was requested'
+  "no RFC 3161 token attesting this capture's content digest is recorded, and the manifest " +
+  'does not state whether one was requested'
 const TRUSTED_TIME_NONE_DETAIL = 'no RFC 3161 token is retained for this capture'
 
 function sleep(ms: number): Promise<void> {
@@ -312,10 +315,7 @@ async function runPdfJob(
     const metrics = (await wc.debugger.sendCommand('Page.getLayoutMetrics')) as {
       cssContentSize?: { width: number; height: number }
     }
-    const contentWidthPx = Math.max(
-      RENDER_WIDTH_PX,
-      Math.ceil(metrics.cssContentSize?.width ?? 0)
-    )
+    const contentWidthPx = Math.max(RENDER_WIDTH_PX, Math.ceil(metrics.cssContentSize?.width ?? 0))
     const contentHeightPx = Math.max(1, Math.ceil(metrics.cssContentSize?.height ?? 0))
     // Fit the full content width onto A4-width paper; height follows the same
     // scale (+0.1in slack so sub-pixel rounding can't spill a trailing page).
@@ -323,10 +323,7 @@ async function runPdfJob(
       MAX_PRINT_SCALE,
       Math.max(MIN_PRINT_SCALE, PAGE_WIDTH_INCHES / (contentWidthPx / CSS_PX_PER_INCH))
     )
-    const height = Math.min(
-      MAX_PAGE_INCHES,
-      (contentHeightPx / CSS_PX_PER_INCH) * scale + 0.1
-    )
+    const height = Math.min(MAX_PAGE_INCHES, (contentHeightPx / CSS_PX_PER_INCH) * scale + 0.1)
 
     return wc.printToPDF({
       printBackground: true,

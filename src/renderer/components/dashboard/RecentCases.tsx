@@ -28,7 +28,7 @@ export function RecentCases({
           <h2 className="font-display font-bold text-lg tracking-tight text-text-primary">
             Recent Cases
           </h2>
-          <span className="rounded-full border border-border-strong bg-surface px-2 py-0.5 font-mono text-[10px] font-medium text-text-muted">
+          <span className="rounded-full border border-border-strong bg-surface px-2 py-0.5 text-[10px] font-medium tabular-nums text-text-muted">
             {cases.length} {cases.length === 1 ? 'case' : 'cases'}
           </span>
         </div>

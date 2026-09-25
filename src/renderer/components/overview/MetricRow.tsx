@@ -33,7 +33,7 @@ export function MetricRow({ captures, sources, selectors, tags, notes, deltas = 
           >
             <div className="flex items-center gap-1.5">
               <Icon size={13} strokeWidth={1.8} className="text-text-faint" />
-              <span className="font-display text-[10.5px] font-semibold uppercase tracking-[0.06em] text-text-muted">
+              <span className="font-display text-[10px] font-semibold uppercase tracking-[0.06em] text-text-muted">
                 {label}
               </span>
             </div>

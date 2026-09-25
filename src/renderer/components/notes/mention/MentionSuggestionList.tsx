@@ -3,6 +3,7 @@ import { Camera, Crosshair, Plus, StickyNote, Tag, type LucideIcon } from 'lucid
 import type { MentionTargetType } from '@shared/noteDoc'
 import {
   MENTION_SCOPE_LABEL,
+  mentionDisplayText,
   type MentionCandidate,
   type MentionSigil
 } from '@renderer/components/notes/mention/mentionModel'
@@ -142,7 +143,9 @@ export const MentionSuggestionList = forwardRef<
                   item.create ? 'text-accent' : 'text-text-secondary'
                 }`}
               >
-                {item.create ? `Create "${item.label}" as ${item.targetType}` : item.label}
+                {item.create
+                  ? `Create "${item.label}" as ${item.targetType}`
+                  : mentionDisplayText(item)}
               </span>
               <span className="shrink-0 text-[10px] text-text-faint">{item.meta}</span>
             </button>

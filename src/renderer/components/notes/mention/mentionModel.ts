@@ -204,6 +204,12 @@ export interface MentionCandidate {
   targetType: MentionTargetType
   targetId: string
   label: string
+  /**
+   * A capture's Exhibit citation, shown before the label and matched by the
+   * query but never stored: the prefix is a read-time rule (#1510), and the
+   * stored label reaches the note's text and the exported notes file.
+   */
+  citation?: string
   /** Right-aligned hint: the kind, or a selector's live match count. */
   meta: string
   color: string
@@ -236,14 +242,20 @@ export const EMPTY_MENTION_SOURCES: MentionSources = {
   selectorMatchCounts: {}
 }
 
-/**
- * A capture with no title still has to be pickable; its URL identifies it. The
- * Exhibit citation leads when the row carries one (#1510), so a mention reads
- * as the citation a report would print: `NK-12 · Example page`.
- */
-function captureLabel(capture: Pick<Capture, 'title' | 'url' | 'exhibitCitation'>): string {
-  const name = capture.title || capture.url
-  return capture.exhibitCitation ? `${capture.exhibitCitation} · ${name}` : name
+/** A capture with no title still has to be pickable; its URL identifies it. */
+function captureLabel(capture: Pick<Capture, 'title' | 'url'>): string {
+  return capture.title || capture.url
+}
+
+/** How a row reads on screen: `NK-12 · Example page` when it carries a citation. */
+export function mentionDisplayText({
+  label,
+  citation
+}: {
+  label: string
+  citation?: string
+}): string {
+  return citation ? `${citation} · ${label}` : label
 }
 
 /** Mirrors the references index, which coalesces an empty label to the pattern. */
@@ -262,6 +274,7 @@ function candidatesForKind(
         targetType,
         targetId: c.id,
         label: captureLabel(c),
+        ...(c.exhibitCitation ? { citation: c.exhibitCitation } : {}),
         meta: 'capture',
         color: mentionColor('capture')
       }))
@@ -348,7 +361,9 @@ export function resolveMention(
   switch (targetType) {
     case 'capture': {
       const hit = sources.captures.find((c) => c.id === targetId)
-      return hit ? resolved(captureLabel(hit)) : MISSING
+      return hit
+        ? resolved(mentionDisplayText({ label: captureLabel(hit), citation: hit.exhibitCitation }))
+        : MISSING
     }
     case 'note': {
       const hit = sources.notes.find((n) => n.id === targetId)
@@ -421,7 +436,7 @@ export function rankMentionCandidates({
   const rows = MENTION_KINDS[sigil].flatMap((kind) => candidatesForKind(kind, sources))
   const matches = rows
     .filter((row) => !(row.targetType === 'note' && row.targetId === excludeNoteId))
-    .filter((row) => !needle || row.label.toLowerCase().includes(needle))
+    .filter((row) => !needle || mentionDisplayText(row).toLowerCase().includes(needle))
   const shown = matches.slice(0, MAX_MENTION_ROWS)
   // Checked against every match, not only the rows shown: an exact hit below
   // the cap is still an existing entity, and creating it again is a duplicate.

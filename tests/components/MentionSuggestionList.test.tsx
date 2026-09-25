@@ -49,6 +49,11 @@ describe('MentionSuggestionList', () => {
     expect(screen.getByText('captures · notes')).toBeTruthy()
   })
 
+  it('shows a capture citation before its label', () => {
+    renderList({ items: [{ ...candidate('a', 'Alpha'), citation: 'NK-12' }] })
+    expect(screen.getByText('NK-12 · Alpha')).toBeTruthy()
+  })
+
   it('names the other pair of kinds behind #', () => {
     renderList({ sigil: '#' })
     expect(screen.getByText('selectors · tags')).toBeTruthy()

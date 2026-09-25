@@ -362,8 +362,9 @@ function ArchivedCopyBanner({ timestamp }: { timestamp: string }) {
 }
 
 /**
- * The extracted text laid out as prose. Blank lines become paragraph breaks;
- * every other character, single line breaks included, renders as extracted.
+ * The extracted text laid out as prose. Blank lines become paragraph breaks and
+ * trailing whitespace at each paragraph's end is dropped; every other
+ * character, single line breaks included, renders as extracted.
  */
 function ExtractedTextPanel({ heading, text }: { heading: string; text: string }) {
   const paragraphs = text

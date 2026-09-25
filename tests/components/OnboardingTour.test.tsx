@@ -230,7 +230,8 @@ describe('replay', () => {
     expect(steps).toEqual([
       '1Open chrome://extensions and switch on Developer mode (top right).',
       '2Click Load unpacked in the toolbar that appears.',
-      '3Pick the folder holding manifest.json — no restart needed. Pin it from the puzzle-piece menu.'
+      '3Use Open extension folder on the dashboard to reveal the Birdbrain extension in your ' +
+        'file manager. Pick that folder containing manifest.json.'
     ])
   })
 

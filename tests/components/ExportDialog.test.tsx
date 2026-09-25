@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { useState } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, fireEvent, cleanup, waitFor, act, within } from '@testing-library/react'
 import type { Case, ExportOptions, ExportPreflight } from '@shared/types'
@@ -524,6 +525,43 @@ describe('ExportDialog', () => {
 
     await waitFor(() => expect(notifySuccess).toHaveBeenCalledOnce())
     expect(notifySuccess.mock.calls[0][0]).toBe('Export written')
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  // Review finding on #1578: both parents pass a plain setter, so a first run
+  // finishing after Close used to close the window the operator had reopened.
+  it('leaves a reopened dialog open when the earlier export finishes', async () => {
+    const gate = deferred<ExportResult>()
+    generateReport.mockReturnValueOnce(gate.promise)
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
+    })
+    function Host() {
+      const [open, setOpen] = useState(true)
+      return (
+        <QueryClientProvider client={client}>
+          <button onClick={() => setOpen(true)}>Reopen</button>
+          {open && (
+            <ExportDialog caseId="case-1" caseName="Case One" onClose={() => setOpen(false)} />
+          )}
+        </QueryClientProvider>
+      )
+    }
+    render(<Host />)
+
+    fireEvent.click(screen.getByText('Export'))
+    await screen.findByTestId('export-close-note')
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(screen.queryByText('Exporting case')).toBeNull()
+    fireEvent.click(screen.getByText('Reopen'))
+    expect(await screen.findByText('Export case')).toBeDefined()
+
+    await act(async () => {
+      gate.resolve({ canceled: false, filePath: 'Case_One_evidence.zip' })
+    })
+
+    await waitFor(() => expect(notifySuccess).toHaveBeenCalledOnce())
+    expect(screen.getByText('Export case')).toBeDefined()
   })
 
   it('returns to the form when the save dialog is canceled (no false success)', async () => {

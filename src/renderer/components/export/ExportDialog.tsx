@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { useQuery } from '@tanstack/react-query'
 import { Archive, ChevronDown, ShieldCheck, TriangleAlert } from 'lucide-react'
@@ -113,6 +113,15 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
   const [showChecklist, setShowChecklist] = useState(false)
   const [progress, setProgress] = useState({ step: 'Preparing export…', percent: 0 })
   const [closing, setClosing] = useState(false)
+  // Parents pass a plain setter, so a run that finishes after Close would otherwise
+  // close whichever export window the operator has opened since.
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
 
   // A failed preflight leaves `data` undefined, which reads the same as "no
   // warning to show" — the same silent fallback the mount effect had, minus
@@ -176,6 +185,7 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
         if (canceled || !filePath) return
         const kind = workingCopy ? 'Working copy' : 'Evidence package'
         notifyExportWritten('Export written', `${kind} · ${filePath}`, filePath)
+        if (!mounted.current) return
         setClosing(true)
         onClose()
       })

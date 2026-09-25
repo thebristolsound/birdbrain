@@ -346,7 +346,8 @@ async function serve(args) {
     } catch (err) {
       throw new Error(
         `Cannot create the info file ${INFO_FILE} (${String(err?.message ?? err)}). ` +
-          'Point $BIRDBRAIN_HARNESS_INFO at a writable path you own.'
+          'Point $BIRDBRAIN_HARNESS_INFO at a writable path you own.',
+        { cause: err }
       )
     }
     console.log(`harness ready: http://127.0.0.1:${port}  userData=${tempDir}`)

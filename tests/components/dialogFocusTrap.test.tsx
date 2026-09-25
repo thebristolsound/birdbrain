@@ -253,6 +253,174 @@ describe('Dialog focus trap', () => {
   })
 })
 
+// Signals mounts its tag dialogs only while one is pending, so `open` is true
+// for the dialog's whole life and never turns false: the parent unmounts it
+// instead (#1536).
+function MountedWhileOpenHarness() {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <>
+      <button data-testid="opener" onClick={() => setOpen(true)}>
+        Open
+      </button>
+      <button data-testid="behind">Behind</button>
+      {open && (
+        <Dialog open onOpenChange={setOpen}>
+          <DialogContent onClose={() => setOpen(false)}>
+            <button data-testid="cancel" onClick={() => setOpen(false)}>
+              Cancel
+            </button>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
+  )
+}
+
+describe('Dialog focus hand-back when the parent unmounts it', () => {
+  it('returns focus to the opener on Escape', () => {
+    render(<MountedWhileOpenHarness />)
+    const opener = screen.getByTestId('opener')
+    opener.focus()
+    fireEvent.click(opener)
+    expect(document.activeElement).toBe(screen.getByTestId('cancel'))
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    expect(screen.queryByTestId('cancel')).toBeNull()
+    expect(document.activeElement).toBe(opener)
+  })
+
+  it('returns focus to the opener from its own Cancel button', () => {
+    render(<MountedWhileOpenHarness />)
+    const opener = screen.getByTestId('opener')
+    opener.focus()
+    fireEvent.click(opener)
+
+    fireEvent.click(screen.getByTestId('cancel'))
+
+    expect(document.activeElement).toBe(opener)
+  })
+
+  it('leaves focus alone when the opener has gone too', () => {
+    function OpenerGoesHarness() {
+      const [open, setOpen] = useState(false)
+      return (
+        <>
+          {!open && (
+            <button data-testid="opener" onClick={() => setOpen(true)}>
+              Open
+            </button>
+          )}
+          <button data-testid="behind">Behind</button>
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogContent onClose={() => setOpen(false)}>
+              <button data-testid="cancel" onClick={() => setOpen(false)}>
+                Cancel
+              </button>
+            </DialogContent>
+          </Dialog>
+        </>
+      )
+    }
+    render(<OpenerGoesHarness />)
+    screen.getByTestId('opener').focus()
+    fireEvent.click(screen.getByTestId('opener'))
+
+    fireEvent.click(screen.getByTestId('cancel'))
+
+    expect(document.activeElement).not.toBe(screen.getByTestId('behind'))
+  })
+})
+
+describe('Dialog Tab from a dropped focus', () => {
+  // Focus falls to the body when the control holding it unmounts while the
+  // dialog stays open. The next Tab must come back in, not walk the page.
+  it('brings Tab from the body back to the first control inside', () => {
+    render(<OpenerHarness />)
+    fireEvent.click(screen.getByTestId('opener'))
+    ;(document.activeElement as HTMLElement).blur()
+    expect(document.activeElement).toBe(document.body)
+
+    fireEvent.keyDown(document.body, { key: 'Tab' })
+
+    expect(document.activeElement).toBe(screen.getByTestId('first'))
+  })
+
+  it('brings Shift-Tab from the body back to the last control inside', () => {
+    render(<OpenerHarness />)
+    fireEvent.click(screen.getByTestId('opener'))
+    ;(document.activeElement as HTMLElement).blur()
+
+    fireEvent.keyDown(document.body, { key: 'Tab', shiftKey: true })
+
+    expect(document.activeElement).toBe(screen.getByTestId('last'))
+  })
+
+  it('lands on the container when there is nothing tabbable to come back to', () => {
+    render(<OpenerHarness>nothing focusable here</OpenerHarness>)
+    fireEvent.click(screen.getByTestId('opener'))
+    ;(document.activeElement as HTMLElement).blur()
+
+    fireEvent.keyDown(document.body, { key: 'Tab' })
+
+    expect(document.activeElement).toBe(screen.getByTestId('content'))
+  })
+
+  it('leaves a Tab from a real control outside the dialog alone', () => {
+    render(<OpenerHarness />)
+    fireEvent.click(screen.getByTestId('opener'))
+    const behind = screen.getByTestId('behind')
+    behind.focus()
+
+    const event = fireEvent.keyDown(behind, { key: 'Tab' })
+
+    expect(event).toBe(true)
+    expect(document.activeElement).toBe(behind)
+  })
+
+  it('ignores keys other than Tab, and Tab once the dialog has closed', () => {
+    render(<OpenerHarness />)
+    fireEvent.click(screen.getByTestId('opener'))
+    ;(document.activeElement as HTMLElement).blur()
+
+    fireEvent.keyDown(document.body, { key: 'a' })
+    expect(document.activeElement).toBe(document.body)
+
+    fireEvent.click(screen.getByTestId('last'))
+    ;(document.activeElement as HTMLElement).blur()
+    fireEvent.keyDown(document.body, { key: 'Tab' })
+    expect(document.activeElement).toBe(document.body)
+  })
+})
+
+describe('Dialog radio groups', () => {
+  // The browser gives a native radio group one Tab stop, its checked radio.
+  it('stops on the checked radio of a group once, not on every radio', () => {
+    render(
+      <OpenerHarness>
+        <input type="radio" name="preset" data-testid="radio-a" readOnly />
+        <input type="radio" name="preset" data-testid="radio-b" checked readOnly />
+        <input type="radio" name="preset" data-testid="radio-c" readOnly />
+        <input type="radio" name="loose" data-testid="radio-loose" readOnly />
+        <button data-testid="after">After</button>
+      </OpenerHarness>
+    )
+    fireEvent.click(screen.getByTestId('opener'))
+    expect(document.activeElement).toBe(screen.getByTestId('radio-b'))
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Tab' })
+    expect(document.activeElement).toBe(screen.getByTestId('radio-loose'))
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Tab' })
+    expect(document.activeElement).toBe(screen.getByTestId('after'))
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Tab' })
+    expect(document.activeElement).toBe(screen.getByTestId('radio-b'))
+  })
+})
+
 describe('Dialog keyboard containment', () => {
   // The falsifiable one: remove the trap and the second Delete lands on the
   // row again, because focus never left it.

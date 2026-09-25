@@ -33,9 +33,10 @@ export interface DataTreeNode {
   group: boolean
   hasChildren: boolean
   expanded: boolean
-  // Every node carries a count (#1149). Null only where the count is owned by
-  // a view this ticket does not build, and is rendered as absent rather than 0
-  // so an operator never reads "0 exceptions" off a node that has not looked.
+  // Every selectable row carries a count (#1149); group heads never do, as in
+  // the mock (#1552). Otherwise null only where the count is owned by a view
+  // that has not reported, and is rendered as absent rather than 0 so an
+  // operator never reads "0 exceptions" off a node that has not looked.
   count: number | null
   // Integrity Exceptions carries the alert treatment when it is non-empty.
   alert: boolean
@@ -125,10 +126,9 @@ export function buildDataTree({
   const isOpen = (key: string) => expanded.has(key)
 
   const exhibits = rows.filter((row) => row.entity === 'exhibit')
-  const staged = rows.filter((row) => row.rowType === 'staged')
-  // Every count outside Staging is over anchored rows only (X16): a pooled
-  // file appears under Staging and nowhere else, so a Views count that
-  // included it would disagree with the table the node selects.
+  // Every count is over anchored rows only (X16): a pooled file appears under
+  // Staging and nowhere else, so a file-type count that included it would
+  // disagree with the table the node selects.
   const anchored = rows.filter((row) => row.rowType === 'anchored')
 
   const push = (
@@ -147,7 +147,7 @@ export function buildDataTree({
     depth: 0,
     group: true,
     hasChildren: kinds.length > 0,
-    count: rows.filter((row) => row.rowType === 'anchored').length
+    count: null
   })
   if (isOpen('data-sources')) {
     for (const kind of kinds) {
@@ -199,7 +199,7 @@ export function buildDataTree({
     depth: 0,
     group: true,
     hasChildren: false,
-    count: staged.length
+    count: null
   })
 
   // --- Views ----------------------------------------------------------------
@@ -210,7 +210,7 @@ export function buildDataTree({
     depth: 0,
     group: true,
     hasChildren: true,
-    count: anchored.length
+    count: null
   })
   if (isOpen('views')) {
     push({

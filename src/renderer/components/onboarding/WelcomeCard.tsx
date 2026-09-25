@@ -20,11 +20,11 @@ export function WelcomeCard({ onStart, onSkip }: WelcomeCardProps) {
         // attribute keeps the tour from having its selection cleared out from
         // under it.
         data-selection-escape-guard=""
-        // Not aria-modal: the backdrop is pointer-events-none and the page
-        // underneath stays usable on purpose, so claiming modality would tell
-        // assistive tech the opposite of what the tour does. There is no focus
-        // trap or Escape handling here either.
+        // Modal for the keyboard: OnboardingTour moves focus in, keeps Tab
+        // inside the tour and dismisses it on Escape. The backdrop stays
+        // pointer-events-none, so a pointer can still reach the page.
         role="dialog"
+        aria-modal="true"
         aria-label="Welcome to Birdbrain"
         className="pointer-events-auto w-[380px] rounded-md border border-border-strong bg-elevated p-5 shadow-[0_16px_40px_rgba(0,0,0,0.5)]"
       >

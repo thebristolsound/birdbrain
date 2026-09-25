@@ -3,6 +3,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import {
   Badge,
+  Button,
   CardPanel,
   CardTitle,
   Dialog,
@@ -60,6 +61,23 @@ describe('design-system primitives', () => {
       expect(dot?.className).toContain('animate-pulse')
       expect(screen.getByText('Connected').textContent).toBe('Connected')
     })
+  })
+
+  describe('Button', () => {
+    // The default variant's shadow token is `none`, which invalidates a
+    // box-shadow ring composed with it, so the ring painted nothing (#1536).
+    // An outline in the ring token is drawn whatever the variant's shadow.
+    it.each(['default', 'outline', 'ghost', 'destructive'] as const)(
+      'draws its keyboard focus as an outline in the ring token (%s)',
+      (variant) => {
+        render(<Button variant={variant}>Save</Button>)
+        const { className } = screen.getByRole('button', { name: 'Save' })
+        expect(className).toContain('focus-visible:outline-2')
+        expect(className).toContain('focus-visible:outline-ring')
+        expect(className).not.toContain('focus-visible:outline-none')
+        expect(className).not.toContain('focus-visible:ring-2')
+      }
+    )
   })
 
   describe('CardPanel', () => {

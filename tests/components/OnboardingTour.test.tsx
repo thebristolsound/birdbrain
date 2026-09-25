@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, cleanup, act, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { BirdbrainSettings } from '@shared/types'
@@ -755,5 +755,91 @@ describe('the seeded demo case', () => {
 
     expect(opened).toHaveBeenCalled()
     window.removeEventListener(NOTE_COMPOSER_EVENT, opened)
+  })
+})
+
+// The tour is modal for the keyboard (#1536): it takes focus, holds Tab,
+// dismisses on Escape and hands focus back to whatever opened it.
+describe('keyboard', () => {
+  function opener() {
+    const button = document.createElement('button')
+    button.textContent = 'Setup Guide'
+    document.body.appendChild(button)
+    button.focus()
+    return button
+  }
+
+  afterEach(() => {
+    useAppStore.setState({ openDialogCount: 0 })
+  })
+
+  it('moves focus onto the coach mark’s forward action and marks it modal', async () => {
+    anchor('browser')
+    opener()
+    renderTour()
+    act(() => startTour('ext'))
+
+    const mark = await screen.findByTestId('tour-mark')
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId('tour-next')))
+    const dialog = within(mark).getByRole('dialog')
+    expect(dialog.getAttribute('aria-modal')).toBe('true')
+    expect(dialog.getAttribute('aria-label')).toBeTruthy()
+    expect(screen.getByTestId('tour-copy').getAttribute('aria-live')).toBe('polite')
+  })
+
+  it('keeps Tab inside the tour instead of walking the page behind it', async () => {
+    anchor('browser')
+    const button = opener()
+    renderTour()
+    act(() => startTour('ext'))
+    const next = await screen.findByTestId('tour-next')
+    await waitFor(() => expect(document.activeElement).toBe(next))
+
+    fireEvent.keyDown(next, { key: 'Tab' })
+
+    expect(document.activeElement).toBe(screen.getByTestId('tour-install-toggle'))
+    expect(document.activeElement).not.toBe(button)
+  })
+
+  it('dismisses on Escape, writes nothing on a replay, and hands focus back', async () => {
+    anchor('browser')
+    const button = opener()
+    renderTour()
+    act(() => startTour('ext'))
+    await screen.findByTestId('tour-mark')
+    expect(useAppStore.getState().openDialogCount).toBe(1)
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    // Keyed on the tour closing, not on its exit animation finishing, so it is
+    // asserted straight away. Waiting for the detach as well timed out when
+    // this block ran after the rest of the file, though not on its own.
+    expect(document.activeElement).toBe(button)
+    expect(updated).toEqual([])
+    expect(useAppStore.getState().openDialogCount).toBe(0)
+  })
+
+  it('lands on Start tour when the welcome card opens, and marks it modal', async () => {
+    install(settingsFixture({ isFreshInstall: true }))
+    renderTour()
+
+    const card = await screen.findByTestId('tour-welcome')
+
+    expect(card.getAttribute('aria-modal')).toBe('true')
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId('tour-next')))
+  })
+
+  it('marks the screen card modal and names it after its screen', async () => {
+    routerState.caseId = 'case-1'
+    routerState.pathname = '/cases/case-1/overview'
+    install(settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } }))
+    anchor('nav-captures', { top: 120, left: 4, width: 40, height: 40 })
+    renderTour()
+
+    const screenCard = await screen.findByTestId('tour-screen')
+
+    const dialog = within(screenCard).getByRole('dialog', { name: 'Captures' })
+    expect(dialog.getAttribute('aria-modal')).toBe('true')
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId('tour-next')))
   })
 })

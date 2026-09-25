@@ -333,7 +333,8 @@ export function updateRow(
         // or the operator reads a schema error about one they never touched.
         throw new Error(
           `notes.body_doc for this row does not parse, so its Mentions cannot be checked ` +
-            `against the destination case: ${(err as Error).message}`
+            `against the destination case: ${(err as Error).message}`,
+          { cause: err }
         )
       }
       assertMentionsInCase(mentions, data.case_id as string)

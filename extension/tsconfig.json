@@ -11,7 +11,9 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "outDir": "./dist",
+    "rootDir": "..",
     "lib": ["ES2022", "DOM"],
+    "types": ["chrome", "node", "vite/client"],
     "paths": {
       "@extension/*": ["./src/*"],
       "@shared/*": ["../src/shared/*"]

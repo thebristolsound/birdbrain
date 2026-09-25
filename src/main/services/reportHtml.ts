@@ -531,7 +531,7 @@ function buildFileExhibits(data: ReportData, options: ExportOptions): FileExhibi
     .sort((a, b) => a.exhibitNumber - b.exhibitNumber)
     .map((exhibit) => ({
       number: exhibit.exhibitNumber,
-      citation: exhibit.citation,
+      citation: exhibit.exhibitNumber > 0 ? exhibit.citation : '',
       exhibit,
       integrity: exhibitIntegrityView(exhibit),
       time: { basis: exhibit.trustedTime.trustedTime, ...trustedTimeView(exhibit.trustedTime) },

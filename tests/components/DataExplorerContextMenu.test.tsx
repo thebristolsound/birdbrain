@@ -146,7 +146,13 @@ describe('Data screen context menus (#1151)', () => {
       within(menu)
         .getAllByRole('menuitem')
         .map((el) => el.textContent)
-    ).toEqual(['Open in viewerEnter', 'Copy SHA-256', 'Copy relative path', 'Verify'])
+    ).toEqual([
+      'Open in viewerEnter',
+      'Copy SHA-256',
+      'Copy relative path',
+      'Verify',
+      'Customise this menu…'
+    ])
 
     fireEvent.click(item(menu, 'exhibit-copy-hash'))
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(HASH_A))
@@ -272,7 +278,7 @@ describe('Data screen context menus (#1151)', () => {
       within(menu)
         .getAllByRole('menuitem')
         .map((el) => el.textContent)
-    ).toEqual(['Show only thisEnter', 'Verify'])
+    ).toEqual(['Show only thisEnter', 'Verify', 'Customise this menu…'])
     fireEvent.click(item(menu, 'node-show-only'))
     expect(screen.getByTestId('data-node-title').textContent).toBe('MHTML')
   })

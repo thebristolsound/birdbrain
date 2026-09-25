@@ -112,9 +112,10 @@ test.describe('Export dialog: presets and the two export classes', () => {
       await page.click('button[aria-label="Notes"]')
       await page.waitForURL(/#\/cases\/.+\/notes/)
       await page.getByTestId('notes-new-button').click()
-      await page.getByTestId('create-note-title').fill('Export class note')
-      await page.getByTestId('create-note-body').fill('Note body for the export class spec')
-      await page.getByTestId('create-note-submit').click()
+      await page.getByTestId('note-title-input').fill('Export class note')
+      await page.getByTestId('note-body-input').fill('Note body for the export class spec')
+      await page.getByTestId('note-body-input').blur()
+      await expect(page.getByRole('status').filter({ hasText: 'Saved just now' })).toBeVisible()
       await expect(page.getByText('Export class note')).toBeVisible()
 
       await page.click('button[aria-label="Overview"]')

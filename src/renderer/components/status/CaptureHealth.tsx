@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { Activity, CheckCircle2, XCircle, AlertTriangle, Loader2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'motion/react'
+import { useNavigate } from '@tanstack/react-router'
+import { EntityContextMenu } from '@renderer/components/contextmenu/EntityContextMenu'
+import { getCapture } from '@renderer/lib/api/captures'
+import { copyCaptureUrl } from '@renderer/components/captures/useCopyCaptureUrl'
+import { notify } from '@renderer/lib/notify'
 import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '@renderer/stores/appStore'
 import { presets } from '@renderer/lib/motion'
@@ -9,7 +14,8 @@ import { Button } from '@renderer/components/ui'
 import {
   recaptureQueueQueryOptions,
   testCaptureHttp,
-  testCapturePipeline
+  testCapturePipeline,
+  enqueueEventRecapture
 } from '@renderer/lib/api/recapture'
 
 function EventIcon({ type }: { type: CaptureEvent['type'] }) {
@@ -26,27 +32,74 @@ function EventIcon({ type }: { type: CaptureEvent['type'] }) {
 }
 
 function EventRow({ event }: { event: CaptureEvent }) {
+  const navigate = useNavigate()
   const time = new Date(event.timestamp).toLocaleTimeString()
+  let host = event.url
+  try {
+    host = new URL(event.url).host
+  } catch {
+    /* A pipeline error may carry an invalid URL. */
+  }
+  async function actOnCapture(recapture: boolean) {
+    if (!event.captureId) return
+    try {
+      const capture = await getCapture(event.captureId)
+      if (!capture) {
+        notify.warn('This capture is no longer available')
+        return
+      }
+      if (recapture) {
+        const result = await enqueueEventRecapture(capture.caseId, capture.id)
+        if (result.rejected.length) notify.warn(`Recapture rejected: ${result.rejected[0].reason}`)
+        else notify.success(`Recapture queued — ${result.accepted} capture`)
+      } else {
+        navigate({
+          to: '/cases/$caseId/captures',
+          params: { caseId: capture.caseId },
+          search: { captureId: capture.id }
+        })
+      }
+    } catch (cause) {
+      notify.error(recapture ? "Couldn't queue recapture" : "Couldn't open capture", { cause })
+    }
+  }
   const urlShort = event.url.length > 40 ? event.url.slice(0, 40) + '...' : event.url
 
   return (
-    <div className="flex items-start gap-2 px-3 py-1.5 text-[11px]">
-      <EventIcon type={event.type} />
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-text-secondary">{urlShort}</div>
-        <div className="flex gap-2 text-text-muted">
-          <span>{event.source}</span>
-          <span>{time}</span>
-          {event.durationMs !== undefined && <span>{event.durationMs}ms</span>}
-          {event.error && <span className="text-red-400">{event.error}</span>}
-          {event.skipReason && <span className="text-amber-400">{event.skipReason}</span>}
-          {event.screenshotWarning && (
-            <span className="text-amber-400">{event.screenshotWarning}</span>
-          )}
-          {event.warning && <span className="text-amber-400">{event.warning}</span>}
+    <EntityContextMenu
+      target={{
+        kind: 'event',
+        host,
+        hasCapture: !!event.captureId,
+        actions: {
+          open: () => void actOnCapture(false),
+          copyUrl: () => void copyCaptureUrl(event.url),
+          recapture: () => void actOnCapture(true),
+          clear: () =>
+            useAppStore.setState((state) => ({
+              captureEvents: state.captureEvents.filter((item) => item !== event)
+            }))
+        }
+      }}
+    >
+      <div className="flex items-start gap-2 px-3 py-1.5 text-[11px]">
+        <EventIcon type={event.type} />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-text-secondary">{urlShort}</div>
+          <div className="flex gap-2 text-text-muted">
+            <span>{event.source}</span>
+            <span>{time}</span>
+            {event.durationMs !== undefined && <span>{event.durationMs}ms</span>}
+            {event.error && <span className="text-red-400">{event.error}</span>}
+            {event.skipReason && <span className="text-amber-400">{event.skipReason}</span>}
+            {event.screenshotWarning && (
+              <span className="text-amber-400">{event.screenshotWarning}</span>
+            )}
+            {event.warning && <span className="text-amber-400">{event.warning}</span>}
+          </div>
         </div>
       </div>
-    </div>
+    </EntityContextMenu>
   )
 }
 
@@ -57,6 +110,7 @@ export function CaptureHealth() {
   useEffect(() => {
     if (!open) return
     function handleClick(e: MouseEvent) {
+      if (e.target instanceof Element && e.target.closest('[data-selection-escape-guard]')) return
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setOpen(false)
       }

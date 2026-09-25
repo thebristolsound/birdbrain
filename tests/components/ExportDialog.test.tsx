@@ -50,7 +50,11 @@ vi.mock('@renderer/lib/notify', () => ({
   notify: { success: notifySuccess, error: notifyError }
 }))
 
-import { ExportDialog, EXPORT_PRESETS, detectPreset } from '@renderer/components/export/ExportDialog'
+import {
+  ExportDialog,
+  EXPORT_PRESETS,
+  detectPreset
+} from '@renderer/components/export/ExportDialog'
 import { fakeBridge } from '../renderer/fakeBridge'
 
 const CASE: Case = {
@@ -167,6 +171,35 @@ describe('ExportDialog', () => {
       captureTimestamp: '2026-06-01T09:30:00.000Z'
     }
   ]
+
+  it('unpins only the right-clicked reference and refreshes the export list', async () => {
+    listCasePins.mockResolvedValue(PINS)
+    const unpin = vi.fn(async () => {
+      listCasePins.mockResolvedValue([PINS[0]])
+      return true
+    })
+    fakeBridge({
+      export: { preflight, generateReport },
+      cases: { get: getCase },
+      wayback: { listForCase: listCasePins, unpin },
+      onExportProgress
+    })
+    const onClose = vi.fn()
+    renderDialog(onClose)
+    const rows = await screen.findAllByTestId('export-pinned-wayback-row')
+    fireEvent.contextMenu(rows[1])
+    const menu = await screen.findByRole('menu')
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent)
+    ).toEqual(['Unpin from case', 'Customise this menu…'])
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Unpin from case' }))
+    await waitFor(() => expect(unpin).toHaveBeenCalledWith('ref-2'))
+    await waitFor(() => expect(screen.getAllByTestId('export-pinned-wayback-row')).toHaveLength(1))
+    expect(screen.getByTestId('export-pinned-wayback-row').textContent).toContain('2026-07-01')
+    expect(onClose).not.toHaveBeenCalled()
+  })
 
   it('lists the pinned Wayback snapshots the report will carry', async () => {
     listCasePins.mockResolvedValue(PINS)

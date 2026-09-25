@@ -149,9 +149,10 @@ test.describe('Round-1 observed session, by machine', () => {
       await page.click('button[aria-label="Notes"]')
       await page.waitForURL(/#\/cases\/.+\/notes/)
       await page.getByTestId('notes-new-button').click()
-      await page.getByTestId('create-note-title').fill('Session note')
-      await page.getByTestId('create-note-body').fill('Both pages captured without incident')
-      await page.getByTestId('create-note-submit').click()
+      await page.getByTestId('note-title-input').fill('Session note')
+      await page.getByTestId('note-body-input').fill('Both pages captured without incident')
+      await page.getByTestId('note-body-input').blur()
+      await expect(page.getByRole('status').filter({ hasText: 'Saved just now' })).toBeVisible()
       await expect(page.getByText('Session note')).toBeVisible()
 
       // Step 6: hand it to someone without Birdbrain. The default preset is the

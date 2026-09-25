@@ -16,10 +16,16 @@ vi.mock('@extension/utils/api', () => ({
   getStatus: vi.fn(),
   getActiveSelectors: vi.fn(),
   sendMhtmlCapture: vi.fn(),
-  createSelector: vi.fn()
+  createSelector: vi.fn(),
+  lookupCaptureByUrl: vi.fn()
 }))
 
-import { getStatus, getActiveSelectors, sendMhtmlCapture } from '@extension/utils/api'
+import {
+  getStatus,
+  getActiveSelectors,
+  sendMhtmlCapture,
+  lookupCaptureByUrl
+} from '@extension/utils/api'
 
 type SendResponse = (response?: unknown) => void
 type Listener = (message: unknown, sender: unknown, sendResponse: SendResponse) => unknown
@@ -536,5 +542,47 @@ describe('per-case exclusion mirror (#400)', () => {
     expect(status?.blocked).toEqual({ reason: 'user', pattern: IGNORE_PATTERN })
     expect(status?.rulesLoaded).toBe(true)
     await restore()
+  })
+})
+
+describe('persisted popup URL status', () => {
+  it('finds a capture from a previous worker on an arbitrary tab', async () => {
+    tabUrlById.set(121, CLEAN_URL)
+    const timestamp = '2026-09-20T12:00:00.000Z'
+    vi.mocked(lookupCaptureByUrl).mockResolvedValueOnce({
+      found: true,
+      canonicalUrl: CLEAN_URL,
+      capture: {
+        id: 'old',
+        url: CLEAN_URL,
+        title: 'Old page',
+        timestamp,
+        manifestIndex: 36,
+        format: 'mhtml'
+      }
+    })
+    const result = await ask<PopupPageStatus>({ type: 'GET_PAGE_STATUS', tabId: 121 })
+    expect(lookupCaptureByUrl).toHaveBeenCalledWith({ caseId: 'case-a', url: CLEAN_URL })
+    expect(result?.lastCapture).toEqual({
+      at: Date.parse(timestamp),
+      manifestIndex: 36,
+      format: 'mhtml'
+    })
+  })
+
+  it('distinguishes an empty lookup from a failed lookup', async () => {
+    tabUrlById.set(122, CLEAN_URL)
+    vi.mocked(lookupCaptureByUrl).mockResolvedValueOnce({
+      found: false,
+      canonicalUrl: CLEAN_URL,
+      capture: null
+    })
+    const empty = await ask<PopupPageStatus>({ type: 'GET_PAGE_STATUS', tabId: 122 })
+    expect(empty?.lastCapture).toBeNull()
+    expect(empty?.lookupFailed).toBeUndefined()
+    vi.mocked(lookupCaptureByUrl).mockRejectedValueOnce(new Error('offline'))
+    expect(
+      (await ask<PopupPageStatus>({ type: 'GET_PAGE_STATUS', tabId: 122 }))?.lookupFailed
+    ).toBe(true)
   })
 })

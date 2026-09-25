@@ -198,7 +198,12 @@ const CODE_LABELS: Record<LogCode, string> = {
     "The demonstration case was removed, but its files couldn't be deleted",
   'exhibits.backfill_failed': "Couldn't finish the exhibit migration for a case",
   'staging.commit_failed': "Couldn't commit a pooled file to the case",
-  'staging.discard_failed': "Couldn't delete a pooled file; it stays in the pool"
+  'staging.discard_failed': "Couldn't delete a pooled file; it stays in the pool",
+  'persona.orphan_partitions_cleared': 'Cleared browser data left by a persona no longer on file',
+  'persona.orphan_partition_clear_failed':
+    "Couldn't clear browser data left by a persona no longer on file",
+  'persona.orphan_sweep_skipped':
+    'Skipped the persona browser data check because the data folders differ'
 }
 
 export function labelForCode(code: LogCode): string {

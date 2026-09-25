@@ -39,3 +39,4 @@ export {
   ContextMenuShortcut
 } from '@renderer/components/ui/context-menu'
 export { Skeleton } from '@renderer/components/ui/skeleton'
+export { AppToaster } from '@renderer/components/ui/toaster'

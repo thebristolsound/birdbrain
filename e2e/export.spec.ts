@@ -83,10 +83,13 @@ async function openExportDialog(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: 'Export case' })).toBeVisible()
 }
 
-async function runExport(page: Page): Promise<void> {
+// A written export closes the dialog and names its path in a toast. The path is
+// what tells this run's toast from the previous run's, still on screen. The
+// dialog animates out, so wait for it to be gone before the next one opens.
+async function runExport(page: Page, filePath: string): Promise<void> {
   await page.getByTestId('export-submit').click()
-  await expect(page.getByText('Export complete')).toBeVisible({ timeout: 15000 })
-  await page.getByRole('button', { name: 'Done' }).click()
+  await expect(page.getByText(`· ${filePath}`)).toBeVisible({ timeout: 15000 })
+  await expect(page.getByRole('heading', { name: /^Export(ing)? case$/ })).toHaveCount(0)
 }
 
 // #399 AC 6: preset selection and both export classes' outputs, proven on the
@@ -123,7 +126,7 @@ test.describe('Export dialog: presets and the two export classes', () => {
       await expect(page.getByRole('radio', { name: /Full evidence bundle/ })).toBeChecked()
       await expect(page.getByTestId('export-custody-card')).toBeVisible()
       await stubSaveDialog(electronApp, fullPath)
-      await runExport(page)
+      await runExport(page, fullPath)
 
       const fullNames = readStoredZipNames(fullPath)
       for (const name of [
@@ -143,7 +146,7 @@ test.describe('Export dialog: presets and the two export classes', () => {
       await page.getByRole('radio', { name: /Court exhibit/ }).check()
       await expect(page.getByTestId('export-custody-card')).toBeVisible()
       await stubSaveDialog(electronApp, courtPath)
-      await runExport(page)
+      await runExport(page, courtPath)
 
       const courtNames = readStoredZipNames(courtPath)
       expect(courtNames).toContain('manifest.jsonl')
@@ -158,7 +161,7 @@ test.describe('Export dialog: presets and the two export classes', () => {
       await expect(page.getByTestId('export-working-copy-notice')).toBeVisible()
       await expect(page.getByTestId('export-custody-card')).not.toBeVisible()
       await stubSaveDialog(electronApp, workingPath)
-      await runExport(page)
+      await runExport(page, workingPath)
 
       const workingNames = readStoredZipNames(workingPath)
       expect(workingNames).toContain('WORKING-COPY.json')

@@ -4,6 +4,7 @@
 // @shared is bundled.
 import type {
   ActiveSelectorsResult,
+  CaptureCardDetails,
   CaptureServerCase,
   CaptureServerStatus,
   CaptureUploadResult,
@@ -360,4 +361,20 @@ export async function checkConnection(): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+export function getCaptureCard(caseId: string, captureId: string): Promise<CaptureCardDetails> {
+  return request('/api/captures/card', {
+    method: 'POST',
+    body: JSON.stringify({ caseId, captureId })
+  })
+}
+
+export function setCaptureCardTag(params: {
+  caseId: string
+  captureId: string
+  tagId: string
+  applied: boolean
+}): Promise<{ ok: true }> {
+  return request('/api/captures/card/tag', { method: 'POST', body: JSON.stringify(params) })
 }

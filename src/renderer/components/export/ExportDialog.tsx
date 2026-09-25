@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { useQuery } from '@tanstack/react-query'
 import { Archive, ChevronDown, ShieldCheck, TriangleAlert } from 'lucide-react'
-import type { ExportClass, ExportOptions } from '@shared/types'
+import type { CaseWaybackRef, ExportClass, ExportOptions } from '@shared/types'
 import { safeFilename } from '@shared/safeFilename'
 import { presets } from '@renderer/lib/motion'
 import { useCompletionCelebration } from '@renderer/hooks/useCompletionCelebration'
@@ -11,7 +11,8 @@ import { ExportProgress } from '@renderer/components/export/ExportProgress'
 import { ExportComplete } from '@renderer/components/export/ExportComplete'
 import { exportPreflightQueryOptions, useExportMutations } from '@renderer/lib/api/export'
 import { caseQueryOptions } from '@renderer/lib/api/cases'
-import { waybackCasePinsQueryOptions } from '@renderer/lib/api/wayback'
+import { EntityContextMenu } from '@renderer/components/contextmenu/EntityContextMenu'
+import { waybackCasePinsQueryOptions, useWaybackMutations } from '@renderer/lib/api/wayback'
 import { formatSnapshotDelta } from '@shared/wayback'
 
 interface ExportDialogProps {
@@ -341,10 +342,9 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
                         // No verification materials exist in a Working Copy,
                         // so the row only renders for evidence exports.
                         ...(workingCopy ? [] : [['auditTrail', 'Integrity verification'] as const])
-                      ] as ReadonlyArray<readonly [
-                        'captures' | 'screenshots' | 'notes' | 'auditTrail',
-                        string
-                      ]>
+                      ] as ReadonlyArray<
+                        readonly ['captures' | 'screenshots' | 'notes' | 'auditTrail', string]
+                      >
                     ).map(([key, label]) => (
                       <label key={key} className="flex cursor-pointer items-center gap-2">
                         <input
@@ -391,8 +391,8 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
                   <span>
                     Non-evidentiary working copy: no Certification, no signed Manifest, no
                     verification materials. The export is recorded on the case audit trail and
-                    marked as a working copy; the standalone verifier reports it as not a
-                    verifiable object.
+                    marked as a working copy; the standalone verifier reports it as not a verifiable
+                    object.
                   </span>
                 </div>
               ) : (
@@ -403,8 +403,8 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
                   <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-accent" strokeWidth={1.8} />
                   <span>
                     Evidence package: ships the full signed Manifest chain and the Certification,
-                    and appends a signed export entry to the case audit trail. The Certification
-                    is signed by the Operator.
+                    and appends a signed export entry to the case audit trail. The Certification is
+                    signed by the Operator.
                   </span>
                 </div>
               )}
@@ -418,22 +418,9 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
               {!workingCopy && pinnedRefs.length > 0 && (
                 <div className="mb-4" data-testid="export-pinned-wayback">
                   <Label className="mb-2">Pinned Wayback snapshots</Label>
-                  <div className="flex flex-col overflow-hidden rounded-md border border-border">
+                  <div className="flex flex-col overflow-hidden rounded-md border border-border [&>div:last-child>div]:border-b-0">
                     {pinnedRefs.map((ref) => (
-                      <div
-                        key={ref.id}
-                        data-testid="export-pinned-wayback-row"
-                        className="flex items-center gap-2 border-b border-border px-3 py-2 last:border-b-0"
-                      >
-                        <Archive className="h-3 w-3 shrink-0 text-text-muted" />
-                        <span className="shrink-0 text-xs tabular-nums text-text-secondary">
-                          {new Date(ref.snapshotTimestamp).toISOString().replace('T', ' ').slice(0, 16)}{' '}
-                          UTC
-                        </span>
-                        <span className="ml-auto min-w-0 truncate text-[11px] text-text-faint">
-                          {formatSnapshotDelta(ref.snapshotTimestamp, ref.captureTimestamp) ?? ''}
-                        </span>
-                      </div>
+                      <PinnedSnapshot key={ref.id} snapshot={ref} />
                     ))}
                   </div>
                   <p className="mt-1.5 text-[11px] text-text-muted">
@@ -484,5 +471,32 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
         </AnimatePresence>
       </motion.div>
     </motion.div>
+  )
+}
+
+function PinnedSnapshot({ snapshot }: { snapshot: CaseWaybackRef }) {
+  const { unpin } = useWaybackMutations(snapshot.captureId)
+  return (
+    <EntityContextMenu
+      target={{
+        kind: 'snapshot',
+        label: snapshot.snapshotTimestamp,
+        exportRow: true,
+        actions: { unpin: () => unpin.mutate(snapshot.id) }
+      }}
+    >
+      <div
+        data-testid="export-pinned-wayback-row"
+        className="flex items-center gap-2 border-b border-border px-3 py-2"
+      >
+        <Archive className="h-3 w-3 shrink-0 text-text-muted" />
+        <span className="shrink-0 text-xs tabular-nums text-text-secondary">
+          {new Date(snapshot.snapshotTimestamp).toISOString().replace('T', ' ').slice(0, 16)} UTC
+        </span>
+        <span className="ml-auto min-w-0 truncate text-[11px] text-text-faint">
+          {formatSnapshotDelta(snapshot.snapshotTimestamp, snapshot.captureTimestamp) ?? ''}
+        </span>
+      </div>
+    </EntityContextMenu>
   )
 }

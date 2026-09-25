@@ -251,3 +251,35 @@ describe('noteDoc mentions', () => {
     ])
   })
 })
+
+describe('embedded note images', () => {
+  const image = (src: unknown, alt: unknown = 'Site logo') => ({
+    type: 'doc',
+    content: [{ type: 'image', attrs: { src, alt } }]
+  })
+  it('preserves a local image and derives the alt text for search and reports', () => {
+    const doc = image('data:image/png;base64,aGVsbG8=')
+    expect(parseNoteDoc(JSON.stringify(doc))).toEqual(doc)
+    expect(noteDocToText(doc)).toBe('Site logo')
+    expect(noteDocToText(image('data:image/png;base64,aGVsbG8=', ''))).toBe('[Image]')
+    expect(extractNoteMentions(doc)).toEqual([])
+  })
+  it.each([
+    'https://example.com/tracker.png',
+    'file:///etc/passwd',
+    'data:image/svg+xml;base64,PHN2Zz4=',
+    '',
+    null,
+    'data:image/png;base64,'
+  ])('rejects unsafe or unsupported sources %s', (src) => {
+    expect(() => parseNoteDoc(JSON.stringify(image(src)))).toThrow('invalid embedded image')
+  })
+  it('rejects invalid alternate text and oversize embedded data', () => {
+    expect(() => parseNoteDoc(JSON.stringify(image('data:image/png;base64,aA==', 23)))).toThrow(
+      'invalid embedded image'
+    )
+    expect(() =>
+      parseNoteDoc(JSON.stringify(image(`data:image/png;base64,${'a'.repeat(3_000_000)}`)))
+    ).toThrow('invalid embedded image')
+  })
+})

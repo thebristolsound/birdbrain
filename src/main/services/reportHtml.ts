@@ -267,11 +267,17 @@ export interface ReportData {
    * selection leaves out, the disclosure #985 established for notes: a reader
    * reconciling the package against the chain must be told the number rather
    * than left to count it.
+   *
+   * `omittedNoteCount` carries that same disclosure for the operator notes the
+   * scope leaves behind (#985). It is zero when notes were excluded from the
+   * export altogether — there is no notes.md for the reader to mistake for the
+   * Case's complete work product then, so the custody module says nothing.
    */
   selectionScope: {
     selectedCaptureCount: number
     caseCaptureCount: number
     excludedExhibitCount: number
+    omittedNoteCount: number
   } | null
 }
 
@@ -997,6 +1003,18 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
           } of other kinds that the case holds. The number is stated here rather than left to be
     counted: an exhibit the chain records and this package does not enclose is accounted for by
     the operator's selection, not missing.`
+        : ''
+    }${
+      // Only for a package: a standalone report encloses no notes.md, so there
+      // is no file here for the count to describe (#985).
+      packaged && options.include.notes && data.selectionScope.omittedNoteCount > 0
+        ? ` The enclosed <code>notes.md</code> follows the same scope: it holds the operator notes
+    attached to the selected captures, and leaves out ${data.selectionScope.omittedNoteCount}
+    note${data.selectionScope.omittedNoteCount === 1 ? '' : 's'} the case holds. A note attached
+    to no capture, or to a capture outside the selection, is left behind by the scope, as is a
+    note attached to a selected capture that also points at another of the case's captures this
+    export leaves out; the number is stated here so the file is not read as the operator's
+    complete work product.`
         : ''
     }${
       packaged

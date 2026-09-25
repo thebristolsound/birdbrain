@@ -21,6 +21,9 @@ interface SignalRowProps {
   onExportMatches: () => void
   /** Tags only: narrow the captures list by this tag and go there (#918). */
   onFilterCaptures: () => void
+  onDuplicateTag: () => void
+  onExportTag: () => void
+  onCopyTagMarkdown: () => void
   /** Tags only: recolour the tag from the shared palette. */
   onSetColor: (color: string) => void
   /** Tags only: open the merge dialog with this tag as the source. */
@@ -50,6 +53,9 @@ export function SignalRow({
   onShowMatches,
   onExportMatches,
   onFilterCaptures,
+  onDuplicateTag,
+  onExportTag,
+  onCopyTagMarkdown,
   onSetColor,
   onMerge,
   onFocusSibling,
@@ -124,6 +130,9 @@ export function SignalRow({
         palette: TAG_PALETTE_LABELS,
         actions: {
           filterCaptures: onFilterCaptures,
+          duplicate: onDuplicateTag,
+          exportCaptures: onExportTag,
+          copyMarkdown: onCopyTagMarkdown,
           rename: beginEdit,
           setColor: onSetColor,
           merge: onMerge,
@@ -143,7 +152,7 @@ export function SignalRow({
         onDoubleClick={beginEdit}
         onKeyDown={handleKey}
         className={[
-          'group flex cursor-pointer items-center gap-3 rounded px-[10px] py-2 transition-colors',
+          'signal-enter group flex cursor-pointer items-center gap-3 rounded px-[10px] py-2 transition-colors',
           'outline-none focus:border-accent focus:bg-accent-subtle',
           selected ? 'border border-accent/35 bg-accent-subtle' : 'border border-transparent'
         ].join(' ')}

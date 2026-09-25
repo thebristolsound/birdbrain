@@ -52,7 +52,10 @@ import type {
   TokenUsage,
   UpdateStatus,
   WaybackLookupResult,
-  WaybackSnapshot
+  WaybackSnapshot,
+  Persona,
+  PersonaImportResult,
+  PersonaStorageState
 } from '@shared/types'
 import type { CaseManifestSnapshot } from '@shared/manifestSnapshot'
 
@@ -118,6 +121,15 @@ export const IPC_CHANNELS = {
   TAGS_GET_FOR_NOTE: 'tags:getForNote',
   TAGS_MERGE: 'tags:merge',
   TAGS_CAPTURES_WITH_ANY_TAG: 'tags:capturesWithAnyTag',
+  // Personas (#1497). `persona:import` takes a persona id and opens the
+  // native file dialog in main: the file path never crosses IPC from the
+  // renderer and the file contents never cross it at all.
+  PERSONAS_LIST: 'persona:list',
+  PERSONAS_CREATE: 'persona:create',
+  PERSONAS_UPDATE: 'persona:update',
+  PERSONAS_DELETE: 'persona:delete',
+  PERSONAS_IMPORT: 'persona:import',
+  PERSONAS_STORAGE_STATE: 'persona:storageState',
 
   // Session (renderer-side session control; the extension drives HTTP)
   SESSION_SNAPSHOT: 'session:snapshot',
@@ -221,6 +233,7 @@ export const IPC_CHANNELS = {
   DIAGNOSTICS_LOG: 'diagnostics:log',
   DIAGNOSTICS_RECENT: 'diagnostics:recent',
   DIAGNOSTICS_REVEAL_LOG: 'diagnostics:revealLog',
+  DIAGNOSTICS_EXPORT_LOGS: 'diagnostics:exportLogs',
   DIAGNOSTICS_OPEN_STORAGE_ROOT: 'diagnostics:openStorageRoot',
   DIAGNOSTICS_LAST_SESSION: 'diagnostics:lastSession',
   DIAGNOSTICS_CREATE_REPORT: 'diagnostics:createReport',
@@ -265,6 +278,7 @@ export const IPC_CHANNELS = {
   DB_DELETE_ROW: 'db:deleteRow',
   DB_VACUUM: 'db:vacuum',
   DB_REBUILD_FTS: 'db:rebuildFts',
+  DB_INTEGRITY_CHECK: 'db:integrityCheck',
   DB_PURGE_ARCHIVED: 'db:purgeArchived',
   DB_FIND_ORPHANS: 'db:findOrphans',
   DB_CLEAN_ORPHANS: 'db:cleanOrphans',
@@ -344,7 +358,7 @@ export interface ExtensionAttachEvent {
 }
 
 // Deep-link (birdbrain://) navigation targets pushed from main to the renderer
-export type DeepLinkTarget = 'dashboard' | 'settings'
+export type DeepLinkTarget = 'dashboard' | 'settings' | { caseId: string; captureId: string }
 
 // Payload types for IPC calls
 export interface CreateCaseParams {
@@ -378,6 +392,17 @@ export interface UpdateTagParams {
   id: string
   name?: string
   color?: string
+}
+
+export interface CreatePersonaParams {
+  label: string
+  notes?: string
+}
+
+export interface UpdatePersonaParams {
+  id: string
+  label?: string
+  notes?: string
 }
 
 export interface CaptureTagParams {
@@ -822,6 +847,13 @@ export interface IpcInvokeContract {
   // Union, not intersection: the ids of every capture in the case carrying any
   // of these tags (#918). Unbounded, unlike `tags:captureMatrix`.
   'tags:capturesWithAnyTag': { args: [caseId: string, tagIds: string[]]; result: string[] }
+  'persona:list': { args: []; result: Persona[] }
+  'persona:create': { args: [params: CreatePersonaParams]; result: Persona }
+  'persona:update': { args: [params: UpdatePersonaParams]; result: Persona | undefined }
+  'persona:delete': { args: [id: string]; result: boolean }
+  // null when the operator cancelled the file dialog.
+  'persona:import': { args: [personaId: string]; result: PersonaImportResult | null }
+  'persona:storageState': { args: []; result: PersonaStorageState }
 
   'selectors:list': { args: [caseId: string]; result: Selector[] }
   'selectors:get': { args: [id: string]; result: Selector | undefined }
@@ -914,6 +946,7 @@ export interface IpcInvokeContract {
   'db:deleteRow': { args: [params: DbRowIdentifier]; result: boolean }
   'db:vacuum': { args: []; result: { freedBytes: number } }
   'db:rebuildFts': { args: []; result: { rowsIndexed: number; textsHealed: number } }
+  'db:integrityCheck': { args: []; result: { ok: boolean; issues: string[] } }
   'db:purgeArchived': { args: []; result: { casesDeleted: number; capturesDeleted: number } }
   'db:findOrphans': { args: []; result: OrphanReport }
   'db:cleanOrphans': {
@@ -960,6 +993,7 @@ export interface IpcInvokeContract {
   'diagnostics:log': { args: [payload: RendererLogPayload]; result: string }
   'diagnostics:recent': { args: [limit: number]; result: LogEntry[] }
   'diagnostics:revealLog': { args: []; result: void }
+  'diagnostics:exportLogs': { args: []; result: { path: string } | null }
   'diagnostics:openStorageRoot': { args: []; result: void }
   'diagnostics:lastSession': { args: []; result: SessionRecord | null }
   'diagnostics:createReport': {

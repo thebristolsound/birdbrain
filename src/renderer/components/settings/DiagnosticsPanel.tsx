@@ -407,16 +407,20 @@ export function DiagnosticsPanel() {
                   value={snap.trustedTimestamping.enabled ? 'Enabled' : 'Disabled'}
                 />
               </div>
-              {/* Scoped the same way as the Settings copy (#1169 review): tokens
+              {/* No enabled-state copy here. Three rounds of review each found the
+                  sentence describing what is disclosed either over- or understating
+                  it, so it is cut rather than patched a fourth time; Settings →
+                  Operator is the one place that describes the disclosure. The
+                  declined copy is scoped the way the Settings copy is: tokens
                   obtained before the switch went off still assert trusted time in
-                  the badge and in every export, so a flat "no trusted time is
-                  asserted" would misdescribe evidence the operator already holds.
-                  Only MHTML captures are eligible, per stampCapture. */}
-              <p className="mt-2 text-xs text-text-muted">
-                {snap.trustedTimestamping.enabled
-                  ? 'Each MHTML capture’s content hash is sent to the configured RFC 3161 authority, which also sees this device’s IP address and the time of the request.'
-                  : 'No capture is sent to a timestamp authority, and captures made while it is off assert no trusted time; timestamps already obtained are kept. Change this under Settings → Operator.'}
-              </p>
+                  the badge and in every export. */}
+              {!snap.trustedTimestamping.enabled && (
+                <p className="mt-2 text-xs text-text-muted">
+                  No capture is sent to a timestamp authority, and captures made while it is off
+                  assert no trusted time; timestamps already obtained are kept. Change this under
+                  Settings → Operator.
+                </p>
+              )}
             </Section>
 
             <Section title="Responsiveness">

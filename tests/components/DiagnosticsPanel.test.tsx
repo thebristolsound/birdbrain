@@ -212,13 +212,15 @@ describe('DiagnosticsPanel storage folder action', () => {
     expect(await screen.findByText(/was written to disk unprotected/)).toBeDefined()
   })
 
-  // #1169. Both branches are pinned: the enabled one has to name what is
-  // disclosed and to whom, and the declined one has to say plainly that nothing
-  // is sent, or the panel is worth nothing to the operator checking it.
-  it('states what the timestamp authority sees while timestamping is on', async () => {
+  // #1169. The enabled state shows the state and no prose: three review rounds
+  // each found the sentence describing the disclosure either over- or
+  // understating it, so the panel no longer carries one and this pins its
+  // absence. Settings → Operator is where the disclosure is described.
+  it('shows the state with no disclosure prose while timestamping is on', async () => {
     renderPanel()
     expect(await screen.findByText('Enabled')).toBeDefined()
-    expect(await screen.findByText(/IP address and the time of the request/)).toBeDefined()
+    expect(screen.queryByText(/content hash is sent/)).toBeNull()
+    expect(screen.queryByText(/IP address and the time of the request/)).toBeNull()
   })
 
   it('states that nothing is sent when timestamping is declined', async () => {

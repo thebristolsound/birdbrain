@@ -5,7 +5,8 @@ agent setup, so a model change is a measured decision rather than an argued one.
 model against a fixed corpus under a fixed configuration and reports the result beside the
 current dispatch model's baseline.
 
-Status: proposed 2026-09-25, awaiting the open questions at the end.
+Status: proposed 2026-09-25; the maintainer answered the open questions the same day, and the
+decisions section at the end records them.
 
 Constraint set 2026-09-25: no API keys. Every model call goes through a subscription
 command-line tool, `claude -p` on Claude Max and `codex exec` on Codex Pro. Anything the
@@ -20,7 +21,7 @@ Two review tasks, both ones the pipeline already performs:
    `.claude/skills/post-comment/` enforces.
 2. **Plan review.** A judgement on a plan, spec, or issue: does it clear the ready-for-agent
    bar, which route does it take, and which acceptance criteria are unverifiable. This half has
-   weaker ground truth and is advisory in the first version.
+   weaker ground truth and is deferred until code review has a committed baseline.
 
 The system under test is the model plus the repository's agent configuration, not the model
 alone. Every result row names both.
@@ -94,9 +95,12 @@ list; each level produces its own manifest and its own result set, so a sweep is
 ordinary runs the report joins.
 
 - **Levels.** Claude accepts `low`, `medium`, `high`, `xhigh` and `max` (from
-  `claude --help`). The Codex levels are the values its configuration reference lists for
-  `model_reasoning_effort`, confirmed at implementation time rather than assumed here. A level a
-  vendor rejects is recorded as `status: unsupported` for that model, never as a failure.
+  `claude --help`). Codex levels are per model and the runner reads them from the Codex model
+  cache (`~/.codex/models_cache.json`, field `supported_reasoning_levels`) rather than
+  hardcoding them: on 2026-09-25 that file lists `low`, `medium`, `high`, `xhigh`, `max`, `ultra` for
+  `gpt-6-astra` (default `medium`) and `low`, `medium`, `high`, `xhigh`, `max`, `ultra` for
+  `gpt-5.6-sol` (default `low`). A level a model does not list is recorded as
+  `status: unsupported`, never as a failure.
 - **Report.** One table per model: quality metrics, cross-rep consistency and usage per case
   at each level, plus a paired comparison of adjacent levels with its confidence interval.
   Consistency is reported per level because effort changes run-to-run variance, not only the
@@ -125,8 +129,9 @@ Code review cases come from two sources, so the set is not hostage to label nois
   that overclaims what the code does. The last class is the one the reviewer file names as its
   highest-yield rule and the one PR #423 hit in all five rounds. Truth is exact and free.
 
-Plan review cases are issues that carry a human route label (the TypeSafe spike used 123 of them),
-plus plans in `docs/plans/` whose later amendment records what the first review missed.
+Plan review cases, when that stage arrives, are issues that carry a human route label (the
+TypeSafe spike used 123 of them), plus plans in `docs/plans/` whose later amendment records
+what the first review missed.
 
 Every case is a directory holding the inputs, the truth file, and a `tags` field; the truth
 file is never reachable from the worktree the model reads.
@@ -176,7 +181,8 @@ Run by hand only. Nothing here is a CI check or a scheduled job (ADR-0029, ADR-0
    matcher with its unit tests, oracle and null checks. No model calls.
 2. **Runner.** Tier L0 and L1, manifest hashing, replay cache, per-row output with
    `status`. Tier L2 behind a flag.
-3. **Pilot.** Five cases, two models, three reps, the full effort sweep for each. Measures
+3. **Pilot.** Five cases, Opus 5 plus the four candidates, three reps, the full effort
+   sweep for each. Measures
    usage per case at each level, cross-rep variance and the noise floor. Go or no-go on the
    full set size, and the effort level each model carries into stage 4.
 4. **Baseline.** Full set on the current dispatch model (`claude-opus-5`, from
@@ -186,6 +192,7 @@ Run by hand only. Nothing here is a CI check or a scheduled job (ADR-0029, ADR-0
    baseline at its own selected level, and change `DISPATCH_MODEL` (and the effort the
    dispatcher passes) only when verdict accuracy and blocker recall are within noise or better
    and claim discipline is not worse. Recorded as an ADR, on the ADR-0031 pattern.
+6. **Plan review.** Cases, graders and a baseline for the second task, on the same runner.
 
 ## Accounts and usage windows
 
@@ -204,14 +211,21 @@ sessions. The runner therefore:
 
 Codex Pro's login state is recorded the same way.
 
-## Open questions
+## Decisions (2026-09-25)
 
-1. Which models form the first comparison beside the current dispatch model, Opus 5, and
-   which Codex model is the first Codex entry?
-2. Is a per-output LLM judge acceptable for the one readability dimension, or programmatic
-   grading only?
-3. Adjudicated real PR cases need a maintainer pass over roughly twenty truth files. Is that
-   available for the first version, or does it ship on mutation cases alone?
-4. Which Claude login runs the benchmark, the 20x account or the 5x one, and in which hours,
-   given that it shares those accounts' usage windows?
-5. Does plan review ship in the first version, or wait until code review has a baseline?
+1. **Models.** Claude Fable 5.1 (`claude-fable-5-1`) and Claude Opus 5.5 (`claude-opus-5-5`)
+   on Claude Max; GPT-6-Astra (`gpt-6-astra`) and GPT-5.6-Sol (`gpt-5.6-sol`) on Codex Pro,
+   slugs from the Codex model cache. The current dispatch model, Opus 5, is the baseline
+   they are compared against and runs first.
+2. **Judge.** Fable 5.1 through `claude -p`, no tools, for the readability dimension only.
+   Fable 5.1 is also a candidate, so its own rows carry a self-judged mark on that one
+   dimension; the headline metrics are programmatic and untouched by it.
+3. **Adjudication.** The first version takes no new maintainer labelling. Real PR cases are
+   limited to those whose truth already exists in the record: the seven wave-2 PRs with a
+   reviewer, skeptic and final adjudication, and any PR with an override record. Everything
+   else comes from mutation-injected cases. Fresh adjudication of further real PRs is a later
+   stage, added when the mutation set stops discriminating.
+4. **Account.** The 20x Claude login, run by hand, never scheduled. The runner records the
+   active login in the manifest and refuses to start if `CLAUDE_CODE_OAUTH_TOKEN` is set,
+   since that variable would silently switch accounts.
+5. **Plan review.** After the code-review baseline is committed, as its own stage.

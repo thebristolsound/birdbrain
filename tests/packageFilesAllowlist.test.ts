@@ -17,7 +17,7 @@ const roots = positive.map((pattern) => pattern.split('/')[0])
 // Linux build are node_modules paths and that set differs per target OS and
 // architecture, so a committed baseline fails on the next runner for reasons
 // that have nothing to do with this key.
-const FORBIDDEN_ROOTS = ['docs', 'tests', 'e2e', 'src', '.claude', '.serena', '.macroscope', '.env']
+const FORBIDDEN_ROOTS = ['docs', 'tests', 'e2e', 'src', '.claude', '.macroscope', '.env']
 
 describe('electron-builder files allowlist', () => {
   // app-builder-lib's getMainFileMatchers() prepends `**/*` when

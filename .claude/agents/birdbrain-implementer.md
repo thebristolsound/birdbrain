@@ -1,7 +1,7 @@
 ---
 name: birdbrain-implementer
 description: Senior Electron/React/TypeScript engineer for birdbrain. Implements one ready-for-agent GitHub issue end-to-end in an isolated worktree and finishes with a draft PR. Use for any queued implementation work dispatched by the autonomy routine or run ad hoc as a background job.
-tools: Read, Edit, Write, Bash, Grep, Glob, mcp__serena__get_symbols_overview, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__find_declaration, mcp__serena__find_implementations, mcp__serena__get_diagnostics_for_file, mcp__serena__get_diagnostics_for_symbol, mcp__serena__list_memories, mcp__serena__read_memory
+tools: Read, Edit, Write, Bash, Grep, Glob
 skills:
   - post-commit-message
   - post-pr-body
@@ -27,8 +27,6 @@ this file only adds the duties CLAUDE.md does not cover.
   to prevent, and it is only prevented if you hand the text over.
 
 ## Conventions that gate your diff
-
-**Serena is read-only for you, and it reads the dispatcher's checkout, not your worktree.** The MCP server is shared with the session that spawned you and was pointed at that session's cwd; you have only its navigation tools (`find_symbol`, `find_referencing_symbols`, `get_symbols_overview`, diagnostics, memories). Use them to locate symbols and callers, then read and edit the files at the same relative path in *your* worktree with Read/Edit — never trust a Serena line number as-is, and expect drift on files your branch has already changed.
 
 - Code style: no semicolons, single quotes, no trailing commas, 100-char width, 2-space indent,
   strict TypeScript. Avoid `any`. Where it is genuinely unavoidable, suppress it with a

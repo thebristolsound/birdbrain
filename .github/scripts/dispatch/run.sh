@@ -16,10 +16,8 @@
 # itself on this host, including where a reviewer's full report has to be left
 # for the verdict comment's link to survive the runner.
 #
-# Project MCP servers are disabled: .mcp.json starts Serena through uvx, which is
-# not on the runner, and a failed server start is startup time spent for nothing.
-# The implementer's Serena tools therefore do not resolve here, which its
-# contract already tolerates.
+# Project MCP servers are disabled: none are configured, and a server start on
+# the runner would be startup time spent for nothing.
 set -euo pipefail
 
 # An API error can quote the credential it was sent: a malformed
@@ -36,7 +34,7 @@ mkdir -p .dispatch/reports
 context="You are running unattended from GitHub Actions run ${RUN_URL:-<unknown>} (ADR-0026).
 The environment probe reads LOCAL here: nothing sits between gh and GitHub.
 GH_TOKEN and the checkout's git credential are both the machine account, so bare gh and agh are the same identity, and the implementer pushes as the machine account over HTTPS.
-Serena is not available on this host; its tools will not resolve. Node 20 and pnpm are already on PATH; no mise prefix is needed.
+Node 20 and pnpm are already on PATH; no mise prefix is needed.
 The machine token carries repo scope and not gist scope, so a pre-pass 'Full report:' link cannot be a gist here. Copy each reviewer full report to .dispatch/reports/pr-<number>-<short sha>.md, which is uploaded as the dispatch-run artifact of this run, and make the link read: ${RUN_URL:-<unknown>} (artifact dispatch-run, reports/pr-<number>-<short sha>.md). The runner filesystem is gone once the job ends, so a bare path is not a link."
 
 case "$mode" in

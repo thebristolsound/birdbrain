@@ -83,20 +83,6 @@ TypeScript projects. Use `pnpm test <path>` for a single file, without `--`.
 - ESLint 9 flat config with TypeScript ESLint + Prettier
 - Prefer semantic theme tokens over raw color values in components (exceptions: overlays, status/severity colors)
 
-## Code navigation (Serena)
-
-Serena (MCP, `--context claude-code --project-from-cwd`) is the code-navigation layer. For symbol
-work use its tools and trust the results — `get_symbols_overview` for a file's shape, `find_symbol`
-(with `include_body`) to read one symbol, `find_referencing_symbols` for callers, `rename_symbol` /
-`replace_symbol_body` for cross-file edits. `Grep` is for literal text (strings, config, TODOs);
-do not re-read files to confirm a Serena answer. Skip Serena for one-line lookups — it costs more
-than a plain read there.
-
-`.serena/memories/` and `.serena/project.yml` are committed (`.gitignore` keeps `cache/` and
-`project.local.yml` local) so every worktree shares them. Memories hold navigation facts only —
-`mem:core` is the entry point; conventions belong in this file, domain language in `CONTEXT.md`.
-The language-server cache is per worktree, so the first symbolic call in a fresh worktree is slow.
-
 ## Agent skills
 
 ### Issue tracker

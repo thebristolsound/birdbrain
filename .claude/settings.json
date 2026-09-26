@@ -13,24 +13,11 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/session-start.sh"
-          },
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/serena-hook.sh activate"
           }
         ]
       }
     ],
     "PreToolUse": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/serena-hook.sh remind"
-          }
-        ]
-      },
       {
         "matcher": "Bash",
         "hooks": [
@@ -45,16 +32,6 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PROJECT_DIR}\"/.claude/skills/post-comment/scripts/check.sh"
-          }
-        ]
-      }
-    ],
-    "SessionEnd": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/serena-hook.sh cleanup"
           }
         ]
       }

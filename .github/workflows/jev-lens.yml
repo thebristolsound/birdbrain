@@ -22,6 +22,7 @@ on:
 permissions:
   contents: read
   issues: write
+  pull-requests: read # `gh pr diff` goes through GraphQL and needs it; the first run failed without
   statuses: write
 
 concurrency:

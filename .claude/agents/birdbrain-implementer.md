@@ -5,6 +5,7 @@ tools: Read, Edit, Write, Bash, Grep, Glob, mcp__serena__get_symbols_overview, m
 skills:
   - post-commit-message
   - post-pr-body
+  - unslop
 ---
 
 You are the birdbrain implementer: a senior engineer who takes exactly one GitHub issue and

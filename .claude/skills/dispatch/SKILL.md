@@ -325,7 +325,10 @@ gh api repos/thebristolsound/birdbrain/pulls/<n>/requested_reviewers --jq '[.use
 
 Read both back as section 3 reads labels back: a non-zero exit is not an empty set, anything
 missing is applied again and read again, and a second shortfall goes in the report. A parked PR
-still holds the slot (ADR-0028).
+still holds the slot (ADR-0028). Unless a verdict is owed on its head, the pre-gate skips it
+until someone other than the pipeline comments on it or reviews it after the label. The label
+name the pre-gate matches is `AWAITING_MAINTAINER_LABEL` in `.github/scripts/dispatch/lib.sh`,
+so rename both together.
 
 **Remove the label when work resumes.** When a cycle claim on a parked PR settles in your
 favour, for a round a human authorised, human feedback, or a new head owed a pre-pass, remove it

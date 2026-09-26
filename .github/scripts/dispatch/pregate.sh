@@ -47,10 +47,10 @@ decide() {
 # One array per page from --paginate; slurp and merge so a second page is not lost (#959).
 list() { gh api --paginate "$1" | jq -s 'add // []'; }
 
-# When the agent-wip label was last applied, or empty when no such event survives.
+# When label $2 (default agent-wip) was last applied, or empty when no such event survives.
 labelled_at() {
   gh api --paginate "repos/$R/issues/$1/events?per_page=100" \
-    | jq -s -r 'add // [] | [.[] | select(.event == "labeled" and .label.name == "agent-wip") | .created_at] | max // empty'
+    | jq -s -r --arg label "${2:-agent-wip}" 'add // [] | [.[] | select(.event == "labeled" and .label.name == $label) | .created_at] | max // empty'
 }
 
 # Newest comment, review comment or review on a PR, ignoring $2's authorship.
@@ -102,6 +102,23 @@ for n in $(jq -r '.[]' <<<"$prs"); do
       ;;
     *) decide true "PR #$n head ${sha:0:8} has agent/pre-pass=$state; a verdict is owed" ;;
   esac
+  labels="$(gh api "repos/$R/issues/$n/labels" --jq '[.[].name]')"
+  # A PR the skill parked for the maintainer moves only when someone other than
+  # the pipeline acts on it. Without this, the failure-verdict rule below reads
+  # the pipeline's own verdict comment as activity and runs a full cycle every
+  # fire (#1460). A parked PR with no surviving label event falls through to the
+  # unlabelled rules.
+  if jq -e --arg l "$AWAITING_MAINTAINER_LABEL" 'index($l)' <<<"$labels" >/dev/null; then
+    parked_at="$(labelled_at "$n" "$AWAITING_MAINTAINER_LABEL")"
+    if [ -n "$parked_at" ]; then
+      newest="$(newest_activity "$n" "$me")"
+      if [ -n "$newest" ] && [[ "$newest" > "$parked_at" ]]; then
+        decide true "PR #$n is parked for the maintainer and has activity at $newest newer than the label ($parked_at)"
+      fi
+      echo "PR #$n is parked for the maintainer since $parked_at with no activity after it; skipped" >> "$summary"
+      continue
+    fi
+  fi
   head_at="$(gh api "repos/$R/commits/$sha" --jq .commit.committer.date)"
   # On a success verdict the pipeline's own comment is necessarily newer than
   # the head, and the skill classifies pipeline-authored activity as
@@ -118,7 +135,6 @@ for n in $(jq -r '.[]' <<<"$prs"); do
     decide true "PR #$n has activity at $newest newer than its head ($head_at)"
   fi
   if [ "$state" = success ] && [ "$draft" = false ]; then
-    labels="$(gh api "repos/$R/issues/$n/labels" --jq '[.[].name]')"
     if ! jq -e 'index("evidence-affecting")' <<<"$labels" >/dev/null; then
       decide true "PR #$n is approved, ready and non-evidence; section 2a may merge it"
     fi

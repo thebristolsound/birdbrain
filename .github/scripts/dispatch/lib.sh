@@ -12,3 +12,5 @@
 CLEANUP_FAILURE_PREFIX='Dispatch run ended'
 PENDING_TEXT='Reviewer pre-pass running.'
 CLAIM_MAX_AGE='4 hours ago'
+# The dispatch skill parks a stopped PR under this label and pregate.sh skips it; rename both.
+AWAITING_MAINTAINER_LABEL='awaiting-maintainer'

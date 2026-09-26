@@ -1,6 +1,6 @@
 # Jev shadow lenses: triage routing and the hunk demoter
 
-Status: proposed, waiting on three maintainer decisions (bottom of this file).
+Status: approved 2026-09-25 (all three decisions at the bottom answered yes; the pasted key was set as the secret). Built on branch `t3code/evaluate-jev-pipeline`.
 
 Grounds: the benchmark run recorded in `scripts/spikes/jev-bench/README.md` (2026-09-25). Triage
 routing agreed with the human label on 83% of 123 issues and found `process` work at AUC 0.92.
@@ -27,7 +27,8 @@ the numbers it collects.
   reviewer attention beyond a glance. They are never read by dispatch: the frontier stays
   `ready-for-agent` and `queued`.
 - Scoring: `scripts/jev-lens/score.mjs` lists issues that carry both a `lens:` label and a human
-  triage label and prints agreement, split by confidence. Run by hand, monthly.
+  triage label and prints agreement. Confidence lives in the job summary, not the label. Run by
+  hand, monthly.
 
 ## Lens 2: the hunk demoter
 
@@ -73,7 +74,7 @@ same-turn envelope, so this waits.
 ## Retire-or-promote criteria, 60 days or 30 PRs and 60 issues, whichever comes first
 
 - Lens 1 promotes to an advisory triage comment only if agreement with the human label holds at
-  or above 80% on issues where confidence is at least 0.8. Below 70% it is retired.
+  or above 80% on issues that carry both. Below 70% it is retired.
 - Lens 2 promotes to an input the reviewer must dispose of only if no hit it marked incidental is
   later relabelled blocking by a reviewer. One such miss retires the threshold, not the lens; a
   second retires the lens.

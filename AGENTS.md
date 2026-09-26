@@ -125,6 +125,10 @@ Scheduled Dispatch and Doc curator are paused. Before proposing a restart or add
 automation machinery, read [ADR-0029](docs/adr/0029-measure-before-expanding-agent-automation.md):
 verify basic spending limits and obtain explicit maintainer authorization to restart.
 
+Two Jev shadow lenses run event-driven from `.github/workflows/jev-lens.yml` (ADR-0031): `lens:*`
+issue labels and the `jev/evidence-hunks` commit status are advisory, never gate, and are never read by
+dispatch. `scripts/jev-lens/score.mjs` measures them.
+
 Unattended/background agent jobs working a `ready-for-agent` issue in this repo are opted out
 of the global wait-for-confirmation rules: do not pause for mid-task approval and do not wait
 for the user to confirm completion. Instead, commit and verify the work with `pnpm preflight`

@@ -27,7 +27,8 @@ export default defineConfig({
         'src/shared/**/*.ts',
         'src/renderer/**/*.{ts,tsx}',
         'src/packages/**/*.{ts,mts,cts}',
-        'scripts/slop-audit/**/*.mjs'
+        'scripts/slop-audit/**/*.mjs',
+        'scripts/jev-lens/**/*.mjs'
       ],
       exclude: [
         '**/*.d.ts',

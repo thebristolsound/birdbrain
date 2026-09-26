@@ -1,6 +1,8 @@
 // node run.mjs [bench ...]   — runs every benchmark (or the named ones), prints summaries,
 // writes results/<bench>.json. Needs TYPESAFE_API_KEY; responses are cached under .cache/.
 import { mkdirSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { usage, MODEL } from './lib/jev.mjs'
 
 const BENCHES = ['evidence-pr', 'claim-diff', 'ready-bar', 'commit-type', 'start-module', 'explore']
@@ -10,7 +12,8 @@ if (bad.length) {
   console.error(`unknown bench: ${bad.join(', ')}\nknown: ${BENCHES.join(', ')}`)
   process.exit(2)
 }
-mkdirSync(new URL('./results/', import.meta.url).pathname, { recursive: true })
+const resultsDir = join(dirname(fileURLToPath(import.meta.url)), 'results')
+mkdirSync(resultsDir, { recursive: true })
 
 for (const name of chosen) {
   const t0 = Date.now()
@@ -20,7 +23,7 @@ for (const name of chosen) {
   const out = await run()
   const secs = ((Date.now() - t0) / 1000).toFixed(1)
   const meta = { bench: name, model: usage.model || MODEL, ranAt: new Date().toISOString(), seconds: Number(secs), requests: usage.requests - before.requests, cached: usage.cached - before.cached, inputTokens: usage.inputTokens - before.inputTokens }
-  writeFileSync(new URL(`./results/${name}.json`, import.meta.url).pathname, JSON.stringify({ meta, ...out }, null, 1))
+  writeFileSync(join(resultsDir, `${name}.json`), JSON.stringify({ meta, ...out }, null, 1))
   console.log(JSON.stringify(out.summary, null, 1))
   console.log(`-- ${secs}s, ${meta.requests} requests (${meta.cached} cached), ${meta.inputTokens} input tokens`)
 }

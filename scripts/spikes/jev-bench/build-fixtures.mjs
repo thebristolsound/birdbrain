@@ -2,8 +2,10 @@
 // local git history; writes fixtures/*.json and fixtures/diffs/<pr>.diff. Re-run to refresh.
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const here = new URL('./fixtures/', import.meta.url).pathname
+const here = `${join(dirname(fileURLToPath(import.meta.url)), 'fixtures')}/`
 mkdirSync(`${here}diffs`, { recursive: true })
 const sh = (cmd, args, opts = {}) => execFileSync(cmd, args, { encoding: 'utf8', maxBuffer: 1 << 28, ...opts })
 const gh = (args) => JSON.parse(sh('gh', args))

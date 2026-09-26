@@ -1,5 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
-const here = new URL('../fixtures/', import.meta.url).pathname
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+const here = `${join(dirname(fileURLToPath(import.meta.url)), '..', 'fixtures')}/`
 const load = (name) => {
   const f = `${here}${name}.json`
   if (!existsSync(f)) throw new Error(`fixtures/${name}.json missing — run: node build-fixtures.mjs`)

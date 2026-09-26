@@ -7,6 +7,10 @@ current dispatch model's baseline.
 
 Status: proposed 2026-09-25, awaiting the open questions at the end.
 
+Constraint set 2026-09-25: no API keys. Every model call goes through a subscription
+command-line tool, `claude -p` on Claude Max and `codex exec` on Codex Pro. Anything the
+Messages API alone would have offered is out.
+
 ## What is measured
 
 Two review tasks, both ones the pipeline already performs:
@@ -36,13 +40,16 @@ available. Determinism therefore comes from three places and nowhere else.
 | Instruction file | `CLAUDE.md` content hash (the reviewer reads it first) |
 | Repository state | the pinned commit id, checked out into a fresh detached worktree |
 | Tool tier | the exact `--tools` list (see below), MCP config empty and strict |
-| Model and effort | model id, `output_config.effort` set explicitly (Opus 5.5 defaults to `medium`, the others to `high`) |
-| Harness | `claude --version`, Node version from `.nvmrc` |
+| Model and effort | model id and an explicit effort: `--model` plus the effort setting for `claude`, `-m` plus `-c model_reasoning_effort=…` for `codex` (Opus 5.5 defaults to `medium`, the others to `high`) |
+| Harness | `claude --version` or `codex --version`, Node version from `.nvmrc` |
 | Turn cap | the maximum turns, when the tier allows tools |
 
 Two runs are comparable only when their manifest hashes match. A CLI upgrade changes the
 harness system prompt, so it changes the manifest; cross-model comparisons run on one CLI
-version, and tier L0 exists so a comparison across time can bypass the harness entirely.
+version per vendor. With no API path there is no harness-free tier: a Claude result is always
+model plus Claude Code, a Codex result model plus Codex, and a cross-vendor row compares those
+bundles, which is the question the pipeline actually asks. Tier L0 keeps the harness but
+removes every tool, so it is the closest available thing to a bare-model comparison.
 
 **Freeze the environment.** Fresh worktree per case, `pnpm install --frozen-lockfile` once
 per repository commit, no network beyond the model API (tier L1 gets read-only git and no
@@ -58,21 +65,27 @@ reps is about ±9 points, which is the resolution the first version can claim.
 
 **Deterministic grading.** The primary grader is programmatic. An LLM judge is used only for
 one dimension (plain-language readability of the verdict's top layer), is never the model
-under test, is called with structured output, and is run twice on the same text with its
-disagreement rate reported.
+under test, runs through whichever command-line tool is not under test with no tools and a
+JSON schema (`codex exec --output-schema`, or a schema the grader validates for `claude`),
+and is run twice on the same text with its disagreement rate reported.
 
 ## Tool tiers
 
 The tier is a configuration axis, not a fixed choice.
 
-| Tier | Tools | Invocation | Use |
-| --- | --- | --- | --- |
-| L0 diff-only | none; the prompt carries the diff, the issue, and the instruction excerpt | one Messages API call with structured output | cheapest, most repeatable, survives CLI upgrades |
-| L1 read-only repo | `Read`, `Grep`, `Glob`, `Bash` with a read-only git allowlist | `claude -p` with `--model`, `--tools`, `--agents`, `--strict-mcp-config`, `--output-format json`, matching `.github/scripts/dispatch/run.sh` | the pre-pass as it reads code |
-| L2 full pre-pass | L1 plus the verify loop (`pnpm lint`, `typecheck`, `test:coverage`) | same, longer turn cap | the pre-pass as production runs it; five-case subset only |
+Tiers are defined by capability, not by tool name, because the two harnesses expose tools
+differently: Claude Code takes a tool allowlist, Codex takes a sandbox mode.
 
-The exact flag for the turn cap is confirmed against `claude --help` at implementation time,
-not assumed.
+| Tier | Capability | Claude Max | Codex Pro | Use |
+| --- | --- | --- | --- | --- |
+| L0 diff-only | no tools; the prompt carries the diff, the issue, and the instruction excerpt | `claude -p --tools ""` | `codex exec --sandbox read-only --ephemeral` in an empty directory | cheapest, most repeatable |
+| L1 read-only repo | read files, search, read-only git; no writes, no network | `--tools Read,Grep,Glob,Bash` with a read-only git allowlist, `--agents` carrying the reviewer definition, `--strict-mcp-config`, `--output-format json`, as `.github/scripts/dispatch/run.sh` does | `--sandbox read-only -C <worktree>`, the reviewer definition in the prompt (Codex reads `AGENTS.md`, which the repo keeps equal to `CLAUDE.md`) | the pre-pass as it reads code |
+| L2 full pre-pass | L1 plus the verify loop (`pnpm lint`, `typecheck`, `test:coverage`) | same, workspace writes allowed for build output, longer turn cap | `--sandbox workspace-write` | the pre-pass as production runs it; five-case subset only |
+
+Flags above were read from `claude --help` (2.1.282) and `codex exec --help` (0.154.0) on
+2026-09-25; the turn cap flag for each tool is confirmed the same way at implementation time,
+not assumed. Both tools return machine-readable output (`--output-format json` with
+`num_turns`, `duration_ms`, `usage`; `codex exec --json` and `--output-last-message`).
 
 ## Ground truth
 
@@ -105,7 +118,7 @@ file is never reachable from the worktree the model reads.
 | False-positive rate | findings matching a refuted set, plus findings no adjudicator accepted |
 | Claim discipline | does each cited file and line exist at the reviewed commit, and does quoted text match; fully programmatic |
 | Consistency | cross-rep verdict agreement and finding-set overlap |
-| Cost | input and output tokens, cache reads, turns, tool calls, wall time |
+| Usage | input and output tokens, cache reads, turns, tool calls, wall time; the `total_cost_usd` the Claude CLI reports is recorded as an API-equivalent figure, not a charge |
 
 Findings match a truth entry on file, a line window, and a category; the matcher is unit
 tested against hand-written pairs before any model run. The oracle and null checks from the
@@ -126,6 +139,8 @@ scripts/bench/review/
   report.mjs           # paired comparison against baselines/, CI, cost
   lib/manifest.mjs     # hashes the inputs above
   lib/replay.mjs       # tool-result record and replay cache
+  lib/claude.mjs       # claude -p driver: flags, JSON result parsing
+  lib/codex.mjs        # codex exec driver: flags, JSON result parsing
   cases/               # committed: inputs and truth for mutation cases; real cases fetched
   baselines/           # committed: one summary JSON per model and manifest
   results/, .cache/    # ignored
@@ -148,18 +163,31 @@ Run by hand only. Nothing here is a CI check or a scheduled job (ADR-0029, ADR-0
    `DISPATCH_MODEL` only when verdict accuracy and blocker recall are within noise or better
    and claim discipline is not worse. Recorded as an ADR, on the ADR-0031 pattern.
 
-## Cost
+## Accounts and usage windows
 
-Not quoted until stage 3 measures it. A single L1 pre-pass reads a diff, the instruction
-file and several source files; the pilot exists to turn that into a number per case per model
-before the full set is authorised. A spend cap for the pilot is one of the open questions.
+There is no dollar cost and no cap the runner can enforce. Both subscriptions meter usage in
+rolling windows shared with interactive work, so a full run competes with the maintainer's own
+sessions. The runner therefore:
+
+- runs cases serially per vendor, with a configurable pause, and stops cleanly on a rate-limit
+  response, marking the row `status: rate_limited` (never a zero score) and resuming from
+  the last completed case on the next invocation;
+- records tokens and turns per case so stage 3 can state how much of a window one case costs
+  and how many cases fit in one;
+- takes the Claude account from the environment: `CLAUDE_CODE_OAUTH_TOKEN` overrides the
+  stored login with no fallback, so the manifest records which login was active, and a run
+  meant for the second account must set that variable rather than assume.
+
+Codex Pro's login state is recorded the same way.
 
 ## Open questions
 
-1. Which models form the first comparison beside the current dispatch model, Opus 5?
+1. Which models form the first comparison beside the current dispatch model, Opus 5, and
+   which Codex model is the first Codex entry?
 2. Is a per-output LLM judge acceptable for the one readability dimension, or programmatic
    grading only?
 3. Adjudicated real PR cases need a maintainer pass over roughly twenty truth files. Is that
    available for the first version, or does it ship on mutation cases alone?
-4. What is the spend cap for the pilot?
+4. Which Claude login runs the benchmark, the 20x account or the 5x one, and in which hours,
+   given that it shares those accounts' usage windows?
 5. Does plan review ship in the first version, or wait until code review has a baseline?

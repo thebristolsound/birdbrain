@@ -40,7 +40,7 @@ available. Determinism therefore comes from three places and nowhere else.
 | Instruction file | `CLAUDE.md` content hash (the reviewer reads it first) |
 | Repository state | the pinned commit id, checked out into a fresh detached worktree |
 | Tool tier | the exact `--tools` list (see below), MCP config empty and strict |
-| Model and effort | model id and an explicit effort: `--model` plus the effort setting for `claude`, `-m` plus `-c model_reasoning_effort=…` for `codex` (Opus 5.5 defaults to `medium`, the others to `high`) |
+| Model and effort | model id and an explicit effort on every run: `--model` and `--effort <low\|medium\|high\|xhigh\|max>` for `claude`, `-m` and `-c model_reasoning_effort=<level>` for `codex`. Never inherited: Opus 5.5 defaults to `medium` where the other Claude models default to `high`, and the maintainer's `~/.codex/config.toml` sets `low`, so an unset effort would silently differ by vendor and machine |
 | Harness | `claude --version` or `codex --version`, Node version from `.nvmrc` |
 | Turn cap | the maximum turns, when the tier allows tools |
 
@@ -86,6 +86,28 @@ Flags above were read from `claude --help` (2.1.282) and `codex exec --help` (0.
 2026-09-25; the turn cap flag for each tool is confirmed the same way at implementation time,
 not assumed. Both tools return machine-readable output (`--output-format json` with
 `num_turns`, `duration_ms`, `usage`; `codex exec --json` and `--output-last-message`).
+
+## Effort sweeps
+
+Effort is a run axis beside model and tier, not a fixed setting. `run.mjs --effort` takes a
+list; each level produces its own manifest and its own result set, so a sweep is a series of
+ordinary runs the report joins.
+
+- **Levels.** Claude accepts `low`, `medium`, `high`, `xhigh` and `max` (from
+  `claude --help`). The Codex levels are the values its configuration reference lists for
+  `model_reasoning_effort`, confirmed at implementation time rather than assumed here. A level a
+  vendor rejects is recorded as `status: unsupported` for that model, never as a failure.
+- **Report.** One table per model: quality metrics, cross-rep consistency and usage per case
+  at each level, plus a paired comparison of adjacent levels with its confidence interval.
+  Consistency is reported per level because effort changes run-to-run variance, not only the
+  mean.
+- **Selection rule.** The recommended level for a model is the lowest one whose blocker recall
+  and verdict accuracy sit within the noise floor of that model's best level. Usage is the
+  tie-breaker, never the criterion.
+- **Windows.** A sweep multiplies usage by the number of levels, so sweeps run on the pilot
+  subset (five to ten cases) and the full set runs only at the level or two the sweep
+  selects. Effort also shifts wall time, which the runner records; Fable-class models at
+  high effort can take many minutes per case.
 
 ## Ground truth
 
@@ -134,7 +156,7 @@ an empty verdict near 0%, and an induced API error lands as `status: error`, nev
 ```
 scripts/bench/review/
   build-cases.mjs      # pulls PRs, verdict comments, adjudications; applies mutations
-  run.mjs              # --model --tier --reps --effort --cases; writes results/<manifest>/
+  run.mjs              # --model --tier --reps --effort <list> --cases; one results/<manifest>/ per level
   grade.mjs            # programmatic graders, matcher, optional judge
   report.mjs           # paired comparison against baselines/, CI, cost
   lib/manifest.mjs     # hashes the inputs above
@@ -154,13 +176,15 @@ Run by hand only. Nothing here is a CI check or a scheduled job (ADR-0029, ADR-0
    matcher with its unit tests, oracle and null checks. No model calls.
 2. **Runner.** Tier L0 and L1, manifest hashing, replay cache, per-row output with
    `status`. Tier L2 behind a flag.
-3. **Pilot.** Five cases, two models, three reps, effort `high`. Measures cost per case,
-   cross-rep variance and the noise floor. Go or no-go on the full set size.
+3. **Pilot.** Five cases, two models, three reps, the full effort sweep for each. Measures
+   usage per case at each level, cross-rep variance and the noise floor. Go or no-go on the
+   full set size, and the effort level each model carries into stage 4.
 4. **Baseline.** Full set on the current dispatch model (`claude-opus-5`, from
    `.github/workflows/dispatch.yml`). Commit the summary to `baselines/`.
-5. **New-model protocol.** One page: run the pilot at effort `low` and `high`, then the full
-   set at the chosen effort, compare paired against the baseline, and change
-   `DISPATCH_MODEL` only when verdict accuracy and blocker recall are within noise or better
+5. **New-model protocol.** One page: run the effort sweep on the pilot subset, apply the
+   selection rule, run the full set at the selected level, compare paired against the
+   baseline at its own selected level, and change `DISPATCH_MODEL` (and the effort the
+   dispatcher passes) only when verdict accuracy and blocker recall are within noise or better
    and claim discipline is not worse. Recorded as an ADR, on the ADR-0031 pattern.
 
 ## Accounts and usage windows

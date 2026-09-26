@@ -38,8 +38,7 @@ esac
   `~/.config/birdbrain-agent/env` from the repository secret and passed the identity check
   below, `GH_TOKEN` for the whole job is the machine token, and the checkout's git credential
   is the same token, so branch pushes from the implementer go out as the machine account.
-  Serena is absent there and its tools do not resolve. The prompt says when you are on this
-  host.
+  The prompt says when you are on this host.
 - **Claude Code on the web** — **only `gh api` REST works**. Every porcelain command
   (`gh pr`, `gh issue`, `gh label`) is GraphQL-backed and returns 403, because the session
   proxy serves only a pinned set of PR-review GraphQL operations. Writes — opening PRs,

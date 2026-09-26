@@ -4,8 +4,7 @@
 #
 # Remote (Claude Code on the web, CLAUDE_CODE_REMOTE=true): brings a fresh container up
 # to the state the agent contracts already assume — Node 20 on PATH, the `gh` CLI,
-# the Serena MCP server pre-warmed, and dependencies installed so `pnpm test` and
-# `pnpm lint` run without
+# and dependencies installed so `pnpm test` and `pnpm lint` run without
 # per-session improvisation.
 #
 # Local: only pins Node. A mise-activated interactive shell bakes its *resolved* tool
@@ -101,17 +100,6 @@ if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   else
     log "WARNING: could not resolve the pinned Node via mise; 'node --version' may be wrong for this repo (see CLAUDE.md Node note)"
   fi
-
-  # Warm Serena's language-server cache once per worktree. Memories are committed and shared,
-  # but .serena/cache is gitignored, so a fresh worktree pays the full tsserver index on its
-  # first symbolic call — long enough to look like a hang. Bounded and never fatal.
-  if command -v serena >/dev/null 2>&1 && [ ! -d "$PROJECT_DIR/.serena/cache" ]; then
-    if (cd "$PROJECT_DIR" && timeout 120 serena project index >/dev/null 2>&1); then
-      log "serena: indexed $(basename "$PROJECT_DIR") (first session in this worktree)"
-    else
-      log "NOTE: serena project index skipped/failed; first symbolic call will be slow"
-    fi
-  fi
   exit 0
 fi
 
@@ -201,26 +189,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 3. Serena MCP server (pre-warm)
-# ---------------------------------------------------------------------------
-# .mcp.json launches Serena through `uvx --from git+https://github.com/oraios/serena`.
-# On a fresh VM that first run clones and builds the package, which can exceed the MCP
-# startup timeout, so the server shows as failed until reconnected. Installing the same
-# spec here fills the uv cache uvx reads. Not fatal: Serena is a navigation aid, and the
-# session is still usable with the built-in search tools if this fails.
-
-if command -v uv >/dev/null 2>&1; then
-  if uv tool install --quiet --from git+https://github.com/oraios/serena serena-agent >/dev/null 2>&1; then
-    log "serena pre-warmed"
-  else
-    log "WARNING: serena pre-warm failed; the serena MCP server may need a /mcp reconnect"
-  fi
-else
-  log "WARNING: uv not found; the serena MCP server in .mcp.json will not start"
-fi
-
-# ---------------------------------------------------------------------------
-# 4. Project dependencies
+# 3. Project dependencies
 # ---------------------------------------------------------------------------
 # Plain `install` rather than `--frozen-lockfile`, so the container's cached state is
 # reused across sessions. postinstall runs scripts/ensure-electron.mjs (the backstop

@@ -86,7 +86,8 @@ on GitHub, not a repository change.
 activity, so every fire runs a full cycle against a PR that only a human can move.
 
 **Change, in `.github/scripts/dispatch/pregate.sh`.** Skip a PR labelled `awaiting-maintainer`
-unless activity from someone other than the pipeline is newer than the label event. Keep the
+unless activity from a person other than the pipeline is newer than the label event. Bot
+comments do not count, because marking a PR ready wakes CodeRabbit. Keep the
 existing rules for unlabelled PRs. The label name moves to `lib.sh` so the skill text and the
 script cannot drift.
 

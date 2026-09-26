@@ -63,6 +63,7 @@ const DEFAULT_SETTINGS: BirdbrainSettings = {
   operatorRole: '',
   operatorOrganization: '',
   tsaUrl: DEFAULT_TSA_URL,
+  tsaEnabled: true,
   autoCaptureMode: 'notify',
   lastActiveCaseId: null,
   lastActiveSection: 'captures',
@@ -129,24 +130,67 @@ function suppliedKeysOnly<T extends object>(input: object, data: T): Partial<T> 
   ) as Partial<T>
 }
 
+// Every other setting fails open to its default when the file will not load.
+// The trusted-timestamping opt-out must not: falling back to the enabled default
+// would put an operator who declined TSA disclosure back on the network without
+// telling them, and the failure mode of the control is the whole point of it
+// (#1169). Two failures, and the difference between them is whether the stored
+// preference is visible at all:
+//
+//   - The JSON parsed but the schema rejected it. Every key is legible, so the
+//     preference is known: an explicit `false` survives the fallback, and
+//     anything else keeps the default, because "not off" is the only reading
+//     that does not invent an intent the file does not carry.
+//   - The file exists and could not be read or parsed at all. Nothing is
+//     legible, so the preference is unknown rather than known-absent, and the
+//     only safe reading of an unknown privacy preference is the restrictive one
+//     — see the catch in getSettings().
+function declinedTimestamping(saved: unknown): boolean {
+  return (
+    typeof saved === 'object' &&
+    saved !== null &&
+    (saved as { tsaEnabled?: unknown }).tsaEnabled === false
+  )
+}
+
 export function getSettings(): BirdbrainSettings {
   if (!settingsPath) throw new Error('Settings not initialized')
   if (!existsSync(settingsPath)) {
     return { ...DEFAULT_SETTINGS }
   }
+  let raw: string
   try {
-    const raw = readFileSync(settingsPath, 'utf-8')
+    raw = readFileSync(settingsPath, 'utf-8')
+  } catch (err) {
+    // The file's bytes are intact; this process cannot read them right now
+    // (EACCES, EBUSY, an antivirus lock). The stored preference is unknown, so
+    // the session falls closed like the parse failure below — but the decline is
+    // not allowed to persist: updateSettings refuses to write over a file it
+    // cannot read, so the operator's real preference is still on disk when the
+    // lock clears (#1169 round-2 review).
+    logger.warn('settings', 'settings.unreadable_timestamping_fail_closed', undefined, err)
+    return { ...DEFAULT_SETTINGS, tsaEnabled: false }
+  }
+  try {
     const saved: unknown = JSON.parse(raw)
     const parsed = PartialBirdbrainSettingsSchema.safeParse(saved)
     if (!parsed.success) {
       logger.warn('settings', 'settings.schema_invalid')
-      return { ...DEFAULT_SETTINGS }
+      return { ...DEFAULT_SETTINGS, tsaEnabled: !declinedTimestamping(saved) }
     }
     const merged = { ...DEFAULT_SETTINGS, ...suppliedKeysOnly(saved as object, parsed.data) }
     merged.openRouterApiKey = decryptApiKey(merged.openRouterApiKey)
     return merged
   } catch {
-    return { ...DEFAULT_SETTINGS }
+    // A file that reads but will not parse — truncated by a kill mid-write
+    // (updateSettings persists with a plain writeFileSync), trailing garbage,
+    // not JSON at all. The operator's timestamping preference is unknown here,
+    // not absent, so it falls closed: an activist who declined
+    // must not be put back in contact with the TSA by a half-written file. Every
+    // other setting still falls open, and the resulting state is visible in
+    // Settings and Diagnostics and reversible with the switch.
+    logger.warn('settings', 'settings.unreadable_timestamping_fail_closed')
+    return { ...DEFAULT_SETTINGS, tsaEnabled: false }
   }
 }
 
@@ -156,6 +200,20 @@ export function updateSettings(partial: Partial<BirdbrainSettings>): BirdbrainSe
     throw new Error(
       `Invalid settings: ${parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`
     )
+  }
+  // Refuse to overwrite a settings file this process cannot read (#1169 round-2
+  // review). The merge below is built on getSettings(), which falls back to the
+  // defaults plus tsaEnabled: false when the read throws, so writing it would
+  // persist an opt-out the operator never chose — and blank every other setting —
+  // because of a transient lock. A file that will not parse is already lost and is
+  // still rewritten: that is the recovery path the switch depends on.
+  if (existsSync(settingsPath)) {
+    try {
+      readFileSync(settingsPath, 'utf-8')
+    } catch (err) {
+      logger.warn('settings', 'settings.unreadable_timestamping_fail_closed', undefined, err)
+      throw new Error('Settings file could not be read; refusing to overwrite it', { cause: err })
+    }
   }
   const current = getSettings()
   const updated = { ...current, ...suppliedKeysOnly(partial, parsed.data) }

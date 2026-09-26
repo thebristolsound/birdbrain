@@ -400,6 +400,29 @@ export function DiagnosticsPanel() {
               )}
             </Section>
 
+            <Section title="Trusted timestamping">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <StatBlock
+                  label="Timestamp authority requests"
+                  value={snap.trustedTimestamping.enabled ? 'Enabled' : 'Disabled'}
+                />
+              </div>
+              {/* No enabled-state copy here. Three rounds of review each found the
+                  sentence describing what is disclosed either over- or understating
+                  it, so it is cut rather than patched a fourth time; Settings →
+                  Operator is the one place that describes the disclosure. The
+                  declined copy is scoped the way the Settings copy is: tokens
+                  obtained before the switch went off still assert trusted time in
+                  the badge and in every export. */}
+              {!snap.trustedTimestamping.enabled && (
+                <p className="mt-2 text-xs text-text-muted">
+                  No capture is sent to a timestamp authority, and captures made while it is off
+                  assert no trusted time; timestamps already obtained are kept. Change this under
+                  Settings → Operator.
+                </p>
+              )}
+            </Section>
+
             <Section title="Responsiveness">
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 <StatBlock

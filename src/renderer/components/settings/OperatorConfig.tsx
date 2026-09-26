@@ -6,6 +6,7 @@ import {
   useSettingsMutations
 } from '@renderer/lib/queries'
 import { Card, CardContent, Input, Label } from '@renderer/components/ui'
+import { cn } from '@renderer/lib/utils'
 import { DEFAULT_TSA_URL } from '@shared/constants'
 
 export function OperatorConfig() {
@@ -50,6 +51,14 @@ export function OperatorConfig() {
   async function saveTsaUrl() {
     // Fall back to the DigiCert default if the field is cleared.
     await update.mutateAsync({ tsaUrl: tsaUrl.trim() || DEFAULT_TSA_URL })
+  }
+
+  // Written straight through rather than mirrored into local state: the switch
+  // renders the persisted value, so a failed write cannot leave the control
+  // showing an opt-out that was never saved (#1169).
+  const tsaEnabled = settings?.tsaEnabled ?? true
+  async function toggleTsaEnabled() {
+    await update.mutateAsync({ tsaEnabled: !tsaEnabled })
   }
 
   if (!identity) return <div className="text-text-muted">Loading...</div>
@@ -124,9 +133,50 @@ export function OperatorConfig() {
             </p>
           </div>
           <div>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-xs font-medium text-text-secondary">Trusted timestamping</div>
+                {/* Scoped to captures made while the switch is off (#1169 review):
+                    tokens obtained earlier stay valid and their captures keep
+                    asserting trusted time in the badge and in every export, so a
+                    flat "no trusted time is asserted" would misdescribe evidence
+                    the operator already holds. */}
+                <p className="mt-1 text-[11px] text-text-muted">
+                  With this off, nothing is sent to a timestamp authority and captures made while it
+                  is off assert no trusted time; they are timestamped if you turn it back on.
+                  Timestamps already obtained are kept.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={tsaEnabled}
+                aria-label="Trusted timestamping"
+                onClick={toggleTsaEnabled}
+                className={cn(
+                  'relative mt-0.5 inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors',
+                  tsaEnabled ? 'bg-accent' : 'bg-text-faint'
+                )}
+              >
+                <span
+                  className={cn(
+                    'inline-block h-3.5 w-3.5 rounded-full bg-accent-foreground transition-transform',
+                    tsaEnabled ? 'translate-x-[18px]' : 'translate-x-0.5'
+                  )}
+                />
+              </button>
+            </div>
+          </div>
+          <div>
             <Label htmlFor="operator-tsa" className="text-xs font-medium text-text-secondary">
               Trusted Timestamp Authority
             </Label>
+            {/* Editable while timestamping is off (#1169 review). Disabling it
+                forced the only order that can leak: an operator wanting a
+                different authority had to switch timestamping on first, and the
+                worker's retry tick or the next capture could reach the old
+                endpoint before the new URL was typed and saved on blur. Nothing
+                is sent while the switch is off, so editing it here is free. */}
             <Input
               id="operator-tsa"
               type="text"
@@ -137,8 +187,9 @@ export function OperatorConfig() {
               className="border-border bg-surface font-mono text-[11px]"
             />
             <p className="mt-1 text-[11px] text-text-muted">
-              RFC 3161 endpoint used to trusted-timestamp captures. Defaults to DigiCert. Captures
-              never block on it; un-stamped captures are timestamped when the TSA is reachable.
+              {tsaEnabled
+                ? 'RFC 3161 endpoint used to trusted-timestamp captures. Defaults to DigiCert. Captures never block on it; un-stamped captures are timestamped when the TSA is reachable. Each request discloses the capture content hash, this device’s IP address and the time of the request to that authority.'
+                : 'Not in use while trusted timestamping is off. Nothing is sent to this endpoint. Change it here so the authority is already the one you want when you switch timestamping back on.'}
             </p>
           </div>
           <div>

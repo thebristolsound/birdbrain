@@ -32,7 +32,8 @@ const FAKE_ENV: DiagnosticsEnv = {
     selectors: 1,
     extractedData: 50
   },
-  keyProtection: { signingKey: 'protected', openRouterKey: 'not-set' }
+  keyProtection: { signingKey: 'protected', openRouterKey: 'not-set' },
+  trustedTimestamping: { enabled: true }
 }
 
 function makeService() {
@@ -58,6 +59,18 @@ describe('diagnostics service — snapshot shape', () => {
     expect(snap.eventLoop.stalls).toEqual([])
     expect(snap.slowOps).toEqual([])
     expect(snap.keyProtection).toEqual(FAKE_ENV.keyProtection)
+    expect(snap.trustedTimestamping).toEqual(FAKE_ENV.trustedTimestamping)
+  })
+
+  // #1169. Diagnostics is where an operator checks what the app does on their
+  // behalf, so the state of the one setting that governs an outbound request
+  // per capture is reported there and not only in Settings.
+  it('reports a declined trusted-timestamping setting', () => {
+    const svc = createDiagnosticsService({
+      now: Date.now,
+      collectEnv: () => ({ ...FAKE_ENV, trustedTimestamping: { enabled: false } })
+    })
+    expect(svc.snapshot().trustedTimestamping.enabled).toBe(false)
   })
 })
 

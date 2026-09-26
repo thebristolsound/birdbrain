@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { getDbDiagnostics } from '@main/services/db/diagnosticsRepo'
 import { getStorageRoot } from '@main/services/storage'
 import { isSigningKeyProtected } from '@main/services/signingKey'
-import { getOpenRouterKeyProtectionState } from '@main/services/settings'
+import { getOpenRouterKeyProtectionState, getSettings } from '@main/services/settings'
 import type {
   DiagnosticsSlowOp,
   DiagnosticsSnapshot,
@@ -40,6 +40,7 @@ export interface DiagnosticsEnv {
   storage: DiagnosticsSnapshot['storage']
   data: DiagnosticsSnapshot['data']
   keyProtection: DiagnosticsSnapshot['keyProtection']
+  trustedTimestamping: DiagnosticsSnapshot['trustedTimestamping']
 }
 
 export interface DiagnosticsServiceDeps {
@@ -119,7 +120,8 @@ export function createDiagnosticsService(deps: DiagnosticsServiceDeps = {}): Dia
         storage: env.storage,
         data: env.data,
         slowOps: [...slowOps].reverse(),
-        keyProtection: env.keyProtection
+        keyProtection: env.keyProtection,
+        trustedTimestamping: env.trustedTimestamping
       }
     }
   }
@@ -207,7 +209,24 @@ function collectEnv(): DiagnosticsEnv {
     keyProtection: {
       signingKey: isSigningKeyProtected(),
       openRouterKey: getOpenRouterKeyProtectionState()
-    }
+    },
+    trustedTimestamping: { enabled: readTimestampingEnabled() }
+  }
+}
+
+// Diagnostics is read before settings are initialized in some start-up orders,
+// and an unreadable setting must not take the whole snapshot down. That ordering
+// is the ONLY thing left in the catch: getSettings() falls closed and logs
+// rather than throwing for a settings file it cannot read or parse (#1169), so a
+// corrupt file reports 'Disabled' here, which is what the app is actually doing.
+// Uninitialised reads as enabled, matching the default — the panel would
+// otherwise tell an operator nothing is sent to a timestamp authority on the
+// strength of settings not being loaded yet.
+function readTimestampingEnabled(): boolean {
+  try {
+    return getSettings().tsaEnabled
+  } catch {
+    return true
   }
 }
 

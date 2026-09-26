@@ -427,6 +427,7 @@ export async function generateReport(
     operatorRole: settings.operatorRole ?? '',
     operatorOrganization: settings.operatorOrganization ?? '',
     tsaUrl: settings.tsaUrl,
+    tsaEnabled: settings.tsaEnabled,
     toolVersion: resolveToolVersion(),
     // Filled in below, once the awaited stages are done and the manifest can be
     // snapshotted at the same instant the package is built from. Nothing reads
@@ -1187,6 +1188,7 @@ function buildEvidenceZip(
         operatorRole: data.operatorRole,
         operatorOrganization: data.operatorOrganization,
         tsaUrl: data.tsaUrl,
+        tsaEnabled: data.tsaEnabled,
         captures: data.captures,
         trustedTimeByCaptureId: data.trustedTimeByCaptureId,
         entrySignatureByCaptureId: data.entrySignatureByCaptureId,

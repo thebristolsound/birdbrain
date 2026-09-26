@@ -1089,6 +1089,12 @@ export const BirdbrainSettingsSchema = z.object({
   operatorRole: z.string().default(''),
   operatorOrganization: z.string().default(''),
   tsaUrl: z.preprocess(normalizeTsaUrl, z.string()).optional().default(DEFAULT_TSA_URL),
+  // Strict boolean, unlike `tsaUrl` above: a non-boolean here is a value nothing
+  // should coerce, because both coercions are wrong. Coercing to true would
+  // overturn an operator's opt-out; coercing to false would silently stop
+  // timestamping an operator who never asked for that. The loader instead keeps
+  // an explicit `false` across the whole-file fallback — see getSettings (#1169).
+  tsaEnabled: z.boolean().optional().default(true),
   autoCaptureMode: z.enum(['auto', 'notify', 'per-case']),
   lastActiveCaseId: z.string().nullable(),
   // 'selectors' and 'tags' are gone as routes (#400/#700) but are still in

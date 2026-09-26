@@ -41,7 +41,15 @@ const MAX_PRINT_SCALE = 2
 // — genuinely unstamped and absent-from-the-manifest are indistinguishable from
 // the manifest alone, and both mean the printed capture time is the operator's
 // local clock — so it is stated, never omitted.
-const TRUSTED_TIME_PENDING_DETAIL = 'an RFC 3161 token was requested but has not been obtained'
+// Never "a token was requested": the manifest records tokens, not requests, and
+// an installation can decline trusted timestamping outright (#1169), in which
+// case no request was made for any capture it holds. "Attesting this capture's
+// content digest" rather than a flat "no token is recorded", because a token
+// that does not parse or that attests other bytes resolves 'pending' too and
+// stays in the manifest.
+const TRUSTED_TIME_PENDING_DETAIL =
+  "no RFC 3161 token attesting this capture's content digest is recorded, and the manifest " +
+  'does not state whether one was requested'
 const TRUSTED_TIME_NONE_DETAIL = 'no RFC 3161 token is retained for this capture'
 
 function sleep(ms: number): Promise<void> {

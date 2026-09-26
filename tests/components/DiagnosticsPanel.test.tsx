@@ -89,7 +89,8 @@ const snapshot: DiagnosticsSnapshot = {
     extractedData: 0
   },
   slowOps: [],
-  keyProtection: { signingKey: 'protected', openRouterKey: 'not-set' }
+  keyProtection: { signingKey: 'protected', openRouterKey: 'not-set' },
+  trustedTimestamping: { enabled: true }
 }
 
 const cleanReport: UnreconciledDeletionReport = {
@@ -209,6 +210,43 @@ describe('DiagnosticsPanel storage folder action', () => {
     renderPanel()
     expect(await screen.findByText('Unprotected')).toBeDefined()
     expect(await screen.findByText(/was written to disk unprotected/)).toBeDefined()
+  })
+
+  // #1169. The enabled state shows the state and no prose: three review rounds
+  // each found the sentence describing the disclosure either over- or
+  // understating it, so the panel no longer carries one and this pins its
+  // absence. Settings → Operator is where the disclosure is described.
+  it('shows the state with no disclosure prose while timestamping is on', async () => {
+    renderPanel()
+    expect(await screen.findByText('Enabled')).toBeDefined()
+    expect(screen.queryByText(/content hash is sent/)).toBeNull()
+    expect(screen.queryByText(/IP address and the time of the request/)).toBeNull()
+  })
+
+  it('states that nothing is sent when timestamping is declined', async () => {
+    fakeBridge({
+      diagnostics: {
+        get: vi.fn().mockResolvedValue({
+          ...snapshot,
+          trustedTimestamping: { enabled: false }
+        }),
+        log,
+        openStorageRoot,
+        unreconciledDeletions
+      },
+      shell: { openPath }
+    })
+    renderPanel()
+    expect(await screen.findByText('Disabled')).toBeDefined()
+    const copy = await screen.findByText(/No capture is sent to a timestamp authority/)
+    expect(copy).toBeDefined()
+    // Scoped to captures made while the switch is off, the way the Settings copy
+    // is (#1169 review). Tokens obtained earlier still assert trusted time in the
+    // badge and in every export, so a flat claim over the installation's evidence
+    // would tell an operator their retained timestamps assert nothing.
+    expect(copy.textContent).toContain('captures made while it is off assert no trusted time')
+    expect(copy.textContent).toContain('timestamps already obtained are kept')
+    expect(copy.textContent).not.toMatch(/and no trusted time is asserted\./)
   })
 
   // #363: the root is opened on its own main-derived channel. The generic

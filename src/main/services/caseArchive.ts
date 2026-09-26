@@ -57,6 +57,10 @@ import type {
   CaseArchiveCounts
 } from '@shared/types'
 
+// 7 since embedded note images: a note's body_doc may carry image nodes. A
+// Birdbrain from before them rejects the unknown node type in parseNoteDoc and
+// abandons the whole import with an opaque schema error; the gate turns that
+// into the clean "update Birdbrain" refusal, as it did for Mentions at 3.
 // 6 since the Exhibit model and the Staging Pool (#1148, ADR-0023/0024, X12,
 // X30): data.json carries `exhibits` and `stagingFiles`, the zip carries a
 // committed non-Capture Exhibit's bytes under `files/exhibits/` and a pooled
@@ -92,7 +96,7 @@ import type {
 // anchor_json, which a pre-v27 import would silently drop. Bump this whenever a
 // Case Archive gains data an older release would silently discard or reject
 // opaquely.
-export const CASE_ARCHIVE_SCHEMA_VERSION = 6
+export const CASE_ARCHIVE_SCHEMA_VERSION = 7
 
 export interface CaseArchiveData {
   case: Record<string, unknown>

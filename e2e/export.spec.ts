@@ -180,4 +180,18 @@ test.describe('Export dialog: presets and the two export classes', () => {
       await rm(tempDir, { recursive: true, force: true }).catch(() => {})
     }
   })
+
+  // Real key handling, which jsdom does not model: an arrow key on a native
+  // radio checks the next one, so focus must not open on the preset group.
+  test('an arrow key on open leaves the export on the evidence preset', async ({ page }) => {
+    const caseId = await createCase(page, 'Arrow Key Case')
+    await seedCapture(page, caseId, 'https://example.com/arrow', 'Arrow Capture')
+
+    await openExportDialog(page)
+    await expect(page.getByRole('dialog', { name: 'Export case' })).toBeFocused()
+    await page.keyboard.press('ArrowDown')
+
+    await expect(page.getByRole('radio', { name: /Full evidence bundle/ })).toBeChecked()
+    await expect(page.getByTestId('export-custody-card')).toBeVisible()
+  })
 })

@@ -50,15 +50,28 @@ labels="$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1]
 say "PR #$n  $title"
 say "head $head_ref @ ${head_sha:0:12}  draft=$draft  labels: ${labels:-none}"
 
-# 2. Checks at head: every check run completed, none failed.
+# 2. Checks at head. The gate is the required status checks of the rules that apply to main, read
+#    from the API, so a red check the ruleset does not require warns instead of blocking every
+#    merge (#1331). Every required context needs a green check run or commit status, and a
+#    missing one refuses. pregate.sh reads the same rules with jq; each script keeps its own
+#    parser (node here, jq there) rather than sourcing across the skill and workflow trees.
+"$cli" api "repos/{owner}/{repo}/rules/branches/main" > "$work/rules.json" || fail "cannot read the rules for main, so the required checks are unknown"
 "$cli" api "repos/{owner}/{repo}/commits/$head_sha/check-runs?per_page=100" > "$work/checks.json" || fail "cannot read check runs"
-bad_checks="$(node -e '
-const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))
+"$cli" api "repos/{owner}/{repo}/commits/$head_sha/status?per_page=100" > "$work/status.json" || fail "cannot read commit statuses"
+verdict="$(node -e '
+const [rules,checks,status]=process.argv.slice(1,4).map(f=>JSON.parse(require("fs").readFileSync(f,"utf8")))
+const required=[...new Set(rules.filter(r=>r.type==="required_status_checks").flatMap(r=>(r.parameters.required_status_checks||[]).map(s=>s.context)))]
 const ok=new Set(["success","skipped","neutral"])
-const bad=j.check_runs.filter(c=>c.status!=="completed"||!ok.has(c.conclusion)).map(c=>`${c.name}=${c.status}/${c.conclusion}`)
-process.stdout.write(bad.join(" "))' "$work/checks.json")"
-[ -z "$bad_checks" ] || fail "checks not green at head: $bad_checks"
-runs="$(node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).total_count))' "$work/checks.json")"
+const seen=[
+  ...checks.check_runs.map(c=>({name:c.name,green:c.status==="completed"&&ok.has(c.conclusion),text:`${c.name}=${c.status}/${c.conclusion}`})),
+  ...status.statuses.map(s=>({name:s.context,green:s.state==="success",text:`${s.context}=${s.state}`}))
+]
+const bad=required.flatMap(name=>{const mine=seen.filter(s=>s.name===name); return mine.length?mine.filter(s=>!s.green).map(s=>s.text):[`${name}=missing`]})
+const other=seen.filter(s=>!required.includes(s.name)&&!s.green).map(s=>s.text)
+process.stdout.write([required.join(", "),bad.join(" "),other.join(" "),checks.total_count].join("\n")+"\n")' \
+  "$work/rules.json" "$work/checks.json" "$work/status.json")" || fail "cannot parse the rules, check runs or statuses"
+{ read -r required; read -r bad_checks; read -r other_bad; read -r runs; } <<<"$verdict"
+[ -n "$required" ] || fail "the rules for main name no required status checks, so nothing defines green; refusing rather than guessing"
 if [ "$runs" -eq 0 ]; then
   # CI skips a draft unless it carries the agent labels (ci.yml); marking it ready starts the run.
   if [ "$draft" = "true" ]; then
@@ -72,7 +85,9 @@ if [ "$runs" -eq 0 ]; then
     fail "no check runs at head ${head_sha:0:12}; CI has not run on this commit, so nothing is green"
   fi
 else
-  say "checks green at head ($runs runs)"
+  [ -z "$bad_checks" ] || fail "required checks not green at head: $bad_checks"
+  [ -z "$other_bad" ] || say "WARN checks not required on main and not green at head: $other_bad"
+  say "required checks green at head: $required ($runs runs)"
 fi
 
 # 3. The body passes the PR body shape (the linter tolerates a cloud-proxy footer after the

@@ -42,6 +42,17 @@ decide() {
   exit 0
 }
 
+# For the reasons a red main makes futile: a new verdict or a new dispatch only
+# re-reports the red, which cost about a day of full cycles each time it
+# happened. The reasons that still pay call decide directly.
+unless_red() {
+  if [ -n "$red" ]; then
+    echo "Held while main is red: $1" | tee -a "$summary"
+  else
+    decide true "$1"
+  fi
+}
+
 [ "$mode" = report ] && decide true "report mode always runs"
 
 # One array per page from --paginate; slurp and merge so a second page is not lost (#959).
@@ -73,6 +84,28 @@ wip="$(list "repos/$R/issues?state=open&labels=agent-wip&per_page=100" | jq '[.[
 occupancy=$(( $(jq length <<<"$prs") + $(jq length <<<"$wip") ))
 echo "Occupancy $occupancy/$capacity: agent-pr PRs $prs, agent-wip claims $wip" | tee -a "$summary"
 
+# Is main red? Red means a required check of the rules for main concluded
+# failing at main's head; one still running does not. merge.sh reads the same
+# rules, in node rather than jq, so the two copies are kept separate rather than
+# sourced across the skill and workflow trees. A failed read counts as green,
+# which is the conservative direction here.
+red=""
+failing='select(.status == "completed") | select(.conclusion as $c | ["failure", "cancelled", "timed_out", "action_required"] | index($c))'
+if main_sha="$(gh api "repos/$R/commits/main" --jq .sha)" \
+  && required="$(gh api "repos/$R/rules/branches/main" \
+    --jq '[.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context]')" \
+  && failed_runs="$(gh api "repos/$R/commits/$main_sha/check-runs?per_page=100" --jq "[.check_runs[] | $failing | .name]")" \
+  && failed_statuses="$(gh api "repos/$R/commits/$main_sha/status?per_page=100" \
+    --jq '[.statuses[] | select(.state == "failure" or .state == "error") | .context]')"; then
+  red="$(jq -n -r --argjson req "$required" --argjson runs "$failed_runs" --argjson st "$failed_statuses" \
+    '$runs + $st | unique | map(select(. as $n | $req | index($n))) | join(", ")')"
+else
+  echo "Could not read the required checks on main; counting main as green" | tee -a "$summary"
+fi
+if [ -n "$red" ]; then
+  echo "Main ${main_sha:0:8} is red: required check(s) $red failed. Verdicts owed and dispatch wait for a green main" | tee -a "$summary"
+fi
+
 # Section 1: a claim past the 4-hour expiry is stale, and only the routine ages
 # it out. Counting it as a held slot lets an abandoned claim declare the
 # queue full for good, with the one component that could clear them gated off.
@@ -100,10 +133,10 @@ for n in $(jq -r '.[]' <<<"$prs"); do
     # success section 2a requires.
     failure)
       if [[ "$desc" == "$CLEANUP_FAILURE_PREFIX"* ]]; then
-        decide true "PR #$n head ${sha:0:8} has a pre-pass an earlier run interrupted; the review is owed a retry"
+        unless_red "PR #$n head ${sha:0:8} has a pre-pass an earlier run interrupted; the review is owed a retry"
       fi
       ;;
-    *) decide true "PR #$n head ${sha:0:8} has agent/pre-pass=$state; a verdict is owed" ;;
+    *) unless_red "PR #$n head ${sha:0:8} has agent/pre-pass=$state; a verdict is owed" ;;
   esac
   labels="$(gh api "repos/$R/issues/$n/labels" --jq '[.[].name]')"
   # A PR the skill parked for the maintainer moves only when a person other than
@@ -165,9 +198,10 @@ if [ "$occupancy" -lt "$capacity" ]; then
     fi
   done
   if [ "$frontier" -gt 0 ]; then
-    decide true "the slot is free and $frontier unblocked queued issue(s) wait"
+    unless_red "the slot is free and $frontier unblocked queued issue(s) wait"
+    decide false "the slot is free and $frontier queued issue(s) wait, but main is red ($red)"
   fi
   decide false "the slot is free but the queue is empty"
 fi
 
-decide false "the slot is held and no open agent PR needs the routine"
+decide false "the slot is held and no open agent PR needs the routine${red:+ while main is red ($red)}"

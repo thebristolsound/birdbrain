@@ -69,8 +69,11 @@ full cycles re-reporting it.
 
 1. `.claude/skills/merge-pr/scripts/merge.sh`: gate on the required status checks of the rules
    that apply to `main`, read from the API, instead of every check run.
-2. `.github/scripts/dispatch/pregate.sh`: if a required check is failing on `main`'s head,
-   decide `run=false` with the reason and the failing check names, before any per-PR work.
+2. `.github/scripts/dispatch/pregate.sh`: if a required check has concluded failing on `main`'s
+   head, drop the reasons a red `main` makes futile: a verdict owed on a PR head, and a free
+   slot with a frontier. Keep the reasons that still pay: a stale claim to age out, an approved
+   non-evidence PR to merge, and human activity newer than a PR head. Name the failing checks
+   in the step summary.
 3. `.github/dependabot.yml`: ignore semver-major updates for `vitest`, `@vitest/*` and `jsdom`,
    beside the existing `dependency-cruiser` entry, with the same kind of reason comment.
 

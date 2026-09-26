@@ -45,6 +45,10 @@ this file only adds the duties CLAUDE.md does not cover.
   `migrations.ts` and bump `LATEST_SCHEMA_VERSION` in `core.ts`.
 - Comments explain *why*, only when non-obvious. Match surrounding style; don't introduce new
   patterns.
+- **Pin every claim the diff adds, or cut it.** Each sentence you add to evidence-facing text,
+  operator-facing copy, a code comment asserting a guarantee, or the PR body's Evidence impact
+  section is pinned by a test or a command you ran. State a behaviour once; other sites point
+  at it. Most review rounds that stalled did so on false sentences, not wrong code.
 
 ## Verify loop — run it, report real output
 

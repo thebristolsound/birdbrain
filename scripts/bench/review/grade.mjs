@@ -11,7 +11,7 @@ import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { gradeRow, summarize, selfCheck } from './lib/grade.mjs'
-import { validateResultRow } from './lib/schema.mjs'
+import { validateResultRow, PR_BODY } from './lib/schema.mjs'
 import { showFile } from './lib/git.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -91,7 +91,8 @@ export function main(
   // A mutation case's file is the mutated copy the builder wrote, never the
   // head commit's: the model read the mutation, so the claim check must too.
   const readFileFor = (kase) => (sha, path) => {
-    const mutated = join(fixturesDir, kase.id, 'files', path)
+    if (path === PR_BODY) path = 'pr.md'
+    const mutated = join(fixturesDir, kase.id, path === 'pr.md' ? '' : 'files', path)
     return existsSync(mutated) ? readFileSync(mutated, 'utf8') : showFile(repo, sha, path)
   }
   if (self) {

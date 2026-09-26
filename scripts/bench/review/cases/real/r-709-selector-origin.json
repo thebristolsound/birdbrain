@@ -1,0 +1,36 @@
+{
+  "id": "r-709-selector-origin",
+  "kind": "real",
+  "source": {
+    "pr": 709,
+    "base": "265b5b57c07fab74f5e8cf54829b0e13fe7f7ec1",
+    "head": "26c186f00056e851a6e6b9edbdd6fba7ee58a24e"
+  },
+  "tags": [
+    "wave2",
+    "adjudicated",
+    "approve"
+  ],
+  "truth": {
+    "verdict": "approve for human review",
+    "defects": [
+      {
+        "id": "d1",
+        "file": "PR_BODY",
+        "category": "overclaim",
+        "blocking": false,
+        "description": "The constraints section cites a phase-1 findings plan that exists on neither main nor the branch"
+      }
+    ],
+    "refuted": [
+      {
+        "file": "src/shared/types.ts",
+        "description": "isSelectorOrigin sits in a file vitest excludes from coverage: the exclusion is pre-existing and the guard is exercised by tests elsewhere"
+      },
+      {
+        "file": "PR_BODY",
+        "description": "The lucide icon paths differ from the mock: same glyphs from a different lucide release, ruled acceptable"
+      }
+    ]
+  }
+}

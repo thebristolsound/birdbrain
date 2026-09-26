@@ -107,6 +107,13 @@ describe('buildCase with git', () => {
             category: 'off-by-one',
             blocking: false,
             description: 'x'
+          },
+          {
+            id: 'd2',
+            file: 'PR_BODY',
+            category: 'overclaim',
+            blocking: false,
+            description: 'body claim'
           }
         ],
         refuted: []

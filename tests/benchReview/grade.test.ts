@@ -219,4 +219,24 @@ describe('selfCheck', () => {
     expect(bad.problems).toEqual(['oracle: claim rate is not 1'])
     expect(selfCheck([], {}).problems).toContain('oracle: verdict accuracy is not 1')
   })
+  it('lifts the finding cap so a case with more than five defects still proves the wiring', () => {
+    const many = Array.from({ length: 7 }, (_, i) => ({
+      id: `d${i}`,
+      file: 'src/x.ts',
+      lineStart: 1 + i * 20,
+      lineEnd: 1 + i * 20,
+      category: 'other',
+      blocking: i === 0,
+      description: `defect ${i}`
+    }))
+    const longFile = () => 'line\n'.repeat(200)
+    const r = selfCheck(
+      [{ ...kase, truth: { verdict: 'request changes', defects: many, refuted: [] } }],
+      {
+        readFileFor: () => longFile
+      }
+    )
+    expect(r.pass).toBe(true)
+    expect(r.oracle.defectRecall).toBe(1)
+  })
 })

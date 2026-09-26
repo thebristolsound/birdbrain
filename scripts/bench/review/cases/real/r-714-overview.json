@@ -1,0 +1,99 @@
+{
+  "id": "r-714-overview",
+  "kind": "real",
+  "source": {
+    "pr": 714,
+    "base": "8b5ae7b8b47d25b333a39ef3a3bae0fae883b10d",
+    "head": "3e4af7efec25e12c19ae9c2330296353c30cf700"
+  },
+  "tags": [
+    "wave2",
+    "adjudicated",
+    "evidence"
+  ],
+  "truth": {
+    "verdict": "request changes",
+    "defects": [
+      {
+        "id": "d1",
+        "file": "src/renderer/components/overview/backlinkMapModel.ts",
+        "lineStart": 447,
+        "lineEnd": 448,
+        "category": "wrong-default",
+        "blocking": true,
+        "description": "isEmpty is derived from the post-cap edge list, so at twenty notes the card says no Mentions on a case that has them"
+      },
+      {
+        "id": "d2",
+        "file": "src/renderer/components/overview/backlinkMapModel.ts",
+        "lineStart": 243,
+        "lineEnd": 250,
+        "category": "off-by-one",
+        "blocking": false,
+        "description": "applyCap drops every entity once noteCount reaches the cap, against the docstring that notes are never dropped"
+      },
+      {
+        "id": "d3",
+        "file": "PR_BODY",
+        "category": "overclaim",
+        "blocking": false,
+        "description": "Evidence impact says the diff matches five path-list entries; it matches six, omitting the db entry the new SQL lands in"
+      },
+      {
+        "id": "d4",
+        "file": "e2e/theme-screenshots.spec.ts",
+        "lineStart": 94,
+        "lineEnd": 96,
+        "category": "overclaim",
+        "blocking": false,
+        "description": "The added wait resolves in the same commit as the element above it, so the comment asserts settling the code does not do"
+      },
+      {
+        "id": "d5",
+        "file": "src/renderer/components/overview/backlinkMapModel.ts",
+        "lineStart": 261,
+        "lineEnd": 261,
+        "category": "other",
+        "blocking": false,
+        "description": "Row count grows with notes against a fixed canvas, so pills overlap on note-heavy cases"
+      },
+      {
+        "id": "d6",
+        "file": "src/main/services/db/noteReferenceRepo.ts",
+        "lineStart": 143,
+        "lineEnd": 143,
+        "category": "overclaim",
+        "blocking": false,
+        "description": "The docstring says the aggregate serves the map; the new docstring three lines below says it cannot"
+      },
+      {
+        "id": "d7",
+        "file": "src/renderer/components/overview/BacklinkMap.tsx",
+        "lineStart": 68,
+        "lineEnd": 68,
+        "category": "other",
+        "blocking": false,
+        "description": "Header count and canvas disagree in the ordinary no-Mentions case"
+      },
+      {
+        "id": "d8",
+        "file": "src/renderer/components/overview/backlinkMapModel.ts",
+        "lineStart": 436,
+        "lineEnd": 436,
+        "category": "other",
+        "blocking": false,
+        "description": "countLabel never singularises backlinks"
+      },
+      {
+        "id": "d9",
+        "file": "src/renderer/components/overview/CaseOverview.tsx",
+        "lineStart": 127,
+        "lineEnd": 127,
+        "category": "other",
+        "blocking": false,
+        "description": "The note entry in mapLabels can never be read"
+      }
+    ],
+    "refuted": []
+  }
+}

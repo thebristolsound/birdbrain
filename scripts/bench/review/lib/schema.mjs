@@ -10,9 +10,12 @@ export const CATEGORIES = [
   'overclaim',
   'off-by-one',
   'wrong-default',
-  'wrong-argument'
+  'wrong-argument',
+  'other'
 ]
 export const KINDS = ['mutation', 'real']
+// The pseudo-file a finding cites when the defect is in the PR body itself.
+export const PR_BODY = 'PR_BODY'
 export const HARNESSES = ['claude', 'codex']
 export const TIERS = ['L0', 'L1', 'L2']
 

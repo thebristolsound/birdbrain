@@ -25,7 +25,10 @@ derives the truth file with the line range the mutation landed on. The verdict i
 changes` when any defect blocks.
 
 `cases/real/<id>.json` pins a PR at the commit a pre-pass reviewed and carries the truth file by
-hand: adjudicated defects, and findings a skeptic pass refuted.
+hand: adjudicated defects, and findings a skeptic pass refuted. The seven wave-2 PRs (#709 to
+#715) come from `docs/plans/2026-08-22-wave2-review-verdict.md` and the pre-pass comments it
+summarises; verdicts follow that document's per-PR table. A defect in the PR body itself cites
+the pseudo-file `PR_BODY`, which the claim check reads from the fixture's `pr.md`.
 
 ## Grading
 

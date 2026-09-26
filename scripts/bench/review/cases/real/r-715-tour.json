@@ -1,0 +1,101 @@
+{
+  "id": "r-715-tour",
+  "kind": "real",
+  "source": {
+    "pr": 715,
+    "base": "9afe596c5ae7122aeabe53ea5ab161e9a2049ad3",
+    "head": "113061dcf7e159d05c6b03255c4ef52937ae0c6f"
+  },
+  "tags": [
+    "wave2",
+    "adjudicated",
+    "evidence"
+  ],
+  "truth": {
+    "verdict": "request changes",
+    "defects": [
+      {
+        "id": "d1",
+        "file": "src/renderer/components/onboarding/OnboardingTour.tsx",
+        "lineStart": 67,
+        "lineEnd": 73,
+        "category": "removed-guard",
+        "blocking": true,
+        "description": "The case chapter auto-fires over a running intro with no chapter guard, so intro completion is never written"
+      },
+      {
+        "id": "d2",
+        "file": "src/renderer/components/onboarding/useTourEngine.ts",
+        "lineStart": 141,
+        "lineEnd": 152,
+        "category": "other",
+        "blocking": false,
+        "description": "start() sets state over a running chapter; close() is the only caller of completionAfter"
+      },
+      {
+        "id": "d3",
+        "file": "src/main/services/settings.ts",
+        "lineStart": 111,
+        "lineEnd": 111,
+        "category": "other",
+        "blocking": false,
+        "description": "isFreshInstall is latched true once and never cleared, so the welcome card re-fires every launch"
+      },
+      {
+        "id": "d4",
+        "file": "src/renderer/components/dashboard/ExtensionBanner.tsx",
+        "lineStart": 64,
+        "lineEnd": 64,
+        "category": "other",
+        "blocking": false,
+        "description": "The Setup Guide button inside the ringed banner replays the ext tour over the auto intro and writes nothing"
+      },
+      {
+        "id": "d5",
+        "file": "src/renderer/components/onboarding/tourSteps.ts",
+        "lineStart": 73,
+        "lineEnd": 113,
+        "category": "other",
+        "blocking": false,
+        "description": "Two case-chapter marks target anchors absent in the default state of their screens, so they always take the fallback"
+      },
+      {
+        "id": "d6",
+        "file": "website/content/docs/screenshots.mdx",
+        "lineStart": 21,
+        "lineEnd": 37,
+        "category": "overclaim",
+        "blocking": false,
+        "description": "Rewritten captions describe the coach-mark tour above unchanged wizard screenshots"
+      },
+      {
+        "id": "d7",
+        "file": "src/renderer/components/onboarding/useTourEngine.ts",
+        "lineStart": 239,
+        "lineEnd": 239,
+        "category": "other",
+        "blocking": false,
+        "description": "The re-measure writes only visible rects, so an anchor scrolled away leaves the ring frozen"
+      },
+      {
+        "id": "d8",
+        "file": "src/renderer/components/onboarding/useTourEngine.ts",
+        "lineStart": 185,
+        "lineEnd": 185,
+        "category": "other",
+        "blocking": false,
+        "description": "The measurement effect depends on the whole state, so a disclosure toggle yanks the page"
+      },
+      {
+        "id": "d9",
+        "file": "src/renderer/components/onboarding/WelcomeCard.tsx",
+        "lineStart": 18,
+        "lineEnd": 18,
+        "category": "other",
+        "blocking": false,
+        "description": "aria-modal with no focus trap, no inert and no Escape handler"
+      }
+    ],
+    "refuted": []
+  }
+}

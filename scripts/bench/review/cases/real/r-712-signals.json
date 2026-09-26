@@ -1,0 +1,114 @@
+{
+  "id": "r-712-signals",
+  "kind": "real",
+  "source": {
+    "pr": 712,
+    "base": "cd686e4ed47a3704d8f34feada9ed1dcedc49bf3",
+    "head": "8b5ae7b8b47d25b333a39ef3a3bae0fae883b10d"
+  },
+  "tags": [
+    "wave2",
+    "adjudicated",
+    "evidence"
+  ],
+  "truth": {
+    "verdict": "request changes",
+    "defects": [
+      {
+        "id": "d1",
+        "file": "src/renderer/components/signals/signalsModel.ts",
+        "lineStart": 114,
+        "lineEnd": 114,
+        "category": "overclaim",
+        "blocking": true,
+        "description": "The footer says matching pages are never captured by any route including manual; the recapture route ingests with no exclusion check"
+      },
+      {
+        "id": "d2",
+        "file": "src/main/services/captureServer.ts",
+        "lineStart": 344,
+        "lineEnd": 344,
+        "category": "overclaim",
+        "blocking": false,
+        "description": "A source comment repeats the claim that the list blocks every capture route"
+      },
+      {
+        "id": "d3",
+        "file": "src/main/services/recapture.ts",
+        "lineStart": 123,
+        "lineEnd": 123,
+        "category": "removed-guard",
+        "blocking": false,
+        "description": "Recapture calls captureLifecycle.ingest with no exclusion check, reachable from Paste URLs and bulk recapture"
+      },
+      {
+        "id": "d4",
+        "file": "src/renderer/components/signals/AutoCaptureCard.tsx",
+        "lineStart": 96,
+        "lineEnd": 96,
+        "category": "overclaim",
+        "blocking": false,
+        "description": "The card promises automatic capture while browsing; no auto-capture path is live in the shipped extension"
+      },
+      {
+        "id": "d5",
+        "file": "src/renderer/components/signals/BulkImportDrawer.tsx",
+        "lineStart": 50,
+        "lineEnd": 50,
+        "category": "other",
+        "blocking": false,
+        "description": "The drawer dropped the file picker and label prefix the deleted modal had, against the no-capability-lost criterion"
+      },
+      {
+        "id": "d6",
+        "file": "src/renderer/components/signals/signalsModel.ts",
+        "lineStart": 148,
+        "lineEnd": 155,
+        "category": "wrong-default",
+        "blocking": false,
+        "description": "parseSelectorInput turns a path-shaped input into a truncated regex; the pinning test is named for the opposite"
+      },
+      {
+        "id": "d7",
+        "file": "src/renderer/components/signals/SignalDetailRail.tsx",
+        "lineStart": 262,
+        "lineEnd": 262,
+        "category": "other",
+        "blocking": false,
+        "description": "Filter in Captures navigates with no filter for tags"
+      },
+      {
+        "id": "d8",
+        "file": "src/renderer/components/signals/AddSelectorRow.tsx",
+        "lineStart": 45,
+        "lineEnd": 45,
+        "category": "other",
+        "blocking": false,
+        "description": "The add row accepts an uncompilable regex with no validation, so the selector matches nothing forever"
+      },
+      {
+        "id": "d9",
+        "file": "src/renderer/components/signals/SignalRow.tsx",
+        "lineStart": 70,
+        "lineEnd": 72,
+        "category": "other",
+        "blocking": false,
+        "description": "Backspace on a focused row deletes with no confirmation; for a tag that is every case in the database"
+      }
+    ],
+    "refuted": [
+      {
+        "file": "src/renderer/components/signals/AutoCaptureCard.tsx",
+        "lineStart": 58,
+        "lineEnd": 64,
+        "description": "writePolicy composes from the cache with no optimistic update: mechanism real, failure scenario not reachable"
+      },
+      {
+        "file": "src/shared/urlPatterns.ts",
+        "lineStart": 145,
+        "lineEnd": 159,
+        "description": "Override global with no case patterns disables the global list: reachable only by a deliberate radio choice, ruled acceptable"
+      }
+    ]
+  }
+}

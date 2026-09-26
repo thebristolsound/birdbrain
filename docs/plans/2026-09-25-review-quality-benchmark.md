@@ -178,7 +178,9 @@ Run by hand only. Nothing here is a CI check or a scheduled job (ADR-0029, ADR-0
 ## Stages
 
 1. **Corpus and graders.** Case schema, `build-cases.mjs`, twenty mutation cases, the
-   matcher with its unit tests, oracle and null checks. No model calls.
+   matcher with its unit tests, oracle and null checks. No model calls. Done 2026-09-25:
+   `scripts/bench/review/`, twenty mutation cases and the seven wave-2 real cases, self-check
+   passing on all 27.
 2. **Runner.** Tier L0 and L1, manifest hashing, replay cache, per-row output with
    `status`. Tier L2 behind a flag.
 3. **Pilot.** Five cases, Opus 5 plus the four candidates, three reps, the full effort

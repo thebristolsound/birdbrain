@@ -1,0 +1,72 @@
+{
+  "id": "r-710-three-column",
+  "kind": "real",
+  "source": {
+    "pr": 710,
+    "base": "265b5b57c07fab74f5e8cf54829b0e13fe7f7ec1",
+    "head": "193ec846dc9a997885e9e0a14a8fc2cf0bf7fa5f"
+  },
+  "tags": [
+    "wave2",
+    "adjudicated"
+  ],
+  "truth": {
+    "verdict": "request changes",
+    "defects": [
+      {
+        "id": "d1",
+        "file": "src/renderer/routes/cases/$caseId/captures.tsx",
+        "lineStart": 347,
+        "lineEnd": 347,
+        "category": "removed-guard",
+        "blocking": true,
+        "description": "The narrow-viewport details overlay renders outside visibleCaptureColumns with no Wayback guard, so it covers the full-bleed Wayback tab"
+      },
+      {
+        "id": "d2",
+        "file": "src/renderer/components/captures/CaptureListRail.tsx",
+        "lineStart": 23,
+        "lineEnd": 23,
+        "category": "other",
+        "blocking": false,
+        "description": "Both 40px rails lose the width animation the issue and the mock require"
+      },
+      {
+        "id": "d3",
+        "file": "src/renderer/components/captures/CaptureItem.tsx",
+        "lineStart": 147,
+        "lineEnd": 147,
+        "category": "other",
+        "blocking": false,
+        "description": "The list view drops the background-recapture mark, an evidentiary distinction main renders"
+      },
+      {
+        "id": "d4",
+        "file": "src/renderer/routes/cases/$caseId/captures.tsx",
+        "lineStart": 135,
+        "lineEnd": 135,
+        "category": "overclaim",
+        "blocking": false,
+        "description": "Two comments say the narrow overlay keeps Wayback reachable; the diff deleted the Wayback section from the details panel"
+      }
+    ],
+    "refuted": [
+      {
+        "file": "src/renderer/routes/cases/$caseId/captures.tsx",
+        "lineStart": 158,
+        "lineEnd": 158,
+        "description": "activeViewerTab is never reset on remount: the mock keeps the tab sticky on purpose"
+      },
+      {
+        "file": "src/renderer/components/captures/CaptureViewer.tsx",
+        "lineStart": 20,
+        "lineEnd": 21,
+        "description": "Source and Page were not the same artifact twice: the removal is the ruled acceptance criterion"
+      },
+      {
+        "file": "PR_BODY",
+        "description": "The coverage table names a stale merge base: one intervening commit, no source overlap"
+      }
+    ]
+  }
+}

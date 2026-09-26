@@ -185,7 +185,9 @@ export function errorRow(kase) {
 
 // Runs the three checks the evaluation health checklist asks for before any
 // paid run: the oracle scores full marks, the null scores nothing, and an
-// error row is counted and excluded rather than scored as a zero.
+// error row is counted and excluded rather than scored as a zero. The finding
+// cap is lifted here: it models the verdict comment's five-finding limit, and
+// a case with more defects than that must still prove the grader's wiring.
 // options.readFileFor(kase) -> readFile(sha, path): the file the model would
 // read for that case, which for a mutation case is the mutated copy.
 export function selfCheck(cases, options = {}) {
@@ -193,6 +195,7 @@ export function selfCheck(cases, options = {}) {
   const grade = (row, kase) =>
     gradeRow(row, kase.truth, {
       ...options,
+      cap: Infinity,
       head: kase.source.head,
       readFile: options.readFileFor ? options.readFileFor(kase) : options.readFile
     })

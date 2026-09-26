@@ -1,0 +1,60 @@
+{
+  "id": "r-711-options-page",
+  "kind": "real",
+  "source": {
+    "pr": 711,
+    "base": "265b5b57c07fab74f5e8cf54829b0e13fe7f7ec1",
+    "head": "eb606445862fc147972f86e38c1e9c434571eb3d"
+  },
+  "tags": [
+    "wave2",
+    "adjudicated",
+    "approve",
+    "extension"
+  ],
+  "truth": {
+    "verdict": "approve for human review",
+    "defects": [
+      {
+        "id": "d1",
+        "file": "extension/vite.config.ts",
+        "lineStart": 73,
+        "lineEnd": 73,
+        "category": "swallowed-error",
+        "blocking": false,
+        "description": "The comment justifies a swallowed error with a case that cannot occur; the catch can turn a broken build green"
+      },
+      {
+        "id": "d2",
+        "file": "extension/src/options/OptionsApp.tsx",
+        "lineStart": 88,
+        "lineEnd": 88,
+        "category": "other",
+        "blocking": false,
+        "description": "With the app closed the page reports the pairing token unavailable although the extension holds it in local storage"
+      },
+      {
+        "id": "d3",
+        "file": "CLAUDE.md",
+        "lineStart": 10,
+        "lineEnd": 10,
+        "category": "overclaim",
+        "blocking": false,
+        "description": "Line 10 still says the extension watcher covers background and popup bundles only, which the second HTML entry made false"
+      },
+      {
+        "id": "d4",
+        "file": "PR_BODY",
+        "category": "overclaim",
+        "blocking": false,
+        "description": "The body says the new files are prettier-clean; two of six are not"
+      }
+    ],
+    "refuted": [
+      {
+        "file": "PR_BODY",
+        "description": "The side-effect count is not a claim of exactly two: the sentence is scoped to inherited effects"
+      }
+    ]
+  }
+}

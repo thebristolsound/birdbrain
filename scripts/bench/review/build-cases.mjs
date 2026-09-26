@@ -15,7 +15,7 @@ import {
 import { join, dirname } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { validateCaseSpec } from './lib/schema.mjs'
+import { validateCaseSpec, PR_BODY } from './lib/schema.mjs'
 import { applyMutations, deriveTruth } from './lib/mutate.mjs'
 import * as git from './lib/git.mjs'
 
@@ -57,7 +57,8 @@ export function buildCase(spec, deps) {
   } else {
     truth = spec.truth
     for (const d of truth.defects) {
-      if (readFile(d.file) === null) throw new Error(`${spec.id}: ${d.file} not at head`)
+      if (d.file !== PR_BODY && readFile(d.file) === null)
+        throw new Error(`${spec.id}: ${d.file} not at head`)
     }
   }
   const diff = deps.diff(spec.source.head, files, spec.source.base)

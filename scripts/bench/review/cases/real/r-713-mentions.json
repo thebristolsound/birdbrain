@@ -1,0 +1,80 @@
+{
+  "id": "r-713-mentions",
+  "kind": "real",
+  "source": {
+    "pr": 713,
+    "base": "0a99e254be7ceea4e7702b52f60f4a832e3be2d1",
+    "head": "d0084eb26c47975a5ca03a1a92624c018a970fe9"
+  },
+  "tags": [
+    "wave2",
+    "adjudicated"
+  ],
+  "truth": {
+    "verdict": "request changes",
+    "defects": [
+      {
+        "id": "d1",
+        "file": "src/renderer/components/notes/mention/mentionModel.ts",
+        "lineStart": 40,
+        "lineEnd": 40,
+        "category": "removed-guard",
+        "blocking": true,
+        "description": "isMentionTargetType guards with in, so Object.prototype names pass and a pasted span crashes the editor subtree"
+      },
+      {
+        "id": "d2",
+        "file": "src/renderer/components/ui/dialog.tsx",
+        "lineStart": 19,
+        "lineEnd": 19,
+        "category": "other",
+        "blocking": false,
+        "description": "The suggestion plugin consumes Escape while active with zero candidates, so the first Escape is a no-op in every dialog"
+      },
+      {
+        "id": "d3",
+        "file": "src/renderer/components/captures/CaptureDetailsPanel.tsx",
+        "lineStart": 462,
+        "lineEnd": 462,
+        "category": "overclaim",
+        "blocking": false,
+        "description": "The body calls the under-covered lines presentational; this one is a behavioural guard covered by neither suite"
+      },
+      {
+        "id": "d4",
+        "file": "tests/lib/mentionModel.test.ts",
+        "lineStart": 86,
+        "lineEnd": 86,
+        "category": "other",
+        "blocking": false,
+        "description": "Every invalid-target test picks a value that misses the prototype hole"
+      },
+      {
+        "id": "d5",
+        "file": "src/renderer/components/notes/mention/MentionChip.tsx",
+        "lineStart": 115,
+        "lineEnd": 115,
+        "category": "other",
+        "blocking": false,
+        "description": "The final fallback arm is dead and a chip with no label renders as a bare sigil"
+      },
+      {
+        "id": "d6",
+        "file": "src/renderer/components/notes/useNoteEditor.ts",
+        "lineStart": 68,
+        "lineEnd": 68,
+        "category": "overclaim",
+        "blocking": false,
+        "description": "The comment describes editor rebuilding that the library does not do"
+      }
+    ],
+    "refuted": [
+      {
+        "file": "src/renderer/components/notes/NoteCard.tsx",
+        "lineStart": 100,
+        "lineEnd": 100,
+        "description": "Six query subscriptions per note card: structurally accurate, below the bar"
+      }
+    ]
+  }
+}

@@ -64,6 +64,7 @@ import type {
 import { VERIFY_RUNBOOK } from '@main/services/verifyRunbook'
 import { VERIFY_SCRIPT } from '@main/services/verifyScript'
 import { EVIDENCE_INDEX_SCHEMA_VERSION, WORKING_COPY_MARKER_FILENAME } from '@shared/schemas'
+import { extractNoteMentions } from '@shared/noteDoc'
 import type {
   Capture,
   DerivedFile,
@@ -323,10 +324,15 @@ export function getExportPreflight(caseId: string, captureIds?: string[]): Expor
  * is the 2026-08-30 ruling's own ground — a note that names a withheld Capture
  * discloses what the selection was drawn to withhold.
  *
- * An anchor naming a Capture the Case no longer holds is ignored rather than
- * treated as outside the selection. `notes.capture_id` is `ON DELETE SET NULL`
- * while `anchor_json` is plain TEXT that keeps the deleted id, so a stale
- * anchor is a dangling pointer, not a statement about the selection.
+ * A Capture Mention in the note's body is a third pointer, read the same way:
+ * it prints the Capture's label into notes.md, so one naming a Case Capture
+ * outside the selection withholds the note on the same ground.
+ *
+ * An anchor or Mention naming a Capture the Case no longer holds is ignored
+ * rather than treated as outside the selection. `notes.capture_id` is
+ * `ON DELETE SET NULL` while `anchor_json` and `body_doc` are plain TEXT that
+ * keep the deleted id, so a stale one is a dangling pointer, not a statement
+ * about the selection.
  *
  * The predicate is a strict subset of both live candidate answers to
  * maintainer question 1 — read `capture_id`, or read either pointer — so every
@@ -342,9 +348,15 @@ export function noteTravelsWithSelection(
   caseCaptureIds: ReadonlySet<string>
 ): boolean {
   if (note.captureId === undefined || !selectedCaptureIds.has(note.captureId)) return false
-  const anchored = note.anchor?.captureId
-  if (anchored === undefined || !caseCaptureIds.has(anchored)) return true
-  return selectedCaptureIds.has(anchored)
+  const mentioned = note.bodyDoc
+    ? extractNoteMentions(note.bodyDoc)
+        .filter((mention) => mention.targetType === 'capture')
+        .map((mention) => mention.targetId)
+    : []
+  const pointers = [note.anchor?.captureId, ...mentioned]
+  return pointers.every(
+    (id) => id === undefined || !caseCaptureIds.has(id) || selectedCaptureIds.has(id)
+  )
 }
 
 export async function generateReport(

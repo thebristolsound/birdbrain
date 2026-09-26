@@ -1,0 +1,68 @@
+name: Jev lens
+
+# Two shadow lenses backed by TypeSafe's Jev model. They observe and record; nothing here gates,
+# comments, or changes a triage label. Decision record: docs/adr/0031. Plan and benchmark:
+# docs/plans/2026-09-25-jev-shadow-lenses.md, scripts/spikes/jev-bench/README.md.
+#
+#   triage  an issue opens or is edited -> `lens:agent` / `lens:human` / `lens:needs-info`,
+#           plus `lens:process`. Skipped when a human has already routed the issue.
+#   hunks   a PR opens or pushes -> commit status `jev/evidence-hunks` on the head sha, one
+#           probability per blocking-tier file the diff touches. Always `success`, never required.
+#
+# Both scripts exit 0 without calling out when TYPESAFE_API_KEY is unset, so a fork or a
+# missing secret is a quiet no-op rather than a red run. Forks and Dependabot get no secrets
+# anyway, and the PR job is limited to same-repository heads for that reason.
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read # `gh pr diff` goes through GraphQL and needs it; the first run failed without
+  statuses: write
+
+concurrency:
+  group: jev-lens-${{ github.event_name }}-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  triage:
+    if: github.event_name == 'issues' && github.actor != 'birdbrain-agent'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      - name: Route
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          MACHINE_LOGIN: ${{ vars.BIRDBRAIN_AGENT_GH_LOGIN }}
+        run: node scripts/jev-lens/triage.mjs
+
+  hunks:
+    if: >-
+      github.event_name == 'pull_request'
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      - name: Judge blocking-tier hunks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/jev-lens/hunks.mjs

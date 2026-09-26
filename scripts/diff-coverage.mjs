@@ -110,20 +110,20 @@ export const executableChangedLines = (lines, hits) => {
 // workflow YAML have no business in a coverage report; code does. `extension/**`
 // is the case that motivated this: it is excluded from vitest's coverage
 // `include`, so an extension-only PR scored zero lines and printed a pass.
-// `scripts/` is tooling and stays out, except `scripts/slop-audit/`, which
-// vitest.config.ts instruments so the gate scores it like source.
+// `scripts/` is tooling and stays out, except the directories vitest.config.ts
+// instruments so the gate scores them like source.
 const SOURCE_LIKE = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/
 // `.d.mts` and `.d.cts` are declarations too, and `SOURCE_LIKE` matches their tails.
 const DECLARATION = /\.d\.(ts|mts|cts)$/
 // Co-located package tests: vitest.config.ts excludes them from instrumentation, so a
 // changed one is absent from coverage-final.json for the same reason tests/ is.
 const PACKAGE_TESTS = /^src\/packages\/[^/]+\/tests\//
-const INSTRUMENTED_SCRIPTS = 'scripts/slop-audit/'
+const INSTRUMENTED_SCRIPTS = ['scripts/slop-audit/', 'scripts/jev-lens/']
 export const isSourceLike = (path) =>
   SOURCE_LIKE.test(path) &&
   !path.startsWith('tests/') &&
   !path.startsWith('e2e/') &&
-  (!path.startsWith('scripts/') || path.startsWith(INSTRUMENTED_SCRIPTS)) &&
+  (!path.startsWith('scripts/') || INSTRUMENTED_SCRIPTS.some((d) => path.startsWith(d))) &&
   !PACKAGE_TESTS.test(path) &&
   !DECLARATION.test(path)
 

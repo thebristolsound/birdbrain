@@ -1,0 +1,25 @@
+{
+  "id": "m18-export-entry-checked-against-truncated-head",
+  "kind": "mutation",
+  "source": {
+    "pr": 1477,
+    "base": "6a1637935e09b3856ec08a57f3a2c0ac08342a23",
+    "head": "5cffdd025481c792128b22aafce7aa873bddd6e8"
+  },
+  "tags": [
+    "wrong-argument",
+    "verify",
+    "evidence"
+  ],
+  "mutations": [
+    {
+      "id": "d1",
+      "file": "src/shared/verify/evidencePackage.ts",
+      "find": "validateExportEntry(rawEntry, shippedEntries, publicKeyPem)",
+      "replace": "validateExportEntry(rawEntry, entries, publicKeyPem)",
+      "category": "wrong-argument",
+      "blocking": true,
+      "description": "The export entry prevHash is checked against the truncated prefix head, so a genuine entry fails on any package with a chain break"
+    }
+  ]
+}

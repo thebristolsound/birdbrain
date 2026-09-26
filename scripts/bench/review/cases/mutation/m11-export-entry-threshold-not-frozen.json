@@ -1,0 +1,25 @@
+{
+  "id": "m11-export-entry-threshold-not-frozen",
+  "kind": "mutation",
+  "source": {
+    "pr": 1507,
+    "base": "f42df50dd72f73d8e72b5759d2c9e5789d79201f",
+    "head": "5169a9e0cecd2e56bb8881999eecd3391f374ca1"
+  },
+  "tags": [
+    "wrong-default",
+    "verify",
+    "evidence"
+  ],
+  "mutations": [
+    {
+      "id": "d1",
+      "file": "src/shared/schemas.ts",
+      "find": "export const EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION = 2",
+      "replace": "export const EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION = EVIDENCE_INDEX_SCHEMA_VERSION",
+      "category": "wrong-default",
+      "blocking": true,
+      "description": "The threshold tracks the index version instead of being fixed at 2, so the runbook sentence that a later bump never re-admits a version-2 package is false"
+    }
+  ]
+}

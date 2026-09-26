@@ -1,0 +1,25 @@
+{
+  "id": "m17-untrusted-token-range-swapped",
+  "kind": "mutation",
+  "source": {
+    "pr": 1477,
+    "base": "6a1637935e09b3856ec08a57f3a2c0ac08342a23",
+    "head": "5cffdd025481c792128b22aafce7aa873bddd6e8"
+  },
+  "tags": [
+    "swapped-comparison",
+    "verify",
+    "evidence"
+  ],
+  "mutations": [
+    {
+      "id": "d1",
+      "file": "src/shared/verify/evidencePackage.ts",
+      "find": "(breakIndex === undefined ? [] : shippedEntries.slice(breakIndex))",
+      "replace": "(breakIndex === undefined ? [] : shippedEntries.slice(0, breakIndex))",
+      "category": "swapped-comparison",
+      "blocking": true,
+      "description": "The untrusted-token set is built from the verified prefix instead of the entries past the break, so the wrong captures get the \"no trustworthy timestamp\" note"
+    }
+  ]
+}

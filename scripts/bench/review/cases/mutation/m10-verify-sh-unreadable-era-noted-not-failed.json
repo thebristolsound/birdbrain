@@ -1,0 +1,25 @@
+{
+  "id": "m10-verify-sh-unreadable-era-noted-not-failed",
+  "kind": "mutation",
+  "source": {
+    "pr": 1507,
+    "base": "f42df50dd72f73d8e72b5759d2c9e5789d79201f",
+    "head": "5169a9e0cecd2e56bb8881999eecd3391f374ca1"
+  },
+  "tags": [
+    "overclaim",
+    "verify",
+    "evidence"
+  ],
+  "mutations": [
+    {
+      "id": "d1",
+      "file": "src/main/services/verifyScript.ts",
+      "find": "    fail 'export-entry.json is missing and evidence.json states no readable schema version",
+      "replace": "    note 'export-entry.json is missing and evidence.json states no readable schema version",
+      "category": "overclaim",
+      "blocking": true,
+      "description": "The comment above the case says an unreadable era is a FAIL; the branch prints a note and the script can PASS a package the binary verifier fails"
+    }
+  ]
+}

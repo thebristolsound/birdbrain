@@ -1,0 +1,24 @@
+{
+  "id": "m01-persona-sweep-path-guard-removed",
+  "kind": "mutation",
+  "source": {
+    "pr": 1587,
+    "base": "99db4b9aba3e5f180bbd7eadb72a4f00811ba6d8",
+    "head": "e5be1060c58e693dd567cd989118db95b9104c55"
+  },
+  "tags": [
+    "removed-guard",
+    "persona"
+  ],
+  "mutations": [
+    {
+      "id": "d1",
+      "file": "src/main/services/persona/personaSessions.ts",
+      "find": "  if (resolve(sessionDataPath) !== resolve(userDataPath)) {\n    logger.info('persona', 'persona.orphan_sweep_skipped')\n    return null\n  }\n",
+      "replace": "",
+      "category": "removed-guard",
+      "blocking": true,
+      "description": "The sweep no longer skips when the database is not beside the session folders, so a persona absent from an unrelated database has its cookies deleted"
+    }
+  ]
+}

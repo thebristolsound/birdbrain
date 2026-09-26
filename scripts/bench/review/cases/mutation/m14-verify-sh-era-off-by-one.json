@@ -1,0 +1,25 @@
+{
+  "id": "m14-verify-sh-era-off-by-one",
+  "kind": "mutation",
+  "source": {
+    "pr": 1495,
+    "base": "be4eb5aff247ace0854def9c75667919e95fd392",
+    "head": "dcd5b65da61cd206a8081283107ba37d23104714"
+  },
+  "tags": [
+    "off-by-one",
+    "verify",
+    "evidence"
+  ],
+  "mutations": [
+    {
+      "id": "d1",
+      "file": "src/main/services/verifyScript.ts",
+      "find": "(if . >= ${EVIDENCE_INDEX_SCHEMA_VERSION} then",
+      "replace": "(if . > ${EVIDENCE_INDEX_SCHEMA_VERSION} then",
+      "category": "off-by-one",
+      "blocking": true,
+      "description": "verify.sh reads a version-2 index as the lenient pre era, disagreeing with the binary verifier the same PR aligns it with"
+    }
+  ]
+}

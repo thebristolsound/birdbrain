@@ -1,0 +1,24 @@
+{
+  "id": "m02-persona-sweep-inverted-orphan-test",
+  "kind": "mutation",
+  "source": {
+    "pr": 1587,
+    "base": "99db4b9aba3e5f180bbd7eadb72a4f00811ba6d8",
+    "head": "e5be1060c58e693dd567cd989118db95b9104c55"
+  },
+  "tags": [
+    "swapped-comparison",
+    "persona"
+  ],
+  "mutations": [
+    {
+      "id": "d1",
+      "file": "src/main/services/persona/personaSessions.ts",
+      "find": "getPersonaLabel(id) === undefined)",
+      "replace": "getPersonaLabel(id) !== undefined)",
+      "category": "swapped-comparison",
+      "blocking": true,
+      "description": "The orphan test is inverted: live personas are swept and orphans are kept"
+    }
+  ]
+}

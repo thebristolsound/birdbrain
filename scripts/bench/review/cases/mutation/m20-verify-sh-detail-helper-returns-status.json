@@ -1,0 +1,25 @@
+{
+  "id": "m20-verify-sh-detail-helper-returns-status",
+  "kind": "mutation",
+  "source": {
+    "pr": 1532,
+    "base": "7c0d22ce85b7c981bf636c465b152b5a76821436",
+    "head": "d0d849898f1f462a61627f9055219504cf08273c"
+  },
+  "tags": [
+    "overclaim",
+    "verify",
+    "evidence"
+  ],
+  "mutations": [
+    {
+      "id": "d1",
+      "file": "src/main/services/verifyScript.ts",
+      "find": "  [ \"$verbose\" -eq 1 ] && printf '   %s\\\\n' \"$*\"\n  return 0\n}",
+      "replace": "  [ \"$verbose\" -eq 1 ] && printf '   %s\\\\n' \"$*\"\n}",
+      "category": "overclaim",
+      "blocking": false,
+      "description": "The comment says the helper always returns 0; without -v it now returns 1, the trap the comment names"
+    }
+  ]
+}

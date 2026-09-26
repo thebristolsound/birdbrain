@@ -1,0 +1,25 @@
+{
+  "id": "m13-evidence-index-states-old-era",
+  "kind": "mutation",
+  "source": {
+    "pr": 1495,
+    "base": "be4eb5aff247ace0854def9c75667919e95fd392",
+    "head": "dcd5b65da61cd206a8081283107ba37d23104714"
+  },
+  "tags": [
+    "wrong-default",
+    "export",
+    "evidence"
+  ],
+  "mutations": [
+    {
+      "id": "d1",
+      "file": "src/main/services/export.ts",
+      "find": "schemaVersion: EVIDENCE_INDEX_SCHEMA_VERSION,",
+      "replace": "schemaVersion: 1,",
+      "category": "wrong-default",
+      "blocking": true,
+      "description": "The index the packager writes states version 1, so a package with its export entry removed is excused as old by every verifier this PR teaches to read the era"
+    }
+  ]
+}

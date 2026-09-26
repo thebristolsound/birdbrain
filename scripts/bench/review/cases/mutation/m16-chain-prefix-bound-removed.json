@@ -1,0 +1,25 @@
+{
+  "id": "m16-chain-prefix-bound-removed",
+  "kind": "mutation",
+  "source": {
+    "pr": 1477,
+    "base": "6a1637935e09b3856ec08a57f3a2c0ac08342a23",
+    "head": "5cffdd025481c792128b22aafce7aa873bddd6e8"
+  },
+  "tags": [
+    "removed-guard",
+    "verify",
+    "evidence"
+  ],
+  "mutations": [
+    {
+      "id": "d1",
+      "file": "src/shared/verify/evidencePackage.ts",
+      "find": "const entries = breakIndex === undefined ? shippedEntries : shippedEntries.slice(0, breakIndex)",
+      "replace": "const entries = shippedEntries",
+      "category": "removed-guard",
+      "blocking": true,
+      "description": "Package checks run over entries past the chain break, which is the unbounded behaviour the PR exists to remove"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "id": "m12-export-entry-era-off-by-one",
+  "kind": "mutation",
+  "source": {
+    "pr": 1507,
+    "base": "f42df50dd72f73d8e72b5759d2c9e5789d79201f",
+    "head": "5169a9e0cecd2e56bb8881999eecd3391f374ca1"
+  },
+  "tags": [
+    "off-by-one",
+    "verify",
+    "evidence"
+  ],
+  "mutations": [
+    {
+      "id": "d1",
+      "file": "src/shared/verify/evidencePackage.ts",
+      "find": "if (evidence.schemaVersion >= EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION) {",
+      "replace": "if (evidence.schemaVersion > EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION) {",
+      "category": "off-by-one",
+      "blocking": true,
+      "description": "A version-2 package with its export entry removed takes the lenient branch instead of failing"
+    }
+  ]
+}

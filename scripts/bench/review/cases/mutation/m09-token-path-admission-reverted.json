@@ -1,0 +1,25 @@
+{
+  "id": "m09-token-path-admission-reverted",
+  "kind": "mutation",
+  "source": {
+    "pr": 1516,
+    "base": "d48ab3fa8a2ad876ac85b40aeeda05c2aecc07f4",
+    "head": "3c230b83e485c17ad5652215de50b21a71011cb0"
+  },
+  "tags": [
+    "removed-guard",
+    "export",
+    "evidence"
+  ],
+  "mutations": [
+    {
+      "id": "d1",
+      "file": "src/main/services/export.ts",
+      "find": "    if (!stampFor(entry, entry.captureContentHash)) continue\n    for (const subject of subjects) {",
+      "replace": "    if (typeof entry.tsaToken !== 'string') continue\n    for (const subject of subjects) {",
+      "category": "removed-guard",
+      "blocking": true,
+      "description": "Token paths are again built for any string token, so a rejected token gets a path the documents cite while the same documents call the exhibit unstamped"
+    }
+  ]
+}

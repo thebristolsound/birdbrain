@@ -1,0 +1,24 @@
+{
+  "id": "m19-capture-server-bind-error-resolves",
+  "kind": "mutation",
+  "source": {
+    "pr": 1403,
+    "base": "e28ed45a773be8031a3cf1c7c6ca69862e618f3d",
+    "head": "6c4f703e4fb6194a5adecc19b36aa2469bc296c8"
+  },
+  "tags": [
+    "swallowed-error",
+    "captureServer"
+  ],
+  "mutations": [
+    {
+      "id": "d1",
+      "file": "src/main/services/captureServer.ts",
+      "find": "      reject(new CaptureServerBindError(port, err))",
+      "replace": "      resolve()",
+      "category": "swallowed-error",
+      "blocking": true,
+      "description": "A bind failure resolves the start promise, so startup continues with no capture server and the dialog the PR adds never shows"
+    }
+  ]
+}

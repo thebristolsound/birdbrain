@@ -1,0 +1,24 @@
+{
+  "id": "m03-persona-sweep-readdir-error-swallowed",
+  "kind": "mutation",
+  "source": {
+    "pr": 1587,
+    "base": "99db4b9aba3e5f180bbd7eadb72a4f00811ba6d8",
+    "head": "e5be1060c58e693dd567cd989118db95b9104c55"
+  },
+  "tags": [
+    "swallowed-error",
+    "persona"
+  ],
+  "mutations": [
+    {
+      "id": "d1",
+      "file": "src/main/services/persona/personaSessions.ts",
+      "find": "    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return []\n    logger.warn('persona', 'persona.orphan_partition_clear_failed', undefined, err)\n    return null",
+      "replace": "    return []",
+      "category": "swallowed-error",
+      "blocking": false,
+      "description": "Any readdir failure now reads as no partitions and logs nothing, so a permissions error is indistinguishable from an empty folder"
+    }
+  ]
+}

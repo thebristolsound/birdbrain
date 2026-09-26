@@ -1,0 +1,24 @@
+{
+  "id": "m15-heartbeat-timeout-shorter-than-poll",
+  "kind": "mutation",
+  "source": {
+    "pr": 1490,
+    "base": "634b6b0bb459a86497f61a9b381394beabf8ffb3",
+    "head": "71493769ba18de177d4636baa1870081400f35bb"
+  },
+  "tags": [
+    "overclaim",
+    "session"
+  ],
+  "mutations": [
+    {
+      "id": "d1",
+      "file": "src/main/services/session.ts",
+      "find": "const DEFAULT_EXTENSION_TIMEOUT_MS = 90_000",
+      "replace": "const DEFAULT_EXTENSION_TIMEOUT_MS = 10_000",
+      "category": "overclaim",
+      "blocking": true,
+      "description": "The title says the window is widened past the poll period; the timeout is 10 seconds against a 15-second poll, so every heartbeat expires before the next one"
+    }
+  ]
+}

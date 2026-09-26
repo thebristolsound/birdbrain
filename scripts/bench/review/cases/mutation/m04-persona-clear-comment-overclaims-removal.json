@@ -1,0 +1,24 @@
+{
+  "id": "m04-persona-clear-comment-overclaims-removal",
+  "kind": "mutation",
+  "source": {
+    "pr": 1587,
+    "base": "99db4b9aba3e5f180bbd7eadb72a4f00811ba6d8",
+    "head": "e5be1060c58e693dd567cd989118db95b9104c55"
+  },
+  "tags": [
+    "overclaim",
+    "persona"
+  ],
+  "mutations": [
+    {
+      "id": "d1",
+      "file": "src/main/services/persona/personaSessions.ts",
+      "find": "// After a snapshot restore the orphan's session may already be open, so its\n// storage is cleared through the session; the empty folder goes at the next\n// startup.",
+      "replace": "// After a snapshot restore the orphan's session may already be open, so its\n// storage is cleared through the session and the folder is removed as well,\n// so nothing of the orphan survives the restore.",
+      "category": "overclaim",
+      "blocking": true,
+      "description": "The comment says the folder is removed on restore; the function only clears storage and the folder stays until the next startup"
+    }
+  ]
+}

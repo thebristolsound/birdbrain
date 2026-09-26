@@ -1,0 +1,25 @@
+{
+  "id": "m08-token-admission-guard-removed-in-zip",
+  "kind": "mutation",
+  "source": {
+    "pr": 1516,
+    "base": "d48ab3fa8a2ad876ac85b40aeeda05c2aecc07f4",
+    "head": "3c230b83e485c17ad5652215de50b21a71011cb0"
+  },
+  "tags": [
+    "removed-guard",
+    "export",
+    "evidence"
+  ],
+  "mutations": [
+    {
+      "id": "d1",
+      "file": "src/main/services/export.ts",
+      "find": "    if (!stampFor(entry, entry.captureContentHash)) continue\n    const path = timestampPathsByHash.get(entry.captureContentHash)",
+      "replace": "    const path = timestampPathsByHash.get(entry.captureContentHash)",
+      "category": "removed-guard",
+      "blocking": true,
+      "description": "The packager encloses a token the resolver rejected, which is the defect the PR body says it fixes"
+    }
+  ]
+}

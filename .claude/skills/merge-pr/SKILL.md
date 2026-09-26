@@ -24,8 +24,11 @@ authenticates as the machine account.
 ## What it checks before merging
 
 1. The PR is open and its base is `main`.
-2. At least one check run exists at the head commit and every one completed without failure.
-   A commit CI never ran on is refused, not treated as green.
+2. At least one check run exists at the head commit, and every required status check of the
+   rules that apply to `main` (read from the API) has a green check run or commit status there.
+   A commit CI never ran on is refused, not treated as green; so is a rules read that fails or
+   names no required checks. A check the rules do not require is printed as a `WARN` line when
+   it is not green, and does not refuse.
 3. The body passes `post-pr-body` (the linter tolerates a cloud-proxy footer after the
    attribution line). Under `gh` the check runs with `--any-author`, so a human-written body
    without the attribution line passes; under `agh` the line is required. A body that fails is

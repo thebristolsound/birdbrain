@@ -211,7 +211,7 @@ above about MCP writes remain accurate for non-dispatch work.
   A token that is missing, expired, or resolves to another login fails the job.
 - The checkout's git credential is that token, so branch pushes from the implementer go out
   as the machine account over HTTPS, and commit author and committer are set to it.
-- Serena is not installed. Project MCP servers are disabled for the cycle.
+- Project MCP servers are disabled for the cycle.
 - The end-of-cycle report lands in the run's step summary; the raw result is a run artifact.
 - A credential step probes `CLAUDE_CODE_OAUTH_TOKEN` with one Haiku call before the toolchain
   installs, and reads the optional variable `CLAUDE_CODE_OAUTH_TOKEN_EXPIRES` (YYYY-MM-DD)

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, rmSync, existsSync } from 'fs'
+import { mkdtempSync, rmSync, existsSync, chmodSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { writeFileSync } from 'fs'
@@ -120,6 +120,139 @@ describe('settings', () => {
     expect(settings.tsaUrl).toBe(DEFAULT_TSA_URL)
     expect(settings.theme).toBe('light')
     expect(settings.operatorName).toBe('Keep Me')
+  })
+
+  // #1169. Trusted timestamping is on unless the operator says otherwise, and
+  // the switch has to survive everything that can happen to a settings file,
+  // because failing open puts a declined operator back on the network silently.
+  describe('trusted-timestamping opt-out', () => {
+    it('is enabled on a fresh install', () => {
+      expect(getSettings().tsaEnabled).toBe(true)
+    })
+
+    it('round-trips the opt-out and the opt-back-in', () => {
+      updateSettings({ tsaEnabled: false })
+      expect(getSettings().tsaEnabled).toBe(false)
+      updateSettings({ tsaEnabled: true })
+      expect(getSettings().tsaEnabled).toBe(true)
+    })
+
+    it('stays enabled for a settings file written before the switch existed', () => {
+      writeFileSync(settingsFile, JSON.stringify({ theme: 'light' }), 'utf-8')
+      expect(getSettings().tsaEnabled).toBe(true)
+    })
+
+    it('rejects a non-boolean rather than coercing it', () => {
+      expect(() => updateSettings({ tsaEnabled: 'no' as unknown as boolean })).toThrow(/tsaEnabled/)
+      expect(getSettings().tsaEnabled).toBe(true)
+    })
+
+    it('keeps the opt-out when another field makes the whole file unparseable', () => {
+      // Every other setting falls back to its default here. This one must not:
+      // the operator declined, and a corrupt neighbouring field is not consent.
+      writeFileSync(
+        settingsFile,
+        JSON.stringify({ tsaEnabled: false, dedupeWindowSeconds: 'soon' }),
+        'utf-8'
+      )
+      const settings = getSettings()
+      expect(settings.tsaEnabled).toBe(false)
+      expect(settings.dedupeWindowSeconds).toBe(60)
+    })
+
+    it('does not invent an opt-out from an unparseable file that never had one', () => {
+      writeFileSync(settingsFile, JSON.stringify({ dedupeWindowSeconds: 'soon' }), 'utf-8')
+      expect(getSettings().tsaEnabled).toBe(true)
+    })
+
+    it('does not read a non-boolean as an opt-out', () => {
+      // 'false' the string is not a decision the file records, so the default
+      // stands rather than a coercion nobody asked for.
+      writeFileSync(settingsFile, JSON.stringify({ tsaEnabled: 'false' }), 'utf-8')
+      expect(getSettings().tsaEnabled).toBe(true)
+    })
+
+    // The schema-invalid branch above can still read the stored preference. This
+    // one cannot: JSON.parse throws, so nothing in the file is legible and the
+    // preference is unknown rather than known-absent. Falling open there is the
+    // exact failure the opt-out exists to prevent — updateSettings persists with
+    // a plain writeFileSync, so a kill mid-write leaves truncated JSON, and the
+    // next launch would put a declined operator back in contact with the TSA.
+    describe('a settings file that cannot be parsed at all', () => {
+      const unreadable = [
+        ['truncated mid-write', '{"tsaEnabled": false, "theme": "da'],
+        ['trailing garbage', '{"tsaEnabled": false}}}'],
+        ['not JSON at all', 'not json'],
+        ['empty', '']
+      ] as const
+
+      for (const [label, contents] of unreadable) {
+        it(`falls closed for timestamping when the file is ${label}`, () => {
+          writeFileSync(settingsFile, contents, 'utf-8')
+          expect(getSettings().tsaEnabled).toBe(false)
+        })
+      }
+
+      it('still falls open for every other setting', () => {
+        writeFileSync(settingsFile, '{"theme": "light", "dedupeWin', 'utf-8')
+        const settings = getSettings()
+        expect(settings.theme).toBe('dark')
+        expect(settings.dedupeWindowSeconds).toBe(60)
+        expect(settings.tsaUrl).toBe(DEFAULT_TSA_URL)
+      })
+
+      it('logs the fail-closed read rather than degrading silently', () => {
+        writeFileSync(settingsFile, '{truncated', 'utf-8')
+        getSettings()
+        expect(loggerWarn).toHaveBeenCalledWith(
+          'settings',
+          'settings.unreadable_timestamping_fail_closed'
+        )
+      })
+
+      it('leaves the switch usable, so the state is recoverable', () => {
+        writeFileSync(settingsFile, '{truncated', 'utf-8')
+        expect(getSettings().tsaEnabled).toBe(false)
+        updateSettings({ tsaEnabled: true })
+        expect(getSettings().tsaEnabled).toBe(true)
+      })
+    })
+
+    // A file whose bytes are intact but which this process cannot read right now:
+    // EACCES, EBUSY, an antivirus lock. The session falls closed the same way,
+    // because the stored preference is illegible either way — but the decline must
+    // not be written back, or a transient lock plus one routine settings write
+    // persists an opt-out the operator never chose and blanks every other setting
+    // with it (#1169 round-2 review). Skipped as root, which reads a 0o000 file.
+    describe('a settings file that cannot be read', () => {
+      it.skipIf(process.getuid?.() === 0)('falls closed for timestamping', () => {
+        writeFileSync(settingsFile, JSON.stringify({ tsaEnabled: true }), 'utf-8')
+        chmodSync(settingsFile, 0o000)
+        try {
+          expect(getSettings().tsaEnabled).toBe(false)
+        } finally {
+          chmodSync(settingsFile, 0o600)
+        }
+      })
+
+      it.skipIf(process.getuid?.() === 0)(
+        'refuses the write, leaving the stored preference intact',
+        () => {
+          writeFileSync(settingsFile, JSON.stringify({ tsaEnabled: true, theme: 'light' }), 'utf-8')
+          chmodSync(settingsFile, 0o000)
+          try {
+            expect(() => updateSettings({ operatorName: 'Someone' })).toThrow(
+              /refusing to overwrite/
+            )
+          } finally {
+            chmodSync(settingsFile, 0o600)
+          }
+          const recovered = getSettings()
+          expect(recovered.tsaEnabled).toBe(true)
+          expect(recovered.theme).toBe('light')
+        }
+      )
+    })
   })
 
   it('preserves ignored URL patterns', () => {

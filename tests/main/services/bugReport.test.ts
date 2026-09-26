@@ -73,7 +73,8 @@ const SNAPSHOT = {
       ms: 812
     }
   ],
-  keyProtection: { signingKey: 'protected', openRouterKey: 'not-set' }
+  keyProtection: { signingKey: 'protected', openRouterKey: 'not-set' },
+  trustedTimestamping: { enabled: true }
 } satisfies DiagnosticsSnapshot
 
 const SESSIONS: SessionRecord[] = [

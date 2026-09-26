@@ -157,6 +157,89 @@ describe('Operator card', () => {
     fireEvent.blur(tsa)
     await waitFor(() => expect(update).toHaveBeenCalledWith({ tsaUrl: DEFAULT_TSA_URL }))
   })
+
+  // #1169. The switch is the whole point of the issue, so all three of its jobs
+  // are pinned: it shows the persisted state, it writes the opt-out, and it says
+  // what declining costs and what it does not.
+  describe('trusted-timestamping switch', () => {
+    function mountOperator(tsaEnabled: boolean | undefined) {
+      const update = vi.fn().mockResolvedValue({})
+      fakeBridge({
+        settings: {
+          getIdentity: vi.fn().mockResolvedValue({
+            operatorName: 'A. Analyst',
+            operatorRole: 'Analyst',
+            operatorOrganization: 'Research',
+            installationId: 'install-1'
+          }),
+          get: vi.fn().mockResolvedValue({ tsaUrl: DEFAULT_TSA_URL, tsaEnabled }),
+          update
+        }
+      })
+      mount(<OperatorConfig />)
+      return update
+    }
+
+    it('reads on, and writes the opt-out when switched off', async () => {
+      const update = mountOperator(true)
+      const toggle = await screen.findByRole('switch', { name: 'Trusted timestamping' })
+      await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('true'))
+      fireEvent.click(toggle)
+      await waitFor(() => expect(update).toHaveBeenCalledWith({ tsaEnabled: false }))
+    })
+
+    it('reads off, writes the opt-back-in, and says nothing reaches the endpoint', async () => {
+      const update = mountOperator(false)
+      const toggle = await screen.findByRole('switch', { name: 'Trusted timestamping' })
+      await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('false'))
+      expect(screen.getByText(/Nothing is sent to this endpoint/)).toBeDefined()
+      fireEvent.click(toggle)
+      await waitFor(() => expect(update).toHaveBeenCalledWith({ tsaEnabled: true }))
+    })
+
+    // Fix-round finding. Parking the field forced the one order that can leak:
+    // an operator who wanted a different authority had to switch timestamping on
+    // first, and the worker's retry tick or the next capture could reach the old
+    // endpoint before the new URL was typed and saved on blur. Nothing is sent
+    // while the switch is off, so the field stays editable and the authority can
+    // be corrected before opting back in.
+    it('keeps the endpoint editable while timestamping is off', async () => {
+      const update = mountOperator(false)
+      const tsa = await screen.findByLabelText('Trusted Timestamp Authority')
+      expect(tsa).toHaveProperty('disabled', false)
+      fireEvent.change(tsa, { target: { value: 'https://other.example/tsr' } })
+      fireEvent.blur(tsa)
+      await waitFor(() =>
+        expect(update).toHaveBeenCalledWith({ tsaUrl: 'https://other.example/tsr' })
+      )
+      expect(update).not.toHaveBeenCalledWith({ tsaEnabled: true })
+    })
+
+    it('states the consequence of declining, including that it is reversible', async () => {
+      mountOperator(true)
+      expect(
+        await screen.findByText(/nothing is sent to a timestamp authority/i)
+      ).toBeDefined()
+      expect(screen.getByText(/timestamped if you turn it back on/i)).toBeDefined()
+    })
+
+    // The switch governs what happens next, not what already happened: tokens
+    // obtained before it was switched off stay valid and their captures keep
+    // asserting trusted time everywhere, so the copy may not read as a claim
+    // over the installation's evidence as a whole.
+    it('scopes the no-trusted-time consequence to captures made while it is off', async () => {
+      mountOperator(true)
+      const copy = await screen.findByText(/nothing is sent to a timestamp authority/i)
+      expect(copy.textContent).toMatch(/captures made while it is off assert no trusted time/i)
+      expect(copy.textContent).toMatch(/timestamps already obtained are kept/i)
+    })
+
+    it('reads a settings file written before the switch existed as on', async () => {
+      mountOperator(undefined)
+      const toggle = await screen.findByRole('switch', { name: 'Trusted timestamping' })
+      await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('true'))
+    })
+  })
 })
 
 it('binds nested tab orientation to its own root', () => {

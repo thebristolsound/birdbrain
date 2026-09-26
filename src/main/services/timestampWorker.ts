@@ -46,6 +46,14 @@ export interface TimestampWorker {
 
 const RETRY_INTERVAL_MS = 5 * 60 * 1000
 
+// The operator's timestamping opt-out (#1169), read fresh on every decision
+// rather than captured at worker construction: the switch takes effect on the
+// next capture and the next retry tick, with no restart. Read from settings and
+// nowhere else, so there is exactly one answer to "may this process contact a
+// TSA" and it is the one Settings and Diagnostics show.
+function timestampingEnabled(): boolean {
+  return getSettings().tsaEnabled
+}
 
 export function createTimestampWorker(deps: TimestampWorkerDeps = {}): TimestampWorker {
   const requestToken = deps.requestToken ?? requestTimestamp
@@ -56,6 +64,7 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
   // entry, and flip the mirror to rfc3161. Returns false (capture stays pending)
   // on any failure so the retry loop can try again later.
   async function stampCapture(captureId: string): Promise<boolean> {
+    if (!timestampingEnabled()) return false
     const capture = captureRepo.getCapture(captureId)
     if (!capture || capture.format !== 'mhtml') return false
 
@@ -106,6 +115,7 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
   // stamped at schema 3 (#1180): its shape is the schema-2 one, but a schema-2
   // verifier would read it as a Capture's stamp and silently fail to apply it.
   async function stampExhibit(exhibitId: string): Promise<boolean> {
+    if (!timestampingEnabled()) return false
     const exhibit = getExhibit(exhibitId)
     if (!exhibit || exhibit.manifestSeq === null) return false
     if (exhibit.kind === 'capture') return stampCapture(exhibitId)
@@ -172,6 +182,11 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
   async function processPending(): Promise<{ stamped: number; failed: number }> {
     let stamped = 0
     let failed = 0
+    // Nothing failed — there was nothing to attempt. Counting the queue as
+    // failures here would light the retry-failure wording for a state the
+    // operator chose, and would read the pending queue on every tick for no
+    // reason.
+    if (!timestampingEnabled()) return { stamped, failed }
     for (const cap of captureRepo.listPendingTimestampCaptures()) {
       if (await stampCapture(cap.id)) stamped++
       else failed++
@@ -187,6 +202,14 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
   // non-blocking attempt. Returns immediately — never on the capture's path.
   function enqueue(captureId: string): void {
     captureRepo.setCaptureTrustedTime(captureId, 'pending')
+    // With timestamping declined (#1169) the mirror write above still happens
+    // and only the network attempt is skipped. The mirror is a cache of what the
+    // manifest says, and the manifest says 'pending' for any v2 capture entry
+    // carrying no token — rebuildMirror() would write exactly this on the next
+    // start. Writing anything else would make the cache disagree with the
+    // manifest, and would hide these captures from the queue that stamps them
+    // if the operator turns timestamping back on.
+    if (!timestampingEnabled()) return
     setImmediate(() => {
       void stampCapture(captureId)
     })
@@ -195,6 +218,7 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
   // The commit path's hand-off (X26). Nothing to mark pending: the manifest
   // already says so by having no stamp for the hash.
   function enqueueExhibit(exhibitId: string): void {
+    if (!timestampingEnabled()) return
     setImmediate(() => {
       void stampExhibit(exhibitId)
     })

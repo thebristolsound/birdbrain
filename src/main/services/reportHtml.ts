@@ -48,6 +48,7 @@ import type { TrustedTimeResult } from '@shared/verify'
 import { recordedHttpStatus } from '@shared/httpStatus'
 import { formatSnapshotDelta } from '@shared/wayback'
 import {
+  TRUSTED_TIME_AUTHORITY_NOT_CONTACTED,
   TRUSTED_TIME_UNRECORDED_STAMPED_AT,
   trustedTimeAttestingParty,
   trustedTimeLabel
@@ -188,6 +189,14 @@ export interface ReportData {
   operatorRole: string
   operatorOrganization: string
   tsaUrl: string
+  /**
+   * Whether the installation submits anything to the authority named by `tsaUrl`
+   * (#1169). Optional and true when absent, matching the settings default: a
+   * caller that predates the opt-out described an installation that timestamped.
+   * Naming a configured authority under a declined opt-out would have the
+   * document assert a relationship with a third party the operator refused.
+   */
+  tsaEnabled?: boolean
   /**
    * The same resolution `trustedTimeByCaptureId` carries, pre-counted. Nothing in
    * this renderer reads it — every figure printed here is folded out of the rows
@@ -709,9 +718,18 @@ function trustedTimeView(resolved: TrustedTimeResult): StateView {
     case 'pending':
       return {
         label,
+        // Never "a timestamp was requested": the manifest records tokens, not
+        // requests, and trusted timestamping can be declined for the whole
+        // installation (#1169), in which case no request was ever made. The
+        // axis means only that this capture is of a class that can be stamped
+        // and carries no token that attests it — a token that does not parse, or
+        // whose imprint attests other bytes, resolves here too and stays in the
+        // manifest, so a flat "no token is recorded" would be the wrong claim
+        // for that capture.
         detail:
-          'A trusted timestamp was requested but has not been obtained. The capture time ' +
-          "shown is the operator's local system clock and carries no independent corroboration."
+          "No RFC 3161 token attesting this capture's content digest is recorded; the " +
+          'manifest does not state whether one was ever requested. The capture time shown ' +
+          "is the operator's local system clock and carries no independent corroboration."
       }
     case 'none':
     default:
@@ -805,7 +823,19 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     }
     ${field(
       'Time-stamping authority (configured)',
-      data.tsaUrl ? mono(esc(data.tsaUrl)) : 'none configured',
+      // A declined installation still names its configured endpoint, with the
+      // not-contacted note under it (#1169 round-2 review): the verification
+      // section below tells a reader to obtain a trust anchor from the authority
+      // that issued the retained tokens, and a package built after the switch was
+      // thrown can still enclose that authority's root and a runbook naming it.
+      // Suppressing the endpoint here made the one document contradict itself.
+      data.tsaEnabled === false
+        ? `${data.tsaUrl ? `${mono(esc(data.tsaUrl))}<br>` : ''}${esc(
+            TRUSTED_TIME_AUTHORITY_NOT_CONTACTED
+          )}`
+        : data.tsaUrl
+          ? mono(esc(data.tsaUrl))
+          : 'none configured',
       true
     )}
   </div>
@@ -1172,8 +1202,8 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
               unstamped === 1 ? '' : 's'
             } without trusted time</p><p>${unstamped} exhibit${
               unstamped === 1 ? '' : 's'
-            } in this package (${pendingCount} pending,
-            ${noneCount} none) carr${unstamped === 1 ? 'ies' : 'y'} no RFC 3161 token. For ${
+            } in this package (${pendingCount} eligible for timestamping,
+            ${noneCount} not) carr${unstamped === 1 ? 'ies' : 'y'} no RFC 3161 token. For ${
               unstamped === 1 ? 'it' : 'those'
             }, the recorded time is the operator's local system clock only. The export was not
             blocked; the gap is recorded rather than concealed.</p></div>`
@@ -1207,7 +1237,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     ${legendRow('Chain broken', 'Bytes match, but the manifest chain does not reconcile at or before this entry.')}
     ${legendRow('Absent', 'The stored artefact could not be read at verification time. The row is retained rather than removed.')}
     ${legendRow('Legacy record', 'The capture predates the hash-chained manifest; its digest is recorded but not chain-bound.')}
-    ${legendRow('Local clock', "No RFC 3161 token is retained; the capture time is the operator's system clock only.")}
+    ${legendRow('Local clock', "No RFC 3161 token attesting this capture's content digest is retained; the capture time is the operator's system clock only.")}
   </div>
 </section>`
     }
@@ -1270,7 +1300,13 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     not an independent anchor: check its SHA-256 fingerprint against the authority’s published
     value or your own trust store first (<code>VERIFY.md</code> step 6a prints the expected
     fingerprint and the exact <code>openssl</code> command)`
-        : 'a trust anchor you obtain independently from the authority named on the cover'
+        : `a trust anchor you obtain independently from the authority that issued the tokens.
+    Each token names its issuer inside itself, in the signing certificate carried in
+    <code>tsa-intermediates.pem</code> — a name the token asserts about itself, which is a
+    starting point for finding the authority and not evidence that it signed anything until
+    the chain validates against the anchor you obtained. Do not take the issuer from this
+    report's cover either: the cover states what this installation had configured when the
+    package was built, not who signed a token retained from earlier`
     }.</li>
     <li><strong>Match the screenshots.</strong> Each file name in <code>screenshots/</code> is its
     own digest; recomputing it confirms that the packaged image is the one the exhibit cites.</li>
@@ -1288,7 +1324,9 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     <code>tsa-intermediates.pem</code> holds only certificates carried inside the tokens
     themselves. Validating a token against certificates it
     supplied is circular and establishes nothing about who issued it. Step 4 therefore requires a
-    root obtained independently from the authority named on the cover; until one is used, the
+    root obtained independently from the authority that issued the tokens, which each token names
+    in its own signing certificate — a name the token asserts about itself, to be used for
+    finding the authority and not as proof it issued anything; until such a root is used, the
     tokens demonstrate internal consistency but not authenticity.</p>
   </div>`
   }

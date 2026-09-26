@@ -9,14 +9,20 @@ export interface TrustedTimeDisclosureInput {
 }
 
 // The one home for the trusted-time axis vocabulary that reaches operator-facing
-// artifacts (report.html and the per-capture PDF cover). Both render the axis
-// from these strings so the same capture is never labelled 'Local clock only'
-// in one artifact and 'Local clock — token pending' in the other. Each artifact
-// still phrases its own trailing explanation; only the leading label and the
-// two token-fallback phrases are shared.
+// artifacts (report.html, certification.html and the per-capture PDF cover).
+// All three render the axis from these strings so the same capture is never
+// labelled 'Local clock only' in one artifact and something else in another.
+// Each artifact still phrases its own trailing explanation; only the leading
+// label and the two token-fallback phrases are shared.
+//
+// The 'pending' label says what the manifest holds, never that a token is on its
+// way (#1169). These strings are resolved from the manifest alone, which records
+// tokens and not requests and carries no record of whether the installation had
+// timestamping switched on; an installation that declined it never asked for a
+// token, so 'token pending' was false for every capture it holds.
 export const TRUSTED_TIME_LABELS: Readonly<Record<TrustedTime, string>> = {
   rfc3161: 'RFC 3161 token retained',
-  pending: 'Local clock — token pending',
+  pending: 'Local clock — no RFC 3161 token',
   none: 'Local clock only'
 }
 
@@ -30,6 +36,21 @@ export const TRUSTED_TIME_UNNAMED_TSA =
   'an RFC 3161 authority whose identity is not recorded in the retained token'
 
 export const TRUSTED_TIME_UNRECORDED_STAMPED_AT = 'the time recorded in the retained token'
+
+// What report.html and certification.html print beneath the endpoint in the
+// "Time-stamping authority (configured)" field when the installation has declined
+// trusted timestamping (#1169). The endpoint is still printed: suppressing it left
+// the cover stating that no authority was configured while the verification
+// section of the same document stated that a different authority was, and left a
+// package enclosing the default authority's root certificate and a runbook naming
+// it beside a cover that named nobody.
+//
+// Worded as a statement about this installation at generation time, and nothing
+// more. A package can hold tokens obtained before the operator switched
+// timestamping off, so any claim here about what was or was not submitted would be
+// false for that package; the per-exhibit rows carry that.
+export const TRUSTED_TIME_AUTHORITY_NOT_CONTACTED =
+  'Not contacted — trusted timestamping is switched off for this installation'
 
 export function trustedTimeLabel(resolved: TrustedTimeDisclosureInput): string {
   return TRUSTED_TIME_LABELS[resolved.trustedTime] ?? TRUSTED_TIME_LABELS.none

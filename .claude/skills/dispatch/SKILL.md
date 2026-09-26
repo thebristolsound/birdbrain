@@ -38,8 +38,7 @@ esac
   `~/.config/birdbrain-agent/env` from the repository secret and passed the identity check
   below, `GH_TOKEN` for the whole job is the machine token, and the checkout's git credential
   is the same token, so branch pushes from the implementer go out as the machine account.
-  Serena is absent there and its tools do not resolve. The prompt says when you are on this
-  host.
+  The prompt says when you are on this host.
 - **Claude Code on the web** — **only `gh api` REST works**. Every porcelain command
   (`gh pr`, `gh issue`, `gh label`) is GraphQL-backed and returns 403, because the session
   proxy serves only a pinned set of PR-review GraphQL operations. Writes — opening PRs,
@@ -307,6 +306,34 @@ dispatcher posts before spawning the reviewer, even though the creator differs: 
 writes as the same machine account (ADR-0027), so no session can tell its own status from a
 peer's. Read the claim comment. It is the only claim.
 
+### Park a PR for the maintainer
+
+When a cycle stops a PR for human attention (section 4's one-fix-round stop, or the convergence
+check), a comment alone does not reach the maintainer: the design questions behind those stops
+waited hours to days. So park the PR as well: label it `awaiting-maintainer` and request the
+maintainer's review through the write path. The maintainer is the repository owner, a user
+account:
+
+```shell
+maintainer="$(gh api repos/thebristolsound/birdbrain --jq .owner.login)"
+agh api -X POST repos/thebristolsound/birdbrain/issues/<n>/labels -f 'labels[]=awaiting-maintainer'
+agh api -X POST repos/thebristolsound/birdbrain/pulls/<n>/requested_reviewers -f "reviewers[]=$maintainer"
+gh api repos/thebristolsound/birdbrain/issues/<n>/labels --jq '[.[].name]'
+gh api repos/thebristolsound/birdbrain/pulls/<n>/requested_reviewers --jq '[.users[].login]'
+```
+
+Read both back as section 3 reads labels back: a non-zero exit is not an empty set, anything
+missing is applied again and read again, and a second shortfall goes in the report. A parked PR
+still holds the slot (ADR-0028). Unless a verdict is owed on its head, the pre-gate skips it
+until a person other than the pipeline comments on it or reviews it after the label; bot
+comments do not count. The label name the pre-gate matches is `AWAITING_MAINTAINER_LABEL` in
+`.github/scripts/dispatch/lib.sh`, so rename both together.
+
+**Remove the label when work resumes.** When a cycle claim on a parked PR settles in your
+favour, for a round a human authorised, human feedback, or a new head owed a pre-pass, remove it
+(`agh api -X DELETE repos/thebristolsound/birdbrain/issues/<n>/labels/awaiting-maintainer`)
+and read the labels back before spawning anything.
+
 ## 2a. Auto-merge — the one merge you may perform
 
 ADR-0014 lets a non-evidence agent PR merge without a human. **All four conditions must hold, and
@@ -373,6 +400,22 @@ widens the frontier on its own.
 **An issue whose work must build on an unmerged agent branch is not eligible**, even with its
 native dependencies closed. ADR-0014 requires every agent branch to be cut from `main`, so a
 dependency that has not landed is a reason to skip the issue this cycle, not a reason to stack.
+
+**An issue with an unanswered maintainer question is not eligible.** Read the candidate's
+comments in full before claiming; step 0 of the claim below reads the same list:
+
+```shell
+gh api --paginate "repos/thebristolsound/birdbrain/issues/<n>/comments?per_page=100"
+```
+
+A maintainer question is a question the maintainer (the repository owner, as in section 2)
+asked in the issue, or a comment by anyone, triage and re-ground passes included, that names a
+question as blocking or as open for the maintainer. Only a later maintainer comment that
+answers it, or a ruling written into the issue body after it, counts as an answer. If you
+cannot tell whether a question is answered, treat it as unanswered. Take the issue off the
+frontier by the give-up path below, with the open question as the give-up comment's **What**
+and `needs-info` as the swapped-in label. No claim was taken, so there is no `agent-wip` to
+remove; take the next eligible issue.
 
 **Then check the candidate is not already done — before claiming.** A `ready-for-agent` label
 on an issue whose work already merged is indistinguishable from real work, and costs a full
@@ -752,7 +795,8 @@ round, both or neither.
 - **request changes** → hand the PR back to `birdbrain-implementer` (pointer, not paraphrase)
   for **one** fix round, then re-run the pre-pass. If the second pre-pass still requests
   changes, stop there: report "pre-pass unresolved after one fix round — needs human
-  attention" and leave both pre-pass comments in place. Never loop further unattended.
+  attention", leave both pre-pass comments in place, and park the PR (section 2, "Park a PR
+  for the maintainer"). Never loop further unattended.
 
 ### The convergence check — before authorising any further round
 
@@ -760,7 +804,8 @@ When a human authorises rounds past the first, watch what the rounds are *doing*
 whether they end. **If two consecutive fix rounds each resolve the reported finding and the
 next pre-pass finds a new defect in the same function or construct, stop patching and put the
 design in question to the maintainer.** Say plainly that the rounds are not converging, name
-the construct, and offer removing or simplifying it alongside the next patch.
+the construct, and offer removing or simplifying it alongside the next patch. Then park the PR
+(section 2, "Park a PR for the maintainer").
 
 This is not a hypothetical guard. PR #423 ran six rounds against one function: round two's fix
 created round three's blocking data-loss path, round three's new error class created the state

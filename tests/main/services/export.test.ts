@@ -1104,10 +1104,10 @@ describe('export', () => {
     const content = readFileSync(outputPath, 'utf-8')
 
     // Integrity and trusted time are orthogonal: a freshly-captured (un-stamped)
-    // capture is integrity-Verified AND on a local clock with a token pending.
+    // capture is integrity-Verified AND on a local clock carrying no token.
     expect(content).toContain('Trusted time')
     expect(content).toContain('Verified')
-    expect(content).toContain('Local clock — token pending')
+    expect(content).toContain('Local clock — no RFC 3161 token')
   })
 
   it('counts only the selection when preflight is scoped to selected captures', async () => {
@@ -1849,7 +1849,7 @@ describe('export', () => {
     const html = readFileSync(outputPath, 'utf-8')
     // A v2+ capture with no timestamp entry is 'pending' by the manifest, so
     // that is what the exhibit must state — not the mirror's 'rfc3161'.
-    expect(html).toContain('Local clock — token pending')
+    expect(html).toContain('Local clock — no RFC 3161 token')
     expect(html).toContain(TRUSTED_TIME_LABELS.pending)
     expect(html).not.toContain('RFC 3161 token retained')
   })
@@ -2302,6 +2302,53 @@ describe('export', () => {
     expect(html).toContain('trust anchor you obtain independently')
     // Must not tell a reviewer that chaining to the bundled file proves anything.
     expect(html).not.toContain('which carries the authority’s trust anchor')
+  })
+
+  // #1169 fix round. The cover's configured-authority field states what this
+  // installation had set when the package was built. An operator who stamped
+  // through a custom authority and later switched timestamping off exports a
+  // package whose retained tokens still need that authority's root, so the cover
+  // names the endpoint and marks it not contacted rather than denying one is
+  // configured — the round-2 review found the denial contradicting the
+  // verification section of the same document two pages later. The procedure still
+  // cites the tokens' own issuer, because the cover states configuration and not
+  // who signed a token retained from earlier.
+  it('names the configured authority as not contacted and still derives the anchor from the tokens (declined, custom TSA)', async () => {
+    updateSettings({ tsaUrl: 'https://tsa.example.org/timestamp' })
+    await ingest(caseId, '<html>tsa</html>')
+    updateSettings({ tsaEnabled: false })
+    const outputPath = join(tempDir, 'declined-custom-tsa.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
+        exportClass: 'evidence',
+        outputPath
+      },
+      captureLifecycle
+    )
+
+    const html = readStoredZipEntries(outputPath).get('report.html')!.toString('utf-8')
+    expect(html).toContain(
+      'Not contacted — trusted timestamping is switched off for this installation'
+    )
+    expect(html).toContain('https://tsa.example.org/timestamp')
+    // The document may not both deny and assert that an authority is configured.
+    expect(html).not.toContain('None — trusted timestamping is switched off')
+    expect(html).toContain('No trust anchor is bundled for the configured authority')
+    // The cover states configuration, not who signed a retained token, so neither
+    // the step nor the alert may take the issuer from it — and the issuer the
+    // tokens name is a self-assertion until the independent anchor validates it.
+    expect(html).not.toContain('from the authority named on the cover')
+    expect(html).toContain('from the authority that issued the tokens')
+    expect(html).toContain('a name the token asserts about itself')
   })
 
   // --- Operator identity gating and report rendering ---

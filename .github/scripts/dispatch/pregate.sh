@@ -53,15 +53,18 @@ labelled_at() {
     | jq -s -r --arg label "${2:-agent-wip}" 'add // [] | [.[] | select(.event == "labeled" and .label.name == $label) | .created_at] | max // empty'
 }
 
-# Newest comment, review comment or review on a PR, ignoring $2's authorship.
+# Newest comment, review comment or review on a PR, ignoring $2's authorship,
+# and bot accounts too when $3 is "humans".
 newest_activity() {
+  local keep='.user.login != $me and ($who != "humans"
+    or (.user.type != "Bot" and (.user.login | endswith("[bot]") | not)))'
   {
     gh api --paginate "repos/$R/issues/$1/comments?per_page=100" \
-      | jq -r --arg me "$2" '.[] | select(.user.login != $me) | .created_at'
+      | jq -r --arg me "$2" --arg who "${3:-}" ".[] | select($keep) | .created_at"
     gh api --paginate "repos/$R/pulls/$1/comments?per_page=100" \
-      | jq -r --arg me "$2" '.[] | select(.user.login != $me) | .created_at'
+      | jq -r --arg me "$2" --arg who "${3:-}" ".[] | select($keep) | .created_at"
     gh api --paginate "repos/$R/pulls/$1/reviews?per_page=100" \
-      | jq -r --arg me "$2" '.[] | select(.user.login != $me) | .submitted_at // empty'
+      | jq -r --arg me "$2" --arg who "${3:-}" ".[] | select($keep) | .submitted_at // empty"
   } | sort | tail -1
 }
 
@@ -103,15 +106,16 @@ for n in $(jq -r '.[]' <<<"$prs"); do
     *) decide true "PR #$n head ${sha:0:8} has agent/pre-pass=$state; a verdict is owed" ;;
   esac
   labels="$(gh api "repos/$R/issues/$n/labels" --jq '[.[].name]')"
-  # A PR the skill parked for the maintainer moves only when someone other than
-  # the pipeline acts on it. Without this, the failure-verdict rule below reads
+  # A PR the skill parked for the maintainer moves only when a person other than
+  # the pipeline acts on it. Bots are ignored too: marking a PR ready wakes
+  # CodeRabbit, whose summary would otherwise un-park it. Without this, the failure-verdict rule below reads
   # the pipeline's own verdict comment as activity and runs a full cycle every
   # fire (#1460). A parked PR with no surviving label event falls through to the
   # unlabelled rules.
   if jq -e --arg l "$AWAITING_MAINTAINER_LABEL" 'index($l)' <<<"$labels" >/dev/null; then
     parked_at="$(labelled_at "$n" "$AWAITING_MAINTAINER_LABEL")"
     if [ -n "$parked_at" ]; then
-      newest="$(newest_activity "$n" "$me")"
+      newest="$(newest_activity "$n" "$me" humans)"
       if [ -n "$newest" ] && [[ "$newest" > "$parked_at" ]]; then
         decide true "PR #$n is parked for the maintainer and has activity at $newest newer than the label ($parked_at)"
       fi

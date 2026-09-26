@@ -33,7 +33,7 @@ body="$(jq -c --arg k "$endpoint" '.[$k] // error("stub gh: no fixture for \\($k
 if [ -n "$expr" ]; then jq -r "$expr" <<<"$body"; else printf '%s\\n' "$body"; fi
 `
 
-type Comment = { login: string; at: string }
+type Comment = { login: string; at: string; type?: 'User' | 'Bot' }
 
 const HEAD_AT = '2026-09-20T10:00:00Z'
 const VERDICT_AT = '2026-09-20T11:00:00Z'
@@ -58,10 +58,12 @@ const fixtures = ({ labels, comments }: { labels: string[]; comments: Comment[] 
       ? [{ event: 'labeled', label: { name: 'awaiting-maintainer' }, created_at: PARKED_AT }]
       : [])
   ],
-  [`repos/${REPO}/issues/${PR}/comments?per_page=100`]: comments.map(({ login, at }) => ({
-    user: { login },
-    created_at: at
-  })),
+  [`repos/${REPO}/issues/${PR}/comments?per_page=100`]: comments.map(
+    ({ login, at, type = 'User' }) => ({
+      user: { login, type },
+      created_at: at
+    })
+  ),
   [`repos/${REPO}/pulls/${PR}/comments?per_page=100`]: [],
   [`repos/${REPO}/pulls/${PR}/reviews?per_page=100`]: []
 })
@@ -129,6 +131,21 @@ describe.skipIf(!HAS_JQ)('pregate.sh on a PR parked for the maintainer', () => {
       reason: 'the slot is held and no open agent PR needs the routine'
     })
     expect(result.summary).toContain(`PR #${PR} is parked for the maintainer since ${PARKED_AT}`)
+  })
+
+  it('keeps a parked PR skipped when only a bot comments after the label', () => {
+    const result = run(
+      fixtures({
+        labels: PARKED,
+        comments: [
+          { login: PIPELINE, at: VERDICT_AT },
+          { login: 'coderabbitai[bot]', at: '2026-09-21T08:00:00Z', type: 'Bot' },
+          { login: 'chatgpt-codex-connector[bot]', at: '2026-09-21T09:00:00Z', type: 'Bot' }
+        ]
+      })
+    )
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.outputs.run).toBe('false')
   })
 
   it('runs for a parked PR once someone other than the pipeline comments after the label', () => {

@@ -95,3 +95,11 @@ updates:
       # Drop this entry when the repository moves to Node 22.
       - dependency-name: 'dependency-cruiser'
         versions: ['>=18']
+      # vitest 5 (#1341) turned main red until #1387 migrated it; majors need a hand migration.
+      - dependency-name: 'vitest'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@vitest/*'
+        update-types: ['version-update:semver-major']
+      # jsdom 30 (#1482) turned main red (#1486); majors need a hand migration.
+      - dependency-name: 'jsdom'
+        update-types: ['version-update:semver-major']

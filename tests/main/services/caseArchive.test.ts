@@ -44,6 +44,7 @@ import {
 } from '@main/services/caseArchive'
 import { canonicalStringify } from '@shared/verify'
 import { verifyCapture } from '@main/services/captureLifecycle'
+import { appendFutureEntry } from '../../helpers/futureManifestEntry'
 
 const artifactPath = (caseId: string, captureId: string, type: 'mhtml' | 'html' | 'png' | 'txt') =>
   defaultCaptureStore.artifactPaths(caseId, captureId, type).abs
@@ -327,6 +328,30 @@ describe('caseArchive export', () => {
   })
 })
 
+// Replaces the manifest with `mutate`'s output and repairs the header the way
+// a genuine export would have written it, so only the chain decides the verdict.
+function rewriteManifest(archivePath: string, mutate: (jsonl: string) => string): void {
+  const entries = readStoredZip(readFileSync(archivePath))
+  const manifest = Buffer.from(mutate(entries.get('manifest.jsonl')!.toString('utf-8')))
+  entries.set('manifest.jsonl', manifest)
+
+  const header = JSON.parse(entries.get('package.json')!.toString('utf-8'))
+  const sha256 = createHash('sha256').update(manifest).digest('hex')
+  header.artifacts = header.artifacts.map((a: { path: string }) =>
+    a.path === 'manifest.jsonl' ? { path: a.path, sha256, sizeBytes: manifest.length } : a
+  )
+  const sorted = [...header.artifacts].sort((a: { path: string }, b: { path: string }) =>
+    a.path < b.path ? -1 : a.path > b.path ? 1 : 0
+  )
+  header.packageHash = createHash('sha256')
+    .update(Buffer.from(canonicalStringify(sorted), 'utf-8'))
+    .digest('hex')
+  entries.set('package.json', Buffer.from(JSON.stringify(header, null, 2)))
+
+  const rebuilt = [...entries.entries()].map(([name, data]) => ({ name, data }))
+  writeFileSync(archivePath, createStoredZip(rebuilt))
+}
+
 describe('caseArchive inspect', () => {
   let tempDir: string
   let caseId: string
@@ -433,6 +458,39 @@ describe('caseArchive inspect', () => {
     const report = inspectCaseArchive(archivePath)
     expect(report.verification.overallValid).toBe(false)
     expect(report.verification.chainValid).toBe(false)
+  })
+
+  // KAT (X25): a signed entry from a newer schema is reported as its own
+  // outcome, never as an invalid custody chain.
+  it('reports a chain holding a newer-schema entry as verifier too old', () => {
+    rewriteManifest(archivePath, (jsonl) => appendFutureEntry(jsonl, caseId))
+    const report = inspectCaseArchive(archivePath)
+    expect(report.verifierTooOld?.reason).toContain("Entry type 'annotation-burn'")
+    expect(report.verifierTooOld?.reason).toContain('verifier too old')
+    expect(report.verification.chainValid).toBe(false)
+    expect(report.verification.overallValid).toBe(false)
+    expect(report.verification.artifactFailureCount).toBe(0)
+    expect(report.verification.captureHashFailureCount).toBe(0)
+  })
+
+  it('reports an edited entry that also claims a newer schema as a broken chain', () => {
+    rewriteManifest(archivePath, (jsonl) => {
+      const lines = jsonl.split('\n').filter((l) => l.trim())
+      lines[0] = JSON.stringify({
+        ...JSON.parse(lines[0]),
+        url: 'https://elsewhere.example',
+        schemaVersion: 99
+      })
+      return lines.join('\n') + '\n'
+    })
+    const report = inspectCaseArchive(archivePath)
+    expect(report.verifierTooOld).toBeUndefined()
+    expect(report.verification.chainValid).toBe(false)
+    expect(report.verification.chainReason).toBe('Entry hash mismatch')
+  })
+
+  it('leaves the too-old field off a clean archive', () => {
+    expect(inspectCaseArchive(archivePath).verifierTooOld).toBeUndefined()
   })
 
   it('refuses newer schema versions', () => {

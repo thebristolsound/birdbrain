@@ -1,4 +1,12 @@
-import { ShieldCheck, ShieldAlert, ShieldOff, Shield, Clock, Stamp } from 'lucide-react'
+import {
+  ShieldCheck,
+  ShieldAlert,
+  ShieldOff,
+  ShieldQuestion,
+  Shield,
+  Clock,
+  Stamp
+} from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import type { Capture, HashVerification } from '@shared/types'
 import { settingsQueryOptions, useVerifyCapture } from '@renderer/lib/queries'
@@ -130,6 +138,23 @@ export function ProvenanceBadge({ capture }: Props) {
       >
         <Shield className="h-3 w-3" />
         Legacy HTML
+      </button>
+    )
+  } else if (result.status === 'verifier-too-old') {
+    // Its own state, never the red tamper chip (X25). The reason is only on a
+    // fresh result; the persisted columns do not keep it.
+    integrity = (
+      <button
+        onClick={() => verifyMutation.verify()}
+        disabled={loading}
+        title={
+          result.reason ??
+          'The case manifest holds an entry from a newer schema than this build reads'
+        }
+        className="flex items-center gap-1 rounded-lg bg-warning-surface px-2 py-1 text-[11px] text-warning-fg hover:bg-warning-line disabled:opacity-50"
+      >
+        <ShieldQuestion className="h-3 w-3" />
+        Verifier too old
       </button>
     )
   } else if (result.status === 'tampered' || result.status === 'chain-broken') {

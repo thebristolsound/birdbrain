@@ -33,6 +33,17 @@ describe('getProvenanceColor', () => {
     expect(getProvenanceColor('legacy').text).toBe('text-amber-400')
   })
 
+  it('gives verifier-too-old its own label and none of the tamper tokens (X25)', () => {
+    const tooOld = getProvenanceColor('verifier-too-old')
+    expect(tooOld).toEqual({
+      text: 'text-warning-fg',
+      bg: 'bg-warning-surface',
+      dot: 'bg-warning-fg',
+      label: 'Verifier too old'
+    })
+    expect(tooOld.text).not.toBe(getProvenanceColor('tampered').text)
+  })
+
   it('falls back to faint "Not verified" tokens for undefined status', () => {
     expect(getProvenanceColor(undefined)).toEqual({
       text: 'text-text-faint',

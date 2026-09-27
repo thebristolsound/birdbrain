@@ -1,8 +1,8 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { motion } from 'motion/react'
-import { ShieldCheck, ShieldAlert } from 'lucide-react'
-import type { ArchiveInspectReport } from '@shared/types'
+import { ShieldCheck, ShieldAlert, ShieldQuestion } from 'lucide-react'
+import type { ArchiveInspectReport, ArchiveVerificationResult } from '@shared/types'
 import { presets } from '@renderer/lib/motion'
 import { useCasesMutations } from '@renderer/lib/queries'
 import { Button, trapTab, useModalEscape, useModalFocus } from '@renderer/components/ui'
@@ -24,8 +24,11 @@ export function ImportCaseDialog({ report, onClose }: ImportCaseDialogProps) {
   const cancelRef = useRef<HTMLButtonElement>(null)
   const titleId = useId()
 
-  const { verification } = report
-  const canImport = verification.overallValid || overrideTamper
+  const { verification, verifierTooOld } = report
+  // No override for a manifest this build cannot read: the override records a
+  // failed verification in the new case's manifest, and an unreadable entry is
+  // not a failure (X25).
+  const canImport = verification.overallValid || (overrideTamper && !verifierTooOld)
 
   // Mounted only while open, so the modal hooks run with `open` fixed true and
   // hand focus back when the dialog unmounts. Escape follows the overlay
@@ -114,6 +117,19 @@ export function ImportCaseDialog({ report, onClose }: ImportCaseDialogProps) {
             <ShieldCheck className="h-4 w-4 shrink-0" strokeWidth={1.8} />
             Archive verified
           </div>
+        ) : verifierTooOld ? (
+          <div
+            data-testid="archive-verifier-too-old"
+            className="mb-4 rounded border border-warning-line bg-warning-surface px-3 py-2 text-sm text-warning-fg"
+          >
+            <div className="mb-2 flex items-center gap-2 font-medium">
+              <ShieldQuestion className="h-4 w-4 shrink-0" strokeWidth={1.8} />
+              This build is too old to read this archive&apos;s manifest
+            </div>
+            <p className="mb-2 text-xs">{verifierTooOld.reason}</p>
+            <HashFailures verification={verification} />
+            <p className="text-xs">Update Birdbrain to verify and import this archive.</p>
+          </div>
         ) : (
           <div className="mb-4 rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
             <div className="mb-2 flex items-center gap-2 font-medium">
@@ -127,18 +143,7 @@ export function ImportCaseDialog({ report, onClose }: ImportCaseDialogProps) {
                   {verification.chainReason ? `: ${verification.chainReason}` : ''}
                 </li>
               )}
-              {verification.artifactFailureCount > 0 && (
-                <li>
-                  {verification.artifactFailureCount} artifact
-                  {verification.artifactFailureCount === 1 ? '' : 's'} failed hash verification
-                </li>
-              )}
-              {verification.captureHashFailureCount > 0 && (
-                <li>
-                  {verification.captureHashFailureCount} capture
-                  {verification.captureHashFailureCount === 1 ? '' : 's'} failed hash verification
-                </li>
-              )}
+              <HashFailureItems verification={verification} />
             </ul>
             <label className="flex cursor-pointer items-start gap-2">
               <input
@@ -184,6 +189,39 @@ export function ImportCaseDialog({ report, onClose }: ImportCaseDialogProps) {
         </div>
       </motion.div>
     </motion.div>
+  )
+}
+
+// The byte-level findings, which stand on their own whether or not the chain
+// could be read.
+function HashFailureItems({ verification }: { verification: ArchiveVerificationResult }) {
+  const { artifactFailureCount, captureHashFailureCount } = verification
+  return (
+    <>
+      {artifactFailureCount > 0 && (
+        <li>
+          {artifactFailureCount} artifact
+          {artifactFailureCount === 1 ? '' : 's'} failed hash verification
+        </li>
+      )}
+      {captureHashFailureCount > 0 && (
+        <li>
+          {captureHashFailureCount} capture
+          {captureHashFailureCount === 1 ? '' : 's'} failed hash verification
+        </li>
+      )}
+    </>
+  )
+}
+
+function HashFailures({ verification }: { verification: ArchiveVerificationResult }) {
+  if (verification.artifactFailureCount === 0 && verification.captureHashFailureCount === 0) {
+    return null
+  }
+  return (
+    <ul className="mb-2 list-inside list-disc space-y-1 text-xs">
+      <HashFailureItems verification={verification} />
+    </ul>
   )
 }
 

@@ -27,6 +27,7 @@ import {
 import { listExhibits } from '@main/services/db/exhibitRepo'
 import { listDerivedFilesForCase } from '@main/services/db/derivedFileRepo'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
+import { appendFutureEntry } from '../../helpers/futureManifestEntry'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import * as manifest from '@main/services/manifest'
 import * as waybackRefRepo from '@main/services/db/waybackRefRepo'
@@ -1371,6 +1372,48 @@ describe('export', () => {
       tamperedCount: 0,
       missingCount: 0
     })
+  })
+
+  // X25: a capture this build is too old to verify is neither verified,
+  // tampered nor missing, and the report names it rather than a broken chain.
+  it('counts a verifier-too-old capture in no bucket and labels it by name', async () => {
+    await ingest(caseId, '<html><body>Newer chain</body></html>', 'https://example.com', 'N')
+    const caseDir = join(tempDir, 'captures', caseId)
+    const manifestPath = join(caseDir, 'manifest.jsonl')
+    writeFileSync(manifestPath, appendFutureEntry(readFileSync(manifestPath, 'utf-8'), caseId))
+
+    const outputPath = join(tempDir, 'too-old-evidence.zip')
+    const options: ExportOptions = {
+      format: 'zip',
+      include: {
+        captures: true,
+        screenshots: false,
+        auditTrail: true,
+        notes: false,
+        annotations: 'none'
+      },
+      exportClass: 'evidence',
+      outputPath
+    }
+    await generateReport(caseId, options, captureLifecycle)
+
+    const exportEntry = readFileSync(manifestPath, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+      .find((e) => e.type === 'export')!
+    expect(exportEntry.verificationResult).toEqual({
+      overallValid: false,
+      captureCount: 1,
+      verifiedCount: 0,
+      tamperedCount: 0,
+      missingCount: 0
+    })
+    const report = readStoredZipEntries(outputPath).get('report.html')!.toString('utf-8')
+    expect(report).toContain('Not readable by this build')
+    expect(report).toContain('not a finding of alteration')
+    // The legend always lists 'Chain broken'; this is the capture's own detail.
+    expect(report).not.toContain('Sequence and custody cannot be demonstrated for this entry')
   })
 
   it('writes no zip when the export audit append throws', async () => {

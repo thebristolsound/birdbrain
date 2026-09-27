@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, rmSync, existsSync, chmodSync } from 'fs'
+import { mkdtempSync, rmSync, existsSync, chmodSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { writeFileSync } from 'fs'
@@ -235,21 +235,79 @@ describe('settings', () => {
         }
       })
 
+      const locked = (stored: object, run: () => void): void => {
+        writeFileSync(settingsFile, JSON.stringify(stored), 'utf-8')
+        chmodSync(settingsFile, 0o000)
+        try {
+          run()
+        } finally {
+          chmodSync(settingsFile, 0o600)
+        }
+      }
+      const onDisk = (): Record<string, unknown> => JSON.parse(readFileSync(settingsFile, 'utf-8'))
+
       it.skipIf(process.getuid?.() === 0)(
-        'refuses the write, leaving the stored preference intact',
+        'holds the change for the session, leaving the stored file intact',
         () => {
-          writeFileSync(settingsFile, JSON.stringify({ tsaEnabled: true, theme: 'light' }), 'utf-8')
-          chmodSync(settingsFile, 0o000)
-          try {
-            expect(() => updateSettings({ operatorName: 'Someone' })).toThrow(
-              /refusing to overwrite/
+          const stored = { tsaEnabled: true, theme: 'light' }
+          locked(stored, () => {
+            expect(updateSettings({ operatorName: 'Someone' }).operatorName).toBe('Someone')
+            expect(getSettings().operatorName).toBe('Someone')
+            expect(loggerWarn).toHaveBeenCalledWith(
+              'settings',
+              'settings.unreadable_write_refused',
+              undefined,
+              expect.anything()
             )
-          } finally {
-            chmodSync(settingsFile, 0o600)
-          }
-          const recovered = getSettings()
-          expect(recovered.tsaEnabled).toBe(true)
-          expect(recovered.theme).toBe('light')
+          })
+          expect(onDisk()).toEqual(stored)
+        }
+      )
+
+      it.skipIf(process.getuid?.() === 0)(
+        'lets the operator switch timestamping back on while the file is unreadable',
+        () => {
+          locked({ tsaEnabled: false }, () => {
+            expect(getSettings().tsaEnabled).toBe(false)
+            expect(updateSettings({ tsaEnabled: true }).tsaEnabled).toBe(true)
+            loggerWarn.mockClear()
+            expect(getSettings().tsaEnabled).toBe(true)
+            // The switch now reflects the operator's choice, so nothing fell closed.
+            expect(loggerWarn).not.toHaveBeenCalledWith(
+              'settings',
+              'settings.unreadable_timestamping_fail_closed',
+              undefined,
+              expect.anything()
+            )
+          })
+        }
+      )
+
+      it.skipIf(process.getuid?.() === 0)(
+        'keeps a held opt-out after the file becomes readable again',
+        () => {
+          locked({ tsaEnabled: true, theme: 'light' }, () => {
+            updateSettings({ tsaEnabled: false })
+          })
+          const settings = getSettings()
+          expect(settings.tsaEnabled).toBe(false)
+          expect(settings.theme).toBe('light')
+        }
+      )
+
+      it.skipIf(process.getuid?.() === 0)(
+        'writes held choices with the next save that succeeds',
+        () => {
+          locked({ tsaEnabled: true, theme: 'light', openRouterApiKey: 'sk-old' }, () => {
+            updateSettings({ tsaEnabled: false, openRouterApiKey: 'sk-held' })
+          })
+          updateSettings({ operatorName: 'Someone' })
+          expect(onDisk()).toMatchObject({
+            tsaEnabled: false,
+            theme: 'light',
+            operatorName: 'Someone',
+            openRouterApiKey: 'sk-held'
+          })
         }
       )
     })

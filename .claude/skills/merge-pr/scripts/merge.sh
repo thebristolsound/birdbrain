@@ -147,12 +147,14 @@ for i in $closes; do
   [ "$st" = "closed" ] && say "issue #$i closed" || say "WARN issue #$i is $st; GitHub closes it on merge to the default branch, re-read in a moment"
 done
 
-# 8. Local cleanup: prune, and drop the branch unless a worktree still holds it.
+# 8. Local cleanup: prune, then close the worktree holding the branch (the teardown skill decides
+#    whether its lane allows removal and deletes the branch with it), or drop the branch directly.
 git -C "$root" fetch -q --prune origin
 if git -C "$root" show-ref --verify --quiet "refs/heads/$head_ref"; then
   holder="$(git -C "$root" worktree list --porcelain | awk -v b="refs/heads/$head_ref" '$1=="worktree"{w=$2} $1=="branch"&&$2==b{print w}')"
   if [ -n "$holder" ]; then
-    say "local branch $head_ref is checked out in $holder; run 'git branch -d $head_ref' after that worktree is removed"
+    (cd "$root" && "$root/.claude/skills/teardown/scripts/teardown.sh" close --branch "$head_ref" --merged "$head_sha") \
+      || say "local branch $head_ref stays checked out in $holder; teardown gave the reason above"
   else
     # A squash leaves no ancestry, so -d refuses; the forced delete is safe only when the local
     # tip is the sha that was just merged.

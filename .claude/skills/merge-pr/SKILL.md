@@ -51,9 +51,10 @@ blocking-tier path list) stay the dispatcher's to establish; the script does not
   or deleted here; a branch in a fork is left to its owner), and the state of every issue on
   the `Closes` line.
 - Locally: `git fetch --prune`, then deletes the branch when its tip is the sha that was merged
-  (a squash leaves no ancestry, so the plain `-d` would refuse). A branch a worktree still
-  holds, or whose tip moved, is reported and left alone. Worktrees are never removed; t3code
-  owns them.
+  (a squash leaves no ancestry, so the plain `-d` would refuse). A branch whose tip moved is
+  reported and left alone. A worktree holding the branch goes to the `teardown` skill's
+  `close --branch`, which removes it and the branch when the tree is clean, and refuses a
+  t3code thread tree or the tree the merge runs from, printing why.
 
 It does not pass `--delete-branch` to `gh`: that flag also switches the local branch, which
 fails inside a worktree after the merge has already happened.

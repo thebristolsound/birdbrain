@@ -198,7 +198,9 @@ Run by hand only. Nothing here is a CI check or a scheduled job (ADR-0029, ADR-0
 3. **Pilot.** Five cases, Opus 5 plus the four candidates, three reps, the full effort
    sweep for each. Measures
    usage per case at each level, cross-rep variance and the noise floor. Go or no-go on the
-   full set size, and the effort level each model carries into stage 4.
+   full set size, and the effort level each model carries into stage 4. Done 2026-09-27:
+   405 rows, all ok, record in `scripts/bench/review/baselines/pilot-2026-09-27.md`;
+   findings below.
 4. **Baseline.** Full set on the current dispatch model (`claude-opus-5`, from
    `.github/workflows/dispatch.yml`). Commit the summary to `baselines/`.
 5. **New-model protocol.** One page: run the effort sweep on the pilot subset, apply the
@@ -207,6 +209,55 @@ Run by hand only. Nothing here is a CI check or a scheduled job (ADR-0029, ADR-0
    dispatcher passes) only when verdict accuracy and blocker recall are within noise or better
    and claim discipline is not worse. Recorded as an ADR, on the ADR-0031 pattern.
 6. **Plan review.** Cases, graders and a baseline for the second task, on the same runner.
+
+## Pilot findings (2026-09-27)
+
+Five cases (m03, m04, m12, m17, r-709), three reps, tier L1, every effort level of Opus 5,
+Opus 5.5, Fable 5.1, GPT-6-Astra and GPT-5.6-Sol: 405 rows, every one `ok`, no rate limit and no timeout.
+The full record, per-case grid and sweep tables are in
+`scripts/bench/review/baselines/pilot-2026-09-27.md`.
+
+1. **Effort moves nothing the rule scores.** For every model, verdict accuracy and blocker
+   recall at every level sit inside the ±0.26 noise floor of that model's best level, and
+   every adjacent-level paired difference has an interval covering zero. The selection rule
+   picks `low` for all five models. Higher effort only adds cost, tenfold from low to max
+   (Opus 5: 45 to 511 seconds and 0.2M to 3M input tokens per case), and on the Claude
+   models it adds over-flagging: Opus 5 at `max` and Opus 5.5 at `xhigh` and `max` flip the real
+   approve case to `request changes` by reporting findings the wave-2 skeptic pass had
+   refuted.
+2. **Run-to-run variance is near zero.** Cross-rep verdict agreement is 1.00 in 25 of 27
+   model-level pairs and 0.93 in the other two; finding-set overlap is 0.4 to 1.0. The
+   `1/sqrt(n·R)` floor is conservative for verdicts here. The full set can run at two reps
+   and keep a third only for cases where the two disagree.
+3. **Blocking mutation cases are saturated.** m04, m12 and m17 were caught with the right
+   verdict and the blocker matched in 242 of 243 rows (the miss: Opus 5 low, rep 1, m04).
+   Every model at every level finds an injected blocker at L1; those cases separate a broken
+   harness from a working one and nothing finer. The discrimination in this pilot came from
+   the two approve cases: r-709 separates the Claude models (approve at low to high) from
+   the Codex models (`request changes` at every level, 35 of 36 rows), and m03 separated
+   nobody.
+4. **m03's label is wrong, not the models.** All 81 rows called the `readdir` mutation
+   blocking, and their reason is the reviewer definition's own highest-yield rule: the PR
+   body promises a warning when the partition folder cannot be read, and after the mutation
+   nothing is logged, so the body overclaims. The case was authored as non-blocking in
+   stage 1 and should be relabelled `request changes` before stage 4; m07 and m20, the
+   other non-blocking mutations, need the same check. With m03 relabelled, verdict accuracy
+   is 1.00 for the three Claude models from low to high and 0.80 for GPT-6-Astra and GPT-5.6-Sol.
+5. **Window cost.** Claude Code reports five-hour window utilisation per row. Fifteen rows
+   moved it by about 4 points at low (Opus 5, Fable) and under 1 point at low (Opus 5.5),
+   by 16 points at high (Opus 5) and by 34 points at max (Fable). A full-set run at low is
+   under a tenth of a window per model; a high-effort full set is most of one. Codex
+   reports no window figure through its CLI.
+6. **Go, with the corpus rebalanced.** The full set is a go at `low` for every model: at
+   low-effort wall times the 27 cases at two reps take between 11 minutes (Opus 5.5) and
+   45 minutes (Opus 5) per model. Before it runs, relabel m03 (and check m07, m20), and add
+   approve cases: real PRs whose adjudication approved them, and mutation cases whose
+   change is benign, so the set has at least as many approve cases as blocking ones. Until
+   then the headline metric is verdict accuracy on approve cases plus refuted-finding hits,
+   which is the only axis the five models differ on.
+7. **Stage 4 baseline.** Opus 5 runs at `low` (the selected level) and also at `high`
+   (the Claude Code default the dispatcher runs today), so the baseline names both what the
+   rule selects and what production does. Candidates run at their selected level, `low`.
 
 ## Accounts and usage windows
 

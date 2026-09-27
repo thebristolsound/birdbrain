@@ -169,7 +169,7 @@ export function renderMarkdown(report) {
       ''
     )
     lines.push(
-      '| effort | rows | ok | verdict | blockers | defects | unmatched | refuted | claims | agree | overlap | in tok | out tok | wall s | tools | window |',
+      '| effort | rows | ok | verdict | blockers | defects | unmatched | refuted | claims | agree | overlap | input tokens | output tokens | wall s | tools | window |',
       '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'
     )
     for (const l of g.levels) {

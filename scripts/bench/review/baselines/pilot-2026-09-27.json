@@ -1,0 +1,1295 @@
+[
+  {
+    "config": "claude/claude-fable-5-1/L1",
+    "cases": 5,
+    "reps": 3,
+    "noiseFloor": 0.2581988897471611,
+    "levels": [
+      {
+        "effort": "low",
+        "manifest": "0331381c1b69d045",
+        "cases": 5,
+        "reps": 3,
+        "summary": {
+          "config": "claude/claude-fable-5-1/L1/low",
+          "rows": 15,
+          "statuses": {
+            "ok": 15
+          },
+          "cases": 5,
+          "verdictAccuracy": 0.8,
+          "blockerRecall": 1,
+          "defectRecall": 0.8666666666666667,
+          "unmatchedPerRow": 1.8666666666666667,
+          "refutedHitsPerRow": 0.13333333333333333,
+          "claimRate": 1,
+          "verdictAgreement": 1,
+          "findingOverlap": 0.4379365079365079
+        },
+        "usage": {
+          "inputTokens": 131861.13333333333,
+          "outputTokens": 2713.733333333333,
+          "wallMs": 44899.6,
+          "toolCalls": 6.466666666666667,
+          "textRecovered": 0,
+          "windowFirst": 0.24,
+          "windowLast": 0.28
+        }
+      },
+      {
+        "effort": "medium",
+        "manifest": "ee7f09373d8b8247",
+        "cases": 5,
+        "reps": 3,
+        "summary": {
+          "config": "claude/claude-fable-5-1/L1/medium",
+          "rows": 15,
+          "statuses": {
+            "ok": 15
+          },
+          "cases": 5,
+          "verdictAccuracy": 0.8,
+          "blockerRecall": 1,
+          "defectRecall": 0.9333333333333333,
+          "unmatchedPerRow": 2,
+          "refutedHitsPerRow": 0,
+          "claimRate": 0.9574468085106383,
+          "verdictAgreement": 1,
+          "findingOverlap": 0.5411111111111111
+        },
+        "usage": {
+          "inputTokens": 213088.86666666667,
+          "outputTokens": 5421.2,
+          "wallMs": 80704.26666666666,
+          "toolCalls": 10.2,
+          "textRecovered": 0,
+          "windowFirst": 0.28,
+          "windowLast": 0.34
+        }
+      },
+      {
+        "effort": "high",
+        "manifest": "01014b78bbecf691",
+        "cases": 5,
+        "reps": 3,
+        "summary": {
+          "config": "claude/claude-fable-5-1/L1/high",
+          "rows": 15,
+          "statuses": {
+            "ok": 15
+          },
+          "cases": 5,
+          "verdictAccuracy": 0.8,
+          "blockerRecall": 1,
+          "defectRecall": 1,
+          "unmatchedPerRow": 2.2666666666666666,
+          "refutedHitsPerRow": 0.06666666666666667,
+          "claimRate": 1,
+          "verdictAgreement": 1,
+          "findingOverlap": 0.4800000000000001
+        },
+        "usage": {
+          "inputTokens": 317097.13333333336,
+          "outputTokens": 9613.266666666666,
+          "wallMs": 141736.93333333332,
+          "toolCalls": 18.266666666666666,
+          "textRecovered": 0,
+          "windowFirst": 0.35,
+          "windowLast": 0.1
+        }
+      },
+      {
+        "effort": "xhigh",
+        "manifest": "5ffb874535c673ae",
+        "cases": 5,
+        "reps": 3,
+        "summary": {
+          "config": "claude/claude-fable-5-1/L1/xhigh",
+          "rows": 15,
+          "statuses": {
+            "ok": 15
+          },
+          "cases": 5,
+          "verdictAccuracy": 0.8,
+          "blockerRecall": 1,
+          "defectRecall": 1,
+          "unmatchedPerRow": 2.6666666666666665,
+          "refutedHitsPerRow": 0,
+          "claimRate": 1,
+          "verdictAgreement": 1,
+          "findingOverlap": 0.6211111111111112
+        },
+        "usage": {
+          "inputTokens": 482261.93333333335,
+          "outputTokens": 21992.533333333333,
+          "wallMs": 282204.4666666667,
+          "toolCalls": 29.8,
+          "textRecovered": 0,
+          "windowFirst": 0.11,
+          "windowLast": 0.31
+        }
+      },
+      {
+        "effort": "max",
+        "manifest": "da74504567fd38a9",
+        "cases": 5,
+        "reps": 3,
+        "summary": {
+          "config": "claude/claude-fable-5-1/L1/max",
+          "rows": 15,
+          "statuses": {
+            "ok": 15
+          },
+          "cases": 5,
+          "verdictAccuracy": 0.8,
+          "blockerRecall": 1,
+          "defectRecall": 1,
+          "unmatchedPerRow": 2.7333333333333334,
+          "refutedHitsPerRow": 0.06666666666666667,
+          "claimRate": 1,
+          "verdictAgreement": 1,
+          "findingOverlap": 0.41222222222222216
+        },
+        "usage": {
+          "inputTokens": 524051,
+          "outputTokens": 30108.866666666665,
+          "wallMs": 414053.3333333333,
+          "toolCalls": 36.666666666666664,
+          "textRecovered": 0,
+          "windowFirst": 0.33,
+          "windowLast": 0.67
+        }
+      }
+    ],
+    "adjacent": [
+      {
+        "from": "low",
+        "to": "medium",
+        "verdict": {
+          "n": 15,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        },
+        "blockers": {
+          "n": 9,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        }
+      },
+      {
+        "from": "medium",
+        "to": "high",
+        "verdict": {
+          "n": 15,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        },
+        "blockers": {
+          "n": 9,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        }
+      },
+      {
+        "from": "high",
+        "to": "xhigh",
+        "verdict": {
+          "n": 15,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        },
+        "blockers": {
+          "n": 9,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        }
+      },
+      {
+        "from": "xhigh",
+        "to": "max",
+        "verdict": {
+          "n": 15,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        },
+        "blockers": {
+          "n": 9,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        }
+      }
+    ],
+    "best": "low",
+    "selected": "low"
+  },
+  {
+    "config": "codex/gpt-5.6-sol/L1",
+    "cases": 5,
+    "reps": 3,
+    "noiseFloor": 0.2581988897471611,
+    "levels": [
+      {
+        "effort": "low",
+        "manifest": "0707a74228448073",
+        "cases": 5,
+        "reps": 3,
+        "summary": {
+          "config": "codex/gpt-5.6-sol/L1/low",
+          "rows": 15,
+          "statuses": {
+            "ok": 15
+          },
+          "cases": 5,
+          "verdictAccuracy": 0.6,
+          "blockerRecall": 1,
+          "defectRecall": 0.8,
+          "unmatchedPerRow": 0.13333333333333333,
+          "refutedHitsPerRow": 0.06666666666666667,
+          "claimRate": 1,
+          "verdictAgreement": 1,
+          "findingOverlap": 0.8
+        },
+        "usage": {
+          "inputTokens": 415313.13333333336,
+          "outputTokens": 1219.5333333333333,
+          "wallMs": 32595.8,
+          "toolCalls": 4.2,
+          "textRecovered": 0,
+          "windowFirst": null,
+          "windowLast": null
+        }
+      },
+      {
+        "effort": "medium",
+        "manifest": "1d525248072e80b1",
+        "cases": 5,
+        "reps": 3,
+        "summary": {
+          "config": "codex/gpt-5.6-sol/L1/medium",
+          "rows": 15,
+          "statuses": {
+            "ok": 15
+          },
+          "cases": 5,
+          "verdictAccuracy": 0.6,
+          "blockerRecall": 1,
+          "defectRecall": 0.8,
+          "unmatchedPerRow": 0.13333333333333333,
+          "refutedHitsPerRow": 0.06666666666666667,
+          "claimRate": 1,
+          "verdictAgreement": 1,
+          "findingOverlap": 0.8666666666666666
+        },
+        "usage": {
+          "inputTokens": 613525.5333333333,
+          "outputTokens": 2070.6,
+          "wallMs": 55209.46666666667,
+          "toolCalls": 5.266666666666667,
+          "textRecovered": 0,
+          "windowFirst": null,
+          "windowLast": null
+        }
+      },
+      {
+        "effort": "high",
+        "manifest": "899b8aa5a8cd8e1c",
+        "cases": 5,
+        "reps": 3,
+        "summary": {
+          "config": "codex/gpt-5.6-sol/L1/high",
+          "rows": 15,
+          "statuses": {
+            "ok": 15
+          },
+          "cases": 5,
+          "verdictAccuracy": 0.6,
+          "blockerRecall": 1,
+          "defectRecall": 0.8666666666666667,
+          "unmatchedPerRow": 0.2,
+          "refutedHitsPerRow": 0.06666666666666667,
+          "claimRate": 1,
+          "verdictAgreement": 1,
+          "findingOverlap": 0.7333333333333333
+        },
+        "usage": {
+          "inputTokens": 1451761.7333333334,
+          "outputTokens": 4358.933333333333,
+          "wallMs": 128397.86666666667,
+          "toolCalls": 8.133333333333333,
+          "textRecovered": 0,
+          "windowFirst": null,
+          "windowLast": null
+        }
+      },
+      {
+        "effort": "xhigh",
+        "manifest": "f2ec571a6c20184e",
+        "cases": 5,
+        "reps": 3,
+        "summary": {
+          "config": "codex/gpt-5.6-sol/L1/xhigh",
+          "rows": 15,
+          "statuses": {
+            "ok": 15
+          },
+          "cases": 5,
+          "verdictAccuracy": 0.6,
+          "blockerRecall": 1,
+          "defectRecall": 0.8666666666666667,
+          "unmatchedPerRow": 0.3333333333333333,
+          "refutedHitsPerRow": 0.2,
+          "claimRate": 1,
+          "verdictAgreement": 1,
+          "findingOverlap": 0.8222222222222222
+        },
+        "usage": {
+          "inputTokens": 1945810.8,
+          "outputTokens": 6906.733333333334,
+          "wallMs": 175399.66666666666,
+          "toolCalls": 11.6,
+          "textRecovered": 0,
+          "windowFirst": null,
+          "windowLast": null
+        }
+      },
+      {
+        "effort": "max",
+        "manifest": "798a3088798431a0",
+        "cases": 5,
+        "reps": 3,
+        "summary": {
+          "config": "codex/gpt-5.6-sol/L1/max",
+          "rows": 15,
+          "statuses": {
+            "ok": 15
+          },
+          "cases": 5,
+          "verdictAccuracy": 0.6,
+          "blockerRecall": 1,
+          "defectRecall": 1,
+          "unmatchedPerRow": 0.26666666666666666,
+          "refutedHitsPerRow": 0.13333333333333333,
+          "claimRate": 1,
+          "verdictAgreement": 1,
+          "findingOverlap": 0.8766666666666666
+        },
+        "usage": {
+          "inputTokens": 3365855.3333333335,
+          "outputTokens": 12011.733333333334,
+          "wallMs": 291117.86666666664,
+          "toolCalls": 23.2,
+          "textRecovered": 0,
+          "windowFirst": null,
+          "windowLast": null
+        }
+      },
+      {
+        "effort": "ultra",
+        "manifest": "550f65e1fb26729b",
+        "cases": 5,
+        "reps": 3,
+        "summary": {
+          "config": "codex/gpt-5.6-sol/L1/ultra",
+          "rows": 15,
+          "statuses": {
+            "ok": 15
+          },
+          "cases": 5,
+          "verdictAccuracy": 0.6666666666666666,
+          "blockerRecall": 1,
+          "defectRecall": 0.8666666666666667,
+          "unmatchedPerRow": 0.4666666666666667,
+          "refutedHitsPerRow": 0.06666666666666667,
+          "claimRate": 1,
+          "verdictAgreement": 0.9333333333333333,
+          "findingOverlap": 0.6833333333333333
+        },
+        "usage": {
+          "inputTokens": 4593200,
+          "outputTokens": 11253.8,
+          "wallMs": 392558.26666666666,
+          "toolCalls": 19,
+          "textRecovered": 0,
+          "windowFirst": null,
+          "windowLast": null
+        }
+      }
+    ],
+    "adjacent": [
+      {
+        "from": "low",
+        "to": "medium",
+        "verdict": {
+          "n": 15,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        },
+        "blockers": {
+          "n": 9,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        }
+      },
+      {
+        "from": "medium",
+        "to": "high",
+        "verdict": {
+          "n": 15,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        },
+        "blockers": {
+          "n": 9,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        }
+      },
+      {
+        "from": "high",
+        "to": "xhigh",
+        "verdict": {
+          "n": 15,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        },
+        "blockers": {
+          "n": 9,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        }
+      },
+      {
+        "from": "xhigh",
+        "to": "max",
+        "verdict": {
+          "n": 15,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        },
+        "blockers": {
+          "n": 9,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        }
+      },
+      {
+        "from": "max",
+        "to": "ultra",
+        "verdict": {
+          "n": 15,
+          "mean": 0.06666666666666667,
+          "lo": -0.06400000000000002,
+          "hi": 0.19733333333333336,
+          "different": false
+        },
+        "blockers": {
+          "n": 9,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        }
+      }
+    ],
+    "best": "ultra",
+    "selected": "low"
+  },
+  {
+    "config": "claude/claude-opus-5/L1",
+    "cases": 5,
+    "reps": 3,
+    "noiseFloor": 0.2581988897471611,
+    "levels": [
+      {
+        "effort": "low",
+        "manifest": "c8623ea14ad8ae0e",
+        "cases": 5,
+        "reps": 3,
+        "summary": {
+          "config": "claude/claude-opus-5/L1/low",
+          "rows": 15,
+          "statuses": {
+            "ok": 15
+          },
+          "cases": 5,
+          "verdictAccuracy": 0.8,
+          "blockerRecall": 0.8888888888888888,
+          "defectRecall": 0.7333333333333333,
+          "unmatchedPerRow": 1.6666666666666667,
+          "refutedHitsPerRow": 0.13333333333333333,
+          "claimRate": 1,
+          "verdictAgreement": 1,
+          "findingOverlap": 0.4334920634920635
+        },
+        "usage": {
+          "inputTokens": 201504.53333333333,
+          "outputTokens": 2603.866666666667,
+          "wallMs": 44838.066666666666,
+          "toolCalls": 7.666666666666667,
+          "textRecovered": 0,
+          "windowFirst": 0.16,
+          "windowLast": 0.2
+        }
+      },
+      {
+        "effort": "medium",
+        "manifest": "965273138249de3c",
+        "cases": 5,
+        "reps": 3,
+        "summary": {
+          "config": "claude/claude-opus-5/L1/medium",
+          "rows": 15,
+          "statuses": {
+            "ok": 15
+          },
+          "cases": 5,
+          "verdictAccuracy": 0.8,
+          "blockerRecall": 1,
+          "defectRecall": 0.9333333333333333,
+          "unmatchedPerRow": 2.466666666666667,
+          "refutedHitsPerRow": 0.13333333333333333,
+          "claimRate": 0.9827586206896551,
+          "verdictAgreement": 1,
+          "findingOverlap": 0.4888888888888888
+        },
+        "usage": {
+          "inputTokens": 985805.9333333333,
+          "outputTokens": 8399.8,
+          "wallMs": 131303.86666666667,
+          "toolCalls": 20.333333333333332,
+          "textRecovered": 0,
+          "windowFirst": 0.2,
+          "windowLast": 0.25
+        }
+      },
+      {
+        "effort": "high",
+        "manifest": "725f2b2d64ff637a",
+        "cases": 5,
+        "reps": 3,
+        "summary": {
+          "config": "claude/claude-opus-5/L1/high",
+          "rows": 15,
+          "statuses": {
+            "ok": 15
+          },
+          "cases": 5,
+          "verdictAccuracy": 0.8,
+          "blockerRecall": 1,
+          "defectRecall": 1,
+          "unmatchedPerRow": 3.2,
+          "refutedHitsPerRow": 0.13333333333333333,
+          "claimRate": 1,
+          "verdictAgreement": 1,
+          "findingOverlap": 0.5423809523809524
+        },
+        "usage": {
+          "inputTokens": 1957207.7333333334,
+          "outputTokens": 17335,
+          "wallMs": 261568.26666666666,
+          "toolCalls": 31.6,
+          "textRecovered": 0,
+          "windowFirst": 0.26,
+          "windowLast": 0.42
+        }
+      },
+      {
+        "effort": "xhigh",
+        "manifest": "074e37d474c85238",
+        "cases": 5,
+        "reps": 3,
+        "summary": {
+          "config": "claude/claude-opus-5/L1/xhigh",
+          "rows": 15,
+          "statuses": {
+            "ok": 15
+          },
+          "cases": 5,
+          "verdictAccuracy": 0.8,
+          "blockerRecall": 1,
+          "defectRecall": 0.9333333333333333,
+          "unmatchedPerRow": 3,
+          "refutedHitsPerRow": 0.2,
+          "claimRate": 0.984375,
+          "verdictAgreement": 1,
+          "findingOverlap": 0.4211904761904761
+        },
+        "usage": {
+          "inputTokens": 2124018.066666667,
+          "outputTokens": 24301.4,
+          "wallMs": 412745.86666666664,
+          "toolCalls": 34.666666666666664,
+          "textRecovered": 0,
+          "windowFirst": 0.44,
+          "windowLast": 0.51
+        }
+      },
+      {
+        "effort": "max",
+        "manifest": "7f129a7ada7b3a6e",
+        "cases": 5,
+        "reps": 3,
+        "summary": {
+          "config": "claude/claude-opus-5/L1/max",
+          "rows": 15,
+          "statuses": {
+            "ok": 15
+          },
+          "cases": 5,
+          "verdictAccuracy": 0.6666666666666666,
+          "blockerRecall": 1,
+          "defectRecall": 1,
+          "unmatchedPerRow": 3,
+          "refutedHitsPerRow": 0.3333333333333333,
+          "claimRate": 1,
+          "verdictAgreement": 0.9333333333333333,
+          "findingOverlap": 0.522063492063492
+        },
+        "usage": {
+          "inputTokens": 2961185.2666666666,
+          "outputTokens": 32311.133333333335,
+          "wallMs": 510861.4,
+          "toolCalls": 43.53333333333333,
+          "textRecovered": 0,
+          "windowFirst": 0.52,
+          "windowLast": 0.07
+        }
+      }
+    ],
+    "adjacent": [
+      {
+        "from": "low",
+        "to": "medium",
+        "verdict": {
+          "n": 15,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        },
+        "blockers": {
+          "n": 9,
+          "mean": 0.1111111111111111,
+          "lo": -0.10666666666666674,
+          "hi": 0.32888888888888895,
+          "different": false
+        }
+      },
+      {
+        "from": "medium",
+        "to": "high",
+        "verdict": {
+          "n": 15,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        },
+        "blockers": {
+          "n": 9,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        }
+      },
+      {
+        "from": "high",
+        "to": "xhigh",
+        "verdict": {
+          "n": 15,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        },
+        "blockers": {
+          "n": 9,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        }
+      },
+      {
+        "from": "xhigh",
+        "to": "max",
+        "verdict": {
+          "n": 15,
+          "mean": -0.13333333333333333,
+          "lo": -0.3114019842644965,
+          "hi": 0.044735317597829866,
+          "different": false
+        },
+        "blockers": {
+          "n": 9,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        }
+      }
+    ],
+    "best": "medium",
+    "selected": "low"
+  },
+  {
+    "config": "claude/claude-opus-5-5/L1",
+    "cases": 5,
+    "reps": 3,
+    "noiseFloor": 0.2581988897471611,
+    "levels": [
+      {
+        "effort": "low",
+        "manifest": "ee75d951a292e10b",
+        "cases": 5,
+        "reps": 3,
+        "summary": {
+          "config": "claude/claude-opus-5-5/L1/low",
+          "rows": 15,
+          "statuses": {
+            "ok": 15
+          },
+          "cases": 5,
+          "verdictAccuracy": 0.8,
+          "blockerRecall": 1,
+          "defectRecall": 0.8666666666666667,
+          "unmatchedPerRow": 1.0666666666666667,
+          "refutedHitsPerRow": 0,
+          "claimRate": 1,
+          "verdictAgreement": 1,
+          "findingOverlap": 0.6857142857142857
+        },
+        "usage": {
+          "inputTokens": 78651.4,
+          "outputTokens": 927.6,
+          "wallMs": 12235.866666666667,
+          "toolCalls": 3.7333333333333334,
+          "textRecovered": 0,
+          "windowFirst": 0.07,
+          "windowLast": 0.07
+        }
+      },
+      {
+        "effort": "medium",
+        "manifest": "e34249cd9b230b9e",
+        "cases": 5,
+        "reps": 3,
+        "summary": {
+          "config": "claude/claude-opus-5-5/L1/medium",
+          "rows": 15,
+          "statuses": {
+            "ok": 15
+          },
+          "cases": 5,
+          "verdictAccuracy": 0.8,
+          "blockerRecall": 1,
+          "defectRecall": 0.8666666666666667,
+          "unmatchedPerRow": 2.2666666666666666,
+          "refutedHitsPerRow": 0,
+          "claimRate": 1,
+          "verdictAgreement": 1,
+          "findingOverlap": 0.4611111111111111
+        },
+        "usage": {
+          "inputTokens": 129014.53333333334,
+          "outputTokens": 1997.2,
+          "wallMs": 22928.533333333333,
+          "toolCalls": 5.6,
+          "textRecovered": 0,
+          "windowFirst": 0.07,
+          "windowLast": 0.08
+        }
+      },
+      {
+        "effort": "high",
+        "manifest": "0edcaaf52bab56fa",
+        "cases": 5,
+        "reps": 3,
+        "summary": {
+          "config": "claude/claude-opus-5-5/L1/high",
+          "rows": 15,
+          "statuses": {
+            "ok": 15
+          },
+          "cases": 5,
+          "verdictAccuracy": 0.8,
+          "blockerRecall": 1,
+          "defectRecall": 0.8666666666666667,
+          "unmatchedPerRow": 2.3333333333333335,
+          "refutedHitsPerRow": 0.13333333333333333,
+          "claimRate": 1,
+          "verdictAgreement": 1,
+          "findingOverlap": 0.5569841269841269
+        },
+        "usage": {
+          "inputTokens": 238617.26666666666,
+          "outputTokens": 3222.733333333333,
+          "wallMs": 34935.2,
+          "toolCalls": 7.866666666666666,
+          "textRecovered": 0,
+          "windowFirst": 0.08,
+          "windowLast": 0.09
+        }
+      },
+      {
+        "effort": "xhigh",
+        "manifest": "0be43341685231c7",
+        "cases": 5,
+        "reps": 3,
+        "summary": {
+          "config": "claude/claude-opus-5-5/L1/xhigh",
+          "rows": 15,
+          "statuses": {
+            "ok": 15
+          },
+          "cases": 5,
+          "verdictAccuracy": 0.6,
+          "blockerRecall": 1,
+          "defectRecall": 1,
+          "unmatchedPerRow": 2.6,
+          "refutedHitsPerRow": 0.26666666666666666,
+          "claimRate": 0.9841269841269841,
+          "verdictAgreement": 1,
+          "findingOverlap": 0.6511111111111112
+        },
+        "usage": {
+          "inputTokens": 1091644.2666666666,
+          "outputTokens": 11936.733333333334,
+          "wallMs": 123201.33333333333,
+          "toolCalls": 25,
+          "textRecovered": 0,
+          "windowFirst": 0.09,
+          "windowLast": 0.12
+        }
+      },
+      {
+        "effort": "max",
+        "manifest": "9d60e5e45d780b42",
+        "cases": 5,
+        "reps": 3,
+        "summary": {
+          "config": "claude/claude-opus-5-5/L1/max",
+          "rows": 15,
+          "statuses": {
+            "ok": 15
+          },
+          "cases": 5,
+          "verdictAccuracy": 0.6,
+          "blockerRecall": 1,
+          "defectRecall": 1,
+          "unmatchedPerRow": 2.933333333333333,
+          "refutedHitsPerRow": 0.2,
+          "claimRate": 1,
+          "verdictAgreement": 1,
+          "findingOverlap": 0.5593650793650793
+        },
+        "usage": {
+          "inputTokens": 3871650.2,
+          "outputTokens": 49224.13333333333,
+          "wallMs": 484553.4,
+          "toolCalls": 54.2,
+          "textRecovered": 0,
+          "windowFirst": 0.13,
+          "windowLast": 0.24
+        }
+      }
+    ],
+    "adjacent": [
+      {
+        "from": "low",
+        "to": "medium",
+        "verdict": {
+          "n": 15,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        },
+        "blockers": {
+          "n": 9,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        }
+      },
+      {
+        "from": "medium",
+        "to": "high",
+        "verdict": {
+          "n": 15,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        },
+        "blockers": {
+          "n": 9,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        }
+      },
+      {
+        "from": "high",
+        "to": "xhigh",
+        "verdict": {
+          "n": 15,
+          "mean": -0.2,
+          "lo": -0.4095328136593408,
+          "hi": 0.00953281365934075,
+          "different": false
+        },
+        "blockers": {
+          "n": 9,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        }
+      },
+      {
+        "from": "xhigh",
+        "to": "max",
+        "verdict": {
+          "n": 15,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        },
+        "blockers": {
+          "n": 9,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        }
+      }
+    ],
+    "best": "low",
+    "selected": "low"
+  },
+  {
+    "config": "codex/gpt-6-astra/L1",
+    "cases": 5,
+    "reps": 3,
+    "noiseFloor": 0.2581988897471611,
+    "levels": [
+      {
+        "effort": "low",
+        "manifest": "0ea904f2ecb62e1f",
+        "cases": 5,
+        "reps": 3,
+        "summary": {
+          "config": "codex/gpt-6-astra/L1/low",
+          "rows": 15,
+          "statuses": {
+            "ok": 15
+          },
+          "cases": 5,
+          "verdictAccuracy": 0.6,
+          "blockerRecall": 1,
+          "defectRecall": 0.8,
+          "unmatchedPerRow": 0.2,
+          "refutedHitsPerRow": 0,
+          "claimRate": 1,
+          "verdictAgreement": 1,
+          "findingOverlap": 1
+        },
+        "usage": {
+          "inputTokens": 357244.8,
+          "outputTokens": 653.3333333333334,
+          "wallMs": 31989.666666666668,
+          "toolCalls": 4.8,
+          "textRecovered": 0,
+          "windowFirst": null,
+          "windowLast": null
+        }
+      },
+      {
+        "effort": "medium",
+        "manifest": "3ad9b60523b2cdbd",
+        "cases": 5,
+        "reps": 3,
+        "summary": {
+          "config": "codex/gpt-6-astra/L1/medium",
+          "rows": 15,
+          "statuses": {
+            "ok": 15
+          },
+          "cases": 5,
+          "verdictAccuracy": 0.6,
+          "blockerRecall": 1,
+          "defectRecall": 0.8,
+          "unmatchedPerRow": 0.2,
+          "refutedHitsPerRow": 0,
+          "claimRate": 1,
+          "verdictAgreement": 1,
+          "findingOverlap": 1
+        },
+        "usage": {
+          "inputTokens": 399961.6,
+          "outputTokens": 785.1333333333333,
+          "wallMs": 35079.666666666664,
+          "toolCalls": 7,
+          "textRecovered": 0,
+          "windowFirst": null,
+          "windowLast": null
+        }
+      },
+      {
+        "effort": "high",
+        "manifest": "85b79ee78e6097e8",
+        "cases": 5,
+        "reps": 3,
+        "summary": {
+          "config": "codex/gpt-6-astra/L1/high",
+          "rows": 15,
+          "statuses": {
+            "ok": 15
+          },
+          "cases": 5,
+          "verdictAccuracy": 0.6,
+          "blockerRecall": 1,
+          "defectRecall": 0.8666666666666667,
+          "unmatchedPerRow": 0.2,
+          "refutedHitsPerRow": 0,
+          "claimRate": 1,
+          "verdictAgreement": 1,
+          "findingOverlap": 0.9333333333333333
+        },
+        "usage": {
+          "inputTokens": 539455.7333333333,
+          "outputTokens": 1299,
+          "wallMs": 55572.333333333336,
+          "toolCalls": 10.933333333333334,
+          "textRecovered": 0,
+          "windowFirst": null,
+          "windowLast": null
+        }
+      },
+      {
+        "effort": "xhigh",
+        "manifest": "29c0e203a3aa7edd",
+        "cases": 5,
+        "reps": 3,
+        "summary": {
+          "config": "codex/gpt-6-astra/L1/xhigh",
+          "rows": 15,
+          "statuses": {
+            "ok": 15
+          },
+          "cases": 5,
+          "verdictAccuracy": 0.6,
+          "blockerRecall": 1,
+          "defectRecall": 1,
+          "unmatchedPerRow": 0.06666666666666667,
+          "refutedHitsPerRow": 0.06666666666666667,
+          "claimRate": 1,
+          "verdictAgreement": 1,
+          "findingOverlap": 0.9111111111111111
+        },
+        "usage": {
+          "inputTokens": 985502.4666666667,
+          "outputTokens": 3204.6,
+          "wallMs": 117250.26666666666,
+          "toolCalls": 23,
+          "textRecovered": 0,
+          "windowFirst": null,
+          "windowLast": null
+        }
+      },
+      {
+        "effort": "max",
+        "manifest": "f2733b7785bd6634",
+        "cases": 5,
+        "reps": 3,
+        "summary": {
+          "config": "codex/gpt-6-astra/L1/max",
+          "rows": 15,
+          "statuses": {
+            "ok": 15
+          },
+          "cases": 5,
+          "verdictAccuracy": 0.6,
+          "blockerRecall": 1,
+          "defectRecall": 1,
+          "unmatchedPerRow": 0.13333333333333333,
+          "refutedHitsPerRow": 0.06666666666666667,
+          "claimRate": 1,
+          "verdictAgreement": 1,
+          "findingOverlap": 0.9111111111111111
+        },
+        "usage": {
+          "inputTokens": 1171005.4,
+          "outputTokens": 4712.733333333334,
+          "wallMs": 168801.53333333333,
+          "toolCalls": 26.733333333333334,
+          "textRecovered": 0,
+          "windowFirst": null,
+          "windowLast": null
+        }
+      },
+      {
+        "effort": "ultra",
+        "manifest": "9964ea6da1de0a69",
+        "cases": 5,
+        "reps": 3,
+        "summary": {
+          "config": "codex/gpt-6-astra/L1/ultra",
+          "rows": 15,
+          "statuses": {
+            "ok": 15
+          },
+          "cases": 5,
+          "verdictAccuracy": 0.6,
+          "blockerRecall": 1,
+          "defectRecall": 1,
+          "unmatchedPerRow": 0.2,
+          "refutedHitsPerRow": 0.2,
+          "claimRate": 1,
+          "verdictAgreement": 1,
+          "findingOverlap": 1
+        },
+        "usage": {
+          "inputTokens": 1117238.7333333334,
+          "outputTokens": 3130.6666666666665,
+          "wallMs": 122804.46666666666,
+          "toolCalls": 22.4,
+          "textRecovered": 0,
+          "windowFirst": null,
+          "windowLast": null
+        }
+      }
+    ],
+    "adjacent": [
+      {
+        "from": "low",
+        "to": "medium",
+        "verdict": {
+          "n": 15,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        },
+        "blockers": {
+          "n": 9,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        }
+      },
+      {
+        "from": "medium",
+        "to": "high",
+        "verdict": {
+          "n": 15,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        },
+        "blockers": {
+          "n": 9,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        }
+      },
+      {
+        "from": "high",
+        "to": "xhigh",
+        "verdict": {
+          "n": 15,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        },
+        "blockers": {
+          "n": 9,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        }
+      },
+      {
+        "from": "xhigh",
+        "to": "max",
+        "verdict": {
+          "n": 15,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        },
+        "blockers": {
+          "n": 9,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        }
+      },
+      {
+        "from": "max",
+        "to": "ultra",
+        "verdict": {
+          "n": 15,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        },
+        "blockers": {
+          "n": 9,
+          "mean": 0,
+          "lo": 0,
+          "hi": 0,
+          "different": false
+        }
+      }
+    ],
+    "best": "low",
+    "selected": "low"
+  }
+]

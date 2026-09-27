@@ -71,6 +71,7 @@ coverage/
 !.claude/skills/post-comment/
 !.claude/skills/merge-pr/
 !.claude/skills/pr-sweep/
+!.claude/skills/teardown/
 !.claude/hooks/
 .codex
 .cursor

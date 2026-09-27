@@ -644,6 +644,10 @@ export const LOG_CODES = [
   // open. This line is the only trace that the operator's other settings were
   // replaced by defaults and that timestamping was switched off for them.
   'settings.unreadable_timestamping_fail_closed',
+  // updateSettings refusing to write over a settings.json it cannot read (#1169).
+  // Nothing was restored or persisted on this path, so it cannot share the
+  // fail-closed code above, whose label says defaults were restored.
+  'settings.unreadable_write_refused',
   // The first-launch settings.json seed that latches the fresh-install flag
   // (#404). Failing it costs only the onboarding tour, so init swallows the
   // error — this is the record that it happened.

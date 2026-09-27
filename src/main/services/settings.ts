@@ -211,7 +211,7 @@ export function updateSettings(partial: Partial<BirdbrainSettings>): BirdbrainSe
     try {
       readFileSync(settingsPath, 'utf-8')
     } catch (err) {
-      logger.warn('settings', 'settings.unreadable_timestamping_fail_closed', undefined, err)
+      logger.warn('settings', 'settings.unreadable_write_refused', undefined, err)
       throw new Error('Settings file could not be read; refusing to overwrite it', { cause: err })
     }
   }

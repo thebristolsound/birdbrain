@@ -244,6 +244,18 @@ describe('settings', () => {
             expect(() => updateSettings({ operatorName: 'Someone' })).toThrow(
               /refusing to overwrite/
             )
+            expect(loggerWarn).toHaveBeenCalledWith(
+              'settings',
+              'settings.unreadable_write_refused',
+              undefined,
+              expect.anything()
+            )
+            expect(loggerWarn).not.toHaveBeenCalledWith(
+              'settings',
+              'settings.unreadable_timestamping_fail_closed',
+              undefined,
+              expect.anything()
+            )
           } finally {
             chmodSync(settingsFile, 0o600)
           }

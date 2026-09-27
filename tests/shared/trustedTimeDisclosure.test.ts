@@ -56,7 +56,7 @@ describe('trusted-time disclosure vocabulary (#519)', () => {
   // about what was or was not submitted would be false for that package.
   it('says only that the installation switched it off, never what was submitted', () => {
     expect(TRUSTED_TIME_AUTHORITY_NOT_CONTACTED).toContain('switched off for this installation')
-    expect(TRUSTED_TIME_AUTHORITY_NOT_CONTACTED).not.toMatch(/submitted|requested|no capture/i)
+    expect(TRUSTED_TIME_AUTHORITY_NOT_CONTACTED).not.toMatch(/submitted|sent|requested|no capture/i)
     // The note carries no identity of its own; the endpoint above it is the only
     // authority the field names.
     expect(TRUSTED_TIME_AUTHORITY_NOT_CONTACTED).not.toMatch(/https?:/)

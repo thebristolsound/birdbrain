@@ -66,17 +66,13 @@ These findings stay on #1592 as separate work:
 - `rerootPath` splits on `/` only. A Windows-exported archive would carry `\` paths. This is an
   existing limit that the exhibit and staging importers share.
 
-## Open decisions for the maintainer
+## Decisions (maintainer, 2026-09-26)
 
-1. **How to repair existing installs.** Option (a), the recommendation, is the migration in step
-   2: one source of truth, and the column stays meaningful for the missing-file scan and in
-   future archives. Option (b) is to make the viewer and verify derive the path from `caseId` and
-   `id`, as export already does. That needs no migration and makes cross-case reads impossible
-   by construction. It changes more readers and leaves the column stale in the database.
-2. **Stale verification results.** Demo captures that someone already re-verified store
-   `last_verified_status = 'missing'`. Either the migration clears it to unverified on the rows
-   it rewrites (recommended, because our bug produced the result), or it stays until the next
-   re-verify.
+1. **Existing installs are repaired by migration** (step 2), not by making the viewer and verify
+   derive the path from `caseId` and `id`. The column stays the single source of truth.
+2. **The migration clears the stored verification result on every row it rewrites.** Each such
+   result was computed against the wrong path, either missing or another case's bytes. This
+   covers a stored `verified` as well as `missing`.
 
 ## Gate
 

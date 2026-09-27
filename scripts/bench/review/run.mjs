@@ -3,6 +3,7 @@
 // effort level, rows appended as JSON lines, resumable.
 //
 // Usage: node run.mjs --harness claude|codex --model <id> --tier L0|L1|L2
+//                     [--mode direct|dispatch]
 //                     --effort <level[,level...]> [--reps 3] [--cases <id,...>]
 //                     [--tag <tag>] [--timeout <ms>] [--pause <ms>] [--dry-run]
 //                     [--allow-l2] [--repo <path>] [--claude-config-dir <dir>]
@@ -29,7 +30,21 @@ import { loadFixtures } from './grade.mjs'
 import { loadFixture } from './lib/fixture.mjs'
 import { buildPrompt, agentBody } from './lib/prompt.mjs'
 import { buildManifest, corpusHash, sha256 } from './lib/manifest.mjs'
-import { CLAUDE_EFFORTS, claudeArgs, claudeToolSpec, parseClaudeRun } from './lib/claude.mjs'
+import {
+  CLAUDE_EFFORTS,
+  claudeArgs,
+  claudeToolSpec,
+  dispatchClaudeArgs,
+  parseClaudeRun,
+  parseClaudeStream,
+  isRateLimit
+} from './lib/claude.mjs'
+import {
+  buildDispatchWorkspace,
+  dispatchPrompt,
+  installGhShim,
+  parseVerdictComment
+} from './lib/dispatch.mjs'
 import { codexArgs, codexLevels, codexSandbox, parseCodexRun } from './lib/codex.mjs'
 import { pendingRows, readRows } from './lib/resume.mjs'
 import { HARNESSES, OUTPUT_SCHEMA, TIERS, validateOutput } from './lib/schema.mjs'
@@ -48,14 +63,18 @@ export const DEFAULTS = {
   promptFile: join(here, 'prompts', 'code-review.md'),
   agentFile: '.claude/agents/birdbrain-reviewer.md',
   instructionsFile: 'CLAUDE.md',
-  agentName: 'birdbrain-reviewer'
+  agentName: 'birdbrain-reviewer',
+  dispatchSkillFile: '.claude/skills/dispatch/SKILL.md'
 }
+
+export const MODES = ['direct', 'dispatch']
 
 export function parseArgs(argv) {
   const o = {
     harness: null,
     model: null,
     tier: null,
+    mode: 'direct',
     efforts: [],
     reps: DEFAULTS.reps,
     cases: null,
@@ -77,6 +96,7 @@ export function parseArgs(argv) {
     if (a === '--harness') o.harness = next()
     else if (a === '--model') o.model = next()
     else if (a === '--tier') o.tier = next()
+    else if (a === '--mode') o.mode = next()
     else if (a === '--effort') o.efforts.push(...next().split(',').filter(Boolean))
     else if (a === '--reps') o.reps = Number(next())
     else if (a === '--cases') o.cases = next().split(',').filter(Boolean)
@@ -92,6 +112,13 @@ export function parseArgs(argv) {
   }
   if (!HARNESSES.includes(o.harness)) throw new Error(`--harness: one of ${HARNESSES.join(', ')}`)
   if (!o.model) throw new Error('--model is required')
+  if (!MODES.includes(o.mode)) throw new Error(`--mode: one of ${MODES.join(', ')}`)
+  // The dispatch mode is the full pre-pass, which is tier L2 by definition.
+  if (o.mode === 'dispatch') {
+    if (o.tier === null) o.tier = 'L2'
+    else if (o.tier !== 'L2') throw new Error('--mode dispatch runs at tier L2 only')
+    o.allowL2 = true
+  }
   if (!TIERS.includes(o.tier)) throw new Error(`--tier: one of ${TIERS.join(', ')}`)
   if (o.efforts.length === 0) throw new Error('--effort is required and never inherited')
   if (!Number.isInteger(o.reps) || o.reps < 1) throw new Error('--reps: positive integer')
@@ -198,7 +225,78 @@ function openWorkspace(o, fixture, dirs, deps) {
   return { dir, close: () => removeWorktree(deps.repo, dir) }
 }
 
+// The dispatch mode: the model is the dispatcher, the PR is a local clone,
+// gh is the stand-in, and the graded output is the verdict comment it wrote.
+function runDispatchRow(o, ctx, fixture, rep, deps) {
+  const rowDir = join(ctx.dir, 'rows', `${fixture.id}-r${rep}`)
+  mkdirSync(rowDir, { recursive: true })
+  const commentFile = join(rowDir, 'comment.md')
+  const reportFile = join(rowDir, 'report.md')
+  const binDir = installGhShim(join(rowDir, 'bin'))
+  const wsDir = join(deps.dirs.cache, 'dispatch', `${fixture.id}-${process.pid}`)
+  const ws = buildDispatchWorkspace({ repo: deps.repo, fixture, dir: wsDir })
+  const prompt = dispatchPrompt({ pr: fixture.source.pr, head: ws.head, commentFile, reportFile })
+  writeFileSync(join(rowDir, 'prompt.txt'), prompt)
+  const env = {
+    ...ctx.env,
+    PATH: `${binDir}:${ctx.env.PATH ?? ''}`,
+    GH_TOKEN: 'benchmark-disabled',
+    GIT_TERMINAL_PROMPT: '0',
+    BENCH_GH_FIXTURE: join(deps.dirs.fixtures, fixture.id),
+    BENCH_GH_LOG: join(rowDir, 'gh-calls.jsonl'),
+    BENCH_COMMENT_FILE: commentFile
+  }
+  const startedAt = new Date().toISOString()
+  const t0 = Date.now()
+  let r
+  try {
+    r = deps.exec('claude', dispatchClaudeArgs({ model: o.model, effort: ctx.effort }), {
+      cwd: ws.dir,
+      input: prompt,
+      env,
+      timeoutMs: o.timeoutMs
+    })
+  } finally {
+    rmSync(ws.dir, { recursive: true, force: true })
+  }
+  writeFileSync(join(rowDir, 'stdout.txt'), r.stdout)
+  writeFileSync(join(rowDir, 'stderr.txt'), r.stderr)
+  const { result, init, toolCalls, rateLimit } = parseClaudeStream(r.stdout)
+  let parsed = {
+    toolCalls,
+    rateLimit,
+    init: init && { tools: init.tools, agents: init.agents, permissionMode: init.permissionMode },
+    usage: result?.usage ?? null,
+    modelUsage: result?.modelUsage ?? null,
+    turns: result?.num_turns ?? null,
+    durationMs: result?.duration_ms ?? null,
+    denials: result?.permission_denials ?? null,
+    workspace: { base: ws.base, head: ws.head, branch: ws.branch }
+  }
+  const comment = existsSync(commentFile) ? readFileSync(commentFile, 'utf8') : null
+  const verdict = parseVerdictComment(comment)
+  if (r.timedOut) parsed = { ...parsed, status: 'error', error: 'timeout' }
+  else if (!result && isRateLimit(`${r.stdout}\n${r.stderr}`)) {
+    parsed = { ...parsed, status: 'rate_limited', error: 'rate limited before a result' }
+  } else if (result?.api_error_status === 429 || (result?.is_error && isRateLimit(result.result))) {
+    parsed = { ...parsed, status: 'rate_limited', error: String(result.result).slice(0, 500) }
+  } else if (comment === null) {
+    parsed = {
+      ...parsed,
+      status: 'error',
+      error: `no comment file written (exit ${r.status}): ${String(result?.result ?? r.stderr).slice(0, 300)}`
+    }
+  } else if (!verdict) {
+    parsed = { ...parsed, status: 'error', error: 'comment has no verdict line' }
+  } else {
+    const { source, ...output } = verdict
+    parsed = { ...parsed, status: 'ok', output, outputSource: `comment:${source}` }
+  }
+  return finishRow(o, ctx, fixture, rep, rowDir, parsed, startedAt, Date.now() - t0)
+}
+
 function runRow(o, ctx, fixture, rep, deps) {
+  if (o.mode === 'dispatch') return runDispatchRow(o, ctx, fixture, rep, deps)
   const rowDir = join(ctx.dir, 'rows', `${fixture.id}-r${rep}`)
   mkdirSync(rowDir, { recursive: true })
   const prompt = buildPrompt({
@@ -269,7 +367,10 @@ function runRow(o, ctx, fixture, rep, deps) {
   } finally {
     ws.close()
   }
-  const wallMs = Date.now() - t0
+  return finishRow(o, ctx, fixture, rep, rowDir, parsed, startedAt, Date.now() - t0)
+}
+
+function finishRow(o, ctx, fixture, rep, rowDir, parsed, startedAt, wallMs) {
   if (parsed.status === 'ok') {
     const problems = validateOutput(parsed.output)
     if (problems.length) {
@@ -286,6 +387,7 @@ function runRow(o, ctx, fixture, rep, deps) {
     harness: o.harness,
     model: o.model,
     tier: o.tier,
+    mode: o.mode,
     effort: ctx.effort,
     rep,
     manifest: ctx.id,
@@ -335,10 +437,14 @@ export function main(argv, overrides = {}) {
   const harnessVersion = version(deps.exec, o.harness, env)
   const login = loginState(deps.exec, o.harness, env)
   const levels = o.harness === 'codex' ? codexLevels(o.model, env.CODEX_HOME) : null
+  // Codex has no dispatch flow: the skill, the subagent and the hooks are
+  // Claude Code's, so a Codex dispatch row is unsupported rather than faked.
   const supported =
     o.harness === 'claude'
       ? (e) => CLAUDE_EFFORTS.includes(e)
-      : (e) => levels !== null && levels.levels.includes(e)
+      : (e) => o.mode === 'direct' && levels !== null && levels.levels.includes(e)
+  const dispatchSkill =
+    o.mode === 'dispatch' ? readFileSync(join(deps.repo, DEFAULTS.dispatchSkillFile), 'utf8') : null
   mkdirSync(deps.dirs.cache, { recursive: true })
   const corpus = corpusHash(fixtures)
   let stoppedBy = null
@@ -354,7 +460,9 @@ export function main(argv, overrides = {}) {
       promptTemplate,
       agentDefinition,
       instructions,
-      placement: o.harness === 'claude' ? 'agent' : 'prompt',
+      placement: o.mode === 'dispatch' ? 'checkout' : o.harness === 'claude' ? 'agent' : 'prompt',
+      mode: o.mode,
+      dispatchSkill,
       corpus,
       nodeVersion: process.version,
       timeoutMs: o.timeoutMs,
@@ -379,15 +487,16 @@ export function main(argv, overrides = {}) {
     )
     const rowsFile = join(dir, 'rows.jsonl')
     const pending = pendingRows(caseIds, o.reps, readRows(rowsFile))
-    deps.log(
-      `${o.harness} ${o.model} ${o.tier} ${effort}  manifest ${id}  ${pending.length} rows pending`
-    )
+    const label = `${o.harness} ${o.model} ${o.tier}${o.mode === 'dispatch' ? ' dispatch' : ''} ${effort}`
+    deps.log(`${label}  manifest ${id}  ${pending.length} rows pending`)
     if (pending.length === 0) continue
     if (!supported(effort)) {
       const known = levels ? levels.levels.join(', ') : CLAUDE_EFFORTS.join(', ')
-      deps.log(
-        `  effort ${effort} is not listed for ${o.model} (${known}); rows marked unsupported`
-      )
+      const why =
+        o.harness === 'codex' && o.mode === 'dispatch'
+          ? 'the dispatch mode runs Claude Code only'
+          : `effort ${effort} is not listed for ${o.model} (${known})`
+      deps.log(`  ${why}; rows marked unsupported`)
       for (const p of pending) {
         const row = {
           case: p.case,

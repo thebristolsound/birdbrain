@@ -210,6 +210,17 @@ Run by hand only. Nothing here is a CI check or a scheduled job (ADR-0029, ADR-0
    and claim discipline is not worse. Recorded as an ADR, on the ADR-0031 pattern.
 6. **Plan review.** Cases, graders and a baseline for the second task, on the same runner.
 
+## Dispatch mode
+
+`run.mjs --mode dispatch` (added 2026-09-27, after the pilot) runs the model as the dispatcher
+itself: `/dispatch` narrowed to section 4, the reviewer spawned from the checkout's own agent
+file, the verify loop run, and the verdict comment graded instead of a JSON answer. The PR is a
+shared clone whose `origin/main` and `origin/<branch>` are the case's base and head with the
+mutation committed and today's agent configuration overlaid on both; `gh` is a stand-in that
+answers reads from the fixture and refuses writes. Claude Code only, tier L2 by definition;
+details in the README. The manifest gains `mode` and the dispatch skill's hash, so a dispatch
+row never compares with a direct row.
+
 ## Pilot findings (2026-09-27)
 
 Five cases (m03, m04, m12, m17, r-709), three reps, tier L1, every effort level of Opus 5,
@@ -240,21 +251,24 @@ The full record, per-case grid and sweep tables are in
    blocking, and their reason is the reviewer definition's own highest-yield rule: the PR
    body promises a warning when the partition folder cannot be read, and after the mutation
    nothing is logged, so the body overclaims. The case was authored as non-blocking in
-   stage 1 and should be relabelled `request changes` before stage 4; m07 and m20, the
-   other non-blocking mutations, need the same check. With m03 relabelled, verdict accuracy
-   is 1.00 for the three Claude models from low to high and 0.80 for GPT-6-Astra and GPT-5.6-Sol.
+   stage 1. Relabelled 2026-09-27 together with m07 and m20, whose mutations also make a
+   comment untrue and change behaviour (an anchor line printed for every note; a verify
+   script helper returning non-zero without `-v`). With m03 relabelled, the pilot's verdict
+   accuracy is 1.00 for the three Claude models from low to high and 0.80 for GPT-6-Astra and
+   GPT-5.6-Sol; the committed pilot record keeps the numbers under the labels of the run.
 5. **Window cost.** Claude Code reports five-hour window utilisation per row. Fifteen rows
    moved it by about 4 points at low (Opus 5, Fable) and under 1 point at low (Opus 5.5),
    by 16 points at high (Opus 5) and by 34 points at max (Fable). A full-set run at low is
    under a tenth of a window per model; a high-effort full set is most of one. Codex
    reports no window figure through its CLI.
-6. **Go, with the corpus rebalanced.** The full set is a go at `low` for every model: at
-   low-effort wall times the 27 cases at two reps take between 11 minutes (Opus 5.5) and
-   45 minutes (Opus 5) per model. Before it runs, relabel m03 (and check m07, m20), and add
-   approve cases: real PRs whose adjudication approved them, and mutation cases whose
-   change is benign, so the set has at least as many approve cases as blocking ones. Until
-   then the headline metric is verdict accuracy on approve cases plus refuted-finding hits,
-   which is the only axis the five models differ on.
+6. **Go, with the corpus rebalanced.** The full set is a go at `low` for every model.
+   Rebalanced 2026-09-27: ten merged agent PRs whose final pre-pass approved them with no
+   blocker (`ra` cases, verdict approve, no adjudicated defects) and eight benign mutations
+   (`b` cases, one comment reworded, the edit listed as refuted so a finding on it is
+   over-flagging). The set is now 45 cases, twenty approve and twenty-five request-changes;
+   at low-effort wall times two reps take between 18 minutes (Opus 5.5) and 70 minutes
+   (Opus 5) per model. The headline metric stays verdict accuracy on approve cases plus
+   refuted-finding hits, the only axis the five models differed on.
 7. **Stage 4 baseline.** Opus 5 runs at `low` (the selected level) and also at `high`
    (the Claude Code default the dispatcher runs today), so the baseline names both what the
    rule selects and what production does. Candidates run at their selected level, `low`.

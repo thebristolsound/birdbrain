@@ -14,11 +14,15 @@ node grade.mjs --self-check     # oracle scores 1, null scores 0, an error row i
 
 node run.mjs --harness claude --model claude-opus-5 --tier L1 --effort high --cases m01,m02
 node run.mjs --harness codex --model gpt-5.6-sol --tier L1 --effort low,medium,high --tag wave2
+node run.mjs --harness claude --model claude-opus-5-5 --mode dispatch --effort low --tag approve
 node grade.mjs --results results/<manifest>/rows.jsonl
+node report.mjs --tier L1            # every model across its effort levels, paired comparisons
+bash pilot.sh claude                 # the stage 3 sweep for one vendor (PILOT_MODE=dispatch for the dispatch mode)
 ```
 
-`run.mjs` takes `--harness claude|codex`, `--model <id>`, `--tier L0|L1|L2`, and `--effort` as a
-comma list; effort is never inherited from a config file. `--reps` (default 3), `--cases` (ids
+`run.mjs` takes `--harness claude|codex`, `--model <id>`, `--tier L0|L1|L2`, `--mode
+direct|dispatch` (default `direct`), and `--effort` as a comma list; effort is never inherited
+from a config file. `--reps` (default 3), `--cases` (ids
 or id prefixes), `--tag`, `--timeout <ms>` (default 30 minutes per call), `--pause <ms>` between
 calls, `--dry-run`, `--allow-l2`, `--claude-config-dir` and `--codex-home` are optional.
 
@@ -87,13 +91,56 @@ window), which is how a pilot measures what one case costs.
 The prompt tells the reviewer which passes are out of reach (GitHub state, the network, checks
 it cannot run) and not to report their absence.
 
+## Dispatch mode
+
+`--mode dispatch` runs the model through the repository's own dispatch flow instead of the
+benchmark prompt: the model is the dispatcher, invoked with `/dispatch` and told to run only
+section 4 (the reviewer pre-pass) on the case's PR, so it spawns `birdbrain-reviewer` from the
+checkout's own agent file, the reviewer runs its verify loop, and the graded product is the
+verdict comment the dispatcher writes in the post-comment shape. It is Claude Code only: the
+skill, the subagent and the hooks are Claude Code's, so a Codex row in this mode is written as
+`unsupported`. The mode is tier L2 by definition.
+
+What the mode builds per row:
+
+- **A local PR.** A shared clone where `origin/main` is the case's base, the checked-out branch
+  and `origin/<branch>` (the PR's real branch name) are the case's head with the mutation
+  committed on top, and the remote URL points nowhere, so `git diff origin/main...origin/<branch>`
+  and `git log origin/main..HEAD` read as they do in production and no push or fetch can reach
+  the real repository. Both synthetic commits carry today's `.claude/`, `CLAUDE.md` and
+  `AGENTS.md` from the branch under test, so an old PR is reviewed by the current
+  configuration and the overlay never shows in the diff. Commit ids are deterministic (fixed
+  author and date).
+- **A `gh` stand-in.** `gh` and `agh` on `PATH` resolve to `lib/gh-shim.mjs`, which answers the
+  reads the skill and the reviewer make (`pr view`, `pr checks`, `pr diff`, the pull, labels,
+  issue, status and check-run endpoints) from the fixture's `pr.json` and `diff.patch`, reports
+  every check green, refuses every write and every other PR, and logs each call to
+  `gh-calls.jsonl` in the row directory. `GH_TOKEN` is set to an invalid value as a second
+  guard.
+- **The harness as production runs it.** `claude -p` with every built-in tool,
+  `--dangerously-skip-permissions`, `--setting-sources project` (the checkout's settings and
+  hooks; the session-start hook's fetch fails against the dead remote and warns, as it does
+  offline), no `--json-schema` and no `--agents`.
+
+The row's `output` is parsed from `comment.md`: the verdict from the bold first line, findings
+from the collapsed report's table (`file:line` and severity, where `blocking` and `gate` count
+as blocking), or from the numbered top layer when the report has no table. The manifest hashes
+the dispatch skill as well as the reviewer definition and `CLAUDE.md`.
+
 ## Cases
 
 `cases/mutation/<id>.json` pins a merged PR (`base`, `head`) and one or more mutations: exact
 `find` and `replace` text on a file at `head`, a category, whether it blocks, and the defect in
 words. The builder applies each mutation, refuses one whose `find` is absent or ambiguous, and
 derives the truth file with the line range the mutation landed on. The verdict is `request
-changes` when any defect blocks.
+changes` when any defect blocks. A mutation marked `benign: true` is not a defect: it lands in
+the truth file's refuted list, so the case's verdict is approve and a finding on the edit counts
+as over-flagging. The eight `b` cases reword one comment each without changing its claim.
+
+The corpus after the 2026-09-27 pilot: twenty blocking mutations (`m`), eight benign
+mutations (`b`), the seven wave-2 PRs (`r`, two approve) and ten merged agent PRs whose
+final pre-pass approved them with no blocker and which the maintainer merged (`ra`, verdict
+approve, no adjudicated defects). Twenty approve cases, twenty-five request-changes.
 
 `cases/real/<id>.json` pins a PR at the commit a pre-pass reviewed and carries the truth file by
 hand: adjudicated defects, and findings a skeptic pass refuted. The seven wave-2 PRs (#709 to

@@ -68,6 +68,29 @@ export function claudeArgs({ model, effort, tier, agentsFile, agentName, schema 
   return args
 }
 
+// The dispatch mode runs the harness as production does: every built-in
+// tool, permissions bypassed, project settings and hooks on, the reviewer
+// spawned from the checkout's own agent file rather than passed in.
+export function dispatchClaudeArgs({ model, effort }) {
+  return [
+    '-p',
+    '--model',
+    model,
+    '--effort',
+    effort,
+    '--output-format',
+    'stream-json',
+    '--verbose',
+    '--no-session-persistence',
+    '--strict-mcp-config',
+    '--mcp-config',
+    '{"mcpServers":{}}',
+    '--setting-sources',
+    'project',
+    '--dangerously-skip-permissions'
+  ]
+}
+
 const RATE_LIMIT = /rate.?limit|usage limit|hit your limit|limit reached|out of .*usage|429/i
 
 export const isRateLimit = (text) => RATE_LIMIT.test(String(text ?? ''))

@@ -41,7 +41,9 @@ export function buildManifest({
   nodeVersion,
   timeoutMs,
   login,
-  placement
+  placement,
+  mode,
+  dispatchSkill
 }) {
   const required = { harness, harnessVersion, model, effort, tier, promptTemplate, corpus }
   for (const [k, v] of Object.entries(required)) {
@@ -58,6 +60,8 @@ export function buildManifest({
     agentDefinition: agentDefinition == null ? null : sha256(agentDefinition),
     instructions: instructions == null ? null : sha256(instructions),
     placement: placement ?? null,
+    mode: mode ?? 'direct',
+    dispatchSkill: dispatchSkill == null ? null : sha256(dispatchSkill),
     corpus,
     nodeVersion: nodeVersion ?? null,
     timeoutMs: timeoutMs ?? null,

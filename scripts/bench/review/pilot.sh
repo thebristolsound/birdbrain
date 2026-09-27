@@ -15,6 +15,7 @@ vendor="${1:?claude or codex}"
 cases="${PILOT_CASES:-m03,m04,m12,m17,r-709}"
 reps="${PILOT_REPS:-3}"
 tier="${PILOT_TIER:-L1}"
+mode="${PILOT_MODE:-direct}"
 timeout_ms="${PILOT_TIMEOUT_MS:-2700000}"
 retry_wait="${PILOT_RETRY_WAIT_S:-1800}"
 
@@ -36,7 +37,7 @@ for model in $models; do
     attempt=$((attempt + 1))
     echo "== $(date -u +%FT%TZ) $vendor $model $tier efforts=$efforts attempt $attempt"
     set +e
-    node "$here/run.mjs" --harness "$vendor" --model "$model" --tier "$tier" \
+    node "$here/run.mjs" --harness "$vendor" --model "$model" --tier "$tier" --mode "$mode" \
       --effort "$efforts" --reps "$reps" --cases "$cases" --timeout "$timeout_ms"
     status=$?
     set -e

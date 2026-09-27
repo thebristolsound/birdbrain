@@ -1,7 +1,8 @@
 # Teardown skill: close out and reclaim agent worktrees
 
-Date: 2026-09-25. Status: proposed. Nothing is built; the plan waits on the four questions at the
-end, because it deletes worktrees and branches and touches more than ten files (ADR-0016).
+Date: 2026-09-25. Status: tasks 1 to 7 built on 2026-09-27; the maintainer chose this plan
+over the shared-skill alternative. Questions 1 to 3 are still open and gate task 9, the
+first `--apply`. Question 4 took the recommendation (`teardown`).
 
 Reading frame: every count below was measured on 2026-09-25 from this session's worktree, with
 `origin/main` at `984973b8`. The counts are a point-in-time reading, not maintained figures.
@@ -234,22 +235,39 @@ so and the maintainer merges it.
 
 ## Tasks
 
-- [ ] 0. Maintainer answers questions 1 to 4.
-- [ ] 1. `docs/agents/worktrees.md`: the lifecycle table, the creation rule, the two verbs, and
+- [ ] 0. Maintainer answers questions 1 to 3 (question 4: `teardown`, taken).
+- [x] 1. `docs/agents/worktrees.md`: the lifecycle table, the creation rule, the two verbs, and
       the pointer line in `CLAUDE.md` and `AGENTS.md`.
-- [ ] 2. `.claude/skills/teardown/SKILL.md` and the `.gitignore` allowlist line.
-- [ ] 3. `scripts/teardown.sh`: `close`, `sweep`, `--apply`, `--branch`, `--artefacts`,
+- [x] 2. `.claude/skills/teardown/SKILL.md` and the `.gitignore` allowlist line.
+- [x] 3. `scripts/teardown.sh`: `close`, `sweep`, `--apply`, `--branch`, `--artefacts`,
       `--older-than`, `--t3code`, `--count`.
-- [ ] 4. `scripts/test-teardown.sh`, run under `bash -c`, green.
-- [ ] 5. Wire `merge.sh` step 8 and amend the merge-pr skill sentence.
-- [ ] 6. Wire the Finishing section of the implementer definition and pr-sweep section 4.
-- [ ] 7. Session-start count line, bounded and non-fatal.
+- [x] 4. `scripts/test-teardown.sh`, run under `bash -c`, green.
+- [x] 5. Wire `merge.sh` step 8 and amend the merge-pr skill sentence.
+- [x] 6. Wire the Finishing section of the implementer definition and pr-sweep section 4.
+- [x] 7. Session-start count line, bounded and non-fatal.
 - [ ] 8. Open the pull request as a process-doc change; the maintainer merges it.
 - [ ] 9. Backlog: `sweep` dry run, table posted to #480; `sweep --apply`; before and after
       counts posted to #480 (its fifth criterion); hand the maintainer the three lists it will
       not alter: the main checkout's mangled paths and staged `jean.json`, the stash stack, and
       the no-pull-request branches.
 - [ ] 10. Phase 2 hook, only after task 9 ran clean once.
+
+## Built differently from the design
+
+- **Decision 6 is the whole-file rule, not a comments-only rule.** A first cut accepted only
+  comment lines; newer Serena also adds default keys (`included_apis: []`), which left 45
+  drift-only trees reading as dirty on 2026-09-27.
+- **`close --merged <sha>`** lets `merge.sh` pass the head it just merged instead of asking
+  GitHub, which can lag a merge. The open-PR close lane was dropped: nothing calls `close`
+  before a merge except with `--artefacts`.
+- **`close` lifts a lock its own session placed** (`CLAUDE_PID`, verified present in tool
+  shells), or the creation rule's own tree could never be closed. `sweep` never does.
+- **`close` and `sweep` refuse the tree the caller stands in**, which covers `merge.sh` run
+  from the branch's own worktree.
+- **A detached tree is removed only when its HEAD is on some ref**, so no commit is orphaned.
+- **pr-sweep's `prompts.md`** also creates `/tmp` trees (review and fix agents), so it carries
+  the creation rule too.
+- **The session-start count** took 5.7 s end to end on 2026-09-27 (188 trees, one `gh pr list`).
 
 ## Questions for the maintainer
 

@@ -23,7 +23,8 @@ bash pilot.sh claude                 # the stage 3 sweep for one vendor (PILOT_M
 `run.mjs` takes `--harness claude|codex`, `--model <id>`, `--tier L0|L1|L2`, `--mode
 direct|dispatch` (default `direct`), and `--effort` as a comma list; effort is never inherited
 from a config file. `--reps` (default 3), `--cases` (ids
-or id prefixes), `--tag`, `--timeout <ms>` (default 30 minutes per call), `--pause <ms>` between
+or id prefixes), `--tag`, `--exclude-tag` (`--exclude-tag wave2` keeps the August cases out of a
+dispatch run), `--timeout <ms>` (default 30 minutes per call), `--pause <ms>` between
 calls, `--dry-run`, `--allow-l2`, `--claude-config-dir` and `--codex-home` are optional.
 
 Each effort level gets its own `results/<manifest>/` holding `manifest.json`,
@@ -146,7 +147,11 @@ words. The builder applies each mutation, refuses one whose `find` is absent or 
 derives the truth file with the line range the mutation landed on. The verdict is `request
 changes` when any defect blocks. A mutation marked `benign: true` is not a defect: it lands in
 the truth file's refuted list, so the case's verdict is approve and a finding on the edit counts
-as over-flagging. The eight `b` cases reword one comment each without changing its claim.
+as over-flagging. The `b` cases reword one comment each without changing its claim. A spec may
+also carry `baseDefects`: defects the base PR already had, ruled after it merged, which join the
+truth of every case built on that head. The five cases on #1587 carry one (the orphan sweep
+deletes a restored persona's sign-in, ruled 2026-09-28 after the first dispatch-mode run
+reported it), so its benign case is a `request changes` case now.
 
 The corpus after the 2026-09-27 pilot: twenty blocking mutations (`m`), eight benign
 mutations (`b`), the seven wave-2 PRs (`r`, two approve) and ten merged agent PRs whose

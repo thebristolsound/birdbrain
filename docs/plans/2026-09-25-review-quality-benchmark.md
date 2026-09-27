@@ -221,6 +221,15 @@ answers reads from the fixture and refuses writes. Claude Code only, tier L2 by 
 details in the README. The manifest gains `mode` and the dispatch skill's hash, so a dispatch
 row never compares with a direct row.
 
+**First dispatch-mode run (2026-09-28).** Opus 5.5 at `low`, eight cases, one rep, 14 minutes:
+every planted defect caught, both recent approved PRs approved, and two disagreements with the
+answer key that were the answer key's. The maintainer ruled the model's finding on the base PR
+of the persona cases a real bug (the orphan sweep deletes a restored persona's sign-in), now
+carried as a `baseDefects` entry on the five cases built on #1587. The wave-2 approve case
+tripped today's missing-label gate, a control that did not exist when it was adjudicated; the
+dispatch mode runs with `--exclude-tag wave2`. A third of the comment's findings named a file
+and function without a line, reported per row as `line-missing`.
+
 ## Pilot findings (2026-09-27)
 
 Five cases (m03, m04, m12, m17, r-709), three reps, tier L1, every effort level of Opus 5,

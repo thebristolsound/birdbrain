@@ -43,6 +43,7 @@ import {
   CASE_ARCHIVE_SCHEMA_VERSION
 } from '@main/services/caseArchive'
 import { canonicalStringify } from '@shared/verify'
+import { verifyCapture } from '@main/services/captureLifecycle'
 
 const artifactPath = (caseId: string, captureId: string, type: 'mhtml' | 'html' | 'png' | 'txt') =>
   defaultCaptureStore.artifactPaths(caseId, captureId, type).abs
@@ -577,7 +578,7 @@ describe('caseArchive import', () => {
       hash: contentHash,
       timestamp: '2026-04-05T12:00:00.000Z',
       format: 'mhtml',
-      mhtmlPath: `${mhtmlCaptureId}.mhtml`,
+      mhtmlPath: `${caseId}/${mhtmlCaptureId}.mhtml`,
       sizeBytes: mhtmlBuf.length,
       manifestIndex: 0,
       entryHash,
@@ -748,6 +749,21 @@ describe('caseArchive import', () => {
       true
     )
     void first
+  })
+
+  // #1592: the import writes each file under the new case and id, so the row
+  // must name that file. Left verbatim, it named the source case's file: on
+  // this same install verify hashed the source's bytes, and elsewhere it found
+  // nothing.
+  it('re-import points each capture at its own file, not the source case\'s', async () => {
+    const { newCaseId } = await importCaseArchive(archivePath)
+    const imported = listCaptures(newCaseId).find((c) => c.url === taggedCaptureUrl)!
+    expect(imported.id).not.toBe(mhtmlCaptureId)
+    expect(imported.mhtmlPath).toBe(`${newCaseId}/${imported.id}.mhtml`)
+
+    writeFileSync(artifactPath(caseId, mhtmlCaptureId, 'mhtml'), 'source bytes changed')
+    const verification = await verifyCapture(imported.id)
+    expect(verification.computedHash).toBe(originalHashes[0])
   })
 
   // #391 known-answer: export a case whose note carries two tags — one shared

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run one cycle of the dispatch skill through headless Claude Code.
 #
-# $1 = mode (report | cycle). Env: CLAUDE_CODE_OAUTH_TOKEN, DISPATCH_MODEL,
+# $1 = mode (report | cycle). Env: CLAUDE_CODE_OAUTH_TOKEN, DISPATCH_MODEL, DISPATCH_EFFORT,
 # RUN_URL, GH_TOKEN (machine token, the identity every gh call carries here),
 # TARGET_ISSUE (optional, narrows section 3 to one issue).
 #
@@ -71,7 +71,8 @@ printf '%s\n' "$prompt" > .dispatch/prompt.txt
 # the Agent and Bash tools. Monitor has no foreground form, so it goes too.
 export CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1
 flags=(
-  --model "${DISPATCH_MODEL:-claude-opus-5}"
+  --model "${DISPATCH_MODEL:-claude-opus-5-5}"
+  --effort "${DISPATCH_EFFORT:-high}"
   --dangerously-skip-permissions
   --output-format json
   --strict-mcp-config --mcp-config '{"mcpServers":{}}'

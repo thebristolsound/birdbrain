@@ -1711,6 +1711,20 @@ describe('createCaptureLifecycle.verify', () => {
     expect(getCapture(capture.id)?.lastVerifiedStatus).toBe('verifier-too-old')
   })
 
+  it('makes no byte-level claim on a chain this build cannot read', async () => {
+    // The same precedence chain-broken has: a stored-hash comparison is only
+    // meaningful against a chain that verified, so it is never reached here.
+    const { writeFileSync } = await import('fs')
+    const { MANIFEST_FILENAME } = await import('@shared/constants')
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('mhtml-body')))
+    const manifestPath = join(getStorageRoot(), caseId, MANIFEST_FILENAME)
+    writeFileSync(manifestPath, appendFutureEntry(readFileSync(manifestPath, 'utf-8'), caseId))
+    writeFileSync(join(getStorageRoot(), capture.mhtmlPath!), 'changed bytes')
+
+    expect((await lifecycle.verify(capture.id)).status).toBe('verifier-too-old')
+  })
+
   it('still reports chain-broken when the edited entry also claims a newer schema', async () => {
     const { writeFileSync } = await import('fs')
     const { MANIFEST_FILENAME } = await import('@shared/constants')

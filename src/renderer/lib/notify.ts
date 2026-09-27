@@ -195,7 +195,7 @@ const CODE_LABELS: Record<LogCode, string> = {
   'settings.unreadable_timestamping_fail_closed':
     "Couldn't read saved settings — restored defaults and turned trusted timestamping off",
   'settings.unreadable_write_refused':
-    "Couldn't read saved settings — the change was not saved and the stored settings were left as they are",
+    "Couldn't read saved settings — the change applies until Birdbrain quits but was not saved",
   'settings.fresh_install_seed_failed': "Couldn't save initial settings",
   'demoCase.seeded': 'Added the demonstration case',
   'demoCase.fixture_missing': 'The demonstration case is not bundled with this build',

@@ -12,9 +12,12 @@ export const normalizePath = (p) =>
     .replace(/^[ab]\//, '')
     .replace(/^\/+/, '')
 
-function inRange(entry, line, window) {
+// A finding that names the file but no line matches when the file holds
+// exactly one candidate: the claim is unambiguous, and the missing line is
+// counted by the claim check rather than by recall.
+function inRange(entry, line, window, alone = false) {
   if (entry.lineStart === undefined && entry.lineEnd === undefined) return true
-  if (line === undefined || line === null) return false
+  if (line === undefined || line === null) return alone
   const start = (entry.lineStart ?? entry.lineEnd) - window
   const end = (entry.lineEnd ?? entry.lineStart) + window
   return line >= start && line <= end
@@ -38,15 +41,21 @@ export function matchFindings(findings, truth, options = {}) {
     const file = normalizePath(f.file)
     const candidates = truth.defects
       .map((d, defectIndex) => ({ d, defectIndex }))
-      .filter(({ d }) => normalizePath(d.file) === file && inRange(d, f.line, window))
+      .filter(({ d }) => {
+        if (normalizePath(d.file) !== file) return false
+        const alone = truth.defects.filter((x) => normalizePath(x.file) === file).length === 1
+        return inRange(d, f.line, window, alone)
+      })
       .sort((a, b) => distance(a.d, f.line) - distance(b.d, f.line))
     if (candidates.length > 0) {
       matches.push({ defectId: candidates[0].d.id, findingIndex })
       return
     }
-    const refutedIndex = truth.refuted.findIndex(
-      (r) => normalizePath(r.file) === file && inRange(r, f.line, window)
-    )
+    const refutedIndex = truth.refuted.findIndex((r) => {
+      if (normalizePath(r.file) !== file) return false
+      const alone = truth.refuted.filter((x) => normalizePath(x.file) === file).length === 1
+      return inRange(r, f.line, window, alone)
+    })
     if (refutedIndex >= 0) refutedHits.push({ refutedIndex, findingIndex })
     else unmatched.push(findingIndex)
   })

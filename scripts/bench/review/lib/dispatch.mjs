@@ -126,8 +126,9 @@ function parseLocation(cell) {
   const text = cell.replace(/`/g, '').trim()
   if (!text || text === '–' || text === '-') return { file: null, line: null }
   if (/^pr body/i.test(text)) return { file: PR_BODY, line: null }
-  const m = text.match(/^([^\s:]+?)(?::(\d+))?(?:[-–]\d+)?(?:\s|,|$)/)
-  if (!m) return { file: null, line: null }
+  // "PR labels", "whole branch", "CI": a control, not a place in the tree.
+  const m = text.match(/^([^\s:(]+?)(?::(\d+))?(?:[-–]\d+)?(?:\s|,|$|\()/)
+  if (!m || !/[/.]/.test(m[1])) return { file: null, line: null }
   return { file: m[1], line: m[2] ? Number(m[2]) : null }
 }
 

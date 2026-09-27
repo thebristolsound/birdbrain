@@ -2,7 +2,7 @@
 // the report reads. Everything here is deterministic: no model is called.
 
 import { matchFindings, normalizePath, DEFAULT_CAP } from './match.mjs'
-import { configKey } from './schema.mjs'
+import { configKey, PR_BODY } from './schema.mjs'
 
 const squash = (s) => String(s).replace(/\s+/g, ' ').trim()
 
@@ -11,7 +11,9 @@ export function checkClaim(finding, head, readFile) {
   if (!finding.file) return 'unverifiable'
   const content = readFile(head, normalizePath(finding.file))
   if (content === null || content === undefined) return 'missing-file'
-  if (finding.line !== undefined && finding.line !== null) {
+  if (finding.line === undefined || finding.line === null) {
+    if (finding.file !== PR_BODY) return 'line-missing'
+  } else {
     const lines = content.split('\n').length
     if (finding.line < 1 || finding.line > lines) return 'line-out-of-range'
   }
@@ -39,6 +41,7 @@ export function gradeRow(row, truth, options = {}) {
     ok: 0,
     'missing-file': 0,
     'line-out-of-range': 0,
+    'line-missing': 0,
     'quote-mismatch': 0,
     unverifiable: 0
   }
@@ -119,6 +122,7 @@ export function summarize(graded) {
         r.claims.ok +
         r.claims['missing-file'] +
         r.claims['line-out-of-range'] +
+        r.claims['line-missing'] +
         r.claims['quote-mismatch'],
       0
     )

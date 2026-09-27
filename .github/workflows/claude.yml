@@ -45,5 +45,10 @@ jobs:
           github_token: ${{ secrets.BIRDBRAIN_AGENT_GH_TOKEN }}
           additional_permissions: |
             actions: read
+          settings: |
+            { "model": "claude-opus-5-5", "effortLevel": "low" }
+          # The reply goes out through the action's own tracking comment, so the
+          # post-comment hook never sees it; the shape is carried by prompt instead.
           claude_args: |
             --max-turns 40
+            --append-system-prompt "Every comment you post on GitHub follows the repository's post-comment skill at .claude/skills/post-comment/SKILL.md; read it before writing. Shape: a plain-language top layer of at most 20 lines with no file paths, code spans, commit ids, tool names or repository jargon, then everything else inside <details> blocks, each with a one-line plain <summary>, a blank line, and the detail (tables with file:line, commit ids, fenced output). Fenced code only inside <details>. Your whole reply is one tracking comment in that shape."

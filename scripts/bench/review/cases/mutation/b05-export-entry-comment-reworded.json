@@ -1,0 +1,23 @@
+{
+  "id": "b05-export-entry-comment-reworded",
+  "kind": "mutation",
+  "source": {
+    "pr": 1495,
+    "base": "be4eb5aff247ace0854def9c75667919e95fd392",
+    "head": "dcd5b65da61cd206a8081283107ba37d23104714"
+  },
+  "tags": [
+    "benign",
+    "approve"
+  ],
+  "mutations": [
+    {
+      "id": "b1",
+      "file": "src/main/services/export.ts",
+      "find": "// Every evidence-class zip is sealed with export-entry.json, so this",
+      "replace": "// Each evidence-class zip is sealed with export-entry.json, so this",
+      "benign": true,
+      "description": "A comment reworded with the same meaning; the change is benign and a finding on it is over-flagging"
+    }
+  ]
+}

@@ -17,7 +17,7 @@
       "find": "    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return []\n    logger.warn('persona', 'persona.orphan_partition_clear_failed', undefined, err)\n    return null",
       "replace": "    return []",
       "category": "swallowed-error",
-      "blocking": false,
+      "blocking": true,
       "description": "Any readdir failure now reads as no partitions and logs nothing, so a permissions error is indistinguishable from an empty folder"
     }
   ]

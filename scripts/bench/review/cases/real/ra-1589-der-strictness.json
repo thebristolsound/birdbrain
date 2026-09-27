@@ -1,0 +1,20 @@
+{
+  "id": "ra-1589-der-strictness",
+  "kind": "real",
+  "source": {
+    "pr": 1589,
+    "base": "602e320076eebac918a2d7b17efe4d0f1fab1a9f",
+    "head": "c9a90af0648aac3e19706cafed34bca24498af5e"
+  },
+  "tags": [
+    "approved",
+    "merged",
+    "approve",
+    "evidence"
+  ],
+  "truth": {
+    "verdict": "approve for human review",
+    "defects": [],
+    "refuted": []
+  }
+}

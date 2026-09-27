@@ -24,15 +24,21 @@ export function applyMutation(content, mutation) {
 }
 
 // Mutations on one file apply in order, each against the previous result.
-// Returns the mutated files and one truth defect per mutation.
+// Returns the mutated files, one truth defect per defect mutation, and one
+// refuted entry per benign mutation.
 export function applyMutations(readFile, mutations) {
   const files = new Map()
   const defects = []
+  const benign = []
   for (const m of mutations) {
     const current = files.has(m.file) ? files.get(m.file) : readFile(m.file)
     if (current === null || current === undefined) throw new MutationError(m, 'file not at head')
     const { content, lineStart, lineEnd } = applyMutation(current, m)
     files.set(m.file, content)
+    if (m.benign === true) {
+      benign.push({ file: m.file, lineStart, lineEnd, description: m.description })
+      continue
+    }
     defects.push({
       id: m.id,
       file: m.file,
@@ -43,13 +49,13 @@ export function applyMutations(readFile, mutations) {
       description: m.description
     })
   }
-  return { files, defects }
+  return { files, defects, benign }
 }
 
-export function deriveTruth(defects) {
+export function deriveTruth(defects, benign = []) {
   return {
     verdict: defects.some((d) => d.blocking) ? 'request changes' : 'approve for human review',
     defects,
-    refuted: []
+    refuted: benign
   }
 }

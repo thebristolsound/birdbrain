@@ -18,7 +18,7 @@
       "find": "  [ \"$verbose\" -eq 1 ] && printf '   %s\\\\n' \"$*\"\n  return 0\n}",
       "replace": "  [ \"$verbose\" -eq 1 ] && printf '   %s\\\\n' \"$*\"\n}",
       "category": "overclaim",
-      "blocking": false,
+      "blocking": true,
       "description": "The comment says the helper always returns 0; without -v it now returns 1, the trap the comment names"
     }
   ]

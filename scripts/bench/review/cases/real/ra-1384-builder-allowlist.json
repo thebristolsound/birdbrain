@@ -1,0 +1,20 @@
+{
+  "id": "ra-1384-builder-allowlist",
+  "kind": "real",
+  "source": {
+    "pr": 1384,
+    "base": "99f098d82557bc4f48b1deb151a710e202925fe1",
+    "head": "9702a7a121dde4bf10c811ccfd9ecb651fdb7dad"
+  },
+  "tags": [
+    "approved",
+    "merged",
+    "approve",
+    "build"
+  ],
+  "truth": {
+    "verdict": "approve for human review",
+    "defects": [],
+    "refuted": []
+  }
+}

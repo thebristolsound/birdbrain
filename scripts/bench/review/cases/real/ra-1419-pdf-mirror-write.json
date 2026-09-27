@@ -1,0 +1,20 @@
+{
+  "id": "ra-1419-pdf-mirror-write",
+  "kind": "real",
+  "source": {
+    "pr": 1419,
+    "base": "d63ddbc044e6de25702901f88d924055f84479ad",
+    "head": "c8f5e6017f871ca512ad36c59303d718fbae4777"
+  },
+  "tags": [
+    "approved",
+    "merged",
+    "approve",
+    "test"
+  ],
+  "truth": {
+    "verdict": "approve for human review",
+    "defects": [],
+    "refuted": []
+  }
+}

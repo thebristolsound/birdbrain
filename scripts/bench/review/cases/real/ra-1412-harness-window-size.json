@@ -1,0 +1,20 @@
+{
+  "id": "ra-1412-harness-window-size",
+  "kind": "real",
+  "source": {
+    "pr": 1412,
+    "base": "e28ed45a773be8031a3cf1c7c6ca69862e618f3d",
+    "head": "09d6e96306b3e508d95dd06f07a130a754c61e79"
+  },
+  "tags": [
+    "approved",
+    "merged",
+    "approve",
+    "harness"
+  ],
+  "truth": {
+    "verdict": "approve for human review",
+    "defects": [],
+    "refuted": []
+  }
+}

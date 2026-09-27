@@ -1,0 +1,23 @@
+{
+  "id": "b01-persona-sweep-comment-reworded",
+  "kind": "mutation",
+  "source": {
+    "pr": 1587,
+    "base": "99db4b9aba3e5f180bbd7eadb72a4f00811ba6d8",
+    "head": "e5be1060c58e693dd567cd989118db95b9104c55"
+  },
+  "tags": [
+    "benign",
+    "approve"
+  ],
+  "mutations": [
+    {
+      "id": "b1",
+      "file": "src/main/index.ts",
+      "find": "// Before anything opens a persona session, so an orphan's folder can go.",
+      "replace": "// Runs before anything opens a persona session, so an orphan's folder can go.",
+      "benign": true,
+      "description": "A comment reworded with the same meaning; the change is benign and a finding on it is over-flagging"
+    }
+  ]
+}

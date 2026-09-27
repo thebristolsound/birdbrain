@@ -58,7 +58,13 @@ export function diffAgainst(dir, base) {
 export function prMetadata(pr) {
   const raw = execFileSync(
     'gh',
-    ['pr', 'view', String(pr), '--json', 'title,body,url,headRefOid,mergeCommit'],
+    [
+      'pr',
+      'view',
+      String(pr),
+      '--json',
+      'number,title,body,url,state,isDraft,headRefOid,baseRefOid,headRefName,baseRefName,labels,mergeCommit,author'
+    ],
     { encoding: 'utf8' }
   )
   return JSON.parse(raw)

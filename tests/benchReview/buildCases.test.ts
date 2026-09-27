@@ -164,8 +164,14 @@ describe('loadSpecs', () => {
     const specs = loadSpecs()
     expect(specs.length).toBeGreaterThanOrEqual(20)
     expect(new Set(specs.map((s: { id: string }) => s.id)).size).toBe(specs.length)
-    for (const s of specs)
-      expect(s.kind === 'mutation' ? s.mutations.length : s.truth.defects.length).toBeGreaterThan(0)
+    // A real case approved with no adjudicated defect carries an empty list.
+    for (const s of specs) {
+      if (s.kind === 'mutation') expect(s.mutations.length).toBeGreaterThan(0)
+      else expect(['approve for human review', 'request changes']).toContain(s.truth.verdict)
+    }
+    expect(
+      specs.filter((s: { tags: string[] }) => s.tags.includes('approve')).length
+    ).toBeGreaterThanOrEqual(20)
   })
   it('rejects a spec whose kind does not match its directory', () => {
     const dir = mkdtempSync(join(tmpdir(), 'bench-review-specs-'))

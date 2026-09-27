@@ -91,10 +91,17 @@ export function validateCaseSpec(spec) {
         if (!isStr(m.file)) out.push(`${w}.file: required`)
         if (!isStr(m.find)) out.push(`${w}.find: required`)
         if (typeof m.replace !== 'string') out.push(`${w}.replace: string`)
-        if (!CATEGORIES.includes(m.category))
-          out.push(`${w}.category: one of ${CATEGORIES.join(', ')}`)
-        if (typeof m.blocking !== 'boolean') out.push(`${w}.blocking: boolean`)
         if (!isStr(m.description)) out.push(`${w}.description: required`)
+        // A benign mutation is not a defect: it lands in the truth file's
+        // refuted list, so a finding on it counts as over-flagging.
+        if (m.benign === true) {
+          if (m.blocking === true) out.push(`${w}.blocking: a benign mutation cannot block`)
+          if (m.category !== undefined) out.push(`${w}.category: not for a benign mutation`)
+        } else {
+          if (!CATEGORIES.includes(m.category))
+            out.push(`${w}.category: one of ${CATEGORIES.join(', ')}`)
+          if (typeof m.blocking !== 'boolean') out.push(`${w}.blocking: boolean`)
+        }
       })
     }
     if (spec.truth !== undefined) out.push('truth: derived for mutation cases, do not set')

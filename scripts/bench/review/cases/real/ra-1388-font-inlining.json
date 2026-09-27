@@ -1,0 +1,20 @@
+{
+  "id": "ra-1388-font-inlining",
+  "kind": "real",
+  "source": {
+    "pr": 1388,
+    "base": "99f098d82557bc4f48b1deb151a710e202925fe1",
+    "head": "6621aec406326da3eb9c41487325d9ac9e9dba77"
+  },
+  "tags": [
+    "approved",
+    "merged",
+    "approve",
+    "build"
+  ],
+  "truth": {
+    "verdict": "approve for human review",
+    "defects": [],
+    "refuted": []
+  }
+}

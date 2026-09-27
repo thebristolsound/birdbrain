@@ -53,7 +53,7 @@ export function buildCase(spec, deps) {
   if (spec.kind === 'mutation') {
     const applied = applyMutations(readFile, spec.mutations)
     files = applied.files
-    truth = deriveTruth(applied.defects)
+    truth = deriveTruth(applied.defects, applied.benign)
   } else {
     truth = spec.truth
     for (const d of truth.defects) {
@@ -81,6 +81,8 @@ export function writeFixture(dir, built) {
       join(dir, 'pr.md'),
       `# ${built.pr.title}\n\n${built.pr.url}\n\n${built.pr.body ?? ''}\n`
     )
+    // The metadata the dispatch mode's gh stand-in answers from.
+    writeFileSync(join(dir, 'pr.json'), JSON.stringify(built.pr, null, 2) + '\n')
   }
 }
 

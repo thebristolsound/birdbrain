@@ -1,0 +1,23 @@
+{
+  "id": "b03-token-comment-reworded",
+  "kind": "mutation",
+  "source": {
+    "pr": 1516,
+    "base": "d48ab3fa8a2ad876ac85b40aeeda05c2aecc07f4",
+    "head": "3c230b83e485c17ad5652215de50b21a71011cb0"
+  },
+  "tags": [
+    "benign",
+    "approve"
+  ],
+  "mutations": [
+    {
+      "id": "b1",
+      "file": "src/main/services/export.ts",
+      "find": "// Certificate material is gathered from every token the manifest carries,",
+      "replace": "// Certificate material comes from every token the manifest carries,",
+      "benign": true,
+      "description": "A comment reworded with the same meaning; the change is benign and a finding on it is over-flagging"
+    }
+  ]
+}

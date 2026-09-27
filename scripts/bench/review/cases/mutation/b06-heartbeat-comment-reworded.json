@@ -1,0 +1,23 @@
+{
+  "id": "b06-heartbeat-comment-reworded",
+  "kind": "mutation",
+  "source": {
+    "pr": 1490,
+    "base": "634b6b0bb459a86497f61a9b381394beabf8ffb3",
+    "head": "71493769ba18de177d4636baa1870081400f35bb"
+  },
+  "tags": [
+    "benign",
+    "approve"
+  ],
+  "mutations": [
+    {
+      "id": "b1",
+      "file": "src/main/services/session.ts",
+      "find": "// The extension is considered present if it has polled within this window. Its",
+      "replace": "// The extension counts as present if it has polled within this window. Its",
+      "benign": true,
+      "description": "A comment reworded with the same meaning; the change is benign and a finding on it is over-flagging"
+    }
+  ]
+}

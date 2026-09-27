@@ -1,0 +1,20 @@
+{
+  "id": "ra-1572-theme",
+  "kind": "real",
+  "source": {
+    "pr": 1572,
+    "base": "68817a4233f0be879cca6adb0307b24aac21ae88",
+    "head": "93c3694e42e39628c1a6024acf891bb5842073ff"
+  },
+  "tags": [
+    "approved",
+    "merged",
+    "approve",
+    "ui"
+  ],
+  "truth": {
+    "verdict": "approve for human review",
+    "defects": [],
+    "refuted": []
+  }
+}

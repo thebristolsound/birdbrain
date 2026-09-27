@@ -1,0 +1,20 @@
+{
+  "id": "ra-1585-motion",
+  "kind": "real",
+  "source": {
+    "pr": 1585,
+    "base": "070d8d21afad4880ecc709ac2bd6247df7874e57",
+    "head": "a087bba662c5ec0f46c4e44d7d1bae27af6ed19c"
+  },
+  "tags": [
+    "approved",
+    "merged",
+    "approve",
+    "ui"
+  ],
+  "truth": {
+    "verdict": "approve for human review",
+    "defects": [],
+    "refuted": []
+  }
+}

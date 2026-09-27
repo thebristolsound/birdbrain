@@ -17,7 +17,7 @@
       "find": "      ...(note.anchor && note.anchor.captureId !== note.captureId\n",
       "replace": "      ...(note.anchor\n",
       "category": "overclaim",
-      "blocking": false,
+      "blocking": true,
       "description": "The comment says the anchor line is printed only when it names a capture the attached-to line does not; the code prints it for every anchored note"
     }
   ]

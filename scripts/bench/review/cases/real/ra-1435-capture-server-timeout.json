@@ -1,0 +1,20 @@
+{
+  "id": "ra-1435-capture-server-timeout",
+  "kind": "real",
+  "source": {
+    "pr": 1435,
+    "base": "d4d98e2c07b10e1c3f033cd68f348286ef21a751",
+    "head": "ff379e99adec5a293eaface294c12a294822697d"
+  },
+  "tags": [
+    "approved",
+    "merged",
+    "approve",
+    "test"
+  ],
+  "truth": {
+    "verdict": "approve for human review",
+    "defects": [],
+    "refuted": []
+  }
+}

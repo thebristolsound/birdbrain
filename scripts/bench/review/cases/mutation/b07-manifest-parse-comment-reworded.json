@@ -1,0 +1,23 @@
+{
+  "id": "b07-manifest-parse-comment-reworded",
+  "kind": "mutation",
+  "source": {
+    "pr": 1477,
+    "base": "6a1637935e09b3856ec08a57f3a2c0ac08342a23",
+    "head": "5cffdd025481c792128b22aafce7aa873bddd6e8"
+  },
+  "tags": [
+    "benign",
+    "approve"
+  ],
+  "mutations": [
+    {
+      "id": "b1",
+      "file": "src/shared/verify/evidencePackage.ts",
+      "find": "// Parses manifest.jsonl into its schema-valid entries. It stops at the first",
+      "replace": "// Parses manifest.jsonl into its schema-valid entries, stopping at the first",
+      "benign": true,
+      "description": "A comment reworded with the same meaning; the change is benign and a finding on it is over-flagging"
+    }
+  ]
+}

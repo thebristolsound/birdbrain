@@ -1,0 +1,20 @@
+{
+  "id": "ra-1580-tokens",
+  "kind": "real",
+  "source": {
+    "pr": 1580,
+    "base": "070d8d21afad4880ecc709ac2bd6247df7874e57",
+    "head": "450d851d7f49a6f62061fb8cf4504c97d8706536"
+  },
+  "tags": [
+    "approved",
+    "merged",
+    "approve",
+    "ui"
+  ],
+  "truth": {
+    "verdict": "approve for human review",
+    "defects": [],
+    "refuted": []
+  }
+}

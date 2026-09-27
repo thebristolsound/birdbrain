@@ -1,0 +1,23 @@
+{
+  "id": "b08-capture-server-comment-reworded",
+  "kind": "mutation",
+  "source": {
+    "pr": 1403,
+    "base": "e28ed45a773be8031a3cf1c7c6ca69862e618f3d",
+    "head": "6c4f703e4fb6194a5adecc19b36aa2469bc296c8"
+  },
+  "tags": [
+    "benign",
+    "approve"
+  ],
+  "mutations": [
+    {
+      "id": "b1",
+      "file": "src/main/index.ts",
+      "find": "// Start capture server and extension connection monitor. A failed bind",
+      "replace": "// Start the capture server and extension connection monitor. A failed bind",
+      "benign": true,
+      "description": "A comment reworded with the same meaning; the change is benign and a finding on it is over-flagging"
+    }
+  ]
+}

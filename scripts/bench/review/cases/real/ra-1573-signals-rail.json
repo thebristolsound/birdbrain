@@ -1,0 +1,20 @@
+{
+  "id": "ra-1573-signals-rail",
+  "kind": "real",
+  "source": {
+    "pr": 1573,
+    "base": "68817a4233f0be879cca6adb0307b24aac21ae88",
+    "head": "c7046a10d4acbf71a51d6260718a6c5f95489946"
+  },
+  "tags": [
+    "approved",
+    "merged",
+    "approve",
+    "ui"
+  ],
+  "truth": {
+    "verdict": "approve for human review",
+    "defects": [],
+    "refuted": []
+  }
+}

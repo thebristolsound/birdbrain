@@ -1061,7 +1061,11 @@ export function runMigrations(db: Database.Database): void {
         .all() as Array<{ id: string; case_id: string; path: string; capture_path: string | null }>
       const updateExhibit = db.prepare('UPDATE exhibits SET path = ? WHERE id = ?')
       for (const row of exhibits) {
-        if (row.path.split(/[\\/]/)[0] === row.case_id || !row.capture_path) continue
+        // The pre-v37 import helper collapsed a `\` or filename-only path to the
+        // bare case id, which starts with the case id but names no file.
+        const segments = row.path.split(/[\\/]/)
+        const native = segments[0] === row.case_id && segments.length > 1
+        if (native || !row.capture_path) continue
         updateExhibit.run(row.capture_path, row.id)
       }
       db.pragma('user_version = 37')

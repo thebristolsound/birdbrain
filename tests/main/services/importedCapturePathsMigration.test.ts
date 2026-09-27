@@ -84,6 +84,18 @@ describe('migration v37 (imported capture paths)', () => {
     })
   })
 
+  it('repairs an Exhibit path the old import collapsed to the case directory', async () => {
+    await initDatabase(dbPath)
+    const source = createCase({ name: 'Source' }).id
+    const imported = createCase({ name: 'Imported' }).id
+    capture(imported, 'new-id', `${source}\\old-id.mhtml`)
+    windBackToV36([{ id: 'new-id', path: imported }])
+
+    await initDatabase(dbPath)
+
+    expect(row('new-id').exhibit_path).toBe(`${imported}/new-id.mhtml`)
+  })
+
   it('leaves native rows alone, whichever separator they were written with', async () => {
     await initDatabase(dbPath)
     const own = createCase({ name: 'Own' }).id

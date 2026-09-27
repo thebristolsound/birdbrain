@@ -128,6 +128,22 @@ describe('computeOverview', () => {
     expect(m.verified + m.tampered + m.unverified).toBe(7)
   })
 
+  it('counts verifier-too-old as unverified, never as tampered (X25)', () => {
+    const m = computeOverview(
+      {
+        ...EMPTY,
+        captures: [
+          cap({ id: '1', lastVerifiedStatus: 'verified' }),
+          cap({ id: '2', lastVerifiedStatus: 'verifier-too-old' })
+        ]
+      },
+      NOW
+    )
+    expect(m.verified).toBe(1)
+    expect(m.tampered).toBe(0)
+    expect(m.unverified).toBe(1)
+  })
+
   it('buckets captures into the activity window and excludes out-of-range/invalid dates', () => {
     const m = computeOverview(
       {

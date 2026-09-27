@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { ProvenanceBadge } from '@renderer/components/captures/ProvenanceBadge'
-import type { Capture } from '@shared/types'
+import type { Capture, HashVerification } from '@shared/types'
 import { fakeBridge } from '../renderer/fakeBridge'
 
 // An un-stamped capture, hydrated from the persisted verification columns so the
@@ -27,8 +27,11 @@ const capture: Capture = {
   trustedTimeStatus: 'pending'
 }
 
-function mount(tsaEnabled: boolean | undefined, override: Partial<Capture> = {}) {
-  fakeBridge({ settings: { get: vi.fn().mockResolvedValue({ tsaEnabled }) } })
+function mount(tsaEnabled: boolean | undefined, override: Partial<Capture> = {}, verify = vi.fn()) {
+  fakeBridge({
+    settings: { get: vi.fn().mockResolvedValue({ tsaEnabled }) },
+    captures: { verify }
+  })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
@@ -77,5 +80,34 @@ describe('ProvenanceBadge trusted-time chip (#1169)', () => {
   it('treats a settings read that has not resolved as enabled', async () => {
     mount(undefined)
     await waitFor(() => expect(screen.getByText('Timestamp pending')).toBeDefined())
+  })
+})
+
+describe('ProvenanceBadge verifier-too-old (X25)', () => {
+  it('names the outcome from the persisted status, not as a broken chain', async () => {
+    mount(true, { lastVerifiedStatus: 'verifier-too-old' })
+    const chip = await screen.findByText('Verifier too old')
+    expect(chip.getAttribute('title')).toContain('newer schema')
+    expect(screen.queryByText('Chain broken')).toBeNull()
+    expect(screen.queryByText('Tampered')).toBeNull()
+  })
+
+  it('shows the chain reason from a fresh verify', async () => {
+    const reason = "Entry type 'annotation-burn' from a newer schema; verifier too old"
+    const fresh: HashVerification = {
+      captureId: capture.id,
+      url: capture.url,
+      title: capture.title,
+      storedHash: 'h',
+      computedHash: 'h',
+      status: 'verifier-too-old',
+      chainValid: false,
+      reason,
+      trustedTime: 'pending'
+    }
+    mount(true, {}, vi.fn().mockResolvedValue(fresh))
+    fireEvent.click(await screen.findByText(/^Verified/))
+    const chip = await screen.findByText('Verifier too old')
+    expect(chip.getAttribute('title')).toBe(reason)
   })
 })

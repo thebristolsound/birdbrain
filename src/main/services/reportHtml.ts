@@ -659,6 +659,17 @@ function integrityView(verification: HashVerification | undefined, capture: Capt
           'This capture predates the hash-chained manifest. Its digest is recorded but is not ' +
           'chain-bound, so ordering cannot be demonstrated from the manifest alone.'
       }
+    // Worded as `exhibitIntegrityView` words `unsupported`, so one report does
+    // not name the same outcome two ways.
+    case 'verifier-too-old':
+      return {
+        label: 'Not readable by this build',
+        detail:
+          'The manifest holds an entry written by a newer Birdbrain than the one that produced ' +
+          'this report, so this build makes no integrity statement about this capture. That is ' +
+          'not a finding of alteration.' +
+          (verification.reason ? ` Reported reason: ${verification.reason}.` : '')
+      }
     default:
       return {
         label: 'Unknown',

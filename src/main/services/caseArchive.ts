@@ -48,7 +48,7 @@ import {
 import type { PackagedArtifact } from '@main/services/manifest'
 import { createStoredZip } from '@main/services/zip'
 import { readStoredZip } from '@main/services/zipRead'
-import { canonicalStringify } from '@shared/verify'
+import { canonicalStringify, describeUnsupportedEntry } from '@shared/verify'
 import { resolveToolVersion } from '@main/services/toolVersion'
 import { IMPORT_ID_MAP_FILENAME, MANIFEST_FILENAME } from '@shared/constants'
 import type {
@@ -445,7 +445,10 @@ export function inspectCaseArchive(archivePath: string): ArchiveInspectReport {
     sourceInstallationId: header.source.installationId,
     sourceOperatorName: header.source.operatorName,
     counts: header.counts,
-    verification
+    verification,
+    ...(chainResult.unsupported
+      ? { verifierTooOld: { reason: describeUnsupportedEntry(chainResult.unsupported) } }
+      : {})
   }
 }
 

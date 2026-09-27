@@ -51,6 +51,15 @@ export function getProvenanceColor(status: ProvenanceStatus): ProvenanceColorTok
         dot: 'bg-amber-400',
         label: 'Legacy HTML'
       }
+    // Not verified and not tampered (X25). Worded as the CLI's "VERIFIER TOO
+    // OLD" and coloured as the chain ledger colours the same outcome.
+    case 'verifier-too-old':
+      return {
+        text: 'text-warning-fg',
+        bg: 'bg-warning-surface',
+        dot: 'bg-warning-fg',
+        label: 'Verifier too old'
+      }
     default:
       return {
         text: 'text-text-faint',

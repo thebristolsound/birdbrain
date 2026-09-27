@@ -5,6 +5,7 @@ tools: Read, Edit, Write, Bash, Grep, Glob
 skills:
   - post-commit-message
   - post-pr-body
+  - teardown
   - unslop
 ---
 
@@ -241,6 +242,9 @@ Evidence-affecting PRs are never merged without human review. Do not weaken that
   platform footer after your attribution line is expected; do not fight it and do not report
   it as a rule violation.
 
+- After the final push or hand-off, run `.claude/skills/teardown/scripts/teardown.sh close
+  --artefacts` in your worktree. It clears build and test outputs and keeps the tree, which
+  goes when the PR merges, so a fix round can still land in it.
 - An agent PR merges only on a pre-pass `success`. An evidence-affecting PR is merged by a
   human, never by the dispatcher (ADR-0014); the dispatcher marks either kind ready for review on
   the approve verdict (ADR-0025).

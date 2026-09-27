@@ -1015,6 +1015,29 @@ describe('exhibit model', () => {
       expect(viaExhibit.kind).toBe('capture')
     })
 
+    it("carries a capture's verifier-too-old status through unchanged (X25)", async () => {
+      const capture = await ingestInto(caseId, {
+        url: 'https://example.com/newer-verify',
+        title: 'Newer verify',
+        timestamp: '2026-04-05T12:00:00.000Z'
+      })
+      appendSignedLine(caseDir, {
+        type: 'annotation-burn',
+        caseId,
+        timestamp: '2026-04-05T12:30:00.000Z',
+        operatorId: 'op-1',
+        operatorName: 'Test Operator',
+        toolVersion: TOOL_VERSION,
+        schemaVersion: MANIFEST_SCHEMA_VERSION + 1
+      })
+
+      const result = await verifyExhibit(caseId, capture.id)
+
+      expect(result.status).toBe('verifier-too-old')
+      expect(result.capture?.status).toBe('verifier-too-old')
+      expect(result.reason).toContain('verifier too old')
+    })
+
     it('reports an unknown exhibit as missing rather than throwing', async () => {
       expect(await verifyExhibit(caseId, 'no-such-exhibit')).toEqual({
         exhibitId: 'no-such-exhibit',

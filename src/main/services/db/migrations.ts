@@ -1002,4 +1002,69 @@ export function runMigrations(db: Database.Database): void {
       db.pragma('foreign_keys = ON')
     }
   }
+
+  if (version < 37) {
+    db.transaction(() => {
+      // Imported Captures kept the source Case's artifact paths (#1592): the
+      // import wrote each file under the new case and id but copied the path
+      // columns verbatim. Every path this app writes is
+      // `<caseId>/<captureId>.<ext>`, so a first segment other than the row's
+      // own case id marks one of those rows, and the rewrite points it where
+      // the import put the file. The stored verification result on those rows
+      // is cleared: it was computed against the wrong path, either missing or
+      // another Case's bytes, and says nothing about this Capture's file.
+      const reroot = (path: string | null, caseId: string, id: string): string | null => {
+        if (!path) return path
+        const segments = path.split(/[\\/]/)
+        if (segments[0] === caseId) return path
+        const name = segments[segments.length - 1]
+        const dot = name.lastIndexOf('.')
+        return `${caseId}/${id}${dot === -1 ? '' : name.slice(dot)}`
+      }
+      const captures = db
+        .prepare('SELECT id, case_id, html_path, screenshot_path, mhtml_path FROM captures')
+        .all() as Array<{
+        id: string
+        case_id: string
+        html_path: string | null
+        screenshot_path: string | null
+        mhtml_path: string | null
+      }>
+      const updateCapture = db.prepare(
+        `UPDATE captures
+            SET html_path = ?, screenshot_path = ?, mhtml_path = ?,
+                last_verified_at = NULL, last_verified_hash = NULL, last_verified_status = NULL
+          WHERE id = ?`
+      )
+      for (const row of captures) {
+        const html = reroot(row.html_path, row.case_id, row.id)
+        const screenshot = reroot(row.screenshot_path, row.case_id, row.id)
+        const mhtml = reroot(row.mhtml_path, row.case_id, row.id)
+        if (
+          html !== row.html_path ||
+          screenshot !== row.screenshot_path ||
+          mhtml !== row.mhtml_path
+        ) {
+          updateCapture.run(html, screenshot, mhtml, row.id)
+        }
+      }
+
+      // A pre-schema-6 archive, the demo case among them (#1521), has its
+      // Capture Exhibits backfilled from those rows, so they carry the same
+      // stale path. A Capture's Exhibit id is its capture id.
+      const exhibits = db
+        .prepare(
+          `SELECT e.id, e.case_id, e.path, COALESCE(c.mhtml_path, c.html_path) AS capture_path
+             FROM exhibits e JOIN captures c ON c.id = e.id
+            WHERE e.kind = 'capture' AND e.path IS NOT NULL`
+        )
+        .all() as Array<{ id: string; case_id: string; path: string; capture_path: string | null }>
+      const updateExhibit = db.prepare('UPDATE exhibits SET path = ? WHERE id = ?')
+      for (const row of exhibits) {
+        if (row.path.split(/[\\/]/)[0] === row.case_id || !row.capture_path) continue
+        updateExhibit.run(row.capture_path, row.id)
+      }
+      db.pragma('user_version = 37')
+    })()
+  }
 }

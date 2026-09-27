@@ -17,7 +17,8 @@ vi.mock('electron', () => ({
 
 import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { createCase, getCase, listCases, setCaseDemo, updateCase } from '@main/services/db/caseRepo'
-import { insertCapture } from '@main/services/db/captureRepo'
+import { insertCapture, listCaptures } from '@main/services/db/captureRepo'
+import { listExhibits } from '@main/services/db/exhibitRepo'
 import { addTagToCapture, createTag, listTags } from '@main/services/db/tagRepo'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
 import { initSettings, getSettings, updateSettings } from '@main/services/settings'
@@ -97,6 +98,23 @@ describe('demo case seeding', () => {
     expect(result.seeded).toBe(true)
     expect(getCase(result.caseId!)?.isDemo).toBe(true)
     expect(getSettings().demoCaseSeeded).toBe(true)
+  })
+
+  // The fixture was exported from another install, so its rows name that
+  // install's case id (#1521, #1592). The seeded case must point at its own files.
+  it('points every seeded capture and Exhibit at a file on disk', async () => {
+    updateSettings({ isFreshInstall: true })
+
+    const { caseId } = await seedDemoCaseIfNeeded()
+
+    const captures = listCaptures(caseId!)
+    const paths = [
+      ...captures.flatMap((c) => [c.mhtmlPath, c.screenshotPath]),
+      ...listExhibits(caseId!).map((e) => e.path)
+    ]
+    expect(captures).toHaveLength(3)
+    expect(paths.every((path) => path?.startsWith(`${caseId}/`))).toBe(true)
+    expect(paths.filter((path) => !existsSync(join(getStorageRoot(), path!)))).toEqual([])
   })
 
   it('leaves no tag behind when the seeded case is deleted again', async () => {

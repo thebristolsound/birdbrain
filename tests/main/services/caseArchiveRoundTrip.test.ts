@@ -275,7 +275,10 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
       importNoteTagRows(src.noteTags, ctx)
     })
 
-    // Captures: field-for-field modulo id/case_id/supersedes remap.
+    // Captures: field-for-field modulo id/case_id/supersedes remap and the
+    // artifact paths re-rooted under the new case (#1592).
+    const reroot = (path: unknown) =>
+      typeof path === 'string' ? path.replace(`${c.id}/`, `${NEW_CASE}/`) : path
     const expectedCaptures = src.captures
       .map((r) => ({
         ...r,
@@ -283,7 +286,10 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
         case_id: NEW_CASE,
         supersedes_capture_id: r.supersedes_capture_id
           ? mapId(r.supersedes_capture_id as string)
-          : null
+          : null,
+        html_path: reroot(r.html_path),
+        screenshot_path: reroot(r.screenshot_path),
+        mhtml_path: reroot(r.mhtml_path)
       }))
       .sort(byId)
     expect(collectCapturesForCase(NEW_CASE).sort(byId)).toEqual(expectedCaptures)

@@ -293,10 +293,13 @@ export function importExhibitRows(rows: Record<string, unknown>[], ctx: ImportCt
 
 // `<oldCase>/<sub>/<oldId><ext>` -> `<newCase>/<sub>/<newId><ext>`. The file
 // name carries the row id, so a remapped id renames the file too — the same
-// rule the archive import applies to Capture artifacts.
+// rule the archive import applies to Capture artifacts. A Windows export
+// carries `\` separators and a legacy row may hold the file name alone, so
+// both forms keep their file name under the new case.
 export function rerootPath(path: string, newCaseId: string, oldId: string, newId: string): string {
-  const parts = path.split('/')
-  parts[0] = newCaseId
+  const parts = path.split(/[\\/]/)
+  if (parts.length === 1) parts.unshift(newCaseId)
+  else parts[0] = newCaseId
   const last = parts.length - 1
   if (parts[last].startsWith(oldId)) parts[last] = newId + parts[last].slice(oldId.length)
   return parts.join('/')

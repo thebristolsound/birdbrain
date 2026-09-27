@@ -43,7 +43,7 @@ available. Determinism therefore comes from three places and nowhere else.
 | Tool tier | the exact `--tools` list (see below), MCP config empty and strict |
 | Model and effort | model id and an explicit effort on every run: `--model` and `--effort <low\|medium\|high\|xhigh\|max>` for `claude`, `-m` and `-c model_reasoning_effort=<level>` for `codex`. Never inherited: Opus 5.5 defaults to `medium` where the other Claude models default to `high`, and the maintainer's `~/.codex/config.toml` sets `low`, so an unset effort would silently differ by vendor and machine |
 | Harness | `claude --version` or `codex --version`, Node version from `.nvmrc` |
-| Turn cap | the maximum turns, when the tier allows tools |
+| Turn cap | a wall-clock timeout per call: neither `claude` 2.1.282 nor `codex exec` 0.154.0 has a turn cap flag (checked 2026-09-26), so a killed run is an `error` row with `timeout` as its reason |
 
 Two runs are comparable only when their manifest hashes match. A CLI upgrade changes the
 harness system prompt, so it changes the manifest; cross-model comparisons run on one CLI
@@ -52,11 +52,15 @@ model plus Claude Code, a Codex result model plus Codex, and a cross-vendor row 
 bundles, which is the question the pipeline actually asks. Tier L0 keeps the harness but
 removes every tool, so it is the closest available thing to a bare-model comparison.
 
-**Freeze the environment.** Fresh worktree per case, `pnpm install --frozen-lockfile` once
-per repository commit, no network beyond the model API (tier L1 gets read-only git and no
-`gh`), timestamps stripped from output before hashing. Tool results are recorded and replayed:
-a tool call whose input bytes match a recorded call gets the recorded output. That is a cache
-and a cost control, not a guarantee, because the model may choose different calls each run.
+**Freeze the environment.** Fresh worktree per case under the OS temporary directory, no
+network beyond the model API (tier L1 gets read-only git and no `gh`), no hooks and no
+plugins (`claude -p --setting-sources ""`, `codex exec --ignore-user-config`), and the
+working directory outside this checkout so none of its settings, memory or instruction files
+are discovered. Tool results are recorded per row (`tools.jsonl`) and not replayed: neither
+command-line tool offers a hook that substitutes a tool's output, so the replay cache the first
+draft described is not available. The frozen worktree does the same work for read-only tools:
+every result is a function of the pinned head. Tier L2 links `node_modules` from the
+checkout rather than installing per worktree.
 
 **Measure what remains.** Every case runs R times (three by default). The report carries the
 mean, the spread, and cross-rep agreement (verdict agreement rate, overlap of finding sets).
@@ -165,9 +169,12 @@ scripts/bench/review/
   grade.mjs            # programmatic graders, matcher, optional judge
   report.mjs           # paired comparison against baselines/, CI, cost
   lib/manifest.mjs     # hashes the inputs above
-  lib/replay.mjs       # tool-result record and replay cache
-  lib/claude.mjs       # claude -p driver: flags, JSON result parsing
-  lib/codex.mjs        # codex exec driver: flags, JSON result parsing
+  lib/resume.mjs       # which rows a run still owes; rate-limited rows are owed again
+  lib/fixture.mjs      # reads a built fixture back: spec, truth, diff, PR body, mutated files
+  lib/prompt.mjs       # renders prompts/code-review.md for one case at one tier
+  lib/claude.mjs       # claude -p driver: flags, stream-json parsing, rate-limit windows
+  lib/codex.mjs        # codex exec driver: flags, JSONL parsing, effort levels from the cache
+  prompts/             # committed: the prompt template, hashed into the manifest
   cases/               # committed: inputs and truth for mutation cases; real cases fetched
   baselines/           # committed: one summary JSON per model and manifest
   results/, .cache/    # ignored
@@ -181,8 +188,13 @@ Run by hand only. Nothing here is a CI check or a scheduled job (ADR-0029, ADR-0
    matcher with its unit tests, oracle and null checks. No model calls. Done 2026-09-25:
    `scripts/bench/review/`, twenty mutation cases and the seven wave-2 real cases, self-check
    passing on all 27.
-2. **Runner.** Tier L0 and L1, manifest hashing, replay cache, per-row output with
-   `status`. Tier L2 behind a flag.
+2. **Runner.** Tier L0 and L1, manifest hashing, per-row output with `status`, resume after
+   a rate limit. Tier L2 behind a flag. Done 2026-09-26: `run.mjs` with both drivers, smoke
+   run on one mutation case at L0 and L1 through each harness (Haiku and Sol, low effort), L1
+   permission denials verified, worktrees removed after each row. Findings recorded in the
+   README: the structured-output tool must stay on the tool list, an empty setting-sources
+   list is what turns hooks off, and the `codex` wrapper routes this checkout to the work
+   account, so the runner sets `CODEX_HOME` itself.
 3. **Pilot.** Five cases, Opus 5 plus the four candidates, three reps, the full effort
    sweep for each. Measures
    usage per case at each level, cross-rep variance and the noise floor. Go or no-go on the
@@ -211,7 +223,9 @@ sessions. The runner therefore:
   stored login with no fallback, so the manifest records which login was active, and a run
   meant for the second account must set that variable rather than assume.
 
-Codex Pro's login state is recorded the same way.
+Codex Pro's login state is recorded the same way, and the runner sets `CODEX_HOME` explicitly
+(default `~/.codex`): the maintainer's `codex` wrapper routes by repository and lands this
+checkout on the work account, which rejects the benchmark models with a 400.
 
 ## Decisions (2026-09-25)
 

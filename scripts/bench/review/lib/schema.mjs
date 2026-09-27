@@ -106,6 +106,27 @@ export function validateCaseSpec(spec) {
   return out
 }
 
+export function validateOutput(o, where = 'output') {
+  const out = []
+  if (!o || typeof o !== 'object') return [`${where}: not an object`]
+  if (!VERDICTS.includes(o.verdict)) out.push(`${where}.verdict: one of ${VERDICTS.join(' | ')}`)
+  if (!isArr(o.findings)) out.push(`${where}.findings: array`)
+  else {
+    o.findings.forEach((f, i) => {
+      const w = `${where}.findings[${i}]`
+      if (!f || typeof f !== 'object') return out.push(`${w}: not an object`)
+      if (f.file !== undefined && f.file !== null && !isStr(f.file)) out.push(`${w}.file: string`)
+      if (f.line !== undefined && f.line !== null && !isInt(f.line)) out.push(`${w}.line: integer`)
+      if (f.quote !== undefined && f.quote !== null && typeof f.quote !== 'string') {
+        out.push(`${w}.quote: string`)
+      }
+      if (!isStr(f.summary)) out.push(`${w}.summary: required`)
+      if (typeof f.blocking !== 'boolean') out.push(`${w}.blocking: boolean`)
+    })
+  }
+  return out
+}
+
 export function validateResultRow(row) {
   const out = []
   if (!row || typeof row !== 'object') return ['row: not an object']
@@ -118,27 +139,9 @@ export function validateResultRow(row) {
   if (!isStr(row.manifest)) out.push('manifest: required')
   if (!STATUSES.includes(row.status)) out.push(`status: one of ${STATUSES.join(' | ')}`)
   if (row.status === 'ok') {
-    const o = row.output
-    if (!o || typeof o !== 'object') out.push('output: required when status is ok')
-    else {
-      if (!VERDICTS.includes(o.verdict)) out.push(`output.verdict: one of ${VERDICTS.join(' | ')}`)
-      if (!isArr(o.findings)) out.push('output.findings: array')
-      else {
-        o.findings.forEach((f, i) => {
-          const w = `output.findings[${i}]`
-          if (!f || typeof f !== 'object') return out.push(`${w}: not an object`)
-          if (f.file !== undefined && f.file !== null && !isStr(f.file))
-            out.push(`${w}.file: string`)
-          if (f.line !== undefined && f.line !== null && !isInt(f.line))
-            out.push(`${w}.line: integer`)
-          if (f.quote !== undefined && f.quote !== null && typeof f.quote !== 'string') {
-            out.push(`${w}.quote: string`)
-          }
-          if (!isStr(f.summary)) out.push(`${w}.summary: required`)
-          if (typeof f.blocking !== 'boolean') out.push(`${w}.blocking: boolean`)
-        })
-      }
-    }
+    if (row.output === undefined || row.output === null) {
+      out.push('output: required when status is ok')
+    } else out.push(...validateOutput(row.output))
   } else if (row.output !== undefined && row.output !== null) {
     out.push(`output: must be absent when status is ${row.status}`)
   }
@@ -146,3 +149,29 @@ export function validateResultRow(row) {
 }
 
 export const configKey = (row) => `${row.harness}/${row.model}/${row.tier}/${row.effort}`
+
+// The shape both harnesses are asked to return, in the strict form the
+// OpenAI side requires (additionalProperties false, every key required);
+// Claude's --json-schema accepts the same document.
+const FINDING_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    file: { type: ['string', 'null'] },
+    line: { type: ['integer', 'null'] },
+    quote: { type: ['string', 'null'] },
+    summary: { type: 'string' },
+    blocking: { type: 'boolean' }
+  },
+  required: ['file', 'line', 'quote', 'summary', 'blocking']
+}
+
+export const OUTPUT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    verdict: { type: 'string', enum: VERDICTS },
+    findings: { type: 'array', items: FINDING_SCHEMA }
+  },
+  required: ['verdict', 'findings']
+}

@@ -2,7 +2,8 @@
 
 Scores a model plus this repository's reviewer configuration against review cases with known
 answers. The plan is `docs/plans/2026-09-25-review-quality-benchmark.md`. This directory holds
-stage 1: the case corpus, the builder and the programmatic grader. No model is called here.
+the case corpus and builder (stage 1), the programmatic grader (stage 1) and the runner
+(stage 2). Nothing here is a CI check or a scheduled job; every model call is started by hand.
 
 ## Run
 
@@ -10,11 +11,81 @@ stage 1: the case corpus, the builder and the programmatic grader. No model is c
 node build-cases.mjs            # fixtures/<id>/: case.json, truth.json, diff.patch, files/, pr.md
 node build-cases.mjs --no-gh    # the same without the PR title and body
 node grade.mjs --self-check     # oracle scores 1, null scores 0, an error row is counted not scored
-node grade.mjs --results <rows.jsonl>
+
+node run.mjs --harness claude --model claude-opus-5 --tier L1 --effort high --cases m01,m02
+node run.mjs --harness codex --model gpt-5.6-sol --tier L1 --effort low,medium,high --tag wave2
+node grade.mjs --results results/<manifest>/rows.jsonl
 ```
 
-`build-cases.mjs` fetches `refs/pull/<n>/head` when a pinned commit is not local. `fixtures/`,
-`results/` and `.cache/` are ignored.
+`run.mjs` takes `--harness claude|codex`, `--model <id>`, `--tier L0|L1|L2`, and `--effort` as a
+comma list; effort is never inherited from a config file. `--reps` (default 3), `--cases` (ids
+or id prefixes), `--tag`, `--timeout <ms>` (default 30 minutes per call), `--pause <ms>` between
+calls, `--dry-run`, `--allow-l2`, `--claude-config-dir` and `--codex-home` are optional.
+
+Each effort level gets its own `results/<manifest>/` holding `manifest.json`,
+`environment.json`, `rows.jsonl` and one `rows/<case>-r<rep>/` directory with the prompt, the
+raw `stdout` and `stderr`, `tools.jsonl` (every tool call the model made) and `result.json`. Cases
+run serially; the first `rate_limited` row stops the run with exit 3, and the same command run
+again picks up from that row. Rows that finished `ok`, `error` or `unsupported` are never
+re-run under the same manifest. `build-cases.mjs` fetches `refs/pull/<n>/head` when a pinned
+commit is not local. `fixtures/`, `results/` and `.cache/` are ignored.
+
+## What one run fixes
+
+The manifest hashes the prompt template (`prompts/code-review.md`), the reviewer definition
+(`.claude/agents/birdbrain-reviewer.md`), `CLAUDE.md`, the corpus (every case id, head and
+truth file), the tool tier, the model, the effort, the harness version, the Node version, the
+timeout and a hash of the active login. Two rows are comparable only when their manifest ids
+match.
+
+The harness is pinned as far as its flags allow:
+
+- `claude -p` runs with `--setting-sources ""`, which drops user and project settings, so no
+  hook fires and no plugin loads (verified 2026-09-26 with `--debug-file`: zero hooks with the
+  flag, the repository's session-start and Serena hooks without it). `--strict-mcp-config` with
+  an empty server list, `--no-session-persistence`, an explicit `--model` and `--effort`, the
+  reviewer definition through `--agents` plus `--agent`, and `--json-schema` for the output.
+  The schema answers through the `StructuredOutput` tool, so that tool stays on every tier's
+  `--tools` list; with `--tools ""` the model answers in prose, which the driver recovers and
+  marks `outputSource: text`.
+- `codex exec` runs with `--ignore-user-config` (no MCP servers, no config defaults),
+  `--ephemeral`, an explicit `-m` and `-c model_reasoning_effort=<level>`, and
+  `--output-schema` in the strict form the API requires. The effort levels a model accepts
+  are read from `models_cache.json` under the Codex home; a level the model does not list is
+  written as `status: unsupported` without a call.
+- The working directory is under the OS temporary directory, never inside this checkout, so
+  no `CLAUDE.md`, `AGENTS.md`, settings or auto-memory of the checkout is discovered. Tier L0
+  runs in an empty directory; L1 and L2 run in a detached worktree at the case's head with the
+  mutated files written over it, removed after the row.
+- Neither CLI has a turn cap flag (`claude --help` 2.1.282, `codex exec --help` 0.154.0), so
+  the cap is a wall-clock timeout, recorded in the manifest; a killed run is an `error` row
+  with `timeout` as its reason.
+
+Tool results are not replayed. Neither CLI offers a hook that substitutes a tool's output, so
+the cache the plan described is not available; what the runner has instead is the frozen
+worktree, which makes every read-only tool result a function of the pinned head, and the
+per-row tool log, which shows what each run read.
+
+## Accounts
+
+The runner refuses to start for `claude` when `CLAUDE_CODE_OAUTH_TOKEN` is set, because that
+variable overrides the stored login with no fallback. It sets `CLAUDE_CONFIG_DIR` (default
+`~/.claude`) and `CODEX_HOME` (default `~/.codex`) explicitly on every call, since the
+maintainer's `claude` and `codex` wrappers otherwise route by repository, and the `codex`
+routing lands this checkout on the work account, which rejects the benchmark models. Each
+row records the subscription windows Claude Code reports (`rateLimit`, utilisation per
+window), which is how a pilot measures what one case costs.
+
+## Tiers
+
+| Tier | `claude` | `codex` |
+| --- | --- | --- |
+| L0 | `--tools StructuredOutput`; the diff and PR body are in the prompt | `--sandbox read-only` in an empty directory; diff and PR body in the prompt |
+| L1 | `--tools Read,Grep,Glob,Bash,StructuredOutput` with `--allowedTools` limited to read-only git; writes, network and package scripts are denied (verified: `touch`, `git fetch`, `curl` and `pnpm` all land in `permission_denials`, while `grep` is allowed by the harness's own read-only command class) | `--sandbox read-only -C <worktree>`; the reviewer definition travels in the prompt |
+| L2 | L1 plus `pnpm lint`, `pnpm typecheck` and `pnpm test` on the allowlist; `node_modules` is a symlink to this checkout's | `--sandbox workspace-write`; behind `--allow-l2` |
+
+The prompt tells the reviewer which passes are out of reach (GitHub state, the network, checks
+it cannot run) and not to report their absence.
 
 ## Cases
 

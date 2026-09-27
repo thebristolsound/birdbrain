@@ -573,9 +573,7 @@ describe('certification', () => {
   })
 
   // #1169. An operator who declined trusted timestamping never contacted the
-  // configured authority, so no packaged document may name one. Printing the
-  // endpoint beside a process paragraph about hashes being submitted to a TSA is
-  // what turns "Where enabled" into an apparent claim about this export.
+  // configured authority, so every packaged document that names it must say so.
   describe('an installation that declined trusted timestamping', () => {
     it('names the configured authority and says it was not contacted', async () => {
       await ingest(

@@ -55,7 +55,9 @@ env:
     sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g'
     /etc/apt/apt-mirrors.txt
   MODE: ${{ github.event_name == 'schedule' && 'cycle' || inputs.mode }}
-  DISPATCH_MODEL: claude-opus-5
+  DISPATCH_MODEL: claude-opus-5-5
+  # Opus 5.5 defaults to medium; the cycle and both subagents run at high.
+  DISPATCH_EFFORT: high
   # Empty on a schedule, so a scheduled fire always lets section 3 pick.
   TARGET_ISSUE: ${{ github.event_name == 'schedule' && '' || inputs.issue }}
   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

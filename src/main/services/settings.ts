@@ -49,6 +49,14 @@ function decryptApiKey(stored: string | null): string | null {
 
 let settingsPath: string
 
+// Choices the operator made while settings.json could not be read (#1169).
+// updateSettings will not write over a file it cannot read, so without these
+// the timestamping switch would be stuck in its fail-closed position until the
+// file became readable. They apply for the rest of the session, including after
+// the file becomes readable again, and are written out by the next save that
+// succeeds; a restart before then discards them.
+let unsavedChoices: Partial<BirdbrainSettings> = {}
+
 const DEFAULT_SETTINGS: BirdbrainSettings = {
   openRouterApiKey: null,
   defaultModel: 'anthropic/claude-sonnet-4',
@@ -154,6 +162,10 @@ function declinedTimestamping(saved: unknown): boolean {
 }
 
 export function getSettings(): BirdbrainSettings {
+  return { ...readStoredSettings(), ...unsavedChoices }
+}
+
+function readStoredSettings(): BirdbrainSettings {
   if (!settingsPath) throw new Error('Settings not initialized')
   if (!existsSync(settingsPath)) {
     return { ...DEFAULT_SETTINGS }
@@ -167,8 +179,11 @@ export function getSettings(): BirdbrainSettings {
     // the session falls closed like the parse failure below — but the decline is
     // not allowed to persist: updateSettings refuses to write over a file it
     // cannot read, so the operator's real preference is still on disk when the
-    // lock clears (#1169 round-2 review).
-    logger.warn('settings', 'settings.unreadable_timestamping_fail_closed', undefined, err)
+    // lock clears (#1169 round-2 review). Once the operator has set the switch
+    // this session, their choice governs timestamping and nothing fell closed.
+    if (!('tsaEnabled' in unsavedChoices)) {
+      logger.warn('settings', 'settings.unreadable_timestamping_fail_closed', undefined, err)
+    }
     return { ...DEFAULT_SETTINGS, tsaEnabled: false }
   }
   try {
@@ -201,27 +216,32 @@ export function updateSettings(partial: Partial<BirdbrainSettings>): BirdbrainSe
       `Invalid settings: ${parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`
     )
   }
+  const supplied = suppliedKeysOnly(partial, parsed.data)
   // Refuse to overwrite a settings file this process cannot read (#1169 round-2
   // review). The merge below is built on getSettings(), which falls back to the
   // defaults plus tsaEnabled: false when the read throws, so writing it would
   // persist an opt-out the operator never chose — and blank every other setting —
-  // because of a transient lock. A file that will not parse is already lost and is
-  // still rewritten: that is the recovery path the switch depends on.
+  // because of a transient lock. The change is held for the session instead (see
+  // unsavedChoices). A file that will not parse is already lost and is still
+  // rewritten: that is the recovery path the switch depends on.
   if (existsSync(settingsPath)) {
     try {
       readFileSync(settingsPath, 'utf-8')
     } catch (err) {
-      logger.warn('settings', 'settings.unreadable_timestamping_fail_closed', undefined, err)
-      throw new Error('Settings file could not be read; refusing to overwrite it', { cause: err })
+      unsavedChoices = { ...unsavedChoices, ...supplied }
+      logger.warn('settings', 'settings.unreadable_write_refused', undefined, err)
+      return getSettings()
     }
   }
+  const pendingKey = 'openRouterApiKey' in partial || 'openRouterApiKey' in unsavedChoices
   const current = getSettings()
-  const updated = { ...current, ...suppliedKeysOnly(partial, parsed.data) }
-  // Only re-encrypt the API key if it was explicitly changed in this update.
-  // Otherwise preserve the raw stored value to avoid data loss when safeStorage
-  // is unavailable (the encrypted blob would be unreadable but should not be erased).
+  const updated = { ...current, ...supplied }
+  // Only re-encrypt the API key if it was explicitly changed in this update or
+  // held unsaved from earlier in the session. Otherwise preserve the raw stored
+  // value to avoid data loss when safeStorage is unavailable (the encrypted blob
+  // would be unreadable but should not be erased).
   const toWrite = { ...updated }
-  if ('openRouterApiKey' in partial) {
+  if (pendingKey) {
     toWrite.openRouterApiKey = encryptApiKey(updated.openRouterApiKey)
   } else {
     // Preserve whatever is on disk (may be encrypted)
@@ -235,18 +255,21 @@ export function updateSettings(partial: Partial<BirdbrainSettings>): BirdbrainSe
     }
   }
   writeFileSync(settingsPath, JSON.stringify(toWrite, null, 2), 'utf-8')
+  unsavedChoices = {}
   return updated
 }
 
 export function resetSettings(): BirdbrainSettings {
   const defaults = { ...DEFAULT_SETTINGS }
   writeFileSync(settingsPath, JSON.stringify(defaults, null, 2), 'utf-8')
+  unsavedChoices = {}
   return defaults
 }
 
-// For testing
+// For testing. Unsaved choices belong to the file they could not be written to.
 export function setSettingsPath(path: string): void {
   settingsPath = path
+  unsavedChoices = {}
 }
 
 export function getDefaultSettings(): BirdbrainSettings {

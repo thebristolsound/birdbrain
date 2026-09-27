@@ -3,7 +3,9 @@
 // diff.patch, refuses every write, and logs each call so an unsupported
 // query shows up in the row directory instead of as a silent failure.
 //
-// Env: BENCH_GH_FIXTURE (fixture dir), BENCH_GH_LOG (JSON lines, appended).
+// Env: BENCH_GH_FIXTURE (fixture dir), BENCH_GH_LOG (JSON lines, appended),
+// BENCH_GH_HEAD and BENCH_GH_BASE (the clone's own commit ids, which stand in
+// for the PR's real head and base so the reviewer sees the tree it has).
 
 import { appendFileSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -26,6 +28,26 @@ function fail(reason, code = 1) {
 
 if (!fixtureDir || !existsSync(join(fixtureDir, 'pr.json'))) fail('BENCH_GH_FIXTURE is not set')
 const pr = JSON.parse(readFileSync(join(fixtureDir, 'pr.json'), 'utf8'))
+
+// The PR body names its own commits (the Verification block is stamped with
+// the head sha), so every reference to the real head or base, full or
+// abbreviated, is rewritten to the clone's commit of the same length.
+export function repinText(text, from, to) {
+  if (typeof text !== 'string' || !from || !to) return text
+  const re = new RegExp(`\\b${from.slice(0, 7)}[0-9a-f]*\\b`, 'g')
+  return text.replace(re, (m) => (from.startsWith(m) ? to.slice(0, m.length) : m))
+}
+
+if (process.env.BENCH_GH_HEAD) {
+  pr.body = repinText(pr.body, pr.headRefOid, process.env.BENCH_GH_HEAD)
+  pr.headRefOid = process.env.BENCH_GH_HEAD
+  pr.mergeCommit = null
+  pr.state = 'OPEN'
+}
+if (process.env.BENCH_GH_BASE) {
+  pr.body = repinText(pr.body, pr.baseRefOid, process.env.BENCH_GH_BASE)
+  pr.baseRefOid = process.env.BENCH_GH_BASE
+}
 const spec = JSON.parse(readFileSync(join(fixtureDir, 'case.json'), 'utf8'))
 
 const CHECKS = ['build', 'changes', 'e2e', 'lint', 'test', 'typecheck', 'Dependency audit']
@@ -94,19 +116,42 @@ if (cmd === 'pr') {
       log('ok')
       process.exit(0)
     }
+    // The fields gh pr view can return, as the dispatcher and reviewer ask
+    // for them; one synthetic commit stands for the PR's history. A field
+    // not modelled here answers null and is logged, never refused.
     const all = {
       ...pr,
       statusCheckRollup: CHECKS.map((name) => ({
         name,
         status: 'COMPLETED',
         conclusion: 'SUCCESS'
-      }))
+      })),
+      autoMergeRequest: null,
+      autoMerge: null,
+      commits: [
+        { oid: pr.headRefOid, messageHeadline: pr.title, messageBody: '', authors: [pr.author] }
+      ],
+      mergeable: 'MERGEABLE',
+      mergeStateStatus: 'CLEAN',
+      reviewDecision: '',
+      reviews: [],
+      latestReviews: [],
+      comments: [],
+      closed: false,
+      mergedAt: null,
+      closedAt: null,
+      additions: 0,
+      deletions: 0,
+      changedFiles: 0,
+      files: []
     }
     const out = {}
+    const unknown = []
     for (const f of fields.split(',')) {
-      if (!(f in all)) fail(`unknown field ${f}`)
-      out[f] = all[f]
+      out[f] = f in all ? all[f] : null
+      if (!(f in all)) unknown.push(f)
     }
+    if (unknown.length) log(`unknown fields answered null: ${unknown.join(',')}`)
     emit(out)
   }
   if (sub === 'checks') {

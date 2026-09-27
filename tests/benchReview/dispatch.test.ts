@@ -43,6 +43,7 @@ describe('parseVerdictComment', () => {
     '| 2 | advisory | PR body, Evidence impact | overclaims the restore path |',
     '| 3 | gate | tests/b.test.ts:4-9 | the trailer is present |',
     '| 4 | advisory | – | style only |',
+    '| 5 | pass | src/c.ts | attribution line present |',
     '',
     '</details>',
     ''
@@ -107,7 +108,7 @@ describe('gh stand-in', () => {
       line({
         number: 42,
         title: 'feat: thing',
-        body: 'Closes #7',
+        body: `Closes #7\n\nVerified at ${'a'.repeat(40)} (short ${'a'.repeat(8)}); unrelated abc1234 stays.`,
         url: 'https://example.test/pull/42',
         state: 'MERGED',
         isDraft: false,
@@ -135,14 +136,40 @@ describe('gh stand-in', () => {
       JSON.parse(run('api', 'repos/o/r/issues/42/labels', '--jq', '[.[].name]').stdout)
     ).toEqual(['agent-authored', 'evidence-affecting'])
     expect(JSON.parse(run('api', 'repos/o/r/issues/7/labels').stdout)).toEqual([])
-    const view = JSON.parse(run('pr', 'view', '42', '--json', 'title,headRefOid,labels').stdout)
+    const view = JSON.parse(
+      run('pr', 'view', '42', '--json', 'title,headRefOid,labels,commits,autoMerge,nosuchfield')
+        .stdout
+    )
     expect(view.title).toBe('feat: thing')
     expect(view.labels).toHaveLength(2)
+    expect(view.commits[0].oid).toBe('a'.repeat(40))
+    expect(view.autoMerge).toBeNull()
+    expect(view.nosuchfield).toBeNull()
     expect(run('pr', 'checks', '42').stdout).toContain('typecheck\tpass')
     expect(run('pr', 'diff', '42').stdout).toContain('+++ b/src/a.ts')
     expect(
       run('api', `repos/o/r/commits/${'a'.repeat(40)}/status`, '--jq', '.state').stdout.trim()
     ).toBe('success')
+    const pinned = spawnSync(
+      'node',
+      [SHIM, 'api', 'repos/o/r/pulls/42', '--jq', '.head.sha + " " + .base.sha'],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          BENCH_GH_FIXTURE: fixture,
+          BENCH_GH_HEAD: 'c'.repeat(40),
+          BENCH_GH_BASE: 'd'.repeat(40)
+        }
+      }
+    )
+    expect(pinned.stdout.trim()).toBe(`${'c'.repeat(40)} ${'d'.repeat(40)}`)
+    const body = spawnSync('node', [SHIM, 'pr', 'view', '42', '--json', 'body', '--jq', '.body'], {
+      encoding: 'utf8',
+      env: { ...process.env, BENCH_GH_FIXTURE: fixture, BENCH_GH_HEAD: 'c'.repeat(40) }
+    }).stdout
+    expect(body).toContain(`Verified at ${'c'.repeat(40)} (short ${'c'.repeat(8)})`)
+    expect(body).toContain('abc1234 stays')
   })
 
   it('refuses writes, other PRs and unknown reads, and logs every call', () => {

@@ -115,7 +115,10 @@ What the mode builds per row:
   reads the skill and the reviewer make (`pr view`, `pr checks`, `pr diff`, the pull, labels,
   issue, status and check-run endpoints) from the fixture's `pr.json` and `diff.patch`, reports
   every check green, refuses every write and every other PR, and logs each call to
-  `gh-calls.jsonl` in the row directory. `GH_TOKEN` is set to an invalid value as a second
+  `gh-calls.jsonl` in the row directory. It reports the clone's own commits as the PR's head
+  and base and rewrites every mention of the real ones in the PR body to match, so the
+  Verification block's stamped sha agrees with the tree under review; without that the
+  reviewer reads a stale block and requests changes on every case. `GH_TOKEN` is set to an invalid value as a second
   guard.
 - **The harness as production runs it.** `claude -p` with every built-in tool,
   `--dangerously-skip-permissions`, `--setting-sources project` (the checkout's settings and

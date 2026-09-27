@@ -145,6 +145,8 @@ export function parseVerdictComment(text) {
     const m = line.match(TABLE_ROW)
     if (!m) continue
     const severity = m[2].toLowerCase()
+    // A row the reviewer marks as passed is a control it checked, not a finding.
+    if (/^(pass|passed|ok|none|info)$/.test(severity)) continue
     const { file, line: lineNo } = parseLocation(m[3])
     findings.push({
       file,

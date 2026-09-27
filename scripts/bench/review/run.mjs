@@ -244,6 +244,8 @@ function runDispatchRow(o, ctx, fixture, rep, deps) {
     GIT_TERMINAL_PROMPT: '0',
     BENCH_GH_FIXTURE: join(deps.dirs.fixtures, fixture.id),
     BENCH_GH_LOG: join(rowDir, 'gh-calls.jsonl'),
+    BENCH_GH_HEAD: ws.head,
+    BENCH_GH_BASE: ws.base,
     BENCH_COMMENT_FILE: commentFile
   }
   const startedAt = new Date().toISOString()

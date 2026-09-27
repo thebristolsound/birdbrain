@@ -30,6 +30,7 @@ import {
 import { verifyExhibit } from '@main/services/exhibits'
 import { generateReport } from '@main/services/export'
 import {
+  CASE_ARCHIVE_SCHEMA_VERSION,
   exportCaseArchive,
   importCaseArchive,
   inspectCaseArchive
@@ -691,7 +692,7 @@ describe('staging pool', () => {
         staged: string[]
         artifacts: Array<{ path: string }>
       }
-      expect(header.schemaVersion).toBe(6)
+      expect(header.schemaVersion).toBe(CASE_ARCHIVE_SCHEMA_VERSION)
       const attachment = listExhibits(caseId).find((e) => e.kind === 'attachment')!
       expect(header.artifacts.map((a) => a.path)).toEqual(
         expect.arrayContaining([

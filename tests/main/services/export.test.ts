@@ -2938,6 +2938,21 @@ describe('export', () => {
   // #985: a selection-scoped export ships the notes attached to the selected
   // captures and nothing else, and says how many it left behind.
   describe('notes follow the selection scope (#985)', () => {
+    const mentionNode = (targetId: string, label = 'Page', targetType = 'capture') => ({
+      type: 'mention',
+      attrs: { targetType, targetId, label }
+    })
+    const captureMentionDoc = (targetId: string, label?: string, targetType?: string): string =>
+      JSON.stringify({
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [{ type: 'text', text: 'see ' }, mentionNode(targetId, label, targetType)]
+          }
+        ]
+      })
+
     const NOTES_INCLUDE: ExportOptions['include'] = {
       captures: true,
       screenshots: false,
@@ -3231,7 +3246,17 @@ describe('export', () => {
         (note.captureId !== undefined && selected.has(note.captureId)) ||
         (note.anchor !== undefined && selected.has(note.anchor.captureId))
 
-      const shipped = shapes.filter((note) => noteTravelsWithSelection(note, selected, inCase))
+      // A Capture Mention is a third pointer; every shape above gains each one.
+      const withMentions: Note[] = shapes.flatMap((note) => [
+        note,
+        ...pointers
+          .filter((id): id is string => id !== undefined)
+          .map((mentioned) => ({ ...note, bodyDoc: captureMentionDoc(mentioned) }))
+      ])
+
+      const shipped = withMentions.filter((note) =>
+        noteTravelsWithSelection(note, selected, inCase)
+      )
       expect(shipped.length).toBeGreaterThan(0)
       for (const note of shipped) {
         expect(readsRowPointer(note)).toBe(true)
@@ -3295,6 +3320,70 @@ describe('export', () => {
       expect(notesMd).not.toContain('Anchored to the unselected capture')
       expect(notesMd).not.toContain('names the withheld subject')
       expect(notesMd).toContain('3 notes in the case are not included')
+    })
+
+    it('withholds a note whose text mentions a capture outside the selection', async () => {
+      const { selected, unselected } = await seedTwoCapturesAndThreeNotes()
+      createNote({
+        caseId,
+        captureId: selected.id,
+        title: 'Mentions the unselected capture',
+        bodyDoc: captureMentionDoc(unselected.id, 'Withheld page title')
+      })
+
+      const outputPath = join(tempDir, 'mention-outside-withheld.zip')
+      await generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: NOTES_INCLUDE,
+          exportClass: 'evidence',
+          outputPath,
+          captureIds: [selected.id]
+        },
+        captureLifecycle
+      )
+
+      const notesMd = readStoredZipEntries(outputPath).get('notes.md')!.toString('utf-8')
+      expect(notesMd).not.toContain('Mentions the unselected capture')
+      expect(notesMd).not.toContain('Withheld page title')
+      expect(notesMd).toContain('3 notes in the case are not included')
+    })
+
+    it('reads Capture Mentions to withhold, ignoring other kinds and deleted captures', () => {
+      const selected = new Set(['cap-in', 'cap-also-in'])
+      const inCase = new Set(['cap-in', 'cap-also-in', 'cap-out'])
+      const note = (bodyDoc?: string): Note => ({
+        id: 'n1',
+        caseId: 'c1',
+        captureId: 'cap-in',
+        title: 't',
+        body: 'b',
+        ...(bodyDoc === undefined ? {} : { bodyDoc }),
+        createdAt: '2026-08-01T10:00:00.000Z',
+        updatedAt: '2026-08-01T10:00:00.000Z'
+      })
+      const travels = (bodyDoc?: string) =>
+        noteTravelsWithSelection(note(bodyDoc), selected, inCase)
+
+      expect(travels()).toBe(true)
+      expect(travels(captureMentionDoc('cap-also-in'))).toBe(true)
+      expect(travels(captureMentionDoc('cap-out'))).toBe(false)
+      expect(travels(captureMentionDoc('cap-deleted'))).toBe(true)
+      expect(travels(captureMentionDoc('cap-out', 'Tag', 'tag'))).toBe(true)
+      expect(
+        travels(
+          JSON.stringify({
+            type: 'doc',
+            content: [
+              {
+                type: 'paragraph',
+                content: [mentionNode('cap-also-in'), mentionNode('cap-out')]
+              }
+            ]
+          })
+        )
+      ).toBe(false)
     })
   })
   // Known-answer tests for the mixed-kind package (#1156). The fixture Case is

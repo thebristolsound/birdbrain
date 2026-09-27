@@ -599,7 +599,10 @@ describe('ExportDialog', () => {
   // options: walking the dialog by keyboard must leave them what the preset
   // table says.
   describe('keyboard', () => {
+    // Starts with one Tab off the panel, where the dialog opens: the panel
+    // itself is not a stop, so the walk would never wrap back to it.
     function tabStops(): HTMLElement[] {
+      fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Tab' })
       const stops: HTMLElement[] = [document.activeElement as HTMLElement]
       for (let i = 0; i < 10; i++) {
         fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Tab' })
@@ -616,11 +619,16 @@ describe('ExportDialog', () => {
       expect(dialog.getAttribute('aria-modal')).toBe('true')
     })
 
-    it('moves focus onto the checked preset when it opens', () => {
+    // Not onto the checked preset radio, its first control: an arrow key
+    // there switches the export to a Working Copy.
+    it('moves focus onto the panel when it opens, with the preset group one Tab away', () => {
       renderDialog()
 
-      const full = screen.getByRole('radio', { name: /Full evidence bundle/ })
-      expect(document.activeElement).toBe(full)
+      expect(document.activeElement).toBe(screen.getByRole('dialog', { name: 'Export case' }))
+      fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Tab' })
+      expect(document.activeElement).toBe(
+        screen.getByRole('radio', { name: /Full evidence bundle/ })
+      )
     })
 
     it('walks its own five controls and wraps, with the preset group as one stop', () => {

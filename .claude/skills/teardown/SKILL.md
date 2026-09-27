@@ -53,17 +53,17 @@ merge leaves no ancestry, so `git merge-base` cannot answer it.
 | Branch with no tree, tip is a merged PR head | `branch -D`                                    |
 
 Everything else is a report lane: listed and left, whatever the flags. That covers an open
-PR, no PR, a dirty tree, a lock whose pid is alive or unnamed, the main checkout, mangled
+PR, no PR, a dirty tree, a lock whose process ID is alive or unnamed, the main checkout, mangled
 `\wsl.localhost` paths, a merged branch whose tip moved, and every stash entry. A t3code
 tree or one younger than `--older-than` shows its apply lane demoted, with the reason.
 
 Removal never passes `--force`, so git refuses a tree that turned dirty between the check and
-the act. A lock is lifted only when the pid in its reason is dead.
+the act. A lock is lifted only when the process ID in its reason is dead.
 
 ## Creating a scratch tree
 
 A worktree you create yourself goes under `/tmp/birdbrain-wt/` and is locked with your
-session's pid, so the sweep can find it and leaves it alone while you run:
+session's process ID, so the sweep can find it and leaves it alone while you run:
 
 ```shell
 git worktree add /tmp/birdbrain-wt/<purpose>-<n> <ref>

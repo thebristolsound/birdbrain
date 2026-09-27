@@ -9,7 +9,7 @@ with a merged PR. The rules for closing and sweeping live in
 | ---------------------------------- | ------------------------------------------- | ----------------------------------------------------------------- |
 | `~/.t3/worktrees/birdbrain/*`      | a t3code thread; `scripts/setup-worktree.sh` runs on creation | `teardown.sh` with `--t3code`; t3code's own `storageCleanup` did not reclaim them |
 | `<repo>/.claude/worktrees/agent-*` | the Agent tool's worktree isolation, `EnterWorktree` | the Agent tool when unchanged; otherwise `merge.sh` at merge, or a sweep |
-| `/tmp/birdbrain-wt/*`              | an agent following the skill's creation rule (pr-sweep conflict and review trees) | the creating agent with `teardown.sh close`; a sweep once its lock pid is dead |
+| `/tmp/birdbrain-wt/*`              | an agent following the skill's creation rule (pr-sweep conflict and review trees) | the creating agent with `teardown.sh close`; a sweep once its lock process ID is dead |
 | Local branch                       | implementer, t3code, interactive sessions   | `merge.sh` step 8 via `teardown.sh close --branch`; a sweep       |
 | Ignored outputs inside a tree      | preflight, tests, builds                    | `teardown.sh close --artefacts` at task end                       |
 | Stash entry                        | sessions                                    | nobody: the stack is shared and the git guardrail blocks pop and drop, so a sweep lists entries and leaves them |

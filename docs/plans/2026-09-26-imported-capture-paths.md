@@ -63,8 +63,10 @@ These findings stay on #1592 as separate work:
 - 2: the Overview's "Tampered" label.
 - 3a and 3b: the export checker failures. 3b concerns the chain naming the original id and
   overlaps #1472.
-- `rerootPath` splits on `/` only. A Windows-exported archive would carry `\` paths. This is an
-  existing limit that the exhibit and staging importers share.
+
+`rerootPath` originally split on `/` only, so a Windows-exported archive (`\` paths) or a
+filename-only legacy path lost its file name on import. Review of the PR brought that fix in
+scope: it now splits on either separator and keeps a lone file name.
 
 ## Decisions (maintainer, 2026-09-26)
 

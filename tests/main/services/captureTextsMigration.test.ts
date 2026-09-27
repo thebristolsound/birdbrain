@@ -29,6 +29,7 @@ describe('migration v25: capture_texts', () => {
       CREATE TABLE captures (id TEXT PRIMARY KEY, case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
         url TEXT, title TEXT, html_path TEXT, screenshot_path TEXT, hash TEXT, timestamp TEXT,
         headers TEXT, created_at TEXT, mhtml_path TEXT, size_bytes INTEGER, manifest_index INTEGER,
+        last_verified_at TEXT, last_verified_hash TEXT, last_verified_status TEXT,
         method TEXT NOT NULL DEFAULT 'extension');
       CREATE TABLE notes (id TEXT PRIMARY KEY, case_id TEXT NOT NULL, capture_id TEXT,
         title TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', source_url TEXT,

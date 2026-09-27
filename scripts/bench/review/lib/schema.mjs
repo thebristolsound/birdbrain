@@ -105,6 +105,12 @@ export function validateCaseSpec(spec) {
       })
     }
     if (spec.truth !== undefined) out.push('truth: derived for mutation cases, do not set')
+    // Defects the base PR already had, found after it merged: they belong to
+    // every case built on that head, mutation or not.
+    if (spec.baseDefects !== undefined) {
+      if (!isArr(spec.baseDefects)) out.push('baseDefects: array')
+      else spec.baseDefects.forEach((d, i) => checkDefect(d, `baseDefects[${i}]`, out))
+    }
   }
   if (spec.kind === 'real') {
     if (spec.mutations !== undefined) out.push('mutations: only on mutation cases')

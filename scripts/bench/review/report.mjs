@@ -169,8 +169,8 @@ export function renderMarkdown(report) {
       ''
     )
     lines.push(
-      '| effort | rows | ok | verdict | blockers | defects | unmatched | refuted | claims | agree | overlap | input tokens | output tokens | wall s | tools | window |',
-      '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'
+      '| effort | rows | ok | verdict | blockers | defects | unmatched | refuted | claims | no line | agree | overlap | input tokens | output tokens | wall s | tools | window |',
+      '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'
     )
     for (const l of g.levels) {
       const s = l.summary
@@ -181,7 +181,7 @@ export function renderMarkdown(report) {
         .join(', ')
       const window = u.windowFirst === null ? '–' : `${f2(u.windowFirst)}→${f2(u.windowLast)}`
       lines.push(
-        `| ${l.effort} | ${s.rows ?? 0}${status ? ` (${status})` : ''} | ${s.statuses?.ok ?? 0} | ${f2(s.verdictAccuracy)} | ${f2(s.blockerRecall)} | ${f2(s.defectRecall)} | ${f2(s.unmatchedPerRow)} | ${f2(s.refutedHitsPerRow)} | ${f2(s.claimRate)} | ${f2(s.verdictAgreement)} | ${f2(s.findingOverlap)} | ${f0(u.inputTokens)} | ${f0(u.outputTokens)} | ${f0(u.wallMs === null ? null : u.wallMs / 1000)} | ${f2(u.toolCalls)} | ${window} |`
+        `| ${l.effort} | ${s.rows ?? 0}${status ? ` (${status})` : ''} | ${s.statuses?.ok ?? 0} | ${f2(s.verdictAccuracy)} | ${f2(s.blockerRecall)} | ${f2(s.defectRecall)} | ${f2(s.unmatchedPerRow)} | ${f2(s.refutedHitsPerRow)} | ${f2(s.claimRate)} | ${f2(s.lineMissingPerRow)} | ${f2(s.verdictAgreement)} | ${f2(s.findingOverlap)} | ${f0(u.inputTokens)} | ${f0(u.outputTokens)} | ${f0(u.wallMs === null ? null : u.wallMs / 1000)} | ${f2(u.toolCalls)} | ${window} |`
       )
     }
     if (g.adjacent.length) {

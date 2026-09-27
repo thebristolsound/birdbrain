@@ -1,0 +1,23 @@
+{
+  "id": "b09-notes-scope-comment-reworded",
+  "kind": "mutation",
+  "source": {
+    "pr": 1569,
+    "base": "070d8d21afad4880ecc709ac2bd6247df7874e57",
+    "head": "b2d16ead35dbd909860de5d9da54ebed81fc8c55"
+  },
+  "tags": [
+    "benign",
+    "approve"
+  ],
+  "mutations": [
+    {
+      "id": "b1",
+      "file": "src/main/services/export.ts",
+      "find": "// Scoped with the Exhibits on a selection export (#985)",
+      "replace": "// Scoped to the Exhibits on a selection export (#985)",
+      "benign": true,
+      "description": "A comment reworded with the same meaning; the change is benign and a finding on it is over-flagging"
+    }
+  ]
+}

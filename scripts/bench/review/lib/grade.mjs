@@ -122,7 +122,6 @@ export function summarize(graded) {
         r.claims.ok +
         r.claims['missing-file'] +
         r.claims['line-out-of-range'] +
-        r.claims['line-missing'] +
         r.claims['quote-mismatch'],
       0
     )
@@ -141,6 +140,8 @@ export function summarize(graded) {
       unmatchedPerRow: mean(ok.map((r) => r.unmatched)),
       refutedHitsPerRow: mean(ok.map((r) => r.refutedHits)),
       claimRate: ratio(claimsOk, claimsChecked),
+      // A finding with a file and no line: not wrong, not verifiable either.
+      lineMissingPerRow: mean(ok.map((r) => r.claims['line-missing'])),
       verdictAgreement: mean(cons.map((c) => c.verdictAgreement).filter((x) => x !== null)),
       findingOverlap: mean(cons.map((c) => c.findingOverlap).filter((x) => x !== null))
     })

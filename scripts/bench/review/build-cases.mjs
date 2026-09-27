@@ -53,7 +53,7 @@ export function buildCase(spec, deps) {
   if (spec.kind === 'mutation') {
     const applied = applyMutations(readFile, spec.mutations)
     files = applied.files
-    truth = deriveTruth(applied.defects, applied.benign)
+    truth = deriveTruth([...applied.defects, ...(spec.baseDefects ?? [])], applied.benign)
   } else {
     truth = spec.truth
     for (const d of truth.defects) {

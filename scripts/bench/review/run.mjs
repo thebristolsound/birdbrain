@@ -79,6 +79,7 @@ export function parseArgs(argv) {
     reps: DEFAULTS.reps,
     cases: null,
     tag: null,
+    excludeTag: null,
     timeoutMs: DEFAULTS.timeoutMs,
     pauseMs: DEFAULTS.pauseMs,
     dryRun: false,
@@ -101,6 +102,7 @@ export function parseArgs(argv) {
     else if (a === '--reps') o.reps = Number(next())
     else if (a === '--cases') o.cases = next().split(',').filter(Boolean)
     else if (a === '--tag') o.tag = next()
+    else if (a === '--exclude-tag') o.excludeTag = next()
     else if (a === '--timeout') o.timeoutMs = Number(next())
     else if (a === '--pause') o.pauseMs = Number(next())
     else if (a === '--dry-run') o.dryRun = true
@@ -127,7 +129,7 @@ export function parseArgs(argv) {
   return o
 }
 
-export function selectCases(fixtures, { cases, tag }) {
+export function selectCases(fixtures, { cases, tag, excludeTag = null }) {
   let ids = [...fixtures.keys()]
   if (cases) {
     ids = ids.filter((id) => cases.some((c) => id === c || id.startsWith(`${c}-`)))
@@ -135,6 +137,7 @@ export function selectCases(fixtures, { cases, tag }) {
     if (missing.length) throw new Error(`unknown case ${missing.join(', ')}`)
   }
   if (tag) ids = ids.filter((id) => fixtures.get(id).tags.includes(tag))
+  if (excludeTag) ids = ids.filter((id) => !fixtures.get(id).tags.includes(excludeTag))
   if (ids.length === 0) throw new Error('no cases selected')
   return ids
 }

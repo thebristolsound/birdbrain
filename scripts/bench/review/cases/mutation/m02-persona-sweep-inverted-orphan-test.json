@@ -8,7 +8,8 @@
   },
   "tags": [
     "swapped-comparison",
-    "persona"
+    "persona",
+    "base-defect"
   ],
   "mutations": [
     {
@@ -19,6 +20,15 @@
       "category": "swapped-comparison",
       "blocking": true,
       "description": "The orphan test is inverted: live personas are swept and orphans are kept"
+    }
+  ],
+  "baseDefects": [
+    {
+      "id": "base-1587-sweep-deletes-restored-personas",
+      "file": "src/main/services/persona/personaSessions.ts",
+      "category": "other",
+      "blocking": true,
+      "description": "The orphan sweep treats a persona missing from the open database as gone for good and deletes its saved sign-in, but a restore of a newer backup or a first start on an empty database file brings the persona back with its sign-in already destroyed (maintainer ruling 2026-09-28 on the Opus 5.5 dispatch-mode run)"
     }
   ]
 }

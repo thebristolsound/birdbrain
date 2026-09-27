@@ -130,8 +130,8 @@ PR from before the tiered evidence path list (the wave-2 `r` cases, August 2026)
 missing-label gate and is marked `request changes` for a control that did not exist when it
 was adjudicated. The `ra`, `m` and `b` cases are all September 2026 PRs with their real labels.
 On the first Opus 5.5 run (eight cases, low effort) the review comments cited a file and function
-without a line for a third of their findings, which the reviewer definition requires and the
-claim check now records as `line-missing`.
+without a line for a third of their findings, which the reviewer definition requires; the
+grader reports that per row as `line-missing`.
 
 The row's `output` is parsed from `comment.md`: the verdict from the bold first line, findings
 from the collapsed report's table (`file:line` and severity, where `blocking` and `gate` count
@@ -163,8 +163,8 @@ the pseudo-file `PR_BODY`, which the claim check reads from the fixture's `pr.md
 
 A finding matches a defect on the same file when its line is inside the defect's range widened
 by five lines; a defect with no range matches on file alone, and a finding with no line matches
-when the file holds exactly one defect (the missing line is counted by the claim check as
-`line-missing`, not by recall). Only the first five findings count.
+when the file holds exactly one defect (the missing line is counted per row as `line-missing`,
+outside both recall and the claim rate). Only the first five findings count.
 Per row: verdict correct, blocker and defect recall, unmatched findings, hits on refuted
 findings, and a claim check per finding (the cited file exists at the reviewed tree, the line is
 inside it, the quote is in it). Per config: those averaged over ok rows, plus cross-rep verdict

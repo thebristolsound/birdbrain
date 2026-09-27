@@ -71,6 +71,7 @@ export function render(summary) {
     ['unmatched', 'unmatchedPerRow'],
     ['refuted', 'refutedHitsPerRow'],
     ['claims', 'claimRate'],
+    ['nolines', 'lineMissingPerRow'],
     ['agree', 'verdictAgreement'],
     ['overlap', 'findingOverlap']
   ]

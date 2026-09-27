@@ -30,6 +30,14 @@ export function loadFixtures(dir = FIXTURES_DIR) {
   return out
 }
 
+// A mutation case's file is the mutated copy the builder wrote, never the
+// head commit's: the model read the mutation, so the claim check must too.
+export const fixtureReader = (fixturesDir, repo) => (kase) => (sha, path) => {
+  if (path === PR_BODY) path = 'pr.md'
+  const mutated = join(fixturesDir, kase.id, path === 'pr.md' ? '' : 'files', path)
+  return existsSync(mutated) ? readFileSync(mutated, 'utf8') : showFile(repo, sha, path)
+}
+
 export function readRows(path) {
   const files = statSync(path).isDirectory()
     ? readdirSync(path)
@@ -88,13 +96,7 @@ export function main(
     else throw new Error(`unknown argument ${argv[i]}`)
   }
   const fixtures = loadFixtures(fixturesDir)
-  // A mutation case's file is the mutated copy the builder wrote, never the
-  // head commit's: the model read the mutation, so the claim check must too.
-  const readFileFor = (kase) => (sha, path) => {
-    if (path === PR_BODY) path = 'pr.md'
-    const mutated = join(fixturesDir, kase.id, path === 'pr.md' ? '' : 'files', path)
-    return existsSync(mutated) ? readFileSync(mutated, 'utf8') : showFile(repo, sha, path)
-  }
+  const readFileFor = fixtureReader(fixturesDir, repo)
   if (self) {
     const result = selfCheck([...fixtures.values()], { readFileFor })
     log(json ? JSON.stringify(result, null, 2) : render([result.oracle, result.null, result.error]))

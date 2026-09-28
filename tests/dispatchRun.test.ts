@@ -5,27 +5,34 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync
 } from 'fs'
 import { tmpdir } from 'os'
-import { join, resolve } from 'path'
+import { dirname, join, resolve } from 'path'
 
 const SCRIPT = resolve(__dirname, '..', '.github', 'scripts', 'dispatch', 'run.sh')
 const SESSION = '5f1c2a3b-0000-4000-8000-000000000001'
 const TRUNCATED = 'Waiting on CI for PR #1589 before the pre-pass. sk-ant-oat01-abcdefghijkl'
 const REPORT = '## Dispatch cycle report\n\n- Slot: 0/1\n- Exited idle'
+// Assembled at runtime, like the values in dispatchRedact.test.ts.
+const CREDENTIAL = `ghp_${'Ab3'.repeat(12)}`
 
-// A stand-in for the CLI: the nth call prints responses/<n>.json and records its
-// arguments (NUL-separated, since the prompt spans lines) and the background flag.
+// A stand-in for the CLI: the nth call copies leave-<n>/ into the working directory,
+// as the agent copies a reviewer report, prints responses/<n>.json, and exits with
+// exit-<n> when that file exists. It records its arguments (NUL-separated, since the
+// prompt spans lines) and the background flag.
 const STUB = `#!/usr/bin/env bash
 dir="$(dirname "$0")"
 n=$(( $(cat "$dir/count" 2>/dev/null || echo 0) + 1 ))
 echo "$n" > "$dir/count"
 printf '%s\\0' "$@" > "$dir/args-$n"
 printf '%s' "\${CLAUDE_CODE_DISABLE_BACKGROUND_TASKS:-}" > "$dir/env-$n"
-cat "$dir/responses/$n.json"
+if [ -d "$dir/leave-$n" ]; then cp -R "$dir/leave-$n/." .; fi
+cat "$dir/responses/$n.json" || exit
+if [ -f "$dir/exit-$n" ]; then exit "$(cat "$dir/exit-$n")"; fi
 `
 
 const result = (text: string, cost: number) => ({
@@ -35,8 +42,25 @@ const result = (text: string, cost: number) => ({
   session_id: SESSION,
   total_cost_usd: cost,
   num_turns: 10,
-  duration_ms: 1000
+  duration_ms: 1000,
+  // Two models, so stripping the spend has to reach every entry.
+  modelUsage: {
+    'claude-opus-5-5': { inputTokens: 100, outputTokens: 20, costUSD: cost * 0.75 },
+    'claude-haiku-4-5': { inputTokens: 50, outputTokens: 10, costUSD: cost * 0.25 }
+  }
 })
+
+const SPEND = /cost/i
+
+// The path of every key, at any depth, whose name reads as a spend figure.
+const spendKeys = (value: unknown, path = ''): string[] => {
+  if (Array.isArray(value)) return value.flatMap((item, i) => spendKeys(item, `${path}[${i}]`))
+  if (value === null || typeof value !== 'object') return []
+  return Object.entries(value).flatMap(([key, item]) => [
+    ...(SPEND.test(key) ? [`${path}.${key}`] : []),
+    ...spendKeys(item, `${path}.${key}`)
+  ])
+}
 
 let root: string
 let bin: string
@@ -60,6 +84,14 @@ const respond = (...responses: unknown[]) =>
   responses.forEach((response, index) =>
     writeFileSync(join(bin, 'responses', `${index + 1}.json`), JSON.stringify(response))
   )
+const exitWith = (n: number, status: number) => writeFileSync(join(bin, `exit-${n}`), `${status}`)
+// Keyed by path from the working directory.
+const leave = (n: number, files: Record<string, string>) =>
+  Object.entries(files).forEach(([path, text]) => {
+    const target = join(bin, `leave-${n}`, path)
+    mkdirSync(dirname(target), { recursive: true })
+    writeFileSync(target, text)
+  })
 
 const run = (env: Record<string, string> = {}) =>
   spawnSync('bash', [SCRIPT, 'cycle'], {
@@ -98,7 +130,7 @@ describe('dispatch run.sh', () => {
     expect(dispatchFile('report-1.md')).toContain('Waiting on CI')
     expect(dispatchFile('result-1.json')).toContain('sk-ant-<REDACTED>')
     expect(dispatchFile('result-1.json')).not.toContain('abcdefghijkl')
-    expect(JSON.parse(dispatchFile('meta.json'))).toMatchObject({ cost: 2, turns: 20, calls: 2 })
+    expect(JSON.parse(dispatchFile('meta.json'))).toMatchObject({ turns: 20, calls: 2 })
   })
 
   it('fails when the resumed call still ends without a report', () => {
@@ -119,7 +151,7 @@ describe('dispatch run.sh', () => {
     expect(status, stderr).toBe(0)
     expect(calls()).toBe(1)
     expect(existsSync(join(work, '.dispatch', 'result-1.json'))).toBe(false)
-    expect(JSON.parse(dispatchFile('meta.json'))).toMatchObject({ cost: 1, calls: 1 })
+    expect(JSON.parse(dispatchFile('meta.json'))).toMatchObject({ calls: 1 })
   })
 
   it('runs the CLI with background tasks disabled and Monitor disallowed', () => {
@@ -133,15 +165,88 @@ describe('dispatch run.sh', () => {
   })
 
   it('scrubs the prompt file before a failed cycle exits', () => {
-    // Assembled at runtime, like the values in dispatchRedact.test.ts.
-    const credential = `ghp_${'Ab3'.repeat(12)}`
-
     // No response is queued, so the stub CLI exits non-zero and the cycle fails.
-    const { status } = run({ TARGET_ISSUE: `1 ${credential}` })
+    const { status } = run({ TARGET_ISSUE: `1 ${CREDENTIAL}` })
 
     expect(status).not.toBe(0)
     expect(calls()).toBe(1)
     expect(dispatchFile('prompt.txt')).toContain('ISSUE #1 ghp_<REDACTED>')
-    expect(dispatchFile('prompt.txt')).not.toContain(credential)
+    expect(dispatchFile('prompt.txt')).not.toContain(CREDENTIAL)
+  })
+
+  it('keeps the spend out of meta.json and both result files', () => {
+    respond([{ type: 'system', session_id: SESSION }, result(TRUNCATED, 1.25)], result(REPORT, 0.5))
+
+    const { status, stderr } = run()
+
+    expect(status, stderr).toBe(0)
+    const files = ['meta.json', 'result.json', 'result-1.json']
+    const spend = files.map((name) => [name, spendKeys(JSON.parse(dispatchFile(name)))])
+    expect(Object.fromEntries(spend)).toEqual(Object.fromEntries(files.map((name) => [name, []])))
+    // Only the spend goes: the token counts beside it stay.
+    expect(JSON.parse(dispatchFile('result.json')).modelUsage).toEqual({
+      'claude-opus-5-5': { inputTokens: 100, outputTokens: 20 },
+      'claude-haiku-4-5': { inputTokens: 50, outputTokens: 10 }
+    })
+  })
+
+  it('keeps the spend out of the run summary and the report in it', () => {
+    respond([{ type: 'system', session_id: SESSION }, result(TRUNCATED, 1.25)], result(REPORT, 0.5))
+
+    const { status, stderr } = run()
+
+    expect(status, stderr).toBe(0)
+    const summary = readFileSync(join(root, 'summary.md'), 'utf8')
+    expect(summary).toContain(REPORT)
+    expect(summary).not.toMatch(SPEND)
+    expect(summary).not.toContain('1.75')
+  })
+
+  it('scrubs every file the agent left under reports/, after the resumed call too', () => {
+    const report = (n: number) => `Full report\n\nThe log quoted ${CREDENTIAL} at step ${n}.\n`
+    respond(result(TRUNCATED, 1), result(REPORT, 1))
+    leave(1, { '.dispatch/reports/pr-1589-abc1234.md': report(1) })
+    leave(2, { '.dispatch/reports/round-2/pr-1589-def5678.md': report(2) })
+
+    const { status, stderr } = run()
+
+    expect(status, stderr).toBe(0)
+    expect(calls()).toBe(2)
+    expect(dispatchFile('reports/pr-1589-abc1234.md')).toBe(
+      report(1).replace(CREDENTIAL, 'ghp_<REDACTED>')
+    )
+    expect(dispatchFile('reports/round-2/pr-1589-def5678.md')).toBe(
+      report(2).replace(CREDENTIAL, 'ghp_<REDACTED>')
+    )
+    expect(readdirSync(join(work, '.dispatch', 'reports')).sort()).toEqual([
+      'pr-1589-abc1234.md',
+      'round-2'
+    ])
+  })
+
+  it('strips the spend and scrubs the reports before a failed call exits', () => {
+    respond({ ...result('API Error: 529 overloaded', 3.25), is_error: true })
+    exitWith(1, 1)
+    leave(1, { '.dispatch/reports/pr-1589-abc1234.md': `${CREDENTIAL}\n` })
+
+    const { status, stderr } = run()
+
+    expect(status).toBe(1)
+    expect(stderr).toContain('claude -p exited 1')
+    expect(stderr).toContain('API Error: 529 overloaded')
+    expect(stderr).not.toMatch(SPEND)
+    expect(spendKeys(JSON.parse(dispatchFile('result.json')))).toEqual([])
+    expect(dispatchFile('reports/pr-1589-abc1234.md')).toBe('ghp_<REDACTED>\n')
+  })
+
+  it("prints a failed call's stdout when it is not JSON", () => {
+    writeFileSync(join(bin, 'responses', '1.json'), 'Error: the CLI stopped before its result\n')
+    exitWith(1, 3)
+
+    const { status, stderr } = run()
+
+    expect(status).toBe(3)
+    expect(stderr).toContain('claude -p exited 3')
+    expect(stderr).toContain('Error: the CLI stopped before its result')
   })
 })

@@ -2,8 +2,9 @@
 
 This folder is the complete export of the claude.ai/design project that produces the
 Birdbrain mocks: 120 files, unzipped byte-faithfully, plus `Birdbrain.html`, a packed
-self-contained render of the live mock received in the same minute. This README is the only
-file added. Everything else is as received.
+self-contained render of the live mock received in the same minute. This repository added two
+files: this README, and `OFL.txt` beside the fonts in `_ds/`, which carries the fonts' licence
+text and copyright lines (#1624). Everything else is as received.
 
 Whether the live mock here replaces the 2026-08-21 standalone as the single design source
 awaits a maintainer ruling. Until then the 2026-08-21 file keeps that role.

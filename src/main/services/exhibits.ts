@@ -10,9 +10,12 @@ import {
 } from '@main/services/db/derivedFileRepo'
 import { listStagingFiles } from '@main/services/db/stagingRepo'
 import {
-  importEntriesOf,
+  authorChainOf,
+  readCaseChains,
   readManifestSnapshot,
   verifyManifestChainText,
+  type AuthorChain,
+  type CaseChains,
   type ChainVerifyResult
 } from '@main/services/manifest'
 import { getPublicKeyPem } from '@main/services/signingKey'
@@ -257,12 +260,12 @@ async function hashFile(path: string): Promise<string> {
 // only AFTER the chain verified: every line up to the head is then covered by
 // the signatures, and an unparsed line is one from a newer schema.
 function verifiedEntryAt(
-  snapshot: ReturnType<typeof readManifestSnapshot>,
+  entries: Record<string, unknown>[],
   chain: ChainVerifyResult,
   index: number | null
 ): ManifestEntry | undefined {
   if (!chain.valid || index === null) return undefined
-  const line = snapshot.entries[index]
+  const line = entries[index]
   if (!line) return undefined
   const parsed = ManifestEntrySchema.safeParse(line)
   return parsed.success ? parsed.data : undefined
@@ -274,11 +277,9 @@ function verifiedEntryAt(
 // question `priorDerivations` in exhibitBackfill.ts and `hasRenumberEntry` ask
 // of a chain that may be broken. What vouches for bytes is the verified set
 // below.
-function readDerivations(
-  snapshot: ReturnType<typeof readManifestSnapshot>
-): DerivationEntryFacts[] {
+function readDerivations(entries: Record<string, unknown>[]): DerivationEntryFacts[] {
   const facts: DerivationEntryFacts[] = []
-  for (const line of snapshot.entries) {
+  for (const line of entries) {
     const parsed = ManifestEntrySchema.safeParse(line)
     if (!parsed.success || parsed.data.type !== 'derivation') continue
     const { caseId, parentExhibitId, outputPath, outputHash } = parsed.data
@@ -300,16 +301,21 @@ function readDerivations(
 async function verifyDerivedFiles(
   exhibit: Exhibit,
   store: CaptureStore,
-  snapshot: ReturnType<typeof readManifestSnapshot>,
-  chain: ChainVerifyResult
+  chains: CaseChains,
+  author: AuthorChain
 ): Promise<DerivedFileVerification[]> {
   // Two sets, because "the chain has no entry for this file" and "the chain has
   // one but does not verify" are different findings. Binding uses the verified
   // set — empty on a broken chain, since an unverified line is a forger's word
   // — and the lenient set decides only which of the two the caller is told.
-  const present = readDerivations(snapshot)
-  const entries = chain.valid ? present : []
-  const imports = importEntriesOf(snapshot)
+  // Another member's Exhibit can be derived from by its author or here, so
+  // both chains answer for its Derived Files (#1511).
+  const sources = author === chains.own ? [author] : [author, chains.own]
+  const present = sources.flatMap((source) => readDerivations(source.entries))
+  const entries = sources.flatMap((source) =>
+    source.chain.valid ? readDerivations(source.entries) : []
+  )
+  const { imports } = chains.own
   const caseDir = store.caseDir(exhibit.caseId)
   // The entry names the parent through the Case's custody records rather than
   // by bare id equality, the same resolution `verifyExhibit` gives an Exhibit:
@@ -389,15 +395,18 @@ export async function verifyCaseDerivedFiles(
   const byExhibitId = new Map<string, DerivedFileVerification[]>()
   const exhibits = listExhibits(caseId)
   if (exhibits.length === 0) return byExhibitId
-  const snapshot = readManifestSnapshot(store.caseDir(caseId))
-  const chain = verifyManifestChainText(snapshot.jsonl.toString('utf-8'), {
-    publicKeyPem: getPublicKeyPem()
-  })
+  const chains = readCaseChains(store.caseDir(caseId))
   for (const exhibit of exhibits) {
-    const results = await verifyDerivedFiles(exhibit, store, snapshot, chain)
+    const results = await verifyDerivedFiles(exhibit, store, chains, authorChain(chains, exhibit))
     if (results.length > 0) byExhibitId.set(exhibit.id, results)
   }
   return byExhibitId
+}
+
+// The chain an Exhibit's author signed, which alone can vouch for its bytes.
+function authorChain(chains: CaseChains, exhibit: Exhibit): AuthorChain {
+  const { authorInstallationId, manifestSeq, contentHash } = exhibit
+  return authorChainOf(chains, { authorInstallationId, manifestIndex: manifestSeq, contentHash })
 }
 
 // Verify one Exhibit (X37). `capture` delegates to the Capture path and returns
@@ -423,11 +432,10 @@ export async function verifyExhibit(
       reason: 'Exhibit not found in this case'
     }
   }
-  const snapshot = readManifestSnapshot(store.caseDir(caseId))
-  const chain = verifyManifestChainText(snapshot.jsonl.toString('utf-8'), {
-    publicKeyPem: getPublicKeyPem()
-  })
-  const derived = await verifyDerivedFiles(exhibit, store, snapshot, chain)
+  const chains = readCaseChains(store.caseDir(caseId))
+  const author = authorChain(chains, exhibit)
+  const { chain } = author
+  const derived = await verifyDerivedFiles(exhibit, store, chains, author)
   const base = { exhibitId, caseId, kind: exhibit.kind, derived }
 
   if (exhibit.kind === 'capture') {
@@ -459,7 +467,7 @@ export async function verifyExhibit(
   if (!chain.valid) {
     return { ...base, status: 'chain-broken', reason: chain.reason }
   }
-  const entry = verifiedEntryAt(snapshot, chain, exhibit.manifestSeq)
+  const entry = verifiedEntryAt(author.entries, chain, exhibit.manifestSeq)
   // The entry names the row through the case's custody records, not by bare id
   // equality: an archive import keeps the source's `exhibitId` on the entry and
   // remaps a colliding row id, and only the id map the `import` entry anchors
@@ -471,7 +479,7 @@ export async function verifyExhibit(
     !entryDescribesRow(
       { caseId: entry.caseId, rowId: entry.exhibitId },
       exhibit,
-      importEntriesOf(snapshot),
+      author.imports,
       store.caseDir(caseId)
     )
   ) {

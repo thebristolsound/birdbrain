@@ -17,6 +17,12 @@ export const CAPTURE_PACKAGE_DIRECTORY = 'pages'
 export const SCREENSHOT_PACKAGE_DIRECTORY = 'screenshots'
 /** Package directory holding RFC 3161 Timestamp Tokens. */
 export const TIMESTAMP_PACKAGE_DIRECTORY = 'timestamps'
+/**
+ * Directory holding the member chains of the Cases this one was forked from,
+ * one subdirectory per source Case id. Same name in a package, a Case
+ * Archive and a Case directory.
+ */
+export const LINEAGE_DIRECTORY = 'lineage'
 
 const CAPTURE_PAGE_EXTENSION = '.mhtml'
 const SCREENSHOT_EXTENSION = '.png'
@@ -115,4 +121,56 @@ export function derivedFilePackagePath(
 ): string {
   const name = baseName(derivedStoragePath)
   return parentDirectory ? `${parentDirectory}/${name}` : name
+}
+
+const CHAIN_PREFIX = 'manifest.'
+const CHAIN_EXTENSION = '.jsonl'
+
+/**
+ * `manifest.{installationId}.jsonl`: another member's chain of a Shared Case,
+ * beside the local one. Same name in a package, a Case Archive and a Case
+ * directory.
+ */
+export function memberChainPath(installationId: string): string {
+  return `${CHAIN_PREFIX}${installationId}${CHAIN_EXTENSION}`
+}
+
+/**
+ * `lineage/{sourceCaseId}/manifest.{installationId}.jsonl`: a member chain of
+ * the Case a fork was imported from. The source Case id keys it because one
+ * installation can be a member of both Cases, with one chain in each.
+ */
+export function lineageChainPath(sourceCaseId: string, installationId: string): string {
+  return `${LINEAGE_DIRECTORY}/${sourceCaseId}/${memberChainPath(installationId)}`
+}
+
+export interface ChainPath {
+  installationId: string
+  // Set for a lineage chain: the Case it belongs to.
+  sourceCaseId?: string
+}
+
+// An id is one path segment: a name a crafted archive or package could use
+// to climb out of the directory it is written to is not an id.
+function isSegment(id: string): boolean {
+  return id.length > 0 && id !== '.' && id !== '..' && !/[/\\]/.test(id)
+}
+
+/**
+ * The member or lineage chain a path names, or null when it names neither.
+ * The reverse of `memberChainPath` and `lineageChainPath`, and the only
+ * reader of those names, so a writer and a reader cannot disagree.
+ */
+export function parseChainPath(path: string): ChainPath | null {
+  const parts = path.split('/')
+  const file = parts.at(-1) ?? ''
+  if (!file.startsWith(CHAIN_PREFIX) || !file.endsWith(CHAIN_EXTENSION)) return null
+  const installationId = file.slice(CHAIN_PREFIX.length, -CHAIN_EXTENSION.length)
+  if (!isSegment(installationId)) return null
+  if (parts.length === 1) return { installationId }
+  const [directory, sourceCaseId] = parts
+  if (parts.length !== 3 || directory !== LINEAGE_DIRECTORY || !isSegment(sourceCaseId)) {
+    return null
+  }
+  return { installationId, sourceCaseId }
 }

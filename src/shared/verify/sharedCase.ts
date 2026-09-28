@@ -22,6 +22,13 @@ import type { ChainVerifyResult, UnsupportedEntry } from '@shared/verify/manifes
 // two members share a key, and every member the Owner could hold a chain for
 // has one supplied.
 //
+// LINEAGE. An `import` ends a roster. A fork continues the source Owner's
+// chain behind an `import` naming that Owner's key, so the roster is read from
+// the entries at or after the Owner chain's last `import`, and the entries
+// before it are verified as the source Shared Case in their own right: under
+// the key the `import` names, with the source Case's other member chains
+// supplied as lineage. A fork of a fork repeats this once per `import`.
+//
 // What this proves: each member's chain was not edited without that member's
 // key; each `merge` names chain states that exist; a citation resolves to one
 // entry. What it does not prove: that a member's key was not misused by whoever
@@ -47,11 +54,22 @@ export interface SharedCaseMemberChain {
   jsonl: string
 }
 
+// The member chains of a Case this one was forked from
+// (`lineage/<sourceCaseId>/manifest.<installationId>.jsonl`). The source
+// Owner's chain is not among them: it is the history the fork's own chain
+// continues.
+export interface SharedCaseLineage {
+  sourceCaseId: string
+  members: SharedCaseMemberChain[]
+}
+
 export interface SharedCaseInput {
   // The Owner's chain and the key it is verified under: the trust anchor.
   owner: { jsonl: string; publicKeyPem: string }
   // Every other member chain, as received (`manifest.<installationId>.jsonl`).
   members: SharedCaseMemberChain[]
+  // The member chains of every Case an `import` in the Owner's chain names.
+  lineage?: SharedCaseLineage[]
 }
 
 export type SharedCaseOutcome =
@@ -99,6 +117,8 @@ export interface SharedCaseCitation {
   // Index in that member's chain of the entry the citation resolves to.
   index: number
   exhibitId: string
+  // Set when the citation was made in a Case this one was forked from.
+  sourceCaseId?: string
 }
 
 export interface SharedCaseExclusion {
@@ -107,6 +127,17 @@ export interface SharedCaseExclusion {
   reason?: string
   // Index in the Owner's chain of the `exclude`.
   index: number
+  // When the Owner wrote the `exclude`, and the name it wrote under.
+  timestamp: string
+  operatorName: string
+  // Set when the Owner of a Case this one was forked from wrote it.
+  sourceCaseId?: string
+}
+
+// The roster of a Case this one was forked from.
+export interface SharedCaseLineageRoster {
+  sourceCaseId: string
+  members: SharedCaseMember[]
 }
 
 export interface SharedCaseFinding {
@@ -135,9 +166,16 @@ export interface SharedCaseVerifyResult {
   members: SharedCaseMember[]
   citations: Map<string, SharedCaseCitation>
   exclusions: SharedCaseExclusion[]
+  // Every Case this one was forked from, nearest first.
+  lineage: SharedCaseLineageRoster[]
+  // The Shared Case's id, as the Owner's own `member-add` states it. Absent
+  // for a Case with no roster.
+  caseId?: string
   // The accepted entries of every chain that verified, by installation id (the
   // Owner's under `owner` when no roster names it). A revoked member's stop at
-  // the head the Owner had merged. What a caller binds artifacts against.
+  // the head the Owner had merged. What a caller binds artifacts against. A
+  // lineage chain is keyed `<sourceCaseId>/<installationId>`: one installation
+  // can hold a chain in both Cases.
   entries: Map<string, ManifestEntry[]>
   // The key `entries` holds the caller's trusted chain under. Set by
   // `verifySharedCaseReplica` once it knows which member the local chain is.
@@ -149,6 +187,11 @@ export interface SharedCaseVerifyResult {
 }
 
 type MergeEntry = Extract<ManifestEntry, { type: 'merge' }>
+type ImportEntry = Extract<ManifestEntry, { type: 'import' }>
+
+// The manifest schema that introduced Shared Cases: what a verifier has to
+// read to walk one, and what a package of one names as its requirement.
+export const SHARED_CASE_SCHEMA_VERSION = 4
 
 // The entry types schema 4 introduced. A chain carrying any of them is part
 // of a Shared Case; the package verifier keys its walk on this set.
@@ -178,6 +221,28 @@ function parseVerifiedChain(jsonl: string): ManifestEntry[] {
       if (!parsed.success) throw new Error(`verified chain failed to parse at index ${index}`)
       return parsed.data
     })
+}
+
+// The first `count` lines of a chain, as a chain text of its own.
+function chainPrefix(jsonl: string, count: number): string {
+  const lines = jsonl
+    .split('\n')
+    .filter((line) => line.trim().length > 0)
+    .slice(0, count)
+  return lines.length === 0 ? '' : lines.join('\n') + '\n'
+}
+
+// The chain's last `import`: where this Case's own entries begin.
+function lastImportOf(entries: ManifestEntry[]): ImportEntry | undefined {
+  let last: ImportEntry | undefined
+  for (const entry of entries) if (entry.type === 'import') last = entry
+  return last
+}
+
+// The entries of this Case: from the last `import` on, or all of them.
+function currentSegment(entries: ManifestEntry[]): ManifestEntry[] {
+  const cut = lastImportOf(entries)?.index ?? 0
+  return entries.filter((e) => e.index >= cut)
 }
 
 // PEM comparison tolerant of the line-ending and trailing-newline differences
@@ -282,16 +347,13 @@ function buildRoster(entries: ManifestEntry[], ownerPublicKeyPem: string): Roste
         member.acceptedHeadIndex = acceptedHeadBefore(entries, index, memberInstallationId)
       }
     } else if (entry.type === 'exclude') {
-      const { index, exhibitId, authorInstallationId, reason } = entry
+      const { index, exhibitId, authorInstallationId, reason, timestamp, operatorName } = entry
       if (!byId(authorInstallationId)) {
         fail(index, `exclude names an author not on the roster (${authorInstallationId})`)
         continue
       }
-      exclusions.push(
-        reason === undefined
-          ? { exhibitId, authorInstallationId, index }
-          : { exhibitId, authorInstallationId, reason, index }
-      )
+      const exclusion = { exhibitId, authorInstallationId, index, timestamp, operatorName }
+      exclusions.push(reason === undefined ? exclusion : { ...exclusion, reason })
     }
   }
   return { ownerId, caseId, members, findings, exclusions }
@@ -331,15 +393,29 @@ function acceptedHeadBefore(
  *
  * A Case with no `member-add` entries has one member: its citations carry no
  * prefix, and any remote chain supplied is `unknown-member`.
+ *
+ * A Case forked from another verifies that one too, from the Owner chain's
+ * history before its last `import` and the lineage chains supplied for it.
  */
 export function verifySharedCase(input: SharedCaseInput): SharedCaseVerifyResult {
+  return verifyCase(input, false)
+}
+
+// `nested` is set for a source Case verified from a fork's history: the check
+// that every supplied lineage belongs to some `import` runs once, at the top,
+// where every `import` in the chain is in view.
+function verifyCase(input: SharedCaseInput, nested: boolean): SharedCaseVerifyResult {
   const findings: SharedCaseFinding[] = []
   const memberChains = new Map<string, ChainVerifyResult>()
   const citations = new Map<string, SharedCaseCitation>()
   const entriesById = new Map<string, ManifestEntry[]>()
+  const lineage: SharedCaseLineageRoster[] = []
+  const lineageEntries = new Map<string, ManifestEntry[]>()
+  const lineageExclusions: SharedCaseExclusion[] = []
+  let lineageUnsupported: UnsupportedEntry | undefined
   const finish = (
     owner: ChainVerifyResult,
-    roster: Pick<Roster, 'members' | 'exclusions'>,
+    roster: Pick<Roster, 'members' | 'exclusions' | 'caseId'>,
     unsupported?: UnsupportedEntry
   ): SharedCaseVerifyResult => {
     // A definite finding leads: `outcome` must not read "too old" when this
@@ -348,6 +424,9 @@ export function verifySharedCase(input: SharedCaseInput): SharedCaseVerifyResult
       (a, b) => Number(a.outcome === 'verifier-too-old') - Number(b.outcome === 'verifier-too-old')
     )
     const first = findings[0]
+    const candidate = unsupported ?? lineageUnsupported
+    const definite = findings.some((f) => f.outcome !== 'verifier-too-old')
+    for (const [key, accepted] of lineageEntries) entriesById.set(key, accepted)
     return {
       valid: findings.length === 0,
       outcome: first?.outcome ?? 'pass',
@@ -357,9 +436,11 @@ export function verifySharedCase(input: SharedCaseInput): SharedCaseVerifyResult
       memberChains,
       members: roster.members,
       citations,
-      exclusions: roster.exclusions,
+      exclusions: [...roster.exclusions, ...lineageExclusions],
+      lineage,
       entries: entriesById,
-      ...(unsupported ? { unsupported } : {})
+      ...(roster.caseId !== undefined ? { caseId: roster.caseId } : {}),
+      ...(candidate && !definite ? { unsupported: candidate } : {})
     }
   }
   const empty = { members: [], exclusions: [] }
@@ -389,7 +470,7 @@ export function verifySharedCase(input: SharedCaseInput): SharedCaseVerifyResult
     return finish(owner, empty)
   }
   const ownerEntries = parseVerifiedChain(input.owner.jsonl)
-  const roster = buildRoster(ownerEntries, input.owner.publicKeyPem)
+  const roster = buildRoster(currentSegment(ownerEntries), input.owner.publicKeyPem)
   findings.push(...roster.findings)
   const { ownerId, caseId, members } = roster
   if (caseId !== undefined) {
@@ -404,6 +485,85 @@ export function verifySharedCase(input: SharedCaseInput): SharedCaseVerifyResult
     }
   }
   const memberById = new Map(members.map((m) => [m.installationId, m]))
+
+  const lineageInput = input.lineage ?? []
+  if (!nested) {
+    const named = new Set(
+      ownerEntries.flatMap((e) => (e.type === 'import' ? [e.sourceCaseId] : []))
+    )
+    for (const { sourceCaseId } of lineageInput) {
+      if (named.has(sourceCaseId)) continue
+      findings.push({
+        outcome: 'roster-invalid',
+        reason: `lineage chains supplied for Case ${sourceCaseId}, which no import in the Owner's chain names`
+      })
+    }
+  }
+
+  // 1b. The Case this one was forked from: the Owner chain's history before
+  // its last `import`, verified as a Shared Case under the key that `import`
+  // names. The chain walk above already verified that history under the same
+  // key, anchored through the `import` the trusted key signed. It runs when
+  // the history was shared or lineage chains were supplied for it; a history
+  // with neither is a single-member Case and reads as it always has.
+  const lastImport = lastImportOf(ownerEntries)
+  const history = lastImport ? ownerEntries.filter((e) => e.index < lastImport.index) : []
+  const forked =
+    lastImport !== undefined &&
+    history.length > 0 &&
+    (lineageInput.length > 0 || history.some((e) => e.type === 'member-add'))
+  if (lastImport && forked) {
+    const { sourceCaseId, sourceInstallationId, sourcePublicKeyPem, index } = lastImport
+    const supplied = lineageInput.find((l) => l.sourceCaseId === sourceCaseId)
+    const source = verifyCase(
+      {
+        owner: { jsonl: chainPrefix(input.owner.jsonl, index), publicKeyPem: sourcePublicKeyPem },
+        members: supplied?.members ?? [],
+        lineage: lineageInput.filter((l) => l !== supplied)
+      },
+      true
+    )
+    for (const finding of source.findings) {
+      findings.push({ ...finding, reason: `lineage Case ${sourceCaseId}: ${finding.reason}` })
+    }
+    lineageUnsupported = source.unsupported
+    // The source Owner's entries are this chain's own history, already in it.
+    const sourceOwner = source.members.find((m) => m.role === 'owner')?.installationId
+    // The import names the Case and the Owner its verified history
+    // establishes. The history's key is bound by the chain walk; its Case id
+    // and Owner are not, and an import relabelling them would attribute the
+    // source Case's Exhibits to another.
+    const establishedCaseId = source.caseId ?? lastImportOf(history)?.caseId
+    if (establishedCaseId !== undefined && establishedCaseId !== sourceCaseId) {
+      findings.push({
+        outcome: 'roster-invalid',
+        installationId: ownerId ?? 'owner',
+        index,
+        reason: `import at index ${index} names source Case ${sourceCaseId}, its history is Case ${establishedCaseId}`
+      })
+    }
+    if (sourceOwner !== undefined && sourceOwner !== sourceInstallationId) {
+      findings.push({
+        outcome: 'roster-invalid',
+        installationId: ownerId ?? 'owner',
+        index,
+        reason: `import at index ${index} names source installation ${sourceInstallationId}, the source Case's Owner is ${sourceOwner}`
+      })
+    }
+    for (const [id, accepted] of source.entries) {
+      if (id !== (sourceOwner ?? 'owner')) lineageEntries.set(`${sourceCaseId}/${id}`, accepted)
+    }
+    for (const [id, result] of source.memberChains) {
+      memberChains.set(`${sourceCaseId}/${id}`, result)
+    }
+    for (const [key, citation] of source.citations) {
+      citations.set(`${sourceCaseId}/${key}`, { sourceCaseId, ...citation })
+    }
+    for (const exclusion of source.exclusions) {
+      lineageExclusions.push({ sourceCaseId, ...exclusion })
+    }
+    lineage.push({ sourceCaseId, members: source.members }, ...source.lineage)
+  }
 
   // 2. Each remote chain under its member's key.
   // Verified entries by chain, the input to the cross-chain checks. The
@@ -535,8 +695,13 @@ export function verifySharedCase(input: SharedCaseInput): SharedCaseVerifyResult
     return finish(owner, roster, definite ? undefined : firstUnsupported)
   }
 
+  // The entries this Case wrote. A forked Owner chain's history was walked as
+  // the source Case in 1b, and its merges and citations are that Case's.
+  const walked = new Map(entriesById)
+  if (forked) walked.set(ownerId ?? 'owner', currentSegment(ownerEntries))
+
   // 3. Every merge head, in every verified chain.
-  for (const [writerId, entries] of entriesById) {
+  for (const [writerId, entries] of walked) {
     for (const entry of entries) {
       if (entry.type !== 'merge') continue
       checkMergeHeads(writerId, entry, entriesById, findings)
@@ -545,7 +710,7 @@ export function verifySharedCase(input: SharedCaseInput): SharedCaseVerifyResult
 
   // 4. Citations. A code is the entry's own, or its writer's from the roster;
   // a Case with no roster has one member and no prefix.
-  for (const [writerId, entries] of entriesById) {
+  for (const [writerId, entries] of walked) {
     const writerCode = memberById.get(writerId)?.memberCode
     for (const entry of entries) {
       if (entry.type === 'exhibit') {
@@ -673,6 +838,8 @@ export interface SharedCaseReplicaInput {
   // Every other chain the replica holds, as received. One of them is the
   // Owner's when the local installation is not the Owner.
   others: SharedCaseMemberChain[]
+  // The member chains of every Case this one was forked from.
+  lineage?: SharedCaseLineage[]
 }
 
 // What a raw, unverified scan of a chain file yields: enough to LOCATE the
@@ -685,9 +852,29 @@ interface OwnerClaim {
   publicKeyPem: string
 }
 
+// A chain's raw lines, and where its current segment starts: the line of its
+// last `import`, or 0. A fork's history before that names its source Case's
+// roster, which says nothing about who this Case's Owner is.
+function rawSegment(jsonl: string): { lines: string[]; start: number } {
+  const lines = jsonl.split('\n').filter((line) => line.trim().length > 0)
+  let start = 0
+  lines.forEach((line, index) => {
+    let raw: unknown
+    try {
+      raw = JSON.parse(line)
+    } catch {
+      return
+    }
+    if (raw !== null && typeof raw === 'object' && (raw as { type?: unknown }).type === 'import') {
+      start = index
+    }
+  })
+  return { lines, start }
+}
+
 function readOwnerClaim(chain: SharedCaseMemberChain): OwnerClaim | undefined {
-  const lines = chain.jsonl.split('\n').filter((line) => line.trim().length > 0)
-  for (let index = 0; index < lines.length; index++) {
+  const { lines, start } = rawSegment(chain.jsonl)
+  for (let index = start; index < lines.length; index++) {
     let raw: unknown
     try {
       raw = JSON.parse(lines[index])
@@ -724,16 +911,18 @@ function readOwnerClaim(chain: SharedCaseMemberChain): OwnerClaim | undefined {
  * verifies that chain under that key before reading anything from it.
  */
 export function verifySharedCaseReplica(input: SharedCaseReplicaInput): SharedCaseVerifyResult {
-  const { local, others } = input
+  const { local, others, lineage = [] } = input
   const asOwner = (): SharedCaseVerifyResult => {
-    const result = verifySharedCase({ owner: local, members: others })
+    const result = verifySharedCase({ owner: local, members: others, lineage })
     const ownerId = result.members.find((m) => m.role === 'owner')?.installationId
     return { ...result, localInstallationId: ownerId ?? 'owner' }
   }
   const localChain = verifyManifestChainText(local.jsonl, { publicKeyPem: local.publicKeyPem })
   if (!localChain.valid) return asOwner()
   const localEntries = parseVerifiedChain(local.jsonl)
-  if (localEntries.some((e) => e.type === 'member-add')) return asOwner()
+  // Only this Case's roster says who its Owner is: a fork carries its source
+  // Case's `member-add` entries as history.
+  if (currentSegment(localEntries).some((e) => e.type === 'member-add')) return asOwner()
 
   const claims = others.map(readOwnerClaim).filter((c): c is OwnerClaim => c !== undefined)
   if (claims.length === 0) return asOwner()
@@ -747,6 +936,7 @@ export function verifySharedCaseReplica(input: SharedCaseReplicaInput): SharedCa
     members: [],
     citations: new Map(),
     exclusions: [],
+    lineage: [],
     entries: new Map()
   })
   if (claims.length > 1) {
@@ -785,14 +975,15 @@ export function verifySharedCaseReplica(input: SharedCaseReplicaInput): SharedCa
     members: [
       { installationId: localId, jsonl: local.jsonl },
       ...others.filter((o) => o.installationId !== claim.installationId)
-    ]
+    ],
+    lineage
   })
   return { ...result, localInstallationId: localId }
 }
 
 function readMemberIdForKey(jsonl: string, publicKeyPem: string): string | undefined {
-  for (const line of jsonl.split('\n')) {
-    if (line.trim().length === 0) continue
+  const { lines, start } = rawSegment(jsonl)
+  for (const line of lines.slice(start)) {
     let raw: unknown
     try {
       raw = JSON.parse(line)

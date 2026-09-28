@@ -3,6 +3,7 @@ import {
   closeSync,
   fstatSync,
   openSync,
+  readdirSync,
   statSync,
   readFileSync,
   readSync,
@@ -15,9 +16,23 @@ import { createHash } from 'crypto'
 import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import { ManifestEntrySchema } from '@shared/schemas'
 import type { ManifestEntry } from '@shared/schemas'
-import { canonicalStringify, verifyManifestChainText } from '@shared/verify'
+import {
+  canonicalStringify,
+  SHARED_CASE_ENTRY_TYPES,
+  verifyManifestChainText,
+  verifySharedCaseReplica
+} from '@shared/verify'
 import type { PackagedArtifact } from '@shared/verify/packageHash'
-import type { ChainVerifyResult, CaptureChainEntry, UnsupportedEntry } from '@shared/verify'
+import type {
+  ChainVerifyResult,
+  CaptureChainEntry,
+  SharedCaseLineage,
+  SharedCaseMemberChain,
+  SharedCaseVerifyResult,
+  UnsupportedEntry
+} from '@shared/verify'
+import { LINEAGE_DIRECTORY, parseChainPath } from '../../packages/evidence-package-layout/index'
+import { getInstallationId } from '@main/services/installationId'
 import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
 import type {
   TrustedTime,
@@ -178,6 +193,214 @@ export function readManifestSnapshot(caseDir: string): ManifestSnapshot {
   const jsonl = existsSync(path) ? readFileSync(path) : Buffer.alloc(0)
   const entries = readEntries(jsonl.toString('utf-8'))
   return { jsonl, entries, head: head(entries) }
+}
+
+// Another member's chain, or a lineage chain, in a Case directory: byte-for-byte
+// as received, which is how an export and an archive ship it.
+export interface ChainFileSnapshot {
+  // Relative to the Case directory, and the name it ships under.
+  path: string
+  installationId: string
+  // Set for a lineage chain: the Case it belongs to.
+  sourceCaseId?: string
+  jsonl: Buffer
+}
+
+// Every other member chain beside the manifest and every lineage chain under
+// the lineage directory, by the Package Layout's names. A Case nobody shared
+// or forked has none.
+export function readChainFileSnapshots(caseDir: string): ChainFileSnapshot[] {
+  if (!existsSync(caseDir)) return []
+  const read = (path: string): ChainFileSnapshot[] => {
+    const chain = parseChainPath(path)
+    return chain ? [{ path, ...chain, jsonl: readFileSync(join(caseDir, path)) }] : []
+  }
+  const members = readdirSync(caseDir).flatMap(read)
+  const lineageDir = join(caseDir, LINEAGE_DIRECTORY)
+  if (!existsSync(lineageDir) || !statSync(lineageDir).isDirectory()) return members
+  const lineage = readdirSync(lineageDir).flatMap((sourceCaseId) =>
+    statSync(join(lineageDir, sourceCaseId)).isDirectory()
+      ? readdirSync(join(lineageDir, sourceCaseId)).flatMap((name) =>
+          read([LINEAGE_DIRECTORY, sourceCaseId, name].join('/'))
+        )
+      : []
+  )
+  return [...members, ...lineage]
+}
+
+// The chain snapshots in the shape the Shared Case walk takes them.
+export function sharedCaseChains(chains: ChainFileSnapshot[]): {
+  others: SharedCaseMemberChain[]
+  lineage: SharedCaseLineage[]
+} {
+  const others: SharedCaseMemberChain[] = []
+  const lineage = new Map<string, SharedCaseMemberChain[]>()
+  for (const { installationId, sourceCaseId, jsonl } of chains) {
+    const chain = { installationId, jsonl: jsonl.toString('utf-8') }
+    if (sourceCaseId === undefined) others.push(chain)
+    else lineage.set(sourceCaseId, [...(lineage.get(sourceCaseId) ?? []), chain])
+  }
+  return {
+    others,
+    lineage: [...lineage].map(([sourceCaseId, members]) => ({ sourceCaseId, members }))
+  }
+}
+
+// Whether a manifest and its chains are a Shared Case, or a fork of one: the
+// same signals the package verifier walks on, so the app and the verifier
+// agree about which Cases have a roster to state.
+export function isSharedCase(
+  entries: Record<string, unknown>[],
+  chains: ChainFileSnapshot[]
+): boolean {
+  const sharedTypes: ReadonlySet<unknown> = SHARED_CASE_ENTRY_TYPES
+  return (
+    chains.length > 0 ||
+    entries.some(
+      (e) => sharedTypes.has(e.type) || (e.type === 'exhibit' && e.memberCode !== undefined)
+    )
+  )
+}
+
+export interface SharedCaseSnapshot {
+  chains: ChainFileSnapshot[]
+  // The Shared Case walk over the manifest and the chains, anchored at the
+  // local key. Undefined for a Case that was never shared or forked.
+  verification?: SharedCaseVerifyResult
+}
+
+// The Shared Case as one read of a Case directory: the chains beside a
+// manifest snapshot the caller already took, and the walk over both. The
+// caller takes the manifest snapshot first and this straight after, with
+// nothing awaited between, so both describe one state of the directory.
+export function readSharedCaseSnapshot(
+  caseDir: string,
+  manifest: ManifestSnapshot
+): SharedCaseSnapshot {
+  const chains = readChainFileSnapshots(caseDir)
+  if (!isSharedCase(manifest.entries, chains)) return { chains }
+  const verification = verifySharedCaseReplica({
+    local: { jsonl: manifest.jsonl.toString('utf-8'), publicKeyPem: getPublicKeyPem() },
+    ...sharedCaseChains(chains)
+  })
+  return { chains, verification }
+}
+
+// The chain that answers for one row: the verified entries of the chain its
+// author signed, at their indices, and that chain's verdict. `imports` are
+// always the local chain's: the custody records that resolve an imported
+// entry's ids to the row's.
+export interface AuthorChain {
+  entries: Record<string, unknown>[]
+  chain: ChainVerifyResult
+  imports: ManifestImportEntry[]
+}
+
+// A Case directory's chains, read once for a verify pass. The Shared Case walk
+// runs only when a row names another author, and then once.
+export interface CaseChains {
+  own: AuthorChain
+  shared: () => SharedCaseSnapshot
+}
+
+const EMPTY_CHAIN: ChainVerifyResult = {
+  valid: true,
+  trustedTimes: new Map(),
+  captureHashesByIndex: new Map(),
+  captureEntriesByIndex: new Map()
+}
+
+export function readCaseChains(caseDir: string): CaseChains {
+  const manifest = readManifestSnapshot(caseDir)
+  const chain =
+    manifest.jsonl.length === 0
+      ? EMPTY_CHAIN
+      : verifyManifestChainText(manifest.jsonl.toString('utf-8'), {
+          publicKeyPem: getPublicKeyPem()
+        })
+  let shared: SharedCaseSnapshot | undefined
+  return {
+    own: { entries: manifest.entries, chain, imports: importEntriesOf(manifest) },
+    shared: () => (shared ??= readSharedCaseSnapshot(caseDir, manifest))
+  }
+}
+
+// Whether `author` holds `entry` of a chain: it wrote the entry, or it wrote a
+// later `import` and so continued the chain that holds it. An archive import
+// keeps the source's entries as they were signed, so an Exhibit from before
+// an Owner's earlier import carries that source's operatorId.
+function heldBy(entries: ManifestEntry[], entry: ManifestEntry, author: string): boolean {
+  return (
+    entry.operatorId === author ||
+    entries.some((e) => e.type === 'import' && e.index > entry.index && e.operatorId === author)
+  )
+}
+
+// The chain that answers for a row (#1511). A row with no author is this
+// installation's and answers to the local chain. A row with one answers to the
+// entry at its index, held by that author, for the same bytes, among the
+// entries the Shared Case walk accepted: a current member's chain, a lineage
+// member's, or the local chain's history, where a fork keeps the source
+// Owner's entries. The author can be this installation: a fork stamps the
+// forking member's source rows, whose entries are lineage. A row no accepted
+// entry answers for gets a failed chain, never the local chain's verdict.
+export function authorChainOf(
+  chains: CaseChains,
+  row: { authorInstallationId: string | null; manifestIndex: number | null; contentHash: string }
+): AuthorChain {
+  const { authorInstallationId: author, manifestIndex, contentHash } = row
+  if (author === null) return chains.own
+  const { imports } = chains.own
+  const failed = (chain: ChainVerifyResult): AuthorChain => ({ entries: [], chain, imports })
+  const { chains: files, verification } = chains.shared()
+  if (!verification) {
+    if (author === getInstallationId()) return chains.own
+    return failed({
+      ...EMPTY_CHAIN,
+      valid: false,
+      reason: `no chain of ${author} in this Case`
+    })
+  }
+  const ownerKey = verification.members.find((m) => m.role === 'owner')?.installationId ?? 'owner'
+  const resultFor = (key: string): ChainVerifyResult | undefined =>
+    key === verification.localInstallationId
+      ? chains.own.chain
+      : (verification.memberChains.get(key) ?? (key === ownerKey ? verification.owner : undefined))
+  const keys = [
+    verification.localInstallationId ?? ownerKey,
+    ...files
+      .map((f) =>
+        f.sourceCaseId === undefined ? f.installationId : `${f.sourceCaseId}/${f.installationId}`
+      )
+      .filter((key) => key === author || key.endsWith(`/${author}`))
+  ]
+  for (const key of keys) {
+    const accepted = verification.entries.get(key)
+    const entry = accepted?.find((e) => e.index === manifestIndex)
+    const chain = resultFor(key)
+    if (
+      accepted &&
+      chain &&
+      entry &&
+      (entry.type === 'exhibit' || entry.type === 'capture') &&
+      heldBy(accepted, entry, author) &&
+      entry.contentHash === contentHash
+    ) {
+      return { entries: accepted as unknown as Record<string, unknown>[], chain, imports }
+    }
+  }
+  // Nothing answers: the author's own chain failing says why, when it did.
+  const broken = keys
+    .slice(1)
+    .map(resultFor)
+    .find((chain) => chain !== undefined && !chain.valid)
+  if (broken) return failed(broken)
+  if (!verification.owner.valid) return failed(verification.owner)
+  return failed({
+    ...EMPTY_CHAIN,
+    valid: false,
+    reason: `no verified chain of ${author} holds entry ${manifestIndex ?? '(none)'} for these bytes`
+  })
 }
 
 // One signed capture entry, as recorded on the chain.

@@ -15,6 +15,11 @@ import {
 import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
 import { ManifestEntrySchema, MEMBER_CODE_PATTERN } from '@shared/schemas'
 import { MANIFEST_SCHEMA_VERSION } from '@shared/constants'
+import {
+  lineageChainPath,
+  memberChainPath,
+  parseChainPath
+} from '../../../src/packages/evidence-package-layout/index'
 
 // Known-answer tests for manifest schema 4: Shared Cases (#1509,
 // docs/specs/2026-09-19-collaborative-cases-design.md). The answers frozen here
@@ -396,7 +401,9 @@ describe('verifySharedCase — a two-member Case', () => {
         exhibitId: `${MEMBER_ID}-exhibit-2`,
         authorInstallationId: MEMBER_ID,
         reason: 'duplicate of CO-1',
-        index: 3
+        index: 3,
+        timestamp: '2026-09-19T12:41:00.000Z',
+        operatorName: OPERATOR.operatorName
       }
     ])
     // The excluded Exhibit's citation still resolves: exports list the
@@ -1115,7 +1122,7 @@ describe('verifyEvidencePackage — an enclosed Shared Case', () => {
         {
           name: 'shared case',
           status: 'pass',
-          reason: `2 member(s): CO=${OWNER_ID}, RM=${MEMBER_ID}`
+          reason: `manifest schema 4; 2 member(s): CO=${OWNER_ID}, RM=${MEMBER_ID}`
         }
       ])
     } finally {
@@ -1301,7 +1308,7 @@ describe('verifyEvidencePackage — an enclosed Shared Case', () => {
         {
           name: 'shared case',
           status: 'pass',
-          reason: `2 member(s): CO=${OWNER_ID}, RM=${MEMBER_ID}`
+          reason: `manifest schema 4; 2 member(s): CO=${OWNER_ID}, RM=${MEMBER_ID}`
         }
       ])
     } finally {
@@ -1327,7 +1334,7 @@ describe('verifyEvidencePackage — an enclosed Shared Case', () => {
       expect(annotation).toEqual({
         name: `exhibit ${MEMBER_ID}-exhibit-1 excluded`,
         status: 'skip',
-        reason: `excluded by the Owner at index 3 (author ${MEMBER_ID}) — outside scope`
+        reason: `excluded by ${OPERATOR.operatorName} (the Owner) at 2026-09-19T12:41:00.000Z, index 3 (author ${MEMBER_ID}) — outside scope`
       })
     } finally {
       rmSync(dir, { recursive: true, force: true })
@@ -1355,6 +1362,247 @@ describe('verifyEvidencePackage — an enclosed Shared Case', () => {
       expect(result.checks.some((c) => c.status === 'fail')).toBe(false)
     } finally {
       rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('verifySharedCase — a Case forked from a replica', () => {
+  // A fork continues the source Owner's chain behind an `import` naming the
+  // Owner's key, signed by the installation that forked it; the source Case's
+  // other member chains travel as lineage (#1511). Here the member forks.
+  const FORK_ID = '0196f7a2-aaaa-bbbb-cccc-00000000f0f0'
+  const FORK_OPERATOR = { ...MEMBER_OPERATOR, operatorName: 'Robin Forker' }
+
+  const importEntry = (
+    caseId: string,
+    sourceCaseId: string,
+    sourceInstallationId: string,
+    sourcePublicKeyPem: string,
+    operator = FORK_OPERATOR
+  ): Record<string, unknown> => ({
+    type: 'import',
+    caseId,
+    sourceCaseId,
+    sourceInstallationId,
+    sourcePublicKeyPem,
+    packageHash: 'c'.repeat(64),
+    idMapSha256: 'd'.repeat(64),
+    verificationResult: {
+      overallValid: true,
+      chainValid: true,
+      artifactCount: 0,
+      artifactFailureCount: 0,
+      captureCount: 0,
+      captureHashFailureCount: 0
+    },
+    timestamp: '2026-09-27T09:00:00.000Z',
+    ...operator,
+    schemaVersion: 2
+  })
+
+  // The bodies of a chain continued past `base`, each signed by `sign`.
+  function extend(
+    base: BuiltChain,
+    bodies: Record<string, unknown>[],
+    sign: (entryHash: string) => string
+  ): BuiltChain {
+    let prevHash = base.hashes.at(-1) ?? ''
+    const hashes = [...base.hashes]
+    const lines = bodies.map((body, i) => {
+      const full = { ...body, index: base.hashes.length + i, prevHash }
+      const entryHash = entryHashOf(full)
+      prevHash = entryHash
+      hashes.push(entryHash)
+      return JSON.stringify({ ...full, entryHash, signature: sign(entryHash) })
+    })
+    return { jsonl: base.jsonl + lines.join('\n') + '\n', hashes }
+  }
+
+  function forkFixture(ownerExtra: Record<string, unknown>[] = []) {
+    const member = memberChain()
+    const owner = buildChain([
+      OWNER_ADD(),
+      MEMBER_ADD(),
+      exhibit(1),
+      merge([{ installationId: MEMBER_ID, index: 1, entryHash: member.hashes[1] }], 40),
+      ...ownerExtra
+    ])
+    const fork = extend(
+      owner,
+      [
+        importEntry(FORK_ID, CASE_ID, OWNER_ID, getPublicKeyPem()),
+        exhibit(1, FORK_OPERATOR, { caseId: FORK_ID, exhibitId: 'fork-exhibit-1' })
+      ],
+      signWith(MEMBER_KEY)
+    )
+    const lineage = [
+      { sourceCaseId: CASE_ID, members: [{ installationId: MEMBER_ID, jsonl: member.jsonl }] }
+    ]
+    return { owner, member, fork, lineage }
+  }
+
+  it('verifies the source Case from the history before the import, and passes', () => {
+    const { fork, lineage } = forkFixture()
+    const result = verifySharedCase({
+      owner: { jsonl: fork.jsonl, publicKeyPem: MEMBER_KEY.publicKey },
+      members: [],
+      lineage
+    })
+    expect(result.findings).toEqual([])
+    // The fork has one member until it is shared again.
+    expect(result.members).toEqual([])
+    expect(result.lineage.map((l) => [l.sourceCaseId, l.members.map((m) => m.memberCode)])).toEqual(
+      [[CASE_ID, ['CO', 'RM']]]
+    )
+    // Source citations keep their prefix and their Case; the fork's own
+    // Exhibit 1 cites bare beside them without colliding.
+    const cited = [...result.citations.values()].map((c) => [c.citation, c.sourceCaseId])
+    expect(cited).toEqual(
+      expect.arrayContaining([
+        ['CO-1', CASE_ID],
+        ['RM-1', CASE_ID],
+        ['RM-2', CASE_ID],
+        ['1', undefined]
+      ])
+    )
+    expect(result.entries.get(`${CASE_ID}/${MEMBER_ID}`)).toHaveLength(2)
+  })
+
+  it('passes from the replica walk a package verifier runs', () => {
+    const { fork, lineage } = forkFixture()
+    const result = verifySharedCaseReplica({
+      local: { jsonl: fork.jsonl, publicKeyPem: MEMBER_KEY.publicKey },
+      others: [],
+      lineage
+    })
+    expect(result.findings).toEqual([])
+    expect(result.lineage).toHaveLength(1)
+  })
+
+  it('names the source Case in a finding about a lineage chain', () => {
+    const { fork } = forkFixture()
+    const forged = buildChain(
+      [exhibit(1, MEMBER_OPERATOR), exhibit(2, MEMBER_OPERATOR, { memberCode: 'RM' })],
+      signWith(keyPair())
+    )
+    const result = verifySharedCase({
+      owner: { jsonl: fork.jsonl, publicKeyPem: MEMBER_KEY.publicKey },
+      members: [],
+      lineage: [
+        { sourceCaseId: CASE_ID, members: [{ installationId: MEMBER_ID, jsonl: forged.jsonl }] }
+      ]
+    })
+    expect(result.valid).toBe(false)
+    expect(result.outcome).toBe('chain-broken')
+    expect(result.reason).toMatch(new RegExp(`^lineage Case ${CASE_ID}: chain of ${MEMBER_ID}`))
+  })
+
+  it('asks for the source Case’s member chains', () => {
+    const { fork } = forkFixture()
+    const result = verifySharedCase({
+      owner: { jsonl: fork.jsonl, publicKeyPem: MEMBER_KEY.publicKey },
+      members: []
+    })
+    expect(result.outcome).toBe('member-chain-missing')
+    expect(result.reason).toContain(`lineage Case ${CASE_ID}: `)
+  })
+
+  it('refuses lineage chains for a Case no import names', () => {
+    const { fork, lineage } = forkFixture()
+    const stray = { sourceCaseId: 'another-case', members: lineage[0].members }
+    const result = verifySharedCase({
+      owner: { jsonl: fork.jsonl, publicKeyPem: MEMBER_KEY.publicKey },
+      members: [],
+      lineage: [...lineage, stray]
+    })
+    expect(result.findings.map((f) => f.outcome)).toEqual(['roster-invalid'])
+    expect(result.reason).toContain('another-case')
+  })
+
+  it('refuses a fork whose import names a key other than the source Owner’s', () => {
+    const { owner, lineage } = forkFixture()
+    const fork = extend(
+      owner,
+      [importEntry(FORK_ID, CASE_ID, OWNER_ID, MEMBER_KEY.publicKey)],
+      signWith(MEMBER_KEY)
+    )
+    const result = verifySharedCase({
+      owner: { jsonl: fork.jsonl, publicKeyPem: MEMBER_KEY.publicKey },
+      members: [],
+      lineage
+    })
+    // The chain walk verifies the history under the key the import names, so
+    // a wrong key fails there, before any roster is read.
+    expect(result.outcome).toBe('chain-broken')
+  })
+
+  it('verifies a fork of a fork, one source Case per import', () => {
+    const { fork, lineage } = forkFixture()
+    const THIRD_KEY = keyPair()
+    const THIRD = { operatorId: 'inst-third', operatorName: 'Sam Third', toolVersion: '0.5.0' }
+    const second = extend(
+      fork,
+      [importEntry('fork-of-fork', FORK_ID, MEMBER_ID, MEMBER_KEY.publicKey, THIRD)],
+      signWith(THIRD_KEY)
+    )
+    const result = verifySharedCase({
+      owner: { jsonl: second.jsonl, publicKeyPem: THIRD_KEY.publicKey },
+      members: [],
+      lineage
+    })
+    expect(result.findings).toEqual([])
+    expect(result.lineage.map((l) => [l.sourceCaseId, l.members.length])).toEqual([
+      [FORK_ID, 0],
+      [CASE_ID, 2]
+    ])
+  })
+
+  it('carries a source Owner’s exclusion with its Case, and the package lists it', () => {
+    const { fork, member } = forkFixture([exclude(`${MEMBER_ID}-exhibit-1`, 42, 'off topic')])
+    const dir = mkdtempSync(join(tmpdir(), 'bb-fork-pkg-'))
+    try {
+      writeFileSync(join(dir, 'manifest.jsonl'), fork.jsonl)
+      writeFileSync(join(dir, 'signing-public-key.pem'), MEMBER_KEY.publicKey)
+      mkdirSync(join(dir, 'lineage', CASE_ID), { recursive: true })
+      writeFileSync(join(dir, lineageChainPath(CASE_ID, MEMBER_ID)), member.jsonl)
+      writeFileSync(join(dir, 'evidence.json'), JSON.stringify({ schemaVersion: 2, captures: [] }))
+      const result = verifyEvidencePackage(dir)
+      expect(result.checks.find((c) => c.name === 'shared case')).toEqual({
+        name: 'shared case',
+        status: 'pass',
+        reason:
+          `manifest schema 4; 0 member(s); forked from Case ${CASE_ID}, ` +
+          `2 member(s): CO=${OWNER_ID}, RM=${MEMBER_ID}`
+      })
+      expect(
+        result.checks.find((c) => c.name === `exhibit ${MEMBER_ID}-exhibit-1 excluded`)
+      ).toEqual({
+        name: `exhibit ${MEMBER_ID}-exhibit-1 excluded`,
+        status: 'skip',
+        reason:
+          `excluded by ${OPERATOR.operatorName} (the Owner of Case ${CASE_ID}) at ` +
+          `2026-09-19T12:42:00.000Z, index 4 (author ${MEMBER_ID}) — off topic`
+      })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('reads the lineage directory by the Package Layout’s names only', () => {
+    expect(parseChainPath(memberChainPath(MEMBER_ID))).toEqual({ installationId: MEMBER_ID })
+    expect(parseChainPath(lineageChainPath(CASE_ID, MEMBER_ID))).toEqual({
+      installationId: MEMBER_ID,
+      sourceCaseId: CASE_ID
+    })
+    for (const name of [
+      'manifest.jsonl',
+      'manifest..jsonl',
+      'lineage/../manifest.x.jsonl',
+      'lineage/a/b/manifest.x.jsonl',
+      'other/a/manifest.x.jsonl',
+      'manifest.a\\b.jsonl'
+    ]) {
+      expect(parseChainPath(name)).toBeNull()
     }
   })
 })

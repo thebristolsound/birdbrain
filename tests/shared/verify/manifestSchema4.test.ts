@@ -1557,6 +1557,49 @@ describe('verifySharedCase — a Case forked from a replica', () => {
     }
   })
 
+  it('verifies a fork shared again from a member’s replica', () => {
+    const { fork, lineage } = forkFixture()
+    const THIRD_KEY = keyPair()
+    const THIRD = { operatorId: 'inst-third', operatorName: 'Sam Third', toolVersion: '0.5.0' }
+    const again = { caseId: FORK_ID, ...FORK_OPERATOR }
+    const reshared = extend(
+      fork,
+      [
+        { ...memberAdd(MEMBER_ID, 'RF', MEMBER_KEY.publicKey, 'owner', 50), ...again },
+        { ...memberAdd(THIRD.operatorId, 'ST', THIRD_KEY.publicKey, 'member', 51), ...again }
+      ],
+      signWith(MEMBER_KEY)
+    )
+    const ownerHead = reshared.hashes.length - 1
+    const third = buildChain(
+      [
+        exhibit(1, THIRD, { caseId: FORK_ID }),
+        {
+          ...merge(
+            [
+              { installationId: MEMBER_ID, index: ownerHead, entryHash: reshared.hashes[ownerHead] }
+            ],
+            52,
+            THIRD
+          ),
+          caseId: FORK_ID
+        }
+      ],
+      signWith(THIRD_KEY)
+    )
+    const result = verifySharedCaseReplica({
+      local: { jsonl: third.jsonl, publicKeyPem: THIRD_KEY.publicKey },
+      others: [{ installationId: MEMBER_ID, jsonl: reshared.jsonl }],
+      lineage
+    })
+    expect(result.findings).toEqual([])
+    expect(result.localInstallationId).toBe(THIRD.operatorId)
+    expect(result.members.map((m) => [m.memberCode, m.role])).toEqual([
+      ['RF', 'owner'],
+      ['ST', 'member']
+    ])
+  })
+
   it('verifies a fork of a fork, one source Case per import', () => {
     const { fork, lineage } = forkFixture()
     const THIRD_KEY = keyPair()

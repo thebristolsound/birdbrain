@@ -852,9 +852,29 @@ interface OwnerClaim {
   publicKeyPem: string
 }
 
+// A chain's raw lines, and where its current segment starts: the line of its
+// last `import`, or 0. A fork's history before that names its source Case's
+// roster, which says nothing about who this Case's Owner is.
+function rawSegment(jsonl: string): { lines: string[]; start: number } {
+  const lines = jsonl.split('\n').filter((line) => line.trim().length > 0)
+  let start = 0
+  lines.forEach((line, index) => {
+    let raw: unknown
+    try {
+      raw = JSON.parse(line)
+    } catch {
+      return
+    }
+    if (raw !== null && typeof raw === 'object' && (raw as { type?: unknown }).type === 'import') {
+      start = index
+    }
+  })
+  return { lines, start }
+}
+
 function readOwnerClaim(chain: SharedCaseMemberChain): OwnerClaim | undefined {
-  const lines = chain.jsonl.split('\n').filter((line) => line.trim().length > 0)
-  for (let index = 0; index < lines.length; index++) {
+  const { lines, start } = rawSegment(chain.jsonl)
+  for (let index = start; index < lines.length; index++) {
     let raw: unknown
     try {
       raw = JSON.parse(lines[index])
@@ -962,8 +982,8 @@ export function verifySharedCaseReplica(input: SharedCaseReplicaInput): SharedCa
 }
 
 function readMemberIdForKey(jsonl: string, publicKeyPem: string): string | undefined {
-  for (const line of jsonl.split('\n')) {
-    if (line.trim().length === 0) continue
+  const { lines, start } = rawSegment(jsonl)
+  for (const line of lines.slice(start)) {
     let raw: unknown
     try {
       raw = JSON.parse(line)

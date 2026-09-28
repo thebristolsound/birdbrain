@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { spawnSync } from 'child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
 import { HAS_JQ } from './helpers/jq'
@@ -18,20 +18,28 @@ const BRANCH = 'agent/7-fix'
 // A stub `gh` that answers `gh api [--paginate] <endpoint> [--jq <expr>]` from
 // fixtures.json, keyed by endpoint, and fails on any endpoint it has no answer
 // for, so a pregate call the fixtures do not cover surfaces as a non-zero exit.
+// A write (`-X <method>`, with `-f` fields) is logged to writes and answered from
+// the key "<method> <endpoint>".
 const GH_STUB = `#!/usr/bin/env bash
 set -euo pipefail
 [ "$1" = api ] || { echo "stub gh: unsupported command $*" >&2; exit 2; }
 shift
-endpoint='' expr=''
+endpoint='' expr='' method='' fields=''
 while [ $# -gt 0 ]; do
   case "$1" in
     --paginate) ;;
     --jq) expr="$2"; shift ;;
+    -X) method="$2"; shift ;;
+    -f) fields="$fields $2"; shift ;;
     -*) echo "stub gh: unsupported flag $1" >&2; exit 2 ;;
     *) endpoint="$1" ;;
   esac
   shift
 done
+if [ -n "$method" ]; then
+  echo "$method $endpoint$fields" >> "$GH_STUB_DIR/writes"
+  endpoint="$method $endpoint"
+fi
 body="$(jq -c --arg k "$endpoint" '.[$k] // error("stub gh: no fixture for \\($k)")' "$GH_STUB_DIR/fixtures.json")"
 if [ -n "$expr" ]; then jq -r "$expr" <<<"$body"; else printf '%s\\n' "$body"; fi
 `
@@ -64,7 +72,9 @@ const fixtures = ({
   pusher = PIPELINE,
   pushes,
   parkedAt = PARKED_AT,
-  events = []
+  events = [],
+  headAt = HEAD_AT,
+  reapplyFails = false
 }: {
   labels: string[]
   comments: Comment[]
@@ -79,6 +89,10 @@ const fixtures = ({
   // When the pipeline applied awaiting-maintainer, if labels carries it.
   parkedAt?: string
   events?: LabelEvent[]
+  // The head's commit date.
+  headAt?: string
+  // Whether the pre-gate's write of awaiting-maintainer fails.
+  reapplyFails?: boolean
 }) => ({
   [`repos/${REPO}/issues?state=open&labels=agent-pr&per_page=100`]: [
     { number: PR, pull_request: {} }
@@ -111,8 +125,15 @@ const fixtures = ({
     actor: { login: by },
     timestamp: at
   })),
-  [`repos/${REPO}/commits/${SHA}`]: { commit: { committer: { date: HEAD_AT } } },
+  [`repos/${REPO}/commits/${SHA}`]: { commit: { committer: { date: headAt } } },
   [`repos/${REPO}/issues/${PR}/labels`]: labels.map((name) => ({ name })),
+  ...(reapplyFails
+    ? {}
+    : {
+        [`POST repos/${REPO}/issues/${PR}/labels`]: [...labels, 'awaiting-maintainer'].map(
+          (name) => ({ name })
+        )
+      }),
   [`repos/${REPO}/issues/${PR}/events?per_page=100`]: [
     {
       event: 'labeled',
@@ -168,6 +189,7 @@ const run = (fixture: Record<string, unknown>) => {
   const summary = join(dir, 'summary')
   writeFileSync(output, '')
   writeFileSync(summary, '')
+  rmSync(join(dir, 'writes'), { force: true })
   const result = spawnSync('bash', [SCRIPT, 'cycle'], {
     encoding: 'utf8',
     env: {
@@ -186,11 +208,13 @@ const run = (fixture: Record<string, unknown>) => {
       .split('\n')
       .map((line) => [line.slice(0, line.indexOf('=')), line.slice(line.indexOf('=') + 1)])
   )
+  const writes = join(dir, 'writes')
   return {
     status: result.status,
     stderr: result.stderr,
     outputs,
-    summary: readFileSync(summary, 'utf8')
+    summary: readFileSync(summary, 'utf8'),
+    writes: existsSync(writes) ? readFileSync(writes, 'utf8').trim().split('\n') : []
   }
 }
 
@@ -200,32 +224,39 @@ const IDLE = 'the slot is held and no open agent PR needs the routine'
 const SKIPPED = `PR #${PR} is parked for the maintainer; skipped until he removes awaiting-maintainer`
 const LABEL_AFTER_PARK = '2026-09-21T08:00:00Z'
 const APPLIED_AGAIN_AT = '2026-09-21T09:00:00Z'
+const REAPPLY = `POST repos/${REPO}/issues/${PR}/labels labels[]=awaiting-maintainer`
 
 type Args = Parameters<typeof fixtures>[0]
 
-// The state after the cycle puts back a label someone other than the maintainer removed.
+// The state after the pre-gate puts back a label someone other than the maintainer removed.
 const applyAgain = (args: Args): Args => ({
   ...args,
   labels: [...args.labels, 'awaiting-maintainer'],
   parkedAt: APPLIED_AGAIN_AT
 })
 
-const applyingAgain = (by: string | null, at = LABEL_AFTER_PARK) =>
-  `PR #${PR} is parked, but ${by ?? 'an unrecorded account'} removed awaiting-maintainer at ${at}; the cycle applies it again`
+const appliedAgain = (by: string | null, at = LABEL_AFTER_PARK) =>
+  `PR #${PR} is parked, but ${by ?? 'an unrecorded account'} removed awaiting-maintainer at ${at}; applied it again and skipped`
 
-// Fires the gate on a PR someone other than the maintainer unlabelled: one run to apply the
-// label again, then, with the label back, the skip on this fire and the next.
-const expectOneReapply = (args: Args, by: string | null, at = LABEL_AFTER_PARK) => {
+// Fires the gate on a PR someone other than the maintainer unlabelled: the gate puts the label
+// back itself and starts no cycle, then, with the label back, skips the PR on the next two fires.
+const expectReappliedWithoutRun = (args: Args, by: string | null, at = LABEL_AFTER_PARK) => {
   const first = run(fixtures(args))
   expect(first.status, first.stderr).toBe(0)
-  expect(first.outputs).toEqual({ run: 'true', reason: applyingAgain(by, at) })
+  expect(first.outputs).toEqual({ run: 'false', reason: IDLE })
+  expect(first.writes).toEqual([REAPPLY])
+  expect(first.summary).toContain(appliedAgain(by, at))
   for (let fire = 0; fire < 2; fire++) {
     const next = run(fixtures(applyAgain(args)))
     expect(next.status, next.stderr).toBe(0)
     expect(next.outputs).toEqual({ run: 'false', reason: IDLE })
+    expect(next.writes).toEqual([])
     expect(next.summary).toContain(SKIPPED)
   }
 }
+
+const woken = (at = LABEL_AFTER_PARK) =>
+  `PR #${PR} was woken when the maintainer removed awaiting-maintainer at ${at}, and the pipeline has not answered on it since; one cycle is owed`
 
 // The maintainer's ruling of 2026-09-28 on #1310: only his removal of the label wakes a
 // parked PR.
@@ -248,6 +279,7 @@ describe.skipIf(!HAS_JQ)('pregate.sh on a PR parked for the maintainer', () => {
     expect(result.status, result.stderr).toBe(0)
     expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
     expect(result.summary).toContain(SKIPPED)
+    expect(result.writes).toEqual([])
   })
 
   it('stays parked when the maintainer reviews after the label', () => {
@@ -292,7 +324,7 @@ describe.skipIf(!HAS_JQ)('pregate.sh on a PR parked for the maintainer', () => {
     })
   })
 
-  // Parked by the pipeline, then unlabelled by `by`.
+  // Parked by the pipeline after its request-changes verdict, then unlabelled by `by`.
   const removedBy = (by: string | null): Args => ({
     labels: UNPARKED,
     comments: [{ login: PIPELINE, at: VERDICT_AT }],
@@ -302,24 +334,140 @@ describe.skipIf(!HAS_JQ)('pregate.sh on a PR parked for the maintainer', () => {
     ]
   })
 
-  it('wakes a PR when the maintainer removes the label', () => {
+  it('owes a PR the maintainer woke one cycle', () => {
     const result = run(fixtures(removedBy(MAINTAINER)))
     expect(result.status, result.stderr).toBe(0)
+    expect(result.outputs).toEqual({ run: 'true', reason: woken() })
+    expect(result.writes).toEqual([])
+  })
+
+  const FIX_PUSHED_AT = '2026-09-21T09:00:00Z'
+
+  // What the woken cycle may leave on the PR. The skill requires the first two; the last two
+  // are the endings it must not reach, and the gate stays quiet on them too.
+  const WOKEN_CYCLE_ENDINGS: [string, (args: Args) => Args][] = [
+    [
+      'parks it again with its reason',
+      (args) => ({
+        ...args,
+        labels: [...args.labels, 'awaiting-maintainer'],
+        parkedAt: AFTER_WAKE,
+        comments: [...args.comments, { login: PIPELINE, at: AFTER_WAKE }]
+      })
+    ],
+    [
+      'approves the head its fix round pushed',
+      (args) => ({
+        ...args,
+        state: 'success',
+        headAt: FIX_PUSHED_AT,
+        pushes: [{ after: SHA, by: PIPELINE, at: FIX_PUSHED_AT }],
+        comments: [...args.comments, { login: PIPELINE, at: AFTER_WAKE }]
+      })
+    ],
+    [
+      'requests changes on the head its fix round pushed and does not park it',
+      (args) => ({
+        ...args,
+        headAt: FIX_PUSHED_AT,
+        pushes: [{ after: SHA, by: PIPELINE, at: FIX_PUSHED_AT }],
+        comments: [...args.comments, { login: PIPELINE, at: AFTER_WAKE }]
+      })
+    ],
+    [
+      'only comments, leaving the head and its verdict as they were',
+      (args) => ({ ...args, comments: [...args.comments, { login: PIPELINE, at: AFTER_WAKE }] })
+    ]
+  ]
+
+  // Review round 4 on #1629, reproduction W1: at 280f6298 each of the three fires ran.
+  it.each(WOKEN_CYCLE_ENDINGS)(
+    'runs once after the maintainer only removes the label, then not on the next two fires, when the woken cycle %s',
+    (_, ending) => {
+      const wake = removedBy(MAINTAINER)
+      const fires = [wake, ending(wake), ending(wake)].map((args) => run(fixtures(args)))
+      for (const { status, stderr } of fires) expect(status, stderr).toBe(0)
+      expect(fires.map(({ outputs }) => outputs)).toEqual([
+        { run: 'true', reason: woken() },
+        { run: 'false', reason: IDLE },
+        { run: 'false', reason: IDLE }
+      ])
+    }
+  )
+
+  it('does not run again for a maintainer comment the woken cycle answered without a push', () => {
+    const parkedComment = { login: MAINTAINER, at: '2026-09-21T07:00:00Z' }
+    const wake: Args = {
+      ...removedBy(MAINTAINER),
+      comments: [{ login: PIPELINE, at: VERDICT_AT }, parkedComment]
+    }
+    const answered: Args = {
+      ...wake,
+      comments: [...wake.comments, { login: PIPELINE, at: AFTER_WAKE }]
+    }
+    expect(run(fixtures(wake)).outputs).toEqual({ run: 'true', reason: woken() })
+    expect(run(fixtures(answered)).outputs).toEqual({ run: 'false', reason: IDLE })
+    const later = '2026-09-21T11:00:00Z'
+    const result = run(
+      fixtures({ ...answered, comments: [...answered.comments, { login: MAINTAINER, at: later }] })
+    )
     expect(result.outputs).toEqual({
       run: 'true',
-      reason: `PR #${PR} has activity at ${VERDICT_AT} newer than its head (${HEAD_AT})`
+      reason: `PR #${PR} has activity at ${later} newer than the pipeline's last comment (${AFTER_WAKE})`
     })
+  })
+
+  it('owes one cycle to a woken PR whose head another account pushed, then goes quiet', () => {
+    const wake: Args = {
+      ...removedBy(MAINTAINER),
+      state: 'absent',
+      pushes: [{ after: SHA, by: COLLABORATOR, at: PUSHED_AT }]
+    }
+    expect(run(fixtures(wake)).outputs).toEqual({ run: 'true', reason: woken() })
+    const result = run(
+      fixtures({ ...wake, comments: [...wake.comments, { login: PIPELINE, at: AFTER_WAKE }] })
+    )
+    expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
   })
 
   it.each([
     [COLLABORATOR, COLLABORATOR],
     ['the pipeline', PIPELINE],
     ['nobody on record', null]
-  ])('applies the label once more when %s removed it, then stays parked', (_, by) => {
-    expectOneReapply(removedBy(by), by)
+  ])('applies the label again itself when %s removed it, and starts no cycle', (_, by) => {
+    expectReappliedWithoutRun(removedBy(by), by)
   })
 
-  it('wakes a PR when the maintainer removes the label the cycle applied again', () => {
+  // Review round 4 on #1629, reproduction W2: at 280f6298 removals 1, 2 and 3 each ran a cycle.
+  it('starts no cycle however often another account removes the label', () => {
+    const removals = ['2026-09-21T08:00:00Z', '2026-09-21T09:10:00Z', '2026-09-21T10:10:00Z']
+    const events: LabelEvent[] = [
+      { event: 'labeled', label: 'awaiting-maintainer', by: PIPELINE, at: PARKED_AT }
+    ]
+    for (const at of removals) {
+      events.push({ event: 'unlabeled', label: 'awaiting-maintainer', by: COLLABORATOR, at })
+      const result = run(
+        fixtures({ labels: UNPARKED, comments: [{ login: PIPELINE, at: VERDICT_AT }], events })
+      )
+      expect(result.status, result.stderr).toBe(0)
+      expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+      expect(result.writes).toEqual([REAPPLY])
+      expect(result.summary).toContain(appliedAgain(COLLABORATOR, at))
+      events.push({ event: 'labeled', label: 'awaiting-maintainer', by: PIPELINE, at })
+    }
+  })
+
+  it('starts no cycle when putting the label back fails, and says so', () => {
+    const result = run(fixtures({ ...removedBy(COLLABORATOR), reapplyFails: true }))
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+    expect(result.writes).toEqual([REAPPLY])
+    expect(result.summary).toContain(
+      `PR #${PR} is parked, but ${COLLABORATOR} removed awaiting-maintainer at ${LABEL_AFTER_PARK}, and applying it again failed; skipped, and the next fire tries again`
+    )
+  })
+
+  it('wakes a PR when the maintainer removes the label the pre-gate applied again', () => {
     const result = run(
       fixtures({
         ...removedBy(COLLABORATOR),
@@ -330,14 +478,11 @@ describe.skipIf(!HAS_JQ)('pregate.sh on a PR parked for the maintainer', () => {
         ]
       })
     )
-    expect(result.outputs).toEqual({
-      run: 'true',
-      reason: `PR #${PR} has activity at ${VERDICT_AT} newer than its head (${HEAD_AT})`
-    })
+    expect(result.outputs).toEqual({ run: 'true', reason: woken(AFTER_WAKE) })
   })
 
   it('reads only the newest removal: the maintainer waking it once does not wake it again', () => {
-    expectOneReapply(
+    expectReappliedWithoutRun(
       {
         ...removedBy(MAINTAINER),
         events: [
@@ -353,8 +498,8 @@ describe.skipIf(!HAS_JQ)('pregate.sh on a PR parked for the maintainer', () => {
 
   // Round 2 of the review on #1629: the maintainer answers a PR another account unlabelled,
   // and a round the pipeline pushes approves it. At 408fe5be this ran every fire.
-  it('ends the review round 2 reproduction after one run that applies the label again', () => {
-    expectOneReapply(
+  it('ends the review round 2 reproduction with the label back and no cycle', () => {
+    expectReappliedWithoutRun(
       {
         labels: UNPARKED,
         state: 'success',
@@ -374,8 +519,8 @@ describe.skipIf(!HAS_JQ)('pregate.sh on a PR parked for the maintainer', () => {
 
   // Round 3 of the review on #1629, scenario A: as round 2, then another account pushes on
   // top of the pipeline's round. At 0c0478c0 this ran every fire.
-  it('ends the review round 3 scenario A after one run that applies the label again', () => {
-    expectOneReapply(
+  it('ends the review round 3 scenario A with the label back and no cycle', () => {
+    expectReappliedWithoutRun(
       {
         labels: UNPARKED,
         state: 'absent',

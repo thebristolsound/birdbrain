@@ -4,7 +4,9 @@
 # The full cycle costs a toolchain install and a Claude session. Most hours it
 # would find the slot occupied with nothing owed and exit, so this step asks
 # the cheap version of the skill's sections 1 to 3 first and skips the rest when
-# every answer is "nothing". It never writes. It is deliberately conservative:
+# every answer is "nothing". Its one write is putting back awaiting-maintainer
+# after anyone but the maintainer removes it (the parking check below), so that
+# removal costs no cycle. It is deliberately conservative:
 # any doubt reads as "run", because a missed cycle costs an hour and a spurious
 # one costs minutes. Who acted is the exception (#1310). None of these starts a
 # cycle, however recent, and each is named in the step summary instead: a
@@ -12,7 +14,7 @@
 # maintainer or the pipeline pushed; an agent-pr or agent-wip label anyone but
 # those two applied; and a ready-for-agent or queued label anyone but the
 # maintainer applied. A PR parked under awaiting-maintainer is skipped before
-# any of that is read; its one rule is at the parking check below.
+# its status, pushes or activity are read.
 #
 # The conservative default is not enough on its own, because three of the
 # answers here can be wrong in the direction that never runs. A stale claim is
@@ -115,11 +117,12 @@ activity() {
 }
 
 # The newest trusted timestamp in activity $1. $2 narrows it: "others" leaves
-# out the pipeline's own activity, "maintainer" keeps only his.
+# out the pipeline's own activity, "maintainer" keeps only his, "pipeline" only its.
 newest_trusted() {
   jq -r --arg owner "$maintainer" --arg me "$me" --arg scope "$2" \
     '.[] | select(.trusted)
       | select(if $scope == "maintainer" then .login == $owner
+               elif $scope == "pipeline" then ($me != "" and .login == $me)
                elif $scope == "others" then .login != $me
                else true end)
       | .at' <<<"$1" | sort | tail -1
@@ -193,10 +196,9 @@ for n in $(jq -r '.[]' <<<"$prs"); do
   # Parking, per the maintainer's ruling of 2026-09-28 on #1310: while the label
   # is on, nothing wakes the PR, whether a comment, a review or a push, his
   # included, or a verdict owed on its head. Only his removal of the label wakes
-  # it. After anyone else removes it the PR is still parked and the cycle's one
-  # job is to apply the label again; the next fire then finds it and skips the PR.
-  # Reading nothing else here also keeps the pipeline's own verdict comment from
-  # counting as activity every fire (#1460).
+  # it. After anyone else removes it the PR is still parked, and this step puts
+  # the label back itself and skips the PR: a cycle would cost a Claude session
+  # per removal, and anyone who can label can repeat one.
   labels="$(gh api "repos/$R/issues/$n/labels" --jq '[.[].name]')"
   if jq -e --arg l "$AWAITING_MAINTAINER_LABEL" 'index($l)' <<<"$labels" >/dev/null; then
     echo "PR #$n is parked for the maintainer; skipped until he removes $AWAITING_MAINTAINER_LABEL" >> "$summary"
@@ -205,8 +207,17 @@ for n in $(jq -r '.[]' <<<"$prs"); do
   removal="$(label_event "$n" "$AWAITING_MAINTAINER_LABEL" unlabeled)"
   IFS=$'\t' read -r removed_at remover <<<"$removal"
   if [ -n "$removed_at" ] && [ "$remover" != "$maintainer" ]; then
-    decide true "PR #$n is parked, but ${remover:-an unrecorded account} removed $AWAITING_MAINTAINER_LABEL at $removed_at; the cycle applies it again"
+    who="${remover:-an unrecorded account}"
+    if gh api -X POST "repos/$R/issues/$n/labels" -f "labels[]=$AWAITING_MAINTAINER_LABEL" \
+        --jq '[.[].name]' | jq -e --arg l "$AWAITING_MAINTAINER_LABEL" 'index($l)' >/dev/null; then
+      echo "PR #$n is parked, but $who removed $AWAITING_MAINTAINER_LABEL at $removed_at; applied it again and skipped" >> "$summary"
+    else
+      echo "PR #$n is parked, but $who removed $AWAITING_MAINTAINER_LABEL at $removed_at, and applying it again failed; skipped, and the next fire tries again" | tee -a "$summary"
+    fi
+    continue
   fi
+  # Empty unless the maintainer made the newest removal.
+  woken_at="$removed_at"
   pr="$(gh api "repos/$R/pulls/$n")"
   sha="$(jq -r .head.sha <<<"$pr")"
   draft="$(jq -r .draft <<<"$pr")"
@@ -244,6 +255,18 @@ for n in $(jq -r '.[]' <<<"$prs"); do
   items="$(activity "$n" "$author")"
   head_at="$(gh api "repos/$R/commits/$sha" --jq .commit.committer.date)"
   report_untrusted "$n" "$items" "$head_at"
+  # Woken by the maintainer: one cycle is owed, and the pipeline's first comment
+  # on the PR after his removal (a verdict, or the reason it parked the PR again)
+  # marks that cycle done. From then on its comments are never activity; they
+  # only move the point that newer activity must pass, so feedback the woken
+  # cycle already answered without a push does not start another.
+  answered=""
+  if [ -n "$woken_at" ]; then
+    answered="$(newest_trusted "$items" pipeline)"
+    if [ -z "$answered" ] || [[ ! "$answered" > "$woken_at" ]]; then
+      decide true "PR #$n was woken when the maintainer removed $AWAITING_MAINTAINER_LABEL at $woken_at, and the pipeline has not answered on it since; one cycle is owed"
+    fi
+  fi
   if [ -n "$untrusted_head" ]; then
     since="${pushed_at:-$head_at}"
     newest="$(newest_trusted "$items" maintainer)"
@@ -258,13 +281,21 @@ for n in $(jq -r '.[]' <<<"$prs"); do
   # evidence PR that is only waiting on a human, which cannot auto-merge and so
   # never stops. On a failure verdict the fix round is still owed, so the
   # pipeline's own verdict counts there.
-  if [ "$state" = success ]; then
+  after="$head_at"
+  than="its head ($head_at)"
+  if [ -n "$woken_at" ]; then
+    newest="$(newest_trusted "$items" others)"
+    if [[ "$answered" > "$head_at" ]]; then
+      after="$answered"
+      than="the pipeline's last comment ($answered)"
+    fi
+  elif [ "$state" = success ]; then
     newest="$(newest_trusted "$items" others)"
   else
     newest="$(newest_trusted "$items" all)"
   fi
-  if [ -n "$newest" ] && [[ "$newest" > "$head_at" ]]; then
-    decide true "PR #$n has activity at $newest newer than its head ($head_at)"
+  if [ -n "$newest" ] && [[ "$newest" > "$after" ]]; then
+    decide true "PR #$n has activity at $newest newer than $than"
   fi
   if [ "$state" = success ] && [ "$draft" = false ]; then
     if ! jq -e 'index("evidence-affecting")' <<<"$labels" >/dev/null; then

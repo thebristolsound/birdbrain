@@ -1,7 +1,7 @@
 # 0008. Public-release decisions
 
 Date: 2026-08-10
-Status: accepted
+Status: accepted; amended 2026-09-09, 2026-09-11 and 2026-09-28
 Owner: thebristolsound (maintainer)
 Tracks: #262. Source: `docs/specs/2026-07-27-public-repository-readiness-assessment.md`.
 
@@ -243,26 +243,11 @@ $ git ls-remote origin 'refs/pull/*/head' | wc -l
 494
 ```
 
-One head demonstrates the consequence. `refs/pull/786/head` is
-`10de0a1693dc84a3567c035e004974c9aa48b75e`.
-
-```
-$ git merge-base --is-ancestor 10de0a1693dc84a3567c035e004974c9aa48b75e origin/main
-$ echo $?
-1
-```
-
-The exit status of 1 says that commit is not reachable from `main`, so no
-rewrite of `main` reaches it. GitHub serves its metadata anyway.
-
-```
-$ gh api repos/thebristolsound/birdbrain/commits/10de0a1693dc84a3567c035e004974c9aa48b75e \
-    --jq '.commit.author.email + " | " + .commit.committer.email'
-<local part withheld>@protonmail.com | <local part withheld>@protonmail.com
-```
-
-There are 494 such head refs, each still readable through that endpoint after
-any rewrite of the branch.
+A head that is not an ancestor of `main` is out of reach of any rewrite of
+`main`, and GitHub's commits endpoint still serves its author and committer
+metadata. Checked on a sample head at f1ab45ae, both fields carried a personal
+domain. There are 494 such head refs, each still readable through that endpoint
+after any rewrite of the branch.
 
 **SECURITY.md publishes the domain the rewrite targets (#1360).** Line 12 of
 `SECURITY.md` on `origin/main` gives an address on the `@proton.me` domain as
@@ -573,3 +558,134 @@ without a freeze window.
 match the maintainer's, on an in-scope domain. That would be a new fact rather
 than a re-weighing of this one, and it reopens the blob half of this ruling
 only.
+
+## Amendment 2026-09-28: no rewrite, and the cutover rulings
+
+The maintainer took the rulings below on 2026-09-28, in one sitting, on evidence
+a prep pass re-derived at `origin/main` c2d730c8 on 2026-09-27 and 2026-09-28.
+They replace the outcomes of Decisions 1, 2 and 5, amend Decision 4, leave
+Decision 3 as it stands, and record the settings the cutover (#271) checks
+against. The running plan is
+`docs/plans/2026-09-27-public-repo-ultracode-prep.md`.
+
+### The evidence that reopened the rewrite
+
+The 2026-09-09 amendment accepted that `refs/pull` keeps serving pre-rewrite
+commits and still judged the rewrite worth doing. The prep pass measured how much
+that residue covers, and what the rewrite would cost.
+
+- **One pull-request ref carries the whole history.** The head ref of one recent
+  pull request reaches 1,821 of the 1,822 commits on `main`, including every
+  commit whose identity fields carry an in-scope domain. After a rewrite, a single
+  `git fetch` of that ref returns the original history.
+- **The readiness assessment is in the same residue.** 433 of 623 pull-request
+  head trees contain it, on top of the four published pre-releases #1362 found.
+- **GitHub's remedy costs the review record.** GitHub Support's sensitive-data
+  removal breaks the diff view of every closed pull request built on the affected
+  history, which here is all of them, because the first commit carries an
+  in-scope domain. The 2026-09-09 amendment calls that record "where most of this
+  project's design reasoning lives."
+- **The rewrite changes provenance the project relies on.** Every commit id
+  changes, so every id cited in docs, issues, and pull requests stops resolving.
+  The 22 tags move. The signatures on 890 commits (783 by GitHub on squash merges,
+  107 SSH-signed) are dropped, because a rewritten commit cannot keep its
+  signature. Decision 2's revisit trigger names corrupted provenance as grounds to
+  reopen it.
+
+### Decisions 1 and 2: accept, and preserve the history
+
+**Outcome.** No history rewrite. The personal addresses in the history's
+identity fields are accepted as public. There is no `git-filter-repo` pass, no
+force-push, and no rewrite inside the freeze window. Commit ids, tags and
+signatures stay as they are. No GitHub Support removal is requested. This
+supersedes Decision 1's outcome to remediate, Decision 2's scoped rewrite, the 2026-09-09
+narrowing to two domains, and the 2026-09-11 filter-scope ruling, all of which
+described a rewrite that will not run.
+
+**Rationale.** Everything the rewrite would remove stays one fetch away through
+`refs/pull`, and the only remedy for that costs the pull-request record. What the
+rewrite would buy is a clean default clone and web view of `main`; what it would
+cost is the provenance of the whole history. For an evidence tool, a public and
+verifiable development history (commits, reviews and decision records) is worth
+more than a clean default clone.
+
+**Attribution.** The maintainer moves the `@protonmail.com` address from the
+machine account to his own account, so the commits that carry it are credited to
+him. The machine account keeps its commit email private, so squash merges of the
+pull requests it opens land under its no-reply address. The first such merge is
+read back to confirm it. The maintainer's own future commits stay on the
+`@proton.me` address `SECURITY.md` publishes.
+
+**Revisit trigger.** A concrete harm traced to the published addresses, such as
+unsolicited contact traced to the history, or a request from a third party whose
+address appears in it.
+
+### Decision 5: removed from the tip by an ordinary commit
+
+**Outcome.** The readiness assessment is deleted from the tip in the same pull
+request as this amendment. It stays readable in the history, in `refs/pull`, and
+in the four published pre-releases. Those four are deleted from
+`thebristolsound/birdbrain-releases` once the next beta has updated testers.
+
+### Decision 4: code owners and a main ruleset are selected
+
+Decision 4 stands for inbound licensing: inbound equals outbound under MIT, with
+no CLA and no DCO. Its contributor-intake posture is amended. #268's "no
+CODEOWNERS unless explicitly selected" is the selection point, and this is the
+selection.
+
+- A `CODEOWNERS` file names the maintainer on every path.
+- The `main` ruleset requires one approval, which must be the maintainer's as
+  code owner, and a fresh approval after any later push. It allows squash merges
+  only, requires signed commits, and adds the full-history secret scan and the
+  registry publish guard to the required checks. The maintainer's bypass applies
+  only when merging a pull request, so nobody pushes to `main` directly. The
+  deploy-key bypass is removed.
+- A tag ruleset lets only the maintainer create `v*` tags.
+- Blank issues are turned off, so reports come through the bug and feature forms.
+
+The dependency audit is not a required check, because it fails on every branch
+whenever a new advisory is published. Review-thread resolution is not required,
+because bot threads would block merges. While this ruleset holds, the dispatch
+routine cannot merge its own pull requests.
+
+**Revisit trigger.** A second maintainer, or a restart of the dispatch routine
+under ADR-0029.
+
+### Rulings the cutover checks against
+
+- **Spend.** Anything that can cost the maintainer money runs only when he
+  invokes it or on a schedule he set. Other collaborators, outside accounts and
+  bots cannot start a paid run. #1310 carries the workflow and dispatch changes.
+- **Access.** One other collaborator keeps write access; the second drops to read.
+- **Actions settings.** The default workflow token is read-only and cannot approve
+  pull requests. Pull requests from forks get no write token and no secrets.
+  Secret scanning and push protection are turned on at the flip. Allowed actions
+  stays at all, because every action is pinned to a commit.
+- **Branches.** Every branch, tag and pull-request ref is bundled, and the bundle's
+  restore verified, before any deletion. Then the 20 branches with tooling-prefixed
+  names and no pull request are deleted (#1370 lists them). Nothing belonging to
+  Shared Case or persona work is deleted.
+- **Dispatch artifacts.** The existing run bundles expire on their own. Future
+  bundles are kept seven days, and the per-run spend is stripped from the bundle
+  and the run page (#1369).
+- **Pre-cutover evidence.** The full inventory and scan output stay in the
+  maintainer's custody, outside the repository. The repository tracks the runbook
+  and a summary with counts.
+- **Beta and cutover.** Neither waits on the other, and they never share a window.
+- **Flip window.** The public text saying the source is private changes in the
+  same window as the flip. A collaborator without administrator rights files the harmless
+  vulnerability-report test, because an administrator cannot file one. The unused
+  doc-curator secret and variable are deleted, and the Copilot coding agent's
+  firewall is turned back on.
+
+### Figures at c2d730c8
+
+```
+$ git ls-remote origin 'refs/pull/*/head' | wc -l
+623
+$ git ls-remote --tags origin | grep -v '\^{}' | wc -l
+22
+$ git rev-list --count origin/main
+1822
+```

@@ -109,7 +109,7 @@ STEP 6 — Section 4a (known-answer) + finish 4b.  Run in WSL.
 --------------------------------------------------------------------------
 In your WSL repo, on the tag:
 
-  cd /home/matt/.t3/worktrees/birdbrain/t3code-7a7f5cff
+  cd /path/to/your/birdbrain/clone     # the repository root
   git fetch origin
   git checkout v1.0.1-beta.20
   pnpm install

@@ -107,6 +107,12 @@ describe('packaging wiring', () => {
       to: NOTICE_NAME
     })
   })
+
+  it("runs the generator in CI's build job", () => {
+    const ci = readFileSync(join(ROOT, '.github', 'workflows', 'ci.yml'), 'utf8')
+    const job = ci.slice(ci.indexOf('\n  build:\n'), ci.indexOf('\n  e2e:\n'))
+    expect(job).toContain('run: pnpm build:notices')
+  })
 })
 
 // The extension build copies this into extension/dist, which the release zips and the app

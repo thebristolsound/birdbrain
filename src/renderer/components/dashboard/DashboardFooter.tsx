@@ -6,13 +6,7 @@ export function DashboardFooter() {
   return (
     <footer className="border-t border-border px-8 py-6">
       <div className="max-w-5xl mx-auto flex items-center justify-between">
-        {/* Left: logo + version text */}
-        <div className="flex items-center gap-2">
-          <img src={logoImg} alt="Birdbrain" className="h-5 w-5" />
-          <span className="text-[11px] text-text-faint">
-            Birdbrain v2.0.0 — Open-Source Intelligence Platform
-          </span>
-        </div>
+        <img src={logoImg} alt="Birdbrain" className="h-5 w-5" />
 
         {/* Right: links */}
         <div className="flex items-center gap-6">

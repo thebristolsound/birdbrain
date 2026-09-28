@@ -414,7 +414,7 @@ describe('ExportDialog', () => {
     renderDialog(vi.fn(), ['cap-1', 'cap-2'])
 
     expect(screen.getByTestId('export-scope-row').textContent).toBe('2 selected captures')
-    expect(screen.getByText(/scope: 'selection' · captureIds\[2\]/)).toBeDefined()
+    expect(screen.getByText('The full Manifest chain is included.')).toBeDefined()
 
     fireEvent.click(screen.getByText('Export'))
     await waitFor(() => expect(generateReport).toHaveBeenCalledTimes(1))

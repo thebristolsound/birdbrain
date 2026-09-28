@@ -14,10 +14,10 @@ describe('CaptureListEmptyState', () => {
     cleanup()
   })
 
-  it('renders headline and subcopy', () => {
+  it('renders the headline alone', () => {
     render(<CaptureListEmptyState />)
     expect(screen.getByText('No captures yet')).toBeDefined()
-    expect(screen.getByText(/Browse the web with the Birdbrain extension active/i)).toBeDefined()
+    expect(screen.queryByText(/current filters/)).toBeNull()
   })
 
   // The design restyles the title but does not demote it; the empty-state e2e

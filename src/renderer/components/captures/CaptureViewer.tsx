@@ -18,12 +18,10 @@ import { MhtmlViewer } from '@renderer/components/captures/MhtmlViewer'
 import { CaptureTextPanel } from '@renderer/components/captures/CaptureTextPanel'
 import { LegacyHtmlViewer } from '@renderer/components/captures/LegacyHtmlViewer'
 import { AnnotationEditor } from '@renderer/components/captures/annotation/AnnotationEditor'
-import { CapturesGettingStarted } from '@renderer/components/captures/CapturesGettingStarted'
 import { Button } from '@renderer/components/ui'
 import { CaptureViewerToolbar } from '@renderer/components/captures/CaptureViewerToolbar'
 import { CaptureDownloadMenu } from '@renderer/components/captures/CaptureDownloadMenu'
 import { BrowserChromeFrame } from '@renderer/components/captures/BrowserChromeFrame'
-import { AnnotationToolsTooltip } from '@renderer/components/captures/AnnotationToolsTooltip'
 import { WaybackCompare } from '@renderer/components/captures/WaybackCompare'
 import { useAnnotationEditor } from '@renderer/components/captures/annotation/useAnnotationEditor'
 import { useZoomPan } from '@renderer/components/captures/annotation/useZoomPan'
@@ -56,7 +54,6 @@ export function CaptureViewer() {
   const { caseId } = useParams({ from: '/cases/$caseId/captures' })
   const selectedCaptureId = useAppStore((s) => s.selectedCaptureId)
   const selectCapture = useAppStore((s) => s.selectCapture)
-  const sessionActive = useAppStore((s) => s.sessionActive)
   const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))
 
   const activeTab = useAppStore((s) => s.activeViewerTab)
@@ -113,9 +110,7 @@ export function CaptureViewer() {
   }, [goPrev, goNext])
 
   if (!selectedCaptureId || !capture || capture.caseId !== caseId) {
-    if (captures.length === 0 && !sessionActive) {
-      return <CapturesGettingStarted />
-    }
+    if (captures.length === 0) return <main className="flex-1 bg-canvas" />
     return (
       <main className="flex flex-1 items-center justify-center bg-canvas text-text-muted">
         Select a capture to view
@@ -431,7 +426,6 @@ function ScreenshotTabPanel({
       <div className="flex-1 min-h-0 p-3">
         <BrowserChromeFrame url={url}>
           <div ref={containerRef} className="relative h-full w-full bg-canvas">
-            <AnnotationToolsTooltip />
             {dims && container.w > 0 && (
               <AnnotationEditor
                 key={captureId}

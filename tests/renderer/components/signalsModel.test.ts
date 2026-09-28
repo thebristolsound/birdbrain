@@ -116,18 +116,15 @@ describe('nextTagColor', () => {
 describe('auto-capture copy', () => {
   it('does not promise that browsing captures pages by itself', () => {
     expect(AUTO_CAPTURE_DESCRIPTION).not.toMatch(/captured automatically/)
-    expect(AUTO_CAPTURE_DESCRIPTION).toContain('records whether')
   })
 
   it('still says the setting is app-wide, since the exclusions beside it are not', () => {
-    expect(AUTO_CAPTURE_DESCRIPTION).toContain('App-wide setting')
-    expect(AUTO_CAPTURE_DESCRIPTION).toContain('every case, not only this one')
+    expect(AUTO_CAPTURE_DESCRIPTION).toContain('every case')
   })
 
-  it('discloses the suspension and where passive capture returns', () => {
+  it('discloses the suspension', () => {
     expect(AUTO_CAPTURE_SUSPENDED).toContain('Passive capture is suspended')
     expect(AUTO_CAPTURE_SUSPENDED).toContain('without an explicit action')
-    expect(AUTO_CAPTURE_SUSPENDED).toContain('#600')
   })
 })
 

@@ -286,9 +286,8 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
                     : `Whole case${preflight ? ` — ${preflight.captureCount} capture${preflight.captureCount === 1 ? '' : 's'}` : ''}`}
                 </div>
                 {scopedCount !== undefined && (
-                  <div className="mt-1 font-mono text-[11px] text-text-muted">
-                    manifest export entry → scope: 'selection' · captureIds[{scopedCount}]. The
-                    Manifest chain itself ships complete.
+                  <div className="mt-1 text-[11px] text-text-muted">
+                    The full Manifest chain is included.
                   </div>
                 )}
               </div>

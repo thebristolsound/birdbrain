@@ -11,7 +11,7 @@ const PNG_BASE64 =
 
 // The dashboard is no longer gated behind a first-run wizard (#404): the fixture
 // seeds a settings.json, so the app launches as an existing install, is never
-// toured, and the caseless dashboard — the Quick Start state under test — is
+// toured, and the caseless dashboard — the no-feed state under test — is
 // reachable straight from a reload.
 async function openCaselessDashboard(page: Page): Promise<void> {
   await reloadToDashboard(page)
@@ -103,22 +103,17 @@ async function seedNote(page: Page, caseId: string, title: string): Promise<stri
 }
 
 test.describe('Dashboard recent activity', () => {
-  test('first run keeps Quick Start, and the feed replaces it once a case exists', async ({
-    page
-  }) => {
+  test('first run has no feed, and the feed appears once a case exists', async ({ page }) => {
     await openCaselessDashboard(page)
 
-    // No cases yet: the walkthrough, not the feed.
-    await expect(page.getByRole('heading', { name: 'Quick Start' })).toBeVisible()
     await expect(page.getByTestId('recent-activity-feed')).toHaveCount(0)
 
     const caseId = await createCase(page, 'Activity Feed E2E')
     await goDashboard(page)
 
-    // A case with no captures or notes yet: the feed's empty state, not Quick Start.
+    // A case with no captures or notes yet: the feed's empty state.
     await expect(page.getByTestId('recent-activity-feed')).toBeVisible()
     await expect(page.getByTestId('recent-activity-empty')).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Quick Start' })).toHaveCount(0)
 
     await seedCapture(page, caseId, 'https://example.com/login', 'Alpha Capture')
     await seedNote(page, caseId, 'Kit fingerprint')

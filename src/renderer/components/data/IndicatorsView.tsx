@@ -192,10 +192,6 @@ export function IndicatorsView({ caseId }: { caseId: string }) {
           <div className="max-w-md rounded-lg border border-border bg-surface p-8 text-center">
             <Database size={32} className="mx-auto mb-3 text-text-faint" />
             <p className="text-sm font-medium text-text-secondary">No data extracted yet</p>
-            <p className="mt-1 text-xs text-text-muted">
-              Extraction runs automatically on new captures. Click <strong>Reprocess</strong> to
-              scan existing captures.
-            </p>
           </div>
         </div>
       ) : (

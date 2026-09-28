@@ -61,10 +61,9 @@ afterEach(() => {
 describe('PersonasSection empty state', () => {
   // Decision 2 and 10 (ADR-0030): the term is Persona, framed as a signed-in
   // browser identity, and nothing exists until the operator adds one.
-  it('frames a persona as a signed-in browser identity and offers one button', async () => {
+  it('states that passwords are never stored and offers one button', async () => {
     renderSection()
     await screen.findByTestId('personas-empty')
-    expect(screen.getByText(/a signed-in browser identity, yours or a pseudonym/)).toBeTruthy()
     expect(screen.getByText(/passwords are never\s+stored/)).toBeTruthy()
     expect(screen.getAllByTestId('persona-add')).toHaveLength(1)
     expect(screen.queryByTestId('personas-list')).toBeNull()

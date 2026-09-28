@@ -104,10 +104,6 @@ export function SignalDetailRail({
           <h4 className="font-display text-xs font-semibold text-text-primary">
             No signals in this case
           </h4>
-          <p className="max-w-[260px] text-[11px] leading-relaxed text-text-muted">
-            Add a selector or a tag on the left. Selectors match text across every capture; tags are
-            applied by hand.
-          </p>
         </div>
       </aside>
     )
@@ -255,7 +251,7 @@ export function SignalDetailRail({
               data-testid="signal-appears-empty"
               className="rounded border border-dashed border-border p-3.5 text-center text-[11px] text-text-faint"
             >
-              No captures yet — this signal hasn&apos;t matched.
+              No matches yet
             </div>
           ) : (
             <div className="flex flex-col gap-0.5">
@@ -358,8 +354,7 @@ export function SignalDetailRail({
               {RESCAN_LABEL[rescanStatus]}
             </button>
             <p className="mt-1.5 text-[10px] leading-relaxed text-text-faint">
-              Adds matches found in captures this selector has not been run against. Existing
-              matches are never removed.
+              Existing matches are never removed.
             </p>
           </div>
         )}

@@ -277,16 +277,14 @@ test.describe('README screenshots', () => {
     const win = electronApp.windows()[0]
     await win.setViewportSize({ width: 1440, height: 900 })
 
-    // Friendlier operator identity for the forensics panel; pre-dismiss the
-    // annotation onboarding tooltip so it doesn't overlay the viewer shots.
+    // Friendlier operator identity for the forensics panel.
     await page.evaluate(async () => {
       await (
         window as unknown as {
           birdbrain: { settings: { update: (p: object) => Promise<unknown> } }
         }
       ).birdbrain.settings.update({
-        operatorName: 'A. Investigator',
-        tooltipsSeen: { 'annotation-tools-always-live': true }
+        operatorName: 'A. Investigator'
       })
     })
 

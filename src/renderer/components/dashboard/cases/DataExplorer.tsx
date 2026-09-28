@@ -61,23 +61,16 @@ import {
 // computed in this file (X36).
 
 function nodeTitle(key: DataNodeKey, rows: InventoryRow[]): { title: string; subtitle: string } {
-  if (key === 'data-sources')
-    return { title: 'All data sources', subtitle: 'every Exhibit and Derived File in the case' }
-  if (key === 'staging')
-    return { title: 'Staging', subtitle: 'pooled files, not anchored (ADR-0024)' }
-  if (key === 'views' || key === 'file-types')
-    return { title: 'File types', subtitle: 'grouped by stored file type' }
-  if (key === 'results') return { title: 'Results', subtitle: 'derived findings' }
-  if (key === 'keyword-hits') return { title: 'Keyword hits', subtitle: 'per Selector' }
-  if (key === 'integrity-exceptions')
-    return { title: 'Integrity exceptions', subtitle: 'files whose last verify did not pass' }
-  if (key === 'manifest-ledger')
-    return { title: 'Manifest ledger', subtitle: 'the hash chain across the case' }
-  if (key.startsWith('keyword:')) return { title: 'Keyword hit', subtitle: 'matched Exhibits' }
-  if (key.startsWith('kind:'))
-    return { title: kindLabel(key.slice('kind:'.length)), subtitle: 'by kind' }
-  if (key.startsWith('file-type:'))
-    return { title: key.slice('file-type:'.length), subtitle: 'file type view' }
+  if (key === 'data-sources') return { title: 'All data sources', subtitle: '' }
+  if (key === 'staging') return { title: 'Staging', subtitle: '' }
+  if (key === 'views' || key === 'file-types') return { title: 'File types', subtitle: '' }
+  if (key === 'results') return { title: 'Results', subtitle: '' }
+  if (key === 'keyword-hits') return { title: 'Keyword hits', subtitle: '' }
+  if (key === 'integrity-exceptions') return { title: 'Integrity exceptions', subtitle: '' }
+  if (key === 'manifest-ledger') return { title: 'Manifest ledger', subtitle: '' }
+  if (key.startsWith('keyword:')) return { title: 'Keyword hit', subtitle: '' }
+  if (key.startsWith('kind:')) return { title: kindLabel(key.slice('kind:'.length)), subtitle: '' }
+  if (key.startsWith('file-type:')) return { title: key.slice('file-type:'.length), subtitle: '' }
   if (key.startsWith('exhibit:')) {
     const id = key.slice('exhibit:'.length)
     const row = rows.find((r) => r.entity === 'exhibit' && r.id === id)
@@ -480,12 +473,14 @@ export function DataExplorer() {
                 >
                   {title}
                 </span>
-                <span
-                  className="min-w-0 truncate text-[11px] text-text-faint"
-                  data-testid="data-node-subtitle"
-                >
-                  {subtitle}
-                </span>
+                {subtitle && (
+                  <span
+                    className="min-w-0 truncate text-[11px] text-text-faint"
+                    data-testid="data-node-subtitle"
+                  >
+                    {subtitle}
+                  </span>
+                )}
                 <div className="flex-1" />
                 {(node === 'integrity-exceptions' || node === 'manifest-ledger') && snapshot && (
                   <ChainVerdict snapshot={snapshot} />

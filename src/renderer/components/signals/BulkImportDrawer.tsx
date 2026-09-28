@@ -57,7 +57,7 @@ export function BulkImportDrawer({ caseId, existingSelectors, onClose }: BulkImp
         rows={4}
         value={text}
         onChange={(event) => setText(event.target.value)}
-        placeholder="One pattern per line — wrap in /…/ for regex. Paste straight from a spreadsheet or IoC feed."
+        placeholder="One pattern per line — wrap in /…/ for regex."
         className="box-border w-full resize-y rounded border border-border bg-canvas px-[10px] py-2 font-mono text-[11px] text-text-primary outline-none placeholder:text-text-faint"
       />
 
@@ -81,7 +81,7 @@ export function BulkImportDrawer({ caseId, existingSelectors, onClose }: BulkImp
             {parsed.withinPasteDuplicates + parsed.existingDuplicates}
           </span>{' '}
           duplicates skipped · <span data-testid="bulk-add-blank-count">{parsed.blankCount}</span>{' '}
-          blank · matching runs immediately after import
+          blank
         </span>
         <div className="flex shrink-0 gap-2">
           <button

@@ -114,13 +114,11 @@ export function buildTagSignals(
  * disclosure below it, because a screenshot of the card, or an operator who
  * reads only the heading, carries the primary sentence and not the footnote.
  */
-export const AUTO_CAPTURE_DESCRIPTION =
-  'App-wide setting — it records whether pages matching an enabled selector should be ' +
-  'captured while browsing. It applies to every case, not only this one.'
+export const AUTO_CAPTURE_DESCRIPTION = 'Applies to every case.'
 
 export const AUTO_CAPTURE_SUSPENDED =
-  'Passive capture is suspended in the current extension build, so no page is captured ' +
-  'without an explicit action. The switch records the preference for when it returns (#600).'
+  'Passive capture is suspended in this extension build. No page is captured without an ' +
+  'explicit action.'
 
 /**
  * The collapsed summary on the Auto-capture card: how many exclusions this case

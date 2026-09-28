@@ -69,3 +69,22 @@ forensics note, placeholders, and keyboard hints such as "↑↓ to move · ⏎ 
 The dashboard quick-start guide, the captures getting-started panel, the welcome card and the
 coach-mark tour (`onboarding/tourSteps.ts`) are explanatory text throughout. Options: delete them,
 or leave them alone in this change.
+
+## Rulings and changes while building (2026-09-28)
+
+- Maintainer approved the list and kept the coach-mark tour, including its welcome card. The
+  quick-start guide and the captures getting-started panel are deleted; with no captures the viewer
+  pane is now empty, and the dashboard's extension banner still offers "Open extension folder".
+- The "Drawing tools are now always live" notice existed only for that sentence, so the component
+  is deleted.
+- Data screen: every static nav subtitle is gone (the five listed plus "derived findings", "per
+  Selector", "matched Exhibits", "by kind", "file type view"); Exhibit citations still show.
+- Moved to Trim after reading the code:
+  - Auto-capture description and suspension note keep the claim that no page is captured without
+    an explicit action; "(#600)" and the preference sentence go.
+  - The exclusions footer stays whole: it says where the global list lives and names every capture
+    route.
+  - The rescan note keeps "Existing matches are never removed." (ruling W2).
+  - The Wayback panel keeps "Corroboration only."
+  - The selection-export note keeps "The full Manifest chain is included."
+  - Personas keeps the cookie and password sentence.

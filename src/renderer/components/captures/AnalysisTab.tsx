@@ -146,10 +146,6 @@ export function AnalysisTab({ captureId, caseId, captureTitle, onOpenNote }: Ana
         <Sparkles className="h-10 w-10 text-accent/50" />
         <div>
           <h3 className="text-sm font-semibold text-text-primary">Analyze this capture</h3>
-          <p className="mt-1 max-w-sm text-xs text-text-muted">
-            Get an AI-generated assessment of this capture's content, informed by the case context
-            and metadata.
-          </p>
         </div>
         {models.length > 0 && (
           <select

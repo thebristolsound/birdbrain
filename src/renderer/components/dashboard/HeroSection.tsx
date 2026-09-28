@@ -20,10 +20,6 @@ export function HeroSection({ onNewInvestigation, onOpenRecent, onImportCase }: 
           Welcome to <span className="shimmer-text">Birdbrain</span>
         </h1>
 
-        <p className="text-sm text-text-muted max-w-lg mx-auto leading-relaxed mb-10">
-          Capture web pages, organize evidence by case, and verify what changed over time.
-        </p>
-
         <div className="flex items-center justify-center gap-4 mb-6">
           <button
             data-testid="new-case-btn"

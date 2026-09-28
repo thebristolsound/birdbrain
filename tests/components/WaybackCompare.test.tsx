@@ -71,11 +71,6 @@ afterEach(() => {
 })
 
 describe('WaybackCompare', () => {
-  it('states that Birdbrain does not diff the two panes', () => {
-    renderCompare()
-    expect(screen.getByText(/Birdbrain doesn't diff the two/)).toBeDefined()
-  })
-
   it('labels the replay pane as live non-evidence content whether or not one is loaded', () => {
     renderCompare()
     const label = screen.getByTestId('wayback-nonevidence-label')

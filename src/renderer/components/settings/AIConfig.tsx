@@ -232,10 +232,7 @@ export function AIConfig({ settings, onUpdate }: AIConfigProps) {
             className="border-border bg-surface text-xs text-text-secondary"
             placeholder="You are an expert investigative analyst..."
           />
-          <p className="mt-2 text-[11px] text-text-muted">
-            System message sent with every capture analysis. Customize for your investigation focus
-            (forensics, OSINT, cybersecurity, etc.).
-          </p>
+          <p className="mt-2 text-[11px] text-text-muted">Sent with every capture analysis.</p>
         </CardContent>
       </Card>
     </div>

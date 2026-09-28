@@ -1,4 +1,4 @@
-import { Archive, ExternalLink, TriangleAlert } from 'lucide-react'
+import { ExternalLink, TriangleAlert } from 'lucide-react'
 import type { Capture } from '@shared/types'
 import { openCaptureExternal } from '@renderer/lib/api/system'
 import { notify } from '@renderer/lib/notify'
@@ -40,14 +40,6 @@ export function WaybackCompare({ capture }: Props) {
 
   return (
     <div data-testid="wayback-compare" className="flex h-full w-full flex-col overflow-hidden">
-      <div className="flex shrink-0 items-center gap-2 border-b border-border bg-surface px-3.5 py-2">
-        <Archive className="h-3.5 w-3.5 shrink-0 text-text-muted" />
-        <span className="min-w-0 flex-1 truncate text-xs text-text-muted">
-          Side-by-side reference — archive.org&apos;s copy renders independently. Corroboration is
-          your call; Birdbrain doesn&apos;t diff the two.
-        </span>
-      </div>
-
       <div className="flex min-h-0 flex-1 overflow-x-auto">
         <div className="flex min-w-[300px] flex-1 flex-col overflow-hidden border-r border-border">
           <div className="flex shrink-0 items-center gap-2 border-b border-border bg-accent-subtle px-3 py-2">

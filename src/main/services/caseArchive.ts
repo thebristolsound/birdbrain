@@ -519,6 +519,9 @@ export function inspectCaseArchive(archivePath: string): ArchiveInspectReport {
 // How an archive's chains land in the new Case, and who the `import` names.
 interface ImportChains {
   manifest: Buffer
+  // The Case the `import` names as its source: for a fork, the id the source
+  // Owner's own `member-add` states, never the archive header's.
+  sourceCaseId: string
   sourceInstallationId: string
   sourcePublicKeyPem: string
   // Chains written under `lineage/`, by path.
@@ -545,11 +548,12 @@ function planImportChains(
     .filter((c) => c.sourceCaseId !== undefined)
     .map(({ path, jsonl }) => ({ path, jsonl }))
   const current = chains.filter((c) => c.sourceCaseId === undefined)
+  const owner = shared?.members.find((m) => m.role === 'owner')
+  const sourceCaseId = (owner && shared?.caseId) ?? header.case.id
   const asLineage = (installationId: string, jsonl: Buffer): { path: string; jsonl: Buffer } => ({
-    path: lineageChainPath(header.case.id, installationId),
+    path: lineageChainPath(sourceCaseId, installationId),
     jsonl
   })
-  const owner = shared?.members.find((m) => m.role === 'owner')
   const exporterId = shared?.localInstallationId
   const ownerChain =
     owner?.installationId === exporterId
@@ -558,6 +562,7 @@ function planImportChains(
   if (!owner || exporterId === undefined || ownerChain === undefined) {
     return {
       manifest,
+      sourceCaseId,
       sourceInstallationId: header.source.installationId,
       sourcePublicKeyPem: header.signingPublicKeyPem,
       lineage: [...carried, ...current.map((c) => asLineage(c.installationId, c.jsonl))]
@@ -569,6 +574,7 @@ function planImportChains(
   if (exporterId !== owner.installationId) others.unshift(asLineage(exporterId, manifest))
   return {
     manifest: ownerChain,
+    sourceCaseId,
     sourceInstallationId: owner.installationId,
     sourcePublicKeyPem: owner.publicKeyPem,
     lineage: [...carried, ...others],
@@ -672,7 +678,7 @@ export async function importCaseArchive(
   }
   const mapId = (id: string): string => idMap[id] ?? id
 
-  const sourceCaseId = header.case.id
+  const { sourceCaseId } = plan
   const idMapPayload = { sourceCaseId, caseId: newCaseId, remapped: idMap }
   const idMapSha256 = sha256(Buffer.from(canonicalStringify(idMapPayload), 'utf-8'))
 

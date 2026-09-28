@@ -1536,6 +1536,27 @@ describe('verifySharedCase — a Case forked from a replica', () => {
     expect(result.outcome).toBe('chain-broken')
   })
 
+  it('refuses an import that names another source Case or Owner than its history', () => {
+    const { owner, lineage } = forkFixture()
+    for (const [sourceCaseId, sourceInstallationId, named] of [
+      ['some-other-case', OWNER_ID, 'source Case some-other-case'],
+      [CASE_ID, MEMBER_ID, `source installation ${MEMBER_ID}`]
+    ]) {
+      const fork = extend(
+        owner,
+        [importEntry(FORK_ID, sourceCaseId, sourceInstallationId, getPublicKeyPem())],
+        signWith(MEMBER_KEY)
+      )
+      const result = verifySharedCase({
+        owner: { jsonl: fork.jsonl, publicKeyPem: MEMBER_KEY.publicKey },
+        members: [],
+        lineage: [{ ...lineage[0], sourceCaseId }]
+      })
+      expect(result.findings.map((f) => f.outcome)).toContain('roster-invalid')
+      expect(result.findings.map((f) => f.reason).join('\n')).toContain(named)
+    }
+  })
+
   it('verifies a fork of a fork, one source Case per import', () => {
     const { fork, lineage } = forkFixture()
     const THIRD_KEY = keyPair()

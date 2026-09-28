@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createHash, createSign, generateKeyPairSync } from 'crypto'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { tmpdir } from 'os'
 import { closeDatabase, getDb, initDatabase } from '@main/services/db/core'
@@ -551,6 +551,38 @@ describe('Shared Case export, import and fork (#1511)', () => {
         [PEER_ID, 'CO-1']
       ].sort()
     )
+  })
+
+  // Rewrites an archive's entries and header in place. `package.json` is not
+  // among its own artifacts, so a header edit alone leaves every hash intact.
+  async function rewriteArchive(
+    out: string,
+    edit: (entries: Map<string, Buffer>, header: Record<string, any>) => void // eslint-disable-line @typescript-eslint/no-explicit-any -- the header is edited as raw JSON
+  ): Promise<void> {
+    const { createStoredZip } = await import('@main/services/zip')
+    const entries = readStoredZip(readFileSync(out))
+    const header = JSON.parse(entries.get('package.json')!.toString('utf-8'))
+    edit(entries, header)
+    entries.set('package.json', Buffer.from(JSON.stringify(header)))
+    writeFileSync(out, createStoredZip([...entries].map(([name, data]) => ({ name, data }))))
+  }
+
+  it("names the source Case its Owner's roster states, whatever the header says", async () => {
+    memberReplica()
+    const out = join(tempDir, 'fork.birdbrain')
+    await exportCaseArchive(caseId, out)
+    await rewriteArchive(out, (_, header) => {
+      header.case.id = '../../outside'
+    })
+    expect(inspectCaseArchive(out).verification.overallValid).toBe(true)
+
+    const { newCaseId } = await importCaseArchive(out)
+    const forkDir = caseDir(newCaseId)
+    const lines = readFileSync(join(forkDir, 'manifest.jsonl'), 'utf-8').trim().split('\n')
+    expect(JSON.parse(lines.at(-1)!).sourceCaseId).toBe(caseId)
+    expect(readFileSync(join(forkDir, lineageChainPath(caseId, localId))).length).toBeGreaterThan(0)
+    // `lineage/../../outside` under the staging directory is the storage root's.
+    expect(existsSync(join(getStorageRoot(), 'outside'))).toBe(false)
   })
 
   it('exports a fork as an Evidence Package that the package verifier passes', async () => {

@@ -168,6 +168,9 @@ export interface SharedCaseVerifyResult {
   exclusions: SharedCaseExclusion[]
   // Every Case this one was forked from, nearest first.
   lineage: SharedCaseLineageRoster[]
+  // The Shared Case's id, as the Owner's own `member-add` states it. Absent
+  // for a Case with no roster.
+  caseId?: string
   // The accepted entries of every chain that verified, by installation id (the
   // Owner's under `owner` when no roster names it). A revoked member's stop at
   // the head the Owner had merged. What a caller binds artifacts against. A
@@ -412,7 +415,7 @@ function verifyCase(input: SharedCaseInput, nested: boolean): SharedCaseVerifyRe
   let lineageUnsupported: UnsupportedEntry | undefined
   const finish = (
     owner: ChainVerifyResult,
-    roster: Pick<Roster, 'members' | 'exclusions'>,
+    roster: Pick<Roster, 'members' | 'exclusions' | 'caseId'>,
     unsupported?: UnsupportedEntry
   ): SharedCaseVerifyResult => {
     // A definite finding leads: `outcome` must not read "too old" when this
@@ -436,6 +439,7 @@ function verifyCase(input: SharedCaseInput, nested: boolean): SharedCaseVerifyRe
       exclusions: [...roster.exclusions, ...lineageExclusions],
       lineage,
       entries: entriesById,
+      ...(roster.caseId !== undefined ? { caseId: roster.caseId } : {}),
       ...(candidate && !definite ? { unsupported: candidate } : {})
     }
   }
@@ -509,7 +513,7 @@ function verifyCase(input: SharedCaseInput, nested: boolean): SharedCaseVerifyRe
     history.length > 0 &&
     (lineageInput.length > 0 || history.some((e) => e.type === 'member-add'))
   if (lastImport && forked) {
-    const { sourceCaseId, sourcePublicKeyPem, index } = lastImport
+    const { sourceCaseId, sourceInstallationId, sourcePublicKeyPem, index } = lastImport
     const supplied = lineageInput.find((l) => l.sourceCaseId === sourceCaseId)
     const source = verifyCase(
       {
@@ -524,9 +528,30 @@ function verifyCase(input: SharedCaseInput, nested: boolean): SharedCaseVerifyRe
     }
     lineageUnsupported = source.unsupported
     // The source Owner's entries are this chain's own history, already in it.
-    const sourceOwner = source.members.find((m) => m.role === 'owner')?.installationId ?? 'owner'
+    const sourceOwner = source.members.find((m) => m.role === 'owner')?.installationId
+    // The import names the Case and the Owner its verified history
+    // establishes. The history's key is bound by the chain walk; its Case id
+    // and Owner are not, and an import relabelling them would attribute the
+    // source Case's Exhibits to another.
+    const establishedCaseId = source.caseId ?? lastImportOf(history)?.caseId
+    if (establishedCaseId !== undefined && establishedCaseId !== sourceCaseId) {
+      findings.push({
+        outcome: 'roster-invalid',
+        installationId: ownerId ?? 'owner',
+        index,
+        reason: `import at index ${index} names source Case ${sourceCaseId}, its history is Case ${establishedCaseId}`
+      })
+    }
+    if (sourceOwner !== undefined && sourceOwner !== sourceInstallationId) {
+      findings.push({
+        outcome: 'roster-invalid',
+        installationId: ownerId ?? 'owner',
+        index,
+        reason: `import at index ${index} names source installation ${sourceInstallationId}, the source Case's Owner is ${sourceOwner}`
+      })
+    }
     for (const [id, accepted] of source.entries) {
-      if (id !== sourceOwner) lineageEntries.set(`${sourceCaseId}/${id}`, accepted)
+      if (id !== (sourceOwner ?? 'owner')) lineageEntries.set(`${sourceCaseId}/${id}`, accepted)
     }
     for (const [id, result] of source.memberChains) {
       memberChains.set(`${sourceCaseId}/${id}`, result)

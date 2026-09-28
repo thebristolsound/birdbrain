@@ -225,7 +225,7 @@ row never compares with a direct row.
 every planted defect caught, both recent approved PRs approved, and two disagreements with the
 answer key that were the answer key's. The maintainer ruled the model's finding on the base PR
 of the persona cases a real bug (the orphan sweep deletes a restored persona's sign-in), now
-carried as a `baseDefects` entry on the five cases built on #1587. The wave-2 approve case
+carried as a `baseDefects` entry on the five cases built on #1587 and filed as #1628. The wave-2 approve case
 tripped today's missing-label gate, a control that did not exist when it was adjudicated; the
 dispatch mode runs with `--exclude-tag wave2`. A third of the comment's findings named a file
 and function without a line, reported per row as `line-missing`.

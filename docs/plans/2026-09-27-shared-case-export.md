@@ -54,7 +54,9 @@ Shared Case writer shipped before this step, so no such package exists yet.
 - **Case Archive.** Schema 8. The archive carries every member and lineage chain and the
   `case_members` rows. Inspect verifies a Shared Case archive with the replica walk. Import
   builds the fork chain described in "Fork shape" and stamps every lineage Exhibit row with its author and Member
-  Code, so the new Case's own Exhibits cannot cite the same as a lineage Exhibit.
+  Code, so while the fork has no roster of its own, its own Exhibits cannot cite the same as
+  a lineage Exhibit. A roster it is later shared under could reuse a lineage code: the Member
+  Code check reads only the fork's own roster.
 - **Citation rule.** A Case with no roster whose rows carry Member Codes, which is a fork,
   prefixes those rows in the app and in exports.
 - **VERIFY.md.** A Shared Case section naming manifest schema 4, the member chain files and

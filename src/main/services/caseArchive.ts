@@ -590,9 +590,8 @@ function planImportChains(
 
 // A fork's Exhibits all belong to the source Case's members. The exporter's
 // own rows were "this installation" there and would read as the importer's
-// here, so each row is stamped with its author and that author's Member Code:
-// the new Case numbers its own Exhibits afresh, and none of them can then cite
-// the same as a source Exhibit.
+// here, so each row is stamped with its author and that author's Member Code,
+// which its citation then carries.
 function attributeForkedExhibits(
   rows: Record<string, unknown>[],
   { exporterId, members }: NonNullable<ImportChains['fork']>

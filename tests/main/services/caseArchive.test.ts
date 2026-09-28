@@ -224,10 +224,10 @@ describe('caseArchive export', () => {
   // 6 since #1148: `exhibits` and `stagingFiles` in data.json, non-Capture
   // Exhibit bytes and `staged` pooled bytes in the zip, which a pre-v34 build
   // has no table or directory for.
-  // 7 since embedded note images: a pre-image build rejects the node type
-  // and abandons the import.
-  it('keeps CASE_ARCHIVE_SCHEMA_VERSION at 7 since embedded note images', () => {
-    expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(7)
+  // 8 since Shared Cases (#1511): a pre-8 build would import the exporter's
+  // chain alone and drop every other member's.
+  it('keeps CASE_ARCHIVE_SCHEMA_VERSION at 8 since Shared Cases', () => {
+    expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(8)
   })
 
   it('exports a .birdbrain archive with header, data, manifest, and files', async () => {

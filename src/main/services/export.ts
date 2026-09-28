@@ -26,21 +26,25 @@ import {
   initManifest,
   packageHash as computePackageHash,
   readManifestSnapshot,
+  readSharedCaseSnapshot,
   rollbackManifestEntry
 } from '@main/services/manifest'
 import { buildTrustedTimeIndex } from '@main/services/trustedTime'
 import type {
   ArtifactAccumulator,
   ExportVerificationResult,
-  ManifestSnapshot
+  ManifestSnapshot,
+  SharedCaseSnapshot
 } from '@main/services/manifest'
 import { createStoredZip } from '@main/services/zip'
 import { getTsaTrustBundle } from '@main/services/tsaTrust'
 import {
   buildTrustedTimeIndexFromEntries,
   extractTimestampTokenCertificatesPem,
+  SHARED_CASE_SCHEMA_VERSION,
   stampFor
 } from '@shared/verify'
+import type { SharedCaseMember } from '@shared/verify'
 import {
   PACKAGE_ROOT_FILES,
   capturePagePath,
@@ -58,6 +62,8 @@ import type {
   EntrySignatureStatus,
   ExportDerivedFile,
   ExportFileExhibit,
+  ExportSharedCase,
+  ExportSharedCaseMember,
   PackagedArtifacts,
   ReportData
 } from '@main/services/reportHtml'
@@ -81,6 +87,67 @@ import type {
 // The report renderer owns this shape. Aliasing rather than restating it keeps
 // the two from drifting apart, since every field here exists to be rendered.
 type ExportData = ReportData
+
+/**
+ * Every entry the package vouches for: the local chain's, and in a Shared Case
+ * the accepted entries of every other member and lineage chain. A remote
+ * Exhibit's trusted time and entry signature are its author's, read from its
+ * author's chain exactly as the package verifier reads them.
+ */
+function caseEntriesOf(
+  manifest: ManifestSnapshot,
+  sharedCase: SharedCaseSnapshot
+): Record<string, unknown>[] {
+  const verification = sharedCase.verification
+  if (!verification) return manifest.entries
+  const remote = [...verification.entries]
+    .filter(([id]) => id !== verification.localInstallationId)
+    .flatMap(([, accepted]) => accepted)
+  return [...manifest.entries, ...remote]
+}
+
+function exportSharedCaseMember(member: SharedCaseMember): ExportSharedCaseMember {
+  const { installationId, memberCode, operatorName, role, revokedAt } = member
+  return { installationId, memberCode, operatorName, role, revoked: revokedAt !== undefined }
+}
+
+/**
+ * The Shared Case the export states, from the walk over the snapshot it
+ * encloses. Null for a Case never shared or forked, which keeps its documents
+ * and index exactly as they were before Shared Cases. `inExport` says which
+ * Exhibits the export's scope holds.
+ */
+export function resolveExportSharedCase(
+  sharedCase: SharedCaseSnapshot,
+  inExport: (exhibitId: string) => boolean
+): ExportSharedCase | null {
+  const verification = sharedCase.verification
+  if (!verification) return null
+  const citationByExhibitId = new Map(
+    [...verification.citations.values()].map((c) => [c.exhibitId, c.citation])
+  )
+  return {
+    verified: verification.valid,
+    finding: verification.reason ?? null,
+    members: verification.members.map(exportSharedCaseMember),
+    lineage: verification.lineage.map(({ sourceCaseId, members }) => ({
+      sourceCaseId,
+      members: members.map(exportSharedCaseMember)
+    })),
+    exclusions: verification.exclusions.map((exclusion) => ({
+      exhibitId: exclusion.exhibitId,
+      citation: citationByExhibitId.get(exclusion.exhibitId) ?? null,
+      authorInstallationId: exclusion.authorInstallationId,
+      excludedBy: exclusion.operatorName,
+      excludedAt: exclusion.timestamp,
+      manifestIndex: exclusion.index,
+      reason: exclusion.reason ?? null,
+      sourceCaseId: exclusion.sourceCaseId ?? null,
+      inExport: inExport(exclusion.exhibitId)
+    })),
+    chainPaths: sharedCase.chains.map((chain) => chain.path)
+  }
+}
 
 /** evidence.json keeps this as a list; an Exhibit has at most one token path. */
 function packagedTimestampTokenPaths(byHash: Map<string, string>, contentHash: string): string[] {
@@ -478,7 +545,9 @@ export async function generateReport(
           excludedExhibitCount: scope.excludedExhibitCount,
           omittedNoteCount
         }
-      : null
+      : null,
+    // Resolved from the manifest snapshot below, with the chains beside it.
+    sharedCase: null
   }
 
   // Filled by the verification run below when one is asked for; empty otherwise,
@@ -551,7 +620,13 @@ export async function generateReport(
   // manifest.jsonl does not end at — telling reviewers to reconcile a valid
   // package against a stale hash.
   const manifest = readManifestSnapshot(join(getStorageRoot(), caseId))
+  // The other member and lineage chains, read straight after with nothing
+  // awaited between, so the package encloses one state of the Case directory.
+  const sharedCase = readSharedCaseSnapshot(join(getStorageRoot(), caseId), manifest)
+  const caseEntries = caseEntriesOf(manifest, sharedCase)
   data.manifestHead = manifest.head
+  const inScope = new Set([...captures.map((c) => c.id), ...scope.fileExhibits.map((e) => e.id)])
+  data.sharedCase = resolveExportSharedCase(sharedCase, (id) => inScope.has(id))
   // One reader for the whole export: it reads each enclosed non-Capture
   // Exhibit and each enclosed Derived File exactly once, classification reads
   // its outcome, and the zip builders consume the buffers it already holds. A
@@ -563,7 +638,7 @@ export async function generateReport(
     options.format === 'zip'
       ? buildTimestampTokenPaths(
           tokenSubjects(captures, scope.fileExhibits),
-          manifest.entries.filter(isTimestampEntry)
+          caseEntries.filter(isTimestampEntry)
         )
       : new Map<string, string>()
   data.packagedPaths = buildPackagedPaths(
@@ -575,17 +650,17 @@ export async function generateReport(
   )
 
   // Resolved from the snapshot above and nowhere else — see resolveExportTrustedTime.
-  const trustedTimeByHash = buildTrustedTimeIndexFromEntries(manifest.entries)
+  const trustedTimeByHash = buildTrustedTimeIndexFromEntries(caseEntries)
   const trustedTime = resolveExportTrustedTime(captures, trustedTimeByHash)
   data.preflight = trustedTime.preflight
   data.trustedTimeByCaptureId = trustedTime.byCaptureId
-  data.entrySignatureByCaptureId = resolveEntrySignatures(captures, manifest.entries)
+  data.entrySignatureByCaptureId = resolveEntrySignatures(captures, caseEntries)
   data.fileExhibits = buildFileExhibitRecords(scope.fileExhibits, {
     derivedByExhibitId,
     derivedVerifications,
     verifications: exhibitVerifications,
     trustedTimeByHash,
-    entrySignatures: resolveExhibitEntrySignatures(scope.fileExhibits, manifest.entries),
+    entrySignatures: resolveExhibitEntrySignatures(scope.fileExhibits, caseEntries),
     tokenPaths,
     isPackage: options.format === 'zip',
     reader,
@@ -624,7 +699,7 @@ export async function generateReport(
       onProgress?.('Generating report...', 80)
       const html = buildHtmlReport(data, options)
       onProgress?.('Packaging evidence...', 90)
-      zip = buildEvidenceZip(caseId, data, html, manifest, packageMeta, reader)
+      zip = buildEvidenceZip(caseId, data, html, manifest, sharedCase, packageMeta, reader)
     }
     const { entries, packageHash, verificationResult } = zip
 
@@ -1126,13 +1201,14 @@ function buildEvidenceZip(
   data: ExportData,
   reportHtml: string,
   manifest: ManifestSnapshot,
+  sharedCase: SharedCaseSnapshot,
   meta: PackageMeta,
   reader: PackageReader
 ): EvidenceZipResult {
   const { entries, artifacts, add } = createArtifactAccumulator()
 
   const manifestJsonl = manifest.jsonl
-  const timestampEntries = manifest.entries.filter(isTimestampEntry)
+  const timestampEntries = caseEntriesOf(manifest, sharedCase).filter(isTimestampEntry)
   const latestManifestEntry = manifest.head
 
   // Same path rule the report was rendered against, over the same Exhibits in
@@ -1177,6 +1253,10 @@ function buildEvidenceZip(
   const publicKeyPem = getPublicKeyPem()
 
   add(PACKAGE_ROOT_FILES.manifest, manifestJsonl)
+  // Every other member's chain and every lineage chain, byte-for-byte and
+  // under the name it has in the Case directory: each verifies under its own
+  // member's key, which the Owner's `member-add` entries carry.
+  for (const chain of sharedCase.chains) add(chain.path, chain.jsonl)
   add(PACKAGE_ROOT_FILES.report, reportHtml)
   add(
     PACKAGE_ROOT_FILES.certification,
@@ -1213,7 +1293,8 @@ function buildEvidenceZip(
           exhibitNumber: exhibit.exhibitNumber,
           trustedTime: exhibit.trustedTime,
           entrySignature: exhibit.entrySignature
-        }))
+        })),
+        sharedCase: data.sharedCase
       },
       resolveToolVersion()
     )
@@ -1407,6 +1488,12 @@ function buildEvidenceZip(
       tsaCaChainBundled: tsaTrust.bundled,
       reportPath: PACKAGE_ROOT_FILES.report
     },
+    // Informational like every index field: the verifier re-derives the roster
+    // and the exclusions from the enclosed chains. Omitted for a Case never
+    // shared or forked, so its index is unchanged.
+    ...(data.sharedCase
+      ? { sharedCase: { manifestSchemaVersion: SHARED_CASE_SCHEMA_VERSION, ...data.sharedCase } }
+      : {}),
     captures: captureEvidence,
     // Every Exhibit the package holds, of every kind, in Exhibit Number order
     // (ADR-0023). Additive: `captures` above keeps its rows and its shape.

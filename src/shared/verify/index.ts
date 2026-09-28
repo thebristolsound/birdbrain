@@ -40,12 +40,15 @@ export type {
 export {
   verifySharedCase,
   verifySharedCaseReplica,
-  SHARED_CASE_ENTRY_TYPES
+  SHARED_CASE_ENTRY_TYPES,
+  SHARED_CASE_SCHEMA_VERSION
 } from '@shared/verify/sharedCase'
 export type {
   SharedCaseInput,
   SharedCaseReplicaInput,
   SharedCaseMemberChain,
+  SharedCaseLineage,
+  SharedCaseLineageRoster,
   SharedCaseOutcome,
   SharedCaseMember,
   SharedCaseCitation,

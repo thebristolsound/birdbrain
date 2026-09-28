@@ -4,15 +4,17 @@ import { join } from 'path'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import type { CaptureStore } from '@main/services/captureStore'
 import * as captureRepo from '@main/services/db/captureRepo'
+import { getExhibit } from '@main/services/db/exhibitRepo'
 import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
 import { extractData } from '@main/services/dataExtractor'
 import { recordSlowOp } from '@main/services/diagnostics'
 import { readExtractionHtml } from '@main/services/extraction/extractionSource'
 import { getInstallationId } from '@main/services/installationId'
 import {
+  authorChainOf,
   getManifestHead,
   readCaptureEntryAt,
-  verifyManifestChain,
+  readCaseChains,
   withCaptureEntry,
   withDeletionEntry,
   ManifestRollback
@@ -422,7 +424,13 @@ async function computeVerification(
   }
   const computed = hasher.digest('hex')
 
-  const chain = verifyManifestChain(store.caseDir(capture.caseId))
+  // The chain the capture's author signed: the local one for this
+  // installation's own, another member's chain in a Shared Case (#1511).
+  const { chain } = authorChainOf(readCaseChains(store.caseDir(capture.caseId)), {
+    authorInstallationId: getExhibit(capture.id)?.authorInstallationId ?? null,
+    manifestIndex: capture.manifestIndex ?? null,
+    contentHash: capture.hash
+  })
   // Checked before `valid`, which is also false here: an entry from a newer
   // schema means this build cannot read the chain, not that it is broken (X25).
   if (chain.unsupported) {

@@ -10,11 +10,15 @@
 
 import { DIGICERT_TRUSTED_ROOT_G4_SHA256 } from '@main/services/tsaTrust'
 import { EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION } from '@shared/schemas'
+import { SHARED_CASE_SCHEMA_VERSION } from '@shared/verify'
 import {
   CAPTURE_PACKAGE_DIRECTORY,
+  LINEAGE_DIRECTORY,
   PACKAGE_ROOT_FILES,
   TIMESTAMP_PACKAGE_DIRECTORY,
   capturePagePath,
+  lineageChainPath,
+  memberChainPath,
   screenshotPath,
   timestampTokenPath
 } from '../../packages/evidence-package-layout/index'
@@ -147,6 +151,8 @@ internal consistency*, **not** timestamp authenticity — this runbook's
 | \`${TIMESTAMP_PACKAGE_DIRECTORY}/*.tst\` | RFC 3161 tokens, when present (see step 6c on their encoding) |
 | \`${ROOT.evidenceIndex}\` | Unsigned index (reconcile, do not trust) |
 | \`${ROOT.exportEntry}\` | Signed export entry for this package — scope of the enclosed captures (absent only from packages whose \`${ROOT.evidenceIndex}\` states a \`schemaVersion\` below ${EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION}; see Trust model) |
+| \`${memberChainPath('{installationId}')}\` | Another member's signed chain, present only in a Shared Case package (see Shared Case packages) |
+| \`${lineageChainPath('{sourceCaseId}', '{installationId}')}\` | A member chain of the Case this one was forked from, present only in a fork's package |
 
 ## Step 1 — File integrity (index self-consistency)
 
@@ -361,4 +367,82 @@ samples carry it and the IdenTrust and SINPE samples do not, so an authority of
 the latter kind is not expected to produce it. That measurement covers \`SET\`
 ordering and length form only, so a token it finds clean is not thereby
 guaranteed to satisfy every DER rule.
+
+## Shared Case packages (manifest schema ${SHARED_CASE_SCHEMA_VERSION})
+
+A package of a Shared Case holds one chain per member, and verifying it needs a
+verifier that reads manifest schema ${SHARED_CASE_SCHEMA_VERSION}. An older one reports "verifier too
+old", which is not a verdict about the package. \`${ROOT.manifest}\` is the chain of
+the member who exported the package, signed by \`${ROOT.signingPublicKey}\`. Every other
+member's chain sits beside it as \`${memberChainPath('{installationId}')}\`. A package
+of a Case nobody shared has none of these files, and the blocks below print
+nothing for it.
+
+The Owner's chain is the one whose \`member-add\` entries name the members; the
+first names the Owner itself with role \`owner\`. Each \`member-add\` carries that
+member's \`memberPublicKeyPem\`: run steps 2 to 4 over each member's chain with
+that key in place of \`${ROOT.signingPublicKey}\`. When \`${ROOT.manifest}\` is not the
+Owner's chain, first find the \`merge\` in it that names the Owner's chain: the
+head it names must sit at or past the Owner's own \`member-add\`, which binds the
+Owner's key to the exporting member's signature.
+
+\`\`\`sh
+# The roster of each Case: every member-add, whichever chain holds it, led by
+# the Case id it names. A fork's history holds its source Case's roster.
+cat manifest*.jsonl | jq -r 'select(.type == "member-add") | "\\(.caseId) \\(.memberCode) \\(.role) \\(.memberInstallationId)"'
+\`\`\`
+
+A fork continues the source Owner's chain: the entries before its \`import\`
+entry are the source Case's, and that \`import\`'s \`sourcePublicKeyPem\` is the
+key they verify under. The source Case's other member chains sit under
+\`${LINEAGE_DIRECTORY}/{sourceCaseId}/\`, and they verify as above with the roster
+read from the entries before the \`import\`.
+
+Every \`merge\` names the head of another member's chain it received, and each
+head must be an entry in that member's chain, in the Case the \`merge\` belongs
+to, with the same \`entryHash\`. A \`merge\` in a lineage chain belongs to that
+chain's Case, and one in a fork's history to the source Case its next \`import\`
+names. In a source Case, a member's chain is its lineage chain, and the source
+Owner's is the history of the chain whose \`import\` names that Case. One
+installation can hold a chain in both Cases, so the Case decides which file to
+read:
+
+\`\`\`sh
+for f in manifest*.jsonl ${LINEAGE_DIRECTORY}/*/manifest.*.jsonl; do
+  [ -e "$f" ] || continue
+  case "$f" in
+    ${LINEAGE_DIRECTORY}/*) chain_case=$(basename "$(dirname "$f")") ;;
+    *) chain_case= ;;
+  esac
+  # "-" stands for this Case.
+  jq -rs --arg chain_case "$chain_case" '. as $chain | .[] | select(.type == "merge") | . as $merge
+    | (if $chain_case != "" then $chain_case
+       else (first($chain[] | select(.type == "import" and .index > $merge.index)) | .sourceCaseId) // "-"
+       end) as $merge_case
+    | .heads[] | "\\($merge_case) \\(.installationId) \\(.index) \\(.entryHash)"' "$f"
+done | while read -r merge_case id index hash; do
+  if [ "$merge_case" = "-" ]; then
+    chain="manifest.$id.jsonl"
+    [ -e "$chain" ] || chain=${ROOT.manifest}
+  else
+    chain="${LINEAGE_DIRECTORY}/$merge_case/manifest.$id.jsonl"
+    if [ ! -e "$chain" ]; then
+      chain=${ROOT.manifest}
+      for c in manifest*.jsonl; do
+        if jq -e --arg merge_case "$merge_case" 'select(.type == "import" and .sourceCaseId == $merge_case)' "$c" > /dev/null; then
+          chain=$c
+          break
+        fi
+      done
+    fi
+  fi
+  actual=$(sed -n "$((index + 1))p" "$chain" | jq -r '.entryHash')
+  if [ "$actual" = "$hash" ]; then echo "head OK: $id #$index"; else echo "head MISMATCH: $id #$index"; fi
+done
+\`\`\`
+
+An \`exclude\` in the Owner's chain records that the Owner excluded an Exhibit.
+The Exhibit stays in the package, its entry stays in its author's chain, and
+steps 1 and 5 still apply to it: an exclusion is listed, never applied by
+leaving the Exhibit out.
 `

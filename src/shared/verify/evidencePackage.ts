@@ -1,5 +1,5 @@
 import { createHash } from 'crypto'
-import { existsSync, readFileSync, readdirSync, realpathSync } from 'fs'
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'fs'
 import { join, resolve, sep } from 'path'
 import {
   EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION,
@@ -12,16 +12,28 @@ import type { ManifestEntry } from '@shared/schemas'
 import { parseTimestampToken } from '@shared/verify/timestampToken'
 import type { TrustedTimeResult } from '@shared/verify/trustedTime'
 import { describeUnsupportedEntry, verifyManifestChainText } from '@shared/verify/manifestChain'
-import { SHARED_CASE_ENTRY_TYPES, verifySharedCaseReplica } from '@shared/verify/sharedCase'
+import {
+  SHARED_CASE_ENTRY_TYPES,
+  SHARED_CASE_SCHEMA_VERSION,
+  verifySharedCaseReplica
+} from '@shared/verify/sharedCase'
+import type {
+  SharedCaseExclusion,
+  SharedCaseLineage,
+  SharedCaseMember,
+  SharedCaseMemberChain
+} from '@shared/verify/sharedCase'
 import { bindDerivedFile } from '@shared/verify/exhibitBinding'
 import {
   CAPTURE_PACKAGE_DIRECTORY,
+  LINEAGE_DIRECTORY,
   PACKAGE_ROOT_FILES,
   TIMESTAMP_PACKAGE_DIRECTORY,
   capturePagePath,
   derivedFilePackagePath,
   exhibitPackageDirectory,
   exhibitPackagePath,
+  parseChainPath,
   screenshotPath,
   timestampTokenPath
 } from '../../packages/evidence-package-layout/index'
@@ -208,6 +220,52 @@ function validateExportEntry(
   return { entry }
 }
 
+// Every other member chain beside the manifest, and every lineage chain under
+// the lineage directory, by the names the Package Layout gives them. A file
+// the layout does not name is not read as a chain.
+function readSharedCaseChains(dir: string): {
+  others: SharedCaseMemberChain[]
+  lineage: SharedCaseLineage[]
+} {
+  const read = (path: string): string => readFileSync(join(dir, path), 'utf-8')
+  const others = readdirSync(dir).flatMap((name) => {
+    const chain = parseChainPath(name)
+    return chain ? [{ installationId: chain.installationId, jsonl: read(name) }] : []
+  })
+  const lineageDir = join(dir, LINEAGE_DIRECTORY)
+  if (!existsSync(lineageDir) || !statSync(lineageDir).isDirectory()) return { others, lineage: [] }
+  const lineage = readdirSync(lineageDir).flatMap((sourceCaseId) => {
+    if (!statSync(join(lineageDir, sourceCaseId)).isDirectory()) return []
+    const members = readdirSync(join(lineageDir, sourceCaseId)).flatMap((name) => {
+      const path = [LINEAGE_DIRECTORY, sourceCaseId, name].join('/')
+      const chain = parseChainPath(path)
+      return chain?.sourceCaseId === sourceCaseId
+        ? [{ installationId: chain.installationId, jsonl: read(path) }]
+        : []
+    })
+    return [{ sourceCaseId, members }]
+  })
+  return { others, lineage }
+}
+
+function describeRoster(members: SharedCaseMember[]): string {
+  const roster = members
+    .map(
+      (m) => `${m.memberCode}=${m.installationId}${m.revokedAt === undefined ? '' : ' (revoked)'}`
+    )
+    .join(', ')
+  return `${members.length} member(s)${roster ? `: ${roster}` : ''}`
+}
+
+// Who excluded an Exhibit, when, and in which Case: a reader weighing the
+// exclusion needs all three, and the chain states each.
+function describeExclusion(exclusion: SharedCaseExclusion): string {
+  const { operatorName, timestamp, index, authorInstallationId, reason, sourceCaseId } = exclusion
+  const owner = sourceCaseId === undefined ? 'the Owner' : `the Owner of Case ${sourceCaseId}`
+  const why = reason === undefined ? '' : ` — ${reason}`
+  return `excluded by ${operatorName} (${owner}) at ${timestamp}, index ${index} (author ${authorInstallationId})${why}`
+}
+
 /**
  * Verifies the structural integrity of an evidence package.
  *
@@ -332,15 +390,16 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   // exporter is any member: when its chain is the Owner's the roster is read
   // from it directly, otherwise the Owner's chain is located among the others
   // and its key trusted only once a `merge` the exporter signed anchors it
-  // (`verifySharedCaseReplica`). The walk runs whenever a member chain is
-  // enclosed or the manifest carries a schema-4 entry, so a single-member Case
-  // is verified exactly as before. It does not run over a chain that already
-  // FAILed above: the roster is read from a verified chain or not at all. Each
-  // exclusion the Owner recorded is listed as an annotation, not a verdict: the
-  // excluded Exhibit's entry stays in its author's chain.
-  const memberChainFiles = readdirSync(dir)
-    .map((name) => ({ name, match: /^manifest\.(.+)\.jsonl$/.exec(name) }))
-    .filter((f): f is { name: string; match: RegExpExecArray } => f.match !== null)
+  // (`verifySharedCaseReplica`). A package of a fork also encloses the source
+  // Case's other member chains under `lineage/<sourceCaseId>/`, and the walk
+  // verifies that Case from the history before the fork's `import`. The walk
+  // runs whenever a member or lineage chain is enclosed or the manifest
+  // carries a schema-4 entry, so a single-member Case is verified exactly as
+  // before. It does not run over a chain that already FAILed above: the
+  // roster is read from a verified chain or not at all. Each exclusion an
+  // Owner recorded is listed as an annotation, not a verdict: the excluded
+  // Exhibit's entry stays in its author's chain.
+  const { others: memberChains, lineage } = readSharedCaseChains(dir)
   // What the other members' verified chains add to this package's facts: their
   // accepted entries, the trusted time their stamps carry, and each Exhibit's
   // citation. Empty for a single-chain package.
@@ -352,7 +411,8 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   // package holding one and nothing else must not take the single-chain path
   // and keep an unvalidated prefix (#1518 review).
   const isShared =
-    memberChainFiles.length > 0 ||
+    memberChains.length > 0 ||
+    lineage.length > 0 ||
     entries.some(
       (e) =>
         SHARED_CASE_ENTRY_TYPES.has(e.type) || (e.type === 'exhibit' && e.memberCode !== undefined)
@@ -362,10 +422,8 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   } else if (isShared) {
     const shared = verifySharedCaseReplica({
       local: { jsonl: manifestJsonl, publicKeyPem },
-      others: memberChainFiles.map(({ name, match }) => ({
-        installationId: match[1],
-        jsonl: readFileSync(join(dir, name), 'utf-8')
-      }))
+      others: memberChains,
+      lineage
     })
     // Set only when "too old" is the whole of what the walk found: a definite
     // failure beside an unreadable chain is rendered below as the FAIL it is.
@@ -384,13 +442,19 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
     for (const { exhibitId, citation } of shared.citations.values()) {
       citationLabels.set(exhibitId, citation)
     }
-    const roster = shared.members
-      .map(
-        (m) => `${m.memberCode}=${m.installationId}${m.revokedAt === undefined ? '' : ' (revoked)'}`
-      )
-      .join(', ')
     if (shared.valid) {
-      add('shared case', 'pass', `${shared.members.length} member(s): ${roster}`)
+      // The schema the walk needed is named, so a reader holding an older
+      // verifier knows which one it has to replace.
+      const forks = shared.lineage
+        .map(
+          (source) => `; forked from Case ${source.sourceCaseId}, ${describeRoster(source.members)}`
+        )
+        .join('')
+      add(
+        'shared case',
+        'pass',
+        `manifest schema ${SHARED_CASE_SCHEMA_VERSION}; ${describeRoster(shared.members)}${forks}`
+      )
     } else {
       for (const finding of shared.findings) {
         const status = finding.outcome === 'verifier-too-old' ? 'skip' : 'fail'
@@ -398,12 +462,7 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
       }
     }
     for (const exclusion of shared.exclusions) {
-      const why = exclusion.reason === undefined ? '' : ` — ${exclusion.reason}`
-      add(
-        `exhibit ${exclusion.exhibitId} excluded`,
-        'skip',
-        `excluded by the Owner at index ${exclusion.index} (author ${exclusion.authorInstallationId})${why}`
-      )
+      add(`exhibit ${exclusion.exhibitId} excluded`, 'skip', describeExclusion(exclusion))
     }
   }
 

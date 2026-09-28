@@ -46,6 +46,15 @@ export function listCaseMembers(caseId: string): CaseMember[] {
   return rows.map(toCaseMember)
 }
 
+// Raw rows for the Case Archive (#1511), which snapshots tables rather than
+// domain objects. The roster travels with the chains it caches; an import
+// makes a new Case with one member, so nothing reads these back in.
+export function collectCaseMembersForCase(caseId: string): Record<string, unknown>[] {
+  return getDb()
+    .prepare('SELECT * FROM case_members WHERE case_id = ? ORDER BY added_at_index')
+    .all(caseId) as Record<string, unknown>[]
+}
+
 // Why a Member Code was refused, or null when it is usable. One to three
 // characters from [A-Z0-9] (decision 8, assessment item 22) and not already
 // another member's in this Case. `installationId` exempts the member's own row
@@ -110,7 +119,15 @@ export function exhibitCitationRule(
   surface: 'app' | 'export'
 ): ExhibitCitationRule {
   const members = listCaseMembers(caseId)
-  if (members.length === 0) return { prefixed: false, localMemberCode: null }
+  if (members.length === 0) {
+    // A fork (#1511) has no roster of its own, but its source Case's rows
+    // carry their members' codes and two of them can share a number. Those
+    // cite prefixed everywhere; the fork's own rows, with no code, cite bare.
+    const coded = getDb()
+      .prepare('SELECT 1 FROM exhibits WHERE case_id = ? AND member_code IS NOT NULL LIMIT 1')
+      .get(caseId)
+    return { prefixed: coded !== undefined, localMemberCode: null }
+  }
   const localId = getInstallationId()
   return {
     prefixed: surface === 'export' || members.length > 1,

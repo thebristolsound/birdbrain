@@ -238,14 +238,19 @@ one-line header, `/*! tailwindcss v4.3.2 | MIT License | https://tailwindcss.com
 
 Terms of the packed material:
 
-- **Fonts:** OFL-1.1. None of the three pages carries the licence text or either copyright line.
-  The next command counts 0 of each across the page, its template, and its decoded scripts.
+- **Fonts:** OFL-1.1. Each of the four packed fonts carries its copyright line and a licence web
+  address in its own name table, but not the licence text. The page's HTML, its markup template,
+  and its decoded scripts carry neither the licence text nor either copyright line.
 - **React 18.3.1:** MIT. Each bundle keeps React's header, which names the copyright holder as
   Facebook, Inc. and its affiliates and points to a `LICENSE` file the page does not carry.
 - **The design tool's runtime:** its first line begins
   `// GENERATED from dc-runtime/src/*.ts — do not edit.` The file states no copyright and no
   terms.
 - **Images:** the logo rows and the Reuters Institute rows of the binary files table.
+
+The first command below counts the phrase "Open Font License" and each copyright holder's name
+across the page's HTML, its markup template, and its decoded scripts, and prints 0, 0, and 0 for
+each page. It skips the fonts and images, which are binary.
 
 ```bash
 git grep -l -F '__bundler/manifest' "$BASE" -- 'docs/design-handoff/*.html' | sed "s/^$BASE://" | node -e '
@@ -268,6 +273,72 @@ for (const page of fs.readFileSync(0, "utf8").split("\n").filter(Boolean)) {
 }
 '
 ```
+
+The second decompresses each font a page packs and reads its name table, where a font keeps its
+copyright and licence fields:
+
+```bash
+git grep -l -F '__bundler/manifest' "$BASE" -- 'docs/design-handoff/*.html' | sed "s/^$BASE://" | node -e '
+const fs = require("fs")
+const zlib = require("zlib")
+const nameTable = (font) => {
+  let p = 48
+  const uint = () => {
+    let v = 0
+    let b
+    do {
+      b = font[p++]
+      v = v * 128 + (b & 127)
+    } while (b & 128)
+    return v
+  }
+  const tables = []
+  for (let i = 0; i < font.readUInt16BE(12); i++) {
+    const flags = font[p++]
+    const index = flags & 63
+    if (index === 63) p += 4
+    const length = uint()
+    const transformed = index === 10 || index === 11 ? flags >> 6 !== 3 : flags >> 6 !== 0
+    tables.push({ isName: index === 5, length: transformed ? uint() : length })
+  }
+  const data = zlib.brotliDecompressSync(font.subarray(p, p + font.readUInt32BE(20)))
+  let at = 0
+  for (const { isName, length } of tables) {
+    if (isName) return data.subarray(at, at + length)
+    at += length
+  }
+}
+for (const page of fs.readFileSync(0, "utf8").split("\n").filter(Boolean)) {
+  const html = fs.readFileSync(page, "utf8")
+  const manifest = JSON.parse(html.match(/<script type="__bundler\/manifest"[^>]*>([\s\S]*?)<\/script>/)[1])
+  console.log(page)
+  for (const { mime, compressed, data } of Object.values(manifest)) {
+    if (!mime.startsWith("font/")) continue
+    let font = Buffer.from(data, "base64")
+    if (compressed) font = zlib.gunzipSync(font)
+    const table = nameTable(font)
+    const names = new Map()
+    for (let i = 0; i < table.readUInt16BE(2); i++) {
+      const record = 6 + i * 12
+      const start = table.readUInt16BE(4) + table.readUInt16BE(record + 10)
+      const raw = Buffer.from(table.subarray(start, start + table.readUInt16BE(record + 8)))
+      const text = table.readUInt16BE(record) === 1 ? raw.toString("latin1") : raw.swap16().toString("utf16le")
+      names.set(table.readUInt16BE(record + 6), text)
+    }
+    console.log("  " + mime + " " + font.length + ", metadata block " + font.readUInt32BE(32) + " bytes")
+    for (const id of [0, 13, 14]) console.log("    name ID " + id + ": " + (names.get(id) ?? "none"))
+  }
+}
+'
+```
+
+In all three pages, name ID 0, the copyright notice, reads
+`Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter)` in both Inter fonts and
+`Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)`
+in both JetBrains Mono fonts. Name ID 14, the licence web address, reads
+`https://openfontlicense.org` in the Inter fonts and `https://scripts.sil.org/OFL` in the
+JetBrains Mono fonts. No font has name ID 13, the licence description, and every font's WOFF2
+metadata block is 0 bytes.
 
 ### Other design material in text files
 

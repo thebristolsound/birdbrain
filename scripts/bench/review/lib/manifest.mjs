@@ -1,5 +1,7 @@
 // The run manifest: every input byte a result depends on, hashed into one id.
-// Two rows are comparable only when their manifest ids match.
+// The id names a run. Two runs compare when their manifests agree on every
+// field except the axes under comparison (model, effort, and across vendors
+// the harness); the report joins on that comparison key, never on the id.
 
 import { createHash } from 'node:crypto'
 

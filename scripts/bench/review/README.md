@@ -40,8 +40,9 @@ commit is not local. `fixtures/`, `results/` and `.cache/` are ignored.
 The manifest hashes the prompt template (`prompts/code-review.md`), the reviewer definition
 (`.claude/agents/birdbrain-reviewer.md`), `CLAUDE.md`, the corpus (every case id, head and
 truth file), the tool tier, the model, the effort, the harness version, the Node version, the
-timeout and a hash of the active login. Two rows are comparable only when their manifest ids
-match.
+timeout and a hash of the active login. The id names a run; two runs compare when their
+manifests agree on everything but the axes under comparison (model, effort, and across
+vendors the harness), which is the key the report joins on.
 
 The harness is pinned as far as its flags allow:
 
@@ -85,12 +86,21 @@ window), which is how a pilot measures what one case costs.
 
 | Tier | `claude` | `codex` |
 | --- | --- | --- |
-| L0 | `--tools StructuredOutput`; the diff and PR body are in the prompt | `--sandbox read-only` in an empty directory; diff and PR body in the prompt |
+| L0 | `--tools StructuredOutput`; the diff and PR body are in the prompt | `-c features.shell_tool=false --sandbox read-only` in an empty directory (the sandbox governs how a command runs; the flag removes the shell tool, verified 2026-09-28); diff and PR body in the prompt |
 | L1 | `--tools Read,Grep,Glob,Bash,StructuredOutput` with `--allowedTools` limited to read-only git; writes, network and package scripts are denied (verified: `touch`, `git fetch`, `curl` and `pnpm` all land in `permission_denials`, while `grep` is allowed by the harness's own read-only command class) | `--sandbox read-only -C <worktree>`; the reviewer definition travels in the prompt |
 | L2 | L1 plus `pnpm lint`, `pnpm typecheck` and `pnpm test` on the allowlist; `node_modules` is a symlink to this checkout's | `--sandbox workspace-write`; behind `--allow-l2` |
 
 The prompt tells the reviewer which passes are out of reach (GitHub state, the network, checks
-it cannot run) and not to report their absence.
+it cannot run) and not to report their absence. L2 is a reduced verify loop, not the production
+pre-pass: the build, the extension build and changed-line coverage are not on its allowlist.
+Dispatch mode is where the production loop runs.
+
+The truth file is outside the workspace but not unreachable from it: L1 and L2 can read any
+path and the worktree is cut from this checkout. `node audit.mjs [--results <dir>]` scans every
+row's `tools.jsonl` for a reach beyond the workspace (the truth file, the fixture or case
+directories, the `BENCH_*` environment, `git worktree list`) and exits 1 on a hit; run it after
+every sweep. In dispatch mode the `gh` stand-in reads from a copy of the fixture under the row
+directory that holds no truth file.
 
 ## Dispatch mode
 

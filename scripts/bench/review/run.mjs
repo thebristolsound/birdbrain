@@ -15,6 +15,7 @@
 import { spawnSync } from 'node:child_process'
 import {
   appendFileSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -45,7 +46,7 @@ import {
   installGhShim,
   parseVerdictComment
 } from './lib/dispatch.mjs'
-import { codexArgs, codexLevels, codexSandbox, parseCodexRun } from './lib/codex.mjs'
+import { codexArgs, codexLevels, codexToolSpec, parseCodexRun } from './lib/codex.mjs'
 import { pendingRows, readRows } from './lib/resume.mjs'
 import { HARNESSES, OUTPUT_SCHEMA, TIERS, validateOutput } from './lib/schema.mjs'
 import { materialize, removeWorktree } from './lib/git.mjs'
@@ -228,6 +229,16 @@ function openWorkspace(o, fixture, dirs, deps) {
   return { dir, close: () => removeWorktree(deps.repo, dir) }
 }
 
+// What the gh stand-in answers from, copied without the truth file: the
+// model's environment names this directory, so it must hold nothing graded.
+export const SHIM_FIXTURE_FILES = ['case.json', 'pr.json', 'diff.patch']
+
+export function shimFixtureDir(fixtureDir, dir) {
+  mkdirSync(dir, { recursive: true })
+  for (const name of SHIM_FIXTURE_FILES) copyFileSync(join(fixtureDir, name), join(dir, name))
+  return dir
+}
+
 // The dispatch mode: the model is the dispatcher, the PR is a local clone,
 // gh is the stand-in, and the graded output is the verdict comment it wrote.
 function runDispatchRow(o, ctx, fixture, rep, deps) {
@@ -236,6 +247,7 @@ function runDispatchRow(o, ctx, fixture, rep, deps) {
   const commentFile = join(rowDir, 'comment.md')
   const reportFile = join(rowDir, 'report.md')
   const binDir = installGhShim(join(rowDir, 'bin'))
+  const shimFixture = shimFixtureDir(join(deps.dirs.fixtures, fixture.id), join(rowDir, 'fixture'))
   const wsDir = join(deps.dirs.cache, 'dispatch', `${fixture.id}-${process.pid}`)
   const ws = buildDispatchWorkspace({ repo: deps.repo, fixture, dir: wsDir })
   const prompt = dispatchPrompt({ pr: fixture.source.pr, head: ws.head, commentFile, reportFile })
@@ -245,7 +257,7 @@ function runDispatchRow(o, ctx, fixture, rep, deps) {
     PATH: `${binDir}:${ctx.env.PATH ?? ''}`,
     GH_TOKEN: 'benchmark-disabled',
     GIT_TERMINAL_PROMPT: '0',
-    BENCH_GH_FIXTURE: join(deps.dirs.fixtures, fixture.id),
+    BENCH_GH_FIXTURE: shimFixture,
     BENCH_GH_LOG: join(rowDir, 'gh-calls.jsonl'),
     BENCH_GH_HEAD: ws.head,
     BENCH_GH_BASE: ws.base,
@@ -461,7 +473,7 @@ export function main(argv, overrides = {}) {
       model: o.model,
       effort,
       tier: o.tier,
-      toolSpec: o.harness === 'claude' ? claudeToolSpec(o.tier) : { sandbox: codexSandbox(o.tier) },
+      toolSpec: o.harness === 'claude' ? claudeToolSpec(o.tier) : codexToolSpec(o.tier),
       promptTemplate,
       agentDefinition,
       instructions,

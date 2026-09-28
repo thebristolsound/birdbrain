@@ -28,6 +28,7 @@ import {
 } from '../../scripts/bench/review/lib/claude.mjs'
 import {
   codexArgs,
+  codexToolSpec,
   codexLevels,
   parseCodexRun
   // @ts-expect-error - tooling script with no type declarations; the tsconfigs exclude scripts/
@@ -292,6 +293,22 @@ describe('codex driver', () => {
         lastFile: '/l'
       })
     ).toContain('workspace-write')
+  })
+
+  it('removes the shell tool at L0 and records that in the tool spec', () => {
+    const l0Input = {
+      model: 'm',
+      effort: 'low',
+      tier: 'L0',
+      cwd: '/w',
+      schemaFile: '/s',
+      lastFile: '/l'
+    }
+    const l0 = codexArgs(l0Input)
+    expect(l0).toContain('features.shell_tool=false')
+    expect(codexArgs({ ...l0Input, tier: 'L1' })).not.toContain('features.shell_tool=false')
+    expect(codexToolSpec('L0')).toEqual({ sandbox: 'read-only', shellTool: false })
+    expect(codexToolSpec('L1')).toEqual({ sandbox: 'read-only' })
   })
 
   const output = { verdict: 'approve for human review', findings: [] }

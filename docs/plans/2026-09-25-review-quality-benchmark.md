@@ -45,9 +45,11 @@ available. Determinism therefore comes from three places and nowhere else.
 | Harness | `claude --version` or `codex --version`, Node version from `.nvmrc` |
 | Turn cap | a wall-clock timeout per call: neither `claude` 2.1.282 nor `codex exec` 0.154.0 has a turn cap flag (checked 2026-09-26), so a killed run is an `error` row with `timeout` as its reason |
 
-Two runs are comparable only when their manifest hashes match. A CLI upgrade changes the
-harness system prompt, so it changes the manifest; cross-model comparisons run on one CLI
-version per vendor. With no API path there is no harness-free tier: a Claude result is always
+The hash names a run. Two runs compare when their manifests agree on every field except the
+axes under comparison: model and effort within a vendor, and the harness as well across
+vendors. The report joins on that comparison key and never on the hash itself, which by
+construction differs between any two models. A CLI upgrade changes the harness system prompt,
+so it changes the key; cross-model comparisons run on one CLI version per vendor. With no API path there is no harness-free tier: a Claude result is always
 model plus Claude Code, a Codex result model plus Codex, and a cross-vendor row compares those
 bundles, which is the question the pipeline actually asks. Tier L0 keeps the harness but
 removes every tool, so it is the closest available thing to a bare-model comparison.
@@ -64,15 +66,16 @@ checkout rather than installing per worktree.
 
 **Measure what remains.** Every case runs R times (three by default). The report carries the
 mean, the spread, and cross-rep agreement (verdict agreement rate, overlap of finding sets).
-A difference smaller than the paired-difference confidence interval is reported as no
-difference. The noise floor for a pass rate is roughly `1/sqrt(n·R)`: forty cases at three
+A paired difference whose 95% interval contains zero is reported as no difference; one whose
+interval excludes zero is reported with its sign and interval. The noise floor for a pass rate is roughly `1/sqrt(n·R)`: forty cases at three
 reps is about ±9 points, which is the resolution the first version can claim.
 
 **Deterministic grading.** The primary grader is programmatic. An LLM judge is used only for
-one dimension (plain-language readability of the verdict's top layer), is never the model
-under test, runs through whichever command-line tool is not under test with no tools and a
-JSON schema (`codex exec --output-schema`, or a schema the grader validates for `claude`),
-and is run twice on the same text with its disagreement rate reported.
+one dimension (plain-language readability of the verdict's top layer). It is one fixed judge
+for every candidate, Fable 5.1 through `claude -p` with no tools and a JSON schema (decision
+2 below), so a scale difference between judges can never pose as a readability difference
+between candidates; it runs twice on the same text with its disagreement rate reported. Not
+built yet: no stage so far has scored readability.
 
 ## Tool tiers
 
@@ -83,13 +86,25 @@ differently: Claude Code takes a tool allowlist, Codex takes a sandbox mode.
 
 | Tier | Capability | Claude Max | Codex Pro | Use |
 | --- | --- | --- | --- | --- |
-| L0 diff-only | no tools; the prompt carries the diff, the issue, and the instruction excerpt | `claude -p --tools ""` | `codex exec --sandbox read-only --ephemeral` in an empty directory | cheapest, most repeatable |
+| L0 diff-only | no tools; the prompt carries the diff, the issue, and the instruction excerpt | `claude -p --tools StructuredOutput` | `codex exec -c features.shell_tool=false --sandbox read-only --ephemeral` in an empty directory | cheapest, most repeatable |
 | L1 read-only repo | read files, search, read-only git; no writes, no network | `--tools Read,Grep,Glob,Bash` with a read-only git allowlist, `--agents` carrying the reviewer definition, `--strict-mcp-config`, `--output-format json`, as `.github/scripts/dispatch/run.sh` does | `--sandbox read-only -C <worktree>`, the reviewer definition in the prompt (Codex reads `AGENTS.md`, which the repo keeps equal to `CLAUDE.md`) | the pre-pass as it reads code |
-| L2 full pre-pass | L1 plus the verify loop (`pnpm lint`, `typecheck`, `test:coverage`) | same, workspace writes allowed for build output, longer turn cap | `--sandbox workspace-write` | the pre-pass as production runs it; five-case subset only |
+| L2 reduced verify | L1 plus `pnpm lint`, `typecheck` and `test` | same, those three scripts on the allowlist, `node_modules` linked | `--sandbox workspace-write` | a reviewer that can run checks; not the production loop |
 
 Flags above were read from `claude --help` (2.1.282) and `codex exec --help` (0.154.0) on
 2026-09-25; the turn cap flag for each tool is confirmed the same way at implementation time,
-not assumed. Both tools return machine-readable output (`--output-format json` with
+not assumed. The Codex sandbox mode only governs how a command runs, so L0 also turns the
+shell tool off (`features.shell_tool=false`, verified 2026-09-28: asked to run `ls`, the model
+answers that it has no shell and the event stream carries no command); without that flag L0
+was tool-free on one harness only.
+
+Two things the tiers deliberately leave out. The reviewer definition demands live GitHub
+controls (CI status, labels, head, auto-merge) and treats an uncheckable control as blocking;
+the benchmark prompt tells the model those passes are out of scope and not to report their
+absence, so a direct-mode verdict is about the diff. And L2 is not the production pre-pass:
+production also runs the build, the extension build and changed-line coverage
+(`pnpm preflight`), which the L2 allowlist omits. The production loop is measured by dispatch
+mode (below), where the model runs `/dispatch` itself with the full command set and a `gh`
+stand-in that answers the live controls from the fixture. Both tools return machine-readable output (`--output-format json` with
 `num_turns`, `duration_ms`, `usage`; `codex exec --json` and `--output-last-message`).
 
 ## Effort sweeps
@@ -137,8 +152,17 @@ Plan review cases, when that stage arrives, are issues that carry a human route 
 TypeSafe spike used 123 of them), plus plans in `docs/plans/` whose later amendment records
 what the first review missed.
 
-Every case is a directory holding the inputs, the truth file, and a `tags` field; the truth
-file is never reachable from the worktree the model reads.
+Every case is a directory holding the inputs, the truth file, and a `tags` field. The truth
+file is kept out of the model's working directory, not hidden from it: L1 and L2 give the
+model file reads and a shell, the worktree is cut from the runner's checkout (so `git worktree
+list` prints that checkout's path), and neither command-line tool offers a filesystem
+namespace. The runner therefore records every tool call and `audit.mjs` scans the logs for a
+reach beyond the workspace (the truth file, the fixture or case directories, the runner's
+environment, a worktree listing). Over the 422 rows recorded through 2026-09-28 one row
+listed worktrees (Opus 5.5 at `max`, m03 rep 3) and none read a truth file. In dispatch mode
+the `gh` stand-in reads from a copy of the fixture without the truth file, so the one path the
+model's environment names holds nothing graded. A mount namespace that exposes only the
+workspace is the next step if the audit ever fires on a truth read.
 
 ## Metrics
 
@@ -146,7 +170,7 @@ file is never reachable from the worktree the model reads.
 | --- | --- |
 | Verdict accuracy | verdict versus adjudicated truth; also confusion by evidence tier |
 | Blocker recall | fraction of true blocking defects that appear in the five findings |
-| False-positive rate | findings matching a refuted set, plus findings no adjudicator accepted |
+| False-positive rate | findings matching a refuted entry (`refuted` column). Findings that match neither a defect nor a refuted entry are counted separately as `unmatched` and never scored as false positives: a mutation case establishes its injected defect, not the absence of every other defect, and a real case's record holds only what its adjudicators saw. An unmatched finding the maintainer rules real becomes a `baseDefects` entry (the #1587 sweep bug, issue #1628, arrived this way) |
 | Claim discipline | does each cited file and line exist at the reviewed commit, and does quoted text match; fully programmatic |
 | Consistency | cross-rep verdict agreement and finding-set overlap |
 | Usage | input and output tokens, cache reads, turns, tool calls, wall time; the `total_cost_usd` the Claude CLI reports is recorded as an API-equivalent figure, not a charge |
@@ -168,6 +192,7 @@ scripts/bench/review/
   run.mjs              # --model --tier --reps --effort <list> --cases; one results/<manifest>/ per level
   grade.mjs            # programmatic graders, matcher, optional judge
   report.mjs           # paired comparison against baselines/, CI, cost
+  audit.mjs            # scans every row's tool log for a reach beyond the workspace
   lib/manifest.mjs     # hashes the inputs above
   lib/resume.mjs       # which rows a run still owes; rate-limited rows are owed again
   lib/fixture.mjs      # reads a built fixture back: spec, truth, diff, PR body, mutated files

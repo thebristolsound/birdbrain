@@ -34,6 +34,16 @@ export function codexLevels(model, codexHome) {
   }
 }
 
+// The sandbox only governs how a command runs; at L0 the shell tool itself
+// is removed (`features.shell_tool=false`, verified 2026-09-28: the model
+// answers NO_SHELL and no command_execution item appears), so L0 is
+// tool-free on both harnesses.
+export function codexToolSpec(tier) {
+  const spec = { sandbox: codexSandbox(tier) }
+  if (tier === 'L0') spec.shellTool = false
+  return spec
+}
+
 export function codexArgs({ model, effort, tier, cwd, schemaFile, lastFile }) {
   return [
     'exec',
@@ -41,6 +51,7 @@ export function codexArgs({ model, effort, tier, cwd, schemaFile, lastFile }) {
     model,
     '-c',
     `model_reasoning_effort=${JSON.stringify(effort)}`,
+    ...(tier === 'L0' ? ['-c', 'features.shell_tool=false'] : []),
     '--sandbox',
     codexSandbox(tier),
     '-C',

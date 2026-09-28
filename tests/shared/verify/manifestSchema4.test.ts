@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { createHash, createSign, generateKeyPairSync } from 'crypto'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { tmpdir } from 'os'
 import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
 import {
@@ -20,6 +20,9 @@ import {
   memberChainPath,
   parseChainPath
 } from '../../../src/packages/evidence-package-layout/index'
+import { VERIFY_RUNBOOK } from '@main/services/verifyRunbook'
+import { HAS_JQ } from '../../helpers/jq'
+import { extractRunbookBlocks, runRunbookBlocks } from '../../helpers/runbookBlocks'
 
 // Known-answer tests for manifest schema 4: Shared Cases (#1509,
 // docs/specs/2026-09-19-collaborative-cases-design.md). The answers frozen here
@@ -1557,8 +1560,10 @@ describe('verifySharedCase — a Case forked from a replica', () => {
     }
   })
 
-  it('verifies a fork shared again from a member’s replica', () => {
-    const { fork, lineage } = forkFixture()
+  // The fork shared again by the member that forked it, as a third member's
+  // replica holds it: the forking member's chain is now the Owner's.
+  function resharedFixture() {
+    const { fork, member, lineage } = forkFixture()
     const THIRD_KEY = keyPair()
     const THIRD = { operatorId: 'inst-third', operatorName: 'Sam Third', toolVersion: '0.5.0' }
     const again = { caseId: FORK_ID, ...FORK_OPERATOR }
@@ -1587,6 +1592,11 @@ describe('verifySharedCase — a Case forked from a replica', () => {
       ],
       signWith(THIRD_KEY)
     )
+    return { THIRD, THIRD_KEY, member, lineage, reshared, ownerHead, third }
+  }
+
+  it('verifies a fork shared again from a member’s replica', () => {
+    const { THIRD, THIRD_KEY, lineage, reshared, third } = resharedFixture()
     const result = verifySharedCaseReplica({
       local: { jsonl: third.jsonl, publicKeyPem: THIRD_KEY.publicKey },
       others: [{ installationId: MEMBER_ID, jsonl: reshared.jsonl }],
@@ -1650,6 +1660,72 @@ describe('verifySharedCase — a Case forked from a replica', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+
+  // The Shared Case blocks of the shipped VERIFY.md, run under bash over the
+  // chain files `files` names, the way a reader runs them in a package.
+  function runbookOver(files: Record<string, string>): string {
+    const dir = mkdtempSync(join(tmpdir(), 'bb-fork-runbook-'))
+    try {
+      for (const [path, jsonl] of Object.entries(files)) {
+        mkdirSync(dirname(join(dir, path)), { recursive: true })
+        writeFileSync(join(dir, path), jsonl)
+      }
+      const blocks = extractRunbookBlocks(VERIFY_RUNBOOK).filter((b) =>
+        b.section.startsWith('Shared Case packages')
+      )
+      expect(blocks).toHaveLength(2)
+      const run = runRunbookBlocks(blocks, { cwd: dir })
+      expect([run.failedBlock, run.stderr]).toEqual([null, ''])
+      return run.stdout
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+
+  it.skipIf(!HAS_JQ)('resolves a fork’s history merges against its lineage chains', () => {
+    const { fork, member } = forkFixture()
+    const out = runbookOver({
+      'manifest.jsonl': fork.jsonl,
+      [lineageChainPath(CASE_ID, MEMBER_ID)]: member.jsonl
+    })
+    expect(out.split('\n').filter(Boolean)).toEqual([
+      `${CASE_ID} CO owner ${OWNER_ID}`,
+      `${CASE_ID} RM member ${MEMBER_ID}`,
+      `head OK: ${MEMBER_ID} #1`
+    ])
+  })
+
+  it.skipIf(!HAS_JQ)(
+    'resolves each merge of a re-shared fork in its own Case when one member is in both',
+    () => {
+      const { member, reshared, ownerHead, third } = resharedFixture()
+      const out = runbookOver({
+        'manifest.jsonl': third.jsonl,
+        [memberChainPath(MEMBER_ID)]: reshared.jsonl,
+        [lineageChainPath(CASE_ID, MEMBER_ID)]: member.jsonl
+      })
+      const lines = out.split('\n').filter(Boolean)
+      expect(lines.filter((l) => !l.startsWith('head '))).toEqual([
+        `${CASE_ID} CO owner ${OWNER_ID}`,
+        `${CASE_ID} RM member ${MEMBER_ID}`,
+        `${FORK_ID} RF owner ${MEMBER_ID}`,
+        `${FORK_ID} ST member inst-third`
+      ])
+      expect(lines.filter((l) => l.startsWith('head ')).sort()).toEqual(
+        [`head OK: ${MEMBER_ID} #${ownerHead}`, `head OK: ${MEMBER_ID} #1`].sort()
+      )
+    }
+  )
+
+  it.skipIf(!HAS_JQ)('still reports a history merge whose lineage head was edited', () => {
+    const { fork, member } = forkFixture()
+    const edited = member.jsonl.replace(member.hashes[1], 'f'.repeat(64))
+    const out = runbookOver({
+      'manifest.jsonl': fork.jsonl,
+      [lineageChainPath(CASE_ID, MEMBER_ID)]: edited
+    })
+    expect(out).toContain(`head MISMATCH: ${MEMBER_ID} #1`)
   })
 
   it('reads the lineage directory by the Package Layout’s names only', () => {

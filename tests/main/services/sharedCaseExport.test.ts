@@ -37,6 +37,8 @@ import {
   memberChainPath
 } from '../../../src/packages/evidence-package-layout/index'
 import type { ExportOptions } from '@shared/types'
+import { HAS_JQ } from '../../helpers/jq'
+import { extractRunbookBlocks, runRunbookBlocks } from '../../helpers/runbookBlocks'
 
 // Shared Cases, step 3 (#1511): the writers. The three acceptance criteria are
 // frozen here, each end to end through the app's own export and import and
@@ -638,6 +640,30 @@ describe('Shared Case export, import and fork (#1511)', () => {
     // `lineage/../../outside` under the staging directory is the storage root's.
     expect(existsSync(join(getStorageRoot(), 'outside'))).toBe(false)
   })
+
+  it.skipIf(!HAS_JQ)(
+    "passes the package runbook's merge heads on a fork of the Owner's replica",
+    async () => {
+      ownerReplica()
+      const out = join(tempDir, 'fork.birdbrain')
+      await exportCaseArchive(caseId, out)
+      deleteCase(caseId)
+      const { newCaseId } = await importCaseArchive(out)
+
+      const { dir, zip } = await exportPackage(newCaseId)
+      expect(failures(dir)).toEqual([])
+      // The blocks of the VERIFY.md this package ships, run the way a reader
+      // runs them: the history merge names the member's lineage chain.
+      const blocks = extractRunbookBlocks(zip.get('VERIFY.md')!.toString('utf-8')).filter((b) =>
+        b.section.startsWith('Shared Case packages')
+      )
+      const run = runRunbookBlocks(blocks, { cwd: dir })
+      expect([run.failedBlock, run.stderr]).toEqual([null, ''])
+      expect(run.stdout.split('\n').filter((l) => l.startsWith('head '))).toEqual([
+        `head OK: ${PEER_ID} #0`
+      ])
+    }
+  )
 
   it('exports a fork as an Evidence Package that the package verifier passes', async () => {
     memberReplica()

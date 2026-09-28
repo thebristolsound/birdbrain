@@ -193,8 +193,8 @@ export interface ReportData {
    * Whether the installation submits anything to the authority named by `tsaUrl`
    * (#1169). Optional and true when absent, matching the settings default: a
    * caller that predates the opt-out described an installation that timestamped.
-   * Naming a configured authority under a declined opt-out would have the
-   * document assert a relationship with a third party the operator refused.
+   * A declined installation still names the configured authority, with a note
+   * that it was not contacted (see the cover field below).
    */
   tsaEnabled?: boolean
   /**
@@ -658,6 +658,17 @@ function integrityView(verification: HashVerification | undefined, capture: Capt
         detail:
           'This capture predates the hash-chained manifest. Its digest is recorded but is not ' +
           'chain-bound, so ordering cannot be demonstrated from the manifest alone.'
+      }
+    // Worded as `exhibitIntegrityView` words `unsupported`, so one report does
+    // not name the same outcome two ways.
+    case 'verifier-too-old':
+      return {
+        label: 'Not readable by this build',
+        detail:
+          'The manifest holds an entry written by a newer Birdbrain than the one that produced ' +
+          'this report, so this build makes no integrity statement about this capture. That is ' +
+          'not a finding of alteration.' +
+          (verification.reason ? ` Reported reason: ${verification.reason}.` : '')
       }
     default:
       return {

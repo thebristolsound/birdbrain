@@ -43,6 +43,8 @@ import {
   CASE_ARCHIVE_SCHEMA_VERSION
 } from '@main/services/caseArchive'
 import { canonicalStringify } from '@shared/verify'
+import { verifyCapture } from '@main/services/captureLifecycle'
+import { appendFutureEntry } from '../../helpers/futureManifestEntry'
 
 const artifactPath = (caseId: string, captureId: string, type: 'mhtml' | 'html' | 'png' | 'txt') =>
   defaultCaptureStore.artifactPaths(caseId, captureId, type).abs
@@ -222,8 +224,10 @@ describe('caseArchive export', () => {
   // 6 since #1148: `exhibits` and `stagingFiles` in data.json, non-Capture
   // Exhibit bytes and `staged` pooled bytes in the zip, which a pre-v34 build
   // has no table or directory for.
-  it('keeps CASE_ARCHIVE_SCHEMA_VERSION at 6 since #1148 exhibits and the staging pool', () => {
-    expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(6)
+  // 7 since embedded note images: a pre-image build rejects the node type
+  // and abandons the import.
+  it('keeps CASE_ARCHIVE_SCHEMA_VERSION at 7 since embedded note images', () => {
+    expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(7)
   })
 
   it('exports a .birdbrain archive with header, data, manifest, and files', async () => {
@@ -323,6 +327,30 @@ describe('caseArchive export', () => {
     expect(existsSync(out)).toBe(false)
   })
 })
+
+// Replaces the manifest with `mutate`'s output and repairs the header the way
+// a genuine export would have written it, so only the chain decides the verdict.
+function rewriteManifest(archivePath: string, mutate: (jsonl: string) => string): void {
+  const entries = readStoredZip(readFileSync(archivePath))
+  const manifest = Buffer.from(mutate(entries.get('manifest.jsonl')!.toString('utf-8')))
+  entries.set('manifest.jsonl', manifest)
+
+  const header = JSON.parse(entries.get('package.json')!.toString('utf-8'))
+  const sha256 = createHash('sha256').update(manifest).digest('hex')
+  header.artifacts = header.artifacts.map((a: { path: string }) =>
+    a.path === 'manifest.jsonl' ? { path: a.path, sha256, sizeBytes: manifest.length } : a
+  )
+  const sorted = [...header.artifacts].sort((a: { path: string }, b: { path: string }) =>
+    a.path < b.path ? -1 : a.path > b.path ? 1 : 0
+  )
+  header.packageHash = createHash('sha256')
+    .update(Buffer.from(canonicalStringify(sorted), 'utf-8'))
+    .digest('hex')
+  entries.set('package.json', Buffer.from(JSON.stringify(header, null, 2)))
+
+  const rebuilt = [...entries.entries()].map(([name, data]) => ({ name, data }))
+  writeFileSync(archivePath, createStoredZip(rebuilt))
+}
 
 describe('caseArchive inspect', () => {
   let tempDir: string
@@ -430,6 +458,39 @@ describe('caseArchive inspect', () => {
     const report = inspectCaseArchive(archivePath)
     expect(report.verification.overallValid).toBe(false)
     expect(report.verification.chainValid).toBe(false)
+  })
+
+  // KAT (X25): a signed entry from a newer schema is reported as its own
+  // outcome, never as an invalid custody chain.
+  it('reports a chain holding a newer-schema entry as verifier too old', () => {
+    rewriteManifest(archivePath, (jsonl) => appendFutureEntry(jsonl, caseId))
+    const report = inspectCaseArchive(archivePath)
+    expect(report.verifierTooOld?.reason).toContain("Entry type 'annotation-burn'")
+    expect(report.verifierTooOld?.reason).toContain('verifier too old')
+    expect(report.verification.chainValid).toBe(false)
+    expect(report.verification.overallValid).toBe(false)
+    expect(report.verification.artifactFailureCount).toBe(0)
+    expect(report.verification.captureHashFailureCount).toBe(0)
+  })
+
+  it('reports an edited entry that also claims a newer schema as a broken chain', () => {
+    rewriteManifest(archivePath, (jsonl) => {
+      const lines = jsonl.split('\n').filter((l) => l.trim())
+      lines[0] = JSON.stringify({
+        ...JSON.parse(lines[0]),
+        url: 'https://elsewhere.example',
+        schemaVersion: 99
+      })
+      return lines.join('\n') + '\n'
+    })
+    const report = inspectCaseArchive(archivePath)
+    expect(report.verifierTooOld).toBeUndefined()
+    expect(report.verification.chainValid).toBe(false)
+    expect(report.verification.chainReason).toBe('Entry hash mismatch')
+  })
+
+  it('leaves the too-old field off a clean archive', () => {
+    expect(inspectCaseArchive(archivePath).verifierTooOld).toBeUndefined()
   })
 
   it('refuses newer schema versions', () => {
@@ -575,7 +636,7 @@ describe('caseArchive import', () => {
       hash: contentHash,
       timestamp: '2026-04-05T12:00:00.000Z',
       format: 'mhtml',
-      mhtmlPath: `${mhtmlCaptureId}.mhtml`,
+      mhtmlPath: `${caseId}/${mhtmlCaptureId}.mhtml`,
       sizeBytes: mhtmlBuf.length,
       manifestIndex: 0,
       entryHash,
@@ -746,6 +807,21 @@ describe('caseArchive import', () => {
       true
     )
     void first
+  })
+
+  // #1592: the import writes each file under the new case and id, so the row
+  // must name that file. Left verbatim, it named the source case's file: on
+  // this same install verify hashed the source's bytes, and elsewhere it found
+  // nothing.
+  it('re-import points each capture at its own file, not the source case\'s', async () => {
+    const { newCaseId } = await importCaseArchive(archivePath)
+    const imported = listCaptures(newCaseId).find((c) => c.url === taggedCaptureUrl)!
+    expect(imported.id).not.toBe(mhtmlCaptureId)
+    expect(imported.mhtmlPath).toBe(`${newCaseId}/${imported.id}.mhtml`)
+
+    writeFileSync(artifactPath(caseId, mhtmlCaptureId, 'mhtml'), 'source bytes changed')
+    const verification = await verifyCapture(imported.id)
+    expect(verification.computedHash).toBe(originalHashes[0])
   })
 
   // #391 known-answer: export a case whose note carries two tags — one shared

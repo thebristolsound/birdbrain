@@ -20,6 +20,7 @@ import type { CaptureStore } from '@main/services/captureStore'
 import type { BatchDeleteOutcome } from '@shared/ipc'
 import type { Capture } from '@shared/types'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
+import { appendFutureEntry } from '../../helpers/futureManifestEntry'
 import { createCaptureLifecycle, BatchCrossCaseError } from '@main/services/captureLifecycle'
 import type { AdmissionRequest } from '@main/services/captureLifecycle'
 import { createSessionService } from '@main/services/session'
@@ -1690,6 +1691,61 @@ describe('createCaptureLifecycle.verify', () => {
     expect(result.status).toBe('chain-broken')
     expect(result.chainValid).toBe(true)
     expect(result.reason).toMatch(/anchor/i)
+  })
+
+  // KAT for the fourth outcome (X25): a chain holding a signed entry from a
+  // newer schema is reported as such, never as a broken chain or as tampering.
+  it('reports verifier-too-old for a chain with a newer-schema entry, and persists it', async () => {
+    const { writeFileSync } = await import('fs')
+    const { MANIFEST_FILENAME } = await import('@shared/constants')
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('mhtml-body')))
+    const manifestPath = join(getStorageRoot(), caseId, MANIFEST_FILENAME)
+    writeFileSync(manifestPath, appendFutureEntry(readFileSync(manifestPath, 'utf-8'), caseId))
+
+    const result = await lifecycle.verify(capture.id)
+    expect(result.status).toBe('verifier-too-old')
+    expect(result.chainValid).toBe(false)
+    expect(result.reason).toContain("Entry type 'annotation-burn' from a newer schema")
+    expect(result.reason).toContain('verifier too old')
+    expect(getCapture(capture.id)?.lastVerifiedStatus).toBe('verifier-too-old')
+  })
+
+  it('makes no byte-level claim on a chain this build cannot read', async () => {
+    // The same precedence chain-broken has: a stored-hash comparison is only
+    // meaningful against a chain that verified, so it is never reached here.
+    const { writeFileSync } = await import('fs')
+    const { MANIFEST_FILENAME } = await import('@shared/constants')
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('mhtml-body')))
+    const manifestPath = join(getStorageRoot(), caseId, MANIFEST_FILENAME)
+    writeFileSync(manifestPath, appendFutureEntry(readFileSync(manifestPath, 'utf-8'), caseId))
+    writeFileSync(join(getStorageRoot(), capture.mhtmlPath!), 'changed bytes')
+
+    expect((await lifecycle.verify(capture.id)).status).toBe('verifier-too-old')
+  })
+
+  it('still reports chain-broken when the edited entry also claims a newer schema', async () => {
+    const { writeFileSync } = await import('fs')
+    const { MANIFEST_FILENAME } = await import('@shared/constants')
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('mhtml-body')))
+    const manifestPath = join(getStorageRoot(), caseId, MANIFEST_FILENAME)
+    const lines = readFileSync(manifestPath, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim())
+    const at = lines.findIndex(
+      (l) => (JSON.parse(l) as { captureId?: string }).captureId === capture.id
+    )
+    // Editing the body and bumping its version in one go: the entry's own hash
+    // is checked before the too-old outcome is reported, so the bump buys nothing.
+    const edited = { ...JSON.parse(lines[at]), url: 'https://elsewhere.example', schemaVersion: 99 }
+    lines[at] = JSON.stringify(edited)
+    writeFileSync(manifestPath, lines.join('\n') + '\n', 'utf-8')
+
+    const result = await lifecycle.verify(capture.id)
+    expect(result.status).toBe('chain-broken')
+    expect(result.reason).toBe('Entry hash mismatch')
   })
 
   it('verifies a legacy capture with no recorded sidecar hashes (#118 grandfathering)', async () => {

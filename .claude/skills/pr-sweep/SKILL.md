@@ -76,10 +76,11 @@ settled to `MERGEABLE` (it reads `UNKNOWN` for a few seconds after any merge; po
 After every merge, re-read `mergeable` on the rest. A PR that turned `CONFLICTING`:
 
 - **Small conflict** (one or two hunks, no evidence-path or migration file): resolve it
-  yourself in a fresh `/tmp` worktree. Merge `origin/main` (never rebase), run lint,
-  typecheck and the touched tests, and commit with the `post-commit-message` check. Push only
-  as a fast-forward of the head you started from. Comment the resolution and carry the
-  pre-pass `success` forward to the new sha for a merge-only delta.
+  yourself in a scratch worktree made by the `teardown` skill's creation rule. Merge
+  `origin/main` (never rebase), run lint, typecheck and the touched tests, and commit with the
+  `post-commit-message` check. Push only as a fast-forward of the head you started from, then
+  `teardown.sh close <path>`. Comment the resolution and carry the pre-pass `success` forward
+  to the new sha for a merge-only delta.
 - **Anything larger**: **fix** lane, then a delta review of the resolution.
 
 When a merge brings a toolchain change (compiler, linter, lockfile) onto `main`, message every

@@ -55,13 +55,37 @@ env:
     sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g'
     /etc/apt/apt-mirrors.txt
   MODE: ${{ github.event_name == 'schedule' && 'cycle' || inputs.mode }}
-  DISPATCH_MODEL: claude-opus-5
+  DISPATCH_MODEL: claude-opus-5-5
+  # Opus 5.5 defaults to medium; the cycle and both subagents run at high.
+  DISPATCH_EFFORT: high
   # Empty on a schedule, so a scheduled fire always lets section 3 pick.
   TARGET_ISSUE: ${{ github.event_name == 'schedule' && '' || inputs.issue }}
   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
 jobs:
   cycle:
+    # Spend guard (#1310), in two parts. Every workflow that reads a paid credential
+    # points here.
+    #
+    # The environment. The four paid credentials belong in `paid-runs`, whose
+    # deployment policy admits a run from main or from a `v*` tag, and every job that
+    # reads one names it, except jev-lens.yml's hunks. Once they are stored there and
+    # the repository-level copies are deleted, a copy of a workflow on any other branch,
+    # a pull request's copy, and a re-run of a run from before this change find none.
+    #
+    # The `if:`. On main, anyone with write access can still start or re-run a
+    # workflow, and a re-run keeps github.actor from the first attempt. So the job
+    # admits a scheduled fire's first attempt, or an attempt github.triggering_actor
+    # says the maintainer started. doc-curator.yml and health.yml carry this guard,
+    # release-macos.yml its second half, claude.yml and jev-lens.yml's triage their own.
+    #
+    # Neither part stops a write collaborator who merges his own workflow change to
+    # main, which the main branch rules allow while they require no approval, or a
+    # re-run of a release.yml run, which has no actor check.
+    if: >-
+      (github.event_name == 'schedule' && github.run_attempt == '1')
+      || github.triggering_actor == 'thebristolsound'
+    environment: paid-runs
     runs-on: ubuntu-latest
     timeout-minutes: 150
     env:
@@ -103,7 +127,9 @@ jobs:
 
       # Before apt and pnpm install, because a dead token failed 39 fires in a
       # row between 2026-09-20 and 2026-09-23, each one after a full toolchain
-      # install. The probe is one Haiku call; see the script.
+      # install. The probe is one Haiku call; see the script. The pre-gate's spend
+      # cap counts a paid cycle by this step's start (CAP_PAID_STEP in pregate.sh),
+      # so rename both together.
       - name: Claude credential
         if: steps.gate.outputs.run == 'true'
         env:

@@ -140,6 +140,12 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
   // in both phases: close.
   useModalFocus(present, panelRef)
   useModalEscape(present, onClose)
+  // Land on the panel, not on its first control: that is the checked preset
+  // radio, where one arrow key turns an evidence export into a Working Copy.
+  // A passive effect, so the hook above has already recorded the opener.
+  useEffect(() => {
+    if (present) panelRef.current?.focus()
+  }, [present])
 
   // A failed preflight leaves `data` undefined, which reads the same as "no
   // warning to show" — the same silent fallback the mount effect had, minus

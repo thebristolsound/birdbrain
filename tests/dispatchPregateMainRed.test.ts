@@ -33,37 +33,75 @@ const mainRoutes = (checkRuns: Run[]): GhRoutes => ({
   [`${API}/commits/${MAIN}/status?per_page=100`]: { statuses: [] }
 })
 
-const slot = (prs: number[], wip: number[]): GhRoutes => ({
-  [`${API}/issues?state=open&labels=agent-pr&per_page=100`]: prs.map((number) => ({
+// The open PRs and claimed issues, an empty queue, and no recent label events.
+const slot = (prs: GhRoutes[], wip: number[]): GhRoutes => ({
+  [`${API}/pulls?state=open&per_page=100`]: prs,
+  [`${API}/issues?state=open&labels=agent-wip&per_page=100`]: wip.map((number) => ({
     number,
-    pull_request: {}
+    state: 'open',
+    assignees: [],
+    labels: [{ name: 'agent-wip' }]
   })),
-  [`${API}/issues?state=open&labels=agent-wip&per_page=100`]: wip.map((number) => ({ number }))
+  [`${API}/issues?state=open&labels=ready-for-agent,queued&per_page=100`]: [],
+  [`${API}/issues/events?per_page=100&page=1`]: []
 })
 
-// PR #9, a draft whose head carries no agent/pre-pass status, so a verdict is owed.
+const PR9 = {
+  number: 9,
+  head: { sha: PR_SHA, ref: 'agent/9-fix' },
+  draft: true,
+  labels: [{ name: 'agent-pr' }]
+}
+
+// PR #9, a draft whose head carries no agent/pre-pass status, so a verdict is owed. The
+// pipeline labelled it and pushed its head, which is what makes the verdict owed (#1310).
 const prOwingVerdict: GhRoutes = {
-  [`${API}/pulls/9`]: { head: { sha: PR_SHA }, draft: true },
-  [`${API}/commits/${PR_SHA}/status`]: { statuses: [] },
-  [`${API}/issues/9/labels`]: [{ name: 'agent-pr' }],
+  [`${API}/issues/9/events?per_page=100`]: [
+    {
+      event: 'labeled',
+      label: { name: 'agent-pr' },
+      actor: { login: 'birdbrain-agent' },
+      created_at: '2026-09-25T09:00:00Z'
+    }
+  ],
+  [`${API}/activity?ref=refs/heads/agent/9-fix&per_page=100`]: [
+    { after: PR_SHA, actor: { login: 'birdbrain-agent' }, timestamp: '2026-09-25T10:00:00Z' }
+  ],
+  [`${API}/commits/${PR_SHA}/statuses?per_page=100`]: [],
   [`${API}/commits/${PR_SHA}`]: { commit: { committer: { date: '2026-09-25T10:00:00Z' } } },
   [`${API}/issues/9/comments?per_page=100`]: [],
   [`${API}/pulls/9/comments?per_page=100`]: [],
   [`${API}/pulls/9/reviews?per_page=100`]: []
 }
 
-// Issue #5 was claimed long before the 4-hour expiry.
+// Issue #5 was claimed by the pipeline long before the 4-hour expiry.
 const staleClaim: GhRoutes = {
   [`${API}/issues/5/events?per_page=100`]: [
-    { event: 'labeled', label: { name: 'agent-wip' }, created_at: '2026-01-01T00:00:00Z' }
+    {
+      event: 'labeled',
+      label: { name: 'agent-wip' },
+      actor: { login: 'birdbrain-agent' },
+      created_at: '2026-01-01T00:00:00Z'
+    }
   ]
 }
 
-// Issue #11 is queued, unassigned and unblocked.
+// Issue #11 is queued by the maintainer, unassigned and unblocked.
 const frontier: GhRoutes = {
   [`${API}/issues?state=open&labels=ready-for-agent,queued&per_page=100`]: [
-    { number: 11, assignees: [], labels: [{ name: 'ready-for-agent' }, { name: 'queued' }] }
+    {
+      number: 11,
+      state: 'open',
+      assignees: [],
+      labels: [{ name: 'ready-for-agent' }, { name: 'queued' }]
+    }
   ],
+  [`${API}/issues/11/events?per_page=100`]: ['ready-for-agent', 'queued'].map((name) => ({
+    event: 'labeled',
+    label: { name },
+    actor: { login: 'thebristolsound' },
+    created_at: '2026-09-25T09:00:00Z'
+  })),
   [`${API}/issues/11/dependencies/blocked_by`]: []
 }
 
@@ -78,7 +116,11 @@ afterEach(() => {
 })
 
 const pregate = (routes: GhRoutes) => {
-  stub = makeGhStub(routes)
+  // No dispatch run in the last 24 hours, so the spend cap holds nothing.
+  stub = makeGhStub({
+    [`${API}/actions/workflows/dispatch.yml/runs?per_page=100&page=1`]: { workflow_runs: [] },
+    ...routes
+  })
   const output = join(stub.dir, 'output')
   const summary = join(stub.dir, 'summary')
   writeFileSync(output, '')
@@ -110,7 +152,7 @@ const pregate = (routes: GhRoutes) => {
 
 describe.skipIf(!HAS_JQ)('pregate.sh while main is red', () => {
   it('holds a verdict owed on a PR head and names the red check', () => {
-    const result = pregate({ ...mainRoutes(redMain), ...slot([9], []), ...prOwingVerdict })
+    const result = pregate({ ...mainRoutes(redMain), ...slot([PR9], []), ...prOwingVerdict })
     expect(result.status).toBe(0)
     expect(result.run).toBe('false')
     expect(result.reason).toContain('while main is red (test)')
@@ -138,7 +180,7 @@ describe.skipIf(!HAS_JQ)('pregate.sh while main is red', () => {
 
 describe.skipIf(!HAS_JQ)('pregate.sh while main is green', () => {
   it('runs for a verdict owed on a PR head, as before', () => {
-    const result = pregate({ ...mainRoutes(greenMain), ...slot([9], []), ...prOwingVerdict })
+    const result = pregate({ ...mainRoutes(greenMain), ...slot([PR9], []), ...prOwingVerdict })
     expect(result.status).toBe(0)
     expect(result.run).toBe('true')
     expect(result.reason).toBe('PR #9 head abcdef12 has agent/pre-pass=absent; a verdict is owed')
@@ -160,7 +202,7 @@ describe.skipIf(!HAS_JQ)('pregate.sh while main is green', () => {
   })
 
   it('counts main as green when the rules read fails', () => {
-    const routes = { ...mainRoutes(redMain), ...slot([9], []), ...prOwingVerdict }
+    const routes = { ...mainRoutes(redMain), ...slot([PR9], []), ...prOwingVerdict }
     delete routes[`${API}/rules/branches/main`]
     const result = pregate(routes)
     expect(result.run).toBe('true')

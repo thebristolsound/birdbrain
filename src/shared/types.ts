@@ -644,6 +644,10 @@ export const LOG_CODES = [
   // open. This line is the only trace that the operator's other settings were
   // replaced by defaults and that timestamping was switched off for them.
   'settings.unreadable_timestamping_fail_closed',
+  // updateSettings refusing to write over a settings.json it cannot read (#1169).
+  // The change is held for the session and nothing is persisted, so it cannot
+  // share the fail-closed code above, whose label says defaults were restored.
+  'settings.unreadable_write_refused',
   // The first-launch settings.json seed that latches the fresh-install flag
   // (#404). Failing it costs only the onboarding tour, so init swallows the
   // error — this is the record that it happened.
@@ -843,8 +847,10 @@ export interface HashVerification {
   title: string
   storedHash: string
   computedHash: string
-  // Integrity axis: did the bytes + chain survive intact?
-  status: 'verified' | 'tampered' | 'missing' | 'chain-broken' | 'legacy'
+  // Integrity axis: did the bytes + chain survive intact? `verifier-too-old`
+  // is the chain holding an entry from a newer schema (X25): nothing was
+  // verified, and nothing was found broken either.
+  status: 'verified' | 'tampered' | 'missing' | 'chain-broken' | 'legacy' | 'verifier-too-old'
   manifestIndex?: number
   chainValid?: boolean
   reason?: string
@@ -1167,6 +1173,10 @@ export interface ArchiveInspectReport {
   sourceOperatorName: string
   counts: CaseArchiveCounts
   verification: ArchiveVerificationResult
+  // Set when the archive's chain holds an entry from a newer schema (X25). Kept
+  // off `verification`: that object is signed into the `import` entry, whose
+  // schema rejects any key it does not list.
+  verifierTooOld?: { reason: string }
 }
 
 // --- Exhibit model (ADR-0023, ADR-0024) -----------------------------------
@@ -1321,7 +1331,8 @@ export interface ExhibitVerification {
   kind: string
   // `unsupported` is two things, told apart by `reason`: a kind this build has
   // no verify path for, and a chain holding an entry from a newer schema (X25),
-  // which is never reported as tampering.
+  // which is never reported as tampering. A `capture` Exhibit reports the
+  // second as its Capture's `verifier-too-old` instead.
   status: HashVerification['status'] | 'unsupported'
   reason?: string
   // Present only for `kind = 'capture'`: the untouched `captures:verify` result.

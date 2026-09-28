@@ -22,6 +22,7 @@ import { initSettings, updateSettings } from '@main/services/settings'
 import { IMPORT_ID_MAP_FILENAME } from '@shared/constants'
 import { ManifestEntrySchema } from '@shared/schemas'
 import type { Capture } from '@shared/types'
+import { appendFutureEntry } from '../../helpers/futureManifestEntry'
 
 // Duplication is a same-bytes operation, so the corroboration-only TLS re-fetch
 // (#123) that ingest performs would otherwise open a real socket while building
@@ -244,6 +245,22 @@ describe('createCaptureLifecycle.duplicate (#827)', () => {
     const result = await lifecycle.duplicate(source.id)
 
     expect(result).toEqual({ status: 'rejected', reason: 'not_verified', detail: 'tampered' })
+    expect(manifestLines()).toHaveLength(before)
+    expect(listCaptures(caseId)).toHaveLength(1)
+  })
+
+  it('refuses a source this build is too old to verify, naming that status (X25)', async () => {
+    const manifestPath = join(caseDir, 'manifest.jsonl')
+    writeFileSync(manifestPath, appendFutureEntry(readFileSync(manifestPath, 'utf-8'), caseId))
+    const before = manifestLines().length
+
+    const result = await lifecycle.duplicate(source.id)
+
+    expect(result).toEqual({
+      status: 'rejected',
+      reason: 'not_verified',
+      detail: 'verifier-too-old'
+    })
     expect(manifestLines()).toHaveLength(before)
     expect(listCaptures(caseId)).toHaveLength(1)
   })

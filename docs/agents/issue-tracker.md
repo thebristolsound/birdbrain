@@ -25,6 +25,10 @@ When set to `yes`, PRs run through the same labels and states as issues, using t
 
 GitHub shares one number space across issues and PRs, so a bare `#42` may be either — resolve with `gh pr view 42` and fall back to `gh issue view 42`.
 
+## Severity of a findings list
+
+If the issue carries a findings table (a `Sev` column, the shape a review pass files), or its severity is in question, run the `jev-severity` skill (`.claude/skills/jev-severity/SKILL.md`) before recommending a state. It buckets every finding into blocking, should-fix and polish with Jev and lists where that differs from the author. The `evidence-affecting` call stays with the human triaging.
+
 ## When a skill says "publish to the issue tracker"
 
 Create a GitHub issue.

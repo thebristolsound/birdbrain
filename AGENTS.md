@@ -207,6 +207,12 @@ that message, merges against the reviewed sha, and reads back the result. Attrib
 and the platform PR footer are off in `.claude/settings.json`; `includeGitInstructions` is off
 there too, so the skills are the only commit and PR instructions an agent receives.
 
+### Worktrees
+
+Close a worktree you finished, or sweep stale ones, with the `teardown` skill; never
+`git worktree remove --force` or `git branch -D` by hand. Who creates and removes each kind
+of tree: [Worktrees](docs/agents/worktrees.md).
+
 ### Interaction defaults
 
 - `AskUserQuestion` calls carry at most two questions; split a bigger ask into consecutive

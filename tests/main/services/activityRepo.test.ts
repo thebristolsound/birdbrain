@@ -174,6 +174,19 @@ describe('activityRepo.listRecentActivity', () => {
     expect(events.map((e) => e.title)).toEqual([null, null])
   })
 
+  it('carries the verifier-too-old status through, rather than dropping it (X25)', () => {
+    const c = createCase({ name: 'Newer chain' })
+    const captureId = seedCapture(c.id, 'newer', '2026-08-11T00:00:00.000Z')
+    setCaptureVerification(captureId, {
+      status: 'verifier-too-old',
+      computedHash: 'hash-newer',
+      verifiedAt: '2026-08-11T00:05:00.000Z'
+    })
+
+    const [event] = listRecentActivity()
+    expect(event.kind === 'capture' && event.lastVerifiedStatus).toBe('verifier-too-old')
+  })
+
   it('reports an unrecognised case type and verification status as absent', () => {
     const c = createCase({ name: 'Legacy' })
     getDb().prepare("UPDATE cases SET type = 'not-a-type' WHERE id = ?").run(c.id)

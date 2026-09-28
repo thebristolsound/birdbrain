@@ -9,11 +9,16 @@ on:
 # thebristolsound/birdbrain-releases (see #567) using RELEASES_REPO_TOKEN, so no job
 # needs write access to this repository at all — the token build/package code can
 # reach through GITHUB_TOKEN stays read-only.
+#
+# RELEASES_REPO_TOKEN belongs in the `paid-runs` environment, which admits the `v*` tag
+# this runs on, so every job that reads it names the environment (#1310; dispatch.yml has
+# the note). Unlike the other paid workflows, no job here checks who started the attempt.
 permissions:
   contents: read
 
 jobs:
   create-release:
+    environment: paid-runs
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -91,6 +96,15 @@ jobs:
           in Chrome, so the extension always matches your app version. (The
           \`birdbrain-extension.zip\` here is the same build, for developers only.)
 
+          \`SHA256SUMS.txt\` lists the SHA-256 of the Windows, Linux and extension files and
+          of the bill of materials, taken from the copies on this page. To check a download
+          on Linux, put \`SHA256SUMS.txt\` in the folder that holds it and run
+          \`sha256sum --check --ignore-missing SHA256SUMS.txt\`.
+
+          \`birdbrain-${TAG}.spdx.json\` is that bill of materials: GitHub's dependency list
+          for the Birdbrain source repository's main branch, in SPDX 2.3 JSON, exported
+          during this release's build.
+
           Everything else on this page (\`latest*.yml\`, \`*.blockmap\`) is machinery for
           the in-app updater. Ignore it.
 
@@ -119,11 +133,20 @@ jobs:
           token: ${{ secrets.RELEASES_REPO_TOKEN }}
           target_commitish: main
           draft: false
-          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') }}
+          # A literal, not derived from the tag name. ADR-0008 Decision 3: "No release is
+          # promoted to a full release while artifacts are unsigned." Change this, and the
+          # same input in release-macos.yml, only when that decision's revisit trigger is met:
+          #   "A release process that signs every artifact and notarizes macOS builds,
+          #   with both verified on the release's actual output — acquiring a
+          #   certificate or notarization capability alone does not qualify. Only after
+          #   that verification may releases be promoted to full releases and this
+          #   restriction be lifted."
+          prerelease: true
           body_path: ${{ runner.temp }}/release-notes.md
 
   build-app:
     needs: create-release
+    environment: paid-runs
     strategy:
       fail-fast: false
       matrix:
@@ -200,6 +223,7 @@ jobs:
 
   build-extension:
     needs: create-release
+    environment: paid-runs
     runs-on: ubuntu-latest
 
     steps:
@@ -228,3 +252,51 @@ jobs:
           repository: thebristolsound/birdbrain-releases
           token: ${{ secrets.RELEASES_REPO_TOKEN }}
           files: dist/birdbrain-extension.zip
+
+  # The bill of materials and the checksum file (#1625). It waits for every build job,
+  # so the checksums are taken from the assets as the release serves them. macOS
+  # assets, attached later by release-macos.yml, are not in the checksum file.
+  sbom-and-checksums:
+    needs: [build-app, build-extension]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The workflow token, under this file's contents: read, is the least the export
+      # accepts; sbom.sh cites GitHub's documented permission.
+      - name: Export the bill of materials
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          bash .github/scripts/release/sbom.sh \
+            "$GITHUB_REPOSITORY" "dist/birdbrain-$TAG.spdx.json"
+
+      - name: Upload the bill of materials
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          repository: thebristolsound/birdbrain-releases
+          token: ${{ secrets.RELEASES_REPO_TOKEN }}
+          files: dist/birdbrain-${{ github.ref_name }}.spdx.json
+          fail_on_unmatched_files: true
+
+      # After the upload above, so the bill of materials is hashed with the rest.
+      - name: Hash every asset on the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          bash .github/scripts/release/checksums.sh \
+            thebristolsound/birdbrain-releases "$TAG" dist/SHA256SUMS.txt
+
+      - name: Upload the checksum file
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          repository: thebristolsound/birdbrain-releases
+          token: ${{ secrets.RELEASES_REPO_TOKEN }}
+          files: dist/SHA256SUMS.txt
+          fail_on_unmatched_files: true

@@ -68,7 +68,14 @@ const RECENT_ACTIVITY_SQL = `
 `
 
 const CASE_TYPES = ['crypto', 'malware', 'fraud', 'custom'] as const
-const VERIFIED_STATUSES = ['verified', 'tampered', 'missing', 'chain-broken', 'legacy'] as const
+const VERIFIED_STATUSES = [
+  'verified',
+  'tampered',
+  'missing',
+  'chain-broken',
+  'legacy',
+  'verifier-too-old'
+] as const
 
 function toCaseType(value: string | null): RecentActivityEvent['caseType'] {
   return CASE_TYPES.find((t) => t === value)

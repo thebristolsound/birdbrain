@@ -7,6 +7,7 @@ name: Pre-pass gate
 # Contract:
 #   no agent label                     -> success ("not applicable")
 #   `agent-pr` or `agent-authored`      -> pending, until a reviewer posts the verdict
+#   PR from a fork                     -> no status, whatever the labels (see below)
 #
 # Both labels, not just `agent-pr`. `agent-pr` is the strict-serial slot marker, so an
 # agent PR opened outside the slot never carries it and wears `agent-authored`
@@ -37,6 +38,13 @@ name: Pre-pass gate
 # write below cannot succeed on a Dependabot PR and the context would never report.
 # Requiring it today would permanently block every Dependabot PR — 17 opened here
 # so far. See the tracking issue before adding it to the ruleset.
+#
+# PRs from forks are a separate case (#1355). A `pull_request` run from a fork gets
+# a read-only GITHUB_TOKEN whatever `permissions:` requests, and the one setting that
+# lifts that is offered only for private repositories. Left to run, the write below
+# would fail and turn the job red on an external contributor's PR, for a reason
+# nothing in their change can fix. So `seed` runs only when the head repository is
+# this one, and GitHub reports the skipped job as a success.
 
 on:
   # No `branches:` filter, for the same reason as ci.yml (#763): filtering on `[main]`
@@ -58,6 +66,7 @@ concurrency:
 
 jobs:
   seed:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

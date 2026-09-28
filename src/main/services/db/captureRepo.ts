@@ -13,7 +13,8 @@ import { getDb, type ImportCtx } from '@main/services/db/core'
 import {
   deleteExhibit,
   backfillExhibitsForCaptures,
-  insertExhibitForCapture
+  insertExhibitForCapture,
+  rerootPath
 } from '@main/services/db/exhibitRepo'
 import {
   exhibitCitationResolver,
@@ -157,6 +158,8 @@ export const CAPTURE_COLUMNS: ReadonlyArray<{ column: string; default: unknown }
   { column: 'consent_suppression', default: null },
   { column: 'duplicate_of_capture_id', default: null }
 ]
+
+const ARTIFACT_PATH_COLUMNS = new Set(['html_path', 'screenshot_path', 'mhtml_path'])
 
 const CAPTURE_INSERT_SQL = `INSERT INTO captures (${CAPTURE_COLUMNS.map((c) => c.column).join(
   ', '
@@ -476,11 +479,19 @@ export function importCaptureRows(rows: Record<string, unknown>[], ctx: ImportCt
     'INSERT INTO capture_texts (capture_id, title, url, content) VALUES (?, ?, ?, ?)'
   )
   for (const cap of rows) {
-    const newId = ctx.mapId(cap.id as string)
+    const oldId = cap.id as string
+    const newId = ctx.mapId(oldId)
     insertCap.run(
       ...CAPTURE_COLUMNS.map((c) => {
         if (c.column === 'id') return newId
         if (c.column === 'case_id') return ctx.newCaseId
+        // The archive's files land under the new case and id, so a path left
+        // verbatim names the source case: missing elsewhere, and on the same
+        // install it reads the source case's bytes (#1592).
+        if (ARTIFACT_PATH_COLUMNS.has(c.column)) {
+          const path = cap[c.column] as string | null | undefined
+          return path ? rerootPath(path, ctx.newCaseId, oldId, newId) : null
+        }
         if (c.column === 'supersedes_capture_id') {
           return cap.supersedes_capture_id ? ctx.mapId(cap.supersedes_capture_id as string) : null
         }

@@ -3,6 +3,8 @@
 
 ; Libraries, tools and product names
 [Cc]odeRabbit
+[Jj]ev
+Noul
 Dependabot
 ESLint
 Gitleaks
@@ -441,6 +443,10 @@ strcpy
 Iroh
 Tailscale
 ciphertext
-Jev
+[Jj]ev
 Noul
 demoter
+severities
+stdout
+triaging
+[Cc]utover

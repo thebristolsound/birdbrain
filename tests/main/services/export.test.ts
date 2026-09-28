@@ -27,6 +27,7 @@ import {
 import { listExhibits } from '@main/services/db/exhibitRepo'
 import { listDerivedFilesForCase } from '@main/services/db/derivedFileRepo'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
+import { appendFutureEntry } from '../../helpers/futureManifestEntry'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import * as manifest from '@main/services/manifest'
 import * as waybackRefRepo from '@main/services/db/waybackRefRepo'
@@ -1371,6 +1372,48 @@ describe('export', () => {
       tamperedCount: 0,
       missingCount: 0
     })
+  })
+
+  // X25: a capture this build is too old to verify is neither verified,
+  // tampered nor missing, and the report names it rather than a broken chain.
+  it('counts a verifier-too-old capture in no bucket and labels it by name', async () => {
+    await ingest(caseId, '<html><body>Newer chain</body></html>', 'https://example.com', 'N')
+    const caseDir = join(tempDir, 'captures', caseId)
+    const manifestPath = join(caseDir, 'manifest.jsonl')
+    writeFileSync(manifestPath, appendFutureEntry(readFileSync(manifestPath, 'utf-8'), caseId))
+
+    const outputPath = join(tempDir, 'too-old-evidence.zip')
+    const options: ExportOptions = {
+      format: 'zip',
+      include: {
+        captures: true,
+        screenshots: false,
+        auditTrail: true,
+        notes: false,
+        annotations: 'none'
+      },
+      exportClass: 'evidence',
+      outputPath
+    }
+    await generateReport(caseId, options, captureLifecycle)
+
+    const exportEntry = readFileSync(manifestPath, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+      .find((e) => e.type === 'export')!
+    expect(exportEntry.verificationResult).toEqual({
+      overallValid: false,
+      captureCount: 1,
+      verifiedCount: 0,
+      tamperedCount: 0,
+      missingCount: 0
+    })
+    const report = readStoredZipEntries(outputPath).get('report.html')!.toString('utf-8')
+    expect(report).toContain('Not readable by this build')
+    expect(report).toContain('not a finding of alteration')
+    // The legend always lists 'Chain broken'; this is the capture's own detail.
+    expect(report).not.toContain('Sequence and custody cannot be demonstrated for this entry')
   })
 
   it('writes no zip when the export audit append throws', async () => {
@@ -2938,6 +2981,21 @@ describe('export', () => {
   // #985: a selection-scoped export ships the notes attached to the selected
   // captures and nothing else, and says how many it left behind.
   describe('notes follow the selection scope (#985)', () => {
+    const mentionNode = (targetId: string, label = 'Page', targetType = 'capture') => ({
+      type: 'mention',
+      attrs: { targetType, targetId, label }
+    })
+    const captureMentionDoc = (targetId: string, label?: string, targetType?: string): string =>
+      JSON.stringify({
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [{ type: 'text', text: 'see ' }, mentionNode(targetId, label, targetType)]
+          }
+        ]
+      })
+
     const NOTES_INCLUDE: ExportOptions['include'] = {
       captures: true,
       screenshots: false,
@@ -3231,7 +3289,17 @@ describe('export', () => {
         (note.captureId !== undefined && selected.has(note.captureId)) ||
         (note.anchor !== undefined && selected.has(note.anchor.captureId))
 
-      const shipped = shapes.filter((note) => noteTravelsWithSelection(note, selected, inCase))
+      // A Capture Mention is a third pointer; every shape above gains each one.
+      const withMentions: Note[] = shapes.flatMap((note) => [
+        note,
+        ...pointers
+          .filter((id): id is string => id !== undefined)
+          .map((mentioned) => ({ ...note, bodyDoc: captureMentionDoc(mentioned) }))
+      ])
+
+      const shipped = withMentions.filter((note) =>
+        noteTravelsWithSelection(note, selected, inCase)
+      )
       expect(shipped.length).toBeGreaterThan(0)
       for (const note of shipped) {
         expect(readsRowPointer(note)).toBe(true)
@@ -3295,6 +3363,70 @@ describe('export', () => {
       expect(notesMd).not.toContain('Anchored to the unselected capture')
       expect(notesMd).not.toContain('names the withheld subject')
       expect(notesMd).toContain('3 notes in the case are not included')
+    })
+
+    it('withholds a note whose text mentions a capture outside the selection', async () => {
+      const { selected, unselected } = await seedTwoCapturesAndThreeNotes()
+      createNote({
+        caseId,
+        captureId: selected.id,
+        title: 'Mentions the unselected capture',
+        bodyDoc: captureMentionDoc(unselected.id, 'Withheld page title')
+      })
+
+      const outputPath = join(tempDir, 'mention-outside-withheld.zip')
+      await generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: NOTES_INCLUDE,
+          exportClass: 'evidence',
+          outputPath,
+          captureIds: [selected.id]
+        },
+        captureLifecycle
+      )
+
+      const notesMd = readStoredZipEntries(outputPath).get('notes.md')!.toString('utf-8')
+      expect(notesMd).not.toContain('Mentions the unselected capture')
+      expect(notesMd).not.toContain('Withheld page title')
+      expect(notesMd).toContain('3 notes in the case are not included')
+    })
+
+    it('reads Capture Mentions to withhold, ignoring other kinds and deleted captures', () => {
+      const selected = new Set(['cap-in', 'cap-also-in'])
+      const inCase = new Set(['cap-in', 'cap-also-in', 'cap-out'])
+      const note = (bodyDoc?: string): Note => ({
+        id: 'n1',
+        caseId: 'c1',
+        captureId: 'cap-in',
+        title: 't',
+        body: 'b',
+        ...(bodyDoc === undefined ? {} : { bodyDoc }),
+        createdAt: '2026-08-01T10:00:00.000Z',
+        updatedAt: '2026-08-01T10:00:00.000Z'
+      })
+      const travels = (bodyDoc?: string) =>
+        noteTravelsWithSelection(note(bodyDoc), selected, inCase)
+
+      expect(travels()).toBe(true)
+      expect(travels(captureMentionDoc('cap-also-in'))).toBe(true)
+      expect(travels(captureMentionDoc('cap-out'))).toBe(false)
+      expect(travels(captureMentionDoc('cap-deleted'))).toBe(true)
+      expect(travels(captureMentionDoc('cap-out', 'Tag', 'tag'))).toBe(true)
+      expect(
+        travels(
+          JSON.stringify({
+            type: 'doc',
+            content: [
+              {
+                type: 'paragraph',
+                content: [mentionNode('cap-also-in'), mentionNode('cap-out')]
+              }
+            ]
+          })
+        )
+      ).toBe(false)
     })
   })
   // Known-answer tests for the mixed-kind package (#1156). The fixture Case is

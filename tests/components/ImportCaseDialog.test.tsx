@@ -218,6 +218,53 @@ describe('ImportCaseDialog', () => {
     expect((screen.getByText('Import case') as HTMLButtonElement).disabled).toBe(false)
   })
 
+  // X25: a manifest this build cannot read is not a failed verification, so
+  // the override that records one is never offered for it.
+  it('shows the verifier-too-old state with its reason and no tamper override', () => {
+    const reason = "Entry type 'annotation-burn' from a newer schema; verifier too old"
+    const report = makeReport({
+      verification: {
+        overallValid: false,
+        chainValid: false,
+        chainReason: reason,
+        artifactCount: 42,
+        artifactFailureCount: 0,
+        captureCount: 42,
+        captureHashFailureCount: 0
+      },
+      verifierTooOld: { reason }
+    })
+    render(<ImportCaseDialog report={report} onClose={vi.fn()} />)
+
+    const state = screen.getByTestId('archive-verifier-too-old')
+    expect(state.textContent).toContain('too old to read this archive')
+    expect(state.textContent).toContain(reason)
+    expect(screen.queryByText('Verification failed')).toBeNull()
+    expect(screen.queryByText(/Custody chain invalid/)).toBeNull()
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    expect((screen.getByText('Import case') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('still lists byte-level failures alongside the verifier-too-old state', () => {
+    const report = makeReport({
+      verification: {
+        overallValid: false,
+        chainValid: false,
+        artifactCount: 42,
+        artifactFailureCount: 1,
+        captureCount: 42,
+        captureHashFailureCount: 2
+      },
+      verifierTooOld: { reason: 'verifier too old' }
+    })
+    render(<ImportCaseDialog report={report} onClose={vi.fn()} />)
+
+    const state = screen.getByTestId('archive-verifier-too-old')
+    expect(state.textContent).toContain('1 artifact failed hash verification')
+    expect(state.textContent).toContain('2 captures failed hash verification')
+    expect(screen.queryByRole('checkbox')).toBeNull()
+  })
+
   it('confirms with overrideTamper true for a failing report after override', async () => {
     const onClose = vi.fn()
     const report = makeReport({

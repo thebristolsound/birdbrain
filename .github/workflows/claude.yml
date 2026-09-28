@@ -1,0 +1,63 @@
+name: Claude
+
+# Ad hoc review or help from Claude: mention `@claude` in an issue comment, a PR
+# conversation comment, or an issue body. Only a mention the maintainer wrote, in an
+# attempt he started, runs the job, and the job takes its credentials from the
+# `paid-runs` environment (the spend guard, #1310; dispatch.yml has the full note). The
+# action's own write-access check still runs after that. Review comments and review
+# bodies no longer start it: those events run on the PR's merge ref, which the
+# environment refuses. Unlike dispatch.yml this is never scheduled and takes no
+# dispatch slot: it comments and, when asked, pushes to the PR branch.
+#
+# GitHub identity is the birdbrain-agent PAT so the reply is posted by the same
+# account that authors agent PRs (ADR-0027) and no Claude GitHub App install is
+# needed. The Claude credential is the OAuth token dispatch.yml already uses.
+
+on:
+  issue_comment:
+    types: [created]
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+
+jobs:
+  claude:
+    # Spend guard (#1310): the mention must be the maintainer's, and so must whoever
+    # started this attempt, because anyone with write access can re-run a workflow
+    # and a re-run keeps github.actor from the first attempt.
+    if: |
+      github.triggering_actor == 'thebristolsound' && (
+        (github.event_name == 'issue_comment' && github.event.comment.user.login == 'thebristolsound' && contains(github.event.comment.body, '@claude')) ||
+        (github.event_name == 'issues' && github.event.issue.user.login == 'thebristolsound' && contains(github.event.issue.body, '@claude'))
+      )
+    environment: paid-runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # The PAT as checkout credential matches dispatch.yml, so a push Claude
+      # is asked to make goes out as the machine account, not the job token.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          token: ${{ secrets.BIRDBRAIN_AGENT_GH_TOKEN }}
+
+      - uses: anthropics/claude-code-action@756cc22e19660d20e8cc9496b4f242475a7f7790 # v1.0.235
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.BIRDBRAIN_AGENT_GH_TOKEN }}
+          # Only these accounts' comments and reviews reach Claude (#1310): the
+          # maintainer, the machine account and the named review bots. The action
+          # matches GraphQL logins with `[bot]` appended, where the account REST calls
+          # `Copilot` is copilot-swe-agent and copilot-pull-request-reviewer.
+          include_comments_by_actor: thebristolsound,birdbrain-agent,coderabbitai[bot],chatgpt-codex-connector[bot],copilot-pull-request-reviewer[bot],copilot-swe-agent[bot]
+          additional_permissions: |
+            actions: read
+          settings: |
+            { "model": "claude-opus-5-5", "effortLevel": "low" }
+          # The reply goes out through the action's own tracking comment, so the
+          # post-comment hook never sees it; the shape is carried by prompt instead.
+          claude_args: |
+            --max-turns 40
+            --append-system-prompt "Every comment you post on GitHub follows the repository's post-comment skill at .claude/skills/post-comment/SKILL.md; read it before writing. Shape: a plain-language top layer of at most 20 lines with no file paths, code spans, commit ids, tool names or repository jargon, then everything else inside <details> blocks, each with a one-line plain <summary>, a blank line, and the detail (tables with file:line, commit ids, fenced output). Fenced code only inside <details>. Your whole reply is one tracking comment in that shape."

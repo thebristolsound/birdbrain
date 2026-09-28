@@ -100,6 +100,11 @@ if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   else
     log "WARNING: could not resolve the pinned Node via mise; 'node --version' may be wrong for this repo (see CLAUDE.md Node note)"
   fi
+  # Measurement only (ADR-0029): how much the teardown skill could reclaim. Bounded, never fatal.
+  TEARDOWN="$PROJECT_DIR/.claude/skills/teardown/scripts/teardown.sh"
+  if [ -x "$TEARDOWN" ]; then
+    (cd "$PROJECT_DIR" && timeout 15 "$TEARDOWN" sweep --count 2>/dev/null) || log "teardown count skipped (timed out or failed)"
+  fi
   exit 0
 fi
 

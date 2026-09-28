@@ -423,6 +423,18 @@ async function computeVerification(
   const computed = hasher.digest('hex')
 
   const chain = verifyManifestChain(store.caseDir(capture.caseId))
+  // Checked before `valid`, which is also false here: an entry from a newer
+  // schema means this build cannot read the chain, not that it is broken (X25).
+  if (chain.unsupported) {
+    return {
+      ...base,
+      computedHash: computed,
+      status: 'verifier-too-old',
+      manifestIndex: capture.manifestIndex,
+      chainValid: false,
+      reason: chain.reason
+    }
+  }
   if (!chain.valid) {
     return {
       ...base,

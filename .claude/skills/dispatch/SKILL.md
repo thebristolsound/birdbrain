@@ -174,15 +174,20 @@ exits immediately unless `CLAUDE_CODE_REMOTE=true`, by design. So:
   untrusted activity, with its author, link and time. These rules bind what this routine acts
   on, not what the implementer reads: it re-enumerates every comment on a PR itself, so an
   untrusted comment still reaches it, and only its contract tells it not to act on one.
-- **A spend cap bounds every cycle (#1310).** By the maintainer's ruling of 2026-09-28, the
-  pre-gate starts no cycle once 4 have started in the last 24 hours, or once 1 has started for
-  the same PR or issue in the last 6 hours; `CAP_*` in `.github/scripts/dispatch/pregate.sh`
-  holds both limits. It counts a cycle by the start of `dispatch.yml`'s `Claude credential`
-  step, read from the Actions API, and a cycle's PR or issues by the `Dispatch target`
-  annotation the pre-gate writes on that job. When any of those reads fails, it starts nothing.
-  The trust rules above do not close every way someone else makes the pre-gate start a cycle,
-  a push back to a head the pipeline already reviewed and `evidence-affecting` on a PR's linked
-  issue among them; the cap bounds those, as it bounds every cycle.
+- **A spend cap bounds cycles, and the schedule is the ceiling (#1310).** By the maintainer's
+  ruling of 2026-09-28, the pre-gate starts no cycle once it counts 4 started in the last 24
+  hours, or 1 started for the same PR or issue in the last 6 hours; `CAP_*` in
+  `.github/scripts/dispatch/pregate.sh` holds both limits. It counts a cycle by the start of
+  `dispatch.yml`'s `Claude credential` step, read from the Actions API, and a cycle's PR or
+  issues by the `Dispatch target` annotation the pre-gate writes on that job. When any of those
+  reads fails, it starts nothing. The count sees only the runs GitHub still lists, and anyone
+  with write access can delete a finished run. By a second ruling that day the hard ceiling is
+  then the schedule: `dispatch.yml` fires every 4 hours, one run at a time, and its job skips
+  any start or re-run but a scheduled first attempt or the maintainer's, so 6 cycles a day plus
+  any he starts. The trust rules above do not close every way someone else makes the pre-gate
+  start a cycle, a push back to a head the pipeline already reviewed and `evidence-affecting`
+  on a PR's linked issue among them; the cap bounds those, and the schedule does once runs are
+  deleted.
 - **You never push to `main` and never force-merge.** You may merge exactly one class of PR,
   under the four conditions in section 2a: a non-evidence agent PR with every required check
   green and an `agent/pre-pass` success verdict (ADR-0014). Everything else waits for a human.

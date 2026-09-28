@@ -10,11 +10,15 @@
 # acted: a comment or review, a head push, a label change or the commit status
 # this step reads on a PR counts only from the trust list below (label_trust,
 # trusted_prepass), and the rest is named in the step summary. And how much: the
-# spend cap below holds every cycle past its limits, and holds when it cannot
-# count. The trust rules do not close every way someone outside the list makes
-# this step start a cycle, a push back to a head the pipeline already reviewed
-# and a label on a PR's linked issue among them; the cap bounds those as it
-# bounds every other cycle.
+# spend cap below holds a cycle past its limits, and holds when it cannot count.
+# It counts only the runs GitHub still lists, and anyone with write access can
+# delete a finished run. The ceiling is then dispatch.yml's schedule, which the
+# maintainer accepted on 2026-09-28: a fire every 4 hours, one run at a time,
+# and a job that skips any start or re-run but a scheduled first attempt or
+# his, so 6 cycles a day plus any he starts. The trust rules do not close every
+# way someone outside the list makes this step start a cycle, a push back to a
+# head the pipeline already reviewed and a label on a PR's linked issue among
+# them; the cap bounds those, and the schedule does once runs are deleted.
 #
 # The conservative default is not enough on its own, because three of the
 # answers here can be wrong in the direction that never runs. A stale claim is
@@ -76,12 +80,13 @@ capacity=1
 stale_before="$(date -u -d "$CLAIM_MAX_AGE" +%FT%TZ)"
 
 # The spend cap, from the maintainer's ruling of 2026-09-28 on #1310: this step
-# starts no cycle once CAP_TOTAL have started in CAP_TOTAL_WINDOW, or once
-# CAP_PER_TARGET have started for the same PR or issue in CAP_PER_TARGET_WINDOW,
-# whatever made it want one. A cycle has started when CAP_PAID_STEP, the first
-# step after this one that calls Claude, has started in a job of CAP_WORKFLOW
-# (see paid_cycles). Its targets are the PR or issues this step started it for,
-# which start records as a CAP_TARGET_TITLE annotation on the job.
+# starts no cycle once it counts CAP_TOTAL started in CAP_TOTAL_WINDOW, or
+# CAP_PER_TARGET started for the same PR or issue in CAP_PER_TARGET_WINDOW,
+# whatever made it want one. It counts a cycle when CAP_PAID_STEP, the first
+# step after this one that calls Claude, has started in a job of a CAP_WORKFLOW
+# run GitHub still lists (see paid_cycles, and the header on deleted runs). Its
+# targets are the PR or issues this step started it for, which start records as
+# a CAP_TARGET_TITLE annotation on the job.
 CAP_TOTAL=4
 CAP_TOTAL_WINDOW='24 hours ago'
 CAP_PER_TARGET=1
@@ -101,11 +106,12 @@ decide() {
   exit 0
 }
 
-# Every paid cycle of CAP_WORKFLOW started since cap_total_since, one per job
-# (attempt), as [{at, targets}]: when its CAP_PAID_STEP started, and the numbers
-# in its CAP_TARGET_TITLE annotations, or null when it has none (a job from
-# before the cap, which then counts against every target). A skipped step never
-# started; a cancelled one did. Fails on any failed read, and the caller holds.
+# Every paid cycle in the CAP_WORKFLOW runs GitHub still lists, started since
+# cap_total_since, one per job (attempt), as [{at, targets}]: when its
+# CAP_PAID_STEP started, and the numbers in its CAP_TARGET_TITLE annotations, or
+# null when it has none (a job from before the cap, which then counts against
+# every target). A skipped step never started; a cancelled one did. Fails on any
+# failed read, and the caller holds.
 paid_cycles() {
   local page=1 runs ids="" batch id jobs found="" job at notes targets cycles=""
   while :; do

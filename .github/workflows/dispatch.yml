@@ -64,14 +64,28 @@ env:
 
 jobs:
   cycle:
-    # Spend guard (#1310): a scheduled fire, or a run the maintainer started. Anyone
-    # with write access can re-run a workflow, and a re-run keeps github.actor from
-    # the first attempt, so the guard reads github.triggering_actor and lets a
-    # scheduled run through only on its first attempt. doc-curator.yml and
-    # health.yml carry the same guard, release-macos.yml its second half.
+    # Spend guard (#1310), in two parts. Every workflow that reads a paid credential
+    # points here.
+    #
+    # The environment. The four paid credentials belong in `paid-runs`, whose
+    # deployment policy admits a run from main or from a `v*` tag, and every job that
+    # reads one names it, except jev-lens.yml's hunks. Once they are stored there and
+    # the repository-level copies are deleted, a copy of a workflow on any other branch,
+    # a pull request's copy, and a re-run of a run from before this change find none.
+    #
+    # The `if:`. On main, anyone with write access can still start or re-run a
+    # workflow, and a re-run keeps github.actor from the first attempt. So the job
+    # admits a scheduled fire's first attempt, or an attempt github.triggering_actor
+    # says the maintainer started. doc-curator.yml and health.yml carry this guard,
+    # release-macos.yml its second half, claude.yml and jev-lens.yml's triage their own.
+    #
+    # Neither part stops a write collaborator who merges his own workflow change to
+    # main, which the main branch rules allow while they require no approval, or a
+    # re-run of a release.yml run, which has no actor check.
     if: >-
       (github.event_name == 'schedule' && github.run_attempt == '1')
       || github.triggering_actor == 'thebristolsound'
+    environment: paid-runs
     runs-on: ubuntu-latest
     timeout-minutes: 150
     env:

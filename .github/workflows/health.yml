@@ -26,10 +26,12 @@ concurrency:
 
 jobs:
   check:
-    # Spend guard (#1310), the same as dispatch.yml's cycle job; the reasons are there.
+    # Spend guard (#1310), the same as dispatch.yml's cycle job, environment included;
+    # the reasons and the limits are there.
     if: >-
       (github.event_name == 'schedule' && github.run_attempt == '1')
       || github.triggering_actor == 'thebristolsound'
+    environment: paid-runs
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:

@@ -14,11 +14,14 @@ name: Jev lens
 # anyway, and the PR job is limited to same-repository heads for that reason.
 #
 # Spend guard (#1310). triage runs only on an issue the maintainer opened, and only when he
-# opened, edited, reopened or re-ran it. The machine account is left out: triage.mjs already
-# skips the issues it files. hunks runs only on a PR the maintainer or the machine account
-# opened, and only when one of them opened, pushed, reopened or re-ran it. A re-run keeps
-# github.actor from the first attempt, so both read github.triggering_actor; dispatch.yml has
-# the longer note.
+# opened, edited, reopened or re-ran it, and it takes TYPESAFE_API_KEY from the `paid-runs`
+# environment. The machine account is left out: triage.mjs already skips the issues it files.
+# hunks runs only on a PR the maintainer or the machine account opened, and only when one of
+# them opened, pushed, reopened or re-ran it. It does not name the environment, because a
+# pull_request run is on the PR's merge ref and the environment admits only main and `v*`
+# tags. So once the repository-level key is deleted, hunks finds no key and exits 0 as above,
+# and the lens no longer measures PRs. A re-run keeps github.actor from the first attempt, so
+# both read github.triggering_actor; dispatch.yml has the longer note.
 
 on:
   issues:
@@ -42,6 +45,7 @@ jobs:
       github.event_name == 'issues'
       && github.event.issue.user.login == 'thebristolsound'
       && github.triggering_actor == 'thebristolsound'
+    environment: paid-runs
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

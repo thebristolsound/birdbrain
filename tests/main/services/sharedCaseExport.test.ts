@@ -14,6 +14,7 @@ import {
 import { getStorageRoot, initStorage } from '@main/services/storage'
 import { readManifestSnapshot, readSharedCaseSnapshot } from '@main/services/manifest'
 import { generateReport } from '@main/services/export'
+import { verifyCaseDerivedFiles, verifyExhibit } from '@main/services/exhibits'
 import {
   exportCaseArchive,
   importCaseArchive,
@@ -235,9 +236,13 @@ describe('Shared Case export, import and fork (#1511)', () => {
 
   // This installation is the Owner; the peer is a member whose chain holds
   // one document, merged into the Owner's chain.
-  function ownerReplica(extra: (owner: Chain, peerDoc: string) => void = () => {}) {
+  function ownerReplica(
+    extra: (owner: Chain, peerDoc: string) => void = () => {},
+    peerExtra: (peer: Chain, peerDoc: string) => void = () => {}
+  ) {
     const peer = new Chain(signWith(PEER_KEY))
     const peerDoc = document(peer, PEER, { installationId: PEER_ID, memberCode: 'RP' }, 1)
+    peerExtra(peer, peerDoc)
     const owner = new Chain(signEntryHash)
     owner.append(memberAdd(localId, getPublicKeyPem(), 'CO', 'Casey', 'owner', LOCAL()))
     owner.append(memberAdd(PEER_ID, PEER_KEY.publicKey, 'RP', 'Robin', 'member', LOCAL()))
@@ -245,7 +250,7 @@ describe('Shared Case export, import and fork (#1511)', () => {
     owner.append({
       type: 'merge',
       caseId,
-      heads: [{ ...peer.head(PEER_ID), entriesReceived: 1 }],
+      heads: [{ ...peer.head(PEER_ID), entriesReceived: peer.lines.length }],
       timestamp: TIME,
       ...LOCAL(),
       schemaVersion: 4
@@ -334,6 +339,61 @@ describe('Shared Case export, import and fork (#1511)', () => {
       'RP'
     ])
     expect(evidence.sharedCase.manifestSchemaVersion).toBe(4)
+  })
+
+  it("verifies another member's Exhibit against the chain its author signed", async () => {
+    const { peerDoc, ownDoc } = ownerReplica()
+    expect((await verifyExhibit(caseId, peerDoc)).status).toBe('verified')
+    expect((await verifyExhibit(caseId, ownDoc)).status).toBe('verified')
+
+    const [row] = listExhibits(caseId).filter((e) => e.id === peerDoc)
+    writeFileSync(join(getStorageRoot(), row.path!), 'edited')
+    expect((await verifyExhibit(caseId, peerDoc)).status).toBe('tampered')
+  })
+
+  it("verifies the Owner's Exhibit on a member's replica", async () => {
+    const { ownerDoc, ownDoc } = memberReplica()
+    expect((await verifyExhibit(caseId, ownerDoc)).status).toBe('verified')
+    expect((await verifyExhibit(caseId, ownDoc)).status).toBe('verified')
+  })
+
+  it("encloses another member's Derived File that its author's chain anchors", async () => {
+    const thumbnail = Buffer.from('thumbnail bytes')
+    const outputHash = createHash('sha256').update(thumbnail).digest('hex')
+    const { peerDoc } = ownerReplica(undefined, (peer, doc) => {
+      const [row] = listExhibits(caseId).filter((e) => e.id === doc)
+      const path = `${caseId}/derived/${doc}.png`
+      mkdirSync(dirname(join(getStorageRoot(), path)), { recursive: true })
+      writeFileSync(join(getStorageRoot(), path), thumbnail)
+      peer.append({
+        type: 'derivation',
+        caseId,
+        parentExhibitId: doc,
+        parentContentHash: row.contentHash,
+        derivation: 'thumbnail',
+        derivationToolVersion: '0.9.0',
+        outputHash,
+        outputPath: path,
+        timestamp: TIME,
+        ...PEER,
+        schemaVersion: 3
+      })
+      getDb()
+        .prepare(
+          `INSERT INTO derived_files (id, exhibit_id, derivation, tool_version, content_hash,
+             path, created_at, manifest_seq) VALUES (?, ?, 'thumbnail', '0.9.0', ?, ?, ?, ?)`
+        )
+        .run(`${doc}-thumb`, doc, outputHash, path, TIME, peer.lines.length - 1)
+    })
+    const derived = (await verifyCaseDerivedFiles(caseId)).get(peerDoc)
+    expect(derived?.map((d) => d.status)).toEqual(['verified'])
+
+    const { zip } = await exportPackage()
+    const evidence = JSON.parse(zip.get('evidence.json')!.toString('utf-8'))
+    const row = evidence.exhibits.find((r: { id: string }) => r.id === peerDoc)
+    // Listed only because it is enclosed; an unanchored file is held back.
+    expect(row.derivedFiles.map((d: { derivation: string }) => d.derivation)).toEqual(['thumbnail'])
+    expect(zip.get(row.derivedFiles[0].path)).toEqual(thumbnail)
   })
 
   it('fails the package when the member chain it merged is edited', async () => {
@@ -469,6 +529,17 @@ describe('Shared Case export, import and fork (#1511)', () => {
     // One member, and the source Exhibits keep their authors and codes.
     expect(listCaseMembers(newCaseId)).toEqual([])
     expect(getCase(newCaseId)?.ownerInstallationId).toBeUndefined()
+    // Each source Exhibit verifies against its author's chain: the Owner's is
+    // the fork's own history, the forking member's is lineage.
+    for (const exhibit of listExhibits(newCaseId)) {
+      const v = await verifyExhibit(newCaseId, exhibit.id)
+      expect([exhibit.authorInstallationId, exhibit.id, v.status, v.reason]).toEqual([
+        exhibit.authorInstallationId,
+        exhibit.id,
+        'verified',
+        undefined
+      ])
+    }
     const cite = exhibitCitationResolver(newCaseId, 'app')
     expect(
       listExhibits(newCaseId)

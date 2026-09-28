@@ -31,10 +31,8 @@ import type {
   SharedCaseVerifyResult,
   UnsupportedEntry
 } from '@shared/verify'
-import {
-  LINEAGE_DIRECTORY,
-  parseChainPath
-} from '../../packages/evidence-package-layout/index'
+import { LINEAGE_DIRECTORY, parseChainPath } from '../../packages/evidence-package-layout/index'
+import { getInstallationId } from '@main/services/installationId'
 import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
 import type {
   TrustedTime,
@@ -286,6 +284,112 @@ export function readSharedCaseSnapshot(
     ...sharedCaseChains(chains)
   })
   return { chains, verification }
+}
+
+// The chain that answers for one row: the verified entries of the chain its
+// author signed, at their indices, and that chain's verdict. `imports` are
+// always the local chain's: the custody records that resolve an imported
+// entry's ids to the row's.
+export interface AuthorChain {
+  entries: Record<string, unknown>[]
+  chain: ChainVerifyResult
+  imports: ManifestImportEntry[]
+}
+
+// A Case directory's chains, read once for a verify pass. The Shared Case walk
+// runs only when a row names another author, and then once.
+export interface CaseChains {
+  own: AuthorChain
+  shared: () => SharedCaseSnapshot
+}
+
+const EMPTY_CHAIN: ChainVerifyResult = {
+  valid: true,
+  trustedTimes: new Map(),
+  captureHashesByIndex: new Map(),
+  captureEntriesByIndex: new Map()
+}
+
+export function readCaseChains(caseDir: string): CaseChains {
+  const manifest = readManifestSnapshot(caseDir)
+  const chain =
+    manifest.jsonl.length === 0
+      ? EMPTY_CHAIN
+      : verifyManifestChainText(manifest.jsonl.toString('utf-8'), {
+          publicKeyPem: getPublicKeyPem()
+        })
+  let shared: SharedCaseSnapshot | undefined
+  return {
+    own: { entries: manifest.entries, chain, imports: importEntriesOf(manifest) },
+    shared: () => (shared ??= readSharedCaseSnapshot(caseDir, manifest))
+  }
+}
+
+// The chain that answers for a row (#1511). A row with no author is this
+// installation's and answers to the local chain. A row with one answers to the
+// entry at its index, written by that author, for the same bytes, among the
+// entries the Shared Case walk accepted: a current member's chain, a lineage
+// member's, or the local chain's history, where a fork keeps the source
+// Owner's entries. The author can be this installation: a fork stamps the
+// forking member's source rows, whose entries are lineage. A row no accepted
+// entry answers for gets a failed chain, never the local chain's verdict.
+export function authorChainOf(
+  chains: CaseChains,
+  row: { authorInstallationId: string | null; manifestIndex: number | null; contentHash: string }
+): AuthorChain {
+  const { authorInstallationId: author, manifestIndex, contentHash } = row
+  if (author === null) return chains.own
+  const { imports } = chains.own
+  const failed = (chain: ChainVerifyResult): AuthorChain => ({ entries: [], chain, imports })
+  const { chains: files, verification } = chains.shared()
+  if (!verification) {
+    if (author === getInstallationId()) return chains.own
+    return failed({
+      ...EMPTY_CHAIN,
+      valid: false,
+      reason: `no chain of ${author} in this Case`
+    })
+  }
+  const ownerKey = verification.members.find((m) => m.role === 'owner')?.installationId ?? 'owner'
+  const resultFor = (key: string): ChainVerifyResult | undefined =>
+    key === verification.localInstallationId
+      ? chains.own.chain
+      : (verification.memberChains.get(key) ?? (key === ownerKey ? verification.owner : undefined))
+  const keys = [
+    verification.localInstallationId ?? ownerKey,
+    ...files
+      .map((f) =>
+        f.sourceCaseId === undefined ? f.installationId : `${f.sourceCaseId}/${f.installationId}`
+      )
+      .filter((key) => key === author || key.endsWith(`/${author}`))
+  ]
+  for (const key of keys) {
+    const accepted = verification.entries.get(key)
+    const entry = accepted?.find((e) => e.index === manifestIndex)
+    const chain = resultFor(key)
+    if (
+      accepted &&
+      chain &&
+      entry &&
+      (entry.type === 'exhibit' || entry.type === 'capture') &&
+      entry.operatorId === author &&
+      entry.contentHash === contentHash
+    ) {
+      return { entries: accepted as unknown as Record<string, unknown>[], chain, imports }
+    }
+  }
+  // Nothing answers: the author's own chain failing says why, when it did.
+  const broken = keys
+    .slice(1)
+    .map(resultFor)
+    .find((chain) => chain !== undefined && !chain.valid)
+  if (broken) return failed(broken)
+  if (!verification.owner.valid) return failed(verification.owner)
+  return failed({
+    ...EMPTY_CHAIN,
+    valid: false,
+    reason: `no verified chain of ${author} holds entry ${manifestIndex ?? '(none)'} for these bytes`
+  })
 }
 
 // One signed capture entry, as recorded on the chain.

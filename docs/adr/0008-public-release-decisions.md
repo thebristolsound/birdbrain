@@ -585,8 +585,8 @@ that residue covers, and what the rewrite would cost.
   project's design reasoning lives."
 - **The rewrite changes provenance the project relies on.** Every commit id
   changes, so every id cited in docs, issues, and pull requests stops resolving.
-  The 22 tags move. The signatures on 890 commits (783 signed by GitHub on merges
-  made through the site, 107 SSH-signed) are dropped, because a rewritten commit cannot keep its
+  The 22 tags move. The signatures on 890 commits (783 signed by GitHub for commits
+  and merges made on the site, 107 SSH-signed) are dropped, because a rewritten commit cannot keep its
   signature. Decision 2's revisit trigger names corrupted provenance as grounds to
   reopen it.
 

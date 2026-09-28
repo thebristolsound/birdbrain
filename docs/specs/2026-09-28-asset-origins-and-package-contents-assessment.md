@@ -1,8 +1,9 @@
 # Asset origins and built package contents
 
-**Status:** measured at `c2d730c8`, the tip of `main` when #1624 was worked and the merge base of
-the change that adds this file. Each section prints the commands behind its figures; run them
-against a later commit to refresh them.
+**Status:** the repository walk is measured at `ab9238a8`, the commit of `main` that `766f417e`
+merged into the branch adding this file. Its 170 binary files are the same, blob for blob, as at
+`c2d730c8`, where #1624 was first worked. The packages were built from `766f417e`. Each section
+prints the commands behind its figures; run them against a later commit to refresh them.
 
 **Scope:** acceptance criteria 2 and 3 of #265, which the maintainer's ruling of 2026-09-28
 (posted on #265) split into #1624. Criteria 1, 5, and 6 of #265 stay with the maintainer:
@@ -15,8 +16,8 @@ contain" inspects a local build made after the allowlist.
 
 ## Summary
 
-- By #1624's definition, 170 tracked files count as binary at `c2d730c8`, three of them empty.
-  125 are cleared and 45 need the maintainer. The 45 fall under eight of the ten items in "Needs
+- By #1624's definition, 170 tracked files count as binary at `ab9238a8`, three of them empty.
+  126 are cleared and 44 need the maintainer. The 44 fall under seven of the nine items in "Needs
   the maintainer"; the other two items concern text files.
 - Two committed images are full-page captures of a Reuters Institute article, including a Reuters
   photograph. Eleven design renders show that capture, and three standalone design pages pack it.
@@ -27,13 +28,15 @@ contain" inspects a local build made after the allowlist.
   byte-identical copy.
 - Of the 14 files in `src/renderer/components/ui/`, `skeleton.tsx` and `tabs.tsx` were copied from
   shadcn/ui, nine follow shadcn/ui's component shape without its text, and three were written for
-  this project. The repository carries no copy of shadcn/ui's MIT notice.
-- A Linux package built from `c2d730c8` holds four top-level entries in `app.asar`, all inside
-  `build.files`. Six of its 352 package folders under `node_modules` carry no licence file.
+  this project. Since #1630 (`b659f3c8`) the repository carries shadcn/ui's MIT text, and the
+  licence notice in the Linux package names shadcn/ui.
+- A Linux package built from `766f417e` holds four top-level entries in `app.asar`, all inside
+  `build.files`. Six of its 352 package folders under `node_modules` carry no licence file, and
+  the `THIRD_PARTY_NOTICES.txt` it ships beside the archive supplies text for all six.
 - The change that adds this file also puts the OFL-1.1 licence beside four committed font folders
   and adds a Security workflow check that fails when a tracked font folder has no licence file.
-  The fifth folder, `extension/src/fonts/`, is to get its licence from #1363 (PR #1620); until
-  that merges, the check reports it.
+  The fifth folder, `extension/src/fonts/`, got its licence from #1363 (PR #1620, `3eb2d60f`),
+  and the check passes on all five folders at `766f417e`.
 
 ## Method
 
@@ -56,12 +59,12 @@ to license is #265's contributor-authority question, which stays with him.
 The count, as #1624 defines it:
 
 ```bash
-BASE=c2d730c8
-git ls-tree -r --name-only "$BASE" | wc -l   # 1511 tracked files
-git grep -I -l -e '' "$BASE" | wc -l         # 1341 that git grep reads as text
+BASE=ab9238a8
+git ls-tree -r --name-only "$BASE" | wc -l   # 1529 tracked files
+git grep -I -l -e '' "$BASE" | wc -l         # 1359 that git grep reads as text
 ```
 
-1511 minus 1341 is 170. Three of the 170 are empty files: `git grep -e ''` matches no line in a
+1529 minus 1359 is 170. Three of the 170 are empty files: `git grep -e ''` matches no line in a
 file that has none, so the subtraction counts them with the binaries. They have a row below so the
 table reconciles. To list the 170:
 
@@ -121,7 +124,7 @@ placeholder renders in the 2026-08-10 bundle, `src/renderer/assets/logo.png` wit
 | `.design-sync/fonts/jetbrains-mono/files/*.woff2` | 6 | Byte-identical to `@fontsource-variable/jetbrains-mono` 5.3.0. Added in 917f73a0 (#191) | OFL-1.1, copyright 2020 The JetBrains Mono Project Authors. `OFL.txt` beside them from #1624 | cleared |
 | `docs/design-handoff/2026-09-14-design-project-export/_ds/birdbrain-ui-9632b0b0-024d-4a3c-94db-688afdd4768f/fonts/*.woff2` | 13 | Seven Inter and six JetBrains Mono files, byte-identical to the two packages; received in the design export, added in 89085808 | OFL-1.1, both copyright lines. `OFL.txt` beside them from #1624 | cleared |
 | `docs/design-handoff/2026-09-19-shared-case-members/_ds/birdbrain-ui-9632b0b0-024d-4a3c-94db-688afdd4768f/fonts/*.woff2` | 13 | The same 13 files. Added in be4eb5af (#1503) | As in the previous row | cleared |
-| `extension/src/fonts/inter-latin-wght-normal.woff2` | 1 | Byte-identical to `@fontsource-variable/inter` 5.3.0. Added in 41a753ef (#169) | OFL-1.1. No licence file beside it at `c2d730c8`; #1363 (PR #1620) would add one | needs the maintainer |
+| `extension/src/fonts/inter-latin-wght-normal.woff2` | 1 | Byte-identical to `@fontsource-variable/inter` 5.3.0. Added in 41a753ef (#169) | OFL-1.1. `OFL.txt` beside it from #1363 (PR #1620, `3eb2d60f`) | cleared |
 | `resources/icon.png`, `resources/icon_nobg.png` | 2 | The Birdbrain logo, 1024 pixels square; the two files are byte-identical. `icon.png` added in 733c4e7c and replaced in bb07ed11 ("update branding"), which added `icon_nobg.png`. No record of who drew it | Not on record | needs the maintainer |
 | `resources/icons/*.png` | 7 | Resized from `resources/icon.png` by `scripts/gen-linux-icons.mjs`. Added in 592a1bcf | Follow the logo's | needs the maintainer |
 | `extension/icons/*.png` | 3 | The logo at 16, 48, and 128 pixels square. Added in 6a778cf0 ("feature work") | Not on record | needs the maintainer |
@@ -151,8 +154,8 @@ placeholder renders in the 2026-08-10 bundle, `src/renderer/assets/logo.png` wit
 | `docs/archive/.gitkeep`, `.vale/styles/config/vocabularies/Birdbrain/reject.txt`, `website/public/.nojekyll` | 3 | Empty placeholder files, zero bytes each. Added in fc651224, ac4125ef (#693), and e73b6bbd (#276) | No content | cleared |
 | `website/public/assets/*.png` | 16 | Generated by `e2e/readme-screenshots.spec.ts` from a seeded case whose pages are fictional (`website/content/docs/screenshots.mdx`). Added in e73b6bbd (#276) and 1431fff8 (#788) | Project material | cleared |
 
-The rows add up to 170: 40 font files, 22 logo files, 81 design images, and 27 others. 125 are
-cleared and 45 need the maintainer.
+The rows add up to 170: 40 font files, 22 logo files, 81 design images, and 27 others. 126 are
+cleared and 44 need the maintainer.
 
 The auto-archiver blob ids can be checked against upstream with:
 
@@ -383,7 +386,7 @@ git grep -n -E "from '(radix-ui|@radix-ui/[a-z-]+)'" "$BASE" -- src/renderer/com
 Two commits in the history of that folder name shadcn: d090ed3e ("add shadcn Tabs primitive") and
 390105d9 ("add shadcn Skeleton primitive"). Two files carry `data-slot` markers: `tabs.tsx` (4) and
 `skeleton.tsx` (1). Two files import from `radix-ui`: `tabs.tsx` and `context-menu.tsx`. So at
-`c2d730c8`, `skeleton.tsx` and `tabs.tsx` are the two files with both a history attribution and
+`ab9238a8`, `skeleton.tsx` and `tabs.tsx` are the two files with both a history attribution and
 `data-slot` markers.
 
 Each file's first committed version was compared with the shadcn/ui source current when it
@@ -446,26 +449,32 @@ The classes:
 | `toaster.tsx` | Written for this project | bca0032f, 2026-09-24 (#1578), built to the mock's toast | 0 | Neither uses Radix. It wraps `sonner`'s `Toaster`, as shadcn/ui's `sonner.tsx` does | 0 of 28 |
 
 Terms: shadcn/ui is under the MIT licence, copyright (c) 2023 shadcn
-(`gh api repos/shadcn-ui/ui/license`). The two copied files carry no notice, and the repository
-holds no copy of shadcn/ui's licence. The maintainer's ruling on #1364 calls for one shadcn/ui
-entry, with its MIT text, in a licence notice shipped with the packaged app. PR #1630, which
-implements that ruling, would also commit that MIT text to the repository, under
-`scripts/third-party-notices/texts/`.
+(`gh api repos/shadcn-ui/ui/license`). The two copied files carry no notice of their own. The
+maintainer's ruling on #1364 calls for one shadcn/ui entry, with its MIT text, in a licence notice
+shipped with the packaged app. PR #1630 (`b659f3c8`) implements that ruling: it commits the MIT
+text as `scripts/third-party-notices/texts/shadcn-ui-LICENSE.txt` and lists shadcn/ui under
+`vendored` in `scripts/third-party-notices/overrides.json`, and the Linux package built for this
+record ships that entry in `resources/THIRD_PARTY_NOTICES.txt`. With the notice in the repository,
+the two copied files meet this record's `cleared` rule, so "Needs the maintainer" no longer lists
+them.
 
 ## What the built packages contain
 
 ### The build
 
-A local build of `c2d730c8`, after the packaging allowlist of #1384: `build.files` is `out/**/*`,
+A local build of `766f417e`, after the packaging allowlist of #1384: `build.files` is `out/**/*`,
 `resources/**/*`, `package.json`, and `node_modules/**/*`. Built on 2026-09-28 (UTC) on Linux,
 x86-64, with Node 20.20.2, pnpm 10.28.2, electron-builder 26.15.3, and Electron 44.4.5. The artifact
-names carry `1.0.1-beta.21` because that is the `version` in `package.json` at `c2d730c8`. This is
+names carry `1.0.1-beta.21` because that is the `version` in `package.json` at `766f417e`. This is
 not the published pre-release of that name, which predates the allowlist and is not inspected
-here.
+here. The first walk built `c2d730c8` the same way; the `766f417e` build lists the same archive
+entries, unpacked tree, and package folders, and adds the three `resources/` files and two zip
+entries that #1620 and #1630 ship.
 
 ```bash
-git switch --detach c2d730c8
+git switch --detach 766f417e
 pnpm install
+rm -rf dist extension/dist out
 pnpm package:linux
 pnpm build:extension
 mkdir -p dist && cd extension/dist && zip -r ../../dist/birdbrain-extension.zip . && cd ../..
@@ -473,8 +482,9 @@ rm -rf /tmp/bb-deb && dpkg-deb -x dist/birdbrain_1.0.1-beta.21_amd64.deb /tmp/bb
 R=/tmp/bb-deb/opt/Birdbrain/resources
 ```
 
-The zip step is the one `.github/workflows/release.yml` runs. The listings below come from the
-`.deb`. In this build, its `app.asar` had the same sha256 as the AppImage's and as
+The zip step is the one `.github/workflows/release.yml` runs. `zip -r` adds to an archive that
+already exists, so the `rm` keeps an earlier build's entries out of it. The listings below come
+from the `.deb`. In this build, its `app.asar` had the same sha256 as the AppImage's and as
 `dist/linux-unpacked/resources/app.asar`, and the AppImage's `resources/` held the same entries
 except the Debian-only `apparmor-profile` and `package-type`.
 
@@ -707,6 +717,7 @@ resources/extension/content.js
 resources/extension/fonts
 resources/extension/fonts/fonts.css
 resources/extension/fonts/inter-latin-wght-normal.woff2
+resources/extension/fonts/OFL.txt
 resources/extension/icons
 resources/extension/icons/icon-128.png
 resources/extension/icons/icon-16.png
@@ -717,7 +728,9 @@ resources/extension/options.js
 resources/extension/popup.html
 resources/extension/popup.js
 resources/extension/theme-preinit.js
+resources/extension/THIRD_PARTY_NOTICES.txt
 resources/package-type
+resources/THIRD_PARTY_NOTICES.txt
 ```
 
 ### Package folders under `node_modules`
@@ -1127,29 +1140,31 @@ unzip -l dist/birdbrain-extension.zip
 Archive:  dist/birdbrain-extension.zip
   Length      Date    Time    Name
 ---------  ---------- -----   ----
-      436  2026-09-27 22:55   theme-preinit.js
-    21654  2026-09-27 22:55   content.js
-        0  2026-09-27 22:55   assets/
-    16029  2026-09-27 22:55   assets/popup.css
-    15614  2026-09-27 22:55   assets/options.css
-     5658  2026-09-27 22:55   options.js
-    19172  2026-09-27 22:55   background.js
-        0  2026-09-27 22:55   fonts/
-    48256  2026-09-27 22:55   fonts/inter-latin-wght-normal.woff2
-      294  2026-09-27 22:55   fonts/fonts.css
-        0  2026-09-27 22:55   chunks/
-   223422  2026-09-27 22:55   chunks/theme.js
-     4362  2026-09-27 22:55   chunks/api.js
-        0  2026-09-27 22:55   icons/
-      828  2026-09-27 22:55   icons/icon-16.png
-    21247  2026-09-27 22:55   icons/icon-128.png
-     4664  2026-09-27 22:55   icons/icon-48.png
-     1200  2026-09-27 22:55   manifest.json
-      663  2026-09-27 22:55   popup.html
-      684  2026-09-27 22:55   options.html
-    15506  2026-09-27 22:55   popup.js
+      436  2026-09-28 10:25   theme-preinit.js
+    21654  2026-09-28 10:25   content.js
+        0  2026-09-28 10:25   assets/
+    16029  2026-09-28 10:25   assets/popup.css
+    15614  2026-09-28 10:25   assets/options.css
+     5658  2026-09-28 10:25   options.js
+      419  2026-09-28 10:25   THIRD_PARTY_NOTICES.txt
+    19172  2026-09-28 10:25   background.js
+        0  2026-09-28 10:25   fonts/
+    48256  2026-09-28 10:25   fonts/inter-latin-wght-normal.woff2
+     4477  2026-09-28 10:25   fonts/OFL.txt
+      294  2026-09-28 10:25   fonts/fonts.css
+        0  2026-09-28 10:25   chunks/
+   223422  2026-09-28 10:25   chunks/theme.js
+     4362  2026-09-28 10:25   chunks/api.js
+        0  2026-09-28 10:25   icons/
+      828  2026-09-28 10:25   icons/icon-16.png
+    21247  2026-09-28 10:25   icons/icon-128.png
+     4664  2026-09-28 10:25   icons/icon-48.png
+     1200  2026-09-28 10:25   manifest.json
+      663  2026-09-28 10:25   popup.html
+      684  2026-09-28 10:25   options.html
+    15506  2026-09-28 10:25   popup.js
 ---------                     -------
-   399689                     21 files
+   404585                     23 files
 ```
 
 ### What the allowlist lets in
@@ -1166,23 +1181,29 @@ Nothing in the package lies outside `build.files`. Inside it, these are worth a 
 - **`resources/icon_nobg.png`:** it ships inside the archive. The app loads `resources/icon.png`
   (`src/main/index.ts:219`); the only reference to `icon_nobg.png` is in `README.md`.
 - **Renderer fonts:** the 13 font files in `out/renderer/assets/` are hashed copies of the
-  `@fontsource-variable` files. No file under `out/` carries their licence text; the archive
-  carries it in `node_modules/@fontsource-variable/inter/LICENSE` and
-  `node_modules/@fontsource-variable/jetbrains-mono/LICENSE`.
+  `@fontsource-variable` files. No file inside the archive's `out/` carries their licence text.
+  The archive carries it in `node_modules/@fontsource-variable/inter/LICENSE` and
+  `node_modules/@fontsource-variable/jetbrains-mono/LICENSE`, and
+  `resources/THIRD_PARTY_NOTICES.txt` reprints both files under its
+  `@fontsource-variable/inter 5.3.0` and `@fontsource-variable/jetbrains-mono 5.3.0` entries.
 - **Six package folders with no licence file:** `@hono/zod-validator`,
   `@img/sharp-libvips-linux-arm64`, `@img/sharp-libvips-linux-x64`, `boolbase`, `lazy-val`, and
   `react-remove-scroll-bar`. The maintainer's ruling on #1364 calls for a committed overrides file
-  to supply text for such packages.
-- **The extension zip:** `fonts/` holds the Inter font and `fonts.css` and no licence.
-  `extension/vite.config.ts` copies the whole `extension/src/fonts/` folder into the build, so the
-  `OFL.txt` that PR #1620 would add there would reach the zip once it merges.
-- **`demo-case.birdbrain`:** it ships once, outside the archive, through `extraResources`. The
-  archive's `resources/` holds the other nine tracked files under `resources/`.
+  to supply text for such packages. #1630 committed it as
+  `scripts/third-party-notices/overrides.json`, with an entry for each of the six, and each of
+  their entries in `resources/THIRD_PARTY_NOTICES.txt` carries that entry's note.
+- **The extension zip:** `fonts/` holds the Inter font, `fonts.css`, and the `OFL.txt` that #1620
+  added, which `extension/vite.config.ts` copies with the rest of `extension/src/fonts/`. The
+  zip's `THIRD_PARTY_NOTICES.txt` is `extension/THIRD_PARTY_NOTICES.txt` from #1630, and names the
+  Inter font and `fonts/OFL.txt`.
+- **`demo-case.birdbrain` and `THIRD_PARTY_NOTICES.txt`:** each ships once, outside the archive,
+  through `extraResources`. The archive's `resources/` holds the other nine tracked files under
+  `resources/`, and its `out/` holds 21 files, none of them the notice file.
 
 ## Font licence files and check
 
 The change that adds this file adds an `OFL.txt` beside each committed font folder except the
-extension's:
+extension's, whose `OFL.txt` #1363 (PR #1620) added:
 
 | Folder | Families | Content |
 | --- | --- | --- |
@@ -1222,26 +1243,25 @@ Unresolved. Replacing or removing material is #265's criterion 5, which is the m
    terms.
 3. **Screenshots of third-party products.** `pasted-1785980228073-0.png` shows Autopsy 3.0.0b3 and
    `pasted-1786142913073-0.png` shows Hunchly 2.0.
-4. **Copied code without its notice.** `skeleton.tsx` and `tabs.tsx` (MIT, shadcn/ui, whose text
-   PR #1630 would commit); the three auto-archiver fixtures (MIT, Bellingcat; the fixture README
-   names the licence, and the repository does not carry its text); the React 18.3.1 bundles in the
-   three packed pages (MIT, header only); and `_ds_bundle.js` (`motion`, `class-variance-authority`
-   under Apache-2.0, `clsx`, `tailwind-merge`, and Radix, with no licence text). The Tailwind CSS
-   style sheets keep Tailwind's one-line header in each copy.
+4. **Copied code without its notice.** The three auto-archiver fixtures (MIT, Bellingcat; the
+   fixture README names the licence, and the repository does not carry its text); the React 18.3.1
+   bundles in the three packed pages (MIT, header only); and `_ds_bundle.js` (`motion`,
+   `class-variance-authority` under Apache-2.0, `clsx`, `tailwind-merge`, and Radix, with no
+   licence text). The Tailwind CSS style sheets keep Tailwind's one-line header in each copy.
 5. **Fonts packed in the three standalone pages.** Four OFL-1.1 fonts in each, and no licence text
    in any of them. The font licence check looks at font files, not at fonts packed into a page.
 6. **The design tool's runtime.** `support.js`, eight copies, and its packed copies in the three
    pages. It says it was generated from `dc-runtime/src/*.ts` and states no copyright or terms.
 7. **DigiCert's timestamp response and token.** The fixture README records their origin, a request
    to DigiCert's public timestamp service; no terms are on record.
-8. **`extension/src/fonts/`.** PR #1620 would add its licence file; merging it clears this row and
-   the font licence check's report.
-9. **`pasted-1786496337564-0.png`.** An arrow drawing with no recorded origin.
-10. **`pasted-1786096220328-0.png`.** A capture of the mock that includes a Windows Snipping Tool
-    notification.
+8. **`pasted-1786496337564-0.png`.** An arrow drawing with no recorded origin.
+9. **`pasted-1786096220328-0.png`.** A capture of the mock that includes a Windows Snipping Tool
+   notification.
 
-Items 1, 2, 3, 4 (the three fixtures), 7, 8, 9, and 10 hold the 45 binary files that need the
-maintainer: 13, 22, 2, 3, 2, 1, 1, and 1.
+Items 1, 2, 3, 4 (the three fixtures), 7, 8, and 9 hold the 44 binary files that need the
+maintainer: 13, 22, 2, 3, 2, 1, and 1. The walk at `c2d730c8` listed a tenth item, the extension's
+font folder, which had no licence file; #1363 (PR #1620, `3eb2d60f`) added one, and its font now
+counts as cleared.
 
 ## Noticed outside this walk
 

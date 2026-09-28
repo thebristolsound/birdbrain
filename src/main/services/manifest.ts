@@ -325,9 +325,20 @@ export function readCaseChains(caseDir: string): CaseChains {
   }
 }
 
+// Whether `author` holds `entry` of a chain: it wrote the entry, or it wrote a
+// later `import` and so continued the chain that holds it. An archive import
+// keeps the source's entries as they were signed, so an Exhibit from before
+// an Owner's earlier import carries that source's operatorId.
+function heldBy(entries: ManifestEntry[], entry: ManifestEntry, author: string): boolean {
+  return (
+    entry.operatorId === author ||
+    entries.some((e) => e.type === 'import' && e.index > entry.index && e.operatorId === author)
+  )
+}
+
 // The chain that answers for a row (#1511). A row with no author is this
 // installation's and answers to the local chain. A row with one answers to the
-// entry at its index, written by that author, for the same bytes, among the
+// entry at its index, held by that author, for the same bytes, among the
 // entries the Shared Case walk accepted: a current member's chain, a lineage
 // member's, or the local chain's history, where a fork keeps the source
 // Owner's entries. The author can be this installation: a fork stamps the
@@ -372,7 +383,7 @@ export function authorChainOf(
       chain &&
       entry &&
       (entry.type === 'exhibit' || entry.type === 'capture') &&
-      entry.operatorId === author &&
+      heldBy(accepted, entry, author) &&
       entry.contentHash === contentHash
     ) {
       return { entries: accepted as unknown as Record<string, unknown>[], chain, imports }

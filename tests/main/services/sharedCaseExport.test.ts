@@ -287,6 +287,93 @@ describe('Shared Case export, import and fork (#1511)', () => {
     return { owner, local, ownerDoc, ownDoc }
   }
 
+  // An installation whose chain the Case's Owner continued by importing its
+  // archive before the Case was shared: its document comes first, under its
+  // own key, then the Owner's `import` naming that key.
+  const EARLIER_KEY = keyPair()
+  const EARLIER = operator('installation-earlier-0001', 'Zoe Earlier')
+
+  // A chain whose first entry, the earlier document, the earlier installation
+  // signed, and whose `import` on `sign` signs. `author` is the document row's,
+  // as the replica holding the chain records it.
+  function continuedChain(
+    sign: (entryHash: string) => string,
+    by: ReturnType<typeof operator>,
+    author: { installationId: string; memberCode: string } | null
+  ): { chain: Chain; earlierDoc: string } {
+    let signed = 0
+    const chain = new Chain((hash) => (signed++ === 0 ? signWith(EARLIER_KEY) : sign)(hash))
+    const earlierDoc = document(chain, EARLIER, author, 2)
+    chain.append({
+      type: 'import',
+      caseId,
+      sourceCaseId: 'earlier-case',
+      sourceInstallationId: EARLIER.operatorId,
+      sourcePublicKeyPem: EARLIER_KEY.publicKey,
+      packageHash: 'c'.repeat(64),
+      idMapSha256: 'd'.repeat(64),
+      verificationResult: {
+        overallValid: true,
+        chainValid: true,
+        artifactCount: 0,
+        artifactFailureCount: 0,
+        captureCount: 0,
+        captureHashFailureCount: 0
+      },
+      timestamp: TIME,
+      ...by,
+      schemaVersion: 2
+    })
+    return { chain, earlierDoc }
+  }
+
+  // `ownerReplica`, with the Owner's chain continuing an earlier import.
+  function ownerReplicaAfterImport() {
+    const peer = new Chain(signWith(PEER_KEY))
+    document(peer, PEER, { installationId: PEER_ID, memberCode: 'RP' }, 1)
+    const { chain: owner, earlierDoc } = continuedChain(signEntryHash, LOCAL(), null)
+    owner.append(memberAdd(localId, getPublicKeyPem(), 'CO', 'Casey', 'owner', LOCAL()))
+    owner.append(memberAdd(PEER_ID, PEER_KEY.publicKey, 'RP', 'Robin', 'member', LOCAL()))
+    document(owner, LOCAL(), null, 1)
+    owner.append({
+      type: 'merge',
+      caseId,
+      heads: [{ ...peer.head(PEER_ID), entriesReceived: peer.lines.length }],
+      timestamp: TIME,
+      ...LOCAL(),
+      schemaVersion: 4
+    })
+    writeFileSync(join(caseDir(), 'manifest.jsonl'), owner.jsonl)
+    writeFileSync(join(caseDir(), memberChainPath(PEER_ID)), peer.jsonl)
+    roster(localId, getPublicKeyPem(), PEER_ID, PEER_KEY.publicKey)
+    return { earlierDoc }
+  }
+
+  // `memberReplica`, with the Owner's chain continuing an earlier import.
+  function memberReplicaAfterImport() {
+    const { chain: owner, earlierDoc } = continuedChain(signWith(PEER_KEY), PEER, {
+      installationId: PEER_ID,
+      memberCode: 'CO'
+    })
+    owner.append(memberAdd(PEER_ID, PEER_KEY.publicKey, 'CO', 'Robin', 'owner', PEER))
+    owner.append(memberAdd(localId, getPublicKeyPem(), 'RP', 'Casey', 'member', PEER))
+    document(owner, PEER, { installationId: PEER_ID, memberCode: 'CO' }, 1)
+    const local = new Chain(signEntryHash)
+    document(local, LOCAL(), null, 1)
+    local.append({
+      type: 'merge',
+      caseId,
+      heads: [{ ...owner.head(PEER_ID), entriesReceived: owner.lines.length }],
+      timestamp: TIME,
+      ...LOCAL(),
+      schemaVersion: 4
+    })
+    writeFileSync(join(caseDir(), 'manifest.jsonl'), local.jsonl)
+    writeFileSync(join(caseDir(), memberChainPath(PEER_ID)), owner.jsonl)
+    roster(PEER_ID, PEER_KEY.publicKey, localId, getPublicKeyPem())
+    return { earlierDoc }
+  }
+
   const options = (outputPath: string, captureIds?: string[]): ExportOptions => ({
     format: 'zip',
     include: {
@@ -389,6 +476,12 @@ describe('Shared Case export, import and fork (#1511)', () => {
     const { ownerDoc, ownDoc } = memberReplica()
     expect((await verifyExhibit(caseId, ownerDoc)).status).toBe('verified')
     expect((await verifyExhibit(caseId, ownDoc)).status).toBe('verified')
+  })
+
+  it("verifies the Owner's Exhibit from before its earlier import on a member's replica", async () => {
+    const { earlierDoc } = memberReplicaAfterImport()
+    const v = await verifyExhibit(caseId, earlierDoc)
+    expect([v.status, v.reason]).toEqual(['verified', undefined])
   })
 
   it("encloses another member's Derived File that its author's chain anchors", async () => {
@@ -664,6 +757,33 @@ describe('Shared Case export, import and fork (#1511)', () => {
       ])
     }
   )
+
+  it("verifies an Exhibit from before the Owner's earlier import after the Owner forks", async () => {
+    const { earlierDoc } = ownerReplicaAfterImport()
+    expect((await verifyExhibit(caseId, earlierDoc)).status).toBe('verified')
+    const out = join(tempDir, 'fork.birdbrain')
+    await exportCaseArchive(caseId, out)
+    deleteCase(caseId)
+    const { newCaseId } = await importCaseArchive(out)
+
+    // The row keeps the Owner as its author, the installation whose chain
+    // held the entry when the Case was forked.
+    const row = listExhibits(newCaseId).find((e) => e.id === earlierDoc)
+    expect(row?.authorInstallationId).toBe(localId)
+    for (const exhibit of listExhibits(newCaseId)) {
+      const v = await verifyExhibit(newCaseId, exhibit.id)
+      expect([exhibit.id, v.status, v.reason]).toEqual([exhibit.id, 'verified', undefined])
+    }
+    const { dir } = await exportPackage(newCaseId)
+    expect(failures(dir)).toEqual([])
+
+    // A member that neither wrote the entry nor continued the chain holding
+    // it is not its author.
+    getDb()
+      .prepare('UPDATE exhibits SET author_installation_id = ? WHERE id = ?')
+      .run(PEER_ID, earlierDoc)
+    expect((await verifyExhibit(newCaseId, earlierDoc)).status).toBe('chain-broken')
+  })
 
   it('exports a fork as an Evidence Package that the package verifier passes', async () => {
     memberReplica()

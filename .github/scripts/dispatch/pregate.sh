@@ -85,13 +85,15 @@ label_event() {
         | "\(.created_at)\t\(.actor.login // "")"'
 }
 
-# Who pushed commit $2 to branch $1 and when, as "<login><TAB><time>", or empty
-# when no push activity on the branch names it. A commit's author and committer
-# are whatever the pusher wrote; the activity API records the account.
+# When commit $2 was pushed to branch $1 and by whom, as "<time><TAB><login>",
+# or empty when no push activity on the branch names it. A commit's author and
+# committer are whatever the pusher wrote; the activity API records the account.
+# The time comes first because read collapses a leading tab, so an entry with no
+# actor would otherwise put the time in the login.
 pushed_by() {
   list "repos/$R/activity?ref=refs/heads/$1&per_page=100" \
     | jq -r --arg sha "$2" '[.[] | select(.after == $sha)] | first // empty
-        | "\(.actor.login // "")\t\(.timestamp)"'
+        | "\(.timestamp)\t\(.actor.login // "")"'
 }
 
 # When label $2 (default agent-wip) was last applied, or empty when no such event survives.
@@ -217,7 +219,7 @@ for n in $(jq -r '.[]' <<<"$prs"); do
     # only the maintainer's activity after that push moves the PR.
     *)
       push="$(pushed_by "$(jq -r .head.ref <<<"$pr")" "$sha")"
-      IFS=$'\t' read -r pusher pushed_at <<<"$push"
+      IFS=$'\t' read -r pushed_at pusher <<<"$push"
       if trusted_actor "$pusher"; then
         unless_red "PR #$n head ${sha:0:8} has agent/pre-pass=$state; a verdict is owed"
       else

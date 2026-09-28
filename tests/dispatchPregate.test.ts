@@ -455,6 +455,26 @@ describe.skipIf(!HAS_JQ)('pregate.sh counts labels and pushes only from trusted 
       reason: `PR #${PR} has activity at ${VERDICT_AT} newer than its head (${HEAD_AT})`
     })
   })
+
+  it('reads the push time when the activity entry names no account', () => {
+    // Between the head's commit date and the push: it predates the push, so it starts nothing.
+    const beforePush = '2026-09-20T10:00:30Z'
+    const result = run({
+      ...fixtures({
+        labels: UNPARKED,
+        state: 'absent',
+        comments: [{ login: MAINTAINER, at: beforePush }]
+      }),
+      [`repos/${REPO}/activity?ref=refs/heads/${BRANCH}&per_page=100`]: [
+        { activity_type: 'push', after: SHA, actor: null, timestamp: PUSHED_AT }
+      ]
+    })
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+    expect(result.summary).toContain(
+      `PR #${PR} head ${SHA.slice(0, 8)} was pushed by an unrecorded account, outside the trust list; no verdict owed`
+    )
+  })
 })
 
 describe.skipIf(!HAS_JQ)('pregate.sh stale claims', () => {

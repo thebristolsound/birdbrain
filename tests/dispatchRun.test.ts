@@ -61,7 +61,7 @@ const respond = (...responses: unknown[]) =>
     writeFileSync(join(bin, 'responses', `${index + 1}.json`), JSON.stringify(response))
   )
 
-const run = () =>
+const run = (env: Record<string, string> = {}) =>
   spawnSync('bash', [SCRIPT, 'cycle'], {
     cwd: work,
     encoding: 'utf8',
@@ -69,7 +69,8 @@ const run = () =>
       ...process.env,
       PATH: `${bin}:${process.env.PATH}`,
       GITHUB_STEP_SUMMARY: join(root, 'summary.md'),
-      RUN_URL: 'https://example.test/run/1'
+      RUN_URL: 'https://example.test/run/1',
+      ...env
     }
   })
 
@@ -129,5 +130,18 @@ describe('dispatch run.sh', () => {
     expect(args[args.indexOf('--disallowedTools') + 1]).toBe('Monitor')
     expect(readFileSync(join(bin, 'env-1'), 'utf8')).toBe('1')
     expect(args[args.indexOf('-p') + 1]).toMatch(/run_in_background: false/)
+  })
+
+  it('scrubs the prompt file before a failed cycle exits', () => {
+    // Assembled at runtime, like the values in dispatchRedact.test.ts.
+    const credential = `ghp_${'Ab3'.repeat(12)}`
+
+    // No response is queued, so the stub CLI exits non-zero and the cycle fails.
+    const { status } = run({ TARGET_ISSUE: `1 ${credential}` })
+
+    expect(status).not.toBe(0)
+    expect(calls()).toBe(1)
+    expect(dispatchFile('prompt.txt')).toContain('ISSUE #1 ghp_<REDACTED>')
+    expect(dispatchFile('prompt.txt')).not.toContain(credential)
   })
 })

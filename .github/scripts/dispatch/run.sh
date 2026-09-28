@@ -20,12 +20,9 @@
 # the runner would be startup time spent for nothing.
 set -euo pipefail
 
-# An API error can quote the credential it was sent: a malformed
-# CLAUDE_CODE_OAUTH_TOKEN came back inside the error message, and because the
-# stored secret held a newline the value no longer matched GitHub's mask. The
-# log was scrubbed, the artifact was not. Everything written to either passes
-# through here first.
-redact() { sed -E 's/sk-ant-[A-Za-z0-9_-]{6}[A-Za-z0-9_-]*/sk-ant-<REDACTED>/g'; }
+# shellcheck source=.github/scripts/dispatch/redact.sh
+. "$(dirname "${BASH_SOURCE[0]}")/redact.sh"
+scrub() { redact < "$1" > "$1.redacted" && mv "$1.redacted" "$1"; }
 
 mode="${1:-cycle}"
 summary="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
@@ -62,6 +59,7 @@ $context$target"
 esac
 
 printf '%s\n' "$prompt" > .dispatch/prompt.txt
+scrub .dispatch/prompt.txt
 
 # `claude -p` exits the moment the model ends its turn, and whatever it left
 # running in the background dies with the process. 20 of 122 completed cycles
@@ -79,16 +77,14 @@ flags=(
   --disallowedTools Monitor
 )
 
-# Before anything reads, echoes or uploads either file. The failure path is the
-# one that carries a credential, so redacting after it would redact nothing.
-scrub() { redact < "$1" > "$1.redacted" && mv "$1.redacted" "$1"; }
-
 # $@ = the arguments that go ahead of the shared flags.
 run_claude() {
   set +e
   claude "$@" "${flags[@]}" > .dispatch/result.json 2> .dispatch/claude.err
   status=$?
   set -e
+  # Before anything reads, echoes or uploads either file. The failure path is the
+  # one that carries a credential, so redacting after it would redact nothing.
   scrub .dispatch/result.json
   scrub .dispatch/claude.err
 

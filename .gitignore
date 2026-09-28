@@ -77,6 +77,9 @@ coverage/
 .cursor
 .zed
 .kilo
+.macroscope
+.sandcastle
+.specify
 
 
 

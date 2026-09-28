@@ -6,8 +6,12 @@
 # the cheap version of the skill's sections 1 to 3 first and skips the rest when
 # every answer is "nothing". It never writes. It is deliberately conservative:
 # any doubt reads as "run", because a missed cycle costs an hour and a spurious
-# one costs minutes. Who counts is the exception: activity from an account
-# outside the trust list below never starts a cycle, however recent (#1310).
+# one costs minutes. Who acted is the exception (#1310). None of these starts a
+# cycle, however recent, and each is named in the step summary instead: a
+# comment or review from outside the trust list below; a head anyone but the
+# maintainer or the pipeline pushed; an agent-pr or agent-wip label, or the
+# removal of awaiting-maintainer, by anyone but those two; and a ready-for-agent
+# or queued label anyone but the maintainer applied.
 #
 # The conservative default is not enough on its own, because three of the
 # answers here can be wrong in the direction that never runs. A stale claim is
@@ -34,7 +38,8 @@ me="${LOGIN:-}"
 # The trust list, from the spend ruling on #1310: the maintainer, the pipeline
 # itself, and the named review bots on a PR the pipeline opened. Everyone else,
 # other collaborators included, is untrusted. "Session rules" in
-# .claude/skills/dispatch/SKILL.md holds the same list; change both together.
+# .claude/skills/dispatch/SKILL.md holds the same list, and claude.yml's
+# include_comments_by_actor a third copy under GraphQL names; change all three.
 # REST names the Copilot reviewer's inline comments `Copilot` and its reviews
 # `copilot-pull-request-reviewer[bot]`.
 maintainer='thebristolsound'
@@ -66,6 +71,28 @@ unless_red() {
 
 # One array per page from --paginate; slurp and merge so a second page is not lost (#959).
 list() { gh api --paginate "$1" | jq -s 'add // []'; }
+
+# Whether login $1 is the maintainer or, inside the workflow, the pipeline.
+trusted_actor() { [ "$1" = "$maintainer" ] || { [ -n "$me" ] && [ "$1" = "$me" ]; }; }
+
+# The newest $3 event (labeled or unlabeled) for label $2 on issue $1, as
+# "<time><TAB><login>", or empty when no such event survives. The events API
+# names who applied or removed a label; the labels on the issue do not.
+label_event() {
+  gh api --paginate "repos/$R/issues/$1/events?per_page=100" \
+    | jq -s -r --arg label "$2" --arg ev "$3" \
+      'add // [] | [.[] | select(.event == $ev and .label.name == $label)] | max_by(.created_at) // empty
+        | "\(.created_at)\t\(.actor.login // "")"'
+}
+
+# Who pushed commit $2 to branch $1 and when, as "<login><TAB><time>", or empty
+# when no push activity on the branch names it. A commit's author and committer
+# are whatever the pusher wrote; the activity API records the account.
+pushed_by() {
+  list "repos/$R/activity?ref=refs/heads/$1&per_page=100" \
+    | jq -r --arg sha "$2" '[.[] | select(.after == $sha)] | first // empty
+        | "\(.actor.login // "")\t\(.timestamp)"'
+}
 
 # When label $2 (default agent-wip) was last applied, or empty when no such event survives.
 labelled_at() {
@@ -140,19 +167,37 @@ fi
 # Section 1: a claim past the 4-hour expiry is stale, and only the routine ages
 # it out. Counting it as a held slot lets an abandoned claim declare the
 # queue full for good, with the one component that could clear them gated off.
+# A label someone outside the trust list applied still holds the slot, but its
+# age starts nothing.
 for n in $(jq -r '.[]' <<<"$wip"); do
-  claimed="$(labelled_at "$n")"
+  claim="$(label_event "$n" agent-wip labeled)"
+  IFS=$'\t' read -r claimed claimed_by <<<"$claim"
+  if [ -n "$claimed" ] && ! trusted_actor "$claimed_by"; then
+    echo "Issue #$n carries agent-wip from ${claimed_by:-an unrecorded account}, outside the trust list; not aged out" >> "$summary"
+    continue
+  fi
   if [ -z "$claimed" ] || [[ ! "$claimed" > "$stale_before" ]]; then
     decide true "issue #$n holds an agent-wip claim from ${claimed:-an unrecorded time}, past the 4-hour expiry; section 1 must age it out"
   fi
 done
 
-# Section 2: does any open agent PR need the routine?
+# Section 2: does any open agent PR need the routine? A PR counts only when the
+# maintainer or the pipeline applied its agent-pr label. One labelled by anyone
+# else still holds the slot, as it does in the skill, so it can block the queue
+# but not start a cycle.
 for n in $(jq -r '.[]' <<<"$prs"); do
+  marked="$(label_event "$n" agent-pr labeled)"
+  IFS=$'\t' read -r _ marked_by <<<"$marked"
+  if ! trusted_actor "$marked_by"; then
+    echo "PR #$n carries agent-pr from ${marked_by:-an unrecorded account}, outside the trust list; not worked" >> "$summary"
+    continue
+  fi
   pr="$(gh api "repos/$R/pulls/$n")"
   sha="$(jq -r .head.sha <<<"$pr")"
   draft="$(jq -r .draft <<<"$pr")"
   author="$(jq -r '.user.login // empty' <<<"$pr")"
+  pushed_at=""
+  untrusted_head=""
   st="$(gh api "repos/$R/commits/$sha/status" \
     --jq '[.statuses[] | select(.context=="agent/pre-pass")][0] // {}
           | "\(.state // "absent")\t\(.description // "")"')"
@@ -168,7 +213,18 @@ for n in $(jq -r '.[]' <<<"$prs"); do
         unless_red "PR #$n head ${sha:0:8} has a pre-pass an earlier run interrupted; the review is owed a retry"
       fi
       ;;
-    *) unless_red "PR #$n head ${sha:0:8} has agent/pre-pass=$state; a verdict is owed" ;;
+    # A head someone outside the trust list pushed is owed nothing. From here on
+    # only the maintainer's activity after that push moves the PR.
+    *)
+      push="$(pushed_by "$(jq -r .head.ref <<<"$pr")" "$sha")"
+      IFS=$'\t' read -r pusher pushed_at <<<"$push"
+      if trusted_actor "$pusher"; then
+        unless_red "PR #$n head ${sha:0:8} has agent/pre-pass=$state; a verdict is owed"
+      else
+        untrusted_head=1
+        echo "PR #$n head ${sha:0:8} was pushed by ${pusher:-an unrecorded account}, outside the trust list; no verdict owed" >> "$summary"
+      fi
+      ;;
   esac
   labels="$(gh api "repos/$R/issues/$n/labels" --jq '[.[].name]')"
   items="$(activity "$n" "$author")"
@@ -177,21 +233,38 @@ for n in $(jq -r '.[]' <<<"$prs"); do
   # would otherwise un-park it. Without this, the failure-verdict rule below reads
   # the pipeline's own verdict comment as activity and runs a full cycle every
   # fire (#1460). A parked PR with no surviving label event falls through to the
-  # unlabelled rules.
+  # unlabelled rules. Removing the label un-parks the PR only when the maintainer
+  # or the pipeline removed it.
+  parked_at=""
   if jq -e --arg l "$AWAITING_MAINTAINER_LABEL" 'index($l)' <<<"$labels" >/dev/null; then
     parked_at="$(labelled_at "$n" "$AWAITING_MAINTAINER_LABEL")"
-    if [ -n "$parked_at" ]; then
-      report_untrusted "$n" "$items" "$parked_at"
-      newest="$(newest_trusted "$items" maintainer)"
-      if [ -n "$newest" ] && [[ "$newest" > "$parked_at" ]]; then
-        decide true "PR #$n is parked for the maintainer and has activity at $newest newer than the label ($parked_at)"
-      fi
-      echo "PR #$n is parked for the maintainer since $parked_at with no activity after it; skipped" >> "$summary"
-      continue
+  else
+    removal="$(label_event "$n" "$AWAITING_MAINTAINER_LABEL" unlabeled)"
+    IFS=$'\t' read -r removed_at remover <<<"$removal"
+    if [ -n "$removed_at" ] && ! trusted_actor "$remover"; then
+      echo "PR #$n: ${remover:-an unrecorded account} removed $AWAITING_MAINTAINER_LABEL at $removed_at, outside the trust list; still parked" >> "$summary"
+      parked_at="$(labelled_at "$n" "$AWAITING_MAINTAINER_LABEL")"
     fi
+  fi
+  if [ -n "$parked_at" ]; then
+    report_untrusted "$n" "$items" "$parked_at"
+    newest="$(newest_trusted "$items" maintainer)"
+    if [ -n "$newest" ] && [[ "$newest" > "$parked_at" ]]; then
+      decide true "PR #$n is parked for the maintainer and has activity at $newest newer than the label ($parked_at)"
+    fi
+    echo "PR #$n is parked for the maintainer since $parked_at with no activity after it; skipped" >> "$summary"
+    continue
   fi
   head_at="$(gh api "repos/$R/commits/$sha" --jq .commit.committer.date)"
   report_untrusted "$n" "$items" "$head_at"
+  if [ -n "$untrusted_head" ]; then
+    since="${pushed_at:-$head_at}"
+    newest="$(newest_trusted "$items" maintainer)"
+    if [ -n "$newest" ] && [[ "$newest" > "$since" ]]; then
+      decide true "PR #$n has activity from the maintainer at $newest newer than a push from outside the trust list ($since)"
+    fi
+    continue
+  fi
   # On a success verdict the pipeline's own comment is necessarily newer than
   # the head, and the skill classifies pipeline-authored activity as
   # non-actionable. Counting it would run a full cycle every fire against an
@@ -224,6 +297,17 @@ if [ "$occupancy" -lt "$capacity" ]; then
   for n in $(list "repos/$R/issues?state=open&labels=ready-for-agent,queued&per_page=100" \
       | jq -r '.[] | select(.pull_request | not) | select(.assignees | length == 0)
                | select([.labels[].name] | index("process") | not) | .number'); do
+    # Only the maintainer queues work: an issue counts when he applied both labels.
+    foreign=""
+    for l in ready-for-agent queued; do
+      applied="$(label_event "$n" "$l" labeled)"
+      IFS=$'\t' read -r _ by <<<"$applied"
+      [ "$by" = "$maintainer" ] || foreign="${foreign:+$foreign, }$l from ${by:-an unrecorded account}"
+    done
+    if [ -n "$foreign" ]; then
+      echo "Issue #$n has $foreign, outside the trust list; not frontier" >> "$summary"
+      continue
+    fi
     blockers="$(gh api "repos/$R/issues/$n/dependencies/blocked_by" \
       --jq '[.[] | select(.state == "open")] | length' 2>/dev/null || echo 0)"
     if [ "${blockers:-0}" -eq 0 ]; then

@@ -121,8 +121,9 @@ exits immediately unless `CLAUDE_CODE_REMOTE=true`, by design. So:
   - **Labels:** `ready-for-agent` and `queued` count only when the maintainer applied them
     (section 3); `agent-pr` and `agent-wip` only when he or the machine account applied them
     (section 1); and removing `awaiting-maintainer` un-parks a PR only when one of those two
-    removed it. The issue's events name who did: the newest `labeled` or `unlabeled` event for
-    that label, its `actor.login`
+    removed it ("Park a PR for the maintainer" covers a removal by anyone else). The issue's
+    events name who did: the newest `labeled` or `unlabeled` event for that label, its
+    `actor.login`
     (`gh api --paginate "repos/thebristolsound/birdbrain/issues/<n>/events?per_page=100"`).
   - **Pushes:** a head the maintainer or the machine account pushed is owed a pre-pass, and one
     anyone else pushed is not (section 4). The repository's activity names the pusher: the
@@ -368,12 +369,15 @@ until the maintainer comments on it or reviews it after the label; nobody else's
 counts, the bots' included. The label name the pre-gate matches is `AWAITING_MAINTAINER_LABEL` in
 `.github/scripts/dispatch/lib.sh`, so rename both together. If someone outside the trust list
 removes the label, the PR stays parked: treat it as labelled, and name the removal in the
-report.
+report. It stays parked until the machine account or the maintainer pushes a head after the
+label, which the pre-gate reads as the resume.
 
 **Remove the label when work resumes.** When a cycle claim on a parked PR settles in your
 favour, for a round the maintainer asked for, his feedback, or a new head owed a pre-pass, remove it
 (`agh api -X DELETE repos/thebristolsound/birdbrain/issues/<n>/labels/awaiting-maintainer`)
-and read the labels back before spawning anything.
+and read the labels back before spawning anything. If someone outside the trust list already
+removed it, there is nothing to delete and no removal to record. The implementer's push
+records the resume instead, so a round that ends without a push leaves the PR parked.
 
 ## 2a. Auto-merge — the one merge you may perform
 

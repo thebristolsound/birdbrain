@@ -236,7 +236,10 @@ for n in $(jq -r '.[]' <<<"$prs"); do
   # the pipeline's own verdict comment as activity and runs a full cycle every
   # fire (#1460). A parked PR with no surviving label event falls through to the
   # unlabelled rules. Removing the label un-parks the PR only when the maintainer
-  # or the pipeline removed it.
+  # or the pipeline removed it. After anyone else removes it, the skill has no
+  # label left to remove when the round resumes, so a head one of those two
+  # pushed after the label stands in for that removal. Without it, the
+  # maintainer's answer stays newer than the label and runs every fire.
   parked_at=""
   if jq -e --arg l "$AWAITING_MAINTAINER_LABEL" 'index($l)' <<<"$labels" >/dev/null; then
     parked_at="$(labelled_at "$n" "$AWAITING_MAINTAINER_LABEL")"
@@ -244,8 +247,16 @@ for n in $(jq -r '.[]' <<<"$prs"); do
     removal="$(label_event "$n" "$AWAITING_MAINTAINER_LABEL" unlabeled)"
     IFS=$'\t' read -r removed_at remover <<<"$removal"
     if [ -n "$removed_at" ] && ! trusted_actor "$remover"; then
-      echo "PR #$n: ${remover:-an unrecorded account} removed $AWAITING_MAINTAINER_LABEL at $removed_at, outside the trust list; still parked" >> "$summary"
       parked_at="$(labelled_at "$n" "$AWAITING_MAINTAINER_LABEL")"
+      push="$(pushed_by "$(jq -r .head.ref <<<"$pr")" "$sha")"
+      IFS=$'\t' read -r resumed_at resumed_by <<<"$push"
+      removed="PR #$n: ${remover:-an unrecorded account} removed $AWAITING_MAINTAINER_LABEL at $removed_at, outside the trust list"
+      if [ -n "$resumed_at" ] && trusted_actor "$resumed_by" && [[ "$resumed_at" > "$parked_at" ]]; then
+        echo "$removed; resumed by a push at $resumed_at" >> "$summary"
+        parked_at=""
+      else
+        echo "$removed; still parked" >> "$summary"
+      fi
     fi
   fi
   if [ -n "$parked_at" ]; then

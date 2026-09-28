@@ -456,6 +456,60 @@ describe.skipIf(!HAS_JQ)('pregate.sh counts labels and pushes only from trusted 
     })
   })
 
+  // Round 2 of the review on #1629: the maintainer answers a PR whose label another account
+  // removed, and the round he asked for pushes and approves. The skill has no label left to
+  // remove, so nothing but that push records the resume.
+  const LABELLED_BEFORE_HEAD = '2026-09-20T09:30:00Z'
+  const resumed = (state: 'success' | 'failure') =>
+    fixtures({
+      labels: UNPARKED,
+      state,
+      comments: [
+        { login: MAINTAINER, at: '2026-09-20T09:50:00Z' },
+        { login: PIPELINE, at: VERDICT_AT }
+      ],
+      events: [
+        { event: 'labeled', label: 'awaiting-maintainer', by: PIPELINE, at: LABELLED_BEFORE_HEAD },
+        {
+          event: 'unlabeled',
+          label: 'awaiting-maintainer',
+          by: COLLABORATOR,
+          at: '2026-09-20T09:40:00Z'
+        }
+      ]
+    })
+
+  it('does not run again once a trusted push resumes a PR another account unlabelled', () => {
+    const result = run(resumed('success'))
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+    expect(result.summary).toContain(
+      `PR #${PR}: ${COLLABORATOR} removed awaiting-maintainer at 2026-09-20T09:40:00Z, outside the trust list; resumed by a push at ${PUSHED_AT}`
+    )
+  })
+
+  it('applies the unlabelled rules to that PR once resumed', () => {
+    const result = run(resumed('failure'))
+    expect(result.outputs).toEqual({
+      run: 'true',
+      reason: `PR #${PR} has activity at ${VERDICT_AT} newer than its head (${HEAD_AT})`
+    })
+  })
+
+  it('runs for the maintainer on a PR another account unlabelled, before any resume', () => {
+    const answered = '2026-09-21T09:00:00Z'
+    const fixture = unparked(COLLABORATOR)
+    const key = `repos/${REPO}/issues/${PR}/comments?per_page=100`
+    const result = run({
+      ...fixture,
+      [key]: [...fixture[key], { user: { login: MAINTAINER, type: 'User' }, created_at: answered }]
+    })
+    expect(result.outputs).toEqual({
+      run: 'true',
+      reason: `PR #${PR} is parked for the maintainer and has activity at ${answered} newer than the label (${PARKED_AT})`
+    })
+  })
+
   it('reads the push time when the activity entry names no account', () => {
     // Between the head's commit date and the push: it predates the push, so it starts nothing.
     const beforePush = '2026-09-20T10:00:30Z'

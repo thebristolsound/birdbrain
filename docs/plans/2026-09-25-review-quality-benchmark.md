@@ -316,6 +316,13 @@ a 30-minute wait; if either stops for any other reason, re-run the same command 
 from the rows still owed. When both finish, `node report.mjs --results results --tier L1` and a
 `baselines/stage4-2026-09-28.md` record close the stage.
 
+Codex side, 2026-09-28: Codex Pro's window ran out after 86 of the 92 `gpt-6-astra` rows (resets
+2026-10-03 10:26 local), and the Codex CLI moved from 0.154.0 to 0.158.0 under the sweep (one
+row died with exit 127 at the moment of the swap; 0.154.0 is no longer installed). The 86-row
+`gpt-6-astra` run cannot be completed under its manifest. On 2026-10-03 run `stage4.sh codex` again: it
+writes fresh 0.158.0 manifests for `gpt-6-astra` and `gpt-5.6-sol`, and the 0.154.0 rows stay as a cross-version
+check. The Claude sweep was unaffected: its harness version is 2.1.283 throughout.
+
 ## Accounts and usage windows
 
 There is no dollar cost and no cap the runner can enforce. Both subscriptions meter usage in

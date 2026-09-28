@@ -27,6 +27,9 @@ permissions:
 
 jobs:
   build-macos:
+    # Spend guard (#1310), dispatch.yml's cycle guard without the schedule clause:
+    # a run or re-run anyone but the maintainer starts is skipped.
+    if: github.triggering_actor == 'thebristolsound'
     runs-on: macos-latest
 
     steps:

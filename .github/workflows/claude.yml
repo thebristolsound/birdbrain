@@ -1,9 +1,11 @@
 name: Claude
 
 # Ad hoc review or help from Claude: mention `@claude` in a PR or issue comment,
-# a review comment, a review body, or an issue body. Only users with write access
-# trigger it (the action's default). Unlike dispatch.yml this is never scheduled
-# and takes no dispatch slot: it comments and, when asked, pushes to the PR branch.
+# a review comment, a review body, or an issue body. Only a mention the maintainer
+# wrote starts it, and a re-run by anyone else skips (the spend guard below, #1310);
+# the action's own write-access check still runs after that. Unlike dispatch.yml
+# this is never scheduled and takes no dispatch slot: it comments and, when asked,
+# pushes to the PR branch.
 #
 # GitHub identity is the birdbrain-agent PAT so the reply is posted by the same
 # account that authors agent PRs (ADR-0027) and no Claude GitHub App install is
@@ -24,11 +26,16 @@ permissions:
 
 jobs:
   claude:
+    # Spend guard (#1310): the mention must be the maintainer's, and so must whoever
+    # started this attempt, because anyone with write access can re-run a workflow
+    # and a re-run keeps github.actor from the first attempt.
     if: |
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
-      (github.event_name == 'issues' && contains(github.event.issue.body, '@claude'))
+      github.triggering_actor == 'thebristolsound' && (
+        (github.event_name == 'issue_comment' && github.event.comment.user.login == 'thebristolsound' && contains(github.event.comment.body, '@claude')) ||
+        (github.event_name == 'pull_request_review_comment' && github.event.comment.user.login == 'thebristolsound' && contains(github.event.comment.body, '@claude')) ||
+        (github.event_name == 'pull_request_review' && github.event.review.user.login == 'thebristolsound' && contains(github.event.review.body, '@claude')) ||
+        (github.event_name == 'issues' && github.event.issue.user.login == 'thebristolsound' && contains(github.event.issue.body, '@claude'))
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -43,6 +50,11 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.BIRDBRAIN_AGENT_GH_TOKEN }}
+          # Only these accounts' comments and reviews reach Claude (#1310): the
+          # maintainer, the machine account and the named review bots. The action
+          # matches GraphQL logins with `[bot]` appended, where the account REST calls
+          # `Copilot` is copilot-swe-agent and copilot-pull-request-reviewer.
+          include_comments_by_actor: thebristolsound,birdbrain-agent,coderabbitai[bot],chatgpt-codex-connector[bot],copilot-pull-request-reviewer[bot],copilot-swe-agent[bot]
           additional_permissions: |
             actions: read
           settings: |

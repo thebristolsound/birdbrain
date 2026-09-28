@@ -12,6 +12,13 @@ name: Jev lens
 # Both scripts exit 0 without calling out when TYPESAFE_API_KEY is unset, so a fork or a
 # missing secret is a quiet no-op rather than a red run. Forks and Dependabot get no secrets
 # anyway, and the PR job is limited to same-repository heads for that reason.
+#
+# Spend guard (#1310). triage runs only on an issue the maintainer opened, and only when he
+# opened, edited, reopened or re-ran it. The machine account is left out: triage.mjs already
+# skips the issues it files. hunks runs only on a PR the maintainer or the machine account
+# opened, and only when one of them opened, pushed, reopened or re-ran it. A re-run keeps
+# github.actor from the first attempt, so both read github.triggering_actor; dispatch.yml has
+# the longer note.
 
 on:
   issues:
@@ -31,7 +38,10 @@ concurrency:
 
 jobs:
   triage:
-    if: github.event_name == 'issues' && github.actor != 'birdbrain-agent'
+    if: >-
+      github.event_name == 'issues'
+      && github.event.issue.user.login == 'thebristolsound'
+      && github.triggering_actor == 'thebristolsound'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -51,7 +61,10 @@ jobs:
     if: >-
       github.event_name == 'pull_request'
       && github.event.pull_request.head.repo.full_name == github.repository
-      && github.actor != 'dependabot[bot]'
+      && (github.event.pull_request.user.login == 'thebristolsound'
+        || github.event.pull_request.user.login == 'birdbrain-agent')
+      && (github.triggering_actor == 'thebristolsound'
+        || github.triggering_actor == 'birdbrain-agent')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

@@ -64,6 +64,14 @@ env:
 
 jobs:
   cycle:
+    # Spend guard (#1310): a scheduled fire, or a run the maintainer started. Anyone
+    # with write access can re-run a workflow, and a re-run keeps github.actor from
+    # the first attempt, so the guard reads github.triggering_actor and lets a
+    # scheduled run through only on its first attempt. doc-curator.yml and
+    # health.yml carry the same guard, release-macos.yml its second half.
+    if: >-
+      (github.event_name == 'schedule' && github.run_attempt == '1')
+      || github.triggering_actor == 'thebristolsound'
     runs-on: ubuntu-latest
     timeout-minutes: 150
     env:

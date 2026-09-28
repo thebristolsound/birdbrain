@@ -22,6 +22,7 @@
     "dev:extension": "node scripts/dev-extension.mjs",
     "build:verifier": "node scripts/build-verifier.mjs",
     "build:demo-fixture": "node scripts/build-demo-fixture.mjs",
+    "build:notices": "node scripts/third-party-notices/notices.mjs",
     "test": "cross-env ELECTRON_RUN_AS_NODE=1 electron ./node_modules/vitest/vitest.mjs run",
     "test:watch": "cross-env ELECTRON_RUN_AS_NODE=1 electron ./node_modules/vitest/vitest.mjs",
     "test:coverage": "cross-env ELECTRON_RUN_AS_NODE=1 electron ./node_modules/vitest/vitest.mjs run --coverage",
@@ -41,10 +42,10 @@
     "test:e2e": "npx playwright test",
     "test:e2e:debug": "npx playwright test --debug",
     "pretest:e2e:debug": "pnpm build",
-    "package": "pnpm build:extension && electron-vite build && electron-builder --publish never",
-    "package:win": "pnpm build:extension && electron-vite build && electron-builder --win --publish never",
-    "package:mac": "pnpm build:extension && electron-vite build && electron-builder --mac --publish never",
-    "package:linux": "pnpm build:extension && electron-vite build && electron-builder --linux --publish never"
+    "package": "pnpm build:extension && electron-vite build && pnpm build:notices && electron-builder --publish never",
+    "package:win": "pnpm build:extension && electron-vite build && pnpm build:notices && electron-builder --win --publish never",
+    "package:mac": "pnpm build:extension && electron-vite build && pnpm build:notices && electron-builder --mac --publish never",
+    "package:linux": "pnpm build:extension && electron-vite build && pnpm build:notices && electron-builder --linux --publish never"
   },
   "build": {
     "appId": "com.birdbrain.app",
@@ -89,6 +90,10 @@
       {
         "from": "resources/demo-case.birdbrain",
         "to": "demo-case.birdbrain"
+      },
+      {
+        "from": "out/THIRD_PARTY_NOTICES.txt",
+        "to": "THIRD_PARTY_NOTICES.txt"
       }
     ],
     "win": {

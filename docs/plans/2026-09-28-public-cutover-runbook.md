@@ -15,6 +15,10 @@ depends on links to its durable record, and the decisions still open are listed 
 | No history rewrite, no force-push, no GitHub Support removal | ADR-0008, amendment 2026-09-28, "Decisions 1 and 2" |
 | Main ruleset, tag ruleset, code owners | ADR-0008, amendment 2026-09-28, "Decision 4"; #1372 |
 | Actions baseline, access, branches, dispatch artifacts, evidence custody, beta decoupling, flip-window chores | ADR-0008, amendment 2026-09-28, "Rulings the cutover checks against" |
+| Spend: anything that can cost the maintainer money runs only when he starts it or on a schedule he set | ADR-0008, amendment 2026-09-28, the "Spend" item under "Rulings the cutover checks against" |
+| Third-party review apps act only on the maintainer's or the agent's pull requests, or are listed for uninstall | #1310, ruling comment of 2026-09-28 (the money rule) |
+| Runs are not deleted, so past run pages keep their summaries | #1369, ruling comment of 2026-09-28 |
+| The four old pre-releases go once the next beta has updated testers, not necessarily in this window | #1362; #270, "Corrected 2026-09-28" |
 | The 20 branch deletions and the Shared Case and persona exclusion | #1370, ruling comment of 2026-09-28 |
 | The runbook's step list | #270, "Corrected 2026-09-28" |
 | The checks the cutover runs | #271, "Corrected 2026-09-28" |
@@ -56,15 +60,19 @@ Record each answer on #270 before the window opens.
    `gh api 'repos/thebristolsound/birdbrain/actions/runs?per_page=1' --jq .total_count` read 6682
    and the artifacts endpoint 174, under a 90-day retention
    (`actions/permissions/artifact-and-log-retention`). Scan them before the flip, delete run logs
-   in the window, or accept them unscanned. Deleting the `dispatch-run` artifacts is outside the
-   #1369 ruling and would need a new one.
+   in the window, or accept them unscanned. The #1369 ruling says "Runs are not deleted either,
+   so past run pages keep the summaries they show today", and keeps the `dispatch-run` artifacts
+   until they expire. Deleting a run's logs leaves the run and its page, but check the answer
+   against that line; deleting artifacts or runs would need a new ruling.
 6. **A personal address sits in the body of pull request #94.** One line of that body matches a
    consumer webmail address. ADR-0008 accepts the personal addresses in commit identity fields;
    it says nothing about pull-request text. Edit the body before the flip, or accept it.
 
-Two smaller questions come from settings the inventory could not read while the repository is
-private:
+Three smaller questions have no ruling yet:
 
+- **When to flip back.** No record says which failures after step 8 justify making the
+  repository private again. Decide whether a failed settings step is one, or only unexpected
+  exposure, and record it on #270. The incident path below leaves the call to you.
 - **Fork pull-request approval.** `actions/permissions/fork-pr-contributor-approval` answers 422
   ("not allowed for private repositories") today. No ruling names a value. Pick one before the
   window; step 15 sets and reads it back.
@@ -76,9 +84,16 @@ private:
 
 Run these the day before, and again at the start of the window if anything changed.
 
-1. **Run the dry run.** `bash scripts/cutover/dry-run.sh` from a checkout of `main`. It must end
-   `Summary: <n> GO, 0 NO-GO.` It makes GET requests and read-only git calls only; see
-   [What the dry run proves](#what-the-dry-run-proves).
+1. **Run the dry run** from a checkout of `main`, passing the custody copy of the refs the
+   session 4 bundle was built from, which pins each ruled branch's tip:
+
+   ```bash
+   PINNED=~/birdbrain-custody/2026-09-28-precutover/inventory/mirror-refs.txt
+   bash scripts/cutover/dry-run.sh "$PINNED"
+   ```
+
+   It must end `Summary: <n> GO, 0 NO-GO.` It makes GET requests and read-only git calls only;
+   see [What the dry run proves](#what-the-dry-run-proves).
 2. **Open the text change as a draft pull request.** The three statements ruled for the flip
    window:
    - `website/content/docs/download.mdx`, lines 10 to 12 ("the source repository opens when the
@@ -92,7 +107,25 @@ Run these the day before, and again at the start of the window if anything chang
    the day (#271, criterion 7).
 4. **Confirm the reporter is available.** The collaborator who keeps write access files the
    vulnerability-report test at step 18.
-5. **Answer the questions** in [Decide before the window](#decide-before-the-window).
+5. **Confirm no review app can spend on a stranger's pull request.** Nothing that costs money
+   may start without the maintainer: it runs only when he starts it or on a schedule he set
+   (ADR-0008, amendment 2026-09-28, "Spend"). For third-party review apps, #1310's ruling asks
+   that each acts only on the maintainer's or the agent's pull requests, or is listed for
+   uninstall, and names that settings work as the maintainer's own. The flip is the first time
+   an outside account can open a pull request. The API refuses the installed-app list to a user
+   token (403 in the session 4 export), so check on the web:
+   - <https://github.com/settings/installations>, the account's installed GitHub Apps, and the
+     repository's **Settings** > **GitHub Apps** page. Each app's own pull-request filter lives
+     in that app's configuration.
+   - <https://github.com/settings/copilot> for Copilot code review, which appears in the freeze
+     list as a dynamic workflow rather than as an installed app.
+
+   The 2026-09-28 export has comments by these bot and app accounts, among others:
+   `coderabbitai[bot]`, `chatgpt-codex-connector[bot]`, `Codex`, `macroscopeapp[bot]`,
+   `Copilot`, and `claude[bot]`. For each review app found, record on #270 where it is limited
+   to the maintainer's and the agent's pull requests, or that it is listed for uninstall. An
+   app with neither is stop condition S9.
+6. **Answer the questions** in [Decide before the window](#decide-before-the-window).
 
 ## The window
 
@@ -103,14 +136,16 @@ UTC at the start of each step.
 LOG=~/birdbrain-custody/$(date -u +%F)-cutover
 mkdir -p "$LOG"
 R=thebristolsound/birdbrain
+PINNED=~/birdbrain-custody/2026-09-28-precutover/inventory/mirror-refs.txt
 ```
 
 ### Step 1: freeze merges, tags, and workflows (10 minutes)
 
 Record the workflow list with each workflow's state, then turn off the active ones by id. The
-dry run of 2026-09-28 listed 20 registered workflows, 14 backed by a file and 6 dynamic, with 18
-active and `Dispatch` and `Doc curator` already `disabled_manually`. Name the list at run time,
-never from this document.
+dry run of 2026-09-28 listed 20 registered workflows, with 18 active and `Dispatch` and
+`Doc curator` already `disabled_manually`. 13 have a file on `main`; `Diag variable read` is
+registered at `.github/workflows/diag-variable.yml`, a file that is not on `main`; and 6 are
+dynamic. Name the list at run time, never from this document.
 
 ```bash
 gh api "repos/$R/actions/workflows?per_page=100" --paginate \
@@ -185,26 +220,53 @@ the error body of each endpoint that refuses, with its reason.
 
 ### Step 5: delete the 20 branches (10 minutes)
 
-Re-run the dry run first. Its `delete` lines re-check each branch at deletion time: it is still
-on `origin`, no open pull request uses it as its head by name or by tip commit, and its name
-does not mark Shared Case or persona work. It also confirms `t3code/review-pr-1518-1`, the
-branch kept under the exclusion, is still there. Also scan `gh pr list --state open` by eye for
-Shared Case, multi-user or persona work that the name test could miss. Then delete:
+Re-run the dry run first (`bash scripts/cutover/dry-run.sh "$PINNED"`). Its `delete` lines
+re-check each branch at deletion time. A line is GO only when all of these hold:
+
+- The branch is still on `origin`.
+- Its tip equals the tip pinned in `$PINNED`, so the custody bundle holds everything on it.
+- No open pull request has it as its head branch or has its tip as its head commit.
+- It holds no Shared Case (multi-user) or persona work. The test reads what the branch
+  changes against its merge base with `main`: any changed path or commit subject matching
+  `persona`, `shared case`, `case member`, `multi-user` or `iroh` (case-blind, with a hyphen,
+  underscore, space or nothing between the words) marks it, and so does its name. On main
+  those paths are the persona services, repository, settings section, and tests; the Shared
+  Case verifier and its tests; the case-member repository; the plans and specs on either
+  subject; the Shared Case design handoff; and ADR-0030.
+
+It also confirms `t3code/review-pr-1518-1`, the branch kept under the exclusion, is still on
+`origin` and not in the deletion list, and prints what the content test finds on it. On
+2026-09-28 it found `src/shared/verify/sharedCase.ts`, which shows the test fires on real
+Shared Case work. Last, it lists every head whose name matches those words; re-check those by
+hand, with `gh pr list --state open`, for work the list could miss.
+
+Then delete. Each deletion re-reads the tip just before it and skips a branch that moved since
+the bundle, without any force option:
 
 ```bash
-git push origin --delete \
+for B in \
   backup/local-merge-230-231 backup/pre-sync-diagnostic-logging backup/simplify-f8fb6f1 \
   coderabbitai/docstrings/9f4bb7c \
   stash-archive/1 stash-archive/2 stash-archive/4 stash-archive/5 stash-archive/6 \
   stash-archive/7 stash-archive/8 stash-archive/9 stash-archive/10 stash-archive/11 \
   stash-archive/12 stash-archive/14 stash-archive/15 \
-  t3code/302982b9 worktree-agent-a712ebebe2fa7fc0b worktree-agent-ace974456560e04ec
+  t3code/302982b9 worktree-agent-a712ebebe2fa7fc0b worktree-agent-ace974456560e04ec; do
+  TIP=$(awk -v r="refs/heads/$B" '$2 == r { print $1 }' "$PINNED")
+  NOW=$(git ls-remote origin "refs/heads/$B" | cut -f1)
+  if [ -n "$TIP" ] && [ "$NOW" = "$TIP" ]; then
+    git push origin --delete "$B"
+  else
+    echo "SKIPPED $B: pinned ${TIP:-none}, now ${NOW:-gone}"
+  fi
+done
 git ls-remote --heads origin | wc -l
 ```
 
-The dry run of 2026-09-28 read 134 heads, so expect 114 unless branches were added or removed
-since. Paste the count on #1370, as its ruling asks. The bundle from step 3 restores any deleted
-branch. The restored mirror's own `origin` is the bundle file, so name the GitHub URL:
+A `SKIPPED` line is stop condition S5 for that branch. The dry run at 21:18 UTC on 2026-09-28
+read 135 heads, this pull request's branch among them, so expect 20 fewer unless branches were
+added or removed since. Paste the count on #1370, as its ruling asks. The bundle from step 3
+restores any deleted branch. The restored mirror's own `origin` is the bundle file, so name the
+GitHub URL:
 
 ```bash
 B='<branch>'
@@ -214,8 +276,9 @@ git -C "$LOG/restore.git" push "https://github.com/$R.git" "refs/heads/$B:refs/h
 ### Step 6: verify the settings (10 minutes)
 
 Read back every row of [Settings to verify](#settings-to-verify) whose **When** column includes
-before. The dry run covers the rulesets, Actions permissions, fork settings, secrets, and the
-two variable checks. Check the rest by hand, including the notifications row on the web.
+before. The dry run covers the rows marked **DR**: the rulesets, Actions permissions, fork
+settings, secrets, and the variable names. Check the rest by hand, including the
+notifications row on the web.
 
 ### Step 7: go or no-go (the maintainer)
 
@@ -257,9 +320,10 @@ step cannot be rehearsed.
 
 ### Steps 11 to 15: re-read the post-flip settings
 
-11. Re-run the dry run. Its `visibility` line reads NO-GO after the flip by design, and a line
-    for a setting that exists only on private repositories may fail to read. The ruleset,
-    Actions and secret lines should stay GO.
+11. Re-run the dry run. Some NO-GO lines are expected here by design: `visibility`, which now
+    reads `public`; all 20 `delete` lines, which read "not on origin" after step 5; and any
+    line for a setting that exists only on private repositories, which may fail to read. The
+    ruleset, Actions, secret and variable lines should stay GO.
 12. Read `actions/permissions` and `actions/permissions/workflow` again.
 13. Read `actions/secrets` (expect `total_count` 0) and the variable names; every value listed
     is now public.
@@ -331,7 +395,8 @@ follows.
 | Actions | Log and artifact retention | as read | 90 days | before |
 | Actions | Repository secrets | 0 | 0 | before, after (DR) |
 | Actions | Environment secrets | four, only in `paid-runs` (branch `main`, tag `v*`) | same | before |
-| Actions | Variables | four names; values public after the flip | same; `DOC_CURATOR_LAST_SHA` gone, Copilot firewall `true` | before (DR), after |
+| Actions | Variable names at repository level and in every environment | exactly the four repository names `BIRDBRAIN_AGENT_GH_LOGIN`, `BIRDBRAIN_AGENT_GH_TOKEN_EXPIRES`, `COPILOT_AGENT_FIREWALL_ALLOW_LIST_ADDITIONS`, `COPILOT_AGENT_FIREWALL_ENABLED`, none in any environment; any addition is NO-GO, because every value is public after the flip | same; `copilot`, `github-pages` and `paid-runs` hold none | before, after (DR) |
+| Actions | Copilot firewall variable value | `true` | `true` | before, after (DR) |
 | Access | Collaborators | 1 administrator, 2 write | same | before, after |
 | Access | Deploy keys, webhooks, invitations | none | none | before |
 | Security | Secret scanning, push protection | enabled | `security_and_analysis` null while private | after |
@@ -351,18 +416,22 @@ Any of these before step 8 stops the cutover. Take the back-out path.
 - **S3.** A scan finding is not already triaged, or a credential found in what goes public is
   still live.
 - **S4.** The bundle fails to verify, the restored refs differ, or `fsck` reports an error.
-- **S5.** A ruled branch is missing, heads an open pull request, or belongs to Shared Case or
-  persona work. This stops the deletions until the maintainer re-rules on #1370.
+- **S5.** A ruled branch is missing, has moved from its pinned tip, heads an open pull request
+  by name or tip, or holds Shared Case (multi-user) or persona work by a changed path, a commit
+  subject or its name, as step 5 describes. This stops the deletions until the maintainer
+  re-rules on #1370.
 - **S6.** A setting read back differs from the expected column.
 - **S7.** A release is planned or running in the window.
 - **S8.** The maintainer has not written the go at step 7.
+- **S9.** A review app neither acts only on the maintainer's and the agent's pull requests nor
+  is listed for uninstall (preparation step 5).
 
 **Back-out path.** Re-enable the ids in `$LOG/frozen-ids.txt` as step 16 does, restore any
 deleted branch from the step 3 bundle, and record the stop condition on #271. Visibility has not
 changed.
 
-After step 8, a failed settings step is not a reason to flip back: the settings are restorable,
-so retry and record. Unexpected exposure is.
+After step 8, whether a failed settings step is a reason to flip back is the question in
+[Decide before the window](#decide-before-the-window); follow the answer recorded on #270.
 
 ## Incident path for unexpected exposure
 
@@ -396,7 +465,7 @@ reads only.
 | Irreversible once public | Restorable afterwards |
 | --- | --- |
 | Git history on every remaining branch and tag, including the identity fields ADR-0008 accepts | Visibility (a flip back limits new reads only) |
-| Every `refs/pull` ref (637 on 2026-09-28), which GitHub maintains and no push alters | Both rulesets and the required checks |
+| Every `refs/pull` ref (639 on 2026-09-28), which GitHub maintains and no push alters | Both rulesets and the required checks |
 | Issue and pull-request text, reviews and comments, including the Linear integration's comments | Actions permissions, fork settings, retention |
 | Actions run logs and run summaries still inside the 90-day retention | Which workflows are enabled |
 | The 174 artifacts, until each expires | Secret scanning, push protection, private vulnerability reporting |
@@ -409,17 +478,23 @@ Whether GitHub still serves the commits of a deleted branch by commit id was not
 
 `scripts/cutover/dry-run.sh` makes every check this runbook can make without changing anything.
 Its GitHub calls are all `gh api --method GET`. Its git calls read the remote (`ls-remote` and a
-mirror clone) and write only into a temporary directory it removes on exit.
-`tests/cutoverDryRun.test.ts` pins the GET-only calls, an unchanged remote after a run, and that
-a drifted setting or a stale branch list turns a check into a NO-GO.
+mirror clone) and write only into a temporary directory it removes on exit. It takes the
+pinned-tips file as its one argument.
+`tests/cutoverDryRun.test.ts` pins the GET-only calls, an unchanged remote after a run, and a
+NO-GO for each of: a drifted or unreadable setting, an added variable at repository or
+environment level, a ruled branch that is gone, moved from its pinned tip, or heads an open
+pull request, a ruled branch whose changed paths or commit subjects mark Shared Case or persona
+work, and a missing pinned-tips file.
 
 It checks: visibility is still private; the workflow list the freeze would turn off; the 20
-branches and the kept one; both rulesets; the Actions policy, token and fork settings; zero
-repository secrets; the doc-curator variable gone and the Copilot firewall on; and a fresh
-bundle of every ref that verifies, restores to identical refs and passes `fsck`.
+branches and the kept one, as step 5 describes; both rulesets; the Actions policy, token and
+fork settings; zero repository secrets; the full set of variable names and the Copilot firewall
+value; and a fresh bundle of every ref that verifies, restores to identical refs and passes
+`fsck`.
 
 It cannot rehearse: disabling a workflow, deleting a branch, the flip, secret scanning, private
-vulnerability reporting, the fork approval policy, the notification settings, or the scans in
-step 2.
+vulnerability reporting, the fork approval policy, the review-app settings, the notification
+settings, or the scans in step 2.
 
-The run on 2026-09-28 at 20:55 UTC ended `Summary: 32 GO, 0 NO-GO.`
+The run on 2026-09-28 at 21:18 UTC, with the session 4 pinned-tips file, ended
+`Summary: 32 GO, 0 NO-GO.` All 20 ruled branches were at their pinned tips.

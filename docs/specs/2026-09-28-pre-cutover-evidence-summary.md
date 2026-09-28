@@ -35,9 +35,9 @@ The custody mirror of `origin`, counted with
 The `git ls-remote` capture beside it has 799 lines: the same 792 refs, `HEAD`, and 6 peeled tag
 entries.
 
-The read-only dry run (`scripts/cutover/dry-run.sh`) built a fresh bundle at 20:55 UTC and
-counted 793 refs: 134 heads, 637 pull-request refs, and 22 tags. The remote gained one
-pull-request ref between the two reads.
+The read-only dry run (`scripts/cutover/dry-run.sh`) built a fresh bundle at 21:18 UTC and
+counted 796 refs: 135 heads, 639 pull-request refs, and 22 tags. Between the two reads the
+remote gained one branch and three pull-request refs.
 
 Two bundles are in custody. Both pass `git bundle verify`, and both match the SHA-256 checksums
 recorded beside them (`sha256sum -c`).

@@ -199,7 +199,9 @@ trust list in "Session rules". 4 hours old or younger, it is a cycle in flight
 and holds a slot. Older than 4 hours, the claim is stale: remove the label, comment that a stale
 claim was cleared, and stop counting it. An `agent-wip` label that someone outside the trust
 list applied is not aged out: it holds the slot, as it does in the pre-gate, and goes in the
-report for the maintainer to clear.
+report for the maintainer to clear when a cycle runs. With the slot full and no agent PR
+needing work, the pre-gate starts none: the queue stalls until the maintainer removes the
+label, and only the pre-gate's step summary names it.
 
 **Then classify every open `agent-pr` PR** through section 2, one at a time. Each holds a slot
 until it merges or closes. Skip a PR whose `agent-pr` label someone outside the trust list

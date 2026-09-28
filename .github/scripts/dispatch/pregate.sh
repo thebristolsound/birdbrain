@@ -170,7 +170,8 @@ fi
 # it out. Counting it as a held slot lets an abandoned claim declare the
 # queue full for good, with the one component that could clear them gated off.
 # A label someone outside the trust list applied still holds the slot, but its
-# age starts nothing.
+# age starts nothing. With the slot full that stalls the queue until the
+# maintainer removes it, and only this step's summary names it.
 for n in $(jq -r '.[]' <<<"$wip"); do
   claim="$(label_event "$n" agent-wip labeled)"
   IFS=$'\t' read -r claimed claimed_by <<<"$claim"

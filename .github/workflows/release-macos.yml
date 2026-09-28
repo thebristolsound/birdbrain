@@ -65,6 +65,9 @@ jobs:
           repository: thebristolsound/birdbrain-releases
           token: ${{ secrets.RELEASES_REPO_TOKEN }}
           tag_name: ${{ inputs.tag }}
+          # Pre-release, as the same input in release.yml sets it; the comment there
+          # quotes the only condition under which either may change.
+          prerelease: true
           files: |
             dist/*.dmg
             dist/*.zip

@@ -4,7 +4,7 @@
 
 [issuetracker "Github"]
   regex = "#(\\d+)"
-  url = "https://github.com/thebristolsound/repository/issues/$1"
+  url = "https://github.com/thebristolsound/birdbrain/issues/$1"
 
 [issuetracker "Linear"]
   regex = "MOM-(\\d+)"

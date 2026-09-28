@@ -116,7 +116,11 @@ afterEach(() => {
 })
 
 const pregate = (routes: GhRoutes) => {
-  stub = makeGhStub(routes)
+  // No dispatch run in the last 24 hours, so the spend cap holds nothing.
+  stub = makeGhStub({
+    [`${API}/actions/workflows/dispatch.yml/runs?per_page=100&page=1`]: { workflow_runs: [] },
+    ...routes
+  })
   const output = join(stub.dir, 'output')
   const summary = join(stub.dir, 'summary')
   writeFileSync(output, '')

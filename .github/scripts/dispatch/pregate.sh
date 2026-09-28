@@ -6,14 +6,15 @@
 # the cheap version of the skill's sections 1 to 3 first and skips the rest when
 # every answer is "nothing". It is deliberately conservative:
 # any doubt reads as "run", because a missed cycle costs an hour and a spurious
-# one costs minutes. Who acted is the exception (#1310): nobody but the
-# maintainer starts or feeds a paid run. A comment or review from outside the
-# trust list below, and a head anyone but the maintainer or the pipeline pushed,
-# start nothing. Every label this step reads is read in its trusted state (see
-# label_trust), and its only writes put a label back to that state, so no label
-# change from outside the trust list costs a cycle. The one commit status it reads
-# on a PR counts only from the maintainer or the pipeline (trusted_prepass). Each
-# is named in the step summary.
+# one costs minutes. Two exceptions come from the spend rulings on #1310. Who
+# acted: a comment or review, a head push, a label change or the commit status
+# this step reads on a PR counts only from the trust list below (label_trust,
+# trusted_prepass), and the rest is named in the step summary. And how much: the
+# spend cap below holds every cycle past its limits, and holds when it cannot
+# count. The trust rules do not close every way someone outside the list makes
+# this step start a cycle, a push back to a head the pipeline already reviewed
+# and a label on a PR's linked issue among them; the cap bounds those as it
+# bounds every other cycle.
 #
 # The conservative default is not enough on its own, because three of the
 # answers here can be wrong in the direction that never runs. A stale claim is
@@ -74,6 +75,25 @@ jq_counted='def role: if . == $owner then "m" elif ($me != "" and . == $me) then
 capacity=1
 stale_before="$(date -u -d "$CLAIM_MAX_AGE" +%FT%TZ)"
 
+# The spend cap, from the maintainer's ruling of 2026-09-28 on #1310: this step
+# starts no cycle once CAP_TOTAL have started in CAP_TOTAL_WINDOW, or once
+# CAP_PER_TARGET have started for the same PR or issue in CAP_PER_TARGET_WINDOW,
+# whatever made it want one. A cycle has started when CAP_PAID_STEP, the first
+# step after this one that calls Claude, has started in a job of CAP_WORKFLOW
+# (see paid_cycles). Its targets are the PR or issues this step started it for,
+# which start records as a CAP_TARGET_TITLE annotation on the job.
+CAP_TOTAL=4
+CAP_TOTAL_WINDOW='24 hours ago'
+CAP_PER_TARGET=1
+CAP_PER_TARGET_WINDOW='6 hours ago'
+CAP_WORKFLOW='dispatch.yml'
+CAP_PAID_STEP='Claude credential'
+CAP_TARGET_TITLE='Dispatch target'
+cap_total_since="$(date -u -d "$CAP_TOTAL_WINDOW" +%FT%TZ)"
+cap_target_since="$(date -u -d "$CAP_PER_TARGET_WINDOW" +%FT%TZ)"
+# GitHub allows a re-run up to 30 days after a run's first attempt.
+cap_rerun_since="$(date -u -d '30 days ago' +%FT%TZ)"
+
 decide() {
   echo "run=$1" >> "$out"
   echo "reason=$2" >> "$out"
@@ -81,18 +101,111 @@ decide() {
   exit 0
 }
 
+# Every paid cycle of CAP_WORKFLOW started since cap_total_since, one per job
+# (attempt), as [{at, targets}]: when its CAP_PAID_STEP started, and the numbers
+# in its CAP_TARGET_TITLE annotations, or null when it has none (a job from
+# before the cap, which then counts against every target). A skipped step never
+# started; a cancelled one did. Fails on any failed read, and the caller holds.
+paid_cycles() {
+  local page=1 runs ids="" batch id jobs found="" job at notes targets cycles=""
+  while :; do
+    runs="$(gh api "repos/$R/actions/workflows/$CAP_WORKFLOW/runs?per_page=100&page=$page")" \
+      || return 1
+    # A run's newest attempt can be in the window while the run was created
+    # before it, so a run with more than one attempt is read whatever its times.
+    batch="$(jq -r --arg since "$cap_total_since" '.workflow_runs[]
+      | select(.updated_at >= $since or (.run_started_at // "") >= $since or .run_attempt > 1)
+      | .id' <<<"$runs")" || return 1
+    ids="$ids $batch"
+    [ "$(jq '.workflow_runs | length' <<<"$runs")" -eq 100 ] || break
+    jq -e --arg after "$cap_rerun_since" 'any(.workflow_runs[]; .created_at >= $after)' \
+      <<<"$runs" >/dev/null || break
+    page=$(( page + 1 ))
+  done
+  for id in $ids; do
+    jobs="$(gh api --paginate "repos/$R/actions/runs/$id/jobs?filter=all&per_page=100")" \
+      || return 1
+    batch="$(jq -s -r --arg step "$CAP_PAID_STEP" --arg since "$cap_total_since" \
+      --arg now "$(date -u +%FT%TZ)" '.[].jobs[] | . as $j | .steps[]? | select(.name == $step)
+        | select(.status == "in_progress" or (.status == "completed" and .conclusion != "skipped"))
+        | (.started_at // $j.started_at // $now) as $at | select($at >= $since)
+        | "\($j.check_run_url | sub(".*/"; ""))\t\($at)"' <<<"$jobs")" || return 1
+    found="$found$batch"$'\n'
+  done
+  while IFS=$'\t' read -r job at; do
+    [ -n "$job" ] || continue
+    targets=null
+    if [[ ! "$at" < "$cap_target_since" ]]; then
+      notes="$(list "repos/$R/check-runs/$job/annotations?per_page=100")" || return 1
+      targets="$(jq -c --arg title "$CAP_TARGET_TITLE" '[.[] | select(.title == $title) | .message]
+        | if length == 0 then null else [.[] | scan("[0-9]+") | tonumber] end' <<<"$notes")" \
+        || return 1
+    fi
+    cycles="$cycles$(jq -n -c --arg at "$at" --argjson t "$targets" '{at: $at, targets: $t}')" \
+      || return 1
+    cycles="$cycles"$'\n'
+  done <<<"$found"
+  jq -s -c . <<<"$cycles"
+}
+
+# Start a cycle for reason $2 owed to $1, the PR or issue numbers it is for
+# (space-separated; "none" in report mode), unless the spend cap holds it. The
+# total limit ends the fire. The per-target limit returns 1, adds the target to
+# cap_held and lets the caller look further. A supervised fire's TARGET_ISSUE
+# counts as a target too, since that cycle's section 3 may dispatch only it.
+cap_paid=""
+cap_held=""
+start() {
+  local reason="$2" n last used
+  local -a targets
+  read -ra targets <<<"$1"
+  if [ -z "$cap_paid" ]; then
+    cap_paid="$(paid_cycles)" \
+      || decide false "could not count the paid cycles already started, so the spend cap holds this one: $reason"
+  fi
+  used="$(jq length <<<"$cap_paid")" || decide false "could not count the paid cycles: $reason"
+  if [ "$used" -ge "$CAP_TOTAL" ]; then
+    decide false "the spend cap holds this cycle: $used paid cycles started since $cap_total_since, and the limit is $CAP_TOTAL in ${CAP_TOTAL_WINDOW% ago}: $reason"
+  fi
+  if [ "$mode" = cycle ] && [[ "${TARGET_ISSUE:-}" =~ ^[0-9]+$ ]]; then
+    targets+=("$TARGET_ISSUE")
+  fi
+  for n in "${targets[@]}"; do
+    [ "$n" = none ] && continue
+    last="$(jq -r --argjson n "$n" --arg since "$cap_target_since" --argjson max "$CAP_PER_TARGET" '
+      [.[] | select(.at >= $since and (.targets == null or (.targets | index($n) != null)))]
+      | if length >= $max then map(.at) | max else empty end' <<<"$cap_paid")" \
+      || decide false "could not count the paid cycles for #$n: $reason"
+    if [ -n "$last" ]; then
+      echo "Held by the spend cap: #$n had a paid cycle at $last, and the limit is $CAP_PER_TARGET in ${CAP_PER_TARGET_WINDOW% ago}: $reason" \
+        | tee -a "$summary"
+      cap_held="${cap_held:+$cap_held, }#$n"
+      return 1
+    fi
+  done
+  echo "::notice title=$CAP_TARGET_TITLE::${targets[*]}"
+  decide true "$reason"
+}
+
+# Every decision not to run ends here: one the spend cap made names it.
+idle() {
+  [ -z "$cap_held" ] \
+    || decide false "the spend cap holds every cycle owed: $cap_held had one in the last ${CAP_PER_TARGET_WINDOW% ago}"
+  decide false "$1"
+}
+
 # For the reasons a red main makes futile: a new verdict or a new dispatch only
 # re-reports the red, which cost about a day of full cycles each time it
-# happened. The reasons that still pay call decide directly.
+# happened. The reasons that still pay call start directly.
 unless_red() {
   if [ -n "$red" ]; then
-    echo "Held while main is red: $1" | tee -a "$summary"
+    echo "Held while main is red: $2" | tee -a "$summary"
   else
-    decide true "$1"
+    start "$1" "$2"
   fi
 }
 
-[ "$mode" = report ] && decide true "report mode always runs"
+[ "$mode" = report ] && start none "report mode always runs"
 
 # Whether login $1 is the maintainer or, inside the workflow, the pipeline.
 trusted_actor() { [ "$1" = "$maintainer" ] || { [ -n "$me" ] && [ "$1" = "$me" ]; }; }
@@ -334,7 +447,8 @@ merge_refusal() {
 for n in $(jq -r '.[]' <<<"$wip"); do
   claimed="$(jq -r '.["agent-wip"].since // ""' <<<"${states[$n]}")"
   if [ -z "$claimed" ] || [[ ! "$claimed" > "$stale_before" ]]; then
-    decide true "issue #$n holds an agent-wip claim from ${claimed:-an unrecorded time}, past the 4-hour expiry; section 1 must age it out"
+    start "$n" "issue #$n holds an agent-wip claim from ${claimed:-an unrecorded time}, past the 4-hour expiry; section 1 must age it out" \
+      || continue
   fi
 done
 
@@ -373,7 +487,8 @@ for n in $(jq -r '.[]' <<<"$prs"); do
     # success section 2a requires.
     failure)
       if [[ "$desc" == "$CLEANUP_FAILURE_PREFIX"* ]]; then
-        unless_red "PR #$n head ${sha:0:8} has a pre-pass an earlier run interrupted; the review is owed a retry"
+        unless_red "$n" "PR #$n head ${sha:0:8} has a pre-pass an earlier run interrupted; the review is owed a retry" \
+          || continue
       fi
       ;;
     # A head someone outside the trust list pushed is owed nothing. From here on
@@ -382,7 +497,8 @@ for n in $(jq -r '.[]' <<<"$prs"); do
       push="$(pushed_by "$(jq -r .head.ref <<<"$pr")" "$sha")"
       IFS=$'\t' read -r pushed_at pusher <<<"$push"
       if trusted_actor "$pusher"; then
-        unless_red "PR #$n head ${sha:0:8} has agent/pre-pass=$state; a verdict is owed"
+        unless_red "$n" "PR #$n head ${sha:0:8} has agent/pre-pass=$state; a verdict is owed" \
+          || continue
       else
         untrusted_head=1
         echo "PR #$n head ${sha:0:8} was pushed by ${pusher:-an unrecorded account}, outside the trust list; no verdict owed" >> "$summary"
@@ -401,14 +517,16 @@ for n in $(jq -r '.[]' <<<"$prs"); do
   if [ -n "$woken_at" ]; then
     answered="$(newest_trusted "$items" pipeline)"
     if [ -z "$answered" ] || [[ ! "$answered" > "$woken_at" ]]; then
-      decide true "PR #$n was woken when the maintainer removed $AWAITING_MAINTAINER_LABEL at $woken_at, and the pipeline has not answered on it since; one cycle is owed"
+      start "$n" "PR #$n was woken when the maintainer removed $AWAITING_MAINTAINER_LABEL at $woken_at, and the pipeline has not answered on it since; one cycle is owed" \
+        || continue
     fi
   fi
   if [ -n "$untrusted_head" ]; then
     since="${pushed_at:-$head_at}"
     newest="$(newest_trusted "$items" maintainer)"
     if [ -n "$newest" ] && [[ "$newest" > "$since" ]]; then
-      decide true "PR #$n has activity from the maintainer at $newest newer than a push from outside the trust list ($since)"
+      start "$n" "PR #$n has activity from the maintainer at $newest newer than a push from outside the trust list ($since)" \
+        || continue
     fi
     continue
   fi
@@ -432,12 +550,13 @@ for n in $(jq -r '.[]' <<<"$prs"); do
     newest="$(newest_trusted "$items" all)"
   fi
   if [ -n "$newest" ] && [[ "$newest" > "$after" ]]; then
-    decide true "PR #$n has activity at $newest newer than $than"
+    start "$n" "PR #$n has activity at $newest newer than $than" || continue
   fi
-  # Section 2a never merges a PR whose trusted state is evidence-affecting.
-  # One that carries the label only from outside the trust list is not merged
-  # either, since merge.sh refuses any PR carrying it, so a cycle would change
-  # nothing; this step leaves that label on.
+  # Section 2a never merges a PR carrying evidence-affecting, in its trusted
+  # state or as it stands (merge.sh refuses on the second), so this step starts
+  # no 2a cycle for one. It does not read the linked issue's label, on which
+  # merge.sh and the skill refuse too: a cycle started over that refuses and
+  # writes nothing, and the spend cap bounds how often it repeats.
   if [ "$state" = success ] && [ "$draft" = false ]; then
     if jq -e '.["evidence-affecting"].on' <<<"$st" >/dev/null; then
       echo "PR #$n is evidence-affecting; section 2a never merges it" >> "$summary"
@@ -448,7 +567,7 @@ for n in $(jq -r '.[]' <<<"$prs"); do
       if [ -n "$refused" ]; then
         echo "PR #$n is approved, ready and non-evidence, but merge.sh would refuse it: required check(s) $refused not green at its head" >> "$summary"
       else
-        decide true "PR #$n is approved, ready and non-evidence; section 2a may merge it"
+        start "$n" "PR #$n is approved, ready and non-evidence; section 2a may merge it" || continue
       fi
     fi
   fi
@@ -462,6 +581,7 @@ if [ "$occupancy" -lt "$capacity" ]; then
   # routine will refuse. A failed or unsupported dependency read counts the
   # issue as available, which is the conservative direction.
   frontier=0
+  frontier_issues=""
   for n in $(jq -r '.[] | select(.assignees | length == 0) | .number' <<<"$issues"); do
     # Only the maintainer queues work: both queue labels on and process off, each
     # in its trusted state.
@@ -471,15 +591,18 @@ if [ "$occupancy" -lt "$capacity" ]; then
       --jq '[.[] | select(.state == "open")] | length' 2>/dev/null || echo 0)"
     if [ "${blockers:-0}" -eq 0 ]; then
       frontier=$(( frontier + 1 ))
+      frontier_issues="$frontier_issues $n"
     else
       echo "Issue #$n is behind $blockers open dependency/dependencies; not frontier" >> "$summary"
     fi
   done
+  # The cycle may pick any of them, so each counts as its target.
   if [ "$frontier" -gt 0 ]; then
-    unless_red "the slot is free and $frontier unblocked queued issue(s) wait"
-    decide false "the slot is free and $frontier queued issue(s) wait, but main is red ($red)"
+    unless_red "$frontier_issues" "the slot is free and $frontier unblocked queued issue(s) wait" \
+      || true
+    [ -z "$red" ] || decide false "the slot is free and $frontier queued issue(s) wait, but main is red ($red)"
   fi
-  decide false "the slot is free but the queue is empty"
+  idle "the slot is free but the queue is empty"
 fi
 
-decide false "the slot is held and no open agent PR needs the routine${red:+ while main is red ($red)}"
+idle "the slot is held and no open agent PR needs the routine${red:+ while main is red ($red)}"

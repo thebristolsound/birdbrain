@@ -240,6 +240,92 @@ const fixtures = ({
   }))
 })
 
+// The first page of the dispatch workflow's runs, which the spend cap reads before any cycle.
+const RUNS = `repos/${REPO}/actions/workflows/dispatch.yml/runs?per_page=100&page=1`
+// No dispatch run in the last 24 hours, so the spend cap holds nothing. Every fixture gets it
+// unless it answers RUNS itself.
+const NO_PAID_CYCLES = { [RUNS]: { total_count: 0, workflow_runs: [] } }
+
+const hoursAgo = (hours: number) =>
+  new Date(Date.now() - hours * 3_600_000).toISOString().replace(/\.\d{3}Z$/, 'Z')
+
+// One earlier job of the dispatch workflow. Its Claude credential step started `hoursAgo`, and
+// `targets` is what its pre-gate recorded (null: no record, as before the cap). `step` is that
+// step's status and conclusion; a run re-run days after it was created gives `createdDaysAgo`
+// and attempt 2, with the run's own times left at its creation.
+type Paid = {
+  hoursAgo: number
+  targets: number[] | null
+  step?: { status: string; conclusion: string | null }
+  createdDaysAgo?: number
+}
+
+// The dispatch runs of `paid`, each run's jobs, and each job's annotations; `missing` drops a
+// route so its read fails.
+const paidHistory = (paid: Paid[], missing?: 'jobs' | 'annotations') => {
+  const runs = paid.map(({ hoursAgo: h, createdDaysAgo }, i) => {
+    const created = hoursAgo(createdDaysAgo === undefined ? h : createdDaysAgo * 24)
+    return {
+      id: 9000 + i,
+      run_attempt: createdDaysAgo === undefined ? 1 : 2,
+      created_at: created,
+      run_started_at: created,
+      updated_at: createdDaysAgo === undefined ? hoursAgo(Math.max(h - 0.5, 0)) : created
+    }
+  })
+  return {
+    [RUNS]: { total_count: runs.length, workflow_runs: runs },
+    ...Object.fromEntries(
+      paid.flatMap(({ hoursAgo: h, targets, step }, i) => {
+        const job = 7000 + i
+        const started = hoursAgo(h)
+        return [
+          ...(missing === 'jobs'
+            ? []
+            : [
+                [
+                  `repos/${REPO}/actions/runs/${9000 + i}/jobs?filter=all&per_page=100`,
+                  {
+                    total_count: 1,
+                    jobs: [
+                      {
+                        id: job,
+                        started_at: started,
+                        check_run_url: `https://api.github.com/repos/${REPO}/check-runs/${job}`,
+                        steps: [
+                          { name: 'Pre-gate', status: 'completed', conclusion: 'success' },
+                          {
+                            name: 'Claude credential',
+                            status: 'completed',
+                            conclusion: 'success',
+                            ...step,
+                            started_at: started
+                          }
+                        ].map((s) => ({ started_at: started, ...s }))
+                      }
+                    ]
+                  }
+                ]
+              ]),
+          ...(missing === 'annotations'
+            ? []
+            : [
+                [
+                  `repos/${REPO}/check-runs/${job}/annotations?per_page=100`,
+                  [
+                    { title: '', message: 'The ubuntu-latest label will migrate' },
+                    ...(targets === null
+                      ? []
+                      : [{ title: 'Dispatch target', message: targets.join(' ') || 'none' }])
+                  ].map((a) => ({ annotation_level: 'notice', path: '.github', ...a }))
+                ]
+              ])
+        ]
+      })
+    )
+  }
+}
+
 let dir: string
 
 beforeEach(() => {
@@ -251,14 +337,18 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true })
 })
 
-const run = (fixture: Record<string, unknown>, env: Record<string, string> = {}) => {
-  writeFileSync(join(dir, 'fixtures.json'), JSON.stringify(fixture))
+const run = (
+  fixture: Record<string, unknown>,
+  env: Record<string, string> = {},
+  mode: 'cycle' | 'report' = 'cycle'
+) => {
+  writeFileSync(join(dir, 'fixtures.json'), JSON.stringify({ ...NO_PAID_CYCLES, ...fixture }))
   const output = join(dir, 'output')
   const summary = join(dir, 'summary')
   writeFileSync(output, '')
   writeFileSync(summary, '')
   rmSync(join(dir, 'writes'), { force: true })
-  const result = spawnSync('bash', [SCRIPT, 'cycle'], {
+  const result = spawnSync('bash', [SCRIPT, mode], {
     encoding: 'utf8',
     env: {
       ...process.env,
@@ -281,6 +371,7 @@ const run = (fixture: Record<string, unknown>, env: Record<string, string> = {})
   return {
     status: result.status,
     stderr: result.stderr,
+    stdout: result.stdout,
     outputs,
     summary: readFileSync(summary, 'utf8'),
     writes: existsSync(writes) ? readFileSync(writes, 'utf8').trim().split('\n') : []
@@ -1428,5 +1519,276 @@ describe.skipIf(!HAS_JQ)('pregate.sh holds section 2a while merge.sh would refus
     const result = run(withChecks(null))
     expect(result.status, result.stderr).toBe(0)
     expect(result.outputs).toEqual({ run: 'true', reason: MERGE })
+  })
+
+  // Review round 5 on #1629, R2: evidence-affecting on the linked issue, which the pre-gate does
+  // not read, so this is the approved, ready, green PR it would merge on every fire. The spend
+  // cap now bounds it.
+  it('bounds the review round 5 reproduction R2 with the spend cap', () => {
+    expectCapped(withChecks([green('lint'), green('test')]), MERGE)
+  })
+})
+
+// The spend cap across the fires of one day on a PR the pre-gate would start a cycle for on
+// every fire: the first runs, a fire half an hour later is held for the PR, one 6.5 hours after
+// the last cycle runs, and one after four cycles in 24 hours is held in total.
+const expectCapped = (fixture: Record<string, unknown>, reason: string) => {
+  const onPr = (...hours: number[]) => hours.map((h) => ({ hoursAgo: h, targets: [PR] }))
+  const fires: [Paid[], string][] = [
+    [[], `run=true (${reason})`],
+    [
+      onPr(0.5),
+      `run=false (the spend cap holds every cycle owed: #${PR} had one in the last 6 hours)`
+    ],
+    [onPr(6.5), `run=true (${reason})`],
+    [onPr(6.5, 12.5, 18.5, 23), 'run=false (the spend cap holds this cycle: 4 paid cycles started']
+  ]
+  for (const [paid, want] of fires) {
+    const result = run({ ...fixture, ...paidHistory(paid) })
+    expect(result.status, result.stderr).toBe(0)
+    expect(`run=${result.outputs.run} (${result.outputs.reason})`).toContain(want)
+    expect(result.writes).toEqual([])
+  }
+}
+
+// The maintainer's ruling of 2026-09-28 on #1310: at most 4 paid cycles in any 24 hours, and at
+// most 1 for any PR or issue in any 6 hours, counted from the dispatch workflow's own jobs.
+describe.skipIf(!HAS_JQ)('pregate.sh spend cap', () => {
+  const OWED = fixtures({ labels: UNPARKED, comments: [{ login: PIPELINE, at: VERDICT_AT }] })
+  const ACTIVITY = `PR #${PR} has activity at ${VERDICT_AT} newer than its head (${HEAD_AT})`
+  const TOTAL = 'the spend cap holds this cycle: 4 paid cycles started since '
+  const HELD_PR = `the spend cap holds every cycle owed: #${PR} had one in the last 6 hours`
+  const NOTICE = '::notice title=Dispatch target::'
+  const others = (...hours: number[]) => hours.map((h, i) => ({ hoursAgo: h, targets: [100 + i] }))
+
+  it('starts a cycle below both limits and records the PR it is for', () => {
+    const result = run({ ...OWED, ...paidHistory(others(2, 8, 14)) })
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.outputs).toEqual({ run: 'true', reason: ACTIVITY })
+    expect(result.stdout).toContain(`${NOTICE}${PR}\n`)
+  })
+
+  it('holds every cycle once 4 have started in 24 hours', () => {
+    const result = run({ ...OWED, ...paidHistory(others(2, 8, 14, 20)) })
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.outputs.run).toBe('false')
+    expect(result.outputs.reason).toContain(TOTAL)
+    expect(result.outputs.reason).toContain(`and the limit is 4 in 24 hours: ${ACTIVITY}`)
+    expect(result.stdout).not.toContain(NOTICE)
+  })
+
+  it('holds report mode at the total limit too', () => {
+    const result = run({ ...OWED, ...paidHistory(others(2, 8, 14, 20)) }, {}, 'report')
+    expect(result.outputs.run).toBe('false')
+    expect(result.outputs.reason).toContain(`${TOTAL}`)
+    expect(result.outputs.reason).toContain('report mode always runs')
+  })
+
+  it('records no target for report mode below the limit', () => {
+    const result = run({ ...OWED, ...paidHistory(others(2)) }, {}, 'report')
+    expect(result.outputs).toEqual({ run: 'true', reason: 'report mode always runs' })
+    expect(result.stdout).toContain(`${NOTICE}none\n`)
+  })
+
+  it.each([
+    ['a cycle older than 24 hours', others(2, 8, 14, 25)],
+    [
+      'a fire whose Claude step was skipped',
+      [
+        ...others(2, 8, 14),
+        { hoursAgo: 20, targets: null, step: { status: 'completed', conclusion: 'skipped' } }
+      ]
+    ]
+  ] as const)('does not count %s', (_label, paid) => {
+    const result = run({ ...OWED, ...paidHistory([...paid]) })
+    expect(result.outputs).toEqual({ run: 'true', reason: ACTIVITY })
+  })
+
+  it.each([
+    [
+      'a run cancelled after its Claude step started',
+      { hoursAgo: 20, targets: [104], step: { status: 'completed', conclusion: 'cancelled' } }
+    ],
+    [
+      'a cycle still running',
+      { hoursAgo: 1, targets: [104], step: { status: 'in_progress', conclusion: null } }
+    ],
+    [
+      'a re-run of a run created five days earlier',
+      { hoursAgo: 3, targets: [104], createdDaysAgo: 5 }
+    ]
+  ] as const)('counts %s', (_label, last) => {
+    const result = run({ ...OWED, ...paidHistory([...others(2, 8, 14), last]) })
+    expect(result.outputs.run).toBe('false')
+    expect(result.outputs.reason).toContain(TOTAL)
+  })
+
+  it('holds a PR that had a cycle 5 hours ago, and names it', () => {
+    const result = run({ ...OWED, ...paidHistory([{ hoursAgo: 5, targets: [PR] }]) })
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.outputs).toEqual({ run: 'false', reason: HELD_PR })
+    expect(result.summary).toMatch(
+      new RegExp(
+        `Held by the spend cap: #${PR} had a paid cycle at \\S+, and the limit is 1 in 6 hours: ${ACTIVITY.replace(/[()]/g, '\\$&')}`
+      )
+    )
+  })
+
+  it('starts a cycle for a PR whose last cycle was 7 hours ago', () => {
+    const result = run({ ...OWED, ...paidHistory([{ hoursAgo: 7, targets: [PR] }]) })
+    expect(result.outputs).toEqual({ run: 'true', reason: ACTIVITY })
+  })
+
+  it('does not hold a PR for a cycle recorded for another target or for report mode', () => {
+    const result = run({
+      ...OWED,
+      ...paidHistory([
+        { hoursAgo: 1, targets: [8] },
+        { hoursAgo: 2, targets: [] }
+      ])
+    })
+    expect(result.outputs).toEqual({ run: 'true', reason: ACTIVITY })
+  })
+
+  it('holds every target for 6 hours after a cycle that recorded none', () => {
+    const result = run({ ...OWED, ...paidHistory([{ hoursAgo: 2, targets: null }]) })
+    expect(result.outputs).toEqual({ run: 'false', reason: HELD_PR })
+  })
+
+  it("counts a supervised fire's target issue against its limit", () => {
+    const result = run(
+      { ...OWED, ...paidHistory([{ hoursAgo: 2, targets: [12] }]) },
+      { TARGET_ISSUE: '12' }
+    )
+    expect(result.outputs).toEqual({
+      run: 'false',
+      reason: 'the spend cap holds every cycle owed: #12 had one in the last 6 hours'
+    })
+  })
+
+  it('holds queue work while an issue on the frontier had a cycle, and records each issue', () => {
+    const held = run({
+      ...issueWorld([QUEUED_ISSUE]),
+      ...paidHistory([{ hoursAgo: 5, targets: [ISSUE] }])
+    })
+    expect(held.outputs).toEqual({
+      run: 'false',
+      reason: `the spend cap holds every cycle owed: #${ISSUE} had one in the last 6 hours`
+    })
+    const free = run({
+      ...issueWorld([QUEUED_ISSUE]),
+      ...paidHistory([{ hoursAgo: 7, targets: [ISSUE] }])
+    })
+    expect(free.outputs).toEqual({ run: 'true', reason: FRONTIER })
+    expect(free.stdout).toContain(`${NOTICE}${ISSUE}\n`)
+  })
+
+  it('looks past a held PR to a stale claim', () => {
+    const stale = issueWorld([
+      {
+        number: ISSUE,
+        labels: ['agent-wip'],
+        events: [{ event: 'labeled', label: 'agent-wip', by: PIPELINE, at: '2026-01-01T00:00:00Z' }]
+      }
+    ])
+    const result = run({
+      ...stale,
+      ...OWED,
+      [`repos/${REPO}/issues?state=open&labels=agent-wip&per_page=100`]:
+        stale[`repos/${REPO}/issues?state=open&labels=agent-wip&per_page=100`],
+      ...paidHistory([{ hoursAgo: 5, targets: [PR] }])
+    })
+    expect(result.outputs.run).toBe('true')
+    expect(result.outputs.reason).toContain(`issue #${ISSUE} holds an agent-wip claim`)
+  })
+
+  it.each([
+    ['the run list', { [RUNS]: null }],
+    ["a run's jobs", paidHistory(others(1), 'jobs')],
+    ["a job's annotations", paidHistory(others(1), 'annotations')]
+  ] as const)('holds when %s cannot be read', (_label, history) => {
+    const result = run({ ...OWED, ...history })
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.outputs).toEqual({
+      run: 'false',
+      reason: `could not count the paid cycles already started, so the spend cap holds this one: ${ACTIVITY}`
+    })
+    expect(result.stdout).not.toContain(NOTICE)
+  })
+
+  // Review round 5 on #1629, R1: a collaborator force-pushes the branch back to H1, the head the
+  // pipeline requested changes on at 09:00, after H2 was approved at 10:30. The pre-gate counts
+  // the pipeline's 10:30 comment as activity on H1 on every fire. R1b: H1's failure is the one
+  // the cleanup step posts, which reads as an interrupted review owed a retry.
+  it.each([
+    [
+      'R1',
+      '1 blocking: a false claim',
+      `PR #${PR} has activity at 2026-09-20T10:30:00Z newer than its head (2026-09-20T07:59:00Z)`
+    ],
+    [
+      'R1b',
+      'Dispatch run ended (cancelled)',
+      `PR #${PR} head ${SHA.slice(0, 8)} has a pre-pass an earlier run interrupted; the review is owed a retry`
+    ]
+  ])(
+    'bounds the review round 5 reproduction %s with the spend cap',
+    (_label, description, reason) => {
+      expectCapped(
+        fixtures({
+          labels: UNPARKED,
+          draft: false,
+          headAt: '2026-09-20T07:59:00Z',
+          statuses: [{ state: 'failure', by: PIPELINE, at: '2026-09-20T09:00:00Z', description }],
+          comments: [
+            { login: PIPELINE, at: '2026-09-20T09:00:00Z' },
+            { login: PIPELINE, at: '2026-09-20T10:30:00Z' }
+          ],
+          pushes: [
+            { after: SHA, by: COLLABORATOR, at: '2026-09-20T12:00:00Z' },
+            { after: OLD_SHA, by: PIPELINE, at: '2026-09-20T10:00:00Z' },
+            { after: SHA, by: PIPELINE, at: '2026-09-20T08:00:00Z' }
+          ]
+        }),
+        reason
+      )
+    }
+  )
+})
+
+// The spend cap binds every way dispatch.yml reaches Claude only while the pre-gate runs in the
+// same job before every step that reads the Claude credential, each such step waits on its
+// answer, and the step the cap counts is the first of them.
+describe('dispatch.yml runs the pre-gate before every Claude step', () => {
+  const WORKFLOW = resolve(__dirname, '..', '.github', 'workflows', 'dispatch.yml')
+  const lines = readFileSync(WORKFLOW, 'utf8').split('\n')
+  const steps: string[][] = []
+  for (const line of lines.slice(lines.indexOf('    steps:') + 1)) {
+    if (/^ {6}- /.test(line)) steps.push([line])
+    else steps.at(-1)?.push(line)
+  }
+  const code = (step: string[]) => step.filter((line) => !/^\s*#/.test(line)).join('\n')
+  const named = (step: string[]) => code(step).match(/name: (.+)/)?.[1]
+  const constant = (name: string) =>
+    readFileSync(SCRIPT, 'utf8').match(new RegExp(`^${name}='([^']+)'$`, 'm'))?.[1]
+
+  it('has one job, so the pre-gate and the cycle share every attempt', () => {
+    const jobs = lines.slice(lines.indexOf('jobs:') + 1)
+    expect(jobs.filter((line) => /^ {2}[a-z_-]+:\s*$/.test(line))).toEqual(['  cycle:'])
+  })
+
+  it('gates every step that reads the Claude credential on the pre-gate', () => {
+    const gate = steps.findIndex((step) => code(step).includes('id: gate'))
+    const paid = steps.flatMap((step, i) =>
+      code(step).includes('secrets.CLAUDE_CODE_OAUTH_TOKEN') ? [i] : []
+    )
+    expect(gate).toBeGreaterThan(-1)
+    expect(paid.length).toBeGreaterThan(0)
+    for (const i of paid) {
+      expect(i).toBeGreaterThan(gate)
+      expect(code(steps[i])).toContain("if: steps.gate.outputs.run == 'true'")
+    }
+    expect(named(steps[paid[0]])).toBe(constant('CAP_PAID_STEP'))
+    expect(constant('CAP_WORKFLOW')).toBe('dispatch.yml')
   })
 })

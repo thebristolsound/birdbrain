@@ -20,6 +20,16 @@ out="$(node "$here/classify.mjs" --file "$tmp" --dry-run)"
 echo "$out" | grep -q 'whole issue as one finding' && ok "an issue without a findings table becomes one finding" || bad "fallback failed: $out"
 rm -f "$tmp"
 
+tmp="$(mktemp)"
+printf '%s\n' '| # | Sev | Finding |' '|---|---|---|' '| 1a, 1b | B | see details below |' '' \
+  '| # | Sev | Finding | Where |' '|---|---|---|---|' \
+  '| 1a | B | Export shows A \| B as one column | export |' \
+  '| 1b | S | Verify panel calls intact files tampered | verify |' > "$tmp"
+out="$(node "$here/classify.mjs" --file "$tmp" --dry-run)"
+echo "$out" | head -1 | grep -q '2 table findings' && ok "a leading summary row loses to the detailed rows" || bad "summary row not dropped: $(echo "$out" | head -1)"
+echo "$out" | grep -q $'^1a\tblocking\t-\tExport shows A | B as one column$' && ok "an escaped pipe stays inside its cell" || bad "escaped pipe split the cell: $out"
+rm -f "$tmp"
+
 node "$here/classify.mjs" >/dev/null 2>&1; rc=$?
 [ "$rc" -eq 1 ] && ok "no argument exits 1" || bad "no argument exited $rc"
 

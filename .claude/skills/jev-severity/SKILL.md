@@ -27,12 +27,13 @@ cached under the output directory, so a re-run with unchanged questions is free.
 
 ## What it reads
 
-Every Markdown table in the issue whose header has a `Sev` (or `Severity`) column and a
-`Finding` (or `Title`) column. It maps `#`, `Ev`, `Where`, `Repro` and `Seen` when present,
-keeps the first row for each id, and drops the cross-reference rows a screen-by-screen review
-repeats (`| 2 | B | yes | "Tampered" label, see the imported-cases block |`). Author
-severities `B`, `S`, `P` read as blocking, should-fix, polish. An issue with no such table is
-sent whole, as one finding.
+Every Markdown table in the issue body and its comments whose header has a `Sev` (or
+`Severity`) column and a `Finding` (or `Title`) column. It maps `#`, `Ev`, `Where`, `Repro`
+and `Seen` when present, keeps the most detailed row for each id, and drops the
+cross-reference rows a screen-by-screen review repeats (`| 2 | B | yes | "Tampered" label,
+see the imported-cases block |`). Author severities `B`, `S`, `P` read as blocking,
+should-fix, polish; Jev is not shown them. An issue with no such table is sent whole, as one
+finding.
 
 ## What it asks
 

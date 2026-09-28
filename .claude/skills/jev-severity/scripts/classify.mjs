@@ -48,7 +48,9 @@ export const QUESTIONS = {
   )
 }
 
-const cells = (line) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim())
+// An escaped pipe (`\|`) is cell text, not a column boundary.
+const cells = (line) =>
+  line.trim().replace(/^\|/, '').replace(/(?<!\\)\|$/, '').split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, '|'))
 const isRow = (line) => /^\s*\|.*\|\s*$/.test(line)
 const isRule = (line) => /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/.test(line)
 const norm = (h) => h.toLowerCase().replace(/[^a-z#]/g, '')
@@ -62,13 +64,16 @@ function columnMap(header) {
   return 'sev' in map && 'finding' in map ? map : null
 }
 
-// Every row of every table whose header carries a severity column. A row whose ids were all
-// seen already is a cross-reference (the same finding listed under a second screen) and is
-// dropped, as is a row with an empty finding cell.
+// Every row of every table whose header carries a severity column, then the most detailed row
+// for each id: a row naming one id beats one naming several, then the longer text wins, then
+// the earlier row. Cross-references (the same finding listed again under a second screen, or a
+// summary row ahead of the detail) lose and drop out, as does a row with an empty finding cell.
+const detail = (f) => [f.finding, f.where, f.repro, f.seen].join('').length
+const better = (a, b) => a.ids.length - b.ids.length || detail(b) - detail(a) || a.order - b.order
+
 export function parseFindings(markdown) {
   const lines = markdown.split('\n')
-  const findings = []
-  const seen = new Set()
+  const rows = []
   for (let i = 0; i < lines.length; i++) {
     if (!isRow(lines[i]) || !isRule(lines[i + 1] || '')) continue
     const map = columnMap(cells(lines[i]))
@@ -76,12 +81,12 @@ export function parseFindings(markdown) {
     for (i += 2; i < lines.length && isRow(lines[i]); i++) {
       const c = cells(lines[i])
       const finding = c[map.finding] || ''
-      const id = 'id' in map ? c[map.id] : String(findings.length + 1)
-      const ids = id.split(/\s*,\s*/)
-      if (!finding || ids.every((x) => seen.has(x))) continue
-      ids.forEach((x) => seen.add(x))
+      if (!finding) continue
+      const id = 'id' in map ? c[map.id] : String(rows.length + 1)
       const sevRaw = (c[map.sev] || '').toLowerCase()
-      findings.push({
+      rows.push({
+        order: rows.length,
+        ids: id.split(/\s*,\s*/),
         id,
         authorSeverity: SEV_ALIASES[sevRaw] || (SEVERITIES.includes(sevRaw) ? sevRaw : sevRaw || null),
         authorEvidence: 'ev' in map ? c[map.ev] : null,
@@ -92,17 +97,23 @@ export function parseFindings(markdown) {
       })
     }
   }
-  return findings
+  const best = new Map()
+  for (const r of rows) for (const x of r.ids) if (!best.has(x) || better(r, best.get(x)) < 0) best.set(x, r)
+  return [...new Set(best.values())].sort((a, b) => a.order - b.order).map(({ order, ids, ...f }) => f)
 }
+
+// What Jev sees of a finding. The author's severity and evidence labels stay out so the model
+// gives a second opinion instead of echoing the first.
+export const jevInput = (f) => ({ id: f.id, finding: f.finding, where: f.where, repro: f.repro, seen: f.seen })
 
 const line = (r) => {
   const { severity, evidence, false_claim } = r.jev
   const moved = r.authorSeverity && r.authorSeverity !== severity.choice ? ` (author: ${r.authorSeverity})` : ''
-  return `| ${r.id} | ${severity.confidence.toFixed(2)} | ${evidence.noul.toFixed(2)} | ${false_claim.noul.toFixed(2)} | ${r.finding.slice(0, 120)}${moved} |`
+  return `| ${r.id} | ${severity.confidence.toFixed(2)} | ${evidence.noul.toFixed(2)} | ${false_claim.noul.toFixed(2)} | ${r.finding.slice(0, 120).replace(/\n/g, ' ').replace(/\|/g, '\\|')}${moved} |`
 }
 
 export function renderReport(label, results, usage) {
-  const out = [`# Jev severity: ${label}`, '', `Model ${usage.model}, ${results.length} findings, ${usage.requests} requests.`, '']
+  const out = [`# Jev severity: ${label}`, '', `Model ${usage.model}, ${results.length} findings, ${usage.requests} requests, ${usage.cached} cached.`, '']
   for (const bucket of SEVERITIES) {
     const rows = results.filter((r) => r.jev.severity.choice === bucket).sort((a, b) => b.jev.severity.confidence - a.jev.severity.confidence)
     out.push(`## ${bucket} (${rows.length})`, '', '| # | conf | evidence | false claim | finding |', '|---|---|---|---|---|', ...rows.map(line), '')
@@ -138,9 +149,11 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
     title = a.file
     label = a.file
   } else {
-    const ghArgs = ['issue', 'view', a.issue, '--json', 'title,body']
+    const ghArgs = ['issue', 'view', a.issue, '--json', 'title,body,comments']
     if (a.repo) ghArgs.push('--repo', a.repo)
-    ;({ title, body } = JSON.parse(execFileSync('gh', ghArgs, { encoding: 'utf8', maxBuffer: 1 << 26 })))
+    const issue = JSON.parse(execFileSync('gh', ghArgs, { encoding: 'utf8', maxBuffer: 1 << 26 }))
+    title = issue.title
+    body = [issue.body, ...issue.comments.map((c) => c.body)].join('\n\n')
     label = `#${a.issue}`
   }
   let findings = parseFindings(body)
@@ -153,11 +166,18 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
   }
   const outDir = a.out || join('/tmp/jev-severity', a.issue || createHash('sha256').update(a.file).digest('hex').slice(0, 8))
   const client = createClient({ apiKey: env.TYPESAFE_API_KEY, cacheDir: join(outDir, '.cache') })
-  const results = await mapPool(findings, 4, async (f) => ({ ...f, jev: (await client.ask({ finding: f }, QUESTIONS)).answers }))
+  // Cache hits skip client.usage.model, so the model is read off every answer, cached or not.
+  const models = new Set()
+  const results = await mapPool(findings, 4, async (f) => {
+    const { answers, model } = await client.ask({ finding: jevInput(f) }, QUESTIONS)
+    if (model) models.add(model)
+    return { ...f, jev: answers }
+  })
+  const usage = { ...client.usage, model: [...models].join(', ') || client.usage.model }
   mkdirSync(outDir, { recursive: true })
-  const report = renderReport(label, results, client.usage)
+  const report = renderReport(label, results, usage)
   writeFileSync(join(outDir, 'report.md'), report)
-  writeFileSync(join(outDir, 'results.json'), JSON.stringify({ label, mode, results, usage: client.usage }, null, 2))
+  writeFileSync(join(outDir, 'results.json'), JSON.stringify({ label, mode, results, usage }, null, 2))
   process.stdout.write(report)
   console.log(`Written: ${join(outDir, 'report.md')} and results.json`)
   return 0

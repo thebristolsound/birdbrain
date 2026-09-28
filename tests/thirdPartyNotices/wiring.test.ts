@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readdirSync, readFileSync } from 'fs'
+import { existsSync, readdirSync, readFileSync } from 'fs'
 import { join, relative } from 'path'
 import {
   NOTICE_NAME,
@@ -106,5 +106,25 @@ describe('packaging wiring', () => {
       from: relative(ROOT, OUTPUT).split('\\').join('/'),
       to: NOTICE_NAME
     })
+  })
+})
+
+// The extension build copies this into extension/dist, which the release zips and the app
+// carries under resources/extension.
+describe('the extension notice', () => {
+  const notice = readFileSync(join(ROOT, 'extension', NOTICE_NAME), 'utf8')
+
+  it('names the font file the extension ships and points at its licence file', () => {
+    const [font] = notice.match(/fonts\/[\w-]+\.woff2/) ?? []
+    expect(font).toBeDefined()
+    expect(existsSync(join(ROOT, 'extension', 'src', font!))).toBe(true)
+    expect(notice).toContain('SIL Open Font License, Version 1.1')
+    expect(notice).toContain('fonts/OFL.txt')
+  })
+
+  it('is copied into the extension build output', () => {
+    const config = readFileSync(join(ROOT, 'extension', 'vite.config.ts'), 'utf8')
+    expect(config).toContain(`resolve(__dirname, '${NOTICE_NAME}')`)
+    expect(config).toContain(`resolve(dist, '${NOTICE_NAME}')`)
   })
 })

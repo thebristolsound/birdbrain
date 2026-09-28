@@ -550,10 +550,16 @@ function planImportChains(
   const current = chains.filter((c) => c.sourceCaseId === undefined)
   const owner = shared?.members.find((m) => m.role === 'owner')
   const sourceCaseId = (owner && shared?.caseId) ?? header.case.id
-  const asLineage = (installationId: string, jsonl: Buffer): { path: string; jsonl: Buffer } => ({
-    path: lineageChainPath(sourceCaseId, installationId),
-    jsonl
-  })
+  const asLineage = (installationId: string, jsonl: Buffer): { path: string; jsonl: Buffer } => {
+    const path = lineageChainPath(sourceCaseId, installationId)
+    // The Case id comes from the archive, which is not trusted to name a path:
+    // a lineage path that does not read back as one would leave the staging
+    // directory.
+    if (!parseChainPath(path)) {
+      throw new Error('Not a valid Birdbrain archive: malformed source Case id')
+    }
+    return { path, jsonl }
+  }
   const exporterId = shared?.localInstallationId
   const ownerChain =
     owner?.installationId === exporterId

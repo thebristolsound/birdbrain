@@ -585,6 +585,27 @@ describe('Shared Case export, import and fork (#1511)', () => {
     expect(existsSync(join(getStorageRoot(), 'outside'))).toBe(false)
   })
 
+  it('refuses a lineage path an archive header would climb out of', async () => {
+    // A chain no roster names is kept as lineage under the header's Case id.
+    const stray = new Chain(signWith(PEER_KEY))
+    document(stray, PEER, null, 1)
+    const own = new Chain(signEntryHash)
+    document(own, LOCAL(), null, 2)
+    writeFileSync(join(caseDir(), 'manifest.jsonl'), own.jsonl)
+    writeFileSync(join(caseDir(), memberChainPath(PEER_ID)), stray.jsonl)
+    const out = join(tempDir, 'stray.birdbrain')
+    await exportCaseArchive(caseId, out)
+    await rewriteArchive(out, (_, header) => {
+      header.case.id = '../../outside'
+    })
+
+    await expect(importCaseArchive(out, { overrideTamper: true })).rejects.toThrow(
+      'malformed source Case id'
+    )
+    // `lineage/../../outside` under the staging directory is the storage root's.
+    expect(existsSync(join(getStorageRoot(), 'outside'))).toBe(false)
+  })
+
   it('exports a fork as an Evidence Package that the package verifier passes', async () => {
     memberReplica()
     const out = join(tempDir, 'fork.birdbrain')

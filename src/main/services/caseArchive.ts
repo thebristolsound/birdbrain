@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, rmSync } from 'fs'
 import { unlink } from 'fs/promises'
 import { createHash, randomUUID } from 'crypto'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import {
   withTransaction,
   hasRowWithId,
@@ -9,6 +9,7 @@ import {
   type ImportCtx
 } from '@main/services/db/core'
 import * as caseRepo from '@main/services/db/caseRepo'
+import { collectCaseMembersForCase } from '@main/services/db/caseMemberRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
 import * as exhibitRepo from '@main/services/db/exhibitRepo'
 import * as stagingRepo from '@main/services/db/stagingRepo'
@@ -41,14 +42,28 @@ import {
   appendManifestEntry,
   createArtifactAccumulator,
   initManifest,
+  isSharedCase,
   packageHash as computePackageHash,
+  readChainFileSnapshots,
+  readEntries,
   readManifestSnapshot,
+  sharedCaseChains,
   verifyManifestChainText
 } from '@main/services/manifest'
-import type { PackagedArtifact } from '@main/services/manifest'
+import type {
+  ChainFileSnapshot,
+  ChainVerifyResult,
+  PackagedArtifact
+} from '@main/services/manifest'
 import { createStoredZip } from '@main/services/zip'
 import { readStoredZip } from '@main/services/zipRead'
-import { canonicalStringify, describeUnsupportedEntry } from '@shared/verify'
+import {
+  canonicalStringify,
+  describeUnsupportedEntry,
+  verifySharedCaseReplica
+} from '@shared/verify'
+import type { SharedCaseMember, SharedCaseVerifyResult } from '@shared/verify'
+import { lineageChainPath, parseChainPath } from '../../packages/evidence-package-layout/index'
 import { resolveToolVersion } from '@main/services/toolVersion'
 import { IMPORT_ID_MAP_FILENAME, MANIFEST_FILENAME } from '@shared/constants'
 import type {
@@ -57,6 +72,11 @@ import type {
   CaseArchiveCounts
 } from '@shared/types'
 
+// 8 since Shared Cases (#1511): the archive carries every other member's chain
+// as `manifest.<installationId>.jsonl` and every lineage chain under
+// `lineage/`, and data.json carries the `caseMembers` roster. A Birdbrain from
+// before them inspects the exporter's chain alone and imports a Case missing
+// every other member's history and Exhibits' chains, so the gate refuses.
 // 7 since embedded note images: a note's body_doc may carry image nodes. A
 // Birdbrain from before them rejects the unknown node type in parseNoteDoc and
 // abandons the whole import with an opaque schema error; the gate turns that
@@ -96,7 +116,7 @@ import type {
 // anchor_json, which a pre-v27 import would silently drop. Bump this whenever a
 // Case Archive gains data an older release would silently discard or reject
 // opaquely.
-export const CASE_ARCHIVE_SCHEMA_VERSION = 7
+export const CASE_ARCHIVE_SCHEMA_VERSION = 8
 
 export interface CaseArchiveData {
   case: Record<string, unknown>
@@ -118,6 +138,12 @@ export interface CaseArchiveData {
   exhibits?: Record<string, unknown>[]
   /** Absent on archives written before schemaVersion 6 (#1148). */
   stagingFiles?: Record<string, unknown>[]
+  /**
+   * The Shared Case roster cache (#1511). Absent before schemaVersion 8. Carried
+   * for completeness and never read back: an import makes a new Case with one
+   * member, and the roster it came from is in the chains it keeps as lineage.
+   */
+  caseMembers?: Record<string, unknown>[]
 }
 
 interface CaseArchiveHeader {
@@ -167,7 +193,8 @@ export function collectCaseData(caseId: string): CaseArchiveData {
     extractedData: extractedDataRepo.collectExtractedDataForCase(caseId),
     captureArchiveRefs: waybackRefRepo.collectWaybackRefsForCase(caseId),
     exhibits: exhibitRepo.collectExhibitsForCase(caseId),
-    stagingFiles: stagingRepo.collectStagingFilesForCase(caseId)
+    stagingFiles: stagingRepo.collectStagingFilesForCase(caseId),
+    caseMembers: collectCaseMembersForCase(caseId)
   }
 }
 
@@ -212,7 +239,10 @@ export async function exportCaseArchive(
   const { entries, artifacts, add } = createArtifactAccumulator()
 
   add('data.json', JSON.stringify(data, null, 2))
-  add('manifest.jsonl', readManifestSnapshot(caseDir).jsonl)
+  add(MANIFEST_FILENAME, readManifestSnapshot(caseDir).jsonl)
+  // Every other member's chain and every lineage chain, byte-for-byte under
+  // the name it has in the Case directory (#1511).
+  for (const chain of readChainFileSnapshots(caseDir)) add(chain.path, chain.jsonl)
 
   const captures = data.captures as Array<{ id: string }>
   const totalFileChecks = captures.length * CAPTURE_ARTIFACT_TYPES.length || 1
@@ -311,6 +341,34 @@ export async function exportCaseArchive(
   onProgress?.('Complete', 100)
 }
 
+interface ArchiveChains {
+  chain: ChainVerifyResult
+  // The member and lineage chains the archive encloses, by the Package
+  // Layout's names.
+  chains: ChainFileSnapshot[]
+  // The Shared Case walk, when the archive holds a Shared Case or a fork.
+  shared?: SharedCaseVerifyResult
+}
+
+// The archive's chains, verified against the archive's OWN bundled key: the
+// exporter's chain alone, and for a Shared Case the replica walk anchored at
+// that key, since the exporter can be any member (#1511).
+function verifyArchiveChains(
+  entries: Map<string, Buffer>,
+  header: CaseArchiveHeader
+): ArchiveChains {
+  const manifest = (entries.get(MANIFEST_FILENAME) ?? Buffer.alloc(0)).toString('utf-8')
+  const local = { jsonl: manifest, publicKeyPem: header.signingPublicKeyPem }
+  const chain = verifyManifestChainText(manifest, { publicKeyPem: local.publicKeyPem })
+  const chains = [...entries].flatMap(([path, jsonl]) => {
+    const parsed = parseChainPath(path)
+    return parsed ? [{ path, ...parsed, jsonl }] : []
+  })
+  if (!isSharedCase(readEntries(manifest), chains)) return { chain, chains }
+  const shared = verifySharedCaseReplica({ local, ...sharedCaseChains(chains) })
+  return { chain, chains, shared }
+}
+
 // Reads a .birdbrain archive and fully re-verifies it — artifact hashes,
 // manifest chain (against the archive's OWN bundled signing key, since this
 // is the source instance's signature, not this machine's), and per-capture
@@ -356,10 +414,18 @@ export function inspectCaseArchive(archivePath: string): ArchiveInspectReport {
 
   // Chain check: verified against the archive's OWN bundled public key — the
   // source instance's key, not this instance's local signing key.
-  const manifestBuf = entries.get('manifest.jsonl') ?? Buffer.alloc(0)
-  const chainResult = verifyManifestChainText(manifestBuf.toString('utf-8'), {
-    publicKeyPem: header.signingPublicKeyPem
-  })
+  const { chain: chainResult, shared } = verifyArchiveChains(entries, header)
+  // A Shared Case's other chains are part of the chain check: a member chain
+  // that fails is the same tamper reading as the exporter's own failing. A
+  // walk that could only say "too old" is reported as that, below.
+  const sharedFinding =
+    shared && !shared.valid ? `${shared.outcome}: ${shared.reason ?? ''}` : undefined
+  const chainValid = chainResult.valid && sharedFinding === undefined
+  const unsupportedReason = chainResult.unsupported
+    ? describeUnsupportedEntry(chainResult.unsupported)
+    : shared?.unsupported
+      ? sharedFinding
+      : undefined
 
   // Capture content check: for each data.json capture row with a hash,
   // recompute the sha256 of its files/<id>.<ext> entry and compare. A
@@ -426,9 +492,9 @@ export function inspectCaseArchive(archivePath: string): ArchiveInspectReport {
   }
 
   const verification: ArchiveVerificationResult = {
-    overallValid: artifactFailureCount === 0 && chainResult.valid && captureHashFailureCount === 0,
-    chainValid: chainResult.valid,
-    chainReason: chainResult.reason,
+    overallValid: artifactFailureCount === 0 && chainValid && captureHashFailureCount === 0,
+    chainValid,
+    chainReason: chainResult.reason ?? sharedFinding,
     artifactCount: header.artifacts.length,
     artifactFailureCount,
     captureCount: captures.length,
@@ -446,10 +512,88 @@ export function inspectCaseArchive(archivePath: string): ArchiveInspectReport {
     sourceOperatorName: header.source.operatorName,
     counts: header.counts,
     verification,
-    ...(chainResult.unsupported
-      ? { verifierTooOld: { reason: describeUnsupportedEntry(chainResult.unsupported) } }
-      : {})
+    ...(unsupportedReason !== undefined ? { verifierTooOld: { reason: unsupportedReason } } : {})
   }
+}
+
+// How an archive's chains land in the new Case, and who the `import` names.
+interface ImportChains {
+  manifest: Buffer
+  sourceInstallationId: string
+  sourcePublicKeyPem: string
+  // Chains written under `lineage/`, by path.
+  lineage: Array<{ path: string; jsonl: Buffer }>
+  // Set for a fork: the source Case's exporter and roster, which attribute
+  // the rows that were the exporter's own.
+  fork?: { exporterId: string; members: SharedCaseMember[] }
+}
+
+// A Shared Case archive is forked (decision 18, #1511): the new chain continues
+// the source Owner's, its `import` names the Owner's key, and every other
+// chain of the source Case — the exporter's own included when it was not the
+// Owner — is kept under `lineage/<sourceCaseId>/`. Any other archive continues
+// its exporter's chain, as imports always have; chains it carries but no
+// roster names are kept as lineage too, so nothing the archive held is dropped
+// and the new Case's verification reports them.
+function planImportChains(
+  entries: Map<string, Buffer>,
+  header: CaseArchiveHeader,
+  { chains, shared }: ArchiveChains
+): ImportChains {
+  const manifest = entries.get(MANIFEST_FILENAME) ?? Buffer.alloc(0)
+  const carried = chains
+    .filter((c) => c.sourceCaseId !== undefined)
+    .map(({ path, jsonl }) => ({ path, jsonl }))
+  const current = chains.filter((c) => c.sourceCaseId === undefined)
+  const asLineage = (installationId: string, jsonl: Buffer): { path: string; jsonl: Buffer } => ({
+    path: lineageChainPath(header.case.id, installationId),
+    jsonl
+  })
+  const owner = shared?.members.find((m) => m.role === 'owner')
+  const exporterId = shared?.localInstallationId
+  const ownerChain =
+    owner?.installationId === exporterId
+      ? manifest
+      : current.find((c) => c.installationId === owner?.installationId)?.jsonl
+  if (!owner || exporterId === undefined || ownerChain === undefined) {
+    return {
+      manifest,
+      sourceInstallationId: header.source.installationId,
+      sourcePublicKeyPem: header.signingPublicKeyPem,
+      lineage: [...carried, ...current.map((c) => asLineage(c.installationId, c.jsonl))]
+    }
+  }
+  const others = current
+    .filter((c) => c.installationId !== owner.installationId)
+    .map((c) => asLineage(c.installationId, c.jsonl))
+  if (exporterId !== owner.installationId) others.unshift(asLineage(exporterId, manifest))
+  return {
+    manifest: ownerChain,
+    sourceInstallationId: owner.installationId,
+    sourcePublicKeyPem: owner.publicKeyPem,
+    lineage: [...carried, ...others],
+    fork: { exporterId, members: shared?.members ?? [] }
+  }
+}
+
+// A fork's Exhibits all belong to the source Case's members. The exporter's
+// own rows were "this installation" there and would read as the importer's
+// here, so each row is stamped with its author and that author's Member Code:
+// the new Case numbers its own Exhibits afresh, and none of them can then cite
+// the same as a source Exhibit.
+function attributeForkedExhibits(
+  rows: Record<string, unknown>[],
+  { exporterId, members }: NonNullable<ImportChains['fork']>
+): Record<string, unknown>[] {
+  const codeOf = new Map(members.map((m) => [m.installationId, m.memberCode]))
+  return rows.map((row) => {
+    const author = (row.author_installation_id as string | null | undefined) ?? exporterId
+    return {
+      ...row,
+      author_installation_id: author,
+      member_code: row.member_code ?? codeOf.get(author) ?? null
+    }
+  })
 }
 
 // The id-keyed tables that could collide with an existing local row on import
@@ -503,6 +647,8 @@ export async function importCaseArchive(
   const entries = readStoredZip(readFileSync(archivePath))
   const header = JSON.parse(entries.get('package.json')!.toString('utf-8')) as CaseArchiveHeader
   const data = JSON.parse(entries.get('data.json')!.toString('utf-8')) as CaseArchiveData
+
+  const plan = planImportChains(entries, header, verifyArchiveChains(entries, header))
 
   const newCaseId = randomUUID()
   const idMap: Record<string, string> = {}
@@ -570,21 +716,26 @@ export async function importCaseArchive(
       mkdirSync(dir, { recursive: true })
       writeFileSync(join(dir, mapId(oldId) + ext), buf)
     }
-    writeFileSync(
-      join(stagingDir, MANIFEST_FILENAME),
-      entries.get(MANIFEST_FILENAME) ?? Buffer.alloc(0)
-    )
+    writeFileSync(join(stagingDir, MANIFEST_FILENAME), plan.manifest)
+    // Paths built from ids `parseChainPath` accepted as single segments, so
+    // none of them leaves the staging directory.
+    for (const { path, jsonl } of plan.lineage) {
+      const target = join(stagingDir, ...path.split('/'))
+      mkdirSync(dirname(target), { recursive: true })
+      writeFileSync(target, jsonl)
+    }
     writeFileSync(join(stagingDir, IMPORT_ID_MAP_FILENAME), JSON.stringify(idMapPayload, null, 2))
 
     // Step 5: append the signed import entry to the STAGED manifest — it
-    // continues the source chain (getManifestHead reads the staged file).
+    // continues the source chain (getManifestHead reads the staged file):
+    // for a fork, the source Owner's chain under the Owner's key.
     initManifest(stagingDir)
     appendManifestEntry(stagingDir, {
       type: 'import',
       caseId: newCaseId,
       sourceCaseId,
-      sourceInstallationId: report.sourceInstallationId,
-      sourcePublicKeyPem: header.signingPublicKeyPem,
+      sourceInstallationId: plan.sourceInstallationId,
+      sourcePublicKeyPem: plan.sourcePublicKeyPem,
       packageHash: header.packageHash,
       idMapSha256,
       verificationResult: report.verification,
@@ -613,8 +764,13 @@ export async function importCaseArchive(
   // throw after the move, remove the case dir and rethrow (the transaction
   // self-rolls-back).
   try {
+    // A fork has one member: `case_members` stays empty and the Case row
+    // carries no sharing columns, so it reads as a Case nobody shared.
+    const rows = plan.fork
+      ? { ...data, exhibits: attributeForkedExhibits(data.exhibits ?? [], plan.fork) }
+      : data
     withTransaction(() => {
-      insertImportedRows(data, newCaseId, mapId)
+      insertImportedRows(rows, newCaseId, mapId)
     })
   } catch (err) {
     rmSync(caseDir, { recursive: true, force: true })

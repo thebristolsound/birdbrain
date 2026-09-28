@@ -224,10 +224,10 @@ describe('caseArchive export', () => {
   // 6 since #1148: `exhibits` and `stagingFiles` in data.json, non-Capture
   // Exhibit bytes and `staged` pooled bytes in the zip, which a pre-v34 build
   // has no table or directory for.
-  // 7 since embedded note images: a pre-image build rejects the node type
-  // and abandons the import.
-  it('keeps CASE_ARCHIVE_SCHEMA_VERSION at 7 since embedded note images', () => {
-    expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(7)
+  // 8 since Shared Cases (#1511): a pre-8 build would import the exporter's
+  // chain alone and drop every other member's.
+  it('keeps CASE_ARCHIVE_SCHEMA_VERSION at 8 since Shared Cases', () => {
+    expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(8)
   })
 
   it('exports a .birdbrain archive with header, data, manifest, and files', async () => {
@@ -813,7 +813,7 @@ describe('caseArchive import', () => {
   // must name that file. Left verbatim, it named the source case's file: on
   // this same install verify hashed the source's bytes, and elsewhere it found
   // nothing.
-  it('re-import points each capture at its own file, not the source case\'s', async () => {
+  it("re-import points each capture at its own file, not the source case's", async () => {
     const { newCaseId } = await importCaseArchive(archivePath)
     const imported = listCaptures(newCaseId).find((c) => c.url === taggedCaptureUrl)!
     expect(imported.id).not.toBe(mhtmlCaptureId)
@@ -830,7 +830,9 @@ describe('caseArchive import', () => {
   // collides and both tags merge by name. The imported note must carry the
   // same two tags, resolved to the LOCAL merged tag rows.
   it('carries note tags through import with note ids remapped and tags merged by name', async () => {
-    const before = getTagsForNote(plainNoteId).map((t) => t.name).sort()
+    const before = getTagsForNote(plainNoteId)
+      .map((t) => t.name)
+      .sort()
     expect(before).toEqual(['Analyst note', 'Evidence'])
 
     const { newCaseId } = await importCaseArchive(archivePath)

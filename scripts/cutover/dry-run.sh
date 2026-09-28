@@ -4,16 +4,20 @@
 # without changing anything, prints GO or NO-GO per check, and exits 1 when any check is NO-GO.
 #
 # Every GitHub read goes through get(), which is `gh api --method GET`. git only reads the remote
-# (ls-remote, clone --mirror) and writes into a temporary directory removed on exit. There is no
-# push, no workflow disable and no visibility change; tests/cutoverDryRun.test.ts pins that.
+# (clone --mirror) and writes into a temporary directory removed on exit. There is no push, no
+# workflow disable and no visibility change; tests/cutoverDryRun.test.ts pins that.
 #
-# Usage: scripts/cutover/dry-run.sh
+# Usage: scripts/cutover/dry-run.sh <pinned-refs-file>
+#   <pinned-refs-file>  "<sha> <refname>" lines recording each ruled branch's tip when the
+#                       custody bundle was built; the runbook names the file. The tips stay in
+#                       custody rather than in the repository, beside the bundle that holds them.
 # Env:   CUTOVER_REPO    owner/name, default thebristolsound/birdbrain
-#        CUTOVER_REMOTE  git URL the bundle is built from, default the repository's https URL
+#        CUTOVER_REMOTE  git URL to mirror, default the repository's https URL
 set -euo pipefail
 
 repo=${CUTOVER_REPO:-thebristolsound/birdbrain}
 remote=${CUTOVER_REMOTE:-https://github.com/$repo.git}
+pinned_file=${1:-}
 
 # The 20 branches the maintainer ruled for deletion on #1370, and the one kept under its
 # exclusion of Shared Case and persona work.
@@ -40,7 +44,19 @@ delete_branches=(
   worktree-agent-ace974456560e04ec
 )
 kept_branch=t3code/review-pr-1518-1
-excluded_names='persona|shared-case|shared_case|sharedcase|multi-user|multiuser'
+# Shared Case (multi-user) and persona work, matched case-blind against branch names, the paths
+# a branch changes and its commit subjects. On main it matches src/main/services/persona/,
+# src/main/services/db/{personaRepo,caseMemberRepo}.ts, src/shared/verify/sharedCase.ts,
+# src/renderer/**/[Pp]ersonas*, their tests, docs/design-handoff/*shared-case-members/, the
+# shared-case and persona plans and specs, and ADR-0030; in subjects, the persona and
+# shared-case scopes and the words "Shared Case".
+excluded='persona|shared[-_ ]?case|case[-_ ]?member|multi[-_ ]?user|iroh'
+
+# Every Actions variable name, repository level and per environment, as read back on
+# 2026-09-28. Every value becomes public at the flip, so an addition is a NO-GO.
+expected_variables='repo:BIRDBRAIN_AGENT_GH_LOGIN,repo:BIRDBRAIN_AGENT_GH_TOKEN_EXPIRES,'
+expected_variables+='repo:COPILOT_AGENT_FIREWALL_ALLOW_LIST_ADDITIONS,'
+expected_variables+='repo:COPILOT_AGENT_FIREWALL_ENABLED'
 
 go=0
 nogo=0
@@ -85,10 +101,49 @@ check_workflows() {
   pass 'freeze list' "$total registered; the freeze disables the $active active ones"
 }
 
+# One fresh mirror of every ref, used for the branch content checks and the bundle.
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+mirror_ok=0
+make_mirror() {
+  if git clone --mirror --quiet "$remote" "$work/mirror.git"; then
+    mirror_ok=1
+  else
+    fail 'mirror' "clone --mirror of $remote failed"
+  fi
+}
+mgit() { git -C "$work/mirror.git" "$@"; }
+
+# Prints what marks a branch as Shared Case or persona work, or nothing: its name, the paths it
+# changes against its merge base with main, or the subjects of the commits main lacks.
+excluded_work() {
+  local b=$1 tip=$2 base changed log paths subjects
+  if grep -Eiq "$excluded" <<<"$b"; then
+    echo 'its name'
+    return
+  fi
+  # No merge base means unrelated history: every path and commit on the branch is its own.
+  if base=$(mgit merge-base refs/heads/main "$tip"); then
+    changed=$(mgit diff --name-only "$base" "$tip") && log=$(mgit log --format=%s "$base..$tip")
+  else
+    changed=$(mgit ls-tree -r --name-only "$tip") && log=$(mgit log --format=%s "$tip")
+  fi || {
+    echo 'an unreadable history (fails closed)'
+    return
+  }
+  paths=$(grep -Ei "$excluded" <<<"$changed" || true)
+  subjects=$(grep -Ei "$excluded" <<<"$log" || true)
+  if [[ -n $paths ]]; then
+    echo "$(grep -c . <<<"$paths") changed paths, first $(head -n 1 <<<"$paths")"
+  elif [[ -n $subjects ]]; then
+    echo "$(grep -c . <<<"$subjects") commit subjects, first \"$(head -n 1 <<<"$subjects")\""
+  fi
+}
+
 check_branches() {
-  local heads open b sha
-  if ! heads=$(git ls-remote --heads "$remote"); then
-    fail 'branches' 'ls-remote failed'
+  local open heads b tip pinned marked
+  if ((!mirror_ok)); then
+    fail 'branches' 'no mirror to inspect'
     return
   fi
   if ! open=$(get "repos/$repo/pulls?state=open&per_page=100" --paginate \
@@ -96,46 +151,91 @@ check_branches() {
     fail 'branches' 'open pull request read failed'
     return
   fi
+  if [[ -z $pinned_file || ! -r $pinned_file ]]; then
+    fail 'pinned tips' "no readable pinned-refs file given (read [${pinned_file:-none}])"
+  fi
+  heads=$(mgit for-each-ref --format='%(objectname) %(refname:strip=2)' refs/heads)
   for b in "${delete_branches[@]}"; do
-    sha=$(awk -v r="refs/heads/$b" '$2 == r { print $1 }' <<<"$heads")
-    if [[ -z $sha ]]; then
+    tip=$(awk -v r="$b" '$2 == r { print $1 }' <<<"$heads")
+    pinned=''
+    if [[ -r $pinned_file ]]; then
+      pinned=$(awk -v r="refs/heads/$b" '$2 == r { print $1 }' "$pinned_file")
+    fi
+    if [[ -z $tip ]]; then
       fail "delete $b" 'not on origin, so the list no longer matches the ruling'
+    elif [[ -z $pinned ]]; then
+      fail "delete $b" "at ${tip:0:8}, with no pinned tip to compare"
+    elif [[ $tip != "$pinned" ]]; then
+      fail "delete $b" "tip moved from ${pinned:0:8} to ${tip:0:8}; the custody bundle lacks it"
     elif awk -v r="$b" '$2 == r { f = 1 } END { exit !f }' <<<"$open"; then
       fail "delete $b" 'an open pull request uses it as its head'
-    elif awk -v s="$sha" '$1 == s { f = 1 } END { exit !f }' <<<"$open"; then
+    elif awk -v s="$tip" '$1 == s { f = 1 } END { exit !f }' <<<"$open"; then
       fail "delete $b" 'its tip is the head commit of an open pull request'
-    elif grep -Eiq "$excluded_names" <<<"$b"; then
-      fail "delete $b" 'the name marks Shared Case or persona work'
+    elif marked=$(excluded_work "$b" "$tip") && [[ -n $marked ]]; then
+      fail "delete $b" "Shared Case or persona work by $marked"
     else
-      pass "delete $b" "on origin at ${sha:0:8}, no open pull request"
+      pass "delete $b" "pinned tip ${tip:0:8}, no open pull request, no Shared Case or persona work"
     fi
   done
-  if grep -q "refs/heads/$kept_branch\$" <<<"$heads"; then
-    pass "keep $kept_branch" 'on origin and absent from the deletion list'
-  else
+
+  tip=$(awk -v r="$kept_branch" '$2 == r { print $1 }' <<<"$heads")
+  if [[ -z $tip ]]; then
     fail "keep $kept_branch" 'not on origin'
+  elif printf '%s\n' "${delete_branches[@]}" | grep -qxF "$kept_branch"; then
+    fail "keep $kept_branch" 'it is in the deletion list'
+  else
+    pass "keep $kept_branch" "on origin at ${tip:0:8}, not in the deletion list"
+    marked=$(excluded_work "$kept_branch" "$tip")
+    note "the Shared Case and persona test on the kept branch finds: ${marked:-nothing}"
   fi
   note "open pull requests: $(grep -c . <<<"$open" || true)"
+  marked=$(awk '{ print $2 }' <<<"$heads" | grep -Ei "$excluded" | paste -sd ' ' - || true)
+  note "heads named like Shared Case or persona work, re-check by hand: ${marked:-none}"
+}
+
+check_variables() {
+  local actual envs env
+  if ! actual=$(get "repos/$repo/actions/variables?per_page=100" --paginate \
+    --jq '.variables[] | "repo:\(.name)"') ||
+    ! envs=$(get "repos/$repo/environments?per_page=100" --jq '.environments[].name'); then
+    fail 'variables' 'read failed'
+    return
+  fi
+  while IFS= read -r env; do
+    [[ -z $env ]] && continue
+    if ! actual+=$'\n'$(get "repos/$repo/environments/$env/variables?per_page=100" --paginate \
+      --jq ".variables[] | \"env/$env:\(.name)\""); then
+      fail 'variables' "read of environment $env failed"
+      return
+    fi
+  done <<<"$envs"
+  actual=$(grep . <<<"$actual" | sort | paste -sd , - || true)
+  if [[ $actual == "$expected_variables" ]]; then
+    pass 'variables' "$actual; environments $(paste -sd , - <<<"$envs") hold none"
+  else
+    fail 'variables' "expected [$expected_variables], read [$actual]"
+  fi
 }
 
 check_bundle() {
   local ls mirror restored remote_count
-  work=$(mktemp -d)
-  trap 'rm -rf "$work"' EXIT
+  if ((!mirror_ok)); then
+    fail 'bundle' 'no mirror to bundle'
+    return
+  fi
   if ! ls=$(git ls-remote "$remote"); then
     fail 'bundle' 'ls-remote failed'
     return
   fi
   remote_count=$(awk '$2 != "HEAD" && $2 !~ /\^\{\}$/' <<<"$ls" | grep -c . || true)
-  if ! git clone --mirror --quiet "$remote" "$work/mirror.git" ||
-    ! git -C "$work/mirror.git" bundle create --quiet "$work/all.bundle" --all ||
-    ! git -C "$work/mirror.git" bundle verify --quiet "$work/all.bundle" 2>/dev/null ||
+  if ! mgit bundle create --quiet "$work/all.bundle" --all ||
+    ! mgit bundle verify --quiet "$work/all.bundle" 2>/dev/null ||
     ! git clone --mirror --quiet "$work/all.bundle" "$work/restore.git" ||
     ! git -C "$work/restore.git" fsck --no-progress --no-dangling; then
-    fail 'bundle' 'mirror, bundle, verify, restore or fsck failed'
+    fail 'bundle' 'bundle, verify, restore or fsck failed'
     return
   fi
-  mirror=$(git -C "$work/mirror.git" for-each-ref --format='%(objectname) %(refname)')
+  mirror=$(mgit for-each-ref --format='%(objectname) %(refname)')
   restored=$(git -C "$work/restore.git" for-each-ref --format='%(objectname) %(refname)')
   note "mirror refs: $(grep -c ' refs/heads/' <<<"$mirror" || true) heads, $(
     grep -c ' refs/pull/' <<<"$mirror" || true
@@ -154,6 +254,7 @@ echo "Cutover dry run for $repo, $(date -u +%Y-%m-%dT%H:%M:%SZ). Read-only."
 
 check 'visibility' 'private' "repos/$repo" --jq '.visibility'
 check_workflows
+make_mirror
 check_branches
 
 # The main ruleset as hardened and read back on 2026-09-28 (#1372, ADR-0008's 2026-09-28
@@ -196,8 +297,7 @@ check 'fork pull requests' 'write_tokens=false secrets=false' \
   "repos/$repo/actions/permissions/fork-pr-workflows-private-repos" \
   --jq '"write_tokens=\(.send_write_tokens_to_workflows) secrets=\(.send_secrets_and_variables)"'
 check 'repository secrets' '0' "repos/$repo/actions/secrets" --jq '.total_count'
-check 'doc-curator variable' '0' "repos/$repo/actions/variables?per_page=100" \
-  --jq '[.variables[] | select(.name == "DOC_CURATOR_LAST_SHA")] | length'
+check_variables
 check 'copilot firewall' 'true' \
   "repos/$repo/actions/variables/COPILOT_AGENT_FIREWALL_ENABLED" --jq '.value'
 

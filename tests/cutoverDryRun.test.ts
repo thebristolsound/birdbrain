@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { execFileSync, spawnSync } from 'child_process'
-import { mkdtempSync, rmSync } from 'fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
 import { HAS_JQ } from './helpers/jq'
@@ -19,6 +19,12 @@ const DELETE = [
   'worktree-agent-ace974456560e04ec'
 ]
 const KEPT = 't3code/review-pr-1518-1'
+const VARIABLES = [
+  'BIRDBRAIN_AGENT_GH_LOGIN',
+  'BIRDBRAIN_AGENT_GH_TOKEN_EXPIRES',
+  'COPILOT_AGENT_FIREWALL_ALLOW_LIST_ADDITIONS',
+  'COPILOT_AGENT_FIREWALL_ENABLED'
+]
 
 const gitEnv = {
   ...process.env,
@@ -31,6 +37,7 @@ const gitEnv = {
 }
 
 let remote: string
+let pinDir: string
 let stub: GhStub | undefined
 
 const git = (...args: string[]) =>
@@ -38,21 +45,38 @@ const git = (...args: string[]) =>
 
 const refs = () => git('for-each-ref', '--format=%(objectname) %(refname)')
 
+// The pinned-tips file stands in for the custody copy of the refs the bundle was built from.
+const pinned = () => join(pinDir, 'mirror-refs.txt')
+const pin = () => writeFileSync(pinned(), refs() + '\n')
+
+// One commit on a branch, changing one file.
+const commitOn = (branch: string, path: string, message: string) => {
+  git('switch', '-q', branch)
+  mkdirSync(join(remote, path, '..'), { recursive: true })
+  writeFileSync(join(remote, path), `${message}\n`)
+  git('add', path)
+  git('commit', '-q', '-m', message)
+  git('switch', '-q', 'main')
+}
+
 // A remote shaped like origin: main, the 20 ruled branches, the kept one, a pull-request ref
-// and a tag, all on one commit.
+// and a tag, all on one commit, with their tips pinned.
 beforeEach(() => {
   remote = mkdtempSync(join(tmpdir(), 'cutover-remote-'))
+  pinDir = mkdtempSync(join(tmpdir(), 'cutover-pinned-'))
   git('init', '-q', '-b', 'main')
   git('commit', '-q', '--allow-empty', '-m', 'init')
   for (const branch of [...DELETE, KEPT]) git('update-ref', `refs/heads/${branch}`, 'HEAD')
   git('update-ref', 'refs/pull/1/head', 'HEAD')
   git('update-ref', 'refs/tags/v1.0.0', 'HEAD')
+  pin()
 })
 
 afterEach(() => {
   stub?.cleanup()
   stub = undefined
   rmSync(remote, { recursive: true, force: true })
+  rmSync(pinDir, { recursive: true, force: true })
 })
 
 const mainRuleset = {
@@ -125,17 +149,17 @@ const routes = (overrides: GhRoutes = {}): GhRoutes => ({
     send_secrets_and_variables: false
   },
   [`${API}/actions/secrets`]: { total_count: 0, secrets: [] },
-  [`${API}/actions/variables?per_page=100`]: {
-    variables: [{ name: 'COPILOT_AGENT_FIREWALL_ENABLED' }]
-  },
+  [`${API}/actions/variables?per_page=100`]: { variables: VARIABLES.map((name) => ({ name })) },
+  [`${API}/environments?per_page=100`]: { environments: [{ name: 'paid-runs' }] },
+  [`${API}/environments/paid-runs/variables?per_page=100`]: { variables: [] },
   [`${API}/actions/variables/COPILOT_AGENT_FIREWALL_ENABLED`]: { value: 'true' },
   ...overrides
 })
 
-const dryRun = (r: GhRoutes) => {
+const dryRun = (r: GhRoutes, args: string[] = [pinned()]) => {
   stub = makeGhStub(r)
   const before = refs()
-  const result = spawnSync('bash', [SCRIPT], {
+  const result = spawnSync('bash', [SCRIPT, ...args], {
     cwd: stub.dir,
     encoding: 'utf8',
     env: { ...gitEnv, PATH: stub.path, CUTOVER_REPO: 'o/r', CUTOVER_REMOTE: remote }
@@ -159,6 +183,7 @@ describe.skipIf(!HAS_JQ)('scripts/cutover/dry-run.sh', () => {
     expect(result.stdout).toContain('mirror refs: 22 heads, 1 pull, 1 tags')
     expect(result.stdout).toContain('GO     bundle: 24 refs bundled, verified, restored')
     expect(result.stdout).toContain(`GO     keep ${KEPT}`)
+    expect(result.stdout).toContain('GO     variables: repo:BIRDBRAIN_AGENT_GH_LOGIN,')
   })
 
   it('makes only GET calls to GitHub and leaves the remote untouched', () => {
@@ -197,6 +222,58 @@ describe.skipIf(!HAS_JQ)('scripts/cutover/dry-run.sh', () => {
     ])
   })
 
+  it('stops when a ruled branch moved past its pinned tip', () => {
+    const pinnedTip = git('rev-parse', 'refs/heads/stash-archive/2').slice(0, 8)
+    commitOn('stash-archive/2', 'notes.txt', 'later work')
+    const tip = git('rev-parse', 'refs/heads/stash-archive/2').slice(0, 8)
+    const result = dryRun(routes())
+    expect(result.status).toBe(1)
+    expect(result.nogo).toEqual([
+      `NO-GO  delete stash-archive/2: tip moved from ${pinnedTip} to ${tip}; the custody bundle lacks it`
+    ])
+  })
+
+  it('stops on every ruled branch when no pinned-tips file is given', () => {
+    const result = dryRun(routes(), [])
+    expect(result.status).toBe(1)
+    expect(result.nogo[0]).toBe(
+      'NO-GO  pinned tips: no readable pinned-refs file given (read [none])'
+    )
+    expect(result.nogo.filter((l) => l.includes('with no pinned tip to compare'))).toHaveLength(20)
+  })
+
+  it.each([
+    [
+      'worktree-agent-ace974456560e04ec',
+      'src/main/services/persona/notes.ts',
+      'wip',
+      'by 1 changed paths, first src/main/services/persona/notes.ts'
+    ],
+    [
+      't3code/302982b9',
+      'docs/notes.md',
+      'feat(shared-case): carry member chains',
+      'by 1 commit subjects, first "feat(shared-case): carry member chains"'
+    ]
+  ])('stops when %s holds Shared Case or persona work', (branch, path, message, why) => {
+    commitOn(branch, path, message)
+    pin()
+    const result = dryRun(routes())
+    expect(result.status).toBe(1)
+    expect(result.nogo).toEqual([`NO-GO  delete ${branch}: Shared Case or persona work ${why}`])
+  })
+
+  it('keeps the excluded branch and reports what the content test finds on it', () => {
+    commitOn(KEPT, 'src/shared/verify/sharedCase.ts', 'review fixes')
+    pin()
+    const result = dryRun(routes())
+    expect(result.status, result.stdout).toBe(0)
+    expect(result.stdout).toContain(
+      'the Shared Case and persona test on the kept branch finds: 1 changed paths, first ' +
+        'src/shared/verify/sharedCase.ts'
+    )
+  })
+
   it.each([
     [
       'main ruleset',
@@ -209,7 +286,19 @@ describe.skipIf(!HAS_JQ)('scripts/cutover/dry-run.sh', () => {
     ],
     ['repository secrets', { [`${API}/actions/secrets`]: { total_count: 1, secrets: [{}] } }],
     ['visibility', { [API]: { visibility: 'public' } }],
-    ['workflow token', { [`${API}/actions/permissions/workflow`]: null }]
+    ['workflow token', { [`${API}/actions/permissions/workflow`]: null }],
+    [
+      'variables',
+      {
+        [`${API}/actions/variables?per_page=100`]: {
+          variables: [...VARIABLES, 'DOC_CURATOR_LAST_SHA'].map((name) => ({ name }))
+        }
+      }
+    ],
+    [
+      'variables',
+      { [`${API}/environments/paid-runs/variables?per_page=100`]: { variables: [{ name: 'X' }] } }
+    ]
   ])('stops when %s drifts from the expected value or cannot be read', (name, override) => {
     const result = dryRun(routes(override))
     expect(result.status).toBe(1)

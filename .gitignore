@@ -72,6 +72,7 @@ coverage/
 !.claude/skills/merge-pr/
 !.claude/skills/pr-sweep/
 !.claude/skills/teardown/
+!.claude/skills/jev-severity/
 !.claude/hooks/
 .codex
 .cursor

@@ -119,7 +119,15 @@ jobs:
           token: ${{ secrets.RELEASES_REPO_TOKEN }}
           target_commitish: main
           draft: false
-          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') }}
+          # A literal, not derived from the tag name. ADR-0008 Decision 3: "No release is
+          # promoted to a full release while artifacts are unsigned." Change this, and the
+          # same input in release-macos.yml, only when that decision's revisit trigger is met:
+          #   "A release process that signs every artifact and notarizes macOS builds,
+          #   with both verified on the release's actual output — acquiring a
+          #   certificate or notarization capability alone does not qualify. Only after
+          #   that verification may releases be promoted to full releases and this
+          #   restriction be lifted."
+          prerelease: true
           body_path: ${{ runner.temp }}/release-notes.md
 
   build-app:

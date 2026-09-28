@@ -109,7 +109,7 @@ STEP 6 — Section 4a (known-answer) + finish 4b.  Run in WSL.
 --------------------------------------------------------------------------
 In your WSL repo, on the tag:
 
-  cd /path/to/your/birdbrain/clone     # the repository root
+  cd /path/to/your/clone     # the repository root
   git fetch origin
   git checkout v1.0.1-beta.20
   pnpm install

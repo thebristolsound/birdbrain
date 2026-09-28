@@ -282,6 +282,15 @@ The full record, per-case grid and sweep tables are in
    (the Claude Code default the dispatcher runs today), so the baseline names both what the
    rule selects and what production does. Candidates run at their selected level, `low`.
 
+**Stage 4 in flight (started 2026-09-28).** `scripts/bench/review/stage4.sh claude` and
+`stage4.sh codex` run side by side, logging to `results/stage4-claude.log` and
+`results/stage4-codex.log`. Two reps on all 46 cases: Opus 5 at `low` and `high`, Opus 5.5 and
+Fable 5.1 at `low`, `gpt-6-astra` and `gpt-5.6-sol` at `low`, all direct at tier L1, then the dispatch-mode
+slice (Opus 5.5 at `low`, `--exclude-tag wave2`, 39 cases). Each script resumes on exit 3 after
+a 30-minute wait; if either stops for any other reason, re-run the same command and it continues
+from the rows still owed. When both finish, `node report.mjs --results results --tier L1` and a
+`baselines/stage4-2026-09-28.md` record close the stage.
+
 ## Accounts and usage windows
 
 There is no dollar cost and no cap the runner can enforce. Both subscriptions meter usage in

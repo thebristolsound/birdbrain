@@ -1,4 +1,10 @@
-import { REPORT_PAGE_CSS, type EntrySignatureStatus } from '@main/services/reportHtml'
+import {
+  REPORT_PAGE_CSS,
+  describeSharedCaseExclusion,
+  describeSharedCaseMember,
+  type EntrySignatureStatus,
+  type ExportSharedCase
+} from '@main/services/reportHtml'
 import {
   TRUSTED_TIME_AUTHORITY_NOT_CONTACTED,
   TRUSTED_TIME_LABELS
@@ -125,6 +131,11 @@ export interface CertificationInput {
    * it. Absent or empty for a package of captures alone.
    */
   exhibits?: CertificationExhibitInput[]
+  /**
+   * The Shared Case this package covers (#1511): the same value report.html
+   * and evidence.json state. Absent for a Case never shared or forked.
+   */
+  sharedCase?: ExportSharedCase | null
 }
 
 /** One committed non-Capture Exhibit, as the certifier states it. */
@@ -193,6 +204,7 @@ export interface CertificationFields {
   manifestHead: { index: number; entryHash: string } | null
   signingKeyFingerprint: string
   contentsSummary: string
+  sharedCase: ExportSharedCase | null
 }
 
 const LAWYER_TBD_MARKER = '[LEGAL WORDING TO BE SUPPLIED BY COUNSEL]'
@@ -295,7 +307,8 @@ export function buildCertificationFields(
     purposeOrAuthority: data.purposeOrAuthority,
     manifestHead: data.manifestHead,
     signingKeyFingerprint: data.signingKeyFingerprint,
-    contentsSummary: buildContentsSummary(data.contents)
+    contentsSummary: buildContentsSummary(data.contents),
+    sharedCase: data.sharedCase ?? null
   }
 }
 
@@ -529,6 +542,8 @@ function renderCertificationHtml(fields: CertificationFields): string {
       )}</span></div></div>
   </div>
 
+  ${fields.sharedCase ? sharedCaseFields(fields.sharedCase) : ''}
+
   <p class="eyebrow spaced">Capturing tool</p>
   <div class="field-grid rule-top">
     <div class="field"><div class="field-label">Tool name</div>
@@ -622,6 +637,40 @@ function renderCertificationHtml(fields: CertificationFields): string {
 </footer>
 </body>
 </html>`
+}
+
+// The roster and every exclusion, stated where the package is described: the
+// certifier signs for one member's installation, and a reader has to know the
+// other members' chains are enclosed and verify under their own keys.
+function sharedCaseFields(shared: ExportSharedCase): string {
+  const lines = (items: string[]): string => items.map(esc).join('<br>')
+  const lineage = shared.lineage.map(
+    (source) =>
+      `<div class="field wide"><div class="field-label">Forked from Case ${esc(
+        source.sourceCaseId
+      )}</div>
+      <div class="field-value">${lines(source.members.map(describeSharedCaseMember))}</div></div>`
+  )
+  return `<p class="eyebrow spaced">Shared Case</p>
+  <div class="field-grid rule-top">
+    <div class="field wide"><div class="field-label">Members</div>
+      <div class="field-value">${
+        shared.members.length > 0
+          ? lines(shared.members.map(describeSharedCaseMember))
+          : 'One member: the certifier below'
+      }</div></div>
+    ${lineage.join('')}
+    <div class="field wide"><div class="field-label">Exclusions (enclosed, not omitted)</div>
+      <div class="field-value">${
+        shared.exclusions.length > 0
+          ? lines(shared.exclusions.map(describeSharedCaseExclusion))
+          : 'none recorded'
+      }</div></div>
+    <div class="field wide"><div class="field-label">Shared Case verification at export</div>
+      <div class="field-value">${
+        shared.verified ? 'passed' : `failed — ${esc(shared.finding ?? 'no finding recorded')}`
+      }</div></div>
+  </div>`
 }
 
 function certifierLine(certifier: CertificationFields['certifier']): string {

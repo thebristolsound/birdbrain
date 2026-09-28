@@ -109,6 +109,69 @@ export interface PackagedArtifacts {
  */
 export type EntrySignatureStatus = 'signed' | 'unsigned-legacy' | 'no-entry'
 
+/** One member of a Shared Case, as the export states it (#1511). */
+export interface ExportSharedCaseMember {
+  installationId: string
+  memberCode: string
+  operatorName: string
+  role: 'owner' | 'member'
+  revoked: boolean
+}
+
+/**
+ * One `exclude` an Owner wrote (decision 10). The Exhibit stays in the package
+ * with its bytes; the exclusion is listed, never applied by omission.
+ */
+export interface ExportSharedCaseExclusion {
+  exhibitId: string
+  /** The citation the chain resolves for the Exhibit, or null when none. */
+  citation: string | null
+  authorInstallationId: string
+  /** The name the Owner wrote the `exclude` under, and when. */
+  excludedBy: string
+  excludedAt: string
+  manifestIndex: number
+  reason: string | null
+  /** Set when the Owner of a Case this one was forked from wrote it. */
+  sourceCaseId: string | null
+}
+
+/**
+ * The Shared Case an export covers (#1511), read from the Shared Case walk
+ * over the same chain snapshot the package encloses. The report, the
+ * certification and evidence.json all state this one value, so they cannot
+ * disagree about the roster or an exclusion.
+ */
+export interface ExportSharedCase {
+  /** Whether the Shared Case walk passed at export, and its first finding when not. */
+  verified: boolean
+  finding: string | null
+  members: ExportSharedCaseMember[]
+  /** The rosters of the Cases this one was forked from, nearest first. */
+  lineage: Array<{ sourceCaseId: string; members: ExportSharedCaseMember[] }>
+  exclusions: ExportSharedCaseExclusion[]
+  /** Package paths of the enclosed member and lineage chains. */
+  chainPaths: string[]
+}
+
+/** `NK — Nadia K (Owner)`, and whether the member was revoked. */
+export function describeSharedCaseMember(member: ExportSharedCaseMember): string {
+  const role = member.role === 'owner' ? 'Owner' : 'member'
+  return `${member.memberCode} — ${member.operatorName} (${role}${member.revoked ? ', revoked' : ''})`
+}
+
+/** Who excluded an Exhibit, when, and why, in one sentence. */
+export function describeSharedCaseExclusion(exclusion: ExportSharedCaseExclusion): string {
+  const exhibit = exclusion.citation
+    ? `Exhibit ${exclusion.citation}`
+    : `Exhibit ${exclusion.exhibitId}`
+  const owner = exclusion.sourceCaseId ? `the Owner of Case ${exclusion.sourceCaseId}` : 'the Owner'
+  const why = exclusion.reason ? `: ${exclusion.reason}` : ''
+  return `${exhibit} was excluded by ${exclusion.excludedBy} (${owner}) at ${isoUtc(
+    exclusion.excludedAt
+  )}, manifest entry #${exclusion.manifestIndex}${why}`
+}
+
 /**
  * One Derived File as this export packages and reports it (X17, X31). It
  * carries no Exhibit Number of its own: a Derived File is cited by its parent
@@ -296,6 +359,8 @@ export interface ReportData {
     excludedExhibitCount: number
     omittedNoteCount: number
   } | null
+  /** The Shared Case this export covers, or absent for a Case never shared or forked. */
+  sharedCase?: ExportSharedCase | null
 }
 
 export type ReportModuleId =
@@ -1094,6 +1159,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   </div>`
       : ''
   }
+  ${data.sharedCase ? sharedCaseBlock(data.sharedCase, packaged) : ''}
   ${
     data.unreconciledChainCaptureIds.length > 0
       ? `<div class="alert">
@@ -2165,6 +2231,53 @@ text-transform:uppercase;color:#71717a;padding:0 0.7in;display:flex;justify-cont
 // ---------------------------------------------------------------------------
 // Fragment helpers
 // ---------------------------------------------------------------------------
+
+// The custody statement for a Shared Case (#1511): who holds a chain, what the
+// Case was forked from, and every exclusion an Owner recorded. An excluded
+// Exhibit is listed here and still enclosed, because decision 10 makes an
+// exclusion something an export states, not something it applies.
+function sharedCaseBlock(shared: ExportSharedCase, packaged: boolean): string {
+  const list = (items: string[]): string =>
+    `<ul>${items.map((item) => `<li>${esc(item)}</li>`).join('')}</ul>`
+  const chains = packaged
+    ? ` Each other member's chain is enclosed beside <code>manifest.jsonl</code>${
+        shared.lineage.length > 0 ? ", and each source Case's under <code>lineage/</code>" : ''
+      }, and the package is signed by the exporting member's installation key.`
+    : ''
+  const members =
+    shared.members.length > 0
+      ? `<p>This Case is shared. Each member keeps its own signed chain.${chains}</p>${list(
+          shared.members.map(describeSharedCaseMember)
+        )}`
+      : `<p>This Case has one member.${chains}</p>`
+  const lineage = shared.lineage
+    .map(
+      (source) =>
+        `<p>Forked from Case <code>${esc(source.sourceCaseId)}</code>, whose members were:</p>${list(
+          source.members.map(describeSharedCaseMember)
+        )}`
+    )
+    .join('')
+  const exclusions =
+    shared.exclusions.length > 0
+      ? `<p>The Owner excluded ${shared.exclusions.length} exhibit${
+          shared.exclusions.length === 1 ? '' : 's'
+        }. ${
+          packaged ? 'Each is still enclosed with its bytes and its hash' : 'Each is still reported'
+        }; the exclusion is recorded in the signed chain and listed here, not applied by
+    leaving the exhibit out.</p>${list(shared.exclusions.map(describeSharedCaseExclusion))}`
+      : ''
+  const unverified = shared.verified
+    ? ''
+    : `<div class="alert">
+    <p class="alert-title">The Shared Case did not verify when this report was generated</p>
+    <p>${esc(shared.finding ?? 'No finding was recorded.')}</p>
+  </div>`
+  return `<div class="note">
+    <p class="note-title">Shared Case</p>
+    ${members}${lineage}${exclusions}
+  </div>${unverified}`
+}
 
 function field(label: string, valueHtml: string, wide = false): string {
   return `<div class="field${wide ? ' wide' : ''}">

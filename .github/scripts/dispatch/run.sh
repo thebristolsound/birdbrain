@@ -23,6 +23,24 @@ set -euo pipefail
 # shellcheck source=.github/scripts/dispatch/redact.sh
 . "$(dirname "${BASH_SOURCE[0]}")/redact.sh"
 scrub() { redact < "$1" > "$1.redacted" && mv "$1.redacted" "$1"; }
+# Drops total_cost_usd and every modelUsage.<model>.costUSD wherever the envelope's
+# shape puts them, so neither the artifact nor a failed call's log shows the spend
+# (#1369). A file jq cannot parse is kept, so a failed call's stdout still gets logged.
+strip_spend() {
+  if jq -c 'walk(if type == "object" then del(.total_cost_usd, .costUSD) else . end)' \
+    "$1" > "$1.stripped"; then
+    mv "$1.stripped" "$1"
+  else
+    rm -f "$1.stripped"
+  fi
+}
+# Listed in full first: each scrub writes a .redacted file that a find still walking
+# the folder could return.
+scrub_reports() {
+  local files f
+  mapfile -d '' -t files < <(find .dispatch/reports -type f -print0)
+  for f in "${files[@]}"; do scrub "$f"; done
+}
 
 mode="${1:-cycle}"
 summary="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
@@ -83,10 +101,12 @@ run_claude() {
   claude "$@" "${flags[@]}" > .dispatch/result.json 2> .dispatch/claude.err
   status=$?
   set -e
-  # Before anything reads, echoes or uploads either file. The failure path is the
+  # Before anything reads, echoes or uploads these files. The failure path is the
   # one that carries a credential, so redacting after it would redact nothing.
   scrub .dispatch/result.json
   scrub .dispatch/claude.err
+  strip_spend .dispatch/result.json
+  scrub_reports
 
   if [ "$status" -ne 0 ]; then
     # Both streams, because a fast non-zero exit puts the reason on stdout as a
@@ -135,12 +155,12 @@ if ! has_report && [ "$(result_of .dispatch/result.json | jq -r '.is_error // fa
 fi
 
 # Summed over both calls when the cycle was resumed, so the figures are what
-# the cycle spent and not what its second half spent.
+# the cycle spent and not what its second half spent. The spend is left out,
+# because this file is printed in the run summary (#1369).
 for f in .dispatch/result-1.json .dispatch/result.json; do
   if [ -f "$f" ]; then result_of "$f"; fi
-done | jq -s '{is_error: (last | .is_error), cost: (map(.total_cost_usd // 0) | add),
-               turns: (map(.num_turns // 0) | add), ms: (map(.duration_ms // 0) | add),
-               calls: length}' > .dispatch/meta.json
+done | jq -s '{is_error: (last | .is_error), turns: (map(.num_turns // 0) | add),
+               ms: (map(.duration_ms // 0) | add), calls: length}' > .dispatch/meta.json
 
 {
   echo "## Dispatch cycle ($mode)"

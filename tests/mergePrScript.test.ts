@@ -28,7 +28,7 @@ const run = (name: string, conclusion: string) => ({ name, status: 'completed', 
 const routes = (
   rules: unknown,
   checkRuns: ReturnType<typeof run>[],
-  { author = 'someone-else', statuses = [] as { context: string; state: string }[] } = {}
+  { author = 'someone-else', prePass = [] as { by: string; state: string }[] } = {}
 ) => ({
   user: { login: 'maintainer' },
   [`${API}/pulls/7`]: {
@@ -47,7 +47,13 @@ const routes = (
     total_count: checkRuns.length,
     check_runs: checkRuns
   },
-  [`${API}/commits/${SHA}/status?per_page=100`]: { statuses },
+  [`${API}/commits/${SHA}/status?per_page=100`]: { statuses: [] },
+  // Newest first, as the statuses list endpoint returns them.
+  [`${API}/commits/${SHA}/statuses?per_page=100`]: prePass.map(({ by, state }) => ({
+    context: 'agent/pre-pass',
+    state,
+    creator: { login: by }
+  })),
   [`${API}/issues/829/labels`]: []
 })
 
@@ -58,14 +64,21 @@ afterEach(() => {
   stub = undefined
 })
 
-const dryRun = (r: ReturnType<typeof routes>) => {
+const invoke = (r: ReturnType<typeof routes>, args: string[]) => {
   stub = makeGhStub(r)
-  const result = spawnSync('bash', [SCRIPT, '7', '--dry-run'], {
+  const result = spawnSync('bash', [SCRIPT, '7', ...args], {
     encoding: 'utf8',
-    env: { ...process.env, PATH: stub.path, CLAUDE_PROJECT_DIR: ROOT }
+    env: {
+      ...process.env,
+      PATH: stub.path,
+      CLAUDE_PROJECT_DIR: ROOT,
+      BIRDBRAIN_AGENT_GH_LOGIN: 'birdbrain-agent'
+    }
   })
   return { ...result, calls: stub.calls() }
 }
+
+const dryRun = (r: ReturnType<typeof routes>) => invoke(r, ['--dry-run'])
 
 describe.skipIf(!HAS_JQ)('merge.sh gates on the required checks of main', () => {
   const green = ['lint', 'typecheck', 'test'].map((name) => run(name, 'success'))
@@ -122,36 +135,60 @@ describe.skipIf(!HAS_JQ)('merge.sh gates on the required checks of main', () => 
   })
 })
 
-describe.skipIf(!HAS_JQ)("merge.sh takes the admin bypass only for the maintainer's own PR", () => {
+describe.skipIf(!HAS_JQ)("merge.sh takes the admin bypass only for the gh login's own PR", () => {
   const rules = requiredRules(['lint'])
   const green = [run('lint', 'success')]
-  const prePass = (state: string) => [{ context: 'agent/pre-pass', state }]
+  const own = (prePass: { by: string; state: string }[]) =>
+    routes(rules, green, { author: 'maintainer', prePass })
+  const mergeCall = (calls: string[]) => calls.find((call) => call.startsWith('pr merge '))
 
-  it('uses the bypass for a PR the gh login authored with a success pre-pass', () => {
-    const result = dryRun(
-      routes(rules, green, { author: 'maintainer', statuses: prePass('success') })
-    )
-    expect(result.status).toBe(0)
+  it('passes --admin to the merge on a success pre-pass from the machine account', () => {
+    // The stub has no route for `pr merge`, so the script stops after the call it makes.
+    const result = invoke(own([{ by: 'birdbrain-agent', state: 'success' }]), [])
     expect(result.stdout).toContain(
       'merge-pr: authored by maintainer: merging with the admin bypass on a success pre-pass'
     )
+    expect(mergeCall(result.calls)).toMatch(/^pr merge 7 --squash --admin --match-head-commit /)
   })
 
-  it("refuses the maintainer's own PR without a success pre-pass at head", () => {
+  it('accepts a success pre-pass the maintainer posted', () => {
+    const result = dryRun(own([{ by: 'maintainer', state: 'success' }]))
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain('merging with the admin bypass')
+  })
+
+  it("refuses on the workflow's automatic pass, which no trusted account posted", () => {
+    const result = dryRun(own([{ by: 'github-actions[bot]', state: 'success' }]))
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain(
+      'needs a success agent/pre-pass at head from maintainer or birdbrain-agent (it is missing)'
+    )
+  })
+
+  it('reads the newest trusted pre-pass, skipping newer ones from anyone else', () => {
     const failed = dryRun(
-      routes(rules, green, { author: 'maintainer', statuses: prePass('failure') })
+      own([
+        { by: 'github-actions[bot]', state: 'success' },
+        { by: 'birdbrain-agent', state: 'failure' },
+        { by: 'birdbrain-agent', state: 'success' }
+      ])
     )
     expect(failed.status).toBe(1)
-    expect(failed.stderr).toContain('needs a success agent/pre-pass at head (it is failure)')
-
-    const missing = dryRun(routes(rules, green, { author: 'maintainer' }))
-    expect(missing.status).toBe(1)
-    expect(missing.stderr).toContain('(it is missing)')
+    expect(failed.stderr).toContain('(it is failure)')
   })
 
-  it('does not use the bypass for a PR someone else authored', () => {
-    const result = dryRun(routes(rules, green, { statuses: prePass('success') }))
-    expect(result.status).toBe(0)
+  it('refuses with no pre-pass at all', () => {
+    const result = dryRun(own([]))
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('(it is missing)')
+  })
+
+  it("merges someone else's PR without --admin", () => {
+    const result = invoke(
+      routes(rules, green, { prePass: [{ by: 'birdbrain-agent', state: 'success' }] }),
+      []
+    )
     expect(result.stdout).not.toContain('admin bypass')
+    expect(mergeCall(result.calls)).toMatch(/^pr merge 7 --squash --match-head-commit /)
   })
 })

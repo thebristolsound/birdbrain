@@ -36,11 +36,16 @@ authenticates as the machine account.
 4. `evidence-affecting`, on the PR or an issue named on its `Closes` line: refused under
    `agh` (ADR-0005, ADR-0014); under `gh` it proceeds, because the maintainer running it is the
    human review. A label read that fails refuses the merge rather than reading as "no label."
-5. The maintainer's own PR: `main` requires an approving code-owner review, and GitHub does not
-   let the PR's author approve it. Under `gh`, when the PR's author is the `gh` login, the merge
-   takes the admin bypass (`--admin`), and only with a `success` `agent/pre-pass` status at
-   head; any other state refuses. Every other PR, agent and Dependabot included, merges without
-   the bypass and needs the maintainer's approval on GitHub first. `agh` never takes it.
+5. A PR the `gh` login authored: `main` requires an approving code-owner review, and GitHub does
+   not let a PR's author approve it. Under `gh`, when the PR's author is the `gh` login, the
+   merge takes the admin bypass (`--admin`), and only when the newest `agent/pre-pass` status
+   posted by the maintainer or the machine account is `success`; statuses from anyone else,
+   including the "Not an agent PR" pass `pre-pass-gate.yml` posts as `github-actions[bot]`,
+   do not count (the dispatcher's rule), and any other state refuses. An agent PR opened under
+   the maintainer's account is authored by the `gh` login and takes the bypass the same way.
+   A PR opened under any other account, the machine account's and Dependabot's included,
+   merges without the bypass and needs the maintainer's approval on GitHub first. `agh` never
+   takes it.
 
 The dispatcher's other conditions (a `success` pre-pass verdict on this sha, slot state, the
 blocking-tier path list) stay the dispatcher's to establish; the script reads the pre-pass only

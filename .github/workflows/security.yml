@@ -117,3 +117,24 @@ jobs:
             }
             console.log('OK: package.json is private — npm/pnpm publish is blocked by default');
           "
+
+  font-licences:
+    name: Font licence check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      # Fails when a tracked folder of .woff/.woff2/.ttf/.otf files has no licence
+      # file beside it (#1624). It lives here, not in ci.yml: ci.yml's `changes`
+      # job classes docs/ as non-code and skips lint, typecheck, test, build and
+      # e2e on a pull request that touches only docs/, and two of the committed
+      # font folders are under docs/. This workflow has no path filter.
+      - name: Every committed font folder carries its licence
+        run: node scripts/font-licence-check.mjs

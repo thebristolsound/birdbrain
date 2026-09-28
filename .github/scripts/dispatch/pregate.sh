@@ -44,8 +44,8 @@ me="${LOGIN:-}"
 # .claude/skills/dispatch/SKILL.md holds the same list, and claude.yml's
 # include_comments_by_actor a third copy under GraphQL names; change all three.
 # REST names the Copilot reviewer's inline comments `Copilot` and its reviews
-# `copilot-pull-request-reviewer[bot]`.
-maintainer='thebristolsound'
+# `copilot-pull-request-reviewer[bot]`. The maintainer's login is in lib.sh.
+maintainer="$MAINTAINER"
 review_bots='["coderabbitai[bot]","chatgpt-codex-connector[bot]","Copilot","copilot-pull-request-reviewer[bot]"]'
 # Every label this step reads, and whose adding (labeled) and removing
 # (unlabeled) count: m is the maintainer, p the pipeline. A label's trusted state
@@ -94,27 +94,16 @@ unless_red() {
 
 [ "$mode" = report ] && decide true "report mode always runs"
 
-# One array per page from --paginate; slurp and merge so a second page is not lost (#959).
-list() { gh api --paginate "$1" | jq -s 'add // []'; }
-
 # Whether login $1 is the maintainer or, inside the workflow, the pipeline.
 trusted_actor() { [ "$1" = "$maintainer" ] || { [ -n "$me" ] && [ "$1" = "$me" ]; }; }
 
 # The newest agent/pre-pass status on commit $1 that the maintainer or the
-# pipeline posted, as {state, desc, ignored}, where ignored lists every newer
-# status from anyone else. Anyone with push access can post a status, and a
-# workflow on any branch posts as github-actions[bot], so no other creator
-# counts; pre-pass-gate.yml's seed is one of those, and it is never a verdict.
-# The combined status names no creator; this list does, newest first. "Session
-# rules" in the skill states the same rule; change both.
+# pipeline posted, as {state, desc, at, ignored}, from trusted_statuses in lib.sh.
+# pre-pass-gate.yml's seed is posted by github-actions[bot], so it never counts;
+# it only ever meant "no verdict yet", which "absent" means too.
 trusted_prepass() {
-  list "repos/$R/commits/$1/statuses?per_page=100" \
-    | jq -c --arg owner "$maintainer" --arg me "$me" '
-      [.[] | select(.context == "agent/pre-pass")
-        | {state, desc: (.description // ""), by: (.creator.login // ""), at: .created_at}
-        | .trusted = (.by == $owner or ($me != "" and .by == $me))] as $all
-      | (([$all[] | .trusted] | index(true)) // ($all | length)) as $i
-      | {state: ($all[$i].state // "absent"), desc: ($all[$i].desc // ""), ignored: $all[:$i]}'
+  trusted_statuses "$R" "$1" "$me" \
+    | jq -c '.["agent/pre-pass"] // {state: "absent", desc: "", at: "", ignored: []}'
 }
 
 # The trusted state of every label in label_trust on issue or PR $1, from its

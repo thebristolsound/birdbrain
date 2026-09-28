@@ -813,7 +813,7 @@ describe('caseArchive import', () => {
   // must name that file. Left verbatim, it named the source case's file: on
   // this same install verify hashed the source's bytes, and elsewhere it found
   // nothing.
-  it("re-import points each capture at its own file, not the source case's", async () => {
+  it('re-import points each capture at its own file, not the source case\'s', async () => {
     const { newCaseId } = await importCaseArchive(archivePath)
     const imported = listCaptures(newCaseId).find((c) => c.url === taggedCaptureUrl)!
     expect(imported.id).not.toBe(mhtmlCaptureId)
@@ -830,9 +830,7 @@ describe('caseArchive import', () => {
   // collides and both tags merge by name. The imported note must carry the
   // same two tags, resolved to the LOCAL merged tag rows.
   it('carries note tags through import with note ids remapped and tags merged by name', async () => {
-    const before = getTagsForNote(plainNoteId)
-      .map((t) => t.name)
-      .sort()
+    const before = getTagsForNote(plainNoteId).map((t) => t.name).sort()
     expect(before).toEqual(['Analyst note', 'Evidence'])
 
     const { newCaseId } = await importCaseArchive(archivePath)

@@ -9,6 +9,8 @@ const SCRIPT = resolve(__dirname, '..', '.github', 'scripts', 'dispatch', 'prega
 const REPO = 'o/r'
 const PIPELINE = 'birdbrain-agent'
 const MAINTAINER = 'thebristolsound'
+// Any account outside the trust list, another write collaborator included.
+const COLLABORATOR = 'a-collaborator'
 const PR = 7
 const SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
 
@@ -39,15 +41,36 @@ const HEAD_AT = '2026-09-20T10:00:00Z'
 const VERDICT_AT = '2026-09-20T11:00:00Z'
 const PARKED_AT = '2026-09-20T11:05:00Z'
 
-const fixtures = ({ labels, comments }: { labels: string[]; comments: Comment[] }) => ({
+const user = ({ login, type = 'User' }: Comment) => ({ login, type })
+
+const fixtures = ({
+  labels,
+  comments,
+  reviewComments = [],
+  reviews = [],
+  state = 'failure',
+  author = PIPELINE
+}: {
+  labels: string[]
+  comments: Comment[]
+  reviewComments?: Comment[]
+  reviews?: Comment[]
+  state?: 'success' | 'failure'
+  author?: string
+}) => ({
   [`repos/${REPO}/issues?state=open&labels=agent-pr&per_page=100`]: [
     { number: PR, pull_request: {} }
   ],
   [`repos/${REPO}/issues?state=open&labels=agent-wip&per_page=100`]: [],
-  [`repos/${REPO}/pulls/${PR}`]: { head: { sha: SHA }, draft: true },
+  [`repos/${REPO}/pulls/${PR}`]: { head: { sha: SHA }, draft: true, user: { login: author } },
   [`repos/${REPO}/commits/${SHA}/status`]: {
     statuses: [
-      { context: 'agent/pre-pass', state: 'failure', description: '1 blocking: a false claim' }
+      {
+        context: 'agent/pre-pass',
+        state,
+        description:
+          state === 'failure' ? '1 blocking: a false claim' : 'Approved for human review.'
+      }
     ]
   },
   [`repos/${REPO}/commits/${SHA}`]: { commit: { committer: { date: HEAD_AT } } },
@@ -58,14 +81,18 @@ const fixtures = ({ labels, comments }: { labels: string[]; comments: Comment[] 
       ? [{ event: 'labeled', label: { name: 'awaiting-maintainer' }, created_at: PARKED_AT }]
       : [])
   ],
-  [`repos/${REPO}/issues/${PR}/comments?per_page=100`]: comments.map(
-    ({ login, at, type = 'User' }) => ({
-      user: { login, type },
-      created_at: at
-    })
-  ),
-  [`repos/${REPO}/pulls/${PR}/comments?per_page=100`]: [],
-  [`repos/${REPO}/pulls/${PR}/reviews?per_page=100`]: []
+  [`repos/${REPO}/issues/${PR}/comments?per_page=100`]: comments.map((c) => ({
+    user: user(c),
+    created_at: c.at
+  })),
+  [`repos/${REPO}/pulls/${PR}/comments?per_page=100`]: reviewComments.map((c) => ({
+    user: user(c),
+    created_at: c.at
+  })),
+  [`repos/${REPO}/pulls/${PR}/reviews?per_page=100`]: reviews.map((c) => ({
+    user: user(c),
+    submitted_at: c.at
+  }))
 })
 
 let dir: string
@@ -148,7 +175,7 @@ describe.skipIf(!HAS_JQ)('pregate.sh on a PR parked for the maintainer', () => {
     expect(result.outputs.run).toBe('false')
   })
 
-  it('runs for a parked PR once someone other than the pipeline comments after the label', () => {
+  it('runs for a parked PR once the maintainer comments after the label', () => {
     const humanAt = '2026-09-21T08:00:00Z'
     const result = run(
       fixtures({
@@ -179,4 +206,105 @@ describe.skipIf(!HAS_JQ)('pregate.sh on a PR parked for the maintainer', () => {
       reason: `PR #${PR} has activity at ${VERDICT_AT} newer than its head (${HEAD_AT})`
     })
   })
+
+  it('keeps a parked PR skipped when another collaborator comments after the label', () => {
+    const at = '2026-09-21T08:00:00Z'
+    const result = run(fixtures({ labels: PARKED, comments: [{ login: COLLABORATOR, at }] }))
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.outputs.run).toBe('false')
+    expect(result.summary).toContain(
+      `PR #${PR} has activity from outside the trust list, not counted: ${COLLABORATOR} at ${at}`
+    )
+  })
+})
+
+// The spend ruling on #1310: only the maintainer, the pipeline and, on a PR the
+// pipeline opened, the named review bots may start a cycle.
+const AFTER_HEAD = '2026-09-20T12:00:00Z'
+const UNPARKED = ['agent-pr', 'agent-authored']
+const IDLE = 'the slot is held and no open agent PR needs the routine'
+const RAN = `PR #${PR} has activity at ${AFTER_HEAD} newer than its head (${HEAD_AT})`
+
+type Surface = 'comments' | 'reviewComments' | 'reviews'
+
+// Each bot where it posts: REST shows the Copilot reviewer's inline comments as `Copilot`.
+const REVIEW_BOTS: [string, Surface][] = [
+  ['coderabbitai[bot]', 'comments'],
+  ['chatgpt-codex-connector[bot]', 'reviews'],
+  ['Copilot', 'reviewComments'],
+  ['copilot-pull-request-reviewer[bot]', 'reviews']
+]
+
+// One bot entry after the head, on the one surface the bot posts to.
+const botActivity = (login: string, surface: Surface) => {
+  const entry: Comment[] = [{ login, at: AFTER_HEAD, type: 'Bot' }]
+  return {
+    comments: surface === 'comments' ? entry : [],
+    reviewComments: surface === 'reviewComments' ? entry : [],
+    reviews: surface === 'reviews' ? entry : []
+  }
+}
+
+describe.skipIf(!HAS_JQ)('pregate.sh trust list', () => {
+  it('does not run for a comment from outside the trust list, and names it', () => {
+    const before = '2026-09-20T09:00:00Z'
+    const result = run(
+      fixtures({
+        labels: UNPARKED,
+        state: 'success',
+        comments: [
+          { login: COLLABORATOR, at: before },
+          { login: COLLABORATOR, at: AFTER_HEAD }
+        ]
+      })
+    )
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+    expect(result.summary).toContain(
+      `PR #${PR} has activity from outside the trust list, not counted: ${COLLABORATOR} at ${AFTER_HEAD}\n`
+    )
+  })
+
+  it('does not count an untrusted comment on a failure verdict either', () => {
+    const result = run(
+      fixtures({ labels: UNPARKED, comments: [{ login: COLLABORATOR, at: AFTER_HEAD }] })
+    )
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+  })
+
+  it('runs for the maintainer', () => {
+    const result = run(
+      fixtures({
+        labels: UNPARKED,
+        state: 'success',
+        comments: [{ login: MAINTAINER, at: AFTER_HEAD }]
+      })
+    )
+    expect(result.outputs).toEqual({ run: 'true', reason: RAN })
+    expect(result.summary).not.toContain('outside the trust list')
+  })
+
+  it.each(REVIEW_BOTS)('runs for %s on a PR the pipeline opened', (login, surface) => {
+    const result = run(
+      fixtures({ labels: UNPARKED, state: 'success', ...botActivity(login, surface) })
+    )
+    expect(result.outputs).toEqual({ run: 'true', reason: RAN })
+  })
+
+  it.each(REVIEW_BOTS)(
+    'does not run for %s on a PR the pipeline did not open',
+    (login, surface) => {
+      const result = run(
+        fixtures({
+          labels: UNPARKED,
+          state: 'success',
+          author: MAINTAINER,
+          ...botActivity(login, surface)
+        })
+      )
+      expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+      expect(result.summary).toContain(`not counted: ${login} at ${AFTER_HEAD}`)
+    }
+  )
 })

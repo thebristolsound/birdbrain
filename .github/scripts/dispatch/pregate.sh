@@ -6,7 +6,8 @@
 # the cheap version of the skill's sections 1 to 3 first and skips the rest when
 # every answer is "nothing". It never writes. It is deliberately conservative:
 # any doubt reads as "run", because a missed cycle costs an hour and a spurious
-# one costs minutes.
+# one costs minutes. Who counts is the exception: activity from an account
+# outside the trust list below never starts a cycle, however recent (#1310).
 #
 # The conservative default is not enough on its own, because three of the
 # answers here can be wrong in the direction that never runs. A stale claim is
@@ -27,9 +28,17 @@ R="${GITHUB_REPOSITORY:-thebristolsound/birdbrain}"
 mode="${1:-cycle}"
 out="${GITHUB_OUTPUT:-/dev/stdout}"
 summary="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
-# Empty when this step runs outside the workflow; an empty login matches no
-# author, so the pipeline filter below degrades to the unfiltered behaviour.
+# Empty when this step runs outside the workflow. Then nothing counts as the
+# pipeline's own, so neither its comments nor the review bots' start a cycle.
 me="${LOGIN:-}"
+# The trust list, from the spend ruling on #1310: the maintainer, the pipeline
+# itself, and the named review bots on a PR the pipeline opened. Everyone else,
+# other collaborators included, is untrusted. "Session rules" in
+# .claude/skills/dispatch/SKILL.md holds the same list; change both together.
+# REST names the Copilot reviewer's inline comments `Copilot` and its reviews
+# `copilot-pull-request-reviewer[bot]`.
+maintainer='thebristolsound'
+review_bots='["coderabbitai[bot]","chatgpt-codex-connector[bot]","Copilot","copilot-pull-request-reviewer[bot]"]'
 # One slot, and only hand-picked work fills it (ADR-0028). Keep both in step with
 # sections 1 and 3 of .claude/skills/dispatch/SKILL.md.
 capacity=1
@@ -64,19 +73,41 @@ labelled_at() {
     | jq -s -r --arg label "${2:-agent-wip}" 'add // [] | [.[] | select(.event == "labeled" and .label.name == $label) | .created_at] | max // empty'
 }
 
-# Newest comment, review comment or review on a PR, ignoring $2's authorship,
-# and bot accounts too when $3 is "humans".
-newest_activity() {
-  local keep='.user.login != $me and ($who != "humans"
-    or (.user.type != "Bot" and (.user.login | endswith("[bot]") | not)))'
+# Every comment, review comment and review on PR $1 as {login, at, trusted}.
+# $2 is the PR's author: the review bots are trusted only when it is the pipeline.
+activity() {
+  local bots='[]'
+  if [ -n "$me" ] && [ "$2" = "$me" ]; then bots="$review_bots"; fi
   {
     gh api --paginate "repos/$R/issues/$1/comments?per_page=100" \
-      | jq -r --arg me "$2" --arg who "${3:-}" ".[] | select($keep) | .created_at"
+      | jq -c '.[] | {login: .user.login, at: .created_at}'
     gh api --paginate "repos/$R/pulls/$1/comments?per_page=100" \
-      | jq -r --arg me "$2" --arg who "${3:-}" ".[] | select($keep) | .created_at"
+      | jq -c '.[] | {login: .user.login, at: .created_at}'
     gh api --paginate "repos/$R/pulls/$1/reviews?per_page=100" \
-      | jq -r --arg me "$2" --arg who "${3:-}" ".[] | select($keep) | .submitted_at // empty"
-  } | sort | tail -1
+      | jq -c '.[] | select(.submitted_at) | {login: .user.login, at: .submitted_at}'
+  } | jq -s -c --arg owner "$maintainer" --arg me "$me" --argjson bots "$bots" \
+    'map(.login as $l
+      | .trusted = ($l == $owner or ($me != "" and $l == $me) or any($bots[]; . == $l)))'
+}
+
+# The newest trusted timestamp in activity $1. $2 narrows it: "others" leaves
+# out the pipeline's own activity, "maintainer" keeps only his.
+newest_trusted() {
+  jq -r --arg owner "$maintainer" --arg me "$me" --arg scope "$2" \
+    '.[] | select(.trusted)
+      | select(if $scope == "maintainer" then .login == $owner
+               elif $scope == "others" then .login != $me
+               else true end)
+      | .at' <<<"$1" | sort | tail -1
+}
+
+# Name untrusted activity in $2 on PR $1 newer than $3. It is reported, never counted.
+report_untrusted() {
+  jq -r --arg pr "$1" --arg after "$3" \
+    '[.[] | select((.trusted | not) and .at > $after) | "\(.login) at \(.at)"]
+      | select(length > 0)
+      | "PR #\($pr) has activity from outside the trust list, not counted: \(join(", "))"' \
+    <<<"$2" >> "$summary"
 }
 
 prs="$(list "repos/$R/issues?state=open&labels=agent-pr&per_page=100" | jq '[.[] | select(.pull_request) | .number]')"
@@ -121,6 +152,7 @@ for n in $(jq -r '.[]' <<<"$prs"); do
   pr="$(gh api "repos/$R/pulls/$n")"
   sha="$(jq -r .head.sha <<<"$pr")"
   draft="$(jq -r .draft <<<"$pr")"
+  author="$(jq -r '.user.login // empty' <<<"$pr")"
   st="$(gh api "repos/$R/commits/$sha/status" \
     --jq '[.statuses[] | select(.context=="agent/pre-pass")][0] // {}
           | "\(.state // "absent")\t\(.description // "")"')"
@@ -139,16 +171,18 @@ for n in $(jq -r '.[]' <<<"$prs"); do
     *) unless_red "PR #$n head ${sha:0:8} has agent/pre-pass=$state; a verdict is owed" ;;
   esac
   labels="$(gh api "repos/$R/issues/$n/labels" --jq '[.[].name]')"
-  # A PR the skill parked for the maintainer moves only when a person other than
-  # the pipeline acts on it. Bots are ignored too: marking a PR ready wakes
-  # CodeRabbit, whose summary would otherwise un-park it. Without this, the failure-verdict rule below reads
+  items="$(activity "$n" "$author")"
+  # A PR the skill parked for the maintainer moves only when he acts on it. The
+  # bots are ignored too: marking a PR ready wakes CodeRabbit, whose summary
+  # would otherwise un-park it. Without this, the failure-verdict rule below reads
   # the pipeline's own verdict comment as activity and runs a full cycle every
   # fire (#1460). A parked PR with no surviving label event falls through to the
   # unlabelled rules.
   if jq -e --arg l "$AWAITING_MAINTAINER_LABEL" 'index($l)' <<<"$labels" >/dev/null; then
     parked_at="$(labelled_at "$n" "$AWAITING_MAINTAINER_LABEL")"
     if [ -n "$parked_at" ]; then
-      newest="$(newest_activity "$n" "$me" humans)"
+      report_untrusted "$n" "$items" "$parked_at"
+      newest="$(newest_trusted "$items" maintainer)"
       if [ -n "$newest" ] && [[ "$newest" > "$parked_at" ]]; then
         decide true "PR #$n is parked for the maintainer and has activity at $newest newer than the label ($parked_at)"
       fi
@@ -157,16 +191,17 @@ for n in $(jq -r '.[]' <<<"$prs"); do
     fi
   fi
   head_at="$(gh api "repos/$R/commits/$sha" --jq .commit.committer.date)"
+  report_untrusted "$n" "$items" "$head_at"
   # On a success verdict the pipeline's own comment is necessarily newer than
   # the head, and the skill classifies pipeline-authored activity as
   # non-actionable. Counting it would run a full cycle every fire against an
   # evidence PR that is only waiting on a human, which cannot auto-merge and so
-  # never stops. On a failure verdict the fix round is still owed, so nothing is
-  # filtered there.
+  # never stops. On a failure verdict the fix round is still owed, so the
+  # pipeline's own verdict counts there.
   if [ "$state" = success ]; then
-    newest="$(newest_activity "$n" "$me")"
+    newest="$(newest_trusted "$items" others)"
   else
-    newest="$(newest_activity "$n" "")"
+    newest="$(newest_trusted "$items" all)"
   fi
   if [ -n "$newest" ] && [[ "$newest" > "$head_at" ]]; then
     decide true "PR #$n has activity at $newest newer than its head ($head_at)"

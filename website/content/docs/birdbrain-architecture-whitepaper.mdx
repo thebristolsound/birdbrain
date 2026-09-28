@@ -447,9 +447,7 @@ random per-install token, schemas constrain request shape, and size limits bound
 individual uploads. The server-token file is local to the application data
 directory; failure to persist it degrades to an in-memory token rather than a
 fixed credential. Birdbrain stores the token as plain text protected by OS file
-permissions and does not wrap it with Electron `safeStorage`, because any
-process that can read the file can already read the database beside it and,
-unless the Operator configures another storage directory, the Captures.
+permissions and does not wrap it with Electron `safeStorage`.
 
 ### Authentication and authorization
 

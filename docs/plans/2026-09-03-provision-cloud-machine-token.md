@@ -4,9 +4,9 @@ One-time dashboard step only you can do. The dispatch routine now checks for the
 variables at the top of every fire and exits in seconds until they exist.
 
 1. Open <https://claude.ai/settings/environments> (or Claude Code web -> Environments)
-   and edit the environment named "Default Full" (id `env_011CUoNBMcLVLkWUD3KQBFts`).
-2. Add three environment variables. The values are in `~/.config/birdbrain-agent/env`
-   on this machine (open it with `cat`, not printed here on purpose):
+   and edit the "Default Full" environment.
+2. Add three environment variables. The values are in the machine account's credential
+   file on this machine (open it with `cat`, not printed here on purpose):
    - `BIRDBRAIN_AGENT_GH_TOKEN` - the PAT value from that file
    - `BIRDBRAIN_AGENT_GH_LOGIN` - `birdbrain-agent`
    - `BIRDBRAIN_AGENT_GH_TOKEN_EXPIRES` - `2026-11-16`

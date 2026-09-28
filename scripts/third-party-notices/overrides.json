@@ -1,0 +1,65 @@
+{
+  "packages": {
+    "@electron-internal/extract-zip": {
+      "note": "The published package carries no licence file. This text is the LICENSE file its source repository (https://github.com/electron/extract-zip) added when the project moved from BSD-2-Clause to MIT.",
+      "texts": ["electron-extract-zip-LICENSE.txt"]
+    },
+    "@hono/zod-validator": {
+      "note": "Neither the published package nor its source repository (https://github.com/honojs/middleware) carries a licence file. The package declares the MIT License and names Yusuke Wada as its author; the standard MIT License text follows.",
+      "texts": ["MIT.txt"]
+    },
+    "@img/sharp-libvips-darwin-arm64": {
+      "note": "The package holds libvips and the libraries it is built with, and carries no licence file. Its README, reproduced here, lists each library and the licence it is used under. The GNU LGPL version 3, which covers libvips and several of those libraries, requires copies of the GNU GPL and LGPL texts; both follow.",
+      "packageFiles": ["README.md"],
+      "texts": ["LGPL-3.0.txt", "GPL-3.0.txt"]
+    },
+    "@img/sharp-libvips-darwin-x64": {
+      "note": "The package holds libvips and the libraries it is built with, and carries no licence file. Its README, reproduced here, lists each library and the licence it is used under. The GNU LGPL version 3, which covers libvips and several of those libraries, requires copies of the GNU GPL and LGPL texts; both follow.",
+      "packageFiles": ["README.md"],
+      "texts": ["LGPL-3.0.txt", "GPL-3.0.txt"]
+    },
+    "@img/sharp-libvips-linux-arm64": {
+      "note": "The package holds libvips and the libraries it is built with, and carries no licence file. Its README, reproduced here, lists each library and the licence it is used under. The GNU LGPL version 3, which covers libvips and several of those libraries, requires copies of the GNU GPL and LGPL texts; both follow.",
+      "packageFiles": ["README.md"],
+      "texts": ["LGPL-3.0.txt", "GPL-3.0.txt"]
+    },
+    "@img/sharp-libvips-linux-x64": {
+      "note": "The package holds libvips and the libraries it is built with, and carries no licence file. Its README, reproduced here, lists each library and the licence it is used under. The GNU LGPL version 3, which covers libvips and several of those libraries, requires copies of the GNU GPL and LGPL texts; both follow.",
+      "packageFiles": ["README.md"],
+      "texts": ["LGPL-3.0.txt", "GPL-3.0.txt"]
+    },
+    "@img/sharp-win32-arm64": {
+      "note": "The package declares Apache-2.0 AND LGPL-3.0-or-later, and its licence file carries only the Apache-2.0 text. It also holds libvips and the libraries it is built with; its README, reproduced here, lists each library and the licence it is used under. The GNU LGPL version 3 requires copies of the GNU GPL and LGPL texts; both follow.",
+      "append": true,
+      "packageFiles": ["README.md"],
+      "texts": ["LGPL-3.0.txt", "GPL-3.0.txt"]
+    },
+    "@img/sharp-win32-x64": {
+      "note": "The package declares Apache-2.0 AND LGPL-3.0-or-later, and its licence file carries only the Apache-2.0 text. It also holds libvips and the libraries it is built with; its README, reproduced here, lists each library and the licence it is used under. The GNU LGPL version 3 requires copies of the GNU GPL and LGPL texts; both follow.",
+      "append": true,
+      "packageFiles": ["README.md"],
+      "texts": ["LGPL-3.0.txt", "GPL-3.0.txt"]
+    },
+    "boolbase": {
+      "note": "The published package carries no licence file. This text is the LICENSE file from its source repository (https://github.com/fb55/boolbase), without the email address that follows the author's name in the copyright line.",
+      "texts": ["boolbase-LICENSE.txt"]
+    },
+    "lazy-val": {
+      "note": "Neither the published package nor its source repository (https://github.com/develar/lazy-val) carries a licence file. The package declares the MIT License and names Vladimir Krivosheev as its author; the standard MIT License text follows.",
+      "texts": ["MIT.txt"]
+    },
+    "react-remove-scroll-bar": {
+      "note": "The published package carries no licence file. This text is the LICENSE file from its source repository (https://github.com/theKashey/react-remove-scroll-bar), without the email address that follows the author's name in the copyright line.",
+      "texts": ["react-remove-scroll-bar-LICENSE.txt"]
+    }
+  },
+  "vendored": [
+    {
+      "name": "shadcn/ui",
+      "license": "MIT",
+      "homepage": "https://ui.shadcn.com",
+      "note": "The shared user interface components in the Birdbrain source (src/renderer/components/ui) include code derived from shadcn/ui. This text is the LICENSE.md file from the shadcn/ui repository (https://github.com/shadcn-ui/ui).",
+      "texts": ["shadcn-ui-LICENSE.txt"]
+    }
+  ]
+}

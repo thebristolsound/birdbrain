@@ -1,0 +1,10 @@
+Birdbrain browser extension: third-party notices
+
+This extension includes the Inter typeface.
+
+Inter
+  File: fonts/inter-latin-wght-normal.woff2, the Latin subset of the Inter
+  variable font as packaged by Fontsource (@fontsource-variable/inter)
+  Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter)
+  Licensed under the SIL Open Font License, Version 1.1. The licence text is
+  in fonts/OFL.txt.

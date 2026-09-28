@@ -14,6 +14,12 @@
 #      job did not succeed. Remove the label and say why. On a successful job the
 #      routine's own give-up or PR-open path owns this label, so leave it.
 #
+# Each read counts only what the maintainer or the pipeline wrote (#1310): the
+# newest trusted agent/pre-pass status, a claim or release comment either of
+# them posted, and an agent-wip either of them applied. A write from anyone
+# else must not turn into one this step makes as the machine account, which
+# the pre-gate would then count.
+#
 # Env: GH_TOKEN (machine token), STARTED, LOGIN, JOB_STATUS, RUN_URL.
 set -euo pipefail
 
@@ -36,8 +42,8 @@ for n in $prs; do
   sha="$(jq -r .head.sha <<<"$pr")"
 
   # 1. Pending status this run posted.
-  st="$(gh api "repos/$R/commits/$sha/status" \
-    --jq '[.statuses[] | select(.context=="agent/pre-pass")][0] // {} | "\(.state)\t\(.description)\t\(.updated_at)"')"
+  st="$(trusted_statuses "$R" "$sha" "$LOGIN" \
+    | jq -r '.["agent/pre-pass"] // {} | "\(.state)\t\(.desc)\t\(.at)"')"
   IFS=$'\t' read -r state desc updated <<<"$st"
   if [ "$state" = pending ] && [ "$desc" = "$PENDING_TEXT" ] && [[ "$updated" > "$STARTED" ]]; then
     gh api "repos/$R/statuses/$sha" -f state=failure -f context='agent/pre-pass' \
@@ -54,8 +60,9 @@ for n in $prs; do
     '[.[] | select(.user.login == $login and .created_at >= $since)
           | select(.body | startswith("Cycle claim: PR #" + $pr))] | last | .created_at // empty' <<<"$comments")"
   [ -n "$claim" ] || continue
-  released="$(jq -r --arg after "$claim" --arg pr "$n" \
-    '[.[] | select(.created_at > $after) | select(.body | startswith("Cycle release: PR #" + $pr))] | length' <<<"$comments")"
+  released="$(jq -r --arg after "$claim" --arg pr "$n" --arg owner "$MAINTAINER" --arg me "$LOGIN" \
+    '[.[] | select(.user.login == $owner or .user.login == $me) | select(.created_at > $after)
+          | select(.body | startswith("Cycle release: PR #" + $pr))] | length' <<<"$comments")"
   if [ "$released" -eq 0 ]; then
     printf 'Cycle release: PR #%s\nReleased by the dispatch run cleanup step; the run ended (%s) before the cycle did. %s\n' \
       "$n" "$job_status" "$run_url" > .dispatch-release.md
@@ -70,7 +77,9 @@ if [ "$job_status" != success ]; then
   for n in $(gh api --paginate "repos/$R/issues?state=open&labels=agent-wip&per_page=100" \
       | jq -s -r 'add // [] | .[] | select(.pull_request | not) | .number'); do
     labelled_at="$(gh api --paginate "repos/$R/issues/$n/events?per_page=100" \
-      | jq -s -r 'add // [] | [.[] | select(.event == "labeled" and .label.name == "agent-wip") | .created_at] | max // empty')"
+      | jq -s -r --arg owner "$MAINTAINER" --arg me "$LOGIN" 'add // []
+        | [.[] | select(.event == "labeled" and .label.name == "agent-wip")
+            | select(.actor.login == $owner or .actor.login == $me) | .created_at] | max // empty')"
     if [ -n "$labelled_at" ] && [[ "$labelled_at" > "$STARTED" ]]; then
       printf 'Claim cleared: the dispatch run that took it ended (%s) before opening a PR. %s\n' \
         "$job_status" "$run_url" > .dispatch-clear.md

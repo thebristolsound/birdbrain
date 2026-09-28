@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Birdbrain is beta software. Only the [latest release](https://github.com/thebristolsound/birdbrain/releases/latest) is supported; older versions do not receive fixes.
+Birdbrain is beta software. Only the [latest release](https://github.com/thebristolsound/birdbrain-releases/releases/latest) is supported; older versions do not receive fixes.
 
 ## Reporting a vulnerability
 

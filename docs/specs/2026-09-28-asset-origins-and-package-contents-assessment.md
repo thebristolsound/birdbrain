@@ -448,8 +448,9 @@ The classes:
 Terms: shadcn/ui is under the MIT licence, copyright (c) 2023 shadcn
 (`gh api repos/shadcn-ui/ui/license`). The two copied files carry no notice, and the repository
 holds no copy of shadcn/ui's licence. The maintainer's ruling on #1364 calls for one shadcn/ui
-entry, with its MIT text, in a licence notice shipped with the packaged app; that notice would not
-reach the source repository.
+entry, with its MIT text, in a licence notice shipped with the packaged app. PR #1630, which
+implements that ruling, would also commit that MIT text to the repository, under
+`scripts/third-party-notices/texts/`.
 
 ## What the built packages contain
 
@@ -1221,12 +1222,12 @@ Unresolved. Replacing or removing material is #265's criterion 5, which is the m
    terms.
 3. **Screenshots of third-party products.** `pasted-1785980228073-0.png` shows Autopsy 3.0.0b3 and
    `pasted-1786142913073-0.png` shows Hunchly 2.0.
-4. **Copied code without its notice.** `skeleton.tsx` and `tabs.tsx` (MIT, shadcn/ui); the three
-   auto-archiver fixtures (MIT, Bellingcat; the fixture README names the licence, and the
-   repository does not carry its text); the React 18.3.1 bundles in the three packed pages (MIT,
-   header only); and `_ds_bundle.js` (`motion`, `class-variance-authority` under Apache-2.0,
-   `clsx`, `tailwind-merge`, and Radix, with no licence text). The Tailwind CSS style sheets keep
-   Tailwind's one-line header in each copy.
+4. **Copied code without its notice.** `skeleton.tsx` and `tabs.tsx` (MIT, shadcn/ui, whose text
+   PR #1630 would commit); the three auto-archiver fixtures (MIT, Bellingcat; the fixture README
+   names the licence, and the repository does not carry its text); the React 18.3.1 bundles in the
+   three packed pages (MIT, header only); and `_ds_bundle.js` (`motion`, `class-variance-authority`
+   under Apache-2.0, `clsx`, `tailwind-merge`, and Radix, with no licence text). The Tailwind CSS
+   style sheets keep Tailwind's one-line header in each copy.
 5. **Fonts packed in the three standalone pages.** Four OFL-1.1 fonts in each, and no licence text
    in any of them. The font licence check looks at font files, not at fonts packed into a page.
 6. **The design tool's runtime.** `support.js`, eight copies, and its packed copies in the three

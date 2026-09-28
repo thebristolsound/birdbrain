@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# redact(): copies stdin to stdout, cutting any value that starts with one of the
-# six prefixes in the pattern back to the prefix. Sourcing this file defines the
-# function and does nothing else, so a test can load it without running a
-# dispatch cycle.
+# redact(): copies stdin to stdout, keeping the prefix of any value that starts
+# with one of the six prefixes in the pattern and replacing the rest of the value
+# with <REDACTED>. Sourcing this file defines the function and does nothing else,
+# so a test can load it without running a dispatch cycle.
 #
 # An API error can quote the credential it was sent: a malformed
 # CLAUDE_CODE_OAUTH_TOKEN came back inside the error message, and because the

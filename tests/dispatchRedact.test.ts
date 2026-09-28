@@ -24,7 +24,7 @@ const redact = (input: string) =>
   spawnSync('bash', ['-c', '. "$1" && redact', 'redact-test', LIB], { encoding: 'utf8', input })
 
 describe('dispatch redact.sh', () => {
-  it('cuts a value bearing each of the six prefixes back to the prefix', () => {
+  it('keeps each of the six prefixes and replaces the rest of the value', () => {
     const line = (credential: string) => `API error: ${credential} was rejected\n`
 
     const { status, stdout, stderr } = redact(CREDENTIALS.map(({ value }) => line(value)).join(''))

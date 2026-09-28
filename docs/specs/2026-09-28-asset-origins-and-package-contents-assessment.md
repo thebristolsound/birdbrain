@@ -353,9 +353,9 @@ These sit outside the HTML list the acceptance criterion names, and are the same
   `motion` 12.42.2 (with `framer-motion` 12.42.2, `motion-dom` 12.42.2, and `motion-utils`
   12.39.0), `class-variance-authority` 0.7.1, `clsx` 2.1.1, `tailwind-merge` 3.6.0, `radix-ui`
   1.6.1, and 14 `@radix-ui` packages, among them `@radix-ui/react-tabs` 1.1.16. The bundle carries
-  no licence text. At the versions installed in this repository, which are the same packages at
-  newer versions, the `license` field of each reads MIT, except that of
-  `class-variance-authority`, which reads Apache-2.0.
+  no licence text. At the versions installed in this repository, the bundle's own for
+  `class-variance-authority` and `clsx` and newer for the other 20 packages, the `license` field
+  of each reads MIT, except that of `class-variance-authority`, which reads Apache-2.0.
 - **`_ds_bundle.css`**, two copies of one file, in both design exports: Tailwind CSS v4.3.2 output
   with the same one-line header as the packed pages.
 

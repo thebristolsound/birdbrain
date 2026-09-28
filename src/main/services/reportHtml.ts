@@ -134,6 +134,12 @@ export interface ExportSharedCaseExclusion {
   reason: string | null
   /** Set when the Owner of a Case this one was forked from wrote it. */
   sourceCaseId: string | null
+  /**
+   * Whether the Exhibit is in this export's scope. A selection export can
+   * leave an excluded Exhibit out like any other; the exclusion is still
+   * listed, and must not claim bytes the export does not carry.
+   */
+  inExport: boolean
 }
 
 /**
@@ -167,9 +173,10 @@ export function describeSharedCaseExclusion(exclusion: ExportSharedCaseExclusion
     : `Exhibit ${exclusion.exhibitId}`
   const owner = exclusion.sourceCaseId ? `the Owner of Case ${exclusion.sourceCaseId}` : 'the Owner'
   const why = exclusion.reason ? `: ${exclusion.reason}` : ''
+  const scope = exclusion.inExport ? '' : " (outside this export's selection, not enclosed)"
   return `${exhibit} was excluded by ${exclusion.excludedBy} (${owner}) at ${isoUtc(
     exclusion.excludedAt
-  )}, manifest entry #${exclusion.manifestIndex}${why}`
+  )}, manifest entry #${exclusion.manifestIndex}${why}${scope}`
 }
 
 /**
@@ -2258,12 +2265,14 @@ function sharedCaseBlock(shared: ExportSharedCase, packaged: boolean): string {
         )}`
     )
     .join('')
+  const inScope = shared.exclusions.every((exclusion) => exclusion.inExport)
+  const kept = packaged ? 'is still enclosed with its bytes and its hash' : 'is still reported'
   const exclusions =
     shared.exclusions.length > 0
       ? `<p>The Owner excluded ${shared.exclusions.length} exhibit${
           shared.exclusions.length === 1 ? '' : 's'
         }. ${
-          packaged ? 'Each is still enclosed with its bytes and its hash' : 'Each is still reported'
+          inScope ? `Each ${kept}` : `Each one in this export's selection ${kept}`
         }; the exclusion is recorded in the signed chain and listed here, not applied by
     leaving the exhibit out.</p>${list(shared.exclusions.map(describeSharedCaseExclusion))}`
       : ''

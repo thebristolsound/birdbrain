@@ -660,7 +660,11 @@ function sharedCaseFields(shared: ExportSharedCase): string {
           : 'One member: the certifier below'
       }</div></div>
     ${lineage.join('')}
-    <div class="field wide"><div class="field-label">Exclusions (enclosed, not omitted)</div>
+    <div class="field wide"><div class="field-label">${
+      shared.exclusions.every((exclusion) => exclusion.inExport)
+        ? 'Exclusions (enclosed, not omitted)'
+        : "Exclusions (those in this export's selection enclosed, not omitted)"
+    }</div>
       <div class="field-value">${
         shared.exclusions.length > 0
           ? lines(shared.exclusions.map(describeSharedCaseExclusion))

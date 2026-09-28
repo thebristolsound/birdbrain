@@ -285,7 +285,7 @@ describe('Shared Case export, import and fork (#1511)', () => {
     return { owner, local, ownerDoc, ownDoc }
   }
 
-  const options = (outputPath: string): ExportOptions => ({
+  const options = (outputPath: string, captureIds?: string[]): ExportOptions => ({
     format: 'zip',
     include: {
       captures: true,
@@ -295,13 +295,17 @@ describe('Shared Case export, import and fork (#1511)', () => {
       annotations: 'none'
     },
     exportClass: 'evidence',
-    outputPath
+    outputPath,
+    ...(captureIds ? { captureIds } : {})
   })
 
   // Exports the Case as an Evidence Package and unpacks it for the verifier.
-  async function exportPackage(id = caseId): Promise<{ dir: string; zip: Map<string, Buffer> }> {
+  async function exportPackage(
+    id = caseId,
+    captureIds?: string[]
+  ): Promise<{ dir: string; zip: Map<string, Buffer> }> {
     const out = join(tempDir, `${id}.zip`)
-    await generateReport(id, options(out), lifecycle)
+    await generateReport(id, options(out, captureIds), lifecycle)
     const zip = readStoredZip(readFileSync(out))
     const dir = join(tempDir, `${id}-unpacked`)
     for (const [name, bytes] of zip) {
@@ -339,6 +343,34 @@ describe('Shared Case export, import and fork (#1511)', () => {
       'RP'
     ])
     expect(evidence.sharedCase.manifestSchemaVersion).toBe(4)
+  })
+
+  it('does not claim an excluded Exhibit a selection export leaves out is enclosed', async () => {
+    const { ownDoc } = ownerReplica((owner, doc) => {
+      owner.append({
+        type: 'exclude',
+        caseId,
+        exhibitId: doc,
+        authorInstallationId: PEER_ID,
+        timestamp: '2026-09-27T11:30:00.000Z',
+        ...LOCAL(),
+        schemaVersion: 4
+      })
+    })
+    const { zip } = await exportPackage(caseId, [ownDoc])
+
+    const evidence = JSON.parse(zip.get('evidence.json')!.toString('utf-8'))
+    expect(evidence.exhibits.map((r: { id: string }) => r.id)).toEqual([ownDoc])
+    expect(evidence.sharedCase.exclusions.map((e: { inExport: boolean }) => e.inExport)).toEqual([
+      false
+    ])
+    const listed = "manifest entry #4 (outside this export's selection, not enclosed)"
+    const report = zip.get('report.html')!.toString('utf-8')
+    const certification = zip.get('certification.html')!.toString('utf-8')
+    expect(report).toContain(listed)
+    expect(report).toContain("Each one in this export's selection is still enclosed")
+    expect(certification).toContain(listed)
+    expect(certification).not.toContain('Exclusions (enclosed, not omitted)')
   })
 
   it("verifies another member's Exhibit against the chain its author signed", async () => {
@@ -435,7 +467,8 @@ describe('Shared Case export, import and fork (#1511)', () => {
         excludedAt: '2026-09-27T11:30:00.000Z',
         manifestIndex: 4,
         reason: 'outside the warrant',
-        sourceCaseId: null
+        sourceCaseId: null,
+        inExport: true
       }
     ])
     const listed =

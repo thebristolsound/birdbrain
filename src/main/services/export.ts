@@ -114,9 +114,13 @@ function exportSharedCaseMember(member: SharedCaseMember): ExportSharedCaseMembe
 /**
  * The Shared Case the export states, from the walk over the snapshot it
  * encloses. Null for a Case never shared or forked, which keeps its documents
- * and index exactly as they were before Shared Cases.
+ * and index exactly as they were before Shared Cases. `inExport` says which
+ * Exhibits the export's scope holds.
  */
-export function resolveExportSharedCase(sharedCase: SharedCaseSnapshot): ExportSharedCase | null {
+export function resolveExportSharedCase(
+  sharedCase: SharedCaseSnapshot,
+  inExport: (exhibitId: string) => boolean
+): ExportSharedCase | null {
   const verification = sharedCase.verification
   if (!verification) return null
   const citationByExhibitId = new Map(
@@ -138,7 +142,8 @@ export function resolveExportSharedCase(sharedCase: SharedCaseSnapshot): ExportS
       excludedAt: exclusion.timestamp,
       manifestIndex: exclusion.index,
       reason: exclusion.reason ?? null,
-      sourceCaseId: exclusion.sourceCaseId ?? null
+      sourceCaseId: exclusion.sourceCaseId ?? null,
+      inExport: inExport(exclusion.exhibitId)
     })),
     chainPaths: sharedCase.chains.map((chain) => chain.path)
   }
@@ -620,7 +625,8 @@ export async function generateReport(
   const sharedCase = readSharedCaseSnapshot(join(getStorageRoot(), caseId), manifest)
   const caseEntries = caseEntriesOf(manifest, sharedCase)
   data.manifestHead = manifest.head
-  data.sharedCase = resolveExportSharedCase(sharedCase)
+  const inScope = new Set([...captures.map((c) => c.id), ...scope.fileExhibits.map((e) => e.id)])
+  data.sharedCase = resolveExportSharedCase(sharedCase, (id) => inScope.has(id))
   // One reader for the whole export: it reads each enclosed non-Capture
   // Exhibit and each enclosed Derived File exactly once, classification reads
   // its outcome, and the zip builders consume the buffers it already holds. A

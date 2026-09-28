@@ -250,7 +250,8 @@ comments. Classify:
   next PR.
 - **Awaiting review** — no actionable feedback newer than the head commit, and section 2a does not
   apply. Report "#N awaiting human review" and move to the next PR. Do not nudge, rebase, or
-  re-run anything.
+  re-run anything. Never the class of a PR the maintainer has just woken, which is owed a
+  write ("Park a PR for the maintainer").
 - **Feedback to address** — review threads or PR comments newer than the head commit, from a
   trusted author other than the agent pipeline itself (the maintainer, or a named review bot
   on a PR the pipeline opened: "Session rules"), that no branch commit or agent reply has
@@ -374,11 +375,32 @@ wakes it, the maintainer's included, and a verdict owed on its head waits until 
 Never remove the label yourself. On a PR that has carried the label and no longer does, read who
 made the newest removal, as "Session rules" reads a label's actor:
 
-- **The maintainer removed it.** The PR is awake: classify it through section 2 like any other.
-- **Anyone else removed it**, the machine account included. The PR is still parked. Apply the
-  label again with the first `agh api` line above, read it back, name the removal in the
-  report, and do nothing else with the PR this cycle. The next fire finds the label and skips
-  the PR.
+- **Anyone else removed it**, the machine account included. The PR is still parked. The
+  pre-gate puts the label back itself and starts no cycle for it, so that no removal, however
+  often repeated, costs a session. If you find the PR in this state anyway (a removal after
+  the pre-gate ran), skip it, name the removal in the report, and leave the label to the next
+  fire's pre-gate.
+- **The maintainer removed it.** The PR is awake and owed exactly one cycle: the first after
+  his removal, which is the one that finds no comment of the pipeline's on the PR since then.
+  That cycle acts on what the PR was parked for, never classifies it "Awaiting review", and
+  ends with a write on the PR:
+  - **A `request changes` verdict on the head.** His removal authorises one more fix round:
+    take the cycle claim, hand the PR to the implementer (pointer, not paraphrase), then run
+    the pre-pass (section 4). If it still requests changes, park the PR again, as section 4's
+    one-fix-round stop does.
+  - **No verdict on the head.** Run the pre-pass (section 4). A head someone outside the trust
+    list pushed before his removal is reviewed too, since his removal is the maintainer's
+    activity after that push; one pushed after it is owed nothing.
+  - **Nothing left for the cycle to do,** or it cannot reach a verdict: an approved head that
+    section 2a cannot merge, a head pushed after his removal by someone outside the trust list,
+    a fix round the implementer gave up on. Park the PR again, as above, with a comment on the
+    PR saying why.
+
+  The verdict comment or that parking comment is the write. The pre-gate reads the pipeline's
+  first comment on the PR after his removal as that cycle done, and from then on counts none
+  of the pipeline's comments as activity: a later cycle needs newer activity from the
+  maintainer or a named review bot, a head owed a verdict, a review a run left unfinished, or a
+  merge section 2a may make.
 
 ## 2a. Auto-merge — the one merge you may perform
 

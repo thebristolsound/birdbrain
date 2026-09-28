@@ -9,11 +9,16 @@ on:
 # thebristolsound/birdbrain-releases (see #567) using RELEASES_REPO_TOKEN, so no job
 # needs write access to this repository at all — the token build/package code can
 # reach through GITHUB_TOKEN stays read-only.
+#
+# RELEASES_REPO_TOKEN belongs in the `paid-runs` environment, which admits the `v*` tag
+# this runs on, so every job that reads it names the environment (#1310; dispatch.yml has
+# the note). Unlike the other paid workflows, no job here checks who started the attempt.
 permissions:
   contents: read
 
 jobs:
   create-release:
+    environment: paid-runs
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -141,6 +146,7 @@ jobs:
 
   build-app:
     needs: create-release
+    environment: paid-runs
     strategy:
       fail-fast: false
       matrix:
@@ -217,6 +223,7 @@ jobs:
 
   build-extension:
     needs: create-release
+    environment: paid-runs
     runs-on: ubuntu-latest
 
     steps:

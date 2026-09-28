@@ -246,8 +246,8 @@ $ git ls-remote origin 'refs/pull/*/head' | wc -l
 A head that is not an ancestor of `main` is out of reach of any rewrite of
 `main`, and GitHub's commits endpoint still serves its author and committer
 metadata. Checked on a sample head at f1ab45ae, both fields carried a personal
-domain. There are 494 such head refs, each still readable through that endpoint
-after any rewrite of the branch.
+domain. Every one of the 494 head refs that is not an ancestor of `main` stays
+readable through that endpoint after any rewrite of the branch.
 
 **SECURITY.md publishes the domain the rewrite targets (#1360).** Line 12 of
 `SECURITY.md` on `origin/main` gives an address on the `@proton.me` domain as
@@ -522,9 +522,8 @@ rewrite twice does not make either half complete.
 
 **Rationale for the tracked files.** The figure of 14 files counts three
 different things, and separating them removes the case for rewriting any of
-them. Every match was classified on 2026-09-11 by comparing its local part
-against the single personal local part that appears in the repository's
-identity fields.
+them. Every match was classified on 2026-09-11 by comparing it against the
+maintainer's own addresses.
 
 - **Three files carry the maintainer's own address, all on `@proton.me`:**
   `SECURITY.md`, `docs/plans/2026-04-09-settings-enforcement.md` and
@@ -543,9 +542,8 @@ identity fields.
 
 **No tracked file at the tip contains a maintainer address on a domain the
 rewrite is scoped to remove.** The in-scope domains are `@protonmail.com` and
-`@gmail.com`; every occurrence of either in tracked content has a local part
-that does not match the maintainer's, and each was read in context and found to
-be synthetic. Rewriting blob content would therefore rewrite fixtures and demo
+`@gmail.com`; every occurrence of either in tracked content was read in context
+and found to be synthetic rather than a maintainer address. Rewriting blob content would therefore rewrite fixtures and demo
 data, at the cost of changing every descendant object identity, and would
 remediate nothing.
 
@@ -554,8 +552,8 @@ says nothing about whether any of them should be edited at the tip. That is an
 ordinary commit rather than a history rewrite, and it is available at any time
 without a freeze window.
 
-**Revisit trigger.** A match found in tracked content whose local part does
-match the maintainer's, on an in-scope domain. That would be a new fact rather
+**Revisit trigger.** A maintainer address on an in-scope domain found in
+tracked content. That would be a new fact rather
 than a re-weighing of this one, and it reopens the blob half of this ruling
 only.
 
@@ -587,8 +585,8 @@ that residue covers, and what the rewrite would cost.
   project's design reasoning lives."
 - **The rewrite changes provenance the project relies on.** Every commit id
   changes, so every id cited in docs, issues, and pull requests stops resolving.
-  The 22 tags move. The signatures on 890 commits (783 by GitHub on squash merges,
-  107 SSH-signed) are dropped, because a rewritten commit cannot keep its
+  The 22 tags move. The signatures on 890 commits (783 signed by GitHub on merges
+  made through the site, 107 SSH-signed) are dropped, because a rewritten commit cannot keep its
   signature. Decision 2's revisit trigger names corrupted provenance as grounds to
   reopen it.
 
@@ -611,9 +609,10 @@ more than a clean default clone.
 
 **Attribution.** The maintainer moves the `@protonmail.com` address from the
 machine account to his own account, so the commits that carry it are credited to
-him. The machine account keeps its commit email private, so squash merges of the
-pull requests it opens land under its no-reply address. The first such merge is
-read back to confirm it. The maintainer's own future commits stay on the
+him, and turns on the machine account's private-email setting. Until then, squash
+merges of the pull requests the machine account opens still carry
+`@protonmail.com`, as they did on 2026-09-27; afterwards they land under its
+no-reply address. The first such merge is read back to confirm it. The maintainer's own future commits stay on the
 `@proton.me` address `SECURITY.md` publishes.
 
 **Revisit trigger.** A concrete harm traced to the published addresses, such as
@@ -649,15 +648,14 @@ whenever a new advisory is published. Review-thread resolution is not required,
 because bot threads would block merges. While this ruleset holds, the dispatch
 routine cannot merge its own pull requests.
 
-**Revisit trigger.** A second maintainer, or a restart of the dispatch routine
-under ADR-0029.
-
 ### Rulings the cutover checks against
 
 - **Spend.** Anything that can cost the maintainer money runs only when he
   invokes it or on a schedule he set. Other collaborators, outside accounts and
   bots cannot start a paid run. #1310 carries the workflow and dispatch changes.
-- **Access.** One other collaborator keeps write access; the second drops to read.
+- **Access.** One other collaborator keeps write access. The second was removed on
+  2026-09-28, because GitHub offers no read-only collaborator level on a
+  repository owned by a personal account.
 - **Actions settings.** The default workflow token is read-only and cannot approve
   pull requests. Pull requests from forks get no write token and no secrets.
   Secret scanning and push protection are turned on at the flip. Allowed actions
@@ -675,7 +673,8 @@ under ADR-0029.
 - **Beta and cutover.** Neither waits on the other, and they never share a window.
 - **Flip window.** The public text saying the source is private changes in the
   same window as the flip. A collaborator without administrator rights files the harmless
-  vulnerability-report test, because an administrator cannot file one. The unused
+  vulnerability-report test, because GitHub directs administrators to draft an
+  advisory instead of filing a report. The unused
   doc-curator secret and variable are deleted, and the Copilot coding agent's
   firewall is turned back on.
 

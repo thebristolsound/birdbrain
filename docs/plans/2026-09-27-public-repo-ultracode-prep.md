@@ -266,7 +266,7 @@ the tags, 890 signatures, and the review record. What that removes from the plan
 
 What it adds: the spend rule (only the maintainer starts anything that can cost money), a
 hardened `main` ruleset with code-owner approval, a tag ruleset, the Actions baseline, one
-collaborator dropping to read, and the flip-window chores. Session 3 now carries #1310 under the
+collaborator removed, and the flip-window chores. Session 3 now carries #1310 under the
 spend rule, #1364, #1365, #1368, #1369 (after #1619 merges, because both edit `run.sh`), #1372
 with the `CODEOWNERS` file, and the two split tickets from #265 and #273.
 

@@ -9,9 +9,10 @@
 # one costs minutes. Who acted is the exception (#1310). None of these starts a
 # cycle, however recent, and each is named in the step summary instead: a
 # comment or review from outside the trust list below; a head anyone but the
-# maintainer or the pipeline pushed; an agent-pr or agent-wip label, or the
-# removal of awaiting-maintainer, by anyone but those two; and a ready-for-agent
-# or queued label anyone but the maintainer applied.
+# maintainer or the pipeline pushed; an agent-pr or agent-wip label anyone but
+# those two applied; and a ready-for-agent or queued label anyone but the
+# maintainer applied. A PR parked under awaiting-maintainer is skipped before
+# any of that is read; its one rule is at the parking check below.
 #
 # The conservative default is not enough on its own, because three of the
 # answers here can be wrong in the direction that never runs. A stale claim is
@@ -94,12 +95,6 @@ pushed_by() {
   list "repos/$R/activity?ref=refs/heads/$1&per_page=100" \
     | jq -r --arg sha "$2" '[.[] | select(.after == $sha)] | first // empty
         | "\(.timestamp)\t\(.actor.login // "")"'
-}
-
-# When label $2 (default agent-wip) was last applied, or empty when no such event survives.
-labelled_at() {
-  gh api --paginate "repos/$R/issues/$1/events?per_page=100" \
-    | jq -s -r --arg label "${2:-agent-wip}" 'add // [] | [.[] | select(.event == "labeled" and .label.name == $label) | .created_at] | max // empty'
 }
 
 # Every comment, review comment and review on PR $1 as {login, at, trusted}.
@@ -195,6 +190,23 @@ for n in $(jq -r '.[]' <<<"$prs"); do
     echo "PR #$n carries agent-pr from ${marked_by:-an unrecorded account}, outside the trust list; not worked" >> "$summary"
     continue
   fi
+  # Parking, per the maintainer's ruling of 2026-09-28 on #1310: while the label
+  # is on, nothing wakes the PR, whether a comment, a review or a push, his
+  # included, or a verdict owed on its head. Only his removal of the label wakes
+  # it. After anyone else removes it the PR is still parked and the cycle's one
+  # job is to apply the label again; the next fire then finds it and skips the PR.
+  # Reading nothing else here also keeps the pipeline's own verdict comment from
+  # counting as activity every fire (#1460).
+  labels="$(gh api "repos/$R/issues/$n/labels" --jq '[.[].name]')"
+  if jq -e --arg l "$AWAITING_MAINTAINER_LABEL" 'index($l)' <<<"$labels" >/dev/null; then
+    echo "PR #$n is parked for the maintainer; skipped until he removes $AWAITING_MAINTAINER_LABEL" >> "$summary"
+    continue
+  fi
+  removal="$(label_event "$n" "$AWAITING_MAINTAINER_LABEL" unlabeled)"
+  IFS=$'\t' read -r removed_at remover <<<"$removal"
+  if [ -n "$removed_at" ] && [ "$remover" != "$maintainer" ]; then
+    decide true "PR #$n is parked, but ${remover:-an unrecorded account} removed $AWAITING_MAINTAINER_LABEL at $removed_at; the cycle applies it again"
+  fi
   pr="$(gh api "repos/$R/pulls/$n")"
   sha="$(jq -r .head.sha <<<"$pr")"
   draft="$(jq -r .draft <<<"$pr")"
@@ -229,46 +241,7 @@ for n in $(jq -r '.[]' <<<"$prs"); do
       fi
       ;;
   esac
-  labels="$(gh api "repos/$R/issues/$n/labels" --jq '[.[].name]')"
   items="$(activity "$n" "$author")"
-  # A PR the skill parked for the maintainer moves only when he acts on it. The
-  # bots are ignored too: marking a PR ready wakes CodeRabbit, whose summary
-  # would otherwise un-park it. Without this, the failure-verdict rule below reads
-  # the pipeline's own verdict comment as activity and runs a full cycle every
-  # fire (#1460). A parked PR with no surviving label event falls through to the
-  # unlabelled rules. Removing the label un-parks the PR only when the maintainer
-  # or the pipeline removed it. After anyone else removes it, the skill has no
-  # label left to remove when the round resumes, so a head one of those two
-  # pushed after the label stands in for that removal. Without it, the
-  # maintainer's answer stays newer than the label and runs every fire.
-  parked_at=""
-  if jq -e --arg l "$AWAITING_MAINTAINER_LABEL" 'index($l)' <<<"$labels" >/dev/null; then
-    parked_at="$(labelled_at "$n" "$AWAITING_MAINTAINER_LABEL")"
-  else
-    removal="$(label_event "$n" "$AWAITING_MAINTAINER_LABEL" unlabeled)"
-    IFS=$'\t' read -r removed_at remover <<<"$removal"
-    if [ -n "$removed_at" ] && ! trusted_actor "$remover"; then
-      parked_at="$(labelled_at "$n" "$AWAITING_MAINTAINER_LABEL")"
-      push="$(pushed_by "$(jq -r .head.ref <<<"$pr")" "$sha")"
-      IFS=$'\t' read -r resumed_at resumed_by <<<"$push"
-      removed="PR #$n: ${remover:-an unrecorded account} removed $AWAITING_MAINTAINER_LABEL at $removed_at, outside the trust list"
-      if [ -n "$resumed_at" ] && trusted_actor "$resumed_by" && [[ "$resumed_at" > "$parked_at" ]]; then
-        echo "$removed; resumed by a push at $resumed_at" >> "$summary"
-        parked_at=""
-      else
-        echo "$removed; still parked" >> "$summary"
-      fi
-    fi
-  fi
-  if [ -n "$parked_at" ]; then
-    report_untrusted "$n" "$items" "$parked_at"
-    newest="$(newest_trusted "$items" maintainer)"
-    if [ -n "$newest" ] && [[ "$newest" > "$parked_at" ]]; then
-      decide true "PR #$n is parked for the maintainer and has activity at $newest newer than the label ($parked_at)"
-    fi
-    echo "PR #$n is parked for the maintainer since $parked_at with no activity after it; skipped" >> "$summary"
-    continue
-  fi
   head_at="$(gh api "repos/$R/commits/$sha" --jq .commit.committer.date)"
   report_untrusted "$n" "$items" "$head_at"
   if [ -n "$untrusted_head" ]; then

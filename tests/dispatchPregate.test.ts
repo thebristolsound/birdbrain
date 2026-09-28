@@ -42,8 +42,14 @@ const HEAD_AT = '2026-09-20T10:00:00Z'
 const VERDICT_AT = '2026-09-20T11:00:00Z'
 const PARKED_AT = '2026-09-20T11:05:00Z'
 const PUSHED_AT = '2026-09-20T10:01:00Z'
+const AFTER_WAKE = '2026-09-21T10:00:00Z'
+// The label and its removal in the reviewer's round 2 and round 3 reproductions on #1629.
+const REPRO_LABELLED = '2026-09-20T09:30:00Z'
+const REPRO_REMOVED = '2026-09-20T09:40:00Z'
+const OLD_SHA = '0123456789abcdef0123456789abcdef01234567'
 
-type LabelEvent = { event: 'labeled' | 'unlabeled'; label: string; by: string; at: string }
+type LabelEvent = { event: 'labeled' | 'unlabeled'; label: string; by: string | null; at: string }
+type Push = { after: string; by: string; at: string }
 
 const user = ({ login, type = 'User' }: Comment) => ({ login, type })
 
@@ -56,6 +62,8 @@ const fixtures = ({
   author = PIPELINE,
   agentPrBy = PIPELINE,
   pusher = PIPELINE,
+  pushes,
+  parkedAt = PARKED_AT,
   events = []
 }: {
   labels: string[]
@@ -66,6 +74,10 @@ const fixtures = ({
   author?: string
   agentPrBy?: string
   pusher?: string | null
+  // Every push on the branch, newest first; overrides pusher.
+  pushes?: Push[]
+  // When the pipeline applied awaiting-maintainer, if labels carries it.
+  parkedAt?: string
   events?: LabelEvent[]
 }) => ({
   [`repos/${REPO}/issues?state=open&labels=agent-pr&per_page=100`]: [
@@ -91,10 +103,14 @@ const fixtures = ({
           ]
   },
   // The repository activity API, newest first: the push that made the head.
-  [`repos/${REPO}/activity?ref=refs/heads/${BRANCH}&per_page=100`]:
-    pusher === null
-      ? []
-      : [{ activity_type: 'push', after: SHA, actor: { login: pusher }, timestamp: PUSHED_AT }],
+  [`repos/${REPO}/activity?ref=refs/heads/${BRANCH}&per_page=100`]: (
+    pushes ?? (pusher === null ? [] : [{ after: SHA, by: pusher, at: PUSHED_AT }])
+  ).map(({ after, by, at }) => ({
+    activity_type: 'push',
+    after,
+    actor: { login: by },
+    timestamp: at
+  })),
   [`repos/${REPO}/commits/${SHA}`]: { commit: { committer: { date: HEAD_AT } } },
   [`repos/${REPO}/issues/${PR}/labels`]: labels.map((name) => ({ name })),
   [`repos/${REPO}/issues/${PR}/events?per_page=100`]: [
@@ -110,14 +126,14 @@ const fixtures = ({
             event: 'labeled',
             label: { name: 'awaiting-maintainer' },
             actor: { login: PIPELINE },
-            created_at: PARKED_AT
+            created_at: parkedAt
           }
         ]
       : []),
     ...events.map(({ event, label, by, at }) => ({
       event,
       label: { name: label },
-      actor: { login: by },
+      actor: by === null ? null : { login: by },
       created_at: at
     }))
   ],
@@ -179,64 +195,93 @@ const run = (fixture: Record<string, unknown>) => {
 }
 
 const PARKED = ['agent-pr', 'agent-authored', 'awaiting-maintainer']
+const UNPARKED = ['agent-pr', 'agent-authored']
+const IDLE = 'the slot is held and no open agent PR needs the routine'
+const SKIPPED = `PR #${PR} is parked for the maintainer; skipped until he removes awaiting-maintainer`
+const LABEL_AFTER_PARK = '2026-09-21T08:00:00Z'
+const APPLIED_AGAIN_AT = '2026-09-21T09:00:00Z'
 
+type Args = Parameters<typeof fixtures>[0]
+
+// The state after the cycle puts back a label someone other than the maintainer removed.
+const applyAgain = (args: Args): Args => ({
+  ...args,
+  labels: [...args.labels, 'awaiting-maintainer'],
+  parkedAt: APPLIED_AGAIN_AT
+})
+
+const applyingAgain = (by: string | null, at = LABEL_AFTER_PARK) =>
+  `PR #${PR} is parked, but ${by ?? 'an unrecorded account'} removed awaiting-maintainer at ${at}; the cycle applies it again`
+
+// Fires the gate on a PR someone other than the maintainer unlabelled: one run to apply the
+// label again, then, with the label back, the skip on this fire and the next.
+const expectOneReapply = (args: Args, by: string | null, at = LABEL_AFTER_PARK) => {
+  const first = run(fixtures(args))
+  expect(first.status, first.stderr).toBe(0)
+  expect(first.outputs).toEqual({ run: 'true', reason: applyingAgain(by, at) })
+  for (let fire = 0; fire < 2; fire++) {
+    const next = run(fixtures(applyAgain(args)))
+    expect(next.status, next.stderr).toBe(0)
+    expect(next.outputs).toEqual({ run: 'false', reason: IDLE })
+    expect(next.summary).toContain(SKIPPED)
+  }
+}
+
+// The maintainer's ruling of 2026-09-28 on #1310: only his removal of the label wakes a
+// parked PR.
 describe.skipIf(!HAS_JQ)('pregate.sh on a PR parked for the maintainer', () => {
-  it('skips a parked PR whose only activity after the label is the pipeline', () => {
+  it.each([
+    ['the pipeline', PIPELINE, 'User'],
+    ['a review bot', 'coderabbitai[bot]', 'Bot'],
+    ['another collaborator', COLLABORATOR, 'User'],
+    ['the maintainer', MAINTAINER, 'User']
+  ] as const)('stays parked when %s comments after the label', (_, login, type) => {
     const result = run(
       fixtures({
         labels: PARKED,
         comments: [
-          { login: MAINTAINER, at: '2026-09-20T10:30:00Z' },
           { login: PIPELINE, at: VERDICT_AT },
-          { login: PIPELINE, at: '2026-09-20T12:00:00Z' }
+          { login, at: LABEL_AFTER_PARK, type }
         ]
       })
     )
     expect(result.status, result.stderr).toBe(0)
-    expect(result.outputs).toEqual({
-      run: 'false',
-      reason: 'the slot is held and no open agent PR needs the routine'
-    })
-    expect(result.summary).toContain(`PR #${PR} is parked for the maintainer since ${PARKED_AT}`)
+    expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+    expect(result.summary).toContain(SKIPPED)
   })
 
-  it('keeps a parked PR skipped when only a bot comments after the label', () => {
+  it('stays parked when the maintainer reviews after the label', () => {
     const result = run(
       fixtures({
         labels: PARKED,
-        comments: [
-          { login: PIPELINE, at: VERDICT_AT },
-          { login: 'coderabbitai[bot]', at: '2026-09-21T08:00:00Z', type: 'Bot' },
-          { login: 'chatgpt-codex-connector[bot]', at: '2026-09-21T09:00:00Z', type: 'Bot' }
-        ]
+        comments: [],
+        reviews: [{ login: MAINTAINER, at: LABEL_AFTER_PARK }]
       })
     )
     expect(result.status, result.stderr).toBe(0)
-    expect(result.outputs.run).toBe('false')
+    expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
   })
 
-  it('runs for a parked PR once the maintainer comments after the label', () => {
-    const humanAt = '2026-09-21T08:00:00Z'
-    const result = run(
-      fixtures({
-        labels: PARKED,
-        comments: [
-          { login: PIPELINE, at: VERDICT_AT },
-          { login: MAINTAINER, at: humanAt }
-        ]
-      })
-    )
-    expect(result.status, result.stderr).toBe(0)
-    expect(result.outputs).toEqual({
-      run: 'true',
-      reason: `PR #${PR} is parked for the maintainer and has activity at ${humanAt} newer than the label (${PARKED_AT})`
-    })
-  })
+  it.each([PIPELINE, MAINTAINER, COLLABORATOR])(
+    'owes no verdict on a parked PR while the label is on, whoever pushed (%s)',
+    (by) => {
+      const result = run(
+        fixtures({
+          labels: PARKED,
+          state: 'absent',
+          comments: [],
+          pushes: [{ after: SHA, by, at: LABEL_AFTER_PARK }]
+        })
+      )
+      expect(result.status, result.stderr).toBe(0)
+      expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+    }
+  )
 
   it('keeps the unlabelled failure-verdict rule: the pipeline verdict counts as activity', () => {
     const result = run(
       fixtures({
-        labels: ['agent-pr', 'agent-authored'],
+        labels: UNPARKED,
         comments: [{ login: PIPELINE, at: VERDICT_AT }]
       })
     )
@@ -247,22 +292,129 @@ describe.skipIf(!HAS_JQ)('pregate.sh on a PR parked for the maintainer', () => {
     })
   })
 
-  it('keeps a parked PR skipped when another collaborator comments after the label', () => {
-    const at = '2026-09-21T08:00:00Z'
-    const result = run(fixtures({ labels: PARKED, comments: [{ login: COLLABORATOR, at }] }))
+  // Parked by the pipeline, then unlabelled by `by`.
+  const removedBy = (by: string | null): Args => ({
+    labels: UNPARKED,
+    comments: [{ login: PIPELINE, at: VERDICT_AT }],
+    events: [
+      { event: 'labeled', label: 'awaiting-maintainer', by: PIPELINE, at: PARKED_AT },
+      { event: 'unlabeled', label: 'awaiting-maintainer', by, at: LABEL_AFTER_PARK }
+    ]
+  })
+
+  it('wakes a PR when the maintainer removes the label', () => {
+    const result = run(fixtures(removedBy(MAINTAINER)))
     expect(result.status, result.stderr).toBe(0)
-    expect(result.outputs.run).toBe('false')
-    expect(result.summary).toContain(
-      `PR #${PR} has activity from outside the trust list, not counted: ${COLLABORATOR} at ${at}`
+    expect(result.outputs).toEqual({
+      run: 'true',
+      reason: `PR #${PR} has activity at ${VERDICT_AT} newer than its head (${HEAD_AT})`
+    })
+  })
+
+  it.each([
+    [COLLABORATOR, COLLABORATOR],
+    ['the pipeline', PIPELINE],
+    ['nobody on record', null]
+  ])('applies the label once more when %s removed it, then stays parked', (_, by) => {
+    expectOneReapply(removedBy(by), by)
+  })
+
+  it('wakes a PR when the maintainer removes the label the cycle applied again', () => {
+    const result = run(
+      fixtures({
+        ...removedBy(COLLABORATOR),
+        events: [
+          ...(removedBy(COLLABORATOR).events ?? []),
+          { event: 'labeled', label: 'awaiting-maintainer', by: PIPELINE, at: APPLIED_AGAIN_AT },
+          { event: 'unlabeled', label: 'awaiting-maintainer', by: MAINTAINER, at: AFTER_WAKE }
+        ]
+      })
     )
+    expect(result.outputs).toEqual({
+      run: 'true',
+      reason: `PR #${PR} has activity at ${VERDICT_AT} newer than its head (${HEAD_AT})`
+    })
+  })
+
+  it('reads only the newest removal: the maintainer waking it once does not wake it again', () => {
+    expectOneReapply(
+      {
+        ...removedBy(MAINTAINER),
+        events: [
+          ...(removedBy(MAINTAINER).events ?? []),
+          { event: 'labeled', label: 'awaiting-maintainer', by: PIPELINE, at: APPLIED_AGAIN_AT },
+          { event: 'unlabeled', label: 'awaiting-maintainer', by: COLLABORATOR, at: AFTER_WAKE }
+        ]
+      },
+      COLLABORATOR,
+      AFTER_WAKE
+    )
+  })
+
+  // Round 2 of the review on #1629: the maintainer answers a PR another account unlabelled,
+  // and a round the pipeline pushes approves it. At 408fe5be this ran every fire.
+  it('ends the review round 2 reproduction after one run that applies the label again', () => {
+    expectOneReapply(
+      {
+        labels: UNPARKED,
+        state: 'success',
+        comments: [
+          { login: MAINTAINER, at: '2026-09-20T09:50:00Z' },
+          { login: PIPELINE, at: VERDICT_AT }
+        ],
+        events: [
+          { event: 'labeled', label: 'awaiting-maintainer', by: PIPELINE, at: REPRO_LABELLED },
+          { event: 'unlabeled', label: 'awaiting-maintainer', by: COLLABORATOR, at: REPRO_REMOVED }
+        ]
+      },
+      COLLABORATOR,
+      REPRO_REMOVED
+    )
+  })
+
+  // Round 3 of the review on #1629, scenario A: as round 2, then another account pushes on
+  // top of the pipeline's round. At 0c0478c0 this ran every fire.
+  it('ends the review round 3 scenario A after one run that applies the label again', () => {
+    expectOneReapply(
+      {
+        labels: UNPARKED,
+        state: 'absent',
+        comments: [{ login: MAINTAINER, at: '2026-09-20T09:50:00Z' }],
+        pushes: [
+          { after: SHA, by: COLLABORATOR, at: '2026-09-20T10:30:00Z' },
+          { after: OLD_SHA, by: PIPELINE, at: PUSHED_AT }
+        ],
+        events: [
+          { event: 'labeled', label: 'awaiting-maintainer', by: PIPELINE, at: REPRO_LABELLED },
+          { event: 'unlabeled', label: 'awaiting-maintainer', by: COLLABORATOR, at: REPRO_REMOVED }
+        ]
+      },
+      COLLABORATOR,
+      REPRO_REMOVED
+    )
+  })
+
+  // Scenario B: the label stays on, the maintainer comments, and another account pushes.
+  // At 0c0478c0 this ran every fire.
+  it('does not run for the review round 3 scenario B', () => {
+    const result = run(
+      fixtures({
+        labels: PARKED,
+        parkedAt: REPRO_LABELLED,
+        state: 'absent',
+        comments: [{ login: MAINTAINER, at: '2026-09-20T09:50:00Z' }],
+        pushes: [{ after: SHA, by: COLLABORATOR, at: '2026-09-20T10:30:00Z' }]
+      })
+    )
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+    expect(result.summary).toContain(SKIPPED)
   })
 })
 
 // The spend ruling on #1310: only the maintainer, the pipeline and, on a PR the
 // pipeline opened, the named review bots may start a cycle.
 const AFTER_HEAD = '2026-09-20T12:00:00Z'
-const UNPARKED = ['agent-pr', 'agent-authored']
-const IDLE = 'the slot is held and no open agent PR needs the routine'
 const RAN = `PR #${PR} has activity at ${AFTER_HEAD} newer than its head (${HEAD_AT})`
 
 type Surface = 'comments' | 'reviewComments' | 'reviews'
@@ -425,88 +577,6 @@ describe.skipIf(!HAS_JQ)('pregate.sh counts labels and pushes only from trusted 
     expect(result.outputs).toEqual({
       run: 'true',
       reason: `PR #${PR} has activity from the maintainer at ${MAINTAINER_AFTER_PUSH} newer than a push from outside the trust list (${PUSHED_AT})`
-    })
-  })
-
-  const unparked = (by: string) =>
-    fixtures({
-      labels: UNPARKED,
-      comments: [{ login: PIPELINE, at: VERDICT_AT }],
-      events: [
-        { event: 'labeled', label: 'awaiting-maintainer', by: PIPELINE, at: PARKED_AT },
-        { event: 'unlabeled', label: 'awaiting-maintainer', by, at: '2026-09-21T08:00:00Z' }
-      ]
-    })
-
-  it('keeps a PR parked when another account removed the label', () => {
-    const result = run(unparked(COLLABORATOR))
-    expect(result.status, result.stderr).toBe(0)
-    expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
-    expect(result.summary).toContain(
-      `PR #${PR}: ${COLLABORATOR} removed awaiting-maintainer at 2026-09-21T08:00:00Z, outside the trust list; still parked`
-    )
-    expect(result.summary).toContain(`PR #${PR} is parked for the maintainer since ${PARKED_AT}`)
-  })
-
-  it.each([MAINTAINER, PIPELINE])('un-parks a PR when %s removed the label', (by) => {
-    const result = run(unparked(by))
-    expect(result.outputs).toEqual({
-      run: 'true',
-      reason: `PR #${PR} has activity at ${VERDICT_AT} newer than its head (${HEAD_AT})`
-    })
-  })
-
-  // Round 2 of the review on #1629: the maintainer answers a PR whose label another account
-  // removed, and the round he asked for pushes and approves. The skill has no label left to
-  // remove, so nothing but that push records the resume.
-  const LABELLED_BEFORE_HEAD = '2026-09-20T09:30:00Z'
-  const resumed = (state: 'success' | 'failure') =>
-    fixtures({
-      labels: UNPARKED,
-      state,
-      comments: [
-        { login: MAINTAINER, at: '2026-09-20T09:50:00Z' },
-        { login: PIPELINE, at: VERDICT_AT }
-      ],
-      events: [
-        { event: 'labeled', label: 'awaiting-maintainer', by: PIPELINE, at: LABELLED_BEFORE_HEAD },
-        {
-          event: 'unlabeled',
-          label: 'awaiting-maintainer',
-          by: COLLABORATOR,
-          at: '2026-09-20T09:40:00Z'
-        }
-      ]
-    })
-
-  it('does not run again once a trusted push resumes a PR another account unlabelled', () => {
-    const result = run(resumed('success'))
-    expect(result.status, result.stderr).toBe(0)
-    expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
-    expect(result.summary).toContain(
-      `PR #${PR}: ${COLLABORATOR} removed awaiting-maintainer at 2026-09-20T09:40:00Z, outside the trust list; resumed by a push at ${PUSHED_AT}`
-    )
-  })
-
-  it('applies the unlabelled rules to that PR once resumed', () => {
-    const result = run(resumed('failure'))
-    expect(result.outputs).toEqual({
-      run: 'true',
-      reason: `PR #${PR} has activity at ${VERDICT_AT} newer than its head (${HEAD_AT})`
-    })
-  })
-
-  it('runs for the maintainer on a PR another account unlabelled, before any resume', () => {
-    const answered = '2026-09-21T09:00:00Z'
-    const fixture = unparked(COLLABORATOR)
-    const key = `repos/${REPO}/issues/${PR}/comments?per_page=100`
-    const result = run({
-      ...fixture,
-      [key]: [...fixture[key], { user: { login: MAINTAINER, type: 'User' }, created_at: answered }]
-    })
-    expect(result.outputs).toEqual({
-      run: 'true',
-      reason: `PR #${PR} is parked for the maintainer and has activity at ${answered} newer than the label (${PARKED_AT})`
     })
   })
 

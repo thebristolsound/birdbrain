@@ -88,6 +88,7 @@ coverage/
 !.claude/skills/pr-sweep/
 # Closes finished worktrees and sweeps stale ones; the implementer agent runs it.
 !.claude/skills/teardown/
+# Buckets an issue's findings by severity; docs/agents/issue-tracker.md has triage run it.
 !.claude/skills/jev-severity/
 # The SessionStart hook that settings.json runs.
 !.claude/hooks/

@@ -67,7 +67,7 @@ const prOwingVerdict: GhRoutes = {
   [`${API}/activity?ref=refs/heads/agent/9-fix&per_page=100`]: [
     { after: PR_SHA, actor: { login: 'birdbrain-agent' }, timestamp: '2026-09-25T10:00:00Z' }
   ],
-  [`${API}/commits/${PR_SHA}/status`]: { statuses: [] },
+  [`${API}/commits/${PR_SHA}/statuses?per_page=100`]: [],
   [`${API}/commits/${PR_SHA}`]: { commit: { committer: { date: '2026-09-25T10:00:00Z' } } },
   [`${API}/issues/9/comments?per_page=100`]: [],
   [`${API}/pulls/9/comments?per_page=100`]: [],

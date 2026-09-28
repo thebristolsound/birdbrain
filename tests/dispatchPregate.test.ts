@@ -56,6 +56,13 @@ const REPRO_LABELLED = '2026-09-20T09:30:00Z'
 const REPRO_REMOVED = '2026-09-20T09:40:00Z'
 const OLD_SHA = '0123456789abcdef0123456789abcdef01234567'
 
+type Status = {
+  state: 'success' | 'failure' | 'pending' | 'error'
+  by: string | null
+  at: string
+  description?: string
+}
+
 type LabelEvent = { event: 'labeled' | 'unlabeled'; label: string; by: string | null; at: string }
 type Push = { after: string; by: string; at: string }
 
@@ -118,6 +125,7 @@ const fixtures = ({
   reviewComments = [],
   reviews = [],
   state = 'failure',
+  statuses,
   author = PIPELINE,
   agentPrBy = PIPELINE,
   pusher = PIPELINE,
@@ -133,7 +141,10 @@ const fixtures = ({
   comments: Comment[]
   reviewComments?: Comment[]
   reviews?: Comment[]
+  // The pipeline's agent/pre-pass verdict on the head.
   state?: 'success' | 'failure' | 'absent'
+  // Every agent/pre-pass status on the head, newest first; overrides state.
+  statuses?: Status[]
   author?: string
   // Who applied agent-pr at open; null for no such event.
   agentPrBy?: string | null
@@ -161,19 +172,26 @@ const fixtures = ({
       }
     ]
   }),
-  [`repos/${REPO}/commits/${SHA}/status`]: {
-    statuses:
-      state === 'absent'
-        ? []
-        : [
-            {
-              context: 'agent/pre-pass',
-              state,
-              description:
-                state === 'failure' ? '1 blocking: a false claim' : 'Approved for human review.'
-            }
-          ]
-  },
+  [`repos/${REPO}/commits/${SHA}/statuses?per_page=100`]: (
+    statuses ??
+    (state === 'absent'
+      ? []
+      : [
+          {
+            state,
+            by: PIPELINE,
+            at: VERDICT_AT,
+            description:
+              state === 'failure' ? '1 blocking: a false claim' : 'Approved for human review.'
+          }
+        ])
+  ).map(({ by, at, description = '', ...rest }) => ({
+    context: 'agent/pre-pass',
+    ...rest,
+    description,
+    creator: by === null ? null : { login: by },
+    created_at: at
+  })),
   // The repository activity API, newest first: the push that made the head.
   [`repos/${REPO}/activity?ref=refs/heads/${BRANCH}&per_page=100`]: (
     pushes ?? (pusher === null ? [] : [{ after: SHA, by: pusher, at: PUSHED_AT }])
@@ -1235,5 +1253,87 @@ describe.skipIf(!HAS_JQ)('pregate.sh reads every label in its trusted state', ()
     expect(result.status, result.stderr).toBe(0)
     expect(result.writes).toEqual([])
     expect(result.summary).toContain('not written, because LOGIN is unset')
+  })
+})
+
+// Round 6 on #1629: anyone with push access can post a commit status, so an agent/pre-pass
+// status counts only from the maintainer or the pipeline. The creator is on the statuses list;
+// the combined status does not name it.
+describe.skipIf(!HAS_JQ)('pregate.sh counts agent/pre-pass only from trusted creators', () => {
+  const FORGED_AT = '2026-09-20T12:30:00Z'
+  const INTERRUPTED = 'Dispatch run ended (failure) before the pre-pass reported.'
+  const MERGE = `PR #${PR} is approved, ready and non-evidence; section 2a may merge it`
+  const RETRY = `PR #${PR} head ${SHA.slice(0, 8)} has a pre-pass an earlier run interrupted; the review is owed a retry`
+  const owed = (state: string) =>
+    `PR #${PR} head ${SHA.slice(0, 8)} has agent/pre-pass=${state}; a verdict is owed`
+  const notCounted = (list: string) =>
+    `PR #${PR} head ${SHA.slice(0, 8)} has agent/pre-pass statuses from outside the trust list, not counted: ${list}\n`
+  // The pipeline's request-changes verdict on the head, which on its own starts nothing.
+  const verdict: Status = {
+    state: 'failure',
+    by: PIPELINE,
+    at: VERDICT_AT,
+    description: '1 blocking: a false claim'
+  }
+  // A ready, non-evidence agent PR whose head the pipeline pushed.
+  const ready = (statuses: Status[]) =>
+    run(fixtures({ labels: UNPARKED, statuses, draft: false, comments: [] }))
+
+  it.each([
+    ['success', 'Approved for human review.', MERGE],
+    ['failure', INTERRUPTED, RETRY],
+    ['pending', 'Reviewer pre-pass running.', owed('pending')],
+    ['error', 'Reviewer pre-pass running.', owed('error')]
+  ] as const)(
+    'ignores a forged %s on a ready agent PR and keeps the verdict it covers',
+    (state, description, trustedReason) => {
+      const forged: Status = { state, by: COLLABORATOR, at: FORGED_AT, description }
+      const result = ready([forged, verdict])
+      expect(result.status, result.stderr).toBe(0)
+      expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+      expect(result.summary).toContain(notCounted(`${state} by ${COLLABORATOR} at ${FORGED_AT}`))
+      // The same status from the pipeline decides as it did before this rule.
+      const trusted = ready([{ ...forged, by: PIPELINE }, verdict])
+      expect(trusted.outputs).toEqual({ run: 'true', reason: trustedReason })
+      expect(trusted.summary).not.toContain('agent/pre-pass statuses from outside the trust list')
+    }
+  )
+
+  it.each([
+    [COLLABORATOR, COLLABORATOR],
+    ['a workflow on another branch', 'github-actions[bot]'],
+    ['nobody on record', null]
+  ])('does not merge on a success posted by %s', (_, by) => {
+    const result = ready([
+      { state: 'success', by, at: FORGED_AT, description: 'Approved for human review.' }
+    ])
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.outputs).toEqual({ run: 'true', reason: owed('absent') })
+    expect(result.summary).toContain(
+      notCounted(`success by ${by ?? 'an unrecorded account'} at ${FORGED_AT}`)
+    )
+  })
+
+  it('merges on the maintainer success and does not name an older untrusted status', () => {
+    const result = ready([
+      { state: 'success', by: MAINTAINER, at: FORGED_AT, description: 'Approved.' },
+      { state: 'failure', by: COLLABORATOR, at: VERDICT_AT, description: INTERRUPTED }
+    ])
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.outputs).toEqual({ run: 'true', reason: MERGE })
+    expect(result.summary).not.toContain('agent/pre-pass statuses from outside the trust list')
+  })
+
+  it('owes a verdict when only the seeded pending is on the head', () => {
+    const result = ready([
+      {
+        state: 'pending',
+        by: 'github-actions[bot]',
+        at: HEAD_AT,
+        description: 'Reviewer pre-pass has not reported for this commit.'
+      }
+    ])
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.outputs).toEqual({ run: 'true', reason: owed('absent') })
   })
 })

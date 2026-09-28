@@ -11,8 +11,9 @@
 # trust list below, and a head anyone but the maintainer or the pipeline pushed,
 # start nothing. Every label this step reads is read in its trusted state (see
 # label_trust), and its only writes put a label back to that state, so no label
-# change from outside the trust list costs a cycle. Each is named in the step
-# summary.
+# change from outside the trust list costs a cycle. The one commit status it reads
+# on a PR counts only from the maintainer or the pipeline (trusted_prepass). Each
+# is named in the step summary.
 #
 # The conservative default is not enough on its own, because three of the
 # answers here can be wrong in the direction that never runs. A stale claim is
@@ -98,6 +99,23 @@ list() { gh api --paginate "$1" | jq -s 'add // []'; }
 
 # Whether login $1 is the maintainer or, inside the workflow, the pipeline.
 trusted_actor() { [ "$1" = "$maintainer" ] || { [ -n "$me" ] && [ "$1" = "$me" ]; }; }
+
+# The newest agent/pre-pass status on commit $1 that the maintainer or the
+# pipeline posted, as {state, desc, ignored}, where ignored lists every newer
+# status from anyone else. Anyone with push access can post a status, and a
+# workflow on any branch posts as github-actions[bot], so no other creator
+# counts; pre-pass-gate.yml's seed is one of those, and it is never a verdict.
+# The combined status names no creator; this list does, newest first. "Session
+# rules" in the skill states the same rule; change both.
+trusted_prepass() {
+  list "repos/$R/commits/$1/statuses?per_page=100" \
+    | jq -c --arg owner "$maintainer" --arg me "$me" '
+      [.[] | select(.context == "agent/pre-pass")
+        | {state, desc: (.description // ""), by: (.creator.login // ""), at: .created_at}
+        | .trusted = (.by == $owner or ($me != "" and .by == $me))] as $all
+      | (([$all[] | .trusted] | index(true)) // ($all | length)) as $i
+      | {state: ($all[$i].state // "absent"), desc: ($all[$i].desc // ""), ignored: $all[:$i]}'
+}
 
 # The trusted state of every label in label_trust on issue or PR $1, from its
 # events, as {"<label>": {on, since, set, last}}. set is the counted event that
@@ -326,10 +344,13 @@ for n in $(jq -r '.[]' <<<"$prs"); do
   author="$(jq -r '.user.login // empty' <<<"$pr")"
   pushed_at=""
   untrusted_head=""
-  status="$(gh api "repos/$R/commits/$sha/status" \
-    --jq '[.statuses[] | select(.context=="agent/pre-pass")][0] // {}
-          | "\(.state // "absent")\t\(.description // "")"')"
-  IFS=$'\t' read -r state desc <<<"$status"
+  prepass="$(trusted_prepass "$sha")"
+  state="$(jq -r .state <<<"$prepass")"
+  desc="$(jq -r .desc <<<"$prepass")"
+  jq -r --arg pr "$n" --arg sha "${sha:0:8}" '.ignored | select(length > 0)
+    | map("\(.state) by \(if .by == "" then "an unrecorded account" else .by end) at \(.at)")
+    | "PR #\($pr) head \($sha) has agent/pre-pass statuses from outside the trust list, not counted: \(join(", "))"' \
+    <<<"$prepass" >> "$summary"
   case "$state" in
     success) ;;
     # cleanup.sh posts failure on a pre-pass its own run interrupted, and posts

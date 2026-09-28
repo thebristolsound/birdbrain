@@ -53,25 +53,42 @@ coverage/
 # Worktrees
 *.worktree*
 
-#AI
+# AI agent tools: their directories stay out of git. A negation re-includes a path the project
+# shares, and the comment directly above it gives the reason (tests/gitignoreAgentTools.test.ts).
 .agents
 .claude/*
+# Project settings every session loads: hooks, permissions, output style and attribution.
 !.claude/settings.json
+# The Plain Technical output style that settings.json selects.
 !.claude/output-styles/
+# Re-opened so the two definitions below can be re-included: git cannot re-include a file
+# whose parent directory is excluded.
 !.claude/agents/
 .claude/agents/*
+# The implementer agent the dispatch routine spawns to write code.
 !.claude/agents/birdbrain-implementer.md
+# The reviewer agent the dispatch routine spawns for the read-only pre-pass.
 !.claude/agents/birdbrain-reviewer.md
+# Re-opened so the shared skills below can be re-included, as for agents above.
 !.claude/skills/
 .claude/skills/*
+# The dispatch routine, which its workflow runs unattended on a hosted runner.
 !.claude/skills/dispatch/
+# Composes the ADR-0007 override record for a PR merged over a request-changes pre-pass.
 !.claude/skills/override-record/
+# Commit message shape; settings.json registers its check.sh as a hook.
 !.claude/skills/post-commit-message/
+# PR body shape; settings.json registers its check.sh as a hook.
 !.claude/skills/post-pr-body/
+# Comment shapes; settings.json registers its check.sh as a hook.
 !.claude/skills/post-comment/
+# The squash merge every PR goes through (CLAUDE.md, Posting surfaces).
 !.claude/skills/merge-pr/
+# The maintainer-present sweep of every open PR.
 !.claude/skills/pr-sweep/
+# Closes finished worktrees and sweeps stale ones; the implementer agent runs it.
 !.claude/skills/teardown/
+# The SessionStart hook that settings.json runs.
 !.claude/hooks/
 .codex
 .cursor

@@ -273,6 +273,14 @@ jobs:
       - name: Build Chrome extension
         run: pnpm build:extension
 
+      # Every packaging run writes the third-party notice before electron-builder and stops
+      # when a production package has no licence text and no override (#1364). Running it here
+      # puts that stop on the pull request that brings the package in, not on release day. This
+      # runner is Linux, so a gap in another platform's native package still first shows when
+      # that platform packages.
+      - name: Third-party notices
+        run: pnpm build:notices
+
   e2e:
     runs-on: ubuntu-latest
     needs: changes

@@ -48,6 +48,10 @@ const mainConfig = defineConfig({
         const dist = resolve(__dirname, 'dist')
         copyFileSync(resolve(__dirname, 'manifest.json'), resolve(dist, 'manifest.json'))
         copyFileSync(resolve(__dirname, 'theme-preinit.js'), resolve(dist, 'theme-preinit.js'))
+        copyFileSync(
+          resolve(__dirname, 'THIRD_PARTY_NOTICES.txt'),
+          resolve(dist, 'THIRD_PARTY_NOTICES.txt')
+        )
         mkdirSync(resolve(dist, 'icons'), { recursive: true })
         cpSync(resolve(__dirname, 'icons'), resolve(dist, 'icons'), { recursive: true })
         mkdirSync(resolve(dist, 'fonts'), { recursive: true })

@@ -28,7 +28,8 @@ export default defineConfig({
         'src/renderer/**/*.{ts,tsx}',
         'src/packages/**/*.{ts,mts,cts}',
         'scripts/slop-audit/**/*.mjs',
-        'scripts/jev-lens/**/*.mjs'
+        'scripts/jev-lens/**/*.mjs',
+        'scripts/third-party-notices/**/*.mjs'
       ],
       exclude: [
         '**/*.d.ts',

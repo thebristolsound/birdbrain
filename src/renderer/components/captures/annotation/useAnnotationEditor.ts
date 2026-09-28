@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import type { AnnotationShape } from '@shared/types'
 
 export type AnnotationTool = 'select' | 'rect' | 'arrow' | 'highlight' | 'redact' | 'pin' | 'hand'
@@ -38,7 +38,14 @@ export function useAnnotationEditor({ initialShapes }: Options) {
   const [strokeWidth, setStrokeWidthState] = useState<number>(() => readStroke())
   const [shapes, setShapes] = useState<AnnotationShape[]>(initialShapes)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [draft, setDraft] = useState<AnnotationShape | null>(null)
+  const [draft, setDraftState] = useState<AnnotationShape | null>(null)
+  // Mirrors `draft` so commitDraft can read a draft begun in the same batch
+  // without reaching into a state updater, which StrictMode runs twice.
+  const draftRef = useRef<AnnotationShape | null>(null)
+  const setDraft = useCallback((d: AnnotationShape | null) => {
+    draftRef.current = d
+    setDraftState(d)
+  }, [])
   const [undoStack, setUndoStack] = useState<AnnotationShape[][]>([])
   const [redoStack, setRedoStack] = useState<AnnotationShape[][]>([])
   const [dirty, setDirty] = useState(false)
@@ -52,22 +59,25 @@ export function useAnnotationEditor({ initialShapes }: Options) {
     localStorage.setItem(STROKE_KEY, String(w))
   }, [])
 
-  const beginDraft = useCallback((shape: AnnotationShape) => setDraft(shape), [])
-  const extendDraft = useCallback((patch: Partial<Omit<AnnotationShape, 'kind' | 'id'>>) => {
-    setDraft((d) => (d ? ({ ...d, ...patch } as AnnotationShape) : d))
-  }, [])
-  const cancelDraft = useCallback(() => setDraft(null), [])
+  const beginDraft = useCallback((shape: AnnotationShape) => setDraft(shape), [setDraft])
+  const extendDraft = useCallback(
+    (patch: Partial<Omit<AnnotationShape, 'kind' | 'id'>>) => {
+      const d = draftRef.current
+      if (d) setDraft({ ...d, ...patch } as AnnotationShape)
+    },
+    [setDraft]
+  )
+  const cancelDraft = useCallback(() => setDraft(null), [setDraft])
 
   const commitDraft = useCallback(() => {
-    setDraft((d) => {
-      if (!d) return null
-      setUndoStack((s) => [...s, shapes])
-      setRedoStack([])
-      setShapes((arr) => [...arr, d])
-      setDirty(true)
-      return null
-    })
-  }, [shapes])
+    const d = draftRef.current
+    if (!d) return
+    setDraft(null)
+    setUndoStack((s) => [...s, shapes])
+    setRedoStack([])
+    setShapes((arr) => [...arr, d])
+    setDirty(true)
+  }, [shapes, setDraft])
 
   const updateShape = useCallback(
     (next: AnnotationShape) => {

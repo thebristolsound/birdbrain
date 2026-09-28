@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { StrictMode } from 'react'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
 import { useAnnotationEditor } from '@renderer/components/captures/annotation/useAnnotationEditor'
@@ -211,6 +212,22 @@ describe('useAnnotationEditor', () => {
     act(() => result.current.undo())
     expect(result.current.canUndo).toBe(false)
     expect(result.current.canRedo).toBe(true)
+  })
+
+  // The pin drop begins and commits its draft in one batch, so the commit runs
+  // during render, where StrictMode calls state updaters twice.
+  it('commits a draft begun in the same batch once under StrictMode', () => {
+    const { result } = renderHook(() => useAnnotationEditor({ initialShapes: [] }), {
+      wrapper: StrictMode
+    })
+    act(() => {
+      result.current.beginDraft({ kind: 'pin', id: 'p1', pinId: 'pin-1', x: 1, y: 1, number: 1 })
+      result.current.commitDraft()
+    })
+    expect(result.current.shapes.map((s) => s.id)).toEqual(['p1'])
+    act(() => result.current.undo())
+    expect(result.current.shapes).toEqual([])
+    expect(result.current.canUndo).toBe(false)
   })
 
   it('accepts the hand tool', () => {

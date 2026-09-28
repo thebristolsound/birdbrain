@@ -1337,3 +1337,96 @@ describe.skipIf(!HAS_JQ)('pregate.sh counts agent/pre-pass only from trusted cre
     expect(result.outputs).toEqual({ run: 'true', reason: owed('absent') })
   })
 })
+
+// Round 7 on #1629: merge.sh refuses a PR whose required checks are not all green at its head,
+// counting every check run and status whoever posted it, and a workflow on any branch can create
+// a failing check run under any name. Deciding section 2a over one ran a cycle on every fire.
+describe.skipIf(!HAS_JQ)('pregate.sh holds section 2a while merge.sh would refuse', () => {
+  const MAIN_SHA = 'feedc0de00000000000000000000000000000000'
+  const MERGE = `PR #${PR} is approved, ready and non-evidence; section 2a may merge it`
+  type Check = { name: string; status?: string; conclusion?: string | null }
+  const green = (name: string): Check => ({ name, conclusion: 'success' })
+  // Main green with lint and test required, and the PR head's check runs and combined status.
+  const withChecks = (
+    head: Check[] | null,
+    statuses: { context: string; state: string }[] = []
+  ) => ({
+    ...fixtures({
+      labels: UNPARKED,
+      statuses: [
+        {
+          state: 'success',
+          by: PIPELINE,
+          at: VERDICT_AT,
+          description: 'Approved for human review.'
+        }
+      ],
+      draft: false,
+      comments: []
+    }),
+    [`repos/${REPO}/commits/main`]: { sha: MAIN_SHA },
+    [`repos/${REPO}/rules/branches/main`]: [
+      {
+        type: 'required_status_checks',
+        parameters: { required_status_checks: [{ context: 'lint' }, { context: 'test' }] }
+      }
+    ],
+    [`repos/${REPO}/commits/${MAIN_SHA}/check-runs?per_page=100`]: {
+      check_runs: [green('lint'), green('test')].map((c) => ({ ...c, status: 'completed' }))
+    },
+    [`repos/${REPO}/commits/${MAIN_SHA}/status?per_page=100`]: { statuses: [] },
+    ...(head === null
+      ? {}
+      : {
+          [`repos/${REPO}/commits/${SHA}/check-runs?per_page=100`]: {
+            check_runs: head.map(({ name, status = 'completed', conclusion = null }) => ({
+              name,
+              status,
+              conclusion
+            }))
+          },
+          [`repos/${REPO}/commits/${SHA}/status?per_page=100`]: { statuses }
+        })
+  })
+  const held = (checks: string) =>
+    `PR #${PR} is approved, ready and non-evidence, but merge.sh would refuse it: required check(s) ${checks} not green at its head`
+
+  it('runs section 2a when every required check is green at the head', () => {
+    const result = run(withChecks([green('lint'), green('test'), green('build')]))
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.outputs).toEqual({ run: 'true', reason: MERGE })
+  })
+
+  it.each([
+    [
+      'a failing test check run beside the passing one',
+      [green('lint'), green('test'), { name: 'test', conclusion: 'failure' }],
+      'test'
+    ],
+    ['a required check with no run', [green('test')], 'lint (missing)'],
+    [
+      'a required check still running',
+      [green('lint'), { name: 'test', status: 'in_progress' }],
+      'test'
+    ]
+  ] as const)('holds section 2a over %s', (_label, head, named) => {
+    const result = run(withChecks([...head]))
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+    expect(result.summary).toContain(held(named))
+  })
+
+  it('holds section 2a over a failing required status from another account', () => {
+    const result = run(
+      withChecks([green('lint'), green('test')], [{ context: 'test', state: 'failure' }])
+    )
+    expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+    expect(result.summary).toContain(held('test'))
+  })
+
+  it('runs section 2a when the head checks cannot be read', () => {
+    const result = run(withChecks(null))
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.outputs).toEqual({ run: 'true', reason: MERGE })
+  })
+})

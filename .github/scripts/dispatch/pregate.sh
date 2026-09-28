@@ -286,6 +286,7 @@ echo "Occupancy $occupancy/$capacity: agent-pr PRs $prs, agent-wip claims $wip" 
 # sourced across the skill and workflow trees. A failed read counts as green,
 # which is the conservative direction here.
 red=""
+required=""
 failing='select(.status == "completed") | select(.conclusion as $c | ["failure", "cancelled", "timed_out", "action_required"] | index($c))'
 if main_sha="$(gh api "repos/$R/commits/main" --jq .sha)" \
   && required="$(gh api "repos/$R/rules/branches/main" \
@@ -301,6 +302,30 @@ fi
 if [ -n "$red" ]; then
   echo "Main ${main_sha:0:8} is red: required check(s) $red failed. Verdicts owed and dispatch wait for a green main" | tee -a "$summary"
 fi
+
+# The required checks merge.sh would refuse commit $1 on, as it reads them: a
+# required check with no check run or status of its name, or any of them not
+# green, whoever posted it. Deciding section 2a over one runs a cycle that
+# refuses on every fire, and a branch workflow can create a failing check run
+# under any name, so this step holds 2a instead; a hold costs nothing. Empty
+# when the rules or the checks cannot be read, which reads as "run".
+merge_refusal() {
+  local runs st
+  [ -n "$required" ] || return 0
+  # The $c is jq's.
+  # shellcheck disable=SC2016
+  runs="$(gh api "repos/$R/commits/$1/check-runs?per_page=100" --jq '[.check_runs[]
+      | {name, green: (.status == "completed" and (.conclusion as $c
+          | ["success", "skipped", "neutral"] | index($c)) != null)}]')" \
+    && st="$(gh api "repos/$R/commits/$1/status?per_page=100" \
+      --jq '[.statuses[] | {name: .context, green: (.state == "success")}]')" \
+    || return 0
+  jq -n -r --argjson req "$required" --argjson runs "$runs" --argjson st "$st" '
+    ($runs + $st) as $all
+    | [$req[] as $n | [$all[] | select(.name == $n)] as $m
+        | if ($m | length) == 0 then "\($n) (missing)" else ($m[] | select(.green | not) | $n) end]
+    | unique | join(", ")'
+}
 
 # Section 1: a claim past the 4-hour expiry is stale, and only the routine ages
 # it out. Counting it as a held slot lets an abandoned claim declare the
@@ -419,7 +444,12 @@ for n in $(jq -r '.[]' <<<"$prs"); do
     elif jq -e '[.labels[].name] | index("evidence-affecting")' <<<"$pr" >/dev/null; then
       echo "PR #$n carries evidence-affecting from outside the trust list; section 2a does not merge it" >> "$summary"
     else
-      decide true "PR #$n is approved, ready and non-evidence; section 2a may merge it"
+      refused="$(merge_refusal "$sha")"
+      if [ -n "$refused" ]; then
+        echo "PR #$n is approved, ready and non-evidence, but merge.sh would refuse it: required check(s) $refused not green at its head" >> "$summary"
+      else
+        decide true "PR #$n is approved, ready and non-evidence; section 2a may merge it"
+      fi
     fi
   fi
 done

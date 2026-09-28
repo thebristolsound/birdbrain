@@ -255,7 +255,7 @@ const hoursAgo = (hours: number) =>
 // and attempt 2, with the run's own times left at its creation.
 type Paid = {
   hoursAgo: number
-  targets: number[] | null
+  targets: readonly number[] | null
   step?: { status: string; conclusion: string | null }
   createdDaysAgo?: number
 }

@@ -91,6 +91,15 @@ jobs:
           in Chrome, so the extension always matches your app version. (The
           \`birdbrain-extension.zip\` here is the same build, for developers only.)
 
+          \`SHA256SUMS.txt\` lists the SHA-256 of the Windows, Linux and extension files and
+          of the bill of materials, taken from the copies on this page. To check a download
+          on Linux, put \`SHA256SUMS.txt\` in the folder that holds it and run
+          \`sha256sum --check --ignore-missing SHA256SUMS.txt\`.
+
+          \`birdbrain-${TAG}.spdx.json\` is that bill of materials: GitHub's dependency list
+          for the Birdbrain source repository's main branch, in SPDX 2.3 JSON, exported
+          during this release's build.
+
           Everything else on this page (\`latest*.yml\`, \`*.blockmap\`) is machinery for
           the in-app updater. Ignore it.
 
@@ -228,3 +237,51 @@ jobs:
           repository: thebristolsound/birdbrain-releases
           token: ${{ secrets.RELEASES_REPO_TOKEN }}
           files: dist/birdbrain-extension.zip
+
+  # The bill of materials and the checksum file (#1625). It waits for every build job,
+  # so the checksums are taken from the assets as the release serves them. macOS
+  # assets, attached later by release-macos.yml, are not in the checksum file.
+  sbom-and-checksums:
+    needs: [build-app, build-extension]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The workflow token, under this file's contents: read, is the least the export
+      # accepts; sbom.sh cites GitHub's documented permission.
+      - name: Export the bill of materials
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          bash .github/scripts/release/sbom.sh \
+            "$GITHUB_REPOSITORY" "dist/birdbrain-$TAG.spdx.json"
+
+      - name: Upload the bill of materials
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          repository: thebristolsound/birdbrain-releases
+          token: ${{ secrets.RELEASES_REPO_TOKEN }}
+          files: dist/birdbrain-${{ github.ref_name }}.spdx.json
+          fail_on_unmatched_files: true
+
+      # After the upload above, so the bill of materials is hashed with the rest.
+      - name: Hash every asset on the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          bash .github/scripts/release/checksums.sh \
+            thebristolsound/birdbrain-releases "$TAG" dist/SHA256SUMS.txt
+
+      - name: Upload the checksum file
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          repository: thebristolsound/birdbrain-releases
+          token: ${{ secrets.RELEASES_REPO_TOKEN }}
+          files: dist/SHA256SUMS.txt
+          fail_on_unmatched_files: true

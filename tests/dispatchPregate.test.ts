@@ -61,6 +61,57 @@ type Push = { after: string; by: string; at: string }
 
 const user = ({ login, type = 'User' }: Comment) => ({ login, type })
 
+// Every label the pre-gate reads, which a write in the stub echoes back as present.
+const GATE_LABELS = [
+  'agent-pr',
+  'agent-wip',
+  'awaiting-maintainer',
+  'evidence-affecting',
+  'ready-for-agent',
+  'queued',
+  'process'
+]
+
+// A label event as the issue events API returns it; the repository-wide list adds `issue`.
+const labelEvent = ({ event, label, by, at }: LabelEvent, issue?: number) => ({
+  event,
+  label: { name: label },
+  actor: by === null ? null : { login: by },
+  created_at: at,
+  ...(issue === undefined ? {} : { issue: { number: issue } })
+})
+
+// The label writes the pre-gate may make on issue or PR n: a POST answers with every gate
+// label, so any put-back reads as applied, and a DELETE with nothing.
+const labelWrites = (n: number, failing = false) =>
+  failing
+    ? {}
+    : {
+        [`POST repos/${REPO}/issues/${n}/labels`]: GATE_LABELS.map((name) => ({ name })),
+        ...Object.fromEntries(
+          GATE_LABELS.map((l) => [`DELETE repos/${REPO}/issues/${n}/labels/${l}`, []])
+        )
+      }
+
+// The routes every fire reads: the open PRs, the two issue lists, and the repository's
+// label events of the last four hours.
+const lists = ({
+  pulls = [],
+  wip = [],
+  queue = [],
+  recent = []
+}: {
+  pulls?: unknown[]
+  wip?: unknown[]
+  queue?: unknown[]
+  recent?: unknown[]
+}) => ({
+  [`repos/${REPO}/pulls?state=open&per_page=100`]: pulls,
+  [`repos/${REPO}/issues?state=open&labels=agent-wip&per_page=100`]: wip,
+  [`repos/${REPO}/issues?state=open&labels=ready-for-agent,queued&per_page=100`]: queue,
+  [`repos/${REPO}/issues/events?per_page=100&page=1`]: recent
+})
+
 const fixtures = ({
   labels,
   comments,
@@ -72,8 +123,10 @@ const fixtures = ({
   pusher = PIPELINE,
   pushes,
   parkedAt = PARKED_AT,
+  parkedBy = PIPELINE,
   events = [],
   headAt = HEAD_AT,
+  draft = true,
   reapplyFails = false
 }: {
   labels: string[]
@@ -82,27 +135,32 @@ const fixtures = ({
   reviews?: Comment[]
   state?: 'success' | 'failure' | 'absent'
   author?: string
-  agentPrBy?: string
+  // Who applied agent-pr at open; null for no such event.
+  agentPrBy?: string | null
   pusher?: string | null
   // Every push on the branch, newest first; overrides pusher.
   pushes?: Push[]
-  // When the pipeline applied awaiting-maintainer, if labels carries it.
+  // When and by whom awaiting-maintainer was applied, if labels carries it; null for no event.
   parkedAt?: string
+  parkedBy?: string | null
   events?: LabelEvent[]
   // The head's commit date.
   headAt?: string
-  // Whether the pre-gate's write of awaiting-maintainer fails.
+  draft?: boolean
+  // Whether the pre-gate's label writes fail.
   reapplyFails?: boolean
 }) => ({
-  [`repos/${REPO}/issues?state=open&labels=agent-pr&per_page=100`]: [
-    { number: PR, pull_request: {} }
-  ],
-  [`repos/${REPO}/issues?state=open&labels=agent-wip&per_page=100`]: [],
-  [`repos/${REPO}/pulls/${PR}`]: {
-    head: { sha: SHA, ref: BRANCH },
-    draft: true,
-    user: { login: author }
-  },
+  ...lists({
+    pulls: [
+      {
+        number: PR,
+        head: { sha: SHA, ref: BRANCH },
+        draft,
+        user: { login: author },
+        labels: labels.map((name) => ({ name }))
+      }
+    ]
+  }),
   [`repos/${REPO}/commits/${SHA}/status`]: {
     statuses:
       state === 'absent'
@@ -126,37 +184,29 @@ const fixtures = ({
     timestamp: at
   })),
   [`repos/${REPO}/commits/${SHA}`]: { commit: { committer: { date: headAt } } },
-  [`repos/${REPO}/issues/${PR}/labels`]: labels.map((name) => ({ name })),
-  ...(reapplyFails
-    ? {}
-    : {
-        [`POST repos/${REPO}/issues/${PR}/labels`]: [...labels, 'awaiting-maintainer'].map(
-          (name) => ({ name })
-        )
-      }),
+  ...labelWrites(PR, reapplyFails),
   [`repos/${REPO}/issues/${PR}/events?per_page=100`]: [
-    {
-      event: 'labeled',
-      label: { name: 'agent-pr' },
-      actor: { login: agentPrBy },
-      created_at: '2026-09-19T09:00:00Z'
-    },
-    ...(labels.includes('awaiting-maintainer')
-      ? [
-          {
+    ...(agentPrBy === null
+      ? []
+      : [
+          labelEvent({
             event: 'labeled',
-            label: { name: 'awaiting-maintainer' },
-            actor: { login: PIPELINE },
-            created_at: parkedAt
-          }
+            label: 'agent-pr',
+            by: agentPrBy,
+            at: '2026-09-19T09:00:00Z'
+          })
+        ]),
+    ...(labels.includes('awaiting-maintainer') && parkedBy !== null
+      ? [
+          labelEvent({
+            event: 'labeled',
+            label: 'awaiting-maintainer',
+            by: parkedBy,
+            at: parkedAt
+          })
         ]
       : []),
-    ...events.map(({ event, label, by, at }) => ({
-      event,
-      label: { name: label },
-      actor: by === null ? null : { login: by },
-      created_at: at
-    }))
+    ...events.map((e) => labelEvent(e))
   ],
   [`repos/${REPO}/issues/${PR}/comments?per_page=100`]: comments.map((c) => ({
     user: user(c),
@@ -183,7 +233,7 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true })
 })
 
-const run = (fixture: Record<string, unknown>) => {
+const run = (fixture: Record<string, unknown>, env: Record<string, string> = {}) => {
   writeFileSync(join(dir, 'fixtures.json'), JSON.stringify(fixture))
   const output = join(dir, 'output')
   const summary = join(dir, 'summary')
@@ -199,7 +249,8 @@ const run = (fixture: Record<string, unknown>) => {
       GITHUB_REPOSITORY: REPO,
       GITHUB_OUTPUT: output,
       GITHUB_STEP_SUMMARY: summary,
-      LOGIN: PIPELINE
+      LOGIN: PIPELINE,
+      ...env
     }
   })
   const outputs = Object.fromEntries(
@@ -221,6 +272,8 @@ const run = (fixture: Record<string, unknown>) => {
 const PARKED = ['agent-pr', 'agent-authored', 'awaiting-maintainer']
 const UNPARKED = ['agent-pr', 'agent-authored']
 const IDLE = 'the slot is held and no open agent PR needs the routine'
+const QUEUE_EMPTY = 'the slot is free but the queue is empty'
+const FRONTIER = 'the slot is free and 1 unblocked queued issue(s) wait'
 const SKIPPED = `PR #${PR} is parked for the maintainer; skipped until he removes awaiting-maintainer`
 const LABEL_AFTER_PARK = '2026-09-21T08:00:00Z'
 const APPLIED_AGAIN_AT = '2026-09-21T09:00:00Z'
@@ -236,7 +289,7 @@ const applyAgain = (args: Args): Args => ({
 })
 
 const appliedAgain = (by: string | null, at = LABEL_AFTER_PARK) =>
-  `PR #${PR} is parked, but ${by ?? 'an unrecorded account'} removed awaiting-maintainer at ${at}; applied it again and skipped`
+  `PR #${PR}: ${by ?? 'an unrecorded account'} removed awaiting-maintainer at ${at}, which does not count; applied it again`
 
 // Fires the gate on a PR someone other than the maintainer unlabelled: the gate puts the label
 // back itself and starts no cycle, then, with the label back, skips the PR on the next two fires.
@@ -460,10 +513,13 @@ describe.skipIf(!HAS_JQ)('pregate.sh on a PR parked for the maintainer', () => {
   it('starts no cycle when putting the label back fails, and says so', () => {
     const result = run(fixtures({ ...removedBy(COLLABORATOR), reapplyFails: true }))
     expect(result.status, result.stderr).toBe(0)
-    expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+    expect(result.outputs).toEqual({
+      run: 'false',
+      reason: `could not put back awaiting-maintainer on #${PR} to its trusted state; the next fire tries again`
+    })
     expect(result.writes).toEqual([REAPPLY])
     expect(result.summary).toContain(
-      `PR #${PR} is parked, but ${COLLABORATOR} removed awaiting-maintainer at ${LABEL_AFTER_PARK}, and applying it again failed; skipped, and the next fire tries again`
+      `PR #${PR}: ${COLLABORATOR} removed awaiting-maintainer at ${LABEL_AFTER_PARK}, which does not count, and putting it back failed`
     )
   })
 
@@ -652,7 +708,7 @@ describe.skipIf(!HAS_JQ)('pregate.sh trust list', () => {
 describe.skipIf(!HAS_JQ)('pregate.sh counts labels and pushes only from trusted accounts', () => {
   const MAINTAINER_AFTER_PUSH = '2026-09-20T12:00:00Z'
 
-  it('does not work a PR whose agent-pr label another account applied', () => {
+  it('does not work or count a PR whose agent-pr label another account applied', () => {
     const result = run(
       fixtures({
         labels: UNPARKED,
@@ -662,9 +718,10 @@ describe.skipIf(!HAS_JQ)('pregate.sh counts labels and pushes only from trusted 
       })
     )
     expect(result.status, result.stderr).toBe(0)
-    expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+    expect(result.outputs).toEqual({ run: 'false', reason: QUEUE_EMPTY })
+    expect(result.writes).toEqual([`DELETE repos/${REPO}/issues/${PR}/labels/agent-pr`])
     expect(result.summary).toContain(
-      `PR #${PR} carries agent-pr from ${COLLABORATOR}, outside the trust list; not worked`
+      `PR #${PR}: ${COLLABORATOR} added agent-pr at 2026-09-19T09:00:00Z, which does not count; removed it`
     )
   })
 
@@ -748,8 +805,10 @@ describe.skipIf(!HAS_JQ)('pregate.sh counts labels and pushes only from trusted 
 
 describe.skipIf(!HAS_JQ)('pregate.sh stale claims', () => {
   const claim = (by: string) => ({
-    [`repos/${REPO}/issues?state=open&labels=agent-pr&per_page=100`]: [],
-    [`repos/${REPO}/issues?state=open&labels=agent-wip&per_page=100`]: [{ number: 5 }],
+    ...lists({
+      wip: [{ number: 5, state: 'open', assignees: [], labels: [{ name: 'agent-wip' }] }]
+    }),
+    ...labelWrites(5),
     [`repos/${REPO}/issues/5/events?per_page=100`]: [
       {
         event: 'labeled',
@@ -760,12 +819,13 @@ describe.skipIf(!HAS_JQ)('pregate.sh stale claims', () => {
     ]
   })
 
-  it('does not age out a claim label another account applied, which still holds the slot', () => {
+  it('neither ages out nor counts a claim label another account applied, and removes it', () => {
     const result = run(claim(COLLABORATOR))
     expect(result.status, result.stderr).toBe(0)
-    expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+    expect(result.outputs).toEqual({ run: 'false', reason: QUEUE_EMPTY })
+    expect(result.writes).toEqual([`DELETE repos/${REPO}/issues/5/labels/agent-wip`])
     expect(result.summary).toContain(
-      `Issue #5 carries agent-wip from ${COLLABORATOR}, outside the trust list; not aged out`
+      `Issue #5: ${COLLABORATOR} added agent-wip at 2026-01-01T00:00:00Z, which does not count; removed it`
     )
   })
 
@@ -781,11 +841,11 @@ describe.skipIf(!HAS_JQ)('pregate.sh stale claims', () => {
 const ISSUE = 9
 
 const queue = (readyBy: string, queuedBy: string) => ({
-  [`repos/${REPO}/issues?state=open&labels=agent-pr&per_page=100`]: [],
-  [`repos/${REPO}/issues?state=open&labels=agent-wip&per_page=100`]: [],
-  [`repos/${REPO}/issues?state=open&labels=ready-for-agent,queued&per_page=100`]: [
-    { number: ISSUE, assignees: [], labels: [{ name: 'ready-for-agent' }, { name: 'queued' }] }
-  ],
+  ...lists({
+    queue: [
+      { number: ISSUE, assignees: [], labels: [{ name: 'ready-for-agent' }, { name: 'queued' }] }
+    ]
+  }),
   [`repos/${REPO}/issues/${ISSUE}/events?per_page=100`]: [
     {
       event: 'labeled',
@@ -807,28 +867,373 @@ describe.skipIf(!HAS_JQ)('pregate.sh frontier', () => {
   it('counts an issue the maintainer labelled ready-for-agent and queued', () => {
     const result = run(queue(MAINTAINER, MAINTAINER))
     expect(result.status, result.stderr).toBe(0)
-    expect(result.outputs).toEqual({
-      run: 'true',
-      reason: 'the slot is free and 1 unblocked queued issue(s) wait'
-    })
+    expect(result.outputs).toEqual({ run: 'true', reason: FRONTIER })
   })
 
+  // ready-for-agent is left on, so the issue keeps a triage label; queued is taken off.
   it.each([
-    [MAINTAINER, COLLABORATOR, `queued from ${COLLABORATOR}`],
-    [COLLABORATOR, MAINTAINER, `ready-for-agent from ${COLLABORATOR}`],
-    [PIPELINE, MAINTAINER, `ready-for-agent from ${PIPELINE}`]
+    [MAINTAINER, COLLABORATOR, `${COLLABORATOR} added queued at 2026-09-19T09:05:00Z`, 'queued'],
+    [COLLABORATOR, MAINTAINER, `${COLLABORATOR} added ready-for-agent at 2026-09-19T09:00:00Z`],
+    [PIPELINE, MAINTAINER, `${PIPELINE} added ready-for-agent at 2026-09-19T09:00:00Z`]
   ])(
     'leaves out an issue labelled ready-for-agent by %s and queued by %s',
-    (readyBy, queuedBy, named) => {
-      const result = run(queue(readyBy, queuedBy))
+    (readyBy, queuedBy, named, stripped?: string) => {
+      const result = run({ ...queue(readyBy, queuedBy), ...labelWrites(ISSUE) })
       expect(result.status, result.stderr).toBe(0)
-      expect(result.outputs).toEqual({
-        run: 'false',
-        reason: 'the slot is free but the queue is empty'
-      })
+      expect(result.outputs).toEqual({ run: 'false', reason: QUEUE_EMPTY })
+      expect(result.writes).toEqual(
+        stripped ? [`DELETE repos/${REPO}/issues/${ISSUE}/labels/${stripped}`] : []
+      )
       expect(result.summary).toContain(
-        `Issue #${ISSUE} has ${named}, outside the trust list; not frontier`
+        `Issue #${ISSUE}: ${named}, which does not count; ${stripped ? 'removed it' : 'left on'}`
       )
     }
   )
+})
+
+// The general rule of the 2026-09-28 rulings on #1310: every label the pre-gate reads counts in
+// its trusted state, the one the newest event from its trust list set. A change from anyone
+// else is ignored and, where the pre-gate may write the label, undone.
+const ago = (minutes: number) =>
+  new Date(Date.now() - minutes * 60_000).toISOString().replace(/\.\d{3}Z$/, 'Z')
+
+type Issue = { number: number; labels: string[]; events: LabelEvent[] }
+
+// Sections 1 and 3 with no PR open. The repository's recent label events list every event
+// on these issues, newest first; the pre-gate reads only those of the last four hours.
+const issueWorld = (items: Issue[]) => {
+  const issue = ({ number, labels }: Issue) => ({
+    number,
+    state: 'open',
+    assignees: [],
+    labels: labels.map((name) => ({ name }))
+  })
+  const has = ({ labels }: Issue, ...wanted: string[]) => wanted.every((l) => labels.includes(l))
+  return {
+    ...lists({
+      wip: items.filter((i) => has(i, 'agent-wip')).map(issue),
+      queue: items.filter((i) => has(i, 'ready-for-agent', 'queued')).map(issue),
+      recent: items
+        .flatMap(({ number, events }) => events.map((e) => labelEvent(e, number)))
+        .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    }),
+    ...Object.fromEntries(
+      items.flatMap((i) => [
+        [`repos/${REPO}/issues/${i.number}`, issue(i)],
+        [
+          `repos/${REPO}/issues/${i.number}/events?per_page=100`,
+          i.events.map((e) => labelEvent(e))
+        ],
+        [`repos/${REPO}/issues/${i.number}/dependencies/blocked_by`, []],
+        ...Object.entries(labelWrites(i.number))
+      ])
+    )
+  }
+}
+
+const EARLIER = ago(30)
+const LATER = ago(10)
+const queuedBy = (by: string, ...labels: string[]): LabelEvent[] =>
+  labels.map((label, i) => ({ event: 'labeled', label, by, at: ago(60 - i) }))
+const QUEUED_ISSUE: Issue = {
+  number: ISSUE,
+  labels: ['ready-for-agent', 'queued'],
+  events: queuedBy(MAINTAINER, 'ready-for-agent', 'queued')
+}
+
+type Outcome = { run: string; reason: string }
+
+// One label: how to build the world with the label on or off, what the gate decides in each
+// state, who is trusted to add and remove it, and whether the pre-gate takes it off.
+type Subject = {
+  noun: 'PR' | 'Issue'
+  n: number
+  world: (events: LabelEvent[], on: boolean) => Record<string, unknown>
+  whenOn: Outcome
+  whenOff: Outcome
+  adder: string
+  remover: string
+  strip: boolean
+  times: [string, string]
+  // What an add from outside the trust list leads to, when that is not whenOff.
+  untrustedAdd?: Outcome
+}
+
+const MERGE = `PR #${PR} is approved, ready and non-evidence; section 2a may merge it`
+const PARKED_TIMES: [string, string] = [PARKED_AT, LABEL_AFTER_PARK]
+
+const SUBJECTS: Record<string, Subject> = {
+  'agent-pr': {
+    noun: 'PR',
+    n: PR,
+    world: (events, on) =>
+      fixtures({
+        labels: on ? UNPARKED : ['agent-authored'],
+        state: 'success',
+        agentPrBy: null,
+        events,
+        comments: [{ login: MAINTAINER, at: AFTER_HEAD }]
+      }),
+    whenOn: { run: 'true', reason: RAN },
+    whenOff: { run: 'false', reason: QUEUE_EMPTY },
+    adder: PIPELINE,
+    remover: MAINTAINER,
+    strip: true,
+    times: ['2026-09-19T09:00:00Z', LABEL_AFTER_PARK]
+  },
+  'agent-wip': {
+    noun: 'Issue',
+    n: 5,
+    world: (events, on) =>
+      issueWorld([{ number: 5, labels: on ? ['agent-wip'] : [], events }, QUEUED_ISSUE]),
+    whenOn: { run: 'false', reason: IDLE },
+    whenOff: { run: 'true', reason: FRONTIER },
+    adder: PIPELINE,
+    remover: PIPELINE,
+    strip: true,
+    times: [EARLIER, LATER]
+  },
+  'awaiting-maintainer': {
+    noun: 'PR',
+    n: PR,
+    world: (events, on) =>
+      fixtures({
+        labels: on ? PARKED : UNPARKED,
+        parkedBy: null,
+        events,
+        comments: [{ login: PIPELINE, at: VERDICT_AT }]
+      }),
+    whenOn: { run: 'false', reason: IDLE },
+    whenOff: {
+      run: 'true',
+      reason: `PR #${PR} has activity at ${VERDICT_AT} newer than its head (${HEAD_AT})`
+    },
+    adder: PIPELINE,
+    remover: MAINTAINER,
+    strip: true,
+    times: PARKED_TIMES
+  },
+  'evidence-affecting': {
+    noun: 'PR',
+    n: PR,
+    world: (events, on) =>
+      fixtures({
+        labels: on ? [...UNPARKED, 'evidence-affecting'] : UNPARKED,
+        state: 'success',
+        draft: false,
+        events,
+        comments: []
+      }),
+    whenOn: { run: 'false', reason: IDLE },
+    whenOff: { run: 'true', reason: MERGE },
+    adder: PIPELINE,
+    remover: MAINTAINER,
+    strip: false,
+    times: ['2026-09-19T09:00:00Z', LABEL_AFTER_PARK],
+    // The pre-gate leaves the label on, and merge.sh refuses a PR that carries it.
+    untrustedAdd: { run: 'false', reason: IDLE }
+  },
+  'ready-for-agent': {
+    noun: 'Issue',
+    n: ISSUE,
+    world: (events, on) =>
+      issueWorld([
+        {
+          number: ISSUE,
+          labels: on ? ['ready-for-agent', 'queued'] : ['queued'],
+          events: [...queuedBy(MAINTAINER, 'queued'), ...events]
+        }
+      ]),
+    whenOn: { run: 'true', reason: FRONTIER },
+    whenOff: { run: 'false', reason: QUEUE_EMPTY },
+    adder: MAINTAINER,
+    remover: PIPELINE,
+    strip: false,
+    times: [EARLIER, LATER]
+  },
+  queued: {
+    noun: 'Issue',
+    n: ISSUE,
+    world: (events, on) =>
+      issueWorld([
+        {
+          number: ISSUE,
+          labels: on ? ['ready-for-agent', 'queued'] : ['ready-for-agent'],
+          events: [...queuedBy(MAINTAINER, 'ready-for-agent'), ...events]
+        }
+      ]),
+    whenOn: { run: 'true', reason: FRONTIER },
+    whenOff: { run: 'false', reason: QUEUE_EMPTY },
+    adder: MAINTAINER,
+    remover: MAINTAINER,
+    strip: true,
+    times: [EARLIER, LATER]
+  },
+  process: {
+    noun: 'Issue',
+    n: ISSUE,
+    world: (events, on) =>
+      issueWorld([
+        {
+          number: ISSUE,
+          labels: ['ready-for-agent', 'queued', ...(on ? ['process'] : [])],
+          events: [...QUEUED_ISSUE.events, ...events]
+        }
+      ]),
+    whenOn: { run: 'false', reason: QUEUE_EMPTY },
+    whenOff: { run: 'true', reason: FRONTIER },
+    adder: MAINTAINER,
+    remover: MAINTAINER,
+    strip: true,
+    times: [EARLIER, LATER]
+  }
+}
+
+type Case = {
+  events: LabelEvent[]
+  on: boolean
+  expected: Outcome
+  writes: string[]
+  summary?: string
+}
+
+const CHANGES: [string, (label: string, s: Subject) => Case][] = [
+  [
+    'another account adds it',
+    (label, s) => ({
+      events: [{ event: 'labeled', label, by: COLLABORATOR, at: s.times[1] }],
+      on: true,
+      expected: s.untrustedAdd ?? s.whenOff,
+      writes: s.strip ? [`DELETE repos/${REPO}/issues/${s.n}/labels/${label}`] : [],
+      summary: `${s.noun} #${s.n}: ${COLLABORATOR} added ${label} at ${s.times[1]}, which does not count; ${s.strip ? 'removed it' : 'left on'}`
+    })
+  ],
+  [
+    'another account removes it after a trusted add',
+    (label, s) => ({
+      events: [
+        { event: 'labeled', label, by: s.adder, at: s.times[0] },
+        { event: 'unlabeled', label, by: COLLABORATOR, at: s.times[1] }
+      ],
+      on: false,
+      expected: s.whenOn,
+      writes: [`POST repos/${REPO}/issues/${s.n}/labels labels[]=${label}`],
+      summary: `${s.noun} #${s.n}: ${COLLABORATOR} removed ${label} at ${s.times[1]}, which does not count; applied it again`
+    })
+  ],
+  [
+    'a trusted account adds it',
+    (label, s) => ({
+      events: [{ event: 'labeled', label, by: s.adder, at: s.times[0] }],
+      on: true,
+      expected: s.whenOn,
+      writes: []
+    })
+  ],
+  [
+    'a trusted account removes it',
+    (label, s) => ({
+      events: [
+        { event: 'labeled', label, by: s.adder, at: s.times[0] },
+        { event: 'unlabeled', label, by: s.remover, at: s.times[1] }
+      ],
+      on: false,
+      // The maintainer's removal of the parking label is the wake.
+      expected: label === 'awaiting-maintainer' ? { run: 'true', reason: woken() } : s.whenOff,
+      writes: []
+    })
+  ]
+]
+
+describe.skipIf(!HAS_JQ)('pregate.sh reads every label in its trusted state', () => {
+  it('covers every label the pre-gate reads', () => {
+    const table = readFileSync(SCRIPT, 'utf8').match(/label_trust="\$\(jq[^']*'\{([\s\S]*?)\}'\)"/)
+    const read = [...(table?.[1] ?? '').matchAll(/^\s*(?:"([^"]+)"|\(\$park\)):/gm)].map(
+      ([, name]) => name ?? 'awaiting-maintainer'
+    )
+    expect(read.sort()).toEqual(Object.keys(SUBJECTS).sort())
+    expect(read.sort()).toEqual([...GATE_LABELS].sort())
+  })
+
+  it.each(
+    Object.keys(SUBJECTS).flatMap((label) =>
+      CHANGES.map(([change, make]) => [label, change, make] as const)
+    )
+  )('%s: %s', (label, _, make) => {
+    const subject = SUBJECTS[label]
+    const { events, on, expected, writes, summary } = make(label, subject)
+    const result = run(subject.world(events, on))
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.outputs).toEqual(expected)
+    expect(result.writes).toEqual(writes)
+    if (summary) expect(result.summary).toContain(summary)
+  })
+
+  // Review round 4's own body on #1629: removing evidence-affecting from an approved, ready
+  // agent PR made the pre-gate run section 2a on every fire, and 2a could merge it.
+  it('does not run section 2a after another account removes evidence-affecting', () => {
+    const opened: LabelEvent = {
+      event: 'labeled',
+      label: 'evidence-affecting',
+      by: PIPELINE,
+      at: '2026-09-19T09:00:00Z'
+    }
+    const removed: LabelEvent = {
+      event: 'unlabeled',
+      label: 'evidence-affecting',
+      by: COLLABORATOR,
+      at: LABEL_AFTER_PARK
+    }
+    const approved = (labels: string[], events: LabelEvent[]) =>
+      fixtures({ labels, state: 'success', draft: false, comments: [], events })
+    const first = run(approved(UNPARKED, [opened, removed]))
+    expect(first.status, first.stderr).toBe(0)
+    expect(first.outputs).toEqual({ run: 'false', reason: IDLE })
+    expect(first.writes).toEqual([
+      `POST repos/${REPO}/issues/${PR}/labels labels[]=evidence-affecting`
+    ])
+    expect(first.summary).toContain(`PR #${PR} is evidence-affecting; section 2a never merges it`)
+    const putBack: LabelEvent = { ...opened, at: APPLIED_AGAIN_AT }
+    for (let fire = 0; fire < 2; fire++) {
+      const next = run(approved([...UNPARKED, 'evidence-affecting'], [opened, removed, putBack]))
+      expect(next.outputs).toEqual({ run: 'false', reason: IDLE })
+      expect(next.writes).toEqual([])
+    }
+  })
+
+  it('reads a second page of recent label events while the first is all recent', () => {
+    const world = issueWorld([
+      {
+        number: 5,
+        labels: [],
+        events: [
+          { event: 'labeled', label: 'agent-wip', by: PIPELINE, at: EARLIER },
+          { event: 'unlabeled', label: 'agent-wip', by: COLLABORATOR, at: LATER }
+        ]
+      },
+      QUEUED_ISSUE
+    ])
+    const filler = Array.from({ length: 100 }, () =>
+      labelEvent({ event: 'labeled', label: 'needs-triage', by: MAINTAINER, at: ago(5) }, 1)
+    )
+    const result = run({
+      ...world,
+      [`repos/${REPO}/issues/events?per_page=100&page=1`]: filler,
+      [`repos/${REPO}/issues/events?per_page=100&page=2`]:
+        world[`repos/${REPO}/issues/events?per_page=100&page=1`]
+    })
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+    expect(result.writes).toEqual([`POST repos/${REPO}/issues/5/labels labels[]=agent-wip`])
+  })
+
+  it('writes no label outside the workflow, where LOGIN is unset', () => {
+    const result = run(
+      fixtures({ labels: UNPARKED, agentPrBy: COLLABORATOR, state: 'success', comments: [] }),
+      { LOGIN: '' }
+    )
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.writes).toEqual([])
+    expect(result.summary).toContain('not written, because LOGIN is unset')
+  })
 })

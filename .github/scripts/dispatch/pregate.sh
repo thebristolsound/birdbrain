@@ -4,17 +4,15 @@
 # The full cycle costs a toolchain install and a Claude session. Most hours it
 # would find the slot occupied with nothing owed and exit, so this step asks
 # the cheap version of the skill's sections 1 to 3 first and skips the rest when
-# every answer is "nothing". Its one write is putting back awaiting-maintainer
-# after anyone but the maintainer removes it (the parking check below), so that
-# removal costs no cycle. It is deliberately conservative:
+# every answer is "nothing". It is deliberately conservative:
 # any doubt reads as "run", because a missed cycle costs an hour and a spurious
-# one costs minutes. Who acted is the exception (#1310). None of these starts a
-# cycle, however recent, and each is named in the step summary instead: a
-# comment or review from outside the trust list below; a head anyone but the
-# maintainer or the pipeline pushed; an agent-pr or agent-wip label anyone but
-# those two applied; and a ready-for-agent or queued label anyone but the
-# maintainer applied. A PR parked under awaiting-maintainer is skipped before
-# its status, pushes or activity are read.
+# one costs minutes. Who acted is the exception (#1310): nobody but the
+# maintainer starts or feeds a paid run. A comment or review from outside the
+# trust list below, and a head anyone but the maintainer or the pipeline pushed,
+# start nothing. Every label this step reads is read in its trusted state (see
+# label_trust), and its only writes put a label back to that state, so no label
+# change from outside the trust list costs a cycle. Each is named in the step
+# summary.
 #
 # The conservative default is not enough on its own, because three of the
 # answers here can be wrong in the direction that never runs. A stale claim is
@@ -36,7 +34,8 @@ mode="${1:-cycle}"
 out="${GITHUB_OUTPUT:-/dev/stdout}"
 summary="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
 # Empty when this step runs outside the workflow. Then nothing counts as the
-# pipeline's own, so neither its comments nor the review bots' start a cycle.
+# pipeline's own, so neither its comments nor the review bots' start a cycle,
+# and the step writes no label.
 me="${LOGIN:-}"
 # The trust list, from the spend ruling on #1310: the maintainer, the pipeline
 # itself, and the named review bots on a PR the pipeline opened. Everyone else,
@@ -47,6 +46,28 @@ me="${LOGIN:-}"
 # `copilot-pull-request-reviewer[bot]`.
 maintainer='thebristolsound'
 review_bots='["coderabbitai[bot]","chatgpt-codex-connector[bot]","Copilot","copilot-pull-request-reviewer[bot]"]'
+# Every label this step reads, and whose adding (labeled) and removing
+# (unlabeled) count: m is the maintainer, p the pipeline. A label's trusted state
+# is the one the newest counted event set, and an item with no counted event
+# does not carry it. This step puts a label back on when its trusted state is
+# on, and takes it off when that state is off and strip is set. Two are never
+# taken off: evidence-affecting, which no automation removes, and
+# ready-for-agent, which would leave the issue with no triage label.
+# "Session rules" in the skill holds the same table; change both.
+label_trust="$(jq -n -c --arg park "$AWAITING_MAINTAINER_LABEL" '{
+  "agent-pr": {labeled: "mp", unlabeled: "mp", strip: true},
+  "agent-wip": {labeled: "mp", unlabeled: "mp", strip: true},
+  ($park): {labeled: "mp", unlabeled: "m", strip: true},
+  "evidence-affecting": {labeled: "mp", unlabeled: "mp", strip: false},
+  "ready-for-agent": {labeled: "m", unlabeled: "mp", strip: false},
+  "queued": {labeled: "m", unlabeled: "m", strip: true},
+  "process": {labeled: "mp", unlabeled: "mp", strip: true}
+}')"
+# Shared by the jq programs that read label events; the $ names are jq's.
+# shellcheck disable=SC2016
+jq_counted='def role: if . == $owner then "m" elif ($me != "" and . == $me) then "p" else "" end;
+  def counted: ((.actor.login // "") | role) as $r
+    | $r != "" and ($trust[.label.name][.event] | contains($r));'
 # One slot, and only hand-picked work fills it (ADR-0028). Keep both in step with
 # sections 1 and 3 of .claude/skills/dispatch/SKILL.md.
 capacity=1
@@ -78,14 +99,87 @@ list() { gh api --paginate "$1" | jq -s 'add // []'; }
 # Whether login $1 is the maintainer or, inside the workflow, the pipeline.
 trusted_actor() { [ "$1" = "$maintainer" ] || { [ -n "$me" ] && [ "$1" = "$me" ]; }; }
 
-# The newest $3 event (labeled or unlabeled) for label $2 on issue $1, as
-# "<time><TAB><login>", or empty when no such event survives. The events API
-# names who applied or removed a label; the labels on the issue do not.
-label_event() {
+# The trusted state of every label in label_trust on issue or PR $1, from its
+# events, as {"<label>": {on, since, set, last}}. set is the counted event that
+# made the state, since when the unbroken run of "on" began (so putting a label
+# back does not refresh a claim's age), and last the newest event from anyone.
+# The events API names who applied or removed a label; the labels on the issue
+# do not.
+trusted_labels() {
   gh api --paginate "repos/$R/issues/$1/events?per_page=100" \
-    | jq -s -r --arg label "$2" --arg ev "$3" \
-      'add // [] | [.[] | select(.event == $ev and .label.name == $label)] | max_by(.created_at) // empty
-        | "\(.created_at)\t\(.actor.login // "")"'
+    | jq -s -c --arg owner "$maintainer" --arg me "$me" --argjson trust "$label_trust" "$jq_counted"'
+      [add // [] | .[] | select(.event == "labeled" or .event == "unlabeled")
+        | select($trust[.label.name] != null)
+        | {label: .label.name, event, at: .created_at, by: (.actor.login // ""), counted: counted}]
+      | sort_by(.at) as $ev
+      | $trust | with_entries(.key as $l | .value = (
+          [$ev[] | select(.label == $l)] as $all
+          | [$all[] | select(.counted)] as $t
+          | ($t | last) as $set
+          | (([$t[] | select(.event == "unlabeled") | .at] | last) // "") as $off
+          | {on: ($set.event == "labeled"),
+             since: (if $set.event == "labeled"
+                     then ([$t[] | select(.event == "labeled" and .at > $off) | .at] | first)
+                     else "" end),
+             set: $set,
+             last: ($all | last)}))'
+}
+
+# Issues with a label event in the last four hours that the table does not
+# count. One whose agent-wip, ready-for-agent or queued someone else removed is
+# missing from the label lists below, and a claim older than four hours is aged
+# out anyway. The endpoint lists newest first.
+recent_changes() {
+  local page=1 events
+  while :; do
+    events="$(gh api "repos/$R/issues/events?per_page=100&page=$page")"
+    jq -r --arg after "$stale_before" --arg owner "$maintainer" --arg me "$me" \
+      --argjson trust "$label_trust" "$jq_counted"'
+      .[] | select(.created_at >= $after and (.issue.pull_request | not))
+      | select(.event == "labeled" or .event == "unlabeled")
+      | select($trust[.label.name] != null)
+      | select(counted | not) | .issue.number' <<<"$events"
+    [ "$(jq length <<<"$events")" -eq 100 ] || break
+    jq -e --arg after "$stale_before" 'any(.[]; .created_at >= $after)' <<<"$events" >/dev/null \
+      || break
+    page=$(( page + 1 ))
+  done | sort -un
+}
+
+# Put label $3 on $1 #$2 back to its trusted state $4 (one entry of
+# trusted_labels) when $5, the item's label names, disagrees with it. A write
+# that fails is recorded in restore_failed, which stops this fire before any
+# decision: a cycle would read the label as it stands.
+restore_failed=""
+reconcile() {
+  local noun="$1" n="$2" label="$3" st="$4" names="$5" on physical change strip
+  on="$(jq -r .on <<<"$st")"
+  physical="$(jq -r --arg l "$label" 'index($l) != null' <<<"$names")"
+  [ "$on" = "$physical" ] && return 0
+  change="$(jq -r --arg l "$label" 'if .last == null or .last.counted
+    then "\($l) went \(if .on then "off" else "on" end) with no event naming who changed it"
+    else "\(if .last.by == "" then "an unrecorded account" else .last.by end) \(if .last.event == "labeled" then "added" else "removed" end) \($l) at \(.last.at)" end' <<<"$st")"
+  strip="$(jq -r --arg l "$label" '.[$l].strip' <<<"$label_trust")"
+  if [ "$on" = false ] && [ "$strip" = false ]; then
+    echo "$noun #$n: $change, which does not count; left on" >> "$summary"
+    return 0
+  fi
+  if [ -z "$me" ]; then
+    echo "$noun #$n: $change, which does not count; not written, because LOGIN is unset" >> "$summary"
+    return 0
+  fi
+  if [ "$on" = true ]; then
+    if gh api -X POST "repos/$R/issues/$n/labels" -f "labels[]=$label" --jq '[.[].name]' \
+        | jq -e --arg l "$label" 'index($l)' >/dev/null; then
+      echo "$noun #$n: $change, which does not count; applied it again" >> "$summary"
+      return 0
+    fi
+  elif gh api -X DELETE "repos/$R/issues/$n/labels/$label" >/dev/null; then
+    echo "$noun #$n: $change, which does not count; removed it" >> "$summary"
+    return 0
+  fi
+  echo "$noun #$n: $change, which does not count, and putting it back failed" | tee -a "$summary"
+  restore_failed="${restore_failed:+$restore_failed, }$label on #$n"
 }
 
 # When commit $2 was pushed to branch $1 and by whom, as "<time><TAB><login>",
@@ -137,8 +231,45 @@ report_untrusted() {
     <<<"$2" >> "$summary"
 }
 
-prs="$(list "repos/$R/issues?state=open&labels=agent-pr&per_page=100" | jq '[.[] | select(.pull_request) | .number]')"
-wip="$(list "repos/$R/issues?state=open&labels=agent-wip&per_page=100" | jq '[.[] | select(.pull_request | not) | .number]')"
+# Every open PR is read, because one whose agent-pr someone else removed still
+# holds the slot. A PR is an agent PR when agent-pr is on in its trusted state.
+declare -A states=()
+pulls="$(list "repos/$R/pulls?state=open&per_page=100")"
+prs='[]'
+for n in $(jq -r '.[].number' <<<"$pulls"); do
+  states[$n]="$(trusted_labels "$n")"
+  names="$(jq -c --argjson n "$n" '.[] | select(.number == $n) | [.labels[].name]' <<<"$pulls")"
+  reconcile PR "$n" agent-pr "$(jq -c '.["agent-pr"]' <<<"${states[$n]}")" "$names"
+  jq -e '.["agent-pr"].on' <<<"${states[$n]}" >/dev/null || continue
+  prs="$(jq -c --argjson n "$n" '. + [$n]' <<<"$prs")"
+  for l in "$AWAITING_MAINTAINER_LABEL" evidence-affecting; do
+    reconcile PR "$n" "$l" "$(jq -c --arg l "$l" '.[$l]' <<<"${states[$n]}")" "$names"
+  done
+done
+
+# Open issues that carry a claim or both queue labels, or had a label change
+# that does not count in the last four hours.
+issues="$( {
+  list "repos/$R/issues?state=open&labels=agent-wip&per_page=100"
+  list "repos/$R/issues?state=open&labels=ready-for-agent,queued&per_page=100"
+  for n in $(recent_changes); do gh api "repos/$R/issues/$n" | jq -c '[.]'; done
+} | jq -s -c 'add | map(select((.pull_request | not) and .state != "closed")) | unique_by(.number)')"
+wip='[]'
+for n in $(jq -r '.[].number' <<<"$issues"); do
+  states[$n]="$(trusted_labels "$n")"
+  names="$(jq -c --argjson n "$n" '.[] | select(.number == $n) | [.labels[].name]' <<<"$issues")"
+  for l in agent-wip ready-for-agent queued process; do
+    reconcile Issue "$n" "$l" "$(jq -c --arg l "$l" '.[$l]' <<<"${states[$n]}")" "$names"
+  done
+  if jq -e '.["agent-wip"].on' <<<"${states[$n]}" >/dev/null; then
+    wip="$(jq -c --argjson n "$n" '. + [$n]' <<<"$wip")"
+  fi
+done
+
+if [ -n "$restore_failed" ]; then
+  decide false "could not put back $restore_failed to its trusted state; the next fire tries again"
+fi
+
 occupancy=$(( $(jq length <<<"$prs") + $(jq length <<<"$wip") ))
 echo "Occupancy $occupancy/$capacity: agent-pr PRs $prs, agent-wip claims $wip" | tee -a "$summary"
 
@@ -167,67 +298,38 @@ fi
 # Section 1: a claim past the 4-hour expiry is stale, and only the routine ages
 # it out. Counting it as a held slot lets an abandoned claim declare the
 # queue full for good, with the one component that could clear them gated off.
-# A label someone outside the trust list applied still holds the slot, but its
-# age starts nothing. With the slot full that stalls the queue until the
-# maintainer removes it, and only this step's summary names it.
+# The claim's age runs from the counted add that put agent-wip on.
 for n in $(jq -r '.[]' <<<"$wip"); do
-  claim="$(label_event "$n" agent-wip labeled)"
-  IFS=$'\t' read -r claimed claimed_by <<<"$claim"
-  if [ -n "$claimed" ] && ! trusted_actor "$claimed_by"; then
-    echo "Issue #$n carries agent-wip from ${claimed_by:-an unrecorded account}, outside the trust list; not aged out" >> "$summary"
-    continue
-  fi
+  claimed="$(jq -r '.["agent-wip"].since // ""' <<<"${states[$n]}")"
   if [ -z "$claimed" ] || [[ ! "$claimed" > "$stale_before" ]]; then
     decide true "issue #$n holds an agent-wip claim from ${claimed:-an unrecorded time}, past the 4-hour expiry; section 1 must age it out"
   fi
 done
 
-# Section 2: does any open agent PR need the routine? A PR counts only when the
-# maintainer or the pipeline applied its agent-pr label. One labelled by anyone
-# else still holds the slot, as it does in the skill, so it can block the queue
-# but not start a cycle.
+# Section 2: does any open agent PR need the routine?
 for n in $(jq -r '.[]' <<<"$prs"); do
-  marked="$(label_event "$n" agent-pr labeled)"
-  IFS=$'\t' read -r _ marked_by <<<"$marked"
-  if ! trusted_actor "$marked_by"; then
-    echo "PR #$n carries agent-pr from ${marked_by:-an unrecorded account}, outside the trust list; not worked" >> "$summary"
-    continue
-  fi
+  st="${states[$n]}"
   # Parking, per the maintainer's ruling of 2026-09-28 on #1310: while the label
   # is on, nothing wakes the PR, whether a comment, a review or a push, his
   # included, or a verdict owed on its head. Only his removal of the label wakes
-  # it. After anyone else removes it the PR is still parked, and this step puts
-  # the label back itself and skips the PR: a cycle would cost a Claude session
-  # per removal, and anyone who can label can repeat one.
-  labels="$(gh api "repos/$R/issues/$n/labels" --jq '[.[].name]')"
-  if jq -e --arg l "$AWAITING_MAINTAINER_LABEL" 'index($l)' <<<"$labels" >/dev/null; then
+  # it; anyone else's does not count, and reconcile has put the label back.
+  if jq -e --arg l "$AWAITING_MAINTAINER_LABEL" '.[$l].on' <<<"$st" >/dev/null; then
     echo "PR #$n is parked for the maintainer; skipped until he removes $AWAITING_MAINTAINER_LABEL" >> "$summary"
     continue
   fi
-  removal="$(label_event "$n" "$AWAITING_MAINTAINER_LABEL" unlabeled)"
-  IFS=$'\t' read -r removed_at remover <<<"$removal"
-  if [ -n "$removed_at" ] && [ "$remover" != "$maintainer" ]; then
-    who="${remover:-an unrecorded account}"
-    if gh api -X POST "repos/$R/issues/$n/labels" -f "labels[]=$AWAITING_MAINTAINER_LABEL" \
-        --jq '[.[].name]' | jq -e --arg l "$AWAITING_MAINTAINER_LABEL" 'index($l)' >/dev/null; then
-      echo "PR #$n is parked, but $who removed $AWAITING_MAINTAINER_LABEL at $removed_at; applied it again and skipped" >> "$summary"
-    else
-      echo "PR #$n is parked, but $who removed $AWAITING_MAINTAINER_LABEL at $removed_at, and applying it again failed; skipped, and the next fire tries again" | tee -a "$summary"
-    fi
-    continue
-  fi
-  # Empty unless the maintainer made the newest removal.
-  woken_at="$removed_at"
-  pr="$(gh api "repos/$R/pulls/$n")"
+  # Empty unless the maintainer's removal set the label's trusted state.
+  woken_at="$(jq -r --arg l "$AWAITING_MAINTAINER_LABEL" \
+    'if .[$l].set.event == "unlabeled" then .[$l].set.at else "" end' <<<"$st")"
+  pr="$(jq -c --argjson n "$n" '.[] | select(.number == $n)' <<<"$pulls")"
   sha="$(jq -r .head.sha <<<"$pr")"
   draft="$(jq -r .draft <<<"$pr")"
   author="$(jq -r '.user.login // empty' <<<"$pr")"
   pushed_at=""
   untrusted_head=""
-  st="$(gh api "repos/$R/commits/$sha/status" \
+  status="$(gh api "repos/$R/commits/$sha/status" \
     --jq '[.statuses[] | select(.context=="agent/pre-pass")][0] // {}
           | "\(.state // "absent")\t\(.description // "")"')"
-  IFS=$'\t' read -r state desc <<<"$st"
+  IFS=$'\t' read -r state desc <<<"$status"
   case "$state" in
     success) ;;
     # cleanup.sh posts failure on a pre-pass its own run interrupted, and posts
@@ -297,8 +399,16 @@ for n in $(jq -r '.[]' <<<"$prs"); do
   if [ -n "$newest" ] && [[ "$newest" > "$after" ]]; then
     decide true "PR #$n has activity at $newest newer than $than"
   fi
+  # Section 2a never merges a PR whose trusted state is evidence-affecting.
+  # One that carries the label only from outside the trust list is not merged
+  # either, since merge.sh refuses any PR carrying it, so a cycle would change
+  # nothing; this step leaves that label on.
   if [ "$state" = success ] && [ "$draft" = false ]; then
-    if ! jq -e 'index("evidence-affecting")' <<<"$labels" >/dev/null; then
+    if jq -e '.["evidence-affecting"].on' <<<"$st" >/dev/null; then
+      echo "PR #$n is evidence-affecting; section 2a never merges it" >> "$summary"
+    elif jq -e '[.labels[].name] | index("evidence-affecting")' <<<"$pr" >/dev/null; then
+      echo "PR #$n carries evidence-affecting from outside the trust list; section 2a does not merge it" >> "$summary"
+    else
       decide true "PR #$n is approved, ready and non-evidence; section 2a may merge it"
     fi
   fi
@@ -312,20 +422,11 @@ if [ "$occupancy" -lt "$capacity" ]; then
   # routine will refuse. A failed or unsupported dependency read counts the
   # issue as available, which is the conservative direction.
   frontier=0
-  for n in $(list "repos/$R/issues?state=open&labels=ready-for-agent,queued&per_page=100" \
-      | jq -r '.[] | select(.pull_request | not) | select(.assignees | length == 0)
-               | select([.labels[].name] | index("process") | not) | .number'); do
-    # Only the maintainer queues work: an issue counts when he applied both labels.
-    foreign=""
-    for l in ready-for-agent queued; do
-      applied="$(label_event "$n" "$l" labeled)"
-      IFS=$'\t' read -r _ by <<<"$applied"
-      [ "$by" = "$maintainer" ] || foreign="${foreign:+$foreign, }$l from ${by:-an unrecorded account}"
-    done
-    if [ -n "$foreign" ]; then
-      echo "Issue #$n has $foreign, outside the trust list; not frontier" >> "$summary"
-      continue
-    fi
+  for n in $(jq -r '.[] | select(.assignees | length == 0) | .number' <<<"$issues"); do
+    # Only the maintainer queues work: both queue labels on and process off, each
+    # in its trusted state.
+    jq -e '.["ready-for-agent"].on and .queued.on and (.process.on | not)' <<<"${states[$n]}" \
+      >/dev/null || continue
     blockers="$(gh api "repos/$R/issues/$n/dependencies/blocked_by" \
       --jq '[.[] | select(.state == "open")] | length' 2>/dev/null || echo 0)"
     if [ "${blockers:-0}" -eq 0 ]; then

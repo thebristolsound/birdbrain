@@ -117,6 +117,20 @@ if [ -n "$evidence" ]; then
   say "evidence-affecting ($evidence): merging as the human reviewer"
 fi
 
+# 4b. The maintainer's own PR: main requires a code-owner approval GitHub will not let its author
+#     give, so it merges through the admin bypass, and only on a success pre-pass at this head.
+admin=""
+if [ "$cli" = "gh" ]; then
+  author="$(field user.login)"
+  me="$(gh api user --jq .login)" || fail "cannot read the gh login"
+  if [ -n "$author" ] && [ "$author" = "$me" ]; then
+    prepass="$(node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); const p=s.statuses.find(x=>x.context==="agent/pre-pass"); process.stdout.write(p?p.state:"missing")' "$work/status.json")"
+    [ "$prepass" = "success" ] || fail "PR #$n is authored by $me, so it merges through the admin bypass, which needs a success agent/pre-pass at head (it is $prepass)"
+    admin="--admin"
+    say "authored by $me: merging with the admin bypass on a success pre-pass"
+  fi
+fi
+
 # 5. Subject and body for the squash commit.
 node "$here/compose.mjs" "$work/body.md" "$title" "$n" "$work" > "$work/composed.txt" || fail "cannot compose the merge message"
 say "merge message:"; sed 's/^/    /' "$work/composed.txt"
@@ -126,7 +140,8 @@ if [ "$dry" -eq 1 ]; then say "dry run: stopping before 'pr ready' and 'pr merge
 #    gh would also try to switch the local branch, which fails inside a worktree; the repository's
 #    delete_branch_on_merge removes the remote branch and step 8 handles the local one.
 if [ "$draft" = "true" ]; then "$cli" pr ready "$n" || fail "could not mark ready"; fi
-"$cli" pr merge "$n" --squash --match-head-commit "$head_sha" --subject "$(cat "$work/subject.txt")" --body-file "$work/body.txt" \
+# shellcheck disable=SC2086
+"$cli" pr merge "$n" --squash $admin --match-head-commit "$head_sha" --subject "$(cat "$work/subject.txt")" --body-file "$work/body.txt" \
   || fail "merge command failed; read the PR before retrying"
 
 # 7. Read back what landed rather than asserting it.

@@ -25,8 +25,14 @@ const requiredRules = (contexts: string[]) => [
 
 const run = (name: string, conclusion: string) => ({ name, status: 'completed', conclusion })
 
-const routes = (rules: unknown, checkRuns: ReturnType<typeof run>[]) => ({
+const routes = (
+  rules: unknown,
+  checkRuns: ReturnType<typeof run>[],
+  { author = 'someone-else', statuses = [] as { context: string; state: string }[] } = {}
+) => ({
+  user: { login: 'maintainer' },
   [`${API}/pulls/7`]: {
+    user: { login: author },
     state: 'open',
     draft: false,
     merged: false,
@@ -41,7 +47,7 @@ const routes = (rules: unknown, checkRuns: ReturnType<typeof run>[]) => ({
     total_count: checkRuns.length,
     check_runs: checkRuns
   },
-  [`${API}/commits/${SHA}/status?per_page=100`]: { statuses: [] },
+  [`${API}/commits/${SHA}/status?per_page=100`]: { statuses },
   [`${API}/issues/829/labels`]: []
 })
 
@@ -113,5 +119,39 @@ describe.skipIf(!HAS_JQ)('merge.sh gates on the required checks of main', () => 
     const result = dryRun(routes(null, green))
     expect(result.status).toBe(1)
     expect(result.stderr).toContain('cannot read the rules for main')
+  })
+})
+
+describe.skipIf(!HAS_JQ)("merge.sh takes the admin bypass only for the maintainer's own PR", () => {
+  const rules = requiredRules(['lint'])
+  const green = [run('lint', 'success')]
+  const prePass = (state: string) => [{ context: 'agent/pre-pass', state }]
+
+  it('uses the bypass for a PR the gh login authored with a success pre-pass', () => {
+    const result = dryRun(
+      routes(rules, green, { author: 'maintainer', statuses: prePass('success') })
+    )
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain(
+      'merge-pr: authored by maintainer: merging with the admin bypass on a success pre-pass'
+    )
+  })
+
+  it("refuses the maintainer's own PR without a success pre-pass at head", () => {
+    const failed = dryRun(
+      routes(rules, green, { author: 'maintainer', statuses: prePass('failure') })
+    )
+    expect(failed.status).toBe(1)
+    expect(failed.stderr).toContain('needs a success agent/pre-pass at head (it is failure)')
+
+    const missing = dryRun(routes(rules, green, { author: 'maintainer' }))
+    expect(missing.status).toBe(1)
+    expect(missing.stderr).toContain('(it is missing)')
+  })
+
+  it('does not use the bypass for a PR someone else authored', () => {
+    const result = dryRun(routes(rules, green, { statuses: prePass('success') }))
+    expect(result.status).toBe(0)
+    expect(result.stdout).not.toContain('admin bypass')
   })
 })

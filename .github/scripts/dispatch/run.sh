@@ -101,8 +101,9 @@ run_claude() {
   claude "$@" "${flags[@]}" > .dispatch/result.json 2> .dispatch/claude.err
   status=$?
   set -e
-  # Before anything reads, echoes or uploads these files. The failure path is the
-  # one that carries a credential, so redacting after it would redact nothing.
+  # Before anything reads, echoes or uploads these files, unless a cancel ends the
+  # run inside the call. The failure path is the one that carries a credential, so
+  # redacting after it would redact nothing.
   scrub .dispatch/result.json
   scrub .dispatch/claude.err
   strip_spend .dispatch/result.json

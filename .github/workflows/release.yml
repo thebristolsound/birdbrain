@@ -258,6 +258,7 @@ jobs:
   # assets, attached later by release-macos.yml, are not in the checksum file.
   sbom-and-checksums:
     needs: [build-app, build-extension]
+    environment: paid-runs
     runs-on: ubuntu-latest
     timeout-minutes: 20
 

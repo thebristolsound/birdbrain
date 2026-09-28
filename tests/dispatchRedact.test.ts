@@ -15,6 +15,11 @@ const CREDENTIALS = [
   { prefix: 'ghp_', value: `ghp_${fill(36, 'Ab3')}` },
   { prefix: 'gho_', value: `gho_${fill(36, 'Cd4')}` },
   { prefix: 'ghs_', value: `ghs_${fill(36, 'Ef5')}` },
+  // GitHub's stateless installation-token format, ghs_APPID_JWT: a JWT's three parts joined by dots
+  {
+    prefix: 'ghs_',
+    value: `ghs_1234567_${fill(36, 'Mn9')}.${fill(120, 'Op0')}.${fill(43, 'Qr1')}`
+  },
   { prefix: 'ghu_', value: `ghu_${fill(36, 'Gh6')}` },
   { prefix: 'github_pat_', value: `github_pat_${fill(22, 'Ij7')}_${fill(59, 'Kl8')}` }
 ]
@@ -38,6 +43,14 @@ describe('dispatch redact.sh', () => {
     const { stdout } = redact(`${CREDENTIALS.map(({ value }) => value).join(' ')}\n`)
 
     expect(stdout).toBe(`${CREDENTIALS.map(({ prefix }) => `${prefix}<REDACTED>`).join(' ')}\n`)
+  })
+
+  it('leaves a dot that ends a sentence after a value', () => {
+    const { stdout } = redact(`${CREDENTIALS.map(({ value }) => `Rejected ${value}.`).join(' ')}\n`)
+
+    expect(stdout).toBe(
+      `${CREDENTIALS.map(({ prefix }) => `Rejected ${prefix}<REDACTED>.`).join(' ')}\n`
+    )
   })
 
   it('passes text that only names a prefix through unchanged', () => {

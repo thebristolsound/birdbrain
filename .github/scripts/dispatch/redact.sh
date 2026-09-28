@@ -11,7 +11,10 @@
 # same job environment, so five GitHub token prefixes are matched as well.
 #
 # A match needs six characters after the prefix, so text that only names a
-# prefix passes through unchanged.
+# prefix passes through unchanged. A value runs on across a dot that has a value
+# character after it, because GitHub's stateless installation token
+# (ghs_APPID_JWT) carries a JWT whose three parts are joined by dots. A dot that
+# ends a sentence has none after it, so it stays.
 redact() {
-  sed -E 's/(sk-ant-|ghp_|gho_|ghs_|ghu_|github_pat_)[A-Za-z0-9_-]{6}[A-Za-z0-9_-]*/\1<REDACTED>/g'
+  sed -E 's/(sk-ant-|ghp_|gho_|ghs_|ghu_|github_pat_)[A-Za-z0-9_-]{6}[A-Za-z0-9_-]*(\.[A-Za-z0-9_-]+)*/\1<REDACTED>/g'
 }

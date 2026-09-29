@@ -199,7 +199,14 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.CASES_GET, (_, id: string) => caseRepo.getCase(id))
   handle(IPC_CHANNELS.CASES_CREATE, (_, params: CreateCaseParams) => caseRepo.createCase(params))
   handle(IPC_CHANNELS.CASES_UPDATE, (_, params: UpdateCaseParams) => caseRepo.updateCase(params))
-  handle(IPC_CHANNELS.CASES_DELETE, (_, id: string) => caseRepo.deleteCase(id))
+  handle(IPC_CHANNELS.CASES_DELETE, (_, id: string) => {
+    const deleted = caseRepo.deleteCase(id)
+    // Clears the session for the same reason the demo delete below does.
+    if (deleted && sessionService.snapshot().activeCaseId === id) {
+      sessionService.deactivateCase()
+    }
+    return deleted
+  })
   handle(IPC_CHANNELS.CASES_DELETE_DEMO, (_, id: string) => {
     const deleted = deleteDemoCase(id)
     // The tour's delete ending always removes the case the operator is looking

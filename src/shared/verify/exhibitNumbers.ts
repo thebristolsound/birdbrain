@@ -54,9 +54,9 @@ function assignmentsOf(entry: Record<string, unknown>, index: number): ExhibitNu
  *
  * A sequence ends at a fork: an `import` whose preceding segment carries a
  * `member-add`, so the Case it continues was shared. The fork's import stamps
- * every row from before it with its member author and code (the Case Archive's
- * `attributeForkedExhibits`), so those numbers are cited by their members and
- * the fork numbers its own Exhibits from 1. An import of a Case nobody shared
+ * every row from before it with its member author (the Case Archive's
+ * `attributeForkedExhibits`), so those numbers are its members' and the fork
+ * numbers its own Exhibits from 1. An import of a Case nobody shared
  * keeps its rows as the importer's own, and the sequence runs on across it.
  */
 export function exhibitNumberSequences(

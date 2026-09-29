@@ -67,6 +67,26 @@ maintainer ruled on 2026-09-28:
    a hidden window cannot answer one. A capture of the challenge page is recorded as what the
    site served, not as a failure to reach it.
 
+**Birdbrain pushes the Operator toward a VPN, but only warns.** The maintainer ruled on
+2026-09-28:
+
+1. **Detection stays on the machine.** Birdbrain looks for a VPN by checking whether the default
+   route runs through a tunnel adapter. It asks no outside service, which would tell a third
+   party where the Operator is. The check misses a VPN on the router, a corporate network, an
+   exit node and a split tunnel, and macOS keeps tunnel adapters for its own services, so the
+   wording always says a VPN was not seen, never that there is no VPN.
+2. **An indicator and a once-per-Case warning, never a block.** The top bar shows the Egress and
+   whether a VPN is seen. While the Egress is Direct and no VPN is seen, Birdbrain warns before
+   the first contact with a site in each Case, offering to continue, to set up a proxy, or to
+   stop warning on this network. A block would lock out an Operator whose VPN the check cannot
+   see.
+3. **Starting a Capture Session warns too.** The TLS Cert Chain re-fetch runs after extension
+   Captures, and the Operator's own browsing is the larger exposure. That warning says Birdbrain
+   can see the machine's network path, not the browser's.
+4. **The result is not evidence.** No Manifest Entry records whether a VPN was seen. It is a guess
+   about the machine, not about what the site saw, and a signed "not seen" could impeach an
+   Operator whose VPN ran on the router.
+
 **The user agent stays as Electron builds it.** Removing `birdbrain/<version>` is excluded
 because it was measured to break Turnstile, not because it is evasion. It is reopened by one
 measurement: the Birdbrain renderer on the shipping Electron version, comparing the stock string

@@ -34,7 +34,6 @@ const NAMESPACES = [
   'diagnostics',
   'updates',
   'db',
-  'ai',
   'extractedData'
 ] as const satisfies readonly NamespaceKey[]
 

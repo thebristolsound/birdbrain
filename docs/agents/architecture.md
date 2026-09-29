@@ -20,7 +20,6 @@ src/main/services/           # Main-process services: captureServer, captureStor
                              #   signingKey, certification, waybackMachine, diagnostics, updater, deepLink,
                              #   noteAnchorResolver, logSafe
 src/main/services/db/        # Data access layer — see "Database" below (core, migrations, per-domain repos, dbAdmin)
-src/main/services/ai/        # OpenRouter chat client + capture analysis service
 src/main/services/extraction/ # Extracted-data pipeline (source, IOC adapter, sanitizer, validators)
 src/main/ipcHandlers.ts      # All IPC handler registrations
 src/main/ipcWrap.ts          # handle() wrapper + IpcFailure error envelope
@@ -56,7 +55,7 @@ Packages are deep modules - see [src/packages/README.md](../../src/packages/READ
 
 All renderer↔main communication uses typed IPC channels defined in `src/shared/ipc.ts`. Channels follow `domain:action` naming (e.g., `cases:create`, `selectors:create`). Event channels (main→renderer) use `event:` prefix.
 
-**Domains** (read `IPC_CHANNELS` in `src/shared/ipc.ts` for the authoritative list): cases, captures, recapture, tags, search, settings, export, selectors, notes, wayback, extractedData, annotations, extension, shell, exhibits, manifest, staging, app, diagnostics, updates, ai, db — plus the `event:` main→renderer channels.
+**Domains** (read `IPC_CHANNELS` in `src/shared/ipc.ts` for the authoritative list): cases, captures, recapture, tags, search, settings, export, selectors, notes, wayback, extractedData, annotations, extension, shell, exhibits, manifest, staging, app, diagnostics, updates, db — plus the `event:` main→renderer channels.
 
 The preload script exposes these via `window.birdbrain` with typed invoke/on methods.
 
@@ -108,7 +107,7 @@ SQLite via better-sqlite3. The data-access layer lives in `src/main/services/db/
 
 **Raw connection access is lint-enforced:** `eslint.config.js` restricts importing `getDb` from `@main/services/db/core` anywhere under `src/main/` outside `src/main/services/db/`. New SQL belongs in a repo module; the few legacy exceptions carry an `eslint-disable` with a reason.
 
-**Tables and indexes:** read `migrations.ts` — it is the only place tables and indexes are declared, in chronological order. Broadly: case/capture core plus tags, selectors and selector matches, notes, favorites, capture analyses, extracted data, annotations and annotation pins, pinned Wayback refs (table `capture_archive_refs`), capture texts, and FTS5 virtual tables shadowing captures, notes, and extracted data. Never assume a table exists because it appears in an early migration — later migrations drop and rebuild some (e.g. the v1 `entities` and `case_analyses` tables were dropped, and `captures_fts` was later dropped and recreated).
+**Tables and indexes:** read `migrations.ts` — it is the only place tables and indexes are declared, in chronological order. Broadly: case/capture core plus tags, selectors and selector matches, notes, favorites, capture analyses (retired: kept in the schema, no longer read or written), extracted data, annotations and annotation pins, pinned Wayback refs (table `capture_archive_refs`), capture texts, and FTS5 virtual tables shadowing captures, notes, and extracted data. Never assume a table exists because it appears in an early migration — later migrations drop and rebuild some (e.g. the v1 `entities` and `case_analyses` tables were dropped, and `captures_fts` was later dropped and recreated).
 
 ### Theme system
 
@@ -137,24 +136,19 @@ Built separately via `pnpm build:extension` (uses `extension/vite.config.ts`). B
 (`popup`, `options`) are listed in `HTML_ENTRIES` there; the `closeBundle` fixup lifts each one
 from its nested Rollup path to the dist root and injects `theme-preinit.js`.
 
-### AI services
+### Retired AI analysis
 
-Two OpenRouter modules, split by role:
+Birdbrain has no AI analysis. The per-capture analysis feature was removed; what remains is compatibility:
 
-- `src/main/services/openrouter.ts` - Credential/catalog surface: `testApiKey()` and `listModels()`, exposed over the `settings:testOpenRouter` and `settings:listModels` channels and driven by Settings → AI.
-- `src/main/services/ai/openrouter.ts` - The chat client: `sendPrompt()` (with retry/backoff) and `truncateForContext()`.
-
-`src/main/services/ai/analysisService.ts` runs per-capture analysis on top of that client (`analyzeCapture`, `saveAnalysis`, `getAnalysis`, plus archive import/export helpers) and persists to the `capture_analyses` table. Handlers are registered for `ai:analyze`, `ai:saveAnalysis`, and `ai:getAnalysis`; the renderer surface is `captures/AnalysisTab.tsx`.
-
-Note: the v1 `entities` and `case_analyses` tables were dropped in an early migration, but **per-capture analysis exists again** via `capture_analyses` — do not assume AI analysis is dead code.
-
-Settings persist `openRouterApiKey`, `defaultModel`, and `analysisSystemPrompt` (defaulting to `DEFAULT_ANALYSIS_SYSTEM_PROMPT` in `src/shared/constants.ts`).
+- The `capture_analyses` table stays in the schema, with no migration, so an upgraded database keeps any rows it holds. Nothing reads or writes it.
+- A Case Archive still carries a `captureAnalyses` key, written empty, because releases from before the removal iterate it on import. Import ignores the key, so an older archive's analysis rows are dropped.
+- `initSettings` strips the retired settings keys (`openRouterApiKey`, `defaultModel`, `analysisSystemPrompt`) from `settings.json` at startup, so an upgraded install does not keep the stored API key on disk.
 
 ### UI components
 
 Organized by feature under `src/renderer/components/`:
 
-- **captures/** - Capture list/viewer workflow (three resizable columns, each side one collapsible to a 40px rail), details panel/rail, add-URL box, provenance, viewer tabs Screenshot/Page/Text/Wayback, analysis and forensics sections, MHTML viewer, download menu, inline tag/note editing hooks, verify mutation, and the annotation editor under `captures/annotation/` (canvas, zoom/pan and editor hooks, pin popover, shape components under `annotation/shapes/`)
+- **captures/** - Capture list/viewer workflow (three resizable columns, each side one collapsible to a 40px rail), details panel/rail, add-URL box, provenance, viewer tabs Screenshot/Page/Text/Wayback, forensics section, MHTML viewer, download menu, inline tag/note editing hooks, verify mutation, and the annotation editor under `captures/annotation/` (canvas, zoom/pan and editor hooks, pin popover, shape components under `annotation/shapes/`)
 - **dashboard/** - Dashboard, CaseCard, DashboardFooter, ExtensionBanner, HeroSection, RecentCases, plus case workspace components under `dashboard/cases/` (CaseWorkspace, CreateCaseDialog, DataExplorer, ImportCaseDialog, NewCaseWizard)
 - **data/** - The Data screen's parts (#1149, #1150): `dataTreeModel.ts`, `dataTableModel.ts` and `ledgerModel.ts` (pure models over the exhibit inventory and the manifest snapshot), DataTree, ArtifactTable, ArtifactTabs, the per-row tabs (PropertiesTab, ExtractedTextTab, HeadersTlsTab, ManifestLedger), IntegrityStrip, DiscardStagedDialog, `useDataContextMenu.ts` (the #1151 menu targets over the same callbacks the inline controls use), and IndicatorsView (the extracted-data browser, reachable as Results > Indicators). `dashboard/cases/DataExplorer.tsx` is the shell that mounts them
 - **export/** - ExportDialog, ExportMenu, ExportProgress, exportNotice.ts (the written-export toast)
@@ -165,7 +159,7 @@ Organized by feature under `src/renderer/components/`:
 - **overview/** - CaseOverview, CaseSubhead, ActivityTimeline, MetricRow, RecentCapturesStrip, SelectorCoverageBlock, SinceLastVisitBanner, SourcesBlock, VerifyBar, overviewModel.ts
 - **search/** - SearchBar
 - **selectors/** - CreateSelectorCard, CreateSelectorPopover, selectorOrigin.ts, selectorUtils.ts, useForegroundMatchPreview.ts (the Selectors screen itself moved to `signals/`)
-- **settings/** - SettingsView, AIConfig, AppearanceConfig, CapturePreferences, DatabaseAdmin, DiagnosticsPanel, OperatorConfig, StorageConfig, UpdatesConfig, About, plus database utility views under `settings/db/`
+- **settings/** - SettingsView, AppearanceConfig, CapturePreferences, DatabaseAdmin, DiagnosticsPanel, OperatorConfig, StorageConfig, UpdatesConfig, About, plus database utility views under `settings/db/`
 - **signals/** - SignalsOverview (the consolidated Signals screen), AutoCaptureCard, AddSelectorRow, AddTagRow, BulkImportDrawer, SignalRow, CoverageStrip, SignalDetailRail, signalsModel.ts
 - **status/** - CaptureHealth, ConnectionStatus, SessionControls
 - **tags/** - TagBadge

@@ -9,12 +9,11 @@ const PUBLIC_KEY_FILENAME = 'signing-public-key.pem'
 
 // Wrap the private key at rest with Electron's OS credential store (DPAPI /
 // Keychain). Falls back to plaintext when safeStorage is unavailable (e.g.
-// tests, headless Linux) — same contract as settings.ts, except that
-// generating a fresh key while unprotected is gated on an explicit operator
-// acknowledgement (see initSigningKey below). Decided in #289/#414: the
-// signing key is evidence and the threat model asserts it is wrapped at
-// rest, so silently degrading would be a mis-attestation; the OpenRouter key
-// in settings.ts is a revocable credential and carries no such gate.
+// tests, headless Linux), except that generating a fresh key while
+// unprotected is gated on an explicit operator acknowledgement (see
+// initSigningKey below). Decided in #289/#414: the signing key is evidence
+// and the threat model asserts it is wrapped at rest, so silently degrading
+// would be a mis-attestation.
 //
 // electron/safeStorage/dialog are reached only through this guarded
 // require — never a static top-level `import` — because this module is

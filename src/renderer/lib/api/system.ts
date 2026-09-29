@@ -32,7 +32,3 @@ export function openExtensionFolder(): Promise<void> {
 export function chooseStoragePath(): Promise<string | null> {
   return window.birdbrain.settings.chooseStoragePath()
 }
-
-export function testOpenRouterKey(apiKey: string): Promise<boolean> {
-  return window.birdbrain.settings.testOpenRouter(apiKey)
-}

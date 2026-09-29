@@ -1,6 +1,6 @@
 import { app, dialog, shell } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
-import { DEFAULT_ANALYSIS_SYSTEM_PROMPT, MAX_BATCH_CAPTURE_IDS } from '@shared/constants'
+import { MAX_BATCH_CAPTURE_IDS } from '@shared/constants'
 import { safeFilename } from '@shared/safeFilename'
 import { MENTION_TARGET_TYPES } from '@shared/noteDoc'
 import { validateIgnorePattern } from '@shared/urlPatterns'
@@ -30,7 +30,6 @@ import type {
   DbExportTableParams,
   DbRestoreSnapshotParams,
   OrphanReport,
-  AnalyzeCaptureParams,
   SaveAnnotationsParams,
   UpsertAnnotationPinParams,
   ExportResult,
@@ -65,8 +64,6 @@ import { getThumbnail } from '@main/services/thumbnails'
 import { getCaseInventory, getManifestSnapshot, verifyExhibit } from '@main/services/exhibits'
 import { commitStagedFiles, discardStagedFiles, uploadToStaging } from '@main/services/staging'
 import * as settings from '@main/services/settings'
-import * as openrouter from '@main/services/openrouter'
-import * as analysisService from '@main/services/ai/analysisService'
 import { generateReport, getExportPreflight } from '@main/services/export'
 import {
   exportCaseArchive,
@@ -97,13 +94,7 @@ import { takeUncleanSession } from '@main/services/sessionLog'
 import { buildBugReport, bugReportFilename } from '@main/services/bugReport'
 import { ValidatedError, context, errorName, ident, isLogCode } from '@main/services/logSafe'
 import type { LogContext, LogValue } from '@main/services/logSafe'
-import type {
-  BirdbrainSettings,
-  Capture,
-  ExportOptions,
-  CaptureAnalysis,
-  ArchiveInspectReport
-} from '@shared/types'
+import type { BirdbrainSettings, Capture, ExportOptions, ArchiveInspectReport } from '@shared/types'
 
 // Self-test fetches must fail fast when the capture server is down. Without an
 // explicit timeout they inherit undici's 10s default, which on platforms whose
@@ -951,10 +942,6 @@ export function registerIpcHandlers(deps: {
     updaterService.applySettingsChange(reset)
     return reset
   })
-  handle(IPC_CHANNELS.SETTINGS_TEST_OPENROUTER, (_, apiKey: string) =>
-    openrouter.testApiKey(apiKey)
-  )
-  handle(IPC_CHANNELS.SETTINGS_LIST_MODELS, (_, apiKey: string) => openrouter.listModels(apiKey))
   handle(IPC_CHANNELS.SETTINGS_GET_IDENTITY, () => {
     const s = settings.getSettings()
     return {
@@ -1196,38 +1183,6 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.UPDATES_CHECK, () => updaterService.check())
   handle(IPC_CHANNELS.UPDATES_DOWNLOAD, () => updaterService.download())
   handle(IPC_CHANNELS.UPDATES_INSTALL, () => updaterService.install())
-
-  // AI Analysis
-  handle(IPC_CHANNELS.AI_ANALYZE, async (_, params: AnalyzeCaptureParams) => {
-    const currentSettings = settings.getSettings()
-    const apiKey = currentSettings.openRouterApiKey
-    if (!apiKey) throw new IpcFailure('No OpenRouter API key configured')
-    const systemPrompt = currentSettings.analysisSystemPrompt?.trim()
-      ? currentSettings.analysisSystemPrompt
-      : DEFAULT_ANALYSIS_SYSTEM_PROMPT
-    try {
-      return await analysisService.analyzeCapture(
-        params.captureId,
-        params.caseId,
-        params.model,
-        apiKey,
-        systemPrompt
-      )
-    } catch (err) {
-      throw new IpcFailure(err instanceof Error ? err.message : String(err))
-    }
-  })
-
-  handle(IPC_CHANNELS.AI_SAVE_ANALYSIS, (_, analysis: CaptureAnalysis) => {
-    analysisService.saveAnalysis(analysis)
-  })
-
-  handle(IPC_CHANNELS.AI_GET_ANALYSIS, (_, captureId: string) => {
-    if (typeof captureId !== 'string' || captureId.length === 0) {
-      throw new IpcFailure('Invalid capture ID', 'INVALID_CAPTURE_ID')
-    }
-    return analysisService.getAnalysis(captureId)
-  })
 
   // Database Admin
   handle(IPC_CHANNELS.DB_STATS, () => {

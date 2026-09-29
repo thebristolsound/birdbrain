@@ -176,10 +176,6 @@ const CODE_LABELS: Record<LogCode, string> = {
   'serverToken.token_persist_failed': "Couldn't save the extension connection token",
   'settings.schema_invalid': 'Saved settings were invalid — restored defaults',
   'thumbnails.generate_failed': "Couldn't generate a thumbnail",
-  'openrouter.rate_limited': 'AI request was rate-limited — retrying',
-  'openrouter.request_failed': 'AI request failed',
-  'openrouter.retry': 'Retrying the AI request',
-  'openrouter.retries_exhausted': 'AI request failed after several retries',
   'timestampWorker.stamp_failed': "Couldn't get a trusted timestamp for this capture",
   'app.webview_attach_refused': "A page view was blocked by the app's security policy",
   'db.snapshot_created': 'Saved a database snapshot before upgrading',
@@ -191,12 +187,13 @@ const CODE_LABELS: Record<LogCode, string> = {
   'signingKey.unprotected_key_acknowledged':
     "This installation's signing key is not protected at rest — see Settings → Diagnostics",
   'signingKey.generation_declined': 'Birdbrain quit — the signing key warning was not acknowledged',
-  'settings.key_protection_state_unreadable': "Couldn't read saved key-protection state",
   'settings.unreadable_timestamping_fail_closed':
     "Couldn't read saved settings — restored defaults and turned trusted timestamping off",
   'settings.unreadable_write_refused':
     "Couldn't read saved settings — the change applies until Birdbrain quits but was not saved",
   'settings.fresh_install_seed_failed': "Couldn't save initial settings",
+  'settings.retired_fields_cleanup_failed':
+    "Couldn't remove retired AI settings from the settings file",
   'demoCase.seeded': 'Added the demonstration case',
   'demoCase.fixture_missing': 'The demonstration case is not bundled with this build',
   'demoCase.seed_failed': "Couldn't add the demonstration case",

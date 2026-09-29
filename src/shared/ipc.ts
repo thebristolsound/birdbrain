@@ -13,7 +13,6 @@ import type {
   BugReportInput,
   BugReportResult,
   Capture,
-  CaptureAnalysis,
   CaptureAnnotations,
   CaptureEvent,
   Case,
@@ -42,14 +41,12 @@ import type {
   NoteBacklinkCount,
   NoteReference,
   NoteReferenceEdge,
-  OpenRouterModel,
   OperatorIdentity,
   RecentActivityEvent,
   Selector,
   SelectorOrigin,
   SessionRecord,
   Tag,
-  TokenUsage,
   UpdateStatus,
   WaybackLookupResult,
   WaybackSnapshot,
@@ -144,8 +141,6 @@ export const IPC_CHANNELS = {
   SETTINGS_GET: 'settings:get',
   SETTINGS_UPDATE: 'settings:update',
   SETTINGS_RESET: 'settings:reset',
-  SETTINGS_TEST_OPENROUTER: 'settings:testOpenRouter',
-  SETTINGS_LIST_MODELS: 'settings:listModels',
   SETTINGS_GET_IDENTITY: 'settings:getIdentity',
   SETTINGS_CHOOSE_STORAGE_PATH: 'settings:chooseStoragePath',
 
@@ -264,11 +259,6 @@ export const IPC_CHANNELS = {
   CAPTURE_ACTIVITY: 'event:captureActivity',
   CAPTURES_TEST_PIPELINE: 'captures:testPipeline',
   CAPTURES_TEST_HTTP: 'captures:testHttp',
-
-  // AI Analysis
-  AI_ANALYZE: 'ai:analyze',
-  AI_SAVE_ANALYSIS: 'ai:saveAnalysis',
-  AI_GET_ANALYSIS: 'ai:getAnalysis',
 
   // Database Admin
   DB_STATS: 'db:stats',
@@ -623,12 +613,6 @@ export interface OrphanReport {
   fileOrphans: string[]
 }
 
-export interface AnalyzeCaptureParams {
-  captureId: string
-  caseId: string
-  model: string
-}
-
 export interface SaveCaptureParams {
   caseId: string
   url: string
@@ -903,8 +887,6 @@ export interface IpcInvokeContract {
   'settings:get': { args: []; result: BirdbrainSettings }
   'settings:update': { args: [partial: Partial<BirdbrainSettings>]; result: BirdbrainSettings }
   'settings:reset': { args: []; result: BirdbrainSettings }
-  'settings:testOpenRouter': { args: [apiKey: string]; result: boolean }
-  'settings:listModels': { args: [apiKey: string]; result: OpenRouterModel[] }
   'settings:getIdentity': { args: []; result: OperatorIdentity }
   'settings:chooseStoragePath': { args: []; result: string | null }
 
@@ -961,13 +943,6 @@ export interface IpcInvokeContract {
     result: { restored: boolean }
   }
   'db:exportTable': { args: [params: DbExportTableParams]; result: { path: string } | null }
-
-  'ai:analyze': {
-    args: [params: AnalyzeCaptureParams]
-    result: { content: string; tokenUsage: TokenUsage }
-  }
-  'ai:saveAnalysis': { args: [analysis: CaptureAnalysis]; result: void }
-  'ai:getAnalysis': { args: [captureId: string]; result: CaptureAnalysis | null }
 
   'shell:showItemInFolder': { args: [path: string]; result: void }
   'shell:openPath': { args: [path: string]; result: void }

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createElement, type ReactNode } from 'react'
-import { act, renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   queryKeys,
@@ -34,7 +34,6 @@ import {
   annotationsQueryOptions,
   settingsQueryOptions,
   identityQueryOptions,
-  openRouterModelsQueryOptions,
   useCasesMutations,
   useCapturesMutations,
   useTagsMutations,
@@ -122,7 +121,7 @@ function installBirdbrainMock() {
       reprocess: fn()
     },
     annotations: { get: fn(), save: fn(), upsertPin: fn(), deletePin: fn(), delete: fn() },
-    settings: { get: fn(), update: fn(), getIdentity: fn(), listModels: fn() }
+    settings: { get: fn(), update: fn(), getIdentity: fn() }
   }
   fakeBridge(api)
   return api
@@ -261,12 +260,6 @@ describe('queryOptions queryFns', () => {
     expect(api.settings.get).toHaveBeenCalled()
     await identityQueryOptions.queryFn?.({} as never)
     expect(api.settings.getIdentity).toHaveBeenCalled()
-
-    const models = openRouterModelsQueryOptions('key')
-    expect(models.enabled).toBe(true)
-    await models.queryFn?.({} as never)
-    expect(api.settings.listModels).toHaveBeenCalledWith('key')
-    expect(openRouterModelsQueryOptions('').enabled).toBe(false)
   })
 })
 
@@ -581,7 +574,7 @@ describe('useAnnotationsMutations', () => {
 })
 
 describe('useSettingsMutations', () => {
-  it('writes settings cache and only invalidates models when the api key changes', async () => {
+  it('writes the settings cache without invalidating anything', async () => {
     const { invalidate, setQueryData, wrapper } = setup()
     api.settings.update.mockResolvedValue({ operatorName: 'A' })
     const { result } = renderHook(() => useSettingsMutations(), { wrapper })
@@ -590,12 +583,6 @@ describe('useSettingsMutations', () => {
       await result.current.update.mutateAsync({ operatorName: 'A' })
     })
     expect(setQueryData).toHaveBeenCalledWith(['settings'], { operatorName: 'A' })
-    expect(invalidatedKeys(invalidate)).not.toContainEqual(['openRouterModels'])
-
-    invalidate.mockClear()
-    await act(async () => {
-      await result.current.update.mutateAsync({ openRouterApiKey: 'sk' })
-    })
-    await waitFor(() => expect(invalidatedKeys(invalidate)).toContainEqual(['openRouterModels']))
+    expect(invalidate).not.toHaveBeenCalled()
   })
 })

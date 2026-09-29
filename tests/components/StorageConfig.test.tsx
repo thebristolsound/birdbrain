@@ -53,8 +53,6 @@ const FAILURE = /couldn't update the storage location/i
 // fixture is complete and checked with `satisfies` rather than cast, so a new
 // required field on BirdbrainSettings fails here instead of hiding.
 const settings = {
-  openRouterApiKey: null,
-  defaultModel: 'model-a',
   captureScreenshots: true,
   dedupeWindowSeconds: 5,
   ignoredUrlPatterns: [],
@@ -71,7 +69,6 @@ const settings = {
   lastActiveCaseId: null,
   lastActiveSection: 'overview',
   hasCompletedOnboarding: true,
-  analysisSystemPrompt: '',
   detailsPanelCollapsed: false,
   tooltipsSeen: {},
   onboardingChapters: {},

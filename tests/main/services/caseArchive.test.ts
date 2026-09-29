@@ -291,6 +291,25 @@ describe('caseArchive export', () => {
     expect(typeof lastEntry.signature).toBe('string')
   })
 
+  // AI analysis was removed. Rows an older release left in capture_analyses stay
+  // in the database but no longer travel; the key is written empty because a
+  // release from before the removal iterates it unguarded on import.
+  it('writes an empty captureAnalyses table even when analysis rows exist', async () => {
+    const now = new Date().toISOString()
+    getDb()
+      .prepare(
+        `INSERT INTO capture_analyses (id, capture_id, case_id, content, model, token_usage, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run('analysis-1', mhtmlCaptureId, caseId, 'stored analysis', 'test/model', '{}', now, now)
+    const out = join(tempDir, 'case.birdbrain')
+    await exportCaseArchive(caseId, out)
+    const entries = readStoredZip(readFileSync(out))
+    const data = JSON.parse(entries.get('data.json')!.toString('utf-8'))
+    expect(data.captureAnalyses).toEqual([])
+    expect(entries.get('data.json')!.toString('utf-8')).not.toContain('stored analysis')
+  })
+
   it('refuses to export without an operator name', async () => {
     updateSettings({ operatorName: '' })
     await expect(exportCaseArchive(caseId, join(tempDir, 'x.birdbrain'))).rejects.toThrow(
@@ -865,6 +884,36 @@ describe('caseArchive import', () => {
     const { newCaseId } = await importCaseArchive(archivePath, { overrideTamper: true })
     const importedNote = listNotes(newCaseId).find((n) => n.title === 'Note 1')!
     expect(getTagsForNote(importedNote.id)).toEqual([])
+  })
+
+  // An archive written while AI analysis existed carries its rows. It still
+  // verifies and imports, and the rows are dropped rather than inserted.
+  it('imports an archive carrying analysis rows and drops them', async () => {
+    const now = new Date().toISOString()
+    rewriteDataJson(archivePath, (d) => ({
+      ...d,
+      captureAnalyses: [
+        {
+          id: 'analysis-1',
+          capture_id: mhtmlCaptureId,
+          case_id: caseId,
+          content: 'stored analysis',
+          model: 'test/model',
+          token_usage: '{"prompt":1,"completion":1,"total":2}',
+          created_at: now,
+          updated_at: now
+        }
+      ]
+    }))
+
+    const { newCaseId, report } = await importCaseArchive(archivePath)
+    expect(report.verification.overallValid).toBe(true)
+    expect(listCaptures(newCaseId)).toHaveLength(2)
+    expect(listNotes(newCaseId)).toHaveLength(2)
+    const analyses = getDb()
+      .prepare('SELECT COUNT(*) AS n FROM capture_analyses WHERE case_id = ?')
+      .get(newCaseId) as { n: number }
+    expect(analyses.n).toBe(0)
   })
 
   it('merges tags by name instead of duplicating', async () => {

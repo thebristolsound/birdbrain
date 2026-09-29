@@ -1,5 +1,4 @@
-// OpenRouter's bar-chart series palette (Recharts default 4 + X11/CSS named colors),
-// extracted from openrouter.ai's "Top Models" stacked bar chart. Mode-independent.
+// Bar-chart series palette (Recharts default 4 + X11/CSS named colors). Mode-independent.
 // Legend/tooltip reference (for any future real chart): dark popover, each row a small
 // color swatch + label + right-aligned value, with a separated `Total` row.
 export const CHART_SERIES = [

@@ -63,22 +63,6 @@ vi.mock('electron', () => ({
 }))
 
 // Network / heavy-IO leaves are stubbed; the handler wiring is what we test.
-const analyzeCapture = vi.fn()
-const saveAnalysis = vi.fn()
-const getAnalysis = vi.fn()
-vi.mock('@main/services/ai/analysisService', () => ({
-  analyzeCapture: (...a: unknown[]) => analyzeCapture(...a),
-  saveAnalysis: (...a: unknown[]) => saveAnalysis(...a),
-  getAnalysis: (...a: unknown[]) => getAnalysis(...a)
-}))
-
-const testApiKey = vi.fn()
-const listModels = vi.fn()
-vi.mock('@main/services/openrouter', () => ({
-  testApiKey: (...a: unknown[]) => testApiKey(...a),
-  listModels: (...a: unknown[]) => listModels(...a)
-}))
-
 const generateReport = vi.fn()
 const getExportPreflight = vi.fn()
 vi.mock('@main/services/export', () => ({
@@ -1581,15 +1565,6 @@ describe('ipcHandlers — settings', () => {
     expect(reset).toBeDefined()
   })
 
-  it('delegates openrouter key tests and model listing', async () => {
-    testApiKey.mockResolvedValue(true)
-    listModels.mockResolvedValue([{ id: 'gpt' }])
-    expect(expectOk(await invoke(IPC_CHANNELS.SETTINGS_TEST_OPENROUTER, 'key'))).toBe(true)
-    expect(expectOk(await invoke(IPC_CHANNELS.SETTINGS_LIST_MODELS, 'key'))).toEqual([
-      { id: 'gpt' }
-    ])
-  })
-
   it('returns null when the storage-path picker is cancelled and a path otherwise', async () => {
     expect(expectOk(await invoke(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH))).toBeNull()
     showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: ['/data/x'] })
@@ -1913,57 +1888,6 @@ describe('ipcHandlers — case archive', () => {
       step: 'Verifying archive...',
       percent: 5
     })
-  })
-})
-
-describe('ipcHandlers — AI analysis', () => {
-  it('fails when no API key is configured', async () => {
-    const res = await invoke<{ ok: boolean; error?: string }>(IPC_CHANNELS.AI_ANALYZE, {
-      captureId,
-      caseId,
-      model: 'gpt'
-    })
-    expect(res.ok).toBe(false)
-    expect(res.error).toMatch(/API key/i)
-  })
-
-  it('analyzes, saves and reads analysis when a key is present', async () => {
-    settings.updateSettings({ openRouterApiKey: 'sk-test' })
-    analyzeCapture.mockResolvedValue({ summary: 'done' })
-    const out = expectOk<{ summary: string }>(
-      await invoke(IPC_CHANNELS.AI_ANALYZE, { captureId, caseId, model: 'gpt' })
-    )
-    expect(out.summary).toBe('done')
-    expect(analyzeCapture).toHaveBeenCalled()
-
-    expectOk(await invoke(IPC_CHANNELS.AI_SAVE_ANALYSIS, { captureId, summary: 'x' }))
-    expect(saveAnalysis).toHaveBeenCalled()
-
-    getAnalysis.mockReturnValue({ summary: 'stored' })
-    const got = expectOk<{ summary: string }>(await invoke(IPC_CHANNELS.AI_GET_ANALYSIS, captureId))
-    expect(got.summary).toBe('stored')
-    expect(getAnalysis).toHaveBeenCalledWith(captureId)
-  })
-
-  it('rejects malformed analysis lookup ids before reaching the service', async () => {
-    for (const value of [undefined, null, {}, 1, '']) {
-      const res = await invoke<{ ok: boolean; code?: string }>(IPC_CHANNELS.AI_GET_ANALYSIS, value)
-      expect(res.ok).toBe(false)
-      expect(res.code).toBe('INVALID_CAPTURE_ID')
-    }
-    expect(getAnalysis).not.toHaveBeenCalled()
-  })
-
-  it('wraps analysis errors as a structured failure', async () => {
-    settings.updateSettings({ openRouterApiKey: 'sk-test' })
-    analyzeCapture.mockRejectedValue(new Error('upstream 500'))
-    const res = await invoke<{ ok: boolean; error?: string }>(IPC_CHANNELS.AI_ANALYZE, {
-      captureId,
-      caseId,
-      model: 'gpt'
-    })
-    expect(res.ok).toBe(false)
-    expect(res.error).toContain('upstream 500')
   })
 })
 

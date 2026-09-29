@@ -55,13 +55,6 @@ applies to the installation that produced the evidence rather than assuming the
 wrapped one. An unprotected key widens the threat above from "an operator who
 controls the running process" to "anyone with file access to the machine".
 
-The OpenRouter API key is treated differently, by design. Birdbrain also wraps
-it with `safeStorage` when a credential store is available and stores it in the
-clear otherwise, but there is no acknowledgement gate. It is a revocable service
-credential, not evidence, so its at-rest state appears in Settings →
-Diagnostics only. The signing key gets the gate because a plaintext signing key
-changes what the manifest signature can be said to prove.
-
 **The RFC 3161 token is the independent anchor that constrains this gap.** Because an
 external TSA issues the timestamp over the content hash, it establishes that
 the captured bytes existed no later than the stamped time, a fact the operator

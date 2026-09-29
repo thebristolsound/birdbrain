@@ -116,9 +116,6 @@ processor/transfer controls, and a DPIA when processing is likely to create high
 category data, criminal-offence data, indirect collection notices, and journalistic exemptions
 require separate analysis under Articles 9, 10, 14, and 85 and applicable Member State law.
 Birdbrain should support these decisions but cannot choose the user's lawful basis.
-Sending capture content to OpenRouter adds a separate processor, confidentiality, retention,
-international-transfer, and data-minimization decision; local-first storage does not remove that
-external disclosure.
 
 Under consolidated [eIDAS Articles 41 and 42](https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX%3A02014R0910-20241018),
 an ordinary electronic timestamp cannot be denied legal effect solely because it is electronic
@@ -254,6 +251,8 @@ lawful processing, safe retention, or safe publication.
 
 ### 9. AI output cannot silently become evidence
 
+Birdbrain has no AI analysis feature. These requirements apply to any AI feature added later.
+
 - Send AI only the data the user explicitly selects and disclose the destination before transfer.
 - Record provider, model identifier, model-reported version where available, system prompt,
   user prompt, parameters, input object hashes, time, output, and safety/error state.
@@ -296,8 +295,9 @@ Birdbrain should maintain these versioned artifacts in addition to source code:
    evidence links, and claim wording.
 6. **Threat and privacy models:** evidence-integrity threats, hostile-content threats, source
    safety, personal-data flows, retention, external transfers, and mitigations.
-7. **AI system record:** intended use, prohibited uses, data flow, model/provider inventory,
-   evaluation results, human oversight, incident process, and change history.
+7. **AI system record,** for any AI feature: intended use, prohibited uses, data flow,
+   model/provider inventory, evaluation results, human oversight, incident process, and change
+   history.
 8. **Jurisdiction profiles:** legal authority and admissibility checklist maintained with
    qualified counsel and practitioners for each target workflow.
 

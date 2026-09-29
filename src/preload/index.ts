@@ -181,8 +181,6 @@ const birdbrain = {
     get: bridge(IPC_CHANNELS.SETTINGS_GET),
     update: bridge(IPC_CHANNELS.SETTINGS_UPDATE),
     reset: bridge(IPC_CHANNELS.SETTINGS_RESET),
-    testOpenRouter: bridge(IPC_CHANNELS.SETTINGS_TEST_OPENROUTER),
-    listModels: bridge(IPC_CHANNELS.SETTINGS_LIST_MODELS),
     getIdentity: bridge(IPC_CHANNELS.SETTINGS_GET_IDENTITY),
     chooseStoragePath: bridge(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH)
   },
@@ -252,12 +250,6 @@ const birdbrain = {
     snapshots: bridge(IPC_CHANNELS.DB_SNAPSHOTS),
     restoreSnapshot: bridge(IPC_CHANNELS.DB_RESTORE_SNAPSHOT),
     exportTable: bridge(IPC_CHANNELS.DB_EXPORT_TABLE)
-  },
-
-  ai: {
-    analyze: bridge(IPC_CHANNELS.AI_ANALYZE),
-    saveAnalysis: bridge(IPC_CHANNELS.AI_SAVE_ANALYSIS),
-    getAnalysis: bridge(IPC_CHANNELS.AI_GET_ANALYSIS)
   },
 
   // Event listeners (main -> renderer)

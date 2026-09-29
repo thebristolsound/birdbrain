@@ -23,8 +23,8 @@ For every evidence-affecting change:
 - document remaining operator, organizational, and jurisdiction-specific obligations.
 
 An evidence-affecting change includes acquisition, parsing, extraction, storage, hashing,
-signing, trusted time, manifests, verification, redaction, export, reporting, AI analysis, and
-software distribution when it can alter an evidentiary result or its interpretation.
+signing, trusted time, manifests, verification, redaction, export, reporting, and software
+distribution when it can alter an evidentiary result or its interpretation.
 
 ## Language
 
@@ -237,10 +237,6 @@ _Avoid_: entity, indicator, artifact.
 Something the tool found in a Capture's text rather than something the Operator wrote: a Persisted Match or an Extracted Datum. The unit below the Capture that a Note can anchor to.
 _Avoid_: hit, result, entity.
 
-**Capture Analysis**:
-The AI-generated commentary on a single Capture. Stored with the model and the token usage that produced it.
-_Avoid_: summary, AI note.
-
 ### Export and verification
 
 **Evidence Package**:
@@ -278,7 +274,7 @@ _Avoid_: evidence spec, format version.
 ### Governance
 
 **Evidence-Affecting Change**:
-A change to acquisition, parsing, extraction, storage, hashing, signing, trusted time, manifests, verification, redaction, export, reporting, AI analysis, or software distribution that can alter an evidentiary result or the interpretation of one. Carries the per-change obligations listed under the preceding "Assurance baseline" section.
+A change to acquisition, parsing, extraction, storage, hashing, signing, trusted time, manifests, verification, redaction, export, reporting, or software distribution that can alter an evidentiary result or the interpretation of one. Carries the per-change obligations listed under the preceding "Assurance baseline" section.
 _Avoid_: risky change, core change, forensic change.
 
 ## Relationships
@@ -330,7 +326,7 @@ _Avoid_: risky change, core change, forensic change.
 
 ## Flagged ambiguities
 
-- "service" was used loosely for everything in `src/main/services/` - resolved: prefer **Capture Lifecycle** / **Selector Lifecycle** when referring to the orchestrating modules; keep "service" only for thin wrappers around external systems (for example OpenRouter or the TSA).
+- "service" was used loosely for everything in `src/main/services/` - resolved: prefer **Capture Lifecycle** / **Selector Lifecycle** when referring to the orchestrating modules; keep "service" only for thin wrappers around external systems (for example the TSA or the Wayback Machine).
 
 - "timestamp" conflates two incompatible claims: `Capture.timestamp` is the observation time asserted by the capturing machine's clock, while a **Timestamp Token** is a third party's attestation. Say "capture time" for the former and "trusted timestamp" or "stamped at" for the latter. Treating them as interchangeable is the most damaging slip available in this domain.
 

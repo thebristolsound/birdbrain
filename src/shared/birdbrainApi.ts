@@ -4,7 +4,6 @@ import type {
   Capture,
   Tag,
   BirdbrainSettings,
-  OpenRouterModel,
   ExportOptions,
   ExportPreflight,
   Selector,
@@ -12,8 +11,6 @@ import type {
   CaptureEvent,
   Note,
   HashVerification,
-  CaptureAnalysis,
-  TokenUsage,
   ExtractedDataCategory,
   ExtractedDataSubcategory,
   ExtractedDataItem,
@@ -78,7 +75,6 @@ import type {
   DbSnapshot,
   DbRestoreSnapshotParams,
   OrphanReport,
-  AnalyzeCaptureParams,
   SaveAnnotationsParams,
   UpsertAnnotationPinParams,
   SelectorRematchedEvent,
@@ -233,8 +229,6 @@ export interface BirdbrainAPI {
     get(): Promise<BirdbrainSettings>
     update(partial: Partial<BirdbrainSettings>): Promise<BirdbrainSettings>
     reset(): Promise<BirdbrainSettings>
-    testOpenRouter(apiKey: string): Promise<boolean>
-    listModels(apiKey: string): Promise<OpenRouterModel[]>
     getIdentity(): Promise<OperatorIdentity>
     chooseStoragePath(): Promise<string | null>
   }
@@ -277,11 +271,6 @@ export interface BirdbrainAPI {
     check(): Promise<UpdateStatus>
     download(): Promise<void>
     install(): Promise<void>
-  }
-  ai: {
-    analyze(params: AnalyzeCaptureParams): Promise<{ content: string; tokenUsage: TokenUsage }>
-    saveAnalysis(analysis: CaptureAnalysis): Promise<void>
-    getAnalysis(captureId: string): Promise<CaptureAnalysis | null>
   }
   db: {
     stats(): Promise<DbStats>

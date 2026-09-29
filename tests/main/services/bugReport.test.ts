@@ -73,7 +73,7 @@ const SNAPSHOT = {
       ms: 812
     }
   ],
-  keyProtection: { signingKey: 'protected', openRouterKey: 'not-set' },
+  keyProtection: { signingKey: 'protected' },
   trustedTimestamping: { enabled: true }
 } satisfies DiagnosticsSnapshot
 
@@ -134,14 +134,8 @@ describe('buildBugReport', () => {
     expect(names.some((n) => /settings/i.test(n))).toBe(false)
   })
 
-  it('never carries an api key through the diagnostics snapshot', () => {
-    const zip = buildBugReport(INPUT, deps).toString('utf8')
-    expect(zip.toLowerCase()).not.toContain('openrouterapikey')
-    expect(zip).not.toContain('sk-or-')
-  })
-
-  // These four exist because an earlier draft asserted only the API-key case
-  // and would have shipped every captured URL to the maintainer.
+  // These four exist because an earlier draft asserted only that no API key
+  // leaked, and would have shipped every captured URL to the maintainer.
   it('never carries a captured url from slowOps into the bundle', () => {
     const zip = buildBugReport(INPUT, deps).toString('utf8')
     expect(zip).not.toContain('target.example')

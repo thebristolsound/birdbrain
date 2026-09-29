@@ -3,11 +3,11 @@ import { join } from 'path'
 import { randomBytes } from 'crypto'
 import { logger } from '@main/services/logger'
 
-// The token is written as plain hex. Unlike the signing key (signingKey.ts)
-// and the OpenRouter key (settings.ts), it does not go through Electron's
-// safeStorage. Decided in #1368: any process that can read this file can
-// already read the database beside it in userData and, unless the operator
-// configures another storage directory, the captures. Reading the file is
+// The token is written as plain hex. Unlike the signing key (signingKey.ts),
+// it does not go through Electron's safeStorage. Decided in #1368: any
+// process that can read this file can already read the database beside it in
+// userData and, unless the operator configures another storage directory, the
+// captures. Reading the file is
 // not the only way to get the token: the running capture server returns it
 // to a local GET /api/status request with no Origin header (captureServer.ts).
 const TOKEN_FILENAME = 'server-token'

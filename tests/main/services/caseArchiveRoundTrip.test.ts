@@ -58,10 +58,6 @@ import {
   importAnnotationRows,
   importAnnotationPinRows
 } from '@main/services/annotations'
-import {
-  collectCaptureAnalysesForCase,
-  importCaptureAnalysisRows
-} from '@main/services/ai/analysisService'
 
 type Row = Record<string, unknown>
 
@@ -185,7 +181,7 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
         mimeType: 'text/html'
       }
     })
-    // Annotations/pins/analyses: seed through the bulk import ops with an
+    // Annotations/pins: seed through the bulk import ops with an
     // identity ctx targeting the SOURCE case (their interactive write paths
     // need renderer payloads).
     const identity: ImportCtx = {
@@ -221,21 +217,6 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
       ],
       identity
     )
-    importCaptureAnalysisRows(
-      [
-        {
-          id: 'an-1',
-          capture_id: cap1.id,
-          case_id: c.id,
-          content: 'analysis',
-          model: 'm',
-          token_usage: 10,
-          created_at: '2026-01-05T00:00:00Z',
-          updated_at: '2026-01-05T00:00:00Z'
-        }
-      ],
-      identity
-    )
 
     // Collect everything, then import into a FRESH database.
     const src = {
@@ -250,7 +231,6 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
       captureFavorites: collectCaptureFavoritesForCase(c.id),
       annotations: collectAnnotationsForCase(c.id),
       annotationPins: collectAnnotationPinsForCase(c.id),
-      captureAnalyses: collectCaptureAnalysesForCase(c.id),
       extractedData: collectExtractedDataForCase(c.id),
       captureArchiveRefs: collectWaybackRefsForCase(c.id)
     }
@@ -267,7 +247,6 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
       importCaptureFavoriteRows(src.captureFavorites, ctx)
       importAnnotationRows(src.annotations, ctx)
       importAnnotationPinRows(src.annotationPins, ctx)
-      importCaptureAnalysisRows(src.captureAnalyses, ctx)
       importExtractedDataRows(src.extractedData, ctx)
       importWaybackRefRows(src.captureArchiveRefs, ctx)
       importNoteRows(src.notes, ctx)
@@ -352,14 +331,6 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
         ...r,
         id: mapId(r.id as string),
         capture_id: mapId(r.capture_id as string)
-      }))
-    )
-    expect(collectCaptureAnalysesForCase(NEW_CASE)).toEqual(
-      src.captureAnalyses.map((r) => ({
-        ...r,
-        id: mapId(r.id as string),
-        capture_id: mapId(r.capture_id as string),
-        case_id: NEW_CASE
       }))
     )
     expect(collectExtractedDataForCase(NEW_CASE).sort(byId)).toEqual(

@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { getDbDiagnostics } from '@main/services/db/diagnosticsRepo'
 import { getStorageRoot } from '@main/services/storage'
 import { isSigningKeyProtected } from '@main/services/signingKey'
-import { getOpenRouterKeyProtectionState, getSettings } from '@main/services/settings'
+import { getSettings } from '@main/services/settings'
 import type {
   DiagnosticsSlowOp,
   DiagnosticsSnapshot,
@@ -207,8 +207,7 @@ function collectEnv(): DiagnosticsEnv {
       extractedData: db.extractedData
     },
     keyProtection: {
-      signingKey: isSigningKeyProtected(),
-      openRouterKey: getOpenRouterKeyProtectionState()
+      signingKey: isSigningKeyProtected()
     },
     trustedTimestamping: { enabled: readTimestampingEnabled() }
   }

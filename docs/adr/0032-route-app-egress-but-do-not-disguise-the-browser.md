@@ -43,7 +43,10 @@ maintainer ruled on 2026-09-28:
    request, and the consent filter-list download. Each path already tolerates an outage: a
    render fails, a Timestamp Token stays pending, a Wayback lookup reports an error, and a
    render without filter lists proceeds without Consent Suppression.
-2. **It fails closed.** SOCKS5 or HTTP only, never SOCKS4, which resolves names locally. No
+2. **It fails closed.** SOCKS5 or HTTP only, never SOCKS4, which resolves names locally. Only
+   proxies that need no login: Tor, an SSH tunnel to the Operator's own server, or a VPN client's
+   local SOCKS port. Chromium cannot log in to a SOCKS5 proxy, and storing an HTTP proxy password
+   would break ADR-0030's rule that passwords are never stored. No
    `direct://` fallback: an unreachable proxy fails the request instead of exposing the Operator.
    WebRTC runs with `disable_non_proxied_udp`.
 3. **The TLS Cert Chain is skipped, not routed.** The re-fetch opens a raw socket that cannot use
@@ -79,7 +82,9 @@ maintainer ruled on 2026-09-28:
    whether a VPN is seen. While the Egress is Direct and no VPN is seen, Birdbrain warns before
    the first contact with a site in each Case, offering to continue, to set up a proxy, or to
    stop warning on this network. A block would lock out an Operator whose VPN the check cannot
-   see.
+   see. "This network" is a hash of the network name and the router's hardware address, kept in
+   settings, so a laptop that moves from a home with a VPN router to a café is warned again, and
+   the file lists no place names.
 3. **Starting a Capture Session warns too.** The TLS Cert Chain re-fetch runs after extension
    Captures, and the Operator's own browsing is the larger exposure. That warning says Birdbrain
    can see the machine's network path, not the browser's.

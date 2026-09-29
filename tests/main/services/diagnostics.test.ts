@@ -32,7 +32,7 @@ const FAKE_ENV: DiagnosticsEnv = {
     selectors: 1,
     extractedData: 50
   },
-  keyProtection: { signingKey: 'protected', openRouterKey: 'not-set' },
+  keyProtection: { signingKey: 'protected' },
   trustedTimestamping: { enabled: true }
 }
 

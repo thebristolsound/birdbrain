@@ -290,8 +290,6 @@ export type UiDensity = (typeof UI_DENSITIES)[number]
 export const DEFAULT_UI_DENSITY: UiDensity = 'compact'
 
 export interface BirdbrainSettings {
-  openRouterApiKey: string | null
-  defaultModel: string
   captureScreenshots: boolean
   dedupeWindowSeconds: number
   ignoredUrlPatterns: string[]
@@ -320,7 +318,6 @@ export interface BirdbrainSettings {
   lastActiveSection:
     'overview' | 'captures' | 'selectors' | 'notes' | 'tags' | 'signals' | 'data' | 'settings'
   hasCompletedOnboarding: boolean
-  analysisSystemPrompt: string
   detailsPanelCollapsed: boolean
   tooltipsSeen: Record<string, boolean>
   // Coach-mark tour state (#404). Chapter keys are 'intro' | 'ext' | 'case'.
@@ -395,10 +392,9 @@ export interface DiagnosticsSlowOp {
 
 // Key-protection state for a secret wrapped by Electron's safeStorage (the OS
 // credential store — Keychain / DPAPI / a Linux Secret Service such as
-// gnome-keyring). 'not-set' only applies to the revocable OpenRouter key —
-// the signing key always exists once the app has finished starting, so it is
-// always 'protected' or 'plaintext'. See #414.
-export type KeyProtectionState = 'protected' | 'plaintext' | 'not-set'
+// gnome-keyring). The signing key always exists once the app has finished
+// starting, so there is no unset state. See #414.
+export type KeyProtectionState = 'protected' | 'plaintext'
 
 export interface DiagnosticsSnapshot {
   generatedAt: string
@@ -439,7 +435,6 @@ export interface DiagnosticsSnapshot {
   // At-rest protection state of this installation's secrets — see #414.
   keyProtection: {
     signingKey: KeyProtectionState
-    openRouterKey: KeyProtectionState
   }
   // Whether this installation contacts a timestamp authority at all (#1169).
   // Diagnostics is where an operator checks what the app does on their behalf,
@@ -514,7 +509,6 @@ export const LOG_SOURCES = [
   'captureServer',
   'captureLifecycle',
   'backgroundRenderer',
-  'openrouter',
   'serverToken',
   'settings',
   'thumbnails',
@@ -586,10 +580,6 @@ export const LOG_CODES = [
   'serverToken.token_persist_failed',
   'settings.schema_invalid',
   'thumbnails.generate_failed',
-  'openrouter.rate_limited',
-  'openrouter.request_failed',
-  'openrouter.retry',
-  'openrouter.retries_exhausted',
   'timestampWorker.stamp_failed',
   // A <webview> was refused at attach because its partition or its src fell
   // outside the policy (#401). Both guests the app mounts are inside it, so this
@@ -631,12 +621,6 @@ export const LOG_CODES = [
   // carries the same signal the Settings/Diagnostics indicator shows live.
   'signingKey.unprotected_key_acknowledged',
   'signingKey.generation_declined',
-  // getOpenRouterKeyProtectionState (#414 review) reading settings.json to
-  // report protection state, distinct from settings.schema_invalid above:
-  // this fires only when the file can't even be parsed as JSON, so the
-  // Diagnostics "not-set" it falls back to is otherwise indistinguishable
-  // from a key that was genuinely never saved.
-  'settings.key_protection_state_unreadable',
   // A settings.json that exists and will not read or parse at all (#1169).
   // Distinct from settings.schema_invalid, which fires when the JSON parsed and
   // the schema rejected it: there the stored timestamping preference is still
@@ -652,6 +636,10 @@ export const LOG_CODES = [
   // (#404). Failing it costs only the onboarding tour, so init swallows the
   // error — this is the record that it happened.
   'settings.fresh_install_seed_failed',
+  // Stripping the retired AI analysis fields, including a stored API key, from
+  // settings.json at startup failed. Init swallows it and retries next launch;
+  // this is the record that the key may still be on disk.
+  'settings.retired_fields_cleanup_failed',
   // First-launch seeding of the bundled demonstration Case Archive (#405).
   // Every outcome is recorded: an operator whose first launch produced no demo
   // case has no other way to tell a missing fixture from a refused import.
@@ -792,13 +780,6 @@ export interface BugReportInput {
 
 export interface BugReportResult {
   path: string
-}
-
-export interface OpenRouterModel {
-  id: string
-  name: string
-  contextLength: number
-  pricing: { prompt: string; completion: string }
 }
 
 // The two semantically distinct export classes (#399, ADR-0010). An
@@ -1090,23 +1071,6 @@ export interface ExtractedDataSearchResult {
   subcategory: string
   pageCount: number
   sourceUrls: string[]
-}
-
-export interface TokenUsage {
-  prompt: number
-  completion: number
-  total: number
-}
-
-export interface CaptureAnalysis {
-  id: string
-  captureId: string
-  caseId: string
-  content: string
-  model: string
-  tokenUsage: TokenUsage
-  createdAt: string
-  updatedAt: string
 }
 
 export type CaptureSource = 'auto' | 'manual' | 'selector' | 'recapture'

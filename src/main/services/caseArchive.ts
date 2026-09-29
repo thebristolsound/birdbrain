@@ -24,10 +24,6 @@ import {
   importAnnotationRows,
   importAnnotationPinRows
 } from '@main/services/annotations'
-import {
-  collectCaptureAnalysesForCase,
-  importCaptureAnalysisRows
-} from '@main/services/ai/analysisService'
 import { getStorageRoot } from '@main/services/storage'
 import {
   CAPTURE_ARTIFACT_TYPES,
@@ -131,7 +127,13 @@ export interface CaseArchiveData {
   captureFavorites: Record<string, unknown>[]
   annotations: Record<string, unknown>[]
   annotationPins: Record<string, unknown>[]
-  captureAnalyses: Record<string, unknown>[]
+  /**
+   * Retired with AI analysis. Written empty, because releases from before the
+   * retirement iterate this key unguarded on import and would throw on an
+   * archive without it; never read, so an older archive's analysis rows are
+   * dropped on import.
+   */
+  captureAnalyses?: Record<string, unknown>[]
   extractedData: Record<string, unknown>[]
   captureArchiveRefs: Record<string, unknown>[]
   /** Absent on archives written before schemaVersion 6 (#1148). */
@@ -189,7 +191,7 @@ export function collectCaseData(caseId: string): CaseArchiveData {
     captureFavorites: captureRepo.collectCaptureFavoritesForCase(caseId),
     annotations: collectAnnotationsForCase(caseId),
     annotationPins: collectAnnotationPinsForCase(caseId),
-    captureAnalyses: collectCaptureAnalysesForCase(caseId),
+    captureAnalyses: [],
     extractedData: extractedDataRepo.collectExtractedDataForCase(caseId),
     captureArchiveRefs: waybackRefRepo.collectWaybackRefsForCase(caseId),
     exhibits: exhibitRepo.collectExhibitsForCase(caseId),
@@ -669,7 +671,6 @@ export async function importCaseArchive(
     staging_files: data.stagingFiles ?? [],
     notes: data.notes,
     selectors: data.selectors,
-    capture_analyses: data.captureAnalyses,
     extracted_data: data.extractedData,
     capture_archive_refs: data.captureArchiveRefs,
     annotation_pins: data.annotationPins
@@ -848,7 +849,6 @@ function insertImportedRows(
   captureRepo.importCaptureFavoriteRows(data.captureFavorites, ctx)
   importAnnotationRows(data.annotations, ctx)
   importAnnotationPinRows(data.annotationPins, ctx)
-  importCaptureAnalysisRows(data.captureAnalyses, ctx)
   extractedDataRepo.importExtractedDataRows(data.extractedData, ctx)
   waybackRefRepo.importWaybackRefRows(data.captureArchiveRefs, ctx)
   noteRepo.importNoteRows(data.notes, ctx)

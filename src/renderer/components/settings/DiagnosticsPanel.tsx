@@ -73,8 +73,7 @@ function formatDateTime(iso: string): string {
 
 // 'plaintext' is the mis-attestation risk this indicator exists to surface
 // (#414) — it means the OS credential store was unavailable when the key was
-// written, so it sits on disk in the clear. 'not-set' only applies to the
-// revocable OpenRouter key, never the signing key.
+// written, so it sits on disk in the clear.
 function keyProtectionLabel(state: KeyProtectionState): {
   value: string
   tone: 'default' | 'danger'
@@ -84,8 +83,6 @@ function keyProtectionLabel(state: KeyProtectionState): {
       return { value: 'Protected', tone: 'default' }
     case 'plaintext':
       return { value: 'Unprotected', tone: 'danger' }
-    case 'not-set':
-      return { value: 'Not set', tone: 'default' }
   }
 }
 
@@ -384,11 +381,6 @@ export function DiagnosticsPanel() {
                   label="Signing key"
                   value={keyProtectionLabel(snap.keyProtection.signingKey).value}
                   tone={keyProtectionLabel(snap.keyProtection.signingKey).tone}
-                />
-                <StatBlock
-                  label="OpenRouter key"
-                  value={keyProtectionLabel(snap.keyProtection.openRouterKey).value}
-                  tone={keyProtectionLabel(snap.keyProtection.openRouterKey).tone}
                 />
               </div>
               {snap.keyProtection.signingKey === 'plaintext' && (

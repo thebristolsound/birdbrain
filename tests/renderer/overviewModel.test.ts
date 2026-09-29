@@ -207,7 +207,7 @@ describe('computeOverview', () => {
     expect(m.recent[5].id).toBe('c5')
   })
 
-  it('assigns source tones from the OpenRouter chart palette by rank', () => {
+  it('assigns source tones from the chart palette by rank', () => {
     const m = computeOverview(
       {
         ...EMPTY,

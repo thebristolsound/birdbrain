@@ -1,9 +1,5 @@
 import { z } from 'zod'
-import {
-  DEFAULT_ANALYSIS_SYSTEM_PROMPT,
-  DEFAULT_TSA_URL,
-  MANIFEST_SCHEMA_VERSION
-} from '@shared/constants'
+import { DEFAULT_TSA_URL, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import {
   CAPTURE_METHODS,
   CONSENT_SUPPRESSIONS,
@@ -21,8 +17,8 @@ import type {
 // Shared Zod schemas for Birdbrain's trust boundaries.
 //
 // These schemas validate data that crosses a trust boundary: the Hono capture
-// server (Chrome extension → main), the on-disk manifest audit log, the
-// settings file, and OpenRouter API responses. See
+// server (Chrome extension → main), the on-disk manifest audit log, and the
+// settings file. See
 // docs/specs/2026-04-20-zod-adoption-spike.md for the rationale and scope.
 
 // --- Capture server: POST /api/captures -----------------------------------
@@ -1076,8 +1072,6 @@ function normalizeTsaUrl(value: unknown): string {
 }
 
 export const BirdbrainSettingsSchema = z.object({
-  openRouterApiKey: z.string().nullable(),
-  defaultModel: z.string(),
   captureScreenshots: z.boolean(),
   dedupeWindowSeconds: z.number(),
   ignoredUrlPatterns: z.array(z.string()),
@@ -1106,7 +1100,6 @@ export const BirdbrainSettingsSchema = z.object({
     .optional()
     .default('captures'),
   hasCompletedOnboarding: z.boolean().optional().default(false),
-  analysisSystemPrompt: z.string().optional().default(DEFAULT_ANALYSIS_SYSTEM_PROMPT),
   detailsPanelCollapsed: z.boolean().optional().default(false),
   tooltipsSeen: z.record(z.string(), z.boolean()).optional().default({}),
   // Coach-mark tour state (#404). `onboardingChapters` records which chapters
@@ -1130,27 +1123,6 @@ export const BirdbrainSettingsSchema = z.object({
 
 // Used on load: user may have an older settings file missing newer keys, so
 // every field is optional and the result is merged over defaults in the loader.
+// Keys the schema no longer declares, such as the retired AI analysis fields,
+// are stripped rather than rejected, so an older file still parses.
 export const PartialBirdbrainSettingsSchema = BirdbrainSettingsSchema.partial()
-
-// --- OpenRouter API response ----------------------------------------------
-
-export const OpenRouterResponseSchema = z.object({
-  choices: z
-    .array(
-      z.object({
-        message: z.object({
-          content: z.string()
-        })
-      })
-    )
-    .min(1),
-  usage: z
-    .object({
-      prompt_tokens: z.number(),
-      completion_tokens: z.number(),
-      total_tokens: z.number()
-    })
-    .optional()
-})
-
-export type OpenRouterResponseParsed = z.infer<typeof OpenRouterResponseSchema>

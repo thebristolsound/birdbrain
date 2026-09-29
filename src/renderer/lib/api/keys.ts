@@ -69,9 +69,7 @@ export const queryKeys = {
   waybackCasePins: (caseId: string) => ['wayback', 'casePins', caseId] as const,
   settings: ['settings'] as const,
   identity: ['identity'] as const,
-  openRouterModels: ['openRouterModels'] as const,
   appVersion: ['appVersion'] as const,
-  captureAnalysis: (captureId: string) => ['analysis', captureId] as const,
   exportPreflight: (caseId: string, captureIds?: string[]) =>
     ['export', 'preflight', caseId, captureIds ?? null] as const,
   recaptureQueue: ['recaptureQueue'] as const,

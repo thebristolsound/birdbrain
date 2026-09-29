@@ -89,7 +89,7 @@ const snapshot: DiagnosticsSnapshot = {
     extractedData: 0
   },
   slowOps: [],
-  keyProtection: { signingKey: 'protected', openRouterKey: 'not-set' },
+  keyProtection: { signingKey: 'protected' },
   trustedTimestamping: { enabled: true }
 }
 
@@ -199,7 +199,7 @@ describe('DiagnosticsPanel storage folder action', () => {
       diagnostics: {
         get: vi.fn().mockResolvedValue({
           ...snapshot,
-          keyProtection: { signingKey: 'plaintext', openRouterKey: 'not-set' }
+          keyProtection: { signingKey: 'plaintext' }
         }),
         log,
         openStorageRoot,

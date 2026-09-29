@@ -207,7 +207,6 @@ type ContextFormat = 'number' | 'boolean' | RegExp | readonly string[]
 // what broke. tests/main/services/queryDomains.test.ts scans the renderer and
 // fails if a key appears there but not here.
 export const QUERY_DOMAINS = [
-  'analysis',
   'annotations',
   'appVersion',
   'captureCounts',
@@ -221,7 +220,6 @@ export const QUERY_DOMAINS = [
   'identity',
   'manifest',
   'notes',
-  'openRouterModels',
   'persona',
   'recaptureQueue',
   'search',

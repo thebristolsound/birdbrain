@@ -93,12 +93,6 @@ export const DEFAULT_TSA_URL = 'http://timestamp.digicert.com'
 export const GITHUB_REPO_SLUG = 'thebristolsound/birdbrain-releases'
 export const GITHUB_RELEASES_URL = `https://github.com/${GITHUB_REPO_SLUG}/releases`
 
-// Default system prompt sent with every capture analysis request. Users can
-// override this from Settings → AI; this constant is the fallback on first run
-// and when the stored value is blank.
-export const DEFAULT_ANALYSIS_SYSTEM_PROMPT =
-  'You are an expert investigative analyst reviewing web captures collected as part of a digital investigation. Analyze the provided capture in the context of the case description and metadata. Provide a clear, structured assessment covering key findings, notable entities, potential risks, and recommended next steps. Be concise but thorough.'
-
 // <webview> partitions, shared so the renderer's attribute and the main-process
 // policy that hardens it cannot drift apart. The partition is the discriminator
 // the policy keys on (src/main/webviewPolicy.ts), so a renderer naming one the

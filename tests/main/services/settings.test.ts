@@ -14,8 +14,7 @@ import {
   getSettings,
   updateSettings,
   resetSettings,
-  getDefaultSettings,
-  getOpenRouterKeyProtectionState
+  getDefaultSettings
 } from '@main/services/settings'
 import { DEFAULT_TSA_URL } from '@shared/constants'
 import { DEFAULT_UI_DENSITY, UI_DENSITIES, type UiDensity } from '@shared/types'
@@ -37,35 +36,33 @@ describe('settings', () => {
 
   it('returns default settings when no file exists', () => {
     const settings = getSettings()
-    expect(settings.openRouterApiKey).toBeNull()
-    expect(settings.defaultModel).toBe('anthropic/claude-sonnet-4')
     expect(settings.captureScreenshots).toBe(true)
     expect(settings.dedupeWindowSeconds).toBe(60)
     expect(settings.theme).toBe('dark')
   })
 
   it('updates settings and persists them', () => {
-    updateSettings({ openRouterApiKey: 'sk-test-123' })
+    updateSettings({ operatorName: 'Alex Smith' })
     const settings = getSettings()
-    expect(settings.openRouterApiKey).toBe('sk-test-123')
+    expect(settings.operatorName).toBe('Alex Smith')
     // Other defaults remain
     expect(settings.captureScreenshots).toBe(true)
     expect(settings.dedupeWindowSeconds).toBe(60)
   })
 
   it('merges partial updates without losing existing values', () => {
-    updateSettings({ openRouterApiKey: 'sk-first' })
-    updateSettings({ defaultModel: 'openai/gpt-4o' })
+    updateSettings({ operatorName: 'Alex Smith' })
+    updateSettings({ theme: 'light' })
     const settings = getSettings()
-    expect(settings.openRouterApiKey).toBe('sk-first')
-    expect(settings.defaultModel).toBe('openai/gpt-4o')
+    expect(settings.operatorName).toBe('Alex Smith')
+    expect(settings.theme).toBe('light')
   })
 
   it('resets settings to defaults', () => {
-    updateSettings({ openRouterApiKey: 'sk-test', dedupeWindowSeconds: 120 })
+    updateSettings({ operatorName: 'Alex Smith', dedupeWindowSeconds: 120 })
     resetSettings()
     const settings = getSettings()
-    expect(settings.openRouterApiKey).toBeNull()
+    expect(settings.operatorName).toBe('')
     expect(settings.dedupeWindowSeconds).toBe(60)
   })
 
@@ -298,15 +295,15 @@ describe('settings', () => {
       it.skipIf(process.getuid?.() === 0)(
         'writes held choices with the next save that succeeds',
         () => {
-          locked({ tsaEnabled: true, theme: 'light', openRouterApiKey: 'sk-old' }, () => {
-            updateSettings({ tsaEnabled: false, openRouterApiKey: 'sk-held' })
+          locked({ tsaEnabled: true, theme: 'light', operatorRole: 'Old' }, () => {
+            updateSettings({ tsaEnabled: false, operatorRole: 'Analyst' })
           })
           updateSettings({ operatorName: 'Someone' })
           expect(onDisk()).toMatchObject({
             tsaEnabled: false,
             theme: 'light',
             operatorName: 'Someone',
-            openRouterApiKey: 'sk-held'
+            operatorRole: 'Analyst'
           })
         }
       )
@@ -410,51 +407,40 @@ describe('settings', () => {
     expect(settings.operatorName).toBe('')
   })
 
-  it('reports not-set when no OpenRouter key has ever been saved', () => {
-    expect(getOpenRouterKeyProtectionState()).toBe('not-set')
-  })
-
-  it('reports not-set when the settings file exists but predates the key', () => {
-    // Distinct from the "never saved" case above: the file exists (so the
-    // early not-set return is skipped) but has no openRouterApiKey field at
-    // all — an upgrade path, same as the density/theme "written before X
-    // existed" cases elsewhere in this file.
-    writeFileSync(settingsFile, JSON.stringify({ theme: 'dark' }), 'utf-8')
-    expect(getOpenRouterKeyProtectionState()).toBe('not-set')
-  })
-
-  it('reports plaintext when safeStorage is unavailable (tests, headless Linux)', () => {
-    // Same environment as the signing key: ELECTRON_RUN_AS_NODE has no
-    // encryption backend, so encryptApiKey falls through to the raw value.
-    updateSettings({ openRouterApiKey: 'sk-test-123' })
-    expect(getOpenRouterKeyProtectionState()).toBe('plaintext')
-  })
-
-  it('reports protected when the stored value carries the enc: prefix', () => {
+  // The retired AI analysis fields (openRouterApiKey, defaultModel,
+  // analysisSystemPrompt) are no longer in the schema. A file still carrying
+  // them must load with every other value intact, not fall back to defaults.
+  it('loads a file carrying the retired AI fields without them', () => {
     writeFileSync(
       settingsFile,
-      JSON.stringify({ openRouterApiKey: 'enc:' + Buffer.from('opaque').toString('base64') }),
+      JSON.stringify({
+        openRouterApiKey: 'sk-or-v1-stored',
+        defaultModel: 'anthropic/claude-sonnet-4',
+        analysisSystemPrompt: 'custom prompt',
+        theme: 'light',
+        operatorName: 'Alex Smith'
+      }),
       'utf-8'
     )
-    expect(getOpenRouterKeyProtectionState()).toBe('protected')
-  })
-
-  it('reports not-set for a corrupted settings file rather than throwing', () => {
-    writeFileSync(settingsFile, '{invalid json', 'utf-8')
-    expect(getOpenRouterKeyProtectionState()).toBe('not-set')
-  })
-
-  it('logs a warning for a corrupted settings file, distinct from key-never-saved', () => {
-    // Both report 'not-set', but only the corrupted-file case is an actionable
-    // failure — assert the log signal that tells the two apart.
-    writeFileSync(settingsFile, '{invalid json', 'utf-8')
-    getOpenRouterKeyProtectionState()
-    expect(loggerWarn).toHaveBeenCalledWith('settings', 'settings.key_protection_state_unreadable')
-  })
-
-  it('does not log a warning when no key has ever been saved', () => {
-    getOpenRouterKeyProtectionState()
+    const settings = getSettings()
+    expect(settings.theme).toBe('light')
+    expect(settings.operatorName).toBe('Alex Smith')
+    expect(settings).not.toHaveProperty('openRouterApiKey')
+    expect(settings).not.toHaveProperty('defaultModel')
+    expect(settings).not.toHaveProperty('analysisSystemPrompt')
     expect(loggerWarn).not.toHaveBeenCalled()
+  })
+
+  it('drops the retired AI fields from disk on the next save', () => {
+    writeFileSync(
+      settingsFile,
+      JSON.stringify({ openRouterApiKey: 'sk-or-v1-stored', theme: 'light' }),
+      'utf-8'
+    )
+    updateSettings({ operatorName: 'Alex Smith' })
+    const stored = JSON.parse(readFileSync(settingsFile, 'utf-8'))
+    expect(stored).not.toHaveProperty('openRouterApiKey')
+    expect(stored).toMatchObject({ theme: 'light', operatorName: 'Alex Smith' })
   })
 
   it('reads a settings file written before density existed', () => {
@@ -560,10 +546,13 @@ describe('initSettings and the fresh-install latch', () => {
     expect(read().onboardingChapters).toEqual({})
   })
 
-  it('seeds a file with no API key, so key protection still reads not-set', async () => {
-    const { initSettings, getOpenRouterKeyProtectionState: state } = await load()
+  it('seeds a file with none of the retired AI fields', async () => {
+    const { initSettings } = await load()
     initSettings(tempDir)
-    expect(state()).toBe('not-set')
+    const seeded = JSON.parse(readFileSync(join(tempDir, 'settings.json'), 'utf-8'))
+    expect(seeded).not.toHaveProperty('openRouterApiKey')
+    expect(seeded).not.toHaveProperty('defaultModel')
+    expect(seeded).not.toHaveProperty('analysisSystemPrompt')
   })
 
   it('does not throw when the settings directory cannot be written', async () => {
@@ -577,4 +566,105 @@ describe('initSettings and the fresh-install latch', () => {
       expect.objectContaining({ code: 'ENOENT' })
     )
   })
+})
+
+// The AI analysis feature was removed. An upgraded install may still hold its
+// API key in settings.json, in plaintext or wrapped by safeStorage, and the
+// key is a live credential, so startup rewrites the file without it.
+describe('initSettings and the retired AI fields', () => {
+  let tempDir: string
+  let settingsFile: string
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'bb-settings-retired-'))
+    settingsFile = join(tempDir, 'settings.json')
+    vi.resetModules()
+    loggerWarn.mockClear()
+  })
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  async function init(): Promise<typeof import('@main/services/settings')> {
+    const settings = await import('@main/services/settings')
+    settings.initSettings(tempDir)
+    return settings
+  }
+
+  const onDisk = (): Record<string, unknown> => JSON.parse(readFileSync(settingsFile, 'utf-8'))
+
+  it('removes a plaintext key and the other retired fields, keeping the rest', async () => {
+    writeFileSync(
+      settingsFile,
+      JSON.stringify({
+        openRouterApiKey: 'sk-or-v1-plaintext',
+        defaultModel: 'openai/gpt-4o',
+        analysisSystemPrompt: 'custom prompt',
+        operatorName: 'Alex Smith',
+        tsaEnabled: false,
+        onboardingChapters: { intro: true }
+      }),
+      'utf-8'
+    )
+    const { getSettings: read } = await init()
+    expect(onDisk()).toEqual({
+      operatorName: 'Alex Smith',
+      tsaEnabled: false,
+      onboardingChapters: { intro: true }
+    })
+    expect(readFileSync(settingsFile, 'utf-8')).not.toContain('sk-or-v1-plaintext')
+    expect(read().operatorName).toBe('Alex Smith')
+    expect(read().tsaEnabled).toBe(false)
+  })
+
+  it('removes a key stored in its safeStorage-wrapped form', async () => {
+    const wrapped = 'enc:' + Buffer.from('opaque-ciphertext').toString('base64')
+    writeFileSync(
+      settingsFile,
+      JSON.stringify({ openRouterApiKey: wrapped, theme: 'light' }),
+      'utf-8'
+    )
+    await init()
+    expect(onDisk()).toEqual({ theme: 'light' })
+  })
+
+  it('does not rewrite a file that holds no retired fields', async () => {
+    const original = '{"theme":"light"}'
+    writeFileSync(settingsFile, original, 'utf-8')
+    await init()
+    expect(readFileSync(settingsFile, 'utf-8')).toBe(original)
+  })
+
+  it('leaves a file that will not parse untouched', async () => {
+    const original = '{"openRouterApiKey": "sk-or-v1-trunc'
+    writeFileSync(settingsFile, original, 'utf-8')
+    await expect(init()).resolves.toBeDefined()
+    expect(readFileSync(settingsFile, 'utf-8')).toBe(original)
+  })
+
+  it('leaves a file whose JSON is not an object untouched', async () => {
+    writeFileSync(settingsFile, '["openRouterApiKey"]', 'utf-8')
+    await init()
+    expect(readFileSync(settingsFile, 'utf-8')).toBe('["openRouterApiKey"]')
+  })
+
+  it.skipIf(process.getuid?.() === 0)(
+    'logs and carries on when the cleaned file cannot be written',
+    async () => {
+      writeFileSync(settingsFile, JSON.stringify({ openRouterApiKey: 'sk-or-v1-x' }), 'utf-8')
+      chmodSync(settingsFile, 0o400)
+      try {
+        await expect(init()).resolves.toBeDefined()
+        expect(loggerWarn).toHaveBeenCalledWith(
+          'settings',
+          'settings.retired_fields_cleanup_failed',
+          undefined,
+          expect.objectContaining({ code: 'EACCES' })
+        )
+      } finally {
+        chmodSync(settingsFile, 0o600)
+      }
+    }
+  )
 })

@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { settingsQueryOptions, useSettingsMutations } from '@renderer/lib/queries'
 import type { BirdbrainSettings } from '@shared/types'
-import { AIConfig } from '@renderer/components/settings/AIConfig'
 import { CapturePreferences } from '@renderer/components/settings/CapturePreferences'
 import { StorageConfig } from '@renderer/components/settings/StorageConfig'
 import { AppearanceConfig } from '@renderer/components/settings/AppearanceConfig'
@@ -12,7 +11,6 @@ import { UpdatesConfig } from '@renderer/components/settings/UpdatesConfig'
 import { About } from '@renderer/components/settings/About'
 import { DiagnosticsPanel } from '@renderer/components/settings/DiagnosticsPanel'
 import {
-  Key,
   Camera,
   HardDrive,
   Palette,
@@ -27,7 +25,6 @@ import { DatabaseAdmin } from '@renderer/components/settings/DatabaseAdmin'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@renderer/components/ui'
 
 type SettingsTab =
-  | 'ai'
   | 'capture'
   | 'storage'
   | 'appearance'
@@ -38,8 +35,7 @@ type SettingsTab =
   | 'diagnostics'
   | 'about'
 
-const settingsTabs: { id: SettingsTab; label: string; icon: typeof Key }[] = [
-  // { id: 'ai', label: 'AI', icon: Key }, // temporarily hidden until AI features are ready
+const settingsTabs: { id: SettingsTab; label: string; icon: typeof Camera }[] = [
   { id: 'capture', label: 'Capture', icon: Camera },
   { id: 'storage', label: 'Storage', icon: HardDrive },
   { id: 'appearance', label: 'Appearance', icon: Palette },
@@ -89,9 +85,6 @@ export function SettingsView() {
       </nav>
 
       <div className="flex-1 overflow-auto p-[var(--d-pad)]">
-        <TabsContent value="ai" className="mt-0">
-          <AIConfig settings={settings} onUpdate={handleUpdate} />
-        </TabsContent>
         <TabsContent value="capture" className="mt-0">
           <CapturePreferences settings={settings} onUpdate={handleUpdate} />
         </TabsContent>

@@ -11,11 +11,8 @@ export const settingsQueryOptions = queryOptions({
 export function settingsUpdateMutationOptions(queryClient: QueryClient) {
   return {
     mutationFn: (partial: Partial<BirdbrainSettings>) => window.birdbrain.settings.update(partial),
-    onSuccess: (data: BirdbrainSettings, partial: Partial<BirdbrainSettings>) => {
+    onSuccess: (data: BirdbrainSettings) => {
       queryClient.setQueryData(queryKeys.settings, data)
-      if ('openRouterApiKey' in partial) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.openRouterModels })
-      }
     },
     meta: { action: 'save settings' }
   }
@@ -30,12 +27,3 @@ export const identityQueryOptions = queryOptions({
   queryKey: queryKeys.identity,
   queryFn: () => window.birdbrain.settings.getIdentity()
 })
-
-// The OpenRouter model catalogue is fetched through the settings namespace
-// (`settings:listModels`), which is why it lives here rather than in ai.ts.
-export const openRouterModelsQueryOptions = (apiKey: string) =>
-  queryOptions({
-    queryKey: queryKeys.openRouterModels,
-    queryFn: () => window.birdbrain.settings.listModels(apiKey),
-    enabled: !!apiKey
-  })

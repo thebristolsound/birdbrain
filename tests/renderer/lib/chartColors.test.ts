@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { CHART_SERIES, CHART_AXIS, CHART_GRID } from '@renderer/lib/chartColors'
 
 describe('chartColors', () => {
-  it('exposes the 20-color OpenRouter bar palette', () => {
+  it('exposes the 20-color bar palette', () => {
     expect(CHART_SERIES).toHaveLength(20)
   })
 

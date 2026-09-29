@@ -3,7 +3,7 @@
 @import "@fontsource-variable/jetbrains-mono";
 
 @theme {
-  /* Semantic surface tokens — light mode defaults (OpenRouter zinc) */
+  /* Semantic surface tokens — light mode defaults (zinc) */
   --color-canvas: #fafafa;
   --color-surface: #f4f4f5;
   --color-card: #ffffff;

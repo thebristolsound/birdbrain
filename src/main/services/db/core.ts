@@ -98,7 +98,6 @@ export const ID_PROBE_TABLES = [
   'staging_files',
   'notes',
   'selectors',
-  'capture_analyses',
   'extracted_data',
   'capture_archive_refs',
   'annotation_pins'

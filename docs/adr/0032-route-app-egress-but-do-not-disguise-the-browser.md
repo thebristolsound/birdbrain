@@ -88,7 +88,11 @@ say that the time zone and language still reveal the Operator's region through a
 - **Route only traffic that touches the target, or only traffic that carries case information.**
   Rejected: the Operator has to read a table to know what leaves directly. "Nothing leaves
   directly" is a rule the Operator can check.
-- **Bundle Tor.** Rejected for now: a bundled Tor carries its own update and security obligations.
+- **Birdbrain manages Tor.** Launching and supervising a Tor process, whether bundled from the Tor
+  Expert Bundle, downloaded on first use, or found on the system, would remove setup and
+  configuration drift and allow a fresh circuit per Capture. Rejected on 2026-09-28: the
+  maintainer keeps Tor the Operator's own, so Birdbrain never owes a release for a Tor security
+  fix.
 
 ## Consequences
 

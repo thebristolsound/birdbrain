@@ -341,6 +341,26 @@ describe('ipcHandlers — cases', () => {
     expect(sessionService.snapshot()).toMatchObject({ activeCaseId: null, sessionActive: false })
   })
 
+  it('clears the session when the deleted case was the active one', async () => {
+    const created = expectOk<Case>(await invoke(IPC_CHANNELS.CASES_CREATE, { name: 'Doomed' }))
+    expectOk(await invoke(IPC_CHANNELS.SESSION_ACTIVATE_CASE, created.id))
+    expectOk(await invoke(IPC_CHANNELS.SESSION_START))
+
+    expect(expectOk<boolean>(await invoke(IPC_CHANNELS.CASES_DELETE, created.id))).toBe(true)
+
+    expect(sessionService.snapshot()).toMatchObject({ activeCaseId: null, sessionActive: false })
+  })
+
+  it('leaves the session alone when a case other than the active one is deleted', async () => {
+    const other = expectOk<Case>(await invoke(IPC_CHANNELS.CASES_CREATE, { name: 'Other' }))
+    expectOk(await invoke(IPC_CHANNELS.SESSION_ACTIVATE_CASE, caseId))
+    expectOk(await invoke(IPC_CHANNELS.SESSION_START))
+
+    expectOk(await invoke(IPC_CHANNELS.CASES_DELETE, other.id))
+
+    expect(sessionService.snapshot()).toMatchObject({ activeCaseId: caseId, sessionActive: true })
+  })
+
   it('leaves a session on another case alone when the demo case is deleted', async () => {
     const demo = expectOk<Case>(await invoke(IPC_CHANNELS.CASES_CREATE, { name: 'Demo' }))
     caseRepo.setCaseDemo(demo.id, true)

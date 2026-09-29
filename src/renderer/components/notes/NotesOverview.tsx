@@ -326,11 +326,11 @@ function NotesWorkspace({ caseId }: { caseId: string }) {
               <h2 className="text-xs font-semibold text-text-secondary">
                 {narrowed ? 'No notes match' : 'No notes yet'}
               </h2>
-              <p className="max-w-[200px] text-[11px] leading-relaxed text-text-faint">
-                {narrowed
-                  ? 'Try a broader search, or clear the filters on this list.'
-                  : 'Notes are where you write up what a capture means. Start one and reference captures with @, selectors and tags with #.'}
-              </p>
+              {narrowed && (
+                <p className="max-w-[200px] text-[11px] leading-relaxed text-text-faint">
+                  Try a broader search, or clear the filters on this list.
+                </p>
+              )}
               {narrowed ? (
                 <button
                   onClick={clearFilters}

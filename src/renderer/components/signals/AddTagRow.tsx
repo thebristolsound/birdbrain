@@ -43,7 +43,7 @@ export const AddTagRow = forwardRef<HTMLInputElement, AddTagRowProps>(function A
         onKeyDown={handleKey}
         aria-label="Add tag"
         data-testid="add-tag-input"
-        placeholder="Add tag — Enter to save and keep typing"
+        placeholder="Add tag"
         className="min-w-0 flex-1 border-none bg-transparent text-xs text-text-primary outline-none"
       />
       <kbd className="shrink-0 rounded border border-border-strong bg-surface px-1.5 py-0.5 font-mono text-[10px] text-text-faint">

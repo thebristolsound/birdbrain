@@ -92,7 +92,6 @@ describe('Notes workspace', () => {
   it('creates from the compact plus control and keeps one live editor with a saved title', async () => {
     renderNotes()
     expect(await screen.findByText('No notes yet')).toBeTruthy()
-    expect(screen.getByText(/Start one and reference captures with @/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'New note' }))
     const title = await screen.findByLabelText('Note title')
     fireEvent.change(title, { target: { value: 'Field observations' } })

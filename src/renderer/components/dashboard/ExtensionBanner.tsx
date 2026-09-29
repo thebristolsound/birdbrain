@@ -34,12 +34,9 @@ export function ExtensionBanner({ connected }: ExtensionBannerProps) {
               <CheckCircle className="h-6 w-6 text-emerald-500" />
             </div>
             <div>
-              <h4 className="font-display font-bold text-sm text-text-primary mb-0.5">
+              <h4 className="font-display font-bold text-sm text-text-primary">
                 Browser Extension Connected
               </h4>
-              <p className="text-[11px] text-text-muted leading-relaxed">
-                Your extension is connected and ready to capture.
-              </p>
             </div>
           </div>
           <div className="flex items-center gap-3">

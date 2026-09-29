@@ -236,8 +236,7 @@ export function WaybackPanel({ capture, onClose }: Props) {
       </div>
 
       <p className="shrink-0 border-b border-border px-3.5 py-2 text-[11px] leading-relaxed text-text-faint">
-        Independent record of this URL. Corroboration only — looking up discloses the URL to
-        archive.org.
+        Corroboration only. Looking up this URL discloses it to archive.org.
       </p>
 
       <div className="relative flex shrink-0 flex-col gap-2 border-b border-border px-3.5 py-2.5">

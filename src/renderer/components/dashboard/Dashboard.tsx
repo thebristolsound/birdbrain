@@ -12,7 +12,6 @@ import { inspectCaseArchive } from '@renderer/lib/api/cases'
 import { ImportCaseDialog } from '@renderer/components/dashboard/cases/ImportCaseDialog'
 import { HeroSection } from '@renderer/components/dashboard/HeroSection'
 import { RecentCases } from '@renderer/components/dashboard/RecentCases'
-import { QuickStartGuide } from '@renderer/components/dashboard/QuickStartGuide'
 import { RecentActivityFeed } from '@renderer/components/dashboard/RecentActivityFeed'
 import { ExtensionBanner } from '@renderer/components/dashboard/ExtensionBanner'
 import { DashboardFooter } from '@renderer/components/dashboard/DashboardFooter'
@@ -94,9 +93,7 @@ export function Dashboard() {
         />
       </div>
 
-      {/* First run keeps the Quick Start walkthrough; once a case exists the
-          operator is returning, and the cross-case activity feed replaces it (#403). */}
-      {cases.length === 0 ? <QuickStartGuide /> : <RecentActivityFeed />}
+      {cases.length > 0 && <RecentActivityFeed />}
 
       <div className="px-8 pb-16">
         <div className="max-w-5xl mx-auto">

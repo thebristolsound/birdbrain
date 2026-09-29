@@ -210,7 +210,7 @@ describe('SignalDetailRail branches', () => {
   it('says so plainly when the signal has matched nothing', () => {
     renderRail({ ...selectorSignal, count: 0, captureIds: [] })
 
-    expect(screen.getByTestId('signal-appears-empty').textContent).toContain('No captures yet')
+    expect(screen.getByTestId('signal-appears-empty').textContent).toBe('No matches yet')
   })
 
   // The window is bounded, so a selector matching more than it shows must say

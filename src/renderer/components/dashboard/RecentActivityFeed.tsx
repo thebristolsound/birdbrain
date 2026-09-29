@@ -102,7 +102,7 @@ export function RecentActivityFeed({ limit = RECENT_ACTIVITY_LIMIT }: RecentActi
             data-testid="recent-activity-empty"
             className="flex items-center gap-2.5 rounded-lg border border-dashed border-border-strong bg-canvas px-3.5 py-3 text-xs text-text-muted"
           >
-            No activity yet — captures and note edits land here.
+            No activity yet
           </div>
         ) : (
           <div className="overflow-hidden rounded-lg border border-border bg-card">

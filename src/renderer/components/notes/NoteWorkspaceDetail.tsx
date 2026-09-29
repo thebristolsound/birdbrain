@@ -213,7 +213,6 @@ export function NoteWorkspaceDetail({
       </div>
       <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-surface px-7 py-2 text-[10px] text-text-faint">
         <span>
-          Markdown · TipTap editor ·{' '}
           <kbd className="rounded border border-border px-1 font-mono">@</kbd> links captures &amp;
           notes · <kbd className="rounded border border-border px-1 font-mono">#</kbd> selectors
           &amp; tags

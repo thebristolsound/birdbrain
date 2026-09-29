@@ -19,17 +19,9 @@ interface AutoCaptureCardProps {
   caseId: string
 }
 
-const MODES: Array<{ mode: AutoCaptureExclusionMode; label: string; title: string }> = [
-  {
-    mode: 'stack',
-    label: 'Stack on global',
-    title: 'Case exclusions apply in addition to the global ignore list'
-  },
-  {
-    mode: 'override',
-    label: 'Override global',
-    title: "Only this case's exclusions apply — the global ignore list is bypassed for this case"
-  }
+const MODES: Array<{ mode: AutoCaptureExclusionMode; label: string }> = [
+  { mode: 'stack', label: 'Stack on global' },
+  { mode: 'override', label: 'Override global' }
 ]
 
 // The Auto-capture card, and the per-case exclusion list inside it (#400).
@@ -151,8 +143,7 @@ export function AutoCaptureCard({ caseId }: AutoCaptureCardProps) {
 
       {modeIsAuto && (
         <p className="mt-2 text-[10px] text-text-faint" data-testid="auto-capture-locked">
-          Auto-capture is set to capture every page, not only selector matches. A two-state switch
-          cannot represent that, so it is locked here.
+          Locked: auto-capture is set to capture every page.
         </p>
       )}
 
@@ -174,7 +165,6 @@ export function AutoCaptureCard({ caseId }: AutoCaptureCardProps) {
                   type="button"
                   role="radio"
                   aria-checked={mode === entry.mode}
-                  title={entry.title}
                   onClick={() => writePolicy({ mode: entry.mode })}
                   className={[
                     'h-[22px] px-[9px] text-[11px] font-medium transition-colors',

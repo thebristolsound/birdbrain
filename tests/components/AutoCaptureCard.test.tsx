@@ -216,15 +216,13 @@ describe('AutoCaptureCard switch', () => {
     fireEvent.click(toggle)
 
     expect(update).not.toHaveBeenCalled()
-    expect(screen.getByTestId('auto-capture-locked').textContent).toContain(
-      'capture every page'
-    )
+    expect(screen.getByTestId('auto-capture-locked').textContent).toContain('capture every page')
   })
 
   it('says the setting is app-wide, not case-level', async () => {
     renderCard()
 
-    expect(await screen.findByText(/App-wide setting/)).toBeTruthy()
+    expect(await screen.findByText(/Applies to every case/)).toBeTruthy()
     expect(screen.queryByText(/Case-level/)).toBeNull()
   })
 
@@ -235,15 +233,14 @@ describe('AutoCaptureCard switch', () => {
     renderCard()
 
     const description = (await screen.findByTestId('auto-capture-description')).textContent ?? ''
-    expect(description).toContain('records whether')
     expect(description).not.toMatch(/captured automatically/)
   })
 
-  it('discloses that passive capture is suspended, naming where it returns', async () => {
+  it('discloses that passive capture is suspended', async () => {
     renderCard()
 
     const suspended = (await screen.findByTestId('auto-capture-suspended')).textContent ?? ''
     expect(suspended).toContain('Passive capture is suspended')
-    expect(suspended).toContain('#600')
+    expect(suspended).toContain('without an explicit action')
   })
 })

@@ -15,7 +15,6 @@ export function About() {
             <span className="text-text-secondary">Birdbrain</span>
             {version ? ` Version ${version}` : ''}
           </p>
-          <p>Open source web investigation & capture tool</p>
           <p>
             <a
               href="https://github.com/thebristolsound/birdbrain"

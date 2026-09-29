@@ -320,8 +320,7 @@ describe('one chapter displacing another', () => {
   // #771, ruled 2026-08-30: a chapter displaced on its very first card is
   // recorded complete, however little of it the operator saw. The concrete path
   // is a fresh install whose first case is empty — the case chapter auto-fires
-  // on step 0 over CapturesGettingStarted, whose "Learn more" replays the
-  // extension chapter through the same event the palette uses.
+  // on step 0 and a replayed chapter displaces it.
   it('records a chapter displaced on its first card complete', async () => {
     routerState.caseId = 'case-1'
     routerState.pathname = '/cases/case-1/captures'

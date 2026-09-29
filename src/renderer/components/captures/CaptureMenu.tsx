@@ -151,9 +151,6 @@ export function CaptureMenu({ caseId }: CaptureMenuProps) {
             />
             {isRecapturing ? 'Recapturing…' : 'Recapture current page'}
           </button>
-          <div className="mt-1 border-t border-border px-3 py-1.5 text-[10px] text-text-faint">
-            Both run in the background queue
-          </div>
         </div>
       )}
 

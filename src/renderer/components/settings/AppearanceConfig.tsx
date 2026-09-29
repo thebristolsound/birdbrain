@@ -92,10 +92,6 @@ export function AppearanceConfig() {
                 </button>
               ))}
             </div>
-            <div className="mt-2 text-xs text-text-muted">
-              Scales padding, gaps, and row heights on Settings, case workspace containers, and the
-              selectors table. The dashboard and captures screens do not respond yet.
-            </div>
           </div>
           <div className="flex items-center justify-between">
             <div>

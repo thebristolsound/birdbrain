@@ -91,21 +91,13 @@ export const AddSelectorRow = forwardRef<HTMLInputElement, AddSelectorRowProps>(
             onBlur={() => setDrawerOpen(false)}
             aria-label="Add selector"
             data-testid="add-selector-input"
-            placeholder={
-              regexMode
-                ? 'Add regex selector — e.g. bc1[a-z0-9]{20,} — Enter to save and keep typing'
-                : 'Add selector — exact text match — Enter to save and keep typing'
-            }
+            placeholder={regexMode ? 'Add regex selector' : 'Add selector'}
             className="min-w-0 flex-1 border-none bg-transparent font-mono text-xs text-text-primary outline-none"
           />
           <button
             type="button"
             onClick={() => setRegexMode((v) => !v)}
-            title={
-              regexMode
-                ? 'Regex mode on — click for exact text (or just wrap the pattern in /…/)'
-                : 'Exact text mode — click for regex (or just wrap the pattern in /…/)'
-            }
+            title={regexMode ? 'Regex — click for exact text' : 'Exact text — click for regex'}
             data-testid="add-selector-mode"
             className={[
               'shrink-0 rounded px-2 py-0.5 font-mono text-[10px] font-semibold',

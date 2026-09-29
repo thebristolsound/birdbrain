@@ -11,6 +11,11 @@ Mintlify dashboard. Porkbun holds both verification `TXT` records, the `docs` `C
 that keeps the path. Both addresses answer over HTTPS. `docs.birdbrain.cc` still redirects to a
 Mintlify sign-in page, so the deployment is not public yet.
 
+The cutover pull request (branch `docs/mintlify-cutover`) carries steps 1, 2, 3, 5 and 6
+together, because the Mintlify link form breaks the Fumadocs site: shipping step 1 alone would
+leave the published Pages site with dead links. Still outside the repository: turning off the
+Mintlify sign-in, the analytics check, and the releases repository README and homepage fields.
+
 ## Current state
 
 - The published site is Fumadocs on Next.js, statically exported and deployed to GitHub Pages at

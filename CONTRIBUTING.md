@@ -49,8 +49,9 @@ Contributions unlikely to land:
 4. `pnpm build:extension` — builds the Chrome extension (load `extension/dist`
    unpacked via `chrome://extensions`).
 
-The docs site under `website/` is an isolated sub-project with its own lockfile —
-run its commands (`pnpm install`, `pnpm dev`, `pnpm build`) from inside `website/`.
+The docs site is `website/content/`, published by Mintlify at <https://docs.birdbrain.cc>.
+Preview it with `npx mint dev` and check links with `npx mint broken-links`, both run
+from inside `website/content/`.
 
 ## Validating your change
 

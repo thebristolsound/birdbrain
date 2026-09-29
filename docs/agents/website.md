@@ -2,52 +2,50 @@
 
 Paths in this document are repository-root relative.
 
-`website/` is the public docs site — Next.js 16 + Fumadocs UI/MDX, statically exported and published to GitHub Pages at <https://thebristolsound.github.io/birdbrain/> by `.github/workflows/docs.yml`.
+The public docs site is served by Mintlify at <https://docs.birdbrain.cc> from the content in
+`website/content/`. `birdbrain.cc` forwards there. There is no build step in this repository:
+Mintlify's GitHub App deploys `main` after every merge.
 
-**It is a deliberately isolated sub-project.** It has its own `package.json`, `pnpm-lock.yaml`, and `node_modules`. The repo root does have a `pnpm-workspace.yaml`, but **only** to hold the pnpm settings that used to live in the `pnpm` field of `package.json` (`onlyBuiltDependencies`, `overrides`, `supportedArchitectures`) — pnpm 10.28 stopped reading them there. It deliberately has no `packages:` key, so nothing is registered as a workspace member and `website/` stays isolated. Do not add one.
+`website/content/` holds everything Mintlify reads:
 
-`website/pnpm-workspace.yaml` enforces that isolation from the other side: it makes `website/` its own workspace root, so a `pnpm` command run inside `website/` stops there instead of walking up and inheriting the root's `overrides` and `onlyBuiltDependencies`. It also carries the site's own `allowBuilds` approvals (esbuild, sharp). Consequences:
+- `docs.json` is the site configuration: theme, colors, navigation, and the links in the header and footer.
+- `docs/*.mdx` are the pages. A page's URL is its path without the extension, so
+  `docs/tester-guide.mdx` is served at `/docs/tester-guide`.
+- `images/` holds the screenshots, `favicon.png` the favicon.
 
-- Run its commands from inside `website/`: `pnpm install`, `pnpm dev`, `pnpm build`, `pnpm types:check`. A root `pnpm install` does not touch it.
-- The root toolchain ignores it: `eslint.config.js` lists `website/`, `pnpm format` is scoped to `src/`+`extension/`, the root tsconfigs only include `src/**`, and `build.files` in the root `package.json` excludes `website/**/*` so it never ships inside the packaged app.
-- `next.config.mjs` pins `turbopack.root` to `website/`, or Turbopack finds the root lockfile and infers the wrong workspace root.
+`website/pages-notice/index.html` is the only other file under `website/`. It is not part of
+the Mintlify site. `.github/workflows/docs.yml` publishes it to the old GitHub Pages address
+<https://thebristolsound.github.io/birdbrain/>, as both `index.html` and `404.html`, so every old
+page URL redirects to the same page on the new site.
 
-Content lives in `website/content/docs/` (`.mdx` + `meta.json`), images in `website/public/assets/`. Things worth knowing before editing content:
+## Editing content
 
-- **Bare `{...}` in prose breaks the build.** MDX parses braces as JSX expressions, so `{source}` or `{a, b}` in body text is a compile error. Wrap them in backticks.
-- **Internal doc links need the `./name.mdx` form.** `createRelativeLink` only rewrites hrefs starting with `./` or `../`; a bare slug is emitted as-is and resolves wrong under `trailingSlash: true`.
-- **Image paths are `public/`-relative** (`/assets/x.png`). Fumadocs turns them into `next/image` imports, so `basePath` is applied for you — do not hardcode `/birdbrain/`.
-- Anything that builds a URL by hand does need the prefix; import `basePath` from `website/lib/base-path.mjs` (that is why the static search client passes `from`).
+- **Adding a page means adding it to `navigation` in `docs.json`.** A page missing from the
+  navigation is not in the sidebar. Entries carry the `docs/` prefix, because paths are relative
+  to `website/content/`.
+- **Internal links are root-relative, with no file extension:** `[Download](/docs/download)`.
+  Mintlify does not support relative paths or links with a `.mdx` extension in production.
+- **Image paths are root-relative to `website/content/`:** `/images/screenshot-case.png`.
+  Relative image paths are not supported.
+- **Bare `{...}` in prose breaks the page.** MDX parses braces as JSX expressions. Wrap them in
+  backticks.
 
-### Mintlify mirror (evaluation)
+## Checking a change
 
-A Mintlify deployment (`birdbrain`) renders the same MDX as a second, read-only mirror while
-the platform is being evaluated. GitHub Pages remains the published site — Mintlify is not
-wired into CI and nothing in the root toolchain depends on it.
+Run both from inside `website/content/`; neither needs an install in this repository:
 
-`website/content/docs.json` is its config. Note the placement: it is a **sibling** of
-`content/docs/`, not inside it. `defineDocs({ dir: 'content/docs' })` globs JSON files under
-that directory into the Fumadocs meta collection, so a `docs.json` placed *in* `content/docs/`
-risks being parsed as a meta node and breaking `pnpm build`. Keep it one level up.
+- `npx mint dev` serves a local preview.
+- `npx mint broken-links` exits non-zero on any internal link or image that resolves to
+  nothing. CI's `docs-build` job runs the same command, at a pinned version, on every pull
+  request that touches `website/`.
 
-**The deployment's git source must be configured by hand in the Mintlify dashboard — the repo
-cannot set it.** Two fields matter:
+## Deployment settings
 
-- **Deploy branch: `main`.** The default branch was renamed from `master`, and a stale `master`
-  still exists on origin. It predates `website/`, so a deployment left pointing at it sees a
-  repo with no docs in it at all.
-- **Content directory: `website/content`.** This is what makes `docs.json` discoverable given
-  the placement above, and it is why every entry in `navigation.groups[].pages` carries a
-  `docs/` prefix — those paths are relative to the content directory, not to `docs.json`.
+The Mintlify dashboard holds settings the repository cannot set. Check them there when the
+site stops updating:
 
-Two known gaps in the mirror, both inherent to serving one content tree through two renderers:
-
-- **Cross-page links render dead on Mintlify.** The 30 internal links use the `./name.mdx`
-  form that Fumadocs' `createRelativeLink` requires; Mintlify wants extensionless
-  root-relative paths. No single syntax satisfies both — fixing one breaks the other.
-- **Screenshots 404 on Mintlify.** `screenshots.mdx` references `/assets/*.png`, served by
-  Next from `website/public/assets/`. Mintlify resolves assets from its own content root and
-  has no `public/` convention, so the images fall outside what it can see.
-
-Adding a page means updating **both** `content/docs/meta.json` and `docs.json` — a page missing
-from either is silently dropped from that site's sidebar.
+- **Git settings:** repository `thebristolsound/birdbrain`, branch `main`, and the
+  documentation path `/website/content`. A stale `master` branch still exists on origin and predates the site.
+- **Custom domain:** `docs.birdbrain.cc`. The DNS records are at Porkbun: two verification
+  `TXT` records under `docs`, a `CNAME` from `docs` to `cname.mintlify.builders`, and a URL
+  forward from `birdbrain.cc` to `https://docs.birdbrain.cc`.

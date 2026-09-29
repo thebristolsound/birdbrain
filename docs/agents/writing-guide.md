@@ -88,20 +88,20 @@ Placement and naming come from [`docs/README.md`](../README.md). What each type 
 
 **ADR** (`docs/adr/NNNN-<slug>.md`) — context, decision, consequences. One decision per record. Consequences include the bad ones. Superseding an ADR means adding a new one that names the old, not rewriting it.
 
-**Reference page** (`website/content/docs/<topic>.mdx`) — public, published, edited in place as the system evolves. Needs `title`/`description` frontmatter and a `meta.json` entry. Open by naming the audience and what the page answers. This is where claim discipline is strictest, because these pages are what an outside reader will quote back.
+**Reference page** (`website/content/docs/<topic>.mdx`) — public, published, edited in place as the system evolves. Needs `title`/`description` frontmatter and a `docs.json` navigation entry. Open by naming the audience and what the page answers. This is where claim discipline is strictest, because these pages are what an outside reader will quote back.
 
 **Agent doc** (`docs/agents/<topic>.md`) — conventions for how agents and contributors work in this repo. Short, imperative, and concrete about what to do when the rule does not apply.
 
 ## MDX constraints
 
-`website/content/docs/` is Fumadocs MDX. Four things break the build or route wrong. The first three come from the "Documentation site" section of [`AGENTS.md`](../../AGENTS.md); the `meta.json` rule is in its "Documentation conventions" section.
+`website/content/docs/` is Mintlify MDX. Four things break a page or route it wrong; [Documentation site](website.md) is the source for all four.
 
-1. **Bare `{...}` in prose is a compile error.** MDX parses braces as a JSX expression. Wrap them in backticks.
-2. **Internal links need the `./name.mdx` form.** `createRelativeLink` only rewrites hrefs starting with `./` or `../`; a bare slug is emitted as-is and resolves wrong under `trailingSlash: true`.
-3. **Image paths are `public/`-relative** (`/assets/x.png`). Fumadocs applies `basePath` for you — never hardcode `/birdbrain/`.
-4. **A page absent from `meta.json` is silently dropped from the sidebar.** Adding a page means adding both.
+1. **Bare `{...}` in prose breaks the page.** MDX parses braces as a JSX expression. Wrap them in backticks.
+2. **Internal links are root-relative, with no file extension** (`/docs/download`). Mintlify does not support relative paths or a `.mdx` extension in production.
+3. **Image paths are root-relative to `website/content/`** (`/images/x.png`).
+4. **A page absent from `navigation` in `docs.json` is not in the sidebar.** Adding a page means adding both.
 
-Build the site from inside `website/` (`pnpm build`) before merging a change under `website/` — it has its own lockfile and a root `pnpm install` does not touch it. Files under `docs/` are not part of the site build and need no such check.
+Run `npx mint broken-links` from inside `website/content/` before merging a change under `website/`. Files under `docs/` are not part of the site and need no such check.
 
 ## Before merging
 
@@ -110,4 +110,4 @@ Build the site from inside `website/` (`pnpm build`) before merging a change und
 - [ ] Terms match the `CONTEXT.md` glossary, including its `_Avoid_` lists.
 - [ ] Nothing contradicts `README.md`, `SECURITY.md`, or an existing ADR — or if it does, that is called out deliberately.
 - [ ] File is in the right folder with the right name per [`docs/README.md`](../README.md).
-- [ ] New `website/content/docs/` page has frontmatter and a `meta.json` entry, and the site builds.
+- [ ] New `website/content/docs/` page has frontmatter and a `docs.json` navigation entry, and `mint broken-links` passes.

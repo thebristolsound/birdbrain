@@ -85,7 +85,6 @@ export function CreateSelectorCard({
           <h3 className="font-display text-sm font-semibold text-text-primary">
             Create New Selector
           </h3>
-          <p className="text-xs text-text-muted">Define patterns to match across captures</p>
         </div>
         {isOpen ? (
           <ChevronUp className="h-4 w-4 text-text-muted" />

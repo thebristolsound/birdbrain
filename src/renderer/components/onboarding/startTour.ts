@@ -10,9 +10,9 @@ export interface TourEventDetail {
  * Replays a tour chapter from anywhere.
  *
  * A window event rather than shared state, matching the `birdbrain:report`
- * wiring: the four entry points (command palette, Settings → About, the
- * dashboard extension banner, the captures getting-started panel) then need
- * nothing but this function, and the single mounted tour owns all the state.
+ * wiring: the three entry points (command palette, Settings → About, the
+ * dashboard extension banner) then need nothing but this function, and the
+ * single mounted tour owns all the state.
  *
  * The chapter this starts is always a replay, so closing it writes nothing.
  * Starting it is not free of writes, though: if a chapter is already running,

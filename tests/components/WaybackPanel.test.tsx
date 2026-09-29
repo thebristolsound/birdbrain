@@ -112,7 +112,7 @@ describe('WaybackPanel', () => {
   it('keeps the standing corroboration disclosure above the list', () => {
     renderPanel()
     expect(
-      screen.getByText(/Corroboration only — looking up discloses the URL to archive\.org/)
+      screen.getByText(/Corroboration only\. Looking up this URL discloses it to archive\.org/)
     ).toBeDefined()
   })
 

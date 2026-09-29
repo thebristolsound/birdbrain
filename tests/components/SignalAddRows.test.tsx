@@ -132,12 +132,12 @@ describe('AddSelectorRow', () => {
     expect(onAdd).toHaveBeenCalledWith('bc1[a-z0-9]+', true)
   })
 
-  it('describes the mode in the placeholder', () => {
+  it('names the mode in the placeholder', () => {
     const { input } = renderSelectorRow()
-    expect(input.getAttribute('placeholder')).toContain('exact text match')
+    expect(input.getAttribute('placeholder')).toBe('Add selector')
 
     fireEvent.click(screen.getByTestId('add-selector-mode'))
-    expect(screen.getByTestId('add-selector-input').getAttribute('placeholder')).toContain(
+    expect(screen.getByTestId('add-selector-input').getAttribute('placeholder')).toBe(
       'Add regex selector'
     )
   })

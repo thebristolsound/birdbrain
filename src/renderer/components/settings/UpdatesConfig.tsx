@@ -109,8 +109,7 @@ function StatusLine({
         </span>
         <span className="basis-full text-text-muted">
           After restarting, reload the Birdbrain extension at{' '}
-          <span className="font-mono">chrome://extensions</span> — the update replaces its files,
-          but Chrome keeps the old copy loaded until you do.
+          <span className="font-mono">chrome://extensions</span>.
         </span>
       </div>
     )

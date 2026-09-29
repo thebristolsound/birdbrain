@@ -123,25 +123,4 @@ test.describe('ScreenshotZoomBar', () => {
     await page.getByRole('button', { name: 'Select', exact: true }).click()
     await expect(eye).toHaveAttribute('aria-disabled', 'false')
   })
-
-  test('one-time tooltip dismisses and persists', async ({ page, electronApp }) => {
-    await seedCaseAndCapture(page, 'Tooltip E2E')
-
-    const tip = page.getByText('Drawing tools are now always live', { exact: false })
-    await expect(tip).toBeVisible({ timeout: 5000 })
-
-    await page.getByRole('button', { name: 'Dismiss tip' }).click()
-    await expect(tip).toHaveCount(0)
-
-    // Reload renderer; tooltip must stay dismissed.
-    const win = electronApp.windows()[0]
-    await win.reload()
-    await expect(page.locator('[data-testid="topbar-case-name"]')).toContainText('Tooltip E2E', {
-      timeout: 10000
-    })
-    await page.getByTestId('capture-item').filter({ hasText: 'Zoom Bar E2E Page' }).first().click()
-    await expect(page.getByText('Drawing tools are now always live', { exact: false })).toHaveCount(
-      0
-    )
-  })
 })

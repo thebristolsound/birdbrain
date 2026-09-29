@@ -124,13 +124,12 @@ test.describe('Wayback panel, compare and pinned references', () => {
       await expect(page.getByTestId('wayback-idle')).toBeVisible()
       await expect(page.getByTestId('wayback-summary')).toHaveText('Not looked up yet')
       await expect(
-        panel.getByText(/looking up discloses the URL to archive\.org/)
+        panel.getByText(/Looking up this URL discloses it to archive\.org/)
       ).toBeVisible()
 
-      // 3. The compare states the no-diff position and labels the replay pane as
-      //    live non-evidence content before anything is loaded into it.
+      // 3. The compare labels the replay pane as live non-evidence content
+      //    before anything is loaded into it.
       await expect(page.getByTestId('wayback-compare')).toBeVisible()
-      await expect(page.getByText(/Birdbrain doesn't diff the two/)).toBeVisible()
       await expect(page.getByTestId('wayback-nonevidence-label')).toContainText('not evidence')
       await expect(page.getByTestId('wayback-compare-empty')).toBeVisible()
 

@@ -188,8 +188,8 @@ export function OperatorConfig() {
             />
             <p className="mt-1 text-[11px] text-text-muted">
               {tsaEnabled
-                ? 'RFC 3161 endpoint used to trusted-timestamp captures. Defaults to DigiCert. Captures never block on it; un-stamped captures are timestamped when the TSA is reachable. Each request discloses the capture content hash, this device’s IP address and the time of the request to that authority.'
-                : 'Not in use while trusted timestamping is off. Nothing is sent to this endpoint. Change it here so the authority is already the one you want when you switch timestamping back on.'}
+                ? 'RFC 3161 timestamp server. Defaults to DigiCert. Each request discloses the capture content hash, this device’s IP address and the time of the request to that authority.'
+                : 'Not in use while trusted timestamping is off. Nothing is sent to this endpoint.'}
             </p>
           </div>
           <div>

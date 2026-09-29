@@ -29,11 +29,11 @@ export function CaptureListEmptyState({ onClearNarrowing }: CaptureListEmptyStat
       <h3 className="text-xs font-semibold text-text-secondary">
         {narrowed ? 'No captures match' : 'No captures yet'}
       </h3>
-      <p className="max-w-[200px] text-[11px] leading-[1.6] text-text-faint">
-        {narrowed
-          ? 'Nothing in this case matches the current filters.'
-          : 'Browse the web with the Birdbrain extension active to start collecting captures for this case.'}
-      </p>
+      {narrowed && (
+        <p className="max-w-[200px] text-[11px] leading-[1.6] text-text-faint">
+          Nothing in this case matches the current filters.
+        </p>
+      )}
       {narrowed && (
         <button
           type="button"

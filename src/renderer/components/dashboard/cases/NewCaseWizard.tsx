@@ -108,10 +108,7 @@ export function NewCaseWizard() {
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-subtle">
             <FolderPlus className="h-5 w-5 text-accent" />
           </div>
-          <div>
-            <h2 className="font-display text-lg font-bold text-text-primary">New Investigation</h2>
-            <p className="text-sm text-text-muted">Set up your case details</p>
-          </div>
+          <h2 className="font-display text-lg font-bold text-text-primary">New Investigation</h2>
         </div>
 
         {/* Investigation Name */}

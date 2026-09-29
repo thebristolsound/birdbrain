@@ -88,6 +88,29 @@ function nodeTitle(key: DataNodeKey, rows: InventoryRow[]): { title: string; sub
   return { title: key, subtitle: '' }
 }
 
+// The failed-read state CaptureList and NotesOverview use: the reason and a
+// Retry.
+function ReadFailed({
+  what,
+  error,
+  onRetry
+}: {
+  what: string
+  error: unknown
+  onRetry: () => void
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 p-9 text-center">
+      <div className="text-xs text-danger-fg">
+        Failed to load {what}: {error instanceof Error ? error.message : 'Unknown error'}
+      </div>
+      <Button variant="outline" size="sm" onClick={onRetry}>
+        Retry
+      </Button>
+    </div>
+  )
+}
+
 export function DataExplorer() {
   const { caseId } = useParams({ from: '/cases/$caseId/data' })
   const [node, setNode] = useState<DataNodeKey>('data-sources')
@@ -107,12 +130,26 @@ export function DataExplorer() {
     () => new Map()
   )
 
-  const { data: inventory, isLoading } = useQuery(exhibitInventoryQueryOptions(caseId))
+  const {
+    data: inventory,
+    isLoading,
+    isError: inventoryFailed,
+    error: inventoryError,
+    refetch: refetchInventory
+  } = useQuery(exhibitInventoryQueryOptions(caseId))
   const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))
   const { data: selectors = [] } = useQuery(selectorsQueryOptions(caseId))
   const { data: matchCounts = {} } = useQuery(selectorMatchCountsQueryOptions(caseId))
   const { data: indicatorCount } = useQuery(extractedDataCountQueryOptions(caseId))
-  const { data: snapshot } = useQuery(manifestSnapshotQueryOptions(caseId))
+  const {
+    data: lastSnapshot,
+    isError: snapshotFailed,
+    error: snapshotError,
+    refetch: refetchSnapshot
+  } = useQuery(manifestSnapshotQueryOptions(caseId))
+  // A failed re-read still returns the previous snapshot as data; treat it as
+  // absent, the same as a first read that failed.
+  const snapshot = snapshotFailed ? undefined : lastSnapshot
   const { run: verifyAll, progress } = useVerifyAll(caseId)
   const { upload, commit } = useStagingMutations(caseId)
 
@@ -332,6 +369,19 @@ export function DataExplorer() {
       </div>
     )
   }
+  // Without the inventory the integrity buckets and the table would read as
+  // empty, so a failed read replaces the whole screen.
+  if (inventoryFailed) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <ReadFailed
+          what="case data"
+          error={inventoryError}
+          onRetry={() => void refetchInventory()}
+        />
+      </div>
+    )
+  }
 
   // A tab with no data for the row's kind is absent, not empty (#1150).
   const tabs: ArtifactTab[] = []
@@ -517,6 +567,12 @@ export function DataExplorer() {
               {node === 'manifest-ledger' ? (
                 snapshot ? (
                   <ManifestLedgerView snapshot={snapshot} actions={ledgerActions} />
+                ) : snapshotFailed ? (
+                  <ReadFailed
+                    what="the ledger"
+                    error={snapshotError}
+                    onRetry={() => void refetchSnapshot()}
+                  />
                 ) : (
                   <div className="p-9 text-center text-xs text-text-faint">Loading the ledger…</div>
                 )

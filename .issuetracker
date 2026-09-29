@@ -7,5 +7,5 @@
   url = "https://github.com/thebristolsound/birdbrain/issues/$1"
 
 [issuetracker "Linear"]
-  regex = "MOM-(\\d+)"
-  url = "https://linear.app/momentaryarchitecture/issue/MOM-$1"
+  regex = "BIR-(\\d+)"
+  url = "https://linear.app/birdbrain-ui/issue/BIR-$1"

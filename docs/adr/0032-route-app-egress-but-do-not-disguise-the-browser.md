@@ -1,6 +1,6 @@
 # Route app egress through a proxy, but do not disguise the browser
 
-**Status:** Proposed
+**Status:** Accepted
 
 **Date:** 2026-09-28
 

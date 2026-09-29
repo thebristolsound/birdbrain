@@ -117,6 +117,9 @@ export interface InsertCaptureParams {
   supersedesCaptureId?: string
   duplicateOfCaptureId?: string
   consentSuppression?: ConsentSuppression
+  // The Exhibit Number the capture entry carries (X46), so the row and the
+  // entry state one number. Not a `captures` column: it lands on `exhibits`.
+  exhibitNumber?: number
 }
 
 // The single declaration of the captures row shape: every column in schema
@@ -234,7 +237,8 @@ export const insertCapture = function (params: InsertCaptureParams & { id?: stri
       sizeBytes: params.sizeBytes ?? null,
       committedAt: now,
       manifestSeq: params.manifestIndex ?? null,
-      method: params.method ?? null
+      method: params.method ?? null,
+      ...(params.exhibitNumber !== undefined ? { exhibitNumber: params.exhibitNumber } : {})
     })
 
     // Touch the case's updated_at

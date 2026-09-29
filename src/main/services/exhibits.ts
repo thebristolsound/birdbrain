@@ -21,11 +21,18 @@ import {
 import { getPublicKeyPem } from '@main/services/signingKey'
 import { defaultCaptureStore, type CaptureStore } from '@main/services/captureStore'
 import { entryDescribesRow, verifyCapture } from '@main/services/captureLifecycle'
-import { bindDerivedFile, matchDerivationEntries, type DerivationEntryFacts } from '@shared/verify'
+import {
+  bindDerivedFile,
+  describeRepeatedExhibitNumber,
+  findRepeatedExhibitNumbers,
+  matchDerivationEntries,
+  type DerivationEntryFacts
+} from '@shared/verify'
 import type {
   CaseInventory,
   DerivedFileVerification,
   Exhibit,
+  ExhibitIntegrityException,
   ExhibitVerification,
   InventoryDerivedFileRow,
   InventoryExhibitRow,
@@ -409,6 +416,22 @@ function authorChain(chains: CaseChains, exhibit: Exhibit): AuthorChain {
   return authorChainOf(chains, { authorInstallationId, manifestIndex: manifestSeq, contentHash })
 }
 
+// X48: the numbers the author's chain assigns to this Exhibit and to another
+// one as well. Read only off a chain that verified, since a line that does not
+// verify is not the author's assignment. Matched by the id the entries carry,
+// so an Exhibit whose id an import remapped is not matched here (#1278).
+function numberExceptions(exhibit: Exhibit, author: AuthorChain): ExhibitIntegrityException[] {
+  if (!author.chain.valid) return []
+  return findRepeatedExhibitNumbers(author.entries)
+    .filter((repeat) => repeat.exhibitIds.includes(exhibit.id))
+    .map((repeat) => ({
+      category: 'repeated-exhibit-number',
+      exhibitNumber: repeat.exhibitNumber,
+      exhibitIds: repeat.exhibitIds,
+      reason: describeRepeatedExhibitNumber(repeat)
+    }))
+}
+
 // Verify one Exhibit (X37). `capture` delegates to the Capture path and returns
 // its result untouched, so `exhibits:verify` and `captures:verify` cannot drift
 // apart. Every other kind (#1148) hashes the stored bytes and binds them to the
@@ -436,7 +459,14 @@ export async function verifyExhibit(
   const author = authorChain(chains, exhibit)
   const { chain } = author
   const derived = await verifyDerivedFiles(exhibit, store, chains, author)
-  const base = { exhibitId, caseId, kind: exhibit.kind, derived }
+  const exceptions = numberExceptions(exhibit, author)
+  const base = {
+    exhibitId,
+    caseId,
+    kind: exhibit.kind,
+    derived,
+    ...(exceptions.length > 0 ? { exceptions } : {})
+  }
 
   if (exhibit.kind === 'capture') {
     const capture = await verifyCapture(exhibitId, store)

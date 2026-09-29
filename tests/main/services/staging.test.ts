@@ -313,7 +313,7 @@ describe('staging pool', () => {
       getDb().prepare('UPDATE exhibits SET exhibit_number = 0 WHERE id = ?').run('blocker')
       const before = manifestLines(caseDir).length
       const spy = vi
-        .spyOn(await import('@main/services/db/exhibitRepo'), 'nextExhibitNumber')
+        .spyOn(await import('@main/services/exhibitNumbering'), 'nextExhibitNumber')
         .mockReturnValue(0)
 
       const result = await commitStagedFiles(caseId, [staged.id])

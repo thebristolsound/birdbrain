@@ -51,33 +51,28 @@ export interface InsertExhibitParams {
   sizeBytes?: number | null
   committedAt: string
   manifestSeq?: number | null
-  // Assigned by nextExhibitNumber() when omitted. Passed explicitly only by the
-  // backfill, which assigns a whole Case's numbers in one ordered pass.
+  // Every commit and ingest passes the number `nextExhibitNumber` derived
+  // from the chain (X45). The fallback is for callers with no chain to read,
+  // such as seeding a database directly.
   exhibitNumber?: number
 }
 
-// The next Exhibit Number this installation takes in a Case. Numbers are per
-// member (decision 7), so a remote member's rows, which carry their author, do
-// not advance the local sequence; NULL is this installation's.
+// The highest Exhibit Number a live row of this installation holds in a Case,
+// or 0. Numbers are per member (decision 7), so a remote member's rows, which
+// carry their author, are not counted; NULL is this installation's.
 //
-// KNOWN GAP, reported with #1147 rather than papered over: this is MAX + 1, so
-// deleting the highest-numbered Exhibit and committing another reuses its
-// number, which X18 says must never happen. Closing it needs a per-Case
-// high-water mark that survives deletion — a fourth table or a `cases` column,
-// either of which is a storage surface this ticket did not enumerate and which
-// the archive round trip would have to carry. Since #1148 the number a commit
-// takes is written into a signed `exhibit` entry, so a reused number is now a
-// reused number IN THE CHAIN, and since #1149 the screen renders it. The gap
-// is no longer bounded and needs the high-water mark before a citation is
-// made against a number.
-export function nextExhibitNumber(caseId: string): number {
+// Not the next number on its own: a deleted Exhibit's row is gone, and only
+// the chain still records its number (X45, `nextExhibitNumber`). It is the
+// floor the chain cannot supply for a Capture ingested before X46, whose
+// number is on its row and on no entry.
+export function highestLocalExhibitNumber(caseId: string): number {
   const row = getDb()
     .prepare(
       `SELECT COALESCE(MAX(exhibit_number), 0) AS max FROM exhibits
         WHERE case_id = ? AND author_installation_id IS NULL`
     )
     .get(caseId) as { max: number }
-  return row.max + 1
+  return row.max
 }
 
 export function insertExhibit(params: InsertExhibitParams): Exhibit {
@@ -93,7 +88,7 @@ export function insertExhibit(params: InsertExhibitParams): Exhibit {
     committedAt,
     manifestSeq = null
   } = params
-  const exhibitNumber = params.exhibitNumber ?? nextExhibitNumber(caseId)
+  const exhibitNumber = params.exhibitNumber ?? highestLocalExhibitNumber(caseId) + 1
   getDb()
     .prepare(
       `INSERT INTO exhibits (
@@ -201,7 +196,14 @@ interface CaptureNumberingRow {
 // one keeps the source's numbers and this runs as a no-op; an older archive
 // still reaches this and is numbered fresh, which is the only numbering it
 // ever had.
-export function backfillExhibitsForCaptures(caseId: string): number {
+//
+// `firstNumber` is the post-init backfill's chain-derived next number (X45).
+// The archive import passes none: it runs inside the import's database
+// transaction and numbers above the live rows, as it always has.
+export function backfillExhibitsForCaptures(
+  caseId: string,
+  firstNumber: number = highestLocalExhibitNumber(caseId) + 1
+): number {
   const rows = getDb()
     .prepare(
       `SELECT c.* FROM captures c
@@ -210,7 +212,7 @@ export function backfillExhibitsForCaptures(caseId: string): number {
         ORDER BY (c.manifest_index IS NULL), c.manifest_index, c.timestamp, c.id`
     )
     .all(caseId) as CaptureNumberingRow[]
-  let next = nextExhibitNumber(caseId)
+  let next = firstNumber
   for (const row of rows) {
     insertExhibitForCapture({
       id: row.id,

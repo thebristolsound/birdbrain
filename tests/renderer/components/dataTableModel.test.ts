@@ -236,6 +236,29 @@ describe('bucketForRow', () => {
     expect(bucketForRow(THUMB_A, { captures: cleanParent })).toBe('unverified')
   })
 
+  it('files a verified Exhibit whose number was issued twice as an exception (X48)', () => {
+    const repeated: ExhibitVerification = {
+      ...verified,
+      exceptions: [
+        {
+          category: 'repeated-exhibit-number',
+          exhibitNumber: 3,
+          exhibitIds: ['gone', 'cap-a'],
+          reason: 'Integrity Exception: Exhibit Number 3 is assigned to 2 exhibits'
+        }
+      ]
+    }
+    const context = { captures: FACTS, verifications: new Map([['cap-a', repeated]]) }
+    expect(bucketForRow(CAPTURE_A, context)).toBe('exception')
+    expect(rowsForNode(INVENTORY, 'integrity-exceptions', FACTS, context)).toContain(CAPTURE_A)
+    expect(
+      bucketForRow(CAPTURE_A, {
+        captures: FACTS,
+        verifications: new Map([['cap-a', { ...repeated, exceptions: [] }]])
+      })
+    ).toBe('verified')
+  })
+
   it('files legacy and verifier-too-old as unverified, never as exceptions', () => {
     expect(bucketForRow(CAPTURE_LEGACY, { captures: FACTS })).toBe('unverified')
     const tooOld: ExhibitVerification = {

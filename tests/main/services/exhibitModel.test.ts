@@ -25,7 +25,8 @@ import {
   getTagsForCapture,
   collectCaptureTagsForCase
 } from '@main/services/db/tagRepo'
-import { getExhibit, listExhibits, nextExhibitNumber } from '@main/services/db/exhibitRepo'
+import { getExhibit, listExhibits } from '@main/services/db/exhibitRepo'
+import { nextExhibitNumber } from '@main/services/exhibitNumbering'
 import {
   getDerivedFile,
   hasDerivation,
@@ -51,7 +52,7 @@ import { logger } from '@main/services/logger'
 import { getCaseInventory, getManifestSnapshot, signerSegments } from '@main/services/exhibits'
 import { verifyCapture, createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { verifyExhibit } from '@main/services/exhibits'
-import { initManifest, verifyManifestChain } from '@main/services/manifest'
+import { appendManifestEntry, initManifest, verifyManifestChain } from '@main/services/manifest'
 import { createCaptureStore, defaultCaptureStore } from '@main/services/captureStore'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { initSettings, updateSettings } from '@main/services/settings'
@@ -157,6 +158,30 @@ async function ingestInto(
   })
   if (!result.capture) throw new Error('ingest failed')
   return result.capture
+}
+
+// A Capture as a build before X46 left it: its `capture` entry carries no
+// Exhibit Number, and its row took the number above the live rows. The
+// one-time `renumber` entry is then the only place the chain records it.
+function ingestPreX46(caseId: string, caseDir: string, n: number): string {
+  const id = `pre-x46-${n}`
+  const hash = createHash('sha256').update(`pre-x46 ${n}`).digest('hex')
+  const timestamp = `2026-04-05T12:0${n}:00.000Z`
+  const url = `https://example.com/pre-x46-${n}`
+  const { index } = appendManifestEntry(caseDir, {
+    type: 'capture',
+    captureId: id,
+    caseId,
+    url,
+    timestamp,
+    contentHash: hash,
+    sizeBytes: 1,
+    operatorId: 'op-1',
+    operatorName: 'Test Operator',
+    toolVersion: TOOL_VERSION
+  })
+  insertCapture({ id, caseId, url, title: `Pre-X46 ${n}`, hash, timestamp, manifestIndex: index })
+  return id
 }
 
 describe('exhibit model', () => {
@@ -390,11 +415,7 @@ describe('exhibit model', () => {
 
   describe('backfill', () => {
     it('writes one renumber entry per case and the chain still verifies', async () => {
-      await ingestInto(caseId, {
-        url: 'https://example.com/one',
-        title: 'One',
-        timestamp: '2026-04-05T12:00:00.000Z'
-      })
+      const id = ingestPreX46(caseId, caseDir, 1)
 
       const result = await backfillCase(caseId, { toolVersion: TOOL_VERSION })
 
@@ -404,9 +425,40 @@ describe('exhibit model', () => {
       expect(renumber[0].caseId).toBe(caseId)
       expect(renumber[0].schemaVersion).toBe(3)
       expect(renumber[0].assignments).toEqual([
-        { exhibitId: listExhibits(caseId)[0].id, exhibitNumber: 1, manifestIndex: 0 }
+        { exhibitId: id, exhibitNumber: 1, manifestIndex: 0 }
       ])
       expect(verifyManifestChain(caseDir).valid).toBe(true)
+    })
+
+    it('renumbers only the Exhibits whose own entry carries no number (X46)', async () => {
+      const legacy = ingestPreX46(caseId, caseDir, 1)
+      // Ingested since X46: the number is on its capture entry already.
+      const numbered = await ingestInto(caseId, {
+        url: 'https://example.com/numbered',
+        title: 'Numbered',
+        timestamp: '2026-04-05T12:10:00.000Z'
+      })
+      expect(getExhibit(numbered.id)?.exhibitNumber).toBe(2)
+
+      await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+
+      const [renumber] = manifestLines(caseDir).filter((line) => line.type === 'renumber')
+      expect(renumber.assignments).toEqual([
+        { exhibitId: legacy, exhibitNumber: 1, manifestIndex: 0 }
+      ])
+    })
+
+    it('writes no renumber entry when every Exhibit carries its number on its own entry', async () => {
+      await ingestInto(caseId, {
+        url: 'https://example.com/one',
+        title: 'One',
+        timestamp: '2026-04-05T12:00:00.000Z'
+      })
+
+      const result = await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+
+      expect(result.renumbered).toBe(false)
+      expect(manifestLines(caseDir).map((line) => line.type)).toEqual(['capture'])
     })
 
     it('lists a capture with no manifest entry as unanchored in the renumber entry', async () => {
@@ -814,11 +866,9 @@ describe('exhibit model', () => {
 
   describe('manifest snapshot', () => {
     it('types the entries, reports the chain verdict and one local signer', async () => {
-      await ingestInto(caseId, {
-        url: 'https://example.com/snapshot',
-        title: 'Snapshot',
-        timestamp: '2026-04-05T12:00:00.000Z'
-      })
+      // A pre-X46 Capture, so the backfill writes a `renumber` for the
+      // snapshot to type beside the `capture`.
+      ingestPreX46(caseId, caseDir, 1)
       await backfillCase(caseId, { toolVersion: TOOL_VERSION })
 
       const snapshot = getManifestSnapshot(caseId)

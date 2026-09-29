@@ -84,7 +84,7 @@ Draw five vertical zones, left to right:
 
 **Zone 4: Renderer (sandboxed).** One box for the React 19 UI (TanStack Router, React Query, Zustand, Tailwind v4) connected to Zone 3 through a narrow arrow labeled "typed contextBridge, ~90 fixed IPC channels, no raw ipcRenderer". A side arrow renderer → capture server labeled "connect-src 127.0.0.1:19845 (CSP-pinned)".
 
-**Zone 5: External services (all optional or user-initiated).** Six boxes with arrows from Zone 3: *DigiCert TSA* ("RFC 3161; hashes only leave the machine"), *captured origin* ("post-capture TLS handshake recording the site's current certificate chain"), *archive.org* ("Wayback pinning, explicit user action"), *filter-list CDNs* ("cookie-banner lists fetched before a background recapture"), *OpenRouter* ("opt-in analysis; captured text leaves the machine only if an API key is configured"), *GitHub Releases* ("update checks"). Add a crossed-out box labeled "telemetry" to make the absence explicit.
+**Zone 5: External services (all optional or user-initiated).** Five boxes with arrows from Zone 3: *DigiCert TSA* ("RFC 3161; hashes only leave the machine"), *captured origin* ("post-capture TLS handshake recording the site's current certificate chain"), *archive.org* ("Wayback pinning, explicit user action"), *filter-list CDNs* ("cookie-banner lists fetched before a background recapture"), *GitHub Releases* ("update checks"). Add a crossed-out box labeled "telemetry" to make the absence explicit.
 
 ### 3.2 Component breakdown
 
@@ -123,7 +123,7 @@ On disk, artifacts live under `{storageRoot}/{caseId}/{captureId}.{mhtml|png|txt
 
 - **Local HTTP API** (Hono, bound to 127.0.0.1:19845): status/heartbeat, case list and activation, session start/stop, capture upload, selector list/create, and a self-test route that ingests and then deletes a dummy capture. This is everything the extension can call, and Zod schemas validate every payload.
 - **Custom protocol** `birdbrain://` with a closed two-value target enum (`open`, `settings`) lets the extension popup deep-link into the desktop app.
-- **Outbound integrations**: DigiCert TSA (RFC 3161, hash-only), the captured origin itself (post-capture TLS certificate corroboration), GitHub Releases (updates), archive.org (explicit user action; the code comments note that lookups are user-initiated to avoid disclosing investigation URLs to archive.org), cookie-banner filter lists (fetched before background recapture), and OpenRouter (opt-in, only with a configured API key). SECURITY.md keeps the authoritative list.
+- **Outbound integrations**: DigiCert TSA (RFC 3161, hash-only), the captured origin itself (post-capture TLS certificate corroboration), GitHub Releases (updates), archive.org (explicit user action; the code comments note that lookups are user-initiated to avoid disclosing investigation URLs to archive.org), and cookie-banner filter lists (fetched before background recapture). SECURITY.md keeps the authoritative list.
 
 ---
 

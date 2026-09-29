@@ -47,7 +47,7 @@ The failure mode to avoid is copy that sounds authoritative and says nothing. Co
 - **Do not pad lists to look thorough.** Three real items beat five where two are filler.
 - **Prefer the concrete verb.** "Writes a manifest entry attributed to the Operator" over "handles provenance tracking".
 - **Say where data goes.** For anything touching capture, storage, export, or AI, name the destination — disk path, loopback port, or external host.
-- **Avoid "AI-powered" as a description.** Name the provider, the model, and what gets sent. Birdbrain's analysis calls OpenRouter with an operator-chosen model and sends capture text; say that, not "AI-powered analysis".
+- **Avoid "AI-powered" as a description.** Name the provider, the model, and what gets sent. Do not write "AI-powered analysis"; say which provider receives the capture text and which model the operator chose.
 
 ## Mechanics
 

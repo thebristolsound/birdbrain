@@ -4,6 +4,11 @@
 
 **Date:** 2026-09-19
 
+**Amended 2026-09-28 by [ADR-0032](0032-route-app-egress-but-do-not-disguise-the-browser.md):**
+routing Birdbrain's traffic through a proxy or Tor is allowed and recorded as the Egress.
+Changing the user agent stays excluded, now for the measured Cloudflare breakage rather than as
+evasion, and fingerprint impersonation stays excluded.
+
 Resolves #542 and #544 under map #541. Grilled and confirmed by the maintainer on 2026-09-19;
 the working plan is `docs/plans/2026-09-19-persona-cookie-import.md`.
 

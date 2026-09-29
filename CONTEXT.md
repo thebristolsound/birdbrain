@@ -49,8 +49,12 @@ _Avoid_: backup, dump, case file.
 ### Acquisition
 
 **Capture**:
-A snapshot of a single web page (HTML or MHTML, optionally with screenshot and extracted text), stored on disk under its Case directory and indexed in the database.
+The primary artifacts taken from one observation of a single web page (MHTML, Transaction Record, screenshot, PDF, as available), stored on disk under its Case directory and indexed in the database. Its Manifest Entry inventories which artifacts are present and why any is absent. Legacy Captures may be HTML only.
 _Avoid_: page, snapshot, record.
+
+**Transaction Record**:
+The WARC holding every HTTP request and response of the observed navigation, from its first request to the moment of Capture. Present only when recording was on before the page loaded; never reconstructed afterwards.
+_Avoid_: network log, HAR, archive, WARC file (as the general term).
 
 **Capture Server**:
 The Hono HTTP server in the main process (port 19845) that the Chrome extension posts captures to. The extension's only way into the ingest path of the Capture Lifecycle; a background Recapture reaches that path without the server. Transport only: a route parses the request, hands it to the Capture Lifecycle, and maps the outcome to a status code. It holds no admission policy.

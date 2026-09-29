@@ -65,8 +65,8 @@ The one Case the extension is working in. Chosen by the Operator; required befor
 _Avoid_: current case, selected case, open case.
 
 **Capture Session**:
-The state between the Operator starting and stopping capture into the Active Case. While it runs, the extension matches the Active Case's Selectors against browsed pages; with passive capture withdrawn (ADR-0013), a running session captures nothing by itself.
-_Avoid_: session (unqualified), auto-capture, recording.
+The state between the Operator starting and stopping work into the Active Case. While it runs, the Active Case's Selectors are matched against browsed pages, and in a browser Birdbrain launched, recording is on, so every Capture taken during it carries a Transaction Record. With passive capture withdrawn (ADR-0013), a running session still captures nothing by itself.
+_Avoid_: session (unqualified), auto-capture, recording mode.
 
 **Capture Lifecycle**:
 Operations that mutate an MHTML Capture beyond its database row: admission of a request from any extension route (operator gate, Active Case resolution, exclusion, the manual dedup window, the screenshot cap, the session count, the activity events), ingestion (parse, hash, store, schedule selector matching), duplication, deletion (manifest entry + DB row + on-disk files, one at a time or as a batch), verification, and case-wide re-extraction. The forensic-bearing path. Legacy HTML Captures (pre-migration v11) appear in deletion and verification but have no manifest entry and no ingest path; new Captures are MHTML-only.

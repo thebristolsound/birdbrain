@@ -83,16 +83,13 @@ each one appeared.
 
 ## Where your data goes
 
-Three features send data about your captures to outside services:
+Two features send data about your captures to outside services:
 
 - **Trusted timestamping** sends each capture's content hash to the timestamp authority, which
   also receives your IP address and the time of the request. It is on by default, and you can
   turn it off in Settings.
 - **The Wayback tab** sends a capture's URL to the Internet Archive (`web.archive.org`) when you
   ask it to look up earlier snapshots.
-- **AI analysis** sends capture text to OpenRouter with a model you choose. It needs an API key
-  you supply and stays off until you configure it in Settings. It is the only feature that sends
-  capture content off your machine.
 
 ## Screenshots
 

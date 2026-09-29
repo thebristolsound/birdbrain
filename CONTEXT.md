@@ -88,6 +88,10 @@ _Avoid_: cookie blocking, banner removal.
 The network path Birdbrain's outbound traffic takes: Direct from the Operator's own connection, through a Proxy, or through Tor. Set once for the installation; while it is not Direct, nothing Birdbrain sends leaves directly, and a Capture that Birdbrain renders records which Egress it used and the Operator's label for it. It hides where the Operator is, not what browser is looking. A VPN on the Operator's machine or network leaves the Egress Direct: Birdbrain still sends directly and the VPN carries the traffic.
 _Avoid_: route, VPN mode, anonymous mode.
 
+**Scroll-to-load**:
+An optional phase before a Capture's artifacts are taken in which the page is scrolled to trigger lazy-loaded content. Whether it was requested, whether it ran, and how it ended are recorded in the Manifest Entry; a Scroll-to-load that fails never silently yields a static Capture.
+_Avoid_: scrolling capture, scrolling mode, pre-scroll.
+
 **Extracted Text**:
 The plain text pulled from a Capture at ingest: a Derived File whose authoritative copy is the
 `.txt` file on disk beside the Capture, integrity-bound through the Manifest. `capture_texts`

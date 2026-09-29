@@ -19,8 +19,8 @@
 
 <p align="center">
   <a href="https://github.com/thebristolsound/birdbrain-releases/releases"><strong>Download</strong></a> ·
-  <a href="https://thebristolsound.github.io/birdbrain/">Documentation</a> ·
-  <a href="https://thebristolsound.github.io/birdbrain/docs/screenshots/">Screenshot tour</a>
+  <a href="https://docs.birdbrain.cc/">Documentation</a> ·
+  <a href="https://docs.birdbrain.cc/docs/screenshots">Screenshot tour</a>
 </p>
 
 ---
@@ -35,7 +35,7 @@ signature and an independent timestamp. When you hand your work over, anyone can
 nothing changed since you captured it, without installing Birdbrain.
 
 <p align="center">
-  <img src="website/public/assets/screenshot-case.png" alt="A Birdbrain case: the capture list, a saved page, and its chain of custody" width="100%" />
+  <img src="website/content/images/screenshot-case.png" alt="A Birdbrain case: the capture list, a saved page, and its chain of custody" width="100%" />
 </p>
 
 ## How it works
@@ -66,8 +66,8 @@ nothing changed since you captured it, without installing Birdbrain.
   If the project stopped tomorrow, your exported evidence would still verify.
 
 <p align="center">
-  <img src="website/public/assets/screenshot-recon.png" alt="Indicator view listing domains and the pages each appeared on" width="49%" />
-  <img src="website/public/assets/screenshot-export.png" alt="Exported evidence report open in a browser" width="49%" />
+  <img src="website/content/images/screenshot-recon.png" alt="Indicator view listing domains and the pages each appeared on" width="49%" />
+  <img src="website/content/images/screenshot-export.png" alt="Exported evidence report open in a browser" width="49%" />
 </p>
 <p align="center"><em>Pivot on indicators across a case, and export a report anyone can verify.</em></p>
 
@@ -81,7 +81,7 @@ nothing changed since you captured it, without installing Birdbrain.
 4. Back in Birdbrain, a short guided tour walks you through your first case and your first capture.
 
 The extension isn't on the Chrome Web Store yet, which is why it loads unpacked. macOS builds are
-available on request. The [tester guide](https://thebristolsound.github.io/birdbrain/docs/tester-guide/)
+available on request. The [tester guide](https://docs.birdbrain.cc/docs/tester-guide)
 covers platform details and updates.
 
 ## Know the limits
@@ -95,7 +95,7 @@ Birdbrain is beta software. Before you rely on it:
 - **Search works within a case**, not across cases.
 - **The proof has limits.** A verified chain shows nobody edited the record without your install's
   signing key. It does not show that the page itself was genuine, and no court has tested the workflow yet. The
-  [threat model](https://thebristolsound.github.io/birdbrain/docs/threat-model/) says exactly what
+  [threat model](https://docs.birdbrain.cc/docs/threat-model) says exactly what
   the chain of custody does and does not prove.
 
 ## Privacy and network use
@@ -110,8 +110,8 @@ host.
 ## For reviewers and contributors
 
 - **Evaluating the evidence claims?** Start with the
-  [threat model](https://thebristolsound.github.io/birdbrain/docs/threat-model/) and the
-  [architecture whitepaper](https://thebristolsound.github.io/birdbrain/docs/birdbrain-architecture-whitepaper/).
+  [threat model](https://docs.birdbrain.cc/docs/threat-model) and the
+  [architecture whitepaper](https://docs.birdbrain.cc/docs/birdbrain-architecture-whitepaper).
 - **Building from source?** Clone the repo, then run `pnpm install` and `pnpm dev` on Node 20.
   [CONTRIBUTING.md](CONTRIBUTING.md) has the full setup and the checks to run before a pull
   request.

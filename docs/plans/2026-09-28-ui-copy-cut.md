@@ -88,3 +88,14 @@ or leave them alone in this change.
   - The Wayback panel keeps "Corroboration only."
   - The selection-export note keeps "The full Manifest chain is included."
   - Personas keeps the cookie and password sentence.
+
+## Review round 1 (2026-09-28)
+
+The reviewer requested changes and the maintainer approved the fixes:
+
+- "The full Manifest chain is included." now shows for evidence-package selection exports only.
+  A Working Copy ships no Manifest, so the line was false there.
+- Restored the persona framing sentence, which ADR-0030 decision 2 requires.
+- Restored two privacy disclosures that were listed as rationale: the installation ID "stamped on
+  every capture and export", and the AI analysis line saying the case context and metadata go
+  with the capture.

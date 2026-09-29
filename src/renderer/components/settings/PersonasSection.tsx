@@ -76,8 +76,9 @@ export function PersonasSection() {
       <div>
         <h2 className="text-sm font-semibold text-text-primary">Personas</h2>
         <p className="mt-1 text-[11px] text-text-muted">
-          Cookie files are read, loaded into the persona&rsquo;s browser session, and discarded;
-          passwords are never stored.
+          A persona is a signed-in browser identity, yours or a pseudonym. Cookie files are read,
+          loaded into the persona&rsquo;s browser session, and discarded; passwords are never
+          stored.
         </p>
       </div>
 

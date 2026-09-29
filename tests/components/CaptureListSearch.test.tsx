@@ -201,7 +201,7 @@ describe('CaptureList per-list search', () => {
   it('keeps the first-run empty state on an empty case once a query is typed', async () => {
     // The narrowed branch would otherwise claim "0 captures in this case are
     // hidden by Search ..." on a case that has none, and displace the
-    // getting-started guidance for the first operator who touches the box.
+    // first-run empty state for the first operator who touches the box.
     emptyCase()
     renderList()
     await screen.findByTestId('capture-list-empty-state')

@@ -25,8 +25,9 @@ interface ExportDialogProps {
   caseId: string
   caseName: string
   // Selection scope (#398/#399): when present, only these captures are
-  // exported; the dialog's Scope row states it and the note beneath states
-  // what the signed manifest entry records. Absent means whole-case.
+  // exported; the dialog's Scope row states it and, for an evidence package,
+  // the note beneath says the full Manifest chain still ships. Absent means
+  // whole-case.
   selectedCaptureIds?: string[]
   onClose: () => void
 }
@@ -276,8 +277,8 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
                 </div>
               )}
 
-              {/* Scope row (#398/#399): what this export covers, and what the
-                  signed manifest entry will record for a selection. */}
+              {/* Scope row (#398/#399): what this export covers. A Working Copy ships
+                  no Manifest, so the chain note is for evidence packages only. */}
               <div className="mb-4">
                 <Label className="mb-1">Scope</Label>
                 <div className="text-sm text-text-secondary" data-testid="export-scope-row">
@@ -285,8 +286,11 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
                     ? `${scopedCount} selected capture${scopedCount === 1 ? '' : 's'}`
                     : `Whole case${preflight ? ` — ${preflight.captureCount} capture${preflight.captureCount === 1 ? '' : 's'}` : ''}`}
                 </div>
-                {scopedCount !== undefined && (
-                  <div className="mt-1 text-[11px] text-text-muted">
+                {scopedCount !== undefined && !workingCopy && (
+                  <div
+                    className="mt-1 text-[11px] text-text-muted"
+                    data-testid="export-scope-manifest-note"
+                  >
                     The full Manifest chain is included.
                   </div>
                 )}

@@ -206,7 +206,9 @@ export function OperatorConfig() {
               value={identity.installationId}
               className="font-mono text-[11px] text-text-muted"
             />
-            <p className="mt-1 text-[11px] text-text-muted">Cannot be changed.</p>
+            <p className="mt-1 text-[11px] text-text-muted">
+              Stable device identifier - stamped on every capture and export. Cannot be changed.
+            </p>
           </div>
         </div>
       </CardContent>

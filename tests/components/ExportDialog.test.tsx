@@ -421,6 +421,17 @@ describe('ExportDialog', () => {
     expect(lastOptions(generateReport).captureIds).toEqual(['cap-1', 'cap-2'])
   })
 
+  // A Working Copy ships no Manifest, so the chain note would contradict the
+  // working-copy notice under it.
+  it('drops the manifest note for a Working copy selection export', () => {
+    renderDialog(vi.fn(), ['cap-1', 'cap-2'])
+    fireEvent.click(screen.getByLabelText(/Working copy/))
+
+    expect(screen.getByTestId('export-scope-row').textContent).toBe('2 selected captures')
+    expect(screen.queryByTestId('export-scope-manifest-note')).toBeNull()
+    expect(screen.getByTestId('export-working-copy-notice')).toBeDefined()
+  })
+
   it('renders the live step and percent from export progress events', async () => {
     const gate = deferred<ExportResult>()
     generateReport.mockReturnValue(gate.promise)

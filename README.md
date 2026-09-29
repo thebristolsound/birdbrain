@@ -83,13 +83,21 @@ each one appeared.
 
 ## Where your data goes
 
-Two features send data about your captures to outside services:
+Birdbrain makes these outbound connections:
 
 - **Trusted timestamping** sends each capture's content hash to the timestamp authority, which
   also receives your IP address and the time of the request. It is on by default, and you can
   turn it off in Settings.
+- **The captured site** is contacted a second time after each HTTPS capture, outside the browser,
+  to record its current certificate chain.
 - **The Wayback tab** sends a capture's URL to the Internet Archive (`web.archive.org`) when you
   ask it to look up earlier snapshots.
+- **Cookie-banner filter lists** are downloaded from public hosts before a background recapture.
+- **GitHub releases** are checked for updates.
+
+Captured content leaves your machine only when you export it. If you investigate through a VPN
+or Tor, route the whole machine, so these requests do not take your bare network path.
+[SECURITY.md](SECURITY.md) lists the hosts.
 
 ## Screenshots
 

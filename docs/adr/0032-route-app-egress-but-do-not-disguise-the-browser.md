@@ -43,6 +43,17 @@ maintainer ruled on 2026-09-28:
    request, and the consent filter-list download. Each path already tolerates an outage: a
    render fails, a Timestamp Token stays pending, a Wayback lookup reports an error, and a
    render without filter lists proceeds without Consent Suppression.
+
+   **Shared Case sync is the one exception.** The planned transport (the collaborative-cases
+   spec, decision 2) runs Iroh over UDP from the main process, which neither a Chromium proxy
+   nor Tor can carry. While the Egress is not Direct, sync still runs, and the app says that
+   teammates and the relay see the Operator's IP and that a system VPN or the group's own relay
+   hides it. Sync never contacts a target site. An anonymous-team mode follows as later work:
+   relay-only connections, so teammates never learn each other's addresses, with the relay
+   connection sent through the Egress, so the relay does not either. Iroh's Rust API has both
+   pieces (`clear_ip_transports` and `proxy_url`); a proof of concept must first show that the
+   JavaScript binding exposes them, whether the proxy may be SOCKS, and whether sync over Tor
+   keeps up with the 60-second timer.
 2. **It fails closed.** SOCKS5 or HTTP only, never SOCKS4, which resolves names locally. Only
    proxies that need no login: Tor, an SSH tunnel to the Operator's own server, or a VPN client's
    local SOCKS port. Chromium cannot log in to a SOCKS5 proxy, and storing an HTTP proxy password
@@ -62,7 +73,8 @@ maintainer ruled on 2026-09-28:
    infrastructure in an export, and it does not look up the exit address, which would send every
    Capture's traffic to an address-echo service. The record states what Birdbrain asked Chromium
    to do, not which address the target saw. The verifier learns the fields before any build
-   writes them (the ADR-0023 sequencing).
+   writes them (the ADR-0023 sequencing), and they ship in the Shared Case schema 4 verifier
+   release (#1509) rather than a release of their own, so teams face one verifier gap, not two.
 6. **Tor is the Operator's own.** Birdbrain does not bundle Tor. It offers the two local SOCKS
    ports as presets, 9150 for Tor Browser and 9050 for the Tor service, and describes Tor as
    hiding the IP address only.
@@ -120,6 +132,13 @@ say that the time zone and language still reveal the Operator's region through a
   fix.
 
 ## Consequences
+
+- #1509 grows: the schema 4 verifier release also carries the optional Egress fields on
+  `capture` entries.
+- A member is an installation (collaborative-cases spec, decision 6), so one signing key appears
+  in every Shared Case an Operator joins, and two groups that share a member can link that
+  member by key. Whether a member may join with a separate key per Case or per Persona is an
+  open question for the Shared Case spec, not for this ADR.
 
 - The `capture` entry schema, `captureLifecycle.ingest`, the shared verifier, and the standalone
   verifier change; each is evidence-affecting.

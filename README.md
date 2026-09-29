@@ -5,8 +5,8 @@
 <h1 align="center">Birdbrain</h1>
 
 <p align="center">
-  Local-first web evidence capture for OSINT investigations.<br />
-  Every capture is hashed, signed, timestamped, and chained into a verifiable audit manifest.
+  Local-first OSINT web evidence capture with a verifiable chain of custody.<br />
+  A desktop app and Chrome extension that hash, sign, and timestamp every page you save.
 </p>
 
 <p align="center">
@@ -17,16 +17,24 @@
   <img src="https://img.shields.io/badge/status-beta-yellow" alt="Status: beta" />
 </p>
 
+<p align="center">
+  <a href="https://github.com/thebristolsound/birdbrain-releases/releases">Download</a> ·
+  <a href="https://thebristolsound.github.io/birdbrain/">Documentation</a> ·
+  <a href="https://thebristolsound.github.io/birdbrain/docs/threat-model/">Threat model</a>
+</p>
+
 ---
 
-Birdbrain is an open source desktop app with a companion Chromium extension for capturing,
-organizing, and verifying web evidence. Each capture holds MHTML, a full-page screenshot, and
-extracted page text. The extension sends it to the desktop app over `127.0.0.1`, and the app
-stores it in a per-case archive on disk. There is no cloud account and no telemetry. Captures stay
-on your machine unless you export them.
+Birdbrain is an open source, local-first OSINT tool for web evidence capture: a desktop app and a
+companion Chrome extension that save each web page as MHTML, a full-page screenshot, and extracted
+text. Every capture gets a SHA-256 hash, an RSA signature, and an RFC 3161 timestamp, and joins a
+per-case chain of custody that you can export as an evidence package and verify with standard
+command-line tools. Birdbrain also runs indicator of compromise (IOC) extraction on every page.
+There is no cloud account and no telemetry, and captures stay on your machine unless you export
+them.
 
 <p align="center">
-  <img src="website/public/assets/screenshot-case.png" alt="Birdbrain case workspace" width="100%" />
+  <img src="website/public/assets/screenshot-case.png" alt="Birdbrain case workspace showing a captured page, the capture list, and the chain-of-custody panel" width="100%" />
 </p>
 
 ## Why Birdbrain exists
@@ -40,20 +48,24 @@ and writes evidence in formats you can inspect, export, and keep using if the pr
 ## What it does
 
 **Capture.** Save a page as MHTML with a full-page screenshot and extracted text, from the
-extension popup or the right-click menu in Chrome, Edge, or Brave. The desktop app can also
+extension popup or the right-click menu in Chrome. The extension sends the capture to the desktop
+app over `127.0.0.1`, and the app stores it in a per-case archive on disk. The desktop app can also
 capture a pasted list of URLs, or recapture a page later, by rendering it in a hidden window.
 
-**Prove.** Birdbrain hashes every capture with `SHA-256` and appends it to a per-case,
-hash-chained `manifest.jsonl`. Each entry carries an RSA signature from a per-install key and a
-timestamp token from an RFC 3161 authority, DigiCert by default.
+**Prove.** Birdbrain hashes every capture with SHA-256 and appends it to a per-case, hash-chained
+`manifest.jsonl`. Each entry carries an RSA signature from a key generated for your install.
+Birdbrain also sends each capture's content hash to an RFC 3161 timestamp authority, DigiCert by
+default, and stores the token it returns. A verified chain shows that nobody edited the manifest
+without your install's signing key. It does not show that the page was genuine, and it does not
+constrain whoever holds that key.
 
 **Verify.** Check a capture inside the app, or export an evidence package. The zip holds every
 exhibit the export covers: page archives, screenshots and timestamp tokens, plus attachments,
-images and documents under their own directories with the files the tool derived from them. Beside
-them it holds `manifest.jsonl`, `evidence.json`, `report.html`, `certification.html`, the public
-key, the timestamp authority certificates, and `VERIFY.md`, a runbook that reproduces the whole
-check with `sha256sum`, `openssl`, and `jq` alone. `verify.sh` ships beside it and runs those same
-six steps in one command, exiting non-zero and naming the step when one fails.
+images, and documents under their own directories with the files the tool derived from them.
+Beside them it holds `manifest.jsonl`, `evidence.json`, `report.html`, `certification.html`, the
+public key, the timestamp authority certificates, and `VERIFY.md`, a runbook that reproduces the
+whole check with `sha256sum`, `openssl`, and `jq` alone. `verify.sh` ships beside it and runs those
+same six steps in one command, exiting non-zero and naming the step when one fails.
 
 **Organize.** Group captures into cases and tag them. Write rich-text notes that link to a capture
 or another note with `@`, or to a selector or tag with `#`, and Birdbrain derives a backlink index
@@ -69,39 +81,52 @@ addresses, file hashes, CVE identifiers, MAC addresses, autonomous system number
 addresses, tracking codes, social handles, and `.onion` and I2P hosts. Open the captures where
 each one appeared.
 
+## Where your data goes
+
+Three features send data about your captures to outside services:
+
+- **Trusted timestamping** sends each capture's content hash to the timestamp authority, which
+  also receives your IP address and the time of the request. It is on by default, and you can
+  turn it off in Settings.
+- **The Wayback tab** sends a capture's URL to the Internet Archive (`web.archive.org`) when you
+  ask it to look up earlier snapshots.
+- **AI analysis** sends capture text to OpenRouter with a model you choose. It needs an API key
+  you supply and stays off until you configure it in Settings. It is the only feature that sends
+  capture content off your machine.
+
 ## Screenshots
 
 <p align="center">
-  <img src="website/public/assets/screenshot-annotate.png" alt="Annotating a capture screenshot" width="100%" />
-  <em>Annotation editor. Shapes and pinned comments, burned into exports</em>
+  <img src="website/public/assets/screenshot-annotate.png" alt="Annotating a capture screenshot with a rectangle and a numbered pin" width="100%" />
+  <em>Annotate. Shapes and numbered pins, burned into exports</em>
 </p>
 <p align="center">
-  <img src="website/public/assets/screenshot-recon.png" alt="Indicator column navigator" width="100%" />
+  <img src="website/public/assets/screenshot-recon.png" alt="Indicator navigator listing domains and the pages each appeared on" width="100%" />
   <em>Recon. Pivot from an indicator category to the pages it appeared on</em>
 </p>
 <p align="center">
-  <img src="website/public/assets/screenshot-verify.png" alt="Manifest chain verification" width="100%" />
-  <em>Verify. The per-case hash chain checked in the app</em>
+  <img src="website/public/assets/screenshot-signals.png" alt="Selector list with text and regular-expression patterns and their match counts" width="100%" />
+  <em>Selectors. Text and regular-expression patterns matched across every capture in the case</em>
 </p>
 <p align="center">
-  <img src="website/public/assets/screenshot-export.png" alt="Exported HTML report" width="100%" />
+  <img src="website/public/assets/screenshot-export.png" alt="Exported HTML evidence report" width="100%" />
   <em>Export. A self-contained report that any browser reads and anyone can verify without Birdbrain</em>
 </p>
 
 The [screenshot tour](https://thebristolsound.github.io/birdbrain/docs/screenshots/) has the rest:
-onboarding, dashboard, signals, notes, command palette, and settings.
+onboarding, dashboard, chain verification, notes, command palette, and settings.
 
 ## Install
 
 1. Download Birdbrain for your platform from the
    [releases page](https://github.com/thebristolsound/birdbrain-releases/releases) and install it.
-2. Open Birdbrain. On the dashboard, click **Install Extension**. Birdbrain opens the extension
-   folder for you.
+2. Open Birdbrain. On the dashboard, click **Open extension folder**. Birdbrain opens the folder
+   that holds the bundled extension.
 3. Load the extension in Chrome. Open `chrome://extensions`, turn on **Developer mode**, click
    **Load unpacked**, and select the folder Birdbrain opened.
 4. Pin the Birdbrain extension to your toolbar.
-5. Return to Birdbrain. The dashboard walks you through creating your first case and capturing
-   your first page.
+5. Return to Birdbrain. A short guided tour covers creating a case and capturing a page, and
+   **Setup Guide** on the dashboard repeats the extension steps.
 
 Windows and Linux builds ship with every release. macOS builds are produced on request. The
 extension is not on the Chrome Web Store, so it installs unpacked.
@@ -122,23 +147,20 @@ if you are weighing the evidence claims:
   [architecture whitepaper](https://thebristolsound.github.io/birdbrain/docs/birdbrain-architecture-whitepaper/)
   covers trust boundaries and the limits of the evidence claims. Start there for a security review.
 
-Birdbrain can also run a per-capture AI analysis through OpenRouter. It needs an API key you
-supply, it stays off until you configure it in Settings, and it is the only feature that sends
-capture content off your machine.
-
 ## Current limitations
 
 Birdbrain is beta software. What it cannot do yet:
 
-- **Search is per-case.** There is no cross-case search.
+- **Search is per-case.** You cannot search across cases.
 - **Capture is page-level and manual.** No element selection, no region screenshots, and no video.
   The extension does not save pages automatically as you browse. That path exists in the code but
   is turned off in the shipped build.
 - **One user, one machine.** No shared cases and no team sync. A case moves between machines only
   as a `.birdbrain` archive you carry yourself.
-- **Timestamping is asynchronous and always on.** A capture stays `pending` until the timestamp
-  authority answers, and stays `pending` while you are offline. You can change which authority
-  Birdbrain asks. You cannot turn it off.
+- **Timestamping is asynchronous.** A capture shows **Timestamp pending** until the timestamp
+  authority answers, and stays that way while you are offline. If you turn timestamping off,
+  captures you make carry no trusted time until you turn it back on. You can also change which
+  authority Birdbrain asks.
 - **The evidence claims have limits.** The signing key is local to your install rather than an
   independent trust anchor, the standalone verifier binary is not published yet, and the
   certification document still carries placeholder legal wording. Read the
@@ -157,9 +179,9 @@ pnpm dev
 `pnpm build:extension` writes the unpacked extension to `extension/dist`.
 
 Use Node 20. `engines.node` is only a floor, so Node 24 satisfies it and then breaks Electron's
-`postinstall` step without failing the install. Both `.nvmrc` and `.mise.toml` pin the right version.
-[CONTRIBUTING.md](CONTRIBUTING.md) covers the rest of the setup and the checks to run before a
-pull request.
+`postinstall` step without failing the install. Both `.nvmrc` and `.mise.toml` pin the right
+version. [CONTRIBUTING.md](CONTRIBUTING.md) covers the rest of the setup and the checks to run
+before a pull request.
 
 ## Contributing
 

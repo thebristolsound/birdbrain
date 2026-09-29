@@ -271,12 +271,12 @@ describe('Exhibit Numbers from the chain (#1270)', () => {
     expect(result.exceptions).toBeUndefined()
   })
 
-  it('keeps every number across an archive round trip and continues above the highest', async () => {
+  it('keeps every number across an archive round trip, the deleted highest included', async () => {
     await ingest('one')
     await ingest('two')
-    const three = await ingest('three')
-    await commitPdf('four.pdf')
-    await lifecycle.delete(three)
+    await commitPdf('three.pdf')
+    const four = await ingest('four')
+    await lifecycle.delete(four)
     const sourceNumbers = listExhibits(caseId).map((e) => e.exhibitNumber)
     const sourceAssignments = exhibitNumberSequences(manifestLines(caseDir))
 
@@ -285,10 +285,10 @@ describe('Exhibit Numbers from the chain (#1270)', () => {
     const { newCaseId } = await importCaseArchive(archivePath)
     const importedDir = join(storageRoot, newCaseId)
 
+    expect(sourceNumbers).toEqual([1, 2, 3])
     expect(listExhibits(newCaseId).map((e) => e.exhibitNumber)).toEqual(sourceNumbers)
-    expect(sourceNumbers).toEqual([1, 2, 4])
     // The chain arrives verbatim, so it assigns what the source's did, the
-    // deleted 3 included, and the import numbers above all of it.
+    // deleted 4 included. No row holds 4, and the import still never issues it.
     expect(exhibitNumberSequences(manifestLines(importedDir))).toEqual(sourceAssignments)
     expect(verifyManifestChain(importedDir).valid).toBe(true)
     expect(nextExhibitNumber(newCaseId)).toBe(5)

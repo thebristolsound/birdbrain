@@ -7,6 +7,7 @@ import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
 import {
   buildTrustedTimeIndexFromEntries,
   canonicalStringify,
+  describeRepeatedExhibitNumber,
   findRepeatedExhibitNumbers,
   verifyManifestChainText,
   verifySharedCase,
@@ -1231,6 +1232,36 @@ describe('verifyEvidencePackage — an enclosed Shared Case', () => {
     } finally {
       rmSync(missing, { recursive: true, force: true })
       rmSync(present, { recursive: true, force: true })
+    }
+  })
+
+  it('states a number a member chain issued twice as an exception row, not a FAIL (X48)', () => {
+    const member = buildChain(
+      [exhibit(1, MEMBER_OPERATOR), exhibit(1, MEMBER_OPERATOR, { exhibitId: 'other' })],
+      signWith(MEMBER_KEY)
+    )
+    const owner = buildChain([
+      OWNER_ADD(),
+      MEMBER_ADD(),
+      merge([{ installationId: MEMBER_ID, index: 1, entryHash: member.hashes[1] }], 40)
+    ])
+    const dir = writePackage(owner, member)
+    try {
+      const result = verifyEvidencePackage(dir)
+      expect(sharedRows(dir).map((row) => row.status)).toEqual(['pass'])
+      expect(result.checks.filter((check) => check.status === 'exception')).toEqual([
+        {
+          name: `exhibit number 1 in the chain of ${MEMBER_ID}`,
+          status: 'exception',
+          reason: describeRepeatedExhibitNumber({
+            exhibitNumber: 1,
+            exhibitIds: [`${MEMBER_ID}-exhibit-1`, 'other'],
+            indices: [0, 1]
+          })
+        }
+      ])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
     }
   })
 

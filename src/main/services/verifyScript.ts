@@ -484,16 +484,19 @@ parent_dir() {
   return 1
 }
 
-# Exhibit Numbers as the chain records them: on an \`exhibit\` entry, and for a
-# Capture in the one-time \`renumber\` entry. A Capture committed after its Case
-# was renumbered has no number in the chain, and is then named by its id -
-# never by a number counted here, which would cite something nothing signed.
+# Exhibit Numbers as the chain records them: on an \`exhibit\` entry, on a
+# \`capture\` entry that carries one, and for an earlier Capture in the one-time
+# \`renumber\` entry. A Capture ingested after its Case was renumbered and
+# before capture entries carried numbers has no number in the chain, and is
+# then named by its id - never by a number counted here, which would cite
+# something nothing signed.
 # ONE pass, in manifest order, so the last assignment below is the last one the
 # chain made. Two passes - every exhibit entry, then every renumber assignment -
 # would order by category instead, and the last write would then be whichever
 # kind came second in this file rather than in the manifest.
 jq -r '
   if .type == "exhibit" then "\\(.exhibitId) \\(.exhibitNumber)"
+  elif .type == "capture" and .exhibitNumber != null then "\\(.captureId) \\(.exhibitNumber)"
   elif .type == "renumber" then (.assignments[] | "\\(.exhibitId) \\(.exhibitNumber)")
   else empty end' "$MANIFEST_FILE" >"$tmp/exhibit-numbers.txt"
 

@@ -92,7 +92,13 @@ function runSelfCheck(): number {
 
 function printReport(dir: string, result: PackageVerifyResult): void {
   const symbol = (status: string): string =>
-    status === 'pass' ? 'PASS' : status === 'fail' ? 'FAIL' : 'SKIP'
+    status === 'pass'
+      ? 'PASS'
+      : status === 'fail'
+        ? 'FAIL'
+        : status === 'exception'
+          ? 'EXCEPTION'
+          : 'SKIP'
   process.stdout.write(`Birdbrain evidence-package verification\n`)
   process.stdout.write(`Package: ${dir}\n\n`)
   // Third outcome (#399): a self-identified Working Copy has nothing to
@@ -124,7 +130,15 @@ function printReport(dir: string, result: PackageVerifyResult): void {
     )
     return
   }
-  if (result.pass) {
+  // An Integrity Exception (X48) does not fail the package, and a PASS line
+  // that left it out would read as a clean report.
+  const exceptions = result.checks.filter((check) => check.status === 'exception').length
+  if (result.pass && exceptions > 0) {
+    process.stdout.write(
+      'RESULT: PASS — integrity + internal consistency verified, with ' +
+        `${exceptions} Integrity Exception(s) (see above).\n`
+    )
+  } else if (result.pass) {
     process.stdout.write('RESULT: PASS — integrity + internal consistency verified.\n')
   } else {
     process.stdout.write('RESULT: FAIL — one or more checks failed (see above).\n')

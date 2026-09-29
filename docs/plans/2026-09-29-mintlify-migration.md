@@ -33,10 +33,10 @@ to 7. Start this work after that merges.
 1. **Address: `birdbrain.cc`** (decided 2026-09-29). The maintainer owns it at Porkbun and it
    points nowhere today. Mintlify serves custom domains with automatic TLS after DNS
    verification ([Custom domain](https://mintlify.com/docs/customize/custom-domain)).
-   - Still open: serve the docs at the bare `birdbrain.cc`, or at `docs.birdbrain.cc` with the
-     bare domain forwarded to it. The bare domain needs an `ALIAS` or flattened `CNAME` record
-     (same Mintlify page); Porkbun supports `ALIAS` records
-     ([Porkbun API reference](https://porkbun.com/llms-full.txt)).
+   - The docs live at `docs.birdbrain.cc`, and the bare `birdbrain.cc` forwards there
+     (decided 2026-09-29). That keeps the bare domain free for a landing page later. A
+     subdomain needs only a plain `CNAME`; Porkbun URL forwarding covers the bare domain.
+
 2. **Plan: Mintlify Starter, free** (decided 2026-09-29). Mintlify's pricing page lists a custom
    domain, the web editor, and five editor seats on Starter
    ([Pricing](https://www.mintlify.com/pricing)). After the repository is public, apply to the
@@ -68,8 +68,9 @@ to 7. Start this work after that merges.
    directory `website/content` (or wherever step 1 lands the content), and GitHub access to the
    repository.
    Then add the domain in the dashboard, which shows two verification `TXT` records and a
-   `CNAME` (or `ALIAS` for the bare domain) to `cname.mintlify.builders`. Add the `TXT` records
-   first, and the `CNAME` or `ALIAS` only after both show as verified.
+   `CNAME` for `docs.birdbrain.cc` pointing at `cname.mintlify.builders`. Add the `TXT` records
+   first, and the `CNAME` only after both show as verified. Then forward `birdbrain.cc` to
+   `https://docs.birdbrain.cc`.
    - Porkbun's official MCP server (`@porkbunllc/mcp-server`, <https://porkbun.com/mcp>) can
      create these records. It needs an API key pair from <https://porkbun.com/account/api>, and
      the domain must be opted in to API access.

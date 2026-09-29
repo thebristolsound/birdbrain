@@ -10,7 +10,7 @@ Regulator Code is no longer a voluntary Birdbrain benchmark, and the maintained 
 register no longer includes guidance specific to policing or criminal-justice operations.
 
 Birdbrain adopts the standards register in
-[`website/content/docs/osint-investigation-standards.mdx`](../../website/content/docs/osint-investigation-standards.mdx)
+[`docs/agents/osint-investigation-standards.md`](../agents/osint-investigation-standards.md)
 as the engineering baseline for evidence-affecting architecture, implementation, validation,
 release, and product-claim decisions.
 

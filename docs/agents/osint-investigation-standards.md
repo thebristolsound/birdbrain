@@ -1,7 +1,6 @@
----
-title: 'OSINT investigation standards'
-description: 'The external standards that Birdbrain measures its acquisition, preservation, analysis, export, security, privacy, and accessibility processes against.'
----
+# OSINT investigation standards
+
+The external standards that Birdbrain measures its acquisition, preservation, analysis, export, security, privacy, and accessibility processes against.
 
 **Status:** Engineering reference
 

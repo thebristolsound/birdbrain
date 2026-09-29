@@ -6,16 +6,9 @@
     "download",
     "tester-guide",
     "screenshots",
-    "---Architecture---",
-    "birdbrain-architecture-whitepaper",
-    "birdbrain-technical-whitepaper",
-    "capture-pipeline",
-    "---Assurance---",
+    "---Trust and privacy---",
     "threat-model",
-    "osint-investigation-standards",
-    "---Adopting---",
-    "birdbrain-contributor-adoption-whitepaper",
     "birdbrain-privacy-adoption-whitepaper",
-    "writing-style"
+    "birdbrain-architecture-whitepaper"
   ]
 }

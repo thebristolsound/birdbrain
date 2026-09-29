@@ -78,8 +78,6 @@ Pages under `website/content/docs/` follow [Diataxis](https://diataxis.fr/): dec
 
 When an existing page resists improvement, the usual cause is content sitting in two cells at once. Fix one page at a time — Diataxis itself warns against planning a grand reorganization.
 
-The public mirror of this standard is [`website/content/docs/writing-style.mdx`](../../website/content/docs/writing-style.mdx); keep the two in step when either changes.
-
 ## Document types
 
 Placement and naming come from [`docs/README.md`](../README.md). What each type needs:

@@ -13,26 +13,19 @@
     "groups": [
       {
         "group": "Get started",
-        "pages": ["docs/index", "docs/download", "docs/tester-guide", "docs/screenshots"]
-      },
-      {
-        "group": "Architecture",
         "pages": [
-          "docs/birdbrain-architecture-whitepaper",
-          "docs/birdbrain-technical-whitepaper",
-          "docs/capture-pipeline"
+          "docs/index",
+          "docs/download",
+          "docs/tester-guide",
+          "docs/screenshots"
         ]
       },
       {
-        "group": "Assurance",
-        "pages": ["docs/threat-model", "docs/osint-investigation-standards"]
-      },
-      {
-        "group": "Adopting",
+        "group": "Trust and privacy",
         "pages": [
-          "docs/birdbrain-contributor-adoption-whitepaper",
+          "docs/threat-model",
           "docs/birdbrain-privacy-adoption-whitepaper",
-          "docs/writing-style"
+          "docs/birdbrain-architecture-whitepaper"
         ]
       }
     ]

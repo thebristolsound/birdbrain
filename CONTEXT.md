@@ -73,8 +73,12 @@ Operations that mutate an MHTML Capture beyond its database row: admission of a 
 _Avoid_: capture service, capture manager.
 
 **Capture Method**:
-How a Capture was produced: by the Chrome extension (`extension`, operator-witnessed), by a silent hidden-window render (`background`), by the Operator capturing the page in front of them in a Persona's browser window (`persona-window`, operator-witnessed), or by copying another Capture in the same Case (`duplicate`, which observed nothing).
-_Avoid_: capture type, capture mode.
+How a Capture was produced: through the Companion in the Operator's everyday browser (`companion`, operator-witnessed, never a Transaction Record), in a browser Birdbrain launched (`launched`, operator-witnessed, a Transaction Record when a Capture Session is running), by a silent hidden-window render (`background`), or by copying another Capture in the same Case (`duplicate`, which observed nothing). `extension` is a legacy value for Captures the Companion once acquired itself; nothing new writes it. Which Persona was present is recorded beside the method, never inside it.
+_Avoid_: capture type, capture mode, persona-window.
+
+**Companion**:
+The browser extension. It carries the Active Case, Tags, Selectors and highlights into the Operator's everyday browser and opens the pipe for a `companion` Capture; it acquires nothing itself.
+_Avoid_: extension (unqualified), plugin, add-on.
 
 **Recapture**:
 A fresh background Capture of an existing Capture's URL, stored as a linked sibling that supersedes it. The original is never touched; both stay fully visible.

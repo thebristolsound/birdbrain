@@ -355,6 +355,23 @@ describe('DataExplorer failed reads (#1656)', () => {
     expect(screen.queryByText(/Failed to load/)).toBeNull()
   })
 
+  // The captures carry each Capture's persisted verify state; without them a
+  // tampered Capture used to drop out of the exceptions.
+  it('replaces the screen with the error and a retry when the captures read fails', async () => {
+    vi.mocked(window.birdbrain.captures.list).mockRejectedValueOnce(new Error('disk offline'))
+    renderExplorer()
+
+    expect(await screen.findByText('Failed to load captures: disk offline')).toBeTruthy()
+    expect(screen.queryByRole('tree')).toBeNull()
+    expect(screen.queryByTestId('artifact-table')).toBeNull()
+    expect(screen.queryByText('No exceptions among the verified rows.')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    await selectNode('integrity-exceptions')
+    expect(await screen.findByTestId('artifact-row-cap-a')).toBeTruthy()
+    expect(screen.queryByText(/Failed to load/)).toBeNull()
+  })
+
   it('shows the error and a retry on the Manifest Ledger node when the snapshot read fails', async () => {
     const snapshot = vi.mocked(window.birdbrain.manifest.snapshot)
     snapshot.mockRejectedValueOnce(new Error('manifest unreadable'))

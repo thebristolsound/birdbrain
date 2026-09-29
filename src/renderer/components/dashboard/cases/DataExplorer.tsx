@@ -137,7 +137,12 @@ export function DataExplorer() {
     error: inventoryError,
     refetch: refetchInventory
   } = useQuery(exhibitInventoryQueryOptions(caseId))
-  const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))
+  const {
+    data: captures = [],
+    isError: capturesFailed,
+    error: capturesError,
+    refetch: refetchCaptures
+  } = useQuery(capturesQueryOptions(caseId))
   const { data: selectors = [] } = useQuery(selectorsQueryOptions(caseId))
   const { data: matchCounts = {} } = useQuery(selectorMatchCountsQueryOptions(caseId))
   const { data: indicatorCount } = useQuery(extractedDataCountQueryOptions(caseId))
@@ -370,15 +375,24 @@ export function DataExplorer() {
     )
   }
   // Without the inventory the integrity buckets and the table would read as
-  // empty, so a failed read replaces the whole screen.
-  if (inventoryFailed) {
+  // empty, and without the captures the buckets lose each Capture's persisted
+  // verify state, so either failed read replaces the whole screen.
+  if (inventoryFailed || capturesFailed) {
     return (
       <div className="flex h-full items-center justify-center">
-        <ReadFailed
-          what="case data"
-          error={inventoryError}
-          onRetry={() => void refetchInventory()}
-        />
+        {inventoryFailed ? (
+          <ReadFailed
+            what="case data"
+            error={inventoryError}
+            onRetry={() => void refetchInventory()}
+          />
+        ) : (
+          <ReadFailed
+            what="captures"
+            error={capturesError}
+            onRetry={() => void refetchCaptures()}
+          />
+        )}
       </div>
     )
   }

@@ -326,34 +326,19 @@ jobs:
       - name: Run E2E tests
         run: xvfb-run --auto-servernum npx playwright test
 
-  # Compiles the docs site on PRs that change it. Nothing else does: docs.yml builds
-  # website/ only on push to main and workflow_dispatch, so an MDX break passes every PR
-  # check, merges, and surfaces on main after the deploy has already been attempted
-  # (#450). It is easy to hit, because MDX reads a bare `{...}` in prose as a JSX
-  # expression: `{a b}` does not parse and fails compilation, `{source}` parses and then
-  # fails prerender with "source is not defined". Both exit non-zero, and prose editing
-  # is both the likeliest way to reach them and the class of change least likely to
-  # attract build scrutiny.
+  # Checks the docs site on PRs that change it. Mintlify builds website/content only
+  # after a merge to main, so a broken internal link or a missing image would otherwise
+  # pass every PR check and surface on the live site (#450 was the same failure under
+  # the old Fumadocs build). `mint broken-links` reads docs.json and every page, and
+  # exits non-zero on a link or image path that resolves to nothing.
   #
-  # A job here rather than a `pull_request` trigger on docs.yml. That workflow holds
-  # `concurrency: group: pages, cancel-in-progress: false`, so PR builds would queue
-  # behind live Pages deploys, and its build job exists to feed an artifact the deploy
-  # job consumes. A workflow-level `paths:` filter is the other rejected option, for the
-  # reason already recorded on `changes`: a workflow that never runs reports no context,
-  # so requiring it would leave every unrelated PR unmergeable. A job skipped by `if:`
-  # still reports `skipped`, which the ruleset accepts.
+  # A job skipped by `if:` still reports `skipped`, which the ruleset accepts, so the
+  # context can be required without blocking PRs that touch nothing under website/.
+  # The job keeps its old name for that reason: the required-contexts list lives in
+  # the `master` ruleset, not in this repository.
   #
-  # Should this be a required check? Yes — recommended, and applying it is the
-  # maintainer's action, because the required-contexts list lives in the `master`
-  # ruleset and not in this repository. Two reasons. ADR-0014 lets a non-evidence agent
-  # PR merge on required checks green plus a pre-pass verdict, so leaving this advisory
-  # keeps the failure mode above open for the highest-volume class of author. And the
-  # skip makes requiring it free: the PRs that touch nothing under website/ report
-  # `skipped`, not pending. Until the context is added to the ruleset this job is
-  # advisory, and a red run has to be read rather than enforced.
-  #
-  # Runs on `pull_request` only, unlike the five jobs above. On push to main docs.yml
-  # already builds the same site before deploying it; building it twice adds no signal.
+  # The CLI runs through npx at a pinned version rather than as a root dependency, so
+  # it never enters the app's lockfile or the packaged build.
   docs-build:
     runs-on: ubuntu-latest
     needs: changes
@@ -364,32 +349,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
-          cache: pnpm
-          cache-dependency-path: website/pnpm-lock.yaml
 
-      # Every step below runs from inside website/, and has to. It is a deliberately
-      # isolated sub-project with its own lockfile and its own pnpm-workspace.yaml, which
-      # makes it a workspace root — the repo-root `pnpm install` never reaches it, and a
-      # pnpm command run from the root would apply the root workspace's `overrides` and
-      # `onlyBuiltDependencies` rather than the site's own. Same shape as docs.yml's
-      # build job, which is what actually deploys this.
-      - name: Install
-        run: pnpm install --frozen-lockfile
-        working-directory: website
-
-      # `next build` type-checks what it compiles; this checks the whole project with
-      # `tsc --noEmit`, after generating the .source collections and route types the
-      # check needs. It is the command a site author runs locally, and until now no
-      # workflow ran it at all.
-      - name: Typecheck
-        run: pnpm types:check
-        working-directory: website
-
-      - name: Build static export
-        run: pnpm build
-        working-directory: website
+      - name: Check links
+        run: npx -y mint@4.2.952 broken-links
+        working-directory: website/content

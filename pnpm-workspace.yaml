@@ -2,9 +2,7 @@
 # silently ignores them there, which left Electron's binary undownloaded in any
 # freshly installed tree (see scripts/ensure-electron.mjs).
 #
-# There is deliberately no `packages:` key. This is a single-package repo —
-# website/ is an isolated sub-project with its own lockfile and must NOT be
-# pulled in as a workspace member.
+# There is deliberately no `packages:` key. This is a single-package repo.
 
 onlyBuiltDependencies:
   - better-sqlite3

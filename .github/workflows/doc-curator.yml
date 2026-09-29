@@ -69,8 +69,6 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
-          cache: pnpm
-          cache-dependency-path: website/pnpm-lock.yaml
 
       - name: Install Claude Code CLI
         run: npm install -g @anthropic-ai/claude-code
@@ -165,12 +163,11 @@ jobs:
       - name: Build site on the edit
         if: steps.review.outputs.verdict == 'approve' && steps.review.outputs.has_edit == 'true'
         id: build
-        working-directory: website
+        working-directory: website/content
         continue-on-error: true
         run: |
           set -euo pipefail
-          pnpm install --frozen-lockfile
-          pnpm build 2>&1 | tee ../.curator/build.log
+          npx -y mint@4.2.952 broken-links 2>&1 | tee ../../.curator/build.log
 
       - name: File build-failure issue
         if: steps.review.outputs.verdict == 'approve' && steps.build.outcome == 'failure' && env.DRY_RUN != 'true'
@@ -178,7 +175,7 @@ jobs:
           set -euo pipefail
           gh issue create --label documentation --label agent-pr \
             --title "doc-curator: site build failed on curated edit ($(date -u +%F))" \
-            --body-file <(printf 'The doc curator produced an approved edit that broke `pnpm build` in `website/`. Edit discarded; marker left at %s.\n\nRun: %s/%s/actions/runs/%s\n\n```\n%s\n```\n' \
+            --body-file <(printf 'The doc curator produced an approved edit that failed `mint broken-links` in `website/content/`. Edit discarded; marker left at %s.\n\nRun: %s/%s/actions/runs/%s\n\n```\n%s\n```\n' \
               "${{ steps.window.outputs.marker }}" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$(tail -c 6000 .curator/build.log)")
           echo "Site build failed on the edit; issue filed, edit discarded." >> "$GITHUB_STEP_SUMMARY"
 

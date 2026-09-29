@@ -71,12 +71,12 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      # Enforcing. Audits both dependency trees (the app and the isolated website/
-      # sub-project) and fails on any high or critical advisory that is neither
-      # cleared by an override in pnpm-workspace.yaml / website/pnpm-workspace.yaml
-      # nor covered by an unexpired entry in audit-exceptions.json — so a new
-      # advisory, or an accepted one whose expiry has passed, breaks the build.
-      # Reads the lockfiles, which is why this job still does not install.
+      # Enforcing. Audits the app's dependency tree and fails on any high or
+      # critical advisory that is neither cleared by an override in
+      # pnpm-workspace.yaml nor covered by an unexpired entry in
+      # audit-exceptions.json — so a new advisory, or an accepted one whose expiry
+      # has passed, breaks the build. Reads the lockfile, which is why this job
+      # still does not install.
       #
       # This replaces the two inline `pnpm audit` steps: an accepted finding lives
       # in a data file with an expiry date rather than in an `--ignore` flag and a

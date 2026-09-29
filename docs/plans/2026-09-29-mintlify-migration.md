@@ -28,16 +28,24 @@ to 7. Start this work after that merges.
 - Unverified: the deployment's deploy branch and content directory. The Mintlify administration API
   returned "No target deployment" on 2026-09-29, so check them in the dashboard.
 
-## Decisions needed
+## Decisions
 
-1. **Address.** Keep the default Mintlify subdomain, or use a custom domain such as
-   `docs.<your-domain>`. Mintlify serves custom domains with automatic TLS after DNS
+1. **Address: `birdbrain.cc`** (decided 2026-09-29). The maintainer owns it at Porkbun and it
+   points nowhere today. Mintlify serves custom domains with automatic TLS after DNS
    verification ([Custom domain](https://mintlify.com/docs/customize/custom-domain)).
-2. **Analytics.** Mintlify-hosted pages may carry the vendor's analytics. Birdbrain tells
-   privacy-minded investigators it has no telemetry, so check what the plan collects and whether
+   - Still open: serve the docs at the bare `birdbrain.cc`, or at `docs.birdbrain.cc` with the
+     bare domain forwarded to it. The bare domain needs an `ALIAS` or flattened `CNAME` record
+     (same Mintlify page); Porkbun supports `ALIAS` records
+     ([Porkbun API reference](https://porkbun.com/llms-full.txt)).
+2. **Plan: Mintlify Starter, free** (decided 2026-09-29). Mintlify's pricing page lists a custom
+   domain, the web editor, and five editor seats on Starter
+   ([Pricing](https://www.mintlify.com/pricing)). After the repository is public, apply to the
+   [OSS Program](https://www.mintlify.com/oss-program), which gives Pro free to projects with a
+   recognized open source license that are not venture-backed, revenue-funded, or owned by a
+   for-profit company. Pro would add preview deployments for docs pull requests.
+3. **Analytics** (open). Mintlify-hosted pages may carry the vendor's analytics. Birdbrain tells
+   privacy-minded investigators it has no telemetry, so check what Starter collects and whether
    it can be turned off before switching.
-3. **Plan and cost.** Confirm which Mintlify plan hosts a public open source site and what it
-   costs.
 
 ## Steps
 
@@ -59,6 +67,12 @@ to 7. Start this work after that merges.
 4. **Configure the deployment** in the Mintlify dashboard: deploy branch `main`, content
    directory `website/content` (or wherever step 1 lands the content), and GitHub access to the
    repository.
+   Then add the domain in the dashboard, which shows two verification `TXT` records and a
+   `CNAME` (or `ALIAS` for the bare domain) to `cname.mintlify.builders`. Add the `TXT` records
+   first, and the `CNAME` or `ALIAS` only after both show as verified.
+   - Porkbun's official MCP server (`@porkbunllc/mcp-server`, <https://porkbun.com/mcp>) can
+     create these records. It needs an API key pair from <https://porkbun.com/account/api>, and
+     the domain must be opted in to API access.
 5. **Cut over.**
    - Point every hard-coded URL at the new address.
    - Replace the Pages site with a one-page notice that redirects to the new address. GitHub

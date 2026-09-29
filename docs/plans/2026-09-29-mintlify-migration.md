@@ -2,8 +2,14 @@
 
 **Status:** Draft, awaiting maintainer decisions
 
-**Depends on:** the docs site trim (branch `docs/site-trim`), which cuts the site from 12 pages
-to 7. Start this work after that merges.
+**Depends on:** the docs site trim (#1651, merged 2026-09-29), which cut the site from 12 pages
+to 7.
+
+**Progress (2026-09-29):** step 4 is done. The maintainer connected the repository in the
+Mintlify dashboard. Porkbun holds both verification `TXT` records, the `docs` `CNAME` to
+`cname.mintlify.builders`, and a 302 forward from `birdbrain.cc` to `https://docs.birdbrain.cc`
+that keeps the path. Both addresses answer over HTTPS. `docs.birdbrain.cc` still redirects to a
+Mintlify sign-in page, so the deployment is not public yet.
 
 ## Current state
 
@@ -26,7 +32,8 @@ to 7. Start this work after that merges.
   `.github/workflows/docs.yml`, and `website/lib/base-path.mjs`. The releases repository README
   and the source repository's homepage field are outside this tree.
 - Unverified: the deployment's deploy branch and content directory. The Mintlify administration API
-  returned "No target deployment" on 2026-09-29, so check them in the dashboard.
+  still returned "No target deployment" on 2026-09-29 after the repository was connected, so
+  check them in the dashboard.
 
 ## Decisions
 

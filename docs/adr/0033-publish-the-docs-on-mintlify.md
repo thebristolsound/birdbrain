@@ -28,7 +28,7 @@ keeps the bare domain free for a landing page later. The DNS records are at Pork
 `404.html`, so each old page URL redirects to the same page on the new site.
 
 **CI checks links instead of building.** The `docs-build` job keeps its name, so the required
-check context does not change, and runs `mint broken-links` at a pinned version through `npx`.
+check context does not change, and runs `mint broken-links` at a pinned version through `pnpm dlx`, then rejects relative links, which that check does not flag.
 The CLI stays out of the root lockfile.
 
 ## Consequences

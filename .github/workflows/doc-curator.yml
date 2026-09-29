@@ -167,7 +167,7 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
-          npx -y mint@4.2.952 broken-links 2>&1 | tee ../../.curator/build.log
+          pnpm dlx mint@4.2.952 broken-links 2>&1 | tee ../../.curator/build.log
 
       - name: File build-failure issue
         if: steps.review.outputs.verdict == 'approve' && steps.build.outcome == 'failure' && env.DRY_RUN != 'true'

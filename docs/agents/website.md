@@ -34,10 +34,14 @@ page URL redirects to the same page on the new site.
 
 Run both from inside `website/content/`; neither needs an install in this repository:
 
-- `npx mint dev` serves a local preview.
-- `npx mint broken-links` exits non-zero on any internal link or image that resolves to
-  nothing. CI's `docs-build` job runs the same command, at a pinned version, on every pull
+- `pnpm dlx mint dev` serves a local preview.
+- `pnpm dlx mint broken-links` exits non-zero on any internal link or image that resolves to
+  nothing. It does not flag a relative link such as `./download.mdx`, so CI's `docs-build` job
+  runs it at a pinned version and then rejects relative links with `grep`, on every pull
   request that touches `website/`.
+
+Use `pnpm dlx`, not `npx`: `npm install` of the CLI hung on 2026-09-29, and `pnpm` skips its
+dependency build scripts, which include Scarf install analytics.
 
 ## Deployment settings
 

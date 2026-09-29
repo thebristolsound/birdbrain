@@ -337,8 +337,10 @@ jobs:
   # The job keeps its old name for that reason: the required-contexts list lives in
   # the `master` ruleset, not in this repository.
   #
-  # The CLI runs through npx at a pinned version rather than as a root dependency, so
-  # it never enters the app's lockfile or the packaged build.
+  # The CLI runs through `pnpm dlx` at a pinned version rather than as a root
+  # dependency, so it never enters the app's lockfile or the packaged build. pnpm also
+  # skips the CLI's dependency build scripts, which include Scarf install analytics;
+  # `npx` runs them, and a local `npm install` of it hung on 2026-09-29.
   docs-build:
     runs-on: ubuntu-latest
     needs: changes
@@ -349,10 +351,21 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
 
       - name: Check links
-        run: npx -y mint@4.2.952 broken-links
+        run: pnpm dlx mint@4.2.952 broken-links
         working-directory: website/content
+
+      # `mint broken-links` passes a relative link such as `./download.mdx`, which
+      # Mintlify does not resolve in production. Checked 2026-09-29.
+      - name: Reject relative links
+        run: |
+          if grep -rnE '\]\(\.{1,2}/' --include='*.mdx' website/content; then
+            echo '::error::Use root-relative links such as /docs/download in website/content.'
+            exit 1
+          fi

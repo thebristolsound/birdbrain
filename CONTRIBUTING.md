@@ -50,7 +50,7 @@ Contributions unlikely to land:
    unpacked via `chrome://extensions`).
 
 The docs site is `website/content/`, published by Mintlify at <https://docs.birdbrain.cc>.
-Preview it with `npx mint dev` and check links with `npx mint broken-links`, both run
+Preview it with `pnpm dlx mint dev` and check links with `pnpm dlx mint broken-links`, both run
 from inside `website/content/`.
 
 ## Validating your change

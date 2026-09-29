@@ -101,7 +101,7 @@ Placement and naming come from [`docs/README.md`](../README.md). What each type 
 3. **Image paths are root-relative to `website/content/`** (`/images/x.png`).
 4. **A page absent from `navigation` in `docs.json` is not in the sidebar.** Adding a page means adding both.
 
-Run `npx mint broken-links` from inside `website/content/` before merging a change under `website/`. Files under `docs/` are not part of the site and need no such check.
+Run `pnpm dlx mint broken-links` from inside `website/content/` before merging a change under `website/`. Files under `docs/` are not part of the site and need no such check.
 
 ## Before merging
 

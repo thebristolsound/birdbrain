@@ -100,6 +100,10 @@ _Avoid_: route, VPN mode, anonymous mode.
 An optional phase before a Capture's artifacts are taken in which the page is scrolled to trigger lazy-loaded content. Whether it was requested, whether it ran, and how it ended are recorded in the Manifest Entry; a Scroll-to-load that fails never silently yields a static Capture.
 _Avoid_: scrolling capture, scrolling mode, pre-scroll.
 
+**Bound TLS Details**:
+The TLS security details the browser reported on the response that produced a `launched` Capture's bytes, recorded only because the engine was attached before the request was sent. A property of the Capture itself, unlike the TLS Cert Chain. Absent for cached responses, for Firefox, and for every other Capture Method.
+_Avoid_: capture cert, TLS evidence, cert chain (for this).
+
 **Extracted Text**:
 The plain text pulled from a Capture at ingest: a Derived File whose authoritative copy is the
 `.txt` file on disk beside the Capture, integrity-bound through the Manifest. `capture_texts`
@@ -305,6 +309,7 @@ _Avoid_: risky change, core change, forensic change.
 - A **Recapture** produces a new **Capture** that supersedes an existing one; both remain visible and neither is overwritten
 - A **Duplicate** is a new **Capture** that links to its source and shares its **Content Hash**; unlike a **Recapture** it observed nothing
 - A **TLS Cert Chain** and a **Wayback Ref** attach to a **Capture** as corroboration only, and bind nothing about the captured transaction
+- **Bound TLS Details** are part of the **Capture** and describe the captured transaction; they never substitute for the **TLS Cert Chain**, which keeps running as the floor
 - Creating or updating a **Selector** triggers the **Selector Lifecycle** to (re)compute **Persisted Matches** for the **Case**'s existing **Captures**, asynchronously
 - A **Foreground Match Preview** is computed in the renderer against the open **Capture**'s text and never touches **Persisted Matches**
 - A **Capture**'s **Extracted Text** is a **Derived File** on disk (authoritative), mirrored to the database for the **Selector Lifecycle** and search

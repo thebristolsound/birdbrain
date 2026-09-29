@@ -84,6 +84,10 @@ _Avoid_: copy, clone, second capture.
 The record that maintained consent/cookie-notice filter lists were active while a background Recapture rendered. Absent for operator-witnessed Captures and for renders where the filter engine was unavailable.
 _Avoid_: cookie blocking, banner removal.
 
+**Egress**:
+The network path Birdbrain's outbound traffic takes: Direct from the Operator's own connection, through a Proxy, or through Tor. Set once for the installation; while it is not Direct, nothing Birdbrain sends leaves directly, and a Capture that Birdbrain renders records which Egress it used and the Operator's label for it. It hides where the Operator is, not what browser is looking.
+_Avoid_: route, VPN mode, anonymous mode.
+
 **Extracted Text**:
 The plain text pulled from a Capture at ingest: a Derived File whose authoritative copy is the
 `.txt` file on disk beside the Capture, integrity-bound through the Manifest. `capture_texts`
@@ -343,6 +347,8 @@ _Avoid_: risky change, core change, forensic change.
 - "source" is used for four unrelated things: `CaptureSource` (`auto`/`manual`/`selector`/`recapture`), a Note's `sourceUrl`, the extraction pipeline's `extractionSource`, and the overview's Sources block. Say "capture trigger" for `CaptureSource` and reserve "source" for the origin a Capture came from.
 
 - "auto-capture" names four unrelated things: the top-bar switch that starts and stops a **Capture Session** (#813), the Signals card and the `autoCaptureMode` setting that edit a Case's URL exclusion policy (#744), the Capture Server capturing a page before the extension attaches a **Tag** or **Note** to it, and the withdrawn passive capture whose return ADR-0013 scopes to a declared window (#600). Say "Capture Session" for the switch, "exclusion policy" for the card, and "capture-then-attach" for the server path; "passive capture" and its vocabulary stay reserved to ADR-0013 until the restoration lands.
+
+- "route" is the Capture Server's HTTP route (a handler that parses a request and hands it to the Capture Lifecycle). The path outbound traffic takes is the **Egress**; never call it a route.
 
 - "session" is four things: a **Capture Session**; one app launch, which the crash-recovery prompt tracks through a lock file; the last Case and screen the app restores on launch ("session restore"); and the browser profile a webview or a background **Recapture** renders in, which for a **Persona** is its persona session. Unqualified "session" means Capture Session; qualify the other three.
 

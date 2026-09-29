@@ -35,21 +35,35 @@ separates three changes that the word covers, and they do not share a reason:
 
 ## Decision
 
-**Routing is allowed.** A background Recapture, an add-URL render and a Persona window may send
-their traffic through a proxy or a local Tor SOCKS port that the Operator configures. Four
-conditions hold for every routed render:
+**Egress is a setting, and routing is allowed.** The Egress is Direct, a Proxy, or Tor. The
+maintainer ruled on 2026-09-28:
 
-1. **Fail closed.** SOCKS5 or HTTP only, never SOCKS4, which resolves names locally. No
-   `direct://` fallback: an unreachable proxy fails the render instead of exposing the Operator.
-2. **No side channel to the target.** WebRTC runs with `disable_non_proxied_udp`. Every
-   main-process request that contacts the target, today the TLS certificate re-fetch, follows the
-   same route or is skipped, and the Manifest says which.
-3. **The route is evidence.** The signed `capture` entry records the route and the user-agent
-   string sent, as optional fields omitted for direct egress so existing chain hashes are
-   unchanged. The record states what Birdbrain asked Chromium to do, not which address the
-   target saw. The verifier learns the fields before any build writes them (the ADR-0023
-   sequencing).
-4. **A challenge is a faithful capture.** Tor and shared VPN addresses draw more challenges, and
+1. **Everything follows it.** While the Egress is not Direct, nothing Birdbrain sends leaves
+   directly: renders, the TLS Cert Chain re-fetch, the Wayback lookup and replay pane, the TSA
+   request, and the consent filter-list download. Each path already tolerates an outage: a
+   render fails, a Timestamp Token stays pending, a Wayback lookup reports an error, and a
+   render without filter lists proceeds without Consent Suppression.
+2. **It fails closed.** SOCKS5 or HTTP only, never SOCKS4, which resolves names locally. No
+   `direct://` fallback: an unreachable proxy fails the request instead of exposing the Operator.
+   WebRTC runs with `disable_non_proxied_udp`.
+3. **The TLS Cert Chain is skipped, not routed.** The re-fetch opens a raw socket that cannot use
+   a SOCKS proxy without a new dependency, so it does not run while the Egress is not Direct, and
+   the Manifest Entry says it was skipped. Recording the certificate the render itself received
+   would change [ADR-0002](0002-tls-capture-corroboration-only.md) and is a separate decision.
+4. **One setting per installation.** A Persona may override it later, so a pseudonym always
+   appears from the same place; that override belongs to the Persona work under #541, not here.
+5. **The record names the kind and a label.** The signed `capture` entry records the Egress kind
+   and a label the Operator chooses for it (for example "Frankfurt VPN"), plus the user-agent
+   string sent, as optional fields omitted for Direct so existing chain hashes are unchanged. It
+   never records the proxy host, port, or credentials, which could expose the Operator's own
+   infrastructure in an export, and it does not look up the exit address, which would send every
+   Capture's traffic to an address-echo service. The record states what Birdbrain asked Chromium
+   to do, not which address the target saw. The verifier learns the fields before any build
+   writes them (the ADR-0023 sequencing).
+6. **Tor is the Operator's own.** Birdbrain does not bundle Tor. It offers the two local SOCKS
+   ports as presets, 9150 for Tor Browser and 9050 for the Tor service, and describes Tor as
+   hiding the IP address only.
+7. **A challenge is a faithful capture.** Tor and shared VPN addresses draw more challenges, and
    a hidden window cannot answer one. A capture of the challenge page is recorded as what the
    site served, not as a failure to reach it.
 
@@ -71,19 +85,20 @@ say that the time zone and language still reveal the Operator's region through a
   change that routing does not make.
 - **Allow removing the app token now.** Rejected until measured: the only measurement failed, and
   the gain is small while `Electron/` and the Chromium-only brands remain.
-- **Route only the Recapture window.** Rejected: the TLS re-fetch reconnects to the target from
-  the main process with local DNS, so a routed render followed by a direct re-fetch exposes the
-  Operator anyway.
+- **Route only traffic that touches the target, or only traffic that carries case information.**
+  Rejected: the Operator has to read a table to know what leaves directly. "Nothing leaves
+  directly" is a rule the Operator can check.
+- **Bundle Tor.** Rejected for now: a bundled Tor carries its own update and security obligations.
 
 ## Consequences
 
 - The `capture` entry schema, `captureLifecycle.ingest`, the shared verifier, and the standalone
   verifier change; each is evidence-affecting.
-- The TLS re-fetch runs after extension Captures too. An Operator whose browser uses a proxy that
-  the operating system does not also enforce has the target contacted directly by Birdbrain. The
-  spec decides whether the route setting covers that path for extension Captures.
-- The Wayback lookup, the RFC 3161 timestamp request and the consent filter-list download contact
-  third parties, not the target. Whether the route covers them is for the spec.
+- Extension Captures change too: their TLS Cert Chain is skipped and their TSA request is routed
+  while the Egress is not Direct. The page itself still loads in the Operator's own browser,
+  whose network path Birdbrain does not control.
+- Routed TSA requests add latency, so the gap between capture time and the trusted timestamp
+  grows, most over Tor.
 - A deny-all permission check handler and the move of the user agent into the signed entry need
   no amendment and can ship before routing does.
 - The threat-model delta (#546) gains network attribution as a guarantee with stated limits,

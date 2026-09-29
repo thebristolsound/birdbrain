@@ -75,6 +75,15 @@ const CAPTURE_BODY_R7 = {
   finalUrl: 'https://example.com/redirected'
 }
 
+// The same body once X46 puts the Capture's Exhibit Number on it (#1270). The
+// field is schema 3, so the entry is stamped 3; every other field is
+// CAPTURE_BODY's, so the pair pins what the number costs.
+const CAPTURE_BODY_X46 = {
+  ...CAPTURE_BODY,
+  exhibitNumber: 1,
+  schemaVersion: 3
+}
+
 const EXHIBIT_ID = '0196f7a2-aaaa-bbbb-cccc-000000000010'
 const EXHIBIT_CONTENT_HASH = 'd'.repeat(64)
 
@@ -145,7 +154,11 @@ const FROZEN_ENTRY_HASHES = {
   // new answer, not a moved one: the `capture` digest above is for the same
   // fields WITHOUT the two new ones and is unchanged, which is the claim that
   // every chain written before R7 still verifies.
-  captureR7: 'f2e8b2c8d315fa63a0609e7bb321c3146cf786812a1c6478e9c158623c18aa32'
+  captureR7: 'f2e8b2c8d315fa63a0609e7bb321c3146cf786812a1c6478e9c158623c18aa32',
+  // Frozen at X46 (#1270), the first build that could write this body. A new
+  // answer, not a moved one: `capture` above is unchanged, which is the claim
+  // that every capture entry written before X46 still verifies.
+  captureX46: '22a772cd5d9b7666406f35a39dace96f9080ad8ddd54a0d13078de0e6625d17c'
 }
 
 function entryHashOf(body: Record<string, unknown>): string {
@@ -234,6 +247,19 @@ describe('manifest schema 3 — frozen entry hashes', () => {
     expect(result.unsupported).toBeUndefined()
   })
 
+  it('pins the canonical hash of a capture entry carrying its Exhibit Number (X46)', () => {
+    expect(entryHashOf(CAPTURE_BODY_X46)).toBe(FROZEN_ENTRY_HASHES.captureX46)
+    expect(entryHashOf(CAPTURE_BODY_X46)).not.toBe(FROZEN_ENTRY_HASHES.capture)
+  })
+
+  it('verifies a chain mixing capture entries written before and after X46', () => {
+    // A Case begun before X46 keeps its unnumbered capture entries and gains
+    // numbered ones; schema 3 was amended in place, so one verifier reads both.
+    const result = verify(buildChain([CAPTURE_BODY, CAPTURE_BODY_X46]))
+    expect(result.valid).toBe(true)
+    expect(result.unsupported).toBeUndefined()
+  })
+
   it('pins the canonical hash of each new entry type', () => {
     expect(entryHashOf(EXHIBIT_BODY)).toBe(FROZEN_ENTRY_HASHES.exhibit)
     expect(entryHashOf(DERIVATION_BODY)).toBe(FROZEN_ENTRY_HASHES.derivation)
@@ -303,6 +329,18 @@ describe('manifest schema 3 — the schema', () => {
         entryHash: 'f'.repeat(64)
       }).success
     ).toBe(false)
+  })
+
+  it('parses a capture entry carrying an Exhibit Number only when stamped 3 (X46)', () => {
+    const parses = (body: Record<string, unknown>): boolean =>
+      ManifestEntrySchema.safeParse({ ...body, entryHash: 'f'.repeat(64) }).success
+    expect(parses(CAPTURE_BODY_X46)).toBe(true)
+    // Stamped 2, a schema-2 verifier would read the field as a malformed shape
+    // and report a broken chain, so this build refuses the combination too.
+    expect(parses({ ...CAPTURE_BODY_X46, schemaVersion: 2 })).toBe(false)
+    for (const exhibitNumber of [0, -1, 1.5, '1']) {
+      expect(parses({ ...CAPTURE_BODY_X46, exhibitNumber })).toBe(false)
+    }
   })
 
   it('rejects a v3 entry type that claims a schema version below 3', () => {
@@ -392,6 +430,23 @@ describe('manifest schema 3 — writing stays readable by a schema-2 verifier', 
     })
     const [line] = readFileSync(join(caseDir, MANIFEST_FILENAME), 'utf-8').trim().split('\n')
     expect((JSON.parse(line) as { schemaVersion: number }).schemaVersion).toBe(2)
+  })
+
+  it('appends a capture entry carrying an Exhibit Number at schemaVersion 3 (X46)', () => {
+    appendManifestEntry(caseDir, {
+      type: 'capture',
+      captureId: 'cap-1',
+      caseId: CASE_ID,
+      url: 'https://example.com/1',
+      timestamp: '2026-06-01T12:00:00.000Z',
+      contentHash: 'a'.repeat(64),
+      exhibitNumber: 1,
+      sizeBytes: 10,
+      ...OPERATOR
+    })
+    const [line] = readFileSync(join(caseDir, MANIFEST_FILENAME), 'utf-8').trim().split('\n')
+    expect(JSON.parse(line)).toMatchObject({ exhibitNumber: 1, schemaVersion: 3 })
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
   })
 })
 

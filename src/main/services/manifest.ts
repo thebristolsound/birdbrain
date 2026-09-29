@@ -543,6 +543,9 @@ export type ManifestEntryInput =
       // when absent so pre-existing entries' canonical bodies — and chain
       // hashes — are unchanged.
       consentSuppression?: ConsentSuppression
+      // The Capture's Exhibit Number (X46). A schema-3 field, so an entry
+      // carrying it is stamped 3 (CAPTURE_EXHIBIT_NUMBER_MIN_READER).
+      exhibitNumber?: number
       sizeBytes: number
       operatorId: string
       operatorName: string
@@ -714,8 +717,8 @@ export interface AppendResult {
 // for entries whose shape those verifiers understand perfectly (X25: a stale
 // verifier reporting a valid chain as broken is a false accusation, and nothing
 // can recall a distributed copy). So each type declares the oldest verifier
-// that can read it, and the v3 types (ADR-0023) are the only ones that will
-// stamp 3 — once anything writes them (`803a` onwards).
+// that can read it, and the v3 types (ADR-0023) stamp 3. A `capture` entry
+// stamps 3 only when it carries a schema-3 field (fieldMinReaderSchemaVersion).
 //
 // Typed as a total Record over the input union so adding an entry type without
 // deciding its minimum reader version is a compile error, not a silent 2. That
@@ -746,6 +749,18 @@ export interface AppendOptions {
   minReaderSchemaVersion?: number
 }
 
+// A `capture` entry's shape has a schema-2 form, but `exhibitNumber` is a
+// schema-3 field (X46): a schema-2 verifier meeting it under a 2 stamp would
+// fail the strict parse and report a broken chain. Decided here from the entry
+// itself rather than by each caller, so every append of the field stamps 3.
+const CAPTURE_EXHIBIT_NUMBER_MIN_READER = 3
+
+function fieldMinReaderSchemaVersion(entry: ManifestEntryInput): number {
+  return entry.type === 'capture' && entry.exhibitNumber !== undefined
+    ? CAPTURE_EXHIBIT_NUMBER_MIN_READER
+    : 0
+}
+
 // Write-ahead append: compute hash, append JSONL line, fsync.
 // Caller must call rollbackManifestEntry(anchorBytes) if a later step fails.
 export function appendManifestEntry(
@@ -766,7 +781,11 @@ export function appendManifestEntry(
     // old" by the verifier that wrote it.
     schemaVersion: Math.min(
       MANIFEST_SCHEMA_VERSION,
-      Math.max(MIN_READER_SCHEMA_VERSION[entry.type], opts.minReaderSchemaVersion ?? 0)
+      Math.max(
+        MIN_READER_SCHEMA_VERSION[entry.type],
+        fieldMinReaderSchemaVersion(entry),
+        opts.minReaderSchemaVersion ?? 0
+      )
     )
   }
   const canonical = canonicalStringify(body)
@@ -895,6 +914,8 @@ export interface CaptureEntryContext {
   // Consent-overlay suppression provenance; omitted from the manifest body when
   // absent to preserve legacy canonical bodies.
   consentSuppression?: ConsentSuppression
+  // The Exhibit Number the ingest assigned (X46); the row takes the same one.
+  exhibitNumber?: number
   sizeBytes: number
   operatorId: string
   operatorName: string
@@ -936,6 +957,7 @@ export async function withCaptureEntry<T>(
       ...(ctx.consentSuppression !== undefined
         ? { consentSuppression: ctx.consentSuppression }
         : {}),
+      ...(ctx.exhibitNumber !== undefined ? { exhibitNumber: ctx.exhibitNumber } : {}),
       sizeBytes: ctx.sizeBytes,
       operatorId: ctx.operatorId,
       operatorName: ctx.operatorName,

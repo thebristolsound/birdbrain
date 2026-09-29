@@ -1,7 +1,6 @@
----
-title: 'Capture pipeline'
-description: 'The core ingestion path, from the Chrome extension through the local Hono server to disk, SQLite, and the renderer.'
----
+# Capture pipeline
+
+The core ingestion path, from the Chrome extension through the local Hono server to disk, SQLite, and the renderer.
 
 ## 1. Overview
 

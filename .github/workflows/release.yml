@@ -50,12 +50,15 @@ jobs:
           AppImage installs in place. A \`.deb\` install updates only on **Restart to update**, so \`.deb\`
           users have to look here.
 
-          **Source opens when the public-readiness effort closes.** Birdbrain is built to be an
-          open-source tool; the repository it is built in stays private while that effort runs.
+          **The source is public.** Birdbrain is open source under the MIT license and is built in
+          [thebristolsound/birdbrain](https://github.com/thebristolsound/birdbrain). This repository
+          holds the builds only.
 
           ### What to report
 
-          Open an issue on this repository.
+          Open an issue on this repository. Report a security vulnerability privately through the
+          [source repository's Security tab](https://github.com/thebristolsound/birdbrain/security),
+          not in an issue here.
 
           **Do not report:** layout, spacing, visual design, wording, labels, or a general sense that it
           feels dated. The UI is changing substantially and those decisions are made.
@@ -110,25 +113,27 @@ jobs:
 
           **On macOS?** Not published here, and not supported. Notarization is the blocker.
 
-          **Already running Birdbrain?** You do not need this page — **Settings → Updates →
-          Check for updates** installs this version in place. After it restarts, reload the
-          Birdbrain extension at \`chrome://extensions\` — Chrome keeps the old copy loaded
-          until you do.
+          **Already running Birdbrain?** You do not need this page. **Settings → Updates →
+          Check for updates** finds this version. If the download does not start by itself, click
+          **Download**. When it finishes, click **Restart to update**. On the \`.deb\`, that last
+          step asks for your system password. After the restart, reload the Birdbrain extension at
+          \`chrome://extensions\`, because Chrome keeps the old copy loaded until you do.
 
           Platform notes, the extension load steps, and where advisories appear:
-          [Download and install](https://thebristolsound.github.io/birdbrain/docs/download/).
+          [Download Birdbrain](https://thebristolsound.github.io/birdbrain/docs/download/).
 
           Step by step, from install to first capture:
-          [Tester guide](https://thebristolsound.github.io/birdbrain/docs/tester-guide/).
+          [Install and first capture](https://thebristolsound.github.io/birdbrain/docs/tester-guide/).
           EOF
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           # The tag is pushed here, but the Release is published in the public
-          # releases repository — electron-updater's unauthenticated GitHub provider
-          # reads that feed, and this repository is private (#567). The tag does not
-          # exist there, so pin where it is cut rather than relying on a default.
+          # releases repository: it is the electron-builder `publish` target in
+          # package.json, so it is the feed every installed build's updater reads
+          # (#567). The tag does not exist there, so pin where it is cut rather than
+          # relying on a default.
           repository: thebristolsound/birdbrain-releases
           token: ${{ secrets.RELEASES_REPO_TOKEN }}
           target_commitish: main

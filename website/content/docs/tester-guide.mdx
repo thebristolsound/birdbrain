@@ -153,9 +153,13 @@ The folder **Open extension folder** opens is a copy the app keeps in its user d
 directory and refreshes whenever the app version changes. The path stays the same across
 updates, so a card you loaded from it keeps working after a reload. If you installed
 Birdbrain before that folder moved, though, your card still points at the old app install
-folder: click **Open extension folder** again, **Load unpacked** the folder it opens, and
-remove the older Birdbrain entry pointing somewhere else. Leave both loaded and Chrome runs
-the stale one.
+folder. The dashboard shows **Open extension folder** only while no extension is connected, so
+if the old card still connects, the button is not there. Open the folder yourself instead. It
+is the `extension` folder in Birdbrain's user data directory. To find that directory, go to
+**Settings → Diagnostics → Log** and click **Reveal log file**. Your file manager shows the log
+file inside a `logs` folder. Go up one level, and the `extension` folder is beside `logs`.
+**Load unpacked** that `extension` folder, then remove the older Birdbrain entry pointing
+somewhere else. Leave both loaded and Chrome runs the stale one.
 
 If you put real project data in, this is what stands behind it, and the limits below are
 why we recommend synthetic or low-stakes material instead.

@@ -53,7 +53,7 @@ The primary artifacts taken from one observation of a single web page (MHTML, Tr
 _Avoid_: page, snapshot, record.
 
 **Transaction Record**:
-The WARC holding every HTTP request and response of the observed navigation, from its first request to the moment of Capture. Present only when recording was on before the page loaded; never reconstructed afterwards.
+The WARC holding every HTTP request and response of the observed navigation as the browser reported them, from its first request to the moment of Capture. It records what the browser's network stack handed over (decoded bodies, headers as parsed), never bytes read off the wire. Present only when recording was on before the page loaded; never reconstructed afterwards.
 _Avoid_: network log, HAR, archive, WARC file (as the general term).
 
 **Capture Server**:

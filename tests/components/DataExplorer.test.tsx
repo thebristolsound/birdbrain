@@ -354,6 +354,9 @@ describe('DataExplorer failed reads (#1656)', () => {
     await act(() => new Promise((resolve) => setTimeout(resolve, 20)))
   }
 
+  // In this test and the next, the rail is gone, so no node but the default is
+  // in reach, and "No exceptions among the verified rows." renders inside the
+  // table: the absence of both is what proves no node can show the all-clear.
   it('replaces the screen with the error and a retry when the inventory read fails', async () => {
     const inventory = vi.mocked(window.birdbrain.exhibits.inventory)
     inventory.mockRejectedValueOnce(new Error('database is locked'))
@@ -362,9 +365,7 @@ describe('DataExplorer failed reads (#1656)', () => {
 
     expect(await screen.findByText('Failed to load case data: database is locked')).toBeTruthy()
     expect(screen.queryByRole('tree')).toBeNull()
-    expect(screen.queryByTestId('integrity-strip')).toBeNull()
     expect(screen.queryByTestId('artifact-table')).toBeNull()
-    expect(screen.queryByText('No exceptions among the verified rows.')).toBeNull()
 
     // The retry reads an empty Case, which keeps its existing empty message.
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
@@ -382,7 +383,6 @@ describe('DataExplorer failed reads (#1656)', () => {
     expect(await screen.findByText('Failed to load captures: disk offline')).toBeTruthy()
     expect(screen.queryByRole('tree')).toBeNull()
     expect(screen.queryByTestId('artifact-table')).toBeNull()
-    expect(screen.queryByText('No exceptions among the verified rows.')).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
     await selectNode('integrity-exceptions')

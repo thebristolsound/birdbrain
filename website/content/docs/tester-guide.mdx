@@ -247,10 +247,25 @@ Birdbrain keeps a local diagnostic log and can bundle it into a report for you:
 
 The zip saves **only to your computer**. Birdbrain never uploads it or sends
 it anywhere. Attach it to the issue yourself, the same way you'd attach any
-other file. It contains the diagnostic log, a record of recent app launches, a few app facts
-(version, platform, recent performance stats), your installation identifier, and what you typed
-in the report form. It does **not** contain your captures, your case database, or your settings
-file. That is why no bug report needs a case archive, and there is no channel for sending one.
+other file. It contains:
+
+- the diagnostic log, plus the previous log file if the log has rotated
+- what you typed in the report form, the time you made the report, and, if you opened it with
+  **Report this** on an error message, that error's log entry ID
+- your installation identifier
+- a record of your last 20 app launches: a random ID for each, when it started and ended,
+  whether it closed cleanly, whether its crash prompt was shown, and the version, platform and
+  install format it ran
+- a snapshot of the app's state: the Birdbrain, Electron, Chrome and Node versions, your
+  operating system, processor type and install format, how long the app has been running, each
+  app process's type, ID, CPU and memory use, how far the app is lagging now and at worst in the
+  last minute, recent freezes and named slow operations with their times and durations, your
+  database's schema version and the newest one this build supports, how many cases, captures,
+  notes, selectors and extracted data items you have, the size of your case database files,
+  whether your signing key is stored encrypted, and whether trusted timestamping is on
+
+It does **not** contain your captures, your case database, or your settings file. That is why no
+bug report needs a case archive, and there is no channel for sending one.
 
 Birdbrain writes the same installation identifier into the manifest entry of every capture you
 take, so attaching the bundle to a public issue links that issue to the evidence packages you

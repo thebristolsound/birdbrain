@@ -371,6 +371,17 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
       expect(run.output).toContain(`== Step ${step} -`)
     }
     expect(run.output).toContain('TSA signature verifies to tsa-root.pem')
+    // A Case this installation signed throughout is one run under the enclosed
+    // key (#1657), and its certification keeps the single key field.
+    const last = manifestLines(packageDir).length - 1
+    expect(run.output).toContain(
+      `entries 0 to ${last}: ${last + 1} signed entr(ies) verified under signing-public-key.pem ` +
+        `(SHA-256 ${sha256(entries.get(PACKAGE_ROOT_FILES.signingPublicKey)!)})`
+    )
+    expect(run.output).not.toContain('import entry')
+    expect(entries.get(PACKAGE_ROOT_FILES.certification)!.toString('utf-8')).toContain(
+      'Signing key (SHA-256 of signing-public-key.pem)'
+    )
   })
 
   it.skipIf(!RUNS)('records verify.sh in the package index, and re-hashes it', () => {

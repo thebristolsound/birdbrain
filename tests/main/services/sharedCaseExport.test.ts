@@ -38,7 +38,9 @@ import {
 } from '../../../src/packages/evidence-package-layout/index'
 import type { ExportOptions } from '@shared/types'
 import { HAS_JQ } from '../../helpers/jq'
+import { HAS_OPENSSL } from '../../helpers/openssl'
 import { extractRunbookBlocks, runRunbookBlocks } from '../../helpers/runbookBlocks'
+import { runVerifyScript } from '../../helpers/verifyScript'
 
 // Shared Cases, step 3 (#1511): the writers. The three acceptance criteria are
 // frozen here, each end to end through the app's own export and import and
@@ -800,6 +802,27 @@ describe('Shared Case export, import and fork (#1511)', () => {
     expect(verifyEvidencePackage(dir).checks.find((c) => c.name === 'shared case')?.reason).toBe(
       `manifest schema 4; 0 member(s); forked from Case ${caseId}, ` +
         `2 member(s): CO=${PEER_ID}, RP=${localId}`
+    )
+  })
+
+  // #1657: the fork's history before its `import` is the source Owner's, signed
+  // with the Owner's key, so verify.sh has to check it under the key the
+  // `import` carries, as the package verifier above does.
+  it.skipIf(!HAS_OPENSSL || !HAS_JQ)('exports a fork whose verify.sh passes', async () => {
+    const { owner } = memberReplica()
+    const out = join(tempDir, 'fork.birdbrain')
+    await exportCaseArchive(caseId, out)
+    deleteCase(caseId)
+    const { newCaseId } = await importCaseArchive(out)
+
+    const { dir } = await exportPackage(newCaseId)
+    const run = runVerifyScript(dir)
+    expect(run.status, run.output).toBe(0)
+    const last = owner.lines.length - 1
+    const fingerprint = createHash('sha256').update(PEER_KEY.publicKey).digest('hex')
+    expect(run.output).toContain(
+      `entries 0 to ${last}: ${owner.lines.length} signed entr(ies) verified under the key ` +
+        `import entry ${last + 1} carries (SHA-256 ${fingerprint})`
     )
   })
 })

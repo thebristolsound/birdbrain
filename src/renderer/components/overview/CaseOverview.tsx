@@ -263,6 +263,8 @@ export function CaseOverview() {
               verified={derived.verified}
               unverified={derived.unverified}
               tampered={derived.tampered}
+              chainBroken={derived.chainBroken}
+              missing={derived.missing}
             />
           </SectionCard>
           <SectionCard

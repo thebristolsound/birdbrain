@@ -178,6 +178,25 @@ describe('CaseOverview', () => {
     expect(screen.getByTitle('Tampered: 1')).toBeTruthy()
   })
 
+  it('files missing and chain-broken captures under their own labels, not Tampered', async () => {
+    seedBridge({
+      captures: {
+        list: vi.fn(async () => [
+          CAPTURES[0],
+          { ...CAPTURES[1], lastVerifiedStatus: 'missing' },
+          { ...CAPTURES[1], id: 'cap3', lastVerifiedStatus: 'chain-broken' }
+        ]),
+        getThumbnail: vi.fn(async () => null)
+      }
+    })
+    renderOverview()
+
+    await waitFor(() => expect(screen.getByTitle('Missing: 1')).toBeTruthy())
+    expect(screen.getByTitle('Chain broken: 1')).toBeTruthy()
+    expect(screen.getByTitle('Verified: 1')).toBeTruthy()
+    expect(screen.queryByTitle(/^Tampered/)).toBeNull()
+  })
+
   it('renders no selector-coverage card', async () => {
     renderOverview()
 

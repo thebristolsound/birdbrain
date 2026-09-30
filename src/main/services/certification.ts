@@ -36,10 +36,11 @@ export interface CertificationInput {
   signingKeyFingerprint: string
   /**
    * Which key signed which entries of the bundled chain (#1657), in chain
-   * order. A chain that continues an imported one has a run per `import`
-   * entry, under the key that entry carries, before the run under
-   * signing-public-key.pem; only then does this document list the runs.
-   * Absent, empty or a single run: `signingKeyFingerprint` stands alone.
+   * order. A chain that continues an imported one has, before the run under
+   * signing-public-key.pem, a run for each `import` entry with entries before
+   * it, under the key that entry carries; only then does this document list
+   * the runs. Absent, empty or a single run: `signingKeyFingerprint` stands
+   * alone.
    */
   signingKeyRanges?: SigningKeyRange[]
   /** What this package actually contains, counted from what was packaged. */

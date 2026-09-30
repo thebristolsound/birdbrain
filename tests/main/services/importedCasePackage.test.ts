@@ -37,10 +37,9 @@ import { runVerifyScript } from '../../helpers/verifyScript'
 
 // #1657: a Case that arrived through an import carries entries another
 // installation signed, before its `import` entry. Its Evidence Package must
-// pass the verify.sh and the package verifier it ships with, and its
-// certification must say which key signed which entries. Both shipped
-// verifiers run for real here, on packages the real export path built from a
-// real import.
+// pass the verify.sh it ships with and the package verifier, and its
+// certification must say which key signed which entries. Both verifiers run
+// for real here, on packages the real export path built from a real import.
 
 const localRoot = vi.hoisted(() => ({ pem: '' }))
 
@@ -66,8 +65,8 @@ const FIXTURE = resolve(__dirname, '../../../resources', DEMO_CASE_ARCHIVE_FILEN
 
 /**
  * SHA-256 of the demo fixture's signing key, the key its three capture entries
- * were signed with. Frozen with the fixture: regenerating the fixture changes
- * it, and this test then fails until the constant is updated with it.
+ * were signed with. Frozen with the fixture: a regenerated fixture signed with
+ * another key fails this test until the constant is updated with it.
  */
 const DEMO_KEY_FINGERPRINT = '090c874007fcd7be652b70cec13d6fb3435f06c1f254829b7bd4b652fb220846'
 
@@ -219,6 +218,16 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
     return { caseId: newCaseId, sourcePem }
   }
 
+  // The same Case carried on to a third installation: exported again as a Case
+  // Archive from where it was imported, and imported on `name`.
+  async function importAgain(caseId: string, name: string): Promise<string> {
+    const archive = join(tempDir, `${name}.birdbrain`)
+    await exportCaseArchive(caseId, archive)
+    await useInstallation(name)
+    const { newCaseId } = await importCaseArchive(archive)
+    return newCaseId
+  }
+
   function expectInAppPass(dir: string): void {
     const result = verifyEvidencePackage(dir)
     expect(
@@ -283,6 +292,41 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
       sourceFingerprint: sha256(sourcePem),
       localFingerprint: sha256(getPublicKeyPem())
     })
+  })
+
+  it.skipIf(!RUNS)('names a key per installation on a Case imported twice', async () => {
+    const { caseId, sourcePem } = await importFromAnotherInstallation()
+    const middlePem = getPublicKeyPem()
+    const dir = await exportPackage(await importAgain(caseId, 'final'), 'twice-imported')
+
+    const lines = chainLines(dir)
+    expect(lines.map((line) => line.type)).toEqual(['capture', 'timestamp', 'import', 'import'])
+    expectInAppPass(dir)
+    const run = runVerifyScript(dir)
+    expect(run.status, run.output).toBe(0)
+
+    // Each import's own entry is signed by the installation that imported,
+    // so it sits in the run of the next key along, not its own.
+    const certification = readFileSync(join(dir, PACKAGE_ROOT_FILES.certification), 'utf-8')
+    const runs = [
+      { from: 0, to: 1, carriedBy: 2, pem: sourcePem },
+      { from: 2, to: 2, carriedBy: 3, pem: middlePem },
+      { from: 3, to: 3, carriedBy: null, pem: getPublicKeyPem() }
+    ]
+    for (const { from, to, carriedBy, pem } of runs) {
+      const key = (prefix: string): string =>
+        carriedBy === null
+          ? 'signing-public-key.pem'
+          : `the key import entry ${prefix}${carriedBy} carries`
+      expect(run.output).toContain(
+        `${entriesLabel(from, to)}: ${to - from + 1} signed entr(ies) verified under ${key('')} ` +
+          `(SHA-256 ${sha256(pem)})`
+      )
+      expect(certification).toContain(
+        `Signing key for ${entriesLabel(from, to, '#')} (SHA-256 of ${key('#')})</div>\n` +
+          `      <div class="field-value"><span class="mono break">${sha256(pem)}</span>`
+      )
+    }
   })
 
   it.skipIf(!RUNS)('passes both shipped verifiers on the demo Case', async () => {

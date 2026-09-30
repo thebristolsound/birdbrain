@@ -4,6 +4,7 @@ import { render, screen, fireEvent, waitFor, cleanup, within, act } from '@testi
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { CaseManifestSnapshot } from '@shared/manifestSnapshot'
+import type { Capture } from '@shared/types'
 
 vi.mock('@tanstack/react-router', () => ({
   useParams: () => ({ caseId: 'case1' }),
@@ -336,6 +337,23 @@ describe('DataExplorer failed reads (#1656)', () => {
     )
   }
 
+  function deferred<T>() {
+    let resolve!: (value: T) => void
+    const promise = new Promise<T>((res) => {
+      resolve = res
+    })
+    return { promise, resolve }
+  }
+
+  // Waits until the inventory has resolved and its result has had time to
+  // render, so the captures read is the only one still in flight.
+  async function inventorySettled(client: QueryClient) {
+    await waitFor(() =>
+      expect(client.getQueryState(queryKeys.exhibitInventory('case1'))?.status).toBe('success')
+    )
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)))
+  }
+
   it('replaces the screen with the error and a retry when the inventory read fails', async () => {
     const inventory = vi.mocked(window.birdbrain.exhibits.inventory)
     inventory.mockRejectedValueOnce(new Error('database is locked'))
@@ -370,6 +388,40 @@ describe('DataExplorer failed reads (#1656)', () => {
     await selectNode('integrity-exceptions')
     expect(await screen.findByTestId('artifact-row-cap-a')).toBeTruthy()
     expect(screen.queryByText(/Failed to load/)).toBeNull()
+  })
+
+  // Until the captures arrive every Capture reads as unverified, so Integrity
+  // Exceptions used to say "No exceptions" for a tampered one meanwhile.
+  it('holds the loading screen until the first captures read settles', async () => {
+    const captures = deferred<Capture[]>()
+    vi.mocked(window.birdbrain.captures.list).mockReturnValueOnce(captures.promise)
+    const client = renderExplorer()
+    await inventorySettled(client)
+
+    expect(screen.getByText('Loading case data...')).toBeTruthy()
+    expect(screen.queryByRole('tree')).toBeNull()
+
+    await act(async () => captures.resolve(CAPTURES))
+    await selectNode('integrity-exceptions')
+    expect(await screen.findByTestId('artifact-row-cap-a')).toBeTruthy()
+  })
+
+  // A retry of a read that never succeeded starts over from no data.
+  it('holds the loading screen while a retry of a failed captures read is in flight', async () => {
+    const list = vi.mocked(window.birdbrain.captures.list)
+    const retried = deferred<Capture[]>()
+    list.mockRejectedValueOnce(new Error('disk offline'))
+    list.mockReturnValueOnce(retried.promise)
+    renderExplorer()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(screen.queryByText(/Failed to load/)).toBeNull())
+    expect(screen.getByText('Loading case data...')).toBeTruthy()
+    expect(screen.queryByRole('tree')).toBeNull()
+
+    await act(async () => retried.resolve(CAPTURES))
+    await selectNode('integrity-exceptions')
+    expect(await screen.findByTestId('artifact-row-cap-a')).toBeTruthy()
   })
 
   it('shows the error and a retry on the Manifest Ledger node when the snapshot read fails', async () => {

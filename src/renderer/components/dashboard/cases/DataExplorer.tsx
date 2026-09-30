@@ -139,6 +139,7 @@ export function DataExplorer() {
   } = useQuery(exhibitInventoryQueryOptions(caseId))
   const {
     data: captures = [],
+    isLoading: capturesLoading,
     isError: capturesFailed,
     error: capturesError,
     refetch: refetchCaptures
@@ -367,16 +368,17 @@ export function DataExplorer() {
     onCopyHash: (value: string, label: string) => void copyValue(value, label)
   }
 
-  if (isLoading) {
+  // Without the inventory the integrity buckets and the table would read as
+  // empty, and without the captures the buckets lose each Capture's persisted
+  // verify state, so the screen waits for both and either failed read
+  // replaces it.
+  if (isLoading || capturesLoading) {
     return (
       <div className="flex h-full items-center justify-center text-text-muted">
         Loading case data...
       </div>
     )
   }
-  // Without the inventory the integrity buckets and the table would read as
-  // empty, and without the captures the buckets lose each Capture's persisted
-  // verify state, so either failed read replaces the whole screen.
   if (inventoryFailed || capturesFailed) {
     return (
       <div className="flex h-full items-center justify-center">

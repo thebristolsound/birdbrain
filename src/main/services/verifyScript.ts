@@ -58,8 +58,10 @@ export const VERIFY_SCRIPT = `#!/bin/sh
 # 3 INCOMPLETE - nothing failed, but a check could not be completed, so this is
 # not a pass either. A check that cannot run is never folded into exit 0.
 #
-# What exit 0 means: every signed entry verifies under the enclosed public key
-# and recomputes to its own entryHash, and for every capture this package's
+# What exit 0 means: every signed entry verifies under the key step 2 resolves
+# for it - the enclosed public key, or, for an entry before an import entry,
+# the key the first import entry after it carries - and recomputes to its own
+# entryHash, and for every capture this package's
 # signed chain still calls active and in scope, its page, screenshot and RFC
 # 3161 token are enclosed and match that signed entry. A signed token whose
 # capture is active and in scope but whose bytes the package does not enclose
@@ -212,14 +214,15 @@ field() { printf '%s' "$1" | jq -r "$2"; }
 in_list() { printf '%s\\n' "$1" | grep -qxF -e "$2"; }
 
 # Verifies one manifest line's RSA signature over its bare entryHash hex with no
-# trailing newline - the recipe ${ROOT.verifyRunbook} step 2 documents. Prints nothing and
-# returns non-zero on any failure, so each caller words its own finding.
+# trailing newline, under the public key in the file named by $2 - the recipe
+# ${ROOT.verifyRunbook} step 2 documents. Prints nothing and returns non-zero on any
+# failure, so each caller words its own finding.
 verify_line_signature() {
   sig=$(field "$1" '.signature // empty')
   [ -n "$sig" ] || return 1
   field "$1" '.entryHash' | tr -d '\\n' >"$tmp/entryhash.txt"
   printf '%s' "$sig" | openssl base64 -d -A >"$tmp/sig.bin" 2>/dev/null || return 1
-  openssl dgst -sha256 -verify "$SIGNING_KEY_FILE" \\
+  openssl dgst -sha256 -verify "$2" \\
     -signature "$tmp/sig.bin" "$tmp/entryhash.txt" >/dev/null 2>&1
 }
 
@@ -252,14 +255,79 @@ note "$EVIDENCE_INDEX_FILE is unsigned - steps 3 and 5 are the authoritative bin
 
 # --- Step 2 ---------------------------------------------------------------
 begin 2 'entry signatures'
+# Which key each entry verifies under, the rule the Birdbrain verifier applies:
+# the key the first import entry after it carries as sourcePublicKeyPem, or the
+# enclosed key when no import entry follows it. An import entry carries the key
+# of the installation whose chain it continues, and is itself signed by the
+# installation that imported it, so it verifies under the next key along. That
+# is why a carried key is not taken on trust: the entry carrying it is verified
+# here under the next key, and so on to the enclosed key.
+: >"$tmp/boundaries.txt"
+position=0
+while IFS= read -r line; do
+  [ -n "$line" ] || continue
+  if [ "$(field "$line" '.type')" = 'import' ]; then
+    printf '%s' "$line" | jq -j '.sourcePublicKeyPem // empty' >"$tmp/import-key-$position.pem"
+    printf '%s\\n' "$position" >>"$tmp/boundaries.txt"
+  fi
+  position=$((position + 1))
+done <"$MANIFEST_FILE"
+
+# The key file the entry at position $1 verifies under.
+key_for() {
+  while IFS= read -r boundary; do
+    if [ "$boundary" -gt "$1" ]; then
+      printf '%s' "$tmp/import-key-$boundary.pem"
+      return 0
+    fi
+  done <"$tmp/boundaries.txt"
+  printf '%s' "$SIGNING_KEY_FILE"
+}
+
+# How a finding names that key.
+key_name() {
+  case "$1" in
+  "$SIGNING_KEY_FILE") printf '%s' "$SIGNING_KEY_FILE" ;;
+  *)
+    boundary=\${1##*/import-key-}
+    printf 'the key import entry %s carries' "\${boundary%.pem}"
+    ;;
+  esac
+}
+
+# One line per run of entries under one key, so the output says which key
+# signed which entries. The fingerprint is the SHA-256 of the key's PEM text,
+# the value ${ROOT.certification} states for the same run.
+key_run_note() {
+  if [ "$2" -eq "$3" ]; then
+    run_entries="entry $2"
+  else
+    run_entries="entries $2 to $3"
+  fi
+  note "$run_entries: $4 signed entr(ies) verified under $(key_name "$1") (SHA-256 $(sha256_of "$1"))"
+}
+
 if [ ! -f "$SIGNING_KEY_FILE" ]; then
   fail "$SIGNING_KEY_FILE is missing, so no signature can be checked"
 else
   signed_count=0
   unsigned_count=0
   seen_signed=0
+  position=0
+  run_key=''
+  run_from=0
+  run_signed=0
   while IFS= read -r line; do
     [ -n "$line" ] || continue
+    this=$position
+    position=$((position + 1))
+    key=$(key_for "$this")
+    if [ "$key" != "$run_key" ]; then
+      [ -n "$run_key" ] && key_run_note "$run_key" "$run_from" $((this - 1)) "$run_signed"
+      run_key=$key
+      run_from=$this
+      run_signed=0
+    fi
     idx=$(field "$line" '.index')
     if [ -z "$(field "$line" '.signature // empty')" ]; then
       unsigned_count=$((unsigned_count + 1))
@@ -269,12 +337,14 @@ else
       continue
     fi
     seen_signed=1
-    if verify_line_signature "$line"; then
+    if verify_line_signature "$line" "$key"; then
       signed_count=$((signed_count + 1))
+      run_signed=$((run_signed + 1))
     else
-      fail "entry $idx: signature does not verify under $SIGNING_KEY_FILE"
+      fail "entry $idx: signature does not verify under $(key_name "$key")"
     fi
   done <"$MANIFEST_FILE"
+  [ -n "$run_key" ] && key_run_note "$run_key" "$run_from" $((position - 1)) "$run_signed"
   note "$signed_count signed entr(ies) verified"
   if [ "$unsigned_count" -gt 0 ]; then
     note "$unsigned_count pre-signing entr(ies) carry no signature - covered by steps 3, 4 and 6"
@@ -327,7 +397,7 @@ scope_line=''
 if [ -f "$EXPORT_ENTRY_FILE" ]; then
   export_entry=$(tr -d '\\n' <"$EXPORT_ENTRY_FILE")
   entry_ok=1
-  verify_line_signature "$export_entry" || entry_ok=0
+  verify_line_signature "$export_entry" "$SIGNING_KEY_FILE" || entry_ok=0
   [ "$(recompute_entry_hash "$export_entry")" = "$(field "$export_entry" '.entryHash')" ] || entry_ok=0
   [ "$(field "$export_entry" '.prevHash')" = "$head_hash" ] || entry_ok=0
   if [ "$entry_ok" -eq 0 ]; then

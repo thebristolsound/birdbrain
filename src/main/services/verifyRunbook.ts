@@ -83,6 +83,20 @@ The signing key (\`${ROOT.signingPublicKey}\`) is installation-local and is **no
 an independent trust anchor; it defeats casual tampering. The independent anchor
 for *timestamped* captures is the RFC 3161 timestamp, verified in step 6.
 
+**Not every signed entry is signed by that key.** A case imported from a case
+archive continues a chain the archive holds, and its \`import\` entry carries,
+as \`sourcePublicKeyPem\`, the key of the installation whose chain it continues.
+The rule is the same for every entry: it verifies under the key the first
+\`import\` entry after it carries, or under \`${ROOT.signingPublicKey}\` when no
+\`import\` entry follows it. So the entries before an \`import\` entry, back to
+the previous one, verify under the key it carries, and the \`import\` entry
+itself, signed by the installation that imported the case, verifies under the
+next key along. Step 2 applies this rule, and \`${ROOT.certification}\` states
+the key for each run of entries. A carried key is no more an independent anchor
+than the enclosed one: it is part of an \`import\` entry, hashed and signed like
+any other, so it is only as trustworthy as that entry's signature under the
+next key, and in the end under \`${ROOT.signingPublicKey}\`.
+
 \`${ROOT.exportEntry}\`, when present, is the **signed export entry for this very
 package** — the one entry the bundled \`${ROOT.manifest}\` cannot contain, because
 the manifest copy is sealed just before the entry is appended to the live case
@@ -140,7 +154,7 @@ internal consistency*, **not** timestamp authenticity — this runbook's
 | File | Role |
 |---|---|
 | \`${ROOT.manifest}\` | Signed, hash-linked audit chain (root of trust) |
-| \`${ROOT.signingPublicKey}\` | RSA public key for the per-entry signatures |
+| \`${ROOT.signingPublicKey}\` | RSA public key for the per-entry signatures, except those of entries before an \`import\` entry, which verify under the key the first \`import\` after them carries (see step 2) |
 | \`${ROOT.verifyScript}\` | The steps below as a runnable script (see above) |
 | \`${ROOT.tsaRoot}\` | Self-signed TSA root — the trust anchor for step 6 (absent when no anchor is bundled for the configured authority) |
 | \`${ROOT.tsaIntermediates}\` | Responder + intermediate certs lifted from the tokens (chain-building only, never trusted on their own) |
@@ -165,18 +179,27 @@ jq -r '.artifacts[] | "\\(.sha256)  \\(.path)"' ${ROOT.evidenceIndex} | sha256su
 
 ## Step 2 — Entry signature (\`schemaVersion\` 2 and above)
 
-For a **signed** manifest entry, verify its RSA signature. The signature is over
-the **bare \`entryHash\` hex string** with **no trailing newline** — a stray
-newline makes verification fail spuriously. Entries with no \`signature\` field
-are the pre-signing entries described under Trust model; skip them here and rely
-on steps 3 and 6.
+For a **signed** manifest entry, verify its RSA signature under the key that
+signed it: the \`sourcePublicKeyPem\` of the first \`import\` entry after it, or
+\`${ROOT.signingPublicKey}\` when no \`import\` entry follows it (see Trust
+model). The signature is over the **bare \`entryHash\` hex string** with **no
+trailing newline** — a stray newline makes verification fail spuriously.
+Entries with no \`signature\` field are the pre-signing entries described under
+Trust model; skip them here and rely on steps 3 and 6.
 
 \`\`\`sh
 # Pick an entry (e.g. the first line):
 line=$(sed -n '1p' ${ROOT.manifest})
+# The key it verifies under; -j writes the carried key byte for byte.
+n=$(echo "$line" | jq -r '.index')
+jq -jn --argjson n "$n" \\
+  'first(inputs | select(.type == "import" and .index > $n) | .sourcePublicKeyPem) // empty' \\
+  ${ROOT.manifest} > entry-key.pem
+[ -s entry-key.pem ] || cp ${ROOT.signingPublicKey} entry-key.pem
+sha256sum entry-key.pem   # the fingerprint ${ROOT.certification} states for this entry's key
 printf %s "$(echo "$line" | jq -r '.entryHash')" > entryhash.txt   # NO newline
 echo "$line" | jq -r '.signature' | base64 -d > sig.bin
-openssl dgst -sha256 -verify ${ROOT.signingPublicKey} -signature sig.bin entryhash.txt
+openssl dgst -sha256 -verify entry-key.pem -signature sig.bin entryhash.txt
 # => "Verified OK"
 \`\`\`
 
@@ -393,8 +416,8 @@ cat manifest*.jsonl | jq -r 'select(.type == "member-add") | "\\(.caseId) \\(.me
 \`\`\`
 
 A fork continues the source Owner's chain: the entries before its \`import\`
-entry are the source Case's, and that \`import\`'s \`sourcePublicKeyPem\` is the
-key they verify under. The source Case's other member chains sit under
+entry are the source Case's, and they verify under the key that \`import\`
+carries, as step 2 resolves it. The source Case's other member chains sit under
 \`${LINEAGE_DIRECTORY}/{sourceCaseId}/\`, and they verify as above with the roster
 read from the entries before the \`import\`.
 

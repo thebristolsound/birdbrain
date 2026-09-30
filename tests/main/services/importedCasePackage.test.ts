@@ -68,7 +68,7 @@ const FIXTURE = resolve(__dirname, '../../../resources', DEMO_CASE_ARCHIVE_FILEN
  * were signed with. Frozen with the fixture: a regenerated fixture signed with
  * another key fails this test until the constant is updated with it.
  */
-const DEMO_KEY_FINGERPRINT = '090c874007fcd7be652b70cec13d6fb3435f06c1f254829b7bd4b652fb220846'
+const DEMO_SIGNER_FINGERPRINT = '090c874007fcd7be652b70cec13d6fb3435f06c1f254829b7bd4b652fb220846'
 
 const sha256 = (data: string | Buffer): string => createHash('sha256').update(data).digest('hex')
 
@@ -331,7 +331,7 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
 
   it.skipIf(!RUNS)('passes both shipped verifiers on the demo Case', async () => {
     const header = JSON.parse(readStoredZip(readFileSync(FIXTURE)).get('package.json')!.toString())
-    expect(sha256(header.signingPublicKeyPem)).toBe(DEMO_KEY_FINGERPRINT)
+    expect(sha256(header.signingPublicKeyPem)).toBe(DEMO_SIGNER_FINGERPRINT)
 
     const { newCaseId } = await importCaseArchive(FIXTURE, {
       operatorName: DEMO_CASE_OPERATOR_NAME
@@ -341,7 +341,7 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
     // Known answer: the fixture's three captures, then the import naming its key.
     const lines = chainLines(dir)
     expect(lines.map((line) => line.type)).toEqual(['capture', 'capture', 'capture', 'import'])
-    expect(sha256(lines[3].sourcePublicKeyPem!)).toBe(DEMO_KEY_FINGERPRINT)
+    expect(sha256(lines[3].sourcePublicKeyPem!)).toBe(DEMO_SIGNER_FINGERPRINT)
 
     expectInAppPass(dir)
     const run = runVerifyScript(dir)
@@ -349,10 +349,10 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
     expect(run.output).toContain('verify.sh: PASS')
     expect(run.output).toContain(
       `entries 0 to 2: 3 signed entr(ies) verified under the key import entry 3 carries ` +
-        `(SHA-256 ${DEMO_KEY_FINGERPRINT})`
+        `(SHA-256 ${DEMO_SIGNER_FINGERPRINT})`
     )
     expectKeyRuns(dir, run.output, {
-      sourceFingerprint: DEMO_KEY_FINGERPRINT,
+      sourceFingerprint: DEMO_SIGNER_FINGERPRINT,
       localFingerprint: sha256(getPublicKeyPem())
     })
   })
@@ -370,7 +370,7 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
     expect(blocks.length).toBeGreaterThanOrEqual(2)
     const run = runRunbookBlocks(blocks, { cwd: dir })
     expect(run.ok, `${run.failedBlock}\n${run.stdout}\n${run.stderr}`).toBe(true)
-    expect(run.stdout).toContain(`${DEMO_KEY_FINGERPRINT}  entry-key.pem`)
+    expect(run.stdout).toContain(`${DEMO_SIGNER_FINGERPRINT}  entry-key.pem`)
     expect(run.stdout).toContain('Verified OK')
   })
 

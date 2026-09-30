@@ -81,6 +81,8 @@ describe('computeOverview', () => {
     expect(m.verified).toBe(0)
     expect(m.unverified).toBe(0)
     expect(m.tampered).toBe(0)
+    expect(m.chainBroken).toBe(0)
+    expect(m.missing).toBe(0)
     expect(m.recent).toEqual([])
     expect(m.deltas).toEqual({ captures: 0, sources: 0, selectors: 0, notes: 0 })
     expect(m.newCount).toBe(0)
@@ -123,9 +125,36 @@ describe('computeOverview', () => {
       NOW
     )
     expect(m.verified).toBe(2)
-    expect(m.tampered).toBe(3)
+    expect(m.tampered).toBe(1)
+    expect(m.chainBroken).toBe(1)
+    expect(m.missing).toBe(1)
     expect(m.unverified).toBe(2)
-    expect(m.verified + m.tampered + m.unverified).toBe(7)
+    expect(m.verified + m.tampered + m.chainBroken + m.missing + m.unverified).toBe(7)
+  })
+
+  // Verification returns missing and chain-broken before it compares the page bytes with the
+  // record, so neither says the bytes changed and neither may be counted as Tampered.
+  it.each([
+    ['missing', { tampered: 0, chainBroken: 0, missing: 1 }],
+    ['chain-broken', { tampered: 0, chainBroken: 1, missing: 0 }],
+    ['tampered', { tampered: 1, chainBroken: 0, missing: 0 }]
+  ] as const)('counts one %s capture under its own status only', (status, expected) => {
+    const m = computeOverview(
+      {
+        ...EMPTY,
+        captures: [
+          cap({ id: '1', lastVerifiedStatus: 'verified' }),
+          cap({ id: '2', lastVerifiedStatus: status }),
+          cap({ id: '3', lastVerifiedStatus: undefined })
+        ]
+      },
+      NOW
+    )
+    const { tampered, chainBroken, missing } = m
+    expect({ tampered, chainBroken, missing }).toEqual(expected)
+    expect(m.verified).toBe(1)
+    expect(m.unverified).toBe(1)
+    expect(m.verified + tampered + chainBroken + missing + m.unverified).toBe(3)
   })
 
   it('counts verifier-too-old as unverified, never as tampered (X25)', () => {

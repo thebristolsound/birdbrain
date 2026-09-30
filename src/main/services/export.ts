@@ -55,7 +55,7 @@ import {
   timestampTokenPath
 } from '../../packages/evidence-package-layout/index'
 import type { TrustedTimeResult } from '@shared/verify'
-import { buildCertification } from '@main/services/certification'
+import { buildCertification, type SigningKeyRange } from '@main/services/certification'
 import { resolveToolVersion } from '@main/services/toolVersion'
 import { buildHtmlReport } from '@main/services/reportHtml'
 import type {
@@ -1196,6 +1196,42 @@ function describeExhibit(exhibit: ExportFileExhibit, enclosed: boolean) {
   }
 }
 
+/**
+ * Which key signed which entries of the bundled chain (#1657), by the rule the
+ * package verifier applies (the KEY RULE in `@shared/verify/manifestChain`) and
+ * verify.sh step 2 repeats: an entry verifies under the key the first `import`
+ * entry after it carries, or under this installation's key when none follows.
+ */
+function signingKeyRanges(
+  entries: Record<string, unknown>[],
+  publicKeyPem: string
+): SigningKeyRange[] {
+  const fingerprint = (pem: string): string => sha256(Buffer.from(pem, 'utf-8'))
+  const ranges: SigningKeyRange[] = []
+  let fromIndex = 0
+  entries.forEach(({ type, sourcePublicKeyPem }, position) => {
+    if (type !== 'import' || typeof sourcePublicKeyPem !== 'string') return
+    if (position > fromIndex) {
+      ranges.push({
+        fromIndex,
+        toIndex: position - 1,
+        fingerprint: fingerprint(sourcePublicKeyPem),
+        carriedByImportAt: position
+      })
+    }
+    fromIndex = position
+  })
+  if (entries.length > fromIndex) {
+    ranges.push({
+      fromIndex,
+      toIndex: entries.length - 1,
+      fingerprint: fingerprint(publicKeyPem),
+      carriedByImportAt: null
+    })
+  }
+  return ranges
+}
+
 function buildEvidenceZip(
   caseId: string,
   data: ExportData,
@@ -1268,6 +1304,7 @@ function buildEvidenceZip(
         purposeOrAuthority: meta.purposeOrAuthority,
         manifestHead: data.manifestHead,
         signingKeyFingerprint: sha256(Buffer.from(publicKeyPem, 'utf-8')),
+        signingKeyRanges: signingKeyRanges(manifest.entries, publicKeyPem),
         contents: {
           captureCount: data.captures.length,
           screenshotCount: data.screenshots.size,

@@ -10,8 +10,9 @@
  * Keep this module free of React and of node views. Main loads it too.
  */
 import {
-  generateText,
   getSchema,
+  getText,
+  getTextSerializersFromSchema,
   Node as TiptapNode,
   type Extensions,
   type JSONContent
@@ -187,7 +188,13 @@ function noteSchema(): Schema {
  * note never contained.
  */
 export function noteDocToText(doc: JSONContent): string {
-  return generateText(doc, noteExtensions(), { blockSeparator: '\n' }).trim()
+  // generateText's own body, minus the schema it rebuilds on every call: the
+  // notes list derives a snippet per note, and each rebuild walks every extension.
+  const schema = noteSchema()
+  return getText(Node.fromJSON(schema, doc), {
+    blockSeparator: '\n',
+    textSerializers: getTextSerializersFromSchema(schema)
+  }).trim()
 }
 
 /**

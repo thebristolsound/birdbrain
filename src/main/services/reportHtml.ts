@@ -284,6 +284,13 @@ export interface ReportData {
    */
   packagedPaths: Map<string, PackagedArtifacts>
   /**
+   * The id each Capture's signed entry names it by, keyed by capture id
+   * (#1657). The same as the key unless an archive import renamed the row
+   * after its entry was signed; the documents name a Capture by this id, which
+   * is the one both verifiers look for. See resolveChainNames in export.ts.
+   */
+  chainIdByCaptureId: Map<string, string>
+  /**
    * Manifest-derived trusted time, keyed by capture id, resolved once from the
    * snapshot this package is built from and shared with `preflight` above — see
    * resolveExportTrustedTime in export.ts.
@@ -471,6 +478,8 @@ interface ExhibitView {
   number: number
   citation: string
   capture: Capture
+  /** The id the Capture's signed entry carries, which is what the document names it by. */
+  captureId: string
   verification?: HashVerification
   integrity: StateView
   time: StateView & { basis: TrustedTime }
@@ -585,6 +594,7 @@ function buildExhibits(data: ReportData, options: ExportOptions): ExhibitView[] 
       number,
       citation: number > 0 ? (data.exhibitCitationByCaptureId.get(capture.id) ?? `${number}`) : '',
       capture,
+      captureId: data.chainIdByCaptureId.get(capture.id) ?? capture.id,
       verification,
       integrity: integrityView(verification, capture),
       time: { basis: trustedTime.trustedTime, ...trustedTimeView(trustedTime) },
@@ -1632,7 +1642,7 @@ function renderExhibit(e: ExhibitView, total: number, packaged: boolean): string
   <div class="plate-grid">
     <aside class="rail">
       <p class="micro-heading first">Record</p>
-      ${railRow('Capture identifier', mono(esc(c.id)))}
+      ${railRow('Capture identifier', mono(esc(e.captureId)))}
       ${railRow('Captured at', mono(`${isoUtc(c.timestamp)}<br>${local(c.timestamp)} local`))}
       ${railRow('Capture SHA-256 (full)', mono(esc(c.hash)))}
       ${railRow(

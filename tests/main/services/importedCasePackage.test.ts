@@ -1,11 +1,24 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll, afterEach, vi } from 'vitest'
 import { createHash, createSign, generateKeyPairSync } from 'crypto'
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from 'fs'
 import { dirname, join, resolve } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
+import { listCaptures } from '@main/services/db/captureRepo'
+import { listExhibits } from '@main/services/db/exhibitRepo'
+import { createNote } from '@main/services/db/noteRepo'
+import { commitStagedFiles, uploadToStaging } from '@main/services/staging'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
 import { appendManifestEntry, initManifest } from '@main/services/manifest'
 import {
@@ -28,7 +41,13 @@ import { readStoredZip } from '@main/services/zipRead'
 import { canonicalStringify } from '@shared/verify'
 import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
 import { DEMO_CASE_ARCHIVE_FILENAME, DEMO_CASE_OPERATOR_NAME } from '@shared/constants'
-import { PACKAGE_ROOT_FILES } from '../../../src/packages/evidence-package-layout/index'
+import { WORKING_COPY_MARKER_FILENAME } from '@shared/schemas'
+import {
+  PACKAGE_ROOT_FILES,
+  capturePagePath,
+  exhibitPackagePath,
+  timestampTokenPath
+} from '../../../src/packages/evidence-package-layout/index'
 import { HAS_OPENSSL } from '../../helpers/openssl'
 import { HAS_JQ } from '../../helpers/jq'
 import { createLocalTsa, type LocalTsa } from '../../helpers/localTsa'
@@ -142,7 +161,15 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
     if (tempDir) rmSync(tempDir, { recursive: true, force: true })
   })
 
-  async function exportPackage(caseId: string, name: string): Promise<string> {
+  async function exportPackage(
+    caseId: string,
+    name: string,
+    {
+      captureIds,
+      notes = false,
+      exportClass = 'evidence'
+    }: { captureIds?: string[]; notes?: boolean; exportClass?: 'evidence' | 'working-copy' } = {}
+  ): Promise<string> {
     const outputPath = join(tempDir, `${name}.zip`)
     await generateReport(
       caseId,
@@ -152,11 +179,12 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
           captures: true,
           screenshots: true,
           auditTrail: true,
-          notes: false,
+          notes,
           annotations: 'none'
         },
-        exportClass: 'evidence',
-        outputPath
+        exportClass,
+        outputPath,
+        ...(captureIds ? { captureIds } : {})
       },
       lifecycle
     )
@@ -227,6 +255,111 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
     const { newCaseId } = await importCaseArchive(archive)
     return newCaseId
   }
+
+  // A Case begun on the current installation: a capture with a screenshot and a
+  // timestamp, a committed PDF, a note attached to the capture and one anchored
+  // to it.
+  async function nativeCase(name: string): Promise<{
+    caseId: string
+    captureId: string
+    exhibitId: string
+  }> {
+    const created = createCase({ name, description: 'begun on this installation' })
+    ensureCaseDir(created.id)
+    const caseDir = join(getStorageRoot(), created.id)
+    initManifest(caseDir)
+    const payload = `<html><body>${name}</body></html>`
+    const { capture } = await ingestMhtmlCapture({
+      caseId: created.id,
+      url: 'https://example.com/native',
+      title: 'Native Page',
+      timestamp: '2026-09-02T10:00:00.000Z',
+      stream: Readable.from([Buffer.from(payload)]) as unknown as ReadableStream<Uint8Array>,
+      textContent: payload,
+      screenshot: Buffer.from(`screenshot of ${name}`),
+      headers: {},
+      browserVersion: '',
+      userAgent: '',
+      httpStatus: 200,
+      extensionVersion: '',
+      operatorId: 'op',
+      operatorName: 'Operator local',
+      toolVersion: '0.1.0'
+    })
+    appendManifestEntry(caseDir, {
+      type: 'timestamp',
+      caseId: created.id,
+      captureContentHash: capture.hash,
+      timestamp: '2026-09-02T10:01:00.000Z',
+      tsaToken: tsa!.issueToken(capture.hash).toString('base64'),
+      operatorId: 'op',
+      operatorName: 'Operator local',
+      toolVersion: '0.1.0'
+    })
+    const pdf = join(tempDir, `${name}.pdf`)
+    writeFileSync(pdf, `%PDF-1.7\n% ${name}\n%%EOF\n`)
+    const [staged] = await uploadToStaging(created.id, [pdf])
+    const {
+      outcomes: [outcome]
+    } = await commitStagedFiles(created.id, [staged.id])
+    if (outcome.status !== 'committed') throw new Error(`commit ${outcome.status}`)
+    createNote({ caseId: created.id, captureId: capture.id, title: 'Seen', body: 'On the page.' })
+    createNote({
+      caseId: created.id,
+      title: 'Pinned',
+      body: 'Anchored, not attached.',
+      anchor: JSON.stringify({ kind: 'capture', captureId: capture.id })
+    })
+    return { caseId: created.id, captureId: capture.id, exhibitId: outcome.exhibitId }
+  }
+
+  // A native Case exported as a Case Archive and imported back onto the same
+  // installation while the original is still there, so every id collides and
+  // the import gives each row a new one. The inherited entries keep the ids
+  // they were signed under: the `chain` ids below.
+  async function remappedCase(): Promise<{
+    caseId: string
+    chainCaptureId: string
+    rowCaptureId: string
+    chainExhibitId: string
+    rowExhibitId: string
+  }> {
+    const original = await nativeCase('Remapped')
+    const archive = join(tempDir, 'remapped.birdbrain')
+    await exportCaseArchive(original.caseId, archive)
+    const { newCaseId } = await importCaseArchive(archive)
+    const [capture] = listCaptures(newCaseId)
+    const exhibit = listExhibits(newCaseId).find((row) => row.kind !== 'capture')!
+    expect(capture.id).not.toBe(original.captureId)
+    expect(exhibit.id).not.toBe(original.exhibitId)
+    return {
+      caseId: newCaseId,
+      chainCaptureId: original.captureId,
+      rowCaptureId: capture.id,
+      chainExhibitId: original.exhibitId,
+      rowExhibitId: exhibit.id
+    }
+  }
+
+  // Every file of an unpacked package, by package path.
+  function packageFiles(dir: string, prefix = ''): Map<string, Buffer> {
+    const files = new Map<string, Buffer>()
+    for (const entry of readdirSync(join(dir, prefix), { withFileTypes: true })) {
+      const path = prefix ? `${prefix}/${entry.name}` : entry.name
+      if (entry.isDirectory()) {
+        for (const [nested, bytes] of packageFiles(dir, path)) files.set(nested, bytes)
+      } else {
+        files.set(path, readFileSync(join(dir, path)))
+      }
+    }
+    return files
+  }
+
+  const exhibitEntryPath = (dir: string, exhibitId: string): string =>
+    exhibitPackagePath(
+      chainLines(dir).find((line) => line.type === 'exhibit' && line.exhibitId === exhibitId)!
+        .path as string
+    )
 
   function expectInAppPass(dir: string): void {
     const result = verifyEvidencePackage(dir)
@@ -435,4 +568,111 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
     )
     expect(verifyEvidencePackage(damaged).pass).toBe(false)
   })
+
+  it.skipIf(!RUNS)('names the files of a native Case by its own ids', async () => {
+    const native = await nativeCase('Native')
+    const dir = await exportPackage(native.caseId, 'native', { notes: true })
+
+    expectInAppPass(dir)
+    const run = runVerifyScript(dir)
+    expect(run.status, run.output).toBe(0)
+    expect(run.output).toContain('verify.sh: PASS')
+
+    // Known answer: the chain's ids are the rows' ids, and every name follows them.
+    const files = packageFiles(dir)
+    expect(files.has(capturePagePath(native.captureId))).toBe(true)
+    expect(files.has(timestampTokenPath(native.captureId))).toBe(true)
+    expect(files.has(exhibitEntryPath(dir, native.exhibitId))).toBe(true)
+    const evidence = JSON.parse(files.get(PACKAGE_ROOT_FILES.evidenceIndex)!.toString())
+    expect(evidence.captures.map((row: { id: string }) => row.id)).toEqual([native.captureId])
+    expect(evidence.exhibits.map((row: { id: string }) => row.id).sort()).toEqual(
+      [native.captureId, native.exhibitId].sort()
+    )
+    const notesMd = files.get(PACKAGE_ROOT_FILES.notes)!.toString()
+    expect(notesMd).toContain(`- Attached to capture: ${native.captureId}`)
+    expect(notesMd).toContain(`- Anchored to capture: ${native.captureId}`)
+  })
+
+  it.skipIf(!RUNS)('passes both shipped verifiers on a Case an import renamed', async () => {
+    const remapped = await remappedCase()
+    const dir = await exportPackage(remapped.caseId, 'remapped', { notes: true })
+
+    expectInAppPass(dir)
+    const run = runVerifyScript(dir)
+    expect(run.status, run.output).toBe(0)
+    expect(run.output).toContain('verify.sh: PASS')
+
+    // Known answer: every file and index row is named by the id the chain signed.
+    const files = packageFiles(dir)
+    expect(files.has(capturePagePath(remapped.chainCaptureId))).toBe(true)
+    expect(files.has(timestampTokenPath(remapped.chainCaptureId))).toBe(true)
+    expect(exhibitEntryPath(dir, remapped.chainExhibitId)).toContain(remapped.chainExhibitId)
+    expect(files.has(exhibitEntryPath(dir, remapped.chainExhibitId))).toBe(true)
+    const evidence = JSON.parse(files.get(PACKAGE_ROOT_FILES.evidenceIndex)!.toString())
+    expect(evidence.captures.map((row: { id: string }) => row.id)).toEqual([
+      remapped.chainCaptureId
+    ])
+    expect(evidence.exhibits.map((row: { id: string }) => row.id).sort()).toEqual(
+      [remapped.chainCaptureId, remapped.chainExhibitId].sort()
+    )
+    expect(evidence.warnings.unreconciledChainCaptureIds).toEqual([])
+    const notesMd = files.get(PACKAGE_ROOT_FILES.notes)!.toString()
+    expect(notesMd).toContain(`- Attached to capture: ${remapped.chainCaptureId}`)
+    expect(notesMd).toContain(`- Anchored to capture: ${remapped.chainCaptureId}`)
+    expect(files.get(PACKAGE_ROOT_FILES.report)!.toString()).toContain(remapped.chainCaptureId)
+
+    // The ids the import gave the rows are named by no file in the package.
+    for (const [path, bytes] of files) {
+      const text = bytes.toString('latin1')
+      expect(text.includes(remapped.rowCaptureId), path).toBe(false)
+      expect(text.includes(remapped.rowExhibitId), path).toBe(false)
+    }
+  })
+
+  it.skipIf(!RUNS)('passes both shipped verifiers on a selection from a renamed Case', async () => {
+    const remapped = await remappedCase()
+    const dir = await exportPackage(remapped.caseId, 'remapped-selection', {
+      captureIds: [remapped.rowCaptureId]
+    })
+
+    expectInAppPass(dir)
+    const run = runVerifyScript(dir)
+    expect(run.status, run.output).toBe(0)
+    expect(run.output).toContain('verify.sh: PASS')
+
+    // The signed selection names the capture as the chain does, and the PDF
+    // it leaves out is expected absent under the chain's id too.
+    const entry = JSON.parse(readFileSync(join(dir, PACKAGE_ROOT_FILES.exportEntry), 'utf-8'))
+    expect(entry.scope).toBe('selection')
+    expect(entry.captureIds).toEqual([remapped.chainCaptureId])
+    expect(existsSync(join(dir, exhibitEntryPath(dir, remapped.chainExhibitId)))).toBe(false)
+  })
+
+  it.skipIf(!RUNS)(
+    'names the Exhibits of a renamed Case in a Working Copy as its package does',
+    async () => {
+      const remapped = await remappedCase()
+      const dir = await exportPackage(remapped.caseId, 'remapped-working-copy', {
+        notes: true,
+        exportClass: 'working-copy'
+      })
+
+      const files = packageFiles(dir)
+      const marker = JSON.parse(files.get(WORKING_COPY_MARKER_FILENAME)!.toString())
+      expect(marker.captures.map((row: { id: string }) => row.id)).toEqual([
+        remapped.chainCaptureId
+      ])
+      expect(marker.captures[0].pagePath).toBe(capturePagePath(remapped.chainCaptureId))
+      expect(files.has(capturePagePath(remapped.chainCaptureId))).toBe(true)
+      expect(marker.exhibits.map((row: { id: string }) => row.id)).toEqual([
+        remapped.chainExhibitId
+      ])
+      expect(files.has(marker.exhibits[0].path)).toBe(true)
+      for (const [path, bytes] of files) {
+        const text = bytes.toString('latin1')
+        expect(text.includes(remapped.rowCaptureId), path).toBe(false)
+        expect(text.includes(remapped.rowExhibitId), path).toBe(false)
+      }
+    }
+  )
 })

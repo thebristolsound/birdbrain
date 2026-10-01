@@ -175,14 +175,15 @@ describe('package smoke and release workflow consistency', () => {
     expect(releaseContent).toMatch(/click \*\*More info\*\*, then \*\*Run anyway\*\*/)
     expect(releaseContent).toMatch(/advisory is a pinned issue on/)
     expect(releaseContent).toMatch(/install updates only on \*\*Restart to update\*\*/)
-    expect(releaseContent).toMatch(/Source opens when the public-readiness effort closes/)
+    expect(releaseContent).toMatch(/\*\*The source is public\.\*\*/)
+    expect(releaseContent).toMatch(/Report a security vulnerability privately/)
   })
 
   it('points the release notes at the download page and never at a tester chat', () => {
     const releaseContent = readWorkflow('release.yml')
 
     expect(releaseContent).toMatch(
-      /\[Download and install\]\(https:\/\/thebristolsound\.github\.io\/birdbrain\/docs\/download\/\)/
+      /\[Download Birdbrain\]\(https:\/\/thebristolsound\.github\.io\/birdbrain\/docs\/download\/\)/
     )
     expect(releaseContent).not.toMatch(/tester chat/i)
   })

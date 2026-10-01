@@ -126,11 +126,14 @@ export function buildPdfMetadataRows(
   add('Tool version', capture.toolVersion)
   add('Extension version', capture.extensionVersion)
   if (capture.lastVerifiedStatus) {
+    // The stored value stays `tampered` (package format); the cover names it as the app does.
+    const status =
+      capture.lastVerifiedStatus === 'tampered'
+        ? 'changed since capture'
+        : capture.lastVerifiedStatus
     add(
       'Verification',
-      capture.lastVerifiedAt
-        ? `${capture.lastVerifiedStatus} at ${formatTimestamp(capture.lastVerifiedAt)}`
-        : capture.lastVerifiedStatus
+      capture.lastVerifiedAt ? `${status} at ${formatTimestamp(capture.lastVerifiedAt)}` : status
     )
   }
   add('Trusted time', formatTrustedTime(trustedTime))

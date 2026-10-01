@@ -1416,6 +1416,52 @@ describe('export', () => {
     expect(report).not.toContain('Sequence and custody cannot be demonstrated for this entry')
   })
 
+  // #1662: the report names the state "Changed since capture", while every
+  // machine-read field in the package keeps the stored value `tampered` that
+  // existing packages and older verifiers read.
+  it('labels a changed capture by its display name and still ships the stored value tampered', async () => {
+    const { capture } = await ingest(caseId, '<html><body>Changed</body></html>')
+    writeFileSync(join(tempDir, 'captures', capture.mhtmlPath!), 'mutated bytes')
+    const manifestPath = join(tempDir, 'captures', caseId, 'manifest.jsonl')
+
+    const outputPath = join(tempDir, 'changed-evidence.zip')
+    const options: ExportOptions = {
+      format: 'zip',
+      include: {
+        captures: true,
+        screenshots: false,
+        auditTrail: true,
+        notes: false,
+        annotations: 'none'
+      },
+      exportClass: 'evidence',
+      outputPath
+    }
+    await generateReport(caseId, options, captureLifecycle)
+
+    const entries = readStoredZipEntries(outputPath)
+    const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+      captures: Array<{ id: string; integrityStatus?: string }>
+    }
+    expect(evidence.captures).toEqual([
+      expect.objectContaining({ id: capture.id, integrityStatus: 'tampered' })
+    ])
+    const exportEntry = readFileSync(manifestPath, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+      .find((e) => e.type === 'export')!
+    expect(exportEntry.verificationResult).toMatchObject({ verifiedCount: 0, tamperedCount: 1 })
+
+    const report = entries.get('report.html')!.toString('utf-8')
+    // The legend names the state once whatever the case holds; a second
+    // occurrence is this capture's own state.
+    expect(report.split('Changed since capture').length - 1).toBeGreaterThan(1)
+    expect(report).toContain('The stored bytes no longer recompute to the recorded digest.')
+    expect(report).toMatch(/capture recorded there as changed since capture,\s+chain-broken/)
+    expect(report).not.toMatch(/\bAltered\b|\bTampered\b/)
+  })
+
   it('writes no zip when the export audit append throws', async () => {
     await ingest(caseId, '<html><body>Orphan check</body></html>', 'https://example.com', 'O')
 
@@ -3577,7 +3623,8 @@ describe('export', () => {
       const entries = await exportMixed('mixed-altered.zip')
       const report = entries.get('report.html')!.toString('utf-8')
 
-      expect(report).toContain('Altered')
+      expect(report).toContain('Changed since capture')
+      expect(report).not.toContain('Altered')
       expect(report).toContain(
         'The stored bytes no longer recompute to the digest recorded for this exhibit'
       )

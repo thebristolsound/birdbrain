@@ -424,6 +424,10 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     expect(run.status, run.output).toBe(0)
     expect(run.output).toContain('1 exhibit(s) of other kinds bound to the signed chain')
     expect(run.output).toContain('1 derived file(s) bound to the signed chain')
+    // The thumbnail's entry records what determined its bytes (#1319), so the
+    // PASS above recomputed that entry's hash over the nested parameter map.
+    const derivation = manifestLines(packageDir).find((line) => line.type === 'derivation')
+    expect(derivation).toHaveProperty('derivationParameters.paddedRows')
   })
 
   it.skipIf(!RUNS)('fails on a substituted exhibit, naming it by its exhibit number', () => {

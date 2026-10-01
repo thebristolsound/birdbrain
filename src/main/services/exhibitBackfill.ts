@@ -258,9 +258,9 @@ async function backfillThumbnail(
   // The same renderer `getThumbnail` uses, not a second copy of the pipeline:
   // the entry appended below anchors these bytes, so a later regeneration from
   // the same parent screenshot has to reproduce them.
-  const thumbnail = await renderThumbnail(parent.screenshot)
-  await writeFile(paths.abs, thumbnail)
-  const outputHash = createHash('sha256').update(thumbnail).digest('hex')
+  const { bytes, parameters } = await renderThumbnail(parent.screenshot)
+  await writeFile(paths.abs, bytes)
+  const outputHash = createHash('sha256').update(bytes).digest('hex')
   const timestamp = new Date().toISOString()
 
   // Through the write-ahead seam, not a bare append: if `insertDerivedFile`
@@ -280,6 +280,7 @@ async function backfillThumbnail(
       parentContentHash: parent.contentHash,
       derivation: THUMBNAIL_DERIVATION,
       derivationToolVersion: who.toolVersion,
+      derivationParameters: parameters,
       outputHash,
       outputPath: paths.rel,
       timestamp,

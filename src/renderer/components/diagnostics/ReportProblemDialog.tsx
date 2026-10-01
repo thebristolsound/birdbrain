@@ -136,6 +136,10 @@ export function ReportProblemDialog({
               file on your computer and never sends it anywhere. You attach it to the issue
               yourself.
             </p>
+            <p className="mt-2">
+              Your installation identifier is also recorded on every capture you take, so attaching
+              this file to a public issue links that issue to evidence you export.
+            </p>
           </div>
         </div>
 

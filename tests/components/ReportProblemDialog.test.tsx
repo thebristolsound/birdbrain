@@ -29,10 +29,11 @@ describe('ReportProblemDialog', () => {
   })
 
   // report.md carries getInstallationId(), the value captures record as their
-  // operatorId, so the tester has to be told before attaching it anywhere public.
+  // operatorId, so the dialog has to say what attaching it publicly links.
   it('discloses the installation identifier', () => {
     render(<ReportProblemDialog open onOpenChange={() => {}} />)
-    expect(screen.getByText(/installation identifier/i)).toBeTruthy()
+    expect(screen.getByText(/and installation identifier/i)).toBeTruthy()
+    expect(screen.getByText(/links that issue to evidence you export/i)).toBeTruthy()
   })
 
   it('points the tester at their issue, not a tester chat', () => {

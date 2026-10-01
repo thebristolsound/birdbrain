@@ -7,11 +7,13 @@ ingestion, Google Docs import, and Maltego-class depth), and the rounds below se
 model. The decisions are recorded as ADR-0023 (the Exhibit model) and ADR-0024 (the Staging
 Pool); this document is the trail of what was asked, what was answered, and on what grounds.
 
-Numbered X1-X45 to keep them distinct from wave 3's R1-R23 and wave 4's W1-W26, which still
+Numbered X1-X51 to keep them distinct from wave 3's R1-R23 and wave 4's W1-W26, which still
 bind where they do not conflict. Where a ruling below contradicts an earlier ruling, the later
 one wins and the conflict is named. Rulings X28-X32 and X41-X44 were taken by the agent under ADR-0015 and
 are open to veto. Round 5 is the X11 re-ask of the 2026-08-29 round-1 questions, held on
-2026-08-30 after the ADRs were written.
+2026-08-30 after the ADRs were written. Round 7 (X45-X50) was ruled by the maintainer on
+2026-09-19 in the triage of the numbering defects; round 8 (X51) records the menu ruling of
+2026-09-18, first recorded as X45.
 
 ## Round 2: the model
 
@@ -191,7 +193,7 @@ Files alike, with `Verify all` running a per-Exhibit verify in sequence. Verify 
 with the kind: the model ticket carries `exhibits:verify` delegating to the existing Capture path,
 and the pool ticket extends it to attachments. Pooled rows are excluded (X16).
 
-**X38 (Q6 restated, amended by X45) - backed menu items only, plus the pool actions.** Exhibit or Derived File
+**X38 (Q6 restated, amended by X51) - backed menu items only, plus the pool actions.** Exhibit or Derived File
 row: `Open in viewer`, `Copy SHA-256`, `Copy relative path`, `Verify`. Node: Show only this, Expand or
 Collapse below, Verify. Ledger entry: Show target, Copy entry hash, Copy previous hash. Staged
 row: `Commit`, `Discard` (confirmed), and `Copy SHA-256` carrying the not-anchored label. Group
@@ -248,12 +250,64 @@ The `CONTEXT.md` finding (mark Derived File anchoring as planned) was not applie
 defines the model and carries no implementation state; the ADR's consequences and X34 carry the
 transition.
 
-## Round 7: the menus as shipped
+## Round 7: numbering integrity (2026-09-19)
+
+Ruled in a triage grilling of the five numbering defects the exhibit-chain reviews filed
+(#1270, #1278, #1279, #1284, #1332), after `803a`-`803d` had merged and before `803e`. Every
+recommendation below was accepted by the maintainer as put.
+
+**X45 - the next Exhibit Number derives from the Manifest chain.** The next number is one more
+than the highest `exhibitNumber` carried by any entry in the Case's chain, deleted Exhibits
+included, since a deletion appends and never removes. No high-water column or counter table;
+a database cache may be added only if a commit on a large Case measures slow, and the chain
+wins on disagreement. Grounds: X18 makes the chain the citation authority, and an imported
+chain carries the mark across an archive round trip with no extra payload. Supersedes the
+`MAX + 1` read over live rows.
+
+**X46 - the `capture` entry carries `exhibitNumber`, and schema 3 is amended in place.** Every
+Capture ingested after the one-time backfill records its number on its own `capture` entry,
+the entry that anchors the bytes. The field is optional in the schema so entries written by
+builds before this ruling still parse. No schema 4: no released verifier reads schema 3 yet,
+so amending it costs a recipient nothing, and ADR-0023 is amended by one line. `renumber`
+stays the one-time legacy assignment. Grounds: X18 says "recorded in the entry"; a second
+entry per Capture or a per-ingest `renumber` would make one of the existing types mean two
+things. Every entry schema is strict, so the field had to be a schema decision and not a free
+addition.
+
+**X47 - no signing path writes an entry without an operator name.** The backfill, Capture
+deletion, and the Staging Pool commit join ingest, duplicate, import, and export in refusing
+with `operator_name_required`. The backfill skips a Case it cannot sign for and re-runs when
+the name is saved in Settings, not only at the next launch; the Data screen shows the skipped
+rows as unnumbered with that reason. Grounds: a placeholder is a signed claim that nobody made
+the entry. Accepted consequence: with no name set, a deletion is refused too.
+
+**X48 - a repeated Exhibit Number is an Integrity Exception, never tamper.** Two anchoring
+entries in one chain carrying the same `exhibitNumber` is a verifier rule from this build on,
+reported as an exception. Existing rows that were reissued a number under the `MAX + 1` read
+keep it; no migration rewrites a number that has been visible on the Data screen. Grounds:
+X18 forbids the rewrite, and the rule is a true invariant once X45 holds.
+
+**X49 - import readers resolve copied entries through the on-disk id map.** An import remaps
+an id only on collision and writes the full map beside the chain, anchored by the `import`
+entry's `idMapSha256`. Readers of a copied `renumber` (and of any copied entry naming a
+remapped id) resolve through that map; import never appends a corrective `renumber`, and the
+imported chain stays verbatim so the source signer's entries remain verifiable. #1278's
+remainder is the Exhibit-id case of #1472 and is blocked by it.
+
+**X50 - the schema-3 reader and writers ship in the same first public beta.** No tag holds
+the reader, so a verifier-only release first would help no recipient; the package README and
+`VERIFY.md` name the required verifier version (#1172 owns the wording), and #1284 closes at
+the tag. Grounds: the reader-before-writer ordering of X25 protects holders of an older
+released verifier, and none holds a schema-3 package.
+
+## Round 8: the menus as shipped
 
 Ruled 2026-09-18 by the maintainer after #1471 landed X38 and every tree node, group head
-and ledger entry had grown a menu.
+and ledger entry had grown a menu. Recorded on `main` as X45; renumbered X51 on 2026-09-30
+because the numbering rulings of 2026-09-19 were recorded as X45-X50 on a branch that reached
+`main` later, and code and tickets already cite them by those numbers.
 
-**X45 - a menu only where a row has a real action.** A context menu mounts only on an element
+**X51 - a menu only where a row has a real action.** A context menu mounts only on an element
 that reads as clickable, and only when it offers an action beyond the click and a copy. On the
 tree that is a row node with a subtree to expand or Exhibits to verify; group heads are
 eyebrows and get none, and a Derived File node or the Manifest Ledger node has nothing to

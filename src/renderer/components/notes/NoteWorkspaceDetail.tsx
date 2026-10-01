@@ -1,4 +1,4 @@
-import { useEffect, useState, type MutableRefObject } from 'react'
+import { useEffect, useMemo, useState, type MutableRefObject } from 'react'
 import { useBlocker, useNavigate } from '@tanstack/react-router'
 import { Camera, PanelRight, Trash2 } from 'lucide-react'
 import type { Note } from '@shared/types'
@@ -68,10 +68,15 @@ export function NoteWorkspaceDetail({
   }
   const mentions = noteMentions(draft.bodyDoc)
   const outgoing = [...new Map(mentions.map((m) => [`${m.targetType}:${m.targetId}`, m])).values()]
-  const incoming = notes.filter(
-    (n) =>
-      n.id !== note.id &&
-      noteMentions(n.bodyDoc).some((m) => m.targetType === 'note' && m.targetId === note.id)
+  // Parses every note in the case, so it must not rerun on each keystroke.
+  const incoming = useMemo(
+    () =>
+      notes.filter(
+        (n) =>
+          n.id !== note.id &&
+          noteMentions(n.bodyDoc).some((m) => m.targetType === 'note' && m.targetId === note.id)
+      ),
+    [notes, note.id]
   )
 
   return (

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'motion/react'
@@ -37,13 +37,36 @@ export function NotesOverview() {
   return <NotesWorkspace key={caseId} caseId={caseId} />
 }
 
+// Owns the keystroke state so typing re-renders only this input; the list
+// re-renders once per debounced query.
+function NotesSearchInput({ onSearch }: { onSearch: (query: string) => void }) {
+  const [value, setValue] = useState('')
+  useEffect(() => {
+    const timer = setTimeout(() => onSearch(value.trim()), 200)
+    return () => clearTimeout(timer)
+  }, [value, onSearch])
+  return (
+    <div className="relative min-w-0 flex-1">
+      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-text-muted" />
+      <input
+        data-testid="notes-search"
+        aria-label="Search notes"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="Search notes…"
+        className="w-full rounded border border-border bg-canvas py-1.5 pl-7 pr-2 text-xs text-text-primary outline-none focus:border-accent"
+      />
+    </div>
+  )
+}
+
 function NotesWorkspace({ caseId }: { caseId: string }) {
   const reduceMotion = useReduceMotion()
   const requestedId = useAppStore((s) => s.selectedNoteId)
   const [selectedId, setSelectedId] = useState<string | null>(requestedId)
   const [createdNote, setCreatedNote] = useState<import('@shared/types').Note | null>(null)
-  const [searchInput, setSearchInput] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
+  const [searchKey, setSearchKey] = useState(0)
   const [sort, setSort] = useState<NoteSort>('newest')
   const [tag, setTag] = useState('')
   const [date, setDate] = useState<NoteDateFilter>('all')
@@ -66,19 +89,17 @@ function NotesWorkspace({ caseId }: { caseId: string }) {
       ? [createdNote, ...allNotes]
       : allNotes
   const selected = all.find((n) => n.id === selectedId) ?? all[0]
-  const notes = filterNotes(debouncedQuery ? (search.data ?? []) : all, sort, tag, date)
+  const notes = useMemo(
+    () => filterNotes(debouncedQuery ? (search.data ?? []) : all, sort, tag, date),
+    [debouncedQuery, search.data, all, sort, tag, date]
+  )
   const activeCount = Number(!!tag) + Number(date !== 'all')
-  const narrowed = !!searchInput.trim() || activeCount > 0
-  const tags = usedNoteTags(all)
+  const narrowed = !!debouncedQuery || activeCount > 0
+  const tags = useMemo(() => usedNoteTags(all), [all])
 
   useEffect(() => {
     if (createdNote && allNotes.some((note) => note.id === createdNote.id)) setCreatedNote(null)
   }, [allNotes, createdNote])
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedQuery(searchInput.trim()), 200)
-    return () => clearTimeout(timer)
-  }, [searchInput])
 
   async function selectNote(id: string) {
     if (flushRef.current && !(await flushRef.current())) return false
@@ -130,7 +151,7 @@ function NotesWorkspace({ caseId }: { caseId: string }) {
     return () => window.removeEventListener(NOTE_COMPOSER_EVENT, open)
   }, [])
   function clearFilters() {
-    setSearchInput('')
+    setSearchKey((k) => k + 1)
     setDebouncedQuery('')
     setTag('')
     setDate('all')
@@ -166,17 +187,7 @@ function NotesWorkspace({ caseId }: { caseId: string }) {
         className="flex w-[320px] shrink-0 flex-col border-r border-border bg-surface"
       >
         <div className="flex items-center gap-2 border-b border-border p-2">
-          <div className="relative min-w-0 flex-1">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-text-muted" />
-            <input
-              data-testid="notes-search"
-              aria-label="Search notes"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Search notes…"
-              className="w-full rounded border border-border bg-canvas py-1.5 pl-7 pr-2 text-xs text-text-primary outline-none focus:border-accent"
-            />
-          </div>
+          <NotesSearchInput key={searchKey} onSearch={setDebouncedQuery} />
           <button
             data-testid="notes-new-button"
             title="New note"

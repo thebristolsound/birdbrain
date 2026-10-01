@@ -630,7 +630,12 @@ export async function generateReport(
   data.manifestHead = manifest.head
   // The ids the documents below write for an Exhibit are the chain's (see
   // resolveChainNames); lookups into this export's own maps keep the row id.
-  const chainNames = resolveChainNames(allCaptures, scope.fileExhibits, caseEntries)
+  // Resolved over every row of the Case, so no row takes an id another holds.
+  const chainNames = resolveChainNames(
+    allCaptures,
+    allExhibits.filter((exhibit) => exhibit.kind !== 'capture'),
+    caseEntries
+  )
   const chainIdOf = (id: string): string => chainNames.get(id)?.id ?? id
   // An exclusion names the Exhibit by the id its chain carries.
   const inScope = new Set([...captures, ...scope.fileExhibits].map(({ id }) => chainIdOf(id)))
@@ -887,53 +892,72 @@ export interface ChainName {
 }
 
 /**
- * The name each Exhibit's signed entry gives it, keyed by row id (#1657). An
- * archive import that renames a colliding row id leaves the inherited entry
- * naming the id it was signed under, and both verifiers look for an Exhibit's
- * file, its index rows and its place in a signed selection under the entry's
- * id. So every document an export writes names an Exhibit the way its entry
- * does.
+ * The name each renamed Exhibit's signed entry gives it, keyed by row id
+ * (#1657). An archive import that renames a colliding row id leaves the
+ * inherited entry naming the id it was signed under, and both verifiers look
+ * for an Exhibit's file, its index rows and its place in a signed selection
+ * under the entry's id. So every document an export writes names a renamed
+ * Exhibit the way its entry does.
  *
- * The entry is the one at the row's own manifest index, of the row's kind and
- * over the row's bytes, among the chains the package encloses (a Shared Case's
- * chains share index numbers). One naming the row's own id wins. A row that no
- * entry answers for, or that entries naming two other ids do, is absent here
- * and keeps its own name.
+ * A row counts as renamed only when no entry of its kind, in any chain the
+ * package encloses, carries its own id: a row its own id is signed under keeps
+ * it whatever its stored index says, since that index is editable and can land
+ * on another row's entry for the same bytes. A renamed row takes the id of the
+ * entry at its own index, of its kind and over its bytes (a Shared Case's
+ * chains share index numbers), and only when that is one id, held by no other
+ * row of the Case and claimed by no other renamed row. Any other row is absent
+ * here and keeps its own name.
  */
 export function resolveChainNames(
   captures: Capture[],
   exhibits: Exhibit[],
   entries: Record<string, unknown>[]
 ): Map<string, ChainName> {
+  const idIn = (entry: Record<string, unknown>, type: 'capture' | 'exhibit'): unknown =>
+    entry.type !== type ? undefined : type === 'capture' ? entry.captureId : entry.exhibitId
   const byIndex = new Map<number, Record<string, unknown>[]>()
+  const signedIds = new Set<string>()
   for (const entry of entries) {
+    for (const type of ['capture', 'exhibit'] as const) {
+      const id = idIn(entry, type)
+      if (typeof id === 'string') signedIds.add(`${type}:${id}`)
+    }
     if (typeof entry.index !== 'number') continue
     const atIndex = byIndex.get(entry.index) ?? []
     atIndex.push(entry)
     byIndex.set(entry.index, atIndex)
   }
-  const names = new Map<string, ChainName>()
-  const resolve = (
-    row: { id: string; index: number | null | undefined; contentHash: string },
-    type: 'capture' | 'exhibit'
-  ): void => {
-    if (typeof row.index !== 'number') return
-    const candidates = (byIndex.get(row.index) ?? []).flatMap((entry): ChainName[] => {
-      const id = type === 'capture' ? entry.captureId : entry.exhibitId
-      if (entry.type !== type || entry.contentHash !== row.contentHash) return []
-      if (typeof id !== 'string') return []
+  const rows = [
+    ...captures.map(({ id, manifestIndex, hash }) => ({
+      id,
+      index: manifestIndex,
+      contentHash: hash,
+      type: 'capture' as const
+    })),
+    ...exhibits.map(({ id, manifestSeq, contentHash }) => ({
+      id,
+      index: manifestSeq,
+      contentHash,
+      type: 'exhibit' as const
+    }))
+  ]
+  const rowIds = new Set(rows.map(({ id }) => id))
+  const claims = new Map<string, Array<{ rowId: string; name: ChainName }>>()
+  for (const { id: rowId, index, contentHash, type } of rows) {
+    if (typeof index !== 'number' || signedIds.has(`${type}:${rowId}`)) continue
+    const candidates = (byIndex.get(index) ?? []).flatMap((entry): ChainName[] => {
+      const id = idIn(entry, type)
+      if (typeof id !== 'string' || entry.contentHash !== contentHash) return []
       return [{ id, path: typeof entry.path === 'string' ? entry.path : null }]
     })
-    const named =
-      candidates.find(({ id }) => id === row.id) ??
-      (new Set(candidates.map(({ id }) => id)).size === 1 ? candidates[0] : undefined)
-    if (named) names.set(row.id, named)
+    if (new Set(candidates.map(({ id }) => id)).size !== 1) continue
+    const [name] = candidates
+    if (rowIds.has(name.id)) continue
+    claims.set(name.id, [...(claims.get(name.id) ?? []), { rowId, name }])
   }
-  for (const { id, manifestIndex, hash } of captures) {
-    resolve({ id, index: manifestIndex, contentHash: hash }, 'capture')
-  }
-  for (const { id, manifestSeq, contentHash } of exhibits) {
-    resolve({ id, index: manifestSeq, contentHash }, 'exhibit')
+  const names = new Map<string, ChainName>()
+  for (const claimants of claims.values()) {
+    if (claimants.length === 1) names.set(claimants[0].rowId, claimants[0].name)
   }
   return names
 }

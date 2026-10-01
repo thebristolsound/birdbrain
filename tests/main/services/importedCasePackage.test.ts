@@ -13,7 +13,7 @@ import {
 import { dirname, join, resolve } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
-import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
 import { listCaptures } from '@main/services/db/captureRepo'
 import { listExhibits } from '@main/services/db/exhibitRepo'
@@ -621,6 +621,34 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
     expect(notesMd).toContain(`- Anchored to capture: ${native.captureId}`)
     // No `import` entry, so the signature step reads as it always has.
     expect(signatureStep(dir)).toBe(NATIVE_SIGNATURE_STEP)
+  })
+
+  // A duplicate holds the original's bytes, so a stored index edited to point
+  // at the original's entry (the Database screen allows it) lands on an entry
+  // for the same bytes under another id. The duplicate's own id is signed, so
+  // it is not a renamed row and keeps its name.
+  it.skipIf(!RUNS)('keeps a native duplicate its own name when its index is edited', async () => {
+    const native = await nativeCase('Edited')
+    const duplicated = await lifecycle.duplicate(native.captureId)
+    if (duplicated.status !== 'duplicated') throw new Error(duplicated.status)
+    const copy = duplicated.capture
+    const original = listCaptures(native.caseId).find(({ id }) => id === native.captureId)!
+    expect(copy.hash).toBe(original.hash)
+    getDb()
+      .prepare('UPDATE captures SET manifest_index = ? WHERE id = ?')
+      .run(original.manifestIndex, copy.id)
+
+    const dir = await exportPackage(native.caseId, 'edited-index')
+    expectInAppPass(dir)
+    const run = runVerifyScript(dir)
+    expect(run.status, run.output).toBe(0)
+    const files = packageFiles(dir)
+    expect(files.has(capturePagePath(native.captureId))).toBe(true)
+    expect(files.has(capturePagePath(copy.id))).toBe(true)
+    const evidence = JSON.parse(files.get(PACKAGE_ROOT_FILES.evidenceIndex)!.toString())
+    expect(evidence.captures.map((row: { id: string }) => row.id).sort()).toEqual(
+      [native.captureId, copy.id].sort()
+    )
   })
 
   it.skipIf(!RUNS)('passes both shipped verifiers on a Case an import renamed', async () => {

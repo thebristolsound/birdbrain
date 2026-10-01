@@ -14,7 +14,8 @@ import type {
 } from '@shared/types'
 import { defaultCaptureStore, type CaptureStore } from '@main/services/captureStore'
 import { withTransaction } from '@main/services/db/core'
-import { insertExhibit, nextExhibitNumber } from '@main/services/db/exhibitRepo'
+import { insertExhibit } from '@main/services/db/exhibitRepo'
+import { nextExhibitNumber } from '@main/services/exhibitNumbering'
 import {
   deleteStagingFile,
   getStagingFile,
@@ -209,10 +210,12 @@ export async function commitStagedFiles(
     try {
       const settings = getSettings()
       const timestamp = new Date().toISOString()
-      const exhibitNumber = nextExhibitNumber(caseId)
       mkdirSync(dirname(target.abs), { recursive: true })
       await rename(pooledAbs, target.abs)
       moved = true
+      // After the last await, so the entry below lands before any other
+      // commit or ingest can read the chain for a number.
+      const exhibitNumber = nextExhibitNumber(caseId, store)
       await withManifestEntry(
         caseDir,
         {

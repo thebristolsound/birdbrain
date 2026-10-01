@@ -82,3 +82,11 @@ fc4a365e1be2cc7f7b4134e4084ae97c47c5cc68:docs/design-handoff/2026-09-14-birdbrai
 # packed fixture line surfaced once more at that commit. Same mock session
 # token as the a447ef03 and 8496383a entries for this file, not a credential.
 6ed0204df9a4c00a123fe54f3685f69d27e71f94:docs/design-handoff/2026-08-21-birdbrain-standalone/Birdbrain-standalone.html:generic-api-key:384
+#
+# #1657 (PR #1664, commit 66ec73bf): a known-answer test pins the SHA-256
+# fingerprint of the demo fixture's public signing key, in a constant whose name
+# the rule treats as a secret name. The value is a digest of a public key,
+# confirmed by hand against the fixture's archive header, not a credential. A
+# later commit on the branch renamed the constant so the squash merge does not
+# match the rule again.
+66ec73bfcabfdcf8ea031c561af5e309a0c7b0b1:tests/main/services/importedCasePackage.test.ts:generic-api-key:72

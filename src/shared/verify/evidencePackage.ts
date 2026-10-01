@@ -25,6 +25,10 @@ import type {
 } from '@shared/verify/sharedCase'
 import { bindDerivedFile } from '@shared/verify/exhibitBinding'
 import {
+  describeRepeatedExhibitNumber,
+  findRepeatedExhibitNumbers
+} from '@shared/verify/exhibitNumbers'
+import {
   CAPTURE_PACKAGE_DIRECTORY,
   LINEAGE_DIRECTORY,
   PACKAGE_ROOT_FILES,
@@ -64,7 +68,9 @@ import { verifyEntrySignature } from '@shared/verify/signature'
 // canonical TSA authenticity is the runbook's `openssl ts -verify` (VERIFY.md),
 // so binary-PASS != runbook-PASS.
 
-export type CheckStatus = 'pass' | 'fail' | 'skip'
+// `exception` is an Integrity Exception (X48): stated in the report and never
+// failing the verdict, because it is not a finding of alteration.
+export type CheckStatus = 'pass' | 'fail' | 'skip' | 'exception'
 
 export interface PackageCheck {
   name: string
@@ -73,8 +79,8 @@ export interface PackageCheck {
 }
 
 export interface PackageVerifyResult {
-  // True iff no check has status 'fail' ('skip' is allowed). The verifier runs
-  // EVERY check and collects ALL failures rather than short-circuiting on the
+  // True iff no check has status 'fail' ('skip' and 'exception' are allowed).
+  // The verifier runs EVERY check and collects ALL failures rather than short-circuiting on the
   // first — with the two exceptions below (`notVerifiable`, `unsupported`),
   // which end verification before the checks they would poison can run and are
   // reported as outcomes of their own. Both return `pass: false` with no failed
@@ -404,6 +410,10 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   // accepted entries, the trusted time their stamps carry, and each Exhibit's
   // citation. Empty for a single-chain package.
   const remoteEntries: ManifestEntry[] = []
+  // The same entries kept per chain, keyed as the walk keys them: Exhibit
+  // Numbers are per member (decision 7), so a repeat is looked for in one
+  // chain at a time.
+  const remoteChains: Array<{ key: string; entries: ManifestEntry[] }> = []
   const remoteTrustedTimes = new Map<string, TrustedTimeResult>()
   const citationLabels = new Map<string, string>()
   // An `exhibit` carrying a `memberCode` is a Shared Case signal of its own: it
@@ -433,7 +443,9 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
       return { pass: false, checks, unsupported: { reason } }
     }
     for (const [installationId, accepted] of shared.entries) {
-      if (installationId !== shared.localInstallationId) remoteEntries.push(...accepted)
+      if (installationId === shared.localInstallationId) continue
+      remoteEntries.push(...accepted)
+      remoteChains.push({ key: installationId, entries: accepted })
     }
     for (const result of [shared.owner, ...shared.memberChains.values()]) {
       if (!result.valid) continue
@@ -503,15 +515,18 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   )
 
   // Exhibit Numbers as the CHAIN records them (X18): carried on an `exhibit`
-  // entry, and assigned to Captures by the one-time `renumber` entry. Never
-  // taken from evidence.json, which is unsigned — a citation read off an
-  // untrusted index is not a citation. A Capture committed after its Case was
-  // renumbered has no number in the chain at all, and the reports below name it
-  // by id rather than inventing one.
+  // entry, on a `capture` entry written since X46, and assigned to earlier
+  // Captures by the one-time `renumber` entry. Never taken from evidence.json,
+  // which is unsigned — a citation read off an untrusted index is not a
+  // citation. A Capture ingested after its Case was renumbered and before X46
+  // has no number in the chain at all, and the reports below name it by id
+  // rather than inventing one.
   const exhibitNumbers = new Map<string, number>()
   for (const e of caseEntries) {
     if (e.type === 'exhibit') exhibitNumbers.set(e.exhibitId, e.exhibitNumber)
-    else if (e.type === 'renumber') {
+    else if (e.type === 'capture' && e.exhibitNumber !== undefined) {
+      exhibitNumbers.set(e.captureId, e.exhibitNumber)
+    } else if (e.type === 'renumber') {
       for (const assignment of e.assignments) {
         exhibitNumbers.set(assignment.exhibitId, assignment.exhibitNumber)
       }
@@ -915,6 +930,25 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
     }
   }
 
+  // §7.3c Exhibit Numbers issued twice (X48). One row per number a chain
+  // assigns to more than one Exhibit, each chain on its own, and only over a
+  // chain that verified: a line that did not is not its writer's assignment.
+  // An Integrity Exception and not a FAIL, because every entry carrying the
+  // number verified; what the row states is that a citation of the number
+  // names more than one Exhibit. The exporter's own chain comes first,
+  // unlabelled.
+  const numberedChains = [...(chain.valid ? [{ key: undefined, entries }] : []), ...remoteChains]
+  for (const { key, entries: chainEntries } of numberedChains) {
+    for (const repeat of findRepeatedExhibitNumbers(chainEntries)) {
+      const where = key === undefined ? '' : ` in the chain of ${key}`
+      add(
+        `exhibit number ${repeat.exhibitNumber}${where}`,
+        'exception',
+        describeRepeatedExhibitNumber(repeat)
+      )
+    }
+  }
+
   // What evidence.json's `exhibits[].derivedFiles` must list, built from the
   // chain as the derivations are bound below. The index is untrusted, so the
   // chain is what says which Derived Files exist and what they hash to.
@@ -1165,9 +1199,9 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
           const expected = capturePagePath(row.id)
           if (row.path !== null && row.path !== expected) mismatch('path', row.path, expected)
         }
-        // From the chain's own numbering (X18), which for a Capture committed
-        // after its Case was renumbered holds no number at all — and a citation
-        // nothing signed is not one this check can contradict.
+        // From the chain's own numbering (X18), which for a Capture ingested
+        // after its Case was renumbered and before X46 holds no number at all —
+        // and a citation nothing signed is not one this check can contradict.
         const signedNumber = exhibitNumbers.get(row.id)
         if (signedNumber !== undefined && row.exhibitNumber !== signedNumber) {
           mismatch('exhibitNumber', row.exhibitNumber, signedNumber)

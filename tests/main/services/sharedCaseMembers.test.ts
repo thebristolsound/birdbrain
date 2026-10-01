@@ -14,9 +14,9 @@ import {
   getExhibit,
   importExhibitRows,
   insertExhibit,
-  listExhibits,
-  nextExhibitNumber
+  listExhibits
 } from '@main/services/db/exhibitRepo'
+import { nextExhibitNumber } from '@main/services/exhibitNumbering'
 import {
   exhibitCitationResolver,
   listCaseMembers,

@@ -34,6 +34,15 @@ export interface CertificationInput {
   manifestHead: { index: number; entryHash: string } | null
   /** SHA-256 (hex) of the bundled signing-public-key.pem bytes. */
   signingKeyFingerprint: string
+  /**
+   * Which key signed which entries of the bundled chain (#1657), in chain
+   * order. A chain that continues an imported one has, before the run under
+   * signing-public-key.pem, a run for each `import` entry with entries before
+   * it, under the key that entry carries; only then does this document list
+   * the runs. Absent, empty or a single run: `signingKeyFingerprint` stands
+   * alone.
+   */
+  signingKeyRanges?: SigningKeyRange[]
   /** What this package actually contains, counted from what was packaged. */
   contents: {
     captureCount: number
@@ -138,6 +147,16 @@ export interface CertificationInput {
   sharedCase?: ExportSharedCase | null
 }
 
+/** One run of chain entries that verify under one key, by entry position. */
+export interface SigningKeyRange {
+  fromIndex: number
+  toIndex: number
+  /** SHA-256 (hex) of the key's PEM text, byte for byte as the package carries it. */
+  fingerprint: string
+  /** Position of the `import` entry carrying the key; null for signing-public-key.pem. */
+  carriedByImportAt: number | null
+}
+
 /** One committed non-Capture Exhibit, as the certifier states it. */
 export interface CertificationExhibitInput {
   id: string
@@ -203,6 +222,7 @@ export interface CertificationFields {
   purposeOrAuthority?: string
   manifestHead: { index: number; entryHash: string } | null
   signingKeyFingerprint: string
+  signingKeyRanges: SigningKeyRange[]
   contentsSummary: string
   sharedCase: ExportSharedCase | null
 }
@@ -307,6 +327,7 @@ export function buildCertificationFields(
     purposeOrAuthority: data.purposeOrAuthority,
     manifestHead: data.manifestHead,
     signingKeyFingerprint: data.signingKeyFingerprint,
+    signingKeyRanges: data.signingKeyRanges ?? [],
     contentsSummary: buildContentsSummary(data.contents),
     sharedCase: data.sharedCase ?? null
   }
@@ -536,10 +557,7 @@ function renderCertificationHtml(fields: CertificationFields): string {
             )}</span>`
           : 'not available — the case manifest could not be read at export time'
       }</div></div>
-    <div class="field wide"><div class="field-label">Signing key (SHA-256 of signing-public-key.pem)</div>
-      <div class="field-value"><span class="mono break">${esc(
-        fields.signingKeyFingerprint
-      )}</span></div></div>
+    ${signingKeyFields(fields)}
   </div>
 
   ${fields.sharedCase ? sharedCaseFields(fields.sharedCase) : ''}
@@ -637,6 +655,31 @@ function renderCertificationHtml(fields: CertificationFields): string {
 </footer>
 </body>
 </html>`
+}
+
+// One field per run of entries when the chain continues an imported one
+// (#1657): the enclosed key's fingerprint alone names a key the entries before
+// the `import` entry do not verify under. A chain with one run keeps the single
+// field it always had.
+function signingKeyFields(fields: CertificationFields): string {
+  const field = (label: string, fingerprint: string): string =>
+    `<div class="field wide"><div class="field-label">${label}</div>
+      <div class="field-value"><span class="mono break">${esc(fingerprint)}</span></div></div>`
+  const ranges = fields.signingKeyRanges
+  if (ranges.length < 2) {
+    return field('Signing key (SHA-256 of signing-public-key.pem)', fields.signingKeyFingerprint)
+  }
+  return ranges
+    .map(({ fromIndex, toIndex, fingerprint, carriedByImportAt }) => {
+      const entries =
+        fromIndex === toIndex ? `entry #${fromIndex}` : `entries #${fromIndex} to #${toIndex}`
+      const key =
+        carriedByImportAt === null
+          ? 'signing-public-key.pem'
+          : `the key import entry #${carriedByImportAt} carries`
+      return field(`Signing key for ${entries} (SHA-256 of ${key})`, fingerprint)
+    })
+    .join('\n    ')
 }
 
 // The roster and every exclusion, stated where the package is described: the

@@ -237,9 +237,8 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     exhibitId = committed.id
     exhibitNumber = committed.exhibitNumber
 
-    // Anchors the capture's thumbnail as a Derived File (X34) and writes the
-    // Case's `renumber` entry, which is where a Capture's Exhibit Number lives
-    // in the chain.
+    // Anchors the capture's thumbnail as a Derived File (X34). No `renumber`
+    // entry: the capture's Exhibit Number is on its own capture entry (X46).
     await backfillCase(testCase.id, { toolVersion: '0.1.0' })
 
     // A token genuinely issued over THIS capture's content hash, so step 6's
@@ -371,6 +370,17 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
       expect(run.output).toContain(`== Step ${step} -`)
     }
     expect(run.output).toContain('TSA signature verifies to tsa-root.pem')
+    // A Case this installation signed throughout is one run under the enclosed
+    // key (#1657), and its certification keeps the single key field.
+    const last = manifestLines(packageDir).length - 1
+    expect(run.output).toContain(
+      `entries 0 to ${last}: ${last + 1} signed entr(ies) verified under signing-public-key.pem ` +
+        `(SHA-256 ${sha256(entries.get(PACKAGE_ROOT_FILES.signingPublicKey)!)})`
+    )
+    expect(run.output).not.toContain('import entry')
+    expect(entries.get(PACKAGE_ROOT_FILES.certification)!.toString('utf-8')).toContain(
+      'Signing key (SHA-256 of signing-public-key.pem)'
+    )
   })
 
   it.skipIf(!RUNS)('records verify.sh in the package index, and re-hashes it', () => {
@@ -436,7 +446,7 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     expect(run.output).toContain('FAIL [step 5]')
     // AC 2's wording, the same in both shipped verifiers: a Derived File has no
     // number of its own (X31), so it is cited by its parent's and its
-    // derivation. The parent Capture's number comes off the `renumber` entry.
+    // derivation. The parent Capture's number comes off its capture entry.
     expect(run.output).toContain('Exhibit 1, derivation thumbnail')
     expect(run.output).toContain('does not match the outputHash in its signed entry')
   })

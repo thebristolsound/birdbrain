@@ -15,7 +15,9 @@ import type { ChainVerifyResult, UnsupportedEntry } from '@shared/verify/manifes
 //   3. check that every `merge` head names an entry that exists, at that index
 //      with that hash, in that member's chain;
 //   4. resolve every Exhibit citation to `<memberCode>-<exhibitNumber>` and
-//      report one that resolves to two entries;
+//      report one that resolves to two entries, except a number one chain
+//      assigns to two Exhibits: that is an Integrity Exception, found per
+//      chain by `findRepeatedExhibitNumbers` and never a failed walk (X48);
 //   5. check that every `exclude` names an Exhibit its stated author holds.
 //
 // Along the way: every chain's current entries must name the Owner's Case, no
@@ -31,8 +33,9 @@ import type { ChainVerifyResult, UnsupportedEntry } from '@shared/verify/manifes
 //
 // What this proves: each member's chain was not edited without that member's
 // key; each `merge` names chain states that exist; a citation resolves to one
-// entry. What it does not prove: that a member's key was not misused by whoever
-// holds that machine, or that a member's TSA is honest.
+// entry, or to Exhibits its own chain numbered twice, which step 4 leaves to the
+// X48 report. What it does not prove: that a member's key was not misused by
+// whoever holds that machine, or that a member's TSA is honest.
 //
 // TRUST ANCHOR. The only key the caller hands over is the Owner's. Every other
 // key is read from a `member-add` entry in the Owner's chain, which has verified
@@ -93,7 +96,8 @@ export type SharedCaseOutcome =
   // A `merge` names a head that is absent from that member's chain or differs.
   | 'merge-head-mismatch'
   // Two Exhibit entries resolve to one citation, or an entry claims a code
-  // that is not its writer's.
+  // that is not its writer's. Not one chain numbering two Exhibits alike,
+  // which is an Integrity Exception (X48).
   | 'citation-collision'
 
 export interface SharedCaseMember {
@@ -728,6 +732,10 @@ function verifyCase(input: SharedCaseInput, nested: boolean): SharedCaseVerifyRe
           continue
         }
         resolveCitation({ installationId: writerId, index, exhibitId }, exhibitNumber, writerCode)
+      } else if (entry.type === 'capture' && entry.exhibitNumber !== undefined) {
+        // A Capture ingested since X46 carries its number on its own entry.
+        const at = { installationId: writerId, index: entry.index, exhibitId: entry.captureId }
+        resolveCitation(at, entry.exhibitNumber, writerCode)
       } else if (entry.type === 'renumber') {
         for (const { exhibitId, exhibitNumber } of entry.assignments) {
           const at = { installationId: writerId, index: entry.index, exhibitId }
@@ -767,6 +775,12 @@ function verifyCase(input: SharedCaseInput, nested: boolean): SharedCaseVerifyRe
   ): void {
     const citation = code === undefined ? String(exhibitNumber) : `${code}-${exhibitNumber}`
     const existing = citations.get(citation)
+    // One chain numbering two Exhibits alike is X48's Integrity Exception, not
+    // a failed walk: the first assignment keeps the citation here, and the
+    // repeat is reported by the X48 check over that chain.
+    if (existing?.installationId === at.installationId && existing.exhibitId !== at.exhibitId) {
+      return
+    }
     if (existing) {
       // One citation, one ENTRY. A second entry for the same Exhibit id can
       // state another path or hash, and a reader could not tell which governs.

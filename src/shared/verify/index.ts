@@ -31,6 +31,13 @@ export type {
   CaptureChainEntry,
   UnsupportedEntry
 } from '@shared/verify/manifestChain'
+export {
+  describeRepeatedExhibitNumber,
+  exhibitNumberSequences,
+  findRepeatedExhibitNumbers,
+  highestIssuedExhibitNumber
+} from '@shared/verify/exhibitNumbers'
+export type { ExhibitNumberAssignment, RepeatedExhibitNumber } from '@shared/verify/exhibitNumbers'
 export { bindDerivedFile, matchDerivationEntries } from '@shared/verify/exhibitBinding'
 export type {
   DerivationEntryFacts,

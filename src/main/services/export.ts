@@ -516,6 +516,7 @@ export async function generateReport(
     manifestHead: null,
     packagedPaths: new Map(),
     chainIdByCaptureId: new Map(),
+    entriesUnderCarriedKeys: false,
     trustedTimeByCaptureId: new Map(),
     entrySignatureByCaptureId: new Map(),
     unreconciledChainCaptureIds: [],
@@ -634,6 +635,9 @@ export async function generateReport(
   const chainNames = resolveChainNames(allCaptures, scope.fileExhibits, caseEntries)
   const chainIdOf = (id: string): string => chainNames.get(id)?.id ?? id
   data.chainIdByCaptureId = new Map(captures.map(({ id }) => [id, chainIdOf(id)]))
+  data.entriesUnderCarriedKeys = signingKeyRanges(manifest.entries, getPublicKeyPem()).some(
+    ({ carriedByImportAt }) => carriedByImportAt !== null
+  )
   // One reader for the whole export: it reads each enclosed non-Capture
   // Exhibit and each enclosed Derived File exactly once, classification reads
   // its outcome, and the zip builders consume the buffers it already holds. A

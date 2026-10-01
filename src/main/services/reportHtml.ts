@@ -291,6 +291,12 @@ export interface ReportData {
    */
   chainIdByCaptureId: Map<string, string>
   /**
+   * Whether an entry of the bundled chain verifies under a key an `import`
+   * entry carries rather than under signing-public-key.pem (#1657), by the rule
+   * the certification's per-run signing keys state.
+   */
+  entriesUnderCarriedKeys: boolean
+  /**
    * Manifest-derived trusted time, keyed by capture id, resolved once from the
    * snapshot this package is built from and shared with `preflight` above — see
    * resolveExportTrustedTime in export.ts.
@@ -1382,9 +1388,22 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     <li><strong>Replay the manifest chain.</strong> Walk <code>manifest.jsonl</code> from the
     first entry, recomputing each entry hash over its canonical form plus its predecessor's hash.
     The chain must reconcile to the head hash printed under “Chain of custody”.</li>
-    <li><strong>Check the entry signatures.</strong> Verify each signed manifest entry against
+    <li><strong>Check the entry signatures.</strong> ${
+      data.entriesUnderCarriedKeys
+        ? `Verify each signed manifest entry against the key
+    that signed it. This chain holds an <code>import</code> entry, so the key depends on where an
+    entry sits: an entry verifies under the key in the <code>sourcePublicKeyPem</code> field of the
+    first <code>import</code> entry after it, or under <code>signing-public-key.pem</code> when no
+    <code>import</code> entry follows it. <code>VERIFY.md</code> step 2 gives the commands for one
+    entry and <code>verify.sh</code> step 2 runs the same check over every signed entry. A key an
+    <code>import</code> entry carries is only as trustworthy as that entry's signature, which is
+    checked under the next key along. This binds the entries from the last <code>import</code>
+    entry on to the installation identified on the cover, and each earlier entry only to the key
+    an <code>import</code> entry carries for it, never to any named person.`
+        : `Verify each signed manifest entry against
     <code>signing-public-key.pem</code>. This binds the entries to the installation identified on
-    the cover — not to any named person.</li>
+    the cover — not to any named person.`
+    }</li>
     <li><strong>Validate the timestamp tokens.</strong> For each <code>.tst</code> in
     <code>timestamps/</code>, confirm the token's message imprint equals that exhibit's capture
     digest and that its signing chain, built with <code>tsa-intermediates.pem</code>, terminates in

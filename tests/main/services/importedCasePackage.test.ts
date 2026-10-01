@@ -115,6 +115,32 @@ const writeChain = (dir: string, lines: ChainLine[]): void => {
 const entriesLabel = (from: number, to: number, prefix = ''): string =>
   from === to ? `entry ${prefix}${from}` : `entries ${prefix}${from} to ${prefix}${to}`
 
+/** report.html's signature step, with its line breaks folded to spaces. */
+function signatureStep(dir: string): string {
+  const report = readFileSync(join(dir, PACKAGE_ROOT_FILES.report), 'utf-8').replace(/\s+/g, ' ')
+  const step = /<strong>Check the entry signatures\.<\/strong> (.*?)<\/li>/.exec(report)
+  expect(step).not.toBeNull()
+  return step![1]
+}
+
+// The step a chain with no `import` before its entries prints, as it did before #1657.
+const NATIVE_SIGNATURE_STEP =
+  'Verify each signed manifest entry against <code>signing-public-key.pem</code>. This binds ' +
+  'the entries to the installation identified on the cover — not to any named person.'
+
+// The step a chain that continues an import prints: the rule verify.sh step 2 applies.
+const IMPORTED_SIGNATURE_STEP =
+  'Verify each signed manifest entry against the key that signed it. This chain holds an ' +
+  '<code>import</code> entry, so the key depends on where an entry sits: an entry verifies ' +
+  'under the key in the <code>sourcePublicKeyPem</code> field of the first <code>import</code> ' +
+  'entry after it, or under <code>signing-public-key.pem</code> when no <code>import</code> ' +
+  'entry follows it. <code>VERIFY.md</code> step 2 gives the commands for one entry and ' +
+  '<code>verify.sh</code> step 2 runs the same check over every signed entry. A key an ' +
+  "<code>import</code> entry carries is only as trustworthy as that entry's signature, which " +
+  'is checked under the next key along. This binds the entries from the last ' +
+  '<code>import</code> entry on to the installation identified on the cover, and each earlier ' +
+  'entry only to the key an <code>import</code> entry carries for it, never to any named person.'
+
 describe('an Evidence Package exported from an imported Case (#1657)', () => {
   let tsa: LocalTsa | null = null
   let tempDir = ''
@@ -488,6 +514,8 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
       sourceFingerprint: DEMO_SIGNER_FINGERPRINT,
       localFingerprint: sha256(getPublicKeyPem())
     })
+    // The report's signature step states the rule step 2 just applied.
+    expect(signatureStep(dir)).toBe(IMPORTED_SIGNATURE_STEP)
   })
 
   it.skipIf(!RUNS)("verifies an imported entry with VERIFY.md's step 2 recipe", async () => {
@@ -591,6 +619,8 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
     const notesMd = files.get(PACKAGE_ROOT_FILES.notes)!.toString()
     expect(notesMd).toContain(`- Attached to capture: ${native.captureId}`)
     expect(notesMd).toContain(`- Anchored to capture: ${native.captureId}`)
+    // No `import` entry, so the signature step reads as it always has.
+    expect(signatureStep(dir)).toBe(NATIVE_SIGNATURE_STEP)
   })
 
   it.skipIf(!RUNS)('passes both shipped verifiers on a Case an import renamed', async () => {
@@ -620,6 +650,7 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
     expect(notesMd).toContain(`- Attached to capture: ${remapped.chainCaptureId}`)
     expect(notesMd).toContain(`- Anchored to capture: ${remapped.chainCaptureId}`)
     expect(files.get(PACKAGE_ROOT_FILES.report)!.toString()).toContain(remapped.chainCaptureId)
+    expect(signatureStep(dir)).toBe(IMPORTED_SIGNATURE_STEP)
 
     // The ids the import gave the rows are named by no file in the package.
     for (const [path, bytes] of files) {

@@ -3,6 +3,7 @@ import { existsSync } from 'fs'
 import { readFile, writeFile } from 'fs/promises'
 import { listAllCaseIds } from '@main/services/db/caseRepo'
 import { backfillExhibitsForCaptures, listExhibits } from '@main/services/db/exhibitRepo'
+import { nextExhibitNumber } from '@main/services/exhibitNumbering'
 import { hasDerivation, insertDerivedFile } from '@main/services/db/derivedFileRepo'
 import {
   appendManifestEntry,
@@ -78,14 +79,32 @@ function operator(toolVersion: string): Operator {
 // raw lines rather than from a verified read on purpose: the question is "has
 // one been written", and a Case whose chain is broken must not have a second
 // one appended on top of the first.
-function hasRenumberEntry(caseDir: string): boolean {
-  return readManifestSnapshot(caseDir).entries.some((entry) => entry.type === 'renumber')
+function hasRenumberEntry(entries: Record<string, unknown>[]): boolean {
+  return entries.some((entry) => entry.type === 'renumber')
 }
 
-// Appends the Case's single `renumber` entry (X18). Every Capture-kind Exhibit
-// is listed, in number order; `manifestIndex` is OMITTED for a Capture with no
-// Manifest Entry, which is how the chain records that its number is a citation
-// aid and not an anchoring claim (X41).
+// The Exhibits the `renumber` entry has to number: this installation's own
+// whose anchoring entry carries no number. A Capture ingested since X46 and
+// every committed Exhibit of another kind already has its number on its own
+// entry, and listing it again would give one Exhibit two assignments. Another
+// member's Exhibit is numbered in that member's chain (decision 7), and its
+// `manifestSeq` indexes that chain, not this one. Read from the raw lines for
+// the reason `hasRenumberEntry` is: the question is what was written.
+function awaitingRenumber(exhibits: Exhibit[], entries: Record<string, unknown>[]): Exhibit[] {
+  return exhibits.filter((exhibit) => {
+    if (exhibit.authorInstallationId !== null) return false
+    const anchoring = exhibit.manifestSeq === null ? undefined : entries[exhibit.manifestSeq]
+    const numbered =
+      (anchoring?.type === 'capture' || anchoring?.type === 'exhibit') &&
+      typeof anchoring.exhibitNumber === 'number'
+    return !numbered
+  })
+}
+
+// Appends the Case's single `renumber` entry (X18), listing the Exhibits
+// `awaitingRenumber` returns in number order. `manifestIndex` is OMITTED for a
+// Capture with no Manifest Entry, which is how the chain records that its
+// number is a citation aid and not an anchoring claim (X41).
 function appendRenumberEntry(
   caseId: string,
   caseDir: string,
@@ -293,8 +312,9 @@ export async function backfillCase(
     // Normally 0: the v34 migration covers every Capture that existed when it
     // ran, and both insert paths write the row with the Capture. Called anyway
     // so the backfill is total rather than conditional on which build created a
-    // row, and through the shared helper so the numbering is X41's.
-    exhibitsCreated: backfillExhibitsForCaptures(caseId),
+    // row, and through the shared helper so the numbering is X41's, starting
+    // above every number the chain has issued (X45).
+    exhibitsCreated: backfillExhibitsForCaptures(caseId, nextExhibitNumber(caseId, store)),
     renumbered: false,
     thumbnailsAnchored: 0,
     thumbnailsUnanchored: 0
@@ -303,9 +323,15 @@ export async function backfillCase(
   const exhibits = listExhibits(caseId)
   if (exhibits.length === 0) return result
 
-  if (!hasRenumberEntry(caseDir)) {
-    appendRenumberEntry(caseId, caseDir, exhibits, who)
-    result.renumbered = true
+  const { entries } = readManifestSnapshot(caseDir)
+  if (!hasRenumberEntry(entries)) {
+    // At most one per Case, and none when every Exhibit's own entry carries
+    // its number: a Case begun since X46 has nothing to renumber.
+    const unnumbered = awaitingRenumber(exhibits, entries)
+    if (unnumbered.length > 0) {
+      appendRenumberEntry(caseId, caseDir, unnumbered, who)
+      result.renumbered = true
+    }
   }
 
   // One verified read for the whole Case, taken AFTER the renumber append so

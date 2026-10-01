@@ -178,15 +178,17 @@ function bucketOfStatus(status: ExhibitVerification['status'] | undefined): Inte
 }
 
 // The X37 bucket for one anchored row. An Exhibit reads this session's verify
-// result first and the Capture's persisted state otherwise. A Derived File
-// reads its own outcome from the parent's session result, which the main
-// process computed against the `derivation` entry; without one it is
-// unverified, and nothing is inferred from the parent in the renderer (X36).
-// Pooled rows have no bucket (X16) and are never passed here.
+// result first and the Capture's persisted state otherwise; a session result
+// carrying an Integrity Exception (X48) is an exception whatever its bytes
+// did. A Derived File reads its own outcome from the parent's session result,
+// which the main process computed against the `derivation` entry; without one
+// it is unverified, and nothing is inferred from the parent in the renderer
+// (X36). Pooled rows have no bucket (X16) and are never passed here.
 export function bucketForRow(row: InventoryRow, context: RowContext): IntegrityBucket {
   if (row.entity === 'exhibit') {
-    const session = context.verifications?.get(row.id)?.status
-    if (session !== undefined) return bucketOfStatus(session)
+    const session = context.verifications?.get(row.id)
+    if (session?.exceptions?.length) return 'exception'
+    if (session !== undefined) return bucketOfStatus(session.status)
     return bucketOfStatus(context.captures.get(row.id)?.lastVerifiedStatus)
   }
   if (row.entity === 'derived-file') {

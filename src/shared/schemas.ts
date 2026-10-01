@@ -387,8 +387,8 @@ export function formatExtensionAttachError(err: z.core.$ZodError): string {
 // timestamp *creation* / RFC 3161 (see #120) and screenshot/text hashing
 // (see #118). v3 adds the `exhibit`, `derivation` and `renumber` entry types
 // (ADR-0023) and generalizes `deletion` and `timestamp` to any Exhibit;
-// `capture` entries are unchanged. Mixed-version chains are normal — never
-// retro-sign legacy entries.
+// `capture` entries gain only an optional `exhibitNumber` (X46). Mixed-version
+// chains are normal — never retro-sign legacy entries.
 
 // Bounded integer: rejects negatives, floats, NaN, and unknown-future versions
 // (e.g. a v4 entry parsed by a v3 verifier). Auto-tightens on every version bump.
@@ -481,6 +481,13 @@ const ManifestCaptureEntrySchema = z
     duplicateOfCaptureId: z.string().optional(),
     duplicatedAt: z.string().optional(),
     consentSuppression: z.enum(CONSENT_SUPPRESSIONS).optional(),
+    // The Capture's Exhibit Number, recorded on the entry that anchors its
+    // bytes (X18, X46). Optional because entries written before X46 carry
+    // none: their Captures are numbered by the one-time `renumber` entry.
+    // Schema 3 is amended in place rather than bumped, so this is a schema-3
+    // field, and never `.default()`: an injected value would change the
+    // re-hashed body.
+    exhibitNumber: z.number().int().positive().optional(),
     sizeBytes: z.number(),
     operatorId: z.string(),
     operatorName: z.string(),
@@ -492,6 +499,14 @@ const ManifestCaptureEntrySchema = z
     entryHash: z.string()
   })
   .strict()
+  // A schema-2 reader's strict capture shape has no `exhibitNumber`, so an
+  // entry carrying one below version 3 would read there as a broken chain
+  // rather than "verifier too old" (X25). The same rule `subject` and
+  // `memberCode` follow.
+  .refine((entry) => entry.exhibitNumber === undefined || entry.schemaVersion >= 3, {
+    message: '`exhibitNumber` on a capture entry requires schemaVersion 3',
+    path: ['schemaVersion']
+  })
 
 // Deletion of an anchored Exhibit. `captureId` and `contentHash` accept ANY
 // Exhibit id and Content Hash from schema v3 on, not only a Capture's
@@ -667,8 +682,9 @@ const ManifestImportEntrySchema = z
 // --- Schema v3: Exhibits (ADR-0023) ---------------------------------------
 //
 // An Exhibit is the unit of evidence and a Capture is one kind of Exhibit, so
-// `capture` entries are untouched (X24) — `textHash` and `screenshotHash`
-// included — and this entry anchors every Exhibit that is NOT a Capture.
+// `capture` entries keep their shape (X24) — `textHash` and `screenshotHash`
+// included, with only the optional `exhibitNumber` added by X46 — and this
+// entry anchors every Exhibit that is NOT a Capture.
 //
 // `kind` and `origin` are open strings, deliberately NOT enums. A verifier's
 // vocabulary must not decide whether a chain verifies: an entry naming a kind

@@ -5,6 +5,7 @@ import { defaultCaptureStore } from '@main/services/captureStore'
 import type { CaptureStore } from '@main/services/captureStore'
 import * as captureRepo from '@main/services/db/captureRepo'
 import { getExhibit } from '@main/services/db/exhibitRepo'
+import { nextExhibitNumber } from '@main/services/exhibitNumbering'
 import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
 import { extractData } from '@main/services/dataExtractor'
 import { recordSlowOp } from '@main/services/diagnostics'
@@ -296,6 +297,8 @@ export async function ingestMhtmlCapture(
   // both the pre-callback manifest failure (only the mhtml written) and a failure inside
   // the callback (sidecars written too). The store never touches manifest.jsonl.
   try {
+    // Taken with no await before the append below (see nextExhibitNumber).
+    const exhibitNumber = nextExhibitNumber(params.caseId, store)
     return await withCaptureEntry(
       caseDir,
       {
@@ -314,6 +317,7 @@ export async function ingestMhtmlCapture(
         method: params.method,
         supersedesCaptureId: params.supersedesCaptureId,
         consentSuppression: params.consentSuppression,
+        exhibitNumber,
         operatorId: params.operatorId,
         operatorName: params.operatorName,
         toolVersion: params.toolVersion
@@ -360,7 +364,8 @@ export async function ingestMhtmlCapture(
           operatorName: params.operatorName,
           method: params.method,
           supersedesCaptureId: params.supersedesCaptureId,
-          consentSuppression: params.consentSuppression
+          consentSuppression: params.consentSuppression,
+          exhibitNumber
         })
         return { capture, contentHash: hash }
       }
@@ -1124,6 +1129,9 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
           const copiedText = artifacts.txt
             ? store.readArtifact(source.caseId, duplicateId, 'txt')?.toString('utf-8')
             : undefined
+          // A copy is a new Exhibit and takes a number of its own, with no
+          // await before the append below (see nextExhibitNumber).
+          const exhibitNumber = nextExhibitNumber(source.caseId, store)
           const capture = await withCaptureEntry(
             caseDir,
             {
@@ -1151,6 +1159,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
               duplicateOfCaptureId: source.id,
               duplicatedAt,
               consentSuppression: sourceEntry.consentSuppression,
+              exhibitNumber,
               sizeBytes: mhtml.sizeBytes,
               operatorId: getInstallationId(),
               operatorName,
@@ -1191,7 +1200,8 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
                 operatorName,
                 method: 'duplicate',
                 duplicateOfCaptureId: source.id,
-                consentSuppression: sourceEntry.consentSuppression
+                consentSuppression: sourceEntry.consentSuppression,
+                exhibitNumber
               })
           )
 

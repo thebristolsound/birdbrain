@@ -21,6 +21,8 @@ import {
   inspectCaseArchive
 } from '@main/services/caseArchive'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
+import { backfillCase } from '@main/services/exhibitBackfill'
+import { nextExhibitNumber } from '@main/services/exhibitNumbering'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { initSettings, updateSettings } from '@main/services/settings'
 import {
@@ -681,6 +683,62 @@ describe('Shared Case export, import and fork (#1511)', () => {
         [PEER_ID, 'CO-1']
       ].sort()
     )
+  })
+
+  it("renumbers none of a fork's member-authored Exhibits and numbers its own from 1", async () => {
+    memberReplica()
+    const out = join(tempDir, 'fork.birdbrain')
+    await exportCaseArchive(caseId, out)
+    const { newCaseId } = await importCaseArchive(out)
+    const manifestPath = join(caseDir(newCaseId), 'manifest.jsonl')
+    const imported = readFileSync(manifestPath, 'utf-8')
+
+    // The import stamps every source row with its member author. The forking
+    // member's own row is anchored in its lineage chain, and its index names
+    // an unnumbered `member-add` in this one: a `renumber` listing it would
+    // sign another chain's number into the fork's.
+    expect(
+      listExhibits(newCaseId)
+        .map((e) => e.authorInstallationId)
+        .sort()
+    ).toEqual([localId, PEER_ID].sort())
+    const result = await backfillCase(newCaseId, { toolVersion: '0.9.0' })
+
+    expect(result.renumbered).toBe(false)
+    expect(readFileSync(manifestPath, 'utf-8')).toBe(imported)
+    expect(nextExhibitNumber(newCaseId)).toBe(1)
+  })
+
+  it('imports a Case Archive whose member chain gives one number to two Exhibits (X48)', async () => {
+    // A number issued twice in one chain is an Integrity Exception, not a
+    // failed walk, so the archive check no longer refuses the import.
+    ownerReplica(
+      () => {},
+      (peer) => {
+        peer.append({
+          type: 'exhibit',
+          exhibitId: `${PEER_ID}-other`,
+          caseId,
+          kind: 'document',
+          origin: 'manual-upload',
+          name: 'other.pdf',
+          exhibitNumber: 1,
+          path: `${caseId}/documents/${PEER_ID}-other.pdf`,
+          contentHash: 'e'.repeat(64),
+          sizeBytes: 1,
+          timestamp: TIME,
+          ...PEER,
+          schemaVersion: 3
+        })
+      }
+    )
+    const out = join(tempDir, 'repeated.birdbrain')
+    await exportCaseArchive(caseId, out)
+
+    const { verification } = inspectCaseArchive(out)
+    expect(verification.chainValid).toBe(true)
+    expect(verification.overallValid).toBe(true)
+    await expect(importCaseArchive(out)).resolves.toMatchObject({ newCaseId: expect.any(String) })
   })
 
   // Rewrites an archive's entries and header in place. `package.json` is not

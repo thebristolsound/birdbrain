@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { cpSync, mkdtempSync, rmSync, readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { join, dirname, resolve } from 'path'
 import { tmpdir } from 'os'
@@ -13,6 +13,8 @@ import { signEntryHash } from '@main/services/signingKey'
 import { ingestMhtmlCapture, createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { generateReport } from '@main/services/export'
+import { commitStagedFiles, uploadToStaging } from '@main/services/staging'
+import * as numbering from '@main/services/exhibitNumbering'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { canonicalStringify } from '@shared/verify'
@@ -241,6 +243,82 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
     expect(proc.stdout).toContain('structural (imprint + bytes)')
     // The answer this replaced: one SKIP per exhibit entry deferring the work.
     expect(proc.stdout).not.toContain('803e')
+  })
+
+  // X48 through the BUILT binary: a number issued twice is stated as an
+  // Integrity Exception, and the package still PASSes with exit 0.
+  it('exits 0 stating an Integrity Exception for a number issued twice', async () => {
+    const { id: caseId } = createCase({ name: 'Binary Repeated Number' })
+    ensureCaseDir(caseId)
+    initManifest(join(tempDir, 'captures', caseId))
+    const lifecycle = createCaptureLifecycle({
+      selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} })
+    })
+    const ingestPage = async (n: number): Promise<string> =>
+      (
+        await ingestMhtmlCapture({
+          caseId,
+          url: `https://example.com/repeated-${n}`,
+          title: `Page ${n}`,
+          timestamp: '2026-04-05T12:00:00.000Z',
+          stream: Readable.from([
+            Buffer.from(`<html><body>repeated ${n}</body></html>`)
+          ]) as unknown as ReadableStream<Uint8Array>,
+          textContent: 'text',
+          headers: {},
+          browserVersion: '',
+          userAgent: '',
+          httpStatus: 200,
+          extensionVersion: '',
+          operatorId: 'op',
+          operatorName: 'Test Operator',
+          toolVersion: '0.1.0'
+        })
+      ).capture.id
+    await ingestPage(1)
+    expect(await lifecycle.delete(await ingestPage(2))).toBe(true)
+    // What the MAX + 1 read over live rows did before #1270: 2 again.
+    const upload = join(tempDir, 'reissued.pdf')
+    writeFileSync(upload, '%PDF-1.7 reissued')
+    const [staged] = await uploadToStaging(caseId, [upload])
+    const spy = vi.spyOn(numbering, 'nextExhibitNumber').mockReturnValueOnce(2)
+    await commitStagedFiles(caseId, [staged.id])
+    spy.mockRestore()
+
+    const zipPath = join(tempDir, 'repeated-evidence.zip')
+    await generateReport(
+      caseId,
+      {
+        format: 'zip',
+        include: {
+          captures: true,
+          screenshots: true,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
+        exportClass: 'evidence',
+        outputPath: zipPath
+      },
+      lifecycle
+    )
+    const dir = mkdtempSync(join(tmpdir(), 'bb-binrepeated-'))
+    try {
+      unzipToDir(zipPath, dir)
+      const proc = spawnSync(binaryPath, [dir], { encoding: 'utf-8' })
+      expect(proc.status, proc.stdout + proc.stderr).toBe(0)
+      expect(proc.stdout).toContain(
+        '[EXCEPTION] exhibit number 2 — Integrity Exception: Exhibit Number 2 is assigned to 2 ' +
+          'exhibits'
+      )
+      expect(proc.stdout).toContain(
+        'RESULT: PASS — integrity + internal consistency verified, with 1 Integrity ' +
+          'Exception(s) (see above).'
+      )
+      expect(proc.stdout).not.toContain('[FAIL]')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   it('exits 1 naming the exhibit number when a committed exhibit is altered', () => {
@@ -517,9 +595,14 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
         ownerEntries: [ownerAdd, add('inst-c', 'C', memberKey.publicKey, 'owner')]
       },
       {
+        // One Exhibit under one citation twice. Two Exhibits under one number
+        // in one chain is X48's Integrity Exception and fails nothing.
         outcome: 'citation-collision',
         ownerEntries: [ownerAdd, memberAdd],
-        memberFile: { id: 'inst-b', jsonl: memberChain([exhibit('b-1'), exhibit('b-2')]) }
+        memberFile: {
+          id: 'inst-b',
+          jsonl: memberChain([exhibit('b-1'), { ...exhibit('b-1'), contentHash: 'b'.repeat(64) }])
+        }
       }
     ]
 

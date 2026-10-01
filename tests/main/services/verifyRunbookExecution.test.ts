@@ -237,9 +237,8 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     exhibitId = committed.id
     exhibitNumber = committed.exhibitNumber
 
-    // Anchors the capture's thumbnail as a Derived File (X34) and writes the
-    // Case's `renumber` entry, which is where a Capture's Exhibit Number lives
-    // in the chain.
+    // Anchors the capture's thumbnail as a Derived File (X34). No `renumber`
+    // entry: the capture's Exhibit Number is on its own capture entry (X46).
     await backfillCase(testCase.id, { toolVersion: '0.1.0' })
 
     // A token genuinely issued over THIS capture's content hash, so step 6's
@@ -447,7 +446,7 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     expect(run.output).toContain('FAIL [step 5]')
     // AC 2's wording, the same in both shipped verifiers: a Derived File has no
     // number of its own (X31), so it is cited by its parent's and its
-    // derivation. The parent Capture's number comes off the `renumber` entry.
+    // derivation. The parent Capture's number comes off its capture entry.
     expect(run.output).toContain('Exhibit 1, derivation thumbnail')
     expect(run.output).toContain('does not match the outputHash in its signed entry')
   })

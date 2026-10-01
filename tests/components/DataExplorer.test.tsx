@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, cleanup, within, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
+import type { CaseManifestSnapshot } from '@shared/manifestSnapshot'
+import type { Capture } from '@shared/types'
 
 vi.mock('@tanstack/react-router', () => ({
   useParams: () => ({ caseId: 'case1' }),
@@ -13,6 +15,7 @@ vi.mock('@renderer/lib/notify', () => ({
 }))
 
 import { DataExplorer } from '@renderer/components/dashboard/cases/DataExplorer'
+import { queryKeys } from '@renderer/lib/api/keys'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { CAPTURES, HASH_A, INVENTORY } from '../renderer/dataFixtures'
 
@@ -21,7 +24,8 @@ function renderExplorer() {
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
   }
-  return render(<DataExplorer />, { wrapper: Wrapper })
+  render(<DataExplorer />, { wrapper: Wrapper })
+  return client
 }
 
 beforeEach(() => {
@@ -312,5 +316,145 @@ describe('DataExplorer (#1149)', () => {
     expect(text(props.getByText('Origin').nextSibling)).toBe('manual-upload')
     expect(text(props.getByText('Arrived').nextSibling)).toBe('2026-09-10T12:00:00.000Z')
     expect(props.queryByText('Exhibit Number')).toBeNull()
+  })
+})
+
+// A failed inventory read used to look like a clean Case ("No exceptions among
+// the verified rows."), and a failed snapshot read like one still in flight.
+describe('DataExplorer failed reads (#1656)', () => {
+  const EMPTY_SNAPSHOT: CaseManifestSnapshot = {
+    caseId: 'case1',
+    entries: [],
+    chain: { valid: true },
+    signers: [],
+    head: null,
+    citationRule: { prefixed: false, localMemberCode: null }
+  }
+
+  async function selectNode(key: string) {
+    fireEvent.click(
+      (await tree()).getByTestId(`data-tree-node-${key}`).querySelector('button:last-of-type')!
+    )
+  }
+
+  function deferred<T>() {
+    let resolve!: (value: T) => void
+    const promise = new Promise<T>((res) => {
+      resolve = res
+    })
+    return { promise, resolve }
+  }
+
+  // Waits until the inventory has resolved and its result has had time to
+  // render, so the captures read is the only one still in flight.
+  async function inventorySettled(client: QueryClient) {
+    await waitFor(() =>
+      expect(client.getQueryState(queryKeys.exhibitInventory('case1'))?.status).toBe('success')
+    )
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)))
+  }
+
+  // In this test and the next, the rail is gone, so no node but the default is
+  // in reach, and "No exceptions among the verified rows." renders inside the
+  // table: the absence of both is what proves no node can show the all-clear.
+  it('replaces the screen with the error and a retry when the inventory read fails', async () => {
+    const inventory = vi.mocked(window.birdbrain.exhibits.inventory)
+    inventory.mockRejectedValueOnce(new Error('database is locked'))
+    inventory.mockResolvedValue({ caseId: 'case1', rows: [] })
+    renderExplorer()
+
+    expect(await screen.findByText('Failed to load case data: database is locked')).toBeTruthy()
+    expect(screen.queryByRole('tree')).toBeNull()
+    expect(screen.queryByTestId('artifact-table')).toBeNull()
+
+    // The retry reads an empty Case, which keeps its existing empty message.
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    await selectNode('integrity-exceptions')
+    expect(await screen.findByText('No exceptions among the verified rows.')).toBeTruthy()
+    expect(screen.queryByText(/Failed to load/)).toBeNull()
+  })
+
+  // The captures carry each Capture's persisted verify state; without them a
+  // tampered Capture used to drop out of the exceptions.
+  it('replaces the screen with the error and a retry when the captures read fails', async () => {
+    vi.mocked(window.birdbrain.captures.list).mockRejectedValueOnce(new Error('disk offline'))
+    renderExplorer()
+
+    expect(await screen.findByText('Failed to load captures: disk offline')).toBeTruthy()
+    expect(screen.queryByRole('tree')).toBeNull()
+    expect(screen.queryByTestId('artifact-table')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    await selectNode('integrity-exceptions')
+    expect(await screen.findByTestId('artifact-row-cap-a')).toBeTruthy()
+    expect(screen.queryByText(/Failed to load/)).toBeNull()
+  })
+
+  // Until the captures arrive every Capture reads as unverified, so Integrity
+  // Exceptions used to say "No exceptions" for a tampered one meanwhile.
+  it('holds the loading screen until the first captures read settles', async () => {
+    const captures = deferred<Capture[]>()
+    vi.mocked(window.birdbrain.captures.list).mockReturnValueOnce(captures.promise)
+    const client = renderExplorer()
+    await inventorySettled(client)
+
+    expect(screen.getByText('Loading case data...')).toBeTruthy()
+    expect(screen.queryByRole('tree')).toBeNull()
+
+    await act(async () => captures.resolve(CAPTURES))
+    await selectNode('integrity-exceptions')
+    expect(await screen.findByTestId('artifact-row-cap-a')).toBeTruthy()
+  })
+
+  // A retry of a read that never succeeded starts over from no data.
+  it('holds the loading screen while a retry of a failed captures read is in flight', async () => {
+    const list = vi.mocked(window.birdbrain.captures.list)
+    const retried = deferred<Capture[]>()
+    list.mockRejectedValueOnce(new Error('disk offline'))
+    list.mockReturnValueOnce(retried.promise)
+    renderExplorer()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(screen.queryByText(/Failed to load/)).toBeNull())
+    expect(screen.getByText('Loading case data...')).toBeTruthy()
+    expect(screen.queryByRole('tree')).toBeNull()
+
+    await act(async () => retried.resolve(CAPTURES))
+    await selectNode('integrity-exceptions')
+    expect(await screen.findByTestId('artifact-row-cap-a')).toBeTruthy()
+  })
+
+  it('shows the error and a retry on the Manifest Ledger node when the snapshot read fails', async () => {
+    const snapshot = vi.mocked(window.birdbrain.manifest.snapshot)
+    snapshot.mockRejectedValueOnce(new Error('manifest unreadable'))
+    snapshot.mockResolvedValue(EMPTY_SNAPSHOT)
+    renderExplorer()
+    await selectNode('manifest-ledger')
+
+    expect(await screen.findByText('Failed to load the ledger: manifest unreadable')).toBeTruthy()
+    expect(screen.queryByText('Loading the ledger…')).toBeNull()
+    expect(screen.queryByTestId('data-tree-count-manifest-ledger')).toBeNull()
+
+    // The retry reads an empty ledger, which keeps its existing empty message.
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByText('No entries.')).toBeTruthy()
+    expect(screen.queryByText(/Failed to load/)).toBeNull()
+  })
+
+  it('withdraws the verdict and the ledger count when a later snapshot read fails', async () => {
+    const client = renderExplorer()
+    await selectNode('manifest-ledger')
+    expect((await screen.findAllByTestId('chain-verdict')).length).toBeGreaterThan(0)
+    expect(text(screen.getByTestId('data-tree-count-manifest-ledger'))).toContain('1')
+
+    vi.mocked(window.birdbrain.manifest.snapshot).mockRejectedValueOnce(
+      new Error('manifest unreadable')
+    )
+    await act(() => client.invalidateQueries({ queryKey: queryKeys.manifestSnapshot('case1') }))
+
+    expect(await screen.findByText('Failed to load the ledger: manifest unreadable')).toBeTruthy()
+    expect(screen.queryAllByTestId('chain-verdict')).toEqual([])
+    expect(screen.queryByTestId('manifest-ledger-view')).toBeNull()
+    expect(screen.queryByTestId('data-tree-count-manifest-ledger')).toBeNull()
   })
 })

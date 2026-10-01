@@ -183,6 +183,43 @@ describe('buildPdfMetadataRows — trusted time (#509)', () => {
   })
 })
 
+describe('buildPdfMetadataRows — verification (#1662)', () => {
+  it('names a stored tampered status as changed since capture', () => {
+    const rows = buildPdfMetadataRows(
+      { ...CAPTURE, lastVerifiedStatus: 'tampered', lastVerifiedAt: '2026-08-18T09:00:00.000Z' },
+      { trustedTime: 'none' }
+    )
+    const row = rowValue(rows, 'Verification')
+
+    expect(row?.startsWith('changed since capture; checked at 2026-08-18T09:00:00.000Z (')).toBe(
+      true
+    )
+    expect(row).not.toMatch(/tamper|alter/i)
+    expect(row).not.toMatch(/capture at/)
+  })
+
+  it('states the verification time as the check for every status', () => {
+    for (const status of ['verified', 'missing', 'chain-broken', 'legacy'] as const) {
+      const rows = buildPdfMetadataRows(
+        { ...CAPTURE, lastVerifiedStatus: status, lastVerifiedAt: '2026-08-18T09:00:00.000Z' },
+        { trustedTime: 'none' }
+      )
+      expect(rowValue(rows, 'Verification')?.startsWith(`${status}; checked at 2026-08-18T`)).toBe(
+        true
+      )
+    }
+  })
+
+  it('prints every other stored status unchanged', () => {
+    const rows = buildPdfMetadataRows(
+      { ...CAPTURE, lastVerifiedStatus: 'missing' },
+      { trustedTime: 'none' }
+    )
+
+    expect(rowValue(rows, 'Verification')).toBe('missing')
+  })
+})
+
 describe('renderCapturePdf — cover injection (#509)', () => {
   beforeEach(() => {
     electronFake.loadURL.mockResolvedValue(undefined)

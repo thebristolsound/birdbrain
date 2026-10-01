@@ -17,7 +17,7 @@ describe('getProvenanceColor', () => {
     const chainBroken = getProvenanceColor('chain-broken')
     expect(tampered.text).toBe('text-red-400')
     expect(tampered.dot).toBe('bg-red-400')
-    expect(tampered.label).toBe('Tampered')
+    expect(tampered.label).toBe('Changed since capture')
     expect(chainBroken.text).toBe('text-red-400')
     expect(chainBroken.label).toBe('Chain broken')
   })

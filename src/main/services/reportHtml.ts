@@ -662,7 +662,7 @@ function exhibitIntegrityView(exhibit: ExportFileExhibit): StateView {
       }
     case 'tampered':
       return {
-        label: 'Altered',
+        label: 'Changed since capture',
         detail:
           'The stored bytes no longer recompute to the digest recorded for this exhibit. It ' +
           'must not be relied upon.'
@@ -720,7 +720,7 @@ function integrityView(verification: HashVerification | undefined, capture: Capt
       }
     case 'tampered':
       return {
-        label: 'Altered',
+        label: 'Changed since capture',
         detail:
           'The stored bytes no longer recompute to the recorded digest. This capture must not ' +
           'be relied upon.' +
@@ -1048,8 +1048,8 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
       hash-chained manifest. Where a timestamp token is retained, that the digest existed no later
       than the time asserted by the named RFC 3161 authority. This is asserted per capture and
       never for the package as a whole — the exhibit index states the result for each, and any
-      capture recorded there as altered, chain-broken, absent, legacy or not verified is excluded
-      from this statement.</dd>
+      capture recorded there as changed since capture, chain-broken, absent, legacy or not
+      verified is excluded from this statement.</dd>
     </div>
     <div class="scope-row">
       <dt>Is not attested</dt>
@@ -1333,7 +1333,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   <div class="legend">
     <p class="box-title">How to read the state column</p>
     ${legendRow('Verified', 'Stored bytes recompute to the recorded digest and the manifest chain reconciles through this entry.')}
-    ${legendRow('Altered', 'Stored bytes no longer recompute to the recorded digest. The capture must not be relied upon.')}
+    ${legendRow('Changed since capture', 'Stored bytes no longer recompute to the recorded digest. The capture must not be relied upon.')}
     ${legendRow('Chain broken', 'Bytes match, but the manifest chain does not reconcile at or before this entry.')}
     ${legendRow('Absent', 'The stored artefact could not be read at verification time. The row is retained rather than removed.')}
     ${legendRow('Legacy record', 'The capture predates the hash-chained manifest; its digest is recorded but not chain-bound.')}

@@ -23,8 +23,8 @@ function badgeSegment(key: SegmentKey, status: HashVerification['status']): Segm
 }
 
 // Each status takes the label and colour the capture's own views show, so a capture verification
-// reports as missing or chain-broken reads the same here and never as Tampered. Unverified pools
-// several statuses.
+// reports as missing or chain-broken reads the same here and never as Changed since capture.
+// Unverified pools several statuses.
 const SEGMENTS: Segment[] = [
   badgeSegment('verified', 'verified'),
   { key: 'unverified', label: 'Unverified', color: 'bg-amber-400' },

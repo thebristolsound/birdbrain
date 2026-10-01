@@ -293,7 +293,7 @@ describe('DataExplorer results and tabs (#1150)', () => {
     // state of its own and none is inferred.
     expect(text(strip.getByTestId('bucket-verified'))).toBe('0 verified')
     expect(text(strip.getByTestId('bucket-exception'))).toBe(
-      '1 tampered, missing, chain-broken or with a repeated number'
+      '1 integrity exception: changed since capture, missing, chain broken or repeated number'
     )
     expect(text(strip.getByTestId('bucket-unverified'))).toBe('2 unverified')
     expect(screen.getByTestId('artifact-row-cap-a')).toBeTruthy()
@@ -325,7 +325,7 @@ describe('DataExplorer results and tabs (#1150)', () => {
     expect(verify.mock.calls.map((c) => c[1])).toEqual(['cap-a', 'cap-legacy'])
     await waitFor(() => expect(text(strip.getByTestId('bucket-verified'))).toBe('2 verified'))
     expect(text(strip.getByTestId('bucket-exception'))).toBe(
-      '0 tampered, missing, chain-broken or with a repeated number'
+      '0 integrity exceptions: changed since capture, missing, chain broken or repeated number'
     )
     expect(text(strip.getByTestId('bucket-unverified'))).toBe('1 unverified')
     expect(screen.queryByTestId('artifact-row-cap-a')).toBeNull()
@@ -345,14 +345,14 @@ describe('DataExplorer results and tabs (#1150)', () => {
     await select('integrity-exceptions')
     const strip = within(await screen.findByTestId('integrity-strip'))
     expect(text(strip.getByTestId('bucket-exception'))).toBe(
-      '1 tampered, missing, chain-broken or with a repeated number'
+      '1 integrity exception: changed since capture, missing, chain broken or repeated number'
     )
     fireEvent.click(strip.getByTestId('verify-all'))
     await waitFor(() => expect(verify).toHaveBeenCalledTimes(2))
     await waitFor(() => expect(text(strip.getByTestId('bucket-verified'))).toBe('1 verified'))
     // cap-a's persisted "tampered" is not repeated and it is not verified either.
     expect(text(strip.getByTestId('bucket-exception'))).toBe(
-      '0 tampered, missing, chain-broken or with a repeated number'
+      '0 integrity exceptions: changed since capture, missing, chain broken or repeated number'
     )
     expect(text(strip.getByTestId('bucket-unverified'))).toBe('2 unverified')
   })

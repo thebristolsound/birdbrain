@@ -191,8 +191,23 @@ describe('buildPdfMetadataRows — verification (#1662)', () => {
     )
     const row = rowValue(rows, 'Verification')
 
-    expect(row?.startsWith('changed since capture at 2026-08-18T09:00:00.000Z')).toBe(true)
+    expect(row?.startsWith('changed since capture; checked at 2026-08-18T09:00:00.000Z (')).toBe(
+      true
+    )
     expect(row).not.toMatch(/tamper|alter/i)
+    expect(row).not.toMatch(/capture at/)
+  })
+
+  it('states the verification time as the check for every status', () => {
+    for (const status of ['verified', 'missing', 'chain-broken', 'legacy'] as const) {
+      const rows = buildPdfMetadataRows(
+        { ...CAPTURE, lastVerifiedStatus: status, lastVerifiedAt: '2026-08-18T09:00:00.000Z' },
+        { trustedTime: 'none' }
+      )
+      expect(rowValue(rows, 'Verification')?.startsWith(`${status}; checked at 2026-08-18T`)).toBe(
+        true
+      )
+    }
   })
 
   it('prints every other stored status unchanged', () => {

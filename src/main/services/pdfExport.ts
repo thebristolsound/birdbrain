@@ -131,9 +131,13 @@ export function buildPdfMetadataRows(
       capture.lastVerifiedStatus === 'tampered'
         ? 'changed since capture'
         : capture.lastVerifiedStatus
+    // "checked at", not "at": the time is the verification run, and a bare "at"
+    // reads as a second capture time beside the "Captured at" row.
     add(
       'Verification',
-      capture.lastVerifiedAt ? `${status} at ${formatTimestamp(capture.lastVerifiedAt)}` : status
+      capture.lastVerifiedAt
+        ? `${status}; checked at ${formatTimestamp(capture.lastVerifiedAt)}`
+        : status
     )
   }
   add('Trusted time', formatTrustedTime(trustedTime))

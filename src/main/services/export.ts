@@ -628,12 +628,13 @@ export async function generateReport(
   const sharedCase = readSharedCaseSnapshot(join(getStorageRoot(), caseId), manifest)
   const caseEntries = caseEntriesOf(manifest, sharedCase)
   data.manifestHead = manifest.head
-  const inScope = new Set([...captures.map((c) => c.id), ...scope.fileExhibits.map((e) => e.id)])
-  data.sharedCase = resolveExportSharedCase(sharedCase, (id) => inScope.has(id))
   // The ids the documents below write for an Exhibit are the chain's (see
   // resolveChainNames); lookups into this export's own maps keep the row id.
   const chainNames = resolveChainNames(allCaptures, scope.fileExhibits, caseEntries)
   const chainIdOf = (id: string): string => chainNames.get(id)?.id ?? id
+  // An exclusion names the Exhibit by the id its chain carries.
+  const inScope = new Set([...captures, ...scope.fileExhibits].map(({ id }) => chainIdOf(id)))
+  data.sharedCase = resolveExportSharedCase(sharedCase, (id) => inScope.has(id))
   data.chainIdByCaptureId = new Map(captures.map(({ id }) => [id, chainIdOf(id)]))
   data.entriesUnderCarriedKeys = signingKeyRanges(manifest.entries, getPublicKeyPem()).some(
     ({ carriedByImportAt }) => carriedByImportAt !== null

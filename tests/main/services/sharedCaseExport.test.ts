@@ -581,6 +581,43 @@ describe('Shared Case export, import and fork (#1511)', () => {
     ).toContain('excluded by Casey Operator (the Owner) at 2026-09-27T11:30:00.000Z')
   })
 
+  // #1657: a whole-case export from a fork whose ids the import renamed
+  // encloses the excluded Exhibit, and its documents have to say so. The
+  // exclusion names the Exhibit by the id its chain carries, not the new one.
+  it('states an excluded Exhibit enclosed in a fork whose ids the import renamed', async () => {
+    const { peerDoc } = ownerReplica((owner, doc) => {
+      owner.append({
+        type: 'exclude',
+        caseId,
+        exhibitId: doc,
+        authorInstallationId: PEER_ID,
+        timestamp: '2026-09-27T11:30:00.000Z',
+        ...LOCAL(),
+        schemaVersion: 4
+      })
+    })
+    const out = join(tempDir, 'renamed-fork.birdbrain')
+    await exportCaseArchive(caseId, out)
+    // The source Case is still here, so the import renames every row it brings.
+    const { newCaseId } = await importCaseArchive(out)
+    expect(listExhibits(newCaseId).map((row) => row.id)).not.toContain(peerDoc)
+
+    const { dir, zip } = await exportPackage(newCaseId)
+    expect(failures(dir)).toEqual([])
+    const evidence = JSON.parse(zip.get('evidence.json')!.toString('utf-8'))
+    expect(
+      evidence.sharedCase.exclusions.map((e: { exhibitId: string; inExport: boolean }) => [
+        e.exhibitId,
+        e.inExport
+      ])
+    ).toEqual([[peerDoc, true]])
+    const report = zip.get('report.html')!.toString('utf-8')
+    const certification = zip.get('certification.html')!.toString('utf-8')
+    expect(report).not.toContain("(outside this export's selection, not enclosed)")
+    expect(certification).not.toContain("(outside this export's selection, not enclosed)")
+    expect(certification).toContain('Exclusions (enclosed, not omitted)')
+  })
+
   it('carries every member chain and the roster in a Case Archive', async () => {
     const { owner } = memberReplica()
     const out = join(tempDir, 'shared.birdbrain')

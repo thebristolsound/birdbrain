@@ -236,6 +236,9 @@ independent of the Operator who holds it.
 |---|---|---|
 | `src/main/services/captureLifecycle.ts` | blocking | Ingest/delete pipeline: hashing, manifest entries, trusted-time reconciliation |
 | `src/main/services/captureStore.ts` | blocking | Owner of capture artifact bytes on disk |
+| `src/main/services/exhibitNumbering.ts` | blocking | Takes the next Exhibit Number from the signed chain (X45), the number new capture and Exhibit entries record and a citation names. Added 2026-10-01; it shipped off the list with #1660 |
+| `src/main/services/exhibitBackfill.ts` | blocking | Startup backfill that appends signed `renumber` and `derivation` entries and anchors each Derived File's `outputHash`. Added 2026-10-01; it shipped off the list |
+| `src/main/services/thumbnails.ts` | blocking | Renders the thumbnail bytes the backfill hashes into a signed `derivation` entry; those Derived Files ship in evidence packages and the package verifier binds them. Moved from the exclusions on 2026-10-01 |
 | `src/main/services/storage.ts` | blocking | Storage root and case directory layout |
 | `src/main/services/mhtmlDecoder.ts` | blocking | MHTML parsing feeding text extraction |
 | `src/main/services/dataExtractor.ts` | blocking | IOC extraction pipeline entry |
@@ -340,7 +343,6 @@ It is *notable* exclusions, not an exhaustive complement of the include list.
 | `src/main/services/sessionLog.ts` | Operational logging |
 | `src/main/services/bugReport.ts` | Bug-report zip deliberately excludes captures and the DB |
 | `src/main/services/diagnostics.ts` | Operational telemetry |
-| `src/main/services/thumbnails.ts` | Derived UI previews, never exported or hash-covered |
 | `src/main/services/openrouter.ts` | API-key test + model catalog only; cannot alter analysis output. Distinct from the included `src/main/services/ai/openrouter.ts` chat client |
 | `src/main/services/deepLink.ts` | Navigation plumbing |
 | `src/main/services/extensionPath.ts` | Extension setup plumbing |

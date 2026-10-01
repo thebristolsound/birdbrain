@@ -28,18 +28,65 @@ export const THUMB_HEIGHT = 120
 // A page shorter than the box after scaling is padded at the bottom by
 // replicating its own bottom row, so the pad takes the page's background colour
 // rather than a hardcoded white that would band across a dark page.
-export async function renderThumbnail(screenshot: Buffer): Promise<Buffer> {
+const PAD_METHOD = 'copy'
+const JPEG_QUALITY = 75
+
+// What determined a thumbnail's bytes, recorded in its signed `derivation`
+// entry (#1319) so a reader can tell how many output rows came from the
+// screenshot, how many were replicated, and which imaging build produced them.
+// The sizes are the ones sharp reported and `paddedRows` is the value passed to
+// `extend`, so nothing here is worked out a second time. A type alias, not an
+// interface, so it is assignable to the generic parameter map the entry carries.
+export type ThumbnailParameters = {
+  // The screenshot scaled to the box width, before it is cropped or padded.
+  scaledWidth: number
+  scaledHeight: number
+  outputWidth: number
+  outputHeight: number
+  // Rows appended by replication, 0 when the scaled page filled the box.
+  paddedRows: number
+  // sharp's `extendWith` value for any padded rows.
+  padMethod: typeof PAD_METHOD
+  jpegQuality: number
+  sharpVersion: string
+  libvipsVersion: string
+}
+
+export interface RenderedThumbnail {
+  bytes: Buffer
+  parameters: ThumbnailParameters
+}
+
+export async function renderThumbnail(screenshot: Buffer): Promise<RenderedThumbnail> {
   const { data, info } = await sharp(screenshot)
     .resize({ width: THUMB_WIDTH })
     .toBuffer({ resolveWithObject: true })
 
+  const paddedRows = info.height < THUMB_HEIGHT ? THUMB_HEIGHT - info.height : 0
   const boxed = sharp(data)
   if (info.height > THUMB_HEIGHT) {
     boxed.extract({ left: 0, top: 0, width: info.width, height: THUMB_HEIGHT })
-  } else if (info.height < THUMB_HEIGHT) {
-    boxed.extend({ bottom: THUMB_HEIGHT - info.height, extendWith: 'copy' })
+  } else if (paddedRows > 0) {
+    boxed.extend({ bottom: paddedRows, extendWith: PAD_METHOD })
   }
-  return boxed.jpeg({ quality: 75 }).toBuffer()
+  const { data: bytes, info: output } = await boxed
+    .jpeg({ quality: JPEG_QUALITY })
+    .toBuffer({ resolveWithObject: true })
+
+  return {
+    bytes,
+    parameters: {
+      scaledWidth: info.width,
+      scaledHeight: info.height,
+      outputWidth: output.width,
+      outputHeight: output.height,
+      paddedRows,
+      padMethod: PAD_METHOD,
+      jpegQuality: JPEG_QUALITY,
+      sharpVersion: sharp.versions.sharp,
+      libvipsVersion: sharp.versions.vips
+    }
+  }
 }
 
 export async function getThumbnail(
@@ -65,10 +112,10 @@ export async function getThumbnail(
     // item. sharp (libvips) handles arbitrarily tall screenshots without
     // loading a full GPU texture.
     const screenshot = await readFile(screenshotPath)
-    const thumbBuffer = await renderThumbnail(screenshot)
+    const { bytes } = await renderThumbnail(screenshot)
 
-    await writeFile(thumbPath, thumbBuffer)
-    return thumbBuffer
+    await writeFile(thumbPath, bytes)
+    return bytes
   } catch (error) {
     logger.error('thumbnails', 'thumbnails.generate_failed', { captureId: ident(captureId) }, error)
     return null

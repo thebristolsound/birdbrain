@@ -62,6 +62,7 @@ import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import type { InventoryExhibitRow, InventoryStagedRow } from '@shared/types'
 import type { ManifestSnapshotEntry } from '@shared/manifestSnapshot'
+import { ManifestEntrySchema } from '@shared/schemas'
 import type { ManifestEntry } from '@shared/schemas'
 
 // Known-answer tests for the Exhibit model's tables, migrations and read paths
@@ -95,6 +96,24 @@ async function screenshotPng(colour: { r: number; g: number; b: number }): Promi
   return sharp({
     create: { width: 32, height: 24, channels: 3, background: colour }
   })
+    .png()
+    .toBuffer()
+}
+
+// A `width`x`height` screenshot: white, with a dark band across its top third.
+async function pagePng(width: number, height: number): Promise<Buffer> {
+  const band = await sharp({
+    create: {
+      width,
+      height: Math.floor(height / 3),
+      channels: 3,
+      background: { r: 20, g: 20, b: 60 }
+    }
+  })
+    .png()
+    .toBuffer()
+  return sharp({ create: { width, height, channels: 3, background: { r: 255, g: 255, b: 255 } } })
+    .composite([{ input: band, top: 0, left: 0 }])
     .png()
     .toBuffer()
 }
@@ -507,7 +526,7 @@ describe('exhibit model', () => {
       // same parent screenshot: the backfill and `getThumbnail` share one
       // pipeline, so a regenerated thumbnail still hashes to what was signed.
       const parentAbs = defaultCaptureStore.artifactPaths(caseId, capture.id, 'png').abs
-      const rerendered = await renderThumbnail(readFileSync(parentAbs))
+      const { bytes: rerendered } = await renderThumbnail(readFileSync(parentAbs))
       expect(createHash('sha256').update(rerendered).digest('hex')).toBe(onDisk)
 
       const [entry] = manifestLines(caseDir).filter((line) => line.type === 'derivation')
@@ -522,6 +541,74 @@ describe('exhibit model', () => {
         schemaVersion: 3
       })
       expect(entry.index).toBe(derived.manifestSeq)
+      expect(verifyManifestChain(caseDir).valid).toBe(true)
+    })
+
+    it('records how a short and a tall page became their anchored thumbnails (#1319)', async () => {
+      // 1280x260 scales short of the box and is padded; 1280x2400 scales past
+      // it and is cropped.
+      const shapes = { short: { width: 1280, height: 260 }, tall: { width: 1280, height: 2400 } }
+      const ids: Record<string, string> = {}
+      for (const [name, { width, height }] of Object.entries(shapes)) {
+        const capture = await ingestInto(caseId, {
+          url: `https://example.com/${name}`,
+          title: name,
+          timestamp: `2026-04-05T12:0${Object.keys(ids).length}:00.000Z`,
+          screenshot: await pagePng(width, height)
+        })
+        ids[name] = capture.id
+      }
+
+      const result = await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+      expect(result.thumbnailsAnchored).toBe(2)
+
+      const entries = manifestLines(caseDir).filter((line) => line.type === 'derivation')
+      // The recorded geometry is checked against the bytes on disk: the anchored
+      // thumbnail's own size, and the parent screenshot scaled to its width.
+      const recorded = async (exhibitId: string): Promise<Record<string, unknown>> => {
+        const entry = entries.find((line) => line.parentExhibitId === exhibitId)
+        if (!entry) throw new Error(`no derivation entry for ${exhibitId}`)
+        const thumb = await sharp(
+          readFileSync(defaultCaptureStore.thumbnailPaths(caseId, exhibitId).abs)
+        ).metadata()
+        const parent = readFileSync(defaultCaptureStore.artifactPaths(caseId, exhibitId, 'png').abs)
+        const { info: scaled } = await sharp(parent)
+          .resize({ width: thumb.width })
+          .toBuffer({ resolveWithObject: true })
+        const parameters = entry.derivationParameters as Record<string, unknown>
+        expect(Object.keys(parameters).sort()).toEqual([
+          'jpegQuality',
+          'libvipsVersion',
+          'outputHeight',
+          'outputWidth',
+          'padMethod',
+          'paddedRows',
+          'scaledHeight',
+          'scaledWidth',
+          'sharpVersion'
+        ])
+        expect(parameters).toMatchObject({
+          scaledWidth: thumb.width,
+          scaledHeight: scaled.height,
+          outputWidth: thumb.width,
+          outputHeight: thumb.height,
+          paddedRows: Math.max(0, thumb.height - scaled.height),
+          padMethod: 'copy',
+          sharpVersion: sharp.versions.sharp,
+          libvipsVersion: sharp.versions.vips
+        })
+        // The app version stays beside the imaging build, not replaced by it.
+        expect(entry.derivationToolVersion).toBe(TOOL_VERSION)
+        expect(entry.schemaVersion).toBe(3)
+        expect(ManifestEntrySchema.safeParse(entry).success).toBe(true)
+        return parameters
+      }
+
+      const short = await recorded(ids.short)
+      const tall = await recorded(ids.tall)
+      expect(short.paddedRows).toBeGreaterThan(0)
+      expect(tall.paddedRows).toBe(0)
+      expect(tall.scaledHeight).toBeGreaterThan(tall.outputHeight as number)
       expect(verifyManifestChain(caseDir).valid).toBe(true)
     })
 

@@ -25,7 +25,21 @@ describe('ReportProblemDialog', () => {
     render(<ReportProblemDialog open onOpenChange={() => {}} />)
     expect(screen.getByText(/diagnostics.json/)).toBeTruthy()
     expect(screen.getByText(/birdbrain.log/)).toBeTruthy()
-    expect(screen.getByText(/never leaves your computer/i)).toBeTruthy()
+    expect(screen.getByText(/never sends it anywhere/i)).toBeTruthy()
+  })
+
+  // report.md carries getInstallationId(), the value captures record as their
+  // operatorId, so the tester has to be told before attaching it anywhere public.
+  it('discloses the installation identifier', () => {
+    render(<ReportProblemDialog open onOpenChange={() => {}} />)
+    expect(screen.getByText(/installation identifier/i)).toBeTruthy()
+  })
+
+  it('points the tester at their issue, not a tester chat', () => {
+    render(<ReportProblemDialog open onOpenChange={() => {}} />)
+    expect(screen.getByText(/attach to your issue/i)).toBeTruthy()
+    expect(screen.queryByText(/chat/i)).toBeNull()
+    expect(screen.queryByText(/api key/i)).toBeNull()
   })
 
   it('sends the three fields when submitted', async () => {

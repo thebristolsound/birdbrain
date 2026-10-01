@@ -735,6 +735,19 @@ const ManifestExhibitEntrySchema = z
     path: ['schemaVersion']
   })
 
+// The parameters that determined a derivation's output bytes (#1319); a
+// thumbnail's are `ThumbnailParameters` in thumbnails.ts. One flat map for
+// every derivation rather than keys per derivation, and open keys for the
+// reason `kind` is an open string: a parameter this build has not heard of is
+// from a newer writer. Keys are ASCII names and numbers integers because
+// canonicalStringify's hash relies on both (canonicalJson.ts).
+const DerivationParametersSchema = z.record(
+  z.string().regex(/^[A-Za-z][A-Za-z0-9]*$/),
+  z.union([z.string(), z.number().int()])
+)
+
+export type DerivationParameters = z.infer<typeof DerivationParametersSchema>
+
 // One Derived File computed from an Exhibit (X17): extracted text, a thumbnail,
 // a PDF metadata sidecar, an enrichment transform's output (`transform:<name>`,
 // X42). A Manifest Entry cannot be amended once written, so a derivation that
@@ -756,6 +769,10 @@ const ManifestDerivationEntrySchema = z
     // (X23). Distinct from the entry-wide `toolVersion`, which always records
     // the Birdbrain build that wrote the entry.
     derivationToolVersion: z.string(),
+    // OMITTED on entries written before #1319, which recorded none. Schema 3
+    // is amended in place rather than bumped, as X46 amended `capture`, and
+    // never `.default()`: an injected value would change the re-hashed body.
+    derivationParameters: DerivationParametersSchema.optional(),
     outputHash: z.string(),
     outputPath: z.string(),
     timestamp: z.string(),

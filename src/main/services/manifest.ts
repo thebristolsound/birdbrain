@@ -15,7 +15,7 @@ import { join } from 'path'
 import { createHash } from 'crypto'
 import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import { ManifestEntrySchema } from '@shared/schemas'
-import type { ManifestEntry } from '@shared/schemas'
+import type { DerivationParameters, ManifestEntry } from '@shared/schemas'
 import {
   canonicalStringify,
   SHARED_CASE_ENTRY_TYPES,
@@ -666,6 +666,8 @@ export type ManifestEntryInput =
       // The tool that produced the OUTPUT, which is not always the Birdbrain
       // build that wrote the entry (`toolVersion` below is always that).
       derivationToolVersion: string
+      // What determined the output bytes (#1319); see the schema.
+      derivationParameters?: DerivationParameters
       outputHash: string
       outputPath: string
       timestamp: string

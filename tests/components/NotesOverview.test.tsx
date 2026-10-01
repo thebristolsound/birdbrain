@@ -169,6 +169,26 @@ describe('Notes workspace', () => {
     expect(screen.getByText('2 notes in this case')).toBeTruthy()
   })
 
+  it('drops a note from a relative date filter once it ages past the cutoff', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] })
+    try {
+      vi.setSystemTime(new Date('2026-01-02T00:00:00Z'))
+      notes = [makeNote('a', 'Aging', { createdAt: '2026-01-01T00:01:00Z' })]
+      renderNotes()
+      await screen.findByTestId('note-row-a')
+      await openMenu('Filter notes')
+      fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Last 24 hours' }))
+      expect(screen.getByTestId('note-row-a')).toBeTruthy()
+      act(() => {
+        vi.advanceTimersByTime(120_000)
+      })
+      expect(screen.queryByTestId('note-row-a')).toBeNull()
+      expect(screen.getByText('No notes match')).toBeTruthy()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('flushes before switching and keeps failed drafts visible for retry', async () => {
     notes = [makeNote('a', 'First'), makeNote('b', 'Second')]
     renderNotes()

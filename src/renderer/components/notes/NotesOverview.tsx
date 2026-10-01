@@ -3,6 +3,7 @@ import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'motion/react'
 import { useReduceMotion } from '@renderer/hooks/useReduceMotion'
+import { useTimeTick } from '@renderer/hooks/useTimeTick'
 import { DropdownMenu } from 'radix-ui'
 import { Search, Plus, StickyNote, ArrowUpDown, Filter, List, Rows3, Check } from 'lucide-react'
 import {
@@ -89,9 +90,12 @@ function NotesWorkspace({ caseId }: { caseId: string }) {
       ? [createdNote, ...allNotes]
       : allNotes
   const selected = all.find((n) => n.id === selectedId) ?? all[0]
+  // The date filters are relative, so the memo also expires as the cutoff moves.
+  const nowTick = useTimeTick(60_000)
+  const nowMs = useMemo(() => Date.now(), [nowTick])
   const notes = useMemo(
-    () => filterNotes(debouncedQuery ? (search.data ?? []) : all, sort, tag, date),
-    [debouncedQuery, search.data, all, sort, tag, date]
+    () => filterNotes(debouncedQuery ? (search.data ?? []) : all, sort, tag, date, nowMs),
+    [debouncedQuery, search.data, all, sort, tag, date, nowMs]
   )
   const activeCount = Number(!!tag) + Number(date !== 'all')
   const narrowed = !!debouncedQuery || activeCount > 0

@@ -132,8 +132,9 @@ describe('computeOverview', () => {
     expect(m.verified + m.tampered + m.chainBroken + m.missing + m.unverified).toBe(7)
   })
 
-  // Verification returns missing and chain-broken before it compares the page bytes with the
-  // record, so neither says the bytes changed and neither may be counted as Tampered.
+  // Verification returns missing when a file it checks is absent, and chain-broken before it
+  // compares the page bytes with the record, so neither says the bytes changed and neither may
+  // be counted as Tampered.
   it.each([
     ['missing', { tampered: 0, chainBroken: 0, missing: 1 }],
     ['chain-broken', { tampered: 0, chainBroken: 1, missing: 0 }],

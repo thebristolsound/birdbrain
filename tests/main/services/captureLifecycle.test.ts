@@ -1658,6 +1658,107 @@ describe('createCaptureLifecycle.verify', () => {
     expect(result.reason).toMatch(/screenshot/i)
   })
 
+  // #1661: an absent file shows nothing about whether any bytes changed, so it
+  // is reported as missing, the status an unreadable page file already gets.
+  const sha256 = (data: string): string => createHash('sha256').update(data).digest('hex')
+  const textPathOf = (id: string): string => join(getStorageRoot(), caseId, `${id}.txt`)
+
+  it('reports missing, not tampered, when the recorded screenshot file is absent (#1661)', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('mhtml-body'), { screenshot: Buffer.from('shot') })
+    )
+    expect((await lifecycle.verify(capture.id)).status).toBe('verified')
+
+    rmSync(join(getStorageRoot(), capture.screenshotPath!))
+
+    const result = await lifecycle.verify(capture.id)
+    expect(result.status).toBe('missing')
+    expect(result.reason).toBe(
+      'Screenshot missing: expected ' + sha256('shot').slice(0, 12) + '...'
+    )
+    expect(result.chainValid).toBe(true)
+    expect(getCapture(capture.id)?.lastVerifiedStatus).toBe('missing')
+  })
+
+  it('reports missing, not tampered, when the recorded extracted-text file is absent (#1661)', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('mhtml-body'), { textContent: 'original text' })
+    )
+    expect((await lifecycle.verify(capture.id)).status).toBe('verified')
+
+    rmSync(textPathOf(capture.id))
+
+    const result = await lifecycle.verify(capture.id)
+    expect(result.status).toBe('missing')
+    expect(result.reason).toBe(
+      'Extracted text missing: expected ' + sha256('original text').slice(0, 12) + '...'
+    )
+    expect(result.chainValid).toBe(true)
+    expect(getCapture(capture.id)?.lastVerifiedStatus).toBe('missing')
+  })
+
+  it('reports an altered file as tampered even when the other recorded file is absent (#1661)', async () => {
+    const { writeFileSync } = await import('fs')
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const params = { screenshot: Buffer.from('shot'), textContent: 'original text' }
+
+    const { capture: textAltered } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('first-body'), params)
+    )
+    rmSync(join(getStorageRoot(), textAltered.screenshotPath!))
+    writeFileSync(textPathOf(textAltered.id), 'altered text', 'utf-8')
+    const first = await lifecycle.verify(textAltered.id)
+    expect(first.status).toBe('tampered')
+    expect(first.reason).toBe(
+      'Extracted text hash mismatch: expected ' +
+        sha256('original text') +
+        ', got ' +
+        sha256('altered text')
+    )
+
+    const { capture: shotAltered } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('second-body'), params)
+    )
+    writeFileSync(join(getStorageRoot(), shotAltered.screenshotPath!), 'altered shot')
+    rmSync(textPathOf(shotAltered.id))
+    const second = await lifecycle.verify(shotAltered.id)
+    expect(second.status).toBe('tampered')
+    expect(second.reason).toBe(
+      'Screenshot hash mismatch: expected ' + sha256('shot') + ', got ' + sha256('altered shot')
+    )
+  })
+
+  it('does not check a file with no recorded hash, including after an absent one (#1661)', async () => {
+    const { writeFileSync } = await import('fs')
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+
+    // No screenshot recorded and none on disk: not reported as missing.
+    const { capture: noShot } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('first-body'))
+    )
+    expect(getCapture(noShot.id)?.screenshotHash).toBeUndefined()
+    expect((await lifecycle.verify(noShot.id)).status).toBe('verified')
+
+    // No text recorded: the absent screenshot lets the scan continue, and a
+    // stray text file still yields no finding of its own.
+    const { capture: noText } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('second-body'), {
+        screenshot: Buffer.from('shot'),
+        textContent: ''
+      })
+    )
+    expect(getCapture(noText.id)?.textHash).toBeUndefined()
+    writeFileSync(textPathOf(noText.id), 'stray text', 'utf-8')
+    rmSync(join(getStorageRoot(), noText.screenshotPath!))
+    const result = await lifecycle.verify(noText.id)
+    expect(result.status).toBe('missing')
+    expect(result.reason).toBe(
+      'Screenshot missing: expected ' + sha256('shot').slice(0, 12) + '...'
+    )
+  })
+
   it('FAILS verify when the capture is truncated out of the manifest chain (#X-2)', async () => {
     const { readFileSync, writeFileSync } = await import('fs')
     const { MANIFEST_FILENAME } = await import('@shared/constants')

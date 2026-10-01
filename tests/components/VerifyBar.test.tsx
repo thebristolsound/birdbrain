@@ -19,32 +19,38 @@ describe('VerifyBar', () => {
     const labels = screen
       .getAllByTestId(/^verify-legend-/)
       .map((el) => el.lastElementChild?.textContent)
-    expect(labels).toEqual(['Verified', 'Unverified', 'Tampered', 'Missing', 'Chain broken'])
+    expect(labels).toEqual([
+      'Verified',
+      'Unverified',
+      'Changed since capture',
+      'Missing',
+      'Chain broken'
+    ])
   })
 
-  it('shows a missing capture as Missing and draws no Tampered segment', () => {
+  it('shows a missing capture as Missing and draws no Changed since capture segment', () => {
     render(<VerifyBar {...NONE} verified={2} missing={1} />)
 
     expect(screen.getByTitle('Missing: 1')).toBeTruthy()
-    expect(screen.queryByTitle(/^Tampered/)).toBeNull()
+    expect(screen.queryByTitle(/^Changed since capture/)).toBeNull()
     expect(legend('missing')).toEqual({ count: '1', label: 'Missing' })
-    expect(legend('tampered')).toEqual({ count: '0', label: 'Tampered' })
+    expect(legend('tampered')).toEqual({ count: '0', label: 'Changed since capture' })
   })
 
-  it('shows a chain-broken capture as Chain broken and draws no Tampered segment', () => {
+  it('shows a chain-broken capture as Chain broken and draws no Changed since capture segment', () => {
     render(<VerifyBar {...NONE} verified={2} chainBroken={1} />)
 
     expect(screen.getByTitle('Chain broken: 1')).toBeTruthy()
-    expect(screen.queryByTitle(/^Tampered/)).toBeNull()
+    expect(screen.queryByTitle(/^Changed since capture/)).toBeNull()
     expect(legend('chainBroken')).toEqual({ count: '1', label: 'Chain broken' })
-    expect(legend('tampered')).toEqual({ count: '0', label: 'Tampered' })
+    expect(legend('tampered')).toEqual({ count: '0', label: 'Changed since capture' })
   })
 
-  it('still shows a tampered capture as Tampered', () => {
+  it('shows a capture whose stored bytes changed as Changed since capture', () => {
     render(<VerifyBar {...NONE} verified={2} tampered={1} />)
 
-    expect(screen.getByTitle('Tampered: 1')).toBeTruthy()
-    expect(legend('tampered')).toEqual({ count: '1', label: 'Tampered' })
+    expect(screen.getByTitle('Changed since capture: 1')).toBeTruthy()
+    expect(legend('tampered')).toEqual({ count: '1', label: 'Changed since capture' })
     expect(legend('missing').count).toBe('0')
     expect(legend('chainBroken').count).toBe('0')
   })

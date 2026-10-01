@@ -14,8 +14,8 @@ interface IntegrityStripProps {
 // unverified count is deliberately visible: a Case with zero exceptions and
 // forty unverified rows has not been looked at, and a strip that showed only
 // the exceptions would read as clean. The exception label names a repeated
-// Exhibit Number (X48) beside tampering, so a row there for its number alone
-// is not read as tampered.
+// Exhibit Number (X48) beside changed bytes, so a row there for its number
+// alone is not read as changed since capture.
 export function IntegrityStrip({ counts, progress, onVerifyAll, disabled }: IntegrityStripProps) {
   return (
     <div
@@ -26,7 +26,8 @@ export function IntegrityStrip({ counts, progress, onVerifyAll, disabled }: Inte
         {counts.verified} verified
       </span>
       <span className="text-danger-fg" data-testid="bucket-exception">
-        {counts.exception} tampered, missing, chain-broken or with a repeated number
+        {counts.exception} integrity exception{counts.exception === 1 ? '' : 's'}: changed since
+        capture, missing, chain broken or repeated number
       </span>
       <span className="text-text-muted" data-testid="bucket-unverified">
         {counts.unverified} unverified

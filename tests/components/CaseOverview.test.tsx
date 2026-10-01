@@ -175,10 +175,10 @@ describe('CaseOverview', () => {
 
     await waitFor(() => expect(screen.getByText('Evidence integrity')).toBeTruthy())
     expect(screen.getByTitle('Verified: 1')).toBeTruthy()
-    expect(screen.getByTitle('Tampered: 1')).toBeTruthy()
+    expect(screen.getByTitle('Changed since capture: 1')).toBeTruthy()
   })
 
-  it('files missing and chain-broken captures under their own labels, not Tampered', async () => {
+  it('files missing and chain-broken captures under their own labels, not Changed since capture', async () => {
     seedBridge({
       captures: {
         list: vi.fn(async () => [
@@ -194,7 +194,7 @@ describe('CaseOverview', () => {
     await waitFor(() => expect(screen.getByTitle('Missing: 1')).toBeTruthy())
     expect(screen.getByTitle('Chain broken: 1')).toBeTruthy()
     expect(screen.getByTitle('Verified: 1')).toBeTruthy()
-    expect(screen.queryByTitle(/^Tampered/)).toBeNull()
+    expect(screen.queryByTitle(/^Changed since capture/)).toBeNull()
   })
 
   it('renders no selector-coverage card', async () => {

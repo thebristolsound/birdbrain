@@ -4,9 +4,10 @@ Date: 2026-10-02
 Status: design, not implemented. Nothing below ships today.
 Issue: #586 (review recommendation R3). Complements #588, which hardens the signing key.
 
-Two decisions came from the maintainer on 2026-10-02: anchor with the RFC 3161 Timestamp
-Authority Birdbrain already uses (option A below), and anchor on the timestamp worker's
-existing cycle plus at export. Everything else here follows from those two.
+Three decisions came from the maintainer on 2026-10-02: anchor with the RFC 3161 Timestamp
+Authority Birdbrain already uses (option A below), anchor on the timestamp worker's existing
+cycle plus at export, and record the timestamping switch in the chain. Everything else here
+follows from those three.
 
 ## Problem
 
@@ -103,9 +104,11 @@ resolves to one value of the existing `TrustedTime` type:
 
 - `rfc3161`: a verified anchor at or after it covers it. The entry carries the earliest
   covering anchor's `stampedAt` and TSA name.
-- `pending`: no anchor covers it, and the chain holds at least one anchor or was written by a
-  build that anchors (the signed `toolVersion` says which). This is the offline case.
-- `none`: no anchor covers it, and the chain predates anchoring.
+- `pending`: no anchor covers it, timestamping was on when it was written, and the chain
+  holds at least one anchor or was written by a build that anchors (the signed `toolVersion`
+  says which). This is the offline case, and also the case of deleted anchors.
+- `none`: no anchor covers it, and either the chain predates anchoring or a `timestamping`
+  record (next section) says the switch was off when the entry was written.
 
 The first anchor after upgrading covers every older entry, with that anchor's time. That
 proves the old entries existed by the upgrade, which is true and no stronger.
@@ -114,6 +117,30 @@ proves the old entries existed by the upgrade, which is true and no stronger.
 `openssl ts -verify` checks it against the TSA root the package bundles, the same as for content
 tokens today. A package with no bundled root needs the reader to supply one, as it does now. A verifier offline at verification time gets the same answer as one
 online.
+
+## Recording the timestamping switch
+
+Without a record, a chain written with `tsaEnabled` off reads the same as one whose anchors
+were deleted: both have an unanchored tail. The chain therefore records the switch.
+
+A new `timestamping` entry carries `enabled: boolean`. It is written into a case's chain
+immediately before any other entry when the switch's current state differs from the last
+state that chain records. A chain with no `timestamping` entry is read as on, the default.
+The switch is per installation and chains are per case, so a case nobody touches while the
+switch is off gets no entry, and needs none: it has no entries to explain.
+
+The verifier resolves an unanchored entry to `none` when the nearest preceding `timestamping`
+entry says off, and to `pending` otherwise. The report names each off span as `timestamping was
+off for entries J to K`.
+
+This does not let an operator excuse a rewrite. An off record inside the anchored prefix is
+fixed by the anchors like any other entry, so it cannot be inserted after the fact. One in the
+unanchored tail is in the window the design already concedes, and it states in the chain that
+anchoring was off for the span, which is the disclosure a declaration needs.
+
+The new type is a schema change, to `MANIFEST_SCHEMA_VERSION` 5. A schema-4 verifier meeting
+the entry reports the too-old verdict, not a broken chain (X25), as every type added since
+schema 3 has.
 
 ## Package format
 
@@ -191,19 +218,16 @@ Each slice is evidence-affecting and gets human review.
 1. **Verify-core.** Anchor index and the coverage result on `ChainVerifyResult`, pure, with
    unit tests over hand-built chains: covered, pending tail, dropped anchors, an anchor naming
    a foreign hash, and an imprint mismatch.
-2. **Worker.** The anchoring pass, with the idle and self-anchor stops and the `tsaEnabled`
-   gate.
+2. **Worker and switch record.** The anchoring pass, with the idle and self-anchor stops and
+   the `tsaEnabled` gate, plus the schema-5 `timestamping` entry and the off-span rule in
+   verify-core.
 3. **Export and verifier.** The export-time anchor, the `anchors/` files and locator, the
    verifier check and report line, and the `VERIFY.md` step.
 4. **Surfaces and docs.** Coverage on Diagnostics and the case's integrity view, plus the
-   threat model change above.
+   threat model change in the preceding section.
 
 ## Open questions
 
 - **TSA rate limits.** DigiCert's public endpoint publishes no request limit that this design
   could cite. Anchoring at most every five minutes per active case is light, but a check
   before slice 2 ships would confirm it.
-- **Telling anchoring switched off apart from anchors deleted.** A chain written with `tsaEnabled` off
-  resolves to `pending` by the `toolVersion` rule, the same as one whose anchors were removed.
-  Recording the switch's state in the chain would separate the two. That is a schema change,
-  so it is left for a decision rather than taken here.

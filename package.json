@@ -1,6 +1,6 @@
 {
   "name": "birdbrain",
-  "version": "1.0.1-beta.21",
+  "version": "1.0.1-beta.22",
   "description": "Open source web investigation & capture tool",
   "main": "./out/main/index.js",
   "private": true,

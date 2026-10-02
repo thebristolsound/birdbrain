@@ -1,12 +1,20 @@
-import { ExternalLink, TriangleAlert } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { ExternalLink, RefreshCw } from 'lucide-react'
 import type { Capture } from '@shared/types'
 import { openCaptureExternal } from '@renderer/lib/api/system'
+import { waybackLookupQueryOptions } from '@renderer/lib/api/wayback'
+import { Button } from '@renderer/components/ui'
 import { notify } from '@renderer/lib/notify'
 import { useAppStore } from '@renderer/stores/appStore'
 import { MhtmlViewer } from '@renderer/components/captures/MhtmlViewer'
 import { LegacyHtmlViewer } from '@renderer/components/captures/LegacyHtmlViewer'
 import { WaybackReplayView } from '@renderer/components/captures/WaybackReplayView'
-import { formatUtcDate, formatUtcTime } from '@renderer/components/captures/waybackPanelModel'
+import {
+  formatUtcDate,
+  formatUtcTime,
+  WAYBACK_DISCLOSURE_HINT,
+  WAYBACK_NONEVIDENCE_HINT
+} from '@renderer/components/captures/waybackPanelModel'
 import { formatSnapshotDelta } from '@shared/wayback'
 
 interface Props {
@@ -54,8 +62,12 @@ export function WaybackCompare({ capture }: Props) {
         </div>
 
         <div className="flex min-w-[300px] flex-1 flex-col overflow-hidden">
-          <div className="flex shrink-0 items-center gap-2 border-b border-border bg-amber-500/10 px-3 py-2">
-            <span className="shrink-0 text-[11px] font-semibold text-amber-500">
+          <div className="flex shrink-0 items-center gap-2 border-b border-border bg-surface px-3 py-2">
+            <span
+              data-testid="wayback-snapshot-label"
+              title={WAYBACK_NONEVIDENCE_HINT}
+              className="shrink-0 text-[11px] font-semibold text-text-secondary"
+            >
               archive.org snapshot
             </span>
             <span className="min-w-0 flex-1 truncate text-[11px] tabular-nums text-text-muted">
@@ -76,33 +88,48 @@ export function WaybackCompare({ capture }: Props) {
               Open
             </button>
           </div>
-          {/* Always visible, and outside the guest: the pane below is remote
-              content fetched now, and nothing about it is part of the case. */}
-          <div
-            data-testid="wayback-nonevidence-label"
-            className="flex shrink-0 items-start gap-1.5 border-b border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[11px] leading-snug text-amber-200"
-          >
-            <TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" strokeWidth={2} />
-            <span>
-              Live remote content, loaded from archive.org now — not evidence. It is not captured,
-              not hashed and not stored in this case. Pinning records the reference only.
-            </span>
-          </div>
           <div className="min-h-0 flex-1 overflow-hidden">
             {active ? (
               <WaybackReplayView snapshotUrl={active.snapshotUrl} />
             ) : (
               <div
                 data-testid="wayback-compare-empty"
-                className="flex h-full items-center justify-center p-6 text-center text-xs text-text-faint"
+                className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-xs text-text-faint"
               >
-                Look up this URL and choose a snapshot to compare.
+                <EmptyPane captureId={capture.id} />
               </div>
             )}
           </div>
         </div>
       </div>
     </div>
+  )
+}
+
+// Reads the panel's lookup query by its key, so a lookup started here fills the panel's list
+// and one started from the panel resolves this state.
+function EmptyPane({ captureId }: { captureId: string }) {
+  const lookup = useQuery(waybackLookupQueryOptions(captureId))
+  const result = lookup.data
+
+  if (result && !lookup.isFetching) {
+    return result.snapshots.length === 0
+      ? 'No archive.org snapshots found for this URL.'
+      : 'Choose a snapshot from the list to compare.'
+  }
+
+  return (
+    <Button
+      variant="outline"
+      data-testid="wayback-compare-lookup"
+      title={WAYBACK_DISCLOSURE_HINT}
+      onClick={() => void lookup.refetch()}
+      disabled={lookup.isFetching}
+      className="gap-1.5"
+    >
+      <RefreshCw className={`h-3.5 w-3.5 ${lookup.isFetching ? 'animate-spin' : ''}`} />
+      {lookup.isFetching ? 'Querying the Wayback Machine…' : 'Look up on archive.org'}
+    </Button>
   )
 }
 

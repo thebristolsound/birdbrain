@@ -44,7 +44,7 @@ reviews:
     - "e2e/**"
     # --- include: author-time docs (specs, plans, ADRs, agent docs) ---
     - "docs/**"
-    # --- include: the Fumadocs site (content + integration). Not covered by docs/**. ---
+    # --- include: the Mintlify site content and the Pages notice. Not covered by docs/**. ---
     - "website/**"
     # --- include: build/release tooling and CI ---
     - "scripts/**"
@@ -85,10 +85,8 @@ reviews:
     - "!coverage/**"
     - "!test-results/**"
     - "!playwright-report/**"
-    - "!website/.next/**"
-    - "!website/out/**"
     # --- exclude: lockfiles. pnpm-lock.yaml is not a *.lock file, so both patterns
-    #     are needed; **/ also catches website/pnpm-lock.yaml (isolated sub-project). ---
+    #     are needed. ---
     - "!**/pnpm-lock.yaml"
     - "!**/*.lock"
     # --- exclude: vendored third-party skill (metadata.author: superdesign), dropped in
@@ -96,7 +94,7 @@ reviews:
     - "!.claude/skills/superdesign/**"
     # --- exclude: binary and asset directories ---
     - "!resources/**"
-    - "!website/public/assets/**"
+    - "!website/content/images/**"
     - "!**/*.png"
     - "!**/*.jpg"
     - "!**/*.jpeg"
@@ -185,26 +183,14 @@ reviews:
         - Naming: `docs/specs/` and `docs/plans/` files take a `YYYY-MM-DD-` prefix;
           `docs/adr/` takes `NNNN-`. See `docs/README.md`.
 
-    - path: "website/content/docs/**"
+    - path: "website/content/**"
       instructions: |
-        - Bare `{...}` in prose is an MDX compile error — braces must be inside backticks.
-        - Internal doc links must use the `./name.mdx` form. A bare slug is emitted as-is
-          and resolves wrong under `trailingSlash: true`.
-        - Image paths are `public/`-relative (`/assets/x.png`). Flag a hardcoded
-          `/birdbrain/` prefix — `basePath` is applied automatically.
+        - Bare `{...}` in prose breaks the MDX page — braces must be inside backticks.
+        - Internal doc links must be root-relative, with no file extension (`/docs/download`).
+          Flag a relative link or one ending in `.mdx`; Mintlify does not resolve them.
+        - Image paths are root-relative to `website/content/` (`/images/x.png`).
         - A new page needs a `title`/`description` frontmatter pair and an entry in
-          `website/content/docs/meta.json`, or it is silently dropped from the sidebar.
-
-    - path: "website/{source.config.ts,next.config.mjs,lib/**,components/**,app/**}"
-      instructions: |
-        - The site is statically exported (`output: 'export'`, `trailingSlash: true`).
-          Flag anything that assumes a server runtime: route handlers with dynamic
-          behaviour, `headers()`/`cookies()`, or unbounded `generateStaticParams`.
-        - Code that builds a URL by hand must import `basePath` from `lib/base-path.mjs`.
-        - Flag brittle assumptions about slug shape or the content tree that will break as
-          pages are added, and untyped access to Fumadocs page/meta objects.
-        - `website/` is an isolated sub-project with its own lockfile. Flag imports that
-          reach outside it or new dependencies added to the root `package.json`.
+          `navigation` in `website/content/docs.json`, or it is not in the sidebar.
 
     - path: ".claude/**"
       instructions: |

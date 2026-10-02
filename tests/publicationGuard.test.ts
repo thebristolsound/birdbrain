@@ -13,10 +13,6 @@ describe('registry publication guard', () => {
     expect(readPackageJson('package.json').private).toBe(true)
   })
 
-  it('keeps the docs sub-project private to npm', () => {
-    expect(readPackageJson('website/package.json').private).toBe(true)
-  })
-
   // `private` alone is invisible to `npm publish --dry-run`: npm only reaches the
   // EPRIVATE check inside libnpmpublish, which the dry run skips. The lifecycle
   // hook is the half of the guard that fires on the rehearsal too, so losing it

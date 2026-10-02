@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Birdbrain documentation has moved</title>
+    <meta name="robots" content="noindex" />
+    <link rel="canonical" href="https://docs.birdbrain.cc/" />
+    <meta http-equiv="refresh" content="3; url=https://docs.birdbrain.cc/" />
+    <script>
+      // Deployed as both index.html and 404.html, so every old address lands here.
+      // Old pages lived at /birdbrain/docs/<page>/ and keep their slug on the new site.
+      var match = location.pathname.match(/^\/birdbrain\/docs\/([a-z0-9-]+)\/?$/)
+      var target = 'https://docs.birdbrain.cc/' + (match ? 'docs/' + match[1] : '')
+      document.addEventListener('DOMContentLoaded', function () {
+        document.getElementById('target').href = target
+        document.getElementById('target').textContent = target
+      })
+      location.replace(target)
+    </script>
+  </head>
+  <body>
+    <h1>Birdbrain documentation has moved</h1>
+    <p>
+      The documentation now lives at
+      <a id="target" href="https://docs.birdbrain.cc/">https://docs.birdbrain.cc/</a>.
+    </p>
+  </body>
+</html>

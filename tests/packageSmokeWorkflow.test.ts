@@ -183,7 +183,7 @@ describe('package smoke and release workflow consistency', () => {
     const releaseContent = readWorkflow('release.yml')
 
     expect(releaseContent).toMatch(
-      /\[Download Birdbrain\]\(https:\/\/thebristolsound\.github\.io\/birdbrain\/docs\/download\/\)/
+      /\[Download Birdbrain\]\(https:\/\/docs\.birdbrain\.cc\/docs\/download\)/
     )
     expect(releaseContent).not.toMatch(/tester chat/i)
   })

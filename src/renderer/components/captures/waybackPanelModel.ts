@@ -15,6 +15,13 @@ export const WAYBACK_PANEL_WIDTH_PX = 436
 
 export const SNAPSHOTS_PER_PAGE = 6
 
+// Hover text, not standing copy: both facts still hold, and they sit on the controls they are
+// about rather than as banners across the panel and the compare pane.
+export const WAYBACK_DISCLOSURE_HINT = 'Looking up this URL discloses it to archive.org.'
+export const WAYBACK_NONEVIDENCE_HINT =
+  'Loaded live from archive.org; not captured, hashed or stored in this case. ' +
+  'Pinning records the reference only.'
+
 const DAY_MS = 86_400_000
 
 export type WaybackPresetId = 'all' | 'around-capture' | 'capture-year'

@@ -12,8 +12,6 @@ export default tseslint.config(
       'dist/',
       'extension/dist/',
       'node_modules/',
-      // Isolated Next.js/Fumadocs sub-project with its own toolchain — see website/.
-      'website/',
       '.worktrees/',
       '.design-bundle/',
       '.claude/',

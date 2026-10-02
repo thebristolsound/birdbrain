@@ -15,26 +15,15 @@ version: 2
 # on a continue-on-error in security.yml that the file no longer has.
 #
 # What security.yml does now, in its `dependencies` job, is run
-# `node scripts/audit-check.mjs` over both dependency trees. It is enforcing: any high or
-# critical advisory that is neither cleared by an override in pnpm-workspace.yaml /
-# website/pnpm-workspace.yaml nor covered by an unexpired entry in audit-exceptions.json
-# fails the build. It only reports and blocks, though — it never proposes an upgrade,
-# which is what the npm block below adds for the root tree.
+# `node scripts/audit-check.mjs` over the app's dependency tree. It is enforcing: any
+# high or critical advisory that is neither cleared by an override in
+# pnpm-workspace.yaml nor covered by an unexpired entry in audit-exceptions.json fails
+# the build. It only reports and blocks, though — it never proposes an upgrade, which
+# is what the npm block below adds.
 #
-# website/ stays out of version updates, as the 2026-08-29 ruling directed. The
-# isolation facts behind it hold: website/ has its own package.json, pnpm-lock.yaml and
-# pnpm-workspace.yaml (making it a separate workspace root) and sits outside the root
-# toolchain (eslint.config.js, pnpm format, the root tsconfigs, build.files). The
-# ruling's other reason does not. website/ is not installed by docs.yml alone: ci.yml's
-# docs-build job installs, typechecks and builds it on a PR touching website/ - though
-# only once `changes` runs, which ci.yml gates on the PR being out of draft or carrying
-# agent-pr or agent-authored, so a human draft does not get it - and
-# scripts/audit-check.mjs audits the website tree on every Security run. A bump PR there
-# would not run against less signal, so that argument cannot carry the exclusion.
-# Whether to open /website too is a maintainer decision. It is left open here and
-# tracked on #1347, which carries the evidence; this file deliberately does not argue
-# it either way. All of this governs *version* updates only: Dependabot security
-# updates are enabled separately and cover both directories.
+# website/ has no dependencies to update: it holds only the Mintlify content, and the
+# Fumadocs app that had its own package.json and lockfile was removed at the Mintlify
+# cutover.
 #
 # Pre-pass interaction (#488), checked on 2026-09-09 against a live Dependabot PR rather
 # than assumed — and the expected answer did not hold. #1341 is dependabot[bot]-authored

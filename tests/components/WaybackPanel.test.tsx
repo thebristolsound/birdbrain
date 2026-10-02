@@ -109,11 +109,12 @@ describe('WaybackPanel', () => {
     expect(wayback.lookup).not.toHaveBeenCalled()
   })
 
-  it('keeps the standing corroboration disclosure above the list', () => {
+  it('carries the archive.org disclosure on the look-up control, not as a standing line', () => {
     renderPanel()
-    expect(
-      screen.getByText(/Corroboration only\. Looking up this URL discloses it to archive\.org/)
-    ).toBeDefined()
+    expect(screen.getByTestId('wayback-lookup-btn').getAttribute('title')).toBe(
+      'Look up. Looking up this URL discloses it to archive.org.'
+    )
+    expect(screen.queryByText(/Corroboration only/)).toBeNull()
   })
 
   it('runs the lookup on click and pages the results six at a time', async () => {

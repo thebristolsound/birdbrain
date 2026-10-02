@@ -419,7 +419,7 @@ export function DataExplorer() {
     captureIds,
     onOpenCapture: openCapture,
     onVerify: verifyIds,
-    onSelectNode: selectNode,
+    onSelectNode: pickFromRail,
     onSetExpanded: setExpandedKeys,
     onCommit: (id) => commit.mutate([id]),
     onDiscard: requestDiscard

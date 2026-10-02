@@ -5,16 +5,16 @@
 **Status:** Design, awaiting approval. Nothing here is implemented.
 
 **Decisions this rests on:**
-[ADR-0033](../adr/0033-the-app-acquires-and-the-extension-is-a-companion.md) (the app acquires,
+[ADR-0034](../adr/0034-the-app-acquires-and-the-extension-is-a-companion.md) (the app acquires,
 the extension is a Companion) and
-[ADR-0034](../adr/0034-one-transaction-record-per-capture.md) (one Transaction Record per
+[ADR-0035](../adr/0035-one-transaction-record-per-capture.md) (one Transaction Record per
 Capture).
 
 **Audience:** whoever implements this slice and whoever reviews it.
 
 ## Problem
 
-ADR-0033 orders the work so that the capture engine gains its new artifacts in the path that
+ADR-0034 orders the work so that the capture engine gains its new artifacts in the path that
 already exists before any new way of attaching to a browser depends on them. This slice adds
 four things to a `background` Capture: a Transaction Record, an artifact inventory with a
 recorded Scroll-to-load, Bound TLS Details, and a PDF. It adds no new Capture Method and changes
@@ -147,7 +147,7 @@ an evidence-affecting method. Against a local fixture server that serves known b
   terminates TLS, which destroys the TLS observation, and it competes with the Egress of
   [ADR-0032](../adr/0032-route-app-egress-but-do-not-disguise-the-browser.md).
 - **The session's `webRequest` API.** It reports headers and no bodies.
-- **One WARC per Capture Session.** Rejected in ADR-0034.
+- **One WARC per Capture Session.** Rejected in ADR-0035.
 
 ## Open questions
 

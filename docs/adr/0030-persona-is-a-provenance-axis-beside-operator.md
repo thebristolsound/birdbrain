@@ -10,7 +10,7 @@ Changing the user agent stays excluded, now for the measured Cloudflare breakage
 evasion, and fingerprint impersonation stays excluded.
 
 **Amended 2026-09-30 by
-[ADR-0033](0033-the-app-acquires-and-the-extension-is-a-companion.md):** a witnessed Capture
+[ADR-0034](0034-the-app-acquires-and-the-extension-is-a-companion.md):** a witnessed Capture
 under a Persona is a `launched` Capture in a browser Birdbrain started with that Persona's
 profile, not a Capture in an Electron window, and the `persona-window` method is withdrawn. A
 Persona may hold one browser session per engine, both seeded from the same cookie import. The

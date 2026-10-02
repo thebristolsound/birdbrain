@@ -10,10 +10,10 @@ The first slice is designed in
 
 ## Context
 
-[The standards register](../../website/content/docs/osint-investigation-standards.mdx) asks for a
+[The standards register](../agents/osint-investigation-standards.md) asks for a
 transaction-level WARC (ISO 28500:2017) beside MHTML, because MHTML preserves a browser view and
 is not an archival HTTP record.
-[ADR-0033](0033-the-app-acquires-and-the-extension-is-a-companion.md) makes that record
+[ADR-0034](0034-the-app-acquires-and-the-extension-is-a-companion.md) makes that record
 obtainable: the capture engine can collect every request and response of a navigation when it
 is attached before the first request.
 

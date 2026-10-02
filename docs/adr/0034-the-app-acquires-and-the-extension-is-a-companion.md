@@ -23,7 +23,7 @@ slices, and reads response headers from `chrome.webRequest`. Three problems foll
   `debugger` API
   ([Chrome incompatibilities](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Chrome_incompatibilities)).
 - The extension cannot produce a transaction-level record, which
-  [the standards register](../../website/content/docs/osint-investigation-standards.mdx) asks for
+  [the standards register](../agents/osint-investigation-standards.md) asks for
   beside MHTML.
 
 The background renderer (`src/main/services/backgroundRenderer.ts`) already acquires from the

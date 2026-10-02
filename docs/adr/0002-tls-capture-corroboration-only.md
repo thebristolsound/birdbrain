@@ -1,7 +1,7 @@
 # TLS certificate-chain capture is corroboration-only (binding deferred)
 
 **Amended 2026-09-30 by
-[ADR-0033](0033-the-app-acquires-and-the-extension-is-a-companion.md):** Bound TLS Details are
+[ADR-0034](0034-the-app-acquires-and-the-extension-is-a-companion.md):** Bound TLS Details are
 recorded where the capture engine is attached before the request (a `launched` Capture in a
 Chromium browser, and a `background` Capture). The corroboration re-fetch described here stays
 the floor for every Capture, and a session-long `chrome.debugger` attach in the Operator's

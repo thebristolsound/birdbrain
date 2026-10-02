@@ -13,7 +13,7 @@ organizing, and verifying web evidence. It runs on Windows and Ubuntu and is in 
 
 Each capture holds the page as MHTML, a full-page screenshot, and the extracted page text. The
 extension sends the capture to the desktop app over `127.0.0.1`, and the app stores it in a
-per-case archive on your machine. Birdbrain has no account and no telemetry. Captures leave
+per-case folder on your machine. Birdbrain has no account and no telemetry. Captures leave
 the machine only when you export them.
 
 Birdbrain hashes the stored bytes of each capture with SHA-256 and appends a signed entry to the
@@ -41,12 +41,13 @@ against and what they do not.
   minutes and stops when the page stops growing.
 - Select text on a page to create a selector, add a tag, or save a quote. Tagging or quoting a
   page the case does not hold yet captures it first.
-- After a capture, a card on the page shows the SHA-256 hash and manifest position, and offers
-  tagging, recapture, and a link to the capture in the app.
+- After a capture, a card on the page confirms the hash was recorded, and offers tagging,
+  recapture, and a link to the capture in the app.
 - Paste a list of URLs and the desktop app captures them in a hidden window. The app labels these
   captures as background captures, warns when a page shows a login wall, and blocks cookie
   banners using consent filter lists.
-- Recapture one page or a selection. The new capture links to the one it replaces.
+- Recapture one page or a selection. The new capture links to the earlier one, which stays in
+  the case.
 - Exclude URLs by substring, wildcard, or regular expression. Exclusions apply to all cases or
   to one case.
 - Birdbrain removes its own page UI before taking the snapshot, and aborts the capture if it
@@ -64,8 +65,9 @@ against and what they do not.
   text, or alongside Wayback Machine snapshots.
 - Write notes in a rich-text editor. `@` links captures and notes, and `#` links selectors and
   tags.
-- Annotate screenshots with rectangles, arrows, highlights, redactions, and numbered pins. The
-  original screenshot stays unchanged, and exports can include the annotations.
+- Annotate screenshots with rectangles, arrows, highlights, redaction boxes, and numbered pins.
+  The original screenshot stays unchanged, and the report in an export can show the
+  annotations.
 - Birdbrain assigns exhibit numbers to captures and cites them in exports.
 - Search the text of every capture in a case.
 
@@ -89,12 +91,13 @@ against and what they do not.
 ### Integrity
 
 - Birdbrain hashes the MHTML, screenshot, and extracted text separately with SHA-256.
-- Each case keeps an append-only, hash-chained manifest signed with an RSA-2048 key held in the
-  operating system's credential store.
+- Each case keeps an append-only, hash-chained manifest signed with an RSA-2048 key. The key is
+  a file encrypted through the operating system's credential store when one is available. Without
+  one, Birdbrain asks you to accept storing the key as plain text.
 - RFC 3161 timestamps come from DigiCert by default. The authority is configurable, and
   timestamping can be turned off.
-- After each capture, Birdbrain fetches the site's TLS certificate chain and records it in the
-  signed entry as corroboration.
+- After each HTTPS capture, Birdbrain fetches the site's TLS certificate chain and records it in
+  the signed entry as corroboration. If the fetch fails, the entry has no chain.
 - Re-verify a capture, a branch of the case, or the whole manifest from inside the app.
 
 ### Export
@@ -105,7 +108,7 @@ against and what they do not.
 - A package contains an HTML report, the captures and screenshots, the signed manifest, the
   public key, the timestamp tokens and authority chain, `VERIFY.md`, and a `verify.sh` script.
 - Download a single capture as MHTML, a PDF report, or a PNG screenshot.
-- Export a tag's captures as a ZIP or Markdown file.
+- Export a tag's captures as an evidence package, or copy them to the clipboard as Markdown.
 - Move a case to another machine as a `.birdbrain` archive. Import verifies the archive first
   and always creates a new case.
 
@@ -118,6 +121,8 @@ against and what they do not.
 - Choose a dark or light theme, one of three density settings, and reduced motion.
 - First launch opens a guided tour, an extension setup guide, and a demo case. Exports from the
   demo case are marked as demo material.
+- Create personas, the research identities you browse as, and import their cookies. Captures do
+  not use a persona yet.
 - Problem reports stay local until you send them. The app also includes a log viewer and a
   capture pipeline self-test.
 - Database tools cover backup and restore, snapshots before upgrades, vacuum, and search index
@@ -125,10 +130,11 @@ against and what they do not.
 
 ## Install
 
-Download the Windows installer or the Ubuntu AppImage from the
-[releases page](https://github.com/thebristolsound/birdbrain-releases/releases). Each release
-includes `SHA256SUMS` and an SPDX software bill of materials. The Windows installer is not
-code-signed, so SmartScreen warns the first time you run it. There is no macOS build.
+Download the Windows installer, the Ubuntu AppImage, or the `.deb` package from the
+[releases page](https://github.com/thebristolsound/birdbrain-releases/releases). Releases from
+1.0.1-beta.22 on include `SHA256SUMS.txt` and an SPDX software bill of materials. The Windows
+installer is not code-signed, so SmartScreen warns the first time you run it. macOS is not
+supported.
 
 The extension is not on the Chrome Web Store yet, so it loads unpacked:
 
@@ -147,8 +153,11 @@ and the first capture in detail.
   an archive file.
 - Deleting a capture removes its files, but its URL, capture time, and hashes stay in the
   append-only manifest and appear in exports that include the audit trail.
+- Redaction boxes hide text only in the report. The evidence package still contains the
+  original screenshot and the full saved page.
 - The extension runs in Chrome and Chromium only.
-- The certification page in an evidence package carries draft legal wording.
+- The certification page in an evidence package holds a placeholder where the legal wording
+  will go. That wording has not been drafted.
 - Data formats may change between beta releases. Keep your own backups and verify your exports.
 
 ## Network use
@@ -157,11 +166,13 @@ Birdbrain makes these outbound connections:
 
 - the capture's hash, never its content, to the timestamp authority
 - the captured site, once more, to record its TLS certificate
+- the target site, when you paste URLs or recapture. The desktop app loads the page itself,
+  from your IP address, with a user agent that names Birdbrain
 - the Internet Archive, when you ask for a lookup
 - the filter list host, to download cookie-banner lists
 - GitHub, to check for updates
 
-[SECURITY.md](SECURITY.md) lists every host. If you work through a VPN or Tor, route the whole
+[SECURITY.md](SECURITY.md) lists the fixed hosts. If you work through a VPN or Tor, route the whole
 machine through it.
 
 ## Roadmap
@@ -188,7 +199,7 @@ The issue tracker holds the full list. These are the larger pieces of work.
   ([#1546](https://github.com/thebristolsound/birdbrain/issues/1546),
   [#1547](https://github.com/thebristolsound/birdbrain/issues/1547),
   [#1555](https://github.com/thebristolsound/birdbrain/issues/1555)).
-- Opt-in automatic capture, scoped per case
+- Opt-in automatic capture in a designated browser window
   ([#600](https://github.com/thebristolsound/birdbrain/issues/600)).
 - Stronger evidence claims: timestamping the manifest entry itself, a second timestamp
   authority, anchoring the chain in a transparency log, a non-exportable signing key in the
@@ -207,6 +218,8 @@ The issue tracker holds the full list. These are the larger pieces of work.
   ([#1190](https://github.com/thebristolsound/birdbrain/issues/1190),
   [#1193](https://github.com/thebristolsound/birdbrain/issues/1193),
   [#1195](https://github.com/thebristolsound/birdbrain/issues/1195)).
+- A network setting that sends the app's own connections directly, through a proxy, or through
+  Tor, and blocks them if that route fails.
 - Passphrase-encrypted export archives
   ([#418](https://github.com/thebristolsound/birdbrain/issues/418)).
 - Import from Hunchly cases, an image gallery with captions, search query tracking, and a
@@ -223,7 +236,6 @@ The issue tracker holds the full list. These are the larger pieces of work.
 
 ### Under discussion
 
-- A network egress setting for direct, proxy, or Tor connections that fails closed.
 - A distributed standalone verifier and a plainer verification guide in each package.
 - Later shared-case work: a reviewer role, corroboration across members, ownership transfer,
   and encryption at rest.

@@ -55,7 +55,7 @@ The primary artifacts taken from one observation of a single web page, stored on
 _Avoid_: page, snapshot, record.
 
 **Transaction Record**:
-_Planned._ The WARC holding the HTTP requests and responses of the observed navigation that the browser handed over complete, from its first request to the moment of Capture. The Capture's inventory accounts for every exchange the record lacks: one served from the cache, failed, cancelled, still in flight, or over the size budget. The record holds what the browser's network stack handed over (decoded bodies, headers as parsed), never bytes read off the wire. Present only when recording was on before the page loaded; never reconstructed afterwards.
+_Planned._ The WARC holding the HTTP requests and responses of the observed navigation that the browser handed over complete, from its first request to the moment of Capture. The Capture's inventory accounts for every exchange the record lacks: one served from the cache, failed, cancelled, still in flight, or over the size budget. The record holds what the browser's network stack handed over (decoded bodies, headers as parsed), never bytes read off the wire. The values of credential-bearing headers (`Cookie`, `Set-Cookie`, `Authorization`, `Proxy-Authorization`) are replaced with a marker before the record is written, and the inventory names them ([`ADR-0036`](docs/adr/0036-credential-header-values-never-enter-a-transaction-record.md)). Present only when recording was on before the page loaded; never reconstructed afterwards.
 _Avoid_: network log, HAR, archive, WARC file (as the general term).
 
 **Capture Server**:

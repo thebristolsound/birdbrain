@@ -48,8 +48,10 @@ All of this is in `src/main/services/backgroundRenderer.ts` unless another path 
 
 ### Transaction Record
 
-Enable the CDP `Network` domain before `wc.loadURL`, with the buffer limits `Network.enable`
-accepts (`maxTotalBufferSize`, `maxResourceBufferSize`) set from a Birdbrain size budget. For
+Load `about:blank`, then enable the CDP `Network` domain, then `wc.loadURL` the target. The
+[probe](2026-10-02-capture-engine-probe-spike.md) found that enabling the domain on a window
+that has not navigated fails. Set the buffer limits `Network.enable` accepts
+(`maxTotalBufferSize`, `maxResourceBufferSize`) from a Birdbrain size budget. For
 each exchange, keep what `Network.requestWillBeSent`, `Network.requestWillBeSentExtraInfo`,
 `Network.responseReceived`, and `Network.responseReceivedExtraInfo` report, and fetch the body
 with `Network.getResponseBody` after `Network.loadingFinished`.
@@ -59,7 +61,12 @@ Stop collecting at the moment the screenshot and MHTML are taken. Write one WARC
 
 - one `warcinfo` record naming Birdbrain's version, the browser version, the user agent, and
   the capture id;
-- one `request` record and one `response` record for each exchange, each with a payload digest;
+- one `request` record and one `response` record for each exchange, each with a payload digest
+  over the stored (decoded) body;
+- in every record, the values of `Cookie`, `Set-Cookie`, `Authorization`, and
+  `Proxy-Authorization` replaced with a fixed marker before the bytes are written, and the
+  replaced header names listed in the inventory
+  ([ADR-0036](../adr/0036-credential-header-values-never-enter-a-transaction-record.md));
 - a `response` record with headers and no body for each redirect, because the browser keeps no
   body for one.
 
@@ -68,8 +75,13 @@ served from the browser cache, a request the consent filter cancelled, a request
 request still in flight when collection stopped, and a body that was over budget or that the
 browser no longer held.
 
+The file is written with `warcio` (the `webrecorder/warcio.js` package), which the maintainer
+approved on 2026-10-02 as a new dependency. Tests read the output back with a reader that is not
+`warcio`.
+
 **What the record is and is not.** The browser hands over bodies after it has removed the
-content encoding, and it reports headers as it parsed them. `headersText` is optional and is
+content encoding, and it reports headers as it parsed them; the probe measured a `gzip`
+response returned decoded, 4,200 bytes under a `Content-Encoding: gzip` header. `headersText` is optional and is
 absent for HTTP/2 and HTTP/3. A Transaction Record is the browser's account of the exchange.
 It is not a packet capture, and the docs and the verifier never call it one.
 
@@ -101,8 +113,10 @@ absent and the inventory says why.
 
 ### PDF
 
-Take a PDF of the page with `printToPDF` after the screenshot, the MHTML, and the end of
-collection, because printing applies print styles and can start requests. Those requests are
+Take a PDF of the page with `webContents.printToPDF` after the screenshot, the MHTML, and the
+end of collection, because printing applies print styles and starts requests; the probe saw the
+page receive `beforeprint` and fetch a print-only image. `Page.printToPDF` is not available over
+`webContents.debugger`. Those requests are
 outside the Transaction Record, and the inventory says the PDF was taken after collection
 stopped.
 
@@ -125,8 +139,9 @@ stopped.
 The renderer enables no CDP event domain on purpose. The
 [persona spike](2026-09-19-persona-bot-detection-spike.md) names one page-visible effect of an
 attached debugger, tied to the `Runtime` domain, and did not test with the debugger attached.
-This slice enables `Network`. Before it ships, run the spike's probe page with the domain off
-and on, and record whether anything the page can observe changes.
+This slice enables `Network`. The [probe](2026-10-02-capture-engine-probe-spike.md) ran the
+window configuration of the background renderer with the domain off and on and saw no difference in what the
+page recorded, including the `Error.stack` getter check. Rerun it on each Electron upgrade.
 
 ## Validation
 
@@ -155,38 +170,33 @@ an evidence-affecting method. Against a local fixture server that serves known b
 - **The session's `webRequest` API.** It reports headers and no bodies.
 - **One WARC per Capture Session.** Rejected in ADR-0035.
 
+## Decided after review
+
+- **Credentials in the record.** Replaced with a marker before writing; the inventory names the
+  headers ([ADR-0036](../adr/0036-credential-header-values-never-enter-a-transaction-record.md)).
+- **The WARC writer.** `warcio`, approved as a dependency on 2026-10-02.
+- **PDF in a hidden window.** `webContents.printToPDF` works there; measured in the
+  [probe](2026-10-02-capture-engine-probe-spike.md).
+
 ## Open questions
 
-1. **Credentials in the record.** `Network.requestWillBeSentExtraInfo` reports `Cookie` and
-   `Authorization` request headers, and `Network.responseReceivedExtraInfo` reports `Set-Cookie`.
-   Written into a WARC and copied through exports, those values are reusable account secrets
-   outside the browser session.
-   [ADR-0030](../adr/0030-persona-is-a-provenance-axis-beside-operator.md) says the only copy of
-   a cookie value is the browser's own store. Today's header capture does not meet this problem:
-   the extension listens without the `extraHeaders` option, and Chrome withholds `Cookie` and
-   `Set-Cookie` from such a listener
-   ([Chrome's `webRequest` reference](https://developer.chrome.com/docs/extensions/reference/api/webRequest)).
-   Decide before any implementation whether the record replaces those header values with a
-   marker and names the affected headers in the inventory, or whether ADR-0030 is amended.
-   Tokens inside a response body or a URL are out of reach of any header rule, as they are in
-   MHTML today.
-2. **A new dependency.** `warcio` (the `webrecorder/warcio.js` repository) writes and reads WARC. The npm registry lists
-   it as Apache-2.0 while the `LICENSE` file in the package is the MIT text; both are permissive,
-   and the mismatch should be resolved before adoption. The alternative is a writer in this
-   repository, validated against an outside reader. Adding the dependency needs the maintainer's
-   approval.
-3. **Decoded bodies under original headers.** The stored body is decoded while the recorded
+1. **Decoded bodies under original headers.** The stored body is decoded while the recorded
    headers still name the original encoding and length. Browser-based archiving tools face the
    same mismatch. Find out what they write, and follow it if it is documented.
-4. **Compression.** Whether the file is stored with each record compressed separately
+   The probe measured the mismatch; the digest in this design covers the decoded body.
+
+2. **Compression.** Whether the file is stored with each record compressed separately
    (`.warc.gz`) or uncompressed. The hash covers the stored bytes either way.
-5. **Size budget.** The total and per-resource limits, and whether the 200 MB MHTML limit in
+
+3. **Size budget.** The total and per-resource limits, and whether the 200 MB MHTML limit in
    `src/shared/constants.ts` is the right starting point.
-6. **Cached responses.** Whether a fresh session partition per render, which the renderer already
+
+4. **Cached responses.** Whether a fresh session partition per render, which the renderer already
    uses, makes cache hits rare enough to leave them to the inventory.
-7. **PDF in a hidden window.** Whether `printToPDF` produces the page as rendered in the
-   offscreen window, and whether it changes page state in a way that matters for a later step.
-8. **WebSocket traffic.** Out of this slice. Decide later whether frames belong in the record.
+   The probe saw a resource used twice inside one page produce one exchange and no cache
+   event, so the inventory cannot count that case.
+
+5. **WebSocket traffic.** Out of this slice. Decide later whether frames belong in the record.
 
 ## Not in this slice
 

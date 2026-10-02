@@ -131,8 +131,8 @@ engine. Persona stays an axis beside the method, and the label rules are unchang
 - A Transaction Record of a signed-in page would hold the `Cookie`, `Authorization`, and
   `Set-Cookie` values the browser reported.
   [ADR-0030](0030-persona-is-a-provenance-axis-beside-operator.md) keeps cookie values inside
-  the browser session. How the record treats them is undecided and blocks the first slice; it
-  is the first open question in the spec.
+  the browser session. [ADR-0036](0036-credential-header-values-never-enter-a-transaction-record.md)
+  replaces those values with a marker before the record is written.
 - Firefox Captures have no MHTML and no Bound TLS Details: BiDi offers neither. Response bodies
   need Firefox 143 or later, and responses served from the memory cache are not collectable
   ([Bugzilla 1971780](https://bugzilla.mozilla.org/show_bug.cgi?id=1971780),

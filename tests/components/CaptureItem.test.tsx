@@ -133,6 +133,20 @@ describe('CaptureItem — detailed view', () => {
     expect(screen.getByText('+1').getAttribute('title')).toBe('gamma')
   })
 
+  it('reserves the chip line on a row with no matches, sized like a real chip', () => {
+    renderItem()
+    const strut = screen.getByTestId('capture-item-chip-strut')
+    expect(strut.parentElement).toBe(screen.getByTestId('capture-item-chip-line'))
+    expect(strut.getAttribute('aria-hidden')).toBe('true')
+    expect(strut.className).toContain('invisible')
+    const strutBox = strut.className.replace('invisible', '').trim()
+    cleanup()
+
+    renderItem({ matchingSelectors: [selector('s1', 'alpha')] })
+    expect(screen.queryByTestId('capture-item-chip-strut')).toBeNull()
+    expect(screen.getByText('alpha').className).toContain(strutBox)
+  })
+
   it('toggles the favourite without also selecting the row', () => {
     const onClick = vi.fn()
     const onToggleFavorite = vi.fn()

@@ -98,6 +98,9 @@ describe('WaybackCompare', () => {
       'Loaded live from archive.org; not captured, hashed or stored in this case. ' +
         'Pinning records the reference only.'
     )
+    const label = screen.getByTestId('wayback-snapshot-label')
+    expect(label.className).not.toContain('amber')
+    expect(label.parentElement?.className).not.toContain('amber')
     expect(screen.queryByText(/Live remote content/)).toBeNull()
     expect(screen.queryByText(/choose a snapshot to compare/)).toBeNull()
   })

@@ -62,11 +62,11 @@ export function WaybackCompare({ capture }: Props) {
         </div>
 
         <div className="flex min-w-[300px] flex-1 flex-col overflow-hidden">
-          <div className="flex shrink-0 items-center gap-2 border-b border-border bg-amber-500/10 px-3 py-2">
+          <div className="flex shrink-0 items-center gap-2 border-b border-border bg-surface px-3 py-2">
             <span
               data-testid="wayback-snapshot-label"
               title={WAYBACK_NONEVIDENCE_HINT}
-              className="shrink-0 text-[11px] font-semibold text-amber-500"
+              className="shrink-0 text-[11px] font-semibold text-text-secondary"
             >
               archive.org snapshot
             </span>

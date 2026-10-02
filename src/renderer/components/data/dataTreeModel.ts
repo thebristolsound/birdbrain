@@ -2,12 +2,13 @@ import type { InventoryRow } from '@shared/types'
 
 // The Data screen's left rail as a pure function of the inventory (X33, R21).
 //
-// Four groups. Data Sources holds one subgroup per Exhibit kind, one node per
+// Five groups. Data Sources holds one subgroup per Exhibit kind, one node per
 // Exhibit and its Derived Files as child rows — no `raw` / `derived` folders.
 // Staging is its own top-level group beside Data Sources (ADR-0024), never a
 // subgroup of it, because pooled rows are not evidence and a reader must not
 // find them under the heading that says they are. Views holds File Types.
-// Results holds the four nodes whose content is #1150.
+// Indicators holds the extracted-data categories with their subcategories
+// beneath. Results holds the three nodes whose content is #1150.
 
 export type DataNodeKey =
   | 'data-sources'
@@ -18,10 +19,12 @@ export type DataNodeKey =
   | 'views'
   | 'file-types'
   | `file-type:${string}`
+  | 'indicators'
+  | `indicator-category:${string}`
+  | `indicator-subcategory:${string}`
   | 'results'
   | 'keyword-hits'
   | `keyword:${string}`
-  | 'indicators'
   | 'integrity-exceptions'
   | 'manifest-ledger'
 
@@ -46,7 +49,6 @@ export interface DataTreeNode {
 // another query; the shell supplies what it has and leaves the rest null.
 export interface ResultCounts {
   keywordHits: number | null
-  indicators: number | null
   integrityExceptions: number | null
   manifestLedger: number | null
 }
@@ -57,6 +59,43 @@ export interface KeywordHitNode {
   selectorId: string
   label: string
   count: number
+}
+
+// One child per extracted-data category under Indicators. Subcategories are
+// read per category, so they are absent until the category is first opened.
+export interface IndicatorCategoryNode {
+  category: string
+  count: number
+  subcategories?: { subcategory: string; count: number }[]
+}
+
+// Category and subcategory names are free text, so each part is encoded to
+// keep the separator unambiguous.
+export function indicatorCategoryKey(category: string): DataNodeKey {
+  return `indicator-category:${encodeURIComponent(category)}`
+}
+
+export function indicatorSubcategoryKey(category: string, subcategory: string): DataNodeKey {
+  return `indicator-subcategory:${encodeURIComponent(category)}/${encodeURIComponent(subcategory)}`
+}
+
+// What the Indicators view should show for a node, or null when the node is
+// not under Indicators.
+export function indicatorSelection(
+  key: DataNodeKey
+): { category: string | null; subcategory: string | null } | null {
+  if (key === 'indicators') return { category: null, subcategory: null }
+  if (key.startsWith('indicator-category:')) {
+    return {
+      category: decodeURIComponent(key.slice('indicator-category:'.length)),
+      subcategory: null
+    }
+  }
+  if (key.startsWith('indicator-subcategory:')) {
+    const [category, subcategory] = key.slice('indicator-subcategory:'.length).split('/')
+    return { category: decodeURIComponent(category), subcategory: decodeURIComponent(subcategory) }
+  }
+  return null
 }
 
 const KIND_LABELS: Record<string, string> = {
@@ -113,6 +152,7 @@ export interface BuildTreeInput {
   expanded: ReadonlySet<string>
   results: ResultCounts
   keywordHits?: KeywordHitNode[]
+  indicators?: IndicatorCategoryNode[]
 }
 
 // The visible rows of the rail, in order, with collapsed subtrees omitted.
@@ -120,7 +160,8 @@ export function buildDataTree({
   rows,
   expanded,
   results,
-  keywordHits = []
+  keywordHits = [],
+  indicators = []
 }: BuildTreeInput): DataTreeNode[] {
   const out: DataTreeNode[] = []
   const isOpen = (key: string) => expanded.has(key)
@@ -235,6 +276,40 @@ export function buildDataTree({
     }
   }
 
+  // --- Indicators -----------------------------------------------------------
+  push({
+    key: 'indicators',
+    label: 'Indicators',
+    depth: 0,
+    group: true,
+    hasChildren: indicators.length > 0,
+    count: null
+  })
+  if (isOpen('indicators')) {
+    for (const { category, count, subcategories = [] } of indicators) {
+      const categoryKey = indicatorCategoryKey(category)
+      push({
+        key: categoryKey,
+        label: category,
+        depth: 1,
+        group: false,
+        hasChildren: count > 0,
+        count
+      })
+      if (!isOpen(categoryKey)) continue
+      for (const { subcategory, count: subCount } of subcategories) {
+        push({
+          key: indicatorSubcategoryKey(category, subcategory),
+          label: subcategory,
+          depth: 2,
+          group: false,
+          hasChildren: false,
+          count: subCount
+        })
+      }
+    }
+  }
+
   // --- Results --------------------------------------------------------------
   push({
     key: 'results',
@@ -266,14 +341,6 @@ export function buildDataTree({
       }
     }
     push({
-      key: 'indicators',
-      label: 'Indicators',
-      depth: 1,
-      group: false,
-      hasChildren: false,
-      count: results.indicators
-    })
-    push({
       key: 'integrity-exceptions',
       label: 'Integrity Exceptions',
       depth: 1,
@@ -295,13 +362,22 @@ export function buildDataTree({
   return out
 }
 
-// Groups open by default so a fresh Case reads as the four headings the ruling
-// names, with the kinds beneath Data Sources visible.
-export const DEFAULT_EXPANDED: ReadonlySet<string> = new Set(['data-sources', 'views', 'results'])
+// Groups open by default so a fresh Case reads as its headings, with the kinds
+// beneath Data Sources and the categories beneath Indicators visible.
+export const DEFAULT_EXPANDED: ReadonlySet<string> = new Set([
+  'data-sources',
+  'views',
+  'indicators',
+  'results'
+])
 
 // Every node key the tree could show for this inventory, for "Expand below"
 // and the tests: the keys of a node and everything under it.
-export function descendantKeys(rows: InventoryRow[], key: DataNodeKey): DataNodeKey[] {
+export function descendantKeys(
+  rows: InventoryRow[],
+  key: DataNodeKey,
+  indicatorCategories: string[] = []
+): DataNodeKey[] {
   const exhibits = rows.filter((row) => row.entity === 'exhibit')
   const anchored = rows.filter((row) => row.rowType === 'anchored')
   const under = (id: string): DataNodeKey[] => [
@@ -329,8 +405,9 @@ export function descendantKeys(rows: InventoryRow[], key: DataNodeKey): DataNode
   if (key === 'file-types') {
     return [...new Set(anchored.map(fileTypeOf))].map((t): DataNodeKey => `file-type:${t}`)
   }
+  if (key === 'indicators') return indicatorCategories.map(indicatorCategoryKey)
   if (key === 'results') {
-    return ['keyword-hits', 'indicators', 'integrity-exceptions', 'manifest-ledger']
+    return ['keyword-hits', 'integrity-exceptions', 'manifest-ledger']
   }
   return []
 }

@@ -4,22 +4,92 @@ import {
   DEFAULT_EXPANDED,
   descendantKeys,
   fileTypeOf,
+  indicatorCategoryKey,
+  indicatorSelection,
+  indicatorSubcategoryKey,
   kindLabel,
   kindSingular
 } from '@renderer/components/data/dataTreeModel'
 import { CAPTURE_A, CAPTURE_LEGACY, INVENTORY, STAGED_PDF, THUMB_A } from '../dataFixtures'
 
-const RESULTS = { keywordHits: 2, indicators: 5, integrityExceptions: 1, manifestLedger: 7 }
+const RESULTS = { keywordHits: 2, integrityExceptions: 1, manifestLedger: 7 }
+
+const INDICATORS = [
+  { category: 'Accounts', count: 70 },
+  {
+    category: 'Tracking Code',
+    count: 1,
+    subcategories: [{ subcategory: 'Google Tag Manager', count: 1 }]
+  }
+]
 
 describe('buildDataTree', () => {
-  it('renders the four groups with Staging beside Data Sources, never under it', () => {
+  it('renders the five groups with Staging beside Data Sources, never under it', () => {
     const nodes = buildDataTree({ rows: INVENTORY, expanded: new Set(), results: RESULTS })
     expect(nodes.filter((n) => n.group).map((n) => [n.key, n.depth])).toEqual([
       ['data-sources', 0],
       ['staging', 0],
       ['views', 0],
+      ['indicators', 0],
       ['results', 0]
     ])
+  })
+
+  it('lists the indicator categories under their own group, with subcategories once opened', () => {
+    const tracking = indicatorCategoryKey('Tracking Code')
+    const nodes = buildDataTree({
+      rows: INVENTORY,
+      expanded: new Set(['indicators', tracking]),
+      results: RESULTS,
+      indicators: INDICATORS
+    })
+    const keys = nodes.map((n) => n.key)
+    const gtm = indicatorSubcategoryKey('Tracking Code', 'Google Tag Manager')
+    expect(keys.slice(keys.indexOf('indicators'), keys.indexOf('results'))).toEqual([
+      'indicators',
+      indicatorCategoryKey('Accounts'),
+      tracking,
+      gtm
+    ])
+    expect(nodes.find((n) => n.key === 'indicators')).toMatchObject({
+      group: true,
+      hasChildren: true,
+      count: null
+    })
+    expect(nodes.find((n) => n.key === tracking)).toMatchObject({
+      label: 'Tracking Code',
+      depth: 1,
+      count: 1,
+      hasChildren: true
+    })
+    expect(nodes.find((n) => n.key === gtm)).toMatchObject({
+      label: 'Google Tag Manager',
+      depth: 2,
+      count: 1
+    })
+    // A category opened before its subcategories have been read shows none.
+    const loading = buildDataTree({
+      rows: INVENTORY,
+      expanded: new Set(['indicators', indicatorCategoryKey('Accounts')]),
+      results: RESULTS,
+      indicators: INDICATORS
+    })
+    expect(loading.filter((n) => n.depth === 2)).toEqual([])
+    // Results no longer holds Indicators.
+    expect(keys.slice(keys.indexOf('results'))).not.toContain('indicators')
+  })
+
+  it('reads the Indicators view selection back out of a node key, whatever the names hold', () => {
+    expect(indicatorSelection('indicators')).toEqual({ category: null, subcategory: null })
+    expect(indicatorSelection(indicatorCategoryKey('a/b:c'))).toEqual({
+      category: 'a/b:c',
+      subcategory: null
+    })
+    expect(indicatorSelection(indicatorSubcategoryKey('a/b', 'c/d'))).toEqual({
+      category: 'a/b',
+      subcategory: 'c/d'
+    })
+    expect(indicatorSelection('results')).toBeNull()
   })
 
   it('counts every selectable row and no group head: file types and the Results nodes', () => {
@@ -31,7 +101,7 @@ describe('buildDataTree', () => {
     const count = (key: string) => nodes.find((n) => n.key === key)?.count
     // The mock draws no count on a group eyebrow (#1552); the four heads
     // carried one before, which was the superseded design.
-    for (const group of ['data-sources', 'staging', 'views', 'results']) {
+    for (const group of ['data-sources', 'staging', 'views', 'indicators', 'results']) {
       expect(count(group)).toBeNull()
     }
     // Two Captures and one thumbnail are anchored rows; the pooled PDF is not,
@@ -40,7 +110,6 @@ describe('buildDataTree', () => {
     expect(count('file-type:MHTML')).toBe(1)
     expect(nodes.find((n) => n.key === 'file-type:PDF')).toBeUndefined()
     expect(count('keyword-hits')).toBe(2)
-    expect(count('indicators')).toBe(5)
     expect(count('integrity-exceptions')).toBe(1)
     expect(count('manifest-ledger')).toBe(7)
   })
@@ -89,7 +158,6 @@ describe('buildDataTree', () => {
       expanded: DEFAULT_EXPANDED,
       results: {
         keywordHits: null,
-        indicators: null,
         integrityExceptions: null,
         manifestLedger: null
       }
@@ -128,7 +196,13 @@ describe('buildDataTree', () => {
 
   it('hides a collapsed subtree', () => {
     const nodes = buildDataTree({ rows: INVENTORY, expanded: new Set(), results: RESULTS })
-    expect(nodes.map((n) => n.key)).toEqual(['data-sources', 'staging', 'views', 'results'])
+    expect(nodes.map((n) => n.key)).toEqual([
+      'data-sources',
+      'staging',
+      'views',
+      'indicators',
+      'results'
+    ])
   })
 })
 
@@ -152,9 +226,12 @@ describe('descendantKeys', () => {
     ])
     expect(descendantKeys(INVENTORY, 'results')).toEqual([
       'keyword-hits',
-      'indicators',
       'integrity-exceptions',
       'manifest-ledger'
+    ])
+    expect(descendantKeys(INVENTORY, 'indicators', ['Accounts', 'Tracking Code'])).toEqual([
+      indicatorCategoryKey('Accounts'),
+      indicatorCategoryKey('Tracking Code')
     ])
   })
 

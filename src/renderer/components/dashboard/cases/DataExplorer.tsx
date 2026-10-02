@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useNavigate, useParams } from '@tanstack/react-router'
-import { useQuery } from '@tanstack/react-query'
+import { useQueries, useQuery } from '@tanstack/react-query'
 import { Search, ShieldCheck, Upload, X } from 'lucide-react'
 import type { ExhibitVerification, InventoryRow } from '@shared/types'
 import { Button } from '@renderer/components/ui'
@@ -10,7 +10,10 @@ import {
   manifestSnapshotQueryOptions,
   useVerifyAll
 } from '@renderer/lib/api/exhibits'
-import { extractedDataCountQueryOptions } from '@renderer/lib/api/extractedData'
+import {
+  extractedDataCategoriesQueryOptions,
+  extractedDataSubcategoriesQueryOptions
+} from '@renderer/lib/api/extractedData'
 import { useStagingMutations } from '@renderer/lib/api/staging'
 import { useAppStore } from '@renderer/stores/appStore'
 import {
@@ -40,8 +43,12 @@ import {
   buildDataTree,
   DEFAULT_EXPANDED,
   descendantKeys,
+  indicatorCategoryKey,
+  indicatorSelection,
+  indicatorSubcategoryKey,
   kindLabel,
-  type DataNodeKey
+  type DataNodeKey,
+  type IndicatorCategoryNode
 } from '@renderer/components/data/dataTreeModel'
 import {
   filterRows,
@@ -86,6 +93,12 @@ function nodeTitle(key: DataNodeKey, rows: InventoryRow[]): { title: string; sub
       : { title: 'Derived File', subtitle: '' }
   }
   return { title: key, subtitle: '' }
+}
+
+// Module-level so `useQueries` sees one `combine` and keeps its result stable
+// while no read changes.
+function dataOf<T>(results: { data?: T }[]): (T | undefined)[] {
+  return results.map((result) => result.data)
 }
 
 // The failed-read state CaptureList and NotesOverview use: the reason and a
@@ -146,7 +159,29 @@ export function DataExplorer() {
   } = useQuery(capturesQueryOptions(caseId))
   const { data: selectors = [] } = useQuery(selectorsQueryOptions(caseId))
   const { data: matchCounts = {} } = useQuery(selectorMatchCountsQueryOptions(caseId))
-  const { data: indicatorCount } = useQuery(extractedDataCountQueryOptions(caseId))
+  const { data: indicatorCategories = [] } = useQuery(extractedDataCategoriesQueryOptions(caseId))
+  // Subcategories are read only for the categories open in the rail.
+  const openCategories = useMemo(
+    () =>
+      indicatorCategories
+        .map(({ category }) => category)
+        .filter((category) => expanded.has(indicatorCategoryKey(category))),
+    [indicatorCategories, expanded]
+  )
+  const subcategoryData = useQueries({
+    queries: openCategories.map((category) =>
+      extractedDataSubcategoriesQueryOptions(caseId, category)
+    ),
+    combine: dataOf
+  })
+  const indicatorNodes = useMemo<IndicatorCategoryNode[]>(
+    () =>
+      indicatorCategories.map(({ category, count }) => {
+        const at = openCategories.indexOf(category)
+        return { category, count, subcategories: at === -1 ? undefined : subcategoryData[at] }
+      }),
+    [indicatorCategories, openCategories, subcategoryData]
+  )
   const {
     data: lastSnapshot,
     isError: snapshotFailed,
@@ -197,7 +232,6 @@ export function DataExplorer() {
         expanded,
         results: {
           keywordHits: selectors.length,
-          indicators: indicatorCount ?? null,
           // The same bucket rule the node's table uses, so the count and the
           // rows cannot disagree.
           integrityExceptions: buckets.exception,
@@ -207,9 +241,10 @@ export function DataExplorer() {
           selectorId: selector.id,
           label: selector.label || selector.pattern,
           count: matchCounts[selector.id] ?? 0
-        }))
+        })),
+        indicators: indicatorNodes
       }),
-    [rows, expanded, selectors, indicatorCount, buckets.exception, snapshot, matchCounts]
+    [rows, expanded, selectors, buckets.exception, snapshot, matchCounts, indicatorNodes]
   )
 
   const tableRows = useMemo(
@@ -347,9 +382,29 @@ export function DataExplorer() {
     [rows, selectNode]
   )
 
+  // A pick in the view's columns moves the rail with it, opening the category
+  // so the selected row is visible.
+  const selectIndicator = useCallback(
+    (category: string, subcategory: string | null) => {
+      selectNode(
+        subcategory === null
+          ? indicatorCategoryKey(category)
+          : indicatorSubcategoryKey(category, subcategory)
+      )
+      setExpandedKeys(['indicators', indicatorCategoryKey(category)], true)
+    },
+    [selectNode, setExpandedKeys]
+  )
+  const indicatorPick = indicatorSelection(node)
+
   const captureIds = useMemo(() => new Set(captureById.keys()), [captureById])
+  const indicatorCategoryNames = useMemo(
+    () => indicatorCategories.map(({ category }) => category),
+    [indicatorCategories]
+  )
   const { rowTarget, nodeTarget } = useDataContextMenu({
     rows,
+    indicatorCategories: indicatorCategoryNames,
     context,
     captureIds,
     onOpenCapture: openCapture,
@@ -519,7 +574,7 @@ export function DataExplorer() {
             onSelect={selectNode}
             onToggle={toggle}
             onToggleBelow={(key, open) =>
-              setExpandedKeys([key, ...descendantKeys(rows, key)], open)
+              setExpandedKeys([key, ...descendantKeys(rows, key, indicatorCategoryNames)], open)
             }
             menuTargetFor={nodeTarget}
           />
@@ -527,8 +582,13 @@ export function DataExplorer() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {node === 'indicators' ? (
-          <IndicatorsView caseId={caseId} />
+        {indicatorPick ? (
+          <IndicatorsView
+            caseId={caseId}
+            category={indicatorPick.category}
+            subcategory={indicatorPick.subcategory}
+            onSelect={selectIndicator}
+          />
         ) : (
           <>
             <section className="flex min-h-0 min-w-0 flex-1 flex-col">

@@ -18,6 +18,8 @@ import { copyValue } from '@renderer/components/data/copy'
 
 interface DataContextMenuOptions {
   rows: InventoryRow[]
+  // The categories under Indicators, so Expand below reaches them.
+  indicatorCategories: string[]
   // What the table knows beyond the inventory, so a node's Verify covers the
   // rows the node actually shows (this session's buckets, a Selector's hits).
   context: RowContext
@@ -44,6 +46,7 @@ interface DataContextMenuOptions {
 // no menu.
 export function useDataContextMenu({
   rows,
+  indicatorCategories,
   context,
   captureIds,
   onOpenCapture,
@@ -112,14 +115,19 @@ export function useDataContextMenu({
         hasExhibits: exhibitIds.length > 0,
         actions: {
           showOnly: () => onSelectNode(node.key),
-          expandBelow: () => onSetExpanded([node.key, ...descendantKeys(rows, node.key)], true),
-          collapseBelow: () => onSetExpanded([node.key, ...descendantKeys(rows, node.key)], false),
+          expandBelow: () =>
+            onSetExpanded([node.key, ...descendantKeys(rows, node.key, indicatorCategories)], true),
+          collapseBelow: () =>
+            onSetExpanded(
+              [node.key, ...descendantKeys(rows, node.key, indicatorCategories)],
+              false
+            ),
           verify: () => onVerify(exhibitIds)
         }
       }
       return target
     },
-    [rows, context, onSelectNode, onSetExpanded, onVerify]
+    [rows, indicatorCategories, context, onSelectNode, onSetExpanded, onVerify]
   )
 
   return { rowTarget, nodeTarget }

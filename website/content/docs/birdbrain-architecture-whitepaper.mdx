@@ -323,7 +323,7 @@ the index as evidence.
 
 ### Integrations and APIs
 
-Birdbrain has four principal integration points:
+Birdbrain has five principal integration points:
 
 - **Extension HTTP API.** A small loopback API for Case discovery, session
   control, capture ingestion, Selector access, and health checks.
@@ -334,6 +334,10 @@ Birdbrain has four principal integration points:
   and transfer without a live Birdbrain service.
 - **Outbound adapters.** RFC 3161, Wayback Machine, origin TLS, and GitHub
   Releases are isolated behind main-process services.
+- **Read-only MCP server.** A separate process that an MCP client starts and
+  talks to over standard input and output. It opens the database read-only,
+  cannot sign, and opens no listener
+  ([ADR-0036](https://github.com/thebristolsound/birdbrain/blob/main/docs/adr/0036-a-read-only-mcp-server-reads-a-case-from-a-separate-process.md)).
 
 There is no supported remote REST API, webhook framework, or network-listening
 administration plane. Extending Birdbrain into a multi-host service would

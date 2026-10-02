@@ -1,6 +1,6 @@
 # Birdbrain MCP server: read-only first slice
 
-**Status:** plan, awaiting approval
+**Status:** approved 2026-10-02; steps 1 to 6 built, step 7 and acceptance open
 **Date:** 2026-10-02
 **Map:** #547 (Birdbrain MCP and local API surface), seeded by #358. Earlier brief: unmerged
 branch `docs/mcp-server-design-brief` (2026-07-29).
@@ -129,6 +129,12 @@ Each step ends in a commit. Steps 2 to 6 land on this branch as one draft PR.
    no-listener claim, recording the local stdio server. An ADR (0036) recording the scope and host
    rulings in this plan.
 7. **Verify.** `pnpm preflight`, then a draft PR labelled `evidence-affecting`.
+
+## Progress
+
+- Steps 1 to 6 are committed on `t3code/build-birdbrain-mcp`. The catalogue shipped as 24 tools:
+  `recent_activity` joined Cases, and the extracted-data listing became one tool.
+- Next: `pnpm preflight`, then the draft PR, then acceptance step 1.
 
 ## Acceptance: reproduce the fact-check
 

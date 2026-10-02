@@ -16,12 +16,20 @@ import { openCaptureExternal } from '@renderer/lib/api/system'
 import { notify } from '@renderer/lib/notify'
 
 // The extracted-data (IOC) browser: the whole of the pre-#1149 Data screen,
-// moved under Results > Indicators unchanged (R21, X39). Its own search and the
-// whole-case Reprocess trigger stay in its header (Q12); there is no per-file
-// re-extract.
-export function IndicatorsView({ caseId }: { caseId: string }) {
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
-  const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null)
+// now the Indicators group of the rail (R21, X39). The selection is the rail's,
+// so a pick in either place shows in both. Its own search and the whole-case
+// Reprocess trigger stay in its header (Q12); there is no per-file re-extract.
+export function IndicatorsView({
+  caseId,
+  category: selectedCategory,
+  subcategory: selectedSubcategory,
+  onSelect
+}: {
+  caseId: string
+  category: string | null
+  subcategory: string | null
+  onSelect: (category: string, subcategory: string | null) => void
+}) {
   const [reprocessing, setReprocessing] = useState(false)
   const [searchInput, setSearchInput] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
@@ -31,6 +39,13 @@ export function IndicatorsView({ caseId }: { caseId: string }) {
     const t = setTimeout(() => setDebouncedQuery(searchInput.trim()), 250)
     return () => clearTimeout(t)
   }, [searchInput])
+
+  // Search results hide the columns, so a pick made in the rail during a search
+  // would otherwise not show. Leaving search mode lets the rail and view agree.
+  useEffect(() => {
+    setSearchInput('')
+    setDebouncedQuery('')
+  }, [selectedCategory, selectedSubcategory])
 
   const { data: searchResults = [], isFetching: searching } = useQuery(
     extractedDataSearchQueryOptions(caseId, debouncedQuery)
@@ -202,10 +217,7 @@ export function IndicatorsView({ caseId }: { caseId: string }) {
               <DirRow
                 key={category}
                 selected={selectedCategory === category}
-                onClick={() => {
-                  setSelectedCategory(category)
-                  setSelectedSubcategory(null)
-                }}
+                onClick={() => onSelect(category, null)}
               >
                 <span className="flex-1 truncate text-sm font-medium">{category}</span>
                 <Badge variant={selectedCategory === category ? 'accent' : 'secondary'}>
@@ -229,7 +241,7 @@ export function IndicatorsView({ caseId }: { caseId: string }) {
                 <DirRow
                   key={subcategory}
                   selected={selectedSubcategory === subcategory}
-                  onClick={() => setSelectedSubcategory(subcategory)}
+                  onClick={() => onSelect(selectedCategory, subcategory)}
                 >
                   <span className="flex-1 truncate text-sm">{subcategory}</span>
                   <Badge variant={selectedSubcategory === subcategory ? 'accent' : 'secondary'}>

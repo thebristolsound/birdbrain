@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup, within, act } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { CaseManifestSnapshot } from '@shared/manifestSnapshot'
 import type { Capture } from '@shared/types'
@@ -16,11 +16,13 @@ vi.mock('@renderer/lib/notify', () => ({
 
 import { DataExplorer } from '@renderer/components/dashboard/cases/DataExplorer'
 import { queryKeys } from '@renderer/lib/api/keys'
+import { queryClient as appQueryClient } from '@renderer/lib/queryClient'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { CAPTURES, HASH_A, INVENTORY } from '../renderer/dataFixtures'
 
-function renderExplorer() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+function renderExplorer(
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+) {
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
   }
@@ -404,6 +406,26 @@ describe('DataExplorer failed reads (#1656)', () => {
     await act(async () => captures.resolve(CAPTURES))
     await selectNode('integrity-exceptions')
     expect(await screen.findByTestId('artifact-row-cap-a')).toBeTruthy()
+  })
+
+  // With the network down, a paused inventory read used to skip the loading
+  // screen and let Integrity Exceptions say "No exceptions" with nothing read.
+  it('loads and then shows the data while the network is down (#1665)', async () => {
+    const captures = deferred<Capture[]>()
+    vi.mocked(window.birdbrain.captures.list).mockReturnValueOnce(captures.promise)
+    onlineManager.setOnline(false)
+    try {
+      renderExplorer(new QueryClient({ defaultOptions: appQueryClient.getDefaultOptions() }))
+
+      expect(await screen.findByText('Loading case data...')).toBeTruthy()
+      expect(screen.queryByText('No exceptions among the verified rows.')).toBeNull()
+
+      await act(async () => captures.resolve(CAPTURES))
+      await selectNode('integrity-exceptions')
+      expect(await screen.findByTestId('artifact-row-cap-a')).toBeTruthy()
+    } finally {
+      onlineManager.setOnline(true)
+    }
   })
 
   // A retry of a read that never succeeded starts over from no data.

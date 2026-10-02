@@ -184,7 +184,7 @@ review.
   - Later rows from other case shapes (imported, Shared Case, the chain-reader plan's era
     packages) call the same helper from their own files.
   - Linux only, as now: CI's `test` job runs on `ubuntu-latest`, where `/bin/sh` is dash.
-- [ ] **2. Fix the runbook's wrong step citation.** `verifyRunbook.ts:67` cites chain linkage as
+- [x] **2. Fix the runbook's wrong step citation.** `verifyRunbook.ts:67` cites chain linkage as
   step 3; it becomes "the recomputed entry hashes and chain linkage (steps 3 and 4)" to match the
   script at `:350`. One line of shipped text.
 - [ ] **3. The report lists the shipped steps.**

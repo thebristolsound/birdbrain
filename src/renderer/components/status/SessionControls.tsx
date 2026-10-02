@@ -44,7 +44,7 @@ export function SessionControls() {
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 whitespace-nowrap">
       <label className="flex cursor-pointer items-center gap-1.5">
         <span className="text-xs text-text-muted">Capture Session</span>
         <button

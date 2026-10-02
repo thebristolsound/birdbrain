@@ -72,54 +72,55 @@ export function TopBar() {
   }
 
   return (
-    <header className="relative flex h-12 shrink-0 items-center gap-3 border-b border-border bg-surface px-4">
-      {/* Logo — click to go home */}
-      <button
-        onClick={() => navigate({ to: '/' })}
-        className="flex items-center gap-2 rounded-md px-1 -ml-1 hover:bg-elevated transition-colors"
-        title="Home"
-      >
-        <img src={logoImg} alt="Birdbrain" className="h-6 w-6" />
-        <span className="font-display text-xs font-extrabold tracking-tight text-text-primary">
-          Birdbrain
-        </span>
-      </button>
+    <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border bg-surface px-4">
+      {/* The three groups share the bar equally, so the search sits at the window's
+          centre until a side needs more than its share. Only the case name's track
+          can shrink, down to the switcher icon, so the logo keeps its width. */}
+      <div className="grid flex-1 basis-0 grid-cols-[max-content_max-content_minmax(2rem,max-content)] items-center gap-3">
+        {/* Logo — click to go home */}
+        <button
+          onClick={() => navigate({ to: '/' })}
+          className="flex items-center gap-2 rounded-md px-1 -ml-1 hover:bg-elevated transition-colors"
+          title="Home"
+        >
+          <img src={logoImg} alt="Birdbrain" className="h-6 w-6" />
+          <span className="font-display text-xs font-extrabold tracking-tight text-text-primary">
+            Birdbrain
+          </span>
+        </button>
 
-      {/* Breadcrumb case switcher — opens the command launcher */}
+        {/* Breadcrumb case switcher — opens the command launcher */}
+        {activeCaseId && (
+          <>
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-text-faint" />
+            <button
+              data-testid="topbar-case-name"
+              data-tour="caseswitcher"
+              onClick={() => setCommandPaletteOpen(true)}
+              className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 hover:bg-elevated transition-colors"
+              title={`Switch investigation (${accelerator('K')})`}
+            >
+              <span className="max-w-[220px] truncate font-display text-xs font-bold text-text-primary">
+                {activeCase?.name ?? ''}
+              </span>
+              <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* The z-index lifts the results dropdown above sticky headers in the page below. */}
       {activeCaseId && (
-        <>
-          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-text-faint" />
-          <button
-            data-testid="topbar-case-name"
-            data-tour="caseswitcher"
-            onClick={() => setCommandPaletteOpen(true)}
-            className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 hover:bg-elevated transition-colors"
-            title={`Switch investigation (${accelerator('K')})`}
-          >
-            <span className="max-w-[220px] truncate font-display text-xs font-bold text-text-primary">
-              {activeCase?.name ?? ''}
-            </span>
-            <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-text-muted" />
-          </button>
-        </>
-      )}
-
-      {/* Spacer */}
-      <div className="flex-1 min-w-0" />
-
-      {/* Centered global search — absolutely positioned to viewport center. The
-          transform makes this a stacking context, so it carries the z-index its
-          results dropdown needs to clear sticky headers in the page below. */}
-      {activeCaseId && (
-        <div className="absolute left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
-          <div className="pointer-events-auto">
-            <SearchBar caseId={activeCaseId} />
-          </div>
+        <div className="relative z-50 flex min-w-11 max-w-[400px] flex-1 basis-0">
+          <SearchBar caseId={activeCaseId} />
         </div>
       )}
 
       {/* Right controls */}
-      <div className="flex items-center gap-2">
+      <div
+        data-testid="topbar-controls"
+        className="flex flex-1 basis-0 items-center justify-end gap-2"
+      >
         {activeCaseId && <SessionControls />}
 
         {sessionActive && <RecIndicator />}

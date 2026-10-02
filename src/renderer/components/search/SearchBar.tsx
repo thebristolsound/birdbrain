@@ -64,7 +64,7 @@ export function SearchBar({ caseId }: SearchBarProps) {
   const busy = pending || searching
 
   return (
-    <div className="relative w-[400px] shrink-0">
+    <div data-testid="global-search" className="@container/search relative w-full">
       <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-2.5 py-1 focus-within:border-accent/40 focus-within:ring-2 focus-within:ring-accent/25">
         <Search className="h-3.5 w-3.5 shrink-0 text-text-muted" />
         <input
@@ -87,7 +87,7 @@ export function SearchBar({ caseId }: SearchBarProps) {
             &times;
           </button>
         ) : (
-          <span className="shrink-0 rounded border border-border-strong bg-surface px-1.5 py-0.5 font-mono text-[10px] text-text-faint">
+          <span className="hidden shrink-0 rounded border border-border-strong bg-surface px-1.5 py-0.5 font-mono text-[10px] text-text-faint @3xs/search:inline">
             {accelerator('F', { join: ' ' })}
           </span>
         )}

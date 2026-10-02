@@ -81,6 +81,8 @@ jobs:
           | **Windows 10 / 11** | \`Birdbrain-Setup-${VERSION}.exe\` |
           | **Ubuntu** — preferred | \`Birdbrain-${VERSION}.AppImage\` |
           | **Ubuntu** — alternative | \`birdbrain_${VERSION}_amd64.deb\` |
+          | **macOS, Apple Silicon** — experimental | \`Birdbrain-${VERSION}-arm64.dmg\` |
+          | **macOS, Intel** — experimental | \`Birdbrain-${VERSION}.dmg\` |
 
           **On Ubuntu, the AppImage needs the execute bit and FUSE 2 before it will run:**
 
@@ -99,7 +101,7 @@ jobs:
           in Chrome, so the extension always matches your app version. (The
           \`birdbrain-extension.zip\` here is the same build, for developers only.)
 
-          \`SHA256SUMS.txt\` lists the SHA-256 of the Windows, Linux and extension files and
+          \`SHA256SUMS.txt\` lists the SHA-256 of the Windows, macOS, Linux and extension files and
           of the bill of materials, taken from the copies on this page. To check a download
           on Linux, put \`SHA256SUMS.txt\` in the folder that holds it and run
           \`sha256sum --check --ignore-missing SHA256SUMS.txt\`.
@@ -111,7 +113,14 @@ jobs:
           Everything else on this page (\`latest*.yml\`, \`*.blockmap\`) is machinery for
           the in-app updater. Ignore it.
 
-          **On macOS?** Not published here, and not supported. Notarization is the blocker.
+          **macOS is experimental.** The build is unsigned and not notarized, no machine
+          check launches it before it is published, and the app tells you about an update
+          but does not install it. macOS blocks the first launch; after dragging Birdbrain
+          to Applications, clear the download quarantine once:
+
+          \`\`\`bash
+          xattr -dr com.apple.quarantine /Applications/Birdbrain.app
+          \`\`\`
 
           **Already running Birdbrain?** You do not need this page. **Settings → Updates →
           Check for updates** finds this version. If the download does not start by itself, click
@@ -156,13 +165,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # No macOS leg here (#605) — it is a separate, manually dispatched workflow,
-          # release-macos.yml. Building it on every tag published 6 of 17 assets (~850MB)
-          # on a 10x-billed runner for a platform no round-1 tester was on. Building it
-          # never was wrong too, the moment one of them was. Dispatch it per tag that
-          # needs it. Do NOT restore it to this matrix without also deciding what the
-          # release page should look like for the testers who are not on macOS.
-          #
           # windows-latest now resolves to a VS 2026 (v18) image that node-gyp <12.1
           # can't detect, breaking the better-sqlite3 native build. Pin to windows-2022
           # until pnpm ships node-gyp >=12.1 (pnpm/pnpm#10268).
@@ -184,8 +186,21 @@ jobs:
             glob: |
               dist/*.{AppImage,deb}
               dist/*-linux.yml
+          # Experimental (#605 removed it, restored as experimental): unsigned, not
+          # notarized, and no smoke, since package-smoke.mjs drives win32 and linux only.
+          # continue-on-error keeps a failed macOS leg from skipping sbom-and-checksums
+          # for the Windows and Linux assets. The release notes carry the macOS rows.
+          - os: macos-latest
+            script: package:mac
+            experimental: true
+            glob: |
+              dist/*.dmg
+              dist/*.zip
+              dist/*.blockmap
+              dist/latest-mac.yml
 
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental == true }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -212,6 +227,7 @@ jobs:
       # machine, on the exact bytes about to be published. A leg whose artifact does
       # not boot uploads nothing, so a broken build never reaches the update feed.
       - name: Smoke the packaged app
+        if: matrix.smoke
         timeout-minutes: 5
         run: ${{ matrix.smoke }}
 
@@ -260,7 +276,7 @@ jobs:
 
   # The bill of materials and the checksum file (#1625). It waits for every build job,
   # so the checksums are taken from the assets as the release serves them. macOS
-  # assets, attached later by release-macos.yml, are not in the checksum file.
+  # assets attached later by release-macos.yml, to backfill an older tag, are not.
   sbom-and-checksums:
     needs: [build-app, build-extension]
     environment: paid-runs

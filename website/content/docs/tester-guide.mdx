@@ -76,8 +76,21 @@ password. See [Updating](#updating).
 
 ### macOS
 
-macOS is not supported. No macOS build is published from this beta on, and any macOS asset
-still sitting on an earlier release is unsupported.
+macOS support is experimental: the build is unsigned, not notarized, and not launch-tested
+before it is published.
+
+1. Download `Birdbrain-<version>-arm64.dmg` on Apple Silicon, or `Birdbrain-<version>.dmg` on
+   an Intel Mac.
+2. Open the disk image and drag **Birdbrain** to **Applications**.
+3. The build is not signed or notarized, so macOS blocks the first launch. Clear the download
+   quarantine once in Terminal, then open Birdbrain as usual:
+
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/Birdbrain.app
+   ```
+
+The app tells you when an update is out but does not install it. Download the new disk image
+from the releases page and repeat the steps.
 
 ## Install the Chrome extension
 
@@ -220,8 +233,8 @@ Two more things a restore does not do, both worth knowing before you click it:
   capture does not take it out of the evidence package. Treat a case as contaminated by
   anything you captured into it.
 - **Chrome/Chromium only.** No Firefox or Safari extension yet.
-- **macOS is unsupported.** No build is published from this beta on, and notarization is the
-  blocker.
+- **macOS is experimental.** The build is unsigned and not notarized, and the app reports updates
+  without installing them.
 - **"Verified" is not a live check.** Capture details shows the result of the last
   verification run, not the state of the file right now. Click **Re-verify** to get a
   current statement.

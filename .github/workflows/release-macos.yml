@@ -1,10 +1,8 @@
 name: Release (macOS, on request)
 
-# macOS is built on request rather than on every tag (#605). The round-1 tester
-# guide covers Windows and Ubuntu; a macOS build is produced when a tester needs
-# one, and uploaded to the existing Release for that tag in the public releases
-# repository. Building it on every tag published ~850MB of assets nobody was
-# pointed at, on a runner billed at a 10x minute multiplier.
+# release.yml builds macOS on every tag again, as an experimental leg. This
+# workflow backfills a macOS build onto an existing Release: a tag cut before
+# the leg returned, or one whose macOS leg failed.
 #
 # Run it from the Actions tab, or:
 #   gh workflow run release-macos.yml -f tag=v1.0.1-beta.20

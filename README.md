@@ -71,7 +71,7 @@ against and what they do not.
 
 ### Analysis
 
-- Birdbrain extracts indicators from every capture and lists the captures each one appears in:
+- Birdbrain extracts indicators from every capture and lists the pages each one appeared on:
   - IPv4 (public only) and IPv6 addresses, domains, email addresses, MAC addresses, and ASNs
   - MD5, SHA-1, SHA-256, and SHA-512 hashes, and CVE identifiers
   - Bitcoin, Ethereum, and Monero addresses
@@ -223,8 +223,6 @@ The issue tracker holds the full list. These are the larger pieces of work.
 
 ### Under discussion
 
-- A capture engine in which the desktop app drives Chrome, Edge, Brave, or Firefox directly and
-  records network transactions, TLS details, and a PDF, with the extension as a companion.
 - A network egress setting for direct, proxy, or Tor connections that fails closed.
 - A distributed standalone verifier and a plainer verification guide in each package.
 - Later shared-case work: a reviewer role, corroboration across members, ownership transfer,

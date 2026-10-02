@@ -9,6 +9,8 @@ const GENERIC_CAP = 20
 const VERDICT_MAX_FINDINGS = 5
 const COMMIT_ID = /\b[0-9a-f]{7,40}\b/
 const BOT_TRIGGER = /^@(coderabbitai|codex) (review|full review|security review)$/
+// The trailing note an agent adds when posting as the maintainer (global agent instructions).
+const DISCLOSURE = [/^> \[!NOTE\]$/, /^> [A-Z][\w.-]*( [A-Z][\w.-]*)? responding on behalf of Matt\.$/]
 const FORBIDDEN = [
   [/co-authored-by/i, 'a Co-authored-by trailer'],
   [/Generated (with|by) \[Claude Code\]/, 'the platform attribution footer'],
@@ -97,6 +99,7 @@ export function lintComment(raw) {
   const all = text.split('\n')
   while (all.length && all[all.length - 1].trim() === '') all.pop()
   while (all.length && all[0].trim() === '') all.shift()
+  stripDisclosure(all)
   if (!all.length) return ['comment is empty']
 
   const first = all[0].trim()
@@ -135,6 +138,14 @@ export function lintComment(raw) {
   findings.push(...plainLanguageFindings(all, top, exempt))
   findings.push(...summaryFindings(blocks))
   return findings
+}
+
+// Drops the disclosure note so it counts toward no kind's shape or line cap.
+function stripDisclosure(all) {
+  const n = all.length
+  if (n < 2 || !DISCLOSURE[0].test(all[n - 2]) || !DISCLOSURE[1].test(all[n - 1])) return
+  all.splice(n - 2)
+  while (all.length && all[all.length - 1].trim() === '') all.pop()
 }
 
 function bodyFromFile(path) {

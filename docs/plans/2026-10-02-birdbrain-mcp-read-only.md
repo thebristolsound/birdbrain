@@ -31,7 +31,7 @@ that a stdio server never loads. Stdio ships in the same package as its `./stdio
    process cannot load it. The server runs as `ELECTRON_RUN_AS_NODE=1 electron out/main/mcp.js`,
    the way `pnpm test` runs vitest. It cannot become a standalone binary like the verifier.
 2. **In that mode `require('electron')` returns a path string**, so nothing the server imports may
-   use `app`, `dialog` or `shell`. A dependency-cruiser rule enforces it.
+   use `app`, `dialog` or `shell`. See step 1 findings for how this is enforced.
 3. **Verification is not a pure read.** `verifyCapture` persists the verification status
    (`captureLifecycle.ts:610`), and the trusted-time mirror is reconciled inside
    `computeVerification`. `exhibits:verify` calls `verifyCapture`. The server needs a compute-only
@@ -40,7 +40,7 @@ that a stdio server never loads. Stdio ships in the same package as its `./stdio
    writes. The server needs `openDatabaseReadOnly(path)` that refuses a schema version other than
    `LATEST_SCHEMA_VERSION`, because it cannot migrate.
 5. **Steps 2 and 3 touch blocking-tier evidence paths** (`src/main/services/db/**`,
-   `captureLifecycle.ts`, `exhibits.ts`, possibly `trustedTime.ts`). The PR is
+   `captureLifecycle.ts`, `exhibits.ts`, `signingKey.ts`). The PR is
    `evidence-affecting` and needs human review.
 
 ## Read-only guarantee
@@ -56,6 +56,34 @@ Three layers, each tested:
 Filesystem writes outside SQLite (thumbnail generation, derived files) are not covered by layer 1.
 Step 1 lists every read path that writes, and layer 3 catches any that the list misses.
 
+## Step 1 findings (2026-10-02)
+
+- **Read-only WAL open works** under `ELECTRON_RUN_AS_NODE`, with the app closed and with a
+  writer connection open. The reader sees the writer's later commits, and an insert fails with
+  `SQLITE_READONLY`. Opening a closed database creates empty `-wal` and `-shm` files, which SQLite
+  removes on the last close; the main database file is untouched. The no-mutation test therefore
+  hashes the database file and the Case directory, not those two transient files.
+- **Electron is reachable but never called at load.** The services reach `electron` through
+  `logger` to `ipcWrap` (`ipcMain`), `diagnostics` (`app`) and `toolVersion` (guarded), while
+  `settings`, `signingKey` and `logSafe` require it lazily. vitest already loads these modules in
+  the same mode. The dependency-cruiser rule narrows to "`src/mcp/**` imports no `electron`"; the
+  stdio smoke test, which runs the built bundle and calls tools, covers the call paths.
+- **Read paths that write**, and how the server avoids each:
+  - `verifyCapture` and `verifyExhibit`: the verification status and the trusted-time mirror.
+    Fixed by a `record: false` option that resolves trusted time without reconciling the mirror.
+  - `initSettings`: latches the fresh-install flag and strips retired keys. The server reads
+    `settings.json` itself and takes only `storagePath`.
+  - `initStorage`: creates the root when it is missing. The server checks first and refuses a
+    missing root.
+  - `getThumbnail`: renders and stores thumbnails. Not exposed.
+- **The manifest snapshot needs the installation public key**, and `initSigningKey` unwraps the
+  private key through `safeStorage`, which node mode lacks. A verify-only loader in
+  `signingKey.ts` reads `signing-public-key.pem` and leaves the private key unset, so any signing
+  attempt in this process throws.
+- **Non-Capture Exhibits carry a stored file** (`Exhibit.path`, `name`, `kind`). A
+  `get_exhibit_file` tool joins the Custody group: images as image content, text as paged text,
+  anything else as metadata with its hash.
+
 ## Tool catalogue
 
 Grouped by the app screen an investigator would use. Every result that names a Capture or Exhibit
@@ -67,14 +95,11 @@ carries its id, Exhibit Number, URL, capture time and content hash, so an agent 
 | Captures | `list_captures` (filter by tag, favourite, selector), `get_capture` (tags, matching selectors, favourite, annotations, pinned Wayback refs, persona) | `captures:list`, `captures:get`, `tags:getForCapture`, `captures:getMatchingSelectors`, `captures:listFavorites`, `annotations:get`, `wayback:list` |
 | Content | `get_capture_text`, `get_capture_html` (both paged by offset and length), `get_capture_screenshot` (MCP image content, size-capped) | `captures:getContent` |
 | Search | `search_captures` (FTS), `search_notes`, `search_extracted_data` | `search:query`, `notes:search`, `extractedData:search` |
-| Custody | `list_exhibits` (anchored and pooled), `get_manifest`, `verify_capture`, `verify_exhibit` | `exhibits:inventory`, `manifest:snapshot`, compute-only verification |
+| Custody | `list_exhibits` (anchored and pooled), `get_exhibit_file`, `get_manifest`, `verify_capture`, `verify_exhibit` | `exhibits:inventory`, `exhibitRepo`, `manifest:snapshot`, compute-only verification |
 | Notes | `list_notes`, `get_note` (text and anchors), `note_references`, `note_backlinks`, `note_graph` | `notes:*` reads |
 | Tags and selectors | `list_tags` (usage counts), `list_selectors` (match counts), `selector_matches` | `tags:usageCountsForCase`, `selectors:list`, `selectors:matchCounts`, `selectors:matchingCaptures` |
 | Extracted data | `list_extracted_categories`, `list_extracted_items` | `extractedData:categories`, `subcategories`, `items` |
 | Corroboration | `list_wayback_refs` (pinned only) | `wayback:listForCase` |
-
-Step 1 also checks whether non-Capture Exhibits (uploaded files) have readable content a person can
-open in the app. If they do, a `get_exhibit_content` tool joins the Custody group.
 
 **Excluded:** every write; `wayback:lookup` (network); `settings:*` (holds the OpenRouter key);
 `db:*` (raw table reads bypass the domain layer); `persona:storageState` (cookies); `export:*`;

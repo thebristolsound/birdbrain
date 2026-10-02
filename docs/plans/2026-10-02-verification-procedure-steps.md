@@ -170,7 +170,9 @@ Each slice is one PR cut from `main`, green under `pnpm preflight`. Slice 1 touc
 every other slice edits a blocking-tier file, carries `evidence-affecting`, and waits for human
 review.
 
-- [ ] **1. Conformance table (tests only).**
+- [x] **1. Conformance table (tests only).** Built: 22 rows, one recorded divergence. Removing
+  the anchor from a sealed package FAILs Package Verification on the package hash and leaves
+  `verify.sh` INCOMPLETE, because only the former recomputes the hash the export entry signs.
   - `tests/helpers/verifyConformance.ts`: `checkConformance(dir)` runs Package Verification and
     `verify.sh` on an unpacked package and returns both verdicts and the steps the script failed.
     It takes a package directory, not a builder, so any test that builds a package can use it.

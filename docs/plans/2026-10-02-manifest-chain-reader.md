@@ -173,7 +173,7 @@ compare against the shipped head, stays outside the view.
 
 ## Placement
 
-Recommended: `src/shared/verify/chainView.ts`, exported through the verify-core barrel. Every
+Ruled (ruling 1): `src/shared/verify/chainView.ts`, exported through the verify-core barrel. Every
 change to `src/shared/verify/**` hits the blocking tier of the include list (the "Include list"
 section of `docs/specs/2026-07-31-evidence-affecting-paths-assessment.md`), which the pre-pass
 reviewer enforces (`.claude/agents/birdbrain-reviewer.md:78-90`);
@@ -187,9 +187,9 @@ No slice changes Package Verification's or `verify.sh`'s verdict on any package 
 
 | Divergence | Answer taken | Effect |
 | --- | --- | --- |
-| Export reads past a break | Pending question 2 | If the ruling is to stop there, re-exporting a broken-chain Case lists fewer Exhibits and drops the Certification's key ranges together |
-| Export reads past a newer-schema entry | Recommended, question 5: read every written line and disclose (`'read-written'`), never truncate | Today's contents plus a disclosure line. Truncating would make a newer verifier FAIL coverage on a genuine package |
-| Signer fingerprint | PEM-text hash everywhere packages go; Data screen pending question 4 | None in packages |
+| Export reads past a break | Ruled: stop at the break and count the lines left out (ruling 2) | Re-exporting a broken-chain Case lists fewer Exhibits and drops the Certification's key ranges together |
+| Export reads past a newer-schema entry | Ruled (ruling 5): read every written line and disclose (`'read-written'`), never truncate | Today's contents plus a disclosure line. Truncating would make a newer verifier FAIL coverage on a genuine package |
+| Signer fingerprint | PEM-text hash everywhere packages go; Data screen too (ruling 4) | None in packages |
 | Unreconciled list scope | New `evidence.json` field covering `exhibit` entries and every member's chain; `unreconciledChainCaptureIds` unchanged; index schema to 3 (`schemas.ts:960-967` says bump on shape change; no verifier reads the field) | Re-exports gain a field |
 | Entry signature by row id | Look up by chain id | Fixes #1472 |
 
@@ -234,7 +234,7 @@ Each slice is one PR, cut from `main`, green under `pnpm preflight` on its own.
       `signingKeyRanges` until slice 4, so the two documents stay consistent on a broken chain.
 - [ ] **4. Export reads the view (blocking: `export.ts`).** Typed entries, `signerRuns()` for the
       Certification, entry signatures by chain id, one token loop, `onTooOld: 'read-written'`
-      with disclosure, and the break rule as ruled in question 2. Byte identity on every
+      with disclosure, and the break rule from ruling 2. Byte identity on every
       passing-chain export test and frozen package.
 - [ ] **5. Chain names and bindings (blocking: `export.ts`, `captureLifecycle.ts`,
       `exhibits.ts`).** `resolveChainNames` becomes `chainName`; `entryDescribesRow` becomes
@@ -256,7 +256,7 @@ Signs permanent entries and needs no view: the anchored id map is readable today
 `captureLifecycle.ts` (deletion), `exhibitBackfill.ts` (derivation and its dedup key at `:357`),
 and `deletionReconciliation.ts:136-147`, all keyed on the chain id resolved through `'own'` or
 `'id-map'` only. Writing an inferred id could sign a deletion for a live Exhibit and make both
-verifiers excuse its absence permanently. On an unresolved row, behaviour waits on question 3.
+verifiers excuse its absence permanently. On an unresolved row, the app refuses the operation (ruling 3).
 
 No Manifest schema bump is needed: both verifiers accept a `deletion` naming an id the same
 chain authored. Older app builds resolve the new entries only through the one-hop id map.
@@ -282,20 +282,16 @@ known-answer test must use a source Case with no thumbnails.
 - **Fact scope on a newer-schema entry.** If a slice wires `onTooOld: 'stop'` into export, a newer
   verifier FAILs a genuine package. Slice 0's newer-schema fixture guards it.
 
-## Open questions for the maintainer
+## Maintainer rulings (2026-10-02)
 
-1. Should the reader live in verify-core (`src/shared/verify/chainView.ts`, on the blocking tier),
-   or as a package under `src/packages/` with that path added to the include list?
-2. When a Case's Manifest fails its chain check at a break (not a newer-schema entry), should an
-   Evidence Package's report, index, and Certification stop at the break as Package Verification
-   does, or keep describing every written line with a disclosure, as they partly do today?
-3. When a writer has to name an Exhibit an import renamed and neither its own id nor the signed id
-   map resolves it, should the app refuse the operation, or sign the row's own id and disclose
-   that verifiers will not match it?
-4. Should the Data screen print the PEM-text key hash that the Certification and `VERIFY.md` print,
-   in place of the DER key hash it shows now?
-5. When the Manifest holds an entry from a newer schema, should export read every written line and
-   disclose it (recommended), or refuse the export?
+1. **The reader lives in verify-core** at `src/shared/verify/chainView.ts`, on the blocking tier.
+2. **On a chain break, the report, index, and Certification stop at the break**, as Package
+   Verification does, and state how many later lines they left out as unverified.
+3. **When a writer cannot resolve a renamed Exhibit through its own id or the signed id map, the
+   app refuses the operation** and explains why. It never signs an id it could not resolve.
+4. **The Data screen prints the PEM-text key hash** that the Certification and `VERIFY.md` print.
+5. **When the Manifest holds a newer-schema entry, export reads every written line and discloses
+   it.** It never truncates there.
 
 ## Review disposition
 

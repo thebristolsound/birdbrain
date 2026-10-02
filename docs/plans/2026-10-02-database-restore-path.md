@@ -185,7 +185,7 @@ and `:209-229`) show `err.message`, so the copy lives in main:
 The not-intact message changes because the current advice, "Restart Birdbrain" (`:1319-1322`),
 is unsafe: startup has no intact check (`index.ts:410`), and a zero-length file opens there as a
 fresh schema (`core.ts:26`). Both restore handlers work with no open database, so restoring
-immediately is the safe step. The root-cause fix is open question 3.
+immediately is the safe step. The root-cause fix is slice 5 (ruling 3).
 
 In `src/renderer/lib/api/db.ts:100-106`, switch the `restore` mutation from `onSuccess` to
 `onSettled`, as `restoreSnapshot` already does (`:107-118`).
@@ -224,7 +224,7 @@ Put it in `src/main/services/db/dbRestore.ts`, not under `src/packages/`:
 Neither path takes one today. `initDatabase` snapshots the *restored* file when it is older
 (`core.ts:16-29`), never the database being replaced.
 
-Recommendation: yes, as a separate final slice after a maintainer ruling. In phase A, `db.backup()`
+Ruled yes (ruling 2), as a separate slice. In phase A, `db.backup()`
 the live database into `db-snapshots/` as `before-restore-v37-<stamp>.db`. That needs a deliberate
 change to `SNAPSHOT_FILE_RE` (`dbSnapshots.ts:52`), which matches only `pre-migration-` names, and a
 name that avoids the `.pre-restore` wording 70c80f75 deleted. It reuses the writer's
@@ -252,7 +252,7 @@ Each slice is one PR, green on `pnpm preflight` alone. Every slice touches the b
   `rejected: migration_failed` with the live database intact instead of `DB_REOPEN_FAILED`.
 - [ ] **Slice 3: narrow `dbSnapshots`.** Remove the `restoreSnapshotFile` and `clearRestorePartial`
   restore code, and move the restore tests that `dbSnapshots.test.ts` still holds.
-- [ ] **Slice 4 (after ruling): safety snapshot before restore.** Includes the dialog and docs copy.
+- [ ] **Slice 4: safety snapshot before restore.** Includes the dialog and docs copy.
 
 ## Tests
 
@@ -270,8 +270,7 @@ Each slice is one PR, green on `pnpm preflight` alone. Every slice touches the b
 ## Filing
 
 The hazard meets the filing rule in `CLAUDE.md`: user-visible, and evidence-affecting because it
-destroys the case database. No open issue covers it (#1628 is a different bug). Not filed, per
-this task's instructions; if wanted, file it before slice 1 so that PR closes it.
+destroys the case database. Filed as #1700; slice 1 closes it.
 
 ## Risks
 
@@ -286,15 +285,19 @@ this task's instructions; if wanted, file it before slice 1 so that PR closes it
   (`timestampWorker.ts:235`), and the sync persona sweep run only at launch. The "restart for full
   effect" text stays.
 
-## Open questions for the maintainer
+## Maintainer rulings (2026-10-02)
 
-1. Should **Restore from File** refuse a database at a newer schema than this build? I recommend
-   refusing. Startup tolerates a newer file (`core.ts:18-20`), but that comment covers a
-   downgrade of the app, not a deliberate restore, so it sets no precedent here.
-2. Should a restore take a safety snapshot of the database it replaces (slice 4)? This reverses
-   the published "no copy kept" wording.
-3. Should startup refuse a database that fails `isIntactDatabase` instead of migrating it? This
-   is the root cause behind the not-intact message, and it touches the blocking-tier `index.ts`.
+1. **Restore from File refuses a database at a newer schema than this build.** The refusal names
+   both schema versions. Slice 1 adds the check on the scratch copy.
+2. **Every restore takes a safety snapshot of the database it replaces.** Slice 4 goes ahead and
+   updates the published "no copy kept" wording in the same PR.
+3. **Startup refuses a database that fails `isIntactDatabase`** instead of migrating it into an
+   empty schema, and offers the snapshot list. This is slice 5 (below); it touches the
+   blocking-tier `index.ts`.
+
+- [ ] **Slice 5: startup refuses a damaged database.** Gate `initDatabase` at `index.ts:410` on
+  `isIntactDatabase`; on failure, show a dialog that lists snapshots and restores one through
+  `restoreDatabase`. Once this lands, the not-intact message can advise a restart again.
 
 ## Review disposition
 

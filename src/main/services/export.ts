@@ -55,7 +55,7 @@ import {
   timestampTokenPath
 } from '../../packages/evidence-package-layout/index'
 import type { TrustedTimeResult } from '@shared/verify'
-import { buildCertification } from '@main/services/certification'
+import { buildCertification, type SigningKeyRange } from '@main/services/certification'
 import { resolveToolVersion } from '@main/services/toolVersion'
 import { buildHtmlReport } from '@main/services/reportHtml'
 import type {
@@ -169,11 +169,12 @@ interface TokenSubject {
 
 function tokenSubjects(
   captures: Capture[],
-  exhibits: Array<{ id: string; contentHash: string }>
+  exhibits: Array<{ id: string; contentHash: string }>,
+  chainIdOf: (id: string) => string
 ): TokenSubject[] {
   return [
-    ...captures.map((capture) => ({ id: capture.id, contentHash: capture.hash })),
-    ...exhibits.map((exhibit) => ({ id: exhibit.id, contentHash: exhibit.contentHash }))
+    ...captures.map((capture) => ({ id: chainIdOf(capture.id), contentHash: capture.hash })),
+    ...exhibits.map((exhibit) => ({ id: chainIdOf(exhibit.id), contentHash: exhibit.contentHash }))
   ]
 }
 
@@ -514,6 +515,8 @@ export async function generateReport(
     preflight: UNRESOLVED_PREFLIGHT,
     manifestHead: null,
     packagedPaths: new Map(),
+    chainIdByCaptureId: new Map(),
+    entriesUnderCarriedKeys: false,
     trustedTimeByCaptureId: new Map(),
     entrySignatureByCaptureId: new Map(),
     unreconciledChainCaptureIds: [],
@@ -625,8 +628,22 @@ export async function generateReport(
   const sharedCase = readSharedCaseSnapshot(join(getStorageRoot(), caseId), manifest)
   const caseEntries = caseEntriesOf(manifest, sharedCase)
   data.manifestHead = manifest.head
-  const inScope = new Set([...captures.map((c) => c.id), ...scope.fileExhibits.map((e) => e.id)])
+  // The ids the documents below write for an Exhibit are the chain's (see
+  // resolveChainNames); lookups into this export's own maps keep the row id.
+  // Resolved over every row of the Case, so no row takes an id another holds.
+  const chainNames = resolveChainNames(
+    allCaptures,
+    allExhibits.filter((exhibit) => exhibit.kind !== 'capture'),
+    caseEntries
+  )
+  const chainIdOf = (id: string): string => chainNames.get(id)?.id ?? id
+  // An exclusion names the Exhibit by the id its chain carries.
+  const inScope = new Set([...captures, ...scope.fileExhibits].map(({ id }) => chainIdOf(id)))
   data.sharedCase = resolveExportSharedCase(sharedCase, (id) => inScope.has(id))
+  data.chainIdByCaptureId = new Map(captures.map(({ id }) => [id, chainIdOf(id)]))
+  data.entriesUnderCarriedKeys = signingKeyRanges(manifest.entries, getPublicKeyPem()).some(
+    ({ carriedByImportAt }) => carriedByImportAt !== null
+  )
   // One reader for the whole export: it reads each enclosed non-Capture
   // Exhibit and each enclosed Derived File exactly once, classification reads
   // its outcome, and the zip builders consume the buffers it already holds. A
@@ -637,7 +654,7 @@ export async function generateReport(
   const tokenPaths =
     options.format === 'zip'
       ? buildTimestampTokenPaths(
-          tokenSubjects(captures, scope.fileExhibits),
+          tokenSubjects(captures, scope.fileExhibits, chainIdOf),
           caseEntries.filter(isTimestampEntry)
         )
       : new Map<string, string>()
@@ -662,6 +679,7 @@ export async function generateReport(
     trustedTimeByHash,
     entrySignatures: resolveExhibitEntrySignatures(scope.fileExhibits, caseEntries),
     tokenPaths,
+    chainNames,
     isPackage: options.format === 'zip',
     reader,
     cite
@@ -680,14 +698,18 @@ export async function generateReport(
   )
   // Reconciled against the FULL case, not the exported selection — see the
   // resolver's comment for why a deliberately unselected capture is no orphan.
-  data.unreconciledChainCaptureIds = resolveUnreconciledChainCaptures(allCaptures, manifest.entries)
+  // A row the chain names by another id is held under that id.
+  data.unreconciledChainCaptureIds = resolveUnreconciledChainCaptures(
+    allCaptures.map((capture) => ({ ...capture, id: chainIdOf(capture.id) })),
+    manifest.entries
+  )
 
   if (options.format === 'zip') {
     const packageMeta: PackageMeta = {
       caseNumber: caseData.caseNumber,
       isDemo: caseData.isDemo,
       purposeOrAuthority: options.purposeOrAuthority,
-      notes
+      notes: notes?.map((note) => noteNamedByChain(note, chainIdOf)) ?? null
     }
     let zip: EvidenceZipResult
     if (workingCopy) {
@@ -738,14 +760,13 @@ export async function generateReport(
       // and meaning are unchanged and a capture-only selection produces the
       // same entry it always did. It is the package's only signed statement of
       // what it encloses, so an Exhibit left out has to be accounted for here
-      // or the verifier has nothing to read its absence from.
+      // or the verifier has nothing to read its absence from. Each id is the
+      // one the Exhibit's own entry carries, which is the id the verifier
+      // matches it against (#1657).
       ...(scoped
         ? {
             scope: 'selection' as const,
-            captureIds: [
-              ...captures.map((c) => c.id),
-              ...scope.fileExhibits.map((exhibit) => exhibit.id)
-            ]
+            captureIds: [...captures, ...scope.fileExhibits].map(({ id }) => chainIdOf(id))
           }
         : {}),
       // Omitted — never 'evidence'/null — on evidence exports, the same
@@ -864,6 +885,94 @@ export function resolveExhibitEntrySignatures(
   return byExhibitId
 }
 
+/** How a signed entry names one Exhibit: its id, and a non-Capture Exhibit's storage path. */
+export interface ChainName {
+  id: string
+  path: string | null
+}
+
+/**
+ * The name each renamed Exhibit's signed entry gives it, keyed by row id
+ * (#1657). An archive import that renames a colliding row id leaves the
+ * inherited entry naming the id it was signed under, and both verifiers look
+ * for an Exhibit's file, its index rows and its place in a signed selection
+ * under the entry's id. So every document an export writes names a renamed
+ * Exhibit the way its entry does.
+ *
+ * A row counts as renamed only when no entry of its kind, in any chain the
+ * package encloses, carries its own id: a row its own id is signed under keeps
+ * it whatever its stored index says, since that index is editable and can land
+ * on another row's entry for the same bytes. A renamed row takes the id of the
+ * entry at its own index, of its kind and over its bytes (a Shared Case's
+ * chains share index numbers), and only when that is one id, held by no other
+ * row of the Case and claimed by no other renamed row. Any other row is absent
+ * here and keeps its own name.
+ */
+export function resolveChainNames(
+  captures: Capture[],
+  exhibits: Exhibit[],
+  entries: Record<string, unknown>[]
+): Map<string, ChainName> {
+  const idIn = (entry: Record<string, unknown>, type: 'capture' | 'exhibit'): unknown =>
+    entry.type !== type ? undefined : type === 'capture' ? entry.captureId : entry.exhibitId
+  const byIndex = new Map<number, Record<string, unknown>[]>()
+  const signedIds = new Set<string>()
+  for (const entry of entries) {
+    for (const type of ['capture', 'exhibit'] as const) {
+      const id = idIn(entry, type)
+      if (typeof id === 'string') signedIds.add(`${type}:${id}`)
+    }
+    if (typeof entry.index !== 'number') continue
+    const atIndex = byIndex.get(entry.index) ?? []
+    atIndex.push(entry)
+    byIndex.set(entry.index, atIndex)
+  }
+  const rows = [
+    ...captures.map(({ id, manifestIndex, hash }) => ({
+      id,
+      index: manifestIndex,
+      contentHash: hash,
+      type: 'capture' as const
+    })),
+    ...exhibits.map(({ id, manifestSeq, contentHash }) => ({
+      id,
+      index: manifestSeq,
+      contentHash,
+      type: 'exhibit' as const
+    }))
+  ]
+  const rowIds = new Set(rows.map(({ id }) => id))
+  const claims = new Map<string, Array<{ rowId: string; name: ChainName }>>()
+  for (const { id: rowId, index, contentHash, type } of rows) {
+    if (typeof index !== 'number' || signedIds.has(`${type}:${rowId}`)) continue
+    const candidates = (byIndex.get(index) ?? []).flatMap((entry): ChainName[] => {
+      const id = idIn(entry, type)
+      if (typeof id !== 'string' || entry.contentHash !== contentHash) return []
+      return [{ id, path: typeof entry.path === 'string' ? entry.path : null }]
+    })
+    if (new Set(candidates.map(({ id }) => id)).size !== 1) continue
+    const [name] = candidates
+    if (rowIds.has(name.id)) continue
+    claims.set(name.id, [...(claims.get(name.id) ?? []), { rowId, name }])
+  }
+  const names = new Map<string, ChainName>()
+  for (const claimants of claims.values()) {
+    if (claimants.length === 1) names.set(claimants[0].rowId, claimants[0].name)
+  }
+  return names
+}
+
+/** A note as notes.md states it: its Capture pointers in the ids the chain uses. */
+function noteNamedByChain(note: Note, chainIdOf: (id: string) => string): Note {
+  return {
+    ...note,
+    ...(note.captureId ? { captureId: chainIdOf(note.captureId) } : {}),
+    ...(note.anchor
+      ? { anchor: { ...note.anchor, captureId: chainIdOf(note.anchor.captureId) } }
+      : {})
+  }
+}
+
 /**
  * Verifies committed non-Capture Exhibits through the app's own Exhibit verify
  * path (X37), so `exhibits:verify` and an export's verification run cannot
@@ -959,6 +1068,7 @@ interface FileExhibitInputs {
   trustedTimeByHash: Map<string, TrustedTimeResult>
   entrySignatures: Map<string, EntrySignatureStatus>
   tokenPaths: Map<string, string>
+  chainNames: Map<string, ChainName>
   isPackage: boolean
   reader: PackageReader
   cite: ExhibitCitationResolver
@@ -975,8 +1085,12 @@ function buildFileExhibitRecords(
     // returned — the same rule the Derived Files follow, for the same reason.
     const enclosed = isPackage ? reader.read(exhibit.path) !== null : false
     const verification = inputs.verifications.get(exhibit.id)
+    // Named as its signed entry names it — see resolveChainNames. Everything
+    // keyed above and below still reads the row's own id.
+    const named = inputs.chainNames.get(exhibit.id)
+    const packagedFrom = named?.path ?? exhibit.path
     return {
-      id: exhibit.id,
+      id: named?.id ?? exhibit.id,
       kind: exhibit.kind,
       origin: exhibit.origin,
       exhibitNumber: exhibit.exhibitNumber,
@@ -987,7 +1101,7 @@ function buildFileExhibitRecords(
       sizeBytes: exhibit.sizeBytes,
       committedAt: exhibit.committedAt,
       manifestIndex: exhibit.manifestSeq,
-      packagedPath: enclosed && exhibit.path ? exhibitPackagePath(exhibit.path) : null,
+      packagedPath: enclosed && packagedFrom ? exhibitPackagePath(packagedFrom) : null,
       timestampTokenPath: isPackage ? (inputs.tokenPaths.get(exhibit.contentHash) ?? null) : null,
       derivedFiles: buildDerivedFiles(
         inputs.derivedByExhibitId.get(exhibit.id) ?? [],
@@ -1196,6 +1310,42 @@ function describeExhibit(exhibit: ExportFileExhibit, enclosed: boolean) {
   }
 }
 
+/**
+ * Which key signed which entries of the bundled chain (#1657), by the rule the
+ * package verifier applies (the KEY RULE in `@shared/verify/manifestChain`) and
+ * verify.sh step 2 repeats: an entry verifies under the key the first `import`
+ * entry after it carries, or under this installation's key when none follows.
+ */
+function signingKeyRanges(
+  entries: Record<string, unknown>[],
+  publicKeyPem: string
+): SigningKeyRange[] {
+  const fingerprint = (pem: string): string => sha256(Buffer.from(pem, 'utf-8'))
+  const ranges: SigningKeyRange[] = []
+  let fromIndex = 0
+  entries.forEach(({ type, sourcePublicKeyPem }, position) => {
+    if (type !== 'import' || typeof sourcePublicKeyPem !== 'string') return
+    if (position > fromIndex) {
+      ranges.push({
+        fromIndex,
+        toIndex: position - 1,
+        fingerprint: fingerprint(sourcePublicKeyPem),
+        carriedByImportAt: position
+      })
+    }
+    fromIndex = position
+  })
+  if (entries.length > fromIndex) {
+    ranges.push({
+      fromIndex,
+      toIndex: entries.length - 1,
+      fingerprint: fingerprint(publicKeyPem),
+      carriedByImportAt: null
+    })
+  }
+  return ranges
+}
+
 function buildEvidenceZip(
   caseId: string,
   data: ExportData,
@@ -1212,9 +1362,11 @@ function buildEvidenceZip(
   const latestManifestEntry = manifest.head
 
   // Same path rule the report was rendered against, over the same Exhibits in
-  // the same order — see buildTimestampTokenPaths.
+  // the same order and under the same names — see buildTimestampTokenPaths.
+  // `fileExhibits` already carry the chain's ids.
+  const chainIdOf = (id: string): string => data.chainIdByCaptureId.get(id) ?? id
   const timestampPathsByHash = buildTimestampTokenPaths(
-    tokenSubjects(data.captures, data.fileExhibits),
+    tokenSubjects(data.captures, data.fileExhibits, chainIdOf),
     timestampEntries
   )
   const emittedTokenPaths = new Set<string>()
@@ -1268,6 +1420,7 @@ function buildEvidenceZip(
         purposeOrAuthority: meta.purposeOrAuthority,
         manifestHead: data.manifestHead,
         signingKeyFingerprint: sha256(Buffer.from(publicKeyPem, 'utf-8')),
+        signingKeyRanges: signingKeyRanges(manifest.entries, publicKeyPem),
         contents: {
           captureCount: data.captures.length,
           screenshotCount: data.screenshots.size,
@@ -1328,8 +1481,9 @@ function buildEvidenceZip(
   const capturesMissingContent: string[] = []
   const emittedScreenshotPaths = new Set<string>()
   const captureEvidence = data.captures.map((capture) => {
+    const id = chainIdOf(capture.id)
     const mhtml = defaultCaptureStore.readArtifact(capture.caseId, capture.id, 'mhtml')
-    const mhtmlPath = capturePagePath(capture.id)
+    const mhtmlPath = capturePagePath(id)
     const mhtmlSha256 = mhtml ? add(mhtmlPath, mhtml) : null
     if (!mhtml) capturesMissingContent.push(capture.id)
     const verification = data.verifications.find((v) => v.captureId === capture.id)
@@ -1370,7 +1524,7 @@ function buildEvidenceZip(
     }
 
     return {
-      id: capture.id,
+      id,
       title: capture.title,
       url: capture.url,
       capturedAt: capture.timestamp,
@@ -1424,14 +1578,15 @@ function buildEvidenceZip(
     // Exhibit row in the same transaction, and the v34 migration numbered every
     // Capture that predates it.
     const number = data.exhibitNumberByCaptureId.get(capture.id) ?? 0
+    const id = chainIdOf(capture.id)
     return {
-      id: capture.id,
+      id,
       kind: 'capture',
       origin: capture.method ?? 'extension',
       exhibitNumber: number,
       name: capture.title,
       contentHash: capture.hash,
-      path: capturesMissingContent.includes(capture.id) ? null : capturePagePath(capture.id),
+      path: capturesMissingContent.includes(capture.id) ? null : capturePagePath(id),
       derivedFiles: addDerivedFiles(derived, add, reader)
     }
   })
@@ -1559,10 +1714,13 @@ function buildWorkingCopyZip(
   reader: PackageReader
 ): EvidenceZipResult {
   const { entries, artifacts, add } = createArtifactAccumulator()
+  // Named as the Evidence Package names them — see resolveChainNames.
+  const chainIdOf = (id: string): string => data.chainIdByCaptureId.get(id) ?? id
 
   const captureIndex = data.captures.map((capture) => {
+    const id = chainIdOf(capture.id)
     const mhtml = defaultCaptureStore.readArtifact(capture.caseId, capture.id, 'mhtml')
-    const pagePath = capturePagePath(capture.id)
+    const pagePath = capturePagePath(id)
     if (mhtml) add(pagePath, mhtml)
 
     // The operator-facing copy — annotation-burned when the option says so —
@@ -1572,13 +1730,13 @@ function buildWorkingCopyZip(
     // to agree with, so its id-addressed screenshot is not in the Package
     // Layout module; see docs/plans/2026-09-22-evidence-package-layout.md.
     const screenshotBase64 = data.screenshots.get(capture.id)
-    const screenshotPath = screenshotBase64 ? `screenshots/${capture.id}.png` : null // layout-exempt: Working Copy
+    const screenshotPath = screenshotBase64 ? `screenshots/${id}.png` : null // layout-exempt: Working Copy
     if (screenshotBase64 && screenshotPath) {
       add(screenshotPath, Buffer.from(screenshotBase64, 'base64'))
     }
 
     return {
-      id: capture.id,
+      id,
       title: capture.title,
       url: capture.url,
       capturedAt: capture.timestamp,
@@ -1820,8 +1978,9 @@ function buildPackagedPaths(
     // Captures is the follow-up named in the findings list.
     const { abs } = defaultCaptureStore.artifactPaths(capture.caseId, capture.id, 'mhtml')
     const screenshotDigest = screenshotDigests.get(capture.id)
+    const pageArchive = capturePagePath(data.chainIdByCaptureId.get(capture.id) ?? capture.id)
     paths.set(capture.id, {
-      pageArchive: isPackage && existsSync(abs) ? capturePagePath(capture.id) : null,
+      pageArchive: isPackage && existsSync(abs) ? pageArchive : null,
       screenshot: isPackage && screenshotDigest ? packagedScreenshotPath(screenshotDigest) : null,
       timestampToken: tokenPaths.get(capture.hash) ?? null,
       // Recorded regardless of format: the exhibit reproduces the image either

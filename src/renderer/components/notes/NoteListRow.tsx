@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { StickyNote } from 'lucide-react'
 import type { Note } from '@shared/types'
@@ -22,6 +23,8 @@ export function NoteListRow({
     ...captureThumbnailQueryOptions(note.captureId ?? ''),
     enabled: !!note.captureId && view === 'detailed'
   })
+  // A save refetches the whole list; only the edited note's snippet needs reparsing.
+  const snippet = useMemo(() => noteSnippet(note, resolve), [note, resolve])
   return (
     <div
       role="button"
@@ -65,7 +68,7 @@ export function NoteListRow({
               <span className="shrink-0 text-text-faint">· {noteAge(note.createdAt)}</span>
             </div>
             <p className="mt-1 h-8 overflow-hidden line-clamp-2 text-[11px] leading-4 text-text-muted">
-              {noteSnippet(note, resolve)}
+              {snippet}
             </p>
           </>
         ) : null}

@@ -284,6 +284,19 @@ export interface ReportData {
    */
   packagedPaths: Map<string, PackagedArtifacts>
   /**
+   * The id each Capture's signed entry names it by, keyed by capture id
+   * (#1657). The same as the key unless an archive import renamed the row
+   * after its entry was signed; the documents name a Capture by this id, which
+   * is the one both verifiers look for. See resolveChainNames in export.ts.
+   */
+  chainIdByCaptureId: Map<string, string>
+  /**
+   * Whether an entry of the bundled chain verifies under a key an `import`
+   * entry carries rather than under signing-public-key.pem (#1657), by the rule
+   * the certification's per-run signing keys state.
+   */
+  entriesUnderCarriedKeys: boolean
+  /**
    * Manifest-derived trusted time, keyed by capture id, resolved once from the
    * snapshot this package is built from and shared with `preflight` above — see
    * resolveExportTrustedTime in export.ts.
@@ -471,6 +484,8 @@ interface ExhibitView {
   number: number
   citation: string
   capture: Capture
+  /** The id the Capture's signed entry carries, which is what the document names it by. */
+  captureId: string
   verification?: HashVerification
   integrity: StateView
   time: StateView & { basis: TrustedTime }
@@ -585,6 +600,7 @@ function buildExhibits(data: ReportData, options: ExportOptions): ExhibitView[] 
       number,
       citation: number > 0 ? (data.exhibitCitationByCaptureId.get(capture.id) ?? `${number}`) : '',
       capture,
+      captureId: data.chainIdByCaptureId.get(capture.id) ?? capture.id,
       verification,
       integrity: integrityView(verification, capture),
       time: { basis: trustedTime.trustedTime, ...trustedTimeView(trustedTime) },
@@ -646,7 +662,7 @@ function exhibitIntegrityView(exhibit: ExportFileExhibit): StateView {
       }
     case 'tampered':
       return {
-        label: 'Altered',
+        label: 'Changed since capture',
         detail:
           'The stored bytes no longer recompute to the digest recorded for this exhibit. It ' +
           'must not be relied upon.'
@@ -704,7 +720,7 @@ function integrityView(verification: HashVerification | undefined, capture: Capt
       }
     case 'tampered':
       return {
-        label: 'Altered',
+        label: 'Changed since capture',
         detail:
           'The stored bytes no longer recompute to the recorded digest. This capture must not ' +
           'be relied upon.' +
@@ -1032,8 +1048,8 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
       hash-chained manifest. Where a timestamp token is retained, that the digest existed no later
       than the time asserted by the named RFC 3161 authority. This is asserted per capture and
       never for the package as a whole — the exhibit index states the result for each, and any
-      capture recorded there as altered, chain-broken, absent, legacy or not verified is excluded
-      from this statement.</dd>
+      capture recorded there as changed since capture, chain-broken, absent, legacy or not
+      verified is excluded from this statement.</dd>
     </div>
     <div class="scope-row">
       <dt>Is not attested</dt>
@@ -1317,7 +1333,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   <div class="legend">
     <p class="box-title">How to read the state column</p>
     ${legendRow('Verified', 'Stored bytes recompute to the recorded digest and the manifest chain reconciles through this entry.')}
-    ${legendRow('Altered', 'Stored bytes no longer recompute to the recorded digest. The capture must not be relied upon.')}
+    ${legendRow('Changed since capture', 'Stored bytes no longer recompute to the recorded digest. The capture must not be relied upon.')}
     ${legendRow('Chain broken', 'Bytes match, but the manifest chain does not reconcile at or before this entry.')}
     ${legendRow('Absent', 'The stored artefact could not be read at verification time. The row is retained rather than removed.')}
     ${legendRow('Legacy record', 'The capture predates the hash-chained manifest; its digest is recorded but not chain-bound.')}
@@ -1372,9 +1388,22 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     <li><strong>Replay the manifest chain.</strong> Walk <code>manifest.jsonl</code> from the
     first entry, recomputing each entry hash over its canonical form plus its predecessor's hash.
     The chain must reconcile to the head hash printed under “Chain of custody”.</li>
-    <li><strong>Check the entry signatures.</strong> Verify each signed manifest entry against
+    <li><strong>Check the entry signatures.</strong> ${
+      data.entriesUnderCarriedKeys
+        ? `Verify each signed manifest entry against the key
+    that signed it. This chain holds an <code>import</code> entry, so the key depends on where an
+    entry sits: an entry verifies under the key in the <code>sourcePublicKeyPem</code> field of the
+    first <code>import</code> entry after it, or under <code>signing-public-key.pem</code> when no
+    <code>import</code> entry follows it. <code>VERIFY.md</code> step 2 gives the commands for one
+    entry and <code>verify.sh</code> step 2 runs the same check over every signed entry. A key an
+    <code>import</code> entry carries is only as trustworthy as that entry's signature, which is
+    checked under the next key along. This binds the entries from the last <code>import</code>
+    entry on to the installation identified on the cover, and each earlier entry only to the key
+    an <code>import</code> entry carries for it, never to any named person.`
+        : `Verify each signed manifest entry against
     <code>signing-public-key.pem</code>. This binds the entries to the installation identified on
-    the cover — not to any named person.</li>
+    the cover — not to any named person.`
+    }</li>
     <li><strong>Validate the timestamp tokens.</strong> For each <code>.tst</code> in
     <code>timestamps/</code>, confirm the token's message imprint equals that exhibit's capture
     digest and that its signing chain, built with <code>tsa-intermediates.pem</code>, terminates in
@@ -1632,7 +1661,7 @@ function renderExhibit(e: ExhibitView, total: number, packaged: boolean): string
   <div class="plate-grid">
     <aside class="rail">
       <p class="micro-heading first">Record</p>
-      ${railRow('Capture identifier', mono(esc(c.id)))}
+      ${railRow('Capture identifier', mono(esc(e.captureId)))}
       ${railRow('Captured at', mono(`${isoUtc(c.timestamp)}<br>${local(c.timestamp)} local`))}
       ${railRow('Capture SHA-256 (full)', mono(esc(c.hash)))}
       ${railRow(

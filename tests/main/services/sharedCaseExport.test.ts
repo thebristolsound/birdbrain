@@ -21,6 +21,8 @@ import {
   inspectCaseArchive
 } from '@main/services/caseArchive'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
+import { backfillCase } from '@main/services/exhibitBackfill'
+import { nextExhibitNumber } from '@main/services/exhibitNumbering'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { initSettings, updateSettings } from '@main/services/settings'
 import {
@@ -38,7 +40,9 @@ import {
 } from '../../../src/packages/evidence-package-layout/index'
 import type { ExportOptions } from '@shared/types'
 import { HAS_JQ } from '../../helpers/jq'
+import { HAS_OPENSSL } from '../../helpers/openssl'
 import { extractRunbookBlocks, runRunbookBlocks } from '../../helpers/runbookBlocks'
+import { runVerifyScript } from '../../helpers/verifyScript'
 
 // Shared Cases, step 3 (#1511): the writers. The three acceptance criteria are
 // frozen here, each end to end through the app's own export and import and
@@ -577,6 +581,43 @@ describe('Shared Case export, import and fork (#1511)', () => {
     ).toContain('excluded by Casey Operator (the Owner) at 2026-09-27T11:30:00.000Z')
   })
 
+  // #1657: a whole-case export from a fork whose ids the import renamed
+  // encloses the excluded Exhibit, and its documents have to say so. The
+  // exclusion names the Exhibit by the id its chain carries, not the new one.
+  it('states an excluded Exhibit enclosed in a fork whose ids the import renamed', async () => {
+    const { peerDoc } = ownerReplica((owner, doc) => {
+      owner.append({
+        type: 'exclude',
+        caseId,
+        exhibitId: doc,
+        authorInstallationId: PEER_ID,
+        timestamp: '2026-09-27T11:30:00.000Z',
+        ...LOCAL(),
+        schemaVersion: 4
+      })
+    })
+    const out = join(tempDir, 'renamed-fork.birdbrain')
+    await exportCaseArchive(caseId, out)
+    // The source Case is still here, so the import renames every row it brings.
+    const { newCaseId } = await importCaseArchive(out)
+    expect(listExhibits(newCaseId).map((row) => row.id)).not.toContain(peerDoc)
+
+    const { dir, zip } = await exportPackage(newCaseId)
+    expect(failures(dir)).toEqual([])
+    const evidence = JSON.parse(zip.get('evidence.json')!.toString('utf-8'))
+    expect(
+      evidence.sharedCase.exclusions.map((e: { exhibitId: string; inExport: boolean }) => [
+        e.exhibitId,
+        e.inExport
+      ])
+    ).toEqual([[peerDoc, true]])
+    const report = zip.get('report.html')!.toString('utf-8')
+    const certification = zip.get('certification.html')!.toString('utf-8')
+    expect(report).not.toContain("(outside this export's selection, not enclosed)")
+    expect(certification).not.toContain("(outside this export's selection, not enclosed)")
+    expect(certification).toContain('Exclusions (enclosed, not omitted)')
+  })
+
   it('carries every member chain and the roster in a Case Archive', async () => {
     const { owner } = memberReplica()
     const out = join(tempDir, 'shared.birdbrain')
@@ -679,6 +720,62 @@ describe('Shared Case export, import and fork (#1511)', () => {
         [PEER_ID, 'CO-1']
       ].sort()
     )
+  })
+
+  it("renumbers none of a fork's member-authored Exhibits and numbers its own from 1", async () => {
+    memberReplica()
+    const out = join(tempDir, 'fork.birdbrain')
+    await exportCaseArchive(caseId, out)
+    const { newCaseId } = await importCaseArchive(out)
+    const manifestPath = join(caseDir(newCaseId), 'manifest.jsonl')
+    const imported = readFileSync(manifestPath, 'utf-8')
+
+    // The import stamps every source row with its member author. The forking
+    // member's own row is anchored in its lineage chain, and its index names
+    // an unnumbered `member-add` in this one: a `renumber` listing it would
+    // sign another chain's number into the fork's.
+    expect(
+      listExhibits(newCaseId)
+        .map((e) => e.authorInstallationId)
+        .sort()
+    ).toEqual([localId, PEER_ID].sort())
+    const result = await backfillCase(newCaseId, { toolVersion: '0.9.0' })
+
+    expect(result.renumbered).toBe(false)
+    expect(readFileSync(manifestPath, 'utf-8')).toBe(imported)
+    expect(nextExhibitNumber(newCaseId)).toBe(1)
+  })
+
+  it('imports a Case Archive whose member chain gives one number to two Exhibits (X48)', async () => {
+    // A number issued twice in one chain is an Integrity Exception, not a
+    // failed walk, so the archive check no longer refuses the import.
+    ownerReplica(
+      () => {},
+      (peer) => {
+        peer.append({
+          type: 'exhibit',
+          exhibitId: `${PEER_ID}-other`,
+          caseId,
+          kind: 'document',
+          origin: 'manual-upload',
+          name: 'other.pdf',
+          exhibitNumber: 1,
+          path: `${caseId}/documents/${PEER_ID}-other.pdf`,
+          contentHash: 'e'.repeat(64),
+          sizeBytes: 1,
+          timestamp: TIME,
+          ...PEER,
+          schemaVersion: 3
+        })
+      }
+    )
+    const out = join(tempDir, 'repeated.birdbrain')
+    await exportCaseArchive(caseId, out)
+
+    const { verification } = inspectCaseArchive(out)
+    expect(verification.chainValid).toBe(true)
+    expect(verification.overallValid).toBe(true)
+    await expect(importCaseArchive(out)).resolves.toMatchObject({ newCaseId: expect.any(String) })
   })
 
   // Rewrites an archive's entries and header in place. `package.json` is not
@@ -800,6 +897,27 @@ describe('Shared Case export, import and fork (#1511)', () => {
     expect(verifyEvidencePackage(dir).checks.find((c) => c.name === 'shared case')?.reason).toBe(
       `manifest schema 4; 0 member(s); forked from Case ${caseId}, ` +
         `2 member(s): CO=${PEER_ID}, RP=${localId}`
+    )
+  })
+
+  // #1657: the fork's history before its `import` is the source Owner's, signed
+  // with the Owner's key, so verify.sh has to check it under the key the
+  // `import` carries, as the package verifier above does.
+  it.skipIf(!HAS_OPENSSL || !HAS_JQ)('exports a fork whose verify.sh passes', async () => {
+    const { owner } = memberReplica()
+    const out = join(tempDir, 'fork.birdbrain')
+    await exportCaseArchive(caseId, out)
+    deleteCase(caseId)
+    const { newCaseId } = await importCaseArchive(out)
+
+    const { dir } = await exportPackage(newCaseId)
+    const run = runVerifyScript(dir)
+    expect(run.status, run.output).toBe(0)
+    const last = owner.lines.length - 1
+    const fingerprint = createHash('sha256').update(PEER_KEY.publicKey).digest('hex')
+    expect(run.output).toContain(
+      `entries 0 to ${last}: ${owner.lines.length} signed entr(ies) verified under the key ` +
+        `import entry ${last + 1} carries (SHA-256 ${fingerprint})`
     )
   })
 })

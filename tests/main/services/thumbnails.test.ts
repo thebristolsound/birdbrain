@@ -7,6 +7,7 @@ import sharp from 'sharp'
 import { createCaptureStore } from '@main/services/captureStore'
 import type { CaptureStore } from '@main/services/captureStore'
 import { getThumbnail, renderThumbnail, THUMB_WIDTH, THUMB_HEIGHT } from '@main/services/thumbnails'
+import type { ThumbnailParameters } from '@main/services/thumbnails'
 
 const WHITE = { r: 255, g: 255, b: 255 }
 const RED = { r: 220, g: 30, b: 30 }
@@ -73,9 +74,9 @@ function nearest(actual: Rgb, candidates: { name: string; rgb: Rgb }[]): string 
 
 describe('renderThumbnail', () => {
   it('renders the fixed box whatever shape the screenshot is', async () => {
-    const tall = await renderThumbnail(await png(1280, 11200, WHITE))
-    const short = await renderThumbnail(await png(1280, 260, WHITE))
-    const square = await renderThumbnail(await png(600, 600, WHITE))
+    const { bytes: tall } = await renderThumbnail(await png(1280, 11200, WHITE))
+    const { bytes: short } = await renderThumbnail(await png(1280, 260, WHITE))
+    const { bytes: square } = await renderThumbnail(await png(600, 600, WHITE))
 
     for (const thumb of [tall, short, square]) {
       const meta = await sharp(thumb).metadata()
@@ -91,7 +92,7 @@ describe('renderThumbnail', () => {
     // A 1280x11200 recapture whose first 2000px are the masthead.
     const page = await png(1280, 11200, WHITE, [{ top: 0, height: 2000, colour: RED }])
 
-    const thumb = await renderThumbnail(page)
+    const { bytes: thumb } = await renderThumbnail(page)
 
     // 11200px scaled by 160/1280 is 1400px, so the whole 120px box is masthead.
     const swatches = [
@@ -110,7 +111,7 @@ describe('renderThumbnail', () => {
     const page = await column(base, 0, 120, 260, RED)
     const withRightEdge = await column(page, 1160, 120, 260, BLUE)
 
-    const thumb = await renderThumbnail(withRightEdge)
+    const { bytes: thumb } = await renderThumbnail(withRightEdge)
 
     // 1280 scales to 160, so the left and right edge markers are 15px wide and
     // both inside the box. Under the cover fit neither survived.
@@ -129,7 +130,7 @@ describe('renderThumbnail', () => {
     // gain a white band.
     const page = await png(1280, 400, NEAR_BLACK)
 
-    const thumb = await renderThumbnail(page)
+    const { bytes: thumb } = await renderThumbnail(page)
 
     const swatches = [
       { name: 'page', rgb: NEAR_BLACK },
@@ -143,12 +144,78 @@ describe('renderThumbnail', () => {
     // same parent screenshot has to keep producing the same thumbnail.
     const page = await png(1280, 2400, WHITE, [{ top: 0, height: 300, colour: BLUE }])
 
-    const first = await renderThumbnail(page)
-    const second = await renderThumbnail(page)
+    const { bytes: first } = await renderThumbnail(page)
+    const { bytes: second } = await renderThumbnail(page)
 
     expect(createHash('sha256').update(first).digest('hex')).toBe(
       createHash('sha256').update(second).digest('hex')
     )
+  })
+})
+
+// The parameters `renderThumbnail` reports are what the backfill signs into a
+// thumbnail's `derivation` entry (#1319), so each is checked against the bytes
+// it describes rather than against a number written into the test.
+describe('renderThumbnail parameters', () => {
+  // The height sharp gives `screenshot` scaled to `width`, measured on its own.
+  async function scaledHeightOf(screenshot: Buffer, width: number): Promise<number> {
+    const { info } = await sharp(screenshot).resize({ width }).toBuffer({ resolveWithObject: true })
+    return info.height
+  }
+
+  // Rebuilds a thumbnail from the screenshot and the recorded parameters alone.
+  // Equal bytes mean nothing that shaped the output is missing from the record,
+  // on this sharp and libvips build.
+  async function fromParameters(screenshot: Buffer, p: ThumbnailParameters): Promise<Buffer> {
+    const boxed = sharp(await sharp(screenshot).resize({ width: p.scaledWidth }).toBuffer())
+    if (p.paddedRows > 0) {
+      boxed.extend({ bottom: p.paddedRows, extendWith: p.padMethod })
+    } else if (p.scaledHeight > p.outputHeight) {
+      boxed.extract({ left: 0, top: 0, width: p.scaledWidth, height: p.outputHeight })
+    }
+    return boxed.jpeg({ quality: p.jpegQuality }).toBuffer()
+  }
+
+  const shapes = [
+    { name: 'shorter than the box', width: 1280, height: 260 },
+    { name: 'taller than the box', width: 1280, height: 2400 },
+    { name: 'exactly the box height', width: 1280, height: 960 }
+  ]
+
+  for (const shape of shapes) {
+    it(`records what produced a page ${shape.name}`, async () => {
+      const page = await png(shape.width, shape.height, WHITE, [
+        { top: 0, height: Math.floor(shape.height / 3), colour: BLUE }
+      ])
+
+      const { bytes, parameters } = await renderThumbnail(page)
+
+      const output = await sharp(bytes).metadata()
+      expect(parameters.outputWidth).toBe(output.width)
+      expect(parameters.outputHeight).toBe(output.height)
+      expect(parameters.scaledWidth).toBe(output.width)
+      expect(parameters.scaledHeight).toBe(await scaledHeightOf(page, output.width))
+      // Zero, never absent, when the scaled page fills the box.
+      expect(parameters.paddedRows).toBe(Math.max(0, output.height - parameters.scaledHeight))
+      expect(parameters.sharpVersion).toBe(sharp.versions.sharp)
+      expect(parameters.libvipsVersion).toBe(sharp.versions.vips)
+      expect((await fromParameters(page, parameters)).equals(bytes)).toBe(true)
+    })
+  }
+
+  it('reports padded rows only for a page shorter than the box', async () => {
+    const short = await renderThumbnail(await png(1280, 260, WHITE))
+    const tall = await renderThumbnail(await png(1280, 2400, WHITE))
+    const exact = await renderThumbnail(await png(1280, 960, WHITE))
+
+    expect(short.parameters.paddedRows).toBeGreaterThan(0)
+    expect(short.parameters.scaledHeight + short.parameters.paddedRows).toBe(
+      short.parameters.outputHeight
+    )
+    expect(tall.parameters.scaledHeight).toBeGreaterThan(tall.parameters.outputHeight)
+    expect(tall.parameters.paddedRows).toBe(0)
+    expect(exact.parameters.scaledHeight).toBe(exact.parameters.outputHeight)
+    expect(exact.parameters.paddedRows).toBe(0)
   })
 })
 

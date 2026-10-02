@@ -166,7 +166,7 @@ export function ProvenanceBadge({ capture }: Props) {
         className="flex items-center gap-1 rounded-lg bg-red-500/10 px-2 py-1 text-[11px] text-red-400 hover:bg-red-500/20 disabled:opacity-50"
       >
         <ShieldAlert className="h-3 w-3" />
-        {result.status === 'tampered' ? 'Tampered' : 'Chain broken'}
+        {result.status === 'tampered' ? 'Changed since capture' : 'Chain broken'}
       </button>
     )
   } else {

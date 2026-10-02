@@ -89,7 +89,7 @@ describe('ProvenanceBadge verifier-too-old (X25)', () => {
     const chip = await screen.findByText('Verifier too old')
     expect(chip.getAttribute('title')).toContain('newer schema')
     expect(screen.queryByText('Chain broken')).toBeNull()
-    expect(screen.queryByText('Tampered')).toBeNull()
+    expect(screen.queryByText('Changed since capture')).toBeNull()
   })
 
   it('shows the chain reason from a fresh verify', async () => {
@@ -109,5 +109,14 @@ describe('ProvenanceBadge verifier-too-old (X25)', () => {
     fireEvent.click(await screen.findByText(/^Verified/))
     const chip = await screen.findByText('Verifier too old')
     expect(chip.getAttribute('title')).toBe(reason)
+  })
+})
+
+describe('ProvenanceBadge changed since capture (#1662)', () => {
+  it('names a stored tampered status as changed since capture, not as tampered', async () => {
+    mount(true, { lastVerifiedStatus: 'tampered' })
+    expect(await screen.findByText('Changed since capture')).toBeDefined()
+    expect(screen.queryByText(/tamper/i)).toBeNull()
+    expect(screen.queryByText('Chain broken')).toBeNull()
   })
 })

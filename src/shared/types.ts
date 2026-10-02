@@ -1306,6 +1306,22 @@ export interface ExhibitVerification {
   // unanchored one (X34) is reported as such and never re-hashed, because a
   // hash the chain does not cover proves nothing.
   derived?: DerivedFileVerification[]
+  // Integrity Exceptions that are not about the bytes, ORTHOGONAL to `status`:
+  // an Exhibit can verify and still have its number issued to another Exhibit
+  // (X48). Present only when the chain the Exhibit's author signed verified
+  // and holds one.
+  exceptions?: ExhibitIntegrityException[]
+}
+
+// Two anchoring entries in one chain carrying the same Exhibit Number for
+// different Exhibits (X48). Never tamper and never a broken chain: every entry
+// can verify, and what fails is a citation of the number.
+export interface ExhibitIntegrityException {
+  category: 'repeated-exhibit-number'
+  exhibitNumber: number
+  // Every Exhibit the chain assigns the number to, this one included.
+  exhibitIds: string[]
+  reason: string
 }
 
 export interface DerivedFileVerification {

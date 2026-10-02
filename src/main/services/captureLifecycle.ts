@@ -5,6 +5,7 @@ import { defaultCaptureStore } from '@main/services/captureStore'
 import type { CaptureStore } from '@main/services/captureStore'
 import * as captureRepo from '@main/services/db/captureRepo'
 import { getExhibit } from '@main/services/db/exhibitRepo'
+import { nextExhibitNumber } from '@main/services/exhibitNumbering'
 import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
 import { extractData } from '@main/services/dataExtractor'
 import { recordSlowOp } from '@main/services/diagnostics'
@@ -296,6 +297,8 @@ export async function ingestMhtmlCapture(
   // both the pre-callback manifest failure (only the mhtml written) and a failure inside
   // the callback (sidecars written too). The store never touches manifest.jsonl.
   try {
+    // Taken with no await before the append below (see nextExhibitNumber).
+    const exhibitNumber = nextExhibitNumber(params.caseId, store)
     return await withCaptureEntry(
       caseDir,
       {
@@ -314,6 +317,7 @@ export async function ingestMhtmlCapture(
         method: params.method,
         supersedesCaptureId: params.supersedesCaptureId,
         consentSuppression: params.consentSuppression,
+        exhibitNumber,
         operatorId: params.operatorId,
         operatorName: params.operatorName,
         toolVersion: params.toolVersion
@@ -360,7 +364,8 @@ export async function ingestMhtmlCapture(
           operatorName: params.operatorName,
           method: params.method,
           supersedesCaptureId: params.supersedesCaptureId,
-          consentSuppression: params.consentSuppression
+          consentSuppression: params.consentSuppression,
+          exhibitNumber
         })
         return { capture, contentHash: hash }
       }
@@ -501,10 +506,10 @@ async function computeVerification(
     return {
       ...base,
       computedHash: computed,
-      status: 'tampered',
+      status: sidecarFailure.status,
       manifestIndex: capture.manifestIndex,
       chainValid: true,
-      reason: sidecarFailure
+      reason: sidecarFailure.reason
     }
   }
 
@@ -517,41 +522,66 @@ async function computeVerification(
   }
 }
 
+interface SidecarFailure {
+  status: 'tampered' | 'missing'
+  reason: string
+}
+
 // Recomputes the screenshot/text sidecar digests against the hashes recorded
 // in the SIGNED manifest capture entry (#234) — never `captures.screenshot_hash`
 // / `captures.text_hash`, which are an unauthoritative DB mirror (see the
-// caller). Returns a human-readable reason on the first mismatch (or
-// unreadable sidecar whose hash was recorded), or undefined when everything
-// binds. An entry with no recorded hash for an artifact is not checked for
-// that artifact — same grandfathering the mirror-based check had.
+// caller). Returns undefined when everything binds. An entry with no recorded
+// hash for an artifact is not checked for that artifact — same grandfathering
+// the mirror-based check had.
+//
+// An absent file is `missing`, never `tampered`: it shows nothing about whether
+// any bytes changed (#1661). It does not end the scan: a mismatch in either
+// file is reported ahead of an absent one, so an absent screenshot cannot mask
+// an altered text file.
 async function verifySidecars(
   capture: NonNullable<ReturnType<typeof captureRepo.getCapture>>,
   store: CaptureStore,
   entry: CaptureChainEntry | undefined
-): Promise<string | undefined> {
+): Promise<SidecarFailure | undefined> {
+  let absent: SidecarFailure | undefined
+
   if (entry?.screenshotHash) {
     const buf = store.readArtifact(capture.caseId, capture.id, 'png')
     if (!buf) {
-      return 'Screenshot missing: expected ' + entry.screenshotHash.slice(0, 12) + '...'
-    }
-    const computed = createHash('sha256').update(buf).digest('hex')
-    if (computed !== entry.screenshotHash) {
-      return 'Screenshot hash mismatch: expected ' + entry.screenshotHash + ', got ' + computed
+      absent = {
+        status: 'missing',
+        reason: 'Screenshot missing: expected ' + entry.screenshotHash.slice(0, 12) + '...'
+      }
+    } else {
+      const computed = createHash('sha256').update(buf).digest('hex')
+      if (computed !== entry.screenshotHash) {
+        return {
+          status: 'tampered',
+          reason: 'Screenshot hash mismatch: expected ' + entry.screenshotHash + ', got ' + computed
+        }
+      }
     }
   }
 
   if (entry?.textHash) {
     const buf = store.readArtifact(capture.caseId, capture.id, 'txt')
     if (!buf) {
-      return 'Extracted text missing: expected ' + entry.textHash.slice(0, 12) + '...'
-    }
-    const computed = createHash('sha256').update(buf).digest('hex')
-    if (computed !== entry.textHash) {
-      return 'Extracted text hash mismatch: expected ' + entry.textHash + ', got ' + computed
+      absent ??= {
+        status: 'missing',
+        reason: 'Extracted text missing: expected ' + entry.textHash.slice(0, 12) + '...'
+      }
+    } else {
+      const computed = createHash('sha256').update(buf).digest('hex')
+      if (computed !== entry.textHash) {
+        return {
+          status: 'tampered',
+          reason: 'Extracted text hash mismatch: expected ' + entry.textHash + ', got ' + computed
+        }
+      }
     }
   }
 
-  return undefined
+  return absent
 }
 
 // Streams the MHTML file from disk, recomputes SHA-256, and checks the manifest chain.
@@ -1124,6 +1154,9 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
           const copiedText = artifacts.txt
             ? store.readArtifact(source.caseId, duplicateId, 'txt')?.toString('utf-8')
             : undefined
+          // A copy is a new Exhibit and takes a number of its own, with no
+          // await before the append below (see nextExhibitNumber).
+          const exhibitNumber = nextExhibitNumber(source.caseId, store)
           const capture = await withCaptureEntry(
             caseDir,
             {
@@ -1151,6 +1184,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
               duplicateOfCaptureId: source.id,
               duplicatedAt,
               consentSuppression: sourceEntry.consentSuppression,
+              exhibitNumber,
               sizeBytes: mhtml.sizeBytes,
               operatorId: getInstallationId(),
               operatorName,
@@ -1191,7 +1225,8 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
                 operatorName,
                 method: 'duplicate',
                 duplicateOfCaptureId: source.id,
-                consentSuppression: sourceEntry.consentSuppression
+                consentSuppression: sourceEntry.consentSuppression,
+                exhibitNumber
               })
           )
 

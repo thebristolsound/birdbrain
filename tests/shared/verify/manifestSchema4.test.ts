@@ -7,6 +7,8 @@ import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
 import {
   buildTrustedTimeIndexFromEntries,
   canonicalStringify,
+  describeRepeatedExhibitNumber,
+  findRepeatedExhibitNumbers,
   verifyManifestChainText,
   verifySharedCase,
   verifySharedCaseReplica,
@@ -620,15 +622,49 @@ describe('verifySharedCase — non-pass outcomes, each by name', () => {
     expect(result.reason).toContain("claims Member Code CO, its writer's is RM")
   })
 
-  it('reports two exhibits resolving to one citation', () => {
+  it('leaves one chain numbering two exhibits alike to the X48 report, not a failed walk', () => {
+    // Before X48 this was `citation-collision`, a FAIL. A number a member's own
+    // chain issued twice is an Integrity Exception: both entries verify, and
+    // what fails is a citation of the number, which the repeated-number check
+    // over that chain reports. The first assignment keeps the citation.
     const member = buildChain(
       [exhibit(1, MEMBER_OPERATOR), exhibit(1, MEMBER_OPERATOR, { exhibitId: 'other' })],
       signWith(MEMBER_KEY)
     )
     const { input } = twoMemberCase(member)
     const result = verifySharedCase(input)
-    expect(result.outcome).toBe('citation-collision')
-    expect(result.reason).toContain('citation RM-1 resolves to exhibits')
+    expect(result.findings).toEqual([])
+    expect(result.outcome).toBe('pass')
+    expect(result.citations.get('RM-1')?.exhibitId).toBe(`${MEMBER_ID}-exhibit-1`)
+    expect(findRepeatedExhibitNumbers(result.entries.get(MEMBER_ID)!)).toEqual([
+      { exhibitNumber: 1, exhibitIds: [`${MEMBER_ID}-exhibit-1`, 'other'], indices: [0, 1] }
+    ])
+  })
+
+  it('resolves a capture entry’s own number as a citation (X46)', () => {
+    const capture = {
+      type: 'capture',
+      captureId: 'member-capture',
+      caseId: CASE_ID,
+      url: 'https://example.com/member',
+      timestamp: '2026-09-19T12:20:00.000Z',
+      contentHash: 'c'.repeat(64),
+      exhibitNumber: 3,
+      sizeBytes: 10,
+      ...MEMBER_OPERATOR,
+      schemaVersion: 3
+    }
+    const member = buildChain(
+      [exhibit(1, MEMBER_OPERATOR), exhibit(2, MEMBER_OPERATOR), capture],
+      signWith(MEMBER_KEY)
+    )
+    const result = verifySharedCase(twoMemberCase(member).input)
+    expect(result.findings).toEqual([])
+    expect(result.citations.get('RM-3')).toMatchObject({
+      installationId: MEMBER_ID,
+      index: 2,
+      exhibitId: 'member-capture'
+    })
   })
 
   it('reports the Owner’s chain broken before reading any roster from it', () => {
@@ -1196,6 +1232,36 @@ describe('verifyEvidencePackage — an enclosed Shared Case', () => {
     } finally {
       rmSync(missing, { recursive: true, force: true })
       rmSync(present, { recursive: true, force: true })
+    }
+  })
+
+  it('states a number a member chain issued twice as an exception row, not a FAIL (X48)', () => {
+    const member = buildChain(
+      [exhibit(1, MEMBER_OPERATOR), exhibit(1, MEMBER_OPERATOR, { exhibitId: 'other' })],
+      signWith(MEMBER_KEY)
+    )
+    const owner = buildChain([
+      OWNER_ADD(),
+      MEMBER_ADD(),
+      merge([{ installationId: MEMBER_ID, index: 1, entryHash: member.hashes[1] }], 40)
+    ])
+    const dir = writePackage(owner, member)
+    try {
+      const result = verifyEvidencePackage(dir)
+      expect(sharedRows(dir).map((row) => row.status)).toEqual(['pass'])
+      expect(result.checks.filter((check) => check.status === 'exception')).toEqual([
+        {
+          name: `exhibit number 1 in the chain of ${MEMBER_ID}`,
+          status: 'exception',
+          reason: describeRepeatedExhibitNumber({
+            exhibitNumber: 1,
+            exhibitIds: [`${MEMBER_ID}-exhibit-1`, 'other'],
+            indices: [0, 1]
+          })
+        }
+      ])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
     }
   })
 

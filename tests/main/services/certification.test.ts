@@ -17,7 +17,7 @@ import {
 } from '@main/services/captureLifecycle'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { generateReport } from '@main/services/export'
-import { buildCertification } from '@main/services/certification'
+import { buildCertification, type SigningKeyRange } from '@main/services/certification'
 import { resolveToolVersion } from '@main/services/toolVersion'
 import type { EntrySignatureStatus } from '@main/services/reportHtml'
 import { insertCapture, setCaptureTrustedTime } from '@main/services/db/captureRepo'
@@ -944,6 +944,70 @@ describe('certification', () => {
 
       // ZIP_OPTIONS has notes off: the summary states the exclusion plainly.
       expect(cert).toContain('1 capture, 0 screenshots, 0 operator notes')
+    })
+  })
+
+  // #1657: a chain that continues an imported one was signed by more than one
+  // key, and the certification names the key for each run of entries.
+  describe('signing key per run of entries', () => {
+    const certify = (signingKeyRanges?: SigningKeyRange[]): string =>
+      buildCertification(
+        {
+          caseName: 'Cert Case',
+          ...DIRECT_INPUT_EXTRAS,
+          contents: { captureCount: 0, screenshotCount: 0, noteCount: 0 },
+          ...(signingKeyRanges ? { signingKeyRanges } : {}),
+          exportTimestamp: '2026-04-05T13:00:00.000Z',
+          installationId: 'install-1',
+          operatorName: 'Det. Smith',
+          operatorRole: 'Detective',
+          operatorOrganization: 'Metro PD',
+          tsaUrl: 'https://tsa.example/timestamp',
+          captures: [],
+          trustedTimeByCaptureId: new Map<string, TrustedTimeResult>(),
+          entrySignatureByCaptureId: new Map<string, EntrySignatureStatus>()
+        },
+        '1.0.0'
+      )
+    const field = (label: string, fingerprint: string): string =>
+      `<div class="field wide"><div class="field-label">${label}</div>\n` +
+      `      <div class="field-value"><span class="mono break">${fingerprint}</span></div></div>`
+
+    it('keeps the single key field, byte for byte, for a chain one key signed', () => {
+      const single = certify([
+        { fromIndex: 0, toIndex: 4, fingerprint: 'f'.repeat(64), carriedByImportAt: null }
+      ])
+      expect(single).toBe(certify())
+      expect(single).toContain(
+        `</div></div>\n    ${field('Signing key (SHA-256 of signing-public-key.pem)', 'f'.repeat(64))}\n  </div>`
+      )
+    })
+
+    it('names the key for each run of a twice-imported chain', () => {
+      const cert = certify([
+        { fromIndex: 0, toIndex: 2, fingerprint: 'a'.repeat(64), carriedByImportAt: 3 },
+        { fromIndex: 3, toIndex: 3, fingerprint: 'b'.repeat(64), carriedByImportAt: 4 },
+        { fromIndex: 4, toIndex: 6, fingerprint: 'f'.repeat(64), carriedByImportAt: null }
+      ])
+      expect(cert).toContain(
+        field(
+          'Signing key for entries #0 to #2 (SHA-256 of the key import entry #3 carries)',
+          'a'.repeat(64)
+        )
+      )
+      expect(cert).toContain(
+        field(
+          'Signing key for entry #3 (SHA-256 of the key import entry #4 carries)',
+          'b'.repeat(64)
+        )
+      )
+      expect(cert).toContain(
+        field(
+          'Signing key for entries #4 to #6 (SHA-256 of signing-public-key.pem)',
+          'f'.repeat(64)
+        )
+      )
+      expect(cert).not.toContain('Signing key (SHA-256 of signing-public-key.pem)')
     })
   })
 })

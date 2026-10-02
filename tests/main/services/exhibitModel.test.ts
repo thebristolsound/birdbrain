@@ -25,7 +25,8 @@ import {
   getTagsForCapture,
   collectCaptureTagsForCase
 } from '@main/services/db/tagRepo'
-import { getExhibit, listExhibits, nextExhibitNumber } from '@main/services/db/exhibitRepo'
+import { getExhibit, listExhibits } from '@main/services/db/exhibitRepo'
+import { nextExhibitNumber } from '@main/services/exhibitNumbering'
 import {
   getDerivedFile,
   hasDerivation,
@@ -51,7 +52,7 @@ import { logger } from '@main/services/logger'
 import { getCaseInventory, getManifestSnapshot, signerSegments } from '@main/services/exhibits'
 import { verifyCapture, createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { verifyExhibit } from '@main/services/exhibits'
-import { initManifest, verifyManifestChain } from '@main/services/manifest'
+import { appendManifestEntry, initManifest, verifyManifestChain } from '@main/services/manifest'
 import { createCaptureStore, defaultCaptureStore } from '@main/services/captureStore'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { initSettings, updateSettings } from '@main/services/settings'
@@ -61,6 +62,7 @@ import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import type { InventoryExhibitRow, InventoryStagedRow } from '@shared/types'
 import type { ManifestSnapshotEntry } from '@shared/manifestSnapshot'
+import { ManifestEntrySchema } from '@shared/schemas'
 import type { ManifestEntry } from '@shared/schemas'
 
 // Known-answer tests for the Exhibit model's tables, migrations and read paths
@@ -94,6 +96,24 @@ async function screenshotPng(colour: { r: number; g: number; b: number }): Promi
   return sharp({
     create: { width: 32, height: 24, channels: 3, background: colour }
   })
+    .png()
+    .toBuffer()
+}
+
+// A `width`x`height` screenshot: white, with a dark band across its top third.
+async function pagePng(width: number, height: number): Promise<Buffer> {
+  const band = await sharp({
+    create: {
+      width,
+      height: Math.floor(height / 3),
+      channels: 3,
+      background: { r: 20, g: 20, b: 60 }
+    }
+  })
+    .png()
+    .toBuffer()
+  return sharp({ create: { width, height, channels: 3, background: { r: 255, g: 255, b: 255 } } })
+    .composite([{ input: band, top: 0, left: 0 }])
     .png()
     .toBuffer()
 }
@@ -157,6 +177,30 @@ async function ingestInto(
   })
   if (!result.capture) throw new Error('ingest failed')
   return result.capture
+}
+
+// A Capture as a build before X46 left it: its `capture` entry carries no
+// Exhibit Number, and its row took the number above the live rows. The
+// one-time `renumber` entry is then the only place the chain records it.
+function ingestPreX46(caseId: string, caseDir: string, n: number): string {
+  const id = `pre-x46-${n}`
+  const hash = createHash('sha256').update(`pre-x46 ${n}`).digest('hex')
+  const timestamp = `2026-04-05T12:0${n}:00.000Z`
+  const url = `https://example.com/pre-x46-${n}`
+  const { index } = appendManifestEntry(caseDir, {
+    type: 'capture',
+    captureId: id,
+    caseId,
+    url,
+    timestamp,
+    contentHash: hash,
+    sizeBytes: 1,
+    operatorId: 'op-1',
+    operatorName: 'Test Operator',
+    toolVersion: TOOL_VERSION
+  })
+  insertCapture({ id, caseId, url, title: `Pre-X46 ${n}`, hash, timestamp, manifestIndex: index })
+  return id
 }
 
 describe('exhibit model', () => {
@@ -390,11 +434,7 @@ describe('exhibit model', () => {
 
   describe('backfill', () => {
     it('writes one renumber entry per case and the chain still verifies', async () => {
-      await ingestInto(caseId, {
-        url: 'https://example.com/one',
-        title: 'One',
-        timestamp: '2026-04-05T12:00:00.000Z'
-      })
+      const id = ingestPreX46(caseId, caseDir, 1)
 
       const result = await backfillCase(caseId, { toolVersion: TOOL_VERSION })
 
@@ -404,9 +444,40 @@ describe('exhibit model', () => {
       expect(renumber[0].caseId).toBe(caseId)
       expect(renumber[0].schemaVersion).toBe(3)
       expect(renumber[0].assignments).toEqual([
-        { exhibitId: listExhibits(caseId)[0].id, exhibitNumber: 1, manifestIndex: 0 }
+        { exhibitId: id, exhibitNumber: 1, manifestIndex: 0 }
       ])
       expect(verifyManifestChain(caseDir).valid).toBe(true)
+    })
+
+    it('renumbers only the Exhibits whose own entry carries no number (X46)', async () => {
+      const legacy = ingestPreX46(caseId, caseDir, 1)
+      // Ingested since X46: the number is on its capture entry already.
+      const numbered = await ingestInto(caseId, {
+        url: 'https://example.com/numbered',
+        title: 'Numbered',
+        timestamp: '2026-04-05T12:10:00.000Z'
+      })
+      expect(getExhibit(numbered.id)?.exhibitNumber).toBe(2)
+
+      await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+
+      const [renumber] = manifestLines(caseDir).filter((line) => line.type === 'renumber')
+      expect(renumber.assignments).toEqual([
+        { exhibitId: legacy, exhibitNumber: 1, manifestIndex: 0 }
+      ])
+    })
+
+    it('writes no renumber entry when every Exhibit carries its number on its own entry', async () => {
+      await ingestInto(caseId, {
+        url: 'https://example.com/one',
+        title: 'One',
+        timestamp: '2026-04-05T12:00:00.000Z'
+      })
+
+      const result = await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+
+      expect(result.renumbered).toBe(false)
+      expect(manifestLines(caseDir).map((line) => line.type)).toEqual(['capture'])
     })
 
     it('lists a capture with no manifest entry as unanchored in the renumber entry', async () => {
@@ -455,7 +526,7 @@ describe('exhibit model', () => {
       // same parent screenshot: the backfill and `getThumbnail` share one
       // pipeline, so a regenerated thumbnail still hashes to what was signed.
       const parentAbs = defaultCaptureStore.artifactPaths(caseId, capture.id, 'png').abs
-      const rerendered = await renderThumbnail(readFileSync(parentAbs))
+      const { bytes: rerendered } = await renderThumbnail(readFileSync(parentAbs))
       expect(createHash('sha256').update(rerendered).digest('hex')).toBe(onDisk)
 
       const [entry] = manifestLines(caseDir).filter((line) => line.type === 'derivation')
@@ -470,6 +541,74 @@ describe('exhibit model', () => {
         schemaVersion: 3
       })
       expect(entry.index).toBe(derived.manifestSeq)
+      expect(verifyManifestChain(caseDir).valid).toBe(true)
+    })
+
+    it('records how a short and a tall page became their anchored thumbnails (#1319)', async () => {
+      // 1280x260 scales short of the box and is padded; 1280x2400 scales past
+      // it and is cropped.
+      const shapes = { short: { width: 1280, height: 260 }, tall: { width: 1280, height: 2400 } }
+      const ids: Record<string, string> = {}
+      for (const [name, { width, height }] of Object.entries(shapes)) {
+        const capture = await ingestInto(caseId, {
+          url: `https://example.com/${name}`,
+          title: name,
+          timestamp: `2026-04-05T12:0${Object.keys(ids).length}:00.000Z`,
+          screenshot: await pagePng(width, height)
+        })
+        ids[name] = capture.id
+      }
+
+      const result = await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+      expect(result.thumbnailsAnchored).toBe(2)
+
+      const entries = manifestLines(caseDir).filter((line) => line.type === 'derivation')
+      // The recorded geometry is checked against the bytes on disk: the anchored
+      // thumbnail's own size, and the parent screenshot scaled to its width.
+      const recorded = async (exhibitId: string): Promise<Record<string, unknown>> => {
+        const entry = entries.find((line) => line.parentExhibitId === exhibitId)
+        if (!entry) throw new Error(`no derivation entry for ${exhibitId}`)
+        const thumb = await sharp(
+          readFileSync(defaultCaptureStore.thumbnailPaths(caseId, exhibitId).abs)
+        ).metadata()
+        const parent = readFileSync(defaultCaptureStore.artifactPaths(caseId, exhibitId, 'png').abs)
+        const { info: scaled } = await sharp(parent)
+          .resize({ width: thumb.width })
+          .toBuffer({ resolveWithObject: true })
+        const parameters = entry.derivationParameters as Record<string, unknown>
+        expect(Object.keys(parameters).sort()).toEqual([
+          'jpegQuality',
+          'libvipsVersion',
+          'outputHeight',
+          'outputWidth',
+          'padMethod',
+          'paddedRows',
+          'scaledHeight',
+          'scaledWidth',
+          'sharpVersion'
+        ])
+        expect(parameters).toMatchObject({
+          scaledWidth: thumb.width,
+          scaledHeight: scaled.height,
+          outputWidth: thumb.width,
+          outputHeight: thumb.height,
+          paddedRows: Math.max(0, thumb.height - scaled.height),
+          padMethod: 'copy',
+          sharpVersion: sharp.versions.sharp,
+          libvipsVersion: sharp.versions.vips
+        })
+        // The app version stays beside the imaging build, not replaced by it.
+        expect(entry.derivationToolVersion).toBe(TOOL_VERSION)
+        expect(entry.schemaVersion).toBe(3)
+        expect(ManifestEntrySchema.safeParse(entry).success).toBe(true)
+        return parameters
+      }
+
+      const short = await recorded(ids.short)
+      const tall = await recorded(ids.tall)
+      expect(short.paddedRows).toBeGreaterThan(0)
+      expect(tall.paddedRows).toBe(0)
+      expect(tall.scaledHeight).toBeGreaterThan(tall.outputHeight as number)
       expect(verifyManifestChain(caseDir).valid).toBe(true)
     })
 
@@ -814,11 +953,9 @@ describe('exhibit model', () => {
 
   describe('manifest snapshot', () => {
     it('types the entries, reports the chain verdict and one local signer', async () => {
-      await ingestInto(caseId, {
-        url: 'https://example.com/snapshot',
-        title: 'Snapshot',
-        timestamp: '2026-04-05T12:00:00.000Z'
-      })
+      // A pre-X46 Capture, so the backfill writes a `renumber` for the
+      // snapshot to type beside the `capture`.
+      ingestPreX46(caseId, caseDir, 1)
       await backfillCase(caseId, { toolVersion: TOOL_VERSION })
 
       const snapshot = getManifestSnapshot(caseId)

@@ -62,7 +62,11 @@ export function NoteEditor({
         onKeyUp={selectionActions ? onSelectionEnd : undefined}
       >
         {isEmpty ? (
-          <p className="pointer-events-none absolute left-3 top-2 text-sm text-text-muted">
+          // Offsets are the wrapper padding plus the .tiptap padding, so the
+          // placeholder sits where the first typed character lands.
+          <p
+            className={`pointer-events-none absolute text-sm leading-[1.6] text-text-muted ${workspace ? 'left-7 top-6' : 'left-3 top-2'}`}
+          >
             {placeholder}
           </p>
         ) : null}

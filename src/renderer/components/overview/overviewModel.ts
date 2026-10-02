@@ -48,12 +48,16 @@ export function computeOverview(
 
   let verified = 0
   let tampered = 0
+  let chainBroken = 0
+  let missing = 0
   for (const cap of captures) {
     const st = cap.lastVerifiedStatus
     if (st === 'verified') verified++
-    else if (st === 'tampered' || st === 'chain-broken' || st === 'missing') tampered++
+    else if (st === 'tampered') tampered++
+    else if (st === 'chain-broken') chainBroken++
+    else if (st === 'missing') missing++
   }
-  const unverified = captures.length - verified - tampered
+  const unverified = captures.length - verified - tampered - chainBroken - missing
 
   const startOfToday = dayStartMs(now)
   const cutoffMs = lastVisitAt ? new Date(lastVisitAt).getTime() : null
@@ -97,6 +101,8 @@ export function computeOverview(
     verified,
     unverified,
     tampered,
+    chainBroken,
+    missing,
     dayBuckets,
     recent,
     deltas,

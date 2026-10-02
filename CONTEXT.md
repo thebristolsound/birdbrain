@@ -160,7 +160,8 @@ _Avoid_: time server, timestamp service.
 
 **Integrity Status**:
 The axis recording whether a Capture's bytes and chain position survived intact: `verified`, `tampered`, `missing`, `chain-broken`, or `legacy`.
-_Avoid_: verify status, health.
+`tampered` displays as "Changed since capture" ("Changed" where space is tight): the tool observes that the bytes changed, not who changed them. The stored and exported value stays `tampered`, because existing packages and older verifiers read it. On the Data screen `tampered`, `missing`, `chain-broken` and a repeated Exhibit Number count together as Integrity exceptions.
+_Avoid_: verify status, health; "tampered" or "altered" as the displayed name of this state.
 
 ### Corroboration
 

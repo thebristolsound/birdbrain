@@ -4,7 +4,7 @@ description: 'Install Birdbrain and the companion Chrome extension, take your fi
 ---
 
 Birdbrain is an open source web investigation and capture tool. The Chrome extension captures
-pages as you browse. The desktop app organizes those captures into investigations you can
+a page when you ask it to. The desktop app organizes those captures into investigations you can
 annotate, search, and export, with hashes, timestamps, and audit manifests attached.
 
 **This is beta software.** Expect rough edges, and export anything you can't afford to
@@ -29,8 +29,9 @@ that risk and where the limits are.
 
 Releases live at
 [github.com/thebristolsound/birdbrain-releases/releases](https://github.com/thebristolsound/birdbrain-releases/releases),
-a public repository that holds the builds only. The source repository is private, and you
-need no GitHub account to download from the releases one. Take the current release and the
+a public repository that holds the builds only. The source code is in a separate public
+repository, [github.com/thebristolsound/birdbrain](https://github.com/thebristolsound/birdbrain).
+You need no GitHub account to download a build. Take the current release and the
 file for your platform; [Download Birdbrain](/docs/download) says which file that is. Once
 it's installed, **Settings → About** shows the version you're running.
 
@@ -81,38 +82,45 @@ still sitting on an earlier release is unsupported.
 ## Install the Chrome extension
 
 The extension isn't on the Chrome Web Store yet, so it loads in developer mode. The
-app walks you through this on first launch (and under the extension install guide),
-including an **Open extension folder** button that opens the right folder for you.
+extension card on the Birdbrain dashboard has a **Setup Guide** that walks through the steps
+and an **Open extension folder** button that opens the right folder for you. If a case is
+open, click the house icon (**Home**) at the top of the left sidebar to reach the dashboard.
 
 The short version:
 
 1. Open `chrome://extensions` in Chrome.
 2. Switch on **Developer mode** (toggle in the top-right corner).
-3. In the app, click **Open extension folder**. This opens the copy of the extension that
-   belongs to the Birdbrain build you just installed. Always load this one, not a copy
-   downloaded or unzipped from somewhere else, so the extension and the desktop app
+3. On the Birdbrain dashboard, click **Open extension folder**. This opens the copy of the
+   extension that belongs to the Birdbrain build you just installed. Always load this one, not
+   a copy downloaded or unzipped from somewhere else, so the extension and the desktop app
    stay the same version.
 4. Click **Load unpacked** and select that folder, the one containing `manifest.json`.
-5. The Birdbrain icon appears in your Chrome toolbar. Back in the app, the status
-   should flip to **Extension connected**.
+5. The Birdbrain icon appears in your Chrome toolbar. Back in the app, a green
+   **Connected** badge appears in the top bar.
 
 Chrome keeps running the copy it loaded until you reload it, so an app update needs one
 more step from you (see [Updating](#updating)).
 
-The desktop app must be running for the extension to work. The extension talks to it
-locally on `127.0.0.1:19845`, and nothing goes to any external server.
+The desktop app must be running for the extension to work. The extension sends captures only
+to the app, over `127.0.0.1:19845`. The app itself contacts outside services. For example, it
+sends each capture's hash to a timestamp authority unless you switch off
+**Settings → Operator → Trusted timestamping**. The
+[network egress section](https://github.com/thebristolsound/birdbrain/blob/main/SECURITY.md#network-egress)
+of the security policy describes them.
 
 ## Your first capture
 
-1. In the app, create an investigation. On a fresh install a short tour opens and points
-   you at it; you can also press `Ctrl N` from anywhere. Name it anything.
+1. In the app, go to the dashboard and click **Start New Investigation**. Name the
+   investigation anything.
 2. Browse to any page in Chrome.
-3. Click the Birdbrain toolbar icon and hit **Capture this page**.
+3. Click the Birdbrain toolbar icon, then click **Capture now**. You can also right-click the
+   page and choose **Birdbrain → Capture Full Page**.
 4. The capture appears in the app under your investigation's **Captures** tab, with
    provenance details (hashes, timestamps) attached.
 
-From there, explore: annotate screenshots, add notes and tags, define selectors, try
-full-text search on the Data page, and export the investigation when you're done.
+From there, explore: annotate screenshots, add notes and tags, define selectors, search the
+text of every capture in the case from the search box in the top bar (`Ctrl F`), and export the
+investigation when you're done.
 
 ## Updating
 
@@ -145,9 +153,13 @@ The folder **Open extension folder** opens is a copy the app keeps in its user d
 directory and refreshes whenever the app version changes. The path stays the same across
 updates, so a card you loaded from it keeps working after a reload. If you installed
 Birdbrain before that folder moved, though, your card still points at the old app install
-folder: click **Open extension folder** again, **Load unpacked** the folder it opens, and
-remove the older Birdbrain entry pointing somewhere else. Leave both loaded and Chrome runs
-the stale one.
+folder. The dashboard shows **Open extension folder** only while no extension is connected, so
+if the old card still connects, the button is not there. Open the folder yourself instead. It
+is the `extension` folder in Birdbrain's user data directory. To find that directory, go to
+**Settings → Diagnostics → Log** and click **Reveal log file**. Your file manager shows the log
+file inside a `logs` folder. Go up one level, and the `extension` folder is beside `logs`.
+**Load unpacked** that `extension` folder, then remove the older Birdbrain entry pointing
+somewhere else. Leave both loaded and Chrome runs the stale one.
 
 If you put real project data in, this is what stands behind it, and the limits below are
 why we recommend synthetic or low-stakes material instead.
@@ -220,6 +232,12 @@ Report what you find as an issue on the
 [releases repository](https://github.com/thebristolsound/birdbrain-releases/issues). It is
 public, and no response target is stated.
 
+If you find a security vulnerability, do not open a public issue. Report it privately through
+the source repository's [Security tab](https://github.com/thebristolsound/birdbrain/security),
+as its
+[security policy](https://github.com/thebristolsound/birdbrain/blob/main/SECURITY.md#reporting-a-vulnerability)
+describes.
+
 Birdbrain keeps a local diagnostic log and can bundle it into a report for you:
 
 1. Go to **Settings → Diagnostics → Report a problem**.
@@ -229,10 +247,29 @@ Birdbrain keeps a local diagnostic log and can bundle it into a report for you:
 
 The zip saves **only to your computer**. Birdbrain never uploads it or sends
 it anywhere. Attach it to the issue yourself, the same way you'd attach any
-other file. It contains the diagnostic log, a few app/session facts (version,
-platform, recent performance stats), and what you typed in the report form. It does
-**not** contain your captures, your case database, or your settings file. That is why
-no bug report needs a case archive, and there is no channel for sending one.
+other file. It contains:
+
+- the diagnostic log, plus the previous log file if the log has rotated
+- what you typed in the report form, the time you made the report, and, if you opened it with
+  **Report this** on an error message, that error's log entry ID
+- your installation identifier
+- a record of your last 20 app launches: a random ID for each, when it started and ended,
+  whether it closed cleanly, whether its crash prompt was shown, and the version, platform and
+  install format it ran
+- a snapshot of the app's state: the Birdbrain, Electron, Chrome and Node versions, your
+  operating system, processor type and install format, how long the app has been running, each
+  app process's type, ID, CPU and memory use, how far the app is lagging now and at worst in the
+  last minute, recent freezes and named slow operations with their times and durations, your
+  database's schema version and the newest one this build supports, how many cases, captures,
+  notes, selectors and extracted data items you have, the size of your case database files,
+  whether your signing key is stored encrypted, and whether trusted timestamping is on
+
+It does **not** contain your captures, your case database, or your settings file. That is why no
+bug report needs a case archive, and there is no channel for sending one.
+
+Birdbrain writes the same installation identifier into the manifest entry of every capture you
+take, so attaching the bundle to a public issue links that issue to the evidence packages you
+export.
 
 If Birdbrain closed unexpectedly last time (a crash, a forced quit, a power loss),
 it will offer to create a report automatically the next time you open it. Click

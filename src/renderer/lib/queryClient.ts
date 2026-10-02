@@ -15,12 +15,19 @@ export function failureMessage(mutation: { options?: { meta?: unknown } }): stri
   return action ? `Couldn't ${action}.` : 'Something went wrong. Please try again.'
 }
 
+// networkMode 'always': every query and mutation is an IPC call to this
+// machine's main process, so the default 'online' mode would pause local reads
+// and saves whenever Chromium reports the network down (#1665).
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: false,
       staleTime: 30_000,
-      refetchOnWindowFocus: false
+      refetchOnWindowFocus: false,
+      networkMode: 'always'
+    },
+    mutations: {
+      networkMode: 'always'
     }
   },
   mutationCache: new MutationCache({

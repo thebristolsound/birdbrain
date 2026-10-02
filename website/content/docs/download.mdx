@@ -7,16 +7,18 @@ Birdbrain is in public beta. This page covers where the builds are, what each pl
 where security advisories appear, and what to report. For the walkthrough from a fresh install
 to your first capture, read [Install and first capture](/docs/tester-guide).
 
-Birdbrain is open source, and the source repository opens when the public-readiness effort
-closes. Until then the builds come from a separate public repository that holds releases only,
-so you need no GitHub account and no access to the source to download one.
+Birdbrain is open source under the MIT license, and its source is at
+[github.com/thebristolsound/birdbrain](https://github.com/thebristolsound/birdbrain). The builds
+come from a separate public repository that holds releases only, and you need no GitHub account
+to download one.
 
 ## Get the build
 
 Every build is on the
 [Birdbrain releases page](https://github.com/thebristolsound/birdbrain-releases/releases). Open
-the latest release there and download the file for your platform. Asset filenames carry the
-version, so no per-file "latest" link exists — bookmark the releases page instead.
+the newest release, at the top of the list, and download the file for your platform. Asset
+filenames carry the version, so no per-file "latest" link exists — bookmark the releases page
+instead.
 
 The commands below use `<version>` as a placeholder for the version in the filename you
 downloaded.
@@ -71,17 +73,18 @@ the `.deb`, watch the releases page rather than waiting for the app to carry a f
 macOS is not supported. No macOS build is published from this beta on, and any macOS asset
 still sitting on an earlier release is unsupported. Notarization is the blocker: macOS refuses
 an unsigned, un-notarized app on a default install, and signing and notarization are deferred
-to the first non-beta release. There are no builds on request, because there is no channel to
-ask in.
+to the first non-beta release. The project does not make macOS builds on request.
 
 ## Load the Chrome extension
 
-The extension is not on the Chrome Web Store yet, so it loads unpacked in developer mode. The
-app walks you through this on first launch. The short version:
+The extension is not on the Chrome Web Store yet, so it loads unpacked in developer mode. On the
+Birdbrain dashboard, the extension card has an **Open extension folder** button and a
+**Setup Guide** that walks through the steps. If a case is open, click the house icon (**Home**)
+at the top of the left sidebar to reach the dashboard. The short version:
 
 1. Open `chrome://extensions` in Chrome.
 2. Switch on **Developer mode**.
-3. In Birdbrain, click **Open extension folder**.
+3. On the Birdbrain dashboard, click **Open extension folder**.
 4. In Chrome, click **Load unpacked** and select the folder the app opened, the one holding
    `manifest.json`.
 
@@ -142,6 +145,12 @@ feels dated. The UI is changing substantially and those decisions are made.
 Open an issue on the
 [releases repository](https://github.com/thebristolsound/birdbrain-releases/issues). It is
 public, and no response target is stated: the project is one maintainer and a beta.
+
+If you find a security vulnerability, do not open a public issue. Report it privately through
+the source repository's [Security tab](https://github.com/thebristolsound/birdbrain/security),
+as its
+[security policy](https://github.com/thebristolsound/birdbrain/blob/main/SECURITY.md#reporting-a-vulnerability)
+describes.
 
 There is no channel for sending a `.birdbrain` case archive to the maintainer, and a bug report
 never needs one: the diagnostic bundle Birdbrain builds for you excludes your captures and your

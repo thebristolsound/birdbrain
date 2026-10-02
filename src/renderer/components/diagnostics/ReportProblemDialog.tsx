@@ -25,15 +25,22 @@ interface ReportProblemDialogProps {
 // contract's renderer-side copy. If bugReport.ts's entry list ever changes,
 // this must change with it for the "what's included" disclosure to stay true.
 // birdbrain.log and birdbrain.log.1 collapse into one display line below,
-// since they're the same log file rotated across two sessions.
+// since .1 is the same log rotated out at its size cap.
 const DISCLOSURE_ITEMS: Array<{ name: string; detail: string }> = [
-  { name: 'report.md', detail: 'your written description below' },
-  { name: 'diagnostics.json', detail: 'app version, platform, and recent performance stats' },
-  { name: 'sessions.json', detail: 'a record of recent app launches (for crash detection)' },
+  {
+    name: 'report.md',
+    detail:
+      'your description below, when you made it, your app version, platform, and installation identifier, and the log entry ID of the error you are reporting, if any'
+  },
+  {
+    name: 'diagnostics.json',
+    detail:
+      'app and system versions, performance stats, database size and schema version, how many cases, captures, and other records you have, and whether your signing key is encrypted and timestamping is on'
+  },
+  { name: 'sessions.json', detail: 'a record of your last 20 app launches (for crash detection)' },
   {
     name: 'birdbrain.log',
-    detail:
-      'the structural diagnostic log (no page content, no case names) — plus the prior session’s rotated copy, if one exists'
+    detail: 'the diagnostic log, plus the previous log file if it has rotated'
   }
 ]
 
@@ -82,7 +89,7 @@ export function ReportProblemDialog({
         <DialogHeader>
           <DialogTitle>Report a problem</DialogTitle>
           <DialogDescription>
-            Describe what happened, then save a bundle to attach to the tester chat yourself.
+            Describe what happened, then save a bundle to attach to your issue.
           </DialogDescription>
         </DialogHeader>
 
@@ -125,8 +132,13 @@ export function ReportProblemDialog({
               ))}
             </ul>
             <p className="mt-2">
-              No captures, no database, and no API keys are included. This file never leaves your
-              computer — it's saved locally, and you attach it to the chat yourself.
+              No captures, no case database, and no settings file are included. Birdbrain saves this
+              file on your computer and never sends it anywhere. You attach it to the issue
+              yourself.
+            </p>
+            <p className="mt-2">
+              Your installation identifier is also recorded on every capture you take, so attaching
+              this file to a public issue links that issue to evidence you export.
             </p>
           </div>
         </div>

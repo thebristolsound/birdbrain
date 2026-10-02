@@ -44,7 +44,7 @@ export function SessionControls() {
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 whitespace-nowrap">
       <label className="flex cursor-pointer items-center gap-1.5">
         <span className="text-xs text-text-muted">Capture Session</span>
         <button
@@ -68,7 +68,8 @@ export function SessionControls() {
       <AnimatePresence>
         {sessionActive && activeCase && (
           <motion.span
-            className="text-xs text-text-muted"
+            title={activeCase.name}
+            className="hidden max-w-[140px] truncate text-xs text-text-muted lg:inline"
             initial={presets.fadeIn.initial}
             animate={presets.fadeIn.animate}
             exit={presets.fadeIn.exit}

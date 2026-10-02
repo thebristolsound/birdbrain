@@ -20,7 +20,7 @@ type ElectronApplication = import('@playwright/test').ElectronApplication
 // tests (tests/components/WaybackPanel.test.tsx and WaybackCompare.test.tsx),
 // and what is proven here is the part that has to hold in the real app: the
 // panel's layout and its refusal to look anything up unbidden, the compare's
-// standing labelling, and a pin travelling through the real IPC handler into
+// labelling, and a pin travelling through the real IPC handler into
 // the export dialog and out into report.html.
 
 function readStoredZipEntries(path: string): Map<string, string> {
@@ -123,15 +123,24 @@ test.describe('Wayback panel, compare and pinned references', () => {
       // 2. Nothing was disclosed to archive.org: the lookup waits for the operator.
       await expect(page.getByTestId('wayback-idle')).toBeVisible()
       await expect(page.getByTestId('wayback-summary')).toHaveText('Not looked up yet')
-      await expect(
-        panel.getByText(/Looking up this URL discloses it to archive\.org/)
-      ).toBeVisible()
+      await expect(page.getByTestId('wayback-lookup-btn')).toHaveAttribute(
+        'title',
+        /Looking up this URL discloses it to archive\.org/
+      )
 
-      // 3. The compare labels the replay pane as live non-evidence content
-      //    before anything is loaded into it.
+      // 3. The compare's empty pane offers the same lookup, and its snapshot label
+      //    carries the non-evidence fact, before anything is loaded into it.
       await expect(page.getByTestId('wayback-compare')).toBeVisible()
-      await expect(page.getByTestId('wayback-nonevidence-label')).toContainText('not evidence')
       await expect(page.getByTestId('wayback-compare-empty')).toBeVisible()
+      await expect(page.getByTestId('wayback-compare-lookup')).toHaveText('Look up on archive.org')
+      await expect(page.getByTestId('wayback-compare-lookup')).toHaveAttribute(
+        'title',
+        /Looking up this URL discloses it to archive\.org/
+      )
+      await expect(page.getByTestId('wayback-snapshot-label')).toHaveAttribute(
+        'title',
+        /not captured, hashed or stored in this case/
+      )
 
       // 4. Pin a snapshot through the real IPC handler — the same call the row's
       //    pin control makes, validated main-side and persisted with no lookup.

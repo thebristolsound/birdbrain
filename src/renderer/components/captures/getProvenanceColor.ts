@@ -28,7 +28,7 @@ export function getProvenanceColor(status: ProvenanceStatus): ProvenanceColorTok
         text: 'text-red-400',
         bg: 'bg-red-500/10',
         dot: 'bg-red-400',
-        label: 'Tampered'
+        label: 'Changed since capture'
       }
     case 'chain-broken':
       return {

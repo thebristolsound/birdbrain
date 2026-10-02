@@ -53,12 +53,12 @@ For your threat model, this is the section that matters. Every outbound connecti
 
 | Connection | What is sent | When | Your control |
 |---|---|---|---|
-| Timestamp authority (default: DigiCert) | A content hash only, never content. The TSA does see your IP address and the timing of your captures. | Automatically after each capture | Point it at a TSA you prefer in settings. Timestamping cannot be turned off; a capture that cannot reach the authority stays `pending` |
+| Timestamp authority (default: DigiCert) | A content hash only, never content. The TSA does see your IP address and the timing of your captures. | Automatically after each capture, while timestamping is on | Point it at a TSA you prefer, or turn timestamping off, under **Settings → Operator → Trusted timestamping**. A capture made while it is off asserts no trusted time until you turn it back on. A capture that cannot reach the authority stays `pending`. Turning timestamping back on sends the hashes of the captures made while it was off |
 | The captured site itself | A follow-up TLS connection to record the site's current certificate as corroboration | Automatically at capture time | Not currently toggleable; see the network-identity warning below |
 | Wayback Machine (archive.org) | The URL you ask it to look up or pin | Only when you explicitly click | Never click it for sensitive targets |
 | GitHub | Ordinary release-check traffic | Periodic update checks | Disable automatic update checks in settings |
 
-Two opt-in features sit outside that table: configuring an AI-analysis API key sends captured text to the provider you choose, and background recapture first downloads public cookie-banner filter lists. Leave both off if either disclosure matters to you. That table plus these two opt-in features is the complete list of outbound connections Birdbrain can make. There is no telemetry, no account, and no other network activity.
+One feature you start yourself sits outside that table: background recapture. It runs only when you choose **Recapture current page**, **Paste URLs to capture**, or **Recapture** on a capture, a selection, or a capture-health entry. It downloads public cookie-banner filter lists, then loads each page from the app rather than from your browser. Don't use it if that disclosure matters to you. That table plus background recapture is the complete list of outbound connections Birdbrain can make. There is no telemetry, no account, and no other network activity.
 
 Read that table with your adversary in mind. Nothing in it sends captured content anywhere by default. But the timestamp authority learns that *someone at your IP is capturing evidence at these times*, and the TLS corroboration step means your machine contacts the target site a second time, outside your browser.
 

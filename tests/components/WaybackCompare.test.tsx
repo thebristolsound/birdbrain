@@ -158,6 +158,36 @@ describe('WaybackCompare', () => {
     expect(wayback.lookup).toHaveBeenCalledOnce()
   })
 
+  it('leaves the empty state once a lookup started from the panel returns', async () => {
+    wayback.lookup.mockResolvedValue({ ...LOOKUP_RESULT, snapshots: [], closestIndex: null })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <WaybackCompare capture={capture} />
+        <WaybackPanel capture={capture} onClose={() => {}} />
+      </QueryClientProvider>
+    )
+
+    fireEvent.click(screen.getByTestId('wayback-lookup-btn'))
+
+    await waitFor(() => expect(screen.queryByTestId('wayback-compare-lookup')).toBeNull())
+    expect(screen.getAllByText('No archive.org snapshots found for this URL.')).toHaveLength(2)
+  })
+
+  it('keeps the button after a failed lookup so it can be run again', async () => {
+    wayback.lookup.mockRejectedValueOnce(new Error('offline'))
+    renderCompare()
+
+    fireEvent.click(screen.getByTestId('wayback-compare-lookup'))
+    await waitFor(() => expect(wayback.lookup).toHaveBeenCalledOnce())
+    await waitFor(() =>
+      expect(screen.getByTestId('wayback-compare-lookup').getAttribute('disabled')).toBeNull()
+    )
+
+    fireEvent.click(screen.getByTestId('wayback-compare-lookup'))
+    await waitFor(() => expect(wayback.lookup).toHaveBeenCalledTimes(2))
+  })
+
   it('disables the button while the lookup is in flight', async () => {
     wayback.lookup.mockReturnValue(new Promise(() => {}))
     renderCompare()

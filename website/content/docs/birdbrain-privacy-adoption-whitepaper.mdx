@@ -24,7 +24,7 @@ Hosted evidence platforms answer these questions by holding your material on the
 
 ## What Birdbrain is
 
-Birdbrain is an open-source (MIT) desktop application for Windows and Linux (macOS builds are produced on request), paired with a Chromium browser extension. You browse; the extension captures pages as MHTML (the full page with its resources in one file), plus a screenshot, the extracted text, and response headers. The desktop app files each capture into a case on your own disk.
+Birdbrain is an open-source (MIT) desktop application for Windows and Linux (macOS is not supported in the beta), paired with a Chromium browser extension. You browse; the extension captures pages as MHTML (the full page with its resources in one file), plus a screenshot, the extracted text, and response headers. The desktop app files each capture into a case on your own disk.
 
 Under every capture sits an integrity layer:
 
@@ -83,7 +83,7 @@ Read that table with your adversary in mind. Nothing in it sends captured conten
 Birdbrain has no shared server, no user accounts, and no access control, and for your situation that is the point. There is no central thing to compromise. Group workflows happen through files.
 
 - **Case archives.** A case exports to a single `.birdbrain` archive and imports on another member's installation. The import is recorded in the receiving machine's custody chain along with the sender's public verification key, so the history stays checkable across the handoff: your colleague's captures verify against their key, yours against yours. Custody does not silently reset when evidence changes hands.
-- **Division of labor.** A workable pattern for a three-person group: collectors capture into their own cases, one member merges via archive import and maintains the master case, and exports for publication come from that machine. Every step stays on hardware your group controls.
+- **Division of labor.** A workable pattern for a three-person group: collectors capture into their own cases and export them as archives, one member imports each archive, and exports for publication come from that machine. Each import creates a separate case; Birdbrain does not merge cases. Every step stays on hardware your group controls.
 - **Publication handoff.** When you hand evidence to a journalist, lawyer, or NGO, you give them the evidence package: content, hashes, the signed custody log, timestamp tokens, the public key, and the verification runbook. They verify it independently. Your credibility stops depending on them trusting you personally, which also protects you: the evidence argues for itself.
 
 What you give up without a server: simultaneous editing, central assignment, and remote wiping. If a member's laptop is seized, that member's local cases are exposed to whoever can defeat their disk encryption, and nothing your group runs can revoke that remotely. Structure what each member holds accordingly.

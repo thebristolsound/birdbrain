@@ -5,6 +5,10 @@ organizing, and verifying web evidence. It runs on Windows and Ubuntu and is in 
 
 [![Release](https://img.shields.io/github/v/release/thebristolsound/birdbrain-releases?include_prereleases&label=release)](https://github.com/thebristolsound/birdbrain-releases/releases)
 [![CI](https://github.com/thebristolsound/birdbrain/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/thebristolsound/birdbrain/actions/workflows/ci.yml)
+[![Security checks](https://github.com/thebristolsound/birdbrain/actions/workflows/security.yml/badge.svg?branch=main&event=push)](https://github.com/thebristolsound/birdbrain/actions/workflows/security.yml)
+[![Package smoke](https://github.com/thebristolsound/birdbrain/actions/workflows/package-smoke.yml/badge.svg?branch=main&event=schedule)](https://github.com/thebristolsound/birdbrain/actions/workflows/package-smoke.yml)
+[![Line coverage on main](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fthebristolsound%2Fbirdbrain%2Fcoverage-badge%2Fcoverage.json)](https://github.com/thebristolsound/birdbrain/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush)
+[![Release asset downloads](https://img.shields.io/github/downloads/thebristolsound/birdbrain-releases/total?label=asset%20downloads)](https://github.com/thebristolsound/birdbrain-releases/releases)
 ![Platform: Windows and Linux](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 ![Status: beta](https://img.shields.io/badge/status-beta-yellow)

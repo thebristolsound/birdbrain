@@ -192,6 +192,8 @@ jobs:
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
     timeout-minutes: 20
+    outputs:
+      coverage-lines: ${{ steps.coverage-badge.outputs.lines }}
     steps:
       # fetch-depth: 0 so diff coverage can resolve a merge base with the base
       # branch; a shallow clone has no common ancestor to diff against.
@@ -237,6 +239,10 @@ jobs:
         env:
           BIRDBRAIN_REQUIRE_OPENSSL: '1'
 
+      - name: Read measured line coverage
+        id: coverage-badge
+        run: node scripts/coverage-badge.mjs measure >> "$GITHUB_OUTPUT"
+
       # Project-wide thresholds stop the tree backsliding but cannot ask whether
       # new code arrived tested — a PR can add an untested module and still clear
       # them. This scores only the lines the PR changed.
@@ -247,6 +253,31 @@ jobs:
           node scripts/diff-coverage.mjs --base "origin/${BASE_REF}"
         env:
           BASE_REF: ${{ github.base_ref }}
+
+  # Only successful main pushes publish the measured coverage. Pull requests exercise
+  # measurement and its tests, but never get a publishing token. The separate branch
+  # holds only public badge data; it does not change the source or trigger another CI run.
+  coverage-badge:
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck, test, build, e2e]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Publish line coverage
+        run: node scripts/coverage-badge.mjs publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COVERAGE_LINES: ${{ needs.test.outputs.coverage-lines }}
 
   build:
     runs-on: ubuntu-latest

@@ -21,6 +21,7 @@ vi.mock('@renderer/components/captures/MhtmlViewer', () => ({
 }))
 
 import { WaybackCompare } from '@renderer/components/captures/WaybackCompare'
+import { WaybackPanel } from '@renderer/components/captures/WaybackPanel'
 
 const SNAPSHOT_URL = 'https://web.archive.org/web/20260610000000/https://example.com/'
 
@@ -38,7 +39,22 @@ const capture: Capture = {
 
 const LEGACY_FILE_URL = 'file:///store/case1/cap1.html'
 
+const LOOKUP_RESULT = {
+  snapshots: [
+    {
+      timestamp: '2026-06-10T00:00:00.000Z',
+      snapshotUrl: SNAPSHOT_URL,
+      originalUrl: 'https://example.com/',
+      statusCode: 200,
+      mimeType: 'text/html'
+    }
+  ],
+  closestIndex: 0,
+  checkedAt: '2026-06-16T12:00:00.000Z'
+}
+
 let openExternal: ReturnType<typeof vi.fn>
+let wayback: { lookup: ReturnType<typeof vi.fn>; list: ReturnType<typeof vi.fn> }
 
 function renderCompare(subject: Capture = capture) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -58,7 +74,12 @@ function select(captureId = 'cap1') {
 
 beforeEach(() => {
   openExternal = vi.fn().mockResolvedValue(undefined)
+  wayback = {
+    lookup: vi.fn().mockResolvedValue(LOOKUP_RESULT),
+    list: vi.fn().mockResolvedValue([])
+  }
   fakeBridge({
+    wayback,
     captures: { openExternal, getHtmlUrl: vi.fn().mockResolvedValue(LEGACY_FILE_URL) }
   })
   useAppStore.getState().setWaybackSelection(null)
@@ -71,14 +92,14 @@ afterEach(() => {
 })
 
 describe('WaybackCompare', () => {
-  it('labels the replay pane as live non-evidence content whether or not one is loaded', () => {
+  it('keeps the non-evidence fact on the snapshot label, with no banner over the pane', () => {
     renderCompare()
-    const label = screen.getByTestId('wayback-nonevidence-label')
-    expect(label.textContent).toContain('not evidence')
-    expect(label.textContent).toContain('Pinning records the reference only')
-
-    select()
-    expect(screen.getByTestId('wayback-nonevidence-label')).toBeDefined()
+    expect(screen.getByTestId('wayback-snapshot-label').getAttribute('title')).toBe(
+      'Loaded live from archive.org; not captured, hashed or stored in this case. ' +
+        'Pinning records the reference only.'
+    )
+    expect(screen.queryByText(/Live remote content/)).toBeNull()
+    expect(screen.queryByText(/choose a snapshot to compare/)).toBeNull()
   })
 
   it('renders the live capture beside the snapshot rather than a stored image', () => {
@@ -106,6 +127,67 @@ describe('WaybackCompare', () => {
     expect(screen.getByTestId('wayback-compare-empty')).toBeDefined()
     expect(screen.queryByTestId('wayback-replay-webview')).toBeNull()
     expect(screen.getByTestId('wayback-open-external').getAttribute('disabled')).not.toBeNull()
+  })
+
+  it('offers the archive.org lookup in the empty pane and runs it on click', async () => {
+    renderCompare()
+    const button = screen.getByTestId('wayback-compare-lookup')
+    expect(button.textContent).toBe('Look up on archive.org')
+    expect(button.getAttribute('title')).toBe('Looking up this URL discloses it to archive.org.')
+    expect(wayback.lookup).not.toHaveBeenCalled()
+
+    fireEvent.click(button)
+
+    await waitFor(() => expect(wayback.lookup).toHaveBeenCalledWith('cap1'))
+    expect(wayback.lookup).toHaveBeenCalledOnce()
+  })
+
+  it('fills the panel from the same lookup, which then loads the closest snapshot', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <WaybackCompare capture={capture} />
+        <WaybackPanel capture={capture} onClose={() => {}} />
+      </QueryClientProvider>
+    )
+
+    fireEvent.click(screen.getByTestId('wayback-compare-lookup'))
+
+    expect(await screen.findAllByTestId('wayback-snapshot-row')).toHaveLength(1)
+    expect(await screen.findByTestId('wayback-replay-webview')).toBeDefined()
+    expect(wayback.lookup).toHaveBeenCalledOnce()
+  })
+
+  it('disables the button while the lookup is in flight', async () => {
+    wayback.lookup.mockReturnValue(new Promise(() => {}))
+    renderCompare()
+
+    fireEvent.click(screen.getByTestId('wayback-compare-lookup'))
+
+    await waitFor(() =>
+      expect(screen.getByTestId('wayback-compare-lookup').textContent).toBe(
+        'Querying the Wayback Machine…'
+      )
+    )
+    expect(screen.getByTestId('wayback-compare-lookup').getAttribute('disabled')).not.toBeNull()
+  })
+
+  it('says so when the lookup found no snapshots', async () => {
+    wayback.lookup.mockResolvedValue({ ...LOOKUP_RESULT, snapshots: [], closestIndex: null })
+    renderCompare()
+
+    fireEvent.click(screen.getByTestId('wayback-compare-lookup'))
+
+    expect(await screen.findByText('No archive.org snapshots found for this URL.')).toBeDefined()
+    expect(screen.queryByTestId('wayback-compare-lookup')).toBeNull()
+  })
+
+  it('asks for a choice once a lookup has returned snapshots and none is selected', async () => {
+    renderCompare()
+
+    fireEvent.click(screen.getByTestId('wayback-compare-lookup'))
+
+    expect(await screen.findByText('Choose a snapshot from the list to compare.')).toBeDefined()
   })
 
   it('ignores a selection belonging to a different capture', () => {

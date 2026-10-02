@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 
 // Hoisted: the factories run while IndicatorsView's import graph is still
 // loading, which is before a plain top-level const would be initialised.
@@ -27,7 +27,23 @@ function renderExplorer() {
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
   }
-  return render(<IndicatorsView caseId="case1" />, { wrapper: Wrapper })
+  return render(<Harness />, { wrapper: Wrapper })
+}
+
+// The rail owns the selection on the Data screen; this stands in for it.
+function Harness() {
+  const [pick, setPick] = useState<{ category: string | null; subcategory: string | null }>({
+    category: null,
+    subcategory: null
+  })
+  return (
+    <IndicatorsView
+      caseId="case1"
+      category={pick.category}
+      subcategory={pick.subcategory}
+      onSelect={(category, subcategory) => setPick({ category, subcategory })}
+    />
+  )
 }
 
 // Walks the three-column browse path to the item row that carries the source

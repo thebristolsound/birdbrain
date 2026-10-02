@@ -120,10 +120,10 @@ jobs:
           \`chrome://extensions\`, because Chrome keeps the old copy loaded until you do.
 
           Platform notes, the extension load steps, and where advisories appear:
-          [Download Birdbrain](https://thebristolsound.github.io/birdbrain/docs/download/).
+          [Download Birdbrain](https://docs.birdbrain.cc/docs/download).
 
           Step by step, from install to first capture:
-          [Install and first capture](https://thebristolsound.github.io/birdbrain/docs/tester-guide/).
+          [Install and first capture](https://docs.birdbrain.cc/docs/tester-guide).
           EOF
 
       - name: Create GitHub Release

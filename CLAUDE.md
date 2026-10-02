@@ -23,7 +23,7 @@ Open source web investigation & capture tool. Electron desktop app with a compan
 - `pnpm test:e2e:debug` - Run E2E tests with Playwright inspector
 - `pnpm package` / `pnpm package:win` / `pnpm package:mac` / `pnpm package:linux` - Package for distribution
 
-Docs site commands run from `website/` (separate lockfile — see "Documentation site"): `pnpm dev`, `pnpm build`, `pnpm types:check`.
+Docs site commands run from `website/content/` through `pnpm dlx` (see "Documentation site"): `pnpm dlx mint dev`, `pnpm dlx mint broken-links`.
 
 **Run everything on Node 20.** `.nvmrc` and `.mise.toml` pin it, and CI reads `.nvmrc` (`node-version-file`). `engines.node` is only a floor (`>=20.19.0`) — Node 24 satisfies it, so engines will not keep you off the broken version. `.mise.toml` exists because mise ignores `.nvmrc` by default, so shells and agent worktrees would otherwise land on whatever Node is newest. Under Node 24 Electron's postinstall silently fails to extract the binary (extract-zip's promise never settles): install exits 0 but leaves `node_modules/electron/dist` broken, which is what `scripts/ensure-electron.mjs` now backstops. If Electron is mysteriously missing, check `node --version` first.
 
@@ -47,7 +47,7 @@ All design docs, specs, and implementation plans live under `docs/` per the layo
 - **Architecture decisions** → `docs/adr/NNNN-<slug>.md` — **tracked**
 - **Superseded** → `docs/archive/` (preserve original filename) — **tracked**
 
-Long-lived reference docs moved out of `docs/reference/` into `website/content/docs/` when the docs site was set up — they are the site's content now. Adding one means adding an `.mdx` file with `title`/`description` frontmatter plus an entry in `website/content/docs/meta.json` (pages absent from `meta.json` are silently dropped from the sidebar). See "Documentation site" below for the MDX constraints.
+Long-lived reference docs moved out of `docs/reference/` into `website/content/docs/` when the docs site was set up — they are the site's content now. Adding one means adding an `.mdx` file with `title`/`description` frontmatter plus an entry in `navigation` in `website/content/docs.json` (pages absent from it are dropped from the sidebar). See "Documentation site" below for the MDX constraints.
 
 **Writing style.** `docs/agents/writing-guide.md` is the adopted writing standard for all repo prose: Diataxis structure for published pages plus a mechanical rulebook (voice, ordering, formatting). CodeRabbit reads it as review criteria for `docs/**`, `website/content/docs/**`, and root Markdown.
 
@@ -61,9 +61,9 @@ Long-lived reference docs moved out of `docs/reference/` into `website/content/d
 
 ## Documentation site
 
-Before editing or building `website/`, or changing docs deployment or the Mintlify
-mirror, read [Documentation site](docs/agents/website.md). Run site commands from
-`website/`; it has its own lockfile and workspace configuration.
+Before editing `website/` or changing docs deployment, read
+[Documentation site](docs/agents/website.md). Mintlify serves `website/content/` at
+<https://docs.birdbrain.cc>; there is no build step in this repository.
 
 ## Testing
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Enforcing dependency-advisory gate for both dependency trees in this repo.
+// Enforcing dependency-advisory gate for the dependency tree in this repo.
 //
 // `pnpm audit --audit-level high` on its own can only be all-or-nothing: either it
 // fails on advisories nobody can act on today, or it is run with `|| true` and stops
@@ -22,9 +22,9 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 // this line are reported by `pnpm audit` but are not a merge gate.
 export const BLOCKING_SEVERITIES = ['critical', 'high']
 
-// Both trees are audited: website/ is an isolated sub-project with its own lockfile
-// (see CLAUDE.md), so a root audit says nothing about it.
-export const TREES = ['.', 'website']
+// The docs site under website/ is plain content served by Mintlify and has no
+// dependency tree of its own since the Fumadocs app was removed.
+export const TREES = ['.']
 
 const REQUIRED_FIELDS = ['ghsa', 'package', 'tree', 'path', 'reason', 'expires']
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/

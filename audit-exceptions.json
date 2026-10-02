@@ -6,10 +6,10 @@
     "reason that names the shipped or reachable path, and set an expiry so the call is",
     "re-made rather than inherited. Past the expiry date the build fails until the entry",
     "is removed or renewed. Expiries are capped at 180 days out and warn 21 days before.",
-    "An override in pnpm-workspace.yaml (or website/pnpm-workspace.yaml) is always the",
+    "An override in pnpm-workspace.yaml is always the",
     "first choice — an exception is only for a finding no override can fix. Adding one",
     "here when a version bump would do buys a re-decision date instead of a fix.",
-    "Trees: \".\" is the Electron app, \"website\" is the isolated docs sub-project."
+    "Trees: \".\" is the Electron app, the only tree audited."
   ],
   "exceptions": []
 }

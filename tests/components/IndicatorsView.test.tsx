@@ -37,12 +37,17 @@ function Harness() {
     subcategory: null
   })
   return (
-    <IndicatorsView
-      caseId="case1"
-      category={pick.category}
-      subcategory={pick.subcategory}
-      onSelect={(category, subcategory) => setPick({ category, subcategory })}
-    />
+    <>
+      <button type="button" onClick={() => setPick({ category: 'emails', subcategory: null })}>
+        Rail pick
+      </button>
+      <IndicatorsView
+        caseId="case1"
+        category={pick.category}
+        subcategory={pick.subcategory}
+        onSelect={(category, subcategory) => setPick({ category, subcategory })}
+      />
+    </>
   )
 }
 
@@ -148,6 +153,19 @@ describe('IndicatorsView', () => {
       label: 'personal',
       origin: 'capture'
     })
+  })
+
+  it('leaves search mode when the rail picks a category, so the pick shows', async () => {
+    renderExplorer()
+    const input = (await screen.findByPlaceholderText('Search indicators...')) as HTMLInputElement
+    fireEvent.change(input, { target: { value: 'someone' } })
+    expect(await screen.findByText(/No indicators match/)).toBeTruthy()
+
+    fireEvent.click(screen.getByText('Rail pick'))
+
+    expect(await screen.findByText('personal')).toBeTruthy()
+    expect(input.value).toBe('')
+    expect(screen.queryByText(/No indicators match/)).toBeNull()
   })
 
   it('runs the whole-case reprocess from its header and refreshes', async () => {

@@ -40,6 +40,13 @@ export function IndicatorsView({
     return () => clearTimeout(t)
   }, [searchInput])
 
+  // Search results hide the columns, so a pick made in the rail during a search
+  // would otherwise not show. Leaving search mode lets the rail and view agree.
+  useEffect(() => {
+    setSearchInput('')
+    setDebouncedQuery('')
+  }, [selectedCategory, selectedSubcategory])
+
   const { data: searchResults = [], isFetching: searching } = useQuery(
     extractedDataSearchQueryOptions(caseId, debouncedQuery)
   )

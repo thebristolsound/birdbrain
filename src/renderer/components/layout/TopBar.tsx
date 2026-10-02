@@ -73,9 +73,9 @@ export function TopBar() {
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border bg-surface px-4">
-      {/* The three groups share the bar equally, so the search sits at the window's
-          centre until a side needs more than its share. Only the case name's track
-          can shrink, down to the switcher icon, so the logo keeps its width. */}
+      {/* The side groups share what the search leaves equally, so the search sits at the
+          window's centre until a side needs more than its half. The case name's track
+          gives way first, down to the switcher icon; then the search shrinks. */}
       <div className="grid flex-1 basis-0 grid-cols-[max-content_max-content_minmax(2rem,max-content)] items-center gap-3">
         {/* Logo — click to go home */}
         <button
@@ -111,7 +111,7 @@ export function TopBar() {
 
       {/* The z-index lifts the results dropdown above sticky headers in the page below. */}
       {activeCaseId && (
-        <div className="relative z-50 flex min-w-11 max-w-[400px] flex-1 basis-0">
+        <div className="relative z-50 flex min-w-32 flex-[0_1_400px]">
           <SearchBar caseId={activeCaseId} />
         </div>
       )}

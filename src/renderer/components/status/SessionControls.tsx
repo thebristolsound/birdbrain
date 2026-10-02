@@ -68,7 +68,8 @@ export function SessionControls() {
       <AnimatePresence>
         {sessionActive && activeCase && (
           <motion.span
-            className="text-xs text-text-muted"
+            title={activeCase.name}
+            className="hidden max-w-[140px] truncate text-xs text-text-muted lg:inline"
             initial={presets.fadeIn.initial}
             animate={presets.fadeIn.animate}
             exit={presets.fadeIn.exit}

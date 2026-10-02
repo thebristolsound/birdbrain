@@ -97,7 +97,7 @@ export function SearchBar({ caseId }: SearchBarProps) {
       {query.trim() && (
         <div
           data-testid="global-search-results"
-          className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded border border-border-strong bg-elevated shadow-lg"
+          className="absolute left-0 right-0 top-full z-50 mt-1 min-w-[400px] max-h-64 overflow-y-auto rounded border border-border-strong bg-elevated shadow-lg"
         >
           {busy && <div className="px-3 py-2 text-xs text-text-muted">Searching...</div>}
           {!busy && failed && (

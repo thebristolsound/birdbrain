@@ -37,6 +37,7 @@ import {
   previousMonth,
   rangeFromDays,
   summaryLine,
+  WAYBACK_DISCLOSURE_HINT,
   WAYBACK_PANEL_WIDTH_PX,
   WAYBACK_PRESET_IDS,
   type StatusBand,
@@ -217,7 +218,7 @@ export function WaybackPanel({ capture, onClose }: Props) {
           // Same testid the flat tab's button carried: this is the same
           // affordance, moved into the panel header (#401).
           data-testid="wayback-lookup-btn"
-          title={result ? 'Look up again' : 'Look up'}
+          title={`${result ? 'Look up again' : 'Look up'}. ${WAYBACK_DISCLOSURE_HINT}`}
           onClick={() => void lookup.refetch()}
           disabled={lookup.isFetching}
           className="grid h-6 w-6 shrink-0 place-items-center rounded text-accent hover:bg-accent-subtle disabled:opacity-50"
@@ -234,10 +235,6 @@ export function WaybackPanel({ capture, onClose }: Props) {
           <X className="h-3 w-3" />
         </button>
       </div>
-
-      <p className="shrink-0 border-b border-border px-3.5 py-2 text-[11px] leading-relaxed text-text-faint">
-        Corroboration only. Looking up this URL discloses it to archive.org.
-      </p>
 
       <div className="relative flex shrink-0 flex-col gap-2 border-b border-border px-3.5 py-2.5">
         <div className="relative">

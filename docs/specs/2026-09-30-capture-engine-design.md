@@ -32,6 +32,8 @@ All of this is in `src/main/services/backgroundRenderer.ts` unless another path 
 - `captureFullPageScreenshot` takes one `Page.captureScreenshot` with `captureBeyondViewport`.
   It scales down to fit 16,384 pixels on a side and truncates at 32 megapixels. Nothing records
   that a screenshot was scaled or truncated.
+- The image then passes through `trimTrailingBackground`, which removes trailing rows of uniform
+  background color. Nothing records that either.
 - Nothing records whether the scroll phase ran or how it ended.
 - `RenderedPage` (`src/main/services/recapture.ts`) carries the MHTML stream, the screenshot, the
   text, the title, the final URL, the HTTP status, the user agent, the browser version, and
@@ -75,7 +77,8 @@ It is not a packet capture, and the docs and the verifier never call it one.
 
 The `capture` entry gains an inventory. For each of MHTML, Transaction Record, screenshot, and
 PDF it says present or absent, and gives a reason when absent. For the screenshot it also says
-whether the image was scaled down or truncated at the pixel caps. For the Transaction Record it
+whether the image was scaled down, truncated at the pixel caps, or trimmed of trailing
+background rows, with its dimensions before and after. For the Transaction Record it
 gives the counts described in the previous section.
 
 The entry also records Scroll-to-load: whether it was requested, whether it ran, how it ended
@@ -91,7 +94,9 @@ certificate timestamps). They are a summary the browser produced, not the certif
 they do not support independent signature checking.
 
 Record them as a new optional field beside the existing `tls` field, never inside it. The
-corroboration re-fetch keeps running. When the main document came from the cache, the field is
+corroboration re-fetch is unchanged: it runs as it does today, and it is skipped while the
+Egress is not Direct
+([ADR-0032](../adr/0032-route-app-egress-but-do-not-disguise-the-browser.md)). When the main document came from the cache, the field is
 absent and the inventory says why.
 
 ### PDF
@@ -128,8 +133,9 @@ and on, and record whether anything the page can observe changes.
 [ADR-0004](../adr/0004-adopt-osint-assurance-baseline.md) requires known-answer validation for
 an evidence-affecting method. Against a local fixture server that serves known bytes:
 
-- each payload digest in the WARC equals the digest of the bytes the server sent, for an
-  uncompressed response and for a `gzip` response;
+- each payload digest in the WARC equals the digest of the fixture's decoded payload, both when
+  the server sends it uncompressed and when it sends it with `gzip`, because the stored body is
+  the decoded one;
 - a redirect chain, a cached response, a failed request, a cancelled request, and an over-budget
   body each appear where this design says they appear;
 - a reader that is not the writer parses the file;
@@ -151,23 +157,36 @@ an evidence-affecting method. Against a local fixture server that serves known b
 
 ## Open questions
 
-1. **A new dependency.** `warcio` (the `webrecorder/warcio.js` repository) writes and reads WARC. The npm registry lists
+1. **Credentials in the record.** `Network.requestWillBeSentExtraInfo` reports `Cookie` and
+   `Authorization` request headers, and `Network.responseReceivedExtraInfo` reports `Set-Cookie`.
+   Written into a WARC and copied through exports, those values are reusable account secrets
+   outside the browser session.
+   [ADR-0030](../adr/0030-persona-is-a-provenance-axis-beside-operator.md) says the only copy of
+   a cookie value is the browser's own store. Today's header capture does not meet this problem:
+   the extension listens without the `extraHeaders` option, and Chrome withholds `Cookie` and
+   `Set-Cookie` from such a listener
+   ([Chrome's `webRequest` reference](https://developer.chrome.com/docs/extensions/reference/api/webRequest)).
+   Decide before any implementation whether the record replaces those header values with a
+   marker and names the affected headers in the inventory, or whether ADR-0030 is amended.
+   Tokens inside a response body or a URL are out of reach of any header rule, as they are in
+   MHTML today.
+2. **A new dependency.** `warcio` (the `webrecorder/warcio.js` repository) writes and reads WARC. The npm registry lists
    it as Apache-2.0 while the `LICENSE` file in the package is the MIT text; both are permissive,
    and the mismatch should be resolved before adoption. The alternative is a writer in this
    repository, validated against an outside reader. Adding the dependency needs the maintainer's
    approval.
-2. **Decoded bodies under original headers.** The stored body is decoded while the recorded
+3. **Decoded bodies under original headers.** The stored body is decoded while the recorded
    headers still name the original encoding and length. Browser-based archiving tools face the
    same mismatch. Find out what they write, and follow it if it is documented.
-3. **Compression.** Whether the file is stored with each record compressed separately
+4. **Compression.** Whether the file is stored with each record compressed separately
    (`.warc.gz`) or uncompressed. The hash covers the stored bytes either way.
-4. **Size budget.** The total and per-resource limits, and whether the 200 MB MHTML limit in
+5. **Size budget.** The total and per-resource limits, and whether the 200 MB MHTML limit in
    `src/shared/constants.ts` is the right starting point.
-5. **Cached responses.** Whether a fresh session partition per render, which the renderer already
+6. **Cached responses.** Whether a fresh session partition per render, which the renderer already
    uses, makes cache hits rare enough to leave them to the inventory.
-6. **PDF in a hidden window.** Whether `printToPDF` produces the page as rendered in the
+7. **PDF in a hidden window.** Whether `printToPDF` produces the page as rendered in the
    offscreen window, and whether it changes page state in a way that matters for a later step.
-7. **WebSocket traffic.** Out of this slice. Decide later whether frames belong in the record.
+8. **WebSocket traffic.** Out of this slice. Decide later whether frames belong in the record.
 
 ## Not in this slice
 

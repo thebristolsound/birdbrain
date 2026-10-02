@@ -46,7 +46,9 @@ evidence.
 
 **The extension becomes the Companion.** It carries the Active Case, Tags, Selectors, and
 highlights into the Operator's everyday browser, and it opens a pipe for the engine. Those
-features use extension APIs that Firefox also implements, so the Companion can be ported.
+features use extension APIs that Firefox also implements, so the Companion can be ported. A
+Firefox Companion carries those features only: Firefox has no extension `debugger` API, so it
+opens no pipe and offers no `companion` Capture. Capturing in Firefox means a launched Firefox.
 
 **Full-artifact witnessed Captures happen in a browser Birdbrain launched** (method `launched`).
 Birdbrain starts Chrome, Edge, Brave, Chromium, or Firefox with a remote-debugging port and a
@@ -57,7 +59,8 @@ remote-debugging switches on the default profile directory
 ([Chrome for Developers, 2025-03-17](https://developer.chrome.com/blog/remote-debugging-port)),
 so a Birdbrain-owned profile is the only arrangement that works on current Chrome.
 
-**Ad-hoc Captures in the everyday browser go through the Companion's pipe** (method `companion`).
+**Ad-hoc Captures in an everyday Chromium browser go through the Companion's pipe** (method
+`companion`).
 On request the Companion attaches `chrome.debugger` to the tab, the engine takes MHTML, one
 screenshot of the whole document, and a PDF, and the Companion detaches. A `companion` Capture
 never carries a Transaction Record or Bound TLS Details, because the page loaded before the
@@ -84,7 +87,9 @@ acquisition code, then Firefox.
 
 **ADR-0002.** Bound TLS Details are recorded on `launched` Captures in a Chromium browser and on
 `background` Captures, where the engine is attached before the request. The corroboration
-re-fetch keeps running as the floor, and the Manifest Entry says which of the two it holds.
+re-fetch stays the floor wherever it runs, and the Manifest Entry says which of the two it
+holds. ADR-0032 still skips the re-fetch while the Egress is not Direct, and nothing here
+restores a direct connection.
 ADR-0002's warning stands for the case it was written about: a session-long `chrome.debugger`
 attach in the everyday browser is still not built. The per-Capture attach the Companion makes
 shows Chrome's debugging infobar for the length of one Capture, and the maintainer accepted
@@ -120,6 +125,14 @@ engine. Persona stays an axis beside the method, and the label rules are unchang
   `companion` Capture, the install warning is stronger, and the Chrome Web Store review process
   says "dangerous permission requests" draw closer review
   ([review process](https://developer.chrome.com/docs/webstore/review-process)).
+- An Operator whose everyday browser is Firefox has no ad-hoc Capture. A Firefox extension
+  could take a whole-page screenshot itself, but that would put extension code back on the
+  evidence path, so it is left as a later decision.
+- A Transaction Record of a signed-in page would hold the `Cookie`, `Authorization`, and
+  `Set-Cookie` values the browser reported.
+  [ADR-0030](0030-persona-is-a-provenance-axis-beside-operator.md) keeps cookie values inside
+  the browser session. How the record treats them is undecided and blocks the first slice; it
+  is the first open question in the spec.
 - Firefox Captures have no MHTML and no Bound TLS Details: BiDi offers neither. Response bodies
   need Firefox 143 or later, and responses served from the memory cache are not collectable
   ([Bugzilla 1971780](https://bugzilla.mozilla.org/show_bug.cgi?id=1971780),

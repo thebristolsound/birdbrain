@@ -56,6 +56,24 @@ export async function initDatabase(dbPath: string): Promise<Database.Database> {
   return db
 }
 
+// The MCP server's connection (ADR-0036). SQLite itself refuses every write on
+// it, and it is never migrated: a schema version this build does not know is
+// refused, because reading it through this build's repos would misread it.
+export function openDatabaseReadOnly(dbPath: string): Database.Database {
+  const conn = new Database(dbPath, { readonly: true, fileMustExist: true })
+  conn.pragma('busy_timeout = 5000')
+  const version = conn.pragma('user_version', { simple: true }) as number
+  if (version !== LATEST_SCHEMA_VERSION) {
+    conn.close()
+    throw new Error(
+      `Database schema version is ${version}; this build reads only version ` +
+        `${LATEST_SCHEMA_VERSION}. Open the database in a matching Birdbrain first.`
+    )
+  }
+  db = conn
+  return db
+}
+
 export function getDb(): Database.Database {
   if (!db) throw new Error('Database not initialized')
   return db

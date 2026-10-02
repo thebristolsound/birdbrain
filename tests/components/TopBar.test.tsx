@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { fakeBridge } from '../renderer/fakeBridge'
@@ -8,6 +8,7 @@ import { stubMatchMedia } from './matchMediaStub'
 import { useAppStore } from '@renderer/stores/appStore'
 
 const routerState = vi.hoisted(() => ({ pathname: '/' }))
+const navigate = vi.hoisted(() => vi.fn())
 
 // Mirrors the three patterns the bar asks about. `/cases/$caseId` matches any
 // segment, `new` included, which is the collision the wizard route guards against.
@@ -21,7 +22,7 @@ function matchRoute({ to, fuzzy }: { to: string; fuzzy?: boolean }) {
 }
 
 vi.mock('@tanstack/react-router', () => ({
-  useNavigate: () => vi.fn(),
+  useNavigate: () => navigate,
   useRouter: () => ({ history: { back: vi.fn() } }),
   useMatchRoute: () => matchRoute
 }))
@@ -64,7 +65,8 @@ beforeEach(() => {
   stubMatchMedia(false)
   getCase = vi.fn(async () => ({ id: 'case1', name: 'Operation Kestrel' }))
   fakeBridge({ cases: { get: getCase } })
-  useAppStore.setState({ sessionActive: false })
+  useAppStore.setState({ sessionActive: false, commandPaletteOpen: false })
+  navigate.mockClear()
 })
 
 afterEach(() => {
@@ -93,6 +95,20 @@ describe('the case chrome', () => {
     renderAt('/')
     expect(screen.queryByTestId('topbar-case-name')).toBeNull()
     expect(screen.queryByTestId('global-search-input')).toBeNull()
+  })
+})
+
+describe('the left group', () => {
+  it('goes home from the logo', () => {
+    renderAt('/cases/case1/overview')
+    fireEvent.click(screen.getByTitle('Home'))
+    expect(navigate).toHaveBeenCalledWith({ to: '/' })
+  })
+
+  it('opens the case switcher from the case name', () => {
+    renderAt('/cases/case1/overview')
+    fireEvent.click(screen.getByTestId('topbar-case-name'))
+    expect(useAppStore.getState().commandPaletteOpen).toBe(true)
   })
 })
 

@@ -9,6 +9,13 @@ routing Birdbrain's traffic through a proxy or Tor is allowed and recorded as th
 Changing the user agent stays excluded, now for the measured Cloudflare breakage rather than as
 evasion, and fingerprint impersonation stays excluded.
 
+**Amended 2026-09-30 by
+[ADR-0034](0034-the-app-acquires-and-the-extension-is-a-companion.md):** a witnessed Capture
+under a Persona is a `launched` Capture in a browser Birdbrain started with that Persona's
+profile, not a Capture in an Electron window, and the `persona-window` method is withdrawn. A
+Persona may hold one browser session per engine, both seeded from the same cookie import. The
+registry, the frozen label, and the Manifest fields are unchanged.
+
 Resolves #542 and #544 under map #541. Grilled and confirmed by the maintainer on 2026-09-19;
 the working plan is `docs/plans/2026-09-19-persona-cookie-import.md`.
 

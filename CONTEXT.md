@@ -49,8 +49,12 @@ _Avoid_: backup, dump, case file.
 ### Acquisition
 
 **Capture**:
-A snapshot of a single web page (HTML or MHTML, optionally with screenshot and extracted text), stored on disk under its Case directory and indexed in the database.
+The primary artifacts taken from one observation of a single web page (MHTML, Transaction Record, screenshot, PDF, as available), stored on disk under its Case directory and indexed in the database. Its Manifest Entry inventories which artifacts are present and why any is absent. Legacy Captures may be HTML only.
 _Avoid_: page, snapshot, record.
+
+**Transaction Record**:
+The WARC holding every HTTP request and response of the observed navigation as the browser reported them, from its first request to the moment of Capture. It records what the browser's network stack handed over (decoded bodies, headers as parsed), never bytes read off the wire. Present only when recording was on before the page loaded; never reconstructed afterwards.
+_Avoid_: network log, HAR, archive, WARC file (as the general term).
 
 **Capture Server**:
 The Hono HTTP server in the main process (port 19845) that the Chrome extension posts captures to. The extension's only way into the ingest path of the Capture Lifecycle; a background Recapture reaches that path without the server. Transport only: a route parses the request, hands it to the Capture Lifecycle, and maps the outcome to a status code. It holds no admission policy.
@@ -61,16 +65,20 @@ The one Case the extension is working in. Chosen by the Operator; required befor
 _Avoid_: current case, selected case, open case.
 
 **Capture Session**:
-The state between the Operator starting and stopping capture into the Active Case. While it runs, the extension matches the Active Case's Selectors against browsed pages; with passive capture withdrawn (ADR-0013), a running session captures nothing by itself.
-_Avoid_: session (unqualified), auto-capture, recording.
+The state between the Operator starting and stopping work into the Active Case. While it runs, the Active Case's Selectors are matched against browsed pages, and in a browser Birdbrain launched, recording is on, so every Capture taken during it carries a Transaction Record. With passive capture withdrawn (ADR-0013), a running session still captures nothing by itself.
+_Avoid_: session (unqualified), auto-capture, recording mode.
 
 **Capture Lifecycle**:
 Operations that mutate an MHTML Capture beyond its database row: admission of a request from any extension route (operator gate, Active Case resolution, exclusion, the manual dedup window, the screenshot cap, the session count, the activity events), ingestion (parse, hash, store, schedule selector matching), duplication, deletion (manifest entry + DB row + on-disk files, one at a time or as a batch), verification, and case-wide re-extraction. The forensic-bearing path. Legacy HTML Captures (pre-migration v11) appear in deletion and verification but have no manifest entry and no ingest path; new Captures are MHTML-only.
 _Avoid_: capture service, capture manager.
 
 **Capture Method**:
-How a Capture was produced: by the Chrome extension (`extension`, operator-witnessed), by a silent hidden-window render (`background`), by the Operator capturing the page in front of them in a Persona's browser window (`persona-window`, operator-witnessed), or by copying another Capture in the same Case (`duplicate`, which observed nothing).
-_Avoid_: capture type, capture mode.
+How a Capture was produced: through the Companion in the Operator's everyday browser (`companion`, operator-witnessed, never a Transaction Record), in a browser Birdbrain launched (`launched`, operator-witnessed, a Transaction Record when a Capture Session is running), by a silent hidden-window render (`background`), or by copying another Capture in the same Case (`duplicate`, which observed nothing). `extension` is a legacy value for Captures the Companion once acquired itself; nothing new writes it. Which Persona was present is recorded beside the method, never inside it.
+_Avoid_: capture type, capture mode, persona-window.
+
+**Companion**:
+The browser extension. It carries the Active Case, Tags, Selectors and highlights into the Operator's everyday browser and opens the pipe for a `companion` Capture; it acquires nothing itself.
+_Avoid_: extension (unqualified), plugin, add-on.
 
 **Recapture**:
 A fresh background Capture of an existing Capture's URL, stored as a linked sibling that supersedes it. The original is never touched; both stay fully visible.
@@ -87,6 +95,14 @@ _Avoid_: cookie blocking, banner removal.
 **Egress**:
 The network path Birdbrain's outbound traffic takes: Direct from the Operator's own connection, through a Proxy, or through Tor. Set once for the installation; while it is not Direct, nothing Birdbrain sends leaves directly, and a Capture that Birdbrain renders records which Egress it used and the Operator's label for it. It hides where the Operator is, not what browser is looking. A VPN on the Operator's machine or network leaves the Egress Direct: Birdbrain still sends directly and the VPN carries the traffic.
 _Avoid_: route, VPN mode, anonymous mode.
+
+**Scroll-to-load**:
+An optional phase before a Capture's artifacts are taken in which the page is scrolled to trigger lazy-loaded content. Whether it was requested, whether it ran, and how it ended are recorded in the Manifest Entry; a Scroll-to-load that fails never silently yields a static Capture.
+_Avoid_: scrolling capture, scrolling mode, pre-scroll.
+
+**Bound TLS Details**:
+The TLS security details the browser reported on the response that produced a Capture's bytes, recordable only because the engine was attached before the request was sent (`launched` in a Chromium browser, and `background`). A property of the Capture itself, unlike the TLS Cert Chain. Absent for cached responses, for Firefox, and for `companion` and `duplicate` Captures.
+_Avoid_: capture cert, TLS evidence, cert chain (for this).
 
 **Extracted Text**:
 The plain text pulled from a Capture at ingest: a Derived File whose authoritative copy is the
@@ -293,6 +309,7 @@ _Avoid_: risky change, core change, forensic change.
 - A **Recapture** produces a new **Capture** that supersedes an existing one; both remain visible and neither is overwritten
 - A **Duplicate** is a new **Capture** that links to its source and shares its **Content Hash**; unlike a **Recapture** it observed nothing
 - A **TLS Cert Chain** and a **Wayback Ref** attach to a **Capture** as corroboration only, and bind nothing about the captured transaction
+- **Bound TLS Details** are part of the **Capture** and describe the captured transaction; they never substitute for the **TLS Cert Chain**, which keeps running as the floor
 - Creating or updating a **Selector** triggers the **Selector Lifecycle** to (re)compute **Persisted Matches** for the **Case**'s existing **Captures**, asynchronously
 - A **Foreground Match Preview** is computed in the renderer against the open **Capture**'s text and never touches **Persisted Matches**
 - A **Capture**'s **Extracted Text** is a **Derived File** on disk (authoritative), mirrored to the database for the **Selector Lifecycle** and search

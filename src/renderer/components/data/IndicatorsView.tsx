@@ -23,11 +23,14 @@ export function IndicatorsView({
   caseId,
   category: selectedCategory,
   subcategory: selectedSubcategory,
+  railPicks,
   onSelect
 }: {
   caseId: string
   category: string | null
   subcategory: string | null
+  // Bumped on every rail click, a re-pick of the current node included.
+  railPicks: number
   onSelect: (category: string, subcategory: string | null) => void
 }) {
   const [reprocessing, setReprocessing] = useState(false)
@@ -45,7 +48,7 @@ export function IndicatorsView({
   useEffect(() => {
     setSearchInput('')
     setDebouncedQuery('')
-  }, [selectedCategory, selectedSubcategory])
+  }, [selectedCategory, selectedSubcategory, railPicks])
 
   const { data: searchResults = [], isFetching: searching } = useQuery(
     extractedDataSearchQueryOptions(caseId, debouncedQuery)

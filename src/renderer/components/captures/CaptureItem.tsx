@@ -10,6 +10,9 @@ import {
 } from '@renderer/lib/formatRelativeTime'
 import logoImg from '@renderer/assets/logo.png'
 
+const CHIP_CLASS =
+  'rounded-md border border-border px-1.5 py-px text-[10px] font-medium text-text-faint'
+
 interface CaptureItemProps {
   capture: Capture
   isSelected: boolean
@@ -271,27 +274,37 @@ export function CaptureItem({
             {formatRelativeTime(capture.timestamp, now)}
           </span>
         </div>
-        {matchingSelectors.length > 0 && (
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            {shownSelectors.map((selector) => (
-              <div
-                key={selector.id}
-                className="max-w-[110px] truncate rounded-md border border-border px-1.5 py-px text-[10px] font-medium text-text-faint"
-                title={selector.label || selector.pattern}
-              >
-                {selector.label || selector.pattern}
-              </div>
-            ))}
-            {overflowSelectors.length > 0 && (
-              <div
-                className="rounded-md border border-border px-1.5 py-px text-[10px] font-medium text-text-faint"
-                title={overflowSelectors.map((s) => s.label || s.pattern).join(', ')}
-              >
-                +{overflowSelectors.length}
-              </div>
-            )}
-          </div>
-        )}
+        {/* Always drawn so a row with no matches reserves the chip line and
+            stands as tall as its siblings; the invisible strut takes its
+            height from the same box as a real chip. */}
+        <div data-testid="capture-item-chip-line" className="mt-1.5 flex flex-wrap gap-1">
+          {shownSelectors.map((selector) => (
+            <div
+              key={selector.id}
+              className={`max-w-[110px] truncate ${CHIP_CLASS}`}
+              title={selector.label || selector.pattern}
+            >
+              {selector.label || selector.pattern}
+            </div>
+          ))}
+          {overflowSelectors.length > 0 && (
+            <div
+              className={CHIP_CLASS}
+              title={overflowSelectors.map((s) => s.label || s.pattern).join(', ')}
+            >
+              +{overflowSelectors.length}
+            </div>
+          )}
+          {matchingSelectors.length === 0 && (
+            <span
+              aria-hidden="true"
+              data-testid="capture-item-chip-strut"
+              className={`invisible ${CHIP_CLASS}`}
+            >
+              {'\u00a0'}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   )

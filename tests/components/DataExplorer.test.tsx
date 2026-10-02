@@ -76,7 +76,7 @@ describe('DataExplorer (#1149)', () => {
     const rail = await tree()
     expect(text(rail.getByTestId('data-tree-node-data-sources'))).toContain('Data Sources')
     expect(text(rail.getByTestId('data-tree-node-staging'))).toContain('Staging')
-    for (const group of ['data-sources', 'staging', 'views', 'indicators', 'results']) {
+    for (const group of ['data-sources', 'staging', 'views', 'results']) {
       expect(rail.queryByTestId(`data-tree-count-${group}`)).toBeNull()
     }
     expect(text(rail.getByTestId('data-tree-count-kind:capture'))).toContain('3')
@@ -86,9 +86,7 @@ describe('DataExplorer (#1149)', () => {
     await waitFor(() =>
       expect(text(rail.getByTestId('data-tree-count-keyword-hits'))).toContain('2')
     )
-    await waitFor(() =>
-      expect(text(rail.getByTestId('data-tree-count-indicator-category:emails'))).toContain('1')
-    )
+    expect(text(rail.getByTestId('data-tree-count-indicators'))).toContain('5')
     expect(text(rail.getByTestId('data-tree-count-manifest-ledger'))).toContain('1')
     // One Capture's persisted verify state is tampered; its thumbnail has no
     // persisted state and the renderer infers none for it (X36).
@@ -222,7 +220,7 @@ describe('DataExplorer (#1149)', () => {
     expect(props.queryByText('Collector')).toBeNull()
   })
 
-  it('opens the IOC browser from the Indicators group', async () => {
+  it('keeps the IOC browser reachable as Results > Indicators', async () => {
     renderExplorer()
     fireEvent.click(
       (await tree()).getByTestId('data-tree-node-indicators').querySelector('button:last-of-type')!
@@ -230,30 +228,6 @@ describe('DataExplorer (#1149)', () => {
     expect(await screen.findByPlaceholderText('Search indicators...')).toBeTruthy()
     expect(screen.getByRole('button', { name: /Reprocess/ })).toBeTruthy()
     expect(screen.queryByTestId('artifact-table')).toBeNull()
-  })
-
-  it('keeps the rail and the Indicators columns on one selection', async () => {
-    window.birdbrain.extractedData.subcategories = vi.fn(async () => [
-      { subcategory: 'personal', count: 1 }
-    ])
-    renderExplorer()
-    const rail = await tree()
-    fireEvent.click(
-      (await rail.findByTestId('data-tree-node-indicator-category:emails')).querySelector(
-        'button:last-of-type'
-      )!
-    )
-    // The rail's pick selects the category column and lists its subcategories.
-    expect(await screen.findByText('personal')).toBeTruthy()
-    expect(screen.queryByTestId('artifact-table')).toBeNull()
-
-    // A pick in the columns opens the category in the rail and selects the row.
-    fireEvent.click(screen.getByText('personal'))
-    const sub = await rail.findByTestId('data-tree-node-indicator-subcategory:emails/personal')
-    expect(sub.getAttribute('aria-selected')).toBe('true')
-    expect(
-      rail.getByTestId('data-tree-node-indicator-category:emails').getAttribute('aria-expanded')
-    ).toBe('true')
   })
 
   it('titles the main pane for every node kind, and collapses a subtree from its twist', async () => {

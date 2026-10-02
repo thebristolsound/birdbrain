@@ -261,9 +261,6 @@ export function rowsForNode(
   if (key === 'integrity-exceptions') {
     return anchored.filter((row) => bucketForRow(row, context) === 'exception')
   }
-  // The Indicators view replaces the table under Indicators, so its nodes
-  // name no rows, and a node menu offers no Verify there.
-  if (key === 'indicators' || key.startsWith('indicator-')) return []
   if (key.startsWith('keyword:')) {
     // Matched Exhibits only, no snippet (X39): `selector_matches` stores no
     // offset, and nothing from pooled content can appear here (X15).
@@ -271,7 +268,7 @@ export function rowsForNode(
     if (!matched) return []
     return anchored.filter((row) => row.entity === 'exhibit' && matched.has(row.id))
   }
-  // keyword-hits, manifest-ledger: their content is #1150; until
+  // keyword-hits, indicators, manifest-ledger: their content is #1150; until
   // then they select the anchored list so the table is never a stale subset.
   return anchored
 }

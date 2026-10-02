@@ -457,3 +457,5 @@ ASNs
 Ethereum
 Monero
 [Rr]edactions
+Sigstore
+Rekor

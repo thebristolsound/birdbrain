@@ -524,8 +524,8 @@ test.describe('README screenshots', () => {
     await page.evaluate((id) => {
       window.location.hash = `/cases/${id}/data`
     }, caseId)
-    // The IOC browser lives under Results > Indicators since #1149; the rail
-    // opens on Data Sources, so select the node before waiting on extraction.
+    // The IOC browser is the rail's Indicators group; the rail opens on Data
+    // Sources, so select the group before waiting on extraction.
     await page.getByTestId('data-tree-node-indicators').locator('button').last().click()
     // Wait for extraction results; reprocess if needed.
     const categoriesReady = async () =>

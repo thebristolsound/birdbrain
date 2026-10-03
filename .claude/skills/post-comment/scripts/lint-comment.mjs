@@ -101,6 +101,7 @@ export function lintComment(raw) {
   while (all.length && all[0].trim() === '') all.shift()
   stripDisclosure(all)
   if (!all.length) return ['comment is empty']
+  if (all.some((l) => DISCLOSURE[1].test(l))) findings.push('the disclosure note appears more than once or not last; keep one copy at the end')
 
   const first = all[0].trim()
   const kind = KINDS.find((k) => k.first.test(first))

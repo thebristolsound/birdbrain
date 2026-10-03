@@ -71,7 +71,7 @@ jobs:
           node-version-file: .nvmrc
 
       - name: Install Claude Code CLI
-        run: npm install -g @anthropic-ai/claude-code
+        run: npm install -g @anthropic-ai/claude-code@2.1.288
 
       - name: Collect window
         id: window

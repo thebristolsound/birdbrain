@@ -36,15 +36,23 @@ function Harness() {
     category: null,
     subcategory: null
   })
+  const [railPicks, setRailPicks] = useState(0)
   return (
     <>
-      <button type="button" onClick={() => setPick({ category: 'emails', subcategory: null })}>
+      <button
+        type="button"
+        onClick={() => {
+          setPick({ category: 'emails', subcategory: null })
+          setRailPicks((picks) => picks + 1)
+        }}
+      >
         Rail pick
       </button>
       <IndicatorsView
         caseId="case1"
         category={pick.category}
         subcategory={pick.subcategory}
+        railPicks={railPicks}
         onSelect={(category, subcategory) => setPick({ category, subcategory })}
       />
     </>
@@ -157,6 +165,21 @@ describe('IndicatorsView', () => {
 
   it('leaves search mode when the rail picks a category, so the pick shows', async () => {
     renderExplorer()
+    const input = (await screen.findByPlaceholderText('Search indicators...')) as HTMLInputElement
+    fireEvent.change(input, { target: { value: 'someone' } })
+    expect(await screen.findByText(/No indicators match/)).toBeTruthy()
+
+    fireEvent.click(screen.getByText('Rail pick'))
+
+    expect(await screen.findByText('personal')).toBeTruthy()
+    expect(input.value).toBe('')
+    expect(screen.queryByText(/No indicators match/)).toBeNull()
+  })
+
+  it('leaves search mode when the rail re-picks the category already showing', async () => {
+    renderExplorer()
+    fireEvent.click(await screen.findByText('Rail pick'))
+    expect(await screen.findByText('personal')).toBeTruthy()
     const input = (await screen.findByPlaceholderText('Search indicators...')) as HTMLInputElement
     fireEvent.change(input, { target: { value: 'someone' } })
     expect(await screen.findByText(/No indicators match/)).toBeTruthy()

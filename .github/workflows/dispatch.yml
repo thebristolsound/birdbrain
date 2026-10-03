@@ -130,13 +130,16 @@ jobs:
       # install. The probe is one Haiku call; see the script. The pre-gate's spend
       # cap counts a paid cycle by this step's start (CAP_PAID_STEP in pregate.sh),
       # so rename both together.
+      # Pinned: on 2026-10-02 an unversioned install resolved to 2.1.197 while the
+      # `latest` tag read 2.1.288, and DISPATCH_MODEL needs 2.1.280 or newer. Bump
+      # health.yml and doc-curator.yml with it.
       - name: Claude credential
         if: steps.gate.outputs.run == 'true'
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           CLAUDE_CODE_OAUTH_TOKEN_EXPIRES: ${{ vars.CLAUDE_CODE_OAUTH_TOKEN_EXPIRES }}
         run: |
-          npm install -g @anthropic-ai/claude-code
+          npm install -g @anthropic-ai/claude-code@2.1.288
           bash .github/scripts/health/claude-token.sh
 
       - name: Install system dependencies

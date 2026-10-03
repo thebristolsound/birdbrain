@@ -136,7 +136,8 @@ say that the time zone and language still reveal the Operator's region through a
 ## Consequences
 
 - A verifier release that teaches the optional Egress fields on `capture` entries ships before
-  any build writes them, as its own release.
+  any build writes them, as its own release. Teams on mixed versions therefore face two verifier
+  gaps, schema 4 and then the Egress fields, where the original ruling meant one.
 - A member is an installation (collaborative-cases spec, decision 6), so one signing key appears
   in every Shared Case an Operator joins, and two groups that share a member can link that
   member by key. Whether a member may join with a separate key per Case or per Persona is an

@@ -113,6 +113,17 @@ describe('LinksTab', () => {
     expect(within(rows[1]).queryByTestId('links-in-case')).toBeNull()
   })
 
+  it('badges a same-page link to the viewed Capture as in the Case', async () => {
+    renderTab(
+      result([
+        link({ href: 'https://news.example/held#comments', text: 'Comments', kind: 'same-page' })
+      ]),
+      { cases: [{ id: 'c2', url: 'https://news.example/held', timestamp: '2026-01-01T00:00:00Z' }] }
+    )
+    const [row] = await screen.findAllByTestId('links-row')
+    await waitFor(() => expect(within(row).queryByTestId('links-in-case')).not.toBeNull())
+  })
+
   it('filters by search text and by external only', async () => {
     renderTab(
       result([

@@ -27,12 +27,18 @@ export function filterLinks(
   const ownHost = hostOf(captureUrl)
   return links.filter((link) => {
     if (externalOnly) {
-      if (link.kind !== 'http') return false
-      if (hostOf(link.href) === ownHost) return false
+      // By host, not kind: a same-page link inside a cross-origin frame is still external.
+      const host = hostOf(link.href)
+      if (host === null || host === ownHost) return false
     }
     if (!needle) return true
     return link.text.toLowerCase().includes(needle) || link.href.toLowerCase().includes(needle)
   })
+}
+
+/** Whether a destination is an http(s) URL, whatever kind the extractor gave it. */
+export function isWebHref(href: string): boolean {
+  return hostOf(href) !== null
 }
 
 /** A destination cut around its host, so the host can be shown apart from the rest. */

@@ -1,12 +1,12 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, Search } from 'lucide-react'
 import type { Capture, CaptureLink } from '@shared/types'
-import { resolveCaptureForUrl } from '@shared/urlCanonicalize'
+import { canonicalizeUrl } from '@shared/urlCanonicalize'
 import { captureLinksQueryOptions, capturesQueryOptions } from '@renderer/lib/api/captures'
 import { EntityContextMenu } from '@renderer/components/contextmenu/EntityContextMenu'
 import { useLinkMenuTarget, type LinkHit } from '@renderer/components/captures/useLinkMenuTarget'
-import { filterLinks, splitAtHost } from '@renderer/components/captures/linksTabModel'
+import { filterLinks, isWebHref, splitAtHost } from '@renderer/components/captures/linksTabModel'
 
 const KIND_LABELS: Record<CaptureLink['kind'], string> = {
   http: 'web',
@@ -103,6 +103,16 @@ export function LinksTab({ capture }: { capture: Capture }) {
   const [query, setQuery] = useState('')
   const [externalOnly, setExternalOnly] = useState(false)
   const [hit, setHit] = useState<LinkHit>(NO_HIT)
+  // One canonical-URL pass per link list and Case, not one scan of the Case per row on
+  // every render. Same-page web links count too: the viewed Capture holds them.
+  const inCaseHrefs = useMemo(() => {
+    const captured = new Set(captures.map(({ url }) => canonicalizeUrl(url)))
+    const hrefs = new Set<string>()
+    for (const { href } of data?.links ?? []) {
+      if (isWebHref(href) && captured.has(canonicalizeUrl(href))) hrefs.add(href)
+    }
+    return hrefs
+  }, [data, captures])
 
   if (!isMhtml) {
     return (
@@ -212,10 +222,10 @@ export function LinksTab({ capture }: { capture: Capture }) {
           >
             {shown.map((link, index) => (
               <LinkRow
-                key={`${link.frame} ${link.href} ${link.text}`}
+                key={`${link.frame} ${link.documentUrl} ${link.href} ${link.text}`}
                 link={link}
                 index={index}
-                inCase={link.kind === 'http' && resolveCaptureForUrl(link.href, captures) !== null}
+                inCase={inCaseHrefs.has(link.href)}
               />
             ))}
           </ul>

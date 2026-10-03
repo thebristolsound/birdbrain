@@ -55,7 +55,22 @@ describe('filterLinks', () => {
   })
 
   it('treats every web link as external when the Capture URL has no host', () => {
-    expect(filterLinks(links, { query: '', externalOnly: true }, 'not a url')).toHaveLength(3)
+    expect(filterLinks(links, { query: '', externalOnly: true }, 'not a url')).toHaveLength(4)
+  })
+
+  it('keeps a same-page link inside a frame from another host as external', () => {
+    const framed = {
+      ...link('https://widgets.example/frame#top', 'Frame top', 'same-page'),
+      frame: 'subframe' as const,
+      documentUrl: 'https://widgets.example/frame'
+    }
+    expect(
+      filterLinks(
+        [...links, framed],
+        { query: '', externalOnly: true },
+        'https://news.example/'
+      ).map((l) => l.text)
+    ).toEqual(['Gamma', 'Frame top'])
   })
 })
 

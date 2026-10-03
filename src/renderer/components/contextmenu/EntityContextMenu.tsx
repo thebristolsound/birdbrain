@@ -30,6 +30,8 @@ import {
 interface EntityContextMenuProps {
   target: EntityMenuTarget
   children: ReactNode
+  /** Classes for the trigger wrapper, for a surface that must fill its parent. */
+  className?: string
 }
 
 type Defer = (run: () => void) => void
@@ -106,7 +108,7 @@ function Entry({
  * decides the menu. Adopting a surface is therefore one wrapper and one target
  * object, with no menu markup and no focus or Escape handling of its own.
  */
-export function EntityContextMenu({ target, children }: EntityContextMenuProps) {
+export function EntityContextMenu({ target, children, className }: EntityContextMenuProps) {
   const [editing, setEditing] = useState(false)
   const [drilled, setDrilled] = useState<string | null>(null)
   const [hidden, setHidden] = useState(readHiddenActions)
@@ -144,7 +146,9 @@ export function EntityContextMenu({ target, children }: EntityContextMenuProps) 
           fills. The trigger has to be a real element: the menu opens at the
           pointer, so it needs the event, not just the children. */}
       <ContextMenuTrigger asChild>
-        <div data-context-menu-kind={target.kind}>{children}</div>
+        <div data-context-menu-kind={target.kind} className={className}>
+          {children}
+        </div>
       </ContextMenuTrigger>
       <ContextMenuContent
         aria-label={header.ariaLabel}

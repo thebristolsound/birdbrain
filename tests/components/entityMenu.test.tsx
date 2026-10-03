@@ -7,6 +7,7 @@ import {
   entityMenuHeader,
   exhibitMenuEntries,
   isSubmenu,
+  linkMenuEntries,
   nodeMenuEntries,
   noteMenuEntries,
   selectorMenuEntries,
@@ -15,6 +16,7 @@ import {
   type CaptureMenuActions,
   type CaptureMenuTarget,
   type ExhibitMenuTarget,
+  type LinkMenuTarget,
   type NodeMenuTarget,
   type StagedMenuTarget,
   type MenuAction,
@@ -23,6 +25,7 @@ import {
   type SelectorMenuTarget,
   type TagMenuTarget
 } from '@renderer/components/contextmenu/entityMenu'
+import { captureLinkBlockReason } from '@renderer/components/captures/guestLink'
 
 function captureActions(): CaptureMenuActions {
   return {
@@ -552,5 +555,139 @@ describe('data screen kinds', () => {
       ...stagedMenuEntries(stagedTarget())
     ]
     expect(all.some((e) => /reveal|folder|absolute/i.test(e.label))).toBe(false)
+  })
+})
+
+// #1708 D5. The target's reason comes from the same function the viewer uses, so
+// these cases pin the address rules and the menu together.
+describe('link menu', () => {
+  function linkTarget(overrides: Partial<LinkMenuTarget> = {}): LinkMenuTarget {
+    const linkUrl = overrides.linkUrl ?? 'https://example.com/a'
+    return {
+      kind: 'link',
+      linkUrl,
+      linkText: 'Example',
+      imageUrl: '',
+      selectionText: '',
+      hasCapturedCopy: false,
+      captureBlockedReason: captureLinkBlockReason(linkUrl),
+      actions: {
+        copyLinkAddress: vi.fn(),
+        copyLinkText: vi.fn(),
+        copyImageAddress: vi.fn(),
+        copyText: vi.fn(),
+        openCapturedCopy: vi.fn(),
+        captureLink: vi.fn()
+      },
+      ...overrides
+    }
+  }
+
+  it('offers the two copies and Capture link on a web link', () => {
+    const target = linkTarget()
+    const entries = linkMenuEntries(target)
+    expect(labels(entries)).toEqual(['Copy link address', 'Copy link text', 'Capture link'])
+    expect(actionById(entries, 'link-capture').disabled).toBe(false)
+    actionById(entries, 'link-capture').run()
+    actionById(entries, 'link-copy-address').run()
+    expect(target.actions.captureLink).toHaveBeenCalledOnce()
+    expect(target.actions.copyLinkAddress).toHaveBeenCalledOnce()
+    expect(entityMenuEntries(target).map((e) => e.id)).toEqual(entries.map((e) => e.id))
+  })
+
+  it('offers Open captured copy only when the Case holds one', () => {
+    expect(labels(linkMenuEntries(linkTarget({ hasCapturedCopy: true })))).toEqual([
+      'Copy link address',
+      'Copy link text',
+      'Open captured copy',
+      'Capture link'
+    ])
+    const target = linkTarget({ hasCapturedCopy: true })
+    actionById(linkMenuEntries(target), 'link-open-captured').run()
+    expect(target.actions.openCapturedCopy).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    ['mailto:someone@example.com', 'Not a web address'],
+    ['tel:+15550100', 'Not a web address'],
+    ['javascript:alert(1)', 'Not a web address'],
+    ['ftp://example.com/file', 'Not a web address'],
+    ['http://localhost:19845/api/captures', 'Points at this computer'],
+    ['http://app.localhost/', 'Points at this computer'],
+    ['http://127.0.0.1/', 'Points at a loopback address'],
+    ['http://2130706433/', 'Points at a loopback address'],
+    ['http://0.0.0.0/', 'Points at an unspecified address'],
+    ['http://10.1.2.3/', 'Points at a private address'],
+    ['http://172.16.0.1/', 'Points at a private address'],
+    ['http://172.31.255.255/', 'Points at a private address'],
+    ['http://192.168.1.1/', 'Points at a private address'],
+    ['http://169.254.169.254/latest/meta-data', 'Points at a link-local address'],
+    ['http://[::1]/', 'Points at a loopback address'],
+    ['http://[::]/', 'Points at an unspecified address'],
+    ['http://[::ffff:127.0.0.1]/', 'Points at a loopback address'],
+    ['http://[::ffff:192.168.0.1]/', 'Points at a private address'],
+    ['http://[fd12:3456::1]/', 'Points at a private address'],
+    ['http://[fc00::1]/', 'Points at a private address'],
+    ['http://[fe80::1]/', 'Points at a link-local address']
+  ])('never offers an enabled Capture link for %s', (linkUrl, reason) => {
+    const entries = linkMenuEntries(linkTarget({ linkUrl }))
+    const capture = actionById(entries, 'link-capture')
+    expect(capture.disabled).toBe(true)
+    expect(capture.label).toBe(`Capture link (${reason})`)
+    expect(labels(entries).slice(0, 2)).toEqual(['Copy link address', 'Copy link text'])
+  })
+
+  it.each([
+    'https://example.com/',
+    'http://172.15.0.1/',
+    'http://172.32.0.1/',
+    'http://192.169.0.1/',
+    'http://8.8.8.8/',
+    'https://[2001:db8::1]/',
+    'https://xn--bcher-kva.example/'
+  ])('enables Capture link for the public address %s', (linkUrl) => {
+    expect(actionById(linkMenuEntries(linkTarget({ linkUrl })), 'link-capture').disabled).toBe(
+      false
+    )
+  })
+
+  it('adds Copy image address in front of the link actions for an image inside a link', () => {
+    const target = linkTarget({ imageUrl: 'https://example.com/i.png', linkText: '' })
+    const entries = linkMenuEntries(target)
+    expect(labels(entries)).toEqual([
+      'Copy image address',
+      'Copy link address',
+      'Copy link text',
+      'Capture link'
+    ])
+    // An image link has no text of its own to copy.
+    expect(actionById(entries, 'link-copy-text').disabled).toBe(true)
+    actionById(entries, 'link-copy-image').run()
+    expect(target.actions.copyImageAddress).toHaveBeenCalledOnce()
+    expect(entityMenuHeader(target).ariaLabel).toBe('Link actions: https://example.com/a')
+  })
+
+  it('offers only Copy image address for an image outside a link', () => {
+    const target = linkTarget({ linkUrl: '', imageUrl: 'https://example.com/i.png' })
+    expect(labels(linkMenuEntries(target))).toEqual(['Copy image address'])
+    expect(entityMenuHeader(target)).toMatchObject({
+      title: 'https://example.com/i.png',
+      subtitle: 'image',
+      ariaLabel: 'Image actions: https://example.com/i.png'
+    })
+  })
+
+  it('offers only Copy text for a selection outside a link', () => {
+    const target = linkTarget({ linkUrl: '', selectionText: 'a quoted passage' })
+    const entries = linkMenuEntries(target)
+    expect(labels(entries)).toEqual(['Copy text'])
+    actionById(entries, 'link-copy-selection').run()
+    expect(target.actions.copyText).toHaveBeenCalledOnce()
+    expect(entityMenuHeader(target).ariaLabel).toBe('Selection actions: a quoted passage')
+  })
+
+  it('never offers to open a link or send it to an external browser', () => {
+    const entries = linkMenuEntries(linkTarget({ hasCapturedCopy: true }))
+    expect(entries.some((e) => /external|browser|wayback|follow/i.test(e.label))).toBe(false)
   })
 })

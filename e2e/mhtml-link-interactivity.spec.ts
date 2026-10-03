@@ -161,6 +161,7 @@ async function recordGuestEvents(electronApp: ElectronApplication) {
       wc.on('did-frame-navigate', (_e, url, _code, _status, main) => {
         push({ ev: 'commit', url, main })
       })
+      wc.on('did-navigate-in-page', (_e, url, main) => push({ ev: 'in-page', url, main }))
       wc.on('update-target-url', (_e, url) => push({ ev: 'target', url }))
     })
   })
@@ -190,6 +191,41 @@ async function guestMouse(
     guest.sendInputEvent({ type: 'mouseDown', x, y, button, clickCount: 1, modifiers })
     guest.sendInputEvent({ type: 'mouseUp', x, y, button, clickCount: 1, modifiers })
   }, input)
+}
+
+// Waits for the guest's load to finish, which is its iframe part committing, and
+// returns the events it raised on the way.
+async function waitForGuestLoad(electronApp: ElectronApplication): Promise<GuestEvent[]> {
+  const load: GuestEvent[] = []
+  await expect
+    .poll(async () => {
+      load.push(...(await takeGuestEvents(electronApp)))
+      return load.some((e) => e.ev === 'commit' && e.main === false)
+    })
+    .toBe(true)
+  return load
+}
+
+async function guestState(electronApp: ElectronApplication) {
+  return electronApp.evaluate(({ BrowserWindow, webContents }) => {
+    const guest = webContents.getAllWebContents().find((wc) => wc.getType() === 'webview')
+    if (!guest) throw new Error('no guest webContents')
+    return {
+      url: guest.getURL(),
+      frames: guest.mainFrame.framesInSubtree.map((frame) => frame.url),
+      windows: BrowserWindow.getAllWindows().length,
+      contents: webContents.getAllWebContents().length
+    }
+  })
+}
+
+async function reloadGuest(electronApp: ElectronApplication) {
+  await electronApp.evaluate(({ webContents }) => {
+    webContents
+      .getAllWebContents()
+      .find((wc) => wc.getType() === 'webview')
+      ?.reload()
+  })
 }
 
 async function openLinksCapture(page: Page, sentinel: Sentinel, fileTarget: string) {
@@ -244,13 +280,7 @@ test.describe('stored-page viewer links', () => {
     test.setTimeout(120000)
     await recordGuestEvents(electronApp)
     await openLinksCapture(page, sentinel, fileTarget)
-    const load: GuestEvent[] = []
-    await expect
-      .poll(async () => {
-        load.push(...(await takeGuestEvents(electronApp)))
-        return load.some((e) => e.ev === 'commit' && e.main === false)
-      })
-      .toBe(true)
+    const load = await waitForGuestLoad(electronApp)
     // The src load and the archive's own iframe part both commit without raising
     // will-frame-navigate, which is why the guard keys on the commit rather than on
     // its own allow, and why blocking every frame after it leaves the iframe intact.
@@ -261,6 +291,215 @@ test.describe('stored-page viewer links', () => {
     await expect
       .poll(async () => (await takeGuestEvents(electronApp)).map((e) => e.ev + ' ' + e.url))
       .toContain(`target ${sentinel.origin}/absolute-sub`)
+    expect(sentinel.requests).toEqual([])
+  })
+
+  // #1708 D2, D17. Every link is live to the pointer now, so this is the click matrix
+  // the removed stylesheet used to stand in front of.
+  test('no click in the main frame leaves the stored page, opens a window or reaches the network', async ({
+    electronApp,
+    page
+  }) => {
+    test.setTimeout(180000)
+    await recordGuestEvents(electronApp)
+    await openLinksCapture(page, sentinel, fileTarget)
+    await waitForGuestLoad(electronApp)
+    const before = await guestState(electronApp)
+
+    const clicks: { button: Button; modifiers?: Modifier[] }[] = [
+      { button: 'left' },
+      { button: 'middle' },
+      { button: 'left', modifiers: ['control'] },
+      { button: 'left', modifiers: ['shift'] }
+    ]
+    const rows: RowName[] = ['relative', 'absolute', 'blank', 'file', 'form', 'public']
+    for (const name of rows) {
+      for (const click of clicks) {
+        await guestMouse(electronApp, { x: ROW.x, y: rowY(name, 'main'), ...click })
+        await page.waitForTimeout(300)
+        const events = await takeGuestEvents(electronApp)
+        const label = `${name} ${click.button} ${click.modifiers?.join('+') ?? ''}`
+        expect(
+          events.filter((e) => e.ev === 'commit'),
+          label
+        ).toEqual([])
+        expect(
+          events.filter((e) => e.ev === 'in-page'),
+          label
+        ).toEqual([])
+        expect(await guestState(electronApp), label).toEqual(before)
+      }
+    }
+    // A left click on an http(s) link reached the guard, which refused it: the
+    // will-frame-navigate entry is the guard being asked, and no commit followed.
+    await guestMouse(electronApp, { x: ROW.x, y: rowY('absolute', 'main'), button: 'left' })
+    await expect
+      .poll(async () =>
+        (await takeGuestEvents(electronApp)).filter((e) => e.ev === 'will-frame-navigate')
+      )
+      .toEqual([{ ev: 'will-frame-navigate', url: `${sentinel.origin}/absolute-main`, main: true }])
+
+    // A fragment link in the main frame is not a same-document jump. Chromium resolves
+    // it against the part's Content-Location, the page's original address, which is
+    // not the stored file the frame shows, so it is a load of another document and
+    // the guard refuses it: the page does not scroll.
+    await guestMouse(electronApp, { x: ROW.x, y: rowY('fragment', 'main'), button: 'left' })
+    await expect
+      .poll(async () =>
+        (await takeGuestEvents(electronApp)).filter((e) => e.ev !== 'target' && e.ev !== 'start')
+      )
+      .toEqual([
+        { ev: 'will-frame-navigate', url: `${sentinel.origin}/page.html#far-main`, main: true }
+      ])
+    expect(await guestState(electronApp)).toEqual(before)
+
+    expect(sentinel.requests).toEqual([])
+  })
+
+  // Chromium serves an MHTML document's subframes from the archive itself and never
+  // asks the navigation throttles, so will-frame-navigate is not raised for them and
+  // the guard is not consulted. What this pins is what a subframe click can do anyway:
+  // nothing is fetched, no window opens, the main frame stays put, and the frame never
+  // reaches a local file. A link to another document can replace the iframe's content
+  // with an error page; that was true before #1708, since the stylesheet never reached
+  // a subframe either.
+  test('a click in the archive iframe reaches no network, no window and no local file', async ({
+    electronApp,
+    page
+  }) => {
+    test.setTimeout(180000)
+    await recordGuestEvents(electronApp)
+    await openLinksCapture(page, sentinel, fileTarget)
+    await waitForGuestLoad(electronApp)
+    const before = await guestState(electronApp)
+    expect(before.frames).toEqual([before.url, 'cid:frame-sub@mhtml.blink'])
+
+    const rows: RowName[] = ['relative', 'absolute', 'blank', 'file', 'form', 'public']
+    const subframeCommits: Record<string, string[]> = {}
+    for (const name of rows) {
+      for (const button of ['left', 'middle'] as const) {
+        await guestMouse(electronApp, { x: ROW.x, y: rowY(name, 'sub'), button })
+        await page.waitForTimeout(400)
+        const events = await takeGuestEvents(electronApp)
+        const label = `${name} ${button}`
+        expect(
+          events.filter((e) => e.ev === 'will-frame-navigate'),
+          label
+        ).toEqual([])
+        expect(
+          events.filter((e) => e.ev === 'commit' && e.main),
+          label
+        ).toEqual([])
+        const after = await guestState(electronApp)
+        expect(after.url, label).toBe(before.url)
+        expect(after.windows, label).toBe(before.windows)
+        expect(after.contents, label).toBe(before.contents)
+        expect(
+          after.frames.some((url) => url.startsWith('file:') && url !== before.url),
+          label
+        ).toBe(false)
+        subframeCommits[label] = events.filter((e) => e.ev === 'commit').map((e) => e.url)
+        if (subframeCommits[label].length > 0) {
+          await reloadGuest(electronApp)
+          await waitForGuestLoad(electronApp)
+        }
+      }
+    }
+    // In the iframe a fragment link is a same-document jump, which goes ahead.
+    await guestMouse(electronApp, { x: ROW.x, y: rowY('fragment', 'sub'), button: 'left' })
+    await expect
+      .poll(async () => (await takeGuestEvents(electronApp)).filter((e) => e.ev === 'in-page'))
+      .toEqual([{ ev: 'in-page', url: 'cid:frame-sub@mhtml.blink#far-sub', main: false }])
+
+    expect(sentinel.requests).toEqual([])
+    // What a subframe click commits is Chromium's error page or blocked placeholder for
+    // the link's own address, with no request behind it.
+    for (const [label, commits] of Object.entries(subframeCommits)) {
+      for (const url of commits) {
+        const known =
+          url === 'about:blank#blocked' ||
+          url.startsWith(`${sentinel.origin}/`) ||
+          url.startsWith('https://example.test/')
+        expect(known, `${label} committed ${url}`).toBe(true)
+      }
+    }
+  })
+
+  test('hover shows the destination, and each right-click opens the menu on its own link', async ({
+    electronApp,
+    page
+  }) => {
+    test.setTimeout(120000)
+    await recordGuestEvents(electronApp)
+    await openLinksCapture(page, sentinel, fileTarget)
+    await waitForGuestLoad(electronApp)
+
+    const bubble = page.getByTestId('link-status-bubble')
+    await guestMouse(electronApp, { x: ROW.x, y: rowY('absolute', 'main') })
+    await expect(bubble).toHaveText(`${sentinel.origin}/absolute-main`)
+    await guestMouse(electronApp, { x: 900, y: 200 })
+    await expect(bubble).toHaveCount(0)
+
+    const menu = page.getByTestId('entity-context-menu')
+    const capture = page.getByTestId('context-menu-item-link-capture')
+    // Right-clicks a link and checks the menu opened on it, at the pointer. Radix
+    // places the menu's corner on the point it is given, so a placement that missed
+    // the pane's scroll or the guest's position lands far from the link.
+    const rightClick = async (name: RowName, frame: 'main' | 'sub', label: string) => {
+      const y = rowY(name, frame)
+      await guestMouse(electronApp, { x: ROW.x, y, button: 'right' })
+      await expect(menu).toHaveAttribute('aria-label', label)
+      const guestBox = (await page.getByTestId('mhtml-viewer').boundingBox())!
+      const menuBox = (await menu.boundingBox())!
+      expect(Math.abs(menuBox.x - (guestBox.x + ROW.x)), `${label} x`).toBeLessThan(8)
+      expect(Math.abs(menuBox.y - (guestBox.y + y)), `${label} y`).toBeLessThan(8)
+      return guestBox
+    }
+    // Chromium re-measures where the guest sits shortly after the pane scrolls or the
+    // window resizes, and reports a right-click from that measurement. The pause
+    // stands for the Operator's own between scrolling and right-clicking.
+    const settle = () => page.waitForTimeout(400)
+    const scrollPane = async (top: number) => {
+      const scrolled = await page.evaluate((amount) => {
+        const pane = document.querySelector('[data-testid="mhtml-viewer-scroll"]') as HTMLElement
+        pane.scrollTop = amount
+        return pane.scrollTop
+      }, top)
+      await settle()
+      return scrolled
+    }
+
+    expect(await scrollPane(120)).toBeGreaterThan(0)
+    await rightClick('public', 'main', 'Link actions: https://example.test/main')
+    await expect(capture).toHaveText('Capture link')
+    await expect(capture).not.toHaveAttribute('data-disabled', '')
+
+    // A second right-click, on another link, opens on that link.
+    await rightClick('absolute', 'main', `Link actions: ${sentinel.origin}/absolute-main`)
+    await expect(capture).toHaveText('Capture link (Points at a loopback address)')
+    await expect(capture).toHaveAttribute('data-disabled', '')
+    await page.keyboard.press('Escape')
+    await expect(menu).toHaveCount(0)
+
+    // A window resize while scrolled, and then a collapsed details column, each move
+    // the guest on screen.
+    await page.setViewportSize({ width: 1250, height: 850 })
+    expect(await scrollPane(60)).toBeGreaterThan(0)
+    await page.setViewportSize({ width: 1200, height: 800 })
+    await settle()
+    await rightClick('public', 'sub', 'Link actions: https://example.test/sub')
+    await page.keyboard.press('Escape')
+    await page.getByRole('button', { name: 'Collapse details panel' }).first().click()
+    await settle()
+    const guestBox = await rightClick(
+      'relative',
+      'main',
+      `Link actions: ${sentinel.origin}/next-main.html`
+    )
+
+    // A real pointer-down on the guest closes it too.
+    await page.mouse.click(guestBox.x + 900, guestBox.y + 200)
+    await expect(menu).toHaveCount(0)
     expect(sentinel.requests).toEqual([])
   })
 })

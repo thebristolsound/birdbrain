@@ -308,7 +308,7 @@ export function CaptureViewer() {
               <ArchivedCopyBanner timestamp={capture.timestamp} />
               <div className="min-h-0 flex-1 overflow-hidden">
                 {capture.format === 'mhtml' ? (
-                  <MhtmlViewer captureId={capture.id} />
+                  <MhtmlViewer captureId={capture.id} caseId={capture.caseId} />
                 ) : (
                   <LegacyHtmlViewer captureId={capture.id} />
                 )}

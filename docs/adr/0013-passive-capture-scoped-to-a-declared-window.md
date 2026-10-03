@@ -3,9 +3,9 @@
 **Amended 2026-10-02 by
 [ADR-0037](0037-passive-capture-returns-in-the-launched-browser.md):** the Capture Scope is a
 browser Birdbrain launched, not a window in the Operator's everyday browser, and the boundary is
-one the engine enforces rather than an attested declaration. The method values are `launched`
-and `launched-passive`, not the three below. The reasons for a scope and the freeze-fix
-prerequisite stand.
+one the engine enforces rather than an attested declaration. `launched` and `launched-passive`
+replace `extension-manual` and `extension-passive` below; `background` stays. The reasons for a
+scope and the freeze-fix prerequisite stand.
 
 **Status:** Accepted
 

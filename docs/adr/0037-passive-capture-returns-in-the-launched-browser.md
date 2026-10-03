@@ -45,7 +45,8 @@ legacy value on Captures already written.
 ADR-0013 stands on why passive capture needs a scope, on rejecting a tab and a domain allowlist,
 and on the main-process freeze fix being a prerequisite. Its designated window becomes the
 launched browser, its attested-declaration wording no longer applies to Captures taken there, and
-its three method values become the two in the decision.
+its `extension-manual` and `extension-passive` become `launched` and `launched-passive`.
+`background` stays as ADR-0013 and ADR-0034 have it.
 
 ## Considered options
 

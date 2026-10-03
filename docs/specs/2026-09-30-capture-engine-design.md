@@ -48,13 +48,20 @@ All of this is in `src/main/services/backgroundRenderer.ts` unless another path 
 
 ### Transaction Record
 
-Load `about:blank`, then enable the CDP `Network` domain, then `wc.loadURL` the target. The
-[probe](2026-10-02-capture-engine-probe-spike.md) found that enabling the domain on a window
-that has not navigated fails. Set the buffer limits `Network.enable` accepts
+Load `about:blank`, then enable the CDP `Network` domain, then `wc.loadURL` the target. In the
+[probe](2026-10-02-capture-engine-probe-spike.md), `Network.enable` sent to a window that had
+not navigated never answered, in four of four isolated runs. Set the buffer limits `Network.enable` accepts
 (`maxTotalBufferSize`, `maxResourceBufferSize`) from a Birdbrain size budget. For
 each exchange, keep what `Network.requestWillBeSent`, `Network.requestWillBeSentExtraInfo`,
 `Network.responseReceived`, and `Network.responseReceivedExtraInfo` report, and fetch the body
-with `Network.getResponseBody` after `Network.loadingFinished`.
+with `Network.getResponseBody` after `Network.loadingFinished`. A redirect reuses the request id
+for its next hop, so each `Network.requestWillBeSent` starts its own exchange, and its
+`redirectResponse` closes the one before it.
+
+When a request reports `hasPostData` without `postData`, which the browser does for a long
+body, fetch it with `Network.getRequestPostData`. That command omits the files of a multipart
+request, so a request whose body is still not complete keeps what was returned and is listed in
+the inventory as an incomplete request body.
 
 Stop collecting at the moment the screenshot and MHTML are taken. Write one WARC (ISO
 28500:2017) beside the MHTML, named for the capture id like the other artifacts:
@@ -72,11 +79,13 @@ Stop collecting at the moment the screenshot and MHTML are taken. Write one WARC
 
 The inventory, not the WARC, accounts for everything that has no complete exchange: a response
 served from the browser cache, a request the consent filter cancelled, a request that failed, a
-request still in flight when collection stopped, and a body that was over budget or that the
-browser no longer held.
+request still in flight when collection stopped, a body that was over budget or that the
+browser no longer held, and a request body the browser did not hand over in full.
 
 The file is written with `warcio` (the `webrecorder/warcio.js` package), which the maintainer
-approved on 2026-10-02 as a new dependency. Tests read the output back with a reader that is not
+approved on 2026-10-02 as a new dependency. Its licence is not settled: the npm metadata of
+`2.4.12` says Apache-2.0 and its `LICENSE` file is MIT. The slice that adds it resolves which
+applies before the dependency lands. Tests read the output back with a reader that is not
 `warcio`.
 
 **What the record is and is not.** The browser hands over bodies after it has removed the
@@ -106,9 +115,9 @@ certificate timestamps). They are a summary the browser produced, not the certif
 they do not support independent signature checking.
 
 Record them as a new optional field beside the existing `tls` field, never inside it. The
-corroboration re-fetch is unchanged: it runs as it does today, and it is skipped while the
-Egress is not Direct
-([ADR-0032](../adr/0032-route-app-egress-but-do-not-disguise-the-browser.md)). When the main document came from the cache, the field is
+corroboration re-fetch is unchanged: it runs as it does today. Once the Egress exists, it is
+skipped while the Egress is not Direct
+([ADR-0032](../adr/0032-route-app-egress-but-do-not-disguise-the-browser.md), #1695). When the main document came from the cache, the field is
 absent and the inventory says why.
 
 ### PDF
@@ -140,7 +149,8 @@ The renderer enables no CDP event domain on purpose. The
 [persona spike](2026-09-19-persona-bot-detection-spike.md) names one page-visible effect of an
 attached debugger, tied to the `Runtime` domain, and did not test with the debugger attached.
 This slice enables `Network`. The [probe](2026-10-02-capture-engine-probe-spike.md) ran the
-window configuration of the background renderer with the domain off and on and saw no difference in what the
+window configuration of the background renderer, on Electron 44.4.5 with the app-level
+`no-sandbox` switch its test environment needs, with the domain off and on and saw no difference in what the
 page recorded, including the `Error.stack` getter check. Rerun it on each Electron upgrade.
 
 ## Validation
@@ -174,9 +184,11 @@ an evidence-affecting method. Against a local fixture server that serves known b
 
 - **Credentials in the record.** Replaced with a marker before writing; the inventory names the
   headers ([ADR-0036](../adr/0036-credential-header-values-never-enter-a-transaction-record.md)).
-- **The WARC writer.** `warcio`, approved as a dependency on 2026-10-02.
-- **PDF in a hidden window.** `webContents.printToPDF` works there; measured in the
-  [probe](2026-10-02-capture-engine-probe-spike.md).
+- **The WARC writer.** `warcio`, approved as a dependency on 2026-10-02; its licence is resolved
+  in the slice that adds it.
+- **PDF in a hidden window.** `webContents.printToPDF` works there: the
+  [probe](2026-10-02-capture-engine-probe-spike.md) parsed the output as one page holding the
+  page's text.
 
 ## Open questions
 

@@ -51,11 +51,11 @@ _Avoid_: backup, dump, case file.
 Clauses marked _Planned_ describe decisions in [`ADR-0034`](docs/adr/0034-the-app-acquires-and-the-extension-is-a-companion.md) and [`ADR-0035`](docs/adr/0035-one-transaction-record-per-capture.md) that no build implements yet. Until they ship, the extension acquires every operator-witnessed Capture itself.
 
 **Capture**:
-The primary artifacts taken from one observation of a single web page, stored on disk under its Case directory and indexed in the database: MHTML and a screenshot today. Legacy Captures may be HTML only. _Planned:_ a Transaction Record and a PDF join the artifacts, and the Manifest Entry inventories which artifacts are present and why any is absent.
+The primary artifacts taken from one observation of a single web page, stored on disk under its Case directory and indexed in the database: MHTML and, as available, a screenshot today. Legacy Captures may be HTML only. _Planned:_ a Transaction Record and a PDF join the artifacts, and the Manifest Entry inventories which artifacts are present and why any is absent.
 _Avoid_: page, snapshot, record.
 
 **Transaction Record**:
-_Planned._ The WARC holding the HTTP requests and responses of the observed navigation that the browser handed over complete, from its first request to the moment of Capture. The Capture's inventory accounts for every exchange the record lacks: one served from the cache, failed, cancelled, still in flight, or over the size budget. The record holds what the browser's network stack handed over (decoded bodies, headers as parsed), never bytes read off the wire. The values of credential-bearing headers (`Cookie`, `Set-Cookie`, `Authorization`, `Proxy-Authorization`) are replaced with a marker before the record is written, and the inventory names them ([`ADR-0036`](docs/adr/0036-credential-header-values-never-enter-a-transaction-record.md)). Present only when recording was on before the page loaded; never reconstructed afterwards.
+_Planned._ The WARC holding the HTTP requests and responses of the observed navigation that the browser handed over complete, from its first request to the moment of Capture. The Capture's inventory accounts for every exchange the record lacks or holds in part: one served from the cache, failed, cancelled, still in flight, or over the size budget, and a request whose body the browser did not hand over in full. The record holds what the browser's network stack handed over (decoded bodies, headers as parsed), never bytes read off the wire. The values of four standard credential headers (`Cookie`, `Set-Cookie`, `Authorization`, `Proxy-Authorization`) are replaced with a marker before the record is written, and the inventory names them ([`ADR-0036`](docs/adr/0036-credential-header-values-never-enter-a-transaction-record.md)); a secret in any other header, a URL, or a body stays in the record. Present only when recording was on before the page loaded; never reconstructed afterwards.
 _Avoid_: network log, HAR, archive, WARC file (as the general term).
 
 **Capture Server**:
@@ -99,7 +99,7 @@ The network path Birdbrain's outbound traffic takes: Direct from the Operator's 
 _Avoid_: route, VPN mode, anonymous mode.
 
 **Scroll-to-load**:
-An optional phase before a Capture's artifacts are taken in which the page is scrolled to trigger lazy-loaded content. _Planned:_ whether it was requested, whether it ran, and how it ended are recorded in the Manifest Entry, and a Scroll-to-load that fails never silently yields a static Capture. Today neither holds (#1667).
+An optional phase before a Capture's artifacts are taken in which the page is scrolled to trigger lazy-loaded content. _Planned:_ whether it was requested, whether it ran, and how it ended are recorded in the Manifest Entry, and a Scroll-to-load that fails never silently yields a static Capture. Today the background renderer already fails closed when a scroll step fails, and records nothing; the extension's scrolling capture does neither (#1667).
 _Avoid_: scrolling capture, scrolling mode, pre-scroll.
 
 **Bound TLS Details**:
@@ -311,7 +311,7 @@ _Avoid_: risky change, core change, forensic change.
 - A **Recapture** produces a new **Capture** that supersedes an existing one; both remain visible and neither is overwritten
 - A **Duplicate** is a new **Capture** that links to its source and shares its **Content Hash**; unlike a **Recapture** it observed nothing
 - A **TLS Cert Chain** and a **Wayback Ref** attach to a **Capture** as corroboration only, and bind nothing about the captured transaction
-- **Bound TLS Details** are part of the **Capture** and describe the captured transaction; they never substitute for the **TLS Cert Chain**, which stays the floor wherever it runs and is skipped while the **Egress** is not Direct
+- **Bound TLS Details** are part of the **Capture** and describe the captured transaction; they never substitute for the **TLS Cert Chain**, which stays the floor wherever it runs; _planned:_ it is skipped while the **Egress** is not Direct (#1695)
 - Creating or updating a **Selector** triggers the **Selector Lifecycle** to (re)compute **Persisted Matches** for the **Case**'s existing **Captures**, asynchronously
 - A **Foreground Match Preview** is computed in the renderer against the open **Capture**'s text and never touches **Persisted Matches**
 - A **Capture**'s **Extracted Text** is a **Derived File** on disk (authoritative), mirrored to the database for the **Selector Lifecycle** and search

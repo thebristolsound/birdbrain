@@ -1,4 +1,4 @@
-# Credential header values never enter a Transaction Record
+# Four standard credential header values never enter a Transaction Record
 
 **Status:** Accepted
 
@@ -23,8 +23,8 @@ withholds `Cookie` and `Set-Cookie` from such a listener.
 
 ## Decision
 
-**The values of credential-bearing headers are replaced before the record is written.** For
-`Cookie`, `Set-Cookie`, `Authorization`, and `Proxy-Authorization`, the header name stays and
+**The values of four standard credential headers are replaced before the record is written.**
+For `Cookie`, `Set-Cookie`, `Authorization`, and `Proxy-Authorization`, the header name stays and
 the value becomes a fixed marker. The Capture's inventory names every header the engine
 replaced. The replacement happens in memory, before any byte of the record reaches disk, so no
 file ever holds the original value.

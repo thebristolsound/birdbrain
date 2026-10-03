@@ -4,8 +4,8 @@
 
 **Status:** Complete. A measurement, not a decision.
 
-Answers three items the
-[capture engine spec](2026-09-30-capture-engine-design.md) left open: whether enabling the CDP
+Measures three things the
+[capture engine spec](2026-09-30-capture-engine-design.md) depends on: whether enabling the CDP
 `Network` domain changes anything a page can observe, whether the bodies CDP returns match what
 the server sent, and whether a PDF can be taken in the offscreen hidden window.
 
@@ -20,9 +20,14 @@ text served uncompressed, and an image used only by a print style rule. The page
 it could observe about itself, and the server logged every request.
 
 Two passes ran, each in its own Electron process: one with no CDP domain enabled, as the
-renderer runs today, and one with `Network.enable` sent before the page loaded.
+renderer runs today, and one with `Network.enable` sent before the page loaded. A third
+configuration, run four times on its own, sent `Network.enable` on a window that had not
+navigated. The PDFs were parsed afterwards with `pypdf` 6.17.0.
 
-Runtime: Electron `44.3.0` on Chromium `152.0.7977.78`, under `xvfb-run` with `--no-sandbox`.
+Runtime: Electron `44.4.5` on Chromium `152.0.7977.130`, the version this branch builds, under
+`xvfb-run`. The probe adds the app-level `no-sandbox` and `disable-dev-shm-usage` switches, which
+the app does not set, because the test environment cannot start a sandboxed renderer. A first
+run on Electron `44.3.0` gave the same results and is superseded by this one.
 
 ## Results
 
@@ -32,12 +37,12 @@ for `navigator.webdriver` (`false`), the keys of `window.chrome` (none), `docume
 [persona spike](2026-09-19-persona-bot-detection-spike.md) names for an attached debugger: a
 getter on an `Error` object's `stack`, passed to `console.debug`, was read zero times in both.
 
-**Every body matched its known answer.** `Network.getResponseBody` returned all five finished
-bodies. Each digest equalled the digest of the fixture's payload.
+**Every body matched its known answer.** `Network.getResponseBody` returned all five bodies that
+finished before the PDF. Each digest equalled the digest of the payload the fixture served.
 
 | Resource | Served as | Returned | Digest matches the decoded payload |
 | --- | --- | --- | --- |
-| document | uncompressed | text, 1,163 bytes | not compared |
+| document | uncompressed | text, 1,163 bytes | yes |
 | image | uncompressed | base64, 70 bytes | yes |
 | image behind a redirect | uncompressed | base64, 70 bytes | yes |
 | text | `gzip`, 70 bytes on the wire | text, 4,200 bytes | yes |
@@ -51,25 +56,32 @@ payload digest can only be checked against the decoded payload.
 reached the server once, and CDP reported one request and no `Network.requestServedFromCache`
 event. The second use left no trace in the network events at all.
 
-**A redirect is one request with no body of its own.** The redirect arrived as a
-`redirectResponse` on the follow-up `Network.requestWillBeSent`, under the same request id.
+**A redirect is two exchanges under one request id.** The `302` response arrived as a
+`redirectResponse` on the follow-up `Network.requestWillBeSent`, which reused the request id of
+the first request. A collector keyed on the request id alone overwrites the first exchange, so
+the probe keeps each `requestWillBeSent` as its own exchange: seven exchanges for six request
+ids. The redirect response has no body of its own.
 
 **Header text was present on every exchange.** All seven `Network.responseReceivedExtraInfo`
 events carried `headersText`. The fixture server speaks HTTP/1.1 only.
 
-**`webContents.printToPDF` works in the offscreen hidden window.** It returned a valid PDF of
-7,224 bytes. `Page.printToPDF` sent over `webContents.debugger` failed with the error
-`'Page.printToPDF' wasn't found`, so the Electron method is the only route.
+**`webContents.printToPDF` works in the offscreen hidden window.** It returned 7,224 bytes in
+both passes. `pypdf` parsed each file as one Letter-size page whose text is the page's `probe`
+heading and which holds two image objects. `Page.printToPDF` sent over `webContents.debugger`
+failed with the error `'Page.printToPDF' wasn't found`, so the Electron method is the only
+route.
 
 **Printing is visible to the page and starts requests.** The page received `beforeprint` and
 `afterprint`, its print media query changed, and the print-only image was requested during the
 print. This supports the spec's order: take the PDF last, after collection stops.
 
-**`Network.enable` failed on a window that had not navigated.** Sent straight after
-`debugger.attach`, it was rejected with the error `target closed while handling command`. Loading
-`about:blank` first, then enabling, then loading the target worked. In the failing run the
-browser then could not start a page process, so this run does not separate the two faults. The
-order that worked still places the enable before the target's first request.
+**`Network.enable` gets no reply on a window that has not navigated.** Sent straight after
+`debugger.attach`, it never answered in four of four isolated runs. It rejected with
+`target closed while handling command` only when the probe's 90-second timeout shut the app
+down, and no page process was lost. The pass that loaded `about:blank` first, then enabled the
+domain, then loaded the target worked, and the enable still came before the target's first
+request. The first run on `44.3.0` also failed to start a page process and could
+not separate the two faults; the isolated runs here do.
 
 ## What this does not show
 
@@ -80,17 +92,20 @@ order that worked still places the enable before the target's first request.
 - The consent filter was not loaded.
 - One run of each pass, on one machine. The first attempt ran while the test suite was running
   and is not counted.
+- The PDF check reads the text and counts image objects. It does not compare the rendering
+  with the screenshot pixel for pixel.
 - "Nothing the page recorded changed" covers the listed facts only. It is not a claim that no
   detector can tell.
 
 ## Effect on the spec
 
-- Open question 7 (PDF in a hidden window): answered. Use `webContents.printToPDF`.
+- PDF in a hidden window: answered. Use `webContents.printToPDF`.
 - The risk section (enabling an event domain): no change observed in the listed facts.
-- Open question 6 (cached responses): a repeated resource inside one page leaves no event, so the
+- Cached responses (still open): a repeated resource inside one page leaves no event, so the
   inventory cannot count it. The record holds the one exchange that happened.
-- Open question 3 (decoded bodies under original headers): the mismatch is real and measured.
+- Decoded bodies under original headers (still open): the mismatch is real and measured.
 - New: enable the domain after a blank page has loaded, not on a fresh window.
+- New: keep each hop of a redirect as its own exchange.
 
 ## The probe
 
@@ -102,6 +117,8 @@ const http = require('http')
 const zlib = require('zlib')
 const crypto = require('crypto')
 const fs = require('fs')
+const path = require('path')
+const OUT = process.env.PROBE_OUT || path.join(__dirname, 'out')
 const sha = (b) => crypto.createHash('sha256').update(b).digest('hex')
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const PNG = Buffer.from(
@@ -161,11 +178,17 @@ async function pass(base, name, enableNetwork) {
   })
   const wc = win.webContents
   wc.debugger.attach('1.3')
-  const ev = { reqs: new Map(), cache: [], extraInfo: 0, headersText: 0, finished: [], failed: [], redirects: 0 }
+  const ev = { hops: [], reqs: new Map(), cache: [], extraInfo: 0, headersText: 0, finished: [], failed: [], redirects: 0 }
   if (enableNetwork) {
     wc.debugger.on('message', (_e, method, p) => {
       if (method === 'Network.requestWillBeSent') {
-        if (p.redirectResponse) ev.redirects++
+        // One CDP request id spans every hop of a redirect; keep each hop as its own exchange.
+        if (p.redirectResponse) {
+          ev.redirects++
+          const prev = ev.hops.filter((h) => h.requestId === p.requestId).pop()
+          if (prev) prev.status = p.redirectResponse.status
+        }
+        ev.hops.push({ requestId: p.requestId, url: p.request.url })
         ev.reqs.set(p.requestId, { url: p.request.url })
       }
       if (method === 'Network.requestServedFromCache') ev.cache.push(p.requestId)
@@ -182,7 +205,15 @@ async function pass(base, name, enableNetwork) {
       if (method === 'Network.loadingFailed') ev.failed.push(p.requestId)
     })
     if (process.env.PROBE_BLANK_FIRST === '1') await wc.loadURL('about:blank')
-    await wc.debugger.sendCommand('Network.enable', { maxTotalBufferSize: 50e6, maxResourceBufferSize: 10e6 })
+    try {
+      await wc.debugger.sendCommand('Network.enable', { maxTotalBufferSize: 50e6, maxResourceBufferSize: 10e6 })
+      ev.enableError = null
+    } catch (err) {
+      ev.enableError = String(err.message || err)
+      console.error(name, 'Network.enable failed', ev.enableError)
+      fs.writeFileSync(path.join(OUT, 'result-' + name + '-enable.json'), JSON.stringify({ versions: process.versions.electron, enableError: ev.enableError }, null, 2))
+      throw err
+    }
     ev.enabledFresh = process.env.PROBE_BLANK_FIRST !== '1'
   }
   console.error(name,'loading')
@@ -210,6 +241,7 @@ async function pass(base, name, enableNetwork) {
   let pdf
   try {
     const buf = await wc.printToPDF({})
+    fs.writeFileSync(path.join(OUT, 'page-' + name + '.pdf'), buf)
     pdf = { magic: buf.subarray(0, 5).toString(), bytes: buf.length }
   } catch (err) { pdf = { error: String(err) } }
   console.error(name,'pdf', JSON.stringify(pdf))
@@ -229,8 +261,8 @@ async function pass(base, name, enableNetwork) {
     serverRequestsDuringPdf: requests.slice(serverBeforePdf.length),
     pdf, cdpPdf, printEvents,
     cdp: enableNetwork ? {
-      requestsSeen: ev.reqs.size, finished: finishedBeforePdf, finishedAfterPdf: ev.finished.length - finishedBeforePdf,
-      enabledOnFreshWindow: ev.enabledFresh, failed: ev.failed.length, servedFromCache: ev.cache.length, redirects: ev.redirects,
+      requestsSeen: ev.reqs.size, exchanges: ev.hops.map((h) => ({ url: h.url.replace(base, ''), status: h.status })), finished: finishedBeforePdf, finishedAfterPdf: ev.finished.length - finishedBeforePdf,
+      enabledOnFreshWindow: ev.enabledFresh, enableError: ev.enableError, failed: ev.failed.length, servedFromCache: ev.cache.length, redirects: ev.redirects,
       extraInfoEvents: ev.extraInfo, extraInfoWithHeadersText: ev.headersText, bodies
     } : null
   }
@@ -242,23 +274,27 @@ app.commandLine.appendSwitch('no-sandbox')
 app.commandLine.appendSwitch('disable-dev-shm-usage')
 setTimeout(() => { console.error('probe timeout'); app.exit(2) }, 90000)
 app.whenReady().then(async () => {
+  fs.mkdirSync(OUT, { recursive: true })
   await new Promise((r) => server.listen(0, '127.0.0.1', r))
   const base = 'http://127.0.0.1:' + server.address().port
   const result = {
     versions: { electron: process.versions.electron, chrome: process.versions.chrome },
-    expected: { txt: sha(TXT).slice(0, 16), txtLen: TXT.length, png: sha(PNG).slice(0, 16), gzWireLen: zlib.gzipSync(TXT).length },
+    expected: { page: sha(Buffer.from(PAGE)).slice(0, 16), txt: sha(TXT).slice(0, 16), txtLen: TXT.length, png: sha(PNG).slice(0, 16), gzWireLen: zlib.gzipSync(TXT).length },
     [process.env.PROBE_PASS]: await pass(base, process.env.PROBE_PASS, process.env.PROBE_PASS === 'on')
   }
-  fs.writeFileSync('/tmp/capture-probe/result-' + process.env.PROBE_PASS + '.json', JSON.stringify(result, null, 2))
+  fs.writeFileSync(path.join(OUT, 'result-' + process.env.PROBE_PASS + '.json'), JSON.stringify(result, null, 2))
   app.exit(0)
 }).catch((err) => { console.error('FATAL', err && err.stack || err); app.exit(1) })
 process.on('unhandledRejection', (e) => console.error('UNHANDLED', e && e.stack || e))
 app.on('render-process-gone', (_e, _wc, d) => console.error('RENDER GONE', JSON.stringify(d)))
 ```
 
-Run once per pass:
+Run once per pass, then the fresh-window case on its own. Results and PDFs go to `out/` beside
+the script, or to `PROBE_OUT`:
 
 ```shell
 PROBE_PASS=off xvfb-run --auto-servernum node_modules/.bin/electron --no-sandbox main.js
 PROBE_BLANK_FIRST=1 PROBE_PASS=on xvfb-run --auto-servernum node_modules/.bin/electron --no-sandbox main.js
+PROBE_OUT=out/fresh PROBE_PASS=on xvfb-run --auto-servernum node_modules/.bin/electron --no-sandbox main.js
+python3 -c "from pypdf import PdfReader as R; r = R('out/page-on.pdf'); print(len(r.pages), r.pages[0].extract_text())"
 ```

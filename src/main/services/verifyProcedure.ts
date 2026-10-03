@@ -71,5 +71,9 @@ export function sentenceStart(citation: string): string {
 /** The jq recipes verify.sh runs and VERIFY.md prints, spelled once. */
 export const VERIFY_RECIPES = {
   indexCheckFilter: String.raw`.artifacts[] | "\(.sha256)  \(.path)"`,
-  canonicalEntryBody: String.raw`jq -cS 'del(.entryHash, .signature)' | tr -d '\n'`
+  canonicalEntryBody: String.raw`jq -cS 'del(.entryHash, .signature)' | tr -d '\n'`,
+  // A content stamp only: an `entry` stamp binds a merge entry, not an Exhibit's
+  // bytes, and a tsaToken that is not a string is no token at all.
+  signedTokenFilter:
+    'select(.type == "timestamp" and (.subject // "content") == "content" and (.tsaToken | type) == "string")'
 }

@@ -220,7 +220,11 @@ review.
   the guard's patterns and were left as they are. Planned text follows. Add both to
   `CONSUMERS`, strip `/**` lines the way `//`, `#`, and `*` lines are stripped, and read directory
   and root file names from the Package Layout, including the Certification's `:670` and `:678`.
-- [ ] **6. Close recorded divergences, one PR each.** First: the runbook's token filter gains the
+- [x] **6. Close recorded divergences, one PR each.** Built the first: `VERIFY_RECIPES` holds
+  the token filter, `verify.sh` renders unchanged, and `VERIFY.md` step 6b gains the `tsaToken`
+  type test. The one row slice 1 recorded (verify.sh never recomputes the package hash) is by
+  design and stays recorded; closing it would add a check to `verify.sh`, which is new scope.
+  Planned text follows. First: the runbook's token filter gains the
   `tsaToken` type test, both documents read it from `VERIFY_RECIPES`, and
   `verifyScriptTokenFilter.test.ts` reads the recipe instead of lifting it from the script. Further
   rows come from what slice 1 records.

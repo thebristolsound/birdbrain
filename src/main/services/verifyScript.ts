@@ -661,7 +661,7 @@ ${openStep(6)}
 # an Exhibit's content, and the binary excludes it from trusted time. This
 # filter must agree, or the runbook would present a receipt as a capture's
 # timestamp and contradict the binary (#1518 review).
-signed_token_filter='select(.type == "timestamp" and (.subject // "content") == "content" and (.tsaToken | type) == "string")'
+signed_token_filter='${VERIFY_RECIPES.signedTokenFilter}'
 jq -r "$signed_token_filter"' | "\\(.captureContentHash) \\(.tsaToken)"' \\
   "$MANIFEST_FILE" >"$tmp/signed-tokens.txt"
 

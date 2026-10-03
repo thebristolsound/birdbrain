@@ -346,7 +346,7 @@ trusting them proves nothing.
 
 **6b. Verify each token.** Take the list from the signed manifest, not from
 \`ls ${TIMESTAMP_PACKAGE_DIRECTORY}/\`: every token is also carried base64-encoded in its own signed
-entry (\`jq -r 'select(.type == "timestamp" and (.subject // "content") == "content") | "\\(.captureContentHash) \\(.tsaToken)"' ${ROOT.manifest}\`),
+entry (\`jq -r '${VERIFY_RECIPES.signedTokenFilter} | "\\(.captureContentHash) \\(.tsaToken)"' ${ROOT.manifest}\`),
 so a \`.tst\` deleted from the package is visible there and invisible in a
 directory listing. Walk the exhibits ${stepRef(5)} still requires present — captures
 and committed exhibits of every other kind alike, active, and inside the

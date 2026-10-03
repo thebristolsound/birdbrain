@@ -30,7 +30,7 @@ downloaded.
 | Windows 10 / 11 | NSIS `.exe` | Supported. The installer is unsigned, so SmartScreen warns the first time you run it. Updates install in place. |
 | Ubuntu | AppImage | Supported, and the primary Linux format. Updates replace the file in place. |
 | Ubuntu | `.deb` | Best-effort. Updates download through the in-app updater but install only when you click **Restart to update** and enter your system password, so watch the releases page for updates and advisories. |
-| macOS | none | Unsupported. No macOS build is published from this beta on, and notarization is the blocker. |
+| macOS 13 or later | `.dmg` | Experimental. Present only on a release whose macOS build succeeded. Unsigned, not notarized, and not launch-tested before publishing. The app does not install updates on macOS. |
 
 ## Install on Windows
 
@@ -70,10 +70,24 @@ the `.deb`, watch the releases page rather than waiting for the app to carry a f
 
 ## Install on macOS
 
-macOS is not supported. No macOS build is published from this beta on, and any macOS asset
-still sitting on an earlier release is unsupported. Notarization is the blocker: macOS refuses
-an unsigned, un-notarized app on a default install, and signing and notarization are deferred
-to the first non-beta release. The project does not make macOS builds on request.
+macOS support is experimental, and needs macOS 13 or later. Every release attempts a macOS
+build, but a failed one does not stop the release, so a release can ship without it. No machine
+check launches the build before it is published, and signing and notarization are deferred to
+the first non-beta release.
+
+1. Download `Birdbrain-<version>-arm64.dmg` on Apple Silicon, or `Birdbrain-<version>.dmg` on
+   an Intel Mac. If the release lists neither file, it has no macOS build.
+2. Open the disk image and drag **Birdbrain** to **Applications**.
+3. The build is not signed or notarized, so macOS blocks the first launch, and may say the app
+   is "damaged and can't be opened". That message is the download quarantine, not a corrupt
+   file. Clear the quarantine once in Terminal, then open Birdbrain as usual:
+
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/Birdbrain.app
+   ```
+
+The app does not install updates on macOS. To update, download the new disk image from the
+releases page and repeat the steps.
 
 ## Load the Chrome extension
 

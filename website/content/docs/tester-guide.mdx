@@ -76,8 +76,23 @@ password. See [Updating](#updating).
 
 ### macOS
 
-macOS is not supported. No macOS build is published from this beta on, and any macOS asset
-still sitting on an earlier release is unsupported.
+macOS support is experimental, and needs macOS 13 or later. The build is unsigned, not
+notarized, and not launch-tested before it is published. A release whose macOS build fails
+still ships, without it.
+
+1. Download `Birdbrain-<version>-arm64.dmg` on Apple Silicon, or `Birdbrain-<version>.dmg` on
+   an Intel Mac. If the release lists neither file, it has no macOS build.
+2. Open the disk image and drag **Birdbrain** to **Applications**.
+3. The build is not signed or notarized, so macOS blocks the first launch, and may say the app
+   is "damaged and can't be opened". That message is the download quarantine, not a corrupt
+   file. Clear the quarantine once in Terminal, then open Birdbrain as usual:
+
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/Birdbrain.app
+   ```
+
+The app does not install updates on macOS. To update, download the new disk image from the
+releases page and repeat the steps.
 
 ## Install the Chrome extension
 
@@ -139,6 +154,9 @@ downloaded update installs when you click **Restart to update**, or quietly at y
 `dpkg` behind a system password prompt, so it never installs at quit, only when you click
 **Restart to update** and enter your password. That's why the AppImage is the primary
 Ubuntu build, and why on the `.deb` it is worth watching the releases page.
+
+**macOS is the other exception.** Nothing downloads or installs by itself, and there is no
+**Download** button. Update by hand as described in [macOS](#macos).
 
 You can always install by hand instead: download from the releases page and install over the
 old version. Your data survives either way. It lives in your user data directory, separate
@@ -220,8 +238,8 @@ Two more things a restore does not do, both worth knowing before you click it:
   capture does not take it out of the evidence package. Treat a case as contaminated by
   anything you captured into it.
 - **Chrome/Chromium only.** No Firefox or Safari extension yet.
-- **macOS is unsupported.** No build is published from this beta on, and notarization is the
-  blocker.
+- **macOS is experimental.** The build is unsigned and not notarized, and the app does not
+  install updates on macOS.
 - **"Verified" is not a live check.** Capture details shows the result of the last
   verification run, not the state of the file right now. Click **Re-verify** to get a
   current statement.

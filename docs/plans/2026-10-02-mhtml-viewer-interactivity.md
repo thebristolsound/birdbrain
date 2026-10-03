@@ -2,7 +2,8 @@
 
 Orchestrated plan. The maintainer asked on 2026-10-02 for a self-grilled plan, two adversarial plan
 reviews, then implementation, a PR, a review round, and a review request, without waiting for plan
-approval. Revision 2 applies the plan reviews (see "Plan review dispositions").
+approval. Revision 2 applies the plan reviews (see "Plan review dispositions"). Revision 3 applies
+the review of the plan's own PR (see "PR review dispositions").
 
 ## Goal
 
@@ -16,7 +17,8 @@ guest reaches no network. Four things are new:
    the link.
 3. **Links tab.** Every link in the stored page, parsed from the MHTML in the main process: anchor
    text, destination, `rel` values, kind, which frame it sits in, whether the Case already holds a
-   Capture of it, and a flag when the visible text names a different host than the link goes to.
+   Capture of it, and a flag when the anchor's text in the stored markup names a different host than
+   the link goes to. The flag is a heuristic over the markup, not over what the page rendered.
 4. **Capture this link.** Queues a background Capture of the link into the viewed Capture's Case
    through the existing recapture queue.
 
@@ -60,10 +62,26 @@ Decision: on partitions with `allowSubsequentNavigation: false` (MHTML and legac
 moves to `will-frame-navigate` and is decided by a new pure function in `webviewPolicy.ts` that the
 existing known-answer tests extend. After the guest's first main-frame document commits (recorded
 from `did-start-navigation`/`did-finish-load` on the main frame, not from the guard's own allow),
-no frame may start a cross-document navigation. Subframe loads that the archive itself drives
-(an iframe's initial load of its own MHTML part) must still render; the implementer establishes the
-exact rule empirically and pins it. Same-document navigation (a `#fragment` jump) is allowed: it
-loads no document and sends no request. Wayback keeps its current behaviour.
+no frame may start a cross-document navigation. Same-document navigation (a `#fragment` jump) is
+allowed: it loads no document and sends no request. Wayback keeps its current behaviour.
+
+Subframe loads that the archive itself drives (an iframe's initial load of its own MHTML part) must
+still render, and that exception is bound to the archive, not to timing. The page's author controls
+the markup, so an `<iframe src="file:///…">` with no archived part behind it would otherwise load
+before the lock, and `MHTML_POLICY.allowedPrefixes` admits `file://`. The rule for a subframe
+navigation on these partitions, before and after the main frame commits:
+
+- A `file:` destination is always refused. `allowedPrefixes` exists for the main frame's one load
+  of the Capture's own file; no archived part has a `file:` document URL that a subframe needs.
+- Any other destination is allowed only as the frame's initial load, and only when it names a part
+  of the archive: its URL equals the `Content-Location` of an HTML part, or is the `cid:` URL of a
+  part's `Content-ID`. The main process reads the part locations with the D12 splitter when the
+  guest is created. If they cannot be read, every subframe navigation is refused and the frame
+  stays empty.
+
+The implementer may tighten this rule after observing what Chromium raises for archive-served
+frames, but may not loosen it, and the D17 E2E case for an unbundled `file:///` frame must pass
+either way.
 
 `MhtmlViewer.tsx` and `src/main/index.ts` are blocking tier in
 `docs/specs/2026-07-31-evidence-affecting-paths-assessment.md`, so this is an Evidence-Affecting
@@ -103,6 +121,10 @@ If step 3 cannot pass, the implementer stops and reports rather than building a 
 | Other scheme (`mailto:`, `tel:`, `javascript:`, anything else) | Copy link address, Copy link text. Never executed, never captured |
 | Image (`mediaType: 'image'`) | Copy image address, plus the link actions when the image is inside a link |
 | Text selection, no link | Copy text |
+
+Electron documents that `params.linkText` can be empty when the link's content is an image. Copy
+link text copies `linkText`, else `params.altText`, and is disabled when both are empty, so the
+item never copies an empty string.
 
 "Open external browser" and "Look up in Wayback" stay out. The first sends the Operator's own
 browser to the target outside the app; the second is slice 3.
@@ -177,14 +199,14 @@ skip.
 ```ts
 interface CaptureLink {
   href: string              // resolved; the raw attribute when it cannot be resolved
-  rawHref: string           // the attribute exactly as stored
+  attrHref: string          // the attribute value as the HTML parser decodes it, unresolved
   text: string              // trimmed, whitespace-collapsed anchor text; img alt when no text
   rel: string[]             // lower-cased tokens, unioned across collapsed occurrences
   kind: 'http' | 'same-page' | 'mailto' | 'tel' | 'other'
   frame: 'main' | 'subframe'
   documentUrl: string       // the resolved document URL of the part it came from
   occurrences: number       // identical href+text+frame+documentUrl collapse into one row
-  textHostMismatch: boolean
+  domTextHostMismatch: boolean
 }
 
 interface CaptureLinks {
@@ -198,10 +220,22 @@ interface CaptureLinks {
 `same-page` compares against the link's own `documentUrl`, not the Capture's URL. That is why
 `documentUrl` is part of the collapse key: the same `href` and text in two embedded frames with
 different document URLs can be `same-page` in one and external in the other, and a merged row would
-report only the first. The host mismatch flag fires when the visible text parses as a URL or bare
-host whose normalised host differs from the link's. Normalising lower-cases, converts to ASCII
-through `URL`, and strips one leading `www.`. "Differs" means the hosts are not equal;
-registrable-domain matching would need a public-suffix dependency and is out. "In Case" is
+report only the first.
+
+`attrHref` is not the bytes stored in the MHTML. `cheerio` returns the parsed attribute value, so
+`href="https://exa&#109;ple.com"` arrives as `https://example.com`, and quoting and character
+reference spelling are gone. The field is named and documented as the decoded value for that
+reason, and the Links tab does not present it as the stored source. Recovering the lexical
+attribute from parser source locations is left for a later slice.
+
+The host mismatch flag fires when `text` parses as a URL or bare host whose normalised host differs
+from the link's. Normalising lower-cases, converts to ASCII through `URL`, and strips one leading
+`www.`. "Differs" means the hosts are not equal; registrable-domain matching would need a
+public-suffix dependency and is out. The flag is a DOM-text heuristic. `text` comes from static
+markup, so it does not know which text the captured CSS, a hidden ancestor, a pseudo-element or
+layout made visible: a hidden hostname can raise the flag, and a hostname drawn only by CSS can
+evade it. The field name, the marker's label and its tooltip say "link text in the markup", never
+"visible text", and the tooltip states that an absent marker does not clear the link. "In Case" is
 computed in the renderer with D10, not in main.
 
 **D14. Where does the Links tab live?** A fifth viewer tab, `links`, after `text`, in
@@ -209,8 +243,8 @@ computed in the renderer with D10, not in main.
 record or switch keyed on `CaptureViewerTab` is updated. `activeViewerTab` is not persisted
 (`appStore.ts`), so no stored value needs migrating; the implementer confirms. The tab lists rows
 with text, host-emphasised destination, `rel` chips, kind, a subframe marker, an "In Case" badge
-and a mismatch marker. It has a search box and an "External only" toggle. Right-clicking a row opens
-the same `link` menu target. A legacy HTML Capture, a Capture with no MHTML, or an over-budget main
+and a mismatch marker labelled as a markup heuristic (D13). It has a search box and an "External
+only" toggle. Right-clicking a row opens the same `link` menu target. A legacy HTML Capture, a Capture with no MHTML, or an over-budget main
 document gets an empty state naming why.
 
 **D15. Does the Wayback compare pane get the same behaviour?** Yes, because it mounts the same
@@ -230,20 +264,28 @@ Semantic theme tokens only.
 - **E2E fixture.** An MHTML Capture whose main part and one iframe part hold: a relative link, an
   absolute external link, a `target=_blank` link, a `file:///` link, a form posting to `file:///`,
   and a `#fragment` link. Every external URL points at a sentinel HTTP server the test starts on
-  `127.0.0.1`.
+  `127.0.0.1`. The main part also holds an `<iframe src="file:///…">` with no archived part behind
+  it, pointing at a sentinel local HTML file the test writes.
 - **E2E assertions.** For left, middle, modifier and `_blank` clicks on every link and the form
   submit, in both frames: the guest's main-frame URL (fragment ignored) is unchanged, no frame
   committed a new document, no window opened, and the sentinel server received zero requests. The
-  `#fragment` click scrolls and is allowed. Hover shows the destination in the bubble. Right-click
-  opens the menu with Capture link; right-click on a second link opens with the second link.
+  `#fragment` click scrolls and is allowed. With no input at all, the unbundled `file:///` frame
+  never commits the sentinel file: no frame in the guest has its URL, while the archived iframe
+  part still renders. Hover shows the destination in the bubble. Right-click opens the menu with
+  Capture link; right-click on a second link opens with the second link.
 - **Unit.** The new navigation decision in `webviewPolicy.ts` (initial load, post-load main frame,
-  post-load subframe, same-document, each partition). `captureLinks` over fixtures: relative,
-  absolute, `<base>` (absolute and relative), `area`, `mailto`, `javascript:`, fragment-only, iframe
+  post-load subframe, same-document, each partition; an initial subframe load of an archived
+  `Content-Location`, of an archived `cid:`, of an unarchived `http` URL, and of `file:` both before
+  and after the main frame commits; unreadable part locations). `captureLinks` over fixtures:
+  relative, absolute, `<base>` (absolute and relative), `area`, `mailto`, `javascript:`, fragment-only, iframe
   part with its own `Content-Location`, `cid:` location, folded header, duplicate collapse with
-  `rel` union, mismatch flag (`www.`, case, IDN), row cap, over-budget part, over-budget main
-  document. `extractHtmlFromMhtml` byte-identical. The `context-menu` params adapter. `entityMenu`
-  entries for each D5 target, including that a non-`http(s)` link and a private-address link never
-  offer an enabled Capture link.
+  `rel` union, mismatch flag (`www.`, case, IDN, and a hostname inside a `display: none` element
+  that still raises it, pinning the heuristic's documented limit), a character-reference-encoded
+  `href` that arrives decoded in `attrHref`, row cap, over-budget part, over-budget main document.
+  `extractHtmlFromMhtml` byte-identical. The `context-menu` params adapter. `entityMenu` entries
+  for each D5 target, including that a non-`http(s)` link and a private-address link never offer an
+  enabled Capture link, and that Copy link text on an image-only link copies the alternative text
+  and is disabled when the link has neither text nor alternative text.
 - **Component (jsdom).** Links tab rendering, filtering, "In Case" badge, empty states. The menu
   opening with the right target on successive right-clicks. `MhtmlViewer` no longer injects the
   CSS. The existing renderer `preventDefault` listeners are kept, but a test of them is not counted
@@ -259,6 +301,13 @@ Semantic theme tokens only.
 `src/renderer/components/captures/CaptureViewer.tsx`, `src/renderer/stores/appStore.ts`, a new
 `LinksTab.tsx`, `WaybackCompare.tsx` (prop pass-through), tests and an E2E fixture. Three
 blocking-tier paths: the PR is `evidence-affecting` and is never auto-merged.
+
+`docs/specs/2026-07-31-evidence-affecting-paths-assessment.md` also changes in the same PR. Only
+its include list feeds the backstop, and neither new file matches an entry, so a later PR touching
+only one of them would trip nothing. The PR adds both as exact-path blocking entries:
+`src/main/services/captureLinks.ts` (derives the links, destinations, frame provenance and
+mismatch flag from stored evidence) and `src/renderer/components/captures/LinksTab.tsx` (presents
+that interpretation to the Operator, as `ForensicsTab.tsx` does for the hash chain).
 
 Suggested commit order, so a reviewer can read the evidence-affecting part on its own: (1) guard
 and its tests, (2) CSS removal, hover bubble and menu, (3) decoder split and `captureLinks`,
@@ -287,6 +336,19 @@ Codex (`codex exec`, read-only) and Opus 5.5 at low effort reviewed revision 1.
 | Guest input harness for E2E | Codex | Applied: D17 `sendInputEvent` |
 | Split into two PRs | Opus | Not applied: the maintainer asked for one PR. The commit order above gives the same reading path |
 
+## PR review dispositions
+
+Codex reviewed the plan's own PR (#1716) at a2384533.
+
+| Finding | Disposition |
+|---|---|
+| An initial `<iframe src="file:///…">` with no archived part loads before the lock | Applied: D2 binds subframe loads to archived parts and refuses `file:`; D17 adds the fixture frame and the unit cases |
+| `captureLinks.ts` and `LinksTab.tsx` are on no evidence path list | Applied: "Files expected to change" registers both as blocking |
+| `cheerio` returns the decoded attribute, so `rawHref` cannot be "exactly as stored" | Applied: D13 renames it `attrHref` and documents it as decoded; lexical recovery is a later slice |
+| The mismatch flag cannot know what was visible | Applied: D13, D14 and the Goal call it a DOM-text heuristic; the field is `domTextHostMismatch` |
+| Copy link text copies an empty string on an image-only link | Applied: D5 falls back to `altText` and disables the item when both are empty |
+| This PR's closing keyword would close #1708 before the implementation lands | Accepted, and not a change to this file: the plan PR's body must reference #1708 without a closing keyword, and the implementation PR closes it |
+
 ## Orchestration log
 
 - 2026-10-02: self-grill and plan revision 1 written (a8cf5445).
@@ -294,3 +356,5 @@ Codex (`codex exec`, read-only) and Opus 5.5 at low effort reviewed revision 1.
 - 2026-10-02: issue #1708 filed (`ready-for-agent`, `evidence-affecting`); implementer dispatched on
   `feat/1708-mhtml-link-interactivity`. Next: open the PR, run the adversarial review round, apply,
   request the maintainer's review.
+- 2026-10-03: Codex reviewed PR #1716; revision 3 applies its findings. Work on
+  `feat/1708-mhtml-link-interactivity` that predates revision 3 must be brought in line with it.

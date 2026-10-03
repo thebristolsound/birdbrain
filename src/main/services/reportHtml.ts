@@ -1382,12 +1382,10 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   </div>`
   }
   <ol class="steps rule-top">
-    <li><strong>Rehash each stored page.</strong> Compute the SHA-256 of each file in
-    <code>pages/</code> and compare it to that exhibit's digest in <code>evidence.json</code> and
-    on its exhibit page.</li>
-    <li><strong>Replay the manifest chain.</strong> Walk <code>manifest.jsonl</code> from the
-    first entry, recomputing each entry hash over its canonical form plus its predecessor's hash.
-    The chain must reconcile to the head hash printed under “Chain of custody”.</li>
+    <li><strong>Check file integrity against the index.</strong> Compute the SHA-256 of each
+    enclosed file and compare it to that file's digest in <code>evidence.json</code>. The index is
+    not signed, so a match shows only that the files and the index agree; step 5 binds the files
+    to the signed manifest.</li>
     <li><strong>Check the entry signatures.</strong> ${
       data.entriesUnderCarriedKeys
         ? `Verify each signed manifest entry against the key
@@ -1404,9 +1402,25 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     <code>signing-public-key.pem</code>. This binds the entries to the installation identified on
     the cover — not to any named person.`
     }</li>
-    <li><strong>Validate the timestamp tokens.</strong> For each <code>.tst</code> in
-    <code>timestamps/</code>, confirm the token's message imprint equals that exhibit's capture
-    digest and that its signing chain, built with <code>tsa-intermediates.pem</code>, terminates in
+    <li><strong>Recompute each entry hash.</strong> For each entry in <code>manifest.jsonl</code>,
+    hash its canonical form (the entry without its hash and signature fields, keys sorted) and
+    compare the result to the hash the entry records. This catches an edited entry whose
+    signature was left in place.</li>
+    <li><strong>Check the chain linkage.</strong> Confirm each entry's predecessor hash equals the
+    previous entry's hash and that the indexes count up from 0. The chain must reconcile to the
+    head hash printed under “Chain of custody”.</li>
+    <li><strong>Bind the content to its signed entries.</strong> For each capture entry, hash its
+    stored page in <code>pages/</code> and, where the entry records one, its screenshot in
+    <code>screenshots/</code>, which is named by its own digest. Compare each to the hash inside
+    that signed entry, not to <code>evidence.json</code>. Exhibits of other kinds and derived files
+    are checked the same way against their own signed entries. An exhibit absent from the package
+    is accounted for only by a later deletion entry or by the selection scope in the signed export
+    entry, never by the index or by this report.</li>
+    <li><strong>Validate the timestamp tokens.</strong> Take the tokens from the signed timestamp
+    entries in <code>manifest.jsonl</code> rather than from a listing of <code>timestamps/</code>,
+    so a deleted token file shows as missing. For each exhibit step 5 requires present, confirm its
+    token's message imprint equals the exhibit's content digest and that its signing chain, built
+    with <code>tsa-intermediates.pem</code>, terminates in
     ${
       data.tsaTrustAnchorBundled
         ? `the self-signed root shipped as <code>tsa-root.pem</code>. That file is a convenience copy,
@@ -1421,12 +1435,10 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     report's cover either: the cover states what this installation had configured when the
     package was built, not who signed a token retained from earlier`
     }.</li>
-    <li><strong>Match the screenshots.</strong> Each file name in <code>screenshots/</code> is its
-    own digest; recomputing it confirms that the packaged image is the one the exhibit cites.</li>
-    <li><strong>Recompute the package hash.</strong> Hash the canonical, path-sorted artefact list
-    in <code>evidence.json</code> and compare it to the package hash in the export entry of the
-    live case manifest.</li>
   </ol>
+  <p>Birdbrain's own verifier makes one further check that neither <code>VERIFY.md</code> nor
+  <code>verify.sh</code> performs: it hashes the canonical, path-sorted artefact list in
+  <code>evidence.json</code> and compares it to the package hash in the signed export entry.</p>
   ${
     data.tsaTrustAnchorBundled
       ? ''
@@ -1436,7 +1448,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     authority is configured for this case, so no root file is bundled and
     <code>tsa-intermediates.pem</code> holds only certificates carried inside the tokens
     themselves. Validating a token against certificates it
-    supplied is circular and establishes nothing about who issued it. Step 4 therefore requires a
+    supplied is circular and establishes nothing about who issued it. Step 6 therefore requires a
     root obtained independently from the authority that issued the tokens, which each token names
     in its own signing certificate — a name the token asserts about itself, to be used for
     finding the authority and not as proof it issued anything; until such a root is used, the

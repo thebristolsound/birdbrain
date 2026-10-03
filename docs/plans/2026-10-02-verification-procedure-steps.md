@@ -187,7 +187,12 @@ review.
 - [x] **2. Fix the runbook's wrong step citation.** `verifyRunbook.ts:67` cites chain linkage as
   step 3; it becomes "the recomputed entry hashes and chain linkage (steps 3 and 4)" to match the
   script at `:350`. One line of shipped text.
-- [ ] **3. The report lists the shipped steps.**
+- [x] **3. The report lists the shipped steps.** Built. The package-hash check became a sentence
+  after the list (open question 1, answered "separate sentence"). The report names the signed
+  export entry in words, not as `export-entry.json`, because `export.test.ts:800` forbids that
+  file name in a standalone report. Step 6 now takes tokens from the signed entries, as `VERIFY.md`
+  step 6b does, instead of from a listing of `timestamps/`. The `export.test.ts` pins needed no
+  change.
   - One item per step of `VERIFY.md`, in its order and numbering.
   - Step 1 says the index is unsigned; a step 5 item binds pages, screenshots, Exhibits of other
     kinds, and Derived Files to their signed entries.

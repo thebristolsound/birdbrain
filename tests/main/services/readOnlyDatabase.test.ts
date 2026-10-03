@@ -12,7 +12,7 @@ import {
 } from '@main/services/db/core'
 import { createCase, listCases } from '@main/services/db/caseRepo'
 
-describe('openDatabaseReadOnly (ADR-0036)', () => {
+describe('openDatabaseReadOnly (ADR-0038)', () => {
   let dir: string
   let dbPath: string
 

@@ -126,7 +126,7 @@ Each step ends in a commit. Steps 2 to 6 land on this branch as one draft PR.
    one call over raw JSON-RPC, so no client package is needed.
 6. **Docs.** `website/content/docs/mcp.mdx` (connecting Claude Code, the tool list, the read-only
    guarantee) with a `docs.json` navigation entry. A sentence in the whitepaper next to its
-   no-listener claim, recording the local stdio server. An ADR (0036) recording the scope and host
+   no-listener claim, recording the local stdio server. An ADR (0038) recording the scope and host
    rulings in this plan.
 7. **Verify.** `pnpm preflight`, then a draft PR labelled `evidence-affecting`.
 

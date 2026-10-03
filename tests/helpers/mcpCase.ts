@@ -18,7 +18,7 @@ import { commitStagedFiles, uploadToStaging } from '@main/services/staging'
 import { seedMixedKindCase, type MixedKindCase } from './mixedKindCase'
 
 // A Case with one of everything an investigator sees in the app, for the MCP
-// server tests (ADR-0036). Built on the mixed-kind fixture, so its Capture,
+// server tests (ADR-0038). Built on the mixed-kind fixture, so its Capture,
 // uploaded files and manifest are the ones the export tests verify, plus the
 // analysis layer: a Tag, a matching selector, a Note that mentions the
 // Capture, an extracted email, a pinned Wayback snapshot, an annotation and

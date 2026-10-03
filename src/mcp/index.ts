@@ -7,7 +7,7 @@ import { resolveToolVersion } from '@main/services/toolVersion'
 import { resolveConfig } from './config'
 import { createBirdbrainServer } from './server'
 
-// The Birdbrain MCP server (ADR-0036): a separate, read-only process over
+// The Birdbrain MCP server (ADR-0038): a separate, read-only process over
 // stdio. Run under Electron as Node (ELECTRON_RUN_AS_NODE=1), because
 // better-sqlite3 is built for Electron's ABI.
 try {

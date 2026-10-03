@@ -105,7 +105,7 @@ function fingerprint(tempDir: string): Record<string, string> {
   return out
 }
 
-describe('Birdbrain MCP server (ADR-0036)', () => {
+describe('Birdbrain MCP server (ADR-0038)', () => {
   let tempDir: string
   let fixture: McpCase
   let before: Record<string, string>

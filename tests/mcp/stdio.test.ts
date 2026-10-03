@@ -20,7 +20,7 @@ interface Run {
 // The entry as a client launches it: its own process, under Electron as Node,
 // speaking newline-delimited JSON-RPC on stdio. The bundle is built from the
 // current source rather than read from out/, which the CI test job never builds.
-describe('Birdbrain MCP server over stdio (ADR-0036)', () => {
+describe('Birdbrain MCP server over stdio (ADR-0038)', () => {
   let tempDir: string
   let bundle: string
   let fixture: McpCase

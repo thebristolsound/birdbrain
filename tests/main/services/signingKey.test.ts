@@ -256,7 +256,7 @@ describe('signingKey: openssl interop', () => {
   })
 })
 
-describe('signingKey: verify-only key (ADR-0036)', () => {
+describe('signingKey: verify-only key (ADR-0038)', () => {
   let dir: string
 
   beforeEach(() => {

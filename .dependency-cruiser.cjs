@@ -82,7 +82,7 @@ module.exports = {
       name: 'mcp-server-has-no-electron',
       comment:
         'The MCP server runs under ELECTRON_RUN_AS_NODE, where `electron` resolves to a path ' +
-        'string and its APIs are undefined (ADR-0036). Its own files never import it.',
+        'string and its APIs are undefined (ADR-0038). Its own files never import it.',
       severity: 'error',
       from: { path: '^src/mcp/' },
       to: { path: '(^|/)node_modules/electron/' }

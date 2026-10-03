@@ -225,7 +225,7 @@ export function initSigningKey(userDataPath: string, deps: InitSigningKeyDeps = 
   writeFileSync(pubPath, publicKey, 'utf-8')
 }
 
-// The MCP server's key (ADR-0036): the public half only, read without the OS
+// The MCP server's key (ADR-0038): the public half only, read without the OS
 // credential store that node mode lacks. The private key stays unset, so
 // signEntryHash throws and that process can never sign a manifest entry.
 export function initVerifyOnlyKey(userDataPath: string): void {

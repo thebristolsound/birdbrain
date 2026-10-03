@@ -1573,7 +1573,7 @@ describe('createCaptureLifecycle.verify', () => {
     expect(result.stampedAt).toBe('2026-05-30T09:05:00.000Z')
   })
 
-  it('returns the same verdict without writing when record is false (ADR-0036)', async () => {
+  it('returns the same verdict without writing when record is false (ADR-0038)', async () => {
     const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
     const { capture } = await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('read-only')))
     await flushImmediate()

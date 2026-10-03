@@ -439,7 +439,7 @@ function numberExceptions(exhibit: Exhibit, author: AuthorChain): ExhibitIntegri
 // statuses a Capture gets, plus `unsupported` for a chain this build cannot
 // read (X25), which is never reported as tampering. A verify-all is the caller
 // running this per Exhibit in sequence — there is deliberately no batch
-// channel. `record` passes through to the Capture path (ADR-0036); no other
+// channel. `record` passes through to the Capture path (ADR-0038); no other
 // kind writes anything.
 export async function verifyExhibit(
   caseId: string,

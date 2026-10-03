@@ -588,7 +588,7 @@ async function verifySidecars(
 }
 
 // Streams the MHTML file from disk, recomputes SHA-256, and checks the manifest chain.
-// `record: false` is the read-only path (ADR-0036): the same verdict, with
+// `record: false` is the read-only path (ADR-0038): the same verdict, with
 // nothing written back to the database.
 export async function verifyCapture(
   captureId: string,

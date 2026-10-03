@@ -56,7 +56,7 @@ export async function initDatabase(dbPath: string): Promise<Database.Database> {
   return db
 }
 
-// The MCP server's connection (ADR-0036). SQLite itself refuses every write on
+// The MCP server's connection (ADR-0038). SQLite itself refuses every write on
 // it, and it is never migrated: a schema version this build does not know is
 // refused, because reading it through this build's repos would misread it.
 export function openDatabaseReadOnly(dbPath: string): Database.Database {

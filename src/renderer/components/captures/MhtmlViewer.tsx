@@ -157,7 +157,7 @@ export function MhtmlViewer({ captureId, caseId }: Props) {
             className="absolute left-2 right-2 top-2 flex items-center gap-2 rounded-md border border-amber-500/30 bg-card px-3 py-1.5 text-xs text-text-secondary shadow-sm"
           >
             <span className="min-w-0 flex-1">
-              A frame in this page changed after a click. Reload to restore the stored page.
+              A frame in this page changed after it loaded. Reload to restore the stored page.
             </span>
             <button
               type="button"

@@ -226,7 +226,7 @@ describe('MhtmlViewer', () => {
 
     act(() => report({ guestWebContentsId: 7 }))
     const notice = await screen.findByTestId('frame-changed-notice')
-    expect(notice.textContent).toContain('A frame in this page changed after a click.')
+    expect(notice.textContent).toContain('A frame in this page changed after it loaded.')
     fireEvent.click(within(notice).getByRole('button', { name: 'Reload' }))
     expect(reload).toHaveBeenCalledOnce()
 

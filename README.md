@@ -13,7 +13,18 @@ extracted indicators, notes, and exports.
 
 [![Release](https://img.shields.io/github/v/release/thebristolsound/birdbrain-releases?include_prereleases&label=release)](https://github.com/thebristolsound/birdbrain-releases/releases)
 [![CI](https://github.com/thebristolsound/birdbrain/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/thebristolsound/birdbrain/actions/workflows/ci.yml)
+[![Security checks](https://github.com/thebristolsound/birdbrain/actions/workflows/security.yml/badge.svg?branch=main&event=push)](https://github.com/thebristolsound/birdbrain/actions/workflows/security.yml)
+[![Package smoke](https://github.com/thebristolsound/birdbrain/actions/workflows/package-smoke.yml/badge.svg?branch=main&event=schedule)](https://github.com/thebristolsound/birdbrain/actions/workflows/package-smoke.yml)
+[![Line coverage on main](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fthebristolsound%2Fbirdbrain%2Fcoverage-badge%2Fcoverage.json)](https://github.com/thebristolsound/birdbrain/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush)
+[![Release asset downloads](https://img.shields.io/github/downloads/thebristolsound/birdbrain-releases/total?label=asset%20downloads)](https://github.com/thebristolsound/birdbrain-releases/releases)
+![Platform: Windows and Linux](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+![Status: beta](https://img.shields.io/badge/status-beta-yellow)
+
+[![Contributors](https://img.shields.io/github/contributors/thebristolsound/birdbrain)](https://github.com/thebristolsound/birdbrain/graphs/contributors)
+[![Forks](https://img.shields.io/github/forks/thebristolsound/birdbrain?style=flat)](https://github.com/thebristolsound/birdbrain/forks)
+[![Stars](https://img.shields.io/github/stars/thebristolsound/birdbrain?style=flat)](https://github.com/thebristolsound/birdbrain)
+[![Open issues](https://img.shields.io/github/issues/thebristolsound/birdbrain)](https://github.com/thebristolsound/birdbrain/issues)
 
 [Download](https://docs.birdbrain.cc/docs/download) ·
 [Install and first capture](https://docs.birdbrain.cc/docs/tester-guide) ·
@@ -49,6 +60,9 @@ does not show that the page itself was genuine, and no court has tested the work
 against and what they do not.
 
 ## Install
+
+[![Download for Windows](https://img.shields.io/badge/Download-Windows-0078d4)](https://github.com/thebristolsound/birdbrain-releases/releases)
+[![Download for Linux](https://img.shields.io/badge/Download-Linux-FCC624?logo=linux&logoColor=black)](https://github.com/thebristolsound/birdbrain-releases/releases)
 
 Builds are on the
 [releases page](https://github.com/thebristolsound/birdbrain-releases/releases), in a separate
@@ -195,6 +209,9 @@ Report security vulnerabilities privately, as described in [SECURITY.md](SECURIT
 Birdbrain has one maintainer, and issues are handled on a best-effort basis.
 
 ## Development
+
+[![Built with Electron](https://img.shields.io/badge/built%20with-Electron-47848F)](https://www.electronjs.org/)
+[![TypeScript: strict](https://img.shields.io/badge/TypeScript-strict-3178C6)](https://www.typescriptlang.org/)
 
 Birdbrain is an Electron app written in strict TypeScript. It builds on Node 20 with pnpm:
 

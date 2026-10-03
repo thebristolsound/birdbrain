@@ -11,5 +11,22 @@
     "here when a version bump would do buys a re-decision date instead of a fix.",
     "Trees: \".\" is the Electron app, the only tree audited."
   ],
-  "exceptions": []
+  "exceptions": [
+    {
+      "ghsa": "GHSA-ch52-4w7c-c8xp",
+      "package": "http-cache-semantics",
+      "tree": ".",
+      "path": "electron-builder > app-builder-lib > @electron/get > got > cacheable-request > http-cache-semantics@4.2.0",
+      "reason": "Build-time devDependency only: @electron/get uses it to cache the Electron binary download while packaging, and nothing in the shipped app depends on it (pnpm why shows electron-builder as the only path). The advisory concerns max-stale handling in a cache shared between users; this cache serves one build machine. No patched version exists (advisory published 2026-09-18 with no fix), so no override can clear it.",
+      "expires": "2026-12-31"
+    },
+    {
+      "ghsa": "GHSA-vfj7-8cjw-p6xm",
+      "package": "braces",
+      "tree": ".",
+      "path": "shadcn > fast-glob > micromatch > braces@3.0.3",
+      "reason": "Developer CLI devDependency only: shadcn adds UI component source by hand and no build or test script runs it, and nothing in the shipped app depends on braces. The denial of service needs an attacker-supplied, deeply nested glob pattern; shadcn's patterns come from its own code and this repo's config. No patched version exists (advisory published 2026-09-18 with no fix), so no override can clear it.",
+      "expires": "2026-12-31"
+    }
+  ]
 }

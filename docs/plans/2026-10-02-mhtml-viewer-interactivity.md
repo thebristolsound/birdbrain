@@ -279,3 +279,6 @@ Codex (`codex exec`, read-only) and Opus 5.5 at low effort reviewed revision 1.
 
 - 2026-10-02: self-grill and plan revision 1 written (a8cf5445).
 - 2026-10-02: Codex and Opus 5.5 low reviewed revision 1; revision 2 applies them.
+- 2026-10-02: issue #1708 filed (`ready-for-agent`, `evidence-affecting`); implementer dispatched on
+  `feat/1708-mhtml-link-interactivity`. Next: open the PR, run the adversarial review round, apply,
+  request the maintainer's review.

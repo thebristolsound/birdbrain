@@ -73,8 +73,10 @@ maintainer ruled on 2026-09-28:
    infrastructure in an export, and it does not look up the exit address, which would send every
    Capture's traffic to an address-echo service. The record states what Birdbrain asked Chromium
    to do, not which address the target saw. The verifier learns the fields before any build
-   writes them (the ADR-0023 sequencing), and they ship in the Shared Case schema 4 verifier
-   release (#1509) rather than a release of their own, so teams face one verifier gap, not two.
+   writes them (the ADR-0023 sequencing), in a verifier release of their own. The ruling first
+   put them in the Shared Case schema 4 verifier release (#1509, PR #1518), which merged on
+   2026-09-20 and went out without them in 1.0.1-beta.22, tagged on 2026-10-01; corrected on
+   2026-10-02.
 6. **Tor is the Operator's own.** Birdbrain does not bundle Tor. It offers the two local SOCKS
    ports as presets, 9150 for Tor Browser and 9050 for the Tor service, and describes Tor as
    hiding the IP address only.
@@ -133,8 +135,9 @@ say that the time zone and language still reveal the Operator's region through a
 
 ## Consequences
 
-- #1509 grows: the schema 4 verifier release also carries the optional Egress fields on
-  `capture` entries.
+- A verifier release that teaches the optional Egress fields on `capture` entries ships before
+  any build writes them, as its own release. Teams on mixed versions therefore face two verifier
+  gaps, schema 4 and then the Egress fields, where the original ruling meant one.
 - A member is an installation (collaborative-cases spec, decision 6), so one signing key appears
   in every Shared Case an Operator joins, and two groups that share a member can link that
   member by key. Whether a member may join with a separate key per Case or per Persona is an

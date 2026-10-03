@@ -245,7 +245,7 @@ export function decideWebviewNavigation(input: {
 /**
  * Whether a frame in a guest may start a navigation, for the partitions that allow
  * exactly one load. Asked on `will-frame-navigate`, which covers every frame where
- * `will-navigate` covers only the main one.
+ * `will-navigate` covers only the main one, and on `will-redirect`.
  *
  * `mainDocumentCommitted` is the host's record that the guest's main frame has
  * committed its first document, taken from the commit event rather than from this
@@ -253,10 +253,17 @@ export function decideWebviewNavigation(input: {
  * `will-navigate`, so a flag set on allow stayed false, and the guest's first in-page
  * navigation was judged as the one load meant for its own artefact.
  *
- * After that commit no frame loads a new document. A same-document navigation, which
- * is a `#fragment` jump with scripts off, loads nothing and sends nothing, so it is
- * allowed. The Wayback partition, which allows subsequent navigation, gets the answer
- * `decideWebviewNavigation` gives it.
+ * After that commit the main frame loads nothing new, and neither does a subframe
+ * that has already committed a document (`frameCommitted`). A subframe's first load
+ * goes ahead only on a scheme that leaves the machine with nothing and reads nothing
+ * from it: `data:`, `about:` (which covers `srcdoc`) and `blob:`. A `file:` subframe
+ * stays refused, because a stored page's relative iframe resolves against the
+ * storage directory and would show a local file that was never part of the capture.
+ *
+ * `will-frame-navigate` is not raised for a same-document navigation, and a redirect
+ * never is one, so `isSameDocument` is not expected to be true here; if either event
+ * ever reports one, it loads nothing and is allowed. The Wayback partition, which
+ * allows subsequent navigation, gets the answer `decideWebviewNavigation` gives it.
  */
 export function decideFrameNavigation(input: {
   partition: string | null | undefined
@@ -264,16 +271,23 @@ export function decideFrameNavigation(input: {
   isMainFrame: boolean
   isSameDocument: boolean
   mainDocumentCommitted: boolean
+  frameCommitted: boolean
 }): WebviewNavigationDecision {
-  const { partition, url, isMainFrame, isSameDocument, mainDocumentCommitted } = input
+  const { partition, url, isMainFrame, isSameDocument, mainDocumentCommitted, frameCommitted } =
+    input
   const policy = webviewPolicyFor(partition)
   if (!policy) return 'block'
   if (policy.allowSubsequentNavigation) {
     return decideWebviewNavigation({ partition, url, initialLoadDone: mainDocumentCommitted })
   }
   if (isSameDocument) return 'allow'
-  if (mainDocumentCommitted || !isMainFrame) return 'block'
-  return matchesPrefix(policy, url) ? 'allow' : 'block'
+  if (isMainFrame) {
+    return !mainDocumentCommitted && matchesPrefix(policy, url) ? 'allow' : 'block'
+  }
+  if (!mainDocumentCommitted || frameCommitted) return 'block'
+  const isLocalScheme =
+    typeof url === 'string' && NON_NETWORK_SCHEMES.some((scheme) => url.startsWith(scheme))
+  return isLocalScheme ? 'allow' : 'block'
 }
 
 export type WebviewRequestDecision = 'allow' | 'block'

@@ -1,6 +1,13 @@
 // `session` is aliased because the whenReady block below binds a local `session` to
 // the sessionLog record, which would shadow it there.
-import { app, BrowserWindow, dialog, shell, session as electronSession } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  shell,
+  session as electronSession,
+  webFrameMain
+} from 'electron'
 import { join, resolve } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
@@ -356,14 +363,35 @@ app.on('web-contents-created', (_event, contents) => {
 // `did-navigate` rather than from an allow: decideFrameNavigation says why.
 function guardEveryFrame(contents: Electron.WebContents, partition: string | null): void {
   let mainDocumentCommitted = false
+  // Frames that have committed a document, by frame tree node id, which a frame keeps
+  // across its navigations.
+  const committedFrames = new Set<number>()
   contents.on('did-navigate', () => {
     mainDocumentCommitted = true
   })
+  contents.on('did-frame-navigate', (_event, _url, _code, _status, _main, processId, routingId) => {
+    const frame = webFrameMain.fromId(processId, routingId)
+    if (frame) committedFrames.add(frame.frameTreeNodeId)
+  })
   const guard = (
-    event: Electron.Event<{ url: string; isMainFrame: boolean; isSameDocument: boolean }>
+    event: Electron.Event<{
+      url: string
+      isMainFrame: boolean
+      isSameDocument: boolean
+      frame: Electron.WebFrameMain | null
+    }>
   ): void => {
-    const { url, isMainFrame, isSameDocument } = event
-    const input = { partition, url, isMainFrame, isSameDocument, mainDocumentCommitted }
+    const { url, isMainFrame, isSameDocument, frame } = event
+    // A frame that can no longer be identified is treated as one that has committed.
+    const frameCommitted = frame ? committedFrames.has(frame.frameTreeNodeId) : true
+    const input = {
+      partition,
+      url,
+      isMainFrame,
+      isSameDocument,
+      mainDocumentCommitted,
+      frameCommitted
+    }
     if (decideFrameNavigation(input) === 'block') event.preventDefault()
   }
   contents.on('will-frame-navigate', guard)

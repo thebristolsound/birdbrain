@@ -442,52 +442,96 @@ describe('decideFrameNavigation', () => {
   const frame = (
     partition: string | null,
     url: string | null,
-    isMainFrame: boolean,
-    mainDocumentCommitted: boolean,
-    isSameDocument = false
-  ) => decideFrameNavigation({ partition, url, isMainFrame, isSameDocument, mainDocumentCommitted })
+    {
+      isMainFrame = false,
+      mainDocumentCommitted = true,
+      frameCommitted = false,
+      isSameDocument = false
+    }: {
+      isMainFrame?: boolean
+      mainDocumentCommitted?: boolean
+      frameCommitted?: boolean
+      isSameDocument?: boolean
+    } = {}
+  ) =>
+    decideFrameNavigation({
+      partition,
+      url,
+      isMainFrame,
+      isSameDocument,
+      mainDocumentCommitted,
+      frameCommitted
+    })
+  const main = { isMainFrame: true }
 
   it.each(ONE_LOAD_PARTITIONS)('allows the %s guest its own artefact before it commits', (p) => {
     for (const url of expectationFor(p).ownArtefacts) {
-      expect(frame(p, url, true, false)).toBe('allow')
+      expect(frame(p, url, { ...main, mainDocumentCommitted: false })).toBe('allow')
     }
   })
 
-  it.each(ONE_LOAD_PARTITIONS)(
-    'blocks every cross-document navigation on %s once the main frame commits',
-    (p) => {
-      for (const url of [
-        'file:///c/a.mhtml',
-        'file:///etc/passwd',
-        'https://example.com/next',
-        'http://127.0.0.1:9/beacon',
-        'cid:frame-1@mhtml.blink',
-        'data:text/html,x',
-        'about:blank'
-      ]) {
-        expect(frame(p, url, true, true)).toBe('block')
-        expect(frame(p, url, false, true)).toBe('block')
-      }
+  it.each(ONE_LOAD_PARTITIONS)('blocks every main-frame navigation on %s once it commits', (p) => {
+    for (const url of [
+      'file:///c/a.mhtml',
+      'file:///etc/passwd',
+      'https://example.com/next',
+      'http://127.0.0.1:9/beacon',
+      'data:text/html,x',
+      'about:blank'
+    ]) {
+      expect(frame(p, url, main)).toBe('block')
     }
-  )
+  })
 
-  it.each(ONE_LOAD_PARTITIONS)(
-    'blocks a subframe on %s before the main frame commits, whatever its url',
-    (p) => {
-      expect(frame(p, 'file:///c/a.mhtml', false, false)).toBe('block')
-      expect(frame(p, 'https://example.com/', false, false)).toBe('block')
+  // A legacy capture's `<iframe src="data:…">` or `srcdoc` sends nothing and reads
+  // nothing from the machine, so its first load renders.
+  it.each(ONE_LOAD_PARTITIONS)("allows a subframe's first load on %s on a local scheme", (p) => {
+    for (const url of ['data:text/html,<p>x</p>', 'about:srcdoc', 'about:blank', 'blob:null/1']) {
+      expect(frame(p, url)).toBe('allow')
     }
-  )
+  })
+
+  // A captured page's relative iframe resolves against the storage directory, so a
+  // `file:` subframe would show a local file that was never part of the capture.
+  it.each(ONE_LOAD_PARTITIONS)("blocks a subframe's first load on %s off a local scheme", (p) => {
+    for (const url of [
+      'file:///c/case/sibling.html',
+      'file:///etc/passwd',
+      'https://example.com/frame',
+      'http://127.0.0.1:9/frame',
+      'cid:frame-1@mhtml.blink',
+      '',
+      null
+    ]) {
+      expect(frame(p, url)).toBe('block')
+    }
+  })
+
+  it.each(ONE_LOAD_PARTITIONS)('blocks a subframe that already committed, on %s', (p) => {
+    for (const url of ['data:text/html,x', 'about:blank', 'https://example.com/', 'file:///x']) {
+      expect(frame(p, url, { frameCommitted: true })).toBe('block')
+    }
+  })
+
+  it.each(ONE_LOAD_PARTITIONS)('blocks a subframe on %s before the main frame commits', (p) => {
+    expect(frame(p, 'data:text/html,x', { mainDocumentCommitted: false })).toBe('block')
+    expect(frame(p, 'file:///c/a.mhtml', { mainDocumentCommitted: false })).toBe('block')
+  })
 
   it.each(ONE_LOAD_PARTITIONS)('blocks anything off the allow-list on %s at any point', (p) => {
-    expect(frame(p, 'https://example.com/', true, false)).toBe('block')
-    expect(frame(p, 'file://evil.test/share/x.html', true, false)).toBe('block')
-    expect(frame(p, null, true, false)).toBe('block')
+    const first = { ...main, mainDocumentCommitted: false }
+    expect(frame(p, 'https://example.com/', first)).toBe('block')
+    expect(frame(p, 'file://evil.test/share/x.html', first)).toBe('block')
+    expect(frame(p, null, first)).toBe('block')
   })
 
-  it.each(ONE_LOAD_PARTITIONS)('allows a same-document fragment jump on %s in any frame', (p) => {
-    expect(frame(p, 'file:///c/a.mhtml#section', true, true, true)).toBe('allow')
-    expect(frame(p, 'cid:frame-1@mhtml.blink#section', false, true, true)).toBe('allow')
+  // Neither wired event reports one in practice; the answer is pinned so a report
+  // that ever arrives is not refused for a load that does not happen.
+  it.each(ONE_LOAD_PARTITIONS)('allows a same-document report on %s in any frame', (p) => {
+    expect(frame(p, 'file:///c/a.mhtml#section', { ...main, isSameDocument: true })).toBe('allow')
+    expect(frame(p, 'cid:frame-1#section', { frameCommitted: true, isSameDocument: true })).toBe(
+      'allow'
+    )
   })
 
   it('gives the replay pane the answer decideWebviewNavigation gives it', () => {
@@ -497,16 +541,19 @@ describe('decideFrameNavigation', () => {
       ['https://example.com/', true],
       ['https://web.archive.org/account/login', false]
     ] as const) {
-      expect(frame(WAYBACK_PARTITION, url, true, committed)).toBe(
+      expect(frame(WAYBACK_PARTITION, url, { ...main, mainDocumentCommitted: committed })).toBe(
         decideWebviewNavigation({ partition: WAYBACK_PARTITION, url, initialLoadDone: committed })
       )
     }
-    expect(frame(WAYBACK_PARTITION, REPLAY_URL, false, true)).toBe('allow')
+    expect(frame(WAYBACK_PARTITION, REPLAY_URL, { frameCommitted: true })).toBe('allow')
   })
 
   it('blocks everything on a partition it does not know', () => {
-    expect(frame('guest', 'file:///c/a.mhtml', true, false)).toBe('block')
-    expect(frame(null, 'file:///c/a.mhtml#x', true, true, true)).toBe('block')
+    expect(frame('guest', 'file:///c/a.mhtml', { ...main, mainDocumentCommitted: false })).toBe(
+      'block'
+    )
+    expect(frame(null, 'data:text/html,x')).toBe('block')
+    expect(frame(null, 'file:///c/a.mhtml#x', { ...main, isSameDocument: true })).toBe('block')
   })
 })
 

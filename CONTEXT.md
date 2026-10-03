@@ -48,12 +48,14 @@ _Avoid_: backup, dump, case file.
 
 ### Acquisition
 
+Clauses marked _Planned_ describe decisions in [`ADR-0034`](docs/adr/0034-the-app-acquires-and-the-extension-is-a-companion.md) and [`ADR-0035`](docs/adr/0035-one-transaction-record-per-capture.md) that no build implements yet. Until they ship, the extension acquires every operator-witnessed Capture itself.
+
 **Capture**:
-The primary artifacts taken from one observation of a single web page (MHTML, Transaction Record, screenshot, PDF, as available), stored on disk under its Case directory and indexed in the database. Its Manifest Entry inventories which artifacts are present and why any is absent. Legacy Captures may be HTML only.
+The primary artifacts taken from one observation of a single web page, stored on disk under its Case directory and indexed in the database: MHTML and, as available, a screenshot today. Legacy Captures may be HTML only. _Planned:_ a Transaction Record and a PDF join the artifacts, and the Manifest Entry inventories which artifacts are present and why any is absent.
 _Avoid_: page, snapshot, record.
 
 **Transaction Record**:
-The WARC holding every HTTP request and response of the observed navigation as the browser reported them, from its first request to the moment of Capture. It records what the browser's network stack handed over (decoded bodies, headers as parsed), never bytes read off the wire. Present only when recording was on before the page loaded; never reconstructed afterwards.
+_Planned._ The WARC holding the HTTP requests and responses of the observed navigation that the browser handed over complete, from its first request to the moment of Capture. The Capture's inventory accounts for every exchange the record lacks or holds in part: one served from the cache, failed, cancelled, still in flight, or over the size budget, and a request whose body the browser did not hand over in full. The record holds what the browser's network stack handed over (decoded bodies, headers as parsed), never bytes read off the wire. The values of four standard credential headers (`Cookie`, `Set-Cookie`, `Authorization`, `Proxy-Authorization`) are replaced with a marker before the record is written, and the inventory names them ([`ADR-0036`](docs/adr/0036-credential-header-values-never-enter-a-transaction-record.md)); a secret in any other header, a URL, or a body stays in the record. Present only when recording was on before the page loaded; never reconstructed afterwards.
 _Avoid_: network log, HAR, archive, WARC file (as the general term).
 
 **Capture Server**:
@@ -65,7 +67,7 @@ The one Case the extension is working in. Chosen by the Operator; required befor
 _Avoid_: current case, selected case, open case.
 
 **Capture Session**:
-The state between the Operator starting and stopping work into the Active Case. While it runs, the Active Case's Selectors are matched against browsed pages, and in a browser Birdbrain launched, recording is on, so every Capture taken during it carries a Transaction Record. With passive capture withdrawn (ADR-0013), a running session still captures nothing by itself.
+The state between the Operator starting and stopping work into the Active Case. While it runs, the Active Case's Selectors are matched against browsed pages. With passive capture withdrawn (ADR-0013), a running session captures nothing by itself. _Planned:_ in a browser Birdbrain launched, recording is on during a session, so every Capture taken during it carries a Transaction Record, and passive capture returns there only: the session captures every page that loads, or only the pages a Selector matches (ADR-0037). The everyday browser never captures without a click.
 _Avoid_: session (unqualified), auto-capture, recording mode.
 
 **Capture Lifecycle**:
@@ -73,11 +75,11 @@ Operations that mutate an MHTML Capture beyond its database row: admission of a 
 _Avoid_: capture service, capture manager.
 
 **Capture Method**:
-How a Capture was produced: through the Companion in the Operator's everyday browser (`companion`, operator-witnessed, never a Transaction Record), in a browser Birdbrain launched (`launched`, operator-witnessed, a Transaction Record when a Capture Session is running), by a silent hidden-window render (`background`), or by copying another Capture in the same Case (`duplicate`, which observed nothing). `extension` is a legacy value for Captures the Companion once acquired itself; nothing new writes it. Which Persona was present is recorded beside the method, never inside it.
+How a Capture was produced. Today: by the Chrome extension (`extension`, operator-witnessed), by a silent hidden-window render (`background`), or by copying another Capture in the same Case (`duplicate`, which observed nothing). _Planned:_ `companion` (through the Companion in the Operator's everyday Chromium browser, operator-witnessed, never a Transaction Record), `launched` (in a browser Birdbrain launched, operator-witnessed, a Transaction Record when a Capture Session is running), and `launched-passive` (taken by a running Capture Session in a launched browser without a click, never operator-witnessed) replace `extension`, which stays as a legacy value on Captures already written. Which Persona was present is recorded beside the method, never inside it.
 _Avoid_: capture type, capture mode, persona-window.
 
 **Companion**:
-The browser extension. It carries the Active Case, Tags, Selectors and highlights into the Operator's everyday browser and opens the pipe for a `companion` Capture; it acquires nothing itself.
+_Planned._ The browser extension once acquisition has left it. It carries the Active Case, Tags, Selectors and highlights into the Operator's everyday browser and acquires nothing itself. In a Chromium browser it also opens the pipe for a `companion` Capture; Firefox gives an extension no such pipe, so a Firefox Companion offers no Capture.
 _Avoid_: extension (unqualified), plugin, add-on.
 
 **Recapture**:
@@ -97,11 +99,11 @@ The network path Birdbrain's outbound traffic takes: Direct from the Operator's 
 _Avoid_: route, VPN mode, anonymous mode.
 
 **Scroll-to-load**:
-An optional phase before a Capture's artifacts are taken in which the page is scrolled to trigger lazy-loaded content. Whether it was requested, whether it ran, and how it ended are recorded in the Manifest Entry; a Scroll-to-load that fails never silently yields a static Capture.
+An optional phase before a Capture's artifacts are taken in which the page is scrolled to trigger lazy-loaded content. _Planned:_ whether it was requested, whether it ran, and how it ended are recorded in the Manifest Entry, and a Scroll-to-load that fails never silently yields a static Capture. Today the background renderer already fails closed when a scroll step fails, and records nothing; the extension's scrolling capture does neither (#1667).
 _Avoid_: scrolling capture, scrolling mode, pre-scroll.
 
 **Bound TLS Details**:
-The TLS security details the browser reported on the response that produced a Capture's bytes, recordable only because the engine was attached before the request was sent (`launched` in a Chromium browser, and `background`). A property of the Capture itself, unlike the TLS Cert Chain. Absent for cached responses, for Firefox, and for `companion` and `duplicate` Captures.
+_Planned._ The TLS security details the browser reported on the response that produced a Capture's bytes, recordable only because the engine was attached before the request was sent (`launched` in a Chromium browser, and `background`). A property of the Capture itself, unlike the TLS Cert Chain. Absent for cached responses, for Firefox, and for `companion` and `duplicate` Captures.
 _Avoid_: capture cert, TLS evidence, cert chain (for this).
 
 **Extracted Text**:
@@ -309,7 +311,7 @@ _Avoid_: risky change, core change, forensic change.
 - A **Recapture** produces a new **Capture** that supersedes an existing one; both remain visible and neither is overwritten
 - A **Duplicate** is a new **Capture** that links to its source and shares its **Content Hash**; unlike a **Recapture** it observed nothing
 - A **TLS Cert Chain** and a **Wayback Ref** attach to a **Capture** as corroboration only, and bind nothing about the captured transaction
-- **Bound TLS Details** are part of the **Capture** and describe the captured transaction; they never substitute for the **TLS Cert Chain**, which keeps running as the floor
+- **Bound TLS Details** are part of the **Capture** and describe the captured transaction; they never substitute for the **TLS Cert Chain**, which stays the floor wherever it runs; _planned:_ it is skipped while the **Egress** is not Direct (#1695)
 - Creating or updating a **Selector** triggers the **Selector Lifecycle** to (re)compute **Persisted Matches** for the **Case**'s existing **Captures**, asynchronously
 - A **Foreground Match Preview** is computed in the renderer against the open **Capture**'s text and never touches **Persisted Matches**
 - A **Capture**'s **Extracted Text** is a **Derived File** on disk (authoritative), mirrored to the database for the **Selector Lifecycle** and search
@@ -360,7 +362,7 @@ _Avoid_: risky change, core change, forensic change.
 
 - "source" is used for four unrelated things: `CaptureSource` (`auto`/`manual`/`selector`/`recapture`), a Note's `sourceUrl`, the extraction pipeline's `extractionSource`, and the overview's Sources block. Say "capture trigger" for `CaptureSource` and reserve "source" for the origin a Capture came from.
 
-- "auto-capture" names four unrelated things: the top-bar switch that starts and stops a **Capture Session** (#813), the Signals card and the `autoCaptureMode` setting that edit a Case's URL exclusion policy (#744), the Capture Server capturing a page before the extension attaches a **Tag** or **Note** to it, and the withdrawn passive capture whose return ADR-0013 scopes to a declared window (#600). Say "Capture Session" for the switch, "exclusion policy" for the card, and "capture-then-attach" for the server path; "passive capture" and its vocabulary stay reserved to ADR-0013 until the restoration lands.
+- "auto-capture" names four unrelated things: the top-bar switch that starts and stops a **Capture Session** (#813), the Signals card and the `autoCaptureMode` setting that edit a Case's URL exclusion policy (#744), the Capture Server capturing a page before the extension attaches a **Tag** or **Note** to it, and the withdrawn passive capture whose return ADR-0037 scopes to a launched browser (#600). Say "Capture Session" for the switch, "exclusion policy" for the card, and "capture-then-attach" for the server path; "passive capture" and its vocabulary stay reserved to ADR-0013 and ADR-0037 until the restoration lands.
 
 - "route" is the Capture Server's HTTP route (a handler that parses a request and hands it to the Capture Lifecycle). The path outbound traffic takes is the **Egress**; never call it a route.
 

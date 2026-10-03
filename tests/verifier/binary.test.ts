@@ -467,6 +467,52 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
     rmSync(futureDir, { recursive: true, force: true })
   })
 
+  // #1197 through the BUILT binary: a selection package's own export entry from
+  // a newer schema is the same fourth outcome, earned on the same terms. The
+  // entry is re-signed the way a newer Birdbrain would have written it; the
+  // same entry under a signature that does not verify is a tamper verdict.
+  it('exits 3 on a selection package whose export entry is from a newer schema', () => {
+    const futureEntry = (sign: (entryHash: string) => string): string => {
+      const entry = JSON.parse(
+        readFileSync(join(selPkgDir, 'export-entry.json'), 'utf-8')
+      ) as Record<string, unknown>
+      delete entry.entryHash
+      delete entry.signature
+      const body = {
+        ...entry,
+        schemaVersion: MANIFEST_SCHEMA_VERSION + 1,
+        fieldFromALaterBuild: 'not in this build'
+      }
+      const entryHash = createHash('sha256').update(canonicalStringify(body)).digest('hex')
+      return JSON.stringify({ ...body, entryHash, signature: sign(entryHash) })
+    }
+    const cases = [
+      { sign: signEntryHash, status: 3, result: 'RESULT: VERIFIER TOO OLD' },
+      { sign: () => signEntryHash('f'.repeat(64)), status: 1, result: 'RESULT: FAIL' }
+    ]
+    for (const { sign, status, result } of cases) {
+      const dir = mkdtempSync(join(tmpdir(), 'bb-binfutureexport-'))
+      try {
+        cpSync(selPkgDir, dir, { recursive: true })
+        writeFileSync(join(dir, 'export-entry.json'), futureEntry(sign))
+        const proc = spawnSync(binaryPath, [dir], { encoding: 'utf-8' })
+        expect(proc.status, proc.stdout + proc.stderr).toBe(status)
+        expect(proc.stdout).toContain(result)
+        if (status === 3) {
+          expect(proc.stdout).toContain(
+            '[SKIP] export entry — export-entry.json: Entry from a newer'
+          )
+          expect(proc.stdout).not.toContain('[FAIL]')
+        } else {
+          expect(proc.stdout).toContain('fails a check: Invalid signature')
+          expect(proc.stdout).not.toContain('VERIFIER TOO OLD')
+        }
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    }
+  })
+
   // Schema 4 through the BUILT binary (#1509): a package enclosing a Shared
   // Case is walked and every non-pass outcome is named in the report, so a
   // script reading the output can tell each from a broken chain.

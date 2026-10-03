@@ -502,4 +502,30 @@ test.describe('stored-page viewer links', () => {
     await expect(menu).toHaveCount(0)
     expect(sentinel.requests).toEqual([])
   })
+
+  test('the Links tab lists both frames’ links from the stored archive', async ({ page }) => {
+    test.setTimeout(120000)
+    await openLinksCapture(page, sentinel, fileTarget)
+    await page.getByRole('tab', { name: 'Links', exact: true }).click()
+
+    // Six anchors in each frame; the form is not a link.
+    const rows = page.getByTestId('links-row')
+    await expect(rows).toHaveCount(12)
+    await expect(page.getByTestId('links-subframe')).toHaveCount(6)
+    await expect(rows.filter({ hasText: 'main relative' })).toContainText(
+      `${sentinel.origin.replace('http://', '')}/next-main.html`
+    )
+    await expect(rows.filter({ hasText: 'sub fragment' })).toContainText('same page')
+
+    await page.getByLabel('External only').check()
+    await expect(page.getByTestId('links-count')).toHaveText('2 of 12')
+
+    await rows.filter({ hasText: 'main public' }).click({ button: 'right' })
+    await expect(page.getByTestId('entity-context-menu')).toHaveAttribute(
+      'aria-label',
+      'Link actions: https://example.test/main'
+    )
+    // Reading the list reads the file, not the page's origin.
+    expect(sentinel.requests).toEqual([])
+  })
 })

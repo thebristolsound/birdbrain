@@ -11,6 +11,7 @@ import {
   FileCode,
   FileText,
   History,
+  Link as LinkIcon,
   ImageIcon,
   type LucideIcon
 } from 'lucide-react'
@@ -23,6 +24,7 @@ import { CaptureViewerToolbar } from '@renderer/components/captures/CaptureViewe
 import { CaptureDownloadMenu } from '@renderer/components/captures/CaptureDownloadMenu'
 import { BrowserChromeFrame } from '@renderer/components/captures/BrowserChromeFrame'
 import { WaybackCompare } from '@renderer/components/captures/WaybackCompare'
+import { LinksTab } from '@renderer/components/captures/LinksTab'
 import { useAnnotationEditor } from '@renderer/components/captures/annotation/useAnnotationEditor'
 import { useZoomPan } from '@renderer/components/captures/annotation/useZoomPan'
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
@@ -31,12 +33,13 @@ import { formatCaptureTimestampFull } from '@renderer/lib/formatRelativeTime'
 
 // Source is gone: Page *is* the MHTML, so the two tabs rendered the same
 // artifact twice. The raw file is still one click away in the download menu.
-const TABS: CaptureViewerTab[] = ['screenshot', 'page', 'text', 'wayback']
+const TABS: CaptureViewerTab[] = ['screenshot', 'page', 'text', 'links', 'wayback']
 
 const TAB_LABELS: Record<CaptureViewerTab, string> = {
   screenshot: 'Screenshot',
   page: 'Page',
   text: 'Text',
+  links: 'Links',
   wayback: 'Wayback'
 }
 
@@ -47,6 +50,7 @@ const TAB_ICONS: Record<CaptureViewerTab, LucideIcon> = {
   screenshot: ImageIcon,
   page: FileCode,
   text: FileText,
+  links: LinkIcon,
   wayback: History
 }
 
@@ -315,6 +319,7 @@ export function CaptureViewer() {
               </div>
             </div>
           ) : null}
+          {activeTab === 'links' && <LinksTab key={capture.id} capture={capture} />}
           {activeTab === 'wayback' && <WaybackCompare capture={capture} />}
           {activeTab === 'text' &&
             (content ? (

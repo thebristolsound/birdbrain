@@ -242,6 +242,40 @@ export function decideWebviewNavigation(input: {
   return 'allow'
 }
 
+/**
+ * Whether a frame in a guest may start a navigation, for the partitions that allow
+ * exactly one load. Asked on `will-frame-navigate`, which covers every frame where
+ * `will-navigate` covers only the main one.
+ *
+ * `mainDocumentCommitted` is the host's record that the guest's main frame has
+ * committed its first document, taken from the commit event rather than from this
+ * guard's own allow: a `<webview>`'s `src` load is browser-initiated and raises no
+ * `will-navigate`, so a flag set on allow stayed false, and the guest's first in-page
+ * navigation was judged as the one load meant for its own artefact.
+ *
+ * After that commit no frame loads a new document. A same-document navigation, which
+ * is a `#fragment` jump with scripts off, loads nothing and sends nothing, so it is
+ * allowed. The Wayback partition, which allows subsequent navigation, gets the answer
+ * `decideWebviewNavigation` gives it.
+ */
+export function decideFrameNavigation(input: {
+  partition: string | null | undefined
+  url: string | null | undefined
+  isMainFrame: boolean
+  isSameDocument: boolean
+  mainDocumentCommitted: boolean
+}): WebviewNavigationDecision {
+  const { partition, url, isMainFrame, isSameDocument, mainDocumentCommitted } = input
+  const policy = webviewPolicyFor(partition)
+  if (!policy) return 'block'
+  if (policy.allowSubsequentNavigation) {
+    return decideWebviewNavigation({ partition, url, initialLoadDone: mainDocumentCommitted })
+  }
+  if (isSameDocument) return 'allow'
+  if (mainDocumentCommitted || !isMainFrame) return 'block'
+  return matchesPrefix(policy, url) ? 'allow' : 'block'
+}
+
 export type WebviewRequestDecision = 'allow' | 'block'
 
 /**

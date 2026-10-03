@@ -23,11 +23,13 @@ import { revealWhenReady } from '@main/windowReveal'
 import {
   allowWebviewPermission,
   decideWebviewAttach,
+  decideFrameNavigation,
   decideWebviewDownload,
   decideWebviewNavigation,
   decideWebviewRequest,
   resolveAttachPartition,
   sanitizeWebviewPreferences,
+  webviewPolicyFor,
   WEBVIEW_PARTITIONS
 } from '@main/webviewPolicy'
 import { initSettings, getSettings } from '@main/services/settings'
@@ -323,13 +325,18 @@ function registerProtocolClient(): void {
   }
 }
 
-// Navigation policy for every webview guest. Partition-aware since #401: the MHTML
-// evidence viewer gets exactly one file:// load and nothing after it, while the
+// Navigation policy for every webview guest. Partition-aware since #401: the two
+// evidence viewers get exactly one file:// load and nothing after it, while the
 // Wayback replay pane may follow archive.org's own redirects but never leaves the
 // replay prefix. A guest on any other partition navigates nowhere.
 app.on('web-contents-created', (_event, contents) => {
   if (contents.getType() !== 'webview') return
   const partition = webviewPartitionOf(contents)
+  contents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  if (webviewPolicyFor(partition)?.allowSubsequentNavigation === false) {
+    guardEveryFrame(contents, partition)
+    return
+  }
   let initialLoadDone = false
   const guard = (event: Electron.Event, url: string): void => {
     if (decideWebviewNavigation({ partition, url, initialLoadDone }) === 'allow') {
@@ -342,8 +349,26 @@ app.on('web-contents-created', (_event, contents) => {
   // Server-side redirects do not raise will-navigate, and archive.org replay URLs
   // redirect to the nearest snapshot as a matter of course.
   contents.on('will-redirect', guard)
-  contents.setWindowOpenHandler(() => ({ action: 'deny' }))
 })
+
+// The evidence viewers' guard (#1708). `will-frame-navigate` rather than
+// `will-navigate`, which sees the main frame only, and the commit recorded from
+// `did-navigate` rather than from an allow: decideFrameNavigation says why.
+function guardEveryFrame(contents: Electron.WebContents, partition: string | null): void {
+  let mainDocumentCommitted = false
+  contents.on('did-navigate', () => {
+    mainDocumentCommitted = true
+  })
+  const guard = (
+    event: Electron.Event<{ url: string; isMainFrame: boolean; isSameDocument: boolean }>
+  ): void => {
+    const { url, isMainFrame, isSameDocument } = event
+    const input = { partition, url, isMainFrame, isSameDocument, mainDocumentCommitted }
+    if (decideFrameNavigation(input) === 'block') event.preventDefault()
+  }
+  contents.on('will-frame-navigate', guard)
+  contents.on('will-redirect', guard)
+}
 
 // A single-instance lock is required so a deep link launched while the app is
 // already running routes into this process (via second-instance) instead of

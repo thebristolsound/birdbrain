@@ -21,6 +21,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   allowWebviewPermission,
+  decideFrameNavigation,
   decideWebviewAttach,
   decideWebviewDownload,
   decideWebviewNavigation,
@@ -430,6 +431,82 @@ describe('decideWebviewNavigation', () => {
     expect(
       decideWebviewNavigation({ partition: WAYBACK_PARTITION, url: null, initialLoadDone: false })
     ).toBe('block')
+  })
+})
+
+// The evidence viewers' per-frame guard (#1708). Removing the injected
+// `pointer-events: none` CSS makes every link in the stored page clickable, so this
+// decision, not the CSS, is what keeps a frame on the document it opened with.
+describe('decideFrameNavigation', () => {
+  const ONE_LOAD_PARTITIONS = [MHTML_PARTITION, LEGACY_HTML_PARTITION] as const
+  const frame = (
+    partition: string | null,
+    url: string | null,
+    isMainFrame: boolean,
+    mainDocumentCommitted: boolean,
+    isSameDocument = false
+  ) => decideFrameNavigation({ partition, url, isMainFrame, isSameDocument, mainDocumentCommitted })
+
+  it.each(ONE_LOAD_PARTITIONS)('allows the %s guest its own artefact before it commits', (p) => {
+    for (const url of expectationFor(p).ownArtefacts) {
+      expect(frame(p, url, true, false)).toBe('allow')
+    }
+  })
+
+  it.each(ONE_LOAD_PARTITIONS)(
+    'blocks every cross-document navigation on %s once the main frame commits',
+    (p) => {
+      for (const url of [
+        'file:///c/a.mhtml',
+        'file:///etc/passwd',
+        'https://example.com/next',
+        'http://127.0.0.1:9/beacon',
+        'cid:frame-1@mhtml.blink',
+        'data:text/html,x',
+        'about:blank'
+      ]) {
+        expect(frame(p, url, true, true)).toBe('block')
+        expect(frame(p, url, false, true)).toBe('block')
+      }
+    }
+  )
+
+  it.each(ONE_LOAD_PARTITIONS)(
+    'blocks a subframe on %s before the main frame commits, whatever its url',
+    (p) => {
+      expect(frame(p, 'file:///c/a.mhtml', false, false)).toBe('block')
+      expect(frame(p, 'https://example.com/', false, false)).toBe('block')
+    }
+  )
+
+  it.each(ONE_LOAD_PARTITIONS)('blocks anything off the allow-list on %s at any point', (p) => {
+    expect(frame(p, 'https://example.com/', true, false)).toBe('block')
+    expect(frame(p, 'file://evil.test/share/x.html', true, false)).toBe('block')
+    expect(frame(p, null, true, false)).toBe('block')
+  })
+
+  it.each(ONE_LOAD_PARTITIONS)('allows a same-document fragment jump on %s in any frame', (p) => {
+    expect(frame(p, 'file:///c/a.mhtml#section', true, true, true)).toBe('allow')
+    expect(frame(p, 'cid:frame-1@mhtml.blink#section', false, true, true)).toBe('allow')
+  })
+
+  it('gives the replay pane the answer decideWebviewNavigation gives it', () => {
+    for (const [url, committed] of [
+      [REPLAY_URL, true],
+      [REPLAY_URL, false],
+      ['https://example.com/', true],
+      ['https://web.archive.org/account/login', false]
+    ] as const) {
+      expect(frame(WAYBACK_PARTITION, url, true, committed)).toBe(
+        decideWebviewNavigation({ partition: WAYBACK_PARTITION, url, initialLoadDone: committed })
+      )
+    }
+    expect(frame(WAYBACK_PARTITION, REPLAY_URL, false, true)).toBe('allow')
+  })
+
+  it('blocks everything on a partition it does not know', () => {
+    expect(frame('guest', 'file:///c/a.mhtml', true, false)).toBe('block')
+    expect(frame(null, 'file:///c/a.mhtml#x', true, true, true)).toBe('block')
   })
 })
 

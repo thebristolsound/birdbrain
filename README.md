@@ -2,8 +2,8 @@
 
 Birdbrain is a local-first, open source desktop app, with a companion Chromium extension, for
 OSINT investigators and journalists who need to capture web pages as evidence, organize them
-into cases, and show later that the record has not changed. It runs on Windows and Ubuntu and
-is in public beta.
+into cases, and show later that the record has not changed. It runs on Windows and Ubuntu, has
+an experimental macOS build, and is in public beta.
 
 Birdbrain covers the same ground as Hunchly, case-based web capture for investigations, but it
 is open source, and anyone can check its evidence packages with standard command-line tools
@@ -73,7 +73,7 @@ public repository that holds releases only. You need no GitHub account to downlo
 | Windows 10 / 11 | `.exe` installer | Supported. Not code-signed, so SmartScreen warns the first time you run it. |
 | Ubuntu | AppImage | Supported, and the primary Linux build. Needs FUSE 2 (`libfuse2t64`, or `libfuse2` on 22.04 and earlier). |
 | Ubuntu | `.deb` | Best-effort. |
-| macOS | none | Not supported. |
+| macOS | `.dmg` | Experimental. Unsigned, not notarized, and not launch-tested before publishing. Apple Silicon and Intel builds. The app reports updates but does not install them. |
 
 Releases from 1.0.1-beta.22 on include `SHA256SUMS.txt` and an SPDX software bill of materials.
 Check the download against the published hashes before you run it:
@@ -87,6 +87,18 @@ sha256sum --check --ignore-missing SHA256SUMS.txt
 # Windows: compare the output with the matching line in SHA256SUMS.txt.
 # PowerShell prints the hash in capitals; the comparison ignores case.
 Get-FileHash .\Birdbrain-Setup-<version>.exe -Algorithm SHA256
+```
+
+```bash
+# macOS: compare the output with the matching line in SHA256SUMS.txt
+shasum -a 256 Birdbrain-<version>-arm64.dmg
+```
+
+macOS blocks the first launch of the unsigned build. After you drag Birdbrain to
+**Applications**, clear the download quarantine once, then open it as usual:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Birdbrain.app
 ```
 
 The extension is not on the Chrome Web Store yet, so it loads unpacked in developer mode. The

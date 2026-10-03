@@ -111,9 +111,14 @@ Case. Source: `RecaptureEnqueuePayload` takes an explicit `caseId`.
 `{ urls: [url], caseId }` and no `supersedesCaptureId` queues a fresh background Capture
 (`useRecaptureMutations` in `src/renderer/lib/api/recapture.ts`). `recapture.ts` already refuses
 non-`http(s)` URLs (`validateUrl`) and enforces the per-case exclusion list, reporting refusals in
-`EnqueueResult.rejected`. The menu's scheme filter is a convenience; `validateUrl` is the backstop,
-and a test pins that the menu path reaches it. The toast reports `accepted` or the rejection
-reason. `recapture.ts` and `backgroundRenderer.ts` are not modified.
+`EnqueueResult.rejected`. The menu's scheme filter is a convenience; `validateUrl` is the backstop
+for the scheme only, and the existing "rejects invalid URLs at enqueue with per-URL reasons" case
+in `tests/main/services/recapture.test.ts` pins that refusal. The menu path's payload to
+`recapture:enqueue` is pinned in `tests/components/MhtmlViewer.test.tsx`. `validateUrl` does not
+refuse D9's addresses, so those refusals live in the menu only. (Revised in the review round:
+the first wording promised a menu-to-`validateUrl` test and implied a wider backstop.) The toast
+reports `accepted` or the rejection reason. `recapture.ts` and `backgroundRenderer.ts` are not
+modified.
 
 **D8. Is the Capture made from a link labelled with where it came from?** Not in this slice. It
 records exactly what any other background Capture of that URL records. The PR's Evidence impact

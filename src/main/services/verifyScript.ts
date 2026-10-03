@@ -27,12 +27,24 @@
 import { EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION } from '@shared/schemas'
 import { PACKAGE_ROOT_FILES } from '../../packages/evidence-package-layout/index'
 import { renderShellPathHelpers } from '../../packages/evidence-package-layout/shell'
+import {
+  VERIFY_RECIPES,
+  stepRef,
+  verifyStep,
+  type VerifyStepNumber
+} from '@main/services/verifyProcedure'
 
 // Every member of the package this script names, read from the Package Layout.
 // The sh block renderShellPathHelpers() embeds below defines the variables
 // ($MANIFEST_FILE, $PAGES_DIR, ...) and helpers (capture_page_path, ...) the
 // checks use; `set -u` makes a name that drifts from that block fail loudly.
 const ROOT = PACKAGE_ROOT_FILES
+
+// The two lines that open a step: its banner comment and its begin call.
+function openStep(number: VerifyStepNumber): string {
+  const banner = `# --- Step ${number} `.padEnd(76, '-')
+  return `${banner}\nbegin ${number} '${verifyStep(number).scriptTitle}'`
+}
 
 export const VERIFY_SCRIPT = `#!/bin/sh
 # ${ROOT.verifyScript} - one-command verification of this Birdbrain evidence package.
@@ -58,7 +70,7 @@ export const VERIFY_SCRIPT = `#!/bin/sh
 # 3 INCOMPLETE - nothing failed, but a check could not be completed, so this is
 # not a pass either. A check that cannot run is never folded into exit 0.
 #
-# What exit 0 means: every signed entry verifies under the key step 2 resolves
+# What exit 0 means: every signed entry verifies under the key ${stepRef(2)} resolves
 # for it - the enclosed public key, or, for an entry before an import entry,
 # the key the first import entry after it carries - and recomputes to its own
 # entryHash, and for every capture this package's
@@ -69,9 +81,9 @@ export const VERIFY_SCRIPT = `#!/bin/sh
 # expected absent, exactly like its page and screenshot. What exit 0 does NOT
 # mean: it does not recompute a package-wide hash the way the binary verifier
 # does, so a file with no signed entry of its own (${ROOT.report}) is checked only
-# against the unsigned index in step 1, and evidence.json, which that index
+# against the unsigned index in ${stepRef(1)}, and evidence.json, which that index
 # does not list, is not hashed by any step. Nor does it mean the
-# enclosed TSA root is the authority's real root — step 6a prints that root's
+# enclosed TSA root is the authority's real root — ${stepRef('6a')} prints that root's
 # fingerprint so you can check it against a source outside this package. Until
 # you have, the trusted-time result is conditional on a file whoever built this
 # package supplied.
@@ -215,7 +227,7 @@ in_list() { printf '%s\\n' "$1" | grep -qxF -e "$2"; }
 
 # Verifies one manifest line's RSA signature over its bare entryHash hex with no
 # trailing newline, under the public key in the file named by $2 - the recipe
-# ${ROOT.verifyRunbook} step 2 documents. Prints nothing and returns non-zero on any
+# ${ROOT.verifyRunbook} ${stepRef(2)} documents. Prints nothing and returns non-zero on any
 # failure, so each caller words its own finding.
 verify_line_signature() {
   sig=$(field "$1" '.signature // empty')
@@ -227,9 +239,9 @@ verify_line_signature() {
 }
 
 # Recomputes one manifest line's entryHash from its body - the recipe ${ROOT.verifyRunbook}
-# step 3 documents. Echoes the hex.
+# ${stepRef(3)} documents. Echoes the hex.
 recompute_entry_hash() {
-  printf '%s' "$1" | jq -cS 'del(.entryHash, .signature)' | tr -d '\\n' | sha256_stdin
+  printf '%s' "$1" | ${VERIFY_RECIPES.canonicalEntryBody} | sha256_stdin
 }
 
 printf '${ROOT.verifyScript} - Birdbrain evidence package, by-hand verification (see ${ROOT.verifyRunbook})\\n'
@@ -238,11 +250,10 @@ exec 3>&1 4>&2
 stdout_saved=1
 exec >"$detail_file" 2>&1
 
-# --- Step 1 ---------------------------------------------------------------
-begin 1 'file integrity against the unsigned index'
+${openStep(1)}
 if [ ! -f "$EVIDENCE_INDEX_FILE" ]; then
   fail "$EVIDENCE_INDEX_FILE is missing, so the enclosed index cannot be checked"
-elif jq -r '.artifacts[] | "\\(.sha256)  \\(.path)"' "$EVIDENCE_INDEX_FILE" |
+elif jq -r '${VERIFY_RECIPES.indexCheckFilter}' "$EVIDENCE_INDEX_FILE" |
   sha256_check >"$tmp/step1.out" 2>&1; then
   note "$(grep -c 'OK$' "$tmp/step1.out") enclosed file(s) match $EVIDENCE_INDEX_FILE"
 else
@@ -251,10 +262,9 @@ else
   done <"$tmp/step1.out"
   fail "one or more enclosed files do not match $EVIDENCE_INDEX_FILE"
 fi
-note "$EVIDENCE_INDEX_FILE is unsigned - steps 3 and 5 are the authoritative bind"
+note "$EVIDENCE_INDEX_FILE is unsigned - ${stepRef(3, 5)} are the authoritative bind"
 
-# --- Step 2 ---------------------------------------------------------------
-begin 2 'entry signatures'
+${openStep(2)}
 # Which key each entry verifies under, the rule the Birdbrain verifier applies:
 # the key the first import entry after it carries as sourcePublicKeyPem, or the
 # enclosed key when no import entry follows it. An import entry carries the key
@@ -347,12 +357,11 @@ else
   [ -n "$run_key" ] && key_run_note "$run_key" "$run_from" $((position - 1)) "$run_signed"
   note "$signed_count signed entr(ies) verified"
   if [ "$unsigned_count" -gt 0 ]; then
-    note "$unsigned_count pre-signing entr(ies) carry no signature - covered by steps 3, 4 and 6"
+    note "$unsigned_count pre-signing entr(ies) carry no signature - covered by ${stepRef(3, 4, 6)}"
   fi
 fi
 
-# --- Step 3 ---------------------------------------------------------------
-begin 3 'recomputed entry hashes'
+${openStep(3)}
 counted=0
 while IFS= read -r line; do
   [ -n "$line" ] || continue
@@ -363,8 +372,7 @@ while IFS= read -r line; do
 done <"$MANIFEST_FILE"
 note "$counted entr(ies) recomputed from their bodies"
 
-# --- Step 4 ---------------------------------------------------------------
-begin 4 'chain linkage'
+${openStep(4)}
 expect=0
 head_hash=''
 while IFS= read -r line; do
@@ -385,8 +393,7 @@ else
   note "index 0 prevHash is not compared: a chain continued from an imported case carries the source head there"
 fi
 
-# --- Step 5 ---------------------------------------------------------------
-begin 5 'content bind to the signed chain'
+${openStep(5)}
 selection=''
 have_selection=0
 # Named scope for the verdict header. Empty until a verified export-entry.json
@@ -639,15 +646,14 @@ whole)
   ;;
 esac
 
-# --- Step 6 ---------------------------------------------------------------
-begin 6 'timestamp, the canonical TSA verification'
+${openStep(6)}
 # The work set comes from the SIGNED manifest, never from listing timestamps/.
 # Read off the directory instead and a package stripped of its .tst files says
 # "nothing to check" and passes, while the signed chain still asserts a trusted
 # time for the capture. Which digest each token is entitled to attest comes from
 # that same signed entry - never from a file name, and never from evidence.json.
 #
-# The REQUIRED tokens are found the way step 5 and the binary find pages: walk
+# The REQUIRED tokens are found the way ${stepRef(5)} and the binary find pages: walk
 # the captures that are active and in scope, and take each one's signed token by
 # its contentHash. A deleted or out-of-selection capture is never visited, so
 # its token is expected absent without any exclusion list to get wrong.
@@ -722,7 +728,7 @@ if [ "$required_tokens" -eq 0 ]; then
   fi
 elif [ ! -f "$TSA_ROOT" ]; then
   note "$TSA_ROOT is absent: this case was configured with a non-default timestamp authority"
-  note "obtain that authority's own root and re-run the step 6b command from ${ROOT.verifyRunbook} with it as -CAfile"
+  note "obtain that authority's own root and re-run the ${stepRef('6b')} command from ${ROOT.verifyRunbook} with it as -CAfile"
   incomplete "$required_tokens signed token(s) were not verified: no anchor is enclosed for this script to name"
 elif openssl x509 -in "$TSA_ROOT" -noout -subject -issuer -fingerprint -sha256 \\
   >"$tmp/anchor.txt" 2>&1; then
@@ -830,7 +836,7 @@ fi
 printf '${ROOT.verifyScript}: PASS - every check above succeeded.\\n'
 if [ "$verified_count" -gt 0 ]; then
   printf 'That is an integrity and internal-consistency result. It becomes a trusted-time claim\\n'
-  printf 'only once the step 6a fingerprint is checked against a source outside this package.\\n'
+  printf 'only once the ${stepRef('6a')} fingerprint is checked against a source outside this package.\\n'
 elif [ "$signed_tokens" -gt 0 ]; then
   printf 'That is an integrity and internal-consistency result only. The signed chain carries\\n'
   printf 'RFC 3161 tokens, but only for captures this package does not enclose, so it makes no\\n'

@@ -22,10 +22,22 @@ import {
   screenshotPath,
   timestampTokenPath
 } from '../../packages/evidence-package-layout/index'
+import {
+  VERIFY_RECIPES,
+  sentenceStart,
+  stepRange,
+  stepRef,
+  verifyStep,
+  type VerifyStepNumber
+} from '@main/services/verifyProcedure'
 
 // Every member of the package this runbook names, read from the Package
 // Layout so the prose, the commands and the files the exporter writes agree.
 const ROOT = PACKAGE_ROOT_FILES
+
+function runbookHeading(number: VerifyStepNumber): string {
+  return `## Step ${number} — ${verifyStep(number).runbookTitle}`
+}
 
 export const VERIFY_RUNBOOK = `# Verifying this evidence package by hand
 
@@ -52,7 +64,7 @@ step below can be run by hand, which is what the rest of this document is for.
 A package that encloses a signed selection reports the exhibits it deliberately
 leaves out as a single counted line. Run \`sh ${ROOT.verifyScript} -v\` to
 list them one by one.
-Read step 6a before treating its PASS as proof of trusted time.
+Read ${stepRef('6a')} before treating its PASS as proof of trusted time.
 
 ## Trust model (read first)
 
@@ -65,8 +77,8 @@ additionally carry an RSA \`signature\` over that hash.
 itself, so a case that predates it can contain \`schemaVersion\` 1 entries with
 no \`signature\` field. They are legitimate, and they are not silently accepted:
 what covers them is the recomputed entry hashes and chain linkage
-(steps 3 and 4) and any RFC 3161 timestamp appended later (step 6), not a
-signature. Step 2 does not apply to them. Identify them with:
+(${stepRef(3, 4)}) and any RFC 3161 timestamp appended later (${stepRef(6)}), not a
+signature. ${sentenceStart(stepRef(2))} does not apply to them. Identify them with:
 
 \`\`\`sh
 jq -r 'select((.schemaVersion // 1) < 2) | "index \\(.index) \\(.type) — unsigned"' ${ROOT.manifest}
@@ -81,7 +93,7 @@ verifier rejects that; a hand check should too.
 own — its own integrity is established by re-deriving everything from the chain.
 The signing key (\`${ROOT.signingPublicKey}\`) is installation-local and is **not**
 an independent trust anchor; it defeats casual tampering. The independent anchor
-for *timestamped* captures is the RFC 3161 timestamp, verified in step 6.
+for *timestamped* captures is the RFC 3161 timestamp, verified in ${stepRef(6)}.
 
 **Not every signed entry is signed by that key.** A case imported from a case
 archive continues a chain the archive holds, and its \`import\` entry carries,
@@ -91,7 +103,7 @@ The rule is the same for every entry: it verifies under the key the first
 \`import\` entry follows it. So the entries before an \`import\` entry, back to
 the previous one, verify under the key it carries, and the \`import\` entry
 itself, signed by the installation that imported the case, verifies under the
-next key along. Step 2 applies this rule, and \`${ROOT.certification}\` states
+next key along. ${sentenceStart(stepRef(2))} applies this rule, and \`${ROOT.certification}\` states
 the key for each run of entries. A carried key is no more an independent anchor
 than the enclosed one: it is part of an \`import\` entry, hashed and signed like
 any other, so it is only as trustworthy as that entry's signature under the
@@ -101,7 +113,7 @@ next key, and in the end under \`${ROOT.signingPublicKey}\`.
 package** — the one entry the bundled \`${ROOT.manifest}\` cannot contain, because
 the manifest copy is sealed just before the entry is appended to the live case
 manifest. Verify it exactly like a manifest line before using anything in it:
-its \`signature\` with the step 2 recipe, its \`entryHash\` with the step 3
+its \`signature\` with the ${stepRef(2)} recipe, its \`entryHash\` with the ${stepRef(3)}
 recipe, and its \`prevHash\` must equal the \`entryHash\` of the **last line** of
 \`${ROOT.manifest}\`. Once verified, its \`scope\` / \`captureIds\` fields are the
 authoritative statement of what this package encloses: \`scope: "selection"\`
@@ -145,7 +157,7 @@ newer Birdbrain.
 checks timestamp tokens **structurally only** (the token's message imprint binds
 the capture's content hash, and the \`.tst\` bytes match the signed manifest
 token). It does **not** verify the TSA's CMS signature. That canonical check is
-step 6's \`openssl ts -verify\`. A binary PASS therefore means *integrity +
+${stepRef(6)}'s \`openssl ts -verify\`. A binary PASS therefore means *integrity +
 internal consistency*, **not** timestamp authenticity — this runbook's
 \`openssl ts -verify\` is what proves the TSA actually signed the imprint.
 
@@ -154,30 +166,30 @@ internal consistency*, **not** timestamp authenticity — this runbook's
 | File | Role |
 |---|---|
 | \`${ROOT.manifest}\` | Signed, hash-linked audit chain (root of trust) |
-| \`${ROOT.signingPublicKey}\` | RSA public key for the per-entry signatures, except those of entries before an \`import\` entry, which verify under the key the first \`import\` after them carries (see step 2) |
+| \`${ROOT.signingPublicKey}\` | RSA public key for the per-entry signatures, except those of entries before an \`import\` entry, which verify under the key the first \`import\` after them carries (see ${stepRef(2)}) |
 | \`${ROOT.verifyScript}\` | The steps below as a runnable script (see above) |
-| \`${ROOT.tsaRoot}\` | Self-signed TSA root — the trust anchor for step 6 (absent when no anchor is bundled for the configured authority) |
+| \`${ROOT.tsaRoot}\` | Self-signed TSA root — the trust anchor for ${stepRef(6)} (absent when no anchor is bundled for the configured authority) |
 | \`${ROOT.tsaIntermediates}\` | Responder + intermediate certs lifted from the tokens (chain-building only, never trusted on their own) |
 | \`${capturePagePath('{captureId}')}\` | Captured content (hashed as \`contentHash\`) |
 | \`${screenshotPath('{sha256}')}\` | Captured screenshot (hashed as \`screenshotHash\`) |
 | \`attachments/\`, \`images/\`, \`documents/\` | Committed exhibits of other kinds, one file per exhibit named \`{exhibitId}\` plus its stored extension (hashed as the \`exhibit\` entry's \`contentHash\`) |
 | \`{exhibit directory}/{exhibitId}_{suffix}\` | Derived files, enclosed beside the exhibit they were computed from — a capture's thumbnail sits in \`${CAPTURE_PACKAGE_DIRECTORY}/\` (hashed as the \`derivation\` entry's \`outputHash\`) |
-| \`${TIMESTAMP_PACKAGE_DIRECTORY}/*.tst\` | RFC 3161 tokens, when present (see step 6c on their encoding) |
+| \`${TIMESTAMP_PACKAGE_DIRECTORY}/*.tst\` | RFC 3161 tokens, when present (see ${stepRef('6c')} on their encoding) |
 | \`${ROOT.evidenceIndex}\` | Unsigned index (reconcile, do not trust) |
 | \`${ROOT.exportEntry}\` | Signed export entry for this package — scope of the enclosed captures (absent only from packages whose \`${ROOT.evidenceIndex}\` states a \`schemaVersion\` below ${EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION}; see Trust model) |
 | \`${memberChainPath('{installationId}')}\` | Another member's signed chain, present only in a Shared Case package (see Shared Case packages) |
 | \`${lineageChainPath('{sourceCaseId}', '{installationId}')}\` | A member chain of the Case this one was forked from, present only in a fork's package |
 
-## Step 1 — File integrity (index self-consistency)
+${runbookHeading(1)}
 
 \`sha256sum\` each artifact and compare to \`${ROOT.evidenceIndex}\`. This only proves the
-files match the **untrusted** index — the authoritative content bind is step 5.
+files match the **untrusted** index — the authoritative content bind is ${stepRef(5)}.
 
 \`\`\`sh
-jq -r '.artifacts[] | "\\(.sha256)  \\(.path)"' ${ROOT.evidenceIndex} | sha256sum -c -
+jq -r '${VERIFY_RECIPES.indexCheckFilter}' ${ROOT.evidenceIndex} | sha256sum -c -
 \`\`\`
 
-## Step 2 — Entry signature (\`schemaVersion\` 2 and above)
+${runbookHeading(2)}
 
 For a **signed** manifest entry, verify its RSA signature under the key that
 signed it: the \`sourcePublicKeyPem\` of the first \`import\` entry after it, or
@@ -185,7 +197,7 @@ signed it: the \`sourcePublicKeyPem\` of the first \`import\` entry after it, or
 model). The signature is over the **bare \`entryHash\` hex string** with **no
 trailing newline** — a stray newline makes verification fail spuriously.
 Entries with no \`signature\` field are the pre-signing entries described under
-Trust model; skip them here and rely on steps 3 and 6.
+Trust model; skip them here and rely on ${stepRef(3, 6)}.
 
 \`\`\`sh
 # Pick an entry (e.g. the first line):
@@ -203,14 +215,14 @@ openssl dgst -sha256 -verify entry-key.pem -signature sig.bin entryhash.txt
 # => "Verified OK"
 \`\`\`
 
-## Step 3 — Recompute \`entryHash\` (canonicalization recipe)
+${runbookHeading(3)}
 
 \`sha256sum\` + \`openssl\` alone cannot detect a body-field edit that left
 \`entryHash\`/\`signature\` intact. Recompute \`entryHash\` from the entry body:
 strip \`entryHash\` and \`signature\`, canonicalize, and hash.
 
 \`\`\`sh
-echo "$line" | jq -cS 'del(.entryHash, .signature)' | tr -d '\\n' | sha256sum
+echo "$line" | ${VERIFY_RECIPES.canonicalEntryBody} | sha256sum
 # compare the hex to: echo "$line" | jq -r '.entryHash'
 \`\`\`
 
@@ -222,7 +234,7 @@ like \`url\` / \`operatorName\` / \`title\`, and (b) **number formatting** of
 and UTF-8 literals, so they agree in practice; if a hand recompute ever
 disagrees, look here first.
 
-## Step 4 — Chain linkage
+${runbookHeading(4)}
 
 Confirm each entry's \`prevHash\` equals the prior entry's \`entryHash\`, and
 \`index\` increments from 0.
@@ -231,7 +243,7 @@ Confirm each entry's \`prevHash\` equals the prior entry's \`entryHash\`, and
 jq -r '"\\(.index) \\(.prevHash) \\(.entryHash)"' ${ROOT.manifest}
 \`\`\`
 
-## Step 5 — Content bind (load-bearing for the evidence itself)
+${runbookHeading(5)}
 
 For each \`type: "capture"\` entry, confirm the actual captured bytes match the
 hash **inside that signed entry** (NOT the value in \`${ROOT.evidenceIndex}\`). Without
@@ -305,7 +317,7 @@ jq -c 'select(.type == "derivation")' ${ROOT.manifest} | while IFS= read -r d; d
 done
 \`\`\`
 
-## Step 6 — Timestamp (canonical TSA verification)
+${runbookHeading(6)}
 
 **This is the authenticity step the binary does NOT perform.** Verify each RFC
 3161 token's CMS signature up to an independently trusted root.
@@ -336,13 +348,13 @@ trusting them proves nothing.
 \`ls ${TIMESTAMP_PACKAGE_DIRECTORY}/\`: every token is also carried base64-encoded in its own signed
 entry (\`jq -r 'select(.type == "timestamp" and (.subject // "content") == "content") | "\\(.captureContentHash) \\(.tsaToken)"' ${ROOT.manifest}\`),
 so a \`.tst\` deleted from the package is visible there and invisible in a
-directory listing. Walk the exhibits step 5 still requires present — captures
+directory listing. Walk the exhibits ${stepRef(5)} still requires present — captures
 and committed exhibits of every other kind alike, active, and inside the
 selection if one is declared — and look up each one's token by
 its \`contentHash\`: a signed token found that way with no enclosed file is a
 failure, not an absence of work, even when a deleted capture shares that hash.
 A token no such capture leads you to is expected absent, as its page and
-screenshot are in step 5. The \`.tst\` files are bare RFC 3161 tokens (DER
+screenshot are in ${stepRef(5)}. The \`.tst\` files are bare RFC 3161 tokens (DER
 \`TimeStampToken\`), not full \`TimeStampResp\` structures, so \`-token_in\` is
 required — without it OpenSSL reports an ASN.1 error, not a verdict.
 
@@ -371,7 +383,7 @@ Such a refusal is **not** evidence that this package was altered, and it is not 
 failed verification. The \`certificates\` set sits outside the data the TSA's
 signature covers, so its order can neither break nor repair that signature, and
 the imprint that binds the token to the content hash is untouched by it. Treat
-\`openssl ts -verify\` (step 6b) as the reference check: it accepts the encoding,
+\`openssl ts -verify\` (${stepRef('6b')}) as the reference check: it accepts the encoding,
 and it is what proves trusted time for this package. A strict parser's refusal is
 a statement about the issuing authority's encoder.
 
@@ -403,7 +415,7 @@ nothing for it.
 
 The Owner's chain is the one whose \`member-add\` entries name the members; the
 first names the Owner itself with role \`owner\`. Each \`member-add\` carries that
-member's \`memberPublicKeyPem\`: run steps 2 to 4 over each member's chain with
+member's \`memberPublicKeyPem\`: run ${stepRange(2, 4)} over each member's chain with
 that key in place of \`${ROOT.signingPublicKey}\`. When \`${ROOT.manifest}\` is not the
 Owner's chain, first find the \`merge\` in it that names the Owner's chain: the
 head it names must sit at or past the Owner's own \`member-add\`, which binds the
@@ -417,7 +429,7 @@ cat manifest*.jsonl | jq -r 'select(.type == "member-add") | "\\(.caseId) \\(.me
 
 A fork continues the source Owner's chain: the entries before its \`import\`
 entry are the source Case's, and they verify under the key that \`import\`
-carries, as step 2 resolves it. The source Case's other member chains sit under
+carries, as ${stepRef(2)} resolves it. The source Case's other member chains sit under
 \`${LINEAGE_DIRECTORY}/{sourceCaseId}/\`, and they verify as above with the roster
 read from the entries before the \`import\`.
 
@@ -466,6 +478,6 @@ done
 
 An \`exclude\` in the Owner's chain records that the Owner excluded an Exhibit.
 The Exhibit stays in the package, its entry stays in its author's chain, and
-steps 1 and 5 still apply to it: an exclusion is listed, never applied by
+${stepRef(1, 5)} still apply to it: an exclusion is listed, never applied by
 leaving the Exhibit out.
 `

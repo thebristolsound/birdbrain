@@ -269,6 +269,7 @@ independent of the Operator who holds it.
 | `src/main/services/certification.ts` | blocking | Export certification document |
 | `src/main/services/verifyRunbook.ts` | blocking | By-hand verification runbook shipped in packages |
 | `src/main/services/verifyScript.ts` | blocking | `verify.sh`, the runbook's executable form, shipped in packages and hashed into `packageHash`. Added 2026-09-19 with #1156: it binds exhibit and derived-file bytes to the chain, so a defect here reports a tampered package as verified |
+| `src/main/services/verifyProcedure.ts` | blocking | The verification step list: step numbers, titles, citations and jq recipes that `verify.sh`, `VERIFY.md` and the report read. Added 2026-10-03; a defect here misnumbers or misspells a step in every package |
 | `src/main/services/caseArchive.ts` | blocking | Archive export/import with id remapping |
 | `src/main/services/zip.ts` | blocking | Evidence container write |
 | `src/main/services/zipRead.ts` | blocking | Evidence container read |

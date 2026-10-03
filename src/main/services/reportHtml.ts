@@ -47,6 +47,7 @@ import type {
 import type { TrustedTimeResult } from '@shared/verify'
 import { recordedHttpStatus } from '@shared/httpStatus'
 import { formatSnapshotDelta } from '@shared/wayback'
+import { sentenceStart, stepRef } from '@main/services/verifyProcedure'
 import {
   TRUSTED_TIME_AUTHORITY_NOT_CONTACTED,
   TRUSTED_TIME_UNRECORDED_STAMPED_AT,
@@ -1384,7 +1385,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   <ol class="steps rule-top">
     <li><strong>Check file integrity against the index.</strong> Compute the SHA-256 of each
     enclosed file and compare it to that file's digest in <code>evidence.json</code>. The index is
-    not signed, so a match shows only that the files and the index agree; step 5 binds the files
+    not signed, so a match shows only that the files and the index agree; ${stepRef(5)} binds the files
     to the signed manifest.</li>
     <li><strong>Check the entry signatures.</strong> ${
       data.entriesUnderCarriedKeys
@@ -1392,8 +1393,8 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     that signed it. This chain holds an <code>import</code> entry, so the key depends on where an
     entry sits: an entry verifies under the key in the <code>sourcePublicKeyPem</code> field of the
     first <code>import</code> entry after it, or under <code>signing-public-key.pem</code> when no
-    <code>import</code> entry follows it. <code>VERIFY.md</code> step 2 gives the commands for one
-    entry and <code>verify.sh</code> step 2 runs the same check over every signed entry. A key an
+    <code>import</code> entry follows it. <code>VERIFY.md</code> ${stepRef(2)} gives the commands for one
+    entry and <code>verify.sh</code> ${stepRef(2)} runs the same check over every signed entry. A key an
     <code>import</code> entry carries is only as trustworthy as that entry's signature, which is
     checked under the next key along. This binds the entries from the last <code>import</code>
     entry on to the installation identified on the cover, and each earlier entry only to the key
@@ -1418,14 +1419,14 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     entry, never by the index or by this report.</li>
     <li><strong>Validate the timestamp tokens.</strong> Take the tokens from the signed timestamp
     entries in <code>manifest.jsonl</code> rather than from a listing of <code>timestamps/</code>,
-    so a deleted token file shows as missing. For each exhibit step 5 requires present, confirm its
+    so a deleted token file shows as missing. For each exhibit ${stepRef(5)} requires present, confirm its
     token's message imprint equals the exhibit's content digest and that its signing chain, built
     with <code>tsa-intermediates.pem</code>, terminates in
     ${
       data.tsaTrustAnchorBundled
         ? `the self-signed root shipped as <code>tsa-root.pem</code>. That file is a convenience copy,
     not an independent anchor: check its SHA-256 fingerprint against the authority’s published
-    value or your own trust store first (<code>VERIFY.md</code> step 6a prints the expected
+    value or your own trust store first (<code>VERIFY.md</code> ${stepRef('6a')} prints the expected
     fingerprint and the exact <code>openssl</code> command)`
         : `a trust anchor you obtain independently from the authority that issued the tokens.
     Each token names its issuer inside itself, in the signing certificate carried in
@@ -1448,7 +1449,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     authority is configured for this case, so no root file is bundled and
     <code>tsa-intermediates.pem</code> holds only certificates carried inside the tokens
     themselves. Validating a token against certificates it
-    supplied is circular and establishes nothing about who issued it. Step 6 therefore requires a
+    supplied is circular and establishes nothing about who issued it. ${sentenceStart(stepRef(6))} therefore requires a
     root obtained independently from the authority that issued the tokens, which each token names
     in its own signing certificate — a name the token asserts about itself, to be used for
     finding the authority and not as proof it issued anything; until such a root is used, the

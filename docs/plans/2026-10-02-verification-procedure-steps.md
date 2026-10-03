@@ -205,7 +205,12 @@ review.
   - Updates the prose pins in `importedCasePackage.test.ts:121-140` and
     `export.test.ts:2390`, `:2434`.
   - Changes the bytes of every new report and standalone report; existing packages keep theirs.
-- [ ] **4. The step model (byte-identical).** Add `verifyProcedure.ts`; the script, runbook, and
+- [x] **4. The step model (byte-identical).** Built. Byte check: the SHA-256 of `VERIFY_SCRIPT`,
+  `VERIFY_RUNBOOK` and the report's verification section (all eight combinations of packaged or
+  standalone, import keys or not, anchor bundled or not) is unchanged against 1ba2983b, which
+  first rewrapped the one citation slice 2 had split across a line break. The guard scans source
+  lines, skipping only TypeScript comments, for `step <digit>` and `begin <digit>`; a citation
+  opening a sentence goes through `sentenceStart`. Planned text follows. Add `verifyProcedure.ts`; the script, runbook, and
   report read step numbers, titles, citations, and the two shared recipes from it; the citation
   guard; the Include list row. Recipes keep the doubled backslashes the templates use today
   (`'\\n'`, `\\(`), or use `String.raw`: in a plain string `'\('` is `(` and `'\n'` is a newline.

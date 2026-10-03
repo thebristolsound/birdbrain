@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'fs'
+import { readFile } from 'fs/promises'
 import * as cheerio from 'cheerio'
 import type { Capture, CaptureLink, CaptureLinks } from '@shared/types'
 import { listHtmlPartsInMhtml } from '@main/services/mhtmlDecoder'
@@ -14,6 +14,12 @@ export interface CaptureLinkBudgets {
   maxPartBytes: number
   /** HTML parts after this many are skipped. */
   maxParts: number
+  /**
+   * The most bytes, summed over the parts read, that are decoded at all. Checked on
+   * each part's stored size before decoding it: no encoding the decoder reads yields
+   * more bytes than it stores, so the decoded total stays under the same ceiling.
+   */
+  maxTotalBytes: number
   /** Rows after this many are not listed. */
   maxRows: number
 }
@@ -24,6 +30,7 @@ export interface CaptureLinkBudgets {
 export const CAPTURE_LINK_BUDGETS: CaptureLinkBudgets = {
   maxPartBytes: 8 * 1024 * 1024,
   maxParts: 64,
+  maxTotalBytes: 32 * 1024 * 1024,
   maxRows: 5000
 }
 
@@ -163,14 +170,28 @@ export function linksFromMhtml(
     parts.length === 0 ? [] : [parts[mainIndex], ...parts.filter((_, i) => i !== mainIndex)]
 
   const inputs: PartInput[] = []
-  let skippedParts = 0
+  const skippedParts: CaptureLinks['skippedParts'] = {
+    tooLarge: 0,
+    overPartCount: 0,
+    overTotalSize: 0
+  }
   let mainDocumentSkipped = false
+  let bytesRead = 0
   ordered.forEach((part, index) => {
-    if (index >= budgets.maxParts || part.encodedSize > budgets.maxPartBytes) {
-      skippedParts += 1
+    const refusal =
+      index >= budgets.maxParts
+        ? 'overPartCount'
+        : part.encodedSize > budgets.maxPartBytes
+          ? 'tooLarge'
+          : bytesRead + part.encodedSize > budgets.maxTotalBytes
+            ? 'overTotalSize'
+            : null
+    if (refusal) {
+      skippedParts[refusal] += 1
       if (index === 0) mainDocumentSkipped = true
       return
     }
+    bytesRead += part.encodedSize
     inputs.push({
       html: part.decode(),
       documentUrl: partDocumentUrl(part.contentLocation, captureUrl),
@@ -186,12 +207,18 @@ export function linksFromMhtml(
  * pre-v11 HTML Capture, or one whose file is gone. Reads the same file the Page tab
  * shows (`captures:getMhtmlUrl`).
  */
-export function readCaptureLinks(
+export async function readCaptureLinks(
   capture: Capture | null | undefined,
   store: Pick<CaptureStore, 'resolveAbsolute'> = defaultCaptureStore
-): CaptureLinks | null {
+): Promise<CaptureLinks | null> {
   if (!capture || !capture.mhtmlPath) return null
-  const abs = store.resolveAbsolute(capture.mhtmlPath)
-  if (!existsSync(abs)) return null
-  return linksFromMhtml(readFileSync(abs), capture.url)
+  let buffer: Buffer
+  try {
+    buffer = await readFile(store.resolveAbsolute(capture.mhtmlPath))
+  } catch (err) {
+    // A file that is not there is the no-archive answer; any other failure is not.
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw err
+  }
+  return linksFromMhtml(buffer, capture.url)
 }

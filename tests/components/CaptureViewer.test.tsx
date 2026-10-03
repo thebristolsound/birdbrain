@@ -189,7 +189,7 @@ describe('CaptureViewer tabs', () => {
         }
       ],
       truncated: false,
-      skippedParts: 0,
+      skippedParts: { tooLarge: 0, overPartCount: 0, overTotalSize: 0 },
       mainDocumentSkipped: false
     }))
     fakeBridge({

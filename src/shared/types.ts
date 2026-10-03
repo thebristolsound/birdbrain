@@ -144,8 +144,15 @@ export interface CaptureLinks {
   links: CaptureLink[]
   /** The row ceiling was reached and later links were not listed. */
   truncated: boolean
-  /** HTML parts not read because a size or count ceiling refused them. */
-  skippedParts: number
+  /** HTML parts not read, by the ceiling that refused each one. */
+  skippedParts: {
+    /** Larger, as stored, than one part may be. */
+    tooLarge: number
+    /** Past the number of parts read. */
+    overPartCount: number
+    /** Would have taken the parts read past their total size. */
+    overTotalSize: number
+  }
   /** The main document itself was refused by a ceiling, so its links are absent. */
   mainDocumentSkipped: boolean
 }

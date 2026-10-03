@@ -38,7 +38,13 @@ function link(overrides: Partial<CaptureLink>): CaptureLink {
 }
 
 function result(links: CaptureLink[], overrides: Partial<CaptureLinks> = {}): CaptureLinks {
-  return { links, truncated: false, skippedParts: 0, mainDocumentSkipped: false, ...overrides }
+  return {
+    links,
+    truncated: false,
+    skippedParts: { tooLarge: 0, overPartCount: 0, overTotalSize: 0 },
+    mainDocumentSkipped: false,
+    ...overrides
+  }
 }
 
 function renderTab(
@@ -177,12 +183,22 @@ describe('LinksTab', () => {
   })
 
   it('says when the main document was too large, rather than that there are no links', async () => {
-    renderTab(result([], { mainDocumentSkipped: true, skippedParts: 1 }))
+    renderTab(
+      result([], {
+        mainDocumentSkipped: true,
+        skippedParts: { tooLarge: 1, overPartCount: 0, overTotalSize: 0 }
+      })
+    )
     expect((await screen.findByTestId('links-empty')).textContent).toContain('too large')
   })
 
   it('lists the frames it could read with a notice when only the main document was skipped', async () => {
-    renderTab(result([link({ frame: 'subframe' })], { mainDocumentSkipped: true, skippedParts: 1 }))
+    renderTab(
+      result([link({ frame: 'subframe' })], {
+        mainDocumentSkipped: true,
+        skippedParts: { tooLarge: 1, overPartCount: 0, overTotalSize: 0 }
+      })
+    )
     const notices = await screen.findAllByTestId('links-notice')
     expect(notices.map((n) => n.textContent)).toEqual([
       'The main document is too large to read; only links in its frames are listed.'
@@ -190,7 +206,12 @@ describe('LinksTab', () => {
   })
 
   it('notes skipped frames and a truncated list', async () => {
-    renderTab(result([link({})], { skippedParts: 2, truncated: true }))
+    renderTab(
+      result([link({})], {
+        skippedParts: { tooLarge: 2, overPartCount: 0, overTotalSize: 0 },
+        truncated: true
+      })
+    )
     const notices = await screen.findAllByTestId('links-notice')
     expect(notices.map((n) => n.textContent)).toEqual([
       'Some embedded frames are too large to read and are not listed.',

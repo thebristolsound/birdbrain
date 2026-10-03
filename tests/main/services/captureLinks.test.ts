@@ -232,7 +232,7 @@ describe('linksFromMhtml', () => {
         maxPartBytes: 200
       })
       expect(result).toMatchObject({
-        skippedParts: 1,
+        skippedParts: { tooLarge: 1, overPartCount: 0, overTotalSize: 0 },
         mainDocumentSkipped: false,
         truncated: false
       })
@@ -251,7 +251,10 @@ describe('linksFromMhtml', () => {
         ...CAPTURE_LINK_BUDGETS,
         maxPartBytes: 200
       })
-      expect(result).toMatchObject({ skippedParts: 1, mainDocumentSkipped: true })
+      expect(result).toMatchObject({
+        skippedParts: { tooLarge: 1, overPartCount: 0, overTotalSize: 0 },
+        mainDocumentSkipped: true
+      })
       expect(result.links.map((l) => l.frame)).toEqual(['subframe'])
     })
 
@@ -264,11 +267,39 @@ describe('linksFromMhtml', () => {
         ...CAPTURE_LINK_BUDGETS,
         maxParts: 2
       })
-      expect(result.skippedParts).toBe(2)
+      expect(result.skippedParts).toEqual({ tooLarge: 0, overPartCount: 2, overTotalSize: 0 })
       expect(result.links.map((l) => l.href)).toEqual([
         'https://p2.example/2',
         'https://p0.example/0'
       ])
+    })
+
+    it('stops decoding once the parts read reach the total ceiling', () => {
+      const parts = Array.from({ length: 3 }, (_, i) => ({
+        location: `https://p${i}.example/`,
+        html: page(`<a href="/${i}">${i}</a>`)
+      }))
+      const onePart = page('<a href="/0">0</a>').length
+      const result = linksFromMhtml(mhtml(parts), CAPTURE_URL, {
+        ...CAPTURE_LINK_BUDGETS,
+        maxTotalBytes: onePart * 2
+      })
+      expect(result.skippedParts).toEqual({ tooLarge: 0, overPartCount: 0, overTotalSize: 1 })
+      expect(result.links.map((l) => l.href)).toEqual([
+        'https://p0.example/0',
+        'https://p1.example/1'
+      ])
+    })
+
+    it('counts the main document refused by the total ceiling as skipped', () => {
+      const buffer = mhtml([{ location: CAPTURE_URL, html: page('<a href="/m">m</a>') }])
+      expect(
+        linksFromMhtml(buffer, CAPTURE_URL, { ...CAPTURE_LINK_BUDGETS, maxTotalBytes: 10 })
+      ).toMatchObject({
+        links: [],
+        mainDocumentSkipped: true,
+        skippedParts: { tooLarge: 0, overPartCount: 0, overTotalSize: 1 }
+      })
     })
 
     it('ignores non-HTML parts entirely', () => {
@@ -277,8 +308,12 @@ describe('linksFromMhtml', () => {
         { location: 'https://i.example/a.png', html: 'x'.repeat(500), type: 'image/png' }
       ])
       expect(
-        linksFromMhtml(buffer, CAPTURE_URL, { ...CAPTURE_LINK_BUDGETS, maxPartBytes: 200 })
-      ).toMatchObject({ skippedParts: 0 })
+        linksFromMhtml(buffer, CAPTURE_URL, {
+          ...CAPTURE_LINK_BUDGETS,
+          maxPartBytes: 200,
+          maxTotalBytes: 200
+        })
+      ).toMatchObject({ skippedParts: { tooLarge: 0, overPartCount: 0, overTotalSize: 0 } })
     })
   })
 
@@ -286,7 +321,7 @@ describe('linksFromMhtml', () => {
     expect(linksFromMhtml(Buffer.from('not mime'), CAPTURE_URL)).toEqual({
       links: [],
       truncated: false,
-      skippedParts: 0,
+      skippedParts: { tooLarge: 0, overPartCount: 0, overTotalSize: 0 },
       mainDocumentSkipped: false
     })
   })
@@ -303,22 +338,27 @@ describe('readCaptureLinks', () => {
     return { id: 'c1', caseId: 'k1', url: CAPTURE_URL, title: 't', ...overrides } as Capture
   }
 
-  it('reads the Capture’s stored MHTML through the store', () => {
+  it('reads the Capture’s stored MHTML through the store', async () => {
     dir = mkdtempSync(join(tmpdir(), 'capture-links-'))
     writeFileSync(
       join(dir, 'c1.mhtml'),
       mhtml([{ location: CAPTURE_URL, html: page('<a href="/a">a</a>') }])
     )
     const store = { resolveAbsolute: (rel: string) => join(dir as string, rel) }
-    expect(readCaptureLinks(capture({ mhtmlPath: 'c1.mhtml' }), store)?.links[0].href).toBe(
-      'https://news.example/a'
-    )
+    const result = await readCaptureLinks(capture({ mhtmlPath: 'c1.mhtml' }), store)
+    expect(result?.links[0].href).toBe('https://news.example/a')
   })
 
-  it('answers null when there is no MHTML to read', () => {
+  it('answers null when there is no MHTML to read', async () => {
     const store = { resolveAbsolute: (rel: string) => join(tmpdir(), 'absent-dir-1708', rel) }
-    expect(readCaptureLinks(undefined, store)).toBeNull()
-    expect(readCaptureLinks(capture({}), store)).toBeNull()
-    expect(readCaptureLinks(capture({ mhtmlPath: 'gone.mhtml' }), store)).toBeNull()
+    expect(await readCaptureLinks(undefined, store)).toBeNull()
+    expect(await readCaptureLinks(capture({}), store)).toBeNull()
+    expect(await readCaptureLinks(capture({ mhtmlPath: 'gone.mhtml' }), store)).toBeNull()
+  })
+
+  it('reports a read that fails for any reason other than a missing file', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'capture-links-'))
+    const store = { resolveAbsolute: () => dir as string }
+    await expect(readCaptureLinks(capture({ mhtmlPath: 'a-directory' }), store)).rejects.toThrow()
   })
 })

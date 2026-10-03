@@ -3,8 +3,8 @@ import { mkdtemp, readFile, rm, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { pathToFileURL } from 'url'
-import { readStoredZip } from '../src/main/services/zipRead'
-import { createStoredZip } from '../src/main/services/zip'
+import { readStoredZip } from '@main/services/zipRead'
+import { createStoredZip } from '@main/services/zip'
 
 type Page = import('@playwright/test').Page
 type ElectronApplication = import('@playwright/test').ElectronApplication

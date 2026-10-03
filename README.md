@@ -5,12 +5,6 @@ OSINT investigators and journalists who need to capture web pages as evidence, o
 into cases, and show later that the record has not changed. It runs on Windows and Ubuntu, has
 an experimental macOS build, and is in public beta.
 
-Birdbrain covers much of the same ground as Hunchly, case-based web capture for
-investigations, and it is open source. Unlike Hunchly, this beta does not capture pages
-automatically as you browse. Archiving tools such as ArchiveBox and Webrecorder focus on
-preserving and replaying pages. Birdbrain is built around the investigation: cases, selectors,
-extracted indicators, notes, and exports.
-
 [![Release](https://img.shields.io/github/v/release/thebristolsound/birdbrain-releases?include_prereleases&label=release)](https://github.com/thebristolsound/birdbrain-releases/releases)
 [![CI](https://github.com/thebristolsound/birdbrain/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/thebristolsound/birdbrain/actions/workflows/ci.yml)
 [![Security checks](https://github.com/thebristolsound/birdbrain/actions/workflows/security.yml/badge.svg?branch=main&event=push)](https://github.com/thebristolsound/birdbrain/actions/workflows/security.yml)

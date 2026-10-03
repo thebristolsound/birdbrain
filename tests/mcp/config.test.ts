@@ -57,6 +57,22 @@ describe('MCP server configuration', () => {
     )
   })
 
+  // The app falls back to its default folder for a settings file it rejects,
+  // so the server must read the same folder the app is writing to.
+  it('uses the default storage folder when the app would reject settings.json', () => {
+    const elsewhere = join(userData, 'evidence')
+    mkdirSync(elsewhere)
+    const defaults = join(userData, 'captures')
+    writeFileSync(
+      join(userData, 'settings.json'),
+      JSON.stringify({ storagePath: elsewhere, theme: 'neon' })
+    )
+    expect(resolveConfig(['--user-data', userData], {}).storageRoot).toBe(defaults)
+
+    writeFileSync(join(userData, 'settings.json'), '{"storagePath": "' + elsewhere)
+    expect(resolveConfig(['--user-data', userData], {}).storageRoot).toBe(defaults)
+  })
+
   it('refuses a storage folder that does not exist rather than creating it', () => {
     rmSync(join(userData, 'captures'), { recursive: true })
 

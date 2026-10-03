@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'fs'
 import { join, resolve } from 'path'
+import { PartialBirdbrainSettingsSchema } from '@shared/schemas'
 
 export interface McpConfig {
   userDataPath: string
@@ -32,10 +33,17 @@ export function resolveConfig(argv: string[], env: NodeJS.ProcessEnv): McpConfig
 
 // Reads settings.json directly: initSettings would rewrite the file (#404's
 // fresh-install latch, the retired-key cleanup), and this process never writes.
+// A file the app would reject, unparseable or failing the settings schema,
+// gives the default folder, as the app's own fallback does.
 function readStoragePath(userDataPath: string): string {
   const settingsPath = join(userDataPath, 'settings.json')
   if (!existsSync(settingsPath)) return ''
-  const parsed: unknown = JSON.parse(readFileSync(settingsPath, 'utf-8'))
-  const storagePath = (parsed as { storagePath?: unknown } | null)?.storagePath
-  return typeof storagePath === 'string' ? storagePath : ''
+  let saved: unknown
+  try {
+    saved = JSON.parse(readFileSync(settingsPath, 'utf-8'))
+  } catch {
+    return ''
+  }
+  const parsed = PartialBirdbrainSettingsSchema.safeParse(saved)
+  return parsed.success ? (parsed.data.storagePath ?? '') : ''
 }

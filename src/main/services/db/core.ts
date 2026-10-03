@@ -74,6 +74,18 @@ export function openDatabaseReadOnly(dbPath: string): Database.Database {
   return db
 }
 
+// Run before a restore closes the database and replaces its file. The close
+// deletes the WAL only when no other connection is open; while another process
+// holds one (the MCP server, ADR-0038), the WAL survives and SQLite replays it
+// over the restored file. Emptying it first leaves nothing to replay. False
+// when another connection is mid-read and the WAL could not be emptied. True
+// with no connection open, since a restore then has nothing to checkpoint.
+export function emptyWalBeforeReplace(): boolean {
+  if (!db) return true
+  const [{ busy }] = db.pragma('wal_checkpoint(TRUNCATE)') as Array<{ busy: number }>
+  return busy === 0
+}
+
 export function getDb(): Database.Database {
   if (!db) throw new Error('Database not initialized')
   return db

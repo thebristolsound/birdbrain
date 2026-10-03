@@ -141,7 +141,7 @@ import {
   readRecentEntries
 } from '@main/services/logger'
 import Database from 'better-sqlite3'
-import { closeDatabase, initDatabase, LATEST_SCHEMA_VERSION } from '@main/services/db/core'
+import { closeDatabase, getDb, initDatabase, LATEST_SCHEMA_VERSION } from '@main/services/db/core'
 import { createPreMigrationSnapshot } from '@main/services/db/dbSnapshots'
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
@@ -2222,6 +2222,72 @@ describe('ipcHandlers — database admin', () => {
     // database that was running when it was chosen.
     expectOk(await invoke(IPC_CHANNELS.DB_STATS))
     expect(expectOk(await invoke(IPC_CHANNELS.CASES_GET, afterBackup.id))).toBeUndefined()
+  })
+
+  // The MCP server's connection (ADR-0038), idle between reads. Without the
+  // checkpoint before the close, SQLite replays the replaced database's WAL
+  // over the backup and the case created after it survives the restore.
+  it('restores a backup while another connection holds the database open', async () => {
+    const reader = new Database(dbPath, { readonly: true })
+    try {
+      reader.prepare('SELECT COUNT(*) FROM cases').get()
+      const backupPath = join(userDataPath, 'chosen-backup.db')
+      showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: backupPath })
+      expectOk(await invoke(IPC_CHANNELS.DB_BACKUP))
+      const afterBackup = expectOk<{ id: string }>(
+        await invoke(IPC_CHANNELS.CASES_CREATE, { name: 'Recorded after the backup' })
+      )
+
+      showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [backupPath] })
+      expect(expectOk<{ restored: boolean }>(await invoke(IPC_CHANNELS.DB_RESTORE))).toEqual({
+        restored: true
+      })
+
+      expect(expectOk(await invoke(IPC_CHANNELS.CASES_GET, afterBackup.id))).toBeUndefined()
+    } finally {
+      reader.close()
+    }
+  })
+
+  it('refuses both restores while another connection is mid-read, keeping the database', async () => {
+    const conn = new Database(dbPath)
+    try {
+      await createPreMigrationSnapshot(conn, dbPath, LATEST_SCHEMA_VERSION, LATEST_SCHEMA_VERSION)
+    } finally {
+      conn.close()
+    }
+    const [{ fileName }] = expectOk<Array<{ fileName: string }>>(
+      await invoke(IPC_CHANNELS.DB_SNAPSHOTS)
+    )
+    const kept = expectOk<{ id: string }>(
+      await invoke(IPC_CHANNELS.CASES_CREATE, { name: 'Still here' })
+    )
+    // Not waited on: the app's five-second busy timeout would only delay the refusal.
+    getDb().pragma('busy_timeout = 0')
+    const reader = new Database(dbPath, { readonly: true })
+    try {
+      reader.exec('BEGIN')
+      reader.prepare('SELECT COUNT(*) FROM cases').get()
+
+      showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [dbPath] })
+      const fromFile = await invoke<{ ok: boolean; code?: string; error?: string }>(
+        IPC_CHANNELS.DB_RESTORE
+      )
+      const fromSnapshot = await invoke<{ ok: boolean; code?: string }>(
+        IPC_CHANNELS.DB_RESTORE_SNAPSHOT,
+        { fileName }
+      )
+
+      expect(fromFile).toMatchObject({ ok: false, code: 'DB_IN_USE' })
+      expect(fromFile.error).toContain('Another program is reading the database')
+      expect(fromSnapshot).toMatchObject({ ok: false, code: 'DB_IN_USE' })
+      expect(expectOk(await invoke(IPC_CHANNELS.CASES_GET, kept.id))).toMatchObject({
+        name: 'Still here'
+      })
+    } finally {
+      reader.exec('COMMIT')
+      reader.close()
+    }
   })
 
   it('reports a failed snapshot restore without the filesystem error behind it', async () => {

@@ -74,8 +74,9 @@ maintainer ruled on 2026-09-28:
    Capture's traffic to an address-echo service. The record states what Birdbrain asked Chromium
    to do, not which address the target saw. The verifier learns the fields before any build
    writes them (the ADR-0023 sequencing), in a verifier release of their own. The ruling first
-   put them in the Shared Case schema 4 release, but that release (#1509, PR #1518) had already
-   shipped on 2026-09-20; corrected on 2026-10-02.
+   put them in the Shared Case schema 4 verifier release (#1509, PR #1518), which merged on
+   2026-09-20 and went out without them in 1.0.1-beta.22, tagged on 2026-10-01; corrected on
+   2026-10-02.
 6. **Tor is the Operator's own.** Birdbrain does not bundle Tor. It offers the two local SOCKS
    ports as presets, 9150 for Tor Browser and 9050 for the Tor service, and describes Tor as
    hiding the IP address only.

@@ -12,9 +12,10 @@ source. It has been tested on Linux.
 The server only reads. It opens the database read-only, so the database itself refuses any
 change, and it cannot sign a Manifest Entry. It never contacts the network. The desktop app can
 stay open while the agent works. The server opens the database for each request and closes it
-afterwards, so it reads a restored database on its next request. If you restore the database in
-the app while the agent is in the middle of a request, the app refuses the restore and asks you
-to try again.
+afterwards, so it reads a restored database on its next request. The app refuses a restore only
+while the server is partway through a database read, and asks you to try again. Otherwise the
+restore goes ahead, and a request the agent made before it can finish with data from before the
+restore.
 
 <Warning>
 Everything a tool returns goes to the model your MCP client uses. If that model is hosted by a

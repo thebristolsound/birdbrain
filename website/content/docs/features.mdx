@@ -1,0 +1,111 @@
+---
+title: 'Features'
+description: 'What Birdbrain does: capture, cases, analysis, integrity, export, and the app itself.'
+---
+
+This page lists what Birdbrain does on its main branch. A feature merged since the newest
+release ships with the next one. The [screenshot tour](/docs/screenshots)
+shows each screen, and the [threat model](/docs/threat-model) says what the integrity controls
+prove and what they do not.
+
+## Capture
+
+- Capture the current page from the extension popup or the right-click menu. A capture records
+  the MHTML, a stitched full-page screenshot, the page text, response headers, HTTP status, the
+  final URL, and the browser, user-agent, and extension versions.
+- Use scrolling capture for pages that load content as you scroll. It scrolls for up to two
+  minutes and stops when the page stops growing.
+- Select text on a page to create a selector, add a tag, or save a quote. Tagging or quoting a
+  page the case does not hold yet captures it first.
+- After a capture, a card on the page confirms the hash was recorded, and offers tagging,
+  recapture, and a link to the capture in the app.
+- Paste a list of URLs and the desktop app captures them in a hidden window. The app labels these
+  captures as background captures, warns when a page shows a login wall, and blocks cookie
+  banners using consent filter lists.
+- Recapture one page or a selection. The new capture links to the earlier one, which stays in
+  the case.
+- Exclude URLs by substring, wildcard, or regular expression. Exclusions apply to all cases or
+  to one case.
+- Birdbrain removes its own page UI before taking the snapshot, and aborts the capture if it
+  cannot.
+
+## Cases
+
+- Create a case with a wizard that offers starter selectors for email addresses, crypto
+  addresses, IP addresses, domains, phone numbers, and usernames.
+- The case overview shows changes since your last visit, recent captures, an activity timeline,
+  an integrity summary, top sources, quick notes, tags, selectors, and a link map.
+- Filter the capture list by text, format, date, tag, or favourite, and act on a selection in
+  bulk: tag, favourite, recapture, export, or delete.
+- View each capture as a screenshot, as the archived page with scripts turned off, as extracted
+  text, or alongside Wayback Machine snapshots.
+- Write notes in a rich-text editor. `@` links captures and notes, and `#` links selectors and
+  tags.
+- Annotate screenshots with rectangles, arrows, highlights, redaction boxes, and numbered pins.
+  The original screenshot stays unchanged, and the report in an export can show the
+  annotations.
+- Birdbrain assigns exhibit numbers to captures and cites them in exports.
+- Search the text of every capture in a case.
+
+## Analysis
+
+- Birdbrain extracts indicators from every capture and lists the pages each one appeared on:
+  - IPv4 (public only) and IPv6 addresses, domains, email addresses, MAC addresses, and ASNs
+  - MD5, SHA-1, SHA-256, and SHA-512 hashes, and CVE identifiers
+  - Bitcoin, Ethereum, and Monero addresses
+  - Google Analytics, AdSense, Tag Manager, and Ads IDs, and Facebook Pixel IDs
+  - X, Facebook, Instagram, LinkedIn, YouTube, GitHub, and Telegram accounts
+  - `.onion` and `.i2p` addresses
+- Selectors flag exact text or a regular expression across every capture in the case,
+  including captures made before the selector existed. Matches export as CSV.
+- The Data screen lists every file in a case with its properties, extracted text, headers,
+  TLS details, and manifest entries, and verifies any branch of the tree. Local files can be
+  staged and then added to the evidence record or discarded.
+- Indicators have their own group in the Data screen's rail, with an entry for each category
+  and subcategory. Picking one in the rail or in the indicator browser selects it in both.
+- Look up a page on the Internet Archive, pin snapshots to the case, and compare a snapshot side
+  by side with your capture.
+
+## Integrity
+
+- Birdbrain hashes the MHTML, screenshot, and extracted text separately with SHA-256.
+- Each case keeps an append-only, hash-chained manifest signed with an RSA-2048 key. The key is
+  a file encrypted through the operating system's credential store when one is available. Without
+  one, Birdbrain asks you to accept storing the key as plain text. Birdbrain decides this once,
+  when it creates the key.
+- RFC 3161 timestamps come from DigiCert by default. The authority is configurable, and
+  timestamping can be turned off.
+- After each HTTPS capture, Birdbrain fetches the site's TLS certificate chain and records it in
+  the signed entry as corroboration. If the fetch fails, the entry has no chain.
+- Re-verify a capture, a branch of the case, or the whole manifest from inside the app.
+
+## Export
+
+- Export an evidence package as a full bundle or as a court exhibit without notes. Each preset
+  can be adjusted, and an export can cover only selected captures.
+- An evidence package contains an HTML report, the captures and screenshots, the signed
+  manifest, the public key, the timestamp tokens and authority chain, `VERIFY.md`, and a
+  `verify.sh` script.
+- Export a working copy for your own use. A working copy is not an evidence package: it has no
+  certification, no signed manifest, no signing key and no verification material, and it cannot be
+  verified.
+- Download a single capture as MHTML, a PDF report, or a PNG screenshot.
+- Export a tag's captures as an evidence package, or copy them to the clipboard as Markdown.
+- Move a case to another machine as a `.birdbrain` archive. Import verifies the archive first
+  and always creates a new case.
+
+## App
+
+- Updates arrive on a stable or beta channel. Birdbrain never restarts on its own to install
+  one.
+- The command palette (`Ctrl+K`) switches and creates cases, replays the walkthrough, and opens
+  a problem report.
+- Choose a dark or light theme, one of three density settings, and reduced motion.
+- First launch opens a guided tour, an extension setup guide, and a demo case. Exports from the
+  demo case are marked as demo material.
+- Create personas, the research identities you browse as, and import their cookies. Captures do
+  not use a persona yet.
+- Problem reports stay local until you send them. The app also includes a log viewer and a
+  capture pipeline self-test.
+- Database tools cover backup and restore, snapshots before upgrades, vacuum, and search index
+  rebuilds.

@@ -270,8 +270,9 @@ missed its release step: remove the label with a note, and count the slot once, 
   ```
 
   If it merged and its final pre-pass verdict was `request changes`, verify an override
-  record per ADR-0007 exists (first line containing `Override record`, posted after that
-  verdict and at or before the merge, each finding dispositioned). If it closed without
+  record per ADR-0007 exists (first line after any disclosure note containing
+  `Override record`, posted after that verdict and at or before the merge, each finding
+  dispositioned). If it closed without
   merging, verify give-up hygiene: the linked issue carries a findings comment and a
   `needs-info`/`ready-for-human` relabel. Report any gap in the end-of-cycle report —
   report-only, and it re-fires every empty-queue cycle until the record appears. Then dispatch

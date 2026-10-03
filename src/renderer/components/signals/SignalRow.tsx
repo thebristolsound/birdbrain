@@ -125,6 +125,9 @@ export function SignalRow({
 
   function handleKey(event: KeyboardEvent<HTMLDivElement>) {
     if (editing) return
+    // Keys pressed on the switch, mode chip or delete button belong to those
+    // controls; the row only handles keys aimed at the row itself.
+    if (event.target !== event.currentTarget) return
     if (isSelector && isCopyChord(event)) {
       event.preventDefault()
       onCopyPattern()
@@ -193,7 +196,10 @@ export function SignalRow({
           rowRef.current = element
           registerRow(element)
         }}
-        role="button"
+        // A group, not a button: the row wraps a switch, a mode chip and a delete
+        // button, and a button may not contain other interactive controls.
+        role="group"
+        aria-label={signal.name}
         tabIndex={0}
         data-testid={`signal-row-${signal.id}`}
         data-selected={selected ? 'true' : 'false'}

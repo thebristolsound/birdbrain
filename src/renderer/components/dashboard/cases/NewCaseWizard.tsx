@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useCasesMutations, useSettingsMutations } from '@renderer/lib/queries'
 import { createSelector } from '@renderer/lib/api/selectors'
@@ -40,6 +40,8 @@ const SELECTOR_PRESETS = [
   { id: 'username', label: 'Usernames', pattern: '@[a-zA-Z0-9_]{1,15}', isRegex: true }
 ]
 
+const WIZARD_STEPS = ['Name', 'Description', 'Selectors']
+
 export function NewCaseWizard() {
   const navigate = useNavigate()
   const { create } = useCasesMutations()
@@ -49,6 +51,9 @@ export function NewCaseWizard() {
   const [description, setDescription] = useState('')
   const [selectedSelectors, setSelectedSelectors] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
+  const nameId = useId()
+  const descriptionId = useId()
+  const selectorsLabelId = useId()
 
   const toggleSelector = (id: string) => {
     setSelectedSelectors((prev) =>
@@ -96,11 +101,16 @@ export function NewCaseWizard() {
   return (
     <div className="mx-auto max-w-2xl py-12 px-6">
       {/* Progress indicator */}
-      <div className="mb-8 flex items-center justify-center gap-2">
-        <div className="h-2 w-8 rounded-full bg-accent" />
-        <div className="h-2 w-2 rounded-full bg-elevated" />
-        <div className="h-2 w-2 rounded-full bg-elevated" />
-      </div>
+      <ol aria-label="Progress" className="mb-8 flex items-center justify-center gap-2">
+        {WIZARD_STEPS.map((step, i) => (
+          <li
+            key={step}
+            aria-current={i === 0 ? 'step' : undefined}
+            aria-label={`Step ${i + 1} of ${WIZARD_STEPS.length}: ${step}${i === 0 ? ' (current)' : ''}`}
+            className={`h-2 rounded-full ${i === 0 ? 'w-8 bg-accent' : 'w-2 bg-elevated'}`}
+          />
+        ))}
+      </ol>
 
       {/* Card */}
       <Card className="p-8">
@@ -113,10 +123,11 @@ export function NewCaseWizard() {
 
         {/* Investigation Name */}
         <div className="mb-4">
-          <Label className="mb-1.5 text-sm font-medium text-text-secondary">
+          <Label htmlFor={nameId} className="mb-1.5 text-sm font-medium text-text-secondary">
             Investigation Name
           </Label>
           <Input
+            id={nameId}
             data-testid="case-name-input"
             type="text"
             value={name}
@@ -129,7 +140,9 @@ export function NewCaseWizard() {
 
         {/* Description */}
         <div className="mb-6">
-          <Label className="mb-1.5 text-sm font-medium text-text-secondary">Description</Label>
+          <Label htmlFor={descriptionId} className="mb-1.5 text-sm font-medium text-text-secondary">
+            Description
+          </Label>
           {/* Recessed fill, not the V1 note's bg-elevated (#563): the V2 handoff bundle
               (prototype/design-handoff-2026-08, style_sync_patch/SCREEN_NOTES.md "New case
               wizard") rules this textarea "6px, recessed fill", and HANDOFF.md defines
@@ -138,6 +151,7 @@ export function NewCaseWizard() {
               site adds only the wizard's 14px density and rounded-xl, which the globals.css
               radius collapse aliases to the ruled 6px. The name Input above keeps 4px. */}
           <Textarea
+            id={descriptionId}
             data-testid="case-description-input"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -149,15 +163,20 @@ export function NewCaseWizard() {
 
         {/* Initial Selectors */}
         <div className="mb-8">
-          <label className="mb-3 block text-sm font-medium text-text-secondary">
+          <span
+            id={selectorsLabelId}
+            className="mb-3 block text-sm font-medium text-text-secondary"
+          >
             Initial Selectors
-          </label>
-          <div className="flex flex-wrap gap-2">
+          </span>
+          <div role="group" aria-labelledby={selectorsLabelId} className="flex flex-wrap gap-2">
             {SELECTOR_PRESETS.map((preset) => {
               const selected = selectedSelectors.includes(preset.id)
               return (
                 <button
                   key={preset.id}
+                  type="button"
+                  aria-pressed={selected}
                   onClick={() => toggleSelector(preset.id)}
                   className={`rounded-lg border px-3 py-1.5 text-sm transition ${
                     selected

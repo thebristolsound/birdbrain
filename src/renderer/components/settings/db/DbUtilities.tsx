@@ -452,6 +452,7 @@ export function DbUtilities() {
         description="Export a table's contents to CSV or JSON."
       >
         <select
+          aria-label="Table to export"
           value={exportTable}
           onChange={(e) => setExportTable(e.target.value)}
           className="rounded-lg border border-border bg-surface px-2 py-1.5 text-xs text-text-primary outline-none"
@@ -463,6 +464,7 @@ export function DbUtilities() {
           ))}
         </select>
         <select
+          aria-label="Export format"
           value={exportFormat}
           onChange={(e) => setExportFormat(e.target.value as 'csv' | 'json')}
           className="rounded-lg border border-border bg-surface px-2 py-1.5 text-xs text-text-primary outline-none"

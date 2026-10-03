@@ -1,4 +1,4 @@
-import { Fragment, type KeyboardEvent, type ReactNode } from 'react'
+import { Fragment, useRef, type KeyboardEvent, type ReactNode } from 'react'
 import { FileWarning } from 'lucide-react'
 import { Badge, Button } from '@renderer/components/ui'
 import { cn } from '@renderer/lib/utils'
@@ -63,7 +63,31 @@ export function ArtifactTable({
   emptyMessage,
   menuTargetFor
 }: ArtifactTableProps) {
+  const tableRef = useRef<HTMLDivElement>(null)
+  // Roving tab stop: one row is reachable by Tab (the selected one, else the
+  // first) and the arrow keys walk the rest, so a long table costs one press.
+  const tabStopId = rows.some((r) => r.id === selectedId) ? selectedId : (rows[0]?.id ?? null)
+
+  function moveRowFocus(event: KeyboardEvent<HTMLDivElement>): boolean {
+    const keys = ['ArrowDown', 'ArrowUp', 'Home', 'End']
+    if (!keys.includes(event.key) || event.target !== event.currentTarget) return false
+    const items = Array.from(
+      tableRef.current?.querySelectorAll<HTMLElement>('[data-artifact-row]') ?? []
+    )
+    const index = items.indexOf(event.currentTarget)
+    const next =
+      event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? items.length - 1
+          : Math.min(items.length - 1, Math.max(0, index + (event.key === 'ArrowDown' ? 1 : -1)))
+    event.preventDefault()
+    items[next]?.focus()
+    return true
+  }
+
   function onRowKey(event: KeyboardEvent<HTMLDivElement>, row: ArtifactRow) {
+    if (moveRowFocus(event)) return
     // Only the row's own Enter: a keydown bubbling from the inline Commit or
     // Discard button is that button's activation, not an open.
     if (event.key === 'Enter' && onOpen && event.target === event.currentTarget) {
@@ -73,29 +97,30 @@ export function ArtifactTable({
   }
   return (
     <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden" data-testid="artifact-table">
-      <div
-        role="row"
-        className="sticky top-0 z-[2] grid h-[var(--d-head)] items-center border-b border-l-2 border-border border-l-transparent bg-canvas px-[var(--d-rowpad)] font-display text-[10px] font-semibold uppercase tracking-label text-text-faint"
-        style={{ gridTemplateColumns: COLUMNS }}
-      >
-        <span>Name</span>
-        <span>Source</span>
-        <span>Kind</span>
-        <span className="pr-3.5 text-right">Size</span>
-        <span>SHA-256</span>
-        <span>Captured</span>
-      </div>
-      {rows.length === 0 ? (
-        <div className="p-9 text-center text-xs text-text-faint">{emptyMessage}</div>
-      ) : (
-        rows.map((row) => {
+      <div ref={tableRef} role="table" aria-label="Artifacts" aria-rowcount={rows.length + 1}>
+        <div
+          role="row"
+          className="sticky top-0 z-[2] grid h-[var(--d-head)] items-center border-b border-l-2 border-border border-l-transparent bg-canvas px-[var(--d-rowpad)] font-display text-[10px] font-semibold uppercase tracking-label text-text-faint"
+          style={{ gridTemplateColumns: COLUMNS }}
+        >
+          <span role="columnheader">Name</span>
+          <span role="columnheader">Source</span>
+          <span role="columnheader">Kind</span>
+          <span role="columnheader" className="pr-3.5 text-right">
+            Size
+          </span>
+          <span role="columnheader">SHA-256</span>
+          <span role="columnheader">Captured</span>
+        </div>
+        {rows.map((row) => {
           const selected = row.id === selectedId
           const multi = multiSelectedIds?.has(row.id) ?? false
           return (
             <MaybeMenu key={row.id} target={menuTargetFor?.(row) ?? null}>
               <div
                 role="row"
-                tabIndex={0}
+                tabIndex={row.id === tabStopId ? 0 : -1}
+                data-artifact-row
                 aria-selected={selected || multi}
                 data-multi-selected={multi || undefined}
                 data-testid={`artifact-row-${row.id}`}
@@ -115,7 +140,7 @@ export function ArtifactTable({
                 )}
                 style={{ gridTemplateColumns: COLUMNS }}
               >
-                <span className="flex min-w-0 items-center gap-1.5 py-1 pr-2.5">
+                <span role="cell" className="flex min-w-0 items-center gap-1.5 py-1 pr-2.5">
                   {!row.exists && (
                     <span
                       title="File missing on disk"
@@ -173,19 +198,30 @@ export function ArtifactTable({
                   )}
                 </span>
                 <span
+                  role="cell"
                   className="truncate font-mono text-[11px] text-text-muted"
                   title={row.sourceDetail}
                 >
                   {row.source}
                 </span>
-                <span className="truncate text-xs text-text-muted">{row.kind}</span>
-                <span className="pr-3.5 text-right text-[11px] tabular-nums text-text-muted">
+                <span role="cell" className="truncate text-xs text-text-muted">
+                  {row.kind}
+                </span>
+                <span
+                  role="cell"
+                  className="pr-3.5 text-right text-[11px] tabular-nums text-text-muted"
+                >
                   {formatBytes(row.sizeBytes)}
                 </span>
-                <span className="truncate font-mono text-[11px] text-text-faint" title={row.hash}>
+                <span
+                  role="cell"
+                  className="truncate font-mono text-[11px] text-text-faint"
+                  title={row.hash}
+                >
                   {shortHash(row.hash)}
                 </span>
                 <span
+                  role="cell"
                   className="flex min-w-0 flex-col text-[11px] tabular-nums text-text-faint"
                   title={capturedTitle(row)}
                 >
@@ -199,7 +235,10 @@ export function ArtifactTable({
               </div>
             </MaybeMenu>
           )
-        })
+        })}
+      </div>
+      {rows.length === 0 && (
+        <div className="p-9 text-center text-xs text-text-faint">{emptyMessage}</div>
       )}
     </div>
   )

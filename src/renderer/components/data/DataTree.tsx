@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from 'react'
+import { Fragment, useRef, type KeyboardEvent, type ReactNode } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { cn } from '@renderer/lib/utils'
 import { EntityContextMenu } from '@renderer/components/contextmenu/EntityContextMenu'
@@ -35,8 +35,50 @@ export function DataTree({
   onToggleBelow,
   menuTargetFor
 }: DataTreeProps) {
+  const treeRef = useRef<HTMLDivElement>(null)
+  // Roving tab stop: Tab enters the tree once, on the selected node (else the
+  // first), and the arrow keys move between nodes.
+  const tabStopKey = nodes.some((n) => n.key === selected) ? selected : nodes[0]?.key
+
+  function onTreeKey(event: KeyboardEvent<HTMLDivElement>) {
+    const target = event.target as HTMLElement
+    if (!target.hasAttribute('data-tree-select')) return
+    const items = Array.from(
+      treeRef.current?.querySelectorAll<HTMLElement>('[data-tree-select]') ?? []
+    )
+    const index = items.indexOf(target)
+    const node = nodes.find(
+      (n) =>
+        `data-tree-node-${n.key}` ===
+        target.closest('[role="treeitem"]')?.getAttribute('data-testid')
+    )
+    let next = -1
+    if (event.key === 'ArrowDown') next = Math.min(items.length - 1, index + 1)
+    else if (event.key === 'ArrowUp') next = Math.max(0, index - 1)
+    else if (event.key === 'Home') next = 0
+    else if (event.key === 'End') next = items.length - 1
+    else if (node && event.key === 'ArrowRight' && node.hasChildren && !node.expanded) {
+      event.preventDefault()
+      onToggle(node.key)
+      return
+    } else if (node && event.key === 'ArrowLeft' && node.hasChildren && node.expanded) {
+      event.preventDefault()
+      onToggle(node.key)
+      return
+    }
+    if (next < 0) return
+    event.preventDefault()
+    items[next]?.focus()
+  }
+
   return (
-    <div role="tree" aria-label="Case data" className="px-1.5 pb-4 pt-1.5">
+    <div
+      ref={treeRef}
+      role="tree"
+      aria-label="Case data"
+      className="px-1.5 pb-4 pt-1.5"
+      onKeyDown={onTreeKey}
+    >
       {nodes.map((node) => {
         const isSelected = node.key === selected
         const Twist = node.expanded ? ChevronDown : ChevronRight
@@ -69,6 +111,8 @@ export function DataTree({
               </button>
               <button
                 type="button"
+                data-tree-select
+                tabIndex={node.key === tabStopKey ? 0 : -1}
                 onClick={() => onSelect(node.key)}
                 className={cn(
                   'flex h-[var(--d-tree)] min-w-0 flex-1 items-center gap-1.5 rounded px-[7px] text-left',

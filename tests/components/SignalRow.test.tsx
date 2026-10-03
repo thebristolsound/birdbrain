@@ -108,6 +108,17 @@ describe('SignalRow keyboard model', () => {
     expect(screen.queryByLabelText('Edit selector pattern')).toBeNull()
   })
 
+  it('leaves keys pressed on nested controls to those controls', () => {
+    const { onDelete, onToggleEnabled } = renderRow()
+
+    fireEvent.keyDown(screen.getByLabelText('Delete acme'), { key: 'Enter' })
+    fireEvent.keyDown(screen.getByRole('switch'), { key: ' ' })
+
+    expect(onDelete).not.toHaveBeenCalled()
+    expect(onToggleEnabled).not.toHaveBeenCalled()
+    expect(screen.queryByLabelText('Edit selector pattern')).toBeNull()
+  })
+
   // #1549: a pre-selected pattern was replaced whole by the first keystroke,
   // and a changed pattern clears and re-runs every persisted match.
   it('opens the editor with the caret after the pattern, not the pattern selected', () => {

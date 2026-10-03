@@ -4,7 +4,9 @@
 [ADR-0034](0034-the-app-acquires-and-the-extension-is-a-companion.md):** Bound TLS Details are
 recorded where the capture engine is attached before the request (a `launched` Capture in a
 Chromium browser, and a `background` Capture). The corroboration re-fetch described here stays
-the floor for every Capture, and a session-long `chrome.debugger` attach in the Operator's
+the floor wherever it runs. Once the Egress exists, it will not run while the Egress is not
+Direct ([ADR-0032](0032-route-app-egress-but-do-not-disguise-the-browser.md)), and nothing in
+ADR-0034 restores a direct connection there. A session-long `chrome.debugger` attach in the Operator's
 everyday browser is still not built.
 
 The G5 TLS slice (#123) records the serving TLS certificate chain as **origin corroboration**, via a Node `tls.connect()` re-fetch from the main process after a capture is stored. It does **not** bind the cert to the specific captured HTTP transaction. Binding capture — recording the exact certificate Chrome observed on the captured response, via a session-long `chrome.debugger` CDP attach — is deferred to an explicit opt-in follow-up, not built in #123.

@@ -11,5 +11,22 @@
     "here when a version bump would do buys a re-decision date instead of a fix.",
     "Trees: \".\" is the Electron app, the only tree audited."
   ],
-  "exceptions": []
+  "exceptions": [
+    {
+      "ghsa": "GHSA-ch52-4w7c-c8xp",
+      "package": "http-cache-semantics",
+      "tree": ".",
+      "path": ".>electron-builder>app-builder-lib>@electron/get>got>cacheable-request>http-cache-semantics",
+      "reason": "Build-time devDependency only, and not reached in this build: got consults http-cache-semantics only when a cache option is passed, and app-builder-lib 26.15.3 passes none (@electron/get keeps its own file cache). Nothing in the shipped app depends on it (pnpm why --prod). No patched version exists (advisory published 2026-09-18). An override of app-builder-lib>@electron/get to ^5.1.0 removes the package, and a Linux electron-builder dir build still succeeds with it, but @electron/get 5 downloads with fetch, so app-builder-lib's proxy agent and request timeout stop applying. That is unverified for Windows and macOS packaging and for a cold or proxied Electron download, so the exception is preferred until a full packaging run on all three platforms backs the override, as with the earlier app-builder-lib exception. electron-builder 27 also clears it once it leaves alpha.",
+      "expires": "2026-12-31"
+    },
+    {
+      "ghsa": "GHSA-vfj7-8cjw-p6xm",
+      "package": "braces",
+      "tree": ".",
+      "path": ".>shadcn>fast-glob>micromatch>braces",
+      "reason": "Developer CLI devDependency only: developers run shadcn by hand to add UI component source, no build, test or CI script runs it, and nothing in the shipped app depends on braces (pnpm why --prod). The denial of service needs an attacker-supplied, deeply nested glob pattern; shadcn's patterns come from its own code, this repo's config, and paths the developer types on its command line. No patched version exists (advisory published 2026-09-18), and braces 3.0.3 is its latest release, so no override can clear it.",
+      "expires": "2026-12-31"
+    }
+  ]
 }

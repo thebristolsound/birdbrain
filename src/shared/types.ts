@@ -117,6 +117,39 @@ export interface TlsCertChainError {
 
 export type TlsCertChainResult = TlsCertChain | TlsCertChainError
 
+/**
+ * One link in a stored page, as the Links tab lists it (#1708). Derived on demand
+ * from the MHTML in the main process: never stored, never part of a Manifest.
+ */
+export interface CaptureLink {
+  /** Resolved against the part's document URL and `<base>`; the raw attribute when that fails. */
+  href: string
+  /** The attribute exactly as stored. */
+  rawHref: string
+  /** Trimmed, whitespace-collapsed anchor text; an image's alt when the anchor has none. */
+  text: string
+  /** Lower-cased `rel` tokens, unioned across collapsed occurrences. */
+  rel: string[]
+  kind: 'http' | 'same-page' | 'mailto' | 'tel' | 'other'
+  frame: 'main' | 'subframe'
+  /** The resolved document URL of the part the link came from. */
+  documentUrl: string
+  /** Identical href, text and frame collapse into one row. */
+  occurrences: number
+  /** The visible text names a host other than the one the link goes to. */
+  textHostMismatch: boolean
+}
+
+export interface CaptureLinks {
+  links: CaptureLink[]
+  /** The row ceiling was reached and later links were not listed. */
+  truncated: boolean
+  /** HTML parts not read because a size or count ceiling refused them. */
+  skippedParts: number
+  /** The main document itself was refused by a ceiling, so its links are absent. */
+  mainDocumentSkipped: boolean
+}
+
 export interface Capture {
   id: string
   caseId: string

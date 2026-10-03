@@ -2,6 +2,7 @@ import type {
   Case,
   CaseAutoCapturePolicy,
   Capture,
+  CaptureLinks,
   Tag,
   BirdbrainSettings,
   ExportOptions,
@@ -131,6 +132,7 @@ export interface BirdbrainAPI {
     verify(captureId: string): Promise<HashVerification>
     getMhtmlUrl(captureId: string): Promise<string | null>
     getHtmlUrl(captureId: string): Promise<string | null>
+    getLinks(captureId: string): Promise<CaptureLinks | null>
     deleteMany(payload: CaptureBatchPayload): Promise<BatchDeleteResult>
     duplicate(captureId: string): Promise<DuplicateCaptureResult>
     setFavoriteMany(payload: CaptureBatchPayload & { favorite: boolean }): Promise<BatchCountResult>

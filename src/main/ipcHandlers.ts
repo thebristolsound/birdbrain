@@ -59,6 +59,7 @@ import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
 import * as annotations from '@main/services/annotations'
 import { applyTagToNote, NoteNotFoundError } from '@main/services/noteTags'
 import { defaultCaptureStore } from '@main/services/captureStore'
+import { readCaptureLinks } from '@main/services/captureLinks'
 import { renderCapturePdf } from '@main/services/pdfExport'
 import { getThumbnail } from '@main/services/thumbnails'
 import { getCaseInventory, getManifestSnapshot, verifyExhibit } from '@main/services/exhibits'
@@ -893,6 +894,11 @@ export function registerIpcHandlers(deps: {
     if (!existsSync(abs)) return null
     return pathToFileURL(abs).toString()
   })
+
+  // The stored page's links for the Links tab (#1708): derived on demand, never stored.
+  handle(IPC_CHANNELS.CAPTURES_GET_LINKS, (_, captureId: string) =>
+    readCaptureLinks(captureRepo.getCapture(captureId))
+  )
 
   handle(IPC_CHANNELS.CAPTURES_VERIFY, (_, captureId: string) => captureLifecycle.verify(captureId))
 

@@ -28,6 +28,7 @@ export default defineConfig({
         'src/shared/**/*.ts',
         'src/renderer/**/*.{ts,tsx}',
         'src/packages/**/*.{ts,mts,cts}',
+        'scripts/coverage-badge.mjs',
         'scripts/slop-audit/**/*.mjs',
         'scripts/jev-lens/**/*.mjs',
         'scripts/third-party-notices/**/*.mjs'

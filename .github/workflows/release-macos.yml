@@ -1,10 +1,9 @@
 name: Release (macOS, on request)
 
-# macOS is built on request rather than on every tag (#605). The round-1 tester
-# guide covers Windows and Ubuntu; a macOS build is produced when a tester needs
-# one, and uploaded to the existing Release for that tag in the public releases
-# repository. Building it on every tag published ~850MB of assets nobody was
-# pointed at, on a runner billed at a 10x minute multiplier.
+# release.yml builds macOS on every tag again, as an experimental leg. This
+# workflow backfills a macOS build onto an existing Release: a tag cut before
+# the leg returned, or one whose macOS leg failed. It then rewrites the
+# release's SHA256SUMS.txt so the checksum file lists the macOS files too.
 #
 # Run it from the Actions tab, or:
 #   gh workflow run release-macos.yml -f tag=v1.0.1-beta.20
@@ -77,4 +76,37 @@ jobs:
             dist/*.zip
             dist/*.blockmap
             dist/latest-mac.yml
+          fail_on_unmatched_files: true
+
+  # The checksum file lists the assets on the release when it was written (#1625), so
+  # write it again now that the macOS files are on it. checksums.sh comes from the ref
+  # this workflow runs on, not the tag, which may predate the script.
+  refresh-checksums:
+    needs: build-macos
+    if: github.triggering_actor == 'thebristolsound'
+    environment: paid-runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The releases repository is public, so the workflow token reads it, as in release.yml.
+      - name: Hash every asset on the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          bash .github/scripts/release/checksums.sh \
+            thebristolsound/birdbrain-releases "$TAG" dist/SHA256SUMS.txt
+
+      - name: Upload the checksum file
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          repository: thebristolsound/birdbrain-releases
+          token: ${{ secrets.RELEASES_REPO_TOKEN }}
+          tag_name: ${{ inputs.tag }}
+          files: dist/SHA256SUMS.txt
           fail_on_unmatched_files: true

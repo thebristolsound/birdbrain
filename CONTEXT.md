@@ -67,7 +67,7 @@ The one Case the extension is working in. Chosen by the Operator; required befor
 _Avoid_: current case, selected case, open case.
 
 **Capture Session**:
-The state between the Operator starting and stopping work into the Active Case. While it runs, the Active Case's Selectors are matched against browsed pages. With passive capture withdrawn (ADR-0013), a running session captures nothing by itself. _Planned:_ in a browser Birdbrain launched, recording is on during a session, so every Capture taken during it carries a Transaction Record.
+The state between the Operator starting and stopping work into the Active Case. While it runs, the Active Case's Selectors are matched against browsed pages. With passive capture withdrawn (ADR-0013), a running session captures nothing by itself. _Planned:_ in a browser Birdbrain launched, recording is on during a session, so every Capture taken during it carries a Transaction Record, and passive capture returns there only: the session captures every page that loads, or only the pages a Selector matches (ADR-0037). The everyday browser never captures without a click.
 _Avoid_: session (unqualified), auto-capture, recording mode.
 
 **Capture Lifecycle**:
@@ -75,7 +75,7 @@ Operations that mutate an MHTML Capture beyond its database row: admission of a 
 _Avoid_: capture service, capture manager.
 
 **Capture Method**:
-How a Capture was produced. Today: by the Chrome extension (`extension`, operator-witnessed), by a silent hidden-window render (`background`), or by copying another Capture in the same Case (`duplicate`, which observed nothing). _Planned:_ `companion` (through the Companion in the Operator's everyday Chromium browser, operator-witnessed, never a Transaction Record) and `launched` (in a browser Birdbrain launched, operator-witnessed, a Transaction Record when a Capture Session is running) replace `extension`, which stays as a legacy value on Captures already written. Which Persona was present is recorded beside the method, never inside it.
+How a Capture was produced. Today: by the Chrome extension (`extension`, operator-witnessed), by a silent hidden-window render (`background`), or by copying another Capture in the same Case (`duplicate`, which observed nothing). _Planned:_ `companion` (through the Companion in the Operator's everyday Chromium browser, operator-witnessed, never a Transaction Record), `launched` (in a browser Birdbrain launched, operator-witnessed, a Transaction Record when a Capture Session is running), and `launched-passive` (taken by a running Capture Session in a launched browser without a click, never operator-witnessed) replace `extension`, which stays as a legacy value on Captures already written. Which Persona was present is recorded beside the method, never inside it.
 _Avoid_: capture type, capture mode, persona-window.
 
 **Companion**:
@@ -362,7 +362,7 @@ _Avoid_: risky change, core change, forensic change.
 
 - "source" is used for four unrelated things: `CaptureSource` (`auto`/`manual`/`selector`/`recapture`), a Note's `sourceUrl`, the extraction pipeline's `extractionSource`, and the overview's Sources block. Say "capture trigger" for `CaptureSource` and reserve "source" for the origin a Capture came from.
 
-- "auto-capture" names four unrelated things: the top-bar switch that starts and stops a **Capture Session** (#813), the Signals card and the `autoCaptureMode` setting that edit a Case's URL exclusion policy (#744), the Capture Server capturing a page before the extension attaches a **Tag** or **Note** to it, and the withdrawn passive capture whose return ADR-0013 scopes to a declared window (#600). Say "Capture Session" for the switch, "exclusion policy" for the card, and "capture-then-attach" for the server path; "passive capture" and its vocabulary stay reserved to ADR-0013 until the restoration lands.
+- "auto-capture" names four unrelated things: the top-bar switch that starts and stops a **Capture Session** (#813), the Signals card and the `autoCaptureMode` setting that edit a Case's URL exclusion policy (#744), the Capture Server capturing a page before the extension attaches a **Tag** or **Note** to it, and the withdrawn passive capture whose return ADR-0037 scopes to a launched browser (#600). Say "Capture Session" for the switch, "exclusion policy" for the card, and "capture-then-attach" for the server path; "passive capture" and its vocabulary stay reserved to ADR-0013 and ADR-0037 until the restoration lands.
 
 - "route" is the Capture Server's HTTP route (a handler that parses a request and hands it to the Capture Lifecycle). The path outbound traffic takes is the **Egress**; never call it a route.
 

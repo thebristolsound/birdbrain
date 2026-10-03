@@ -120,6 +120,37 @@ describe('linksFromMhtml', () => {
     ])
   })
 
+  it('keeps the same href and text in two frames at different addresses as two rows', () => {
+    const target = 'https://widgets.example/a.html'
+    const buffer = mhtml(
+      [
+        { location: CAPTURE_URL, html: page('') },
+        { location: target, html: page(`<a href="${target}">Go</a>`) },
+        { location: 'https://other.example/b.html', html: page(`<a href="${target}">Go</a>`) }
+      ],
+      CAPTURE_URL
+    )
+    const { links } = linksFromMhtml(buffer, CAPTURE_URL)
+    expect(
+      links.map(({ href, text, kind, documentUrl, occurrences }) => ({
+        href,
+        text,
+        kind,
+        documentUrl,
+        occurrences
+      }))
+    ).toEqual([
+      { href: target, text: 'Go', kind: 'same-page', documentUrl: target, occurrences: 1 },
+      {
+        href: target,
+        text: 'Go',
+        kind: 'http',
+        documentUrl: 'https://other.example/b.html',
+        occurrences: 1
+      }
+    ])
+  })
+
   it('takes the snapshot’s part as the main document wherever it sits in the file', () => {
     const buffer = mhtml(
       [
@@ -167,7 +198,7 @@ describe('linksFromMhtml', () => {
     })
   })
 
-  it('collapses identical href, text and frame into one row and unions rel', () => {
+  it('collapses identical href, text, frame and document into one row and unions rel', () => {
     const links = linksOf(
       '<a href="/s" rel="Nofollow">S</a><a href="/s" rel="noopener nofollow">S</a>' +
         '<a href="/s">S</a><a href="/s">Different text</a>'

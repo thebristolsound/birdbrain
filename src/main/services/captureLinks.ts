@@ -121,7 +121,9 @@ function collectLinks(
           .replace(/\s+/g, ' ')
           .trim()
       const rel = (node.attr('rel') ?? '').toLowerCase().split(/\s+/).filter(Boolean)
-      const key = JSON.stringify([href, text, frame])
+      // documentUrl is in the key because `kind` is judged against it: the same href and
+      // text can be same-page in one embedded frame and external in another.
+      const key = JSON.stringify([href, text, frame, documentUrl])
       const existing = rows.get(key)
       if (existing) {
         existing.occurrences += 1

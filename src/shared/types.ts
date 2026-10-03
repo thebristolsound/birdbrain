@@ -134,7 +134,7 @@ export interface CaptureLink {
   frame: 'main' | 'subframe'
   /** The resolved document URL of the part the link came from. */
   documentUrl: string
-  /** Identical href, text and frame collapse into one row. */
+  /** Identical href, text, frame and documentUrl collapse into one row. */
   occurrences: number
   /** The visible text names a host other than the one the link goes to. */
   textHostMismatch: boolean

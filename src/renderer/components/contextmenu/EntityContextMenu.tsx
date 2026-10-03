@@ -32,6 +32,13 @@ interface EntityContextMenuProps {
   children: ReactNode
   /** Classes for the trigger wrapper, for a surface that must fill its parent. */
   className?: string
+  /**
+   * Whether the open menu blocks the rest of the window (the default). A surface
+   * over a `<webview>` passes false: while a modal menu is open, a right-click on
+   * the guest lands on this document instead and only closes the menu, so the
+   * Operator cannot right-click a second link directly.
+   */
+  modal?: boolean
 }
 
 type Defer = (run: () => void) => void
@@ -108,7 +115,12 @@ function Entry({
  * decides the menu. Adopting a surface is therefore one wrapper and one target
  * object, with no menu markup and no focus or Escape handling of its own.
  */
-export function EntityContextMenu({ target, children, className }: EntityContextMenuProps) {
+export function EntityContextMenu({
+  target,
+  children,
+  className,
+  modal = true
+}: EntityContextMenuProps) {
   const [editing, setEditing] = useState(false)
   const [drilled, setDrilled] = useState<string | null>(null)
   const [hidden, setHidden] = useState(readHiddenActions)
@@ -136,6 +148,7 @@ export function EntityContextMenu({ target, children, className }: EntityContext
 
   return (
     <ContextMenu
+      modal={modal}
       onOpenChange={(open) => {
         if (open) setHidden(readHiddenActions())
         setEditing(false)

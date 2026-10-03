@@ -443,11 +443,22 @@ test.describe('stored-page viewer links', () => {
     // Right-clicks a link and checks the menu opened on it, at the pointer. Radix
     // places the menu's corner on the point it is given, so a placement that missed
     // the pane's scroll or the guest's position lands far from the link.
-    const rightClick = async (name: RowName, frame: 'main' | 'sub', label: string) => {
+    // `pointer` is the window's own input, hit-tested into the guest the way an
+    // Operator's mouse is; `main` sends the event to the guest's contents directly.
+    const rightClick = async (
+      name: RowName,
+      frame: 'main' | 'sub',
+      label: string,
+      via: 'pointer' | 'main' = 'pointer'
+    ) => {
       const y = rowY(name, frame)
-      await guestMouse(electronApp, { x: ROW.x, y, button: 'right' })
-      await expect(menu).toHaveAttribute('aria-label', label)
       const guestBox = (await page.getByTestId('mhtml-viewer').boundingBox())!
+      if (via === 'pointer') {
+        await page.mouse.click(guestBox.x + ROW.x, guestBox.y + y, { button: 'right' })
+      } else {
+        await guestMouse(electronApp, { x: ROW.x, y, button: 'right' })
+      }
+      await expect(menu).toHaveAttribute('aria-label', label)
       const menuBox = (await menu.boundingBox())!
       expect(Math.abs(menuBox.x - (guestBox.x + ROW.x)), `${label} x`).toBeLessThan(8)
       expect(Math.abs(menuBox.y - (guestBox.y + y)), `${label} y`).toBeLessThan(8)
@@ -472,8 +483,9 @@ test.describe('stored-page viewer links', () => {
     await expect(capture).toHaveText('Capture link')
     await expect(capture).not.toHaveAttribute('data-disabled', '')
 
-    // A second right-click, on another link, opens on that link.
-    await rightClick('absolute', 'main', `Link actions: ${sentinel.origin}/absolute-main`)
+    // A second right-click, on another link while the menu is still open, opens on
+    // that link: the menu does not hold the pointer, so the click reaches the guest.
+    await rightClick('fragment', 'main', `Link actions: ${sentinel.origin}/page.html#far-main`)
     await expect(capture).toHaveText('Capture link (Points at a loopback address)')
     await expect(capture).toHaveAttribute('data-disabled', '')
     await page.keyboard.press('Escape')
@@ -485,17 +497,13 @@ test.describe('stored-page viewer links', () => {
     expect(await scrollPane(60)).toBeGreaterThan(0)
     await page.setViewportSize({ width: 1200, height: 800 })
     await settle()
-    await rightClick('public', 'sub', 'Link actions: https://example.test/sub')
+    await rightClick('public', 'sub', 'Link actions: https://example.test/sub', 'main')
     await page.keyboard.press('Escape')
     await page.getByRole('button', { name: 'Collapse details panel' }).first().click()
     await settle()
-    const guestBox = await rightClick(
-      'relative',
-      'main',
-      `Link actions: ${sentinel.origin}/next-main.html`
-    )
+    const guestBox = await rightClick('public', 'main', 'Link actions: https://example.test/main')
 
-    // A real pointer-down on the guest closes it too.
+    // A left click in the guest closes it too.
     await page.mouse.click(guestBox.x + 900, guestBox.y + 200)
     await expect(menu).toHaveCount(0)
     expect(sentinel.requests).toEqual([])

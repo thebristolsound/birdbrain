@@ -111,7 +111,7 @@ export function MhtmlViewer({ captureId, caseId }: Props) {
   }
 
   return (
-    <EntityContextMenu target={linkTarget(hit)} className="h-full w-full">
+    <EntityContextMenu target={linkTarget(hit)} className="h-full w-full" modal={false}>
       <div
         ref={triggerRef}
         className="relative h-full w-full"

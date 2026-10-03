@@ -321,3 +321,22 @@ describe('release.yml attaches both files once every build has uploaded', () => 
     expect(job.match(/fail_on_unmatched_files: true/g)).toHaveLength(2)
   })
 })
+
+describe('release-macos.yml rewrites the checksum file after a backfill', () => {
+  const content = readFileSync(join(ROOT, '.github', 'workflows', 'release-macos.yml'), 'utf8')
+  const job = jobBlock(content, 'refresh-checksums')
+
+  it('hashes the tag it backfilled once the macOS upload has finished', () => {
+    expect(job).toContain('needs: build-macos')
+    expect(job).toContain('TAG: ${{ inputs.tag }}')
+    expect(job).toContain('GH_TOKEN: ${{ github.token }}')
+    expect(job).toContain('thebristolsound/birdbrain-releases "$TAG" dist/SHA256SUMS.txt')
+  })
+
+  it('replaces the file on that release, failing the run when it is missing', () => {
+    expect(job).toContain('tag_name: ${{ inputs.tag }}')
+    expect(job).toContain('files: dist/SHA256SUMS.txt')
+    expect(job).toContain('fail_on_unmatched_files: true')
+    expect(job).not.toContain('overwrite_files: false')
+  })
+})

@@ -135,7 +135,7 @@ for each platform, the extension, and updating.
   separate export with no signed manifest and no verification material, and it cannot be
   verified. Move a whole case to another machine as a `.birdbrain` archive.
 
-The [features page](https://docs.birdbrain.cc/docs/features) lists everything the beta does,
+The [features page](https://docs.birdbrain.cc/docs/features) lists what Birdbrain does,
 and the [screenshot tour](https://docs.birdbrain.cc/docs/screenshots) shows every screen.
 
 ## Limits

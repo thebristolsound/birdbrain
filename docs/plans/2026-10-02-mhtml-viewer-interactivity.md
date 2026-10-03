@@ -86,9 +86,12 @@ prop synchronously, so the event can open with the previous link's target. Decis
    `getBoundingClientRect()` (viewport-relative, so it already reflects the outer pane's scroll).
 3. A component test pins it before anything builds on it: two successive right-clicks on different
    links each open with their own target.
-4. Dismissal: Escape, choosing an item, and any pointer-down or focus in the guest close the menu.
-   The last needs a listener on the webview element, because guest input never reaches the host
-   document.
+4. Dismissal: Escape, choosing an item, and any mouse-down in the guest close the menu. Guest
+   input never reaches the host document, Electron does not deliver mouse listeners on a
+   `<webview>`, and `focus` does not fire again while the guest keeps focus after the opening
+   right-click. So the main process listens to `before-mouse-event` on the guest's `WebContents`
+   and forwards a `mouseDown` to the host, which closes the menu. The real-guest E2E harness pins
+   it: right-click a link, left-click elsewhere in the guest, and the menu is gone.
 
 If step 3 cannot pass, the implementer stops and reports rather than building a second menu system.
 
@@ -123,9 +126,15 @@ section says so. Provenance is slice 2 and needs an ADR.
 guards apply in the menu:
 
 - Capture link is disabled, with the reason in the item, for `localhost` and for literal loopback,
-  private (RFC 1918, `fc00::/7`) and link-local addresses. That stops a captured page from aiming
-  the background renderer at the Operator's own network or at the app's capture server. A hostname
-  that resolves to a private address is not caught; the PR says so.
+  private (RFC 1918, `fc00::/7`) and link-local addresses. That stops a captured page from naming
+  the Operator's own network or the app's capture server as the link target directly. It does not
+  stop the page from reaching them indirectly, and the PR must say so. A hostname that resolves to a
+  private address is not caught. A public link that redirects to a private address is not caught
+  either: `renderPageInHiddenWindow` follows the redirect, and its final-URL exclusion check runs
+  after the private request has gone out. Closing that needs the non-public-address rule enforced
+  on every navigation and request inside the background renderer, plus a test of a
+  public-to-private redirect. That modifies `backgroundRenderer.ts`, which D7 keeps out of this
+  slice, so it is an open maintainer decision rather than slice-1 work.
 - No confirmation dialog for one link: it is a deliberate single-target act named by its label. Bulk
   harvest (later) needs a confirmation and detection of single-use tokens.
 
@@ -174,7 +183,7 @@ interface CaptureLink {
   kind: 'http' | 'same-page' | 'mailto' | 'tel' | 'other'
   frame: 'main' | 'subframe'
   documentUrl: string       // the resolved document URL of the part it came from
-  occurrences: number       // identical href+text+frame collapse into one row
+  occurrences: number       // identical href+text+frame+documentUrl collapse into one row
   textHostMismatch: boolean
 }
 
@@ -186,11 +195,14 @@ interface CaptureLinks {
 }
 ```
 
-`same-page` compares against the link's own `documentUrl`, not the Capture's URL. The host mismatch
-flag fires when the visible text parses as a URL or bare host whose normalised host differs from the
-link's. Normalising lower-cases, converts to ASCII through `URL`, and strips one leading `www.`.
-"Differs" means the hosts are not equal; registrable-domain matching would need a public-suffix
-dependency and is out. "In Case" is computed in the renderer with D10, not in main.
+`same-page` compares against the link's own `documentUrl`, not the Capture's URL. That is why
+`documentUrl` is part of the collapse key: the same `href` and text in two embedded frames with
+different document URLs can be `same-page` in one and external in the other, and a merged row would
+report only the first. The host mismatch flag fires when the visible text parses as a URL or bare
+host whose normalised host differs from the link's. Normalising lower-cases, converts to ASCII
+through `URL`, and strips one leading `www.`. "Differs" means the hosts are not equal;
+registrable-domain matching would need a public-suffix dependency and is out. "In Case" is
+computed in the renderer with D10, not in main.
 
 **D14. Where does the Links tab live?** A fifth viewer tab, `links`, after `text`, in
 `CaptureViewer.tsx` (`TABS`, `TAB_LABELS`, `TAB_ICONS`, `CaptureViewerTab` in `appStore`). Every

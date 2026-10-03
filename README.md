@@ -148,8 +148,8 @@ against and what they do not.
 [![Download for Windows](https://img.shields.io/badge/Download-Windows-0078d4)](https://github.com/thebristolsound/birdbrain-releases/releases)
 [![Download for Linux](https://img.shields.io/badge/Download-Linux-FCC624?logo=linux&logoColor=black)](https://github.com/thebristolsound/birdbrain-releases/releases)
 
-Download the Windows installer, the Ubuntu AppImage, the `.deb` package, or the experimental
-macOS disk image from the
+Download the Windows installer, the Ubuntu AppImage, the `.deb` package, or, when a release
+has one, the experimental macOS disk image (macOS 13 or later) from the
 [releases page](https://github.com/thebristolsound/birdbrain-releases/releases). Releases from
 1.0.1-beta.22 on include `SHA256SUMS.txt` and an SPDX software bill of materials. The Windows
 installer is not code-signed, so SmartScreen warns the first time you run it. macOS disk images

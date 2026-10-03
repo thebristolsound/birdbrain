@@ -81,8 +81,11 @@ jobs:
           | **Windows 10 / 11** | \`Birdbrain-Setup-${VERSION}.exe\` |
           | **Ubuntu** — preferred | \`Birdbrain-${VERSION}.AppImage\` |
           | **Ubuntu** — alternative | \`birdbrain_${VERSION}_amd64.deb\` |
-          | **macOS, Apple Silicon** — experimental | \`Birdbrain-${VERSION}-arm64.dmg\` |
-          | **macOS, Intel** — experimental | \`Birdbrain-${VERSION}.dmg\` |
+          | **macOS 13 or later, Apple Silicon** — experimental | \`Birdbrain-${VERSION}-arm64.dmg\` |
+          | **macOS 13 or later, Intel** — experimental | \`Birdbrain-${VERSION}.dmg\` |
+
+          The macOS files are on this page only if the experimental macOS build succeeded. A
+          failed macOS build does not stop the release, so check the file list below first.
 
           **On Ubuntu, the AppImage needs the execute bit and FUSE 2 before it will run:**
 
@@ -101,9 +104,10 @@ jobs:
           in Chrome, so the extension always matches your app version. (The
           \`birdbrain-extension.zip\` here is the same build, for developers only.)
 
-          \`SHA256SUMS.txt\` lists the SHA-256 of the Windows, macOS, Linux and extension files and
-          of the bill of materials, taken from the copies on this page. To check a download
-          on Linux, put \`SHA256SUMS.txt\` in the folder that holds it and run
+          \`SHA256SUMS.txt\` lists the SHA-256 of the Windows, Linux and extension files, of the
+          macOS files when this page has them, and of the bill of materials, taken from the
+          copies on this page. To check a download on Linux, put \`SHA256SUMS.txt\` in the
+          folder that holds it and run
           \`sha256sum --check --ignore-missing SHA256SUMS.txt\`.
 
           \`birdbrain-${TAG}.spdx.json\` is that bill of materials: GitHub's dependency list
@@ -114,19 +118,22 @@ jobs:
           the in-app updater. Ignore it.
 
           **macOS is experimental.** The build is unsigned and not notarized, no machine
-          check launches it before it is published, and the app tells you about an update
-          but does not install it. macOS blocks the first launch; after dragging Birdbrain
-          to Applications, clear the download quarantine once:
+          check launches it before it is published, and the app does not install updates on
+          macOS. macOS blocks the first launch, and may say the app is "damaged and can't be
+          opened": that is the download quarantine, not a corrupt file. After dragging
+          Birdbrain to Applications, clear the quarantine once:
 
           \`\`\`bash
           xattr -dr com.apple.quarantine /Applications/Birdbrain.app
           \`\`\`
 
-          **Already running Birdbrain?** You do not need this page. **Settings → Updates →
-          Check for updates** finds this version. If the download does not start by itself, click
-          **Download**. When it finishes, click **Restart to update**. On the \`.deb\`, that last
-          step asks for your system password. After the restart, reload the Birdbrain extension at
-          \`chrome://extensions\`, because Chrome keeps the old copy loaded until you do.
+          **Already running Birdbrain?** On Windows or Ubuntu you do not need this page.
+          **Settings → Updates → Check for updates** finds this version. If the download does not
+          start by itself, click **Download**. When it finishes, click **Restart to update**. On the
+          \`.deb\`, that last step asks for your system password. On macOS, download the new disk
+          image from this page and repeat the steps above instead. After updating, reload the
+          Birdbrain extension at \`chrome://extensions\`, because Chrome keeps the old copy loaded
+          until you do.
 
           Platform notes, the extension load steps, and where advisories appear:
           [Download Birdbrain](https://docs.birdbrain.cc/docs/download).
@@ -189,7 +196,8 @@ jobs:
           # Experimental (#605 removed it, restored as experimental): unsigned, not
           # notarized, and no smoke, since package-smoke.mjs drives win32 and linux only.
           # continue-on-error keeps a failed macOS leg from skipping sbom-and-checksums
-          # for the Windows and Linux assets. The release notes carry the macOS rows.
+          # for the Windows and Linux assets, so the release notes say the macOS files
+          # may be missing.
           - os: macos-latest
             script: package:mac
             experimental: true
@@ -224,8 +232,9 @@ jobs:
 
       # Install (Windows) or run (Ubuntu) the artifact this leg just built and require
       # the capture server to answer: the pre-ship gate's "install -> launch" step, by
-      # machine, on the exact bytes about to be published. A leg whose artifact does
-      # not boot uploads nothing, so a broken build never reaches the update feed.
+      # machine, on the exact bytes about to be published. A Windows or Ubuntu leg whose
+      # artifact does not boot uploads nothing. The macOS leg has no smoke, so this
+      # guard does not cover the macOS files or latest-mac.yml.
       - name: Smoke the packaged app
         if: matrix.smoke
         timeout-minutes: 5
@@ -275,8 +284,8 @@ jobs:
           files: dist/birdbrain-extension.zip
 
   # The bill of materials and the checksum file (#1625). It waits for every build job,
-  # so the checksums are taken from the assets as the release serves them. macOS
-  # assets attached later by release-macos.yml, to backfill an older tag, are not.
+  # so the checksums are taken from the assets as the release serves them. A macOS
+  # backfill through release-macos.yml writes the file again after its upload.
   sbom-and-checksums:
     needs: [build-app, build-extension]
     environment: paid-runs

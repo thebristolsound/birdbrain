@@ -199,3 +199,42 @@ describe('package smoke and release workflow consistency', () => {
     expect(prereleaseInputs('release-macos.yml')).toEqual(['true'])
   })
 })
+
+// The macOS leg has no smoke and may fail without failing the release (#605), so the notes are
+// composed before anyone knows whether its files will exist.
+describe('the experimental macOS leg of release.yml', () => {
+  const releaseContent = readWorkflow('release.yml')
+  const notes = releaseContent.slice(
+    releaseContent.indexOf('<<EOF\n'),
+    releaseContent.indexOf('\n          EOF\n')
+  )
+  const legStart = releaseContent.indexOf('- os: macos-latest')
+  const leg = releaseContent.slice(legStart, releaseContent.indexOf('\n    runs-on:', legStart))
+
+  it('lets the leg fail, skips its smoke, and uploads the updater feed with the images', () => {
+    expect(leg).toContain('experimental: true')
+    expect(leg).not.toContain('smoke:')
+    expect(releaseContent).toContain('continue-on-error: ${{ matrix.experimental == true }}')
+    expect(extractStepRun(releaseContent, 'build-app', 'Smoke the packaged app')).toBe(
+      '${{ matrix.smoke }}'
+    )
+    expect(releaseContent).toMatch(/- name: Smoke the packaged app\n {8}if: matrix\.smoke\n/)
+    for (const glob of ['dist/*.dmg', 'dist/*.zip', 'dist/*.blockmap', 'dist/latest-mac.yml']) {
+      expect(leg).toContain(glob)
+    }
+  })
+
+  it('never promises the macOS files, or their checksums, unconditionally', () => {
+    expect(notes).toContain('Birdbrain-${VERSION}-arm64.dmg')
+    expect(notes).toMatch(
+      /macOS files are on this page only if the experimental macOS build\s+succeeded/
+    )
+    expect(notes).toMatch(/macOS files when this page has them/)
+    expect(notes).not.toMatch(/Windows, macOS, Linux/)
+  })
+
+  it('tells a macOS reader to update by hand, since the app installs nothing there', () => {
+    expect(notes).toMatch(/does not install updates on\s+macOS/)
+    expect(notes).toMatch(/On macOS, download the new disk\s+image from this page/)
+  })
+})

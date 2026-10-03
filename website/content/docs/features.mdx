@@ -1,9 +1,10 @@
 ---
 title: 'Features'
-description: 'What Birdbrain does in the current public beta: capture, cases, analysis, integrity, export, and the app itself.'
+description: 'What Birdbrain does: capture, cases, analysis, integrity, export, and the app itself.'
 ---
 
-This page lists what the current public beta does. The [screenshot tour](/docs/screenshots)
+This page lists what Birdbrain does on its main branch. A feature merged since the newest
+release ships with the next one. The [screenshot tour](/docs/screenshots)
 shows each screen, and the [threat model](/docs/threat-model) says what the integrity controls
 prove and what they do not.
 
@@ -70,7 +71,8 @@ prove and what they do not.
 - Birdbrain hashes the MHTML, screenshot, and extracted text separately with SHA-256.
 - Each case keeps an append-only, hash-chained manifest signed with an RSA-2048 key. The key is
   a file encrypted through the operating system's credential store when one is available. Without
-  one, Birdbrain asks you to accept storing the key as plain text.
+  one, Birdbrain asks you to accept storing the key as plain text. Birdbrain decides this once,
+  when it creates the key.
 - RFC 3161 timestamps come from DigiCert by default. The authority is configurable, and
   timestamping can be turned off.
 - After each HTTPS capture, Birdbrain fetches the site's TLS certificate chain and records it in
@@ -79,11 +81,14 @@ prove and what they do not.
 
 ## Export
 
-- Export an evidence package as a full bundle, a court exhibit without notes, or a working copy
-  that makes no evidentiary claims. Each preset can be adjusted, and an export can cover only
-  selected captures.
-- A package contains an HTML report, the captures and screenshots, the signed manifest, the
-  public key, the timestamp tokens and authority chain, `VERIFY.md`, and a `verify.sh` script.
+- Export an evidence package as a full bundle or as a court exhibit without notes. Each preset
+  can be adjusted, and an export can cover only selected captures.
+- An evidence package contains an HTML report, the captures and screenshots, the signed
+  manifest, the public key, the timestamp tokens and authority chain, `VERIFY.md`, and a
+  `verify.sh` script.
+- Export a working copy to share material without evidentiary claims. A working copy is not an
+  evidence package: it has no certification, no signed manifest, no signing key and no
+  verification material, and it cannot be verified.
 - Download a single capture as MHTML, a PDF report, or a PNG screenshot.
 - Export a tag's captures as an evidence package, or copy them to the clipboard as Markdown.
 - Move a case to another machine as a `.birdbrain` archive. Import verifies the archive first

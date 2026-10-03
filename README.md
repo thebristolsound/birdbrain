@@ -5,9 +5,9 @@ OSINT investigators and journalists who need to capture web pages as evidence, o
 into cases, and show later that the record has not changed. It runs on Windows and Ubuntu, has
 an experimental macOS build, and is in public beta.
 
-Birdbrain covers the same ground as Hunchly, case-based web capture for investigations, but it
-is open source, and anyone can check its evidence packages with standard command-line tools
-and no Birdbrain install. Archiving tools such as ArchiveBox and Webrecorder focus on
+Birdbrain covers much of the same ground as Hunchly, case-based web capture for
+investigations, and it is open source. Unlike Hunchly, this beta does not capture pages
+automatically as you browse. Archiving tools such as ArchiveBox and Webrecorder focus on
 preserving and replaying pages. Birdbrain is built around the investigation: cases, selectors,
 extracted indicators, notes, and exports.
 
@@ -90,7 +90,7 @@ Get-FileHash .\Birdbrain-Setup-<version>.exe -Algorithm SHA256
 ```
 
 ```bash
-# macOS: compare the output with the matching line in SHA256SUMS.txt
+# macOS: if SHA256SUMS.txt lists the disk image, compare the output with that line
 shasum -a 256 Birdbrain-<version>-arm64.dmg
 ```
 
@@ -129,10 +129,11 @@ for each platform, the extension, and updating.
 - **Integrity.** Each case keeps an append-only, hash-chained manifest signed with an RSA-2048
   key. RFC 3161 timestamps come from DigiCert by default, and the authority is configurable.
   Re-verify a capture, a branch of the case, or the whole manifest from inside the app.
-- **Export.** Export an evidence package as a full bundle, a court exhibit without notes, or a
-  working copy that makes no evidentiary claims. A package contains an HTML report, the
-  captures, the signed manifest, the public key, the timestamp tokens, `VERIFY.md`, and a
-  `verify.sh` script. Move a whole case to another machine as a `.birdbrain` archive.
+- **Export.** Export an evidence package as a full bundle or as a court exhibit without notes.
+  An evidence package contains an HTML report, the captures, the signed manifest, the public
+  key, the timestamp tokens, `VERIFY.md`, and a `verify.sh` script. A working copy is a
+  separate export with no signed manifest and no verification material, and it cannot be
+  verified. Move a whole case to another machine as a `.birdbrain` archive.
 
 The [features page](https://docs.birdbrain.cc/docs/features) lists everything the beta does,
 and the [screenshot tour](https://docs.birdbrain.cc/docs/screenshots) shows every screen.
@@ -149,7 +150,8 @@ you cannot afford to lose.
 - Birdbrain does not encrypt the database or capture files at rest. Confidentiality of the
   stored case relies on your operating system's full-disk encryption.
 - The signing key is a file encrypted through the operating system's credential store. On a
-  machine without one, Birdbrain asks you to accept storing the key as plain text.
+  machine without one, Birdbrain asks you to accept storing the key as plain text. Birdbrain
+  decides this once, when it creates the key.
 - Deleting a capture removes its files, but its URL, capture time, and hashes stay in the
   append-only manifest and appear in exports that include the audit trail.
 - Redaction boxes hide text only in the report. The evidence package still contains the

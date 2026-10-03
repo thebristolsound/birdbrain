@@ -41,7 +41,7 @@ gh api --paginate "repos/$R/issues/<n>/comments?per_page=100" \
   --jq '[.[] | select((.body|split("\n")[0]) | test("Reviewer pre-pass"))] | last | .body' \
   | head -1                     # verdict text: match `request changes` / `approve for human review`
 gh api --paginate "repos/$R/issues/<n>/comments?per_page=100" \
-  --jq '[.[] | select((.body|split("\n")[0]) | test("Override record"))] | length'
+  --jq '[.[] | select((.body|sub("^> \\[!NOTE\\]\n> [^\n]*\n+"; "")|split("\n")[0]) | test("Override record"))] | length'
 ```
 
 Debt exists when the PR merged, the final verdict is `request changes`, and the record count
@@ -101,7 +101,8 @@ deferred normally.
 
 The record must satisfy the hygiene check mechanically, so these are not stylistic choices:
 
-- **First line contains `Override record`.** The check matches on the first line only.
+- **First line contains `Override record`.** The check matches on the first line only,
+  read after the leading disclosure note when the record carries one.
 - **Posted after the final `request changes` pre-pass.** If the merge has already happened the
   record is late — say so in the record itself rather than papering over it. Late discharges
   the debt rule 4 re-reports; it does not satisfy rule 2's timing window, and the record
@@ -120,7 +121,7 @@ Then verify it landed and conforms:
 
 ```shell
 gh api --paginate "repos/$R/issues/<n>/comments?per_page=100" \
-  --jq '[.[] | select((.body|split("\n")[0]) | test("Override record"))] | length'
+  --jq '[.[] | select((.body|sub("^> \\[!NOTE\\]\n> [^\n]*\n+"; "")|split("\n")[0]) | test("Override record"))] | length'
 ```
 
 ## What this skill will not do

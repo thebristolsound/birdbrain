@@ -73,7 +73,7 @@ public repository that holds releases only. You need no GitHub account to downlo
 | Windows 10 / 11 | `.exe` installer | Supported. Not code-signed, so SmartScreen warns the first time you run it. |
 | Ubuntu | AppImage | Supported, and the primary Linux build. Needs FUSE 2 (`libfuse2t64`, or `libfuse2` on 22.04 and earlier). |
 | Ubuntu | `.deb` | Best-effort. |
-| macOS | `.dmg` | Experimental. Unsigned, not notarized, and not launch-tested before publishing. Apple Silicon and Intel builds. The app reports updates but does not install them. |
+| macOS 13 or later | `.dmg` | Experimental. Present only on a release whose macOS build succeeded. Unsigned, not notarized, and not launch-tested before publishing. Apple Silicon and Intel builds. The app does not install updates on macOS. |
 
 Releases from 1.0.1-beta.22 on include `SHA256SUMS.txt` and an SPDX software bill of materials.
 Check the download against the published hashes before you run it:
@@ -94,8 +94,9 @@ Get-FileHash .\Birdbrain-Setup-<version>.exe -Algorithm SHA256
 shasum -a 256 Birdbrain-<version>-arm64.dmg
 ```
 
-macOS blocks the first launch of the unsigned build. After you drag Birdbrain to
-**Applications**, clear the download quarantine once, then open it as usual:
+macOS blocks the first launch of the unsigned build, and may say the app is "damaged and can't
+be opened" even though the file is intact. The download quarantine causes that message. After
+you drag Birdbrain to **Applications**, clear the quarantine once, then open it as usual:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Birdbrain.app

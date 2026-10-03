@@ -20,6 +20,10 @@ import {
   type CaptureFacts,
   type CaptureFactsById
 } from '@renderer/components/data/dataTableModel'
+import {
+  indicatorCategoryKey,
+  indicatorSubcategoryKey
+} from '@renderer/components/data/dataTreeModel'
 import { CAPTURE_A, CAPTURE_LEGACY, HASH_A, INVENTORY, STAGED_PDF, THUMB_A } from '../dataFixtures'
 
 const FACTS = new Map<string, CaptureFacts>([
@@ -168,6 +172,19 @@ describe('rowsForNode', () => {
     expect(rows('exhibit:cap-a').map((r) => r.id)).toEqual(['cap-a', 'thumb-a'])
     expect(rows('kind:capture').map((r) => r.id)).toEqual(['cap-a', 'cap-legacy', 'thumb-a'])
     expect(rows('derived:thumb-a').map((r) => r.id)).toEqual(['thumb-a'])
+  })
+
+  // The Indicators view replaces the table there, so these nodes name no rows
+  // and their node menu offers no Verify. Whole-case Verify stays on the
+  // Integrity Exceptions strip.
+  it('names no rows under Indicators, so no Verify is offered there', () => {
+    for (const key of [
+      'indicators',
+      indicatorCategoryKey('emails'),
+      indicatorSubcategoryKey('emails', 'personal')
+    ] as const) {
+      expect(rows(key)).toEqual([])
+    }
   })
 
   it('files Integrity Exceptions from the persisted Capture state and infers nothing for Derived Files', () => {

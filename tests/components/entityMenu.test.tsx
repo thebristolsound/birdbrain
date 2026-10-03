@@ -628,7 +628,18 @@ describe('link menu', () => {
     ['http://[::ffff:192.168.0.1]/', 'Points at a private address'],
     ['http://[fd12:3456::1]/', 'Points at a private address'],
     ['http://[fc00::1]/', 'Points at a private address'],
-    ['http://[fe80::1]/', 'Points at a link-local address']
+    ['http://[fe80::1]/', 'Points at a link-local address'],
+    ['http://100.64.0.1/', 'Points at a shared address'],
+    ['http://100.127.255.254/', 'Points at a shared address'],
+    ['http://224.0.0.251/', 'Points at a multicast address'],
+    ['http://239.255.255.250/', 'Points at a multicast address'],
+    ['http://255.255.255.255/', 'Points at a broadcast address'],
+    ['http://[ff02::1]/', 'Points at a multicast address'],
+    ['http://[::ffff:239.1.1.1]/', 'Points at a multicast address'],
+    ['http://[::127.0.0.1]/', 'Points at an IPv4-compatible address'],
+    ['http://[::a00:1]/', 'Points at an IPv4-compatible address'],
+    ['http://[64:ff9b::7f00:1]/', 'Points at a NAT64 address'],
+    ['http://[64:ff9b::a9fe:a9fe]/', 'Points at a NAT64 address']
   ])('never offers an enabled Capture link for %s', (linkUrl, reason) => {
     const entries = linkMenuEntries(linkTarget({ linkUrl }))
     const capture = actionById(entries, 'link-capture')
@@ -643,7 +654,13 @@ describe('link menu', () => {
     'http://172.32.0.1/',
     'http://192.169.0.1/',
     'http://8.8.8.8/',
+    'http://100.63.255.255/',
+    'http://100.128.0.1/',
+    'http://223.255.255.255/',
+    'http://240.0.0.1/',
     'https://[2001:db8::1]/',
+    'https://[64:ff9b:1::1]/',
+    'https://[::ffff:8.8.8.8]/',
     'https://xn--bcher-kva.example/'
   ])('enables Capture link for the public address %s', (linkUrl) => {
     expect(actionById(linkMenuEntries(linkTarget({ linkUrl })), 'link-capture').disabled).toBe(

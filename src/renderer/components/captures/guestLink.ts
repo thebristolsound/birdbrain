@@ -52,8 +52,19 @@ function ipv4Class(host: string): string | null {
   if (a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) {
     return 'a private address'
   }
+  // 100.64.0.0/10, the space a carrier's NAT gives its subscribers (RFC 6598).
+  if (a === 100 && b >= 64 && b <= 127) return 'a shared address'
   if (a === 169 && b === 254) return 'a link-local address'
+  if (octets.every((o) => o === 255)) return 'a broadcast address'
+  if (a >= 224 && a <= 239) return 'a multicast address'
   return null
+}
+
+// The last two groups of an IPv6 address as dotted IPv4, as `URL` writes them.
+function embeddedIpv4(high: string, low: string): string {
+  const h = parseInt(high, 16)
+  const l = parseInt(low, 16)
+  return `${h >> 8}.${h & 255}.${l >> 8}.${l & 255}`
 }
 
 function ipv6Class(host: string): string | null {
@@ -62,14 +73,15 @@ function ipv6Class(host: string): string | null {
   if (bare === '::') return 'an unspecified address'
   // `URL` writes an IPv4-mapped address as two hex groups: ::ffff:7f00:1.
   const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(bare)
-  if (mapped) {
-    const high = parseInt(mapped[1], 16)
-    const low = parseInt(mapped[2], 16)
-    return ipv4Class(`${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`)
-  }
+  if (mapped) return ipv4Class(embeddedIpv4(mapped[1], mapped[2]))
+  // ::/96 (IPv4-compatible, deprecated) and 64:ff9b::/96 (NAT64) both carry an IPv4
+  // address a gateway may route to; neither is a page's address to send a renderer to.
+  if (/^::[0-9a-f]{1,4}(:[0-9a-f]{1,4})?$/.test(bare)) return 'an IPv4-compatible address'
+  if (/^64:ff9b::([0-9a-f]{1,4}(:[0-9a-f]{1,4})?)?$/.test(bare)) return 'a NAT64 address'
   const first = parseInt(bare.split(':')[0] || '0', 16)
   if ((first & 0xfe00) === 0xfc00) return 'a private address'
   if ((first & 0xffc0) === 0xfe80) return 'a link-local address'
+  if ((first & 0xff00) === 0xff00) return 'a multicast address'
   return null
 }
 

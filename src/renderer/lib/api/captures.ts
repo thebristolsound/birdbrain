@@ -36,6 +36,16 @@ export const captureMhtmlUrlQueryOptions = (captureId: string) =>
     enabled: !!captureId
   })
 
+// A stored page's links (#1708). The MHTML never changes after capture, so the
+// answer for a Capture does not either.
+export const captureLinksQueryOptions = (captureId: string) =>
+  queryOptions({
+    queryKey: queryKeys.captureLinks(captureId),
+    queryFn: () => window.birdbrain.captures.getLinks(captureId),
+    enabled: !!captureId,
+    staleTime: Infinity
+  })
+
 export const captureHtmlUrlQueryOptions = (captureId: string) =>
   queryOptions({
     queryKey: queryKeys.captureHtmlUrl(captureId),

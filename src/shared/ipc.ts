@@ -256,6 +256,7 @@ export const IPC_CHANNELS = {
   DEEP_LINK_NAVIGATE: 'event:deepLinkNavigate',
   ARCHIVE_PROGRESS: 'event:archiveProgress',
   UPDATE_STATUS: 'event:updateStatus',
+  GUEST_FRAME_REPLACED: 'event:guestFrameReplaced',
 
   // Capture pipeline observability
   CAPTURE_ACTIVITY: 'event:captureActivity',
@@ -325,6 +326,13 @@ export interface SessionStateEvent {
 // Extension reachability, pushed when the companion extension connects or drops.
 export interface ExtensionConnectionEvent {
   connected: boolean
+}
+
+// A subframe of an evidence guest committed a second document (#1708). Chromium
+// serves an MHTML iframe's navigations from the archive without consulting the
+// navigation guard, so this is how the viewer learns a stored frame was swapped.
+export interface GuestFrameReplacedEvent {
+  guestWebContentsId: number
 }
 
 export type SelectorRematchedStatus = 'done' | 'error'
@@ -1011,6 +1019,7 @@ export interface IpcEventContract {
   'event:selector:rematched': SelectorRematchedEvent
   'event:deepLinkNavigate': DeepLinkTarget
   'event:updateStatus': UpdateStatus
+  'event:guestFrameReplaced': GuestFrameReplacedEvent
   'event:logEntry': LogEntry
 }
 

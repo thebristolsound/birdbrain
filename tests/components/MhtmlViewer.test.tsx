@@ -6,7 +6,7 @@
 // scroll to it. What this file keeps is the shape that makes it reachable: the frame
 // carries the window's size, and the pane around it scrolls.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { act, render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { MHTML_PARTITION } from '@shared/constants'
@@ -203,6 +203,35 @@ describe('MhtmlViewer', () => {
     })
     fireEvent.click(screen.getByTestId('context-menu-item-link-open-captured'))
     expect(useAppStore.getState().selectedCaptureId).toBe('new')
+  })
+
+  // #1708. The main process reports an iframe that swapped its stored document; the
+  // pane says so and offers a reload, and the reload's main-frame commit clears it.
+  it('flags a swapped frame in its own guest only, and clears it on reload', async () => {
+    let report: (event: { guestWebContentsId: number }) => void = () => {}
+    fakeBridge({
+      captures: { getMhtmlUrl: vi.fn().mockResolvedValue(FILE_URL) },
+      onGuestFrameReplaced: (callback: typeof report) => {
+        report = callback
+        return () => {}
+      }
+    })
+    renderViewer()
+    const guest = await screen.findByTestId('mhtml-viewer')
+    const reload = vi.fn()
+    Object.assign(guest, { getWebContentsId: () => 7, reload })
+
+    act(() => report({ guestWebContentsId: 8 }))
+    expect(screen.queryByTestId('frame-changed-notice')).toBeNull()
+
+    act(() => report({ guestWebContentsId: 7 }))
+    const notice = await screen.findByTestId('frame-changed-notice')
+    expect(notice.textContent).toContain('A frame in this page changed after a click.')
+    fireEvent.click(within(notice).getByRole('button', { name: 'Reload' }))
+    expect(reload).toHaveBeenCalledOnce()
+
+    fireEvent(guest, new Event('did-navigate'))
+    await waitFor(() => expect(screen.queryByTestId('frame-changed-notice')).toBeNull())
   })
 
   it('closes the menu when focus moves into the guest', async () => {

@@ -219,15 +219,6 @@ async function guestState(electronApp: ElectronApplication) {
   })
 }
 
-async function reloadGuest(electronApp: ElectronApplication) {
-  await electronApp.evaluate(({ webContents }) => {
-    webContents
-      .getAllWebContents()
-      .find((wc) => wc.getType() === 'webview')
-      ?.reload()
-  })
-}
-
 async function openLinksCapture(page: Page, sentinel: Sentinel, fileTarget: string) {
   await page.setViewportSize({ width: 1200, height: 800 })
   await page.evaluate(() => {
@@ -359,11 +350,12 @@ test.describe('stored-page viewer links', () => {
   // Chromium serves an MHTML document's subframes from the archive itself and never
   // asks the navigation throttles, so will-frame-navigate is not raised for them and
   // the guard is not consulted. What this pins is what a subframe click can do anyway:
-  // nothing is fetched, no window opens, the main frame stays put, and the frame never
-  // reaches a local file. A link to another document can replace the iframe's content
-  // with an error page; that was true before #1708, since the stylesheet never reached
-  // a subframe either.
-  test('a click in the archive iframe reaches no network, no window and no local file', async ({
+  // nothing is fetched, no window opens, the main frame stays put and no frame reaches
+  // a local file. A left click on a link to another document does swap the iframe for
+  // a different, empty document; the viewer says so and offers a reload, and the
+  // reload brings the stored frame back. That swap was possible before #1708 too,
+  // since the stylesheet never reached a subframe.
+  test('a click in the archive iframe reaches no network, and a swapped frame is flagged', async ({
     electronApp,
     page
   }) => {
@@ -373,6 +365,9 @@ test.describe('stored-page viewer links', () => {
     await waitForGuestLoad(electronApp)
     const before = await guestState(electronApp)
     expect(before.frames).toEqual([before.url, 'cid:frame-sub@mhtml.blink'])
+    const notice = page.getByTestId('frame-changed-notice')
+    // The iframe's own first commit is the archive's, and raises no notice.
+    await expect(notice).toHaveCount(0)
 
     const rows: RowName[] = ['relative', 'absolute', 'blank', 'file', 'form', 'public']
     const subframeCommits: Record<string, string[]> = {}
@@ -398,31 +393,34 @@ test.describe('stored-page viewer links', () => {
           after.frames.some((url) => url.startsWith('file:') && url !== before.url),
           label
         ).toBe(false)
-        subframeCommits[label] = events.filter((e) => e.ev === 'commit').map((e) => e.url)
-        if (subframeCommits[label].length > 0) {
-          await reloadGuest(electronApp)
+        const commits = events.filter((e) => e.ev === 'commit').map((e) => e.url)
+        if (commits.length > 0) {
+          subframeCommits[label] = commits
+          await expect(notice, label).toBeVisible()
+          await notice.getByRole('button', { name: 'Reload' }).click()
           await waitForGuestLoad(electronApp)
+          await expect(notice, label).toHaveCount(0)
+          expect((await guestState(electronApp)).frames, label).toEqual(before.frames)
+        } else {
+          await expect(notice, label).toHaveCount(0)
         }
       }
     }
+    // Exactly what the iframe committed, for each click that committed anything.
+    expect(subframeCommits).toEqual({
+      'relative left': ['about:blank#blocked'],
+      'absolute left': [`${sentinel.origin}/absolute-sub`],
+      'public left': ['https://example.test/sub']
+    })
+
     // In the iframe a fragment link is a same-document jump, which goes ahead.
     await guestMouse(electronApp, { x: ROW.x, y: rowY('fragment', 'sub'), button: 'left' })
     await expect
       .poll(async () => (await takeGuestEvents(electronApp)).filter((e) => e.ev === 'in-page'))
       .toEqual([{ ev: 'in-page', url: 'cid:frame-sub@mhtml.blink#far-sub', main: false }])
+    await expect(notice).toHaveCount(0)
 
     expect(sentinel.requests).toEqual([])
-    // What a subframe click commits is Chromium's error page or blocked placeholder for
-    // the link's own address, with no request behind it.
-    for (const [label, commits] of Object.entries(subframeCommits)) {
-      for (const url of commits) {
-        const known =
-          url === 'about:blank#blocked' ||
-          url.startsWith(`${sentinel.origin}/`) ||
-          url.startsWith('https://example.test/')
-        expect(known, `${label} committed ${url}`).toBe(true)
-      }
-    }
   })
 
   test('hover shows the destination, and each right-click opens the menu on its own link', async ({

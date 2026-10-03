@@ -43,12 +43,21 @@ export function MhtmlViewer({ captureId, caseId }: Props) {
   const frame = useGuestFrameSize()
   const [hoverUrl, setHoverUrl] = useState('')
   const [hit, setHit] = useState<LinkHit>(NO_HIT)
+  const [frameChanged, setFrameChanged] = useState(false)
   const linkTarget = useLinkMenuTarget(caseId)
 
   useEffect(() => {
     const wv = ref.current as Electron.WebviewTag | null
     if (!wv) return
     setHoverUrl('')
+    setFrameChanged(false)
+    // The main process reports a stored iframe swapped for another document (it can
+    // tell frames apart; this document cannot). A reload commits the main frame
+    // again, which clears the notice.
+    const stopFrameReplaced = window.birdbrain.onGuestFrameReplaced(({ guestWebContentsId }) => {
+      if (wv.getWebContentsId() === guestWebContentsId) setFrameChanged(true)
+    })
+    const onMainCommit = () => setFrameChanged(false)
     const blockNav = (e: Event) => e.preventDefault()
     const onTargetUrl = (e: Event) => setHoverUrl((e as Electron.UpdateTargetUrlEvent).url ?? '')
     // Right-clicks inside the guest never reach this document, so the menu is opened
@@ -82,12 +91,15 @@ export function MhtmlViewer({ captureId, caseId }: Props) {
     wv.addEventListener('update-target-url', onTargetUrl)
     wv.addEventListener('context-menu', onContextMenu)
     wv.addEventListener('focus', closeOpenMenu)
+    wv.addEventListener('did-navigate', onMainCommit)
     return () => {
       wv.removeEventListener('will-navigate', blockNav)
       wv.removeEventListener('new-window', blockNav)
       wv.removeEventListener('update-target-url', onTargetUrl)
       wv.removeEventListener('context-menu', onContextMenu)
       wv.removeEventListener('focus', closeOpenMenu)
+      wv.removeEventListener('did-navigate', onMainCommit)
+      stopFrameReplaced()
     }
   }, [fileUrl])
 
@@ -134,6 +146,24 @@ export function MhtmlViewer({ captureId, caseId }: Props) {
             }}
           />
         </div>
+        {frameChanged && (
+          <div
+            role="status"
+            data-testid="frame-changed-notice"
+            className="absolute left-2 right-2 top-2 flex items-center gap-2 rounded-md border border-amber-500/30 bg-card px-3 py-1.5 text-xs text-text-secondary shadow-sm"
+          >
+            <span className="min-w-0 flex-1">
+              A frame in this page changed after a click. Reload to restore the stored page.
+            </span>
+            <button
+              type="button"
+              className="shrink-0 rounded border border-border px-2 py-0.5 text-text-primary hover:bg-elevated"
+              onClick={() => (ref.current as Electron.WebviewTag | null)?.reload()}
+            >
+              Reload
+            </button>
+          </div>
+        )}
         {hoverUrl && (
           <div
             data-testid="link-status-bubble"

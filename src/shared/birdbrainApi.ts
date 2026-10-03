@@ -79,6 +79,7 @@ import type {
   SaveAnnotationsParams,
   UpsertAnnotationPinParams,
   SelectorRematchedEvent,
+  GuestFrameReplacedEvent,
   ExtensionAttachEvent,
   DeepLinkTarget,
   ExportProgressEvent,
@@ -309,6 +310,7 @@ export interface BirdbrainAPI {
   onSelectorRematched(callback: (event: SelectorRematchedEvent) => void): () => void
   onDeepLinkNavigate(callback: (target: DeepLinkTarget) => void): () => void
   onUpdateStatus(callback: (status: UpdateStatus) => void): () => void
+  onGuestFrameReplaced(callback: (event: GuestFrameReplacedEvent) => void): () => void
   testPipeline(): Promise<{ success: boolean; durationMs: number; error?: string }>
   testHttp(): Promise<{ success: boolean; durationMs: number; error?: string }>
   extractedData: {

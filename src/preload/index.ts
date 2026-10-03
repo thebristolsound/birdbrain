@@ -276,6 +276,8 @@ const birdbrain = {
 
   onUpdateStatus: subscribe(IPC_CHANNELS.UPDATE_STATUS),
 
+  onGuestFrameReplaced: subscribe(IPC_CHANNELS.GUEST_FRAME_REPLACED),
+
   testPipeline: bridge(IPC_CHANNELS.CAPTURES_TEST_PIPELINE),
 
   testHttp: bridge(IPC_CHANNELS.CAPTURES_TEST_HTTP),

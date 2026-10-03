@@ -369,10 +369,22 @@ function guardEveryFrame(contents: Electron.WebContents, partition: string | nul
   contents.on('did-navigate', () => {
     mainDocumentCommitted = true
   })
-  contents.on('did-frame-navigate', (_event, _url, _code, _status, _main, processId, routingId) => {
-    const frame = webFrameMain.fromId(processId, routingId)
-    if (frame) committedFrames.add(frame.frameTreeNodeId)
-  })
+  contents.on(
+    'did-frame-navigate',
+    (_event, _url, _code, _status, isMain, processId, routingId) => {
+      const frame = webFrameMain.fromId(processId, routingId)
+      if (!frame) return
+      // Chromium serves an MHTML iframe's navigations from the archive without raising
+      // will-frame-navigate, so a stored frame can be swapped behind the guard. The
+      // embedding viewer is told, so it can say so and offer a reload.
+      if (!isMain && committedFrames.has(frame.frameTreeNodeId) && contents.hostWebContents) {
+        sendEvent(contents.hostWebContents, IPC_CHANNELS.GUEST_FRAME_REPLACED, {
+          guestWebContentsId: contents.id
+        })
+      }
+      committedFrames.add(frame.frameTreeNodeId)
+    }
+  )
   const guard = (
     event: Electron.Event<{
       url: string

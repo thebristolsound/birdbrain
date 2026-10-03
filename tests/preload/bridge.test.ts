@@ -115,7 +115,8 @@ const ROOT_LEVEL_LEAVES = new Set([
   'onLogEntry',
   'onSelectorRematched',
   'onDeepLinkNavigate',
-  'onUpdateStatus'
+  'onUpdateStatus',
+  'onGuestFrameReplaced'
 ])
 
 // Method names that predate the action-segment convention, keyed by the channel

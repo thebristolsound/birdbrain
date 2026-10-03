@@ -167,8 +167,14 @@ describe('extractHtmlFromMhtml', () => {
 
   // #1708 split the decoder into a part list that this joins. Its output feeds text
   // extraction, so the split must not move a byte: these digests were taken from the
-  // function as it stood before the split.
+  // function as it stood before the split. The two news fixtures hold one HTML part
+  // each; `fixtures/multi-part.mhtml` holds three, in quoted-printable, base64 and
+  // binary latin-1, around an image part, which is the case the join itself decides.
   it.each([
+    [
+      'fixtures/multi-part.mhtml',
+      '40f2d81213451a4f6aad9b32fccc858f96c62e15b7448f150ba68121cf294888'
+    ],
     [
       'extraction/fixtures/cnn-iran-synthetic.mhtml',
       'c2be71c4ac61e29d2b9e31356f739f4370635134557d427c5e3bc0c2ebe076fe'

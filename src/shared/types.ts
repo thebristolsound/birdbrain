@@ -144,7 +144,7 @@ export interface CaptureLinks {
   links: CaptureLink[]
   /** The row ceiling was reached and later links were not listed. */
   truncated: boolean
-  /** HTML parts not read, by the ceiling that refused each one. */
+  /** Embedded-frame parts not read, by the ceiling that refused each one. */
   skippedParts: {
     /** Larger, as stored, than one part may be. */
     tooLarge: number

@@ -252,7 +252,7 @@ describe('linksFromMhtml', () => {
         maxPartBytes: 200
       })
       expect(result).toMatchObject({
-        skippedParts: { tooLarge: 1, overPartCount: 0, overTotalSize: 0 },
+        skippedParts: { tooLarge: 0, overPartCount: 0, overTotalSize: 0 },
         mainDocumentSkipped: true
       })
       expect(result.links.map((l) => l.frame)).toEqual(['subframe'])
@@ -298,7 +298,7 @@ describe('linksFromMhtml', () => {
       ).toMatchObject({
         links: [],
         mainDocumentSkipped: true,
-        skippedParts: { tooLarge: 0, overPartCount: 0, overTotalSize: 1 }
+        skippedParts: { tooLarge: 0, overPartCount: 0, overTotalSize: 0 }
       })
     })
 

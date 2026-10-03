@@ -187,8 +187,9 @@ export function linksFromMhtml(
             ? 'overTotalSize'
             : null
     if (refusal) {
-      skippedParts[refusal] += 1
+      // The main document has its own flag; the counts are for embedded frames.
       if (index === 0) mainDocumentSkipped = true
+      else skippedParts[refusal] += 1
       return
     }
     bytesRead += part.encodedSize

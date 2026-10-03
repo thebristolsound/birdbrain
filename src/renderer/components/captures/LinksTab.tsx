@@ -148,8 +148,13 @@ export function LinksTab({ capture }: { capture: Capture }) {
     notices.push('The main document is too large to read; only links in its frames are listed.')
   }
   const { tooLarge, overPartCount, overTotalSize } = data.skippedParts
-  if (tooLarge + overPartCount + overTotalSize > (data.mainDocumentSkipped ? 1 : 0)) {
-    notices.push('Some embedded frames are too large to read and are not listed.')
+  const frames = (n: number) => (n === 1 ? '1 embedded frame' : `${n} embedded frames`)
+  if (tooLarge > 0) notices.push(`Not listed: ${frames(tooLarge)}, each too large to read.`)
+  if (overPartCount > 0) {
+    notices.push(`Not listed: ${frames(overPartCount)} past the number of frames this tab reads.`)
+  }
+  if (overTotalSize > 0) {
+    notices.push(`Not listed: ${frames(overTotalSize)} past the total size this tab reads.`)
   }
   if (data.truncated) notices.push(`Only the first ${data.links.length} links are listed.`)
 

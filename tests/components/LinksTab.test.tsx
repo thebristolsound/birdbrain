@@ -186,7 +186,7 @@ describe('LinksTab', () => {
     renderTab(
       result([], {
         mainDocumentSkipped: true,
-        skippedParts: { tooLarge: 1, overPartCount: 0, overTotalSize: 0 }
+        skippedParts: { tooLarge: 0, overPartCount: 0, overTotalSize: 0 }
       })
     )
     expect((await screen.findByTestId('links-empty')).textContent).toContain('too large')
@@ -196,7 +196,7 @@ describe('LinksTab', () => {
     renderTab(
       result([link({ frame: 'subframe' })], {
         mainDocumentSkipped: true,
-        skippedParts: { tooLarge: 1, overPartCount: 0, overTotalSize: 0 }
+        skippedParts: { tooLarge: 0, overPartCount: 0, overTotalSize: 0 }
       })
     )
     const notices = await screen.findAllByTestId('links-notice')
@@ -205,17 +205,29 @@ describe('LinksTab', () => {
     ])
   })
 
-  it('notes skipped frames and a truncated list', async () => {
+  it('notes skipped frames under each reason, and a truncated list', async () => {
     renderTab(
       result([link({})], {
-        skippedParts: { tooLarge: 2, overPartCount: 0, overTotalSize: 0 },
+        skippedParts: { tooLarge: 2, overPartCount: 1, overTotalSize: 3 },
         truncated: true
       })
     )
     const notices = await screen.findAllByTestId('links-notice')
     expect(notices.map((n) => n.textContent)).toEqual([
-      'Some embedded frames are too large to read and are not listed.',
+      'Not listed: 2 embedded frames, each too large to read.',
+      'Not listed: 1 embedded frame past the number of frames this tab reads.',
+      'Not listed: 3 embedded frames past the total size this tab reads.',
       'Only the first 1 links are listed.'
+    ])
+  })
+
+  it('names only the reasons that applied', async () => {
+    renderTab(
+      result([link({})], { skippedParts: { tooLarge: 0, overPartCount: 0, overTotalSize: 1 } })
+    )
+    const notices = await screen.findAllByTestId('links-notice')
+    expect(notices.map((n) => n.textContent)).toEqual([
+      'Not listed: 1 embedded frame past the total size this tab reads.'
     ])
   })
 

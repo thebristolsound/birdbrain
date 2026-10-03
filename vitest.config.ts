@@ -24,6 +24,7 @@ export default defineConfig({
       reportsDirectory: 'coverage',
       include: [
         'src/main/**/*.ts',
+        'src/mcp/**/*.ts',
         'src/shared/**/*.ts',
         'src/renderer/**/*.{ts,tsx}',
         'src/packages/**/*.{ts,mts,cts}',
@@ -36,6 +37,9 @@ export default defineConfig({
         '**/*.d.ts',
         '**/types.ts',
         'src/main/index.ts',
+        // The MCP entry runs in a child process (tests/mcp/stdio.test.ts), out of v8's reach.
+        'src/mcp/index.ts',
+        'src/mcp/stdoutGuard.ts',
         'src/preload/**',
         'src/renderer/main.tsx',
         'src/renderer/routeTree.gen.ts',

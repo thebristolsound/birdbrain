@@ -225,6 +225,14 @@ export function initSigningKey(userDataPath: string, deps: InitSigningKeyDeps = 
   writeFileSync(pubPath, publicKey, 'utf-8')
 }
 
+// The MCP server's key (ADR-0038): the public half only, read without the OS
+// credential store that node mode lacks. The private key stays unset, so
+// signEntryHash throws and that process can never sign a manifest entry.
+export function initVerifyOnlyKey(userDataPath: string): void {
+  privateKeyPem = null
+  publicKeyPem = readFileSync(join(userDataPath, PUBLIC_KEY_FILENAME), 'utf-8')
+}
+
 // Backs the Settings/Diagnostics indicator from #414: whether the currently
 // loaded signing key is wrapped by the OS credential store, or was written to
 // disk unprotected. Meaningless before initSigningKey has run.

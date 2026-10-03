@@ -21,7 +21,11 @@ import type { BatchDeleteOutcome } from '@shared/ipc'
 import type { Capture } from '@shared/types'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 import { appendFutureEntry } from '../../helpers/futureManifestEntry'
-import { createCaptureLifecycle, BatchCrossCaseError } from '@main/services/captureLifecycle'
+import {
+  createCaptureLifecycle,
+  BatchCrossCaseError,
+  verifyCapture
+} from '@main/services/captureLifecycle'
 import type { AdmissionRequest } from '@main/services/captureLifecycle'
 import { createSessionService } from '@main/services/session'
 import type { SessionService } from '@main/services/session'
@@ -1567,6 +1571,37 @@ describe('createCaptureLifecycle.verify', () => {
     expect(result.trustedTime).toBe('rfc3161')
     expect(result.tsaName).toBe('tsa.example.com')
     expect(result.stampedAt).toBe('2026-05-30T09:05:00.000Z')
+  })
+
+  it('returns the same verdict without writing when record is false (ADR-0038)', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('read-only')))
+    await flushImmediate()
+    // A stamp the mirror has not caught up with: the recording path would
+    // reconcile trusted_time_status, so an unchanged row proves nothing ran.
+    const token = buildSyntheticToken({
+      contentHash: capture.hash,
+      genTime: new Date('2026-05-30T09:05:00.000Z'),
+      tsaDnsName: 'tsa.example.com'
+    })
+    appendManifestEntry(join(tempDir, 'captures', caseId), {
+      type: 'timestamp',
+      caseId,
+      captureContentHash: capture.hash,
+      timestamp: '2026-05-30T09:05:00.000Z',
+      tsaToken: token.toString('base64'),
+      operatorId: 'op-1',
+      operatorName: 'Op',
+      toolVersion: '0.1.0'
+    })
+    const before = getCapture(capture.id)
+
+    const result = await verifyCapture(capture.id, undefined, { record: false })
+
+    expect(result.status).toBe('verified')
+    expect(result.trustedTime).toBe('rfc3161')
+    expect(getCapture(capture.id)).toEqual(before)
+    expect(before?.lastVerifiedStatus).toBeUndefined()
   })
 
   it('FAILS verify with a screenshot-specific reason when the on-disk .png is overwritten (#118 AC#5)', async () => {

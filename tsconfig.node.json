@@ -12,6 +12,7 @@
   },
   "include": [
     "src/main/**/*",
+    "src/mcp/**/*",
     "src/preload/**/*",
     "src/shared/**/*",
     "src/packages/**/*",

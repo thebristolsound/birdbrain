@@ -1,9 +1,10 @@
-import { readFileSync } from 'fs'
+import { readFileSync, statSync } from 'fs'
 import { extname } from 'path'
 import { z } from 'zod'
 import type { McpServer } from '@modelcontextprotocol/server'
 import { verifyCapture } from '@main/services/captureLifecycle'
 import { defaultCaptureStore } from '@main/services/captureStore'
+import { getCase } from '@main/services/db/caseRepo'
 import { getExhibit } from '@main/services/db/exhibitRepo'
 import { getCaseInventory, getManifestSnapshot, verifyExhibit } from '@main/services/exhibits'
 import {
@@ -59,7 +60,7 @@ export function registerCustodyTools(server: McpServer): void {
       const path = storedFilePath(exhibit.path)
       const ext = extname(exhibit.name || exhibit.path).toLowerCase()
       const mimeType = IMAGE_TYPES[ext]
-      if (mimeType && (exhibit.sizeBytes ?? 0) <= MAX_IMAGE_BYTES) {
+      if (mimeType && statSync(path).size <= MAX_IMAGE_BYTES) {
         return {
           content: [{ type: 'image', data: readFileSync(path).toString('base64'), mimeType }]
         }
@@ -81,7 +82,12 @@ export function registerCustodyTools(server: McpServer): void {
       inputSchema: z.object({ caseId: z.string() }),
       annotations: READ_ONLY
     },
-    ({ caseId }) => json(getManifestSnapshot(caseId))
+    // The id goes into a path, so only a Case the database holds reaches it.
+    ({ caseId }) => {
+      const found = getCase(caseId)
+      if (!found) return failure(`No Case with id ${caseId}`)
+      return json(getManifestSnapshot(found.id))
+    }
   )
 
   server.registerTool(

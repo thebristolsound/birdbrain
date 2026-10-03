@@ -32,15 +32,25 @@ export function failure(message: string): CallToolResult {
   return { content: [{ type: 'text', text: message }], isError: true }
 }
 
+// Offsets count UTF-16 units, so a boundary can fall inside a surrogate pair
+// (an emoji, say). Neither end is allowed to split one.
 export function page(text: string, offset: number, length: number) {
-  const slice = text.slice(offset, offset + length)
-  const end = offset + slice.length
+  const start = splitsPair(text, offset) ? offset - 1 : offset
+  let end = Math.min(start + length, text.length)
+  if (splitsPair(text, end)) end = end - 1 > start ? end - 1 : end + 1
   return {
     totalLength: text.length,
-    offset,
+    offset: start,
     nextOffset: end < text.length ? end : null,
-    text: slice
+    text: text.slice(start, end)
   }
+}
+
+function splitsPair(text: string, index: number): boolean {
+  if (index <= 0 || index >= text.length) return false
+  const before = text.charCodeAt(index - 1)
+  const after = text.charCodeAt(index)
+  return before >= 0xd800 && before <= 0xdbff && after >= 0xdc00 && after <= 0xdfff
 }
 
 // Paths come from database rows, never from a tool argument, but a row is

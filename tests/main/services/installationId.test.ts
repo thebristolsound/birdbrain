@@ -5,6 +5,7 @@ import { tmpdir } from 'os'
 import {
   initInstallationId,
   getInstallationId,
+  loadInstallationId,
   resetInstallationId
 } from '@main/services/installationId'
 
@@ -44,5 +45,20 @@ describe('installationId', () => {
     writeFileSync(join(tempDir, 'installation-id'), manual, 'utf-8')
     initInstallationId(tempDir)
     expect(getInstallationId()).toBe(manual)
+  })
+
+  it('loads the id the app wrote without writing one (ADR-0038)', () => {
+    writeFileSync(join(tempDir, 'installation-id'), 'written-by-the-app\n')
+    loadInstallationId(tempDir)
+    expect(getInstallationId()).toBe('written-by-the-app')
+
+    const empty = mkdtempSync(join(tmpdir(), 'birdbrain-install-'))
+    try {
+      loadInstallationId(empty)
+      expect(() => getInstallationId()).toThrow('Installation ID not initialized')
+      expect(existsSync(join(empty, 'installation-id'))).toBe(false)
+    } finally {
+      rmSync(empty, { recursive: true, force: true })
+    }
   })
 })

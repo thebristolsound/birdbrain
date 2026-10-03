@@ -64,9 +64,9 @@ additionally carry an RSA \`signature\` over that hash.
 **Not every entry is signed.** Per-entry signing was added after the chain
 itself, so a case that predates it can contain \`schemaVersion\` 1 entries with
 no \`signature\` field. They are legitimate, and they are not silently accepted:
-what covers them is the recomputed entry hashes and chain linkage (steps 3 and
-4) and any RFC 3161 timestamp appended later (step 6), not a signature. Step 2
-does not apply to them. Identify them with:
+what covers them is the recomputed entry hashes and chain linkage
+(steps 3 and 4) and any RFC 3161 timestamp appended later (step 6), not a
+signature. Step 2 does not apply to them. Identify them with:
 
 \`\`\`sh
 jq -r 'select((.schemaVersion // 1) < 2) | "index \\(.index) \\(.type) — unsigned"' ${ROOT.manifest}

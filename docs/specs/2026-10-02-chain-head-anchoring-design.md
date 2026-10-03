@@ -38,7 +38,7 @@ token is the one the content axis already uses, verified by the same `openssl ts
 step against the same root. The chain schema already carries the needed form. Schema 4 added
 `subject: 'entry'` to the `timestamp` entry so a `merge` entry's hash can be stamped
 (`src/shared/schemas.ts`, `ManifestTimestampEntrySchema`); an anchor is that entry pointed at
-the chain head. No schema bump.
+the chain head. No schema bump for the anchor itself.
 
 What A gives up, stated so no declaration over-claims it:
 
@@ -101,22 +101,29 @@ pass and anchors it then.
 
 Export runs three steps before it snapshots the manifest, in this order. It writes any
 `timestamping` record the chain owes (see "Recording the timestamping switch"). It then makes
-one anchor attempt over the current head, with the same short timeout the TSA client uses,
-when the switch is on. Then it snapshots. Nothing may be appended between the snapshot and the
+one anchor attempt over the current head, with the TSA client's 30-second timeout, when the
+switch is on. Then it snapshots. Nothing may be appended between the snapshot and the
 signed export entry, which must name the bundled head as its `prevHash`
-(`src/shared/verify/evidencePackage.ts`). A successful attempt means the bundled chain is
-anchored through its last non-anchor entry. Failure lets the export continue and the package
+(`src/shared/verify/evidencePackage.ts`). A successful attempt covers the head the request
+named. An entry appended while that request is out, such as a capture's own content stamp
+arriving, sits between the anchor's target and the snapshot, so the package ships it uncovered
+and the verifier reports it as pending. Failure lets the export continue and the package
 reports its unanchored entries as pending.
 
 The operator's timestamping switch (`tsaEnabled`, #1169) governs anchors too. One setting decides
 whether this process may contact a TSA, and Settings and Diagnostics already show it.
 
-**What stays undetectable at this cadence:** entries written after the last anchor. While
-online that is at most five minutes plus TSA latency, including for an entry that lands while
-a request is in flight. Offline, it is the whole offline period, and the verifier shows it as
-such. At export, it is nothing if the export-time anchor
-succeeded. Routed TSA requests (ADR-0032) add latency to each anchor but do not change the
-window.
+**What stays undetectable at this cadence:** entries written after the last anchor. While the
+app runs and is online, that is at most one retry interval plus the length of a retry pass. A
+pass stamps its content backlog first, one request at a time with up to 30 seconds each
+(`TSA_REQUEST_TIMEOUT_MS`), so after an offline spell a pass can take much longer than one TSA
+round trip. The retry timer does not keep the app alive and no pass runs at quit, so an entry
+written shortly before the app is closed stays unanchored until the start pass of the next
+launch. Offline, it is the whole offline period. At export, it is the entries appended while
+the export's anchor request was out, or the whole unanchored tail if that request failed. The
+verifier shows each case: uncovered entries in its coverage line as pending, and late anchors
+in its largest-gap line. Routed TSA requests (ADR-0032) add latency to each anchor but do not
+change these bounds.
 
 ## Offline and unreachable states
 
@@ -257,12 +264,13 @@ turns this off along with content stamps.
 
 When anchoring ships, the threat model paragraph on the determined operator gains the following:
 
-> The chain head is anchored with the same Timestamp Authority every few minutes and at
-> export. A rewrite of any entry that an anchor in the package covers fails verification
-> against that anchor. An operator who removes every anchor and rebuilds the chain can make it
-> read as one written with timestamping off or by a build that predates anchoring, and the
-> verifier cannot tell it from an honest chain of that kind. Entries written after the last
-> anchor, and any chain kept in parallel at capture time, also stay outside this protection.
+> The chain head is anchored with the same Timestamp Authority every few minutes while the
+> app runs, and at export. A rewrite of any entry that an anchor in the package covers fails
+> verification against that anchor. An operator who removes every anchor and rebuilds the
+> chain can make it read as one written with timestamping off or by a build that predates
+> anchoring, and the verifier cannot tell it from an honest chain of that kind. Entries written
+> after the last anchor, and any chain kept in parallel at capture time, also stay outside this
+> protection.
 
 ## Build slices
 

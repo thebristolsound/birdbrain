@@ -18,6 +18,7 @@
     "postinstall": "node scripts/ensure-electron.mjs && node scripts/rebuild-native.mjs",
     "prepublishOnly": "node scripts/no-registry-publish.mjs",
     "rebuild:electron": "node scripts/rebuild-native.mjs",
+    "build:test-sharp": "node scripts/build-test-sharp.mjs",
     "build:extension": "vite build --config extension/vite.config.ts && cross-env BUILD_TARGET=content vite build --config extension/vite.config.ts",
     "dev:extension": "node scripts/dev-extension.mjs",
     "build:verifier": "node scripts/build-verifier.mjs",

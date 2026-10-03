@@ -14,3 +14,19 @@ The includes are fail-closed by construction: the node project takes everything 
 A type-level assertion in `tests/` is now live, so `expectTypeOf` is available for a known-answer test rather than only a runtime probe. Note that the mutation-option objects under `src/renderer/lib/api/` are plain literals rather than React Query's `UseMutationOptions`, so their `onSuccess`/`onSettled` callbacks are typed with only the parameters they declare — a test that simulates React Query's four-argument call will not compile.
 
 **`tests/components/**/*.test.tsx` run in the jsdom Vitest project**, not the Electron node one; the node project's `tests/**/*.test.ts` include glob does not match `.test.tsx`. A `// @vitest-environment jsdom` directive in a component test is therefore valid and may be kept for clarity — it is not an invalid override of the Electron environment.
+
+## sharp under Electron on Linux
+
+On some Linux systems every test file that uses sharp dies with `Worker exited unexpectedly with signal SIGSEGV`: on the maintainer's Arch machine, `thumbnails`, `export`, `exhibitModel`, `backgroundRenderer` and `burnAnnotations` under `tests/main/services/`. The missing coverage then fails the `src/main/services/*.ts` threshold. CI on Ubuntu is not affected, and neither is the app: the crash needs `ELECTRON_RUN_AS_NODE=1`, which only the test runner uses.
+
+The cause is [electron/electron#46323](https://github.com/electron/electron/issues/46323). The Electron binary links the system GLib and exposes its symbols to the whole process, while sharp's prebuilt libvips bundles its own GLib. A sharp call that releases an image, such as `sharp(buffer).metadata()`, resolves `g_object_unref` to the system copy, which then calls through a null pointer. A core dump shows it as frame 0 at address `0x0`, called from `sharp-linux-x64-<version>.node`.
+
+The workaround builds sharp against the system libvips, so it shares Electron's GLib, and uses that build only in tests:
+
+1. Install a system libvips at least as new as sharp's `config.libvips` (8.18.7 for sharp 0.35.5); `pkg-config --modversion vips-cpp` shows the installed version.
+2. Run `pnpm build:test-sharp`. It copies sharp into `.cache/test-sharp/` (ignored) and builds it there; nothing under `node_modules` changes. Rerun it after a sharp upgrade or a system libvips upgrade.
+3. Run tests with `BIRDBRAIN_TEST_SYSTEM_SHARP=1`, for example `BIRDBRAIN_TEST_SYSTEM_SHARP=1 pnpm test`, or export it in your shell. `tests/setup/system-sharp.ts` then hands sharp the system build in place of the prebuilt addon.
+
+The swap is test-only by design. `src/main/services/thumbnails.ts` is a blocking-tier evidence path: its output is hashed into signed `derivation` entries that record `sharpVersion` and `libvipsVersion`, and a system build reports the same libvips version while encoding with different codec libraries. Keeping the system build out of `node_modules` keeps it out of the dev app and every package. The cost is that thumbnail bytes in local tests may differ from CI; CI stays the authority for them.
+
+Two approaches that look simpler do not work. Preloading the prebuilt `libvips-cpp.so` with `LD_PRELOAD` crashes Electron itself, and loading the addon with `RTLD_DEEPBIND` aborts in `free()` because Electron's allocator and the deep-bound library disagree.

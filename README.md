@@ -75,8 +75,6 @@ public repository that holds releases only. You need no GitHub account to downlo
 | Ubuntu | `.deb` | Best-effort. |
 | macOS | none | Not supported. |
 
-<!-- TODO: state the oldest Ubuntu release you test on. -->
-
 Releases from 1.0.1-beta.22 on include `SHA256SUMS.txt` and an SPDX software bill of materials.
 Check the download against the published hashes before you run it:
 
@@ -124,12 +122,8 @@ for each platform, the extension, and updating.
   captures, the signed manifest, the public key, the timestamp tokens, `VERIFY.md`, and a
   `verify.sh` script. Move a whole case to another machine as a `.birdbrain` archive.
 
-The [screenshot tour](https://docs.birdbrain.cc/docs/screenshots) shows every screen.
-
-<!-- TODO: the docs have no feature reference page. Move the full feature list from the old
-     README into a docs page and link it here. -->
-<!-- TODO: the README says "case" and the app's dashboard button says "Start New Investigation".
-     Pick one term and use it in the README, the docs, and the UI. -->
+The [features page](https://docs.birdbrain.cc/docs/features) lists everything the beta does,
+and the [screenshot tour](https://docs.birdbrain.cc/docs/screenshots) shows every screen.
 
 ## Limits
 

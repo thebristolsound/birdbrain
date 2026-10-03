@@ -49,6 +49,11 @@ import { recordedHttpStatus } from '@shared/httpStatus'
 import { formatSnapshotDelta } from '@shared/wayback'
 import { sentenceStart, stepRef } from '@main/services/verifyProcedure'
 import {
+  CAPTURE_PACKAGE_DIRECTORY,
+  SCREENSHOT_PACKAGE_DIRECTORY,
+  TIMESTAMP_PACKAGE_DIRECTORY
+} from '../../packages/evidence-package-layout/index'
+import {
   TRUSTED_TIME_AUTHORITY_NOT_CONTACTED,
   TRUSTED_TIME_UNRECORDED_STAMPED_AT,
   trustedTimeAttestingParty,
@@ -1008,7 +1013,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   <code>signing-public-key.pem</code>, <code>tsa-intermediates.pem</code>,${
     data.tsaTrustAnchorBundled ? ' <code>tsa-root.pem</code>,' : ''
   } <code>VERIFY.md</code>, <code>verify.sh</code>,
-  and the <code>pages/</code>, <code>screenshots/</code> and <code>timestamps/</code>
+  and the <code>${CAPTURE_PACKAGE_DIRECTORY}/</code>, <code>${SCREENSHOT_PACKAGE_DIRECTORY}/</code> and <code>${TIMESTAMP_PACKAGE_DIRECTORY}/</code>
   directories${
     ctx.fileExhibits.length > 0
       ? `, plus the enclosed bytes of every other exhibit under ${[
@@ -1094,7 +1099,9 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   <p>Where trusted time is enabled, the capture content digest — not the page content — was
   submitted to an RFC 3161 Time-Stamping Authority, and the returned token was retained beside
   the capture${
-    isPackagedExport(options) ? ' and bundled under <code>timestamps/</code>' : ''
+    isPackagedExport(options)
+      ? ` and bundled under <code>${TIMESTAMP_PACKAGE_DIRECTORY}/</code>`
+      : ''
   }. A token asserts that the digest existed
   at or before the time the authority states; it says nothing about what the page contained or
   who published it.</p>
@@ -1411,14 +1418,14 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     previous entry's hash and that the indexes count up from 0. The chain must reconcile to the
     head hash printed under “Chain of custody”.</li>
     <li><strong>Bind the content to its signed entries.</strong> For each capture entry, hash its
-    stored page in <code>pages/</code> and, where the entry records one, its screenshot in
-    <code>screenshots/</code>, which is named by its own digest. Compare each to the hash inside
+    stored page in <code>${CAPTURE_PACKAGE_DIRECTORY}/</code> and, where the entry records one, its screenshot in
+    <code>${SCREENSHOT_PACKAGE_DIRECTORY}/</code>, which is named by its own digest. Compare each to the hash inside
     that signed entry, not to <code>evidence.json</code>. Exhibits of other kinds and derived files
     are checked the same way against their own signed entries. An exhibit absent from the package
     is accounted for only by a later deletion entry or by the selection scope in the signed export
     entry, never by the index or by this report.</li>
     <li><strong>Validate the timestamp tokens.</strong> Take the tokens from the signed timestamp
-    entries in <code>manifest.jsonl</code> rather than from a listing of <code>timestamps/</code>,
+    entries in <code>manifest.jsonl</code> rather than from a listing of <code>${TIMESTAMP_PACKAGE_DIRECTORY}/</code>,
     so a deleted token file shows as missing. For each exhibit ${stepRef(5)} requires present, confirm its
     token's message imprint equals the exhibit's content digest and that its signing chain, built
     with <code>tsa-intermediates.pem</code>, terminates in

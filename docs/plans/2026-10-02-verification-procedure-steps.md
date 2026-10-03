@@ -214,7 +214,10 @@ review.
   report read step numbers, titles, citations, and the two shared recipes from it; the citation
   guard; the Include list row. Recipes keep the doubled backslashes the templates use today
   (`'\\n'`, `\\(`), or use `String.raw`: in a plain string `'\('` is `(` and `'\n'` is a newline.
-- [ ] **5. The layout guard covers the report and Certification (byte-identical).** Add both to
+- [x] **5. The layout guard covers the report and Certification (byte-identical).** Built. After
+  slice 3 the guard flagged 5 report lines and 1 Certification line; each now reads the same
+  value from the Package Layout. Root file names written as prose inside `<code>` are outside
+  the guard's patterns and were left as they are. Planned text follows. Add both to
   `CONSUMERS`, strip `/**` lines the way `//`, `#`, and `*` lines are stripped, and read directory
   and root file names from the Package Layout, including the Certification's `:670` and `:678`.
 - [ ] **6. Close recorded divergences, one PR each.** First: the runbook's token filter gains the

@@ -22,6 +22,8 @@ const CONSUMERS = [
   'src/main/services/exhibits.ts',
   'src/main/services/verifyRunbook.ts',
   'src/main/services/verifyScript.ts',
+  'src/main/services/reportHtml.ts',
+  'src/main/services/certification.ts',
   'src/main/services/tsaTrust.ts',
   'src/shared/verify/evidencePackage.ts',
   'src/shared/verify/exhibitBinding.ts'
@@ -46,7 +48,7 @@ describe('Package Layout consumers', () => {
       const offenders = lines
         .map((line, i) => ({ line, n: i + 1 }))
         .filter(({ line }) => {
-          const code = line.replace(/^\s*(\/\/|#|\*).*$/, '')
+          const code = line.replace(/^\s*(\/\/|\/\*|#|\*).*$/, '')
           if (code.includes('layout-exempt:')) return false
           return (
             CONSTRUCTED_PATH.test(code) || QUOTED_DIRECTORY.test(code) || QUOTED_ROOT.test(code)

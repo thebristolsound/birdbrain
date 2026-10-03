@@ -77,6 +77,15 @@ module.exports = {
       // runtime, so it is allowed (dependency-cruiser's own template makes the same exception).
       // tsPreCompilationDeps is what makes those edges visible to the cruise at all.
       to: { circular: true, viaOnly: { dependencyTypesNot: ['type-only'] } }
+    },
+    {
+      name: 'mcp-server-has-no-electron',
+      comment:
+        'The MCP server runs under ELECTRON_RUN_AS_NODE, where `electron` resolves to a path ' +
+        'string and its APIs are undefined (ADR-0038). Its own files never import it.',
+      severity: 'error',
+      from: { path: '^src/mcp/' },
+      to: { path: '(^|/)node_modules/electron/' }
     }
 
     // --- Layering (optional, off by default) ----------------------------------

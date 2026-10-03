@@ -1,0 +1,84 @@
+---
+title: 'Read a Case from an AI agent'
+description: 'Connect an MCP client such as Claude Code to Birdbrain, so an agent can read a Case and check claims against its Captures without changing it.'
+---
+
+This page is for investigators who want an AI agent to read their Birdbrain Cases, for example to
+check each claim in a report against the Capture that supports it. Birdbrain provides a Model
+Context Protocol (MCP) server for this. The installers package the server's files, but there is
+no supported way to start it from an installed app yet, so the steps below use a build from
+source. It has been tested on Linux.
+
+The server only reads. It opens the database read-only, so the database itself refuses any
+change, and it cannot sign a Manifest Entry. It never contacts the network. The desktop app can
+stay open while the agent works. The server opens the database for each request and closes it
+afterwards, so it reads a restored database on its next request. The app refuses a restore only
+while the server is partway through a database read, and asks you to try again. Otherwise the
+restore goes ahead, and a request the agent made before it can finish with data from before the
+restore.
+
+<Warning>
+Everything a tool returns goes to the model your MCP client uses. If that model is hosted by a
+provider, such as Anthropic for Claude Code, the provider receives the page text, screenshots,
+and Notes the agent reads.
+</Warning>
+
+## Before you start
+
+- A source checkout of Birdbrain, built with Node 20: `pnpm install`, then `pnpm build`. The
+  build writes the server to `out/main/mcp.js`.
+- The path of your Birdbrain data folder, the folder that holds `birdbrain.db`. On Linux it is
+  under `~/.config/`. In the steps that follow, `<checkout>` is the checkout's path and `<data>`
+  is the data folder's path.
+
+## Connect Claude Code
+
+1. Register the server. It runs under Electron's own Node runtime, because Birdbrain's database
+   driver is built for Electron:
+
+   ```bash
+   claude mcp add birdbrain -e ELECTRON_RUN_AS_NODE=1 -- \
+     <checkout>/node_modules/electron/dist/electron <checkout>/out/main/mcp.js --user-data <data>
+   ```
+
+2. Start Claude Code and run `/mcp`. The list shows `birdbrain` as connected.
+3. Ask for your Cases, for example "List my Birdbrain cases". The agent calls `list_cases`.
+
+Any other MCP client takes the same command, arguments, and environment variable in its own
+configuration format.
+
+## What the agent can read
+
+- **Cases**, with the counts their overview shows.
+- **Captures**: the acquisition record, page text, HTML decoded from the MHTML archive, the
+  screenshot, Tags, matching selectors, annotations, and pinned Wayback Machine snapshots. Text
+  and HTML come back in pages.
+- **Exhibits**: the inventory, uploaded files, and this computer's own signed Manifest for the
+  Case. In a Shared Case the Manifest tool does not read other members' Manifests; verifying an
+  Exhibit checks it against the Manifest of the member who added it.
+- **Verification** of a Capture or an Exhibit against the Manifest. The result reports integrity
+  and trusted time separately. A run through the server is not saved, so the app's last
+  verification does not change.
+- **Notes**, the Captures and Notes they mention, and the Notes that mention a Capture.
+- **Extracted data** and **full-text search** over Captures, Notes, and extracted values.
+
+The agent cannot create, edit, tag, delete, export, or recapture anything.
+
+## What verification shows
+
+A `verified` result means the Capture's bytes match the hash in a Manifest whose chain checks
+out. It does not show that the page was genuine, and it does not constrain the Operator, who
+holds the signing key. Trusted time is a separate result: `verified` with trusted time `none`
+means intact bytes with no independent timestamp, not a failure. The
+[threat model](/docs/threat-model) covers what the Manifest does and does not prove.
+
+## If the server does not start
+
+Claude Code shows the server as failed. The reason is on the server's standard error:
+
+- **No Birdbrain data folder given.** Pass `--user-data <data>`, or set `BIRDBRAIN_USER_DATA`.
+- **No Birdbrain database at a path.** The data folder is wrong: it must hold `birdbrain.db`.
+- **Database schema version is N; this build reads only version M.** The app and the checkout
+  are different versions. Build the checkout at the version that matches the app.
+- **Birdbrain storage folder does not exist.** The storage path in Birdbrain's settings points
+  to a missing folder, for example an unmounted drive.

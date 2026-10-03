@@ -36,7 +36,9 @@ records. Each Capture stays complete without the other.
 
 **The Manifest Entry inventories the artifacts.** It names which of MHTML, Transaction Record,
 screenshot, and PDF are present and why any is absent. A Capture with no Transaction Record says
-so; none is ever reconstructed afterwards.
+so; none is ever reconstructed afterwards. The inventory also accounts for every exchange a
+Transaction Record lacks: one served from the cache, failed, cancelled, still in flight, or over
+the size budget. The record is never described as complete beyond what the inventory supports.
 
 **The record states what the browser reported.** Bodies arrive decoded and headers arrive
 parsed, so a Transaction Record is the browser's account of the exchange. It is never described

@@ -61,7 +61,7 @@ import {
 } from '@renderer/components/data/dataTableModel'
 
 // The Data screen (#1149, #1150, #803): the inventory and integrity cross-cut
-// over every Exhibit kind (X8). A rail of four groups, an artifact table, and
+// over every Exhibit kind (X8). A rail of five groups, an artifact table, and
 // a per-row tab strip. Everything integrity-shaped here is read off the main
 // process — the inventory's anchored flag, the snapshot's verdict, a Capture's
 // persisted verify state, this session's `exhibits:verify` results — and never
@@ -336,6 +336,16 @@ export function DataExplorer() {
     setSelectedId(null)
     setMultiIds(new Set())
   }, [])
+  // Counts rail clicks so the Indicators view can leave search mode even when
+  // the click re-picks the node already selected.
+  const [railPicks, setRailPicks] = useState(0)
+  const pickFromRail = useCallback(
+    (key: DataNodeKey) => {
+      selectNode(key)
+      setRailPicks((picks) => picks + 1)
+    },
+    [selectNode]
+  )
   const toggleMulti = useCallback((id: string) => {
     setMultiIds((current) => {
       const next = new Set(current)
@@ -409,7 +419,7 @@ export function DataExplorer() {
     captureIds,
     onOpenCapture: openCapture,
     onVerify: verifyIds,
-    onSelectNode: selectNode,
+    onSelectNode: pickFromRail,
     onSetExpanded: setExpandedKeys,
     onCommit: (id) => commit.mutate([id]),
     onDiscard: requestDiscard
@@ -571,7 +581,7 @@ export function DataExplorer() {
           <DataTree
             nodes={tree}
             selected={node}
-            onSelect={selectNode}
+            onSelect={pickFromRail}
             onToggle={toggle}
             onToggleBelow={(key, open) =>
               setExpandedKeys([key, ...descendantKeys(rows, key, indicatorCategoryNames)], open)
@@ -587,6 +597,7 @@ export function DataExplorer() {
             caseId={caseId}
             category={indicatorPick.category}
             subcategory={indicatorPick.subcategory}
+            railPicks={railPicks}
             onSelect={selectIndicator}
           />
         ) : (

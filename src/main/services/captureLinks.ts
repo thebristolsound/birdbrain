@@ -83,11 +83,19 @@ function textHost(text: string): string | null {
   return null
 }
 
-function hostMismatch(kind: CaptureLink['kind'], href: string, text: string): boolean {
-  if (kind !== 'http') return false
+// Any web destination, same-page included: `<a href="#login">bank.example</a>` on
+// another host misleads as much as an outbound link does.
+function hostMismatch(href: string, text: string): boolean {
   const named = textHost(text)
   if (named === null) return false
-  return named !== normalisedHost(new URL(href))
+  let url: URL
+  try {
+    url = new URL(href)
+  } catch {
+    return false
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return false
+  return named !== normalisedHost(url)
 }
 
 interface PartInput {
@@ -144,7 +152,7 @@ function collectLinks(
         frame,
         documentUrl,
         occurrences: 1,
-        textHostMismatch: hostMismatch(kind, href, text)
+        textHostMismatch: hostMismatch(href, text)
       })
     })
   }

@@ -228,6 +228,14 @@ describe('linksFromMhtml', () => {
       expect(linksOf(`<a href="${href}">${text}</a>`)[0].textHostMismatch).toBe(expected)
     })
 
+    it('flags a same-page link whose text names another host, and not one naming its own', () => {
+      const [deceptive, honest] = linksOf(
+        '<a href="#login">bank.example</a><a href="#top">news.example</a>'
+      )
+      expect(deceptive).toMatchObject({ kind: 'same-page', textHostMismatch: true })
+      expect(honest).toMatchObject({ kind: 'same-page', textHostMismatch: false })
+    })
+
     it('does not flag a link that has no host to compare', () => {
       expect(linksOf('<a href="mailto:a@evil.example">bank.example</a>')[0].textHostMismatch).toBe(
         false

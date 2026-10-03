@@ -16,16 +16,16 @@
       "ghsa": "GHSA-ch52-4w7c-c8xp",
       "package": "http-cache-semantics",
       "tree": ".",
-      "path": "electron-builder > app-builder-lib > @electron/get > got > cacheable-request > http-cache-semantics@4.2.0",
-      "reason": "Build-time devDependency only: @electron/get uses it to cache the Electron binary download while packaging, and nothing in the shipped app depends on it (pnpm why shows electron-builder as the only path). The advisory concerns max-stale handling in a cache shared between users; this cache serves one build machine. No patched version exists (advisory published 2026-09-18 with no fix), so no override can clear it.",
+      "path": ".>electron-builder>app-builder-lib>@electron/get>got>cacheable-request>http-cache-semantics",
+      "reason": "Build-time devDependency only, and not reached in this build: got consults http-cache-semantics only when a cache option is passed, and app-builder-lib 26.15.3 passes none (@electron/get keeps its own file cache). Nothing in the shipped app depends on it (pnpm why --prod). No patched version exists (advisory published 2026-09-18). An override cannot route around it either: @electron/get 5 drops got but is ESM-only and needs Node 22.12 or later, and app-builder-lib 26.x requires @electron/get ^3. electron-builder 27, which moves to @electron/get ^5, is the route that clears this.",
       "expires": "2026-12-31"
     },
     {
       "ghsa": "GHSA-vfj7-8cjw-p6xm",
       "package": "braces",
       "tree": ".",
-      "path": "shadcn > fast-glob > micromatch > braces@3.0.3",
-      "reason": "Developer CLI devDependency only: shadcn adds UI component source by hand and no build or test script runs it, and nothing in the shipped app depends on braces. The denial of service needs an attacker-supplied, deeply nested glob pattern; shadcn's patterns come from its own code and this repo's config. No patched version exists (advisory published 2026-09-18 with no fix), so no override can clear it.",
+      "path": ".>shadcn>fast-glob>micromatch>braces",
+      "reason": "Developer CLI devDependency only: shadcn adds UI component source by hand, no build, test or CI script runs it, and nothing in the shipped app depends on braces (pnpm why --prod). The denial of service needs an attacker-supplied, deeply nested glob pattern; shadcn's patterns come from its own code, this repo's config, and paths the developer types on its command line. No patched version exists (advisory published 2026-09-18), and braces 3.0.3 is its latest release, so no override can clear it.",
       "expires": "2026-12-31"
     }
   ]

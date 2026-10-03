@@ -4,6 +4,7 @@ import { join, resolve, sep } from 'path'
 import {
   EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION,
   EvidencePackageSchema,
+  MANIFEST_ENTRY_TYPES,
   ManifestEntrySchema,
   WORKING_COPY_MARKER_FILENAME,
   WorkingCopyMarkerSchema
@@ -11,7 +12,13 @@ import {
 import type { ManifestEntry } from '@shared/schemas'
 import { parseTimestampToken } from '@shared/verify/timestampToken'
 import type { TrustedTimeResult } from '@shared/verify/trustedTime'
-import { describeUnsupportedEntry, verifyManifestChainText } from '@shared/verify/manifestChain'
+import {
+  describeUnsupportedEntry,
+  detectUnsupportedEntry,
+  verifyManifestChainText,
+  verifyUnreadableEntry
+} from '@shared/verify/manifestChain'
+import type { UnsupportedEntry } from '@shared/verify/manifestChain'
 import {
   SHARED_CASE_ENTRY_TYPES,
   SHARED_CASE_SCHEMA_VERSION,
@@ -106,6 +113,10 @@ export interface PackageVerifyResult {
    * have verified and that entry's own linkage, hash and signature under the
    * package signing key hold — nothing at or after it is read — so this
    * outcome cannot be bought by editing a manifest.
+   *
+   * `export-entry.json` is a manifest line too, and an unreadable one sets this
+   * outcome on the same terms (#1197): it continues the bundled head, its hash
+   * and signature hold, and no check before it failed.
    */
   unsupported?: { reason: string }
 }
@@ -175,16 +186,36 @@ type ExportEntry = Extract<ManifestEntry, { type: 'export' }>
 // itself. A genuine export entry links to the genuine head, so lines appended
 // past it — or a mid-chain edit whose downstream hashes were relinked — move
 // the shipped head and fail the prevHash check here.
+//
+// An entry from a newer schema is screened before the strict parse, as the
+// chain walk screens a manifest line (X25), and earns `unsupported` only by
+// passing the checks the chain's phase B applies to an unreadable line. A known
+// type other than `export` is not this file's entry in any schema, so it fails
+// as the readable path fails it.
 function validateExportEntry(
   raw: string,
   shippedEntries: ManifestEntry[],
   publicKeyPem: string
-): { entry: ExportEntry } | { reason: string } {
+): { entry: ExportEntry } | { reason: string } | { unsupported: UnsupportedEntry } {
   let parsed: unknown
   try {
     parsed = JSON.parse(raw)
   } catch {
     return { reason: 'export-entry.json is not valid JSON' }
+  }
+  const head = shippedEntries.at(-1)
+  const expected = { index: head ? head.index + 1 : 0, prevHash: head?.entryHash ?? '' }
+  const unsupported = detectUnsupportedEntry(parsed, expected.index)
+  if (unsupported) {
+    const { entryType } = unsupported
+    if (entryType !== undefined && MANIFEST_ENTRY_TYPES.has(entryType) && entryType !== 'export') {
+      return { reason: `export-entry.json is a '${entryType}' entry, not an export entry` }
+    }
+    // Non-objects never reach here: detectUnsupportedEntry screens them out.
+    const failure = verifyUnreadableEntry(parsed as Record<string, unknown>, expected, publicKeyPem)
+    return failure
+      ? { reason: `export-entry.json claims a newer schema, but fails a check: ${failure}` }
+      : { unsupported }
   }
   const result = ManifestEntrySchema.safeParse(parsed)
   if (!result.success) {
@@ -199,11 +230,10 @@ function validateExportEntry(
   if (recomputed !== entryHash) {
     return { reason: 'export-entry.json entry hash mismatch' }
   }
-  const head = shippedEntries.at(-1)
-  if (entry.prevHash !== (head?.entryHash ?? '')) {
+  if (entry.prevHash !== expected.prevHash) {
     return { reason: 'export-entry.json prevHash does not match the bundled manifest head' }
   }
-  if (entry.index !== (head ? head.index + 1 : 0)) {
+  if (entry.index !== expected.index) {
     return { reason: 'export-entry.json index does not continue the bundled manifest' }
   }
   if (!signature || !verifyEntrySignature(entryHash, signature, publicKeyPem)) {
@@ -615,6 +645,21 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
       const validated = validateExportEntry(rawEntry, shippedEntries, publicKeyPem)
       if ('reason' in validated) {
         add('export entry', 'fail', validated.reason)
+      } else if ('unsupported' in validated) {
+        // The entry states the package's scope and this build cannot read it,
+        // so verification stops here, as it does at an unreadable chain line:
+        // run unscoped, every capture the selection left out would FAIL as
+        // missing, a tamper-shaped verdict produced by this verifier's age. A
+        // check that already FAILed stays the verdict (X25: not for sale).
+        const reason = `export-entry.json: ${describeUnsupportedEntry(validated.unsupported)}`
+        add(
+          'export entry',
+          'skip',
+          `${reason}. It states the package's scope, so no later check ran`
+        )
+        return checks.some((c) => c.status === 'fail')
+          ? { pass: false, checks }
+          : { pass: false, checks, unsupported: { reason } }
       } else {
         add('export entry', 'pass')
         const { scope, captureIds } = validated.entry

@@ -181,12 +181,20 @@ describe('Birdbrain MCP server (ADR-0038)', () => {
 
   it('lists every tool, each marked read-only and closed-world', async () => {
     const { result } = await rpc.request('tools/list', {})
-    const tools = (result?.tools ?? []) as Array<{ name: string; annotations: object }>
+    const tools = (result?.tools ?? []) as Array<{
+      name: string
+      description: string
+      annotations: object
+    }>
 
     expect(tools.map((t) => t.name).sort()).toEqual(TOOLS)
     for (const tool of tools) {
       expect(tool.annotations).toEqual({ readOnlyHint: true, openWorldHint: false })
     }
+    // The manifest tool reads one chain; it must not claim the whole Shared Case.
+    expect(tools.find((t) => t.name === 'get_manifest')?.description).toContain(
+      "other members' manifests are not read here"
+    )
   })
 
   it('reads Cases and their overview counts', async () => {

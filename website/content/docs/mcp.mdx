@@ -53,7 +53,9 @@ configuration format.
 - **Captures**: the acquisition record, page text, HTML decoded from the MHTML archive, the
   screenshot, Tags, matching selectors, annotations, and pinned Wayback Machine snapshots. Text
   and HTML come back in pages.
-- **Exhibits**: the inventory, uploaded files, and the Case's signed Manifest.
+- **Exhibits**: the inventory, uploaded files, and this computer's own signed Manifest for the
+  Case. In a Shared Case the Manifest tool does not read other members' Manifests; verifying an
+  Exhibit checks it against the Manifest of the member who added it.
 - **Verification** of a Capture or an Exhibit against the Manifest. The result reports integrity
   and trusted time separately. A run through the server is not saved, so the app's last
   verification does not change.

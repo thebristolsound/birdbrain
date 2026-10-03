@@ -76,9 +76,11 @@ export function registerCustodyTools(server: McpServer): void {
     'get_manifest',
     {
       description:
-        "A Case's signed, hash-chained custody manifest: every entry, the chain verdict " +
-        'and who signed each segment. The verdict "unsupported" means this build cannot ' +
-        'read a newer entry, never tampering.',
+        "This installation's own signed, hash-chained custody manifest for a Case: its " +
+        'entries, the chain verdict and who signed each segment. In a Shared Case other ' +
+        "members' manifests are not read here and the verdict does not cover them; " +
+        "verify_exhibit checks each Exhibit against its author's manifest. The verdict " +
+        '"unsupported" means this build cannot read a newer entry, never tampering.',
       inputSchema: z.object({ caseId: z.string() }),
       annotations: READ_ONLY
     },

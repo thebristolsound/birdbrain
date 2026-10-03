@@ -234,15 +234,31 @@ describe('MhtmlViewer', () => {
     await waitFor(() => expect(screen.queryByTestId('frame-changed-notice')).toBeNull())
   })
 
-  it('closes the menu when focus moves into the guest', async () => {
-    renderViewer()
+  // #1708. The main process reports a press in a guest; only this viewer's own closes it.
+  it('closes the menu on a mouse press in its own guest', async () => {
+    let press: (event: { guestWebContentsId: number }) => void = () => {}
+    const stop = vi.fn()
+    fakeBridge({
+      captures: { getMhtmlUrl: vi.fn().mockResolvedValue(FILE_URL) },
+      onGuestMouseDown: (callback: typeof press) => {
+        press = callback
+        return stop
+      }
+    })
+    const { unmount } = renderViewer()
     const guest = await screen.findByTestId('mhtml-viewer')
+    Object.assign(guest, { getWebContentsId: () => 7 })
     guestContextMenu(guest, { linkURL: 'https://a.example/one' })
     await screen.findByRole('menu')
 
-    fireEvent.focus(guest)
+    act(() => press({ guestWebContentsId: 8 }))
+    expect(screen.getByRole('menu')).toBeDefined()
 
+    act(() => press({ guestWebContentsId: 7 }))
     await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
+
+    unmount()
+    expect(stop).toHaveBeenCalledOnce()
   })
 
   it('opens no menu for a right-click on the pane around the guest', async () => {

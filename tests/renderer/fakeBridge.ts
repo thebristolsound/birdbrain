@@ -49,7 +49,8 @@ const EVENTS = [
   'onSelectorRematched',
   'onDeepLinkNavigate',
   'onUpdateStatus',
-  'onGuestFrameReplaced'
+  'onGuestFrameReplaced',
+  'onGuestMouseDown'
 ] as const satisfies readonly EventKey[]
 
 const TOP_LEVEL = ['search', 'testPipeline', 'testHttp'] as const satisfies readonly TopLevelKey[]

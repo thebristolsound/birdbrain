@@ -37,8 +37,10 @@ import {
   resolveAttachPartition,
   sanitizeWebviewPreferences,
   webviewPolicyFor,
+  MHTML_PARTITION,
   WEBVIEW_PARTITIONS
 } from '@main/webviewPolicy'
+import { forwardGuestMouseDown } from '@main/guestMouseDown'
 import { initSettings, getSettings } from '@main/services/settings'
 import { initInstallationId, getInstallationId } from '@main/services/installationId'
 import { initSigningKey, SigningKeyUnacknowledgedError } from '@main/services/signingKey'
@@ -340,6 +342,8 @@ app.on('web-contents-created', (_event, contents) => {
   if (contents.getType() !== 'webview') return
   const partition = webviewPartitionOf(contents)
   contents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  // The stored-page viewer closes its link menu on a press in the guest (#1708).
+  if (partition === MHTML_PARTITION) forwardGuestMouseDown(contents)
   if (webviewPolicyFor(partition)?.allowSubsequentNavigation === false) {
     guardEveryFrame(contents, partition)
     return

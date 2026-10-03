@@ -503,9 +503,30 @@ test.describe('stored-page viewer links', () => {
     await settle()
     const guestBox = await rightClick('public', 'main', 'Link actions: https://example.test/main')
 
-    // A left click in the guest closes it too.
-    await page.mouse.click(guestBox.x + 900, guestBox.y + 200)
+    // A left click elsewhere in the guest closes it too, and the main process reports
+    // that press to this document, naming this guest.
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        guestPresses: number[]
+        birdbrain: {
+          onGuestMouseDown: (callback: (event: { guestWebContentsId: number }) => void) => void
+        }
+      }
+      w.guestPresses = []
+      w.birdbrain.onGuestMouseDown(({ guestWebContentsId }) => {
+        w.guestPresses.push(guestWebContentsId)
+      })
+    })
+    // The point is on the row just right-clicked, right of its link: inside the pane,
+    // where the guest is on screen, and on no link.
+    await page.mouse.click(guestBox.x + ROW.x + 400, guestBox.y + rowY('public', 'main'))
     await expect(menu).toHaveCount(0)
+    const presses = await page.evaluate(() => {
+      const wv = document.querySelector('[data-testid="mhtml-viewer"]') as Electron.WebviewTag
+      const { guestPresses } = window as unknown as { guestPresses: number[] }
+      return { guest: wv.getWebContentsId(), guestPresses }
+    })
+    expect(presses.guestPresses).toEqual([presses.guest])
     expect(sentinel.requests).toEqual([])
   })
 

@@ -80,6 +80,7 @@ import type {
   UpsertAnnotationPinParams,
   SelectorRematchedEvent,
   GuestFrameReplacedEvent,
+  GuestMouseDownEvent,
   ExtensionAttachEvent,
   DeepLinkTarget,
   ExportProgressEvent,
@@ -311,6 +312,7 @@ export interface BirdbrainAPI {
   onDeepLinkNavigate(callback: (target: DeepLinkTarget) => void): () => void
   onUpdateStatus(callback: (status: UpdateStatus) => void): () => void
   onGuestFrameReplaced(callback: (event: GuestFrameReplacedEvent) => void): () => void
+  onGuestMouseDown(callback: (event: GuestMouseDownEvent) => void): () => void
   testPipeline(): Promise<{ success: boolean; durationMs: number; error?: string }>
   testHttp(): Promise<{ success: boolean; durationMs: number; error?: string }>
   extractedData: {

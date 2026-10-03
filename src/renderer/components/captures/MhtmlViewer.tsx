@@ -57,6 +57,11 @@ export function MhtmlViewer({ captureId, caseId }: Props) {
     const stopFrameReplaced = window.birdbrain.onGuestFrameReplaced(({ guestWebContentsId }) => {
       if (wv.getWebContentsId() === guestWebContentsId) setFrameChanged(true)
     })
+    // A press in the guest closes the menu. Guest input never reaches this document, so
+    // the main process reports it.
+    const stopMouseDown = window.birdbrain.onGuestMouseDown(({ guestWebContentsId }) => {
+      if (wv.getWebContentsId() === guestWebContentsId) closeOpenMenu()
+    })
     const onMainCommit = () => setFrameChanged(false)
     const blockNav = (e: Event) => e.preventDefault()
     const onTargetUrl = (e: Event) => setHoverUrl((e as Electron.UpdateTargetUrlEvent).url ?? '')
@@ -90,16 +95,15 @@ export function MhtmlViewer({ captureId, caseId }: Props) {
     wv.addEventListener('new-window', blockNav)
     wv.addEventListener('update-target-url', onTargetUrl)
     wv.addEventListener('context-menu', onContextMenu)
-    wv.addEventListener('focus', closeOpenMenu)
     wv.addEventListener('did-navigate', onMainCommit)
     return () => {
       wv.removeEventListener('will-navigate', blockNav)
       wv.removeEventListener('new-window', blockNav)
       wv.removeEventListener('update-target-url', onTargetUrl)
       wv.removeEventListener('context-menu', onContextMenu)
-      wv.removeEventListener('focus', closeOpenMenu)
       wv.removeEventListener('did-navigate', onMainCommit)
       stopFrameReplaced()
+      stopMouseDown()
     }
   }, [fileUrl])
 

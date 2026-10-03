@@ -278,6 +278,8 @@ const birdbrain = {
 
   onGuestFrameReplaced: subscribe(IPC_CHANNELS.GUEST_FRAME_REPLACED),
 
+  onGuestMouseDown: subscribe(IPC_CHANNELS.GUEST_MOUSE_DOWN),
+
   testPipeline: bridge(IPC_CHANNELS.CAPTURES_TEST_PIPELINE),
 
   testHttp: bridge(IPC_CHANNELS.CAPTURES_TEST_HTTP),

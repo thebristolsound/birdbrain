@@ -257,6 +257,7 @@ export const IPC_CHANNELS = {
   ARCHIVE_PROGRESS: 'event:archiveProgress',
   UPDATE_STATUS: 'event:updateStatus',
   GUEST_FRAME_REPLACED: 'event:guestFrameReplaced',
+  GUEST_MOUSE_DOWN: 'event:guestMouseDown',
 
   // Capture pipeline observability
   CAPTURE_ACTIVITY: 'event:captureActivity',
@@ -332,6 +333,13 @@ export interface ExtensionConnectionEvent {
 // serves an MHTML iframe's navigations from the archive without consulting the
 // navigation guard, so this is how the viewer learns a stored frame was swapped.
 export interface GuestFrameReplacedEvent {
+  guestWebContentsId: number
+}
+
+// A mouse button went down in the stored-page viewer's guest (#1708). Input inside a
+// <webview> never reaches the embedding document, so this is how that document learns
+// of a click there.
+export interface GuestMouseDownEvent {
   guestWebContentsId: number
 }
 
@@ -1020,6 +1028,7 @@ export interface IpcEventContract {
   'event:deepLinkNavigate': DeepLinkTarget
   'event:updateStatus': UpdateStatus
   'event:guestFrameReplaced': GuestFrameReplacedEvent
+  'event:guestMouseDown': GuestMouseDownEvent
   'event:logEntry': LogEntry
 }
 

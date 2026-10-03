@@ -47,26 +47,26 @@ These are settled in the spec or the review. Do not redesign them; design around
 is the engine spec in #1714, "Review" is the review comment on it, and "Retrieval" is the
 retrieval pipeline spec.
 
-| #   | Decision                                                                                                                                                                                                                                                                                         | Source                                                                   |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
-| 1   | A joint is proposed until the Operator accepts it. Proposed and accepted joints differ by line style and by text, never by color alone.                                                                                                                                                          | Spec, "Visual design"; Review, "Checked and correct"                     |
-| 2   | Every joint opens the exact stored span on each side: the Exhibit, its Content Hash, and a locator (text passage, PDF page, mail message and header field, link target, image alt text, or byte range).                                                                                          | Review, items 2 and 4; Retrieval, "Representations and locators"         |
-| 3   | The source inspector shows the stored Exhibit at the exact span with its Content Hash. It never substitutes a search snippet, a preview, or a live page.                                                                                                                                         | Spec, "Visual design"; Retrieval, "Constraints"                          |
-| 4   | A claim check reports two separate things: whether the text is `present`, `absent`, or `cannot-check` in the named Exhibit, and a proposed reading of whether that passage `supports`, `conflicts`, or is `unclear`. The mock shows both.                                                        | Spec, "What a run produces" and flow step 4; Review, item 10             |
-| 5   | A matching phrase does not prove the claim. A check result is never labelled as a verification, and the proposed reading is always labelled as proposed.                                                                                                                                         | Spec, "Product promise" and "Options and recommendation"                 |
-| 6   | The view states how many Exhibits are eligible for the run and how many are excluded.                                                                                                                                                                                                            | Spec, "Visual design"; Review, "Checked and correct"                     |
-| 7   | Staging Pool files and excluded Exhibits never appear as support for a joint.                                                                                                                                                                                                                    | Spec, "Retrieval, analysis, and custody"; Retrieval, "Constraints"       |
-| 8   | A Note can supply a claim to check. It never counts as support. A joint whose only basis is a Note, a commercial report, or an AI-origin document is flagged as such.                                                                                                                            | Spec, flow steps 2 and 5; Retrieval, "Representations and locators"      |
-| 9   | Each joint lists its strongest original or contemporaneous source first, then other sources and conflicts. A joint with one weak source stays visibly weak.                                                                                                                                      | Spec, "What a run produces" and flow step 5                              |
-| 10  | Two people with the same name stay separate until an Exhibit supports a joint between them.                                                                                                                                                                                                      | Spec, flow step 1                                                        |
-| 11  | The default source is the stored Case only. An external lookup shows its destination, its query or URL, and the Egress it uses before anything is sent. A page found that way is a candidate with its own observation time; it supports nothing until the Operator captures it as a new Exhibit. | Spec, "Visual design" and flow step 6; ADR-0032                          |
-| 12  | A cited span whose Exhibit no longer matches its Content Hash is unavailable. The view never shows it as plausible support.                                                                                                                                                                      | Retrieval, "Constraints"                                                 |
-| 13  | The inquiry, the exclusions, the Manifest head, and a snapshot of the relevant Notes travel with the run, so a later edit to the Case cannot quietly change what the run was based on.                                                                                                           | Spec, flow step 1                                                        |
-| 14  | The run is read-only. It writes no Manifest Entry and commits no Exhibit.                                                                                                                                                                                                                        | Spec, "Evaluation and first slice"                                       |
-| 15  | The joint map is a new investigation view. It does not silently reuse the Link Map or its 20-node ceiling.                                                                                                                                                                                       | Spec, "Visual design"                                                    |
-| 16  | WCAG 2.2 AA is the product target. The joint list is the keyboard and screen-reader equivalent of the map: everything the map shows and every action it offers is reachable from the list. You may propose a different equivalent.                                                               | Review, item 16; [standards](../agents/osint-investigation-standards.md) |
-| 17  | The window minimum is 900 by 600 and the default is 1200 by 800 (`src/main/windowSize.ts`).                                                                                                                                                                                                      | Review, item 14                                                          |
-| 18  | On a narrow window the panes become tabs and keep the selected joint and Exhibit. The test: the Operator can reject one tempting but unsupported joint without losing their place in the joint list.                                                                                             | Spec, "Visual design"                                                    |
+| #   | Decision                                                                                                                                                                                                                                                                                                                                                  | Source                                                                   |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| 1   | A joint is proposed until the Operator accepts it. Proposed and accepted joints differ by line style and by text, never by color alone.                                                                                                                                                                                                                   | Spec, "Visual design"; Review, "Checked and correct"                     |
+| 2   | Every joint opens the exact stored span on each side: the Exhibit, its Content Hash, and a locator (text passage, PDF page, mail message and header field, link target, image alt text, or byte range).                                                                                                                                                   | Review, items 2 and 4; Retrieval, "Representations and locators"         |
+| 3   | The source inspector shows the stored Exhibit at the exact span with its Content Hash. It never substitutes a search snippet, a preview, or a live page.                                                                                                                                                                                                  | Spec, "Visual design"; Retrieval, "Constraints"                          |
+| 4   | A claim check reports two separate things: whether the text is `present`, `absent`, or `cannot-check` in the named Exhibit, and a proposed reading of whether that passage `supports`, `conflicts`, or is `unclear`. The mock shows both.                                                                                                                 | Spec, "What a run produces" and flow step 4; Review, item 10             |
+| 5   | A matching phrase does not prove the claim. A check result is never labelled as a verification, and the proposed reading is always labelled as proposed.                                                                                                                                                                                                  | Spec, "Product promise" and "Options and recommendation"                 |
+| 6   | The view states how many Exhibits are eligible for the run and how many are excluded.                                                                                                                                                                                                                                                                     | Spec, "Visual design"; Review, "Checked and correct"                     |
+| 7   | Staging Pool files and excluded Exhibits never appear as support for a joint.                                                                                                                                                                                                                                                                             | Spec, "Retrieval, analysis, and custody"; Retrieval, "Constraints"       |
+| 8   | A Note can supply a claim to check. It never counts as support. A joint whose only basis is a Note, a commercial report, or an AI-origin document is flagged as such.                                                                                                                                                                                     | Spec, flow steps 2 and 5; Retrieval, "Representations and locators"      |
+| 9   | Each joint lists its strongest original or contemporaneous source first, then other sources and conflicts. A joint with one weak source stays visibly weak.                                                                                                                                                                                               | Spec, "What a run produces" and flow step 5                              |
+| 10  | Two people with the same name stay separate until an Exhibit supports a joint between them.                                                                                                                                                                                                                                                               | Spec, flow step 1                                                        |
+| 11  | The default source is the stored Case only, and the first slice offers no other. When external lookup arrives later, it shows its destination, its query or URL, and the Egress it uses before anything is sent. A page found that way is a candidate with its own observation time; it supports nothing until the Operator captures it as a new Exhibit. | Spec, "Visual design" and flow step 6; ADR-0032                          |
+| 12  | A cited span whose Exhibit no longer matches its Content Hash is unavailable. The view never shows it as plausible support.                                                                                                                                                                                                                               | Retrieval, "Constraints"                                                 |
+| 13  | The inquiry, the exclusions, the Manifest head, and a snapshot of the relevant Notes travel with the run, so a later edit to the Case cannot quietly change what the run was based on.                                                                                                                                                                    | Spec, flow step 1                                                        |
+| 14  | The run is read-only. It writes no Manifest Entry and commits no Exhibit.                                                                                                                                                                                                                                                                                 | Spec, "Evaluation and first slice"                                       |
+| 15  | The joint map is a new investigation view. It does not silently reuse the Link Map or its 20-node ceiling.                                                                                                                                                                                                                                                | Spec, "Visual design"                                                    |
+| 16  | WCAG 2.2 AA is the product target. The joint list is the keyboard and screen-reader equivalent of the map: everything the map shows and every action it offers is reachable from the list. You may propose a different equivalent.                                                                                                                        | Review, item 16; [standards](../agents/osint-investigation-standards.md) |
+| 17  | The window minimum is 900 by 600 and the default is 1200 by 800 (`src/main/windowSize.ts`).                                                                                                                                                                                                                                                               | Review, item 14                                                          |
+| 18  | On a narrow window the panes become tabs and keep the selected joint and Exhibit. The test: the Operator can reject one tempting but unsupported joint without losing their place in the joint list.                                                                                                                                                      | Spec, "Visual design"                                                    |
 
 ## Surfaces to draw
 
@@ -74,7 +74,13 @@ Draw each surface in the existing design language of the Birdbrain UI project. U
 semantic tokens, not raw color values. The surfaces are numbered so the engineering response can
 give a verdict per item.
 
-### 1. Inquiry entry and scope review
+Each surface and state is labelled **first slice** or **later**. Draw the first slice first. The
+first slice is local only: an inquiry goes in, the joint map and gap list come out, and each
+joint opens its stored span. Its source trail uses only what the Case already holds. External
+lookup comes later, after its consent behavior is reviewed (Spec, "Investigation flow", closing
+paragraph; Review, item 4). Where one surface mixes the two, the later part is labelled inline.
+
+### 1. Inquiry entry and scope review (first slice, with a later part)
 
 Where the Operator starts a run. Contents:
 
@@ -86,19 +92,20 @@ Where the Operator starts a run. Contents:
   "Eligible 412 Exhibits, excluded 9". **GAP G4:** the spec does not say what exclusion
   categories exist or who may change them. Draw a list region with placeholder rows; do not name
   categories.
-- **Sources.** "Stored Case only" is the default (decision 11). The alternative, allowing external
-  lookups that each ask first, is visible but off.
+- **Sources.** The first slice shows "Stored Case only" as a fixed line (decision 11). _Later:_ a
+  toggle whose alternative allows external lookups that each ask first, visible but off by
+  default.
 - **What the run records.** A short line saying the run keeps the inquiry, the exclusions, and the
   Case state as of now (decision 13).
 - **Run** action.
 
-### 2. View header
+### 2. View header (first slice)
 
 Visible on every arrangement: the Case name, the eligible and excluded counts (decision 6), the
 sources setting, and the run's basis ("Case as of 14:02, 3 October"). The excluded count opens
 a list of the excluded Exhibits by Exhibit Number.
 
-### 3. The joint map and the joint list
+### 3. The joint map and the joint list (first slice)
 
 The primary surface. The map and the list show the same joints; selecting a joint in either
 selects it in both and opens its detail (surface 4).
@@ -117,7 +124,7 @@ publications, sites, addresses, or dates are also nodes on the map, or appear on
 inside a joint's detail. Draw people and accounts as nodes, and mark where the other kinds would
 go if they become nodes.
 
-### 4. Joint detail
+### 4. Joint detail (first slice)
 
 One joint, opened. Contents:
 
@@ -136,7 +143,7 @@ One joint, opened. Contents:
   is itself an identity claim. It also does not say whether these decisions outlast the run.
   Draw accept and reject fully; draw merge and split as entry points only.
 
-### 5. Source inspector
+### 5. Source inspector (first slice, with later parts)
 
 The stored Exhibit at the exact span (decision 3). Contents:
 
@@ -144,13 +151,13 @@ The stored Exhibit at the exact span (decision 3). Contents:
 - The stored representation at the locator, with the span marked: a text passage, a PDF page, a
   mail message with the header field, a link target or alt text shown as its exact stored value,
   or a byte range. A headers-only Exhibit says "Body not acquired".
-- **Source trail**, kept visibly apart from the stored Exhibit: the stored URL or document
-  origin, any pinned Wayback Snapshot, and any candidate found by lookup, each with the time it
-  was observed and whether its content matches the stored Exhibit. A candidate is labelled as a
-  candidate (decision 11).
-- **Find the original** action, which opens the lookup consent prompt (state 9).
+- **Source trail**, kept visibly apart from the stored Exhibit: the stored URL or document origin
+  and any pinned Wayback Snapshot the Case already holds, each with the time it was observed.
+  _Later:_ candidates found by external lookup, each with its observation time, whether its
+  content matches the stored Exhibit, and a label marking it as a candidate (decision 11).
+- _Later:_ **Find the original** action, which opens the lookup consent prompt (state 9).
 
-### 6. Gap list
+### 6. Gap list (first slice, with later parts)
 
 What the run could not support. Group the entries by kind:
 
@@ -161,10 +168,10 @@ What the run could not support. Group the entries by kind:
 - Missing originals: a stored copy whose original source the Case does not hold.
 - Searches not yet run, including external lookups the Operator has not allowed.
 
-Each entry opens the joint or claim it belongs to. An entry for a search not yet run opens the
-lookup consent prompt.
+Each entry opens the joint or claim it belongs to. In the first slice an entry for a search not
+yet run is listed without an action. _Later:_ that entry opens the lookup consent prompt.
 
-### 7. Narrow-window arrangement
+### 7. Narrow-window arrangement (first slice)
 
 Between the 900-pixel minimum and the 1200-pixel default, the map, the joint detail, and the
 source inspector cannot all sit side by side. Draw the tabbed arrangement and show that the
@@ -172,6 +179,8 @@ selected joint and Exhibit carry across tabs (decision 18). The width at which p
 is your call (question 4).
 
 ## States to draw
+
+States 1 to 8 and 10 are first slice. State 9 is later.
 
 1. **Empty Case.** No eligible Exhibits. The view says so and does not offer a run.
 2. **Run in progress.** Progress at the Case level, with the counts so far. The Operator can
@@ -188,7 +197,7 @@ is your call (question 4).
 7. **Rejected joint.** Still visible, marked rejected by line style and text, and recoverable.
 8. **Same-name conflict.** Two people named Rowan Pike on the map as separate nodes, with the
    gap entry that says no Exhibit links them yet (decision 10).
-9. **Lookup consent prompt.** Before an external lookup: the destination (for example
+9. **Lookup consent prompt** (later). Before an external lookup: the destination (for example
    `web.archive.org`), the exact query or URL, the Egress it will use, and a plain statement that
    the destination sees the request. Actions: **Send**, **Cancel**. **GAP G7:** the spec has not
    decided which destinations may be approved once per run and which need a prompt every time.
@@ -243,11 +252,12 @@ The designer's calls, not settled by the spec or the review:
 1. What a node and an edge look like, and how the map stays readable for a Case of about 1,000
    Exhibits. The Link Map caps itself at 20 nodes and discloses "showing N of M"; this view does
    not inherit that cap (decision 15), but any truncation it does apply must be disclosed.
-2. Whether this is a second graph view beside the Link Map on the Case Overview, or an extension
-   of it. The Link Map already uses dashed edges for authored references; if the two share a
-   visual language, the proposed-versus-accepted line style must not collide with it.
-3. Where the view lives in the app and how the Operator reaches it. The Case today has Overview,
-   Captures, Notes, Signals, and Data tabs.
+2. How the joint map and the Link Map on the Case Overview avoid colliding visually. They are
+   separate views (decision 15), but the Link Map already uses dashed edges for authored
+   references, so the proposed-versus-accepted line style must not read as that convention, and
+   the Operator must be able to tell at a glance which map they are looking at.
+3. Where the view lives in the app and how the Operator reaches it. The Case sidebar today has
+   five sections: Overview, Captures, Notes, Signals, and Data.
 4. At what width, between 900 and 1200 pixels, three panes become tabs.
 5. How the two claim-check axes read at a glance, so `absent` and `conflicts` are never mistaken
    for each other.
@@ -266,12 +276,12 @@ Do not draw these:
   route the spec mentions.
 - The Case search changes and the unannotated-Capture review view from the retrieval spec. They
   are a prerequisite of this view and are drawn separately.
-- Any change to the Link Map on the Case Overview beyond your answer to question 2.
+- Any change to the Link Map on the Case Overview.
 
 ## Deliverable
 
 A mock in the "Birdbrain UI" design project covering the seven surfaces and ten states above,
-delivered through the design handoff round trip described in the current bundle's
+with the first-slice parts drawn first, delivered through the design handoff round trip described in the current bundle's
 `ENGINEERING_REVIEW.md` under `docs/design-handoff/`. Engineering answers with a verdict, a size,
 and the constraint behind each numbered surface and state, as the Shared Case members feasibility
 assessment did.

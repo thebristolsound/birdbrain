@@ -5,12 +5,16 @@ description: 'Connect an MCP client such as Claude Code to Birdbrain, so an agen
 
 This page is for investigators who want an AI agent to read their Birdbrain Cases, for example to
 check each claim in a report against the Capture that supports it. Birdbrain provides a Model
-Context Protocol (MCP) server for this. The server is in the source code only: the installers do
-not include it yet, so you need a build from source. It has been tested on Linux.
+Context Protocol (MCP) server for this. The installers package the server's files, but there is
+no supported way to start it from an installed app yet, so the steps below use a build from
+source. It has been tested on Linux.
 
 The server only reads. It opens the database read-only, so the database itself refuses any
 change, and it cannot sign a Manifest Entry. It never contacts the network. The desktop app can
-stay open while the agent works.
+stay open while the agent works. The server opens the database for each request and closes it
+afterwards, so it reads a restored database on its next request. If you restore the database in
+the app while the agent is in the middle of a request, the app refuses the restore and asks you
+to try again.
 
 <Warning>
 Everything a tool returns goes to the model your MCP client uses. If that model is hosted by a

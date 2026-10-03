@@ -60,6 +60,10 @@ contract question (#551) for existing IPC channels.
   follow-up.
 - When the app migrates the database, the server refuses to start until it is rebuilt from the
   matching version.
+- The server opens the database for each tool call and closes it afterwards. A connection held
+  between calls kept the WAL alive through the app's close, so SQLite replayed it over a
+  restored file and the restore kept the old data. Both of the app's restores now empty the WAL
+  before closing, and refuse while another connection is mid-read.
 - A verification run through the server does not appear as the last verification in the app.
 - Every tool result goes to the model the MCP client uses. Connecting an agent hosted by a
   provider sends that provider the Case content the agent reads, including page text and

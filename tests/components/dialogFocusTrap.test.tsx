@@ -2,7 +2,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
-import { Dialog, DialogContent } from '@renderer/components/ui'
+import { Dialog, DialogContent, DialogTitle } from '@renderer/components/ui'
 import { useAppStore } from '@renderer/stores/appStore'
 
 afterEach(() => {
@@ -65,6 +65,38 @@ function OpenerHarness({ children }: { children?: ReactNode }) {
     </>
   )
 }
+
+describe('Dialog accessible name (#1537)', () => {
+  function Named({ label, titleId }: { label?: string; titleId?: string }) {
+    return (
+      <Dialog open onOpenChange={() => {}}>
+        <DialogContent onClose={() => {}} aria-label={label}>
+          <DialogTitle id={titleId}>Delete tag?</DialogTitle>
+        </DialogContent>
+      </Dialog>
+    )
+  }
+
+  it('is named by the title rendered inside it', () => {
+    render(<Named />)
+    const dialog = screen.getByRole('dialog', { name: 'Delete tag?' })
+    expect(dialog.getAttribute('aria-labelledby')).toBe(screen.getByRole('heading').id)
+  })
+
+  it('follows a title that brings its own id', async () => {
+    render(<Named titleId="own-title" />)
+    await waitFor(() =>
+      expect(screen.getByRole('dialog').getAttribute('aria-labelledby')).toBe('own-title')
+    )
+    expect(screen.getByRole('heading').id).toBe('own-title')
+  })
+
+  it('keeps a label the call site gave it instead of pointing at the title', () => {
+    render(<Named label="Confirm deletion" />)
+    const dialog = screen.getByRole('dialog', { name: 'Confirm deletion' })
+    expect(dialog.hasAttribute('aria-labelledby')).toBe(false)
+  })
+})
 
 describe('Dialog focus trap', () => {
   it('moves focus to the first focusable inside when it opens', () => {

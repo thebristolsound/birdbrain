@@ -55,6 +55,16 @@ it('includes New Case in the four-tile entrance and does not replay on return', 
   expect(second.container.querySelector('.screen-stagger')).toBeNull()
 })
 
+it('shows each rail label on keyboard focus and hides the duplicate text from readers (#1537)', () => {
+  render(<Sidebar />)
+  for (const name of ['Home', 'Notes']) {
+    const tooltip = screen.getByText(name).parentElement!
+    expect(tooltip.getAttribute('aria-hidden')).toBe('true')
+    expect(tooltip.className).toContain('group-focus-within:opacity-100')
+    expect(screen.getAllByRole('button', { name })).toHaveLength(1)
+  }
+})
+
 it('keeps rail navigation working with press feedback on home and section controls', () => {
   render(<Sidebar />)
   fireEvent.click(screen.getByRole('button', { name: 'Home' }))

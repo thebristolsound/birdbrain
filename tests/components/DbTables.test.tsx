@@ -63,6 +63,25 @@ describe('DbTables', () => {
     expect(screen.queryByText('page-zero-row')).toBeNull()
   })
 
+  it('names the table picker, the row and page buttons and the row editor fields (#1537)', async () => {
+    const tableRows = vi
+      .fn()
+      .mockResolvedValue({ rows: [{ id: '1', value: 'only-row' }], total: 51, columns })
+    fakeBridge({ db: { tableRows } })
+    renderTables()
+    expect(await screen.findByText('only-row')).toBeDefined()
+
+    expect(screen.getByLabelText('Table').tagName).toBe('SELECT')
+    expect(screen.getByRole('button', { name: 'Previous page' })).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Next page' })).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Delete row' })).toBeDefined()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit row' }))
+    const editor = within(screen.getByRole('dialog'))
+    expect((editor.getByLabelText(/^value/) as HTMLInputElement).value).toBe('only-row')
+    expect((editor.getByLabelText(/^id/) as HTMLInputElement).value).toBe('1')
+  })
+
   it('shows nothing from the previous table while a different table loads', async () => {
     const casesPage = { rows: [{ id: '1', value: 'cases-row' }], total: 1, columns }
 

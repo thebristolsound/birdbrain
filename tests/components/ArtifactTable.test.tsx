@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, fireEvent, cleanup, within } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, within, createEvent } from '@testing-library/react'
 import { ArtifactTable } from '@renderer/components/data/ArtifactTable'
 import { ArtifactTabs } from '@renderer/components/data/ArtifactTabs'
 import { toArtifactRow } from '@renderer/components/data/dataTableModel'
@@ -136,6 +136,26 @@ describe('ArtifactTable keyboard reach (#1537)', () => {
     fireEvent.keyDown(second, { key: 'Home' })
     expect(first.tabIndex).toBe(0)
     expect(second.tabIndex).toBe(-1)
+  })
+
+  it('leaves an arrow key pressed on a row button with that button', () => {
+    const staged = [STAGED_PDF, CAPTURE_A].map((row) => toArtifactRow(row, INVENTORY, new Map()))
+    render(
+      <ArtifactTable
+        rows={staged}
+        selectedId={null}
+        onSelect={vi.fn()}
+        stagingActions={{ commit: vi.fn(), discard: vi.fn(), pending: false }}
+        emptyMessage="none"
+      />
+    )
+    const commit = screen.getByTestId('staging-commit-staged-1')
+    commit.focus()
+    const event = createEvent.keyDown(commit, { key: 'ArrowDown' })
+    fireEvent(commit, event)
+
+    expect(document.activeElement).toBe(commit)
+    expect(event.defaultPrevented).toBe(false)
   })
 
   it('declares grid semantics, since rows are selectable', () => {

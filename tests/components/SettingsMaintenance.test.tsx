@@ -158,6 +158,33 @@ describe('Operator card', () => {
     await waitFor(() => expect(update).toHaveBeenCalledWith({ tsaUrl: DEFAULT_TSA_URL }))
   })
 
+  it('exposes the required-name error on the field, not by colour alone (#1537)', async () => {
+    fakeBridge({
+      settings: {
+        getIdentity: vi.fn().mockResolvedValue({
+          operatorName: 'A. Analyst',
+          operatorRole: '',
+          operatorOrganization: '',
+          installationId: 'install-1'
+        }),
+        get: vi.fn().mockResolvedValue({ tsaUrl: DEFAULT_TSA_URL }),
+        update: vi.fn().mockResolvedValue({})
+      }
+    })
+    mount(<OperatorConfig />)
+    const name = await screen.findByLabelText(/Operator Name/)
+    expect(name.hasAttribute('aria-invalid')).toBe(false)
+    expect(screen.queryByRole('alert')).toBeNull()
+
+    fireEvent.change(name, { target: { value: '' } })
+    fireEvent.blur(name)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toBe('Operator name is required for capture and export.')
+    expect(name.getAttribute('aria-invalid')).toBe('true')
+    expect(name.getAttribute('aria-describedby')).toBe(alert.id)
+  })
+
   // #1169. The switch is the whole point of the issue, so all three of its jobs
   // are pinned: it shows the persisted state, it writes the opt-out, and it says
   // what declining costs and what it does not.

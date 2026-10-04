@@ -34,6 +34,8 @@ it('names the kebab, exposes the menu state and closes on Escape back to the tri
   renderCard()
   const trigger = screen.getByRole('button', { name: 'Actions for Investigation One' })
   expect(trigger.getAttribute('aria-haspopup')).toBe('menu')
+  // Hidden until hover, so keyboard focus has to reveal it as well.
+  expect(trigger.className).toContain('focus-visible:opacity-100')
   expect(trigger.getAttribute('aria-expanded')).toBe('false')
 
   fireEvent.click(trigger)

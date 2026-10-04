@@ -333,6 +333,38 @@ describe('SignalsOverview', () => {
 // in cases the operator is not looking at. Both ways into the delete are
 // covered because they are one prop on the row and a regression could reroute
 // either of them past the dialog.
+describe('SignalsOverview grid keyboard reach (#1537)', () => {
+  const tabStops = (list: HTMLElement) =>
+    Array.from(list.querySelectorAll<HTMLElement>('[tabindex]')).filter(
+      (node) => node.tabIndex === 0
+    )
+
+  it('gives each list one Tab stop, which follows focus', async () => {
+    renderScreen()
+    const first = await screen.findByTestId('signal-row-s1')
+    const second = screen.getByTestId('signal-row-s2')
+    const selectorList = screen.getByRole('grid', { name: 'Selectors' })
+    const tagList = screen.getByRole('grid', { name: 'Tags' })
+
+    expect(tabStops(selectorList)).toEqual([first])
+    expect(tabStops(tagList)).toEqual([screen.getByTestId('signal-row-t1')])
+
+    fireEvent.keyDown(first, { key: 'ArrowDown' })
+    expect(document.activeElement).toBe(second)
+    expect(tabStops(selectorList)).toEqual([second])
+  })
+
+  it('names neither list a grid while it is empty', async () => {
+    install({ selectors: { list: vi.fn(async () => []) }, tags: { list: vi.fn(async () => []) } })
+    renderScreen()
+    const tagList = await screen.findByTestId('signals-tag-list')
+
+    expect(screen.queryByRole('grid')).toBeNull()
+    expect(tagList.hasAttribute('aria-label')).toBe(false)
+    expect(document.querySelector('[aria-label="Selectors"]')).toBeNull()
+  })
+})
+
 describe('SignalsOverview tag delete confirmation', () => {
   async function openConfirm(
     via: 'button' | 'keyboard',

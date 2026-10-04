@@ -34,6 +34,10 @@ interface SignalRowProps {
   onMerge: () => void
   /** Move focus to the row above/below, or out of the list at the top. */
   onFocusSibling: (direction: -1 | 1) => void
+  /** Whether this row holds its list's one Tab stop. */
+  tabStop: boolean
+  /** Focus arrived on the row or a control in it. */
+  onRowFocus: () => void
   registerRow: (element: HTMLDivElement | null) => void
 }
 
@@ -75,9 +79,14 @@ export function SignalRow({
   onSetColor,
   onMerge,
   onFocusSibling,
+  tabStop,
+  onRowFocus,
   registerRow
 }: SignalRowProps) {
   const [editing, setEditing] = useState(false)
+  // The nested control that has focus, if one does. The list's Tab stop sits
+  // on it instead of on the row, so Tab and Shift+Tab leave the list from there.
+  const [activeControl, setActiveControl] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
   const rowRef = useRef<HTMLDivElement | null>(null)
@@ -123,14 +132,45 @@ export function SignalRow({
     if (value && value !== original) onRename(value)
   }
 
+  function controlsIn(row: HTMLDivElement): HTMLElement[] {
+    return Array.from(row.querySelectorAll<HTMLElement>('[data-signal-control]'))
+  }
+
+  function moveFromControl(event: KeyboardEvent<HTMLDivElement>) {
+    const controls = controlsIn(event.currentTarget)
+    const index = controls.indexOf(event.target as HTMLElement)
+    if (index < 0) return
+    if (event.key === 'ArrowRight') {
+      event.preventDefault()
+      controls[index + 1]?.focus()
+    } else if (event.key === 'ArrowLeft') {
+      event.preventDefault()
+      const previous = controls[index - 1] ?? event.currentTarget
+      previous.focus()
+    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      onFocusSibling(event.key === 'ArrowDown' ? 1 : -1)
+    }
+  }
+
+  function controlProps(name: string) {
+    return { 'data-signal-control': name, tabIndex: tabStop && activeControl === name ? 0 : -1 }
+  }
+
   function handleKey(event: KeyboardEvent<HTMLDivElement>) {
     if (editing) return
     // Keys pressed on the switch, mode chip or delete button belong to those
-    // controls; the row only handles keys aimed at the row itself.
-    if (event.target !== event.currentTarget) return
+    // controls, except the arrows, which walk the grid from wherever focus is.
+    if (event.target !== event.currentTarget) {
+      moveFromControl(event)
+      return
+    }
     if (isSelector && isCopyChord(event)) {
       event.preventDefault()
       onCopyPattern()
+    } else if (event.key === 'ArrowRight') {
+      event.preventDefault()
+      controlsIn(event.currentTarget)[0]?.focus()
     } else if (event.key === 'ArrowDown') {
       event.preventDefault()
       onFocusSibling(1)
@@ -203,9 +243,16 @@ export function SignalRow({
         role="row"
         aria-selected={selected}
         aria-label={signal.name}
-        tabIndex={0}
+        tabIndex={tabStop && activeControl === null ? 0 : -1}
         data-testid={`signal-row-${signal.id}`}
         data-selected={selected ? 'true' : 'false'}
+        onFocus={(event) => {
+          const target = event.target as HTMLElement
+          setActiveControl(
+            target === event.currentTarget ? null : target.getAttribute('data-signal-control')
+          )
+          onRowFocus()
+        }}
         onClick={onSelect}
         onDoubleClick={beginEdit}
         onKeyDown={handleKey}
@@ -222,6 +269,7 @@ export function SignalRow({
               role="switch"
               aria-checked={signal.enabled}
               aria-label={`Enable ${signal.name}`}
+              {...controlProps('switch')}
               onClick={(event) => {
                 event.stopPropagation()
                 onToggleEnabled()
@@ -290,6 +338,7 @@ export function SignalRow({
           {isSelector && (
             <button
               type="button"
+              {...controlProps('mode')}
               onClick={(event) => {
                 event.stopPropagation()
                 onToggleRegex()
@@ -344,6 +393,7 @@ export function SignalRow({
             }}
             title={isSelector ? 'Delete selector' : 'Delete tag'}
             aria-label={`Delete ${signal.name}`}
+            {...controlProps('delete')}
             className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-text-faint opacity-0 transition-opacity hover:bg-red-500/10 hover:text-red-400 focus:opacity-100 group-hover:opacity-100"
           >
             <X className="h-3 w-3" strokeWidth={2} />

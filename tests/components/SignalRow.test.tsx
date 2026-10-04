@@ -58,10 +58,18 @@ function renderRow(signal: Signal = selectorSignal, overrides: Record<string, un
     onSetColor: vi.fn(),
     onMerge: vi.fn(),
     onFocusSibling: vi.fn(),
+    onRowFocus: vi.fn(),
     registerRow: vi.fn()
   }
   render(
-    <SignalRow signal={signal} captures={captures} selected={false} {...handlers} {...overrides} />
+    <SignalRow
+      signal={signal}
+      captures={captures}
+      selected={false}
+      tabStop
+      {...handlers}
+      {...overrides}
+    />
   )
   return handlers
 }
@@ -126,6 +134,61 @@ describe('SignalRow keyboard model', () => {
     expect(onDelete).not.toHaveBeenCalled()
     expect(onToggleEnabled).not.toHaveBeenCalled()
     expect(screen.queryByLabelText('Edit selector pattern')).toBeNull()
+  })
+
+  it('holds one Tab stop for the row and its controls, and none when it is not the stop', () => {
+    renderRow()
+    const row = screen.getByTestId('signal-row-s1')
+    const stops = () =>
+      [row, ...row.querySelectorAll<HTMLElement>('button')].filter((node) => node.tabIndex === 0)
+    expect(stops()).toEqual([row])
+
+    const chip = screen.getByTitle('Exact text — click for regex')
+    fireEvent.focus(chip)
+    expect(stops()).toEqual([chip])
+
+    fireEvent.focus(row)
+    expect(stops()).toEqual([row])
+
+    cleanup()
+    renderRow(selectorSignal, { tabStop: false })
+    const other = screen.getByTestId('signal-row-s1')
+    expect(other.tabIndex).toBe(-1)
+    expect(other.querySelectorAll('[tabindex="0"]').length).toBe(0)
+  })
+
+  it('walks the row and its controls with the left and right arrows', () => {
+    renderRow()
+    const row = screen.getByTestId('signal-row-s1')
+    const toggle = screen.getByRole('switch')
+    const chip = screen.getByTitle('Exact text — click for regex')
+    const remove = screen.getByLabelText('Delete acme')
+
+    row.focus()
+    fireEvent.keyDown(row, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(toggle)
+    fireEvent.keyDown(toggle, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(chip)
+    fireEvent.keyDown(chip, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(remove)
+    fireEvent.keyDown(remove, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(remove)
+
+    fireEvent.keyDown(remove, { key: 'ArrowLeft' })
+    fireEvent.keyDown(chip, { key: 'ArrowLeft' })
+    expect(document.activeElement).toBe(toggle)
+    fireEvent.keyDown(toggle, { key: 'ArrowLeft' })
+    expect(document.activeElement).toBe(row)
+  })
+
+  it('moves to the next or previous row from a nested control', () => {
+    const { onFocusSibling } = renderRow()
+    const chip = screen.getByTitle('Exact text — click for regex')
+
+    fireEvent.keyDown(chip, { key: 'ArrowDown' })
+    expect(onFocusSibling).toHaveBeenLastCalledWith(1)
+    fireEvent.keyDown(chip, { key: 'ArrowUp' })
+    expect(onFocusSibling).toHaveBeenLastCalledWith(-1)
   })
 
   // #1549: a pre-selected pattern was replaced whole by the first keystroke,

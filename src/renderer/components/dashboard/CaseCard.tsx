@@ -51,11 +51,13 @@ export const CaseCard = memo(function CaseCard({
     }
   }, [editingName])
 
-  // Focus enters the menu on open, as the menu role promises; the delete
-  // confirmation swaps the items for Confirm and Cancel, so it lands again.
+  // Focus enters the menu on open, as the menu role promises. The delete
+  // confirmation swaps the items for Confirm and Cancel; focus lands on Cancel
+  // so a second Enter cannot delete a case by momentum.
   useEffect(() => {
     if (!menuOpen) return
-    menuItems()[0]?.focus()
+    const items = menuItems()
+    ;(deletingId ? items[items.length - 1] : items[0])?.focus()
   }, [menuOpen, deletingId])
 
   function menuItems(): HTMLElement[] {

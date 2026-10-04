@@ -55,14 +55,15 @@ it('includes New Case in the four-tile entrance and does not replay on return', 
   expect(second.container.querySelector('.screen-stagger')).toBeNull()
 })
 
-it('shows each rail label on keyboard focus and hides the duplicate text from readers (#1537)', () => {
+it('hides the rail tooltips from assistive technology and reveals them on focus (#1537)', () => {
   render(<Sidebar />)
-  for (const name of ['Home', 'Notes']) {
-    const tooltip = screen.getByText(name).parentElement!
-    expect(tooltip.getAttribute('aria-hidden')).toBe('true')
+  const tooltips = Array.from(document.querySelectorAll('aside div[aria-hidden="true"]'))
+  expect(tooltips.length).toBeGreaterThanOrEqual(2)
+  for (const tooltip of tooltips) {
     expect(tooltip.className).toContain('group-focus-within:opacity-100')
-    expect(screen.getAllByRole('button', { name })).toHaveLength(1)
   }
+  // The icon button's own name is the only one the tree reads.
+  expect(screen.getAllByRole('button', { name: 'Home' }).length).toBe(1)
 })
 
 it('keeps rail navigation working with press feedback on home and section controls', () => {

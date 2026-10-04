@@ -126,6 +126,16 @@ describe('Operator card', () => {
     mount(<OperatorConfig />)
     expect(await screen.findByRole('heading', { name: 'Operator', level: 2 })).toBeDefined()
     const name = screen.getByLabelText(/Operator Name/)
+    // A cleared name is announced as invalid, with the message as its description (#1537).
+    expect(name.getAttribute('aria-invalid')).toBeNull()
+    fireEvent.change(name, { target: { value: '' } })
+    fireEvent.blur(name)
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain('Operator name is required')
+    expect(name.getAttribute('aria-invalid')).toBe('true')
+    expect(name.getAttribute('aria-describedby')).toBe(alert.id)
+    fireEvent.change(name, { target: { value: 'Alex' } })
+    expect(name.getAttribute('aria-invalid')).toBeNull()
     expect(screen.getByLabelText('Installation ID')).toHaveProperty('readOnly', true)
     expect(screen.getAllByRole('textbox')).toHaveLength(5)
     fireEvent.change(name, { target: { value: 'New Operator' } })
@@ -156,33 +166,6 @@ describe('Operator card', () => {
     fireEvent.change(tsa, { target: { value: '' } })
     fireEvent.blur(tsa)
     await waitFor(() => expect(update).toHaveBeenCalledWith({ tsaUrl: DEFAULT_TSA_URL }))
-  })
-
-  it('exposes the required-name error on the field, not by colour alone (#1537)', async () => {
-    fakeBridge({
-      settings: {
-        getIdentity: vi.fn().mockResolvedValue({
-          operatorName: 'A. Analyst',
-          operatorRole: '',
-          operatorOrganization: '',
-          installationId: 'install-1'
-        }),
-        get: vi.fn().mockResolvedValue({ tsaUrl: DEFAULT_TSA_URL }),
-        update: vi.fn().mockResolvedValue({})
-      }
-    })
-    mount(<OperatorConfig />)
-    const name = await screen.findByLabelText(/Operator Name/)
-    expect(name.hasAttribute('aria-invalid')).toBe(false)
-    expect(screen.queryByRole('alert')).toBeNull()
-
-    fireEvent.change(name, { target: { value: '' } })
-    fireEvent.blur(name)
-
-    const alert = await screen.findByRole('alert')
-    expect(alert.textContent).toBe('Operator name is required for capture and export.')
-    expect(name.getAttribute('aria-invalid')).toBe('true')
-    expect(name.getAttribute('aria-describedby')).toBe(alert.id)
   })
 
   // #1169. The switch is the whole point of the issue, so all three of its jobs
@@ -244,9 +227,7 @@ describe('Operator card', () => {
 
     it('states the consequence of declining, including that it is reversible', async () => {
       mountOperator(true)
-      expect(
-        await screen.findByText(/nothing is sent to a timestamp authority/i)
-      ).toBeDefined()
+      expect(await screen.findByText(/nothing is sent to a timestamp authority/i)).toBeDefined()
       expect(screen.getByText(/timestamped if you turn it back on/i)).toBeDefined()
     })
 

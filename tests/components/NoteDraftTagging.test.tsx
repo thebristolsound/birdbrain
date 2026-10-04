@@ -104,14 +104,11 @@ beforeEach(() => {
 
 afterEach(cleanup)
 
-describe('CreateNoteCard close button (#1537)', () => {
-  it('has an accessible name and closes the card', () => {
-    stubBridge()
+describe('CreateNoteCard close control (#1537)', () => {
+  it('names the close button and closes through it', () => {
     const onToggle = vi.fn()
     wrap(<CreateNoteCard caseId={CASE_ID} isOpen onToggle={onToggle} onCreated={vi.fn()} />)
-
     fireEvent.click(screen.getByRole('button', { name: 'Close new note' }))
-
     expect(onToggle).toHaveBeenCalled()
   })
 })

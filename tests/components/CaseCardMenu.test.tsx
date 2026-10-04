@@ -33,9 +33,10 @@ afterEach(() => cleanup())
 it('names the kebab, exposes the menu state and closes on Escape back to the trigger', () => {
   renderCard()
   const trigger = screen.getByRole('button', { name: 'Actions for Investigation One' })
-  expect(trigger.getAttribute('aria-haspopup')).toBe('menu')
-  // Hidden until hover, so keyboard focus has to reveal it as well.
+  // Visible while focused or open, not only on hover (#1537).
   expect(trigger.className).toContain('focus-visible:opacity-100')
+  expect(trigger.className).toContain('aria-expanded:opacity-100')
+  expect(trigger.getAttribute('aria-haspopup')).toBe('menu')
   expect(trigger.getAttribute('aria-expanded')).toBe('false')
 
   fireEvent.click(trigger)
@@ -69,17 +70,16 @@ it('ignores keys other than Escape while the menu is open', () => {
   expect(screen.getByRole('menu')).toBeTruthy()
 })
 
-it('moves focus to the confirmation when Delete is chosen, and Tab closes the menu', () => {
+it('lands on Cancel when Delete is chosen, so a second Enter cannot delete, and Tab closes', () => {
   renderCard()
   fireEvent.click(screen.getByRole('button', { name: 'Actions for Investigation One' }))
   fireEvent.click(screen.getByTestId('case-card-delete-btn'))
-  const confirm = screen.getByTestId('case-card-delete-confirm-btn')
-  expect(document.activeElement).toBe(confirm)
+  const [confirm, cancel] = screen.getAllByRole('menuitem')
+  expect(confirm).toBe(screen.getByTestId('case-card-delete-confirm-btn'))
+  expect(document.activeElement).toBe(cancel)
   // Confirm and Cancel stay inside the menu model.
-  const items = screen.getAllByRole('menuitem')
-  expect(items.length).toBe(2)
-  fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowDown' })
-  expect(document.activeElement).toBe(items[1])
+  fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowUp' })
+  expect(document.activeElement).toBe(confirm)
 
   fireEvent.keyDown(screen.getByRole('menu'), { key: 'Tab' })
   expect(screen.queryByRole('menu')).toBeNull()

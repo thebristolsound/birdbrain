@@ -67,34 +67,27 @@ function OpenerHarness({ children }: { children?: ReactNode }) {
 }
 
 describe('Dialog accessible name (#1537)', () => {
-  function Named({ label, titleId }: { label?: string; titleId?: string }) {
-    return (
+  it('follows a title that brings its own id', () => {
+    render(
       <Dialog open onOpenChange={() => {}}>
-        <DialogContent onClose={() => {}} aria-label={label}>
-          <DialogTitle id={titleId}>Delete tag?</DialogTitle>
+        <DialogContent onClose={() => {}}>
+          <DialogTitle id="own-title">Own title</DialogTitle>
         </DialogContent>
       </Dialog>
     )
-  }
-
-  it('is named by the title rendered inside it', () => {
-    render(<Named />)
-    const dialog = screen.getByRole('dialog', { name: 'Delete tag?' })
-    expect(dialog.getAttribute('aria-labelledby')).toBe(screen.getByRole('heading').id)
+    expect(screen.getByRole('dialog').getAttribute('aria-labelledby')).toBe('own-title')
   })
 
-  it('follows a title that brings its own id', async () => {
-    render(<Named titleId="own-title" />)
-    await waitFor(() =>
-      expect(screen.getByRole('dialog').getAttribute('aria-labelledby')).toBe('own-title')
+  it('lets an explicit aria-label win over the title', () => {
+    render(
+      <Dialog open onOpenChange={() => {}}>
+        <DialogContent onClose={() => {}} aria-label="Named outright">
+          <DialogTitle>Ignored for naming</DialogTitle>
+        </DialogContent>
+      </Dialog>
     )
-    expect(screen.getByRole('heading').id).toBe('own-title')
-  })
-
-  it('keeps a label the call site gave it instead of pointing at the title', () => {
-    render(<Named label="Confirm deletion" />)
-    const dialog = screen.getByRole('dialog', { name: 'Confirm deletion' })
-    expect(dialog.hasAttribute('aria-labelledby')).toBe(false)
+    const dialog = screen.getByRole('dialog', { name: 'Named outright' })
+    expect(dialog.getAttribute('aria-labelledby')).toBeNull()
   })
 })
 

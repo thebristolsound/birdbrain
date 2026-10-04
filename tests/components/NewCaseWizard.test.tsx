@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { NewCaseWizard } from '@renderer/components/dashboard/cases/NewCaseWizard'
 
 // Hoisted so the wizard's own module graph shares the instances the
@@ -33,6 +33,30 @@ afterEach(() => {
   navigate.mockReset()
   notifySuccess.mockReset()
   vi.restoreAllMocks()
+})
+
+describe('NewCaseWizard accessibility (#1537)', () => {
+  it('labels both fields programmatically', () => {
+    render(<NewCaseWizard />)
+    expect(screen.getByLabelText('Case Name')).toBe(screen.getByTestId('case-name-input'))
+    expect(screen.getByLabelText('Description')).toBe(screen.getByTestId('case-description-input'))
+  })
+
+  it('exposes the selected state of a preset chip and groups the chips under their label', () => {
+    render(<NewCaseWizard />)
+    const chip = screen.getByRole('button', { name: 'Email Addresses' })
+    expect(chip.getAttribute('aria-pressed')).toBe('false')
+    fireEvent.click(chip)
+    expect(chip.getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByRole('group', { name: 'Initial Selectors' }).contains(chip)).toBe(true)
+  })
+
+  it('keeps the progress dots decorative', () => {
+    const { container } = render(<NewCaseWizard />)
+    const dots = container.querySelector('[aria-hidden="true"]')
+    expect(dots).toBeTruthy()
+    expect(dots!.querySelectorAll('div').length).toBe(3)
+  })
 })
 
 describe('NewCaseWizard', () => {
@@ -79,19 +103,6 @@ describe('NewCaseWizard', () => {
     expect(createSelector).toHaveBeenCalledWith(
       expect.objectContaining({ caseId: 'case-1', label: 'Email Addresses', origin: 'manual' })
     )
-  })
-
-  it('labels both fields and exposes which preset chips are chosen (#1537)', () => {
-    render(<NewCaseWizard />)
-
-    expect(screen.getByLabelText('Case Name')).toBe(screen.getByTestId('case-name-input'))
-    expect(screen.getByLabelText('Description')).toBe(screen.getByTestId('case-description-input'))
-
-    const group = screen.getByRole('group', { name: 'Initial Selectors' })
-    const chip = within(group).getByRole('button', { name: 'Email Addresses' })
-    expect(chip.getAttribute('aria-pressed')).toBe('false')
-    fireEvent.click(chip)
-    expect(chip.getAttribute('aria-pressed')).toBe('true')
   })
 
   // The mock's post-create confirmation (Birdbrain.dc.html 5872): the case name

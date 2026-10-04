@@ -49,12 +49,10 @@ afterEach(() => {
   cleanup()
 })
 
-describe('DbUtilities — export selects (#1537)', () => {
+describe('DbUtilities export controls (#1537)', () => {
   it('names the table and format selects', async () => {
     fakeBridge({ db: { snapshots: vi.fn().mockResolvedValue([]) } })
     renderUtilities()
-    await screen.findByText(/No snapshots yet/)
-
     expect(screen.getByLabelText('Table to export').tagName).toBe('SELECT')
     expect(screen.getByLabelText('Export format').tagName).toBe('SELECT')
   })

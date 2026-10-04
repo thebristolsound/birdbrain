@@ -110,9 +110,8 @@ export function DataTree({
               className="flex items-center gap-0.5"
               style={{ paddingLeft: 4 + node.depth * 13 }}
             >
-              {/* A mouse helper, hidden from assistive technology: a tree owns
-                  only tree items, and the item's aria-expanded and the arrow
-                  keys already carry this. */}
+              {/* Hidden from the tree: a tree owns only tree items, and the item
+                  itself carries aria-expanded and the ArrowLeft/ArrowRight toggle. */}
               <button
                 type="button"
                 tabIndex={-1}

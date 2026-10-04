@@ -157,6 +157,41 @@ describe('ExportMenu', () => {
   // The menu item unmounts with the menu, so the dialog would record a
   // detached opener. The trigger stands in for it, and gets focus back when
   // the dialog closes (#1536).
+  it('moves focus into the menu on open and walks the items with the arrow keys', () => {
+    renderMenu()
+    const trigger = screen.getByRole('button', { name: 'Export' })
+    fireEvent.click(trigger)
+    const menu = screen.getByRole('menu', { name: 'Export options' })
+    expect(trigger.getAttribute('aria-controls')).toBe(menu.id)
+    const [report, archive] = screen.getAllByRole('menuitem')
+    expect(document.activeElement).toBe(report)
+
+    fireEvent.keyDown(menu, { key: 'ArrowDown' })
+    expect(document.activeElement).toBe(archive)
+    fireEvent.keyDown(menu, { key: 'ArrowDown' })
+    expect(document.activeElement).toBe(report)
+    fireEvent.keyDown(menu, { key: 'ArrowUp' })
+    expect(document.activeElement).toBe(archive)
+    fireEvent.keyDown(menu, { key: 'Home' })
+    expect(document.activeElement).toBe(report)
+    fireEvent.keyDown(menu, { key: 'End' })
+    expect(document.activeElement).toBe(archive)
+    fireEvent.keyDown(menu, { key: 'a' })
+    expect(document.activeElement).toBe(archive)
+
+    fireEvent.keyDown(menu, { key: 'Tab' })
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
+  it('closes on Escape and returns focus to the trigger', () => {
+    renderMenu()
+    const trigger = screen.getByRole('button', { name: 'Export' })
+    fireEvent.click(trigger)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(document.activeElement).toBe(trigger)
+  })
+
   it('hands focus back to the Export trigger when the report dialog closes', () => {
     fakeBridge({
       cases: { exportArchive, get: vi.fn(async () => null) },

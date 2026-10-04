@@ -111,6 +111,38 @@ describe('ArtifactTable selection (#1552)', () => {
   })
 })
 
+describe('ArtifactTable keyboard reach (#1537)', () => {
+  const rows = [CAPTURE_A, THUMB_A].map((row) => toArtifactRow(row, INVENTORY, new Map()))
+
+  it('keeps one Tab stop and moves between rows with the arrow, Home and End keys', () => {
+    render(
+      <ArtifactTable rows={rows} selectedId="thumb-a" onSelect={vi.fn()} emptyMessage="none" />
+    )
+    const first = screen.getByTestId('artifact-row-cap-a')
+    const second = screen.getByTestId('artifact-row-thumb-a')
+    expect(first.tabIndex).toBe(-1)
+    expect(second.tabIndex).toBe(0)
+
+    second.focus()
+    fireEvent.keyDown(second, { key: 'ArrowUp' })
+    expect(document.activeElement).toBe(first)
+    fireEvent.keyDown(first, { key: 'ArrowDown' })
+    expect(document.activeElement).toBe(second)
+    fireEvent.keyDown(second, { key: 'Home' })
+    expect(document.activeElement).toBe(first)
+    fireEvent.keyDown(first, { key: 'End' })
+    expect(document.activeElement).toBe(second)
+  })
+
+  it('declares table semantics', () => {
+    render(<ArtifactTable rows={rows} selectedId={null} onSelect={vi.fn()} emptyMessage="none" />)
+    const table = screen.getByRole('table', { name: 'Artifacts' })
+    expect(within(table).getAllByRole('columnheader').length).toBe(6)
+    expect(within(table).getAllByRole('row').length).toBe(3)
+    expect(screen.getByTestId('artifact-row-cap-a').tabIndex).toBe(0)
+  })
+})
+
 describe('ArtifactTable CAPTURED cell (#1552)', () => {
   it('shows a capture time bare and names any other clock on the cell', () => {
     const facts = new Map([['cap-a', { capturedAt: CAPTURE_A_CAPTURED_AT }]])

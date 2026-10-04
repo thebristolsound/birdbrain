@@ -33,6 +33,7 @@ it('gives the shield a text alternative that names each persisted outcome', () =
         capture('a', 'verified'),
         capture('b', 'tampered'),
         capture('c', 'chain-broken'),
+        capture('g', 'missing'),
         capture('d', 'legacy'),
         capture('e', 'verifier-too-old'),
         capture('f')
@@ -44,6 +45,7 @@ it('gives the shield a text alternative that names each persisted outcome', () =
   const labels = screen.getAllByRole('img').map((node) => node.getAttribute('aria-label'))
   expect(labels).toEqual([
     'Verified',
+    'Verification failed',
     'Verification failed',
     'Verification failed',
     'Legacy HTML',

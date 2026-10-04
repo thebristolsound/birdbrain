@@ -55,6 +55,17 @@ it('includes New Case in the four-tile entrance and does not replay on return', 
   expect(second.container.querySelector('.screen-stagger')).toBeNull()
 })
 
+it('hides the rail tooltips from assistive technology and reveals them on focus (#1537)', () => {
+  render(<Sidebar />)
+  const tooltips = Array.from(document.querySelectorAll('aside div[aria-hidden="true"]'))
+  expect(tooltips.length).toBeGreaterThanOrEqual(2)
+  for (const tooltip of tooltips) {
+    expect(tooltip.className).toContain('group-focus-within:opacity-100')
+  }
+  // The icon button's own name is the only one the tree reads.
+  expect(screen.getAllByRole('button', { name: 'Home' }).length).toBe(1)
+})
+
 it('keeps rail navigation working with press feedback on home and section controls', () => {
   render(<Sidebar />)
   fireEvent.click(screen.getByRole('button', { name: 'Home' }))

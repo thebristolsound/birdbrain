@@ -21,8 +21,9 @@ function isTampered(status?: Capture['lastVerifiedStatus']): boolean {
   return status === 'tampered' || status === 'chain-broken' || status === 'missing'
 }
 
-// The same words ProvenanceBadge uses for each persisted outcome; only an
-// absent status has never been checked.
+// Legacy HTML and Verifier too old match ProvenanceBadge's words; tampered,
+// chain-broken and missing collapse to Verification failed, since the shield
+// has one failure colour. Only an absent status has never been checked.
 function shieldLabelFor(status?: Capture['lastVerifiedStatus']): string {
   if (status === 'verified') return 'Verified'
   if (status === 'legacy') return 'Legacy HTML'

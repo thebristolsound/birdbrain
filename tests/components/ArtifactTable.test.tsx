@@ -138,6 +138,23 @@ describe('ArtifactTable keyboard reach (#1537)', () => {
     expect(second.tabIndex).toBe(-1)
   })
 
+  it('leaves arrow keys pressed on an inline button to that button', () => {
+    const staged = [toArtifactRow(STAGED_PDF, INVENTORY, new Map()), ...rows]
+    render(
+      <ArtifactTable
+        rows={staged}
+        selectedId={null}
+        onSelect={vi.fn()}
+        stagingActions={{ commit: vi.fn(), discard: vi.fn(), pending: false }}
+        emptyMessage="none"
+      />
+    )
+    const commit = screen.getByTestId('staging-commit-staged-1')
+    commit.focus()
+    fireEvent.keyDown(commit, { key: 'ArrowDown' })
+    expect(document.activeElement).toBe(commit)
+  })
+
   it('declares grid semantics, since rows are selectable', () => {
     render(<ArtifactTable rows={rows} selectedId={null} onSelect={vi.fn()} emptyMessage="none" />)
     const table = screen.getByRole('grid', { name: 'Artifacts' })

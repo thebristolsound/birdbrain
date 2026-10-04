@@ -33,6 +33,17 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+describe('DeleteTagDialog accessible name (#1537)', () => {
+  it('is named by its visible title', () => {
+    renderDialog()
+    const dialog = screen.getByRole('dialog')
+    const title = screen.getByRole('heading', { name: /Delete ‘osint’\?/ })
+    expect(title.id).toBeTruthy()
+    expect(dialog.getAttribute('aria-labelledby')).toBe(title.id)
+    expect(dialog.getAttribute('aria-label')).toBeNull()
+  })
+})
+
 describe('DeleteTagDialog copy', () => {
   // Tags are app-global and the operator is looking at one case. This dialog
   // is the only place the blast radius gets said before the write, so the copy

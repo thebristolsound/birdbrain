@@ -110,9 +110,12 @@ export function DataTree({
               className="flex items-center gap-0.5"
               style={{ paddingLeft: 4 + node.depth * 13 }}
             >
+              {/* Hidden from the tree: a tree owns only tree items, and the item
+                  itself carries aria-expanded and the ArrowLeft/ArrowRight toggle. */}
               <button
                 type="button"
                 tabIndex={-1}
+                aria-hidden="true"
                 aria-label={node.expanded ? `Collapse ${node.label}` : `Expand ${node.label}`}
                 onClick={(event) => {
                   event.stopPropagation()

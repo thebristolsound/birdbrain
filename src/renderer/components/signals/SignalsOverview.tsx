@@ -421,7 +421,7 @@ export function SignalsOverview() {
 
               <div
                 role={selectorSignals.length ? 'grid' : undefined}
-                aria-label="Selectors"
+                aria-label={selectorSignals.length ? 'Selectors' : undefined}
                 className="flex max-h-80 flex-col gap-0.5 overflow-y-auto"
               >
                 {renderRows(
@@ -476,7 +476,7 @@ export function SignalsOverview() {
               <div
                 data-testid="signals-tag-list"
                 role={tagSignals.length ? 'grid' : undefined}
-                aria-label="Tags"
+                aria-label={tagSignals.length ? 'Tags' : undefined}
                 className="flex max-h-[260px] flex-col gap-0.5 overflow-y-auto"
               >
                 {renderRows(tagSignals, 'No tags yet — name one above to add the first.')}

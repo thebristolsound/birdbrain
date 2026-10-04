@@ -18,6 +18,13 @@ export function initInstallationId(userDataPath: string): void {
   cachedId = fresh
 }
 
+// The MCP server's load (ADR-0038): the id the app wrote, never a new one. A
+// data folder without the file leaves the id unset.
+export function loadInstallationId(userDataPath: string): void {
+  const idPath = join(userDataPath, 'installation-id')
+  cachedId = existsSync(idPath) ? readFileSync(idPath, 'utf-8').trim() || null : null
+}
+
 export function getInstallationId(): string {
   if (!cachedId) throw new Error('Installation ID not initialized')
   return cachedId

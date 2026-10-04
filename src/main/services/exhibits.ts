@@ -439,11 +439,13 @@ function numberExceptions(exhibit: Exhibit, author: AuthorChain): ExhibitIntegri
 // statuses a Capture gets, plus `unsupported` for a chain this build cannot
 // read (X25), which is never reported as tampering. A verify-all is the caller
 // running this per Exhibit in sequence — there is deliberately no batch
-// channel.
+// channel. `record` passes through to the Capture path (ADR-0038); no other
+// kind writes anything.
 export async function verifyExhibit(
   caseId: string,
   exhibitId: string,
-  store: CaptureStore = defaultCaptureStore
+  store: CaptureStore = defaultCaptureStore,
+  { record = true }: { record?: boolean } = {}
 ): Promise<ExhibitVerification> {
   const exhibit = getExhibit(exhibitId)
   if (!exhibit || exhibit.caseId !== caseId) {
@@ -469,7 +471,7 @@ export async function verifyExhibit(
   }
 
   if (exhibit.kind === 'capture') {
-    const capture = await verifyCapture(exhibitId, store)
+    const capture = await verifyCapture(exhibitId, store, { record })
     return {
       ...base,
       status: capture.status,

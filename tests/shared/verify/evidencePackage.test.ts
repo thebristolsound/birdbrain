@@ -27,6 +27,7 @@ import {
 } from '@shared/schemas'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 import { seedMixedKindCase, type MixedKindCase } from '../../helpers/mixedKindCase'
+import { MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import type { ExportOptions } from '@shared/types'
 
 // Parses a Birdbrain stored-ZIP (all entries STORE/method 0) into a name->bytes
@@ -1410,6 +1411,165 @@ describe('verifyEvidencePackage', () => {
       } finally {
         rmSync(dir, { recursive: true, force: true })
       }
+    })
+
+    // #1197, X25 for the package's own manifest line: an export entry a newer
+    // Birdbrain wrote is reported as verifier too old, not as a malformed entry,
+    // and only once the checks the chain applies to an unreadable line hold.
+    describe('an export entry from a newer schema (#1197)', () => {
+      const fromNewerSchema = (entry: Record<string, unknown>): void => {
+        entry.schemaVersion = MANIFEST_SCHEMA_VERSION + 1
+        entry.fieldFromALaterBuild = 'not in this build'
+      }
+      const failed = (result: PackageVerifyResult): PackageCheck[] =>
+        result.checks.filter((c) => c.status === 'fail')
+
+      it('reports verifier too old with no failed check and no later check run', () => {
+        forgeExportEntry(fromNewerSchema)
+        const result = verifyEvidencePackage(selDir)
+        expect(result.pass).toBe(false)
+        expect(failed(result)).toEqual([])
+        expect(result.unsupported?.reason).toContain('export-entry.json: Entry from a newer schema')
+        expect(result.unsupported?.reason).toContain(
+          `states schema version ${MANIFEST_SCHEMA_VERSION + 1}`
+        )
+        expect(result.checks.find((c) => c.name === 'manifest chain')?.status).toBe('pass')
+        // The entry carries the scope, so nothing that depends on it ran, and
+        // the row that stopped verification says why.
+        const last = result.checks.at(-1)
+        expect(last?.name).toBe('export entry')
+        expect(last?.status).toBe('skip')
+        expect(last?.reason).toContain("It states the package's scope, so no later check ran")
+        expect(result.checks.some((c) => c.name.startsWith(`capture ${captureB}`))).toBe(false)
+      })
+
+      it('reports an unknown entry type with no schema version as verifier too old', () => {
+        forgeExportEntry((entry) => {
+          entry.type = 'export-from-a-later-build'
+          delete entry.schemaVersion
+        })
+        const result = verifyEvidencePackage(selDir)
+        expect(failed(result)).toEqual([])
+        expect(result.unsupported?.reason).toContain(
+          "export-entry.json: Entry type 'export-from-a-later-build' from a newer schema"
+        )
+      })
+
+      const tampers: Array<{
+        name: string
+        tamper: (entry: Record<string, unknown>) => void
+        reason: string
+      }> = [
+        {
+          name: 'a signature by another key',
+          tamper: (entry) => {
+            entry.signature = signEntryHash('f'.repeat(64))
+          },
+          reason: 'Invalid signature'
+        },
+        {
+          name: 'a broken prevHash',
+          tamper: (entry) => {
+            entry.prevHash = 'a'.repeat(64)
+          },
+          reason: 'Chain link broken'
+        },
+        {
+          name: 'an index that does not continue the chain',
+          tamper: (entry) => {
+            entry.index = (entry.index as number) + 1
+          },
+          reason: 'Index mismatch'
+        },
+        {
+          name: 'a body edited after hashing',
+          tamper: (entry) => {
+            entry.fieldFromALaterBuild = 'edited'
+          },
+          reason: 'Entry hash mismatch'
+        }
+      ]
+      for (const { name, tamper, reason } of tampers) {
+        it(`FAILs ${name}, conferring no scope`, () => {
+          forgeExportEntry(fromNewerSchema)
+          const p = join(selDir, 'export-entry.json')
+          const entry = JSON.parse(readFileSync(p, 'utf-8')) as Record<string, unknown>
+          tamper(entry)
+          writeFileSync(p, JSON.stringify(entry))
+          const result = verifyEvidencePackage(selDir)
+          expect(result.pass).toBe(false)
+          expect(result.unsupported).toBeUndefined()
+          expect(
+            hasReason(
+              result,
+              `export-entry.json claims a newer schema, but fails a check: ${reason}`
+            )
+          ).toBe(true)
+          expect(hasReason(result, `capture ${captureB}: content file missing`)).toBe(true)
+        })
+      }
+
+      it('FAILs an unknown entry type whose signature does not verify', () => {
+        forgeExportEntry((entry) => {
+          entry.type = 'export-from-a-later-build'
+          delete entry.schemaVersion
+        })
+        const p = join(selDir, 'export-entry.json')
+        const entry = JSON.parse(readFileSync(p, 'utf-8')) as Record<string, unknown>
+        delete entry.signature
+        writeFileSync(p, JSON.stringify(entry))
+        const result = verifyEvidencePackage(selDir)
+        expect(result.unsupported).toBeUndefined()
+        expect(
+          hasReason(result, 'export-entry.json claims a newer schema, but fails a check: Invalid')
+        ).toBe(true)
+      })
+
+      it('FAILs a body nested past the bound before canonicalizing it', () => {
+        forgeExportEntry(fromNewerSchema)
+        const p = join(selDir, 'export-entry.json')
+        const entry = JSON.parse(readFileSync(p, 'utf-8')) as Record<string, unknown>
+        let deep: unknown = 'leaf'
+        for (let i = 0; i < 300; i++) deep = [deep]
+        entry.fieldFromALaterBuild = deep
+        writeFileSync(p, JSON.stringify(entry))
+        const result = verifyEvidencePackage(selDir)
+        expect(result.unsupported).toBeUndefined()
+        expect(hasReason(result, 'fails a check: Entry too deeply nested')).toBe(true)
+      })
+
+      // A known type is the same kind of line in every schema, so a newer
+      // `capture` line cannot stand as the package's export entry.
+      it('FAILs a known non-export type that claims a newer schema', () => {
+        forgeExportEntry((entry) => {
+          fromNewerSchema(entry)
+          entry.type = 'capture'
+        })
+        const result = verifyEvidencePackage(selDir)
+        expect(result.unsupported).toBeUndefined()
+        expect(
+          hasReason(result, "export-entry.json is a 'capture' entry, not an export entry")
+        ).toBe(true)
+      })
+
+      // Not for sale: a definite failure before the export entry stays the
+      // verdict, and the export entry is reported as what it is beside it.
+      it('keeps the FAIL of a chain that broke before the export entry', () => {
+        forgeExportEntry(fromNewerSchema)
+        const manifestPath = join(selDir, 'manifest.jsonl')
+        const lines = readFileSync(manifestPath, 'utf-8').trim().split('\n')
+        const first = JSON.parse(lines[0]) as Record<string, unknown>
+        // The signature sits outside the hashed body, so the head is unchanged
+        // and the export entry still continues it.
+        first.signature = signEntryHash('f'.repeat(64))
+        lines[0] = JSON.stringify(first)
+        writeFileSync(manifestPath, lines.join('\n') + '\n')
+        const result = verifyEvidencePackage(selDir)
+        expect(result.pass).toBe(false)
+        expect(result.unsupported).toBeUndefined()
+        expect(result.checks.find((c) => c.name === 'manifest chain')?.status).toBe('fail')
+        expect(result.checks.find((c) => c.name === 'export entry')?.status).toBe('skip')
+      })
     })
   })
 

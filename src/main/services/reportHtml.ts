@@ -47,6 +47,12 @@ import type {
 import type { TrustedTimeResult } from '@shared/verify'
 import { recordedHttpStatus } from '@shared/httpStatus'
 import { formatSnapshotDelta } from '@shared/wayback'
+import { sentenceStart, stepRef } from '@main/services/verifyProcedure'
+import {
+  CAPTURE_PACKAGE_DIRECTORY,
+  SCREENSHOT_PACKAGE_DIRECTORY,
+  TIMESTAMP_PACKAGE_DIRECTORY
+} from '../../packages/evidence-package-layout/index'
 import {
   TRUSTED_TIME_AUTHORITY_NOT_CONTACTED,
   TRUSTED_TIME_UNRECORDED_STAMPED_AT,
@@ -1007,7 +1013,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   <code>signing-public-key.pem</code>, <code>tsa-intermediates.pem</code>,${
     data.tsaTrustAnchorBundled ? ' <code>tsa-root.pem</code>,' : ''
   } <code>VERIFY.md</code>, <code>verify.sh</code>,
-  and the <code>pages/</code>, <code>screenshots/</code> and <code>timestamps/</code>
+  and the <code>${CAPTURE_PACKAGE_DIRECTORY}/</code>, <code>${SCREENSHOT_PACKAGE_DIRECTORY}/</code> and <code>${TIMESTAMP_PACKAGE_DIRECTORY}/</code>
   directories${
     ctx.fileExhibits.length > 0
       ? `, plus the enclosed bytes of every other exhibit under ${[
@@ -1093,7 +1099,9 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   <p>Where trusted time is enabled, the capture content digest — not the page content — was
   submitted to an RFC 3161 Time-Stamping Authority, and the returned token was retained beside
   the capture${
-    isPackagedExport(options) ? ' and bundled under <code>timestamps/</code>' : ''
+    isPackagedExport(options)
+      ? ` and bundled under <code>${TIMESTAMP_PACKAGE_DIRECTORY}/</code>`
+      : ''
   }. A token asserts that the digest existed
   at or before the time the authority states; it says nothing about what the page contained or
   who published it.</p>
@@ -1382,20 +1390,19 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   </div>`
   }
   <ol class="steps rule-top">
-    <li><strong>Rehash each stored page.</strong> Compute the SHA-256 of each file in
-    <code>pages/</code> and compare it to that exhibit's digest in <code>evidence.json</code> and
-    on its exhibit page.</li>
-    <li><strong>Replay the manifest chain.</strong> Walk <code>manifest.jsonl</code> from the
-    first entry, recomputing each entry hash over its canonical form plus its predecessor's hash.
-    The chain must reconcile to the head hash printed under “Chain of custody”.</li>
+    <li><strong>Check file integrity against the index.</strong> Compute the SHA-256 of each
+    file listed in <code>evidence.json</code> and compare it to the digest the index records for
+    it. The index is not signed, and it lists neither itself nor the signed export entry, so a
+    match shows only that the listed files and the index agree; ${stepRef(5)} binds each exhibit's
+    content to the manifest.</li>
     <li><strong>Check the entry signatures.</strong> ${
       data.entriesUnderCarriedKeys
         ? `Verify each signed manifest entry against the key
     that signed it. This chain holds an <code>import</code> entry, so the key depends on where an
     entry sits: an entry verifies under the key in the <code>sourcePublicKeyPem</code> field of the
     first <code>import</code> entry after it, or under <code>signing-public-key.pem</code> when no
-    <code>import</code> entry follows it. <code>VERIFY.md</code> step 2 gives the commands for one
-    entry and <code>verify.sh</code> step 2 runs the same check over every signed entry. A key an
+    <code>import</code> entry follows it. <code>VERIFY.md</code> ${stepRef(2)} gives the commands for one
+    entry and <code>verify.sh</code> ${stepRef(2)} runs the same check over every signed entry. A key an
     <code>import</code> entry carries is only as trustworthy as that entry's signature, which is
     checked under the next key along. This binds the entries from the last <code>import</code>
     entry on to the installation identified on the cover, and each earlier entry only to the key
@@ -1404,14 +1411,33 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     <code>signing-public-key.pem</code>. This binds the entries to the installation identified on
     the cover — not to any named person.`
     }</li>
-    <li><strong>Validate the timestamp tokens.</strong> For each <code>.tst</code> in
-    <code>timestamps/</code>, confirm the token's message imprint equals that exhibit's capture
+    <li><strong>Recompute each entry hash.</strong> For each entry in <code>manifest.jsonl</code>,
+    hash its canonical form (the entry without its hash and signature fields, keys sorted) and
+    compare the result to the hash the entry records. This catches an edited entry whose
+    signature was left in place.</li>
+    <li><strong>Check the chain linkage.</strong> Confirm each entry's predecessor hash equals the
+    previous entry's hash and that the indexes count up from 0. The chain must reconcile to the
+    head hash printed under “Chain of custody”.</li>
+    <li><strong>Bind the content to its manifest entries.</strong> For each capture entry, hash its
+    stored page in <code>${CAPTURE_PACKAGE_DIRECTORY}/</code> and, where the entry records one, its screenshot in
+    <code>${SCREENSHOT_PACKAGE_DIRECTORY}/</code>, which is named by its own digest. Compare each to the hash inside
+    that manifest entry, not to <code>evidence.json</code>. Exhibits of other kinds and derived
+    files are checked the same way against their own entries. An entry written before entries
+    were signed carries no signature: it is covered by ${stepRef(3, 4)} and by any timestamp
+    checked in ${stepRef(6)}, not by ${stepRef(2)}. An exhibit absent from the package
+    is accounted for only by a later deletion entry or by the selection scope in the signed export
+    entry, never by the index or by this report.</li>
+    <li><strong>Validate the timestamp tokens.</strong> Take the tokens from the signed timestamp
+    entries in <code>manifest.jsonl</code> rather than from a listing of <code>${TIMESTAMP_PACKAGE_DIRECTORY}/</code>,
+    so a deleted token file shows as missing. An exhibit with no timestamp entry has no token to
+    check and carries no trusted-time claim. For each exhibit ${stepRef(5)} requires present whose
+    content digest a timestamp entry records, confirm that token's message imprint equals the
     digest and that its signing chain, built with <code>tsa-intermediates.pem</code>, terminates in
     ${
       data.tsaTrustAnchorBundled
         ? `the self-signed root shipped as <code>tsa-root.pem</code>. That file is a convenience copy,
     not an independent anchor: check its SHA-256 fingerprint against the authority’s published
-    value or your own trust store first (<code>VERIFY.md</code> step 6a prints the expected
+    value or your own trust store first (<code>VERIFY.md</code> ${stepRef('6a')} prints the expected
     fingerprint and the exact <code>openssl</code> command)`
         : `a trust anchor you obtain independently from the authority that issued the tokens.
     Each token names its issuer inside itself, in the signing certificate carried in
@@ -1421,12 +1447,12 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     report's cover either: the cover states what this installation had configured when the
     package was built, not who signed a token retained from earlier`
     }.</li>
-    <li><strong>Match the screenshots.</strong> Each file name in <code>screenshots/</code> is its
-    own digest; recomputing it confirms that the packaged image is the one the exhibit cites.</li>
-    <li><strong>Recompute the package hash.</strong> Hash the canonical, path-sorted artefact list
-    in <code>evidence.json</code> and compare it to the package hash in the export entry of the
-    live case manifest.</li>
   </ol>
+  <p>Where a package carries a signed export entry, Birdbrain's own verifier makes one further
+  check that neither <code>VERIFY.md</code> nor <code>verify.sh</code> performs: it hashes the
+  canonical, path-sorted artefact list in <code>evidence.json</code> and compares it to the
+  package hash in that entry. A package built before export entries existed has none, and its
+  index is bound to no signed statement.</p>
   ${
     data.tsaTrustAnchorBundled
       ? ''
@@ -1436,7 +1462,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     authority is configured for this case, so no root file is bundled and
     <code>tsa-intermediates.pem</code> holds only certificates carried inside the tokens
     themselves. Validating a token against certificates it
-    supplied is circular and establishes nothing about who issued it. Step 4 therefore requires a
+    supplied is circular and establishes nothing about who issued it. ${sentenceStart(stepRef(6))} therefore requires a
     root obtained independently from the authority that issued the tokens, which each token names
     in its own signing certificate — a name the token asserts about itself, to be used for
     finding the authority and not as proof it issued anything; until such a root is used, the

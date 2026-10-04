@@ -11,6 +11,7 @@ import {
 } from '@shared/trustedTimeDisclosure'
 import type { Capture, TrustedTime } from '@shared/types'
 import type { TrustedTimeResult } from '@shared/verify'
+import { PACKAGE_ROOT_FILES } from '../../packages/evidence-package-layout/index'
 
 // Minimal shape of the export-time data the certification needs. Kept structural
 // (not a hard import of ExportData) so the certifier can be exercised in tests
@@ -667,7 +668,10 @@ function signingKeyFields(fields: CertificationFields): string {
       <div class="field-value"><span class="mono break">${esc(fingerprint)}</span></div></div>`
   const ranges = fields.signingKeyRanges
   if (ranges.length < 2) {
-    return field('Signing key (SHA-256 of signing-public-key.pem)', fields.signingKeyFingerprint)
+    return field(
+      `Signing key (SHA-256 of ${PACKAGE_ROOT_FILES.signingPublicKey})`,
+      fields.signingKeyFingerprint
+    )
   }
   return ranges
     .map(({ fromIndex, toIndex, fingerprint, carriedByImportAt }) => {
@@ -675,7 +679,7 @@ function signingKeyFields(fields: CertificationFields): string {
         fromIndex === toIndex ? `entry #${fromIndex}` : `entries #${fromIndex} to #${toIndex}`
       const key =
         carriedByImportAt === null
-          ? 'signing-public-key.pem'
+          ? PACKAGE_ROOT_FILES.signingPublicKey
           : `the key import entry #${carriedByImportAt} carries`
       return field(`Signing key for ${entries} (SHA-256 of ${key})`, fingerprint)
     })

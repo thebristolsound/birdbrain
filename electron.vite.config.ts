@@ -39,6 +39,16 @@ export default defineConfig({
         '@main': resolve('src/main'),
         '@shared': resolve('src/shared')
       }
+    },
+    build: {
+      rollupOptions: {
+        // The MCP server (ADR-0038) is a second main-side entry: it reuses the
+        // app's services, so it builds with them and shares their chunks.
+        input: {
+          index: resolve('src/main/index.ts'),
+          mcp: resolve('src/mcp/index.ts')
+        }
+      }
     }
   },
   preload: {

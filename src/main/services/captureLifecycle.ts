@@ -21,7 +21,7 @@ import {
   ManifestRollback
 } from '@main/services/manifest'
 import type { CaptureChainEntry, ManifestImportEntry } from '@main/services/manifest'
-import { reconcileCaptureTrustedTime } from '@main/services/trustedTime'
+import { reconcileCaptureTrustedTime, resolveTrustedTime } from '@main/services/trustedTime'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { getSettings } from '@main/services/settings'
 import { resolveToolVersion } from '@main/services/toolVersion'
@@ -383,14 +383,17 @@ export async function ingestMhtmlCapture(
 
 async function computeVerification(
   capture: NonNullable<ReturnType<typeof captureRepo.getCapture>>,
-  store: CaptureStore
+  store: CaptureStore,
+  record: boolean
 ): Promise<HashVerification> {
   // Trusted time is ORTHOGONAL to integrity, so resolve it once up front and
   // attach it to every result regardless of the integrity outcome. Derived from
   // the manifest alone; a legacy/un-stamped capture simply reports none/pending.
   // Reconcile here so the DB mirror self-heals on read, e.g. a stamp landed in
   // the manifest but the worker hasn't refreshed the column yet.
-  const tt = reconcileCaptureTrustedTime(capture)
+  const tt = record
+    ? reconcileCaptureTrustedTime(capture)
+    : resolveTrustedTime(store.caseDir(capture.caseId), capture.hash)
   const trusted = { trustedTime: tt.trustedTime, tsaName: tt.tsaName, stampedAt: tt.stampedAt }
 
   const base = {
@@ -585,9 +588,12 @@ async function verifySidecars(
 }
 
 // Streams the MHTML file from disk, recomputes SHA-256, and checks the manifest chain.
+// `record: false` is the read-only path (ADR-0038): the same verdict, with
+// nothing written back to the database.
 export async function verifyCapture(
   captureId: string,
-  store: CaptureStore = defaultCaptureStore
+  store: CaptureStore = defaultCaptureStore,
+  { record = true }: { record?: boolean } = {}
 ): Promise<HashVerification> {
   const capture = captureRepo.getCapture(captureId)
   if (!capture) {
@@ -603,7 +609,8 @@ export async function verifyCapture(
     }
   }
 
-  const result = await computeVerification(capture, store)
+  const result = await computeVerification(capture, store, record)
+  if (!record) return result
 
   // Persist so the UI can rehydrate across remounts/sessions and export can read
   // a stable snapshot without re-hashing when nothing has changed on disk. The

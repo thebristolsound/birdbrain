@@ -63,7 +63,7 @@ describe('the command palette', () => {
   it('offers Replay walkthrough between the two entries it already had', () => {
     useAppStore.setState({ commandPaletteOpen: true })
     render(<CommandPalette />, { wrapper: Wrapper })
-    const labels = ['Create new investigation', 'Replay walkthrough', 'Report a problem']
+    const labels = ['Create new case', 'Replay walkthrough', 'Report a problem']
     const rendered = labels.map((l) => screen.getByText(l))
     expect(rendered[0].compareDocumentPosition(rendered[1])).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING

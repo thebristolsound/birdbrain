@@ -120,7 +120,7 @@ export function CommandPalette() {
                   setSelectedIndex(0)
                 }}
                 onKeyDown={handleKeyDown}
-                placeholder="Switch investigation..."
+                placeholder="Switch case..."
                 className="min-w-0 flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-faint outline-none"
               />
               <span className="rounded border border-border-strong bg-surface px-1.5 py-0.5 font-mono text-[10px] text-text-faint">
@@ -132,7 +132,7 @@ export function CommandPalette() {
             <div className="max-h-72 overflow-y-auto py-1">
               {filtered.length === 0 ? (
                 <div className="px-4 py-8 text-center text-sm text-text-faint">
-                  No investigations match &ldquo;{query}&rdquo;
+                  No cases match &ldquo;{query}&rdquo;
                 </div>
               ) : (
                 filtered.map((c, i) => {
@@ -182,7 +182,7 @@ export function CommandPalette() {
                 }}
               >
                 <Plus className="h-4 w-4 shrink-0 text-text-faint" />
-                <span className="text-sm">Create new investigation</span>
+                <span className="text-sm">Create new case</span>
               </button>
               <button
                 data-testid="palette-replay-tour"

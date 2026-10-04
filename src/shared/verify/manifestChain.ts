@@ -62,7 +62,10 @@ export function describeUnsupportedEntry(entry: UnsupportedEntry): string {
 // verdict is reported. Editing an entry to claim a newer schema therefore buys
 // no exculpation: the edit fails its own hash, and planting a fresh line fails
 // its signature under the local key, so both report as tampering as before.
-function detectUnsupportedEntry(raw: unknown, index: number): UnsupportedEntry | undefined {
+//
+// Exported for the package verifier's `export-entry.json`, which is a manifest
+// line too and takes the same screen and the same checks (#1197).
+export function detectUnsupportedEntry(raw: unknown, index: number): UnsupportedEntry | undefined {
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return undefined
   const { type, schemaVersion } = raw as { type?: unknown; schemaVersion?: unknown }
   const entryType = typeof type === 'string' ? type : undefined
@@ -130,7 +133,7 @@ function exceedsNestingDepth(value: unknown, limit: number): boolean {
 // The signature is required with NO v1 grandfathering, unlike the readable path
 // below: an entry this build cannot read is never a legacy v1 entry — every v1
 // type is one it knows — so it comes from a writer that signs.
-function verifyUnreadableEntry(
+export function verifyUnreadableEntry(
   raw: Record<string, unknown>,
   expected: { index: number; prevHash: string },
   publicKeyPem: string

@@ -81,14 +81,14 @@ describe('the top bar case switcher', () => {
   it('names Ctrl off macOS', async () => {
     renderTopBar()
     const button = await screen.findByTestId('topbar-case-name')
-    expect(button.title).toBe('Switch investigation (Ctrl+K)')
+    expect(button.title).toBe('Switch case (Ctrl+K)')
   })
 
   it('names the Command glyph on macOS', async () => {
     stubPlatform(MAC_PLATFORM)
     renderTopBar()
     const button = await screen.findByTestId('topbar-case-name')
-    expect(button.title).toBe('Switch investigation (⌘K)')
+    expect(button.title).toBe('Switch case (⌘K)')
   })
 })
 

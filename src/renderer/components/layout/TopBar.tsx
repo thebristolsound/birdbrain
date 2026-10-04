@@ -98,7 +98,7 @@ export function TopBar() {
               data-tour="caseswitcher"
               onClick={() => setCommandPaletteOpen(true)}
               className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 hover:bg-elevated transition-colors"
-              title={`Switch investigation (${accelerator('K')})`}
+              title={`Switch case (${accelerator('K')})`}
             >
               <span className="max-w-[220px] truncate font-display text-xs font-bold text-text-primary">
                 {activeCase?.name ?? ''}

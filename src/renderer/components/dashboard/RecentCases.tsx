@@ -57,7 +57,7 @@ export function RecentCases({
             <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-accent/20 bg-accent-subtle transition-colors group-hover:bg-accent-subtle">
               <Plus className="h-6 w-6 text-accent transition-transform duration-300 group-hover:rotate-90" />
             </div>
-            <h3 className="font-display font-bold text-sm text-accent mb-1">New Investigation</h3>
+            <h3 className="font-display font-bold text-sm text-accent mb-1">New Case</h3>
             <p className="text-[11px] text-accent leading-relaxed">
               Start a fresh case with
               <br />

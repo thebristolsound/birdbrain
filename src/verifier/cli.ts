@@ -69,9 +69,9 @@ TSA authenticity. So binary-PASS is not the same as runbook-PASS.
 Exit codes: 0 = PASS, 1 = FAIL, 2 = not a verifiable object, 3 = verifier too
 old. Exit 2 is a Birdbrain Working Copy — a deliberately non-evidentiary export
 that self-identifies via WORKING-COPY.json and contains nothing to verify. Exit
-3 means the package's manifest holds an entry written by a newer Birdbrain than
-this verifier was built for, so this build cannot read the chain. Neither is a
-PASS or a FAIL: no integrity claim is made either way.`
+3 means the package's manifest, or its export entry, holds an entry written by a
+newer Birdbrain than this verifier was built for, so this build cannot read it.
+Neither is a PASS or a FAIL: no integrity claim is made either way.`
 
 function runSelfCheck(): number {
   const actual = canonicalStringify(GOLDEN_BODY)

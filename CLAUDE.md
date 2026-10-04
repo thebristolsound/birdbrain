@@ -18,6 +18,7 @@ Open source web investigation & capture tool. Electron desktop app with a compan
 - `pnpm typecheck` - Typecheck all six tsconfig projects: `src` main/preload/shared, `src` renderer, extension, then `tests/` (node flavour and web flavour) and `e2e/`. Tests are inside the gate — see "Testing" below
 - `pnpm format` - Prettier format src/ and extension/
 - `pnpm rebuild:electron` - Rebuild native deps (better-sqlite3)
+- `pnpm build:test-sharp` - Linux only: build sharp against the system libvips for the test runner, then run tests with `BIRDBRAIN_TEST_SYSTEM_SHARP=1`. Works around a SIGSEGV in tests that use sharp under Electron; see "sharp under Electron on Linux" in [Testing](docs/agents/testing.md)
 - `pnpm db:migration:new <slug>` - Scaffold the next schema migration: appends a fail-closed `if (version < N)` block to `migrations.ts` and bumps `LATEST_SCHEMA_VERSION` in `core.ts` in one run, refusing when the two already disagree
 - `pnpm test:e2e` - Run E2E tests (Playwright + Electron, runs `pnpm build` first)
 - `pnpm test:e2e:debug` - Run E2E tests with Playwright inspector

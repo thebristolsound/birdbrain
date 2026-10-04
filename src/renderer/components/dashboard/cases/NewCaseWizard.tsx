@@ -87,7 +87,7 @@ export function NewCaseWizard() {
         }
       }
 
-      notify.success('Investigation created', {
+      notify.success('Case created', {
         description: `“${name.trim()}” is ready — ${armed} selector${armed === 1 ? '' : 's'} armed.`
       })
       navigate({ to: '/cases/$caseId', params: { caseId: newCase.id } })
@@ -115,13 +115,13 @@ export function NewCaseWizard() {
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-subtle">
             <FolderPlus className="h-5 w-5 text-accent" />
           </div>
-          <h2 className="font-display text-lg font-bold text-text-primary">New Investigation</h2>
+          <h2 className="font-display text-lg font-bold text-text-primary">New Case</h2>
         </div>
 
-        {/* Investigation Name */}
+        {/* Case Name */}
         <div className="mb-4">
           <Label htmlFor={nameId} className="mb-1.5 text-sm font-medium text-text-secondary">
-            Investigation Name
+            Case Name
           </Label>
           <Input
             id={nameId}
@@ -152,7 +152,7 @@ export function NewCaseWizard() {
             data-testid="case-description-input"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Brief description of this investigation..."
+            placeholder="Brief description of this case..."
             rows={3}
             className="resize-none rounded-xl px-3 py-2 text-sm placeholder:text-text-muted"
           />

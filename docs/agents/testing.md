@@ -23,7 +23,7 @@ The cause is [electron/electron#46323](https://github.com/electron/electron/issu
 
 The workaround builds sharp against the system libvips, so it shares Electron's GLib, and uses that build only in tests:
 
-1. Install a system libvips at least as new as sharp's `config.libvips` (8.18.7 for sharp 0.35.5); `pkg-config --modversion vips-cpp` shows the installed version.
+1. Install a libvips at least as new as sharp's `config.libvips` (8.18.7 for sharp 0.35.5), linked against the system GLib; `pkg-config --modversion vips-cpp` shows the version the build will use. If your distribution's package is older, build libvips from its release tarball into a directory of your own, with `LDFLAGS=-Wl,-rpath,<prefix>/lib` at `meson setup` so its two libraries find each other, and set `PKG_CONFIG_PATH=<prefix>/lib/pkgconfig` when you run the next step. On Arch, building libvips needs `glib2-devel`.
 2. Run `pnpm build:test-sharp`. It copies sharp into `.cache/test-sharp/` (ignored) and builds it there; nothing under `node_modules` changes. Rerun it after a sharp upgrade or a system libvips upgrade.
 3. Run tests with `BIRDBRAIN_TEST_SYSTEM_SHARP=1`, for example `BIRDBRAIN_TEST_SYSTEM_SHARP=1 pnpm test`, or export it in your shell. `tests/setup/system-sharp.ts` then hands sharp the system build in place of the prebuilt addon.
 

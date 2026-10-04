@@ -13,7 +13,7 @@
  */
 
 import { execFileSync } from 'child_process'
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from 'fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { createRequire } from 'module'
 import { basename, dirname, join, resolve } from 'path'
 import { fileURLToPath } from 'url'
@@ -54,6 +54,13 @@ if (older(system, minimum)) {
   )
 }
 
+// A libvips outside the default search paths (for example built into a home directory and
+// found through PKG_CONFIG_PATH) needs its directory embedded in the addon, or the loader would
+// pick up the system copy at test time.
+const libdir = execFileSync('pkg-config', ['--variable=libdir', 'vips-cpp'], {
+  encoding: 'utf8'
+}).trim()
+
 // The build reads sharp's dist/ and package.json and requires node-addon-api and detect-libc,
 // so copy the whole package and point NODE_PATH at the directories its dependencies live in.
 const sharpRequire = createRequire(sharpEntry)
@@ -74,14 +81,44 @@ for (const entry of ['package.json', 'dist', 'src']) {
   })
 }
 
-console.log(`Building sharp ${sharpPkg.version} against system libvips ${system} in ${outDir}`)
+// sharp searches the system pkg-config path before PKG_CONFIG_PATH, so a libvips installed
+// outside the system paths would lose to an older system copy. Reorder the search in this
+// private copy so PKG_CONFIG_PATH comes first, as pkg-config itself does.
+const libvipsJs = join(outDir, 'dist', 'libvips.cjs')
+const searchOrder = `      getBrewPkgConfigPath(),
+      getPkgConfigPath(),
+      process.env.PKG_CONFIG_PATH
+`
+const libvipsSource = readFileSync(libvipsJs, 'utf8')
+if (!libvipsSource.includes(searchOrder)) {
+  fail(
+    `sharp ${sharpPkg.version} changed its pkg-config search in dist/libvips.cjs; update this script`
+  )
+}
+writeFileSync(
+  libvipsJs,
+  libvipsSource.replace(
+    searchOrder,
+    `      process.env.PKG_CONFIG_PATH,
+      getBrewPkgConfigPath(),
+      getPkgConfigPath()
+`
+  )
+)
+
+console.log(`Building sharp ${sharpPkg.version} against libvips ${system} in ${outDir}`)
 execFileSync(
   process.execPath,
   [require.resolve('node-gyp/bin/node-gyp.js'), 'rebuild', '--directory=src'],
   {
     cwd: outDir,
     stdio: 'inherit',
-    env: { ...process.env, SHARP_FORCE_GLOBAL_LIBVIPS: '1', NODE_PATH: nodePath.join(':') }
+    env: {
+      ...process.env,
+      SHARP_FORCE_GLOBAL_LIBVIPS: '1',
+      NODE_PATH: nodePath.join(':'),
+      LDFLAGS: `${process.env.LDFLAGS ?? ''} -Wl,-rpath,${libdir}`.trim()
+    }
   }
 )
 

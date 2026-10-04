@@ -3,26 +3,26 @@
 Date: 2026-10-03, revised 2026-10-04
 Audience: the designer working in the "Birdbrain UI" design project. Engineering contact: the
 maintainer.
-Status: draft. Do not send it to the designer until #1714, the Case investigation engine spec
-(`2026-10-02-case-investigation-engine-design.md`), settles. #1720, which added this brief's
-vocabulary to [`CONTEXT.md`](../../CONTEXT.md) and recorded
-[ADR-0039](../adr/0039-ai-analysis-is-an-opt-in-layer-over-a-model-free-base.md), has merged, and
-this branch includes it. The one gap marked **GAP** below is a decision still open.
-Source of decisions: the engine spec; the review comment on #1714 that begins "Review: changes
-requested"; the [Case retrieval pipeline spec](2026-10-02-case-retrieval-pipeline-design.md); and a
-design session with the maintainer on 2026-10-03, recorded in #1720. Where the spec disagrees with
-the review or the session, this brief follows the later decision. It covers only what a designer
-needs to draw the surfaces.
+Status: draft. The engine spec this brief draws on, the
+[Case investigation engine](2026-10-02-case-investigation-engine-design.md), merged in #1714. #1720
+added this brief's vocabulary to [`CONTEXT.md`](../../CONTEXT.md) and recorded
+[ADR-0039](../adr/0039-ai-analysis-is-an-opt-in-layer-over-a-model-free-base.md). Seven questions
+are still open. "Open gaps" lists them, and each is marked **GAP** where it touches a surface.
+Source of decisions: the engine spec; the
+[Case retrieval pipeline spec](2026-10-02-case-retrieval-pipeline-design.md); and a design session
+with the maintainer on 2026-10-03, recorded in #1720. The spec was revised on 2026-10-04, after the
+session, so where the two disagree this brief follows the spec. It covers only what a designer needs
+to draw the surfaces.
 
 ## What the feature is
 
 This brief describes a proposed design. None of it ships yet: the present tense from here on
 describes the design, not the current app.
 
-In the design, the Operator asks Birdbrain a question about a Case: "Who owned the _Marlow Star_
-between 2019 and 2022?", "Which sites republished the 12 March article?", or "Are M. Calloway, Jun
-Sato, and The Ferryman the same writer?". Birdbrain finds what in the Case it can match to the
-question and shows three things:
+In the design, the Operator asks Birdbrain a question about a Case, such as "Who owned the _Marlow
+Star_ between 2019 and 2022?" or "Which sites republished the 12 March article?" or "Are M.
+Calloway, Jun Sato, and The Ferryman the same writer?" Birdbrain finds what in the Case it can match
+to the question and shows three things:
 
 - **A Joint map.** The Subjects the question touches and the Joints between them.
 - **Claim checks.** A check of each claim against the stored Exhibit it cites.
@@ -54,8 +54,7 @@ These are `CONTEXT.md` terms:
 
 - A **Subject** is anything a Case investigates that a claim can be about: a person, pseudonym,
   organization, account, site, document, place, or event. It has a name and a kind, and the Operator
-  can add kinds. A Subject of kind "document" is bound to one Exhibit; Birdbrain proposes one when a
-  Joint needs it.
+  can add kinds.
 - A **Joint** is one claim about a Subject, or between two Subjects, together with the Exhibit spans
   that support it and the spans that conflict with it.
 - A **Source Class** is the Operator's classification of what kind of source an Exhibit is:
@@ -64,6 +63,12 @@ These are `CONTEXT.md` terms:
 - **Withheld from analysis** is an Operator flag that keeps an Exhibit out of every analysis in its
   Case.
 
+The engine spec adds two rules the glossary does not hold yet. A Subject of kind "document" is bound
+to exactly one Exhibit, and Birdbrain proposes one when a rule needs it. **GAP G10:** whether such a
+Subject can bind to one message inside an `mbox` Exhibit is open; as written, two messages in one
+Exhibit propose no Joint between them. In a Shared Case, Withheld from analysis applies on each
+installation that holds the flag (decision 18).
+
 Four working phrases are not glossary terms: an **inquiry** is the Operator's question, a **run** is
 one pass of analysis over the Case, a **claim check** is the result of testing one claim against one
 stored Exhibit, and the Operator's **own identifiers** are the accounts and addresses that belong to
@@ -71,57 +76,57 @@ the Operator or their Personas, which Birdbrain never follows.
 
 ## Decisions the mock must honor
 
-These are settled. Do not redesign them; design around them. "Spec" is the engine spec in #1714,
-"Review" is the review comment on it, "Retrieval" is the retrieval pipeline spec, and "Session" is
-the 2026-10-03 design session as recorded in #1720.
+These are settled. Do not redesign them; design around them. "Spec" is the engine spec, "Retrieval"
+is the retrieval pipeline spec, and "Session" is the 2026-10-03 design session as recorded in #1720.
+A quoted name after "Spec" or "Retrieval" is a section of that document.
 
 ### Joints and their status
 
-| #   | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Source                                                     |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| 1   | A Joint is proposed until the Operator accepts or rejects it. Proposed, accepted, rejected, and contested Joints differ by line style and by text, never by color alone.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Spec, "Visual design"; Session                             |
-| 2   | Acceptance is the Operator's judgement. Nothing in the view calls a Joint proven, verified, or confirmed.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Session; Spec, "Product promise"                           |
-| 3   | Accepting a Joint never merges its Subjects. Three pseudonyms the Operator believes are one writer stay three Subjects joined by accepted Joints. There is no merge or split action.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Session                                                    |
-| 4   | Joints never derive from other Joints. When one Subject reaches another only through a third, the view shows the path and its Joints in order, each with its status, never a Joint of its own. Only a path of accepted Joints is described as one Subject reaching another: a route that includes a proposed or contested Joint is a possible path, labelled as not joined by accepted Joints, and a rejected Joint is never part of a path. A direct Joint between the ends needs Exhibit spans of its own.                                                                                                                                                                                                                                                                                                                                                                                                           | Session                                                    |
-| 5   | Two Subjects with the same name are always two Subjects. Birdbrain proposes no Joint between them unless an Exhibit supports one, and a Joint between them connects them without collapsing them. A header or metadata field naming a name two Subjects share proposes no Joint; it surfaces as unreviewed material for each, and the Operator chooses.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Spec, flow step 1; Session                                 |
-| 6   | Joints and every decision on them are kept with the Case, like Notes. Each decision records the Operator and the time; each Joint records which layer proposed it: the base layer and its rule, or a named AI provider and model. Accepting or rejecting writes no Manifest Entry. Accepting a Joint also asks for the assumptions it rests on, the Operator's confidence in their own words, and the alternative explanations they considered; the view never fills these in, never scores confidence, and shows a blank one as "not recorded". In a Shared Case each member's acceptance carries its own context. A proposed Joint is never dropped silently: one a later run does not repeat stays, labelled with the Case state it was proposed from, until the Operator accepts or rejects it. A Joint cannot be accepted until it has at least one reviewed supporting span from an Exhibit that can support it. | Session; Spec, "Decisions and surfaced material"; ADR-0004 |
-| 7   | In a Shared Case each member's accept or reject is their own. When members disagree, the Joint is contested and shows each member's decision. A proposed Joint is seen only by the member whose run proposed it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Session; Shared Case members brief, decision 10            |
+| #   | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Source                                                                      |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| 1   | A Joint is proposed until the Operator accepts or rejects it. Proposed, accepted, rejected, and contested Joints differ by line style and by text, never by color alone.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Spec, "Visual design"; Session                                              |
+| 2   | Acceptance is the Operator's judgement. Nothing in the view calls a Joint proven, verified, or confirmed.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Session; Spec, "Product promise"                                            |
+| 3   | Accepting a Joint never merges its Subjects. Three pseudonyms the Operator believes are one writer stay three Subjects joined by accepted Joints. There is no merge or split action.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Session; Spec, "Subjects and Joints"                                        |
+| 4   | Joints never derive from other Joints. When one Subject reaches another only through a third, the view shows the path and its Joints in order, each with its status, never a Joint of its own. Only a path of accepted Joints is described as one Subject reaching another: a route that includes a proposed or contested Joint is a possible path, labelled as not joined by accepted Joints, and a rejected Joint is never part of a path. An accepted Joint that has lost its last available support no longer counts in one. A direct Joint between the ends needs Exhibit spans of its own.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Session; Spec, "Subjects and Joints" and "Decisions and surfaced material"  |
+| 5   | Two Subjects with the same name are always two Subjects. Birdbrain proposes no Joint between them unless an Exhibit supports one, and a Joint between them connects them without collapsing them. A header or metadata field naming a name two Subjects share proposes no Joint; it surfaces as unreviewed material for each, and the Operator chooses.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Spec, flow step 1 and "How two Exhibits come to support one Joint"; Session |
+| 6   | Joints and every decision on them are kept with the Case, like Notes. Each decision records the Operator and the time; each Joint records what proposed it: the base layer and its rule, a named AI provider and model, or the Operator, for a Joint started from a claim in a Note. Accepting or rejecting writes no Manifest Entry. Accepting a Joint also asks for the assumptions it rests on, the Operator's confidence in their own words, and the alternative explanations they considered; the view never fills these in, never scores confidence, and shows a blank one as "not recorded." In a Shared Case each member's acceptance carries its own context. A proposed Joint is never dropped silently: one a later run does not repeat stays, labelled with the Case state it was proposed from, until the Operator accepts or rejects it. When a later run proposes the same Joint again, an undecided proposal takes the later run's basis; an accepted or rejected Joint keeps the basis of the proposal the Operator decided on. A Joint cannot be accepted until it has at least one reviewed supporting span that is available, from an Exhibit that can support it (**GAP G9**). | Session; Spec, "Decisions and surfaced material"; ADR-0004                  |
+| 7   | In a Shared Case each member's accept or reject is their own and is attributed to that member. When members disagree, the Joint is contested and shows each member's decision. A proposed Joint is seen only by the member whose run proposed it; once a member accepts it, the Joint and that decision sync. A reject of a proposal that has not synced stays local. If another member later accepts the same Joint, the earlier reject syncs then, and the Joint shows as contested.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Session; Spec, "Shared Cases"; Shared Case members brief, decision 10       |
 
 ### Support, strength, and surfaced material
 
-| #   | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Source                                                           |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| 8   | Every Joint opens the exact stored span of each Exhibit it cites: the Exhibit, its Content Hash, and a locator (text passage, PDF page, mail message and header field, link target, image alt text, or byte range).                                                                                                                                                                                                                                                                                                                                                                       | Review, items 2 and 4; Retrieval, "Representations and locators" |
-| 9   | A Joint based on a matching story, where the second telling paraphrases or breaks up the first, is supported by pairs of spans, one fact at a time, each pair noting how distinctive the shared fact is. "Harrow Point ferry" is rare; "age sixteen" is common.                                                                                                                                                                                                                                                                                                                           | Session                                                          |
-| 10  | A claim check reports two separate things: whether the text is `present`, `absent`, or `cannot-check` in the named Exhibit, and a proposed reading of whether the passage `supports`, `conflicts`, or is `unclear`. The mock shows both. A paraphrased match can be `absent` and `supports` at once.                                                                                                                                                                                                                                                                                      | Spec, flow step 4; Review, item 10; Session                      |
-| 11  | A Joint has no strength label or score. Its strength is shown as a summary of its reviewed support: Source Classes, the number of independent sources, distinctive matches, and conflicts, for example "2 contemporaneous sources, 1 rare match, 1 conflict".                                                                                                                                                                                                                                                                                                                             | Session; Spec, "Strength without a label"                        |
-| 12  | A Joint is visibly weak when all its reviewed support is unclassified or commercial, or when it rests on one source.                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Session; Spec, flow step 5                                       |
-| 13  | The Operator sets each Exhibit's Source Class; it starts as unclassified. The Operator also marks two Exhibits as one source when one copies the other, and can undo that mark; a shared passage alone never makes that mark. The AI layer may suggest either, as unreviewed material. Source Class is one choice, and AI-origin takes precedence over any other class. In a Shared Case an Exhibit has one Source Class for every member; when two members set different values before they sync, the Exhibit shows both, attributed, and counts as unclassified until a member chooses. | Session                                                          |
-| 14  | A Note, or an Exhibit whose Source Class is AI-origin, can supply a claim to check. Neither ever supports a Joint, so AI-origin material is never offered **Add as support**. A span whose Exhibit is reclassified as AI-origin after it was added leaves the support and the strength summary and moves to a "no longer counted" list.                                                                                                                                                                                                                                                   | Spec, flow step 2; Session                                       |
-| 15  | Material Birdbrain surfaces for an existing Joint, supporting or conflicting, arrives unreviewed. It counts only once the Operator adds it, and it never changes whether the Joint is accepted. An accepted Joint with unreviewed material is flagged until the Operator adds or dismisses it. The base layer never reads a span as conflicting, so the first slice has only that flag; with the AI layer on, material it reads as conflicting carries a stronger mark. A dismissal is remembered. Every add or dismiss is recorded and can be undone.                                    | Session                                                          |
+| #   | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Source                                                                                     |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| 8   | Every Joint opens the exact stored span of each Exhibit it cites: the Exhibit, its Content Hash, and a locator (text passage, PDF page, mail message and header field, link target, image alt text, or byte range).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Spec, "Showing each side"; Retrieval, "Representations and locators"                       |
+| 9   | A Joint based on a matching story, where the second telling paraphrases or breaks up the first, is supported by pairs of spans, one fact at a time, each pair noting how distinctive the shared fact is. "Harrow Point ferry" is rare; "age sixteen" is common.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Session; Spec, "The AI layer"                                                              |
+| 10  | A claim check reports two separate things: whether the text is `present`, `absent`, or `cannot-check` in the named Exhibit, and a proposed reading of whether the passage `supports`, `conflicts`, or is `unclear`. The mock shows both. A paraphrased match can be `absent` and `supports` at once.                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Spec, flow step 4 and "Visual design"; Session                                             |
+| 11  | A Joint has no strength label or score. Its strength is shown as a summary of its reviewed support: Source Classes, the number of independent sources, distinctive matches, and conflicts, for example "2 contemporaneous sources, 1 rare match, 1 conflict."                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Session; Spec, "Strength without a label"                                                  |
+| 12  | A Joint is visibly weak when all its reviewed support is unclassified or commercial, or when it rests on one source.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Session; Spec, "Strength without a label"                                                  |
+| 13  | The Operator sets each Exhibit's Source Class; it starts as unclassified. The Operator also marks two Exhibits as one source when one copies the other, and can undo that mark; a shared passage alone never makes that mark. The AI layer may suggest either; a suggestion changes nothing until the Operator takes it, and the Operator can dismiss it. Source Class is one choice, and AI-origin takes precedence over any other class. In a Shared Case an Exhibit has one Source Class for every member; when two members set different values before they sync, the Exhibit shows both, attributed, until a member chooses one. Until then it counts as unclassified, unless either value is AI-origin: then it supports no Joint while the conflict stands. | Session; Spec, "Source Class and independence"; Spec, "The AI layer"; Spec, "Shared Cases" |
+| 14  | A Note, or an Exhibit whose Source Class is AI-origin, can supply a claim to check. Neither ever supports a Joint, so AI-origin material is never offered **Add as support**. A span whose Exhibit is reclassified as AI-origin after it was added leaves the support and the strength summary and moves to a "no longer counted" list, and returns if the classification changes back.                                                                                                                                                                                                                                                                                                                                                                            | Spec, flow step 2 and "Strength without a label"; Session                                  |
+| 15  | Material Birdbrain surfaces for an existing Joint, supporting or conflicting, arrives unreviewed. It counts only once the Operator adds it, and it never changes whether the Joint is accepted. An accepted Joint with unreviewed material is flagged until the Operator adds or dismisses it. The base layer never reads a span as conflicting, so the first slice has only that flag; with the AI layer on, material it reads as conflicting carries a stronger mark. A dismissal is remembered: the same span does not come back for that Joint unless its Exhibit changes. When a later run cites a span the Joint does not hold yet, the span arrives on that Joint as unreviewed material. Every add or dismiss is recorded and can be undone.               | Session; Spec, "Decisions and surfaced material"                                           |
 
 ### Sources, exclusion, and the AI layer
 
-| #   | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Source                                                               |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| 16  | The source inspector shows the stored Exhibit at the exact span with its Content Hash. It never substitutes a search snippet, a preview, or a live page.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Spec, "Visual design"; Retrieval, "Constraints"                      |
-| 17  | A cited span whose Exhibit no longer matches its Content Hash, or whose stored file is missing, is unavailable. The view never shows it as plausible support.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Retrieval, "Constraints"                                             |
-| 18  | The Operator can mark any Exhibit **Withheld from analysis**, and clear their own flag at any time; the next run reflects it. A withheld Exhibit, or a Staging Pool file, never appears as support or as surfaced material. In a Shared Case each member's flag is their own: the Exhibit is withheld for every member while any member's flag is set, and the view names who holds one. The Owner can clear a revoked member's flag, as a recorded action.                                                                                                                                                                                                                                                               | Session; Spec, "Withheld from analysis" and "Shared Cases"; ADR-0024 |
-| 19  | The view states how many Exhibits a run read and how many were withheld.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Spec, "Visual design"; Review, "Checked and correct"                 |
-| 20  | The base layer uses no model, and the view is complete with AI off. It proposes Joints from shared identifiers and exact text.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | ADR-0039                                                             |
-| 21  | AI analysis is a separate layer, off by default. The Operator enables it in Settings for the installation, then per Case and per provider. A hosted provider's disclosure names the provider, the model and its version, the region that processes the text, the kinds of text it receives (shortlisted passages from eligible Exhibits, the inquiry, and Note passages the Operator selected, never withheld material), and the Egress the request uses. Before a run's first hosted request the Operator reviews the text to be sent, including the shortlisted passages, and sends or cancels; the ADR-0032 first-contact warning comes first where it applies. A failed local model never hands work to a hosted one. | ADR-0039; ADR-0032                                                   |
-| 22  | With AI off, the view says which kinds of Joint it cannot find, such as a paraphrased retelling or a relation stated only in prose, so "no Joints found" never reads as "no connection".                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | ADR-0039                                                             |
-| 23  | The default source is the stored Case only, and the first slice offers no other. When external lookup arrives later, it shows its destination, its query or URL, and the Egress it uses before anything is sent. While the Egress is Direct and no VPN is seen, the first contact with a site in the Case is preceded by the privacy warning ADR-0032 requires, offering to continue, to set up a proxy, or to stop warning on this network. A page found that way is a candidate with its own observation time; it supports nothing until the Operator captures it as a new Exhibit, and it is not compared with the stored Exhibit until then.                                                                          | Spec, "Visual design" and flow step 6; ADR-0032                      |
-| 24  | The inquiry, the starting Subjects, the withheld Exhibits, the Case state, and a snapshot of the relevant Notes travel with each run, so a later edit cannot quietly change what the run was based on. If the Case changes while a run reads it, the run stops and reports nothing; a canceled run also reports nothing.                                                                                                                                                                                                                                                                                                                                                                                                  | Spec, flow step 1                                                    |
+| #   | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Source                                                                                           |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| 16  | The source inspector shows the stored Exhibit at the exact span with its Content Hash. It never substitutes a search snippet, a preview, or a live page.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Spec, "Visual design"; Retrieval, "Constraints"                                                  |
+| 17  | A cited span is unavailable when its Exhibit no longer matches its Content Hash, when its stored file is missing, or when the stored text it was read from no longer matches that text's own recorded hash. The view never shows it as plausible support. A span whose stored text the Manifest never hashed is reported as "unattested" beside its check result.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Spec, flow step 4 and "Showing each side"; Retrieval, "Constraints"                              |
+| 18  | The Operator can mark any Exhibit **Withheld from analysis**, and clear their own flag at any time; the next run reflects it. A withheld Exhibit, or a Staging Pool file, never appears as support or as surfaced material. In a Shared Case each member's flag is their own. An installation withholds the Exhibit while it holds any member's flag for it, and the view names who holds one. A flag does not bind an installation that has not received it: a member who was offline when another member set a flag can still run analysis over that Exhibit, and send its text to a hosted provider, until their installation syncs. The view says so (state 17). The Owner can clear a revoked member's flag, as a recorded action.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Session; Spec, "Withheld from analysis" and "Shared Cases"; ADR-0024                             |
+| 19  | The view states how many Exhibits a run read and how many were withheld.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Spec, "Visual design"                                                                            |
+| 20  | The base layer uses no model, and the view is complete with AI off. It proposes Joints from shared identifiers and exact text.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | ADR-0039                                                                                         |
+| 21  | AI analysis is a separate layer, off by default. The Operator enables it in Settings for the installation, then per Case and per provider. A local model and a hosted provider are separate choices with separate disclosures. A hosted provider's disclosure names the provider, the region that processes the text, the kinds of text it receives (shortlisted passages from eligible Exhibits, the inquiry, and Note passages the Operator selected), and the Egress the request uses. It promises only what the design can keep. A withheld Exhibit's own text, and a Note anchored to a withheld Exhibit, are never sent. Birdbrain blocks inquiry text or another Note's passage that repeats a run of words from a withheld Exhibit; it cannot detect a shorter quotation, a lightly edited one, or a paraphrase. The disclosure states that limit and never says that no withheld material is sent. No passage goes to a provider before its hash checks pass. Before a run's first hosted request the Operator reviews the text to be sent, including the shortlisted passages, and sends or cancels; the ADR-0032 first-contact warning comes first where it applies. A failed local model never hands work to a hosted one. Each disclosure also names the model, and its version where it has one. The spec's disclosure sentence does not list the model; this brief adds it because every AI-proposed Joint records its provider, model, and model version. | ADR-0039; ADR-0032; Spec, "The AI layer"; for the model, Spec, "Decisions and surfaced material" |
+| 22  | With AI off, the view says which kinds of Joint it cannot find, such as a paraphrased retelling or a relation stated only in prose, so "no Joints found" never reads as "no connection."                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | ADR-0039; Spec, "What is deterministic and what needs the AI layer"                              |
+| 23  | The default source is the stored Case only, and the first slice offers no other. When external lookup arrives later, it shows its destination, its query or URL, and the Egress it uses before anything is sent. While the Egress is Direct and no VPN is seen, the first contact with a site in the Case is preceded by the privacy warning ADR-0032 requires, offering to continue, to set up a proxy, or to stop warning on this network. A page found that way is a candidate with its own observation time; it supports nothing until the Operator captures it as a new Exhibit, and it is not compared with the stored Exhibit until then.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Spec, "Visual design" and flow step 6; ADR-0032                                                  |
+| 24  | The inquiry, the starting Subjects, the withheld Exhibits, the Case state, and a snapshot of the relevant Notes travel with each run, so a later edit cannot quietly change what the run was based on. If the Case changes while a run reads it, the run stops and reports nothing; a canceled run also reports nothing.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Spec, flow step 1                                                                                |
 
 ### Layout and access
 
-| #   | Decision                                                                                                                                                                                                                                                                                                                              | Source                                                                   |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| 25  | The Joint map is a new investigation view. It does not silently reuse the Link Map or its 20-node ceiling.                                                                                                                                                                                                                            | Spec, "Visual design"                                                    |
-| 26  | WCAG 2.2 AA is the product target. The Joint list is the keyboard and screen-reader equivalent of the map: everything the map shows, including Subjects with no Joint, and every action it offers, including selecting two Subjects to see the path between them, is reachable from the list. You may propose a different equivalent. | Review, item 16; [standards](../agents/osint-investigation-standards.md) |
-| 27  | The window minimum is 900 by 600 and the default is 1200 by 800 (`src/main/windowSize.ts`).                                                                                                                                                                                                                                           | Review, item 14                                                          |
-| 28  | On a narrow window the panes become tabs and keep the selected Joint and Exhibit. The test: the Operator can reject one tempting but unsupported Joint without losing their place in the Joint list.                                                                                                                                  | Spec, "Visual design"                                                    |
+| #   | Decision                                                                                                                                                                                                                                                                                                                              | Source                                                                         |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| 25  | The Joint map is a new investigation view. It does not silently reuse the Link Map or its 20-node ceiling.                                                                                                                                                                                                                            | Spec, "Visual design"                                                          |
+| 26  | WCAG 2.2 AA is the product target. The Joint list is the keyboard and screen-reader equivalent of the map: everything the map shows, including Subjects with no Joint, and every action it offers, including selecting two Subjects to see the path between them, is reachable from the list. You may propose a different equivalent. | Spec, "Visual design"; [standards](../agents/osint-investigation-standards.md) |
+| 27  | The window minimum is 900 by 600 and the default is 1200 by 800 (`src/main/windowSize.ts`).                                                                                                                                                                                                                                           | Spec, "Visual design"                                                          |
+| 28  | On a narrow window the panes become tabs and keep the selected Joint and Exhibit. The test: the Operator can reject one tempting but unsupported Joint without losing their place in the Joint list.                                                                                                                                  | Spec, "Visual design"                                                          |
 
 ## Surfaces to draw
 
@@ -132,8 +137,8 @@ give a verdict per item.
 Each surface and state carries one of three labels. Draw them in this order:
 
 - **First slice.** Local, with no model: an inquiry goes in, the Joint map and gap list come out,
-  and each Joint opens its stored spans (Spec, "Investigation flow", closing paragraph; Review, item
-  4; ADR-0039).
+  and each Joint opens its stored spans (ADR-0039; the closing paragraph of "Investigation flow" in
+  the spec).
 - **AI layer.** What appears only when the Operator has enabled AI analysis for the installation and
   the Case.
 - **Later.** External lookup, after its consent behavior is reviewed.
@@ -147,8 +152,10 @@ Three entry points open the same run setup:
 - The view itself, with a free-text inquiry.
 - A Joint's **Find more material** action (surface 4), which looks for support and conflicts for
   that Joint.
-- A claim in a Note, with a **Find material for this claim** action. The run proposes a Joint for
-  the claim, with the material it finds as unreviewed support and conflicts.
+- A claim in a Note, with a **Find material for this claim** action. The Operator selects the claim
+  and names the Subject or Subjects it is about. The run records a Joint whose claim is that Note
+  text, started by the Operator, with the material it finds as unreviewed support and conflicts. The
+  Note is the claim's source and never counts as support.
 
 The setup shows:
 
@@ -158,28 +165,33 @@ The setup shows:
   (decision 5).
 - **Withheld from analysis.** The count and the list of withheld Exhibits, with a way to change the
   list (decision 18).
-- **Sources.** "Stored Case only", as a fixed line (decision 23). _Later:_ a toggle that allows
-  external lookups, each asking first, off by default.
-- **AI analysis.** _First slice:_ "AI analysis is off", with the line from decision 22. _AI layer:_
-  the providers enabled for this Case, each named, with a hosted provider marked as sending text off
-  this machine.
+- **Sources.** A fixed line reading "Stored Case only" (decision 23). _Later:_ a toggle that allows
+  external lookup, each request asking first, off by default.
+- **AI analysis.** _First slice:_ a line reading "AI analysis is off" and the line from decision 22.
+  _AI layer:_ the providers enabled for this Case, each named, with a hosted provider marked as
+  sending text off this machine.
 - **What the run records.** A short line saying the run keeps the inquiry, the starting Subjects,
   the withheld list, the Note passages it uses as they read now, and the Case state as of now
   (decision 24).
 - _AI layer:_ **Text a hosted provider will receive.** The inquiry and the Note passages that will
   be sent. The shortlisted Exhibit passages are not known until screening finishes, so the full
   review of what leaves the machine is state 17 (decision 21).
+- _AI layer:_ **Pairs compared without screening.** The cap on passage pairs that go to full
+  comparison whatever screening found. The Operator sees the cap and can raise it; surface 2 shows
+  the resulting counts.
 - **Run** action.
 
 ### 2. View header (first slice, with an AI layer part)
 
 Visible on every arrangement: the Case name, the inquiry, the starting Subjects (each with its kind,
 and with a distinguishing detail when two share a name), the counts of Exhibits read and withheld
-(decision 19), the sources setting, and the run's basis with its time zone and year ("Case as of
-14:02 UTC, 3 October 2026"). _AI layer:_ the providers and models the run used. When the run used a
-screening stage, its counts too, for example "3,140 pairs screened, 46 compared in full, 120
-compared without screening, 310 not compared", so the Operator sees how much was not examined
-closely.
+(decision 19), the sources setting, how far the run followed identifiers ("Followed: 2 Joints out
+from each starting Subject"), and the run's basis with its time zone and year ("Case as of 14:02
+UTC, October 3, 2026"). The base layer follows identifiers at most two Joints out from each starting
+Subject; the Operator follows further by selecting a Subject and running again. _AI layer:_ the
+providers and models the run used and its screening counts, for example "3,140 pairs screened, 46
+compared in full, 120 compared without screening, 310 not compared," so the Operator sees how much
+was not examined closely.
 
 ### 3. The Joint map and the Joint list (first slice)
 
@@ -192,17 +204,23 @@ On the map, Subjects are nodes and show their kind. A Joint between two Subjects
 about one Subject belongs to that Subject (question 8). Each Joint shows:
 
 - The claim, in short.
-- Its status by line style and text: proposed, accepted, rejected, or contested (decision 1).
+- Its status by line style and text: proposed, accepted, rejected, or contested (decision 1). In a
+  Shared Case the status names the members behind it, for example "accepted by NK," and shows when
+  the member looking at it has not decided yet, so one member's decision never reads as the whole
+  Case's (decision 7, question 10).
 - Its strength summary, and a visible weak mark when decision 12 applies.
 - A mark when it has unreviewed material (decision 15). _AI layer:_ a stronger mark when the AI
   layer reads that material as conflicting with an accepted Joint.
 - _AI layer:_ a mark when an AI provider proposed it, naming the provider and model (question 11).
 
-Selecting two Subjects that have no direct Joint shows the path between them, if one exists: "M.
-Calloway reaches The Ferryman through Jun Sato", with each Joint on the path, its status, and its
-strength summary. That wording is for a path of accepted Joints only. A route with a proposed or
-contested Joint reads as a possible path, "not joined by accepted Joints", and a rejected Joint
-never forms part of one (decision 4).
+Selecting two Subjects that have no direct Joint shows the path between them, if one exists. The
+path reads "M. Calloway reaches The Ferryman through Jun Sato" and lists each Joint on it with its
+status and its strength summary. That wording is for a path of accepted Joints only. A route with a
+proposed or contested Joint reads as a possible path, with the line "not joined by accepted Joints."
+A rejected Joint never forms part of a path, and neither does an accepted Joint that has lost its
+last available support (decision 4). **GAP G11:** the spec does not say whether a path is offered
+when the two Subjects have a direct Joint that is rejected or still proposed. Draw the path so it
+can also sit beside such a Joint, and do not choose.
 
 ### 4. Joint detail (first slice, with an AI layer part)
 
@@ -215,36 +233,43 @@ One Joint, opened. Contents:
   added it, and a mark when the Operator has recorded it as a copy of another source (decision 13).
 - **Conflicting Exhibits**, with the same row shape.
 - **Passage group**, where it applies: a passage many Exhibits repeat, such as a footer, shown once
-  with the Exhibits that hold it and their count, never as a Joint for every pair. The Operator can
-  start a Joint from it.
-- **No longer counted**, apart from both lists: spans whose Exhibit was later withheld or
-  reclassified as AI-origin, each with its reason. They are not support and are not in the strength
-  summary (decisions 14, 18).
+  with the Exhibits that hold it, their count, and the ceiling above which a passage becomes a
+  group, never as a Joint for every pair. The Operator can start a Joint from it.
+- **No longer counted**, apart from both lists: spans that have stopped counting, each with its
+  reason. The Exhibit was later withheld; it was reclassified as AI-origin, or two members' Source
+  Classes conflict and one is AI-origin; or the span is unavailable, which the view shows as lost
+  support. None of them is support, and none is in the strength summary (decisions 13, 14, 17, 18).
+  A withheld or reclassified span returns when the flag is cleared or the class changes back.
 - _AI layer:_ **Matched facts.** For a Joint based on a matching story, the fact pairs: each fact,
   its span in each Exhibit, and how distinctive it is (decision 9). The Operator can reject one pair
   without rejecting the Joint. A rejected pair stays visible, marked rejected, with a **Restore**
   action, and the reversal is recorded.
 - **Unreviewed material**, kept apart from the reviewed lists: each item with **Add as support**,
   **Add as conflict**, and **Dismiss**, with an optional reason (decision 15). An AI-origin item has
-  no **Add as support** (decision 14).
+  no **Add as support** (decision 14). A span a later run cites for the first time arrives here.
 - **Undo.** Each reviewed row has an action that returns it to unreviewed, and dismissed items sit
   in a collapsed list with a **Restore** action. Each reversal is recorded in the history (decision
   15).
 - **Strength summary** (decision 11).
 - **Dates.** Label which date each one is: the capture time, a date the source states, or a trusted
   timestamp ("stamped at"). Show a missing date as missing.
-- **History.** Who proposed the Joint (the base layer and its rule, or a named provider and model),
-  and each decision with its Operator and time. In a Shared Case, decisions are grouped by member,
-  never interleaved into one timeline: each time comes from that member's own machine, so the view
-  does not imply which member decided first (decision 7).
+- **History.** Who proposed the Joint (the base layer and its rule, a named provider and model, or
+  the Operator, from a claim in a Note), and each decision with its Operator and time. In a Shared
+  Case, decisions are grouped by member, never interleaved into one timeline: each time comes from
+  that member's own machine, so the view does not imply which member decided first (decision 7).
 - **Acceptance context.** The assumptions, confidence, and alternatives recorded when the Joint was
   accepted, with "not recorded" for any left blank. In a Shared Case, one attributed context for
   each member who accepted (decision 6).
 - **Proposed from.** On a proposal a later run did not repeat, the Case state it was proposed from,
-  for example "proposed from the Case as of 14:02 UTC, 3 October 2026" (decision 6).
+  for example "proposed from the Case as of 14:02 UTC, October 3, 2026" (decision 6). An accepted or
+  rejected Joint keeps the basis of the proposal the Operator decided on, whatever a later run
+  proposes. **GAP G3:** whether a past run's record can be reopened is open, so do not draw a run
+  history or a list of the runs that proposed a Joint.
 - **Actions:** **Accept**, which opens the acceptance context fields, **Reject**, **Find more
   material**. **Accept** is unavailable, with the reason shown, until the Joint has at least one
-  reviewed supporting span (decision 6).
+  reviewed supporting span that is available (decision 6). **GAP G9:** whether a Joint between two
+  Subjects needs such a span on each side is open. As written, one is enough: a two-sided Joint that
+  loses one side stays accepted, is marked weak, and shows the lost side.
 
 ### 5. Source inspector (first slice, with AI layer and later parts)
 
@@ -253,14 +278,21 @@ The stored Exhibit at the exact span (decision 16). Contents:
 - Exhibit Number, kind, and Content Hash (short form, expandable).
 - The stored representation at the locator, with the span marked: a text passage, a PDF page, a mail
   message with the header field, a link target or alt text shown as its exact stored value, or a
-  byte range. A headers-only Exhibit says "Body not acquired".
+  byte range. A headers-only Exhibit carries a "Body not acquired" line. A span whose stored text
+  the Manifest never hashed shows "unattested" beside its claim check (decision 17).
+- How many Exhibits hold the marked identifier, for example "in 3 of 994 Exhibits" (Spec,
+  "Distinctiveness and noise").
 - **Source Class**, which the Operator sets here (decision 13). _AI layer:_ a suggested class,
-  marked as a suggestion until the Operator takes it.
+  marked as a suggestion, with one action to take it and one to dismiss it. In a Shared Case, when
+  two members set different classes before they sync: both values, each with its member, and an
+  action that chooses one. Until a member chooses, the Exhibit counts as unclassified, or supports
+  no Joint when either value is AI-origin.
 - **Withheld from analysis**, which the Operator can set here (decision 18). In a Shared Case, the
   members whose flags keep it withheld.
 - **Copy of another source.** An action to mark this Exhibit as a copy of another Exhibit, chosen
   from the Case, and the existing mark with a way to remove it (decision 13). _AI layer:_ a
-  suggested copy pair, marked as a suggestion until the Operator takes it.
+  suggested copy pair, marked as a suggestion, with one action to take it and one to dismiss it.
+  The dismissal is recorded.
 - **Source trail**, kept visibly apart from the stored Exhibit: the stored URL or document origin
   and any Wayback Ref pinned to it. A Wayback Ref is a reference, not a stored copy: say that the
   archived page stays at archive.org, and show its three times separately and labelled: the time
@@ -275,15 +307,19 @@ The stored Exhibit at the exact span (decision 16). Contents:
 
 What the Case cannot support yet. Group the entries by kind:
 
-- Claims with no supporting Exhibit, including claims from Notes and AI-origin Exhibits.
+- Claims with no supporting Exhibit, including claims from Notes and AI-origin Exhibits, and a
+  Joint started from a Note whose run found nothing.
 - Accepted Joints with unreviewed material.
+- Accepted Joints that have lost their last available support. Such a Joint stays accepted and
+  shows the lost support.
+- Subjects that share a name with no Exhibit joining them (state 8).
 - Contested Joints, in a Shared Case.
 - Weak Joints (decision 12).
 - Subjects reached only through another Subject, and possible paths that rest on a Joint not yet
   accepted (decision 4).
 - Missing dates.
 - Missing originals: a stored copy whose original source the Case does not hold.
-- Searches not yet run, including external lookups the Operator has not allowed.
+- Searches not yet run, including any external lookup the Operator has not allowed.
 
 Each entry opens what it belongs to: a Joint or claim opens in Joint detail, and an entry about one
 Exhibit, such as a missing date or a missing original, opens that Exhibit in the source inspector at
@@ -303,12 +339,16 @@ Two levels (decision 21):
 
 - **In Settings, for the installation.** One control that enables AI analysis at all. While it is
   off, no AI control appears anywhere in the app. Below it, the configured providers, each with what
-  it is (a local model, or a hosted service with its name) and where its text goes.
+  it is (a local model or a hosted service), its name, its model and version, and where its text
+  goes.
 - **In the Case, per provider.** For each configured provider, an on or off control for this Case,
-  off by default. Turning on a hosted provider shows its disclosure first: the provider's name, the
-  model and its version, the region that processes the text, the kinds of text it receives (decision
-  21), and the Egress the requests use. Actions: **Turn on for this Case**, **Cancel**. Turning a
-  provider on sends nothing; the review in state 17 comes before each run's first request.
+  off by default. A local model and a hosted provider have separate disclosures, and each names the
+  model and its version before the Operator turns it on. Turning on a hosted provider shows its
+  disclosure first: the provider's name, the model and its version, the region that processes the
+  text, the kinds of text it receives, the limit on what Birdbrain keeps back for withheld Exhibits,
+  and the Egress the requests use, all as decision 21 words them. Actions: **Turn on for this
+  Case**, **Cancel**. Turning a provider on sends nothing; the review in state 17 comes before each
+  run's first request.
 
 ### 9. The Operator's own identifiers (first slice)
 
@@ -316,10 +356,13 @@ A list of the accounts and addresses that belong to the Operator or their Person
 Operator can add to and remove from. Birdbrain never follows them. The source inspector offers
 **Mark as my own** on an identifier in a stored span, so a Persona's account seen in a captured
 page's header can be added from where the Operator finds it. In a Shared Case each member's list is
-their own, and no member's run follows an identifier any member marked. Each entry syncs as the
-identifier and the Member Code of the member who marked it, so other members see it as "marked by
-NK"; a Persona's label and notes never sync. A member removes only their own entries, and the Owner
-can remove a revoked member's. Where the list lives is your call (question 12).
+their own, and no member's run follows an identifier its installation holds as marked by any
+member. Each entry syncs as its kind, its platform where the kind is compared by platform, the
+stored value, and the Member Code of the member who marked it, so other members see it as "marked by
+NK"; a Persona's label and notes never sync. That tells the other members which accounts are that
+member's, and the spec still has to confirm it against the Shared Case design. A member removes only
+their own entries, and the Owner can remove a revoked member's. Where the list lives is your call
+(question 12).
 
 ## States to draw
 
@@ -357,42 +400,66 @@ AI layer.
 10. **Run basis out of date.** The Case changed after the run (a new Exhibit, a changed Note). The
     view says the run reflects the Case as of its start and offers a new run (decision 24). Accepted
     and rejected Joints stay as they are. After the new run, a proposal it did not repeat stays,
-    labelled with the Case state it was proposed from (decision 6).
+    labelled with the Case state it was proposed from (decision 6). **GAP G12:** the spec leaves to
+    a later decision record whether the Operator's own accept or reject puts the run out of date.
+    Draw this state for a new Exhibit or a changed Note.
 11. **Unreviewed material on an accepted Joint.** "Calloway is Sato" is accepted, and a new run
     surfaces a profile placing Calloway in Lisbon on the day Sato gave an interview in Toronto. The
     Joint stays accepted, carries the unreviewed-material mark, and appears in the gap list
     (decision 15). Only the Operator can read the profile as a conflict. _AI layer:_ when the AI
     layer reads it as conflicting, the stronger conflict mark.
-12. **Contested Joint.** In a Shared Case, accepted by NK and rejected by MB (decision 7).
+12. **Contested Joint.** In a Shared Case, accepted by NK and rejected by MB (decision 7). Also draw
+    a Joint that NK accepted and MB has not decided, as MB sees it (surface 3).
 13. **AI layer on.** The same Case with a local model enabled: a narrative-match Joint with its fact
-    pairs, and the header's screening counts.
-14. **Hosted provider disclosure.** The prompt from surface 8 for a hosted provider.
+    pairs, and the header's screening counts. The spec has not chosen the local model (its open
+    decision 1), so use a placeholder name.
+14. **Hosted provider disclosure.** The prompt from surface 8 for a hosted provider, with the limit
+    on withheld material from decision 21 in its text.
 15. **Run invalidated.** The Case changed while the run was reading it. The run stops, reports
-    nothing, and offers a restart (decision 24). _AI layer:_ the same line about text already sent
-    as in state 2.
+    nothing, and offers a restart (decision 24). In a Shared Case a withholding flag that arrives by
+    sync is such a change. _AI layer:_ the same line about text already sent as in state 2.
 16. **AI analysis failed or partial.** An enabled provider failed partway. The view names the
     provider and model, says which stages finished (for example "screening finished, comparison
     stopped after 12 of 46"), keeps the base layer's results, and offers a retry. It never reads as
     a finished run that found no AI-proposed Joints, and a failed local model never hands its work
-    to a hosted one (decision 21).
+    to a hosted one (decision 21). When text had already gone to a hosted provider before the
+    failure, the state says so and names the provider and model, as in state 2.
 17. **Review before sending to a hosted provider.** After screening and before a run's first hosted
     request: the provider, model, and region; the inquiry; the Note passages; and the shortlisted
-    Exhibit passages as a list the Operator can open and read, with their count. A line says
-    Birdbrain blocks Note text that repeats a withheld Exhibit but cannot detect a short or reworded
-    quotation. Actions: **Send**, **Cancel**. When the Egress is Direct and no VPN is seen, and this
-    is the first contact in the Case, the privacy warning from state 9 shows first (decision 21).
+    Exhibit passages as a list the Operator can open and read, with their count. No passage is
+    sent before its hash checks pass, and one that fails is never sent. A line states the limit from
+    decision 21: a withheld Exhibit's own text and a Note anchored to it are not sent; Birdbrain
+    blocks inquiry or Note text that repeats a run of words from a withheld Exhibit; it cannot
+    detect a shorter quotation, a lightly edited one, or a paraphrase; so the Operator's reading of
+    this list is the remaining check. In a Shared Case the review also names each member this
+    installation is not connected to and when it last synced with them, because a flag that member
+    set since then does not apply here yet (decision 18). **GAP G8:** whether the run should wait
+    for a sync with every member is open. As written it proceeds and names them; do not draw a
+    waiting state. Actions: **Send**, **Cancel**. When the Egress is Direct and no VPN is seen, and
+    this is the first contact in the Case, the privacy warning from state 9 shows first (decision
+    21).
 
 ## Open gaps
 
-| Gap | Status                                                                                                          | Where it was decided or will be |
-| --- | --------------------------------------------------------------------------------------------------------------- | ------------------------------- |
-| G1  | Closed. Nodes are Subjects of any kind (decision 3; Terms).                                                     | Session                         |
-| G2  | Closed. There is no merge or split; Joints and decisions are kept with the Case (decisions 3, 6).               | Session                         |
-| G3  | Narrowed. Joints persist. Whether a past run's record can be reopened is still open; do not draw a run history. | Engine spec; Review, item 7     |
-| G4  | Closed. Withheld from analysis, set by the Operator at any time (decision 18).                                  | Session                         |
-| G5  | Closed. Source Class (decision 13).                                                                             | Session                         |
-| G6  | Closed. The first slice uses no model; the AI layer names its providers (decisions 20, 21).                     | ADR-0039                        |
-| G7  | Open. Which lookup destinations may be approved once per run and which need a prompt every time.                | Engine spec, open decision 3    |
+The engine spec lists seven open decisions. Five bear on what you draw: G3, G7, G8, G9, and G10. The
+other two, which local model and runtime to use and the benchmark numbers that admit a provider,
+change no surface. G11 and G12 are questions the spec does not settle. For each open gap, draw what
+its row says and do not choose an answer.
+
+| Gap | Status                                                                                                                                                                              | Where it was decided or will be    |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| G1  | Closed. Nodes are Subjects of any kind (decision 3; Terms).                                                                                                                         | Session                            |
+| G2  | Closed. There is no merge or split; Joints and decisions are kept with the Case (decisions 3, 6).                                                                                   | Session                            |
+| G3  | Open. Joints persist. Whether a past run's record can be reopened is open; do not draw a run history or a list of the runs that proposed a Joint (surface 4).                       | Spec, open decision 2              |
+| G4  | Closed. Withheld from analysis, set by the Operator at any time (decision 18).                                                                                                      | Session                            |
+| G5  | Closed. Source Class (decision 13).                                                                                                                                                 | Session                            |
+| G6  | Closed. The first slice uses no model; the AI layer names its providers (decisions 20, 21).                                                                                         | ADR-0039                           |
+| G7  | Open. Which lookup destinations may be approved once per run and which need a prompt every time (state 9).                                                                          | Spec, open decision 3              |
+| G8  | Open. In a Shared Case, whether a run that sends text to a hosted provider waits for a sync with every member. As written it proceeds and names the members not synced (state 17).  | Spec, open decision 5              |
+| G9  | Open. Whether a Joint between two Subjects needs available, reviewed support on each side before it can be accepted or count in a path. As written, one span is enough (surface 4). | Spec, open decision 6              |
+| G10 | Open. Whether a document Subject binds to one message inside an `mbox` Exhibit, not to the whole Exhibit (Terms).                                                                   | Spec, open decision 7              |
+| G11 | Open. Whether a path is offered between two Subjects whose direct Joint is rejected or still proposed (surface 3).                                                                  | Not in the spec                    |
+| G12 | Open. Whether the Operator's own decisions on a run's proposals put that run out of date (state 10).                                                                                | Spec, "Follow-ups this spec needs" |
 
 ## Copy constraints
 
@@ -406,6 +473,8 @@ The repo's claim-discipline rules apply to every string in the mock (`docs/agent
   one writer.
 - Do not write _strong_, _moderate_, or any other strength word. Show the strength summary.
 - Do not write _AI-powered_. Name the provider and say where its text goes.
+- Do not write that a hosted provider never receives withheld material, or any other blanket
+  promise about what is sent. Use the limit in decision 21.
 - Write **Withheld from analysis**, never _excluded_, for that flag. "Excluded" already means two
   other things in Birdbrain: the URL exclusion policy and a Shared Case exclusion from export.
 - Use the project's terms: Case, Subject, Joint, Source Class, Exhibit, Exhibit Number, Content
@@ -420,7 +489,7 @@ The repo's claim-discipline rules apply to every string in the mock (`docs/agent
 
 ## Questions for the designer
 
-The designer's calls, not settled by the spec, the review, or the session:
+The designer's calls, not settled by the spec or the session:
 
 1. What a Subject and a Joint look like, and how the map stays readable for a Case of about 1,000
    Exhibits. The Link Map caps itself at 20 nodes and discloses "showing N of M"; this view does not
@@ -438,7 +507,8 @@ The designer's calls, not settled by the spec, the review, or the session:
 7. How two Subjects with the same name are told apart on the map and in the list.
 8. How a Joint about one Subject appears on the map, beside Joints between two.
 9. How a path through other Subjects is shown, so it never looks like a Joint of its own.
-10. How a contested Joint reads, and how much of each member's decision shows on the map.
+10. How a contested Joint reads, and how much of each member's decision shows on the map,
+    including a Joint only some members have decided.
 11. How a Joint proposed by an AI provider is told apart from a base-layer Joint, without color
     alone, and without implying either is more reliable.
 12. Where the list of the Operator's own identifiers lives (surface 9): in the Case, in Settings
@@ -449,7 +519,7 @@ The designer's calls, not settled by the spec, the review, or the session:
 Do not draw these:
 
 - A generated argument, draft, or editable cited argument, or a pane for one. Birdbrain does not
-  write the argument (Review, item 1).
+  write the argument (Spec, "Out of scope").
 - Merging or splitting Subjects (decision 3).
 - A strength label, grade, or score (decision 11).
 - Promoting anything from this view into a Brief or an Evidence Package.

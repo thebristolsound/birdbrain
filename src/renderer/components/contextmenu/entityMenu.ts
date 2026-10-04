@@ -30,7 +30,11 @@ import {
   Archive,
   Pin,
   Columns2,
-  Activity
+  Activity,
+  Camera,
+  Image as ImageIcon,
+  Link as LinkIcon,
+  TextSelect
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { accelerator } from '@renderer/lib/accelerator'
@@ -261,7 +265,32 @@ export interface StagedMenuTarget {
   }
 }
 
+/**
+ * A right-click on a link, an image or a text selection in a stored page (#1708):
+ * the Page tab's guest or a row of the Links tab. Empty strings mean "not hit".
+ */
+export interface LinkMenuTarget {
+  kind: 'link'
+  linkUrl: string
+  linkText: string
+  imageUrl: string
+  selectionText: string
+  /** Whether the Case already holds a Capture of `linkUrl`. */
+  hasCapturedCopy: boolean
+  /** Why Capture link is unavailable, or null when it is (`captureLinkBlockReason`). */
+  captureBlockedReason: string | null
+  actions: {
+    copyLinkAddress: () => void
+    copyLinkText: () => void
+    copyImageAddress: () => void
+    copyText: () => void
+    openCapturedCopy: () => void
+    captureLink: () => void
+  }
+}
+
 export type EntityMenuTarget =
+  | LinkMenuTarget
   | CaptureMenuTarget
   | NoteMenuTarget
   | SelectorMenuTarget
@@ -820,9 +849,76 @@ export function eventMenuEntries(target: EventMenuTarget): MenuEntry[] {
   ]
 }
 
+/**
+ * Links, images and selections in a stored page (#1708). Nothing here opens the
+ * link: a click-through or an external browser would send the Operator to the
+ * page's author's choice of URL outside the Case. Capture link queues a background
+ * Capture into the viewed Capture's Case and is shown disabled, with its reason,
+ * where `captureBlockedReason` refuses the address.
+ */
+export function linkMenuEntries(target: LinkMenuTarget): MenuEntry[] {
+  const { actions, linkUrl, imageUrl, selectionText, hasCapturedCopy, captureBlockedReason } =
+    target
+  const entries: MenuEntry[] = []
+  if (imageUrl) {
+    entries.push({
+      id: 'link-copy-image',
+      label: 'Copy image address',
+      icon: ImageIcon,
+      run: actions.copyImageAddress
+    })
+  }
+  if (linkUrl) {
+    entries.push(
+      {
+        id: 'link-copy-address',
+        label: 'Copy link address',
+        icon: Clipboard,
+        separatorBefore: true,
+        run: actions.copyLinkAddress
+      },
+      {
+        id: 'link-copy-text',
+        label: 'Copy link text',
+        icon: Clipboard,
+        disabled: !target.linkText,
+        run: actions.copyLinkText
+      }
+    )
+    if (hasCapturedCopy) {
+      entries.push({
+        id: 'link-open-captured',
+        label: 'Open captured copy',
+        icon: Eye,
+        separatorBefore: true,
+        run: actions.openCapturedCopy
+      })
+    }
+    entries.push({
+      id: 'link-capture',
+      label: captureBlockedReason ? `Capture link (${captureBlockedReason})` : 'Capture link',
+      icon: Camera,
+      separatorBefore: !hasCapturedCopy,
+      disabled: captureBlockedReason !== null,
+      run: actions.captureLink
+    })
+  }
+  if (!linkUrl && !imageUrl && selectionText) {
+    entries.push({
+      id: 'link-copy-selection',
+      label: 'Copy text',
+      icon: Clipboard,
+      run: actions.copyText
+    })
+  }
+  return entries
+}
+
 /** The registry proper: one kind, one action set, one place to change it. */
 export function entityMenuEntries(target: EntityMenuTarget): MenuEntry[] {
   switch (target.kind) {
+    case 'link':
+      return linkMenuEntries(target)
     case 'event':
       return eventMenuEntries(target)
     case 'snapshot':
@@ -846,6 +942,14 @@ export function entityMenuEntries(target: EntityMenuTarget): MenuEntry[] {
 
 export function entityMenuHeader(target: EntityMenuTarget): MenuHeader {
   switch (target.kind) {
+    case 'link': {
+      const [icon, title, noun] = target.linkUrl
+        ? [LinkIcon, target.linkUrl, 'Link']
+        : target.imageUrl
+          ? [ImageIcon, target.imageUrl, 'Image']
+          : [TextSelect, target.selectionText, 'Selection']
+      return { icon, title, subtitle: noun.toLowerCase(), ariaLabel: `${noun} actions: ${title}` }
+    }
     case 'event':
       return {
         icon: Activity,

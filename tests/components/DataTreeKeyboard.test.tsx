@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { DataTree } from '@renderer/components/data/DataTree'
 import type { DataTreeNode } from '@renderer/components/data/dataTreeModel'
 
@@ -54,6 +54,8 @@ it('keeps one Tab stop on the selected node and walks the rest with the arrow ke
   expect(selectButton('kind:capture').getAttribute('aria-expanded')).toBe('false')
   expect(selectButton('kind:capture').getAttribute('aria-level')).toBe('2')
   expect(screen.getAllByRole('treeitem').length).toBe(3)
+  // The twist buttons are mouse helpers; the tree exposes tree items only.
+  expect(within(screen.getByRole('tree')).queryAllByRole('button')).toEqual([])
 
   const captures = selectButton('kind:capture')
   captures.focus()

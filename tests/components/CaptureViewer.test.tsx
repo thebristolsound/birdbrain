@@ -124,11 +124,17 @@ describe('CaptureViewer provenance chrome (#827)', () => {
 })
 
 describe('CaptureViewer tabs', () => {
-  it('offers exactly Screenshot, Page, Text and Wayback', async () => {
+  it('offers exactly Screenshot, Page, Text, Links and Wayback', async () => {
     renderViewer()
 
     const tabs = await screen.findAllByRole('tab')
-    expect(tabs.map((t) => t.textContent)).toEqual(['Screenshot', 'Page', 'Text', 'Wayback'])
+    expect(tabs.map((t) => t.textContent)).toEqual([
+      'Screenshot',
+      'Page',
+      'Text',
+      'Links',
+      'Wayback'
+    ])
   })
 
   // #466. The narrow viewer pane drops the tab labels for their icons, so the
@@ -141,12 +147,14 @@ describe('CaptureViewer tabs', () => {
       'Screenshot',
       'Page',
       'Text',
+      'Links',
       'Wayback'
     ])
     expect(tabs.map((t) => t.getAttribute('title'))).toEqual([
       'Screenshot',
       'Page',
       'Text',
+      'Links',
       'Wayback'
     ])
     // One decorative icon each: it stands in for the label, so it must not
@@ -162,6 +170,37 @@ describe('CaptureViewer tabs', () => {
     await screen.findAllByRole('tab')
 
     expect(screen.queryByRole('tab', { name: 'Source' })).toBeNull()
+  })
+
+  // #1708. The fifth tab reads its rows from captures:getLinks, not the artifact bytes.
+  it('renders the Links tab from the link list without fetching a stored artifact', async () => {
+    const getLinks = vi.fn(async () => ({
+      links: [
+        {
+          href: 'https://example.com/a',
+          rawHref: '/a',
+          text: 'A link',
+          rel: [],
+          kind: 'http' as const,
+          frame: 'main' as const,
+          documentUrl: capture.url,
+          occurrences: 1,
+          textHostMismatch: false
+        }
+      ],
+      truncated: false,
+      skippedParts: { tooLarge: 0, overPartCount: 0, overTotalSize: 0 },
+      mainDocumentSkipped: false
+    }))
+    fakeBridge({
+      captures: { list: vi.fn(async () => [capture]), getContent, getHtmlUrl, getLinks }
+    })
+    renderViewer()
+    fireEvent.click(await screen.findByRole('tab', { name: 'Links' }))
+
+    expect(await screen.findByText('A link')).toBeDefined()
+    expect(getLinks).toHaveBeenCalledWith('cap1')
+    await waitFor(() => expect(getContent).not.toHaveBeenCalledWith('cap1', 'html'))
   })
 
   it('renders the Wayback surface without fetching a stored artifact', async () => {

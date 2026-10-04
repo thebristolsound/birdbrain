@@ -2,6 +2,7 @@ import type {
   Case,
   CaseAutoCapturePolicy,
   Capture,
+  CaptureLinks,
   Tag,
   BirdbrainSettings,
   ExportOptions,
@@ -78,6 +79,8 @@ import type {
   SaveAnnotationsParams,
   UpsertAnnotationPinParams,
   SelectorRematchedEvent,
+  GuestFrameReplacedEvent,
+  GuestMouseDownEvent,
   ExtensionAttachEvent,
   DeepLinkTarget,
   ExportProgressEvent,
@@ -131,6 +134,7 @@ export interface BirdbrainAPI {
     verify(captureId: string): Promise<HashVerification>
     getMhtmlUrl(captureId: string): Promise<string | null>
     getHtmlUrl(captureId: string): Promise<string | null>
+    getLinks(captureId: string): Promise<CaptureLinks | null>
     deleteMany(payload: CaptureBatchPayload): Promise<BatchDeleteResult>
     duplicate(captureId: string): Promise<DuplicateCaptureResult>
     setFavoriteMany(payload: CaptureBatchPayload & { favorite: boolean }): Promise<BatchCountResult>
@@ -307,6 +311,8 @@ export interface BirdbrainAPI {
   onSelectorRematched(callback: (event: SelectorRematchedEvent) => void): () => void
   onDeepLinkNavigate(callback: (target: DeepLinkTarget) => void): () => void
   onUpdateStatus(callback: (status: UpdateStatus) => void): () => void
+  onGuestFrameReplaced(callback: (event: GuestFrameReplacedEvent) => void): () => void
+  onGuestMouseDown(callback: (event: GuestMouseDownEvent) => void): () => void
   testPipeline(): Promise<{ success: boolean; durationMs: number; error?: string }>
   testHttp(): Promise<{ success: boolean; durationMs: number; error?: string }>
   extractedData: {

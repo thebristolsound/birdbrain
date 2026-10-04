@@ -59,9 +59,21 @@ export const resolveMergeBase = (base, cwd = process.cwd()) => {
 // merge base with the working tree. -U0 keeps hunks tight so context lines are
 // not miscounted as changes; deletions carry no new-side line and are skipped
 // by construction. Untracked files never appear in `git diff`, so they are
-// listed separately and mapped to `null`, meaning every line is new.
+// listed separately and mapped to `null`, meaning every line is new. The
+// prefixes are passed explicitly because a user's diff.mnemonicPrefix or
+// diff.noprefix would otherwise replace the `b/` this parser reads, and every
+// changed file would silently drop out of the score.
 export const changedLinesByFile = (mergeBase, cwd = process.cwd()) => {
-  const out = git(cwd, 'diff', '--unified=0', '--no-color', '--diff-filter=d', mergeBase)
+  const out = git(
+    cwd,
+    'diff',
+    '--unified=0',
+    '--no-color',
+    '--src-prefix=a/',
+    '--dst-prefix=b/',
+    '--diff-filter=d',
+    mergeBase
+  )
   const files = new Map()
   let current = null
   for (const line of out.split('\n')) {

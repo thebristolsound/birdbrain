@@ -256,6 +256,22 @@ _Avoid_: entity, indicator, artifact.
 Something the tool found in a Capture's text rather than something the Operator wrote: a Persisted Match or an Extracted Datum. The unit below the Capture that a Note can anchor to.
 _Avoid_: hit, result, entity.
 
+**Subject**:
+Anything a Case investigates that a claim can be about - a person, pseudonym, organization, account, site, document, place, or event - with a name and an Operator-extensible kind. Never evidence on its own.
+_Avoid_: entity, node, target, person of interest.
+
+**Joint**:
+One claim about a Subject, or between two Subjects, together with the Exhibit spans that support it and the spans that conflict with it. Proposed until the Operator accepts or rejects it; an accepted Joint records the Operator's judgement, not a proof.
+_Avoid_: link, edge, connection, relationship; "proven" or "verified" for an accepted Joint.
+
+**Source Class**:
+The Operator's classification of what kind of source an Exhibit is: original, contemporaneous report, later copy or retelling, commercial or aggregator report, AI-origin, or unclassified. Distinct from an Exhibit's origin, which records only how the file arrived.
+_Avoid_: provenance class, source type, origin.
+
+**Withheld from analysis**:
+An Operator flag on an Exhibit that keeps every analysis in its Case from reading it, so it never appears as support or as surfaced material. Unrelated to a Shared Case exclusion from export and to the URL exclusion policy.
+_Avoid_: excluded, hidden, suppressed (for this flag).
+
 ### Export and verification
 
 **Evidence Package**:
@@ -318,6 +334,14 @@ _Avoid_: risky change, core change, forensic change.
 - A **Derived File** is anchored to its parent **Exhibit** through a **Derivation** and is never evidence on its own
 - A file in the **Staging Pool** is hashed but not anchored; committing it makes it an **Exhibit** with an **Exhibit Number** and a **Manifest Entry**, and discarding it writes nothing
 - A **Note** may anchor to a **Capture**, to a region of its screenshot, to a passage of its **Extracted Text**, or to a **Finding**
+- A **Joint** cites spans of **Exhibits** on each side; a **Note** may supply a **Joint**'s claim but never supports it
+- Accepting a **Joint** never merges its **Subjects**: three pseudonyms the Operator believes are one person stay three **Subjects** joined by accepted **Joints**, so rejecting one **Joint** visibly disconnects whatever was reached through it
+- An Exhibit whose **Source Class** is AI-origin, like a **Note**, may supply a **Joint**'s claim but never supports it
+- A **Joint**'s strength is never a label or a score: it is read from the **Source Class**, independence, distinctiveness, and conflicts of its reviewed support
+- In a **Shared Case** a proposed **Joint** stays with the member whose analysis proposed it; each accept or reject syncs attributed to its member, and members who disagree leave the **Joint** contested rather than overwritten. **Withheld from analysis** syncs, so no member's analysis reads a withheld Exhibit
+- **Joints** never derive from other **Joints**: a **Subject** reached only through another **Subject** is a path of **Joints**, and a direct **Joint** between the ends needs Exhibit spans of its own
+- Material surfaced for a **Joint** arrives unreviewed: it supports or conflicts with the **Joint** only once the Operator adds it, and it never changes whether the **Joint** is accepted
+- A **Joint** and every Operator decision on it are Case data like a **Note**: attributed to the **Operator**, recording which layer proposed the **Joint**, and never a **Manifest Entry**
 - The **Package Layout** names where every member of an **Evidence Package** sits; the writer, **Package Verification** and the **Verify Runbook** all read it from one place
 - An **Evidence Package** contains the **Manifest**, a **Certification**, a **Verify Runbook**, and the exported **Exhibits**; **Package Verification** establishes the chain from the **Manifest** and reconciles the unsigned index against it
 
@@ -363,6 +387,8 @@ _Avoid_: risky change, core change, forensic change.
 - "source" is used for four unrelated things: `CaptureSource` (`auto`/`manual`/`selector`/`recapture`), a Note's `sourceUrl`, the extraction pipeline's `extractionSource`, and the overview's Sources block. Say "capture trigger" for `CaptureSource` and reserve "source" for the origin a Capture came from.
 
 - "auto-capture" names four unrelated things: the top-bar switch that starts and stops a **Capture Session** (#813), the Signals card and the `autoCaptureMode` setting that edit a Case's URL exclusion policy (#744), the Capture Server capturing a page before the extension attaches a **Tag** or **Note** to it, and the withdrawn passive capture whose return ADR-0037 scopes to a launched browser (#600). Say "Capture Session" for the switch, "exclusion policy" for the card, and "capture-then-attach" for the server path; "passive capture" and its vocabulary stay reserved to ADR-0013 and ADR-0037 until the restoration lands.
+
+- "exclusion" names three unrelated things: the URL exclusion policy that stops the extension capturing a page, a Shared Case `exclude` entry that keeps an Exhibit out of exports, and an Exhibit **Withheld from analysis**. Name which one; never write "excluded" for the third.
 
 - "route" is the Capture Server's HTTP route (a handler that parses a request and hands it to the Capture Lifecycle). The path outbound traffic takes is the **Egress**; never call it a route.
 

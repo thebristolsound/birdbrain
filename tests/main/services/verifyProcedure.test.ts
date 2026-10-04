@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import ts from 'typescript'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
@@ -14,23 +15,24 @@ import { VERIFY_RUNBOOK } from '@main/services/verifyRunbook'
 
 const ROOT = join(__dirname, '..', '..', '..')
 
-// The shipped text these files render cites steps only through the helpers. A
-// TypeScript comment ships nowhere and may say what it likes; a `#` comment
-// inside the script template ships, so it is checked like any other line.
+// The text these files ship cites steps only through the helpers. Comments
+// come out through the compiler, so only real TypeScript comments are exempt:
+// a template line that starts with `*`, `//` or `#` ships and is checked.
 const CITERS = [
   'src/main/services/verifyScript.ts',
   'src/main/services/verifyRunbook.ts',
   'src/main/services/reportHtml.ts'
 ]
-const HAND_WRITTEN_STEP = /\b[Ss]teps? \d|\bbegin \d/
-const TS_COMMENT = /^\s*(\/\/|\/\*|\*\s|\*\/|\*$)/
+// "step" then a digit, across a line break, an HTML tag or entity, or the
+// opening of a template hole holding a literal.
+const HAND_WRITTEN_STEP =
+  /\b[Ss]teps?(?:(?:\s|&nbsp;|&#160;|<[^>]*>)+(?:\$\{\s*)?|\$\{\s*)['"]?\d[^\n]{0,20}|\bbegin\s+\d[^\n]{0,20}/g
 
 function handWrittenSteps(source: string): string[] {
-  return source
-    .split('\n')
-    .map((line, i) => ({ line, n: i + 1 }))
-    .filter(({ line }) => !TS_COMMENT.test(line) && HAND_WRITTEN_STEP.test(line))
-    .map(({ line, n }) => `${n}: ${line.trim()}`)
+  const { outputText } = ts.transpileModule(source, {
+    compilerOptions: { removeComments: true, target: ts.ScriptTarget.ESNext }
+  })
+  return [...outputText.matchAll(HAND_WRITTEN_STEP)].map((match) => match[0].replace(/\s+/g, ' '))
 }
 
 describe('the verification step list', () => {
@@ -68,6 +70,7 @@ describe('step citations', () => {
     expect(stepRef(3, 4)).toBe('steps 3 and 4')
     expect(stepRef(3, 4, 6)).toBe('steps 3, 4 and 6')
     expect(stepRange(2, 4)).toBe('steps 2 to 4')
+    expect(() => stepRange(6, 2)).toThrow('runs backwards')
     expect(sentenceStart(stepRef(6))).toBe('Step 6')
   })
 
@@ -77,18 +80,34 @@ describe('step citations', () => {
     })
   }
 
-  it('catches a hand-written citation, including one in a shipped # comment', () => {
+  it('catches a hand-written citation however the shipped text spells it', () => {
     const source = [
-      '// step 3 in a TypeScript comment ships nowhere',
+      '// step 1 in a TypeScript comment ships nowhere',
+      '/* nor does step 2 */',
+      'export const T = `',
       '# --- Step 1 ----',
       "begin 2 'entry signatures'",
+      '* see step 3',
+      '// see step 4',
       'covered by steps 3, 4 and 6',
-      'see ${stepRef(5)}'
+      'wrapped across a line at step',
+      '5 and on',
+      'Step&nbsp;6',
+      'step ${6}',
+      'Step <strong>6</strong>',
+      'see ${stepRef(5)} and ## Step ${number}',
+      '`'
     ].join('\n')
-    expect(handWrittenSteps(source)).toEqual([
-      '2: # --- Step 1 ----',
-      "3: begin 2 'entry signatures'",
-      '4: covered by steps 3, 4 and 6'
+    expect(handWrittenSteps(source).map((found) => found.slice(0, 12))).toEqual([
+      'Step 1 ----',
+      "begin 2 'ent",
+      'step 3',
+      'step 4',
+      'steps 3, 4 a',
+      'step 5 and o',
+      'Step&nbsp;6',
+      'step ${6}',
+      'Step <strong'
     ])
   })
 })

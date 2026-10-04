@@ -52,14 +52,17 @@ export function verifyStep(number: VerifyStepNumber): VerifyStep {
   return VERIFY_STEPS[number - 1]
 }
 
+type StepCitation = VerifyStepNumber | VerifySubStep
+
 /** "step 2", "step 6a", "steps 3 and 4", "steps 3, 4 and 6". */
-export function stepRef(...refs: (VerifyStepNumber | VerifySubStep)[]): string {
-  if (refs.length === 1) return `step ${refs[0]}`
-  return `steps ${refs.slice(0, -1).join(', ')} and ${refs[refs.length - 1]}`
+export function stepRef(first: StepCitation, ...rest: StepCitation[]): string {
+  if (rest.length === 0) return `step ${first}`
+  return `steps ${[first, ...rest.slice(0, -1)].join(', ')} and ${rest[rest.length - 1]}`
 }
 
 /** "steps 2 to 4". */
 export function stepRange(from: VerifyStepNumber, to: VerifyStepNumber): string {
+  if (from >= to) throw new Error(`step range ${from} to ${to} runs backwards`)
   return `steps ${from} to ${to}`
 }
 

@@ -48,7 +48,8 @@ describe('Package Layout consumers', () => {
       const offenders = lines
         .map((line, i) => ({ line, n: i + 1 }))
         .filter(({ line }) => {
-          const code = line.replace(/^\s*(\/\/|\/\*|#|\*).*$/, '')
+          // A closed /* */ span goes first, so code after it on the line is still read.
+          const code = line.replace(/\/\*.*?\*\//g, '').replace(/^\s*(\/\/|\/\*|#|\*).*$/, '')
           if (code.includes('layout-exempt:')) return false
           return (
             CONSTRUCTED_PATH.test(code) || QUOTED_DIRECTORY.test(code) || QUOTED_ROOT.test(code)

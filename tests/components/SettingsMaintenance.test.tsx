@@ -126,6 +126,16 @@ describe('Operator card', () => {
     mount(<OperatorConfig />)
     expect(await screen.findByRole('heading', { name: 'Operator', level: 2 })).toBeDefined()
     const name = screen.getByLabelText(/Operator Name/)
+    // A cleared name is announced as invalid, with the message as its description (#1537).
+    expect(name.getAttribute('aria-invalid')).toBeNull()
+    fireEvent.change(name, { target: { value: '' } })
+    fireEvent.blur(name)
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain('Operator name is required')
+    expect(name.getAttribute('aria-invalid')).toBe('true')
+    expect(name.getAttribute('aria-describedby')).toBe(alert.id)
+    fireEvent.change(name, { target: { value: 'Alex' } })
+    expect(name.getAttribute('aria-invalid')).toBeNull()
     expect(screen.getByLabelText('Installation ID')).toHaveProperty('readOnly', true)
     expect(screen.getAllByRole('textbox')).toHaveLength(5)
     fireEvent.change(name, { target: { value: 'New Operator' } })
@@ -217,9 +227,7 @@ describe('Operator card', () => {
 
     it('states the consequence of declining, including that it is reversible', async () => {
       mountOperator(true)
-      expect(
-        await screen.findByText(/nothing is sent to a timestamp authority/i)
-      ).toBeDefined()
+      expect(await screen.findByText(/nothing is sent to a timestamp authority/i)).toBeDefined()
       expect(screen.getByText(/timestamped if you turn it back on/i)).toBeDefined()
     })
 

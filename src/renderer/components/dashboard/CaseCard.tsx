@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, memo } from 'react'
+import { useState, useRef, useEffect, memo, type KeyboardEvent } from 'react'
 import type { Case } from '@shared/types'
 import { Camera, ArrowUpRight, MoreVertical } from 'lucide-react'
 import { Card } from '@renderer/components/ui'
@@ -39,6 +39,8 @@ export const CaseCard = memo(function CaseCard({
   const [editingName, setEditingName] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const popoverRef = useRef<HTMLDivElement>(null)
 
   const { icon: IconComponent, bgClass, iconClass } = getCaseTypeStyle(caseData.type)
 
@@ -48,6 +50,49 @@ export const CaseCard = memo(function CaseCard({
       inputRef.current.select()
     }
   }, [editingName])
+
+  // Focus enters the menu on open, as the menu role promises. The delete
+  // confirmation swaps the items for Confirm and Cancel; focus lands on Cancel
+  // so a second Enter cannot delete a case by momentum.
+  useEffect(() => {
+    if (!menuOpen) return
+    const items = menuItems()
+    ;(deletingId ? items[items.length - 1] : items[0])?.focus()
+  }, [menuOpen, deletingId])
+
+  function menuItems(): HTMLElement[] {
+    return Array.from(popoverRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])
+  }
+
+  function handleMenuKey(e: KeyboardEvent<HTMLDivElement>) {
+    const items = menuItems()
+    const index = items.indexOf(document.activeElement as HTMLElement)
+    let next = -1
+    if (e.key === 'ArrowDown') next = (index + 1) % items.length
+    else if (e.key === 'ArrowUp') next = (index - 1 + items.length) % items.length
+    else if (e.key === 'Home') next = 0
+    else if (e.key === 'End') next = items.length - 1
+    else if (e.key === 'Tab') {
+      setMenuOpen(false)
+      setDeletingId(null)
+      return
+    }
+    if (next < 0) return
+    e.preventDefault()
+    items[next]?.focus()
+  }
+
+  useEffect(() => {
+    if (!menuOpen) return
+    function handleKeyDown(e: globalThis.KeyboardEvent) {
+      if (e.key !== 'Escape') return
+      setMenuOpen(false)
+      setDeletingId(null)
+      triggerRef.current?.focus()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [menuOpen])
 
   useEffect(() => {
     if (!menuOpen) return
@@ -134,8 +179,13 @@ export const CaseCard = memo(function CaseCard({
       {/* Context menu */}
       <div ref={menuRef} className="absolute right-2 top-2">
         <button
+          ref={triggerRef}
           data-testid="case-card-menu-btn"
-          className="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-elevated transition-[opacity,background-color]"
+          type="button"
+          aria-label={`Actions for ${caseData.name}`}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100 p-1 rounded-md hover:bg-elevated focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent transition-[opacity,background-color]"
           onClick={(e) => {
             e.stopPropagation()
             setMenuOpen(!menuOpen)
@@ -146,12 +196,20 @@ export const CaseCard = memo(function CaseCard({
         </button>
 
         {menuOpen && (
-          <div className="absolute right-0 top-8 z-50 w-32 rounded-lg bg-surface border border-border-strong shadow-xl py-1">
+          <div
+            ref={popoverRef}
+            role="menu"
+            aria-label={`Actions for ${caseData.name}`}
+            onKeyDown={handleMenuKey}
+            className="absolute right-0 top-8 z-50 w-32 rounded-lg bg-surface border border-border-strong shadow-xl py-1"
+          >
             {deletingId === caseData.id ? (
               <div className="px-2 py-1.5">
                 <p className="text-[11px] text-red-400 font-bold mb-2">Delete?</p>
                 <div className="flex gap-1.5">
                   <button
+                    role="menuitem"
+                    tabIndex={-1}
                     data-testid="case-card-delete-confirm-btn"
                     className="flex-1 text-[10px] font-bold px-2 py-1 rounded bg-red-950/60 text-red-400 border border-red-800/40 hover:bg-red-900/60"
                     onClick={(e) => {
@@ -164,6 +222,8 @@ export const CaseCard = memo(function CaseCard({
                     Confirm
                   </button>
                   <button
+                    role="menuitem"
+                    tabIndex={-1}
                     className="flex-1 text-[10px] font-bold px-2 py-1 rounded bg-elevated text-text-muted hover:bg-elevated"
                     onClick={(e) => {
                       e.stopPropagation()
@@ -177,6 +237,8 @@ export const CaseCard = memo(function CaseCard({
             ) : (
               <>
                 <button
+                  role="menuitem"
+                  tabIndex={-1}
                   data-testid="case-card-rename-btn"
                   className="w-full text-left px-3 py-1.5 text-[11px] text-text-secondary hover:bg-elevated hover:text-text-primary"
                   onClick={(e) => {
@@ -188,6 +250,8 @@ export const CaseCard = memo(function CaseCard({
                   Rename
                 </button>
                 <button
+                  role="menuitem"
+                  tabIndex={-1}
                   data-testid="case-card-delete-btn"
                   className="w-full text-left px-3 py-1.5 text-[11px] text-red-400 hover:bg-elevated hover:text-red-300"
                   onClick={(e) => {

@@ -333,6 +333,18 @@ describe('SignalsOverview', () => {
 // in cases the operator is not looking at. Both ways into the delete are
 // covered because they are one prop on the row and a regression could reroute
 // either of them past the dialog.
+describe('SignalsOverview empty lists (#1537)', () => {
+  it('names neither list a grid while it is empty', async () => {
+    install({ selectors: { list: vi.fn(async () => []) }, tags: { list: vi.fn(async () => []) } })
+    renderScreen()
+    const tagList = await screen.findByTestId('signals-tag-list')
+
+    expect(screen.queryByRole('grid')).toBeNull()
+    expect(tagList.hasAttribute('aria-label')).toBe(false)
+    expect(document.querySelector('[aria-label="Selectors"]')).toBeNull()
+  })
+})
+
 describe('SignalsOverview tag delete confirmation', () => {
   async function openConfirm(
     via: 'button' | 'keyboard',
@@ -409,6 +421,21 @@ describe('SignalsOverview tag delete confirmation', () => {
 
     expect(screen.queryByTestId('delete-tag-dialog')).toBeNull()
     expect(document.activeElement).toBe(row)
+  })
+
+  it('gives each grid one Tab stop that follows focus', async () => {
+    renderScreen()
+    await screen.findByTestId('signal-row-t1')
+    // The selector list, because it has two rows: one row cannot tell a
+    // roving stop from every row being a stop.
+    const list = within(screen.getByRole('grid', { name: 'Selectors' }))
+    const rows = await list.findAllByRole('row')
+    expect(rows.length).toBe(2)
+    const [first, last] = rows
+    expect(rows.filter((row) => row.tabIndex === 0)).toEqual([first])
+    last.focus()
+    await waitFor(() => expect(last.tabIndex).toBe(0))
+    expect(rows.filter((row) => row.tabIndex === 0)).toEqual([last])
   })
 
   it('hands focus back to the row button when the confirmation is cancelled', async () => {

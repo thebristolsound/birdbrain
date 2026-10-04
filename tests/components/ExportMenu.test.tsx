@@ -157,6 +157,57 @@ describe('ExportMenu', () => {
   // The menu item unmounts with the menu, so the dialog would record a
   // detached opener. The trigger stands in for it, and gets focus back when
   // the dialog closes (#1536).
+  it('moves focus into the menu on open and walks the items with the arrow keys', () => {
+    renderMenu()
+    const trigger = screen.getByRole('button', { name: 'Export' })
+    fireEvent.click(trigger)
+    const menu = screen.getByRole('menu', { name: 'Export options' })
+    expect(trigger.getAttribute('aria-controls')).toBe(menu.id)
+    const [report, archive] = screen.getAllByRole('menuitem')
+    expect(document.activeElement).toBe(report)
+
+    fireEvent.keyDown(menu, { key: 'ArrowDown' })
+    expect(document.activeElement).toBe(archive)
+    fireEvent.keyDown(menu, { key: 'ArrowDown' })
+    expect(document.activeElement).toBe(report)
+    fireEvent.keyDown(menu, { key: 'ArrowUp' })
+    expect(document.activeElement).toBe(archive)
+    fireEvent.keyDown(menu, { key: 'Home' })
+    expect(document.activeElement).toBe(report)
+    fireEvent.keyDown(menu, { key: 'End' })
+    expect(document.activeElement).toBe(archive)
+    fireEvent.keyDown(menu, { key: 'a' })
+    expect(document.activeElement).toBe(archive)
+
+    fireEvent.keyDown(menu, { key: 'Tab' })
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
+  it('hands focus back to the trigger when an archive export starts', async () => {
+    renderMenu()
+    const trigger = screen.getByRole('button', { name: 'Export' })
+    fireEvent.click(trigger)
+    fireEvent.click(screen.getByRole('menuitem', { name: /export case file/i }))
+    expect(document.activeElement).toBe(trigger)
+    // Unavailable while the export runs, but still focusable: aria-disabled,
+    // not disabled, and a click opens nothing.
+    expect(trigger.getAttribute('aria-disabled')).toBe('true')
+    expect((trigger as HTMLButtonElement).disabled).toBe(false)
+    fireEvent.click(trigger)
+    expect(screen.queryByRole('menu')).toBeNull()
+    await waitFor(() => expect(exportArchive).toHaveBeenCalled())
+    await waitFor(() => expect(trigger.getAttribute('aria-disabled')).toBe('false'))
+  })
+
+  it('closes on Escape and returns focus to the trigger', () => {
+    renderMenu()
+    const trigger = screen.getByRole('button', { name: 'Export' })
+    fireEvent.click(trigger)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(document.activeElement).toBe(trigger)
+  })
+
   it('hands focus back to the Export trigger when the report dialog closes', () => {
     fakeBridge({
       cases: { exportArchive, get: vi.fn(async () => null) },

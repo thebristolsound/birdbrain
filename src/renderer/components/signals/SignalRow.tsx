@@ -35,6 +35,10 @@ interface SignalRowProps {
   /** Move focus to the row above/below, or out of the list at the top. */
   onFocusSibling: (direction: -1 | 1) => void
   registerRow: (element: HTMLDivElement | null) => void
+  /** The one row in its grid that Tab reaches; the arrow keys reach the rest. */
+  tabStop: boolean
+  /** Focus landed on the row or a control inside it, so the Tab stop follows. */
+  onFocusWithin: () => void
 }
 
 // Cmd on macOS, Ctrl elsewhere, with no other modifier: the copy chord the
@@ -75,7 +79,9 @@ export function SignalRow({
   onSetColor,
   onMerge,
   onFocusSibling,
-  registerRow
+  registerRow,
+  tabStop,
+  onFocusWithin
 }: SignalRowProps) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
@@ -125,15 +131,44 @@ export function SignalRow({
 
   function handleKey(event: KeyboardEvent<HTMLDivElement>) {
     if (editing) return
+    const row = event.currentTarget
+    const onRow = event.target === row
+    // Grid cell navigation: Left and Right walk the row's controls, with the
+    // row itself as the first stop; Up and Down leave for the sibling row from
+    // anywhere in the row.
+    const controls = Array.from(row.querySelectorAll<HTMLElement>('[data-cell-control]'))
+    const at = onRow ? -1 : controls.indexOf(event.target as HTMLElement)
+    // Tab from a control: put focus on the row first and let the browser's
+    // sequential navigation run from there, so one press in either direction
+    // leaves the grid instead of landing back on the row.
+    if (event.key === 'Tab') {
+      if (!onRow) row.focus()
+      return
+    }
+    if (event.key === 'ArrowRight') {
+      const next = controls[at + 1]
+      if (!next) return
+      event.preventDefault()
+      next.focus()
+      return
+    }
+    if (event.key === 'ArrowLeft') {
+      if (onRow) return
+      event.preventDefault()
+      ;(controls[at - 1] ?? row).focus()
+      return
+    }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      onFocusSibling(event.key === 'ArrowDown' ? 1 : -1)
+      return
+    }
+    // Every other key pressed on the switch, mode chip or delete button
+    // belongs to that control; the row only handles keys aimed at itself.
+    if (!onRow) return
     if (isSelector && isCopyChord(event)) {
       event.preventDefault()
       onCopyPattern()
-    } else if (event.key === 'ArrowDown') {
-      event.preventDefault()
-      onFocusSibling(1)
-    } else if (event.key === 'ArrowUp') {
-      event.preventDefault()
-      onFocusSibling(-1)
     } else if (event.key === 'Enter') {
       event.preventDefault()
       beginEdit()
@@ -193,8 +228,15 @@ export function SignalRow({
           rowRef.current = element
           registerRow(element)
         }}
-        role="button"
-        tabIndex={0}
+        // A grid row (the lists are grids): a button may not contain the switch,
+        // mode chip and delete button, and a group would hide that the row
+        // itself selects on click and edits on Enter. Cells use display:contents
+        // so the flex layout is unchanged.
+        role="row"
+        aria-selected={selected}
+        aria-label={signal.name}
+        tabIndex={tabStop ? 0 : -1}
+        onFocus={onFocusWithin}
         data-testid={`signal-row-${signal.id}`}
         data-selected={selected ? 'true' : 'false'}
         onClick={onSelect}
@@ -206,126 +248,146 @@ export function SignalRow({
           selected ? 'border border-accent/35 bg-accent-subtle' : 'border border-transparent'
         ].join(' ')}
       >
-        {isSelector ? (
-          <button
-            type="button"
-            role="switch"
-            aria-checked={signal.enabled}
-            aria-label={`Enable ${signal.name}`}
-            onClick={(event) => {
-              event.stopPropagation()
-              onToggleEnabled()
-            }}
-            className={[
-              'relative inline-flex h-4 w-[30px] shrink-0 items-center rounded-full transition-colors',
-              signal.enabled ? 'bg-accent' : 'bg-text-faint'
-            ].join(' ')}
-          >
-            <span
+        <span role="gridcell" className="contents">
+          {isSelector ? (
+            <button
+              type="button"
+              role="switch"
+              tabIndex={-1}
+              data-cell-control
+              aria-checked={signal.enabled}
+              aria-label={`Enable ${signal.name}`}
+              onClick={(event) => {
+                event.stopPropagation()
+                onToggleEnabled()
+              }}
               className={[
-                'inline-block h-3 w-3 rounded-full bg-white transition-transform',
-                signal.enabled ? 'translate-x-[16px]' : 'translate-x-[2px]'
+                'relative inline-flex h-4 w-[30px] shrink-0 items-center rounded-full transition-colors',
+                signal.enabled ? 'bg-accent' : 'bg-text-faint'
               ].join(' ')}
-            />
-          </button>
-        ) : (
-          <span className="flex w-[30px] shrink-0 justify-center">
-            <span
-              className="h-[9px] w-[9px] rounded-full"
-              style={{ background: signal.color }}
-              data-testid="signal-color-dot"
-            />
-          </span>
-        )}
-
-        {editing ? (
-          <input
-            ref={inputRef}
-            value={draft}
-            aria-label={isSelector ? 'Edit selector pattern' : 'Edit tag name'}
-            onChange={(event) => setDraft(event.target.value)}
-            onClick={(event) => event.stopPropagation()}
-            onBlur={commit}
-            onKeyDown={(event) => {
-              event.stopPropagation()
-              if (event.key === 'Escape') {
-                refocusRowRef.current = true
-                setEditing(false)
-              }
-              if (event.key === 'Enter') {
-                refocusRowRef.current = true
-                commit()
-              }
-            }}
-            className="min-w-0 flex-1 rounded border border-accent bg-canvas px-2 py-1 font-mono text-xs text-text-primary outline-none"
-          />
-        ) : (
-          <div
-            className={`min-w-0 flex-1 ${isSelector && !signal.enabled ? 'opacity-40' : ''}`}
-            data-testid="signal-name-block"
-          >
-            <div className="truncate text-xs font-semibold text-text-primary">{signal.name}</div>
-            {signal.sub && (
-              <div className="mt-px truncate font-mono text-[10px] text-text-faint">
-                {signal.sub}
-              </div>
-            )}
-          </div>
-        )}
-
-        {isSelector && (
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation()
-              onToggleRegex()
-            }}
-            title={
-              signal.isRegex
-                ? 'Regex pattern — click for exact text'
-                : 'Exact text — click for regex'
-            }
-            className={[
-              'shrink-0 rounded px-1.5 py-px font-mono text-[10px] font-semibold leading-4',
-              signal.isRegex
-                ? 'border border-accent/30 bg-accent-subtle text-accent'
-                : 'border border-border text-text-faint'
-            ].join(' ')}
-          >
-            {signal.isRegex ? '.*' : 'Aa'}
-          </button>
-        )}
-
-        <CoverageStrip
-          captures={captures}
-          captureIds={signal.captureIds}
-          fill={
-            signal.kind === 'tag' ? (signal.color ?? 'var(--color-accent)') : 'var(--color-accent)'
-          }
-          label={signal.name}
-        />
-
-        <span
-          data-testid="signal-count"
-          className={`w-7 shrink-0 text-right text-xs tabular-nums ${
-            isSelector ? 'text-accent' : 'text-text-muted'
-          }`}
-        >
-          {signal.count}
+            >
+              <span
+                className={[
+                  'inline-block h-3 w-3 rounded-full bg-white transition-transform',
+                  signal.enabled ? 'translate-x-[16px]' : 'translate-x-[2px]'
+                ].join(' ')}
+              />
+            </button>
+          ) : (
+            <span className="flex w-[30px] shrink-0 justify-center">
+              <span
+                className="h-[9px] w-[9px] rounded-full"
+                style={{ background: signal.color }}
+                data-testid="signal-color-dot"
+              />
+            </span>
+          )}
         </span>
 
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation()
-            onDelete()
-          }}
-          title={isSelector ? 'Delete selector' : 'Delete tag'}
-          aria-label={`Delete ${signal.name}`}
-          className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-text-faint opacity-0 transition-opacity hover:bg-red-500/10 hover:text-red-400 focus:opacity-100 group-hover:opacity-100"
-        >
-          <X className="h-3 w-3" strokeWidth={2} />
-        </button>
+        <span role="gridcell" className="contents">
+          {editing ? (
+            <input
+              ref={inputRef}
+              value={draft}
+              aria-label={isSelector ? 'Edit selector pattern' : 'Edit tag name'}
+              onChange={(event) => setDraft(event.target.value)}
+              onClick={(event) => event.stopPropagation()}
+              onBlur={commit}
+              onKeyDown={(event) => {
+                event.stopPropagation()
+                if (event.key === 'Escape') {
+                  refocusRowRef.current = true
+                  setEditing(false)
+                }
+                if (event.key === 'Enter') {
+                  refocusRowRef.current = true
+                  commit()
+                }
+              }}
+              className="min-w-0 flex-1 rounded border border-accent bg-canvas px-2 py-1 font-mono text-xs text-text-primary outline-none"
+            />
+          ) : (
+            <div
+              className={`min-w-0 flex-1 ${isSelector && !signal.enabled ? 'opacity-40' : ''}`}
+              data-testid="signal-name-block"
+            >
+              <div className="truncate text-xs font-semibold text-text-primary">{signal.name}</div>
+              {signal.sub && (
+                <div className="mt-px truncate font-mono text-[10px] text-text-faint">
+                  {signal.sub}
+                </div>
+              )}
+            </div>
+          )}
+        </span>
+
+        <span role="gridcell" className="contents">
+          {isSelector && (
+            <button
+              type="button"
+              tabIndex={-1}
+              data-cell-control
+              onClick={(event) => {
+                event.stopPropagation()
+                onToggleRegex()
+              }}
+              title={
+                signal.isRegex
+                  ? 'Regex pattern — click for exact text'
+                  : 'Exact text — click for regex'
+              }
+              className={[
+                'shrink-0 rounded px-1.5 py-px font-mono text-[10px] font-semibold leading-4',
+                signal.isRegex
+                  ? 'border border-accent/30 bg-accent-subtle text-accent'
+                  : 'border border-border text-text-faint'
+              ].join(' ')}
+            >
+              {signal.isRegex ? '.*' : 'Aa'}
+            </button>
+          )}
+        </span>
+
+        <span role="gridcell" className="contents">
+          <CoverageStrip
+            captures={captures}
+            captureIds={signal.captureIds}
+            fill={
+              signal.kind === 'tag'
+                ? (signal.color ?? 'var(--color-accent)')
+                : 'var(--color-accent)'
+            }
+            label={signal.name}
+          />
+        </span>
+
+        <span role="gridcell" className="contents">
+          <span
+            data-testid="signal-count"
+            className={`w-7 shrink-0 text-right text-xs tabular-nums ${
+              isSelector ? 'text-accent' : 'text-text-muted'
+            }`}
+          >
+            {signal.count}
+          </span>
+        </span>
+
+        <span role="gridcell" className="contents">
+          <button
+            type="button"
+            tabIndex={-1}
+            data-cell-control
+            onClick={(event) => {
+              event.stopPropagation()
+              onDelete()
+            }}
+            title={isSelector ? 'Delete selector' : 'Delete tag'}
+            aria-label={`Delete ${signal.name}`}
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-text-faint opacity-0 transition-opacity hover:bg-red-500/10 hover:text-red-400 focus:opacity-100 group-hover:opacity-100"
+          >
+            <X className="h-3 w-3" strokeWidth={2} />
+          </button>
+        </span>
       </div>
     </EntityContextMenu>
   )

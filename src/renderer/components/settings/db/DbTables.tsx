@@ -117,8 +117,11 @@ export function DbTables() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <label className="text-xs font-medium text-text-muted">Table</label>
+          <label htmlFor="db-table-select" className="text-xs font-medium text-text-muted">
+            Table
+          </label>
           <select
+            id="db-table-select"
             value={selectedTable}
             onChange={(e) => setSelectedTable(e.target.value)}
             className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-primary outline-none focus:border-accent"
@@ -199,6 +202,7 @@ export function DbTables() {
                             onClick={() => setEditModal({ open: true, mode: 'edit', row })}
                             className="rounded p-1 text-text-muted hover:bg-elevated hover:text-accent"
                             title="Edit"
+                            aria-label="Edit row"
                           >
                             <Pencil size={12} />
                           </button>
@@ -206,6 +210,7 @@ export function DbTables() {
                             onClick={() => setDeleteConfirm({ open: true, pk: getPk(row) })}
                             className="rounded p-1 text-text-muted hover:bg-elevated hover:text-red-400"
                             title="Delete"
+                            aria-label="Delete row"
                           >
                             <Trash2 size={12} />
                           </button>
@@ -236,6 +241,7 @@ export function DbTables() {
               <Button
                 variant="outline"
                 size="icon-sm"
+                aria-label="Previous page"
                 onClick={() => setPage((p) => Math.max(0, p - 1))}
                 disabled={page === 0}
               >
@@ -244,6 +250,7 @@ export function DbTables() {
               <Button
                 variant="outline"
                 size="icon-sm"
+                aria-label="Next page"
                 onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                 disabled={page >= totalPages - 1}
               >

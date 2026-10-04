@@ -104,6 +104,15 @@ beforeEach(() => {
 
 afterEach(cleanup)
 
+describe('CreateNoteCard close control (#1537)', () => {
+  it('names the close button and closes through it', () => {
+    const onToggle = vi.fn()
+    wrap(<CreateNoteCard caseId={CASE_ID} isOpen onToggle={onToggle} onCreated={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Close new note' }))
+    expect(onToggle).toHaveBeenCalled()
+  })
+})
+
 describe('CreateNoteCard draft tagging (#391)', () => {
   it('writes the draft out so the tag has a note to attach to, then updates on Save', async () => {
     const { create, update, applyToNote } = stubBridge()

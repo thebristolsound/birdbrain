@@ -250,9 +250,11 @@ describe('DataExplorer (#1149)', () => {
     // A pick in the columns opens the category in the rail and selects the row.
     fireEvent.click(screen.getByText('personal'))
     const sub = await rail.findByTestId('data-tree-node-indicator-subcategory:emails/personal')
-    expect(sub.getAttribute('aria-selected')).toBe('true')
+    expect(within(sub).getByRole('treeitem').getAttribute('aria-selected')).toBe('true')
     expect(
-      rail.getByTestId('data-tree-node-indicator-category:emails').getAttribute('aria-expanded')
+      within(rail.getByTestId('data-tree-node-indicator-category:emails'))
+        .getByRole('treeitem')
+        .getAttribute('aria-expanded')
     ).toBe('true')
   })
 

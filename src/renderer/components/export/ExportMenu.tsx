@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { FileOutput, ChevronDown, FileText, Archive, Loader2, X } from 'lucide-react'
 import { AnimatePresence } from 'motion/react'
 import { Button } from '@renderer/components/ui'
@@ -27,6 +27,32 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
 
   const menuRef = useRef<HTMLDivElement>(null)
   const anchorRef = useRef<HTMLButtonElement>(null)
+  const menuId = useId()
+
+  // Focus lands on the first item when the menu opens, as the menu role promises.
+  useEffect(() => {
+    if (!open) return
+    menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus()
+  }, [open])
+
+  function onMenuKey(e: ReactKeyboardEvent<HTMLDivElement>) {
+    const items = Array.from(
+      menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []
+    )
+    const index = items.indexOf(document.activeElement as HTMLElement)
+    let next = -1
+    if (e.key === 'ArrowDown') next = (index + 1) % items.length
+    else if (e.key === 'ArrowUp') next = (index - 1 + items.length) % items.length
+    else if (e.key === 'Home') next = 0
+    else if (e.key === 'End') next = items.length - 1
+    else if (e.key === 'Tab') {
+      setOpen(false)
+      return
+    }
+    if (next < 0) return
+    e.preventDefault()
+    items[next]?.focus()
+  }
 
   useEffect(() => {
     caseIdRef.current = caseId
@@ -56,6 +82,7 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         setOpen(false)
+        anchorRef.current?.focus()
       }
     }
     document.addEventListener('mousedown', onDocClick)
@@ -67,6 +94,9 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
   }, [open])
 
   async function handleExportArchive() {
+    // The item unmounts with the menu, so hand focus back first or the
+    // keyboard lands on the document once the save dialog closes.
+    anchorRef.current?.focus()
     setOpen(false)
     const exportCaseId = caseId
     setArchiveError('')
@@ -96,11 +126,17 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
         ref={anchorRef}
         variant="outline"
         size="sm"
-        onClick={() => setOpen((v) => !v)}
-        disabled={isExporting}
+        // aria-disabled rather than disabled: a disabled control cannot hold
+        // focus, and the archive item hands focus back here as it starts.
+        onClick={() => {
+          if (isExporting) return
+          setOpen((v) => !v)
+        }}
+        aria-disabled={isExporting}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="gap-1.5"
+        aria-controls={open ? menuId : undefined}
+        className="gap-1.5 aria-disabled:opacity-50"
       >
         {isExporting ? (
           <Loader2 className="h-3 w-3 animate-spin" strokeWidth={1.8} />
@@ -116,11 +152,15 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
       {open && (
         <div
           ref={menuRef}
+          id={menuId}
           role="menu"
+          aria-label="Export options"
+          onKeyDown={onMenuKey}
           className="absolute right-0 top-full z-50 mt-1 w-56 rounded-lg border border-border-strong bg-card py-1 shadow-xl"
         >
           <button
             role="menuitem"
+            tabIndex={-1}
             onClick={() => {
               setOpen(false)
               // The item unmounts with the menu, so the dialog would record a
@@ -135,6 +175,7 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
           </button>
           <button
             role="menuitem"
+            tabIndex={-1}
             onClick={handleExportArchive}
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary hover:bg-elevated"
           >

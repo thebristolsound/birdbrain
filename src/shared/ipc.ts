@@ -13,6 +13,7 @@ import type {
   BugReportInput,
   BugReportResult,
   Capture,
+  CaptureLinks,
   CaptureAnnotations,
   CaptureEvent,
   Case,
@@ -89,6 +90,7 @@ export const IPC_CHANNELS = {
   CAPTURES_VERIFY: 'captures:verify',
   CAPTURES_GET_MHTML_URL: 'captures:getMhtmlUrl',
   CAPTURES_GET_HTML_URL: 'captures:getHtmlUrl',
+  CAPTURES_GET_LINKS: 'captures:getLinks',
   CAPTURES_DELETE_MANY: 'captures:deleteMany',
   CAPTURES_DUPLICATE: 'captures:duplicate',
   CAPTURES_SET_FAVORITE_MANY: 'captures:setFavoriteMany',
@@ -254,6 +256,8 @@ export const IPC_CHANNELS = {
   DEEP_LINK_NAVIGATE: 'event:deepLinkNavigate',
   ARCHIVE_PROGRESS: 'event:archiveProgress',
   UPDATE_STATUS: 'event:updateStatus',
+  GUEST_FRAME_REPLACED: 'event:guestFrameReplaced',
+  GUEST_MOUSE_DOWN: 'event:guestMouseDown',
 
   // Capture pipeline observability
   CAPTURE_ACTIVITY: 'event:captureActivity',
@@ -323,6 +327,20 @@ export interface SessionStateEvent {
 // Extension reachability, pushed when the companion extension connects or drops.
 export interface ExtensionConnectionEvent {
   connected: boolean
+}
+
+// A subframe of an evidence guest committed a second document (#1708). Chromium
+// serves an MHTML iframe's navigations from the archive without consulting the
+// navigation guard, so this is how the viewer learns a stored frame was swapped.
+export interface GuestFrameReplacedEvent {
+  guestWebContentsId: number
+}
+
+// A mouse button went down in the stored-page viewer's guest (#1708). Input inside a
+// <webview> never reaches the embedding document, so this is how that document learns
+// of a click there.
+export interface GuestMouseDownEvent {
+  guestWebContentsId: number
 }
 
 export type SelectorRematchedStatus = 'done' | 'error'
@@ -783,6 +801,7 @@ export interface IpcInvokeContract {
   'captures:verify': { args: [captureId: string]; result: HashVerification }
   'captures:getMhtmlUrl': { args: [captureId: string]; result: string | null }
   'captures:getHtmlUrl': { args: [captureId: string]; result: string | null }
+  'captures:getLinks': { args: [captureId: string]; result: CaptureLinks | null }
   'captures:testPipeline': { args: []; result: SelfTestResult }
   'captures:testHttp': { args: []; result: SelfTestResult }
   'captures:deleteMany': { args: [payload: CaptureBatchPayload]; result: BatchDeleteResult }
@@ -1008,6 +1027,8 @@ export interface IpcEventContract {
   'event:selector:rematched': SelectorRematchedEvent
   'event:deepLinkNavigate': DeepLinkTarget
   'event:updateStatus': UpdateStatus
+  'event:guestFrameReplaced': GuestFrameReplacedEvent
+  'event:guestMouseDown': GuestMouseDownEvent
   'event:logEntry': LogEntry
 }
 

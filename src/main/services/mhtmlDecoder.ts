@@ -12,14 +12,55 @@
 // memory bounded by the text/html parts plus header scanning regions.
 
 export function extractHtmlFromMhtml(buffer: Buffer): string {
-  const topHeaderEnd = findHeaderEndBuf(buffer, 0)
-  if (topHeaderEnd === -1) return ''
+  return extractHtmlPartsFromMhtml(buffer)
+    .map((part) => part.html)
+    .join('\n')
+}
 
-  const boundary = parseBoundary(buffer.slice(0, topHeaderEnd).toString('latin1'))
-  if (!boundary) return ''
+/** One decoded text/html part, with the address it was saved from. */
+export interface MhtmlHtmlPartText {
+  contentLocation: string | null
+  html: string
+}
+
+/** Every text/html part, decoded, in file order. */
+export function extractHtmlPartsFromMhtml(buffer: Buffer): MhtmlHtmlPartText[] {
+  return listHtmlPartsInMhtml(buffer).parts.map(({ contentLocation, decode }) => ({
+    contentLocation,
+    html: decode()
+  }))
+}
+
+/** A text/html part found but not yet decoded, so a caller can refuse it by size first. */
+export interface MhtmlHtmlPart {
+  contentLocation: string | null
+  /** The part body's size in bytes as stored, before any transfer decoding. */
+  encodedSize: number
+  decode: () => string
+}
+
+export interface MhtmlHtmlPartList {
+  /** The top-level `Snapshot-Content-Location` header Chrome writes, if present. */
+  snapshotLocation: string | null
+  parts: MhtmlHtmlPart[]
+}
+
+/**
+ * The text/html parts of an MHTML, located but not decoded. A Content-Location that
+ * was folded across header lines is unfolded with its whitespace removed, as RFC 2557
+ * asks for a folded URI.
+ */
+export function listHtmlPartsInMhtml(buffer: Buffer): MhtmlHtmlPartList {
+  const topHeaderEnd = findHeaderEndBuf(buffer, 0)
+  if (topHeaderEnd === -1) return { snapshotLocation: null, parts: [] }
+
+  const topHeaders = buffer.slice(0, topHeaderEnd).toString('latin1')
+  const snapshotLocation = parseLocation(topHeaders, 'snapshot-content-location')
+  const boundary = parseBoundary(topHeaders)
+  if (!boundary) return { snapshotLocation, parts: [] }
 
   const delimiter = Buffer.from('--' + boundary, 'latin1')
-  const chunks: string[] = []
+  const parts: MhtmlHtmlPart[] = []
 
   let at = buffer.indexOf(delimiter, topHeaderEnd)
   while (at !== -1) {
@@ -42,8 +83,13 @@ export function extractHtmlFromMhtml(buffer: Buffer): string {
       if (isTextHtml(headers)) {
         const encoding = (parseHeader(headers, 'content-transfer-encoding') ?? '7bit').toLowerCase()
         const charset = parseCharset(headers)
-        const bodyEnd = stripTrailingNewlineEnd(buffer, partHeaderEnd, partEnd)
-        chunks.push(decodePartBody(buffer, partHeaderEnd, bodyEnd, encoding, charset))
+        const bodyStart = partHeaderEnd
+        const bodyEnd = stripTrailingNewlineEnd(buffer, bodyStart, partEnd)
+        parts.push({
+          contentLocation: parseLocation(headers, 'content-location'),
+          encodedSize: bodyEnd - bodyStart,
+          decode: () => decodePartBody(buffer, bodyStart, bodyEnd, encoding, charset)
+        })
       }
     }
 
@@ -51,7 +97,12 @@ export function extractHtmlFromMhtml(buffer: Buffer): string {
     at = nextAt
   }
 
-  return chunks.join('\n')
+  return { snapshotLocation, parts }
+}
+
+function parseLocation(headers: string, name: string): string | null {
+  const value = parseHeader(headers, name)?.replace(/\s+/g, '')
+  return value ? value : null
 }
 
 function findHeaderEndBuf(buf: Buffer, from: number): number {

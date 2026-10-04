@@ -4,7 +4,7 @@ import type { CaptureEvent } from '@shared/types'
 // The viewer's tab lives in the store rather than in CaptureViewer because the
 // captures route has to know about it: the Wayback tab takes the full width,
 // hiding the list and details columns.
-export type CaptureViewerTab = 'screenshot' | 'page' | 'text' | 'wayback'
+export type CaptureViewerTab = 'screenshot' | 'page' | 'text' | 'links' | 'wayback'
 
 // The archive.org snapshot selected for side-by-side comparison. Keyed by
 // capture so moving to another capture cannot leave the previous one's snapshot

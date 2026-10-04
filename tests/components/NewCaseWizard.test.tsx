@@ -92,7 +92,7 @@ describe('NewCaseWizard', () => {
     fireEvent.click(screen.getByTestId('case-create-btn'))
 
     await waitFor(() => expect(notifySuccess).toHaveBeenCalledOnce())
-    expect(notifySuccess).toHaveBeenCalledWith('Investigation created', {
+    expect(notifySuccess).toHaveBeenCalledWith('Case created', {
       description: '“Nightjar” is ready — 2 selectors armed.'
     })
     expect(navigate).toHaveBeenCalledWith({ to: '/cases/$caseId', params: { caseId: 'case-1' } })

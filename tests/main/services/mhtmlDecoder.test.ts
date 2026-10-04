@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { extractHtmlFromMhtml } from '@main/services/mhtmlDecoder'
+import { readFileSync } from 'fs'
+import { join } from 'path'
+import { createHash } from 'crypto'
+import {
+  extractHtmlFromMhtml,
+  extractHtmlPartsFromMhtml,
+  listHtmlPartsInMhtml
+} from '@main/services/mhtmlDecoder'
 
 function mhtml(lines: string[]): Buffer {
   return Buffer.from(lines.join('\r\n'), 'utf-8')
@@ -156,5 +163,78 @@ describe('extractHtmlFromMhtml', () => {
       '--X--'
     ])
     expect(extractHtmlFromMhtml(buf)).toBe('')
+  })
+
+  // #1708 split the decoder into a part list that this joins. Its output feeds text
+  // extraction, so the split must not move a byte: these digests were taken from the
+  // function as it stood before the split. The two news fixtures hold one HTML part
+  // each; `fixtures/multi-part.mhtml` holds three, in quoted-printable, base64 and
+  // binary latin-1, around an image part, which is the case the join itself decides.
+  it.each([
+    [
+      'fixtures/multi-part.mhtml',
+      '40f2d81213451a4f6aad9b32fccc858f96c62e15b7448f150ba68121cf294888'
+    ],
+    [
+      'extraction/fixtures/cnn-iran-synthetic.mhtml',
+      'c2be71c4ac61e29d2b9e31356f739f4370635134557d427c5e3bc0c2ebe076fe'
+    ],
+    [
+      'extraction/fixtures/cnn-pope-synthetic.mhtml',
+      '11c2c2c3fe095342afe1ae5cf03ef12b71b6003d12d10be91dfa6efa98476abf'
+    ]
+  ])('extracts %s byte for byte as before the part split', (fixture, digest) => {
+    const html = extractHtmlFromMhtml(readFileSync(join(__dirname, fixture)))
+    expect(createHash('sha256').update(html, 'utf8').digest('hex')).toBe(digest)
+  })
+})
+
+describe('listHtmlPartsInMhtml and extractHtmlPartsFromMhtml', () => {
+  const twoParts = mhtml([
+    'From: <Saved by Blink>',
+    'Snapshot-Content-Location: https://example.com/page',
+    'Content-Type: multipart/related; boundary="B"; type="text/html"',
+    '',
+    '--B',
+    'Content-Type: text/html',
+    'Content-ID: <frame-1@mhtml.blink>',
+    'Content-Location: https://example.com/',
+    ' very/long/frame.html',
+    '',
+    '<p>frame</p>',
+    '--B',
+    'Content-Type: image/png',
+    'Content-Location: https://example.com/i.png',
+    '',
+    'PNG',
+    '--B',
+    'Content-Type: text/html',
+    'Content-Transfer-Encoding: base64',
+    'Content-Location: https://example.com/page',
+    '',
+    Buffer.from('<p>main</p>').toString('base64'),
+    '--B--'
+  ])
+
+  it('lists each html part with its location, in file order, and joins to the old output', () => {
+    expect(extractHtmlPartsFromMhtml(twoParts)).toEqual([
+      { contentLocation: 'https://example.com/very/long/frame.html', html: '<p>frame</p>' },
+      { contentLocation: 'https://example.com/page', html: '<p>main</p>' }
+    ])
+    expect(extractHtmlFromMhtml(twoParts)).toBe('<p>frame</p>\n<p>main</p>')
+  })
+
+  it('reports the snapshot location and each part’s stored size before decoding it', () => {
+    const { snapshotLocation, parts } = listHtmlPartsInMhtml(twoParts)
+    expect(snapshotLocation).toBe('https://example.com/page')
+    expect(parts.map((part) => part.encodedSize)).toEqual([
+      '<p>frame</p>'.length,
+      Buffer.from('<p>main</p>').toString('base64').length
+    ])
+  })
+
+  it('answers no parts and no snapshot for something that is not an MHTML', () => {
+    expect(listHtmlPartsInMhtml(Buffer.alloc(0))).toEqual({ snapshotLocation: null, parts: [] })
+    expect(listHtmlPartsInMhtml(mhtml(['Content-Type: text/html', '', 'x'])).parts).toEqual([])
   })
 })

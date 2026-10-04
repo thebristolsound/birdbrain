@@ -503,6 +503,12 @@ describe('ipcHandlers — captures', () => {
     expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_MHTML_URL, captureId))).toBeNull()
   })
 
+  // #1708. The parser has its own known answers; this pins the channel's wiring.
+  it('answers null links for a capture with no MHTML and for an unknown one', async () => {
+    expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_LINKS, captureId))).toBeNull()
+    expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_LINKS, 'missing'))).toBeNull()
+  })
+
   // #906. The legacy viewer is a <webview> that loads the artefact by file URL, so
   // this channel answers for the same file captures:getContent reads — resolved
   // through artifactPaths, not through the capture row's htmlPath column, which

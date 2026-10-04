@@ -1,0 +1,37 @@
+From: <Saved by Blink>
+Snapshot-Content-Location: https://example.com/page
+MIME-Version: 1.0
+Content-Type: multipart/related;
+	type="text/html";
+	boundary="----MultiPartBoundary"
+
+------MultiPartBoundary
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+Content-Location: https://example.com/page
+
+<html><body><p>main =E2=98=83</p><a href=3D"https://example.com/a">a</a>
+<p>soft=
+break</p></body></html>
+------MultiPartBoundary
+Content-Type: image/png
+Content-Transfer-Encoding: base64
+Content-Location: https://example.com/i.png
+
+iVBORw0KGgo=
+------MultiPartBoundary
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: base64
+Content-ID: <frame-1@mhtml.blink>
+Content-Location: https://widgets.example/
+ frame/one.html
+
+PGh0bWw+PGJvZHk+PHA+ZnJhbWUgb25lIMOpPC9w
+PjwvYm9keT48L2h0bWw+
+------MultiPartBoundary
+Content-Type: text/html; charset=iso-8859-1
+Content-Transfer-Encoding: binary
+Content-Location: cid:frame-2@mhtml.blink
+
+<html><body><p>frame two café</p></body></html>
+------MultiPartBoundary--

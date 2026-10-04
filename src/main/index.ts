@@ -1,6 +1,13 @@
 // `session` is aliased because the whenReady block below binds a local `session` to
 // the sessionLog record, which would shadow it there.
-import { app, BrowserWindow, dialog, shell, session as electronSession } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  shell,
+  session as electronSession,
+  webFrameMain
+} from 'electron'
 import { join, resolve } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
@@ -23,13 +30,17 @@ import { revealWhenReady } from '@main/windowReveal'
 import {
   allowWebviewPermission,
   decideWebviewAttach,
+  decideFrameNavigation,
   decideWebviewDownload,
   decideWebviewNavigation,
   decideWebviewRequest,
   resolveAttachPartition,
   sanitizeWebviewPreferences,
+  webviewPolicyFor,
+  MHTML_PARTITION,
   WEBVIEW_PARTITIONS
 } from '@main/webviewPolicy'
+import { forwardGuestMouseDown } from '@main/guestMouseDown'
 import { initSettings, getSettings } from '@main/services/settings'
 import { initInstallationId, getInstallationId } from '@main/services/installationId'
 import { initSigningKey, SigningKeyUnacknowledgedError } from '@main/services/signingKey'
@@ -323,13 +334,20 @@ function registerProtocolClient(): void {
   }
 }
 
-// Navigation policy for every webview guest. Partition-aware since #401: the MHTML
-// evidence viewer gets exactly one file:// load and nothing after it, while the
+// Navigation policy for every webview guest. Partition-aware since #401: the two
+// evidence viewers get exactly one file:// load and nothing after it, while the
 // Wayback replay pane may follow archive.org's own redirects but never leaves the
 // replay prefix. A guest on any other partition navigates nowhere.
 app.on('web-contents-created', (_event, contents) => {
   if (contents.getType() !== 'webview') return
   const partition = webviewPartitionOf(contents)
+  contents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  // The stored-page viewer closes its link menu on a press in the guest (#1708).
+  if (partition === MHTML_PARTITION) forwardGuestMouseDown(contents)
+  if (webviewPolicyFor(partition)?.allowSubsequentNavigation === false) {
+    guardEveryFrame(contents, partition)
+    return
+  }
   let initialLoadDone = false
   const guard = (event: Electron.Event, url: string): void => {
     if (decideWebviewNavigation({ partition, url, initialLoadDone }) === 'allow') {
@@ -342,8 +360,59 @@ app.on('web-contents-created', (_event, contents) => {
   // Server-side redirects do not raise will-navigate, and archive.org replay URLs
   // redirect to the nearest snapshot as a matter of course.
   contents.on('will-redirect', guard)
-  contents.setWindowOpenHandler(() => ({ action: 'deny' }))
 })
+
+// The evidence viewers' guard (#1708). `will-frame-navigate` rather than
+// `will-navigate`, which sees the main frame only, and the commit recorded from
+// `did-navigate` rather than from an allow: decideFrameNavigation says why.
+function guardEveryFrame(contents: Electron.WebContents, partition: string | null): void {
+  let mainDocumentCommitted = false
+  // Frames that have committed a document, by frame tree node id, which a frame keeps
+  // across its navigations.
+  const committedFrames = new Set<number>()
+  contents.on('did-navigate', () => {
+    mainDocumentCommitted = true
+  })
+  contents.on(
+    'did-frame-navigate',
+    (_event, _url, _code, _status, isMain, processId, routingId) => {
+      const frame = webFrameMain.fromId(processId, routingId)
+      if (!frame) return
+      // Chromium serves an MHTML iframe's navigations from the archive without raising
+      // will-frame-navigate, so a stored frame can be swapped behind the guard. The
+      // embedding viewer is told, so it can say so and offer a reload.
+      if (!isMain && committedFrames.has(frame.frameTreeNodeId) && contents.hostWebContents) {
+        sendEvent(contents.hostWebContents, IPC_CHANNELS.GUEST_FRAME_REPLACED, {
+          guestWebContentsId: contents.id
+        })
+      }
+      committedFrames.add(frame.frameTreeNodeId)
+    }
+  )
+  const guard = (
+    event: Electron.Event<{
+      url: string
+      isMainFrame: boolean
+      isSameDocument: boolean
+      frame: Electron.WebFrameMain | null
+    }>
+  ): void => {
+    const { url, isMainFrame, isSameDocument, frame } = event
+    // A frame that can no longer be identified is treated as one that has committed.
+    const frameCommitted = frame ? committedFrames.has(frame.frameTreeNodeId) : true
+    const input = {
+      partition,
+      url,
+      isMainFrame,
+      isSameDocument,
+      mainDocumentCommitted,
+      frameCommitted
+    }
+    if (decideFrameNavigation(input) === 'block') event.preventDefault()
+  }
+  contents.on('will-frame-navigate', guard)
+  contents.on('will-redirect', guard)
+}
 
 // A single-instance lock is required so a deep link launched while the app is
 // already running routes into this process (via second-instance) instead of

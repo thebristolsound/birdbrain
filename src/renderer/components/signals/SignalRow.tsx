@@ -35,6 +35,10 @@ interface SignalRowProps {
   /** Move focus to the row above/below, or out of the list at the top. */
   onFocusSibling: (direction: -1 | 1) => void
   registerRow: (element: HTMLDivElement | null) => void
+  /** The one row in its grid that Tab reaches; the arrow keys reach the rest. */
+  tabStop: boolean
+  /** Focus landed on the row or a control inside it, so the Tab stop follows. */
+  onFocusWithin: () => void
 }
 
 // Cmd on macOS, Ctrl elsewhere, with no other modifier: the copy chord the
@@ -75,7 +79,9 @@ export function SignalRow({
   onSetColor,
   onMerge,
   onFocusSibling,
-  registerRow
+  registerRow,
+  tabStop,
+  onFocusWithin
 }: SignalRowProps) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
@@ -125,18 +131,37 @@ export function SignalRow({
 
   function handleKey(event: KeyboardEvent<HTMLDivElement>) {
     if (editing) return
-    // Keys pressed on the switch, mode chip or delete button belong to those
-    // controls; the row only handles keys aimed at the row itself.
-    if (event.target !== event.currentTarget) return
+    const row = event.currentTarget
+    const onRow = event.target === row
+    // Grid cell navigation: Left and Right walk the row's controls, with the
+    // row itself as the first stop; Up and Down leave for the sibling row from
+    // anywhere in the row.
+    const controls = Array.from(row.querySelectorAll<HTMLElement>('[data-cell-control]'))
+    const at = onRow ? -1 : controls.indexOf(event.target as HTMLElement)
+    if (event.key === 'ArrowRight') {
+      const next = controls[at + 1]
+      if (!next) return
+      event.preventDefault()
+      next.focus()
+      return
+    }
+    if (event.key === 'ArrowLeft') {
+      if (onRow) return
+      event.preventDefault()
+      ;(controls[at - 1] ?? row).focus()
+      return
+    }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      onFocusSibling(event.key === 'ArrowDown' ? 1 : -1)
+      return
+    }
+    // Every other key pressed on the switch, mode chip or delete button
+    // belongs to that control; the row only handles keys aimed at itself.
+    if (!onRow) return
     if (isSelector && isCopyChord(event)) {
       event.preventDefault()
       onCopyPattern()
-    } else if (event.key === 'ArrowDown') {
-      event.preventDefault()
-      onFocusSibling(1)
-    } else if (event.key === 'ArrowUp') {
-      event.preventDefault()
-      onFocusSibling(-1)
     } else if (event.key === 'Enter') {
       event.preventDefault()
       beginEdit()
@@ -203,7 +228,8 @@ export function SignalRow({
         role="row"
         aria-selected={selected}
         aria-label={signal.name}
-        tabIndex={0}
+        tabIndex={tabStop ? 0 : -1}
+        onFocus={onFocusWithin}
         data-testid={`signal-row-${signal.id}`}
         data-selected={selected ? 'true' : 'false'}
         onClick={onSelect}
@@ -220,6 +246,8 @@ export function SignalRow({
             <button
               type="button"
               role="switch"
+              tabIndex={-1}
+              data-cell-control
               aria-checked={signal.enabled}
               aria-label={`Enable ${signal.name}`}
               onClick={(event) => {
@@ -290,6 +318,8 @@ export function SignalRow({
           {isSelector && (
             <button
               type="button"
+              tabIndex={-1}
+              data-cell-control
               onClick={(event) => {
                 event.stopPropagation()
                 onToggleRegex()
@@ -338,6 +368,8 @@ export function SignalRow({
         <span role="gridcell" className="contents">
           <button
             type="button"
+            tabIndex={-1}
+            data-cell-control
             onClick={(event) => {
               event.stopPropagation()
               onDelete()

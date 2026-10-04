@@ -119,6 +119,15 @@ export function SignalsOverview() {
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
   const rowRefs = useRef(new Map<string, HTMLDivElement>())
+  // Each list is a grid with one Tab stop: the row last focused, else the
+  // selected row, else the first. The arrow keys reach the others.
+  const [focusedRowId, setFocusedRowId] = useState<string | null>(null)
+  function isTabStop(list: Signal[], id: string): boolean {
+    const has = (candidate: string | null | undefined) =>
+      candidate != null && list.some((signal) => signal.id === candidate)
+    const stop = has(focusedRowId) ? focusedRowId : has(selectedId) ? selectedId : list[0]?.id
+    return stop === id
+  }
   const selectorInputRef = useRef<HTMLInputElement>(null)
   const tagInputRef = useRef<HTMLInputElement>(null)
 
@@ -314,6 +323,8 @@ export function SignalsOverview() {
         captures={recentCaptures}
         selected={selected?.id === signal.id}
         registerRow={registerRow(signal.id)}
+        tabStop={isTabStop(list, signal.id)}
+        onFocusWithin={() => setFocusedRowId(signal.id)}
         onSelect={() => setSelectedId(signal.id)}
         onFocusSibling={(direction) => focusSibling(list, signal.id, direction, signal.kind)}
         onToggleEnabled={() => {

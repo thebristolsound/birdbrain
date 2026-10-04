@@ -58,10 +58,18 @@ function renderRow(signal: Signal = selectorSignal, overrides: Record<string, un
     onSetColor: vi.fn(),
     onMerge: vi.fn(),
     onFocusSibling: vi.fn(),
-    registerRow: vi.fn()
+    registerRow: vi.fn(),
+    onFocusWithin: vi.fn()
   }
   render(
-    <SignalRow signal={signal} captures={captures} selected={false} {...handlers} {...overrides} />
+    <SignalRow
+      signal={signal}
+      captures={captures}
+      selected={false}
+      tabStop
+      {...handlers}
+      {...overrides}
+    />
   )
   return handlers
 }
@@ -115,6 +123,43 @@ describe('SignalRow keyboard model', () => {
     expect(row.getAttribute('aria-selected')).toBe('false')
     expect(row.querySelectorAll(':scope > [role="gridcell"]').length).toBe(6)
     expect(row.querySelector('[role="button"]')).toBeNull()
+  })
+
+  it('walks the row and its controls with Left and Right, and leaves by Up and Down', () => {
+    const { onFocusSibling, onFocusWithin } = renderRow()
+    const row = screen.getByTestId('signal-row-s1')
+    const toggle = screen.getByRole('switch')
+    const mode = screen.getByTitle('Exact text — click for regex')
+    const remove = screen.getByLabelText('Delete acme')
+    expect(row.tabIndex).toBe(0)
+    expect([toggle, mode, remove].map((el) => el.tabIndex)).toEqual([-1, -1, -1])
+
+    row.focus()
+    expect(onFocusWithin).toHaveBeenCalled()
+    fireEvent.keyDown(row, { key: 'ArrowLeft' })
+    expect(document.activeElement).toBe(row)
+    fireEvent.keyDown(row, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(toggle)
+    fireEvent.keyDown(toggle, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(mode)
+    fireEvent.keyDown(mode, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(remove)
+    fireEvent.keyDown(remove, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(remove)
+    fireEvent.keyDown(remove, { key: 'ArrowLeft' })
+    expect(document.activeElement).toBe(mode)
+    fireEvent.keyDown(toggle, { key: 'ArrowLeft' })
+    expect(document.activeElement).toBe(row)
+
+    fireEvent.keyDown(remove, { key: 'ArrowDown' })
+    expect(onFocusSibling).toHaveBeenLastCalledWith(1)
+    fireEvent.keyDown(toggle, { key: 'ArrowUp' })
+    expect(onFocusSibling).toHaveBeenLastCalledWith(-1)
+  })
+
+  it('is out of the Tab order when it is not the grid Tab stop', () => {
+    renderRow(selectorSignal, { tabStop: false })
+    expect(screen.getByTestId('signal-row-s1').tabIndex).toBe(-1)
   })
 
   it('leaves keys pressed on nested controls to those controls', () => {

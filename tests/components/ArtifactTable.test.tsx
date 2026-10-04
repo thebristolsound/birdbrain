@@ -138,21 +138,45 @@ describe('ArtifactTable keyboard reach (#1537)', () => {
     expect(second.tabIndex).toBe(-1)
   })
 
-  it('leaves arrow keys pressed on an inline button to that button', () => {
+  it("keeps the staged row's Commit and Discard inside the grid keyboard model", () => {
     const staged = [toArtifactRow(STAGED_PDF, INVENTORY, new Map()), ...rows]
+    const onOpen = vi.fn()
     render(
       <ArtifactTable
         rows={staged}
         selectedId={null}
         onSelect={vi.fn()}
+        onOpen={onOpen}
         stagingActions={{ commit: vi.fn(), discard: vi.fn(), pending: false }}
         emptyMessage="none"
       />
     )
+    const row = screen.getByTestId('artifact-row-staged-1')
     const commit = screen.getByTestId('staging-commit-staged-1')
-    commit.focus()
-    fireEvent.keyDown(commit, { key: 'ArrowDown' })
+    const discard = screen.getByTestId('staging-discard-staged-1')
+    expect(commit.tabIndex).toBe(-1)
+    expect(discard.tabIndex).toBe(-1)
+
+    row.focus()
+    fireEvent.keyDown(row, { key: 'ArrowLeft' })
+    expect(document.activeElement).toBe(row)
+    fireEvent.keyDown(row, { key: 'ArrowRight' })
     expect(document.activeElement).toBe(commit)
+    fireEvent.keyDown(commit, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(discard)
+    fireEvent.keyDown(discard, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(discard)
+    fireEvent.keyDown(discard, { key: 'ArrowLeft' })
+    expect(document.activeElement).toBe(commit)
+    fireEvent.keyDown(commit, { key: 'ArrowLeft' })
+    expect(document.activeElement).toBe(row)
+
+    // Down from a control leaves for the next row; Enter on a control is the
+    // control's, not an open.
+    fireEvent.keyDown(commit, { key: 'ArrowDown' })
+    expect(document.activeElement).toBe(screen.getByTestId('artifact-row-cap-a'))
+    fireEvent.keyDown(commit, { key: 'Enter' })
+    expect(onOpen).not.toHaveBeenCalled()
   })
 
   it('declares grid semantics, since rows are selectable', () => {

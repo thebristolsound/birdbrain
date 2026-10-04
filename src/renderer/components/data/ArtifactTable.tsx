@@ -76,13 +76,33 @@ export function ArtifactTable({
       ? selectedId
       : (rows[0]?.id ?? null)
 
+  // Grid cell navigation. Left and Right walk a row's inline controls (the
+  // staged row's Commit and Discard) with the row itself as the first stop;
+  // Up, Down, Home and End move between rows from anywhere in a row.
   function moveRowFocus(event: KeyboardEvent<HTMLDivElement>): boolean {
+    const row = event.currentTarget
+    const onRow = event.target === row
+    const controls = Array.from(row.querySelectorAll<HTMLElement>('[data-cell-control]'))
+    const at = onRow ? -1 : controls.indexOf(event.target as HTMLElement)
+    if (event.key === 'ArrowRight') {
+      const next = controls[at + 1]
+      if (!next) return true
+      event.preventDefault()
+      next.focus()
+      return true
+    }
+    if (event.key === 'ArrowLeft') {
+      if (onRow) return true
+      event.preventDefault()
+      ;(controls[at - 1] ?? row).focus()
+      return true
+    }
     const keys = ['ArrowDown', 'ArrowUp', 'Home', 'End']
-    if (!keys.includes(event.key) || event.target !== event.currentTarget) return false
+    if (!keys.includes(event.key)) return false
     const items = Array.from(
       tableRef.current?.querySelectorAll<HTMLElement>('[data-artifact-row]') ?? []
     )
-    const index = items.indexOf(event.currentTarget)
+    const index = items.indexOf(row)
     const next =
       event.key === 'Home'
         ? 0
@@ -96,6 +116,7 @@ export function ArtifactTable({
 
   function onRowKey(event: KeyboardEvent<HTMLDivElement>, row: ArtifactRow) {
     if (moveRowFocus(event)) return
+    if (event.target !== event.currentTarget) return
     // Only the row's own Enter: a keydown bubbling from the inline Commit or
     // Discard button is that button's activation, not an open.
     if (event.key === 'Enter' && onOpen && event.target === event.currentTarget) {
@@ -186,6 +207,8 @@ export function ArtifactTable({
                       <Button
                         variant="outline"
                         size="sm"
+                        tabIndex={-1}
+                        data-cell-control
                         disabled={!stagingActions || stagingActions.pending}
                         title="Commit to the chain"
                         onClick={() => stagingActions?.commit(row.id)}
@@ -196,6 +219,8 @@ export function ArtifactTable({
                       <Button
                         variant="outline"
                         size="sm"
+                        tabIndex={-1}
+                        data-cell-control
                         disabled={!stagingActions || stagingActions.pending}
                         title="Discard from the pool"
                         onClick={() => stagingActions?.discard(row.id)}

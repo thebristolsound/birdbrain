@@ -13,7 +13,8 @@ review, and the merged code does not implement all of it. This file is the merge
 - The decisions are revision 3's text, except D7, which is the corrected wording #1709 merged.
 - An **As built** note under a decision says what the code on `main` does where that differs.
 - A revision 3 decision that the code lacks is marked **Not implemented in slice 1** where it
-  appears, and is listed in "Revision 3 against the merged code" as follow-up work.
+  appears, and is listed in "Revision 3 against the merged code" with the maintainer's ruling on
+  it.
 - The Orchestration log keeps every entry from both copies.
 
 Each As built note was checked against the code and tests on `main` at 43db376d on 2026-10-04. The
@@ -106,7 +107,9 @@ differ from the decision as written, and the Orchestration log records each:
   (which covers `srcdoc`) or `blob:`. Every other destination is refused, `file:`, `http`, `https`
   and `cid:` included, and a frame that has committed may not navigate again.
 
-The remainder of D2 is revision 3's rule for embedded frames. **Not implemented in slice 1.**
+The remainder of D2 is revision 3's rule for embedded frames. **Not implemented in slice 1.** The
+maintainer ruled on 2026-10-04 that it is not pursued (ruling 1 in "Revision 3 against the merged
+code").
 
 Loads of an embedded frame that the archive itself drives (an iframe loading its own MHTML part
 first) must still render, and that exception is bound to the archive, not to timing. The page's
@@ -125,7 +128,7 @@ revision 3 set for an embedded frame's navigation, before and after the main fra
 
 Revision 3 also said the implementer may tighten this rule but may not loosen it. The merged code
 has no archive-binding rule on either partition, so that sentence describes nothing that shipped.
-Three facts bear on any follow-up, and the rule must not be built as written:
+Three facts bear on the rule if ruling 1 changes, and it must not be built as written:
 
 - Its premise does not hold. The rule decides archive-served iframe loads on
   `will-frame-navigate`, and Chromium does not raise that event for them.
@@ -199,7 +202,8 @@ Revision 3 decided that Copy link text copies `linkText`, else `params.altText`,
 when both are empty, so the item never copies an empty string. **Not implemented in slice 1.** The
 merged menu does not read `altText`. It turns Copy link text off whenever `linkText` is empty
 (`linkMenuEntries` in `entityMenu.ts`, pinned in `tests/components/entityMenu.test.tsx`), so the
-item never copies an empty string, and an image-only link has no text to copy.
+item never copies an empty string, and an image-only link has no text to copy. The `altText`
+fallback is follow-up work (ruling 4 in "Revision 3 against the merged code").
 
 "Open external browser" and "Look up in Wayback" stay out. The first sends the Operator's own
 browser to the target outside the app; the second is slice 3.
@@ -237,8 +241,9 @@ guards apply in the menu:
   exclusion match in `src/main/services/recapture.ts:150`, which runs after the render and does
   not look at address ranges. Closing that needs the non-public-address rule enforced on every navigation and request
   inside the background renderer, plus a test of a public-to-private redirect. That modifies
-  `backgroundRenderer.ts`, which D7 keeps out of this slice, so it is an open maintainer decision
-  rather than slice-1 work.
+  `backgroundRenderer.ts`, which D7 keeps out of this slice, so it is not slice-1 work. The
+  maintainer ruled on 2026-10-04 that a background capture must refuse such a redirect (ruling 2 in
+  "Revision 3 against the merged code"); issue #1726 tracks it.
 - No confirmation dialog for one link: it is a deliberate single-target act named by its label. Bulk
   harvest (later) needs a confirmation and detection of single-use tokens.
 
@@ -322,8 +327,9 @@ interface CaptureLinks {
 
 Revision 3 renamed two fields, `rawHref` to `attrHref` and `textHostMismatch` to
 `domTextHostMismatch`, and had `skippedParts` as one number. **Not implemented in slice 1:** the
-merged code keeps both revision 2 names. The reasons for the renames follow, each with what the
-code does.
+merged code keeps both revision 2 names, and the maintainer dropped both renames on 2026-10-04
+(ruling 4 in "Revision 3 against the merged code"). The reasons revision 3 gave for the renames
+follow, each with what the code does.
 
 `same-page` compares against the link's own `documentUrl`, not the Capture's URL. That is why
 `documentUrl` is part of the collapse key: the same `href` and text in two embedded frames with
@@ -434,7 +440,8 @@ them in these places:
   local file with no archived part, and its assertion; the unit cases for archived
   `Content-Location` and `cid:` loads and for unreadable part locations; the `display: none`
   hostname case; the character-reference `href` case; the alternative-text cases for Copy link
-  text.
+  text. The 2026-10-04 rulings take the last three as follow-up work and not the first two
+  ("Revision 3 against the merged code").
 
 ## Files expected to change
 
@@ -459,7 +466,10 @@ provenance and mismatch flag from stored evidence) and
 `src/renderer/components/captures/LinksTab.tsx` (presents that interpretation to the Operator, as
 `ForensicsTab.tsx` does for the hash chain). **Not implemented in slice 1.** #1709 did not change
 the assessment, and neither file name appears in it on `main`. Its review round also declined to
-add `webviewPolicy.ts` to the list, as governance outside the issue (2026-10-03 log entry).
+add `webviewPolicy.ts` to the list, as governance outside the issue (2026-10-03 log entry). The
+maintainer ruled on 2026-10-04 that all three files are to be registered (rulings 3 and 4 in
+"Revision 3 against the merged code"). Issue #1728 tracks it, and this plan's change leaves the
+assessment as it is.
 
 Suggested commit order, so a reviewer can read the evidence-affecting part on its own: (1) guard
 and its tests, (2) CSS removal, hover bubble and menu, (3) decoder split and `captureLinks`,
@@ -498,7 +508,7 @@ a2384533), at a2384533 (six findings, answered in f536aded, which is revision 3)
 | Round | Finding                                                                                  | Disposition in the plan                                                                                                                       | In the merged code                                                                                   |
 | ----- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | 1     | The collapse key lacks the document's identity                                           | Applied: D13 adds `documentUrl` to the key                                                                                                    | Implemented                                                                                          |
-| 1     | A public link can redirect the background render to a private address                    | Not applied: D9 records the gap as an open maintainer decision                                                                                | Gap open                                                                                             |
+| 1     | A public link can redirect the background render to a private address                    | Not applied: D9 records the gap. The maintainer ruled on 2026-10-04 that it is to be closed                                                   | Gap open; issue #1726 tracks it                                                                      |
 | 1     | Menu dismissal cannot rely on mouse events on the `<webview>`                            | Applied: D4 step 4 uses `before-mouse-event` in the main process                                                                              | Implemented                                                                                          |
 | 2     | An initial `<iframe src="file:///…">` with no archived part loads before the lock        | Applied in revision 3: D2 binds embedded-frame loads to archived parts and refuses `file:`; D17 adds the fixture frame and the unit cases     | Not implemented. The guard refuses a `file:` embedded frame it sees; the MHTML case is untested (D2) |
 | 2     | `captureLinks.ts` and `LinksTab.tsx` are on no evidence path list                        | Applied in revision 3: "Files expected to change" registers both as blocking                                                                  | Not implemented                                                                                      |
@@ -515,26 +525,42 @@ a2384533), at a2384533 (six findings, answered in f536aded, which is revision 3)
 ## Revision 3 against the merged code
 
 Each row is a revision 3 decision that the code on `main` does not implement. The detail is in the
-decision named.
+decision named. The last column is the maintainer's ruling of 2026-10-04, and the rulings are stated
+in full under the table.
 
-| Revision 3 decision                                                                                                                                             | Where                    | What the code does instead                                                                              |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------- |
-| Embedded-frame loads are bound to archived parts by `Content-Location` or `Content-ID`                                                                          | D2                       | One first load on `data:`, `about:` or `blob:`; archive-served MHTML iframe loads never reach the guard |
-| E2E case: an MHTML iframe pointing at a local file with no archived part                                                                                        | D2, D17                  | Not in the fixture; the unit cases and the legacy E2E cover `file:` in an embedded frame                |
-| Copy link text falls back to `altText`                                                                                                                          | D5                       | The item is off when the link text is empty                                                             |
-| `rawHref` becomes `attrHref`, documented as the decoded value                                                                                                   | D13                      | `rawHref`, with a comment that says "exactly as stored"                                                 |
-| `textHostMismatch` becomes `domTextHostMismatch`; the label and tooltip say the text is read from the markup, and that an absent marker does not clear the link | D13, D14                 | `textHostMismatch`; the comment says "visible text"; the label and tooltip carry neither statement      |
-| Tests for a `display: none` hostname, a character-reference `href`, and the `altText` cases                                                                     | D17                      | Not written                                                                                             |
-| `captureLinks.ts` and `LinksTab.tsx` registered as blocking evidence paths                                                                                      | Files expected to change | The assessment is unchanged                                                                             |
+| Revision 3 decision                                                                                                                                             | Where                    | What the code does instead                                                                              | Ruling, 2026-10-04                                                                                            |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Embedded-frame loads are bound to archived parts by `Content-Location` or `Content-ID`                                                                          | D2                       | One first load on `data:`, `about:` or `blob:`; archive-served MHTML iframe loads never reach the guard | Not pursued: the notice with its Reload button is enough for now (ruling 1)                                   |
+| E2E case: an MHTML iframe pointing at a local file with no archived part                                                                                        | D2, D17                  | Not in the fixture; the unit cases and the legacy E2E cover `file:` in an embedded frame                | Not taken: revision 3 added it with the archive-binding rule, and ruling 4 does not list it                   |
+| Copy link text falls back to `altText`                                                                                                                          | D5                       | The item is off when the link text is empty                                                             | Follow-up work (ruling 4), issue #1727                                                                        |
+| `rawHref` becomes `attrHref`, documented as the decoded value                                                                                                   | D13                      | `rawHref`, with a comment that says "exactly as stored"                                                 | Rename dropped (ruling 4). The ruling does not list the comment correction                                    |
+| `textHostMismatch` becomes `domTextHostMismatch`; the label and tooltip say the text is read from the markup, and that an absent marker does not clear the link | D13, D14                 | `textHostMismatch`; the comment says "visible text"; the label and tooltip carry neither statement      | Rename dropped (ruling 4). The ruling does not list the label and tooltip wording                             |
+| Tests for a `display: none` hostname, a character-reference `href`, and the `altText` cases                                                                     | D17                      | Not written                                                                                             | Follow-up work (ruling 4), issue #1727. With the rename dropped, the character-reference case reads `rawHref` |
+| `captureLinks.ts` and `LinksTab.tsx` registered as blocking evidence paths                                                                                      | Files expected to change | The assessment is unchanged                                                                             | Follow-up work (ruling 4), issue #1728                                                                        |
 
 Revision 3 decisions that the code does implement: the `before-mouse-event` dismissal (D4 step 4)
 and `documentUrl` in the collapse key (D13). The redirect gap in D9 was a recorded gap in revision
-3, not a decision to build, and is still open.
+3, not a decision to build. It is still open in the code, and ruling 2 says it is to be closed.
 
-**Open question, with the maintainer.** Whether the merged code is reworked to revision 3, in
-whole or row by row, is not decided, and this plan does not decide it. Until it is, the rows above
-are follow-up candidates and not scheduled work. The 2026-10-03 log entry's instruction to bring
-the implementation branch in line with revision 3 was not carried out before #1709 merged.
+**Rulings, 2026-10-04.** This section used to end on an open question: whether the merged code is
+reworked to revision 3, in whole or row by row. The maintainer answered it on 2026-10-04, after
+#1709 and #1716 merged. Revision 3 is taken in part.
+
+1. **A swapped embedded frame.** When a click swaps a frame embedded in a stored page for another
+   document (D2, As built), the notice with its Reload button is enough for now. Revision 3's
+   archive-binding rule for embedded frames is not pursued unless that changes.
+2. **A redirect to a non-public address.** A background capture must refuse a public link that
+   redirects to a loopback or private address (D9). Issue #1726 tracks it.
+3. **`src/main/webviewPolicy.ts`.** The file is to be registered in
+   `docs/specs/2026-07-31-evidence-affecting-paths-assessment.md` as one that forces evidence
+   review. Issue #1728 tracks it. The assessment does not list the file yet.
+4. **The rest of revision 3.** Three things are follow-up work: the `altText` fallback for Copy link
+   text and the three test additions in the table's sixth row (issue #1727), and registering
+   `captureLinks.ts` and `LinksTab.tsx` as evidence paths (issue #1728). The `attrHref` and
+   `domTextHostMismatch` renames are dropped.
+
+The 2026-10-03 log entry's instruction to bring the implementation branch in line with revision 3
+was not carried out before #1709 merged. These rulings replace it.
 
 ## Orchestration log
 
@@ -565,3 +591,5 @@ the implementation branch in line with revision 3 was not carried out before #17
   are kept as merged, revision 3 is kept with As built notes, and the "Revision 3 against the merged
   code" section lists the revision 3 decisions the code lacks. The "PR review dispositions" section
   answers Codex's third review of #1716 (five findings at f536aded).
+- 2026-10-04: the maintainer ruled on the question "Revision 3 against the merged code" left open.
+  That section records the four rulings. Follow-up issues: #1726, #1727 and #1728.

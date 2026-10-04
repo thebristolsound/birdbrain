@@ -426,10 +426,13 @@ describe('SignalsOverview tag delete confirmation', () => {
   it('gives each grid one Tab stop that follows focus', async () => {
     renderScreen()
     await screen.findByTestId('signal-row-t1')
-    const tags = within(screen.getByTestId('signals-tag-list'))
-    const rows = await tags.findAllByRole('row')
-    expect(rows.filter((row) => row.tabIndex === 0).length).toBe(1)
-    const last = rows[rows.length - 1]
+    // The selector list, because it has two rows: one row cannot tell a
+    // roving stop from every row being a stop.
+    const list = within(screen.getByRole('grid', { name: 'Selectors' }))
+    const rows = await list.findAllByRole('row')
+    expect(rows.length).toBe(2)
+    const [first, last] = rows
+    expect(rows.filter((row) => row.tabIndex === 0)).toEqual([first])
     last.focus()
     await waitFor(() => expect(last.tabIndex).toBe(0))
     expect(rows.filter((row) => row.tabIndex === 0)).toEqual([last])

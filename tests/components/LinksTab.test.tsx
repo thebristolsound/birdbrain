@@ -262,6 +262,32 @@ describe('LinksTab', () => {
     expect(getLinks).not.toHaveBeenCalled()
   })
 
+  // An import keeps a Capture's id unless it collides, so a deleted Capture's id can come
+  // back with another archive behind it; a kept answer would then list the wrong page.
+  it.each([
+    ['another archive under the same id', result([link({ text: 'Before' })]), 'Before'],
+    ['an archive that was missing', null, 'No stored page to read']
+  ])('reads the archive again when the tab is reopened: %s', async (_name, first, firstText) => {
+    const getLinks = vi.fn(async (): Promise<CaptureLinks | null> => first)
+    fakeBridge({ captures: { getLinks, list: vi.fn(async () => []) } })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const tab = (
+      <QueryClientProvider client={client}>
+        <LinksTab capture={capture} />
+      </QueryClientProvider>
+    )
+    const { unmount } = render(tab)
+    expect(await screen.findByText(firstText)).toBeDefined()
+    unmount()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    getLinks.mockImplementation(async () => result([link({ text: 'After' })]))
+    render(tab)
+    expect(await screen.findByText('After')).toBeDefined()
+    expect(screen.queryByText(firstText)).toBeNull()
+    expect(getLinks).toHaveBeenCalledTimes(2)
+  })
+
   it('reports a failed read', async () => {
     fakeBridge({
       captures: {

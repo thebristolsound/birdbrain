@@ -36,14 +36,15 @@ export const captureMhtmlUrlQueryOptions = (captureId: string) =>
     enabled: !!captureId
   })
 
-// A stored page's links (#1708). The MHTML never changes after capture, so the
-// answer for a Capture does not either.
+// A stored page's links (#1708). Read on every open and dropped on close: an answer
+// kept by Capture id could outlive the archive it was read from.
 export const captureLinksQueryOptions = (captureId: string) =>
   queryOptions({
     queryKey: queryKeys.captureLinks(captureId),
     queryFn: () => window.birdbrain.captures.getLinks(captureId),
     enabled: !!captureId,
-    staleTime: Infinity
+    staleTime: 0,
+    gcTime: 0
   })
 
 export const captureHtmlUrlQueryOptions = (captureId: string) =>

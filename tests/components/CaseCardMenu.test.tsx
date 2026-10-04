@@ -71,7 +71,13 @@ it('moves focus to the confirmation when Delete is chosen, and Tab closes the me
   renderCard()
   fireEvent.click(screen.getByRole('button', { name: 'Actions for Investigation One' }))
   fireEvent.click(screen.getByTestId('case-card-delete-btn'))
-  expect(document.activeElement).toBe(screen.getByTestId('case-card-delete-confirm-btn'))
+  const confirm = screen.getByTestId('case-card-delete-confirm-btn')
+  expect(document.activeElement).toBe(confirm)
+  // Confirm and Cancel stay inside the menu model.
+  const items = screen.getAllByRole('menuitem')
+  expect(items.length).toBe(2)
+  fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowDown' })
+  expect(document.activeElement).toBe(items[1])
 
   fireEvent.keyDown(screen.getByRole('menu'), { key: 'Tab' })
   expect(screen.queryByRole('menu')).toBeNull()

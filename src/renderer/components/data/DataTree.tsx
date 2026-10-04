@@ -61,13 +61,16 @@ export function DataTree({
     else if (event.key === 'End') next = items.length - 1
     else if (event.key === 'ArrowRight') {
       // Closed parent: open it. Open parent: its first child is the next
-      // visible node. A leaf has nowhere to go.
+      // visible node, when there is one (a category's subcategories load
+      // lazily, so an open parent can be childless for a moment). A leaf has
+      // nowhere to go.
       if (!node.hasChildren) return
       if (!node.expanded) {
         event.preventDefault()
         onToggle(node.key)
         return
       }
+      if (nodes[index + 1]?.depth !== node.depth + 1) return
       next = index + 1
     } else if (event.key === 'ArrowLeft') {
       // Open parent: close it. Anything else: its parent is the nearest

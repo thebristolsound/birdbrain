@@ -103,6 +103,16 @@ it('moves into an open parent on ArrowRight and back up to the parent on ArrowLe
   expect(onToggle).toHaveBeenLastCalledWith('data-sources')
 })
 
+it('stays put on ArrowRight when an open parent has no visible child yet', () => {
+  const open = nodes.map((n) => (n.key === 'kind:capture' ? { ...n, expanded: true } : n))
+  render(<DataTree nodes={open} selected="staging" onSelect={vi.fn()} onToggle={vi.fn()} />)
+  const captures = selectButton('kind:capture')
+  captures.focus()
+  // The next node is Staging, a sibling, so focus does not move.
+  fireEvent.keyDown(captures, { key: 'ArrowRight' })
+  expect(document.activeElement).toBe(captures)
+})
+
 it('falls back to the first node as the Tab stop when nothing is selected', () => {
   render(
     <DataTree nodes={nodes} selected="exhibit:missing" onSelect={vi.fn()} onToggle={vi.fn()} />

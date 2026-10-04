@@ -59,7 +59,7 @@ export const CaseCard = memo(function CaseCard({
   }, [menuOpen, deletingId])
 
   function menuItems(): HTMLElement[] {
-    return Array.from(popoverRef.current?.querySelectorAll<HTMLElement>('button') ?? [])
+    return Array.from(popoverRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])
   }
 
   function handleMenuKey(e: KeyboardEvent<HTMLDivElement>) {
@@ -206,6 +206,8 @@ export const CaseCard = memo(function CaseCard({
                 <p className="text-[11px] text-red-400 font-bold mb-2">Delete?</p>
                 <div className="flex gap-1.5">
                   <button
+                    role="menuitem"
+                    tabIndex={-1}
                     data-testid="case-card-delete-confirm-btn"
                     className="flex-1 text-[10px] font-bold px-2 py-1 rounded bg-red-950/60 text-red-400 border border-red-800/40 hover:bg-red-900/60"
                     onClick={(e) => {
@@ -218,6 +220,8 @@ export const CaseCard = memo(function CaseCard({
                     Confirm
                   </button>
                   <button
+                    role="menuitem"
+                    tabIndex={-1}
                     className="flex-1 text-[10px] font-bold px-2 py-1 rounded bg-elevated text-text-muted hover:bg-elevated"
                     onClick={(e) => {
                       e.stopPropagation()

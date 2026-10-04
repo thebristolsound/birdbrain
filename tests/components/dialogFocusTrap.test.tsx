@@ -67,6 +67,18 @@ function OpenerHarness({ children }: { children?: ReactNode }) {
 }
 
 describe('Dialog accessible name (#1537)', () => {
+  it('is labelled at first render when the call site names the title id itself', () => {
+    render(
+      <Dialog open onOpenChange={() => {}}>
+        <DialogContent onClose={() => {}} aria-labelledby="own-title">
+          <DialogTitle id="own-title">Own title</DialogTitle>
+        </DialogContent>
+      </Dialog>
+    )
+    const dialog = screen.getByRole('dialog', { name: 'Own title' })
+    expect(dialog.getAttribute('aria-labelledby')).toBe('own-title')
+  })
+
   it('follows a title that brings its own id', () => {
     render(
       <Dialog open onOpenChange={() => {}}>

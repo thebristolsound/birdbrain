@@ -272,7 +272,8 @@ const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
             role="dialog"
             aria-modal="true"
             // Named by the DialogTitle rendered inside; an explicit aria-label or
-            // aria-labelledby on the call site wins through the props spread.
+            // aria-labelledby on the call site wins, the latter at render time
+            // through the props spread below.
             aria-labelledby={props['aria-label'] ? undefined : titleId}
             // Programmatically focusable so a dialog with nothing tabbable in
             // it still takes focus off the surface behind it.
@@ -306,8 +307,14 @@ const DialogTitle = forwardRef<HTMLHeadingElement, ComponentPropsWithoutRef<'h3'
   ({ className, id, ...props }, ref) => {
     const ctx = useContext(DialogTitleIdContext)
     const setTitleId = ctx?.setTitleId
-    // A title that brings its own id re-points the dialog's label at it.
-    useEffect(() => {
+    // A title that brings its own id re-points the dialog's label at it. A
+    // layout effect, not a passive one: the child's layout effect runs before
+    // the dialog's focus effect in the same commit, and the state it sets is
+    // flushed before paint, so the dialog never reaches the screen reader
+    // labelled by an id nothing carries. A call site that names its own title
+    // id should still pass aria-labelledby on DialogContent, which wins at
+    // render time (ConfirmDialog and RowEditModal do).
+    useLayoutEffect(() => {
       if (id && setTitleId) setTitleId(id)
     }, [id, setTitleId])
     return (

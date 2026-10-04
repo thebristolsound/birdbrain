@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll, afterEach, vi } from 'vitest'
-import { execFileSync } from 'child_process'
 import { createHash } from 'crypto'
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
@@ -21,7 +20,6 @@ import { commitStagedFiles, uploadToStaging } from '@main/services/staging'
 import { backfillCase } from '@main/services/exhibitBackfill'
 import { listExhibits } from '@main/services/db/exhibitRepo'
 import { listDerivedFilesForCase } from '@main/services/db/derivedFileRepo'
-import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
 import { seedUnanchoredDerivedFile } from '../../helpers/mixedKindCase'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
@@ -31,6 +29,13 @@ import { HAS_OPENSSL } from '../../helpers/openssl'
 import { HAS_JQ, jqIsRequired } from '../../helpers/jq'
 import { createLocalTsa, type LocalTsa } from '../../helpers/localTsa'
 import { extractRunbookBlocks, runRunbookBlocks } from '../../helpers/runbookBlocks'
+import { runVerifyScript } from '../../helpers/verifyScript'
+import {
+  checkConformance,
+  verdictsAgree,
+  type BinaryVerdict,
+  type ScriptVerdict
+} from '../../helpers/verifyConformance'
 
 // #584: the shipped VERIFY.md is executed against a real evidence package, and
 // the verify.sh that ships beside it is run on that package and on deliberately
@@ -128,26 +133,6 @@ function bindingsFor(dir: string, entries: Map<string, Buffer>): Array<Record<st
     bindings.push({ '<contentHash>': entry.captureContentHash, '<token>': token })
   }
   return bindings
-}
-
-interface VerifyRun {
-  status: number
-  output: string
-}
-
-function runVerifyScript(dir: string, env?: NodeJS.ProcessEnv, args: string[] = []): VerifyRun {
-  try {
-    const stdout = execFileSync('/bin/sh', [PACKAGE_ROOT_FILES.verifyScript, ...args], {
-      cwd: dir,
-      encoding: 'utf-8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: env ?? process.env
-    })
-    return { status: 0, output: stdout }
-  } catch (error) {
-    const spawned = error as { status?: number; stdout?: string; stderr?: string }
-    return { status: spawned.status ?? 1, output: `${spawned.stdout ?? ''}${spawned.stderr ?? ''}` }
-  }
 }
 
 describe('the shipped runbook and verify.sh, executed against a real evidence package', () => {
@@ -383,37 +368,13 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     )
   })
 
-  it.skipIf(!RUNS)('records verify.sh in the package index, and re-hashes it', () => {
+  it.skipIf(!RUNS)('records verify.sh in the package index', () => {
     const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
       artifacts: Array<{ path: string; sha256: string; sizeBytes: number }>
     }
     const artifact = evidence.artifacts.find((a) => a.path === PACKAGE_ROOT_FILES.verifyScript)
     expect(artifact).toBeDefined()
     expect(artifact!.sha256).toBe(sha256(entries.get(PACKAGE_ROOT_FILES.verifyScript)!))
-
-    // Self-describing means self-checking: step 1 re-hashes the script along
-    // with everything else, so an edited verify.sh fails the package it claims
-    // to verify instead of quietly reporting on its own terms.
-    const dir = corruptedCopy('edited-script')
-    const script = readFileSync(join(dir, PACKAGE_ROOT_FILES.verifyScript), 'utf-8')
-    writeFileSync(
-      join(dir, PACKAGE_ROOT_FILES.verifyScript),
-      `${script}\n# edited after packaging\n`
-    )
-    const run = runVerifyScript(dir)
-    expect(run.status).toBe(1)
-    expect(run.output).toContain('FAIL [step 1]')
-  })
-
-  it.skipIf(!RUNS)('fails on a substituted page, naming the content-bind step', () => {
-    const dir = corruptedCopy('corrupt-page')
-    writeFileSync(join(dir, 'pages', `${captureId}.mhtml`), '<html>substituted</html>')
-
-    const run = runVerifyScript(dir)
-    expect(run.status).toBe(1)
-    expect(run.output).toContain('FAIL [step 5]')
-    expect(run.output).toContain('does not match the contentHash in its signed entry')
-    expect(run.output).toContain('verify.sh: FAIL')
   })
 
   it.skipIf(!RUNS)('binds the committed exhibit and the capture thumbnail', () => {
@@ -430,237 +391,446 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     expect(derivation).toHaveProperty('derivationParameters.paddedRows')
   })
 
-  it.skipIf(!RUNS)('fails on a substituted exhibit, naming it by its exhibit number', () => {
-    const dir = corruptedCopy('corrupt-exhibit')
-    writeFileSync(join(dir, 'attachments', `${exhibitId}.zip`), 'substituted attachment')
+  // Both shipped verifiers on every package below, good and damaged. Each row
+  // states what Package Verification (the binary's core) and verify.sh must
+  // say, so a rule changed in one and not the other fails here. Where the two
+  // differ by design, `divergence` says why, and the row fails if they stop
+  // differing as well as if they start.
+  interface ConformanceRow {
+    name: string
+    /** The package under test: a damaged copy of the good one, or a fresh export. */
+    build: () => string | Promise<string>
+    binary: BinaryVerdict
+    script: ScriptVerdict
+    /** Steps verify.sh names in its FAIL and INCOMPLETE lines. */
+    steps: number[]
+    /** Substrings verify.sh's output must contain, and must not. */
+    says?: string[] | (() => string[])
+    saysNot?: string[]
+    /** A Package Verification check, by name prefix, that must fail with this reason. */
+    binaryFails?: { name: string; reason: string }
+    divergence?: string
+  }
 
-    const run = runVerifyScript(dir)
-    expect(run.status).toBe(1)
-    expect(run.output).toContain('FAIL [step 5]')
-    expect(run.output).toContain(`Exhibit ${exhibitNumber}:`)
-    expect(run.output).toContain('does not match the contentHash in its signed entry')
-  })
+  const setEra = (dir: string, version: number): void => {
+    const path = join(dir, 'evidence.json')
+    const evidence = JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>
+    evidence.schemaVersion = version
+    writeFileSync(path, JSON.stringify(evidence, null, 2))
+  }
 
-  it.skipIf(!RUNS)('fails on a substituted derived file, naming its parent and derivation', () => {
-    const dir = corruptedCopy('corrupt-derived')
-    writeFileSync(join(dir, 'pages', `${captureId}_thumb.jpg`), 'substituted thumbnail')
+  /** A copy of the good package with its export entry removed. */
+  const strippedEntryCopy = (name: string): string => {
+    const dir = corruptedCopy(name)
+    rmSync(join(dir, 'export-entry.json'))
+    return dir
+  }
 
-    const run = runVerifyScript(dir)
-    expect(run.status).toBe(1)
-    expect(run.output).toContain('FAIL [step 5]')
-    // AC 2's wording, the same in both shipped verifiers: a Derived File has no
-    // number of its own (X31), so it is cited by its parent's and its
-    // derivation. The parent Capture's number comes off its capture entry.
-    expect(run.output).toContain('Exhibit 1, derivation thumbnail')
-    expect(run.output).toContain('does not match the outputHash in its signed entry')
-  })
+  /** Writes `schemaVersion` as raw JSON text, for values JSON.stringify cannot produce. */
+  const writeEraLiteral = (dir: string, literal: string): void => {
+    const path = join(dir, 'evidence.json')
+    const text = readFileSync(path, 'utf-8')
+    writeFileSync(path, text.replace(/"schemaVersion": \d+/, `"schemaVersion": ${literal}`))
+  }
 
-  // #1156 round 4: the two shipped verifiers must return the same verdict on
-  // every package the exporter can produce. The states that reach a Derived
-  // File are: anchored and enclosed (covered above), anchored with its bytes
-  // gone, named by no entry, and named over a chain that does not verify.
-  it.skipIf(!RUNS)('agrees with the binary on a derived file whose bytes are gone', async () => {
-    const thumbnail = listDerivedFilesForCase(caseId).find((file) => file.exhibitId === captureId)!
-    rmSync(join(tempDir, 'captures', thumbnail.path))
-    const dir = await exportPackage('lost-derived')
+  const ingestDuplicate = async (url: string, payload: string, timestamp: string) =>
+    (
+      await ingestMhtmlCapture({
+        caseId,
+        url,
+        title: 'Another Page',
+        timestamp,
+        stream: Readable.from([Buffer.from(payload)]) as unknown as ReadableStream<Uint8Array>,
+        textContent: payload,
+        headers: {},
+        browserVersion: '',
+        userAgent: '',
+        httpStatus: 200,
+        extensionVersion: '',
+        operatorId: 'op',
+        operatorName: 'Test Operator',
+        toolVersion: '0.1.0'
+      })
+    ).capture
 
-    // Not enclosed and not indexed, so the only finding is the chain-side one.
-    const evidence = JSON.parse(readFileSync(join(dir, 'evidence.json'), 'utf-8')) as {
-      exhibits: Array<{ id: string; derivedFiles: unknown[] }>
-    }
-    expect(evidence.exhibits.find((e) => e.id === captureId)!.derivedFiles).toEqual([])
-
-    const run = runVerifyScript(dir)
-    expect(run.status, run.output).toBe(1)
-    expect(run.output).toContain('FAIL [step 5]')
-    expect(run.output).toContain('Exhibit 1, derivation thumbnail')
-    expect(run.output).toContain('is missing and nothing signed accounts for its absence')
-
-    // The programmatic verifier is the binary's own core: same verdict, and
-    // the finding names the same file.
-    const result = verifyEvidencePackage(dir)
-    expect(result.pass).toBe(false)
-    const check = result.checks.find((c) => c.name.startsWith('derivation thumbnail'))
-    expect(check?.status).toBe('fail')
-    expect(check?.reason).toContain('is missing from the package')
-  })
-
-  it.skipIf(!RUNS)('agrees with the binary on a derived file no entry names', async () => {
-    const attachment = listExhibits(caseId).find((e) => e.kind !== 'capture')!
-    const unanchored = seedUnanchoredDerivedFile(tempDir, caseId, attachment.id)
-    rmSync(join(tempDir, 'captures', unanchored.storedPath))
-    const dir = await exportPackage('no-entry-derived')
-
-    // Held back, so neither verifier has anything to say about it and the
-    // package is clean on an intact chain. Before the fix the binary FAILed
-    // this package and verify.sh PASSed it.
-    const run = runVerifyScript(dir)
-    expect(run.output).not.toContain('FAIL [step 5]')
-    const result = verifyEvidencePackage(dir)
-    expect(
-      result.checks.filter((c) => c.status === 'fail'),
-      JSON.stringify(result.checks, null, 2)
-    ).toEqual([])
-    expect(result.pass).toBe(true)
-  })
-
-  it.skipIf(!RUNS)('fails on an edited entry body, naming the recompute step', () => {
-    const dir = corruptedCopy('corrupt-body')
-    const lines = readFileSync(join(dir, 'manifest.jsonl'), 'utf-8').split('\n')
-    const edited = JSON.parse(lines[0]) as Record<string, unknown>
-    edited.url = 'https://substituted.example/page'
-    lines[0] = JSON.stringify(edited)
-    writeFileSync(join(dir, 'manifest.jsonl'), lines.join('\n'))
-
-    const run = runVerifyScript(dir)
-    expect(run.status).toBe(1)
-    expect(run.output).toContain('FAIL [step 3]')
-    expect(run.output).toContain('does not hash to its own entryHash')
-  })
-
-  it.skipIf(!RUNS)('fails when the enclosed anchor is swapped, naming the TSA step', () => {
-    // The attack step 6a warns about: anyone who can rewrite the package can
-    // swap the convenience root. The token is untouched and still byte-bound to
-    // its signed entry, so only `openssl ts -verify` catches this.
-    const dir = corruptedCopy('swapped-anchor')
-    const other = createLocalTsa()
-    try {
-      writeFileSync(join(dir, 'tsa-root.pem'), other.rootPem)
-    } finally {
-      other.dispose()
-    }
-
-    const run = runVerifyScript(dir)
-    expect(run.status).toBe(1)
-    expect(run.output).toContain('FAIL [step 6]')
-    expect(run.output).toContain('does not verify to tsa-root.pem over the signed imprint')
-  })
-
-  it.skipIf(!RUNS)('fails on a token no signed entry accounts for', () => {
-    const dir = corruptedCopy('unbound-token')
-    const tokenPath = [...entries.keys()].find((name) => name.startsWith('timestamps/'))!
-    const other = createLocalTsa()
-    try {
+  const CONFORMANCE: ConformanceRow[] = [
+    {
+      name: 'the good package',
+      build: () => packageDir,
+      binary: 'pass',
+      script: 'pass',
+      steps: [],
+      says: ['verify.sh: PASS']
+    },
+    {
+      // Self-describing means self-checking: step 1 re-hashes the script along
+      // with everything else, so an edited verify.sh fails the package it claims
+      // to verify instead of quietly reporting on its own terms.
+      name: 'an edited verify.sh',
+      build: () => {
+        const dir = corruptedCopy('edited-script')
+        const path = join(dir, PACKAGE_ROOT_FILES.verifyScript)
+        writeFileSync(path, `${readFileSync(path, 'utf-8')}\n# edited after packaging\n`)
+        return dir
+      },
+      binary: 'fail',
+      script: 'fail',
+      steps: [1]
+    },
+    {
+      name: 'a substituted page',
+      build: () => {
+        const dir = corruptedCopy('corrupt-page')
+        writeFileSync(join(dir, 'pages', `${captureId}.mhtml`), '<html>substituted</html>')
+        return dir
+      },
+      binary: 'fail',
+      script: 'fail',
+      steps: [1, 5],
+      says: ['does not match the contentHash in its signed entry', 'verify.sh: FAIL']
+    },
+    {
+      name: 'a substituted exhibit',
+      build: () => {
+        const dir = corruptedCopy('corrupt-exhibit')
+        writeFileSync(join(dir, 'attachments', `${exhibitId}.zip`), 'substituted attachment')
+        return dir
+      },
+      binary: 'fail',
+      script: 'fail',
+      steps: [1, 5],
+      says: () => [
+        `Exhibit ${exhibitNumber}:`,
+        'does not match the contentHash in its signed entry'
+      ]
+    },
+    {
+      // AC 2's wording, the same in both shipped verifiers: a Derived File has no
+      // number of its own (X31), so it is cited by its parent's and its
+      // derivation. The parent Capture's number comes off its capture entry.
+      name: 'a substituted derived file',
+      build: () => {
+        const dir = corruptedCopy('corrupt-derived')
+        writeFileSync(join(dir, 'pages', `${captureId}_thumb.jpg`), 'substituted thumbnail')
+        return dir
+      },
+      binary: 'fail',
+      script: 'fail',
+      steps: [1, 5],
+      says: ['Exhibit 1, derivation thumbnail', 'does not match the outputHash in its signed entry']
+    },
+    {
+      // #1156 round 4: the states that reach a Derived File are anchored and
+      // enclosed (the good package), anchored with its bytes gone, named by no
+      // entry, and named over a chain that does not verify.
+      name: 'a derived file whose bytes are gone',
+      build: async () => {
+        const thumbnail = listDerivedFilesForCase(caseId).find((f) => f.exhibitId === captureId)!
+        rmSync(join(tempDir, 'captures', thumbnail.path))
+        const dir = await exportPackage('lost-derived')
+        // Not enclosed and not indexed, so the only finding is the chain-side one.
+        const evidence = JSON.parse(readFileSync(join(dir, 'evidence.json'), 'utf-8')) as {
+          exhibits: Array<{ id: string; derivedFiles: unknown[] }>
+        }
+        expect(evidence.exhibits.find((e) => e.id === captureId)!.derivedFiles).toEqual([])
+        return dir
+      },
+      binary: 'fail',
+      script: 'fail',
+      steps: [5],
+      says: [
+        'Exhibit 1, derivation thumbnail',
+        'is missing and nothing signed accounts for its absence'
+      ],
+      binaryFails: { name: 'derivation thumbnail', reason: 'is missing from the package' }
+    },
+    {
+      // Held back, so neither verifier has anything to say about it. Before the
+      // fix the binary FAILed this package and verify.sh PASSed it.
+      name: 'a derived file no entry names',
+      build: async () => {
+        const attachment = listExhibits(caseId).find((e) => e.kind !== 'capture')!
+        const unanchored = seedUnanchoredDerivedFile(tempDir, caseId, attachment.id)
+        rmSync(join(tempDir, 'captures', unanchored.storedPath))
+        return exportPackage('no-entry-derived')
+      },
+      binary: 'pass',
+      script: 'pass',
+      steps: []
+    },
+    {
+      name: 'an edited entry body',
+      build: () => {
+        const dir = corruptedCopy('corrupt-body')
+        const lines = readFileSync(join(dir, 'manifest.jsonl'), 'utf-8').split('\n')
+        const edited = JSON.parse(lines[0]) as Record<string, unknown>
+        edited.url = 'https://substituted.example/page'
+        lines[0] = JSON.stringify(edited)
+        writeFileSync(join(dir, 'manifest.jsonl'), lines.join('\n'))
+        return dir
+      },
+      binary: 'fail',
+      script: 'fail',
+      steps: [1, 3],
+      says: ['does not hash to its own entryHash']
+    },
+    {
+      // The attack step 6a warns about: anyone who can rewrite the package can
+      // swap the convenience root. The token is untouched and still byte-bound to
+      // its signed entry, so only `openssl ts -verify` catches this.
+      name: 'a swapped TSA anchor',
+      build: () => {
+        const dir = corruptedCopy('swapped-anchor')
+        const other = createLocalTsa()
+        try {
+          writeFileSync(join(dir, 'tsa-root.pem'), other.rootPem)
+        } finally {
+          other.dispose()
+        }
+        return dir
+      },
+      binary: 'fail',
+      script: 'fail',
+      steps: [1, 6],
+      says: ['does not verify to tsa-root.pem over the signed imprint']
+    },
+    {
       // Genuinely issued over the right imprint, by an authority the chain never
       // named. A digest match is not provenance.
-      writeFileSync(join(dir, tokenPath), other.issueToken(contentHash))
-    } finally {
-      other.dispose()
-    }
-
-    const run = runVerifyScript(dir)
-    expect(run.status).toBe(1)
-    expect(run.output).toContain('FAIL [step 6]')
-    expect(run.output).toContain('not the token of any signed timestamp entry')
-  })
-
-  it.skipIf(!RUNS)('fails when a token the signed manifest carries is not enclosed', () => {
-    // The strip attack: delete the tokens AND their rows from the unsigned
-    // index, so step 1 is silent. Nothing on disk then says a trusted time was
-    // ever claimed — only the signed manifest does, which is why step 6 has to
-    // take its work set from there rather than from `timestamps/`.
-    const dir = corruptedCopy('stripped-tokens')
-    rmSync(join(dir, 'timestamps'), { recursive: true, force: true })
-    dropArtifacts(dir, (path) => path.startsWith('timestamps/'))
-
-    const run = runVerifyScript(dir)
-    expect(run.status, run.output).toBe(1)
-    expect(run.output).toContain('FAIL [step 6]')
-    expect(run.output).toContain('no enclosed file holds those bytes')
-    expect(run.output).not.toContain('PASS')
-  })
-
-  it.skipIf(!RUNS)(
-    'passes on a legitimate package exported after the timestamped capture was deleted',
-    async () => {
+      name: 'a token no signed entry accounts for',
+      build: () => {
+        const dir = corruptedCopy('unbound-token')
+        const tokenPath = [...entries.keys()].find((name) => name.startsWith('timestamps/'))!
+        const other = createLocalTsa()
+        try {
+          writeFileSync(join(dir, tokenPath), other.issueToken(contentHash))
+        } finally {
+          other.dispose()
+        }
+        return dir
+      },
+      binary: 'fail',
+      script: 'fail',
+      steps: [1, 6],
+      says: ['not the token of any signed timestamp entry']
+    },
+    {
+      // The strip attack: delete the tokens AND their rows from the unsigned
+      // index, so step 1 is silent. Nothing on disk then says a trusted time was
+      // ever claimed — only the signed manifest does, which is why step 6 has to
+      // take its work set from there rather than from `timestamps/`.
+      name: 'tokens the signed manifest carries, stripped',
+      build: () => {
+        const dir = corruptedCopy('stripped-tokens')
+        rmSync(join(dir, 'timestamps'), { recursive: true, force: true })
+        dropArtifacts(dir, (path) => path.startsWith('timestamps/'))
+        return dir
+      },
+      binary: 'fail',
+      script: 'fail',
+      steps: [6],
+      says: ['no enclosed file holds those bytes'],
+      saysNot: ['PASS']
+    },
+    {
       // Deletion never removes the capture's earlier manifest entries, so the
       // signed chain still carries a `timestamp` entry for this content hash —
       // but the deletion means no page, screenshot or token for it is ever
       // packaged again. Step 6's required work set has to know that, the same
       // way step 5 already does for the page and screenshot.
-      await captureLifecycle.delete(captureId)
-      const dir = await exportPackage('post-deletion')
-
-      const run = runVerifyScript(dir)
-      expect(run.status, run.output).toBe(0)
-      expect(run.output).toContain('verify.sh: PASS')
-      expect(run.output).toContain('expected absent')
-      expect(run.output).not.toContain('FAIL')
-      // The chain does carry a token, so the verdict must not claim it carries none.
-      expect(run.output).toContain('only for captures this package does not enclose')
-      expect(run.output).not.toContain('The signed chain carries no')
-    }
-  )
-
-  it.skipIf(!RUNS)(
-    'still requires a live capture token when a deleted capture shares its content hash',
-    async () => {
+      name: 'an export after the timestamped capture was deleted',
+      build: async () => {
+        await captureLifecycle.delete(captureId)
+        return exportPackage('post-deletion')
+      },
+      binary: 'pass',
+      script: 'pass',
+      steps: [],
+      says: ['expected absent', 'only for captures this package does not enclose'],
+      saysNot: ['FAIL', 'The signed chain carries no']
+    },
+    {
       // Timestamp entries are keyed by content hash alone, so an exemption keyed
       // on the deleted duplicate's hash would also exempt the live capture.
-      const payload = '<html><body>Runbook execution evidence</body></html>'
-      const { capture: duplicate } = await ingestMhtmlCapture({
-        caseId,
-        url: 'https://example.com/evidence-again',
-        title: 'Evidence Page Again',
-        timestamp: '2026-04-05T12:03:00.000Z',
-        stream: Readable.from([Buffer.from(payload)]) as unknown as ReadableStream<Uint8Array>,
-        textContent: payload,
-        headers: {},
-        browserVersion: '',
-        userAgent: '',
-        httpStatus: 200,
-        extensionVersion: '',
-        operatorId: 'op',
-        operatorName: 'Test Operator',
-        toolVersion: '0.1.0'
-      })
-      expect(duplicate.hash).toBe(contentHash)
-      await captureLifecycle.delete(duplicate.id)
-
-      const dir = await exportPackage('shared-hash-stripped')
-      rmSync(join(dir, 'timestamps'), { recursive: true, force: true })
-      dropArtifacts(dir, (path) => path.startsWith('timestamps/'))
-
-      const run = runVerifyScript(dir)
-      expect(run.status, run.output).toBe(1)
-      expect(run.output).toContain(`FAIL [step 6] capture ${captureId}`)
-      expect(run.output).toContain('no enclosed file holds those bytes')
-      expect(run.output).not.toContain('PASS')
-    }
-  )
-
-  it.skipIf(!RUNS)(
-    'passes on a selection-scoped export that excludes the timestamped capture',
-    async () => {
-      const payload = '<html><body>second, unselected capture</body></html>'
-      const { capture: other } = await ingestMhtmlCapture({
-        caseId,
-        url: 'https://example.com/other',
-        title: 'Other Page',
-        timestamp: '2026-04-05T12:02:00.000Z',
-        stream: Readable.from([Buffer.from(payload)]) as unknown as ReadableStream<Uint8Array>,
-        textContent: payload,
-        headers: {},
-        browserVersion: '',
-        userAgent: '',
-        httpStatus: 200,
-        extensionVersion: '',
-        operatorId: 'op',
-        operatorName: 'Test Operator',
-        toolVersion: '0.1.0'
-      })
-
+      name: 'a stripped live token whose content hash a deleted capture shares',
+      build: async () => {
+        const payload = '<html><body>Runbook execution evidence</body></html>'
+        const duplicate = await ingestDuplicate(
+          'https://example.com/evidence-again',
+          payload,
+          '2026-04-05T12:03:00.000Z'
+        )
+        expect(duplicate.hash).toBe(contentHash)
+        await captureLifecycle.delete(duplicate.id)
+        const dir = await exportPackage('shared-hash-stripped')
+        rmSync(join(dir, 'timestamps'), { recursive: true, force: true })
+        dropArtifacts(dir, (path) => path.startsWith('timestamps/'))
+        return dir
+      },
+      binary: 'fail',
+      script: 'fail',
+      steps: [6],
+      says: () => [`FAIL [step 6] capture ${captureId}`, 'no enclosed file holds those bytes'],
+      saysNot: ['PASS']
+    },
+    {
       // Selects only the untimestamped capture, so the timestamped one's page,
       // screenshot AND signed token are all legitimately unenclosed.
-      const dir = await exportPackage('selection-scoped', { captureIds: [other.id] })
+      name: 'a selection that excludes the timestamped capture',
+      build: async () => {
+        const other = await ingestDuplicate(
+          'https://example.com/other',
+          '<html><body>second, unselected capture</body></html>',
+          '2026-04-05T12:02:00.000Z'
+        )
+        return exportPackage('selection-scoped', { captureIds: [other.id] })
+      },
+      binary: 'pass',
+      script: 'pass',
+      steps: [],
+      says: ['outside the signed export selection'],
+      saysNot: ['FAIL']
+    },
+    {
+      // What an operator on a non-default timestamp authority actually gets:
+      // getTsaTrustBundle bundles no root, the tokens still ship, and no
+      // verification against any anchor is possible. That is neither a pass nor a
+      // failure of this package, and exit 0 would report it as the former.
+      name: 'no enclosed TSA anchor',
+      build: () => {
+        const dir = corruptedCopy('no-anchor')
+        rmSync(join(dir, 'tsa-root.pem'), { force: true })
+        dropArtifacts(dir, (path) => path === 'tsa-root.pem')
+        return dir
+      },
+      binary: 'fail',
+      script: 'incomplete',
+      steps: [6],
+      says: ['verify.sh: INCOMPLETE'],
+      saysNot: ['PASS', 'FAIL'],
+      binaryFails: {
+        name: 'package hash',
+        reason: 'does not match the packageHash in the signed export entry'
+      },
+      divergence:
+        'removing the anchor from a sealed package also edits the index the signed export ' +
+        'entry hashes; Package Verification recomputes that packageHash and verify.sh does not'
+    },
+    // #853 on the shell surface. The binary FAILs a v2 package whose export entry
+    // was deleted; verify.sh ships inside the same zip, so a silent `[ -f ]`
+    // would have the two enclosed verifiers disagree about the same file.
+    // evidence.json lists neither itself nor export-entry.json under `artifacts`,
+    // so none of these edits disturbs step 1.
+    {
+      name: 'no export entry in a package that states the post-scope era',
+      build: () => strippedEntryCopy('stripped-export-entry'),
+      binary: 'fail',
+      script: 'fail',
+      steps: [5],
+      says: ['FAIL [step 5] export-entry.json is missing', 'was sealed with a signed export entry']
+    },
+    {
+      // JSON.stringify cannot write 2.0, so the float goes in as text. The
+      // binary parses it to 2 and FAILs; the script must not read "2.0" as
+      // unreadable and PASS the same zip.
+      name: 'no export entry and the era written as 2.0',
+      build: () => {
+        const dir = strippedEntryCopy('float-era')
+        writeEraLiteral(dir, '2.0')
+        return dir
+      },
+      binary: 'fail',
+      script: 'fail',
+      steps: [5],
+      says: ['FAIL [step 5] export-entry.json is missing', 'states schema version 2,']
+    },
+    {
+      // A v1 index with no entry still verifies (#398), and says it cannot tell
+      // an old package from a stripped one instead of saying nothing.
+      name: 'no export entry in a package that states the pre-scope era',
+      build: () => {
+        const dir = strippedEntryCopy('pre-scope-era')
+        setEra(dir, 1)
+        return dir
+      },
+      binary: 'pass',
+      script: 'pass',
+      steps: [],
+      says: ['cannot tell which'],
+      saysNot: ['FAIL']
+    },
+    {
+      name: 'no export entry and an index that is not JSON',
+      build: () => {
+        const dir = strippedEntryCopy('unreadable-era')
+        writeFileSync(join(dir, 'evidence.json'), '{ not json')
+        return dir
+      },
+      binary: 'fail',
+      script: 'fail',
+      steps: [1, 5],
+      says: ['no readable schema version']
+    },
+    // Codex review of #1495. These three are well-formed JSON whose `artifacts`
+    // all match, so step 1 passes and only `schemaVersion` is unusable. The
+    // binary rejects each through EvidencePackageSchema, so a note here would
+    // have the script print PASS over a package the verifier beside it FAILs.
+    ...(
+      [
+        ['null', 'null'],
+        ['a string', '"2"'],
+        ['fractional', '1.5']
+      ] as const
+    ).map(([label, literal]): ConformanceRow => ({
+      name: `no export entry and an era that is ${label}`,
+      build: () => {
+        const dir = strippedEntryCopy(`unusable-era-${label.replace(/\W/g, '-')}`)
+        writeEraLiteral(dir, literal)
+        return dir
+      },
+      binary: 'fail',
+      script: 'fail',
+      steps: [5],
+      says: ['no readable schema version']
+    }))
+  ]
 
-      const run = runVerifyScript(dir)
-      expect(run.status, run.output).toBe(0)
-      expect(run.output).toContain('verify.sh: PASS')
-      expect(run.output).toContain('outside the signed export selection')
-      expect(run.output).not.toContain('FAIL')
+  describe('both shipped verifiers', () => {
+    for (const row of CONFORMANCE) {
+      it.skipIf(!RUNS)(`agree on ${row.name}`, async () => {
+        const result = checkConformance(await row.build())
+        const output = result.scriptOutput
+        expect(
+          { binary: result.binary, script: result.script, steps: result.scriptSteps },
+          `${output}\nPackage Verification failed: ${result.binaryFailures.map((f) => f.name).join(', ')}`
+        ).toEqual({ binary: row.binary, script: row.script, steps: row.steps })
+        expect(verdictsAgree(result), row.divergence ?? 'the verifiers disagree').toBe(
+          row.divergence === undefined
+        )
+        const says = typeof row.says === 'function' ? row.says() : (row.says ?? [])
+        for (const text of says) expect(output).toContain(text)
+        for (const text of row.saysNot ?? []) expect(output).not.toContain(text)
+        if (row.binaryFails) {
+          const { name, reason } = row.binaryFails
+          const failure = result.binaryFailures.find((f) => f.name.startsWith(name))
+          expect(failure?.reason).toContain(reason)
+        }
+      })
     }
-  )
+  })
+
+  it.skipIf(!RUNS)('prints an INCOMPLETE verdict above the checks, as it does a PASS', () => {
+    // The buffered detail must not swallow a non-zero verdict, and the header
+    // above it must name the same outcome as the block below it.
+    const dir = corruptedCopy('no-anchor-order')
+    rmSync(join(dir, 'tsa-root.pem'), { force: true })
+    dropArtifacts(dir, (path) => path === 'tsa-root.pem')
+    const lines = runVerifyScript(dir).output.split('\n')
+    const verdict = lines.findIndex((line) => line.startsWith('verify.sh: INCOMPLETE'))
+    const firstStep = lines.findIndex((line) => line.startsWith('== Step'))
+    expect(verdict).toBeGreaterThanOrEqual(0)
+    expect(firstStep).toBeGreaterThan(verdict)
+  })
 
   // The recipient of a selection is the reason this script exists: they are
   // outside the investigation and reading to decide whether to trust it. A
@@ -715,7 +885,7 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
 
     it.skipIf(!RUNS)('-v restores the per-item lines the count covers', async () => {
       const dir = await selectionPackage('verbose')
-      const run = runVerifyScript(dir, undefined, ['-v'])
+      const run = runVerifyScript(dir, { args: ['-v'] })
       expect(run.status, run.output).toBe(0)
       expect(run.output).toMatch(/capture \S+: outside the signed export selection/)
       // The count is still stated; -v adds detail rather than replacing it.
@@ -723,7 +893,7 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     })
 
     it.skipIf(!RUNS)('rejects an unknown option rather than verifying as if it were absent', () => {
-      const run = runVerifyScript(packageDir, undefined, ['--not-an-option'])
+      const run = runVerifyScript(packageDir, { args: ['--not-an-option'] })
       expect(run.status).toBe(2)
       expect(run.output).toContain('unknown option')
       expect(run.output).not.toContain('PASS')
@@ -737,128 +907,10 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     })
   })
 
-  it.skipIf(!RUNS)('reports INCOMPLETE, not PASS, when no anchor is enclosed', () => {
-    // What an operator on a non-default timestamp authority actually gets:
-    // getTsaTrustBundle bundles no root, the tokens still ship, and no
-    // verification against any anchor is possible. That is neither a pass nor a
-    // failure of this package, and exit 0 would report it as the former.
-    const dir = corruptedCopy('no-anchor')
-    rmSync(join(dir, 'tsa-root.pem'), { force: true })
-    dropArtifacts(dir, (path) => path === 'tsa-root.pem')
-
-    const run = runVerifyScript(dir)
-    expect(run.status, run.output).toBe(3)
-    expect(run.output).toContain('INCOMPLETE [step 6]')
-    expect(run.output).toContain('verify.sh: INCOMPLETE')
-    expect(run.output).not.toContain('PASS')
-    // The buffered detail must not swallow a non-zero verdict, and the header
-    // above it must name the same outcome as the block below it.
-    const incompleteLines = run.output.split('\n')
-    const verdict = incompleteLines.findIndex((line) => line.startsWith('verify.sh: INCOMPLETE'))
-    const firstStep = incompleteLines.findIndex((line) => line.startsWith('== Step'))
-    expect(firstStep).toBeGreaterThan(verdict)
-    // The token is still bound to its signed entry; only the anchor is gone.
-    expect(run.output).not.toContain('FAIL')
-  })
-
-  // #853 on the shell surface. The binary FAILs a v2 package whose export entry
-  // was deleted; verify.sh ships inside the same zip, so a silent `[ -f ]` here
-  // would have the two enclosed verifiers disagree about the same file.
-  describe('export-entry era gate (#853)', () => {
-    const setEra = (dir: string, version: number): void => {
-      const path = join(dir, 'evidence.json')
-      const evidence = JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>
-      evidence.schemaVersion = version
-      writeFileSync(path, JSON.stringify(evidence, null, 2))
-    }
-
-    it.skipIf(!RUNS)('fails when a package that states the post-scope era has no entry', () => {
-      // evidence.json does not list itself or export-entry.json under
-      // `artifacts`, so neither edit disturbs step 1 — which is exactly why the
-      // strip was quiet before this gate.
-      const dir = corruptedCopy('stripped-export-entry')
-      rmSync(join(dir, 'export-entry.json'))
-
-      const run = runVerifyScript(dir)
-      expect(run.status, run.output).toBe(1)
-      expect(run.output).toContain('FAIL [step 5] export-entry.json is missing')
-      expect(run.output).toContain('was sealed with a signed export entry')
-      expect(run.output).not.toContain('verify.sh: PASS')
-    })
-
-    it.skipIf(!RUNS)('reads the era as a number, so 2.0 fails as 2 does', () => {
-      // JSON.stringify cannot write 2.0, so the float goes in as text. The
-      // binary parses it to 2 and FAILs; the script must not read "2.0" as
-      // unreadable and PASS the same zip.
-      const dir = corruptedCopy('float-era')
-      rmSync(join(dir, 'export-entry.json'))
-      const path = join(dir, 'evidence.json')
-      const text = readFileSync(path, 'utf-8')
-      writeFileSync(path, text.replace(/"schemaVersion": \d+/, '"schemaVersion": 2.0'))
-
-      const run = runVerifyScript(dir)
-      expect(run.status, run.output).toBe(1)
-      expect(run.output).toContain('FAIL [step 5] export-entry.json is missing')
-      expect(run.output).toContain('states schema version 2,')
-      expect(run.output).not.toContain('verify.sh: PASS')
-    })
-
-    it.skipIf(!RUNS)('notes rather than fails when the index states the pre-scope era', () => {
-      // A v1 index with no entry still verifies (#398), and now says it cannot
-      // tell an old package from a stripped one instead of saying nothing.
-      const dir = corruptedCopy('pre-scope-era')
-      rmSync(join(dir, 'export-entry.json'))
-      setEra(dir, 1)
-
-      const run = runVerifyScript(dir)
-      expect(run.status, run.output).toBe(0)
-      expect(run.output).toContain('verify.sh: PASS')
-      expect(run.output).toContain('cannot tell which')
-      expect(run.output).not.toContain('FAIL')
-    })
-
-    it.skipIf(!RUNS)('says the era is unreadable rather than guessing it', () => {
-      const dir = corruptedCopy('unreadable-era')
-      rmSync(join(dir, 'export-entry.json'))
-      writeFileSync(join(dir, 'evidence.json'), '{ not json')
-
-      const run = runVerifyScript(dir)
-      expect(run.status, run.output).toBe(1)
-      expect(run.output).toContain('no readable schema version')
-      expect(run.output).not.toContain('verify.sh: PASS')
-    })
-
-    // Codex review of #1495. The cases above either fail step 1 anyway or state
-    // a readable era; these three do neither. evidence.json is well-formed JSON
-    // whose `artifacts` all match, so step 1 passes, and only `schemaVersion` is
-    // unusable. The binary rejects each of them through EvidencePackageSchema
-    // (`z.number().int().positive()`), so a note here would have the script
-    // print PASS over a package the verifier beside it FAILs.
-    for (const [label, literal] of [
-      ['null', 'null'],
-      ['a string', '"2"'],
-      ['fractional', '1.5']
-    ] as const) {
-      it.skipIf(!RUNS)(`fails, not notes, when the era is ${label}`, () => {
-        const dir = corruptedCopy(`unusable-era-${label.replace(/\W/g, '-')}`)
-        rmSync(join(dir, 'export-entry.json'))
-        const path = join(dir, 'evidence.json')
-        const text = readFileSync(path, 'utf-8')
-        writeFileSync(path, text.replace(/"schemaVersion": \d+/, `"schemaVersion": ${literal}`))
-
-        const run = runVerifyScript(dir)
-        expect(run.status, run.output).toBe(1)
-        expect(run.output).toContain('FAIL [step 5]')
-        expect(run.output).toContain('no readable schema version')
-        expect(run.output).not.toContain('verify.sh: PASS')
-      })
-    }
-  })
-
   it.skipIf(!RUNS)('exits 2 rather than passing when a required tool is missing', () => {
     const empty = mkdtempSync(join(tmpdir(), 'bb-no-tools-'))
     try {
-      const run = runVerifyScript(packageDir, { PATH: empty })
+      const run = runVerifyScript(packageDir, { env: { PATH: empty } })
       expect(run.status).toBe(2)
       expect(run.output).toContain('was not found on PATH')
       expect(run.output).not.toContain('PASS')

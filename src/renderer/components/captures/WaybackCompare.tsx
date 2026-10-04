@@ -141,6 +141,7 @@ function EmptyPane({ captureId }: { captureId: string }) {
 // lookup, so a subresource fetched from it would be a disclosure the panel's own
 // consent model says has not happened yet.
 function CapturePane({ capture }: { capture: Capture }) {
-  if (capture.format === 'mhtml') return <MhtmlViewer captureId={capture.id} />
+  if (capture.format === 'mhtml')
+    return <MhtmlViewer captureId={capture.id} caseId={capture.caseId} />
   return <LegacyHtmlViewer captureId={capture.id} emptyLabel="No stored page archive available" />
 }

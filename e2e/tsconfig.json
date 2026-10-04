@@ -11,7 +11,15 @@
     "noEmit": true,
     "composite": false,
     "jsx": "react-jsx",
-    "types": ["node"]
+    "types": ["node"],
+    // The root's two aliases plus @main, which a spec needs for the main process's
+    // dependency-free zip reader and writer (legacy-html-guard.spec.ts). `paths`
+    // replaces the inherited map rather than extending it, so all three are listed.
+    "paths": {
+      "@renderer/*": ["../src/renderer/*"],
+      "@shared/*": ["../src/shared/*"],
+      "@main/*": ["../src/main/*"]
+    }
   },
   "include": ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts", "../playwright.config.ts"]
 }

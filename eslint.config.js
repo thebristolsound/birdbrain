@@ -17,6 +17,8 @@ export default tseslint.config(
       '.claude/',
       '.agents/',
       '.codex/',
+      // sharp built for the test runner by scripts/build-test-sharp.mjs.
+      '.cache/test-sharp/',
       'Python/',
       // Checked-in prototype artifacts, not app code — see docs/design-handoff/.
       'docs/**/*.js',

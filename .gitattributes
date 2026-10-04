@@ -1,3 +1,6 @@
 # Frozen evidence-package fixtures are byte-exact known-answer material: any
 # EOL conversion on checkout changes hashes and breaks the chain they pin.
 tests/shared/verify/fixtures/** -text
+# The decoder digest pins in tests/main/services/mhtmlDecoder.test.ts hash the fixture
+# as stored, CRLF line breaks included.
+tests/main/services/fixtures/*.mhtml -text

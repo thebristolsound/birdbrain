@@ -72,7 +72,7 @@ describe('the command palette panel', () => {
     const panel = screen.getByRole('dialog')
 
     expect(panel.parentElement).toBe(backdrop)
-    expect(panel.contains(screen.getByPlaceholderText('Switch investigation...'))).toBe(true)
+    expect(panel.contains(screen.getByPlaceholderText('Switch case...'))).toBe(true)
 
     fireEvent.click(panel)
     expect(useAppStore.getState().commandPaletteOpen).toBe(true)
@@ -106,7 +106,7 @@ describe('the command palette focus', () => {
   it('moves focus into the search input when it opens', () => {
     renderWithOpener()
 
-    expect(document.activeElement).toBe(screen.getByPlaceholderText('Switch investigation...'))
+    expect(document.activeElement).toBe(screen.getByPlaceholderText('Switch case...'))
   })
 
   it('hands focus back to whatever opened it when it closes', () => {
@@ -124,7 +124,7 @@ describe('the command palette focus', () => {
 
     fireEvent.keyDown(last, { key: 'Tab' })
 
-    expect(document.activeElement).toBe(screen.getByPlaceholderText('Switch investigation...'))
+    expect(document.activeElement).toBe(screen.getByPlaceholderText('Switch case...'))
   })
 
   // The tour records whatever holds focus as its opener. The Replay button

@@ -102,7 +102,8 @@ const COMPANION_FILES = [
   'tsa-intermediates.pem',
   'VERIFY.md',
   'verify.sh',
-  'report.html'
+  'report.html',
+  'export-entry.json'
 ]
 
 function citedArtifacts(html: string): string[] {
@@ -408,6 +409,41 @@ describe('report citation invariants', () => {
       assertEveryCitationResolves('certification.html', certification!.toString('utf-8'), entries)
     })
   }
+
+  /**
+   * The report sends its reader to VERIFY.md and cites that document's step
+   * numbers, so its own numbered list has to be the same steps in the same
+   * order. Each report item is paired with the runbook heading it summarises;
+   * adding, dropping or reordering a step in either document fails here.
+   */
+  it("lists VERIFY.md's steps in VERIFY.md's order", async () => {
+    await ingest('<html>s</html>', 'https://example.com/steps', 'Steps', await png())
+    const entries = await exportZip(FULL, 'step-order')
+    const report = entries.get('report.html')!.toString('utf-8')
+    const runbook = entries.get('VERIFY.md')!.toString('utf-8')
+
+    const list = /<ol class="steps[^"]*">([\s\S]*?)<\/ol>/.exec(report)
+    expect(list).not.toBeNull()
+    const reportSteps = [...list![1].matchAll(/<li><strong>([^<]+)<\/strong>/g)].map((m) => m[1])
+    const runbookSteps = [...runbook.matchAll(/^## Step (\d+) — (.+)$/gm)].map((m) => [
+      Number(m[1]),
+      m[2]
+    ])
+
+    expect(runbookSteps.map(([n]) => n)).toEqual(runbookSteps.map((_, i) => i + 1))
+    expect(reportSteps.map((title, i) => [title, runbookSteps[i]?.[1]])).toEqual([
+      ['Check file integrity against the index.', 'File integrity (index self-consistency)'],
+      ['Check the entry signatures.', 'Entry signature (`schemaVersion` 2 and above)'],
+      ['Recompute each entry hash.', 'Recompute `entryHash` (canonicalization recipe)'],
+      ['Check the chain linkage.', 'Chain linkage'],
+      [
+        'Bind the content to its manifest entries.',
+        'Content bind (load-bearing for the evidence itself)'
+      ],
+      ['Validate the timestamp tokens.', 'Timestamp (canonical TSA verification)']
+    ])
+    expect(reportSteps).toHaveLength(runbookSteps.length)
+  })
 
   /**
    * Known-answer coverage of the pinned-reference rendering (#401), the method

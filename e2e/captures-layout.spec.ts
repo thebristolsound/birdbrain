@@ -84,9 +84,9 @@ test.describe('Captures three-column layout', () => {
     await rows.first().click()
     await expect(page.getByTestId('capture-details-aside')).toBeVisible()
 
-    // 1. Tab set: exactly Screenshot / Page / Text / Wayback, and no Source.
-    await expect(page.getByRole('tab')).toHaveCount(4)
-    for (const name of ['Screenshot', 'Page', 'Text', 'Wayback']) {
+    // 1. Tab set: exactly Screenshot / Page / Text / Links / Wayback, and no Source.
+    await expect(page.getByRole('tab')).toHaveCount(5)
+    for (const name of ['Screenshot', 'Page', 'Text', 'Links', 'Wayback']) {
       await expect(page.getByRole('tab', { name, exact: true })).toBeVisible()
     }
     await expect(page.getByRole('tab', { name: 'Source' })).toHaveCount(0)

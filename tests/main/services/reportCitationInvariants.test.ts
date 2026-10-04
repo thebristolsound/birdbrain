@@ -437,7 +437,7 @@ describe('report citation invariants', () => {
       ['Recompute each entry hash.', 'Recompute `entryHash` (canonicalization recipe)'],
       ['Check the chain linkage.', 'Chain linkage'],
       [
-        'Bind the content to its signed entries.',
+        'Bind the content to its manifest entries.',
         'Content bind (load-bearing for the evidence itself)'
       ],
       ['Validate the timestamp tokens.', 'Timestamp (canonical TSA verification)']

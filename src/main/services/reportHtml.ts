@@ -1391,9 +1391,10 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   }
   <ol class="steps rule-top">
     <li><strong>Check file integrity against the index.</strong> Compute the SHA-256 of each
-    enclosed file and compare it to that file's digest in <code>evidence.json</code>. The index is
-    not signed, so a match shows only that the files and the index agree; ${stepRef(5)} binds the files
-    to the signed manifest.</li>
+    file listed in <code>evidence.json</code> and compare it to the digest the index records for
+    it. The index is not signed, and it lists neither itself nor the signed export entry, so a
+    match shows only that the listed files and the index agree; ${stepRef(5)} binds each exhibit's
+    content to the manifest.</li>
     <li><strong>Check the entry signatures.</strong> ${
       data.entriesUnderCarriedKeys
         ? `Verify each signed manifest entry against the key
@@ -1417,18 +1418,21 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     <li><strong>Check the chain linkage.</strong> Confirm each entry's predecessor hash equals the
     previous entry's hash and that the indexes count up from 0. The chain must reconcile to the
     head hash printed under “Chain of custody”.</li>
-    <li><strong>Bind the content to its signed entries.</strong> For each capture entry, hash its
+    <li><strong>Bind the content to its manifest entries.</strong> For each capture entry, hash its
     stored page in <code>${CAPTURE_PACKAGE_DIRECTORY}/</code> and, where the entry records one, its screenshot in
     <code>${SCREENSHOT_PACKAGE_DIRECTORY}/</code>, which is named by its own digest. Compare each to the hash inside
-    that signed entry, not to <code>evidence.json</code>. Exhibits of other kinds and derived files
-    are checked the same way against their own signed entries. An exhibit absent from the package
+    that manifest entry, not to <code>evidence.json</code>. Exhibits of other kinds and derived
+    files are checked the same way against their own entries. An entry written before entries
+    were signed carries no signature: it is covered by ${stepRef(3, 4)} and by any timestamp
+    checked in ${stepRef(6)}, not by ${stepRef(2)}. An exhibit absent from the package
     is accounted for only by a later deletion entry or by the selection scope in the signed export
     entry, never by the index or by this report.</li>
     <li><strong>Validate the timestamp tokens.</strong> Take the tokens from the signed timestamp
     entries in <code>manifest.jsonl</code> rather than from a listing of <code>${TIMESTAMP_PACKAGE_DIRECTORY}/</code>,
-    so a deleted token file shows as missing. For each exhibit ${stepRef(5)} requires present, confirm its
-    token's message imprint equals the exhibit's content digest and that its signing chain, built
-    with <code>tsa-intermediates.pem</code>, terminates in
+    so a deleted token file shows as missing. An exhibit with no timestamp entry has no token to
+    check and carries no trusted-time claim. For each exhibit ${stepRef(5)} requires present whose
+    content digest a timestamp entry records, confirm that token's message imprint equals the
+    digest and that its signing chain, built with <code>tsa-intermediates.pem</code>, terminates in
     ${
       data.tsaTrustAnchorBundled
         ? `the self-signed root shipped as <code>tsa-root.pem</code>. That file is a convenience copy,
@@ -1444,9 +1448,11 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     package was built, not who signed a token retained from earlier`
     }.</li>
   </ol>
-  <p>Birdbrain's own verifier makes one further check that neither <code>VERIFY.md</code> nor
-  <code>verify.sh</code> performs: it hashes the canonical, path-sorted artefact list in
-  <code>evidence.json</code> and compares it to the package hash in the signed export entry.</p>
+  <p>Where a package carries a signed export entry, Birdbrain's own verifier makes one further
+  check that neither <code>VERIFY.md</code> nor <code>verify.sh</code> performs: it hashes the
+  canonical, path-sorted artefact list in <code>evidence.json</code> and compares it to the
+  package hash in that entry. A package built before export entries existed has none, and its
+  index is bound to no signed statement.</p>
   ${
     data.tsaTrustAnchorBundled
       ? ''

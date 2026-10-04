@@ -186,6 +186,18 @@ describe('LinksTab', () => {
     )
   })
 
+  it('does not call the page link-free when embedded frames were skipped', async () => {
+    renderTab(result([], { skippedParts: { tooLarge: 2, overPartCount: 0, overTotalSize: 0 } }))
+    const notices = await screen.findAllByTestId('links-notice')
+    expect(notices.map((n) => n.textContent)).toEqual([
+      'Not listed: 2 embedded frames, each too large to read.'
+    ])
+    const empty = screen.getByTestId('links-empty').textContent
+    expect(empty).toContain('No links in what was read')
+    expect(empty).toContain('this page may hold links that are not listed')
+    expect(empty).not.toContain('No links on this page')
+  })
+
   it('says when the archive is missing', async () => {
     renderTab(null)
     expect((await screen.findByTestId('links-empty')).textContent).toContain(

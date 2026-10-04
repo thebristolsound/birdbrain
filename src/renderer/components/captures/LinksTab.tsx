@@ -140,19 +140,6 @@ export function LinksTab({ capture }: { capture: Capture }) {
       />
     )
   }
-  if (data.mainDocumentSkipped && data.links.length === 0) {
-    return (
-      <EmptyState
-        title="The page is too large to list its links"
-        detail="Its main document is over the size this tab reads. The Page tab still shows it."
-      />
-    )
-  }
-  if (data.links.length === 0) {
-    return <EmptyState title="No links on this page" detail="The stored page holds no links." />
-  }
-
-  const shown = filterLinks(data.links, { query, externalOnly }, capture.url)
   const notices: string[] = []
   if (data.mainDocumentSkipped) {
     notices.push('The main document is too large to read; only links in its frames are listed.')
@@ -167,6 +154,43 @@ export function LinksTab({ capture }: { capture: Capture }) {
     notices.push(`Not listed: ${frames(overTotalSize)} past the total size this tab reads.`)
   }
   if (data.truncated) notices.push(`Only the first ${data.links.length} links are listed.`)
+  const noticeList = notices.map((notice) => (
+    <p
+      key={notice}
+      data-testid="links-notice"
+      className="shrink-0 border-b border-border px-4 py-1.5 text-[11px] text-text-muted"
+    >
+      {notice}
+    </p>
+  ))
+
+  if (data.links.length === 0) {
+    if (data.mainDocumentSkipped) {
+      return (
+        <EmptyState
+          title="The page is too large to list its links"
+          detail="Its main document is over the size this tab reads. The Page tab still shows it."
+        />
+      )
+    }
+    if (notices.length === 0) {
+      return <EmptyState title="No links on this page" detail="The stored page holds no links." />
+    }
+    // Frames were skipped, so "no links" would claim more than was read.
+    return (
+      <div data-testid="links-tab" className="flex h-full flex-col overflow-hidden">
+        {noticeList}
+        <div className="min-h-0 flex-1">
+          <EmptyState
+            title="No links in what was read"
+            detail="Some embedded frames were not read, so this page may hold links that are not listed."
+          />
+        </div>
+      </div>
+    )
+  }
+
+  const shown = filterLinks(data.links, { query, externalOnly }, capture.url)
 
   return (
     <div data-testid="links-tab" className="flex h-full flex-col overflow-hidden">
@@ -194,15 +218,7 @@ export function LinksTab({ capture }: { capture: Capture }) {
           {shown.length} of {data.links.length}
         </span>
       </div>
-      {notices.map((notice) => (
-        <p
-          key={notice}
-          data-testid="links-notice"
-          className="shrink-0 border-b border-border px-4 py-1.5 text-[11px] text-text-muted"
-        >
-          {notice}
-        </p>
-      ))}
+      {noticeList}
       {shown.length === 0 ? (
         <EmptyState title="No links match" detail="Change the search or turn off External only." />
       ) : (

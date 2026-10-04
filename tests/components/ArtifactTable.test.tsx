@@ -132,11 +132,15 @@ describe('ArtifactTable keyboard reach (#1537)', () => {
     expect(document.activeElement).toBe(first)
     fireEvent.keyDown(first, { key: 'End' })
     expect(document.activeElement).toBe(second)
+    // The Tab stop follows focus rather than staying on the selected row.
+    fireEvent.keyDown(second, { key: 'Home' })
+    expect(first.tabIndex).toBe(0)
+    expect(second.tabIndex).toBe(-1)
   })
 
-  it('declares table semantics', () => {
+  it('declares grid semantics, since rows are selectable', () => {
     render(<ArtifactTable rows={rows} selectedId={null} onSelect={vi.fn()} emptyMessage="none" />)
-    const table = screen.getByRole('table', { name: 'Artifacts' })
+    const table = screen.getByRole('grid', { name: 'Artifacts' })
     expect(within(table).getAllByRole('columnheader').length).toBe(6)
     expect(within(table).getAllByRole('row').length).toBe(3)
     expect(screen.getByTestId('artifact-row-cap-a').tabIndex).toBe(0)

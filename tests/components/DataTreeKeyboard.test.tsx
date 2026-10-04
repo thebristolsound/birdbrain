@@ -59,6 +59,9 @@ it('keeps one Tab stop on the selected node and walks the rest with the arrow ke
   expect(document.activeElement).toBe(selectButton('staging'))
   fireEvent.keyDown(selectButton('staging'), { key: 'Home' })
   expect(document.activeElement).toBe(selectButton('data-sources'))
+  // The Tab stop followed focus, so Tab leaves from here and returns here.
+  expect(selectButton('data-sources').tabIndex).toBe(0)
+  expect(selectButton('kind:capture').tabIndex).toBe(-1)
 })
 
 it('expands on ArrowRight and collapses on ArrowLeft, and leaves other keys alone', () => {
@@ -75,6 +78,29 @@ it('expands on ArrowRight and collapses on ArrowLeft, and leaves other keys alon
   fireEvent.keyDown(selectButton('staging'), { key: 'ArrowRight' })
   fireEvent.keyDown(selectButton('staging'), { key: 'a' })
   expect(onToggle).not.toHaveBeenCalled()
+})
+
+it('moves into an open parent on ArrowRight and back up to the parent on ArrowLeft', () => {
+  const onToggle = vi.fn()
+  render(<DataTree nodes={nodes} selected="staging" onSelect={vi.fn()} onToggle={onToggle} />)
+
+  // Data Sources is open: ArrowRight lands on its first child rather than toggling.
+  const parent = selectButton('data-sources')
+  parent.focus()
+  fireEvent.keyDown(parent, { key: 'ArrowRight' })
+  expect(document.activeElement).toBe(selectButton('kind:capture'))
+  expect(onToggle).not.toHaveBeenCalled()
+
+  // Staging is a leaf: ArrowLeft goes to its parent.
+  const leaf = selectButton('staging')
+  leaf.focus()
+  fireEvent.keyDown(leaf, { key: 'ArrowLeft' })
+  expect(document.activeElement).toBe(parent)
+  expect(onToggle).not.toHaveBeenCalled()
+
+  // A top-level node has no parent to go to.
+  fireEvent.keyDown(parent, { key: 'ArrowLeft' })
+  expect(onToggle).toHaveBeenLastCalledWith('data-sources')
 })
 
 it('falls back to the first node as the Tab stop when nothing is selected', () => {

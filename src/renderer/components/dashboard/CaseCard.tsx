@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, memo } from 'react'
+import { useState, useRef, useEffect, memo, type KeyboardEvent } from 'react'
 import type { Case } from '@shared/types'
 import { Camera, ArrowUpRight, MoreVertical } from 'lucide-react'
 import { Card } from '@renderer/components/ui'
@@ -40,6 +40,7 @@ export const CaseCard = memo(function CaseCard({
   const inputRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
+  const popoverRef = useRef<HTMLDivElement>(null)
 
   const { icon: IconComponent, bgClass, iconClass } = getCaseTypeStyle(caseData.type)
 
@@ -50,9 +51,38 @@ export const CaseCard = memo(function CaseCard({
     }
   }, [editingName])
 
+  // Focus enters the menu on open, as the menu role promises; the delete
+  // confirmation swaps the items for Confirm and Cancel, so it lands again.
   useEffect(() => {
     if (!menuOpen) return
-    function handleKeyDown(e: KeyboardEvent) {
+    menuItems()[0]?.focus()
+  }, [menuOpen, deletingId])
+
+  function menuItems(): HTMLElement[] {
+    return Array.from(popoverRef.current?.querySelectorAll<HTMLElement>('button') ?? [])
+  }
+
+  function handleMenuKey(e: KeyboardEvent<HTMLDivElement>) {
+    const items = menuItems()
+    const index = items.indexOf(document.activeElement as HTMLElement)
+    let next = -1
+    if (e.key === 'ArrowDown') next = (index + 1) % items.length
+    else if (e.key === 'ArrowUp') next = (index - 1 + items.length) % items.length
+    else if (e.key === 'Home') next = 0
+    else if (e.key === 'End') next = items.length - 1
+    else if (e.key === 'Tab') {
+      setMenuOpen(false)
+      setDeletingId(null)
+      return
+    }
+    if (next < 0) return
+    e.preventDefault()
+    items[next]?.focus()
+  }
+
+  useEffect(() => {
+    if (!menuOpen) return
+    function handleKeyDown(e: globalThis.KeyboardEvent) {
       if (e.key !== 'Escape') return
       setMenuOpen(false)
       setDeletingId(null)
@@ -165,8 +195,10 @@ export const CaseCard = memo(function CaseCard({
 
         {menuOpen && (
           <div
+            ref={popoverRef}
             role="menu"
             aria-label={`Actions for ${caseData.name}`}
+            onKeyDown={handleMenuKey}
             className="absolute right-0 top-8 z-50 w-32 rounded-lg bg-surface border border-border-strong shadow-xl py-1"
           >
             {deletingId === caseData.id ? (
@@ -200,6 +232,7 @@ export const CaseCard = memo(function CaseCard({
               <>
                 <button
                   role="menuitem"
+                  tabIndex={-1}
                   data-testid="case-card-rename-btn"
                   className="w-full text-left px-3 py-1.5 text-[11px] text-text-secondary hover:bg-elevated hover:text-text-primary"
                   onClick={(e) => {
@@ -212,6 +245,7 @@ export const CaseCard = memo(function CaseCard({
                 </button>
                 <button
                   role="menuitem"
+                  tabIndex={-1}
                   data-testid="case-card-delete-btn"
                   className="w-full text-left px-3 py-1.5 text-[11px] text-red-400 hover:bg-elevated hover:text-red-300"
                   onClick={(e) => {

@@ -408,7 +408,11 @@ export function SignalsOverview() {
                 }
               />
 
-              <div className="flex max-h-80 flex-col gap-0.5 overflow-y-auto">
+              <div
+                role={selectorSignals.length ? 'grid' : undefined}
+                aria-label="Selectors"
+                className="flex max-h-80 flex-col gap-0.5 overflow-y-auto"
+              >
                 {renderRows(
                   selectorSignals,
                   'No selectors yet — type a pattern above to add the first.'
@@ -460,6 +464,8 @@ export function SignalsOverview() {
 
               <div
                 data-testid="signals-tag-list"
+                role={tagSignals.length ? 'grid' : undefined}
+                aria-label="Tags"
                 className="flex max-h-[260px] flex-col gap-0.5 overflow-y-auto"
               >
                 {renderRows(tagSignals, 'No tags yet — name one above to add the first.')}

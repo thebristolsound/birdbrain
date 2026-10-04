@@ -39,7 +39,21 @@ it('names the kebab, exposes the menu state and closes on Escape back to the tri
   fireEvent.click(trigger)
   expect(trigger.getAttribute('aria-expanded')).toBe('true')
   const menu = screen.getByRole('menu', { name: 'Actions for Investigation One' })
-  expect(menu.querySelectorAll('[role="menuitem"]').length).toBe(2)
+  const [rename, remove] = screen.getAllByRole('menuitem')
+  expect(document.activeElement).toBe(rename)
+
+  fireEvent.keyDown(menu, { key: 'ArrowDown' })
+  expect(document.activeElement).toBe(remove)
+  fireEvent.keyDown(menu, { key: 'ArrowDown' })
+  expect(document.activeElement).toBe(rename)
+  fireEvent.keyDown(menu, { key: 'ArrowUp' })
+  expect(document.activeElement).toBe(remove)
+  fireEvent.keyDown(menu, { key: 'Home' })
+  expect(document.activeElement).toBe(rename)
+  fireEvent.keyDown(menu, { key: 'End' })
+  expect(document.activeElement).toBe(remove)
+  fireEvent.keyDown(menu, { key: 'a' })
+  expect(document.activeElement).toBe(remove)
 
   fireEvent.keyDown(document, { key: 'Escape' })
   expect(screen.queryByRole('menu')).toBeNull()
@@ -51,4 +65,14 @@ it('ignores keys other than Escape while the menu is open', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Actions for Investigation One' }))
   fireEvent.keyDown(document, { key: 'Enter' })
   expect(screen.getByRole('menu')).toBeTruthy()
+})
+
+it('moves focus to the confirmation when Delete is chosen, and Tab closes the menu', () => {
+  renderCard()
+  fireEvent.click(screen.getByRole('button', { name: 'Actions for Investigation One' }))
+  fireEvent.click(screen.getByTestId('case-card-delete-btn'))
+  expect(document.activeElement).toBe(screen.getByTestId('case-card-delete-confirm-btn'))
+
+  fireEvent.keyDown(screen.getByRole('menu'), { key: 'Tab' })
+  expect(screen.queryByRole('menu')).toBeNull()
 })

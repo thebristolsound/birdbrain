@@ -108,6 +108,15 @@ describe('SignalRow keyboard model', () => {
     expect(screen.queryByLabelText('Edit selector pattern')).toBeNull()
   })
 
+  it('is a grid row with a cell for each control, not a button around buttons', () => {
+    renderRow()
+    const row = screen.getByTestId('signal-row-s1')
+    expect(row.getAttribute('role')).toBe('row')
+    expect(row.getAttribute('aria-selected')).toBe('false')
+    expect(row.querySelectorAll(':scope > [role="gridcell"]').length).toBe(6)
+    expect(row.querySelector('[role="button"]')).toBeNull()
+  })
+
   it('leaves keys pressed on nested controls to those controls', () => {
     const { onDelete, onToggleEnabled } = renderRow()
 

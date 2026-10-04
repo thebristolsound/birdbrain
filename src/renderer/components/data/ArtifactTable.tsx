@@ -1,4 +1,4 @@
-import { Fragment, useRef, type KeyboardEvent, type ReactNode } from 'react'
+import { Fragment, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { FileWarning } from 'lucide-react'
 import { Badge, Button } from '@renderer/components/ui'
 import { cn } from '@renderer/lib/utils'
@@ -64,9 +64,17 @@ export function ArtifactTable({
   menuTargetFor
 }: ArtifactTableProps) {
   const tableRef = useRef<HTMLDivElement>(null)
-  // Roving tab stop: one row is reachable by Tab (the selected one, else the
-  // first) and the arrow keys walk the rest, so a long table costs one press.
-  const tabStopId = rows.some((r) => r.id === selectedId) ? selectedId : (rows[0]?.id ?? null)
+  // Roving tab stop: one row is reachable by Tab and the arrow keys walk the
+  // rest, so a long table costs one press. The stop follows focus, so Tab
+  // leaves from the row the operator is on and re-entry lands there again;
+  // until a row has been focused it is the selected row, else the first.
+  const [focusedId, setFocusedId] = useState<string | null>(null)
+  const has = (id: string | null) => id !== null && rows.some((r) => r.id === id)
+  const tabStopId = has(focusedId)
+    ? focusedId
+    : has(selectedId)
+      ? selectedId
+      : (rows[0]?.id ?? null)
 
   function moveRowFocus(event: KeyboardEvent<HTMLDivElement>): boolean {
     const keys = ['ArrowDown', 'ArrowUp', 'Home', 'End']
@@ -97,7 +105,7 @@ export function ArtifactTable({
   }
   return (
     <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden" data-testid="artifact-table">
-      <div ref={tableRef} role="table" aria-label="Artifacts" aria-rowcount={rows.length + 1}>
+      <div ref={tableRef} role="grid" aria-label="Artifacts" aria-rowcount={rows.length + 1}>
         <div
           role="row"
           className="sticky top-0 z-[2] grid h-[var(--d-head)] items-center border-b border-l-2 border-border border-l-transparent bg-canvas px-[var(--d-rowpad)] font-display text-[10px] font-semibold uppercase tracking-label text-text-faint"
@@ -129,6 +137,7 @@ export function ArtifactTable({
                   else onSelect(row.id)
                 }}
                 onDoubleClick={() => onOpen?.(row)}
+                onFocus={() => setFocusedId(row.id)}
                 onKeyDown={(event) => onRowKey(event, row)}
                 className={cn(
                   'grid min-h-[var(--d-row)] w-full cursor-pointer items-center border-b border-l-2 border-border px-[var(--d-rowpad)] text-left',
@@ -140,7 +149,7 @@ export function ArtifactTable({
                 )}
                 style={{ gridTemplateColumns: COLUMNS }}
               >
-                <span role="cell" className="flex min-w-0 items-center gap-1.5 py-1 pr-2.5">
+                <span role="gridcell" className="flex min-w-0 items-center gap-1.5 py-1 pr-2.5">
                   {!row.exists && (
                     <span
                       title="File missing on disk"
@@ -198,30 +207,30 @@ export function ArtifactTable({
                   )}
                 </span>
                 <span
-                  role="cell"
+                  role="gridcell"
                   className="truncate font-mono text-[11px] text-text-muted"
                   title={row.sourceDetail}
                 >
                   {row.source}
                 </span>
-                <span role="cell" className="truncate text-xs text-text-muted">
+                <span role="gridcell" className="truncate text-xs text-text-muted">
                   {row.kind}
                 </span>
                 <span
-                  role="cell"
+                  role="gridcell"
                   className="pr-3.5 text-right text-[11px] tabular-nums text-text-muted"
                 >
                   {formatBytes(row.sizeBytes)}
                 </span>
                 <span
-                  role="cell"
+                  role="gridcell"
                   className="truncate font-mono text-[11px] text-text-faint"
                   title={row.hash}
                 >
                   {shortHash(row.hash)}
                 </span>
                 <span
-                  role="cell"
+                  role="gridcell"
                   className="flex min-w-0 flex-col text-[11px] tabular-nums text-text-faint"
                   title={capturedTitle(row)}
                 >

@@ -21,6 +21,16 @@ function isTampered(status?: Capture['lastVerifiedStatus']): boolean {
   return status === 'tampered' || status === 'chain-broken' || status === 'missing'
 }
 
+// The same words ProvenanceBadge uses for each persisted outcome; only an
+// absent status has never been checked.
+function shieldLabelFor(status?: Capture['lastVerifiedStatus']): string {
+  if (status === 'verified') return 'Verified'
+  if (status === 'legacy') return 'Legacy HTML'
+  if (status === 'verifier-too-old') return 'Verifier too old'
+  if (isTampered(status)) return 'Verification failed'
+  return 'Not yet verified'
+}
+
 function RecentCaptureCard({
   capture,
   isNew,
@@ -34,7 +44,7 @@ function RecentCaptureCard({
   const verified = capture.lastVerifiedStatus === 'verified'
   const tampered = isTampered(capture.lastVerifiedStatus)
   const ShieldIcon = verified ? ShieldCheck : ShieldAlert
-  const shieldLabel = verified ? 'Verified' : tampered ? 'Verification failed' : 'Not yet verified'
+  const shieldLabel = shieldLabelFor(capture.lastVerifiedStatus)
   const shieldColor = verified ? 'text-emerald-400' : tampered ? 'text-red-400' : 'text-amber-400'
 
   return (

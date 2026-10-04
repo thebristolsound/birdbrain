@@ -40,8 +40,6 @@ const SELECTOR_PRESETS = [
   { id: 'username', label: 'Usernames', pattern: '@[a-zA-Z0-9_]{1,15}', isRegex: true }
 ]
 
-const WIZARD_STEPS = ['Name', 'Description', 'Selectors']
-
 export function NewCaseWizard() {
   const navigate = useNavigate()
   const { create } = useCasesMutations()
@@ -101,16 +99,15 @@ export function NewCaseWizard() {
   return (
     <div className="mx-auto max-w-2xl py-12 px-6">
       {/* Progress indicator */}
-      <ol aria-label="Progress" className="mb-8 flex items-center justify-center gap-2">
-        {WIZARD_STEPS.map((step, i) => (
-          <li
-            key={step}
-            aria-current={i === 0 ? 'step' : undefined}
-            aria-label={`Step ${i + 1} of ${WIZARD_STEPS.length}: ${step}${i === 0 ? ' (current)' : ''}`}
-            className={`h-2 rounded-full ${i === 0 ? 'w-8 bg-accent' : 'w-2 bg-elevated'}`}
-          />
-        ))}
-      </ol>
+      {/* Decorative: every field is on screen at once and nothing ever advances
+          past the first pip, so announcing "step 1 of 3" would describe a
+          wizard that does not exist. The mock's labelled step buttons (#1537)
+          wait on real steps. */}
+      <div aria-hidden="true" className="mb-8 flex items-center justify-center gap-2">
+        <div className="h-2 w-8 rounded-full bg-accent" />
+        <div className="h-2 w-2 rounded-full bg-elevated" />
+        <div className="h-2 w-2 rounded-full bg-elevated" />
+      </div>
 
       {/* Card */}
       <Card className="p-8">

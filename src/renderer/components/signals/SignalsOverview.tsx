@@ -119,13 +119,15 @@ export function SignalsOverview() {
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
   const rowRefs = useRef(new Map<string, HTMLDivElement>())
-  // Roving tab stop, one per list, as in the Data screen's artifact table: the
-  // stop follows focus; before a row has had focus it is the selected row,
-  // else the first.
-  const [focusedIds, setFocusedIds] = useState<Record<Signal['kind'], string | null>>({
-    selector: null,
-    tag: null
-  })
+  // Each list is a grid with one Tab stop: the row last focused, else the
+  // selected row, else the first. The arrow keys reach the others.
+  const [focusedRowId, setFocusedRowId] = useState<string | null>(null)
+  function isTabStop(list: Signal[], id: string): boolean {
+    const has = (candidate: string | null | undefined) =>
+      candidate != null && list.some((signal) => signal.id === candidate)
+    const stop = has(focusedRowId) ? focusedRowId : has(selectedId) ? selectedId : list[0]?.id
+    return stop === id
+  }
   const selectorInputRef = useRef<HTMLInputElement>(null)
   const tagInputRef = useRef<HTMLInputElement>(null)
 
@@ -314,24 +316,15 @@ export function SignalsOverview() {
     if (list.length === 0) {
       return <div className="px-0.5 py-2.5 text-[11px] text-text-faint">{emptyCopy}</div>
     }
-    const { kind } = list[0]
-    const has = (id?: string | null) => list.some((signal) => signal.id === id)
-    const tabStopId = has(focusedIds[kind])
-      ? focusedIds[kind]
-      : has(selected?.id)
-        ? selected?.id
-        : list[0].id
     return list.map((signal) => (
       <SignalRow
         key={signal.id}
         signal={signal}
         captures={recentCaptures}
         selected={selected?.id === signal.id}
-        tabStop={signal.id === tabStopId}
-        onRowFocus={() =>
-          setFocusedIds((prev) => (prev[kind] === signal.id ? prev : { ...prev, [kind]: signal.id }))
-        }
         registerRow={registerRow(signal.id)}
+        tabStop={isTabStop(list, signal.id)}
+        onFocusWithin={() => setFocusedRowId(signal.id)}
         onSelect={() => setSelectedId(signal.id)}
         onFocusSibling={(direction) => focusSibling(list, signal.id, direction, signal.kind)}
         onToggleEnabled={() => {

@@ -443,6 +443,18 @@ describe('SignalsOverview tag delete confirmation', () => {
     expect(document.activeElement).toBe(row)
   })
 
+  it('gives each grid one Tab stop that follows focus', async () => {
+    renderScreen()
+    await screen.findByTestId('signal-row-t1')
+    const tags = within(screen.getByTestId('signals-tag-list'))
+    const rows = await tags.findAllByRole('row')
+    expect(rows.filter((row) => row.tabIndex === 0).length).toBe(1)
+    const last = rows[rows.length - 1]
+    last.focus()
+    await waitFor(() => expect(last.tabIndex).toBe(0))
+    expect(rows.filter((row) => row.tabIndex === 0)).toEqual([last])
+  })
+
   it('hands focus back to the row button when the confirmation is cancelled', async () => {
     renderScreen()
     await screen.findByTestId('signal-row-t1')

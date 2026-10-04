@@ -1,4 +1,5 @@
 import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
+import { PACKAGE_ROOT_FILES } from '../../src/packages/evidence-package-layout/index'
 import { runVerifyScript } from './verifyScript'
 
 // Every Evidence Package ships two verifiers: Package Verification, which the
@@ -22,6 +23,11 @@ export interface Conformance {
 }
 
 const SCRIPT_VERDICTS: Record<number, ScriptVerdict> = { 0: 'pass', 1: 'fail', 3: 'incomplete' }
+const PRINTED_VERDICTS: Record<ScriptVerdict, string> = {
+  pass: `${PACKAGE_ROOT_FILES.verifyScript}: PASS`,
+  fail: `${PACKAGE_ROOT_FILES.verifyScript}: FAIL`,
+  incomplete: `${PACKAGE_ROOT_FILES.verifyScript}: INCOMPLETE`
+}
 const FINDING = /^\s*(?:FAIL|INCOMPLETE) \[step (\d+)\]/gm
 
 export function checkConformance(dir: string): Conformance {
@@ -37,6 +43,14 @@ export function checkConformance(dir: string): Conformance {
   // package or environment rather than a verdict to compare.
   if (script === undefined) {
     throw new Error(`verify.sh exited ${run.status}, which is not a verdict:\n${run.output}`)
+  }
+  // The verdict a reader sees has to be the one the exit status reports.
+  for (const [verdict, printed] of Object.entries(PRINTED_VERDICTS)) {
+    if (run.output.includes(printed) !== (verdict === script)) {
+      throw new Error(
+        `verify.sh exited ${run.status} (${script}) but its output disagrees:\n${run.output}`
+      )
+    }
   }
   const steps = new Set([...run.output.matchAll(FINDING)].map((match) => Number(match[1])))
 

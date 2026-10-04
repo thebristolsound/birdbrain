@@ -177,6 +177,12 @@ describe('ArtifactTable keyboard reach (#1537)', () => {
     expect(document.activeElement).toBe(screen.getByTestId('artifact-row-cap-a'))
     fireEvent.keyDown(commit, { key: 'Enter' })
     expect(onOpen).not.toHaveBeenCalled()
+
+    // Tab from a control continues from the row, with the default left to run.
+    discard.focus()
+    const left = fireEvent.keyDown(discard, { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(row)
+    expect(left).toBe(true)
   })
 
   it('declares grid semantics, since rows are selectable', () => {

@@ -121,6 +121,8 @@ export function DataTree({
                   event.stopPropagation()
                   if (event.shiftKey && onToggleBelow) onToggleBelow(node.key, !node.expanded)
                   else onToggle(node.key)
+                  // The twist is hidden from the tree, so focus must not rest on it.
+                  ;(event.currentTarget.nextElementSibling as HTMLElement | null)?.focus()
                 }}
                 className={cn(
                   'grid h-[18px] w-3.5 shrink-0 place-items-center rounded text-text-faint',

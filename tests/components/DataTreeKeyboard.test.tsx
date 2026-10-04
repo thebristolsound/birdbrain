@@ -131,3 +131,15 @@ it('falls back to the first node as the Tab stop when nothing is selected', () =
   fireEvent.keyDown(twist, { key: 'ArrowDown' })
   expect(document.activeElement).not.toBe(selectButton('staging'))
 })
+
+it('hides the twist from the tree and hands focus to the tree item when it is clicked', () => {
+  const onToggle = vi.fn()
+  render(<DataTree nodes={nodes} selected="staging" onSelect={vi.fn()} onToggle={onToggle} />)
+  const twist = screen
+    .getByTestId('data-tree-node-kind:capture')
+    .querySelector('button:first-of-type')!
+  expect(twist.getAttribute('aria-hidden')).toBe('true')
+  fireEvent.click(twist)
+  expect(onToggle).toHaveBeenCalledWith('kind:capture')
+  expect(document.activeElement).toBe(selectButton('kind:capture'))
+})

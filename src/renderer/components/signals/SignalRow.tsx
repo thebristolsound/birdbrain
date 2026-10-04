@@ -138,6 +138,13 @@ export function SignalRow({
     // anywhere in the row.
     const controls = Array.from(row.querySelectorAll<HTMLElement>('[data-cell-control]'))
     const at = onRow ? -1 : controls.indexOf(event.target as HTMLElement)
+    // Tab from a control: put focus on the row first and let the browser's
+    // sequential navigation run from there, so one press in either direction
+    // leaves the grid instead of landing back on the row.
+    if (event.key === 'Tab') {
+      if (!onRow) row.focus()
+      return
+    }
     if (event.key === 'ArrowRight') {
       const next = controls[at + 1]
       if (!next) return

@@ -189,7 +189,14 @@ describe('ExportMenu', () => {
     fireEvent.click(trigger)
     fireEvent.click(screen.getByRole('menuitem', { name: /export case file/i }))
     expect(document.activeElement).toBe(trigger)
+    // Unavailable while the export runs, but still focusable: aria-disabled,
+    // not disabled, and a click opens nothing.
+    expect(trigger.getAttribute('aria-disabled')).toBe('true')
+    expect((trigger as HTMLButtonElement).disabled).toBe(false)
+    fireEvent.click(trigger)
+    expect(screen.queryByRole('menu')).toBeNull()
     await waitFor(() => expect(exportArchive).toHaveBeenCalled())
+    await waitFor(() => expect(trigger.getAttribute('aria-disabled')).toBe('false'))
   })
 
   it('closes on Escape and returns focus to the trigger', () => {

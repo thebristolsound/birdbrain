@@ -84,6 +84,12 @@ export function ArtifactTable({
     const onRow = event.target === row
     const controls = Array.from(row.querySelectorAll<HTMLElement>('[data-cell-control]'))
     const at = onRow ? -1 : controls.indexOf(event.target as HTMLElement)
+    // Tab from a control: focus the row first so sequential navigation runs
+    // from there and leaves the grid in one press, in either direction.
+    if (event.key === 'Tab') {
+      if (!onRow) row.focus()
+      return true
+    }
     if (event.key === 'ArrowRight') {
       const next = controls[at + 1]
       if (!next) return true

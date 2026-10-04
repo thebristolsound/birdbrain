@@ -155,6 +155,12 @@ describe('SignalRow keyboard model', () => {
     expect(onFocusSibling).toHaveBeenLastCalledWith(1)
     fireEvent.keyDown(toggle, { key: 'ArrowUp' })
     expect(onFocusSibling).toHaveBeenLastCalledWith(-1)
+
+    // Tab from a control continues from the row, with the default left to run.
+    remove.focus()
+    const left = fireEvent.keyDown(remove, { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(row)
+    expect(left).toBe(true)
   })
 
   it('is out of the Tab order when it is not the grid Tab stop', () => {

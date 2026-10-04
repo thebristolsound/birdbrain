@@ -126,12 +126,17 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
         ref={anchorRef}
         variant="outline"
         size="sm"
-        onClick={() => setOpen((v) => !v)}
-        disabled={isExporting}
+        // aria-disabled rather than disabled: a disabled control cannot hold
+        // focus, and the archive item hands focus back here as it starts.
+        onClick={() => {
+          if (isExporting) return
+          setOpen((v) => !v)
+        }}
+        aria-disabled={isExporting}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
-        className="gap-1.5"
+        className="gap-1.5 aria-disabled:opacity-50"
       >
         {isExporting ? (
           <Loader2 className="h-3 w-3 animate-spin" strokeWidth={1.8} />

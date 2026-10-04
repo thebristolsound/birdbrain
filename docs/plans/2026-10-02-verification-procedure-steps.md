@@ -208,9 +208,9 @@ review.
 - [x] **4. The step model (byte-identical).** Built. Byte check: the SHA-256 of `VERIFY_SCRIPT`,
   `VERIFY_RUNBOOK` and the report's verification section (all eight combinations of packaged or
   standalone, import keys or not, anchor bundled or not) is unchanged against 1ba2983b, which
-  first rewrapped the one citation slice 2 had split across a line break. The guard scans source
-  lines, skipping only TypeScript comments, for `step <digit>` and `begin <digit>`; a citation
-  opening a sentence goes through `sentenceStart`. Planned text follows. Add `verifyProcedure.ts`; the script, runbook, and
+  first rewrapped the one citation slice 2 had split across a line break. The guard scans the
+  text with TypeScript comments removed by the compiler; see "PR review disposition" for what
+  it matches. A citation opening a sentence goes through `sentenceStart`. Planned text follows. Add `verifyProcedure.ts`; the script, runbook, and
   report read step numbers, titles, citations, and the two shared recipes from it; the citation
   guard; the Include list row. Recipes keep the doubled backslashes the templates use today
   (`'\\n'`, `\\(`), or use `String.raw`: in a plain string `'\('` is `(` and `'\n'` is a newline.
@@ -274,3 +274,25 @@ review.
 7. Accepted. Fixed clock for the byte check; `:670` added.
 8. Accepted. `scriptTitle` quote test added; the import claim dropped.
 9. Accepted. Chain-reader slice 6 added to Risks.
+
+## PR review disposition
+
+An adversarial review of PR #1723 at 0861462d found two blocking defects and six smaller ones.
+All eight are fixed.
+
+1. Report step 6 asked for a token for every enclosed exhibit. It now covers only an exhibit
+   whose content digest a timestamp entry records, and says an exhibit with none carries no
+   trusted-time claim.
+2. The citation guard read source lines, so it exempted template lines that begin with `*` or
+   `//` and missed a citation split across a line, `Step&nbsp;6`, `step ${6}`, and a digit
+   inside a tag. It now removes comments with the TypeScript compiler and matches "step", then
+   whitespace, a line break, an entity, a tag, or a template hole, then a digit. It does not
+   catch a step number spelled as a word or built from a variable.
+3. Report step 1 says "each file listed in `evidence.json`" and that the index lists neither
+   itself nor the export entry; step 5 is said to bind exhibit content, not every file.
+4. Report step 5 says "manifest entry" and states what covers an entry with no signature.
+5. The package-hash sentence is conditional on a signed export entry.
+6. The layout guard removes a closed `/* */` span and keeps the code after it.
+7. `checkConformance` throws when the verdict `verify.sh` prints differs from its exit status,
+   which restores the printed-verdict assertions the table had dropped.
+8. `stepRef` requires one argument and `stepRange` rejects a backwards range.

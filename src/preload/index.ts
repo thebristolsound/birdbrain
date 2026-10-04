@@ -82,6 +82,7 @@ const birdbrain = {
     verify: bridge(IPC_CHANNELS.CAPTURES_VERIFY),
     getMhtmlUrl: bridge(IPC_CHANNELS.CAPTURES_GET_MHTML_URL),
     getHtmlUrl: bridge(IPC_CHANNELS.CAPTURES_GET_HTML_URL),
+    getLinks: bridge(IPC_CHANNELS.CAPTURES_GET_LINKS),
     deleteMany: bridge(IPC_CHANNELS.CAPTURES_DELETE_MANY),
     duplicate: bridge(IPC_CHANNELS.CAPTURES_DUPLICATE),
     setFavoriteMany: bridge(IPC_CHANNELS.CAPTURES_SET_FAVORITE_MANY)
@@ -274,6 +275,10 @@ const birdbrain = {
   onDeepLinkNavigate: subscribe(IPC_CHANNELS.DEEP_LINK_NAVIGATE),
 
   onUpdateStatus: subscribe(IPC_CHANNELS.UPDATE_STATUS),
+
+  onGuestFrameReplaced: subscribe(IPC_CHANNELS.GUEST_FRAME_REPLACED),
+
+  onGuestMouseDown: subscribe(IPC_CHANNELS.GUEST_MOUSE_DOWN),
 
   testPipeline: bridge(IPC_CHANNELS.CAPTURES_TEST_PIPELINE),
 

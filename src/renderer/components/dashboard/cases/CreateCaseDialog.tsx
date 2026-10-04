@@ -46,7 +46,7 @@ export function CreateCaseDialog({ onClose }: CreateCaseDialogProps) {
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Investigation name..."
+              placeholder="Case name..."
               autoFocus
             />
           </div>
@@ -56,7 +56,7 @@ export function CreateCaseDialog({ onClose }: CreateCaseDialogProps) {
               data-testid="case-description-input"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="What is this investigation about?"
+              placeholder="What is this case about?"
               rows={3}
             />
           </div>

@@ -82,7 +82,7 @@ const EXT_BODY_REPLAY =
 
 const EXT_BODY_NO_DEMO =
   'Right-click any page in Chrome to log it to your active case. Install the extension ' +
-  'below, then start your first investigation.'
+  'below, then start your first case.'
 
 function extStep(chapter: 'intro' | 'ext', demoCase: boolean): TourStep {
   const introBody = demoCase ? EXT_BODY_INTRO : EXT_BODY_NO_DEMO
@@ -119,7 +119,7 @@ const caseSteps = (demoCase: boolean): TourStep[] => [
     route: 'captures',
     title: 'You’re inside a case',
     body:
-      'Everything you see is scoped to this investigation. Click the name to switch cases or ' +
+      'Everything you see is scoped to this case. Click the name to switch cases or ' +
       'start a new one.',
     kbd: accelerator('K', { join: ' ' }),
     kbdNote: 'opens the switcher anywhere'

@@ -6,6 +6,7 @@ import { execFileSync } from 'child_process'
 import { HAS_OPENSSL } from '../../helpers/openssl'
 import {
   initSigningKey,
+  initVerifyOnlyKey,
   signEntryHash,
   verifyEntrySignature,
   getPublicKeyPem,
@@ -252,5 +253,38 @@ describe('signingKey: openssl interop', () => {
       { encoding: 'utf-8' }
     )
     expect(out).toContain('Verified OK')
+  })
+})
+
+describe('signingKey: verify-only key (ADR-0038)', () => {
+  let dir: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'birdbrain-signkey-'))
+    resetSigningKey()
+    initSigningKey(dir, ACK)
+  })
+
+  afterEach(() => {
+    resetSigningKey()
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('loads the public key and verifies, but refuses to sign', () => {
+    const sig = signEntryHash(SAMPLE_HASH)
+    const pem = getPublicKeyPem()
+    resetSigningKey()
+
+    initVerifyOnlyKey(dir)
+
+    expect(getPublicKeyPem()).toBe(pem)
+    expect(verifyEntrySignature(SAMPLE_HASH, sig)).toBe(true)
+    expect(() => signEntryHash(SAMPLE_HASH)).toThrow('Signing key not initialized')
+  })
+
+  it('drops a private key already loaded in the process', () => {
+    initVerifyOnlyKey(dir)
+
+    expect(() => signEntryHash(SAMPLE_HASH)).toThrow('Signing key not initialized')
   })
 })

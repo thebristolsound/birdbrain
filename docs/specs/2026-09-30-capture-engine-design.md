@@ -32,6 +32,8 @@ All of this is in `src/main/services/backgroundRenderer.ts` unless another path 
 - `captureFullPageScreenshot` takes one `Page.captureScreenshot` with `captureBeyondViewport`.
   It scales down to fit 16,384 pixels on a side and truncates at 32 megapixels. Nothing records
   that a screenshot was scaled or truncated.
+- The image then passes through `trimTrailingBackground`, which removes trailing rows of uniform
+  background color. Nothing records that either.
 - Nothing records whether the scroll phase ran or how it ended.
 - `RenderedPage` (`src/main/services/recapture.ts`) carries the MHTML stream, the screenshot, the
   text, the title, the final URL, the HTTP status, the user agent, the browser version, and
@@ -46,28 +48,49 @@ All of this is in `src/main/services/backgroundRenderer.ts` unless another path 
 
 ### Transaction Record
 
-Enable the CDP `Network` domain before `wc.loadURL`, with the buffer limits `Network.enable`
-accepts (`maxTotalBufferSize`, `maxResourceBufferSize`) set from a Birdbrain size budget. For
+Load `about:blank`, then enable the CDP `Network` domain, then `wc.loadURL` the target. In the
+[probe](2026-10-02-capture-engine-probe-spike.md), `Network.enable` sent to a window that had
+not navigated never answered, in four of four isolated runs. Set the buffer limits `Network.enable` accepts
+(`maxTotalBufferSize`, `maxResourceBufferSize`) from a Birdbrain size budget. For
 each exchange, keep what `Network.requestWillBeSent`, `Network.requestWillBeSentExtraInfo`,
 `Network.responseReceived`, and `Network.responseReceivedExtraInfo` report, and fetch the body
-with `Network.getResponseBody` after `Network.loadingFinished`.
+with `Network.getResponseBody` after `Network.loadingFinished`. A redirect reuses the request id
+for its next hop, so each `Network.requestWillBeSent` starts its own exchange, and its
+`redirectResponse` closes the one before it.
+
+When a request reports `hasPostData` without `postData`, which the browser does for a long
+body, fetch it with `Network.getRequestPostData`. That command omits the files of a multipart
+request, so a request whose body is still not complete keeps what was returned and is listed in
+the inventory as an incomplete request body.
 
 Stop collecting at the moment the screenshot and MHTML are taken. Write one WARC (ISO
 28500:2017) beside the MHTML, named for the capture id like the other artifacts:
 
 - one `warcinfo` record naming Birdbrain's version, the browser version, the user agent, and
   the capture id;
-- one `request` record and one `response` record for each exchange, each with a payload digest;
+- one `request` record and one `response` record for each exchange, each with a payload digest
+  over the stored (decoded) body;
+- in every record, the values of `Cookie`, `Set-Cookie`, `Authorization`, and
+  `Proxy-Authorization` replaced with a fixed marker before the bytes are written, and the
+  replaced header names listed in the inventory
+  ([ADR-0036](../adr/0036-credential-header-values-never-enter-a-transaction-record.md));
 - a `response` record with headers and no body for each redirect, because the browser keeps no
   body for one.
 
 The inventory, not the WARC, accounts for everything that has no complete exchange: a response
 served from the browser cache, a request the consent filter cancelled, a request that failed, a
-request still in flight when collection stopped, and a body that was over budget or that the
-browser no longer held.
+request still in flight when collection stopped, a body that was over budget or that the
+browser no longer held, and a request body the browser did not hand over in full.
+
+The file is written with `warcio` (the `webrecorder/warcio.js` package), which the maintainer
+approved on 2026-10-02 as a new dependency. Its licence is not settled: the npm metadata of
+`2.4.12` says Apache-2.0 and its `LICENSE` file is MIT. The slice that adds it resolves which
+applies before the dependency lands. Tests read the output back with a reader that is not
+`warcio`.
 
 **What the record is and is not.** The browser hands over bodies after it has removed the
-content encoding, and it reports headers as it parsed them. `headersText` is optional and is
+content encoding, and it reports headers as it parsed them; the probe measured a `gzip`
+response returned decoded, 4,200 bytes under a `Content-Encoding: gzip` header. `headersText` is optional and is
 absent for HTTP/2 and HTTP/3. A Transaction Record is the browser's account of the exchange.
 It is not a packet capture, and the docs and the verifier never call it one.
 
@@ -75,7 +98,8 @@ It is not a packet capture, and the docs and the verifier never call it one.
 
 The `capture` entry gains an inventory. For each of MHTML, Transaction Record, screenshot, and
 PDF it says present or absent, and gives a reason when absent. For the screenshot it also says
-whether the image was scaled down or truncated at the pixel caps. For the Transaction Record it
+whether the image was scaled down, truncated at the pixel caps, or trimmed of trailing
+background rows, with its dimensions before and after. For the Transaction Record it
 gives the counts described in the previous section.
 
 The entry also records Scroll-to-load: whether it was requested, whether it ran, how it ended
@@ -91,13 +115,17 @@ certificate timestamps). They are a summary the browser produced, not the certif
 they do not support independent signature checking.
 
 Record them as a new optional field beside the existing `tls` field, never inside it. The
-corroboration re-fetch keeps running. When the main document came from the cache, the field is
+corroboration re-fetch is unchanged: it runs as it does today. Once the Egress exists, it is
+skipped while the Egress is not Direct
+([ADR-0032](../adr/0032-route-app-egress-but-do-not-disguise-the-browser.md), #1695). When the main document came from the cache, the field is
 absent and the inventory says why.
 
 ### PDF
 
-Take a PDF of the page with `printToPDF` after the screenshot, the MHTML, and the end of
-collection, because printing applies print styles and can start requests. Those requests are
+Take a PDF of the page with `webContents.printToPDF` after the screenshot, the MHTML, and the
+end of collection, because printing applies print styles and starts requests; the probe saw the
+page receive `beforeprint` and fetch a print-only image. `Page.printToPDF` is not available over
+`webContents.debugger`. Those requests are
 outside the Transaction Record, and the inventory says the PDF was taken after collection
 stopped.
 
@@ -120,16 +148,19 @@ stopped.
 The renderer enables no CDP event domain on purpose. The
 [persona spike](2026-09-19-persona-bot-detection-spike.md) names one page-visible effect of an
 attached debugger, tied to the `Runtime` domain, and did not test with the debugger attached.
-This slice enables `Network`. Before it ships, run the spike's probe page with the domain off
-and on, and record whether anything the page can observe changes.
+This slice enables `Network`. The [probe](2026-10-02-capture-engine-probe-spike.md) ran the
+window configuration of the background renderer, on Electron 44.4.5 with the app-level
+`no-sandbox` switch its test environment needs, with the domain off and on and saw no difference in what the
+page recorded, including the `Error.stack` getter check. Rerun it on each Electron upgrade.
 
 ## Validation
 
 [ADR-0004](../adr/0004-adopt-osint-assurance-baseline.md) requires known-answer validation for
 an evidence-affecting method. Against a local fixture server that serves known bytes:
 
-- each payload digest in the WARC equals the digest of the bytes the server sent, for an
-  uncompressed response and for a `gzip` response;
+- each payload digest in the WARC equals the digest of the fixture's decoded payload, both when
+  the server sends it uncompressed and when it sends it with `gzip`, because the stored body is
+  the decoded one;
 - a redirect chain, a cached response, a failed request, a cancelled request, and an over-budget
   body each appear where this design says they appear;
 - a reader that is not the writer parses the file;
@@ -149,25 +180,35 @@ an evidence-affecting method. Against a local fixture server that serves known b
 - **The session's `webRequest` API.** It reports headers and no bodies.
 - **One WARC per Capture Session.** Rejected in ADR-0035.
 
+## Decided after review
+
+- **Credentials in the record.** Replaced with a marker before writing; the inventory names the
+  headers ([ADR-0036](../adr/0036-credential-header-values-never-enter-a-transaction-record.md)).
+- **The WARC writer.** `warcio`, approved as a dependency on 2026-10-02; its licence is resolved
+  in the slice that adds it.
+- **PDF in a hidden window.** `webContents.printToPDF` works there: the
+  [probe](2026-10-02-capture-engine-probe-spike.md) parsed the output as one page holding the
+  page's text.
+
 ## Open questions
 
-1. **A new dependency.** `warcio` (the `webrecorder/warcio.js` repository) writes and reads WARC. The npm registry lists
-   it as Apache-2.0 while the `LICENSE` file in the package is the MIT text; both are permissive,
-   and the mismatch should be resolved before adoption. The alternative is a writer in this
-   repository, validated against an outside reader. Adding the dependency needs the maintainer's
-   approval.
-2. **Decoded bodies under original headers.** The stored body is decoded while the recorded
+1. **Decoded bodies under original headers.** The stored body is decoded while the recorded
    headers still name the original encoding and length. Browser-based archiving tools face the
    same mismatch. Find out what they write, and follow it if it is documented.
-3. **Compression.** Whether the file is stored with each record compressed separately
+   The probe measured the mismatch; the digest in this design covers the decoded body.
+
+2. **Compression.** Whether the file is stored with each record compressed separately
    (`.warc.gz`) or uncompressed. The hash covers the stored bytes either way.
-4. **Size budget.** The total and per-resource limits, and whether the 200 MB MHTML limit in
+
+3. **Size budget.** The total and per-resource limits, and whether the 200 MB MHTML limit in
    `src/shared/constants.ts` is the right starting point.
-5. **Cached responses.** Whether a fresh session partition per render, which the renderer already
+
+4. **Cached responses.** Whether a fresh session partition per render, which the renderer already
    uses, makes cache hits rare enough to leave them to the inventory.
-6. **PDF in a hidden window.** Whether `printToPDF` produces the page as rendered in the
-   offscreen window, and whether it changes page state in a way that matters for a later step.
-7. **WebSocket traffic.** Out of this slice. Decide later whether frames belong in the record.
+   The probe saw a resource used twice inside one page produce one exchange and no cache
+   event, so the inventory cannot count that case.
+
+5. **WebSocket traffic.** Out of this slice. Decide later whether frames belong in the record.
 
 ## Not in this slice
 

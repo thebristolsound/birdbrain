@@ -59,6 +59,7 @@ import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
 import * as annotations from '@main/services/annotations'
 import { applyTagToNote, NoteNotFoundError } from '@main/services/noteTags'
 import { defaultCaptureStore } from '@main/services/captureStore'
+import { readCaptureLinks } from '@main/services/captureLinks'
 import { renderCapturePdf } from '@main/services/pdfExport'
 import { getThumbnail } from '@main/services/thumbnails'
 import { getCaseInventory, getManifestSnapshot, verifyExhibit } from '@main/services/exhibits'
@@ -894,6 +895,11 @@ export function registerIpcHandlers(deps: {
     return pathToFileURL(abs).toString()
   })
 
+  // The stored page's links for the Links tab (#1708): derived on demand, never stored.
+  handle(IPC_CHANNELS.CAPTURES_GET_LINKS, (_, captureId: string) =>
+    readCaptureLinks(captureRepo.getCapture(captureId))
+  )
+
   handle(IPC_CHANNELS.CAPTURES_VERIFY, (_, captureId: string) => captureLifecycle.verify(captureId))
 
   // Recapture
@@ -1252,6 +1258,11 @@ export function registerIpcHandlers(deps: {
     return { path: filePath }
   })
 
+  // Both restores refuse before closing, so the app keeps its database open.
+  const DB_IN_USE_MESSAGE =
+    'Another program is reading the database, such as an AI agent connected to Birdbrain. ' +
+    'Wait for it to finish or close it, then try the restore again.'
+
   handle(IPC_CHANNELS.DB_RESTORE, async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog({
       filters: [{ name: 'SQLite Database', extensions: ['db'] }],
@@ -1261,9 +1272,11 @@ export function registerIpcHandlers(deps: {
 
     const userDataPath = process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
     const dbPath = join(userDataPath, 'birdbrain.db')
-    const { closeDatabase, initDatabase } = await import('@main/services/db/core')
+    const { closeDatabase, emptyWalBeforeReplace, initDatabase } =
+      await import('@main/services/db/core')
     const { copyFileSync } = await import('fs')
 
+    if (!emptyWalBeforeReplace()) throw new IpcFailure(DB_IN_USE_MESSAGE, 'DB_IN_USE')
     closeDatabase()
     copyFileSync(filePaths[0], dbPath)
     await initDatabase(dbPath)
@@ -1281,13 +1294,15 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.DB_RESTORE_SNAPSHOT, async (_, params: DbRestoreSnapshotParams) => {
     const userDataPath = process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
     const dbPath = join(userDataPath, 'birdbrain.db')
-    const { closeDatabase, initDatabase } = await import('@main/services/db/core')
+    const { closeDatabase, emptyWalBeforeReplace, initDatabase } =
+      await import('@main/services/db/core')
 
     // Resolve before closing: an unknown filename is the likely failure, and
     // it costs nothing to hit it while the database is still open.
     if (!dbSnapshots.resolveSnapshot(dbPath, params.fileName)) {
       throw new IpcFailure(`Snapshot "${params.fileName}" was not found`, 'NOT_FOUND')
     }
+    if (!emptyWalBeforeReplace()) throw new IpcFailure(DB_IN_USE_MESSAGE, 'DB_IN_USE')
 
     closeDatabase()
     let restoreErr: unknown = null

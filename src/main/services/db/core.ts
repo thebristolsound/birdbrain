@@ -56,6 +56,36 @@ export async function initDatabase(dbPath: string): Promise<Database.Database> {
   return db
 }
 
+// The MCP server's connection (ADR-0038). SQLite itself refuses every write on
+// it, and it is never migrated: a schema version this build does not know is
+// refused, because reading it through this build's repos would misread it.
+export function openDatabaseReadOnly(dbPath: string): Database.Database {
+  const conn = new Database(dbPath, { readonly: true, fileMustExist: true })
+  conn.pragma('busy_timeout = 5000')
+  const version = conn.pragma('user_version', { simple: true }) as number
+  if (version !== LATEST_SCHEMA_VERSION) {
+    conn.close()
+    throw new Error(
+      `Database schema version is ${version}; this build reads only version ` +
+        `${LATEST_SCHEMA_VERSION}. Open the database in a matching Birdbrain first.`
+    )
+  }
+  db = conn
+  return db
+}
+
+// Run before a restore closes the database and replaces its file. The close
+// deletes the WAL only when no other connection is open; while another process
+// holds one (the MCP server, ADR-0038), the WAL survives and SQLite replays it
+// over the restored file. Emptying it first leaves nothing to replay. False
+// when another connection is mid-read and the WAL could not be emptied. True
+// with no connection open, since a restore then has nothing to checkpoint.
+export function emptyWalBeforeReplace(): boolean {
+  if (!db) return true
+  const [{ busy }] = db.pragma('wal_checkpoint(TRUNCATE)') as Array<{ busy: number }>
+  return busy === 0
+}
+
 export function getDb(): Database.Database {
   if (!db) throw new Error('Database not initialized')
   return db

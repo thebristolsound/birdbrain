@@ -94,6 +94,9 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
   }, [open])
 
   async function handleExportArchive() {
+    // The item unmounts with the menu, so hand focus back first or the
+    // keyboard lands on the document once the save dialog closes.
+    anchorRef.current?.focus()
     setOpen(false)
     const exportCaseId = caseId
     setArchiveError('')

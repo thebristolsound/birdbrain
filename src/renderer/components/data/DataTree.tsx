@@ -106,10 +106,6 @@ export function DataTree({
         return (
           <MaybeMenu key={node.key} target={menuTargetFor?.(node) ?? null}>
             <div
-              role="treeitem"
-              aria-selected={isSelected}
-              aria-expanded={node.hasChildren ? node.expanded : undefined}
-              aria-level={node.depth + 1}
               data-testid={`data-tree-node-${node.key}`}
               className="flex items-center gap-0.5"
               style={{ paddingLeft: 4 + node.depth * 13 }}
@@ -130,8 +126,14 @@ export function DataTree({
               >
                 <Twist size={11} strokeWidth={2.4} />
               </button>
+              {/* The tree item is the focusable button, so the node's role and
+                  state travel with focus; the twist is a sibling helper. */}
               <button
                 type="button"
+                role="treeitem"
+                aria-selected={isSelected}
+                aria-expanded={node.hasChildren ? node.expanded : undefined}
+                aria-level={node.depth + 1}
                 data-tree-select
                 tabIndex={node.key === tabStopKey ? 0 : -1}
                 onFocus={() => setFocusedKey(node.key)}

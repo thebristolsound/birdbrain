@@ -48,6 +48,12 @@ it('keeps one Tab stop on the selected node and walks the rest with the arrow ke
   expect(selectButton('kind:capture').tabIndex).toBe(0)
   expect(selectButton('data-sources').tabIndex).toBe(-1)
   expect(selectButton('staging').tabIndex).toBe(-1)
+  // The focusable button is the tree item, so its state travels with focus.
+  expect(selectButton('kind:capture').getAttribute('role')).toBe('treeitem')
+  expect(selectButton('kind:capture').getAttribute('aria-selected')).toBe('true')
+  expect(selectButton('kind:capture').getAttribute('aria-expanded')).toBe('false')
+  expect(selectButton('kind:capture').getAttribute('aria-level')).toBe('2')
+  expect(screen.getAllByRole('treeitem').length).toBe(3)
 
   const captures = selectButton('kind:capture')
   captures.focus()

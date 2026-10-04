@@ -183,6 +183,15 @@ describe('ExportMenu', () => {
     expect(screen.queryByRole('menu')).toBeNull()
   })
 
+  it('hands focus back to the trigger when an archive export starts', async () => {
+    renderMenu()
+    const trigger = screen.getByRole('button', { name: 'Export' })
+    fireEvent.click(trigger)
+    fireEvent.click(screen.getByRole('menuitem', { name: /export case file/i }))
+    expect(document.activeElement).toBe(trigger)
+    await waitFor(() => expect(exportArchive).toHaveBeenCalled())
+  })
+
   it('closes on Escape and returns focus to the trigger', () => {
     renderMenu()
     const trigger = screen.getByRole('button', { name: 'Export' })

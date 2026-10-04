@@ -184,12 +184,12 @@ guest is non-modal (`modal={false}`).
 
 **D5. Which actions does the link menu carry?**
 
-| Target | Actions |
-|---|---|
-| `http`/`https` link | Copy link address, Copy link text, Open captured copy (only when the Case holds one), Capture link |
-| Other scheme (`mailto:`, `tel:`, `javascript:`, anything else) | Copy link address, Copy link text. Never executed, never captured |
-| Image (`mediaType: 'image'`) | Copy image address, plus the link actions when the image is inside a link |
-| Text selection, no link | Copy text |
+| Target                                                         | Actions                                                                                            |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `http`/`https` link                                            | Copy link address, Copy link text, Open captured copy (only when the Case holds one), Capture link |
+| Other scheme (`mailto:`, `tel:`, `javascript:`, anything else) | Copy link address, Copy link text. Never executed, never captured                                  |
+| Image (`mediaType: 'image'`)                                   | Copy image address, plus the link actions when the image is inside a link                          |
+| Text selection, no link                                        | Copy text                                                                                          |
 
 **As built.** A link on another scheme also lists Capture link, turned off, with the reason
 "Not a web address" in the item. That follows criterion 4 of issue #1708 over this table.
@@ -301,14 +301,14 @@ built; the comments are this plan's:
 
 ```ts
 interface CaptureLink {
-  href: string              // resolved; the raw attribute when it cannot be resolved
-  rawHref: string           // the attribute value as the HTML parser decodes it, unresolved
-  text: string              // trimmed, whitespace-collapsed anchor text; img alt when no text
-  rel: string[]             // lower-cased tokens, unioned across collapsed occurrences
+  href: string // resolved; the raw attribute when it cannot be resolved
+  rawHref: string // the attribute value as the HTML parser decodes it, unresolved
+  text: string // trimmed, whitespace-collapsed anchor text; img alt when no text
+  rel: string[] // lower-cased tokens, unioned across collapsed occurrences
   kind: 'http' | 'same-page' | 'mailto' | 'tel' | 'other'
   frame: 'main' | 'subframe'
-  documentUrl: string       // the resolved document URL of the part it came from
-  occurrences: number       // identical href+text+frame+documentUrl collapse into one row
+  documentUrl: string // the resolved document URL of the part it came from
+  occurrences: number // identical href+text+frame+documentUrl collapse into one row
   textHostMismatch: boolean
 }
 
@@ -469,24 +469,24 @@ and its tests, (2) CSS removal, hover bubble and menu, (3) decoder split and `ca
 
 Codex (`codex exec`, read-only) and Opus 5.5 at low effort reviewed revision 1.
 
-| Finding | Source | Disposition |
-|---|---|---|
-| Guard misses `will-frame-navigate`; `initialLoadDone` lets the first in-page navigation through | both | Applied: D2 |
-| E2E proves nothing about requests or the guard; needs `file:///` link and a request observer | both | Applied: D17 sentinel server, `file:///` link, form |
-| Fragment links change the URL and contradict "clicks do nothing" | both | Applied: D2, D3, D17 |
-| Synthetic `contextmenu` race with the static `target` prop; dismissal; successive clicks | both | Applied: D4 |
-| Coordinates must add the outer pane's scroll | Opus | Not applied at the time, on the reasoning that `getBoundingClientRect` is viewport-relative. As built, the `rect` arithmetic is gone: Electron's point is already in window coordinates (D4, As built) |
-| Event data is on `event.params` | Codex | Applied: D1 |
-| Per-part base resolution, iframe parts, `cid:`, folded headers | both | Applied: D12, D13 |
-| Size policy decodes before checking; `MAX_HTML_BYTES` means truncate | Codex | Applied: D12, and met in the code by a list of parts that are not yet decoded (D12, As built) |
-| `rel` lost on collapse | Codex | Applied: D13 union |
-| Host normalisation for the mismatch flag | Opus | Applied: D13, exact host after normalising |
-| Name `validateUrl` as the scheme backstop | Opus | Applied: D7 |
-| Captured links can aim the renderer at the Operator's own network; say which Egress | Opus | Applied: D9 |
-| Renderer `preventDefault` test is not evidence | Opus | Applied: D17 |
-| Fifth tab: exhaustive records, persistence | Opus | Applied: D14 |
-| Guest input harness for E2E | Codex | Applied: D17 `sendInputEvent` |
-| Split into two PRs | Opus | Not applied: the maintainer asked for one PR. The suggested commit order gives the same reading path |
+| Finding                                                                                         | Source | Disposition                                                                                                                                                                                            |
+| ----------------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Guard misses `will-frame-navigate`; `initialLoadDone` lets the first in-page navigation through | both   | Applied: D2                                                                                                                                                                                            |
+| E2E proves nothing about requests or the guard; needs `file:///` link and a request observer    | both   | Applied: D17 sentinel server, `file:///` link, form                                                                                                                                                    |
+| Fragment links change the URL and contradict "clicks do nothing"                                | both   | Applied: D2, D3, D17                                                                                                                                                                                   |
+| Synthetic `contextmenu` race with the static `target` prop; dismissal; successive clicks        | both   | Applied: D4                                                                                                                                                                                            |
+| Coordinates must add the outer pane's scroll                                                    | Opus   | Not applied at the time, on the reasoning that `getBoundingClientRect` is viewport-relative. As built, the `rect` arithmetic is gone: Electron's point is already in window coordinates (D4, As built) |
+| Event data is on `event.params`                                                                 | Codex  | Applied: D1                                                                                                                                                                                            |
+| Per-part base resolution, iframe parts, `cid:`, folded headers                                  | both   | Applied: D12, D13                                                                                                                                                                                      |
+| Size policy decodes before checking; `MAX_HTML_BYTES` means truncate                            | Codex  | Applied: D12, and met in the code by a list of parts that are not yet decoded (D12, As built)                                                                                                          |
+| `rel` lost on collapse                                                                          | Codex  | Applied: D13 union                                                                                                                                                                                     |
+| Host normalisation for the mismatch flag                                                        | Opus   | Applied: D13, exact host after normalising                                                                                                                                                             |
+| Name `validateUrl` as the scheme backstop                                                       | Opus   | Applied: D7                                                                                                                                                                                            |
+| Captured links can aim the renderer at the Operator's own network; say which Egress             | Opus   | Applied: D9                                                                                                                                                                                            |
+| Renderer `preventDefault` test is not evidence                                                  | Opus   | Applied: D17                                                                                                                                                                                           |
+| Fifth tab: exhaustive records, persistence                                                      | Opus   | Applied: D14                                                                                                                                                                                           |
+| Guest input harness for E2E                                                                     | Codex  | Applied: D17 `sendInputEvent`                                                                                                                                                                          |
+| Split into two PRs                                                                              | Opus   | Not applied: the maintainer asked for one PR. The suggested commit order gives the same reading path                                                                                                   |
 
 ## PR review dispositions
 
@@ -495,37 +495,37 @@ a2384533), at a2384533 (six findings, answered in f536aded, which is revision 3)
 (five findings, answered in the merge with `main`). The last column is the state of the code on
 `main` at 43db376d.
 
-| Round | Finding | Disposition in the plan | In the merged code |
-|---|---|---|---|
-| 1 | The collapse key lacks the document's identity | Applied: D13 adds `documentUrl` to the key | Implemented |
-| 1 | A public link can redirect the background render to a private address | Not applied: D9 records the gap as an open maintainer decision | Gap open |
-| 1 | Menu dismissal cannot rely on mouse events on the `<webview>` | Applied: D4 step 4 uses `before-mouse-event` in the main process | Implemented |
-| 2 | An initial `<iframe src="file:///…">` with no archived part loads before the lock | Applied in revision 3: D2 binds embedded-frame loads to archived parts and refuses `file:`; D17 adds the fixture frame and the unit cases | Not implemented. The guard refuses a `file:` embedded frame it sees; the MHTML case is untested (D2) |
-| 2 | `captureLinks.ts` and `LinksTab.tsx` are on no evidence path list | Applied in revision 3: "Files expected to change" registers both as blocking | Not implemented |
-| 2 | `cheerio` returns the decoded attribute, so `rawHref` cannot be "exactly as stored" | Applied in revision 3: D13 renames it `attrHref` and documents it as decoded; lexical recovery is a later slice | Not implemented: the field is `rawHref` and its comment still says "exactly as stored" |
-| 2 | The mismatch flag cannot know what was visible | Applied in revision 3: D13, D14 and the Goal call it a DOM-text heuristic; the field is `domTextHostMismatch` | Not implemented: the name, comment, label and tooltip are revision 2's |
-| 2 | Copy link text copies an empty string on an image-only link | Applied in revision 3: D5 falls back to `altText` and turns the item off when both are empty | Partly: the item is off when the link text is empty; no `altText` fallback |
-| 2 | This PR's closing keyword would close #1708 before the implementation lands | Accepted, and not a change to this file: the plan PR's body references #1708 without a closing keyword | Not a code matter. #1709 carried the closing keyword; #1708 read as open again on 2026-10-04 |
-| 3 | D2 matches a `cid:` frame against `Content-ID`, which the D12 splitter does not return | Plan corrected: D2 marks the archive-binding rule not implemented and records the missing `Content-ID` as a reason not to build it as written | No such rule in the code; nothing reads `Content-ID` |
-| 3 | A literal comparison with `documentUrl` classes `#section` as external | Plan corrected: D13 says the fragment is dropped from both sides | Implemented, with a test |
-| 3 | An IPv4-mapped IPv6 literal such as `[::ffff:127.0.0.1]` is outside the ranges D9 names | Plan corrected: D9's As built note lists the ranges the code refuses | Implemented, with tests |
-| 3 | The archive-binding rule would blank `data:` and `srcdoc` frames in legacy HTML Captures | Plan corrected: D2 records the rule the code applies on both partitions | Not present: no archive-binding rule; first loads on `data:`, `about:` and `blob:` are allowed |
-| 3 | A splitter returning decoded `html` has already decoded an over-budget part | Plan corrected: D12's As built note describes the list of parts that are not yet decoded | Not present: `decode` runs only for an admitted part |
+| Round | Finding                                                                                  | Disposition in the plan                                                                                                                       | In the merged code                                                                                   |
+| ----- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| 1     | The collapse key lacks the document's identity                                           | Applied: D13 adds `documentUrl` to the key                                                                                                    | Implemented                                                                                          |
+| 1     | A public link can redirect the background render to a private address                    | Not applied: D9 records the gap as an open maintainer decision                                                                                | Gap open                                                                                             |
+| 1     | Menu dismissal cannot rely on mouse events on the `<webview>`                            | Applied: D4 step 4 uses `before-mouse-event` in the main process                                                                              | Implemented                                                                                          |
+| 2     | An initial `<iframe src="file:///…">` with no archived part loads before the lock        | Applied in revision 3: D2 binds embedded-frame loads to archived parts and refuses `file:`; D17 adds the fixture frame and the unit cases     | Not implemented. The guard refuses a `file:` embedded frame it sees; the MHTML case is untested (D2) |
+| 2     | `captureLinks.ts` and `LinksTab.tsx` are on no evidence path list                        | Applied in revision 3: "Files expected to change" registers both as blocking                                                                  | Not implemented                                                                                      |
+| 2     | `cheerio` returns the decoded attribute, so `rawHref` cannot be "exactly as stored"      | Applied in revision 3: D13 renames it `attrHref` and documents it as decoded; lexical recovery is a later slice                               | Not implemented: the field is `rawHref` and its comment still says "exactly as stored"               |
+| 2     | The mismatch flag cannot know what was visible                                           | Applied in revision 3: D13, D14 and the Goal call it a DOM-text heuristic; the field is `domTextHostMismatch`                                 | Not implemented: the name, comment, label and tooltip are revision 2's                               |
+| 2     | Copy link text copies an empty string on an image-only link                              | Applied in revision 3: D5 falls back to `altText` and turns the item off when both are empty                                                  | Partly: the item is off when the link text is empty; no `altText` fallback                           |
+| 2     | This PR's closing keyword would close #1708 before the implementation lands              | Accepted, and not a change to this file: the plan PR's body references #1708 without a closing keyword                                        | Not a code matter. #1709 carried the closing keyword; #1708 read as open again on 2026-10-04         |
+| 3     | D2 matches a `cid:` frame against `Content-ID`, which the D12 splitter does not return   | Plan corrected: D2 marks the archive-binding rule not implemented and records the missing `Content-ID` as a reason not to build it as written | No such rule in the code; nothing reads `Content-ID`                                                 |
+| 3     | A literal comparison with `documentUrl` classes `#section` as external                   | Plan corrected: D13 says the fragment is dropped from both sides                                                                              | Implemented, with a test                                                                             |
+| 3     | An IPv4-mapped IPv6 literal such as `[::ffff:127.0.0.1]` is outside the ranges D9 names  | Plan corrected: D9's As built note lists the ranges the code refuses                                                                          | Implemented, with tests                                                                              |
+| 3     | The archive-binding rule would blank `data:` and `srcdoc` frames in legacy HTML Captures | Plan corrected: D2 records the rule the code applies on both partitions                                                                       | Not present: no archive-binding rule; first loads on `data:`, `about:` and `blob:` are allowed       |
+| 3     | A splitter returning decoded `html` has already decoded an over-budget part              | Plan corrected: D12's As built note describes the list of parts that are not yet decoded                                                      | Not present: `decode` runs only for an admitted part                                                 |
 
 ## Revision 3 against the merged code
 
 Each row is a revision 3 decision that the code on `main` does not implement. The detail is in the
 decision named.
 
-| Revision 3 decision | Where | What the code does instead |
-|---|---|---|
-| Embedded-frame loads are bound to archived parts by `Content-Location` or `Content-ID` | D2 | One first load on `data:`, `about:` or `blob:`; archive-served MHTML iframe loads never reach the guard |
-| E2E case: an MHTML iframe pointing at a local file with no archived part | D2, D17 | Not in the fixture; the unit cases and the legacy E2E cover `file:` in an embedded frame |
-| Copy link text falls back to `altText` | D5 | The item is off when the link text is empty |
-| `rawHref` becomes `attrHref`, documented as the decoded value | D13 | `rawHref`, with a comment that says "exactly as stored" |
-| `textHostMismatch` becomes `domTextHostMismatch`; the label and tooltip say the text is read from the markup, and that an absent marker does not clear the link | D13, D14 | `textHostMismatch`; the comment says "visible text"; the label and tooltip carry neither statement |
-| Tests for a `display: none` hostname, a character-reference `href`, and the `altText` cases | D17 | Not written |
-| `captureLinks.ts` and `LinksTab.tsx` registered as blocking evidence paths | Files expected to change | The assessment is unchanged |
+| Revision 3 decision                                                                                                                                             | Where                    | What the code does instead                                                                              |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------- |
+| Embedded-frame loads are bound to archived parts by `Content-Location` or `Content-ID`                                                                          | D2                       | One first load on `data:`, `about:` or `blob:`; archive-served MHTML iframe loads never reach the guard |
+| E2E case: an MHTML iframe pointing at a local file with no archived part                                                                                        | D2, D17                  | Not in the fixture; the unit cases and the legacy E2E cover `file:` in an embedded frame                |
+| Copy link text falls back to `altText`                                                                                                                          | D5                       | The item is off when the link text is empty                                                             |
+| `rawHref` becomes `attrHref`, documented as the decoded value                                                                                                   | D13                      | `rawHref`, with a comment that says "exactly as stored"                                                 |
+| `textHostMismatch` becomes `domTextHostMismatch`; the label and tooltip say the text is read from the markup, and that an absent marker does not clear the link | D13, D14                 | `textHostMismatch`; the comment says "visible text"; the label and tooltip carry neither statement      |
+| Tests for a `display: none` hostname, a character-reference `href`, and the `altText` cases                                                                     | D17                      | Not written                                                                                             |
+| `captureLinks.ts` and `LinksTab.tsx` registered as blocking evidence paths                                                                                      | Files expected to change | The assessment is unchanged                                                                             |
 
 Revision 3 decisions that the code does implement: the `before-mouse-event` dismissal (D4 step 4)
 and `documentUrl` in the collapse key (D13). The redirect gap in D9 was a recorded gap in revision

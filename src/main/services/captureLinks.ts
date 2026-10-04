@@ -20,7 +20,7 @@ export interface CaptureLinkBudgets {
    * more bytes than it stores, so the decoded total stays under the same ceiling.
    */
   maxTotalBytes: number
-  /** Rows after this many are not listed. */
+  /** Rows after this many are not listed, and reading stops at the first one. */
   maxRows: number
 }
 
@@ -111,6 +111,7 @@ function collectLinks(
   const rows = new Map<string, CaptureLink>()
   let truncated = false
   for (const { html, documentUrl, frame } of parts) {
+    if (truncated) break
     const $ = cheerio.load(html)
     const baseHref = $('base[href]').first().attr('href')
     const base = (baseHref && resolve(baseHref, documentUrl)) || documentUrl
@@ -139,8 +140,10 @@ function collectLinks(
         return
       }
       if (rows.size >= maxRows) {
+        // Stops this part and every later one: nothing past here can add a row, and
+        // resolving the rest would hold the main process for no listed result.
         truncated = true
-        return
+        return false
       }
       const kind = linkKind(href, resolvedHref !== null, documentUrl)
       rows.set(key, {

@@ -258,6 +258,29 @@ describe('linksFromMhtml', () => {
       expect(result.truncated).toBe(true)
     })
 
+    it('stops reading at the first link past the row ceiling, in that part and later ones', () => {
+      const frame = 'https://w.example/'
+      const result = linksFromMhtml(
+        mhtml(
+          [
+            { location: CAPTURE_URL, html: page('<a href="/a">a</a>') },
+            { location: frame, html: page('<a href="/b">b</a><a href="/c">c</a><a href="/b">b</a>') },
+            { location: frame, html: page('<a href="/b">b</a>') }
+          ],
+          CAPTURE_URL
+        ),
+        CAPTURE_URL,
+        { ...CAPTURE_LINK_BUDGETS, maxRows: 2 }
+      )
+      expect(result.truncated).toBe(true)
+      // /c overflows. The repeats of /b after it, one in the same part and one in the
+      // next, are not read, so they are not counted.
+      expect(result.links.map(({ text, occurrences }) => [text, occurrences])).toEqual([
+        ['a', 1],
+        ['b', 1]
+      ])
+    })
+
     it('skips an over-size subframe before decoding it, and counts it', () => {
       const buffer = mhtml(
         [

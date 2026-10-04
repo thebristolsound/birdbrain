@@ -153,7 +153,11 @@ export function LinksTab({ capture }: { capture: Capture }) {
   if (overTotalSize > 0) {
     notices.push(`Not listed: ${frames(overTotalSize)} past the total size this tab reads.`)
   }
-  if (data.truncated) notices.push(`Only the first ${data.links.length} links are listed.`)
+  if (data.truncated) {
+    notices.push(
+      `Only the first ${data.links.length} links are listed. Reading stopped there, so repeat counts cover the page up to that point.`
+    )
+  }
   const noticeList = notices.map((notice) => (
     <p
       key={notice}

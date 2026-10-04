@@ -240,7 +240,7 @@ describe('LinksTab', () => {
       'Not listed: 2 embedded frames, each too large to read.',
       'Not listed: 1 embedded frame past the number of frames this tab reads.',
       'Not listed: 3 embedded frames past the total size this tab reads.',
-      'Only the first 1 links are listed.'
+      'Only the first 1 links are listed. Reading stopped there, so repeat counts cover the page up to that point.'
     ])
   })
 

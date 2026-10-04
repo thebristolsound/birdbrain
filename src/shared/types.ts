@@ -142,7 +142,10 @@ export interface CaptureLink {
 
 export interface CaptureLinks {
   links: CaptureLink[]
-  /** The row ceiling was reached and later links were not listed. */
+  /**
+   * The row ceiling was reached. Reading stopped at the first link past it, so later
+   * links are not listed and `occurrences` counts repeats up to that point only.
+   */
   truncated: boolean
   /** Embedded-frame parts not read, by the ceiling that refused each one. */
   skippedParts: {

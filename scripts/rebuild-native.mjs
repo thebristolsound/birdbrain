@@ -9,7 +9,8 @@
 
 import { execFileSync } from 'child_process'
 import { createRequire } from 'module'
-import { dirname } from 'path'
+import { dirname, join } from 'path'
+import { fileURLToPath } from 'url'
 
 const require = createRequire(import.meta.url)
 const sqlite3Dir = dirname(require.resolve('better-sqlite3/package.json'))
@@ -36,3 +37,19 @@ if (pythonPath) {
 }
 
 execFileSync(process.execPath, args, { cwd: sqlite3Dir, stdio: 'inherit' })
+
+// Linux, opt-in: rebuild the system-libvips sharp the test runner uses when
+// BIRDBRAIN_TEST_SYSTEM_SHARP=1 (docs/agents/testing.md, "sharp under Electron on Linux"), so a
+// fresh install or worktree does not need a separate step. A failure only warns: the test setup
+// names the missing build and the command that makes it.
+if (process.platform === 'linux' && process.env.BIRDBRAIN_TEST_SYSTEM_SHARP === '1') {
+  try {
+    execFileSync(
+      process.execPath,
+      [join(dirname(fileURLToPath(import.meta.url)), 'build-test-sharp.mjs')],
+      { stdio: 'inherit' }
+    )
+  } catch {
+    console.warn('Could not build the test-only sharp; run pnpm build:test-sharp to see why')
+  }
+}

@@ -48,7 +48,7 @@ test.describe('Onboarding tour', () => {
 
     await page.click('[data-testid="tour-next"]')
 
-    // Mark 1 rings the dashboard's Start New Investigation button.
+    // Mark 1 rings the dashboard's Start New Case button.
     const mark = page.locator('[data-testid="tour-mark"]')
     await expect(mark).toBeVisible()
     await expect(mark).toHaveAttribute('data-anchored', 'true')

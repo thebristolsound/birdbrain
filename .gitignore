@@ -133,3 +133,6 @@ report-*.html
 # pnpm preflight output (sha-stamped verification block for the PR body, never committed)
 .preflight/
 .health/
+
+# sharp built against the system libvips for the test runner (scripts/build-test-sharp.mjs)
+/.cache/test-sharp/

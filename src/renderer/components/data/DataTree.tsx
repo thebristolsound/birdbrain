@@ -110,9 +110,13 @@ export function DataTree({
               className="flex items-center gap-0.5"
               style={{ paddingLeft: 4 + node.depth * 13 }}
             >
+              {/* A mouse helper, hidden from assistive technology: a tree owns
+                  only tree items, and the item's aria-expanded and the arrow
+                  keys already carry this. */}
               <button
                 type="button"
                 tabIndex={-1}
+                aria-hidden="true"
                 aria-label={node.expanded ? `Collapse ${node.label}` : `Expand ${node.label}`}
                 onClick={(event) => {
                   event.stopPropagation()

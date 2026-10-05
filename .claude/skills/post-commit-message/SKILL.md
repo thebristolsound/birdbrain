@@ -16,6 +16,12 @@ note to the reviewer reading `git log -p`, not a record.
 
 - Header `<type>(<scope>): <subject>`, at most 72 columns. Types come from
   `@commitlint/config-conventional`; the scope is required.
+- The subject starts with a lowercase letter. Reword when a proper noun, a number or an ADR
+  id would come first.
+- A merge commit takes a scope like any other, for example `chore(merge): ...`. Git's own
+  `Merge branch ...` and `Revert "..."` messages are rejected; rewrite them in this shape. For a
+  bound agent the hook blocks `git merge` and `git revert` unless they stop before the commit
+  (`--no-commit`, or a `--ff-only` merge); finish with `git commit -F <file>`.
 - An optional body: at most 6 lines, wrapped at 72 columns, saying why. No investigation
   narrative, no list of what the diff already shows.
 - No `Closes #N` or any other closing keyword. That is line 1 of the PR body.
@@ -39,7 +45,9 @@ so it sees every session on every spawn path. It acts only when the hook payload
 is in the `bound=` list at the top of the script (`birdbrain-implementer` today); an interactive
 session or an unbound agent passes through. Agent frontmatter `hooks:` are not used: sessions
 that supply the agent roster through the SDK (t3code) drop them, verified 2026-08-29.
-It acts only on a command that runs `git commit`:
+It blocks `git merge` and `git revert` unless the command stops before the commit
+(`--no-commit`, `--squash`, `--ff-only`, `--abort`, `--quit`; for a revert also `-n` and
+`--skip`). Otherwise it acts only on a command that runs `git commit`:
 
 - `-F <file>` or `--file <file>`: the file is linted with `pnpm exec commitlint --edit`; a
   failure blocks the command and returns the findings.

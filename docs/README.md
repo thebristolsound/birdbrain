@@ -63,3 +63,7 @@ all.
 | `superpowers:brainstorming` | varies (plugin default)                               | `docs/specs/YYYY-MM-DD-<topic>-design.md` |
 | `superpowers:writing-plans` | varies (plugin default)                               | `docs/plans/YYYY-MM-DD-<feature>.md`      |
 | `speckit.*`                 | varies                                                | follow the canonical layout above         |
+
+## Prose linting
+
+`.vale.ini` at the repo root is the project's Vale config; it overrides any global one for files under this repo. Project vocabulary lives in `.vale/styles/config/vocabularies/Birdbrain/accept.txt` so Birdbrain terms are not accepted in unrelated projects. Run `vale sync` once per clone to fetch the Google package (ignored by git). Only `*.md` is linted; `.mdx` needs `mdx2vast`, which is not installed. A doc you write should pass `vale <file>` with zero errors; residual warnings for this project's own vocabulary are expected.

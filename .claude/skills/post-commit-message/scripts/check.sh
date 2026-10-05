@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Branch-commit message check. Two modes:
 #   check.sh <message-file>   lint the file and exit 0/1 (3: dependencies not installed)
-#   check.sh                  PreToolUse hook: read the tool call on stdin, act on `git commit`
+#   check.sh                  PreToolUse hook: read the tool call on stdin, act on `git commit`,
+#                             `git merge` and `git revert`
 # Hook exit codes: 0 allows the command, 2 blocks it and feeds stderr back to the agent.
 set -u
 
@@ -54,6 +55,24 @@ cmd="$(printf '%s' "$cmd" | base64 -d)"
 # The hook is registered in .claude/settings.json, so it sees every session; it acts only for
 # the agents named in $bound (the payload's agent_type). Interactive sessions pass through.
 case " $bound " in *" $agent "*) ;; *) exit 0 ;; esac
+
+# `git merge` and `git revert` write their own commit with a generated message that no file
+# can carry through the linter. Allow only the forms that stop before the commit; the checked
+# `git commit -F <file>` then finishes the job.
+git_sub() {
+  printf '%s' "$cmd" | grep -Eq '(^|[;&|(]|[[:space:]])git[[:space:]]+'"$1"'([[:space:]]|$)'
+}
+has_flag() {
+  printf '%s' "$cmd" | grep -Eq '(^|[[:space:]])('"$1"')([[:space:]=;&|)]|$)'
+}
+if git_sub merge && ! has_flag '--no-commit|--squash|--ff-only|--abort|--quit'; then
+  echo "post-commit-message: 'git merge' commits with a generated message. Run 'git merge --no-commit --no-ff <ref>', then 'git commit -F <file>'." >&2
+  exit 2
+fi
+if git_sub revert && ! has_flag '--no-commit|-n|--abort|--quit|--skip'; then
+  echo "post-commit-message: 'git revert' commits with a generated message. Run 'git revert --no-commit <sha>', then 'git commit -F <file>'." >&2
+  exit 2
+fi
 
 # Only a command that runs `git commit` (not commit-tree, not a mention in a string).
 if ! printf '%s' "$cmd" | grep -Eq '(^|[;&|(]|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then

@@ -23,6 +23,12 @@ const localRules = {
       !/^co-authored-by:/im.test(raw),
       'Co-authored-by trailers are never added; remove it'
     ],
+    // config-conventional's subject-case bans sentence case and the like, which still lets a
+    // subject open on a digit, `#` or `_`.
+    'subject-lowercase-start': ({ subject }) => [
+      !subject || /^[a-z]/.test(subject),
+      'subject must start with a lowercase letter'
+    ],
     'no-closing-keyword': ({ raw }) => [
       !/\b(close[sd]?|fix(e[sd])?|resolve[sd]?)\s*:?\s*#\d+/i.test(raw),
       'issue-closing keywords belong on line 1 of the PR body, not in a commit'
@@ -42,6 +48,7 @@ export default {
     'body-max-line-length': [2, 'always', 72],
     'body-max-lines': [2, 'always'],
     'no-coauthor-trailer': [2, 'always'],
-    'no-closing-keyword': [2, 'always']
+    'no-closing-keyword': [2, 'always'],
+    'subject-lowercase-start': [2, 'always']
   }
 }

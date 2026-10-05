@@ -14,29 +14,27 @@ description: 'Formal architecture and assurance analysis: trust boundaries, evid
 ## Executive summary
 
 Birdbrain is an open-source desktop application for collecting, organizing, and
-verifying web evidence. It addresses a recurring problem in open-source
-intelligence (OSINT): web content is mutable, ordinary screenshots omit important
-context, and cloud investigation platforms can introduce cost, custody, privacy,
-and availability dependencies. Birdbrain instead keeps evidence on the
-investigator's workstation and combines a Chromium extension with an Electron
-application to capture MHTML, screenshots, extracted text, response metadata,
-and provenance into named Cases.
+verifying web evidence in open-source intelligence (OSINT) work. Web content
+changes, ordinary screenshots omit important context, and cloud investigation
+platforms can add cost, custody, privacy, and availability dependencies.
+Birdbrain keeps evidence on the investigator's workstation instead. A Chromium
+extension and an Electron application capture MHTML, screenshots, extracted
+text, response metadata, and provenance into named Cases.
 
-The architecture treats evidence integrity as a first-class system property.
 SHA-256 hashes bind captured artifacts to an append-only, hash-chained Manifest.
-Each current-schema Manifest entry is signed by a per-installation RSA key, and
+A per-installation RSA key signs each current-schema Manifest entry, and
 Birdbrain asynchronously submits eligible Captures to an RFC 3161 timestamp
-authority. Integrity and trusted time remain separate claims: hashing and
-signatures show whether evidence changed, while a third-party timestamp
-establishes that the hashed content existed no later than an asserted time.
-Portable evidence packages and a standalone verifier allow these checks to
-continue outside the running application.
+authority. Integrity and trusted time are separate claims. Hashes and signatures
+show whether evidence changed. A third-party timestamp establishes that the
+hashed content existed no later than an asserted time. With a portable evidence
+package and the standalone verifier, a reviewer can repeat these checks without
+the application.
 
-Birdbrain is intentionally a workstation product, not a multi-tenant service.
-SQLite, filesystem artifact storage, a loopback-only Capture Server, and typed
-Electron IPC keep deployment simple and data custody legible. This design does
-not provide centralized identity, role-based access control, remote
-administration, or protection against an Operator who fully controls the host.
+The design targets one workstation, not a multi-tenant service. SQLite,
+filesystem artifact storage, a loopback-only Capture Server, and typed Electron
+IPC keep deployment simple and data custody legible. Birdbrain does not provide
+centralized identity, role-based access control, remote administration, or
+protection against an Operator who fully controls the host.
 
 ## Problem statement and business context
 
@@ -57,25 +55,24 @@ Investigators therefore need more than capture. They need a workflow that:
 - transfers a Case without silently breaking its custody history; and
 - remains useful without an account, license server, or hosted evidence store.
 
-These requirements are relevant to investigative journalists, independent
+These requirements matter to investigative journalists, independent
 researchers, fraud and abuse teams, threat-intelligence practitioners, human
 rights investigators, educators, and small organizations that cannot or do not
 want to place sensitive source material into a vendor-controlled platform.
 
-Birdbrain's business context follows from these constraints. It is MIT-licensed,
-has no required cloud account, and does not send telemetry. The core collection
-and evidence-management workflow runs locally. Network egress is limited to
-explicit supporting functions: trusted timestamping, Wayback Machine
-corroboration, and software updates. This narrow footprint
+Birdbrain is MIT-licensed, requires no cloud account, and sends no telemetry.
+The core collection and evidence-management workflow runs locally. Network
+egress is limited to explicit supporting functions: trusted timestamping,
+Wayback Machine corroboration, and software updates. This narrow footprint
 reduces custody ambiguity and vendor dependence, although it places more
 operational responsibility on the workstation owner.
 
 ### Source basis and assumptions
 
 This whitepaper describes the implementation in the repository at version
-`1.0.1-beta.15`. Source code, tests, build configuration, `CONTEXT.md`, and
-accepted architecture decisions are treated as authoritative. Design documents
-are used to explain intent but not to claim an unimplemented capability.
+`1.0.1-beta.15`. It treats source code, tests, build configuration,
+`CONTEXT.md`, and accepted architecture decisions as authoritative. It uses
+design documents to explain intent, never to claim an unimplemented capability.
 
 The intended audience is engineering leadership, security architecture teams,
 technical evaluators, and contributors. Compliance observations identify
@@ -110,8 +107,8 @@ participate in the current ingest path.
 
 ### Who it is for and key use cases
 
-Birdbrain is designed for an individual Operator or a small team exchanging Case
-archives rather than sharing a central service.
+Birdbrain serves an individual Operator, or a small team that exchanges Case
+archives instead of sharing a central service.
 
 Representative use cases include:
 
@@ -231,16 +228,17 @@ fails, it truncates the Manifest to its prior byte boundary. This makes the inva
 explicit: the surviving Manifest should not claim a Capture or deletion that did
 not complete.
 
-Individual Capture deletion receives a signed deletion entry before the row and
-artifacts are removed. Whole-Case deletion deliberately does not emit one entry
-per Capture because the Case directory and its Manifest are removed as a unit.
+Before it removes the row and artifacts of an individual Capture, the lifecycle
+appends a signed deletion entry. Whole-Case deletion deliberately does not emit
+one entry per Capture, because it removes the Case directory and its Manifest as
+a unit.
 
 #### Selector Lifecycle
 
 A Selector is a literal or regular-expression pattern applied across a Case.
 Creating or materially updating one initiates asynchronous reconciliation
-against existing Captures. Results are stored as Persisted Matches and serve as
-the source for Case-wide counts and export.
+against existing Captures. The lifecycle stores results as Persisted Matches,
+which are the source for Case-wide counts and export.
 
 The lifecycle centralizes chunking, result caps, safe-regex handling, FTS
 fallback, and completion events. A separate renderer-local Foreground Match
@@ -281,7 +279,7 @@ Manifest-chain validation, RSA signature checks, timestamp-token parsing, and
 evidence-package consistency checks. These modules do not depend on Electron,
 SQLite, Hono, or network access.
 
-The standalone verifier is bundled as a Node single-executable application. Its
+The standalone verifier ships as a Node single-executable application. Its
 build enforces import hygiene so the verification path remains small and
 independent. A verifier pass establishes package integrity and internal
 consistency. It does not independently establish the authenticity of the
@@ -316,7 +314,7 @@ The storage design distinguishes three levels of authority:
    Persisted Matches, and FTS5 indexes support application workflows.
 
 Extracted Text illustrates this distinction. Its `.txt` sidecar is authoritative
-and its hash is recorded in the Manifest. `capture_texts` mirrors it for query
+and the Manifest records its hash. `capture_texts` mirrors it for query
 paths, while `captures_fts` is a trigger-maintained derived index. Rebuild
 operations heal database projections by rereading sidecars rather than treating
 the index as evidence.
@@ -339,10 +337,10 @@ Birdbrain has five principal integration points:
   cannot sign, and opens no listener
   ([ADR-0038](https://github.com/thebristolsound/birdbrain/blob/main/docs/adr/0038-a-read-only-mcp-server-reads-a-case-from-a-separate-process.md)).
 
-There is no supported remote REST API, webhook framework, or network-listening
-administration plane. Extending Birdbrain into a multi-host service would
-therefore require a new authentication, authorization, concurrency, and custody
-model rather than merely changing the listener address.
+Birdbrain has no supported remote REST API, webhook framework, or
+network-listening administration plane. Turning it into a multi-host service
+would take a new authentication, authorization, concurrency, and custody model,
+not only a different listener address.
 
 ## Design decisions and trade-offs
 
@@ -410,14 +408,14 @@ integrity failures.
 
 ### Alternatives considered
 
-The following alternatives are inferred from the implemented constraints and
-repository decisions:
+This paper infers the following alternatives from the implemented constraints
+and repository decisions:
 
 | Alternative                           | Potential benefit                                    | Reason not selected                                                                                                     |
 | ------------------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | Hosted multi-tenant service           | Central collaboration, policy, and backup            | Conflicts with local custody, offline use, and no-account operation                                                     |
 | Browser-extension-only product        | Smaller installation                                 | Weak privileged storage, export, local database, and independent verification capabilities                              |
-| Native desktop implementation         | Smaller runtime and less exposed code             | Higher cross-platform cost and less shared browser/UI technology                                                        |
+| Native desktop implementation         | Smaller runtime and less exposed code                | Higher cross-platform cost and less shared browser/UI technology                                                        |
 | Store every artifact as a SQLite BLOB | Single backup unit and stronger transaction boundary | Poorer handling of large artifacts and less transparent evidence packaging                                              |
 | Plain filesystem metadata             | Maximum inspectability                               | Loses relational integrity, FTS, migrations, and efficient Case workflows                                               |
 | WARC as the sole capture format       | Established web-archiving conventions                | More capture and replay complexity for an extension-centered, investigator-facing workflow                              |
@@ -433,14 +431,14 @@ would alter Birdbrain's operating and trust model.
 ### Trust boundaries and attack surface
 
 Birdbrain treats captured web content, extension input, archive input, and
-external service responses as untrusted. Privileged work occurs in the Electron
-main process. The renderer is sandboxed, context-isolated, and denied Node
-integration. New windows are denied and approved HTTP(S) links open in the
-system browser. Webview attachment and navigation are constrained.
+external service responses as untrusted. The Electron main process performs
+privileged work. The renderer runs sandboxed and context-isolated, without Node
+integration. The application denies new windows, opens approved HTTP(S) links in
+the system browser, and constrains webview attachment and navigation.
 
-The loopback Capture Server is not assumed to be private merely because it binds
-locally. Host-header checks address DNS rebinding, mutation routes require a
-random per-install token, schemas constrain request shape, and size limits bound
+Binding to loopback does not make the Capture Server private, and the design
+does not assume that it does. Host-header checks address DNS rebinding,
+mutation routes require a random per-install token, schemas constrain request shape, and size limits bound
 individual uploads. The server-token file is local to the application data
 directory; failure to persist it degrades to an in-memory token rather than a
 fixed credential. Birdbrain stores the token as plain text protected by OS file
@@ -448,8 +446,8 @@ permissions and does not wrap it with Electron `safeStorage`.
 
 ### Authentication and authorization
 
-Authentication exists at the extension-to-server boundary as possession of the
-installation token. It identifies an authorized local client, not a human
+The only authentication is at the extension-to-server boundary: possession of
+the installation token. It identifies an authorized local client, not a human
 identity. Electron IPC relies on the trusted application renderer and its
 constrained preload API.
 
@@ -500,8 +498,8 @@ They do not prove:
   CMS signature.
 
 The canonical timestamp-authenticity step remains the supplied OpenSSL runbook.
-A standalone verifier pass should be described as integrity and internal
-consistency, not as a complete authenticity determination.
+Describe a standalone verifier pass as integrity and internal consistency, not
+as a complete authenticity determination.
 
 ### Network privacy
 
@@ -534,7 +532,7 @@ gap.
 
 ### Compliance applicability
 
-Birdbrain supplies useful building blocks for evidence handling: provenance,
+Birdbrain supplies building blocks for evidence handling: provenance,
 integrity verification, export inspection, external trusted time, deterministic
 records, and a documented threat model. It does not by itself implement a
 regulated records-management program. Retention policy, legal hold, access
@@ -591,10 +589,10 @@ rebuild paths, and persisted verification results support that strategy.
 
 The current design is appropriate for thousands of local records and
 workstation-sized evidence collections, subject to artifact size and hardware.
-No repository benchmark establishes a formal capacity envelope, so higher
-figures should not be represented as guaranteed.
+No repository benchmark establishes a formal capacity envelope, so this paper
+guarantees no higher figure.
 
-Horizontal scaling is not an implemented property. `better-sqlite3` is
+Birdbrain does not scale horizontally. `better-sqlite3` is
 synchronous and single-process, the Capture Server maintains local active-Case
 state, signing keys are installation-specific, and artifacts reside on a local
 path. Multi-user or shared-network operation would require coordinated storage,
@@ -623,7 +621,7 @@ The application and background services also write contextual warnings and
 errors to the console. CI produces test, build, and security-scan results, and
 Playwright retains a trace on first retry.
 
-There is no structured application log, durable diagnostic event store,
+Birdbrain has no structured application log, durable diagnostic event store,
 metrics registry, distributed tracing, crash-reporting service, or telemetry
 backend. That is consistent with a privacy-focused desktop application but makes
 field diagnosis dependent on reproduction and local console output. A future
@@ -631,11 +629,11 @@ logging facility should default to local storage, redact URLs and evidence
 content, support explicit user export, and avoid silently creating a new data
 egress path.
 
-Operationally, the application owns database initialization, migrations,
-storage-directory creation, installation identity, signing keys, token
-generation, Capture Server startup, background workers, deep-link registration,
-and updater lifecycle. These startup dependencies are ordered in the Electron
-main process so privileged services are initialized before use.
+The application owns database initialization, migrations, storage-directory
+creation, installation identity, signing keys, token generation, Capture Server
+startup, background workers, deep-link registration, and updater lifecycle. The
+Electron main process orders these startup dependencies so that each privileged
+service initializes before its first use.
 
 ## Extensibility and customization
 
@@ -689,18 +687,18 @@ masquerade as Case-wide results.
 
 ### Shared, pure verification core
 
-Canonical serialization, Manifest verification, signature checking, timestamp
-parsing, and package checking are implemented as shared data functions. The
-desktop application and standalone verifier therefore use the same algorithms.
+Shared pure functions implement canonical serialization, Manifest verification,
+signature checking, timestamp parsing, and package checking, so the desktop
+application and the standalone verifier run the same algorithms.
 A golden-vector self-check detects bundling changes to canonical JSON behavior,
 and import-hygiene tests protect the standalone verifier from accidental
 Electron or database coupling.
 
 ### Deterministic and downgrade-aware Manifest verification
 
-Manifest entry hashes are computed over canonical JSON excluding `entryHash` and
-`signature`. The signature covers the hexadecimal entry hash using RSA-SHA256
-with PKCS#1 v1.5. Verification checks schema shape, index continuity, previous
+Birdbrain computes each Manifest entry hash over canonical JSON that excludes
+`entryHash` and `signature`. The signature covers the hexadecimal entry hash
+using RSA-SHA256 with PKCS#1 v1.5. Verification checks schema shape, index continuity, previous
 hash linkage, recomputed hashes, and required signatures.
 
 A downgrade guard permits historical unsigned v1 entries followed by signed v2
@@ -717,7 +715,7 @@ verification result. Verification can switch keys across these boundaries,
 allowing a chain to preserve prior installation history and continue under the
 receiving installation.
 
-The import boundary avoids pretending that all history was signed by the
+A chain therefore never presents history signed elsewhere as signed by the
 current workstation.
 
 ### Sidecars as recoverable authority
@@ -748,22 +746,22 @@ preventing the canonical timestamp path from becoming a silently skipped test.
 
 ### Desktop distribution
 
-Birdbrain is packaged with `electron-builder` for:
+`electron-builder` packages Birdbrain for:
 
 - Windows as an NSIS installer;
 - macOS as DMG and ZIP artifacts; and
 - Linux as AppImage and DEB packages.
 
-The built Chromium extension is included as an application resource and is also
-published as a separate ZIP. Native dependencies such as `better-sqlite3` are
-rebuilt for Electron, and Sharp-related native resources are unpacked from the
-application archive where required.
+The build includes the Chromium extension as an application resource and also
+publishes it as a separate ZIP. It rebuilds native dependencies such as
+`better-sqlite3` for Electron and unpacks Sharp-related native resources from
+the application archive where required.
 
 ### Runtime deployment model
 
-No container, Kubernetes cluster, serverless function, or external database is
-required. Installation creates application data, settings, the SQLite database,
-the storage root, an installation identity, a server token, and a signing key
+Birdbrain requires no container, Kubernetes cluster, serverless function, or
+external database. Installation creates application data, settings, the SQLite
+database, the storage root, an installation identity, a server token, and a signing key
 pair on the workstation.
 
 The runtime starts:
@@ -811,8 +809,8 @@ application into a hosted service.
 
 ## Roadmap and future directions
 
-The following directions are inferred from current gaps and extension points.
-They are recommendations, not committed features.
+This paper infers the following directions from current gaps and extension
+points. They are recommendations, not committed features.
 
 ### Near-term assurance and operations
 
@@ -855,24 +853,21 @@ They are recommendations, not committed features.
 
 ## Conclusion
 
-Birdbrain's architecture is coherent because its technical choices follow a
-clear product boundary: preserve and investigate web evidence locally, make
-modification detectable, attach independently verifiable time where possible,
+Birdbrain's technical choices follow one product boundary: preserve and
+investigate web evidence locally, make modification detectable, attach independently verifiable time where possible,
 and let evidence travel without requiring a hosted account.
 
-The separation of integrity from trusted time, and of source evidence from
-derived analysis, gives reviewers a defensible vocabulary for interpreting
-results.
+Separating integrity from trusted time, and source evidence from derived
+analysis, tells a reviewer which claim each check supports.
 
 The same boundary defines the trade-offs. Birdbrain is not a centralized,
 multi-user evidence platform. It relies on workstation security, local key
 custody, Operator procedure, and external governance for regulated deployments.
-Release signing, structured diagnostics, stronger
-policy management, and documented scale benchmarks remain important maturity
-steps.
+Release signing, structured diagnostics, stronger policy management, and
+documented scale benchmarks remain open.
 
-For individual investigators and small teams that prioritize local custody,
-transparent formats, and open verification, the current design provides a
-substantive foundation. For enterprise adoption, it should be evaluated as an
+The current design fits individual investigators and small teams that
+prioritize local custody, transparent formats, and open verification, within
+the limits this paper states. For enterprise adoption, evaluate it as an
 evidence workstation that integrates into broader identity, endpoint,
 retention, and legal-process controls, not as a replacement for those controls.

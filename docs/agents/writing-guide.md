@@ -51,7 +51,7 @@ The failure mode to avoid is copy that sounds authoritative and says nothing. Co
 
 ## Mechanics
 
-Adopted 2026-08-25 from the corporate rule-catalog tradition — Microsoft, Google, Kubernetes, GitLab — via the [writing-guides brief](../specs/2026-08-25-technical-writing-guides-brief.md) (Guide A there). Vale with the Google package enforces part of this on `*.md`; the rest is review criteria.
+Adopted 2026-08-25 from the corporate rule-catalog tradition — Microsoft, Google, Kubernetes, GitLab — via the [writing-guides brief](../specs/2026-08-25-technical-writing-guides-brief.md) (Guide A there). Vale enforces part of this on `*.md` and `*.mdx`, through the Google package and the project's own `Birdbrain` style in `.vale/styles/Birdbrain/`; the rest is review criteria.
 
 - **Voice.** Second person, active voice, present tense. Name the actor; passive only when the actor is unknown, irrelevant, or naming it would read as blame. No "there is" / "there are" openers.
 - **Order.** Condition before instruction: "If the build fails, check the log." Prerequisites before step 1, never inside the steps. One action per step; a step may add one sentence of result.

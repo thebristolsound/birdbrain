@@ -1,7 +1,7 @@
 extends: existence
 message: "'%s' is an unqualified assurance word. Name the standard and its version, or describe the property the mechanism proves and the one it does not."
 link: https://github.com/thebristolsound/birdbrain/blob/main/docs/agents/writing-guide.md#claim-discipline
-level: warning
+level: error
 ignorecase: true
 tokens:
   - tamper-?proof

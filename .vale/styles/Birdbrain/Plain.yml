@@ -1,7 +1,7 @@
 extends: substitution
 message: "Use '%s' instead of '%s'."
 link: https://github.com/thebristolsound/birdbrain/blob/main/docs/agents/writing-guide.md#mechanics
-level: warning
+level: error
 ignorecase: true
 action:
   name: replace

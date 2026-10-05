@@ -1,7 +1,7 @@
 extends: existence
 message: "Cut '%s': it would read the same on another product's page. State the concrete fact."
 link: https://github.com/thebristolsound/birdbrain/blob/main/docs/agents/writing-guide.md#prose
-level: warning
+level: error
 ignorecase: true
 tokens:
   # Inflated adjectives

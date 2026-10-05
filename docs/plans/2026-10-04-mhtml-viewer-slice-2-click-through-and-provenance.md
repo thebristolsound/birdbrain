@@ -103,13 +103,13 @@ No forward stack. Following the same link again is the forward action.
 
 ### A4. What happens on a link the Case does not hold?
 
-Recommended: the status bubble at the bottom left of the Page pane changes from the hover
+The status bubble at the bottom left of the Page pane changes from the hover
 destination to "Not in this Case", with a Capture link button that runs the same action as the
 menu item. The button is turned off with the same reason text when `captureLinkBlockReason`
 refuses the address. The bubble clears on the next press in the guest.
 
-The alternative is to do nothing and leave the menu as the only route. This is a product
-decision with no repository precedent, so it is listed under "Open decisions".
+The alternative was to do nothing and leave the menu as the only route. The maintainer chose the
+button on 2026-10-04 (ruling 1).
 
 ### A5. Does the Links tab click through too?
 
@@ -189,17 +189,18 @@ a redirect intervened.
 The method stays `background`. No value is added to `CAPTURE_METHODS`, because the acquisition
 path is the same queue and renderer.
 
-Considered and not recommended, each left for the ADR to settle:
+Considered for the Manifest, and settled as follows:
 
 - **The source's Content Hash beside its id.** In a single-owner Case the id resolves to the
   source's own `capture` entry in the same chain, and ADR-0009 ships the full Manifest even in a
   selection export, so the hash is already reachable. In a Shared Case, a member could capture a
   link from a Capture in another member's chain, where this chain cannot resolve the id. If the
-  ADR allows that, the entry also records `linkedFromContentHash`.
+  ADR allows that, the entry also records `linkedFromContentHash` (ruling 2).
 - **The frame the link sat in.** Electron's `context-menu` parameters carry `frameURL`, and a
   Links tab row carries `documentUrl` and `frame`. A link in an embedded advertising frame is a
   weaker connection than one in the article. Recording it adds a third field that the Page tab and
-  the Links tab must supply alike. Recommended for display only, not the Manifest.
+  the Links tab must supply alike. It is shown in the viewer only and not recorded in the
+  Manifest.
 
 ### B3. Schema version and verifier sequencing
 
@@ -210,9 +211,9 @@ reports "verifier too old" (X25), not a broken chain.
 
 `MANIFEST_SCHEMA_VERSION` 5 is already claimed by the chain-head anchoring design
 (`docs/specs/2026-10-02-chain-head-anchoring-design.md`, the `timestamping` entry). ADR-0032's
-Egress fields and ADR-0035's artifact inventory also wait on a verifier release. Recommended: the
-two fields join whichever schema-5 verifier release ships first, rather than taking a release of
-their own. The ADR records that choice; if no schema-5 release is in flight when Part B is
+Egress fields and ADR-0035's artifact inventory also wait on a verifier release. The two fields
+join whichever schema-5 verifier release ships first, rather than taking a release of their own
+(ruling 3). The ADR records that choice; if no schema-5 release is in flight when Part B is
 ready, Part B takes 5 itself and the next one takes 6.
 
 ### B4. Order of work
@@ -255,15 +256,18 @@ are blocking, and `schemas.ts` is advisory. Steps 2 and 3 are separate PRs, each
 review and no auto-merge. Step 3 also touches more than ten files and adds a migration, so under
 ADR-0016 its implementation plan needs the maintainer's approval before work starts.
 
-## Open decisions
+## Rulings, 2026-10-04
 
-1. **An unheld link (A4).** Show "Not in this Case" with a Capture link button, or do nothing on
-   the click. Recommended: the button, because it is the action the Operator most likely wants
-   and it runs the same guarded path as the menu.
-2. **The source's Content Hash (B2).** Record `linkedFromContentHash` only if a member of a Shared
-   Case can Capture a link from another member's Capture. This is for the ADR.
-3. **Schema number (B3).** Join the first schema-5 verifier release, or take a number of its own.
-   Recommended: join.
+The maintainer accepted each recommendation the first draft of this plan made.
+
+1. **An unheld link (A4).** A click on a link the Case does not hold shows "Not in this Case" with
+   a Capture link button. It is the action the Operator most likely wants, and it runs the same
+   guarded path as the menu.
+2. **The source's Content Hash (B2).** The entry records `linkedFromContentHash` only if the ADR
+   allows a member of a Shared Case to Capture a link from another member's Capture. The ADR
+   settles that question.
+3. **Schema number (B3).** The fields join the first schema-5 verifier release rather than taking
+   a number of their own.
 
 ## Sequencing
 

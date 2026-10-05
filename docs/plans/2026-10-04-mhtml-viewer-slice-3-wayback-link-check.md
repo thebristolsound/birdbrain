@@ -97,9 +97,9 @@ present it as corroboration of the source page. A link's snapshot gets these act
   source Capture's Case through the same `recapture:enqueue` path as Capture link. The result is a
   Capture of an archive.org page, with its own Manifest Entry. This is how a candidate becomes
   evidence, as the Case investigation engine design puts it: "It supports nothing until the
-  Operator captures it as a new Exhibit." Recommended, and listed under "Open decisions" because
-  it puts archive.org's toolbar into the stored page unless the replay URL uses the `id_` form,
-  which is a choice about what the Capture shows.
+  Operator captures it as a new Exhibit." The replay page is captured with archive.org's
+  toolbar, not in the `id_` form, because the toolbar states the snapshot's time and source in
+  the stored page itself (ruling 1).
 
 ### S6. Where do answers show, and how long do they last?
 
@@ -133,7 +133,7 @@ present it as corroboration of the source page. A link's snapshot gets these act
 evidence references"), so a PR that changes it is `evidence-affecting`. S1 is designed so that it
 need not change: the handler calls `lookupSnapshots` with a `limit` option it already accepts. If
 the batch runner lives beside it rather than in a new `src/main/services/waybackLinkCheck.ts`, the
-PR becomes evidence-affecting. Recommended: the new file. `LinksTab.tsx` becomes blocking tier
+PR becomes evidence-affecting. The runner goes in the new file. `LinksTab.tsx` becomes blocking tier
 when issue #1728 lands, and from then on this slice's PR is `evidence-affecting` whichever file
 the runner is in.
 
@@ -152,14 +152,14 @@ and tests. About fourteen files, so under ADR-0016 the implementation needs the 
 approval. A natural split is two PRs: the single-link lookup first (S1 to S3 single, S5, S6), then
 the batch (S3 many, S4).
 
-## Open decisions
+## Rulings, 2026-10-04
 
-1. **Capture snapshot (S5).** Offer it, and if so, capture the replay page with the archive.org
-   toolbar or the `id_` form without it. Recommended: offer it with the toolbar, because the
-   toolbar states the snapshot's time and source in the stored page itself.
-2. **Batch lookups (S3, S4).** Ship the batch in this slice or leave it for the bulk harvest work.
-   Recommended: ship it as the second PR, because checking a page's outbound links one by one is
-   the manual work this slice exists to remove.
+The maintainer accepted each recommendation the first draft of this plan made.
+
+1. **Capture snapshot (S5).** Offered, and the replay page is captured with the archive.org
+   toolbar, because the toolbar states the snapshot's time and source in the stored page itself.
+2. **Batch lookups (S3, S4).** Shipped in this slice as the second PR, because checking a page's
+   outbound links one by one is the manual work this slice exists to remove.
 
 ## Sequencing
 

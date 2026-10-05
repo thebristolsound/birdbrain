@@ -33,6 +33,9 @@ const localRules = {
 export default {
   extends: ['@commitlint/config-conventional'],
   plugins: [localRules],
+  // commitlint skips git's generated messages by default (`Merge branch ...`, `Revert "..."`,
+  // `fixup!`). A branch commit an agent writes has one shape, so nothing is skipped.
+  defaultIgnores: false,
   rules: {
     'header-max-length': [2, 'always', 72],
     'scope-empty': [2, 'never'],

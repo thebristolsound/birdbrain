@@ -18,7 +18,8 @@ note to the reviewer reading `git log -p`, not a record.
   `@commitlint/config-conventional`; the scope is required.
 - The subject starts with a lowercase word. Reword when a proper noun or an ADR number would
   come first.
-- A merge commit takes a scope like any other, for example `chore(merge): ...`.
+- A merge commit takes a scope like any other, for example `chore(merge): ...`. Git's own
+  `Merge branch ...` and `Revert "..."` messages are rejected; rewrite them in this shape.
 - An optional body: at most 6 lines, wrapped at 72 columns, saying why. No investigation
   narrative, no list of what the diff already shows.
 - No `Closes #N` or any other closing keyword. That is line 1 of the PR body.

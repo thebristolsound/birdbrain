@@ -43,6 +43,11 @@ test.describe('Capture server API against the running app', () => {
     // the first is the target of the refused activations.
     const caseId = await createCase(page, 'Server Auth Case')
     const activeId = await createCase(page, 'Server Auth Active Case')
+    // The workspace activates its case from an effect after the route has
+    // changed, so wait for the server to report it before the refused calls.
+    await expect
+      .poll(async () => (await (await request.get(api('/api/status'))).json()).activeCase?.id)
+      .toBe(activeId)
 
     const missing = await request.post(api(`/api/cases/${caseId}/activate`))
     expect(missing.status()).toBe(401)

@@ -1,3 +1,4 @@
+import { join } from 'node:path'
 import { test, expect } from './fixtures/electronApp'
 import { createCase, seedCapture, serverToken } from './fixtures/seed'
 
@@ -64,8 +65,9 @@ test.describe('Data screen', () => {
     await tabs.getByRole('tab', { name: 'Properties' }).click()
     const props = page.getByTestId('properties-tab')
     await expect(props).toContainText('SHA-256')
-    // The stored file path names the case and the capture it belongs to.
-    await expect(props).toContainText(`${caseId}/${alphaId}.mhtml`)
+    // The stored file path names the case and the capture it belongs to. It
+    // is built with path.join, so the separator follows the platform.
+    await expect(props).toContainText(join(caseId, `${alphaId}.mhtml`))
     await expect(props).toContainText('browser Chrome/120')
     await expect(props).toContainText('Mozilla/5.0')
 

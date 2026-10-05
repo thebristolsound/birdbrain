@@ -172,11 +172,12 @@ check that by reading the links out of X's MHTML again.
 
 ### B2. Which fields?
 
-Two optional fields on the `capture` Manifest Entry, written only by a Capture link job and
+Three optional fields on the `capture` Manifest Entry, written only by a Capture link job and
 omitted from every other entry, so every existing canonical body and chain hash is unchanged:
 
 - `linkedFromCaptureId`: the id of the Capture whose stored page held the link. Named after the
   existing `supersedesCaptureId` and `duplicateOfCaptureId` pattern.
+- `linkedFromContentHash`: that Capture's Content Hash (ruling 2).
 - `linkHref`: the link's address as the menu read it, which is the address the background render
   was sent to.
 
@@ -194,8 +195,9 @@ Considered for the Manifest, and settled as follows:
 - **The source's Content Hash beside its id.** In a single-owner Case the id resolves to the
   source's own `capture` entry in the same chain, and ADR-0009 ships the full Manifest even in a
   selection export, so the hash is already reachable. In a Shared Case, a member could capture a
-  link from a Capture in another member's chain, where this chain cannot resolve the id. If the
-  ADR allows that, the entry also records `linkedFromContentHash` (ruling 2).
+  link from a Capture in another member's chain, where this chain cannot resolve the id. Shared
+  Cases keep one chain per member and members see each other's Exhibits, so that case is real,
+  and the entry records `linkedFromContentHash` (ruling 2).
 - **The frame the link sat in.** Electron's `context-menu` parameters carry `frameURL`, and a
   Links tab row carries `documentUrl` and `frame`. A link in an embedded advertising frame is a
   weaker connection than one in the article. Recording it adds a third field that the Page tab and
@@ -211,15 +213,15 @@ reports "verifier too old" (X25), not a broken chain.
 
 `MANIFEST_SCHEMA_VERSION` 5 is already claimed by the chain-head anchoring design
 (`docs/specs/2026-10-02-chain-head-anchoring-design.md`, the `timestamping` entry). ADR-0032's
-Egress fields and ADR-0035's artifact inventory also wait on a verifier release. The two fields
+Egress fields and ADR-0035's artifact inventory also wait on a verifier release. The three fields
 join whichever schema-5 verifier release ships first, rather than taking a release of their own
 (ruling 3). The ADR records that choice; if no schema-5 release is in flight when Part B is
 ready, Part B takes 5 itself and the next one takes 6.
 
 ### B4. Order of work
 
-1. **ADR.** `docs/adr/NNNN-a-link-capture-records-the-capture-it-came-from.md`, settling B1 to
-   B3 and the Shared Case question. `CONTEXT.md` gains a relationship line beside the Recapture
+1. **ADR.** `docs/adr/0040-a-link-capture-records-the-capture-it-came-from.md`, drafted on
+   2026-10-04 with status Proposed, settling B1 to B3 and the Shared Case question. `CONTEXT.md` gains a relationship line beside the Recapture
    and Duplicate ones: a link Capture is a new Capture that names the Capture holding the link; it
    observed the destination afresh and is a new sighting, not a copy.
 2. **Verifier release.** `src/shared/schemas.ts` learns the optional fields and the refine rule;
@@ -228,25 +230,26 @@ ready, Part B takes 5 itself and the next one takes 6.
    entry carrying the field rejected. A tagged release ships before step 3 merges.
 3. **Writer.**
    - `RecaptureJob`, `RecaptureEnqueuePayload` and `useRecaptureMutations` gain `linkedFrom`:
-     `{ captureId, href }`.
+     `{ captureId, contentHash, href }`.
    - `recapture.ts` checks in main that the source Capture exists and is in the job's Case, and
-     rejects the job otherwise, then passes both fields through `captureLifecycle.ingest`.
-   - A migration (`pnpm db:migration:new link-capture-provenance`) adds `linked_from_capture_id`
-     and `link_href` to `captures`.
+     rejects the job otherwise, then passes the three fields through `captureLifecycle.ingest`.
+     The Content Hash is read in main from the source's row, not taken from the renderer.
+   - A migration (`pnpm db:migration:new link-capture-provenance`) adds `linked_from_capture_id`,
+     `linked_from_content_hash` and `link_href` to `captures`.
    - `useLinkMenuTarget` sends the source Capture id and the link address.
    - `CaptureViewer.tsx` shows "From a link in <title>", which opens the source, beside "Duplicate
      of".
-   - `reportHtml.ts` adds the two rows beside "Supersedes" and "Duplicate of".
+   - `reportHtml.ts` adds the rows beside "Supersedes" and "Duplicate of".
    - A Recapture of a link Capture does not inherit the fields: it records its own
      `supersedesCaptureId`.
 
 ### B5. Tests for Part B
 
 The schema cases in step 2. In step 3: `tests/main/services/recapture.test.ts` covers a link job
-that writes both fields, a job whose source is in another Case or deleted (rejected), and an
-ordinary job that writes neither; a lifecycle test pins the entry body with and without the
+that writes the three fields, a job whose source is in another Case or deleted (rejected), and an
+ordinary job that writes none of them; a lifecycle test pins the entry body with and without the
 fields; the migration test; `MhtmlViewer.test.tsx` pins the enqueue payload from the menu; the
-report test pins the two rows. The E2E from Part A gains one step: Capture link on an unheld link,
+report test pins the new rows. The E2E from Part A gains one step: Capture link on an unheld link,
 wait for the stored event, and read the new Capture's "From a link in" header.
 
 ### B6. Evidence impact of Part B
@@ -263,9 +266,9 @@ The maintainer accepted each recommendation the first draft of this plan made.
 1. **An unheld link (A4).** A click on a link the Case does not hold shows "Not in this Case" with
    a Capture link button. It is the action the Operator most likely wants, and it runs the same
    guarded path as the menu.
-2. **The source's Content Hash (B2).** The entry records `linkedFromContentHash` only if the ADR
-   allows a member of a Shared Case to Capture a link from another member's Capture. The ADR
-   settles that question.
+2. **The source's Content Hash (B2).** A member of a Shared Case can Capture a link from another
+   member's Capture, so the entry records `linkedFromContentHash` beside the id. Ruled by the
+   maintainer on 2026-10-04 after the first set of rulings, and recorded in ADR-0040.
 3. **Schema number (B3).** The fields join the first schema-5 verifier release rather than taking
    a number of their own.
 

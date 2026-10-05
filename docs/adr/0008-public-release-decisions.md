@@ -350,7 +350,7 @@ Decision 2's own text at lines 74 to 76 states that nothing else is rewritten,
 and that any additional purge candidate must be added to this record first,
 with its own rationale, before it joins the filter scope. The 265 commit
 message bodies and the 14 tracked files counted earlier are additional
-candidates. Whoever writes the #269 tooling therefore cannot add them without review:
+candidates. Whoever writes the #269 tooling therefore cannot add them outright:
 they need either a decision recorded here with a rationale, or an explicit
 exclusion with a stated reason. This amendment records the two surfaces and
 takes neither.

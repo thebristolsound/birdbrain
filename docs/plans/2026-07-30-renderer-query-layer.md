@@ -473,7 +473,7 @@ Before this change, none of those refreshed. If they still don't, the `onSuccess
 
 - [ ] **Step 12: Commit the behavior fix**
 
-The invalidation is already in `db.ts` from Step 4, so this commit exists to document the behavior change separately in history. If Steps 4-10 were committed together, split them with `git rebase -i` so the invalidation lines land here, or simply note in the PR body that Step 10's commit carries both. Prefer the split.
+The invalidation is already in `db.ts` from Step 4, so this commit exists to document the behavior change separately in history. If Steps 4-10 were committed together, split them with `git rebase -i` so the invalidation lines land here, or note in the PR body that Step 10's commit carries both. Prefer the split.
 
 ```bash
 git commit -m "fix(renderer): invalidate caches after destructive db admin operations"

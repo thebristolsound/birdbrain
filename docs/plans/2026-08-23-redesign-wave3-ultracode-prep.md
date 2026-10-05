@@ -264,7 +264,7 @@ here and #401 adds to the report. Strict serial, #398 first.
 **`src/shared/verify/**` and `src/verifier/**`.** *Corrected after phase 1: not #398 alone.*
 #399's acceptance criterion 2 asks the standalone verifier to say "not a verifiable object" rather
 than FAIL for a Working Copy. Today `verifyEvidencePackage` returns `pass: false` with
-"manifest.jsonl missing from package" (`evidencePackage.ts:88-95`) and `cli.ts` exits 1. There is no
+"manifest.jsonl missing from package" (`evidencePackage.ts:88-95`) and `cli.ts` exits 1. The verifier has no
 third outcome and no marker check, and that decision lives in the same blocks #398 rewrites to scope
 the capture set. Strict serial, #398 lands the shape change including any widening of
 `PackageVerifyResult`, #399 supplies only the Working Copy marker and its detection. Two branches
@@ -401,7 +401,7 @@ whose URL starts with `file://` and block everything else, for **every** webview
 is simultaneously the MHTML evidence viewer's only navigation guard. A Wayback webview must load
 `https://web.archive.org` and tolerate its redirects, so #401 has to **modify** that invariant into
 a partition-aware policy rather than add beside it, and a wrong discriminator silently loosens the
-evidence viewer. There is no `will-attach-webview` handler anywhere in `src/`, no permission handler
+evidence viewer. `src/` has no `will-attach-webview` handler anywhere, no permission handler
 on any renderer-facing session, and no `will-download` listener. Extract the decision to a pure
 `src/main/webviewPolicy.ts` with unit tests, following the `windowSize.ts` and `windowReveal.ts`
 precedent. This is the branch's highest-risk edit. Related: #810. *Corrected at phase-2 intake:

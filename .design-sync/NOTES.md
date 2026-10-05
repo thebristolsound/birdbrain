@@ -8,7 +8,7 @@ below before re-syncing.
 
 ## Build setup (non-obvious)
 
-- **No library dist.** There is no built component entry (`main` is the
+- **No library dist.** The package has no built component entry (`main` is the
   Electron main process). We bundle the real barrel directly:
   `--entry ./src/renderer/components/ui/index.ts`. This makes the converter's
   `PKG_DIR` resolve to the repo root (it walks up to `package.json`) and esbuild

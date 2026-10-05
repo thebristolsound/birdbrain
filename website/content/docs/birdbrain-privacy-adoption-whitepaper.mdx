@@ -37,7 +37,7 @@ The everyday tooling sits on top: cases, search, tags, notes, screenshot annotat
 
 ## The privacy properties that matter to you
 
-**No account, no server, no telemetry.** There is nothing to sign up for. The project's security policy states, and the code confirms, that the application sends no analytics, no crash reports, and no usage data. There is no vendor infrastructure that could be breached or subpoenaed, because none exists.
+**No account, no server, no telemetry.** Birdbrain requires no sign-up. The project's security policy states, and the code confirms, that the application sends no analytics, no crash reports, and no usage data. No vendor infrastructure exists that could be breached or subpoenaed.
 
 **Local-first by construction, not configuration.** Captures travel from your browser to the desktop app over a loopback connection on your own machine (127.0.0.1), authenticated with a per-installation token. The connection never touches the network.
 
@@ -51,16 +51,16 @@ The everyday tooling sits on top: cases, search, tags, notes, screenshot annotat
 
 For your threat model, this is the section that matters. Every outbound connection in the default capture-and-verify workflow, what it carries, and how to control it:
 
-| Connection | What is sent | When | Your control |
-|---|---|---|---|
+| Connection                              | What is sent                                                                                          | When                                                       | Your control                                                                                                                                                                                                                                                                                                                                   |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Timestamp authority (default: DigiCert) | A content hash only, never content. The TSA does see your IP address and the timing of your captures. | Automatically after each capture, while timestamping is on | Point it at a TSA you prefer, or turn timestamping off, under **Settings → Operator → Trusted timestamping**. A capture made while it is off asserts no trusted time until you turn it back on. A capture that cannot reach the authority stays `pending`. Turning timestamping back on sends the hashes of the captures made while it was off |
-| The captured site itself | A follow-up TLS connection to record the site's current certificate as corroboration | Automatically at capture time | Not currently toggleable; see the network-identity warning below |
-| Wayback Machine (archive.org) | The URL you ask it to look up or pin | Only when you explicitly click | Never click it for sensitive targets |
-| GitHub | Ordinary release-check traffic | Periodic update checks | Disable automatic update checks in settings |
+| The captured site itself                | A follow-up TLS connection to record the site's current certificate as corroboration                  | Automatically at capture time                              | Not currently toggleable; see the network-identity warning below                                                                                                                                                                                                                                                                               |
+| Wayback Machine (archive.org)           | The URL you ask it to look up or pin                                                                  | Only when you explicitly click                             | Never click it for sensitive targets                                                                                                                                                                                                                                                                                                           |
+| GitHub                                  | Ordinary release-check traffic                                                                        | Periodic update checks                                     | Disable automatic update checks in settings                                                                                                                                                                                                                                                                                                    |
 
-One feature you start yourself sits outside that table: background recapture. It runs only when you choose **Recapture current page**, **Paste URLs to capture**, or **Recapture** on a capture, a selection, or a capture-health entry. It downloads public cookie-banner filter lists, then loads each page from the app rather than from your browser. Don't use it if that disclosure matters to you. That table plus background recapture is the complete list of outbound connections Birdbrain can make. There is no telemetry, no account, and no other network activity.
+One feature you start yourself sits outside that table: background recapture. It runs only when you choose **Recapture current page**, **Paste URLs to capture**, or **Recapture** on a capture, a selection, or a capture-health entry. It downloads public cookie-banner filter lists, then loads each page from the app rather than from your browser. Don't use it if that disclosure matters to you. That table plus background recapture is the complete list of outbound connections Birdbrain can make. Birdbrain has no telemetry, no account, and no other network activity.
 
-Read that table with your adversary in mind. Nothing in it sends captured content anywhere by default. But the timestamp authority learns that *someone at your IP is capturing evidence at these times*, and the TLS corroboration step means your machine contacts the target site a second time, outside your browser.
+Read that table with your adversary in mind. Nothing in it sends captured content anywhere by default. But the timestamp authority learns that _someone at your IP is capturing evidence at these times_, and the TLS corroboration step means your machine contacts the target site a second time, outside your browser.
 
 **The network-identity warning.** If you browse through a VPN or Tor but run the desktop app on your bare connection, the app's outbound requests (timestamps, TLS corroboration, update checks) take your real network route. Route the whole machine, not just the browser, or the split will undo your browser-level anonymity. This is a common way a careful browser setup gets betrayed by a helpful desktop tool, and Birdbrain is not exempt.
 
@@ -80,7 +80,7 @@ Read that table with your adversary in mind. Nothing in it sends captured conten
 
 ## Working as a small group without a server
 
-Birdbrain has no shared server, no user accounts, and no access control, and for your situation that is the point. There is no central thing to compromise. Group workflows happen through files.
+Birdbrain has no shared server, no user accounts, and no access control, and for your situation that is the point. An attacker has no central service to compromise. Group workflows happen through files.
 
 - **Case archives.** A case exports to a single `.birdbrain` archive and imports on another member's installation. The import is recorded in the receiving machine's custody chain along with the sender's public verification key, so the history stays checkable across the handoff: your colleague's captures verify against their key, yours against yours. Custody does not silently reset when evidence changes hands.
 - **Division of labor.** A workable pattern for a three-person group: collectors capture into their own cases and export them as archives, one member imports each archive, and exports for publication come from that machine. Each import creates a separate case; Birdbrain does not merge cases. Every step stays on hardware your group controls.
@@ -92,7 +92,7 @@ What you give up without a server: simultaneous editing, central assignment, and
 
 Candor is the project's stated policy, so here is the list:
 
-- **A compromised computer.** If your machine has malware or an attacker with your login, no application-level integrity scheme saves you. The evidence chain proves tampering happened *after* capture; it cannot make a hostile machine trustworthy *during* capture.
+- **A compromised computer.** If your machine has malware or an attacker with your login, no application-level integrity scheme saves you. The evidence chain proves tampering happened _after_ capture; it cannot make a hostile machine trustworthy _during_ capture.
 - **Yourself, mostly.** A person who controls the machine can discard everything and fabricate a fresh, internally consistent history. External timestamps are the main constraint: a fabrication cannot carry a trusted time earlier than the moment it was actually stamped, which is precisely why you should timestamp promptly and export early. Give copies of evidence packages to people outside the blast radius.
 - **Legal admissibility.** The tool produces strong technical provenance. Whether a specific court accepts it is a question for a lawyer in your jurisdiction, not a promise software can make.
 - **Content truth.** A perfect capture of a lie is still a lie. Birdbrain proves what a page said and when you captured it, not that the page was accurate.

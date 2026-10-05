@@ -16,7 +16,7 @@ compound each other:
    devtools console that packaged testers never open. `docs/specs/2026-04-12-logging-design.md`
    approved a fix in April; it was never built, and the tester rollout brief records the
    consequence — reports "lean on repro steps and screenshots, not log attachments."
-2. **No crash is captured.** There is no `uncaughtException`, `unhandledRejection`,
+2. **No crash is captured.** The app has no `uncaughtException`, `unhandledRejection`,
    `render-process-gone`, `child-process-gone`, or React error boundary anywhere in the
    codebase. A renderer crash is a white screen with zero forensic trace.
 3. **No failure is visible.** [`queries.ts`](../../src/renderer/lib/queries.ts) defines 29
@@ -170,7 +170,7 @@ promises requires an allowlist, so:
 
 **The durable log carries no free-form text at all.** An entry's `code` is a member of a
 fixed `LOG_CODES` union, its `source` a member of a fixed `LOG_SOURCES` union, and its
-context keys are drawn from a fixed `LOG_CONTEXT_KEYS` union with branded values. There is
+context keys are drawn from a fixed `LOG_CONTEXT_KEYS` union with branded values. The event has
 no field a call site can write arbitrary text into, so no regex has to be correct for the
 invariant to hold.
 

@@ -17,7 +17,9 @@ The corporate and open source style guides converge on a small set of rules that
 - Use the serial comma and standard American spelling. Microsoft's "Remember the last comma" tip and Google's "Use serial commas" and "Use standard American spelling and punctuation" lines match; Kubernetes and GitLab both mandate U.S. English (Kubernetes style guide; GitLab style guide).
 - Format technical objects consistently: code font for code, commands, filenames, and paths; bold for UI elements; unambiguous placeholders. Google's highlights page and the Kubernetes style guide carry near-identical rules, and Kubernetes adds angle-bracket placeholders with an instruction to tell the reader what each placeholder represents (https://kubernetes.io/docs/contribute/style/style-guide/).
 - Write inclusively and for a global audience. MDN gives concrete substitutions (allowlist/denylist, main/replica, placeholder for dummy) and prefers gender-neutral pronouns or pronoun-free rewrites (MDN writing style guide). Django requires singular "they" for hypothetical users (https://docs.djangoproject.com/en/5.2/internals/contributing/writing-documentation/). Both MDN and the Write the Docs style guide page flag violent or animal-cruelty idioms as confusing for non-native speakers, with Write the Docs carving out established technical terms such as the Unix "kill" signal (https://www.writethedocs.org/guide/writing/style-guides/).
+<!-- vale Birdbrain.Filler = NO -->
 - Do not market. GitLab is the bluntest source: "Do not use words like easily or simply" and no phrases like "This feature will save you time and money"; state facts and achievable goals instead (GitLab style guide, "Building trust").
+<!-- vale Birdbrain.Filler = YES -->
 
 ### Where the guides differ
 
@@ -54,14 +56,18 @@ This is a prescriptive style guide in the corporate register. Adopt it when you 
 - You MUST write in present tense. AVOID "will" for product behavior.
 - You SHOULD start instructions with a verb. AVOID openers such as "You can" when the sentence works without them.
 - You MUST NOT use "there is," "there are," or "there were" as sentence openers.
+<!-- vale Birdbrain.Filler = NO -->
 - You MUST NOT use marketing language. AVOID "easily," "simply," "powerful," and any claim about how the reader will feel.
+<!-- vale Birdbrain.Filler = YES -->
 - You MUST NOT pre-announce features that have not shipped.
 
 ### Sentences and words
 
 - You MUST keep one idea per sentence. Sentences longer than roughly 25 words SHOULD be split.
 - You MUST put the condition before the instruction. Write "If the build fails, check the log," never the reverse.
+<!-- vale Birdbrain.Plain = NO -->
 - You MUST prefer the plain word: "use" over "utilize," "because" over "since" (reserve "since" for time), "about" over "approximately."
+<!-- vale Birdbrain.Plain = YES -->
 - You MUST NOT use Latin abbreviations such as `e.g.` and `i.e.`. Write "for example" and "that is."
 - You MUST NOT use idioms, humor that depends on culture, or figurative violence. These fail for translated and non-native readers.
 - You MUST expand an acronym on first use in a page, then use the acronym alone.
@@ -177,7 +183,9 @@ The register to aim for is a knowledgeable colleague at a whiteboard: conversati
 
 - Say "you." The reader is a person doing something, not "the user" being described from orbit.
 - Use contractions where they sound natural. "It's" and "you'll" read as human; avoiding them reads as legal copy.
+<!-- vale Birdbrain.Filler = NO -->
 - Never talk up the product. The moment docs say "simply" or "easily," the reader who is stuck feels lied to. GitLab bans those words outright and tells writers to state facts and achievable goals instead (https://docs.gitlab.com/development/documentation/styleguide/). Trust is the entire asset of documentation; spend it on nothing.
+<!-- vale Birdbrain.Filler = YES -->
 - Plain words beat impressive words. If a sentence would embarrass you spoken aloud to a colleague, rewrite it.
 
 ### Show, then tell
@@ -192,7 +200,7 @@ Examples carry more information than descriptions of examples. The MDN guidance 
 
 Your audience is global, multilingual, and diverse, and prose that ignores this quietly excludes people. The fixes are cheap:
 
-- Use gender-neutral language. Django's rule is simply "they" for any hypothetical person (https://docs.djangoproject.com/en/5.2/internals/contributing/writing-documentation/); MDN adds that rewriting to remove the pronoun entirely is often the best version (MDN writing style guide).
+- Use gender-neutral language. Django's rule is "they" for any hypothetical person (https://docs.djangoproject.com/en/5.2/internals/contributing/writing-documentation/); MDN adds that rewriting to remove the pronoun entirely is often the best version (MDN writing style guide).
 - Replace loaded terms: allowlist and denylist, main and replica, placeholder for dummy (MDN writing style guide).
 - Skip idioms. "Kill two birds with one stone" costs a non-native reader a dictionary trip and gains you nothing; Write the Docs suggests "accomplish two things at once," while noting that real technical terms like the Unix `kill` command are not up for replacement (https://www.writethedocs.org/guide/writing/style-guides/).
 - Write alt text for every image, and prefer text to screenshots when either would do (https://developers.google.com/style/highlights).

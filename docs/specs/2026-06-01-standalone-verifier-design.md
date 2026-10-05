@@ -251,7 +251,7 @@ timestamp result "structural (imprint / bytes) — run `openssl ts -verify` for
 canonical TSA verification."
 
 ### Decision 5 — Screenshots are chain-covered
-Per your choice, screenshots become first-class **chained** artifacts (stronger
+Per your choice, screenshots become independently represented **chained** artifacts (stronger
 than evidence.json-only hashing, because the chain is RSA-signed). This
 implements the `screenshotHash` slice of #118:
 
@@ -461,7 +461,7 @@ The unsigned index must agree with the verified truth:
 
 Before any of the above, `evidence.json` is parsed and structurally validated
 against a new minimal zod schema covering the fields the verifier consumes
-(`verificationMaterials.manifestHead*`, `captures[].id`, `artifacts[]`). There is
+(`verificationMaterials.manifestHead*`, `captures[].id`, `artifacts[]`). The schema has
 no schema for `evidence.json` today — it is emitted by a bare `JSON.stringify` in
 `buildEvidenceZip` — so PR2 adds `EvidencePackageSchema` to `src/shared/schemas.ts`
 and (ideally) asserts it in the export test. An unparseable/invalid index is itself

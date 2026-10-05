@@ -251,9 +251,11 @@ procedures reward guessing over acknowledging uncertainty."
 - The attack name: "Slopsquatting - when an LLM hallucinates a non-existent package name, and a
   bad actor registers it maliciously. The AI brother of typosquatting. Credit to @sethmlarson for
   the name" (Andrew Nesbitt, Mastodon, April 8, 2025).
+<!-- vale Birdbrain.Filler = NO -->
 - API-level hallucination: Liu et al., arXiv 2404.00971, build "a comprehensive taxonomy of code
   hallucinations, encompassing 3 primary categories and 12 specific categories"; Ye et al.,
   arXiv 2605.13280, list "Unknown API usage" among LLM-specific readability issues.
+<!-- vale Birdbrain.Filler = YES -->
 
 **How to detect it.** Any new dependency must resolve against the registry and the lockfile must
 change in the same PR; a new import with no lockfile delta is the tell (this note). Typecheck
@@ -407,9 +409,11 @@ that overclaim; replies that answer questions with more generated text.
   legitimate," often flag turned-off features as vulnerabilities, come from new accounts, and are
   "submitted without human review." His advice is proportional effort: "Reply with a short response
   and close the report."
+<!-- vale Birdbrain.Filler = NO -->
 - Sycophantic register has a documented cause: Sharma et al. (Anthropic, arXiv 2310.13548) find
   "five state-of-the-art AI assistants consistently exhibit sycophancy" and that in human
   preference data "when a response matches a user's views, it is more likely to be preferred."
+<!-- vale Birdbrain.Filler = YES -->
 - Stack Overflow 2025 survey (49,000+ respondents): 66% name "AI solutions that are almost right,
   but not quite" as their top frustration; 45.2% say "Debugging AI-generated code is more
   time-consuming"; 3.1% "highly trust" AI accuracy.
@@ -433,8 +437,10 @@ them widely. Treat as hypotheses until sourced.
 - "Simplified version" and `TODO: implement` stubs presented as complete. Closest sourced
   statements: Sonnet 4.5's "stubbing in placeholder solutions" and METR's `gives_up` category.
 - Backward-compatibility shims for code that never shipped, and premature configuration options.
+<!-- vale Birdbrain.Filler = NO -->
 - Marketing register ("comprehensive," "robust") in PR bodies. Ghostty's "overly verbose" and the
   arXiv 2601.00477 verbosity finding are adjacent but do not measure register.
+<!-- vale Birdbrain.Filler = YES -->
 - Deleting or skipping a failing test outright. The system cards measure hard-coding,
   mock-verifying tests, and workarounds; none reports a test-deletion rate.
 
@@ -448,10 +454,12 @@ them widely. Treat as hypotheses until sourced.
   Idialu et al., "Whodunit," arXiv 2403.04013 (March 2024): code style features distinguish GPT-4
   from human CodeChef solutions at F1 and AUC-ROC 0.91; 0.89 after excluding gameable features
   such as empty lines and whitespace.
+<!-- vale Birdbrain.Filler = NO -->
 - Tihanyi et al., arXiv 2510.10493 (Oct 2025): 50,000 Node.js programs from 20 models; CodeT5-JSA
   reaches 95.8% five-class, 94.6% ten-class, 88.5% twenty-class attribution, robust to "code
   mangling, comment removal, and substantial transformations," because classifiers "capture deeper
   stylistic regularities in program dataflow and structure."
+<!-- vale Birdbrain.Filler = YES -->
 - Mao et al., arXiv 2603.27130 (March 2026) caution that in real repositories code-level
   differences are "rather small," which limits what any detector can do on merged code.
 
@@ -632,7 +640,9 @@ Studies and papers:
 14. [He et al., Speed at the Cost of Quality, Cursor difference-in-differences (arXiv 2511.04427)](https://arxiv.org/abs/2511.04427), with [HTML v3](https://arxiv.org/html/2511.04427v3)
 15. [Agarwal et al., AI IDEs or Autonomous Agents? (arXiv 2601.13597)](https://arxiv.org/abs/2601.13597)
 16. [Kashif et al., Design Issues in AI IDE-Generated Large-Scale Projects (arXiv 2604.06373)](https://arxiv.org/abs/2604.06373)
+<!-- vale Birdbrain.Filler = NO -->
 17. [Mao et al., A Large-Scale Comprehensive Measurement of AI-Generated Code (arXiv 2603.27130)](https://arxiv.org/abs/2603.27130)
+<!-- vale Birdbrain.Filler = YES -->
 18. [Cotroneo et al., Human-Written vs. AI-Generated Code (arXiv 2508.21634)](https://arxiv.org/abs/2508.21634)
 19. [Santa Molison et al., Is LLM-Generated Code More Maintainable and Reliable? (arXiv 2508.00700)](https://arxiv.org/abs/2508.00700)
 20. [Ji et al., LLM-Generated Code and Comments in Code Repositories (arXiv 2607.01867)](https://arxiv.org/abs/2607.01867)

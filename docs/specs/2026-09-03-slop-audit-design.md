@@ -184,7 +184,7 @@ and the promotion is recorded in this document with the pull request that motiva
 ### Allowlist
 
 `slop-audit-allowlist.json` at the repository root holds `{ id, path, line?, reason }` entries.
-`reason` is required and non-empty. There is no expiry field: an entry states that a line is
+`reason` is required and non-empty. An entry has no expiry field: it states that a line is
 not slop, which is a classification and not a deferral, unlike the dated exceptions in
 `audit-exceptions.json`. Entries that match nothing are reported so the file does not rot.
 

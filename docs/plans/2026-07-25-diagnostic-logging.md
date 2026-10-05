@@ -20,7 +20,7 @@ do not constrain context *keys*). See the spec section "No free-form prose reach
 Every task below obeys these rules:
 
 - An entry's `code` comes from the fixed `LOG_CODES` union, `source` from `LOG_SOURCES`,
-  and context keys from `LOG_CONTEXT_KEYS`. There is no arbitrary-text field.
+  and context keys from `LOG_CONTEXT_KEYS`. The event has no arbitrary-text field.
 - `err.message` is **never** persisted. Only `err.name` validated against `ERROR_NAMES`
   and `err.code` matching the `code()` pattern survive, plus app-relative stack frames.
 - Human prose lives only in ephemeral UI: `notify` toasts and `LogTab` labels.
@@ -81,7 +81,7 @@ updated by hand.
 
   Run **both** in every task's verify step — `tsconfig.node.json` covers `src/main`,
   `src/preload` and `src/shared`; `tsconfig.web.json` covers the renderer. A task that
-  reports "build and lint pass" has not been typechecked. There is no `typecheck` script
+  reports "build and lint pass" has not been typechecked. The project has no `typecheck` script
   in `package.json`; adding one is worth doing but is outside this plan's scope.
 - **Test file placement is load-bearing.** `vitest.config.ts` defines two projects with strict includes. A test in the wrong directory is silently never run:
   - `tests/**/*.test.ts` outside `tests/renderer/` and `tests/hooks/` → **node** project (`environment: 'node'`). Main-process tests go here.
@@ -1408,7 +1408,7 @@ Then find where the main `BrowserWindow` is created (around line 35) and, wherev
     setLoggerWindow(win)
 ```
 
-**There are two such places, and the second is easy to miss.** `app.on('activate')` at `src/main/index.ts:251-254` calls `setMainWindow(createWindow())` when a macOS user reopens the app after closing the last window. Without the logger equivalent there, the logger keeps a destroyed window, `webContents.send` is skipped for the rest of the session, and every main-process warning and error after reopening produces no toast and no live Log-tab row. Pair them:
+**Two such places exist, and the second is easy to miss.** `app.on('activate')` at `src/main/index.ts:251-254` calls `setMainWindow(createWindow())` when a macOS user reopens the app after closing the last window. Without the logger equivalent there, the logger keeps a destroyed window, `webContents.send` is skipped for the rest of the session, and every main-process warning and error after reopening produces no toast and no live Log-tab row. Pair them:
 
 ```typescript
     app.on('activate', () => {
@@ -2490,7 +2490,7 @@ In `src/renderer/lib/queries.ts`, add a `meta` field to each of the 28 `useMutat
     meta: { action: 'delete capture' }
 ```
 
-This is additive. Any hook missed simply falls back to the generic message, so the task is complete and shippable even if a few are left for later — but do all 28 now.
+This is additive. Any hook missed falls back to the generic message, so the task is complete and shippable even if a few are left for later — but do all 28 now.
 
 - [ ] **Step 5: Verify and commit**
 

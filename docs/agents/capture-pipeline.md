@@ -96,7 +96,7 @@ One multipart/form-data endpoint for all sources, validated by `CaptureUploadSch
 | `httpStatus` | The status `webRequest` reported for that main-frame response; omitted when the extension observed none |
 | `browserVersion`, `userAgent`, `extensionVersion` | Provenance fields |
 
-There is no final-URL field. The extension reads `url` from the tab after the navigation has
+The record has no final-URL field. The extension reads `url` from the tab after the navigation has
 settled, so it is already the post-redirect URL and the extension holds no requested URL to
 compare it against. Sending one would restate `url` under a name that claims a redirect was
 observed, so the field stays absent on this path and is written only by the background renderer,
@@ -336,7 +336,7 @@ What a finding establishes is bounded, and the panel says so: the chain verifies
 still present. Whether the capture's files are still on disk is **not** part of the claim — the
 check never reads them.
 
-There is no automatic repair, because the manifest holds the claim rather than the data:
+Birdbrain performs no automatic repair, because the manifest holds the claim rather than the data:
 truncating the entry would be a lie if the files are in fact already gone. The recovery action is
 to **delete the capture again from its case**. That appends a fresh signed deletion entry and
 removes the row; it succeeds whether or not the files survived, because each unlink is guarded by
@@ -429,7 +429,7 @@ to the list without a refetch.
 Chains written before the sandbox landed hold what the self-test of the day put in the first case
 in the list, and there are two eras of it. The earlier of the two deleted the capture row and its
 artifacts directly and recorded no deletion at all, so those chains hold a bare `capture` entry as
-a matter of course rather than through any failure — these are the entries the export's
+as part of normal operation rather than through any failure — these are the entries the export's
 unreconciled-entry disclosure was written to explain. A later self-test routed its cleanup through
 the deletion path with the reason `pipeline-test`, so those chains hold a matching `capture` and
 `deletion` pair, or a bare `capture` entry where that cleanup failed.

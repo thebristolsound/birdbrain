@@ -10,7 +10,7 @@ vulnerability, do **not** open a public issue — see [SECURITY.md](SECURITY.md)
 ## Maintainer capacity
 
 Birdbrain has one maintainer. Issues and pull requests are handled on a best-effort
-basis, usually within a week, sometimes longer. There is no response-time guarantee
+basis, usually within a week, sometimes longer. The project makes no response-time guarantee
 and no support contract. A quiet issue is a busy maintainer, not a rejection.
 
 ## Supported scope
@@ -104,6 +104,6 @@ Expect slower, stricter review on these paths — that is by design.
 
 Birdbrain is licensed under the [MIT License](LICENSE), and contributions follow the
 GitHub-default inbound = outbound model: by submitting a contribution, you agree it
-is licensed under the same MIT terms as the project. There is no CLA and no DCO
+is licensed under the same MIT terms as the project. The project has no CLA and no DCO
 sign-off. Submit only work you have the right to contribute — your own, or code
 whose license permits inclusion under MIT (say so in the PR if it is the latter).

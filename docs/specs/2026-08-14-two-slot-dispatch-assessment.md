@@ -89,7 +89,7 @@ Throughput is set by the slowest stage. A second slot doubles the rate at which 
 a human gate that is already saturated, and every one of them carries the same review cost.
 The queue in front of the gate gets longer; nothing ships sooner.
 
-There is a real anti-benefit here too. Two concurrent PRs each needing five review rounds is
+The change also has a real anti-benefit. Two concurrent PRs each needing five review rounds is
 worse than one PR needing five, because context-switching between two half-reviewed evidence
 paths is where reviewers miss things — and the #423 history is a five-round demonstration that
 this reviewer misses things when the state space grows.

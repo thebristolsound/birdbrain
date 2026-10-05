@@ -108,12 +108,14 @@ describe his tooling more than his reasoning.
 
 ### Network isolation
 
+<!-- vale Birdbrain.Assurance = NO -->
 - **VPN at the network edge, not only in the browser.** The IntelTechniques VPN page recommends
   Proton VPN "for secure VPN access on desktop, mobile, and within a pfSense firewall," and ends
   "No VPN is 100% bulletproof" ([vpn.html](https://inteltechniques.com/vpn.html), undated,
   fetched 2026-09-28). The firewall guide "assumes you want to create a firewall which protects
   all devices on your network with a VPN," and its 2026 revision says "we now highly recommend
   the Wireguard protocol instead of OpenVPN" ([firewall/](https://inteltechniques.com/firewall/)).
+<!-- vale Birdbrain.Assurance = YES -->
 - **The VPN sits on the host; the VM inherits it.** The eleventh-edition build file installs Proton
   VPN in its "macOS HOST CONFIGURATION" section (`brew install --cask protonvpn`, line 33) and
   has no VPN step inside the VM

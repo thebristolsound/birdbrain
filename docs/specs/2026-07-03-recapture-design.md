@@ -10,7 +10,7 @@ Two gaps in the current capture flow:
 1. **Thin captures.** A capture can miss lazy-loaded content, or the screenshot can fail or be
    dropped for size. Today the only fix is to revisit the page in Chrome and capture again by hand.
 2. **Capture requires visiting.** Every capture requires the operator to open the page in their
-   own browser with the extension attached. There is no way to capture a URL (or a list of URLs)
+   own browser with the extension attached. Birdbrain cannot capture a URL (or a list of URLs)
    without visiting it — a tradecraft and safety gap.
 
 ## Goals

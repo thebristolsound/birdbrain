@@ -51,7 +51,7 @@ The spec was written before Phase 1 landed. These were re-checked on
 ## Decision the spec left implicit: what a text anchor resolves against
 
 The spec says resolution runs "against the capture's extracted text sidecar".
-There are now **two** copies of a capture's text, and they are not
+The system now has **two** copies of a capture's text, and they are not
 interchangeable:
 
 1. **The `.txt` sidecar on disk**, written by `captureStore.writeText`

@@ -90,7 +90,7 @@ runs `jq` on it (`:39-55`), and checks the runbook spells the subject test (`:57
 
 ### Order of work
 
-The leverage is in the tests and the report, so they come first. The conformance table (slice 1)
+The tests and the report have the greatest effect, so they come first. The conformance table (slice 1)
 is tests only. The report fix (slice 3) is the user-visible change. The step model (slice 4)
 comes after, when the references it replaces are known to be right.
 

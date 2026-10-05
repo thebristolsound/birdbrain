@@ -55,7 +55,7 @@ the treatment**, or confirm the invented one.
 Two problems in the same card, both reachable in a real Case.
 
 `noteAngle` (template 14169) divides by `notes.length`, so a Case with no notes yields `NaN`
-coordinates, and the card renders the lattice unconditionally. There is no empty state for either
+coordinates, and the card renders the lattice unconditionally. The card has no empty state for either
 no-notes or no-Mentions.
 
 The lattice snap places notes at `row = Math.max(0, Math.min(ROWS - 1, 1 + noteN * 3))` (template
@@ -115,7 +115,7 @@ Signals row, or confirm the padding is the specification.**
 
 One pair of lines, two separate defects.
 
-Template 13565-13566 reads `the global ignore list (12 entries, Settings → Privacy)`. There is no
+Template 13565-13566 reads `the global ignore list (12 entries, Settings → Privacy)`. The app has no
 Privacy section in Settings; the global list lives under Capture Preferences. The `12 entries` is
 mock seed data, not a real count.
 
@@ -242,7 +242,7 @@ defect later.
    Nothing hashes a MIME part in this app, at capture time or since; only the whole MHTML file is
    anchored in the manifest. The column is computed over the raw encoded bytes at display time and
    says so, with no shield and no use of the word verified. Ruling R6.
-9. **The part context menu's `Verify against manifest` item is dropped** (template 15710). There is
+9. **The part context menu's `Verify against manifest` item is dropped** (template 15710). The app has
    nothing per-part in the manifest to verify against. Ruling R6.
 10. **The Headers and TLS Request panel is reduced to what the app actually captures**, which is the
     host and the user agent. No request headers and no HTTP verb exist anywhere in the schema, so

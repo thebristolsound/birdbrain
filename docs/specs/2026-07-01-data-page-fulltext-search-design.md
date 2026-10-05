@@ -6,7 +6,7 @@
 
 ## Problem
 
-The **Data** page (`DataExplorer.tsx`) is a three-column drill-down (Categories → Subcategories → Items) over the `extracted_data` table — extracted indicators such as emails, IPs, domains, and hashes. There is currently no search: finding a specific indicator requires clicking through columns. Users need a fast, responsive full-text search box that works at any dataset scale.
+The **Data** page (`DataExplorer.tsx`) is a three-column drill-down (Categories → Subcategories → Items) over the `extracted_data` table — extracted indicators such as emails, IPs, domains, and hashes. The page currently has no search: finding a specific indicator requires clicking through columns. Users need a fast, responsive full-text search box that works at any dataset scale.
 
 ## Requirements
 

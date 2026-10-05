@@ -42,7 +42,7 @@ I re-verified every blocking claim against the branches myself. Citations below 
 ### Blocking
 
 **B1 · #712 · `src/renderer/components/signals/signalsModel.ts:114` (and `captureServer.ts:344`)**
-Footer: *"Matching pages are never captured for this case, by any route, including manual capture."* Verified: the only enforcement site is `captureServer.ts:351`; `git grep -l matchIgnoredUrl\|resolveEffectiveIgnorePatterns` on the branch returns `captureServer.ts`, `urlPatterns.ts`, `extension/background.ts` and nothing else. `recapture.ts:123` calls `captureLifecycle.ingest` directly, reachable live from `CaptureMenu.tsx:163 -> AddUrlsBox -> ipcHandlers.ts:702` and from bulk recapture at `:718`. `recapture` is a first-class `CaptureSource` and `recapture.ts` is itself on the evidence path list.
+Footer: *"Matching pages are never captured for this case, by any route, including manual capture."* Verified: the only enforcement site is `captureServer.ts:351`; `git grep -l matchIgnoredUrl\|resolveEffectiveIgnorePatterns` on the branch returns `captureServer.ts`, `urlPatterns.ts`, `extension/background.ts` and nothing else. `recapture.ts:123` calls `captureLifecycle.ingest` directly, reachable live from `CaptureMenu.tsx:163 -> AddUrlsBox -> ipcHandlers.ts:702` and from bulk recapture at `:718`. `recapture` is a distinct `CaptureSource` and `recapture.ts` is itself on the evidence path list.
 **Fix:** enforce at the recapture seam (reject/skip with a `skipped` CaptureEvent for parity), or narrow both strings to the routes actually covered and file the gap.
 
 **B2 · #713 · `src/renderer/components/notes/mention/mentionModel.ts:40`**

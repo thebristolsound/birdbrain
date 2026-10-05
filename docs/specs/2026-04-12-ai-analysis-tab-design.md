@@ -5,7 +5,7 @@
 
 ## Context
 
-Birdbrain previously had an AI-powered entity extraction system (removed March 2026, migration v7) that automatically extracted entities from captures. The system was over-engineered for what was needed. The OpenRouter integration infrastructure (`sendPrompt`, `testApiKey`, `listModels`, `truncateForContext`) remains intact but unused — the AI settings UI is stubbed with a placeholder message.
+Birdbrain previously had an entity extraction system that used AI models (removed March 2026, migration v7) to extract entities from captures automatically. The system was over-engineered for what was needed. The OpenRouter integration infrastructure (`sendPrompt`, `testApiKey`, `listModels`, `truncateForContext`) remains intact but unused — the AI settings UI is stubbed with a placeholder message.
 
 This spec brings AI back in the simplest useful form: a per-capture analysis tab where investigators click a button to get an AI-generated assessment of a capture, informed by the case context and capture metadata. The system prompt is fully configurable by the user. Results are ephemeral by default with an option to save to the database or copy to a case Note.
 

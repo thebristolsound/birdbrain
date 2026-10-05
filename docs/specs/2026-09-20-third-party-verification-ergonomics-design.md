@@ -21,7 +21,7 @@ INCOMPLETE line at the end (`src/main/services/verifyScript.ts`). A recipient sc
 several-hundred-line transcript to find out whether it passed reads the whole thing as a problem
 report.
 
-**A selection looks like a failure.** Selection scope is a first-class, signed property: the
+**A selection looks like a failure.** Selection scope is recorded as its own signed property: the
 export writes `scope: "selection"` and the selected ids into `export-entry.json`
 (`src/main/services/export.ts`), and the verifier trusts that list only after the entry's
 signature validates (`src/shared/verify/evidencePackage.ts`). Everything outside the selection is
@@ -67,7 +67,7 @@ composes them by hand.
 
 ### Verdict header
 
-The verdict is not known until the last check has run, so the script cannot simply print it
+The verdict is not known until the last check has run, so the script cannot print it
 first. It buffers the per-check lines to a temporary file, prints the verdict line, then prints
 the detail. The script already uses `mktemp` and already cleans up on an `EXIT` trap, so this
 adds no new required tool.

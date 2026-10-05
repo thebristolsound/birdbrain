@@ -43,9 +43,6 @@ an experimental macOS build, and is in public beta.
 
 Birdbrain has no account and no telemetry. Captures leave the machine only when you export
 them.
-
-![An exported evidence report open in a browser](website/content/images/screenshot-export.png)
-
 ### What verification shows
 
 A verified chain shows that nobody changed the record without the install's signing key. It

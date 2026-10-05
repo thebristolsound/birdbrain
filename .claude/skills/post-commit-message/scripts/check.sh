@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Branch-commit message check. Two modes:
-#   check.sh <message-file>   lint the file and exit 0/1
+#   check.sh <message-file>   lint the file and exit 0/1 (3: dependencies not installed)
 #   check.sh                  PreToolUse hook: read the tool call on stdin, act on `git commit`
 # Hook exit codes: 0 allows the command, 2 blocks it and feeds stderr back to the agent.
 set -u
@@ -16,6 +16,12 @@ lint() {
   if [ ! -f "$file" ]; then
     echo "post-commit-message: message file not found: $file" >&2
     return 1
+  fi
+  # A missing linter is not a bad message: say so, with its own exit code, so the agent
+  # installs dependencies instead of rewriting a message that may be fine.
+  if [ ! -x "$root/node_modules/.bin/commitlint" ]; then
+    echo "post-commit-message: commitlint is not installed in $root, so the message was not checked. Run scripts/setup-worktree.sh, then re-run the same command." >&2
+    return 3
   fi
   if out="$(cd "$root" && pnpm exec commitlint --edit "$file" 2>&1)"; then
     return 0

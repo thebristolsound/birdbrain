@@ -105,6 +105,11 @@ if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   if [ -x "$TEARDOWN" ]; then
     (cd "$PROJECT_DIR" && timeout 15 "$TEARDOWN" sweep --count 2>/dev/null) || log "teardown count skipped (timed out or failed)"
   fi
+  # A t3code worktree gets dependencies from scripts/setup-worktree.sh at creation. When that
+  # did not run, the first failure is a posting check reporting a missing linter, so say it here.
+  if [ ! -d "$PROJECT_DIR/node_modules" ]; then
+    log "WARNING: node_modules is missing. Run scripts/setup-worktree.sh before lint, test or commit."
+  fi
   exit 0
 fi
 

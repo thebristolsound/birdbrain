@@ -1,0 +1,30 @@
+extends: substitution
+message: "Use the CONTEXT.md term '%s' instead of '%s'."
+link: https://github.com/thebristolsound/birdbrain/blob/main/CONTEXT.md
+level: suggestion
+ignorecase: true
+# Only the multi-word _Avoid_ synonyms from CONTEXT.md that have no other
+# meaning in this repository. Single common words (page, user, export) stay
+# review criteria: a pattern cannot tell the drifted use from the ordinary one.
+swap:
+  case file: Case Archive
+  ingest server: Capture Server
+  capture API: Capture Server
+  (?:current|selected) case: Active Case
+  capture (?:service|manager): Capture Lifecycle
+  capture (?:type|mode): Capture Method
+  text sidecar: Extracted Text
+  audit log: Manifest
+  manifest record: Manifest Entry
+  (?:line|record) hash: Entry Hash
+  (?:file|capture) hash: Content Hash
+  timestamp status: Trusted Time
+  TSA response: Timestamp Token
+  (?:time server|timestamp service): TSA
+  verify status: Integrity Status
+  selector (?:service|manager): Selector Lifecycle
+  (?:selector hit|match record): Persisted Match
+  (?:live|instant) match: Foreground Match Preview
+  (?:export|bundle) hash: Package Hash
+  (?:package structure|zip layout): Package Layout
+  verification guide: Verify Runbook

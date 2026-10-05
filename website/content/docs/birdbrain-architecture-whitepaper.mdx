@@ -433,7 +433,7 @@ would alter Birdbrain's operating and trust model.
 Birdbrain treats captured web content, extension input, archive input, and
 external service responses as untrusted. The Electron main process performs
 privileged work. The renderer runs sandboxed and context-isolated, without Node
-integration. The application denies new windows, opens approved HTTP(S) links in
+integration. Birdbrain denies new windows, opens approved HTTP(S) links in
 the system browser, and constrains webview attachment and navigation.
 
 Binding to loopback does not make the Capture Server private, and the design
@@ -551,9 +551,9 @@ common Case, Capture, tag, format, Manifest, Note, analysis, and extracted-data
 queries. FTS5 provides local search without a separate indexing service.
 
 Large binary artifacts dominate storage and export cost. Hard request limits
-bound a single MHTML payload to 200 MB and a screenshot to 100 MB, but aggregate
-Case size is constrained by disk capacity and practical UI/export latency rather
-than a configured quota.
+bound a single MHTML payload to 200 MB and a screenshot to 100 MB, but disk
+capacity and practical UI/export latency limit aggregate Case size, not a
+configured quota.
 
 ### Responsiveness and background work
 

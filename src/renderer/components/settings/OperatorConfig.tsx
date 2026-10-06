@@ -84,10 +84,14 @@ export function OperatorConfig() {
               }}
               onBlur={save}
               placeholder="e.g. Alex Smith"
+              aria-invalid={nameError ? true : undefined}
+              aria-describedby={nameError ? 'operator-name-error' : undefined}
               className={`border-border bg-surface${nameError ? ' border-red-500' : ''}`}
             />
             {nameError ? (
-              <p className="mt-1 text-[11px] text-red-500">{nameError}</p>
+              <p id="operator-name-error" role="alert" className="mt-1 text-[11px] text-red-500">
+                {nameError}
+              </p>
             ) : (
               <p className="mt-1 text-[11px] text-text-muted">
                 Required. Recorded in every capture's audit manifest and export report.

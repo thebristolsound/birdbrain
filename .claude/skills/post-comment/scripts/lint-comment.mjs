@@ -9,7 +9,7 @@ const GENERIC_CAP = 20
 const VERDICT_MAX_FINDINGS = 5
 const COMMIT_ID = /\b[0-9a-f]{7,40}\b/
 const BOT_TRIGGER = /^@(coderabbitai|codex) (review|full review|security review)$/
-// The trailing note an agent adds when posting as the maintainer (global agent instructions).
+// The leading note an agent adds when posting as the maintainer (global agent instructions).
 const DISCLOSURE = [/^> \[!NOTE\]$/, /^> [A-Z][\w.-]*( [A-Z][\w.-]*)? responding on behalf of Matt\.$/]
 const FORBIDDEN = [
   [/co-authored-by/i, 'a Co-authored-by trailer'],
@@ -101,6 +101,7 @@ export function lintComment(raw) {
   while (all.length && all[0].trim() === '') all.shift()
   stripDisclosure(all)
   if (!all.length) return ['comment is empty']
+  if (all.some((l) => DISCLOSURE[1].test(l))) findings.push('the disclosure note appears more than once or not first; keep one copy at the top')
 
   const first = all[0].trim()
   const kind = KINDS.find((k) => k.first.test(first))
@@ -142,10 +143,9 @@ export function lintComment(raw) {
 
 // Drops the disclosure note so it counts toward no kind's shape or line cap.
 function stripDisclosure(all) {
-  const n = all.length
-  if (n < 2 || !DISCLOSURE[0].test(all[n - 2]) || !DISCLOSURE[1].test(all[n - 1])) return
-  all.splice(n - 2)
-  while (all.length && all[all.length - 1].trim() === '') all.pop()
+  if (all.length < 2 || !DISCLOSURE[0].test(all[0]) || !DISCLOSURE[1].test(all[1])) return
+  all.splice(0, 2)
+  while (all.length && all[0].trim() === '') all.shift()
 }
 
 function bodyFromFile(path) {

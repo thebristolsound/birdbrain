@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useId } from 'react'
 import { v4 as uuid } from 'uuid'
 import { X } from 'lucide-react'
 import {
@@ -39,6 +39,7 @@ export function RowEditModal({
 }: RowEditModalProps) {
   const [formData, setFormData] = useState<Record<string, string>>({})
   const closeBtnRef = useRef<HTMLButtonElement>(null)
+  const idPrefix = useId()
 
   useEffect(() => {
     if (!open) return
@@ -106,12 +107,16 @@ export function RowEditModal({
         <form onSubmit={handleSubmit} className="space-y-3">
           {columns.map((col) => (
             <div key={col.name}>
-              <Label className="text-xs font-medium text-text-secondary">
+              <Label
+                htmlFor={`${idPrefix}-${col.name}`}
+                className="text-xs font-medium text-text-secondary"
+              >
                 {col.name}
                 {col.pk && <span className="ml-1 text-[10px] text-accent font-bold">PK</span>}
                 <span className="ml-1 text-[10px] text-text-faint">{col.type}</span>
               </Label>
               <Input
+                id={`${idPrefix}-${col.name}`}
                 type={inputType(col)}
                 value={formData[col.name] ?? ''}
                 onChange={(e) => setFormData((prev) => ({ ...prev, [col.name]: e.target.value }))}

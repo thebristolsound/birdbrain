@@ -2,7 +2,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
-import { Dialog, DialogContent } from '@renderer/components/ui'
+import { Dialog, DialogContent, DialogTitle } from '@renderer/components/ui'
 import { useAppStore } from '@renderer/stores/appStore'
 
 afterEach(() => {
@@ -65,6 +65,43 @@ function OpenerHarness({ children }: { children?: ReactNode }) {
     </>
   )
 }
+
+describe('Dialog accessible name (#1537)', () => {
+  it('is labelled at first render when the call site names the title id itself', () => {
+    render(
+      <Dialog open onOpenChange={() => {}}>
+        <DialogContent onClose={() => {}} aria-labelledby="own-title">
+          <DialogTitle id="own-title">Own title</DialogTitle>
+        </DialogContent>
+      </Dialog>
+    )
+    const dialog = screen.getByRole('dialog', { name: 'Own title' })
+    expect(dialog.getAttribute('aria-labelledby')).toBe('own-title')
+  })
+
+  it('follows a title that brings its own id', () => {
+    render(
+      <Dialog open onOpenChange={() => {}}>
+        <DialogContent onClose={() => {}}>
+          <DialogTitle id="own-title">Own title</DialogTitle>
+        </DialogContent>
+      </Dialog>
+    )
+    expect(screen.getByRole('dialog').getAttribute('aria-labelledby')).toBe('own-title')
+  })
+
+  it('lets an explicit aria-label win over the title', () => {
+    render(
+      <Dialog open onOpenChange={() => {}}>
+        <DialogContent onClose={() => {}} aria-label="Named outright">
+          <DialogTitle>Ignored for naming</DialogTitle>
+        </DialogContent>
+      </Dialog>
+    )
+    const dialog = screen.getByRole('dialog', { name: 'Named outright' })
+    expect(dialog.getAttribute('aria-labelledby')).toBeNull()
+  })
+})
 
 describe('Dialog focus trap', () => {
   it('moves focus to the first focusable inside when it opens', () => {

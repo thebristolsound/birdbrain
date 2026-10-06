@@ -49,6 +49,15 @@ afterEach(() => {
   cleanup()
 })
 
+describe('DbUtilities export controls (#1537)', () => {
+  it('names the table and format selects', async () => {
+    fakeBridge({ db: { snapshots: vi.fn().mockResolvedValue([]) } })
+    renderUtilities()
+    expect(screen.getByLabelText('Table to export').tagName).toBe('SELECT')
+    expect(screen.getByLabelText('Export format').tagName).toBe('SELECT')
+  })
+})
+
 describe('DbUtilities — pre-migration snapshots', () => {
   it('says a snapshot is written on the next upgrade when there are none', async () => {
     fakeBridge({ db: { snapshots: vi.fn().mockResolvedValue([]) } })

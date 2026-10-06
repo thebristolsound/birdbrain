@@ -27,6 +27,28 @@ afterEach(() => {
   cleanup()
 })
 
+describe('DbTables accessible names (#1537)', () => {
+  it('names the table picker, the pagination buttons and the row-editor fields', async () => {
+    const tableRows = vi
+      .fn()
+      .mockResolvedValue({ rows: [{ id: '1', value: 'one' }], total: 1, columns })
+    fakeBridge({ db: { tableRows } })
+    renderTables()
+    await screen.findByText('one')
+
+    expect(screen.getByLabelText('Table').tagName).toBe('SELECT')
+    expect(screen.getByRole('button', { name: 'Previous page' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Next page' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Edit row' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Delete row' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit row' }))
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByLabelText(/^id/).tagName).toBe('INPUT')
+    expect(within(dialog).getByLabelText(/^value/)).toHaveProperty('value', 'one')
+  })
+})
+
 describe('DbTables', () => {
   it('keeps the previous page of rows on screen while the next page is loading', async () => {
     // total: 51 with PAGE_SIZE 50 makes a second page reachable, so the Next

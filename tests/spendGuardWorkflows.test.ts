@@ -130,7 +130,8 @@ describe('spend guard on jobs that read a stored secret', () => {
       'health.yml check',
       'jev-lens.yml hunks',
       'jev-lens.yml triage',
-      'release-macos.yml build-macos'
+      'release-macos.yml build-macos',
+      'release-macos.yml refresh-checksums'
     ])
   })
 

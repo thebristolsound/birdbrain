@@ -1,3 +1,6 @@
+> [!NOTE]
+> Claude responding on behalf of Matt.
+
 Applied.
 
 <details>
@@ -6,6 +9,3 @@ Applied.
 4e9ed05e
 
 </details>
-
-> [!NOTE]
-> Claude responding on behalf of Matt.

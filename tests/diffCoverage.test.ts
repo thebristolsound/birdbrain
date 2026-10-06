@@ -91,6 +91,20 @@ describe('changedLinesByFile', () => {
     expect([...changed.keys()]).toEqual(['src/a.ts'])
     expect([...changed.get('src/a.ts')!]).toEqual([4])
   })
+
+  // A user's diff.mnemonicPrefix or diff.noprefix replaces the a/ and b/ path prefixes the
+  // parser reads, which made every changed file vanish from the score.
+  it.each(['diff.mnemonicPrefix', 'diff.noprefix'])(
+    'reads paths the same way when %s is set',
+    (setting) => {
+      git('config', setting, 'true')
+      write('src/a.ts', ['a1', 'a2 changed', 'a3', 'a4 added'])
+      git('commit', '-qam', 'change')
+      const changed: ChangedLines = changedLinesByFile(resolveMergeBase('main', repo), repo)
+      expect([...changed.keys()]).toEqual(['src/a.ts'])
+      expect([...changed.get('src/a.ts')!]).toEqual([2, 4])
+    }
+  )
 })
 
 describe('resolveMergeBase', () => {

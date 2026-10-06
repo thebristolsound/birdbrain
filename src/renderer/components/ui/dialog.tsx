@@ -5,7 +5,9 @@ import {
   useContext,
   useEffect,
   useLayoutEffect,
+  useId,
   useRef,
+  useState,
   type ComponentPropsWithoutRef,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
@@ -228,20 +230,22 @@ function DialogOverlay({ onClose }: { onClose: () => void }) {
 
 // Omit React HTML event handlers that conflict with framer-motion's types
 type MotionConflicts =
-  | 'onDrag'
-  | 'onDragStart'
-  | 'onDragEnd'
-  | 'onDragOver'
-  | 'onAnimationStart'
-  | 'onAnimationEnd'
+  'onDrag' | 'onDragStart' | 'onDragEnd' | 'onDragOver' | 'onAnimationStart' | 'onAnimationEnd'
 
 interface DialogContentProps extends Omit<ComponentPropsWithoutRef<'div'>, MotionConflicts> {
   onClose: () => void
 }
 
+const DialogTitleIdContext = createContext<{
+  titleId: string
+  setTitleId: (id: string) => void
+} | null>(null)
+
 const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
   ({ className, onClose, onKeyDown, children, ...props }, ref) => {
     const trapRef = useContext(DialogContentRefContext)
+    const defaultTitleId = useId()
+    const [titleId, setTitleId] = useState(defaultTitleId)
     const nodeRef = useRef<HTMLDivElement | null>(null)
 
     function setRef(node: HTMLDivElement | null) {
@@ -267,6 +271,10 @@ const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
             // whether a dialog is open reads `openDialogCount` instead (#686).
             role="dialog"
             aria-modal="true"
+            // Named by the DialogTitle rendered inside; an explicit aria-label or
+            // aria-labelledby on the call site wins, the latter at render time
+            // through the props spread below.
+            aria-labelledby={props['aria-label'] ? undefined : titleId}
             // Programmatically focusable so a dialog with nothing tabbable in
             // it still takes focus off the surface behind it.
             tabIndex={-1}
@@ -277,7 +285,9 @@ const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
             {...presets.modal}
             {...props}
           >
-            {children}
+            <DialogTitleIdContext.Provider value={{ titleId, setTitleId }}>
+              {children}
+            </DialogTitleIdContext.Provider>
           </motion.div>
         </div>
       </>
@@ -294,9 +304,28 @@ const DialogHeader = forwardRef<HTMLDivElement, ComponentPropsWithoutRef<'div'>>
 DialogHeader.displayName = 'DialogHeader'
 
 const DialogTitle = forwardRef<HTMLHeadingElement, ComponentPropsWithoutRef<'h3'>>(
-  ({ className, ...props }, ref) => (
-    <h3 className={cn('text-sm font-semibold text-text-primary', className)} ref={ref} {...props} />
-  )
+  ({ className, id, ...props }, ref) => {
+    const ctx = useContext(DialogTitleIdContext)
+    const setTitleId = ctx?.setTitleId
+    // A title that brings its own id re-points the dialog's label at it. A
+    // layout effect, not a passive one: the child's layout effect runs before
+    // the dialog's focus effect in the same commit, and the state it sets is
+    // flushed before paint, so the dialog never reaches the screen reader
+    // labelled by an id nothing carries. A call site that names its own title
+    // id should still pass aria-labelledby on DialogContent, which wins at
+    // render time (ConfirmDialog and RowEditModal do).
+    useLayoutEffect(() => {
+      if (id && setTitleId) setTitleId(id)
+    }, [id, setTitleId])
+    return (
+      <h3
+        id={id ?? ctx?.titleId}
+        className={cn('text-sm font-semibold text-text-primary', className)}
+        ref={ref}
+        {...props}
+      />
+    )
+  }
 )
 DialogTitle.displayName = 'DialogTitle'
 

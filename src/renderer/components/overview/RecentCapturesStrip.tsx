@@ -21,6 +21,17 @@ function isTampered(status?: Capture['lastVerifiedStatus']): boolean {
   return status === 'tampered' || status === 'chain-broken' || status === 'missing'
 }
 
+// Legacy HTML and Verifier too old match ProvenanceBadge's words; tampered,
+// chain-broken and missing collapse to Verification failed, since the shield
+// has one failure colour. Only an absent status has never been checked.
+function shieldLabelFor(status?: Capture['lastVerifiedStatus']): string {
+  if (status === 'verified') return 'Verified'
+  if (status === 'legacy') return 'Legacy HTML'
+  if (status === 'verifier-too-old') return 'Verifier too old'
+  if (isTampered(status)) return 'Verification failed'
+  return 'Not yet verified'
+}
+
 function RecentCaptureCard({
   capture,
   isNew,
@@ -34,6 +45,7 @@ function RecentCaptureCard({
   const verified = capture.lastVerifiedStatus === 'verified'
   const tampered = isTampered(capture.lastVerifiedStatus)
   const ShieldIcon = verified ? ShieldCheck : ShieldAlert
+  const shieldLabel = shieldLabelFor(capture.lastVerifiedStatus)
   const shieldColor = verified ? 'text-emerald-400' : tampered ? 'text-red-400' : 'text-amber-400'
 
   return (
@@ -49,7 +61,13 @@ function RecentCaptureCard({
           <div className="h-full w-full bg-gradient-to-br from-accent-subtle to-elevated" />
         )}
         <span className="absolute right-1.5 top-1.5 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-black/40">
-          <ShieldIcon size={11} strokeWidth={2} className={shieldColor} />
+          <ShieldIcon
+            size={11}
+            strokeWidth={2}
+            className={shieldColor}
+            aria-label={shieldLabel}
+            role="img"
+          />
         </span>
         {isNew ? (
           <span className="absolute left-1.5 top-1.5 rounded-full border border-sky-400/40 bg-sky-400/15 px-1.5 py-px font-display text-[10px] font-bold tracking-wide text-sky-400">

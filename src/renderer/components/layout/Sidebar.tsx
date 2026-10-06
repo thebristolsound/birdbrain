@@ -63,7 +63,10 @@ export function Sidebar() {
           </button>
 
           {/* Tooltip */}
-          <div className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+          >
             <div className="whitespace-nowrap rounded bg-surface px-2 py-1 text-xs text-text-primary shadow-md ring-1 ring-border">
               Home
             </div>
@@ -98,7 +101,10 @@ export function Sidebar() {
               </button>
 
               {/* Tooltip */}
-              <div className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 opacity-0 transition-opacity group-hover:opacity-100">
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+              >
                 <div className="whitespace-nowrap rounded bg-surface px-2 py-1 text-xs text-text-primary shadow-md ring-1 ring-border">
                   {label}
                 </div>

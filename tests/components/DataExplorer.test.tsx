@@ -71,7 +71,7 @@ async function tree() {
 }
 
 describe('DataExplorer (#1149)', () => {
-  it('renders the four groups without counts, and counts on the rows under them', async () => {
+  it('renders the five groups without counts, and counts on the rows under them', async () => {
     renderExplorer()
     const rail = await tree()
     expect(text(rail.getByTestId('data-tree-node-data-sources'))).toContain('Data Sources')
@@ -250,10 +250,47 @@ describe('DataExplorer (#1149)', () => {
     // A pick in the columns opens the category in the rail and selects the row.
     fireEvent.click(screen.getByText('personal'))
     const sub = await rail.findByTestId('data-tree-node-indicator-subcategory:emails/personal')
-    expect(sub.getAttribute('aria-selected')).toBe('true')
+    expect(within(sub).getByRole('treeitem').getAttribute('aria-selected')).toBe('true')
     expect(
-      rail.getByTestId('data-tree-node-indicator-category:emails').getAttribute('aria-expanded')
+      within(rail.getByTestId('data-tree-node-indicator-category:emails'))
+        .getByRole('treeitem')
+        .getAttribute('aria-expanded')
     ).toBe('true')
+  })
+
+  // Re-picking the node already showing changes no selection, so only the rail
+  // click count can tell the Indicators view to leave search mode.
+  describe('a rail re-pick of the Indicators node already showing ends a search', () => {
+    async function searchOnEmails() {
+      window.birdbrain.extractedData.subcategories = vi.fn(async () => [
+        { subcategory: 'personal', count: 1 }
+      ])
+      renderExplorer()
+      const rail = await tree()
+      const emails = await rail.findByTestId('data-tree-node-indicator-category:emails')
+      fireEvent.click(emails.querySelector('button:last-of-type')!)
+      expect(await screen.findByText('personal')).toBeTruthy()
+      const input = screen.getByPlaceholderText('Search indicators...') as HTMLInputElement
+      fireEvent.change(input, { target: { value: 'someone' } })
+      expect(await screen.findByText(/No indicators match/)).toBeTruthy()
+      return { emails, input }
+    }
+
+    it('from a click', async () => {
+      const { emails, input } = await searchOnEmails()
+      fireEvent.click(emails.querySelector('button:last-of-type')!)
+      expect(await screen.findByText('personal')).toBeTruthy()
+      expect(input.value).toBe('')
+    })
+
+    it('from Show only this in its menu', async () => {
+      const { emails, input } = await searchOnEmails()
+      fireEvent.contextMenu(emails)
+      const menu = await screen.findByRole('menu')
+      fireEvent.click(within(menu).getByTestId('context-menu-item-node-show-only'))
+      expect(await screen.findByText('personal')).toBeTruthy()
+      expect(input.value).toBe('')
+    })
   })
 
   it('titles the main pane for every node kind, and collapses a subtree from its twist', async () => {

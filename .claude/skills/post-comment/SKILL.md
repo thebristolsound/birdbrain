@@ -51,9 +51,10 @@ Rules for every kind:
 
 - No `Co-authored-by`, no platform footer, no CodeRabbit text. You author the comment; the
   platform may append its own footer afterwards, which is tolerated.
-- A comment posted under the maintainer's account may end with the two-line
-  `> [!NOTE]` / `> <Agent> responding on behalf of Matt.` disclosure. The linter drops it
-  before checking, so it counts toward no kind or cap; anywhere but last, it is linted as text.
+- A comment posted under the maintainer's account starts with the two-line
+  `> [!NOTE]` / `> <Agent> responding on behalf of Matt.` disclosure and a blank line. The
+  linter drops it before checking, so it counts toward no kind or cap and the kind's first
+  line is the one after it; a second copy, or one that is not first, fails.
 - Fenced blocks only inside a `<details>` block. Test output and coverage figures belong in
   the PR body's Verification block.
 - Name only actions you took and states you observed after taking them. A label another

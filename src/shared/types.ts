@@ -117,6 +117,49 @@ export interface TlsCertChainError {
 
 export type TlsCertChainResult = TlsCertChain | TlsCertChainError
 
+/**
+ * One link in a stored page, as the Links tab lists it (#1708). Derived on demand
+ * from the MHTML in the main process: never stored, never part of a Manifest.
+ */
+export interface CaptureLink {
+  /** Resolved against the part's document URL and `<base>`; the raw attribute when that fails. */
+  href: string
+  /** The attribute exactly as stored. */
+  rawHref: string
+  /** Trimmed, whitespace-collapsed anchor text; an image's alt when the anchor has none. */
+  text: string
+  /** Lower-cased `rel` tokens, unioned across collapsed occurrences. */
+  rel: string[]
+  kind: 'http' | 'same-page' | 'mailto' | 'tel' | 'other'
+  frame: 'main' | 'subframe'
+  /** The resolved document URL of the part the link came from. */
+  documentUrl: string
+  /** Identical href, text, frame and documentUrl collapse into one row. */
+  occurrences: number
+  /** The visible text names a host other than the one the link goes to. */
+  textHostMismatch: boolean
+}
+
+export interface CaptureLinks {
+  links: CaptureLink[]
+  /**
+   * The row ceiling was reached. Reading stopped at the first link past it, so later
+   * links are not listed and `occurrences` counts repeats up to that point only.
+   */
+  truncated: boolean
+  /** Embedded-frame parts not read, by the ceiling that refused each one. */
+  skippedParts: {
+    /** Larger, as stored, than one part may be. */
+    tooLarge: number
+    /** Past the number of parts read. */
+    overPartCount: number
+    /** Would have taken the parts read past their total size. */
+    overTotalSize: number
+  }
+  /** The main document itself was refused by a ceiling, so its links are absent. */
+  mainDocumentSkipped: boolean
+}
+
 export interface Capture {
   id: string
   caseId: string

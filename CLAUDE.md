@@ -4,24 +4,17 @@ Open source web investigation & capture tool. Electron desktop app with a compan
 
 ## Commands
 
-- `pnpm dev` - Start Electron app in dev mode (electron-vite)
-- `pnpm build` - Build the Electron app
-- `pnpm build:extension` - Build the Chrome extension
-- `pnpm dev:extension` - Build Chrome extension in watch mode. `scripts/dev-extension.mjs` runs both Vite targets as watchers in one process, so an edit to `extension/src/content.ts` rebuilds the content script IIFE too
-- `pnpm build:verifier` - Build the standalone verifier binary (`scripts/build-verifier.mjs`)
-- `pnpm test` - Run tests (vitest, via Electron runtime). Single file: `pnpm test <path>` — no `--` (`pnpm test -- <path>` does not filter and runs the full suite)
-- `pnpm test:watch` - Run tests in watch mode
-- `pnpm test:coverage` / `pnpm coverage:report` / `pnpm coverage:all` - Coverage run and reports
-- `pnpm lint` - ESLint (.ts, .tsx)
-- `pnpm lint:boundaries` - dependency-cruiser over `src/`, `extension/src/`, `tests/` and `e2e/`: packages under `src/packages/` are importable only through their root files, and no import cycles
-- `pnpm lint:agents-md` - **advisory, never fails**. Reports lines held by `CLAUDE.md` and not `AGENTS.md` or the reverse, as a CI warning annotation. The two are normally the same document: edit `CLAUDE.md`, then copy it over `AGENTS.md` (a symlink is not used: `core.symlinks=false` checkouts turn it into a one-line file). Drift is not an error because `CLAUDE.md` is expected to carry Claude-specific overrides that have no meaning in `AGENTS.md`; the check cannot tell those from an oversight, so it reports and leaves the judgement to you
-- `pnpm typecheck` - Typecheck all six tsconfig projects: `src` main/preload/shared, `src` renderer, extension, then `tests/` (node flavour and web flavour) and `e2e/`. Tests are inside the gate — see "Testing" below
-- `pnpm format` - Prettier format src/ and extension/
-- `pnpm rebuild:electron` - Rebuild native deps (better-sqlite3)
+`package.json` lists every script. The ones below carry a rule the script name does not show.
+
+- `pnpm test <path>` - Single test file, with no `--` (`pnpm test -- <path>` does not filter and runs the full suite)
+- `pnpm typecheck` - Typechecks all six tsconfig projects, tests included; see "Testing" below
+- `pnpm lint:boundaries` - Packages under `src/packages/` are importable only through their root files, and no import cycles
+- `pnpm lint:agents-md` - Advisory, never fails. `CLAUDE.md` and `AGENTS.md` are normally the same document: edit `CLAUDE.md`, then copy it over `AGENTS.md` (no symlink: `core.symlinks=false` checkouts turn it into a one-line file)
+- `pnpm preflight` - The full verify block: refuses a dirty tree and a non-20.x Node, runs lint, typecheck, unit tests, build, coverage thresholds and diff coverage, and writes `.preflight/verification.md`
+- `pnpm build:test-sharp` - Linux only: build sharp against the system libvips for the test runner, then run tests with `BIRDBRAIN_TEST_SYSTEM_SHARP=1`. Works around a SIGSEGV in tests that use sharp under Electron; see "sharp under Electron on Linux" in [Testing](docs/agents/testing.md)
 - `pnpm db:migration:new <slug>` - Scaffold the next schema migration: appends a fail-closed `if (version < N)` block to `migrations.ts` and bumps `LATEST_SCHEMA_VERSION` in `core.ts` in one run, refusing when the two already disagree
-- `pnpm test:e2e` - Run E2E tests (Playwright + Electron, runs `pnpm build` first)
-- `pnpm test:e2e:debug` - Run E2E tests with Playwright inspector
-- `pnpm package` / `pnpm package:win` / `pnpm package:mac` / `pnpm package:linux` - Package for distribution
+- `pnpm test:e2e` - Runs `pnpm build` first
+- `scripts/setup-worktree.sh` - Installs dependencies in a fresh worktree; run it when `node_modules` is missing
 
 Docs site commands run from `website/content/` through `pnpm dlx` (see "Documentation site"): `pnpm dlx mint dev`, `pnpm dlx mint broken-links`.
 
@@ -47,7 +40,7 @@ All design docs, specs, and implementation plans live under `docs/` per the layo
 - **Architecture decisions** → `docs/adr/NNNN-<slug>.md` — **tracked**
 - **Superseded** → `docs/archive/` (preserve original filename) — **tracked**
 
-Long-lived reference docs moved out of `docs/reference/` into `website/content/docs/` when the docs site was set up — they are the site's content now. Adding one means adding an `.mdx` file with `title`/`description` frontmatter plus an entry in `navigation` in `website/content/docs.json` (pages absent from it are dropped from the sidebar). See "Documentation site" below for the MDX constraints.
+Adding a long-lived reference page, and the Vale setup for prose linting, are described in `docs/README.md`. A doc you write should pass `vale <file>` with zero errors.
 
 **Writing style.** `docs/agents/writing-guide.md` is the adopted writing standard for all repo prose: Diataxis structure for published pages plus a mechanical rulebook (voice, ordering, formatting). CodeRabbit reads it as review criteria for `docs/**`, `website/content/docs/**`, and root Markdown.
 
@@ -56,8 +49,6 @@ Long-lived reference docs moved out of `docs/reference/` into `website/content/d
 **Docs may ship in the same PR as the code they describe.** There is no requirement to split specs, plans, ADRs, or reference docs onto their own PR or their own commit. Bundling a doc with the `src/**` change it documents is normal and preferred — a guide for a feature that has not merged yet is worth less on its own, and the split costs more than it returns.
 
 **Override for agentic tooling:** When a skill or agent specifies a different default path (e.g. Superpowers' `docs/superpowers/specs/` and `docs/superpowers/plans/`), treat the canonical paths above as the user-preference override. Write specs to `docs/specs/` and plans to `docs/plans/`. The legacy `docs/superpowers/` tree is frozen — do not add new files there.
-
-**Prose linting.** `.vale.ini` at the repo root is the project's Vale config; it overrides any global one for files under this repo. Project vocabulary lives in `.vale/styles/config/vocabularies/Birdbrain/accept.txt` so birdbrain terms are not accepted in unrelated projects. Run `vale sync` once per clone to fetch the Google package (gitignored). Only `*.md` is linted — `.mdx` needs `mdx2vast`, which is not installed. A doc you write should pass `vale <file>` with zero errors; residual warnings for this project's own vocabulary are expected.
 
 ## Documentation site
 
@@ -89,11 +80,11 @@ TypeScript projects. Use `pnpm test <path>` for a single file, without `--`.
 
 Issues live as GitHub Issues in `thebristolsound/birdbrain`, accessed via the `gh` CLI. External PRs are not a triage surface. See `docs/agents/issue-tracker.md`.
 
-Two `gh` traps that produce wrong numbers rather than errors. **`gh api --jq` rejects `-r`**, and **`gh issue comment` has no `-q`** — in both cases the command fails, and a pipeline that ends in `| tail -1` swallows the failure and reports success. Never derive a count through a pipe whose exit status you have not checked. Separately, **the label-filtered issue search (`issues?labels=…`) reads GitHub's search index and lags a direct label read by seconds** — verified twice on 2026-08-14 — so never treat it as authoritative for a decision; read `issues/<n>/labels` for that.
+Two `gh` traps that produce wrong numbers rather than errors. **`gh api --jq` rejects `-r`**, and **`gh issue comment` has no `-q`** — in both cases the command fails, and a pipeline that ends in `| tail -1` swallows the failure and reports success. Never derive a count through a pipe whose exit status you have not checked. Separately, **the label-filtered issue search (`issues?labels=…`) reads GitHub's search index and lags a direct label read by seconds**, so never treat it as authoritative for a decision; read `issues/<n>/labels` for that.
 
-**File a defect only when it is user-visible or evidence-affecting, and file at most two per PR.** Every other finding (process, tooling, CI, docs wording, a comment that overclaims, style) goes in the PR body's findings list or the review comment and is discarded when the PR merges. This replaces the file-every-defect rule of 2026-08 (ADR-0028): between 2026-W34 and W37 that rule produced 336 agent-filed issues against 93 merged agent PRs, half of them about the dispatch machinery itself, and the backlog grew by 514. When you do file, say in the issue why it was kept out of the change that found it, and report it as filed with the number.
+**File a defect only when it is user-visible or evidence-affecting, and file at most two per PR** (ADR-0028). Every other finding (process, tooling, CI, docs wording, a comment that overclaims, style) goes in the PR body's findings list or the review comment and is discarded when the PR merges. When you do file, say in the issue why it was kept out of the change that found it, and report it as filed with the number.
 
-The same rule covers the inverse failure: **do not write that something "is filed" until it is.** On 2026-08-15 a gate document merged to `main` asserting a `workflow_dispatch` ticket had been "filed separately" when none existed — the intent to file never executed, and the false claim shipped. File first, then reference the number you actually got back.
+**Do not write that something "is filed" until it is.** File first, then reference the number you actually got back.
 
 ### Triage labels
 
@@ -111,53 +102,10 @@ Scheduled Dispatch and Doc curator are paused. Before proposing a restart or add
 automation machinery, read [ADR-0029](docs/adr/0029-measure-before-expanding-agent-automation.md):
 verify basic spending limits and obtain explicit maintainer authorization to restart.
 
-Two Jev shadow lenses run event-driven from `.github/workflows/jev-lens.yml` (ADR-0031): `lens:*`
-issue labels and the `jev/evidence-hunks` commit status are advisory, never gate, and are never read by
-dispatch. `scripts/jev-lens/score.mjs` measures them.
-
-Unattended/background agent jobs working a `ready-for-agent` issue in this repo are opted out
-of the global wait-for-confirmation rules: do not pause for mid-task approval and do not wait
-for the user to confirm completion. Instead, commit and verify the work with `pnpm preflight`
-(it refuses a dirty tree and a non-20.x Node, runs lint, typecheck, unit tests, build, the
-extension build when `extension/` changed, coverage thresholds and diff coverage, and writes a
-sha-stamped block to `.preflight/verification.md`), then finish by opening a **draft PR** with
-the standard attribution line. Exception: if a dispatcher
-spawned you, push the branch and hand off instead. PR opening stays with the dispatcher so
-one identity authors every PR entering the slot (ADR-0027).
-
-**Label it, or the gates cannot see it.** `agent-authored` always, `agent-pr` as well only if
-the PR takes a dispatch slot, `evidence-affecting` when the gate fired at the **blocking** tier
-(the path list is tiered since ADR-0014; an advisory-tier hit is not a label).
-`pre-pass-gate.yml` and `ci.yml`'s draft exemption both key on those labels, so an unlabelled
-agent PR reports `agent/pre-pass success — "Not an agent PR"` and no reviewer is ever waiting
-on it. Wave 1 batch 1 shipped five such PRs, four evidence-affecting, and a hand-run pre-pass
-found twelve blocking defects behind the green badges. `gh pr create --label` is not atomic,
-so verify with `gh api repos/{owner}/{repo}/issues/<n>/labels` rather than asserting it.
-
-The coverage steps are the ones that catch what the others cannot. CI's job named `test` runs
-the suite *and then* `scripts/diff-coverage.mjs`, which fails the PR below 90% of changed lines
-covered — a threshold `pnpm test` never evaluates, since it omits `--coverage`. Without them
-the loop reports green on a PR CI rejects, and the red arrives after the agent has claimed
-success. `coverage:diff` scores the **working tree** against the merge base, which is why
-preflight insists on a clean tree: there the score equals the committed diff CI measures
-(#508). Interactive sessions are not covered by this carve-out, and it must not be copied to
-the global CLAUDE.md or other repos.
-
-**PR bodies are computed at head (ADR-0018).** The `## Verification` block is the
-`.preflight/verification.md` that `pnpm preflight` wrote at the head sha under review, pasted
-verbatim and never committed; any push makes it stale and it gets regenerated before
-requesting review. Any body figure a command can compute (file lists, counts,
-coverage rows) comes from running the command at head, never from memory of an earlier run. When
-a review round's only blocking findings are body defects on an unchanged sha, fix and re-verify
-the body in the same round with no new code pass.
-
-The gates in `docs/adr/0005-unattended-agents-on-the-evidence-path.md` still apply, as amended by
-`docs/adr/0014-tier-the-evidence-backstop-and-widen-the-dispatch-slot.md`: WIP of one agent PR
-(ADR-0028) with every branch cut from `main` and never from another cycle's branch,
-`evidence-affecting` PRs never auto-merge and always get human review, non-evidence agent PRs may
-merge on all required checks green plus an `agent/pre-pass` success verdict, and the give-up path
-(comment findings on the issue, relabel `needs-info`/`ready-for-human`, vacate the slot) whenever
-the issue fails the ready-for-agent bar at intake or mid-work.
+Unattended jobs working a `ready-for-agent` issue, and any session that opens or labels an agent
+PR, follow [Background jobs](docs/agents/background-jobs.md): the wait-for-confirmation opt-out,
+the `agent-authored` / `agent-pr` / `evidence-affecting` labels, diff coverage, PR bodies computed
+at head (ADR-0018), and the ADR-0005 gates. Interactive sessions are not covered by that opt-out.
 
 ### Interactive sessions: standing approvals (project-local carve-out)
 
@@ -178,7 +126,7 @@ this section to the global CLAUDE.md or other repos.
   reversible with git alone, stays inside the ADR-0015 classes, and changes at most 10 files.
   Otherwise wait as before and name the tripped criterion.
 - **Completion confirmation** (ADR-0017): report complete on a green full verify block at head
-  (the background-jobs verify block) with exit codes captured and real output shown; name any check you
+  (`pnpm preflight`) with exit codes captured and real output shown; name any check you
   could not run and wait on that specific check, not on general confirmation. Merging stays
   human.
 - **Doc-draft preservation** (ADR-0019): any session that creates or edits a file destined for a
@@ -193,19 +141,8 @@ this section to the global CLAUDE.md or other repos.
 Commit messages, PR bodies and issue or PR comments each have one shape, held with its linter
 in a skill: `.claude/skills/post-commit-message/`, `post-pr-body/`, `post-comment/`. Write the
 text to a file, run the skill's `scripts/check.sh <file>`, then pass the file (`git commit -F`,
-`--body-file`, `--input`); a `settings.json` hook, gated to the agents each `check.sh` names in
-`bound=`, blocks the inline forms (agent frontmatter `hooks:` do not fire in SDK-driven sessions
-such as t3code). Every PR body and comment has two layers, the way CodeRabbit nests its review:
-a plain-language top layer a reader outside the repository can follow (no paths, commit ids,
-code spans, tool names or repository terms), and the detail collapsed in `<details>` blocks
-under a plain `<summary>`, written however the author finds effective. Caps count the top
-layer only; the linters check both layers. Squash merges land
-with the PR title and the body's Summary section (`squash_merge_commit_message = BLANK`, ADR-0022),
-so branch commit bodies are short and the Summary is the permanent record. Merges go through
-`.claude/skills/merge-pr/scripts/merge.sh <n>` (`--cli agh` for the dispatcher), which composes
-that message, merges against the reviewed sha, and reads back the result. Attribution trailers
-and the platform PR footer are off in `.claude/settings.json`; `includeGitInstructions` is off
-there too, so the skills are the only commit and PR instructions an agent receives.
+`--body-file`, `--input`). Merges go through `.claude/skills/merge-pr/scripts/merge.sh <n>`
+(ADR-0022).
 
 ### Worktrees
 

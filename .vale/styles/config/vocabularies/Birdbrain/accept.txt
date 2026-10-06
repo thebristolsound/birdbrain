@@ -457,3 +457,14 @@ ASNs
 Ethereum
 Monero
 [Rr]edactions
+Webrecorder
+Sigstore
+Rekor
+
+; Added 2026-10-04 for the Case investigation engine design: invented names in
+; its worked examples, and the plural of the Source Class term "retelling".
+; Calloway also occurs in lower case, as a mailbox name
+(?i)\bCalloway\b
+Sato
+Marlow
+retellings

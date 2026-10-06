@@ -81,7 +81,7 @@ export function CreateNoteCard({ caseId, isOpen, onToggle, onCreated }: CreateNo
     <div className="rounded-2xl border border-border bg-surface p-4">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="font-display text-sm font-semibold text-text-primary">New note</h3>
-        <Button variant="ghost" size="icon-sm" onClick={handleClose}>
+        <Button variant="ghost" size="icon-sm" onClick={handleClose} aria-label="Close new note">
           <X className="h-3.5 w-3.5" />
         </Button>
       </div>

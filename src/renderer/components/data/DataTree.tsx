@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from 'react'
+import { Fragment, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { cn } from '@renderer/lib/utils'
 import { EntityContextMenu } from '@renderer/components/contextmenu/EntityContextMenu'
@@ -35,30 +35,94 @@ export function DataTree({
   onToggleBelow,
   menuTargetFor
 }: DataTreeProps) {
+  const treeRef = useRef<HTMLDivElement>(null)
+  // Roving tab stop: Tab enters the tree once and the arrow keys move between
+  // nodes. The stop follows focus so Tab leaves from the node the operator is
+  // on and re-entry lands there; before any node has had focus it is the
+  // selected node, else the first.
+  const [focusedKey, setFocusedKey] = useState<DataNodeKey | null>(null)
+  const has = (key: DataNodeKey | null) => key !== null && nodes.some((n) => n.key === key)
+  const tabStopKey = has(focusedKey) ? focusedKey : has(selected) ? selected : nodes[0]?.key
+
+  function onTreeKey(event: KeyboardEvent<HTMLDivElement>) {
+    const target = event.target as HTMLElement
+    if (!target.hasAttribute('data-tree-select')) return
+    // One select button per node, in node order, so the two indexes agree.
+    const items = Array.from(
+      treeRef.current?.querySelectorAll<HTMLElement>('[data-tree-select]') ?? []
+    )
+    const index = items.indexOf(target)
+    const node = nodes[index]
+    if (!node) return
+    let next = -1
+    if (event.key === 'ArrowDown') next = Math.min(items.length - 1, index + 1)
+    else if (event.key === 'ArrowUp') next = Math.max(0, index - 1)
+    else if (event.key === 'Home') next = 0
+    else if (event.key === 'End') next = items.length - 1
+    else if (event.key === 'ArrowRight') {
+      // Closed parent: open it. Open parent: its first child is the next
+      // visible node, when there is one (a category's subcategories load
+      // lazily, so an open parent can be childless for a moment). A leaf has
+      // nowhere to go.
+      if (!node.hasChildren) return
+      if (!node.expanded) {
+        event.preventDefault()
+        onToggle(node.key)
+        return
+      }
+      if (nodes[index + 1]?.depth !== node.depth + 1) return
+      next = index + 1
+    } else if (event.key === 'ArrowLeft') {
+      // Open parent: close it. Anything else: its parent is the nearest
+      // shallower node above it.
+      if (node.hasChildren && node.expanded) {
+        event.preventDefault()
+        onToggle(node.key)
+        return
+      }
+      for (let i = index - 1; i >= 0; i--) {
+        if (nodes[i].depth < node.depth) {
+          next = i
+          break
+        }
+      }
+    }
+    if (next < 0) return
+    event.preventDefault()
+    items[next]?.focus()
+  }
+
   return (
-    <div role="tree" aria-label="Case data" className="px-1.5 pb-4 pt-1.5">
+    <div
+      ref={treeRef}
+      role="tree"
+      aria-label="Case data"
+      className="px-1.5 pb-4 pt-1.5"
+      onKeyDown={onTreeKey}
+    >
       {nodes.map((node) => {
         const isSelected = node.key === selected
         const Twist = node.expanded ? ChevronDown : ChevronRight
         return (
           <MaybeMenu key={node.key} target={menuTargetFor?.(node) ?? null}>
             <div
-              role="treeitem"
-              aria-selected={isSelected}
-              aria-expanded={node.hasChildren ? node.expanded : undefined}
-              aria-level={node.depth + 1}
               data-testid={`data-tree-node-${node.key}`}
               className="flex items-center gap-0.5"
               style={{ paddingLeft: 4 + node.depth * 13 }}
             >
+              {/* Hidden from the tree: a tree owns only tree items, and the item
+                  itself carries aria-expanded and the ArrowLeft/ArrowRight toggle. */}
               <button
                 type="button"
                 tabIndex={-1}
+                aria-hidden="true"
                 aria-label={node.expanded ? `Collapse ${node.label}` : `Expand ${node.label}`}
                 onClick={(event) => {
                   event.stopPropagation()
                   if (event.shiftKey && onToggleBelow) onToggleBelow(node.key, !node.expanded)
                   else onToggle(node.key)
+                  // The twist is hidden from the tree, so focus must not rest on it.
+                  ;(event.currentTarget.nextElementSibling as HTMLElement | null)?.focus()
                 }}
                 className={cn(
                   'grid h-[18px] w-3.5 shrink-0 place-items-center rounded text-text-faint',
@@ -67,8 +131,17 @@ export function DataTree({
               >
                 <Twist size={11} strokeWidth={2.4} />
               </button>
+              {/* The tree item is the focusable button, so the node's role and
+                  state travel with focus; the twist is a sibling helper. */}
               <button
                 type="button"
+                role="treeitem"
+                aria-selected={isSelected}
+                aria-expanded={node.hasChildren ? node.expanded : undefined}
+                aria-level={node.depth + 1}
+                data-tree-select
+                tabIndex={node.key === tabStopKey ? 0 : -1}
+                onFocus={() => setFocusedKey(node.key)}
                 onClick={() => onSelect(node.key)}
                 className={cn(
                   'flex h-[var(--d-tree)] min-w-0 flex-1 items-center gap-1.5 rounded px-[7px] text-left',

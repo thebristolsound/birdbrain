@@ -73,6 +73,9 @@ const uploadRejecters: Array<(err: unknown) => void> = []
 // Simulates a mid-capture navigation: tabs.get reports this URL once set, so
 // the finally-path re-read sees the navigated page, not the capture-time one
 const tabUrlOverride = new Map<number, string>()
+// When set, promise-form tabs.get reads wait on it, so a test can act while
+// the capture's post-frame URL read is in flight (#982)
+let holdTabRead: Promise<void> | undefined
 
 function sentOfType(type: string): number {
   return sentMessages.filter((m) => m.type === type).length
@@ -188,7 +191,7 @@ beforeAll(async () => {
           callback(tab)
           return undefined
         }
-        return Promise.resolve(tab)
+        return holdTabRead ? holdTabRead.then(() => tab) : Promise.resolve(tab)
       },
       sendMessage: (
         tabId: number,
@@ -415,15 +418,116 @@ describe('concurrent manual captures on one tab (#379)', () => {
     tabUrlOverride.set(TAB2.id, 'chrome://newtab/')
     mhtmlCallbacks[cbBase](new Blob(['mhtml-navigated']))
     await flush()
-    expect(uploadResolvers.length).toBe(upBase + 1)
-    uploadResolvers[upBase](UPLOAD_RESULT)
-    await flush()
 
-    // The capture itself completed with its toast...
+    // The capture itself is refused for the navigation (#982) and says so...
+    expect(uploadResolvers.length).toBe(upBase)
     expect(sentOfTypeTo('UPDATE_CAPTURE_TOAST', TAB2.id)).toBe(baselineUpdate + 1)
-    // ...but no highlights were re-injected into the ignored page
+    // ...and no highlights were re-injected into the ignored page
     expect(sentOfTypeTo('CHECK_SELECTORS', TAB2.id)).toBe(baselineCheck)
     tabUrlOverride.delete(TAB2.id)
+  })
+})
+
+// #982. The URL a manual capture is stored under is read before the frames
+// are taken; the MHTML, text and screenshot describe whatever the tab shows
+// while they are. A navigation in between must abandon the capture, never
+// upload one page's bytes under another page's URL.
+describe('a tab that navigates mid-capture (#982)', () => {
+  const NAVIGATED = 'https://example.test/elsewhere'
+
+  const lastToastTo = (tabId: number): (typeof sentMessages)[number] | undefined =>
+    sentMessages.filter((m) => m.tabId === tabId && m.type === 'UPDATE_CAPTURE_TOAST').at(-1)
+
+  function expectRefused(uploadCalls: number, tabId: number): void {
+    expect(vi.mocked(sendMhtmlCapture)).toHaveBeenCalledTimes(uploadCalls)
+    expect(lastToastTo(tabId)).toMatchObject({
+      status: 'error',
+      message: 'Page navigated during capture — nothing saved'
+    })
+  }
+
+  it('refuses when the tab has left the page by the time the frames settle', async () => {
+    const cb = mhtmlCallbacks.length
+    const uploadCalls = vi.mocked(sendMhtmlCapture).mock.calls.length
+    const baselineRelease = sentOfTypeTo('RELEASE_CAPTURE_UI', TAB.id)
+
+    dispatch({ type: 'MANUAL_CAPTURE', tabId: TAB.id, caseId: 'case-a' })
+    await flush()
+    tabUrlOverride.set(TAB.id, NAVIGATED)
+    mhtmlCallbacks[cb](new Blob(['the navigated page']))
+    await flush()
+    tabUrlOverride.delete(TAB.id)
+
+    expectRefused(uploadCalls, TAB.id)
+    // The bracket settled: the page-side latch is released...
+    expect(sentOfTypeTo('RELEASE_CAPTURE_UI', TAB.id)).toBe(baselineRelease + 1)
+    // ...and the tab and case are free for the next capture
+    dispatch({ type: 'MANUAL_CAPTURE', tabId: TAB.id, caseId: 'case-a' })
+    await flush()
+    expect(mhtmlCallbacks).toHaveLength(cb + 2)
+    mhtmlCallbacks[cb + 1](new Blob(['mhtml-after']))
+    await flush()
+    uploadResolvers[uploadResolvers.length - 1](UPLOAD_RESULT)
+    await flush()
+    expect(vi.mocked(sendMhtmlCapture)).toHaveBeenCalledTimes(uploadCalls + 1)
+  })
+
+  it('refuses when the tab had already left the caller-read URL as frames began', async () => {
+    const cb = mhtmlCallbacks.length
+    const uploadCalls = vi.mocked(sendMhtmlCapture).mock.calls.length
+
+    // The context menu hands over the URL it was opened on; the tab has moved
+    // on before the bracket reads it, then comes back before the frames settle.
+    tabUrlOverride.set(TAB.id, NAVIGATED)
+    await contextMenuListener?.({ menuItemId: 'birdbrain-capture-full-page' }, TAB)
+    await flush()
+    tabUrlOverride.delete(TAB.id)
+    mhtmlCallbacks[cb](new Blob(['the navigated page']))
+    await flush()
+
+    expectRefused(uploadCalls, TAB.id)
+  })
+
+  it('uploads under the original URL when only the fragment changed', async () => {
+    const cb = mhtmlCallbacks.length
+    const up = uploadResolvers.length
+    const uploadCalls = vi.mocked(sendMhtmlCapture).mock.calls.length
+
+    dispatch({ type: 'MANUAL_CAPTURE', tabId: TAB.id, caseId: 'case-a' })
+    await flush()
+    tabUrlOverride.set(TAB.id, `${TAB.url}#section-2`)
+    mhtmlCallbacks[cb](new Blob(['same page, new anchor']))
+    await flush()
+    tabUrlOverride.delete(TAB.id)
+
+    expect(vi.mocked(sendMhtmlCapture)).toHaveBeenCalledTimes(uploadCalls + 1)
+    expect(vi.mocked(sendMhtmlCapture).mock.calls[uploadCalls][0]).toMatchObject({
+      url: TAB.url
+    })
+    uploadResolvers[up](UPLOAD_RESULT)
+    await flush()
+    expect(lastToastTo(TAB.id)).toMatchObject({ status: 'success' })
+  })
+
+  it('honours a stop sent while the settled URL read is in flight', async () => {
+    const cb = mhtmlCallbacks.length
+    const uploadCalls = vi.mocked(sendMhtmlCapture).mock.calls.length
+    let releaseRead = (): void => {}
+
+    dispatch({ type: 'MANUAL_CAPTURE', tabId: TAB.id, caseId: 'case-a' })
+    await flush()
+    holdTabRead = new Promise((resolve) => {
+      releaseRead = resolve
+    })
+    mhtmlCallbacks[cb](new Blob(['must not be stored']))
+    await flush()
+    dispatch({ type: 'STOP_CAPTURE', tabId: TAB.id })
+    holdTabRead = undefined
+    releaseRead()
+    await flush()
+
+    expect(vi.mocked(sendMhtmlCapture)).toHaveBeenCalledTimes(uploadCalls)
+    expect(lastToastTo(TAB.id)).toMatchObject({ status: 'skipped' })
   })
 })
 

@@ -1,0 +1,55 @@
+name: Merge gate
+
+# The `merge-gate` required check (ADR-0041). It replaces the ruleset's code-owner review:
+# GitHub does not let an author approve their own PR, and most PRs here are opened under the
+# maintainer's account, so that rule could only be bypassed.
+#
+# The check is this job's conclusion, not a posted status, so it reports on Dependabot and
+# fork PRs, whose read-only token cannot write a status. The rule itself lives in
+# .github/scripts/merge/gate.mjs, read from the default branch so a PR cannot edit the rule
+# that judges it.
+#
+# A commit status (the agent/pre-pass verdict) triggers no PR event, so a verdict posted after
+# the last run leaves this check stale. The `merge` label, the next push, or a re-run of the
+# last attempt (merge.sh does this) runs it again.
+#
+# The job definition, unlike the rule script, comes from the PR's branch, as for every
+# pull_request workflow, so a same-repository branch could replace it. The trusted controls are
+# the jobs in merge-on-label.yml, which run from the default branch: auto-merge is armed only on
+# the maintainer's label and disarmed on every push.
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled, unlabeled, ready_for_review, edited]
+  pull_request_review:
+    types: [submitted, dismissed]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+  statuses: read
+
+concurrency:
+  group: merge-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  merge-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: |
+            .github/CODEOWNERS
+            .github/scripts/merge
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Judge the PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          BIRDBRAIN_AGENT_GH_LOGIN: ${{ vars.BIRDBRAIN_AGENT_GH_LOGIN }}
+        run: node .github/scripts/merge/gate.mjs "$GITHUB_REPOSITORY" "$PR"

@@ -570,7 +570,19 @@ for n in $(jq -r '.[]' <<<"$prs"); do
       echo "PR #$n carries evidence-affecting from outside the trust list; section 2a does not merge it" >> "$summary"
     else
       refused="$(merge_refusal "$sha")"
-      if [ -n "$refused" ]; then
+      if [ "$refused" = merge-gate ]; then
+        # The verdict that made this PR mergeable is a commit status, which reruns nothing, so
+        # merge-gate still holds its pre-verdict result (ADR-0041). Re-run its last attempt and
+        # leave the merge to the next fire, which reads the fresh result.
+        gate_run="$(gh api "repos/$R/commits/$sha/check-runs?per_page=100" \
+          --jq '[.check_runs[] | select(.name == "merge-gate") | .details_url][0] // ""' \
+          | sed -n 's|.*/actions/runs/\([0-9]*\).*|\1|p')"
+        if [ -n "$gate_run" ] && gh api -X POST "repos/$R/actions/runs/$gate_run/rerun" >/dev/null; then
+          echo "PR #$n is approved, ready and non-evidence; merge-gate was stale, so its run $gate_run was re-run for the next fire" >> "$summary"
+        else
+          echo "PR #$n is approved, ready and non-evidence, but merge-gate is not green and could not be re-run" >> "$summary"
+        fi
+      elif [ -n "$refused" ]; then
         echo "PR #$n is approved, ready and non-evidence, but merge.sh would refuse it: required check(s) $refused not green at its head" >> "$summary"
       else
         start "$n" "PR #$n is approved, ready and non-evidence; section 2a may merge it" || continue

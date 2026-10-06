@@ -38,7 +38,9 @@ import type {
   TrustedTime,
   ArchiveVerificationResult,
   CaptureMethod,
-  ConsentSuppression
+  ConsentSuppression,
+  EgressKind,
+  TlsRefetchSkip
 } from '@shared/types'
 import type { TlsCertChainResult } from '@main/services/tlsCertChain'
 
@@ -546,6 +548,13 @@ export type ManifestEntryInput =
       // The Capture's Exhibit Number (X46). A schema-3 field, so an entry
       // carrying it is stamped 3 (CAPTURE_EXHIBIT_NUMBER_MIN_READER).
       exhibitNumber?: number
+      // The Egress fields (ADR-0032, #1694), described at the capture entry
+      // schema in schemas.ts. Schema-5 fields, so an entry carrying any of them
+      // is stamped 5 (CAPTURE_EGRESS_MIN_READER). Nothing writes them yet.
+      egressKind?: EgressKind
+      egressLabel?: string
+      userAgent?: string
+      tlsSkipped?: TlsRefetchSkip
       sizeBytes: number
       operatorId: string
       operatorName: string
@@ -720,7 +729,8 @@ export interface AppendResult {
 // verifier reporting a valid chain as broken is a false accusation, and nothing
 // can recall a distributed copy). So each type declares the oldest verifier
 // that can read it, and the v3 types (ADR-0023) stamp 3. A `capture` entry
-// stamps 3 only when it carries a schema-3 field (fieldMinReaderSchemaVersion).
+// stamps 3 or 5 only when it carries a schema-3 or schema-5 field
+// (fieldMinReaderSchemaVersion).
 //
 // Typed as a total Record over the input union so adding an entry type without
 // deciding its minimum reader version is a compile error, not a silent 2. That
@@ -757,10 +767,17 @@ export interface AppendOptions {
 // itself rather than by each caller, so every append of the field stamps 3.
 const CAPTURE_EXHIBIT_NUMBER_MIN_READER = 3
 
+// The Egress fields are schema 5 (ADR-0032) on the same reasoning: a schema-4
+// verifier reads an entry carrying one as "verifier too old" only under a 5.
+const CAPTURE_EGRESS_MIN_READER = 5
+
 function fieldMinReaderSchemaVersion(entry: ManifestEntryInput): number {
-  return entry.type === 'capture' && entry.exhibitNumber !== undefined
-    ? CAPTURE_EXHIBIT_NUMBER_MIN_READER
-    : 0
+  if (entry.type !== 'capture') return 0
+  const { egressKind, egressLabel, userAgent, tlsSkipped, exhibitNumber } = entry
+  if ([egressKind, egressLabel, userAgent, tlsSkipped].some((field) => field !== undefined)) {
+    return CAPTURE_EGRESS_MIN_READER
+  }
+  return exhibitNumber !== undefined ? CAPTURE_EXHIBIT_NUMBER_MIN_READER : 0
 }
 
 // Write-ahead append: compute hash, append JSONL line, fsync.

@@ -13,7 +13,7 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 lint() {
   local file="$1" out
   if [ ! -f "$file" ]; then
-    echo "post-comment: comment file not found: $file" >&2
+    echo "post-comment: comment file not found: $file. The hook runs before the command does, so a file this same command writes (a heredoc ahead of the gh call) does not exist yet: write the file in one call, then run this command in the next." >&2
     return 1
   fi
   if out="$(node "$here/lint-comment.mjs" "$file" 2>&1)"; then
@@ -45,8 +45,11 @@ read -r agent cwd cmd < <(printf '%s' "$input" | node -e '
 cmd="$(printf '%s' "$cmd" | base64 -d)"
 
 # The hook is registered in .claude/settings.json, so it sees every session; it acts only for
-# the agents named in $bound (the payload's agent_type). Interactive sessions pass through.
-case " $bound " in *" $agent "*) ;; *) exit 0 ;; esac
+# the agents named in $bound (the payload's agent_type), and for every agent of a headless
+# dispatch cycle, which sets BIRDBRAIN_DISPATCH=1 (.github/scripts/dispatch/run.sh): its
+# top-level session posts claims and verdicts under no agent_type. Interactive sessions pass
+# through.
+case " $bound " in *" $agent "*) ;; *) [ "${BIRDBRAIN_DISPATCH:-}" = 1 ] || exit 0 ;; esac
 
 is_comment_write=0
 if printf '%s' "$cmd" | grep -Eq '(^|[;&|(]|[[:space:]])a?gh[[:space:]]+(issue|pr)[[:space:]]+comment([[:space:]]|$)'; then

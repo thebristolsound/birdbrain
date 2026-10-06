@@ -79,7 +79,11 @@ agh() { GH_TOKEN="$BIRDBRAIN_AGENT_GH_TOKEN" gh "$@"; }
   `gh issue edit`, `gh api ... -X POST`, and status post below runs through `agh`. Reads may use
   either. The token is a classic `repo`-scope PAT and could push — you still never do
   (ADR-0006). After each write that creates something (claim comment, PR), confirm
-  `.user.login` is the machine account.
+  `.user.login` is the machine account. `gh pr edit` fails under that token because it asks
+  for a scope beyond `repo`; change a PR's body through REST instead. Build the payload in one
+  call (`jq -n --rawfile body <file> '{body: $body}' > <json>`), then send it in the next
+  (`agh api -X PATCH repos/thebristolsound/birdbrain/pulls/<n> --input <json>`), so the
+  post-pr-body hook finds the file it lints.
 - **The web is never a dispatch host (ADR-0026).** The sandbox proxy presents the session
   identity whatever credential is offered (#960), so a web cycle fails the identity check and
   stops here. Scheduled fires run on GitHub Actions instead.
@@ -457,7 +461,10 @@ not in the set this section iterates, and they merge by human hand. If you find 
 
 1. **Every required check on `main` is green.** Read the PR head's checks with `checks.sh`
    ("Session rules"): each required check must be in `passed` or `skipped` and in neither
-   `failing` nor `pending`. A check that never reported is not a green either.
+   `failing` nor `pending`. A check that never reported is not a green either. `merge-gate`
+   is the one required check the script leaves out (section 4, "Wait for CI first"): it is
+   green once condition 2 holds, and `merge.sh` re-runs it when the verdict came after its
+   last run.
 2. **`agent/pre-pass` reports `success`.** The context must exist on *this* head sha, from a
    creator "Session rules" counts. A verdict posted against an earlier sha says nothing about
    the current one; section 4's pin-the-sha rule is the same rule.
@@ -772,23 +779,37 @@ post them.
 
 ### Wait for CI first — the pre-pass is the expensive instrument
 
-**Do not start the pre-pass while CI is still running on the head commit.** Poll
-`bash .github/scripts/dispatch/checks.sh <n>` until its `pending` list is empty, then branch on
-its `failing` list, which counts only the checks "Session rules" counts. A check it lists as
-`ignored` neither holds the poll nor makes CI red; name it in the report. A non-zero exit is not
-a green: do not run the pre-pass, and report the exit.
+**Do not start the pre-pass while CI is still running on the head commit.** Run
+`bash .github/scripts/dispatch/checks.sh --wait 540 <n>`, which re-reads every 30 seconds and
+returns within the wait plus one read, under the Bash tool's ten-minute cap; exit 124 means
+checks are still pending, so run it again. Do not write your own poll loop. Once its `pending`
+list is empty, branch on its `failing` list, which counts only the checks "Session rules"
+counts. A check it lists as `ignored` neither holds the poll nor makes CI red; name it in the
+report. `merge-gate` lands there (ADR-0041): its rule reads the verdict this step precedes,
+so it is red on every agent PR until the pre-pass posts `success`, and the script leaves it out
+for that reason. A non-zero exit is not a green: do not run the pre-pass, and report the exit.
 
 - **CI red** → do **not** run the pre-pass. Hand the failure straight to
   `birdbrain-implementer` as a cheap, mechanical fix round: the PR number, the failing job, and
   the instruction to read `gh run view --job <id> --log-failed` itself. Re-poll after its push.
   A red check means the diff is about to change, so an adversarial pass over it is spent on a
-  tree that will not survive.
+  tree that will not survive. One exception: a check that is also failing on `main`'s own
+  latest run of the same workflow is not this PR's red. `Dependency audit` (security.yml) is one
+  on 2026-10-06: red on `main` at fdd421e0 (run 37507444052) from advisories the lockfile
+  already carried, and not required by the ruleset. Name such a check in the report, with the
+  `main` run that shows it, and treat the rest of the list as the whole of CI.
 - **CI green** → run the pre-pass.
 
-**Every check reporting `skipping` is the #784 bug, not a conclusion.** If the poll shows
-`build`, `changes`, `e2e`, `lint`, `test` and `typecheck` all in `skipped` on a labelled draft
-agent PR, the labels did not reach the `opened` webhook and no further event will re-run them.
-Waiting cannot resolve it. Recover in this order, and stop at the first step that fails:
+**The five code jobs reporting `skipped` on a labelled draft agent PR is one of two things.**
+`ci.yml`'s `changes` job skips `build`, `e2e`, `lint`, `test` and `typecheck` on purpose when
+every changed file matches the docs-only pattern in its `filter` step (`docs/`, `website/`,
+`.claude/`, `.github/ISSUE_TEMPLATE/`, `CONTEXT.md`, `LICENSE`, root `*.md`); that is a green,
+and the pre-pass runs. Read the PR's files
+(`gh api --paginate repos/thebristolsound/birdbrain/pulls/<n>/files --jq '.[].filename'`) and
+compare them with that pattern, which is the one definition. If any file falls outside it, the
+skips are the #784 bug, not a conclusion: the labels reached GitHub after `changes` read them,
+20 seconds after the PR opened, and no further event will re-run them. Waiting cannot resolve
+it. Recover in this order, and stop at the first step that fails:
 
 1. Read the labels directly: `gh api repos/thebristolsound/birdbrain/issues/<n>/labels --jq
    '[.[].name]'`. A non-zero exit is not an empty set. If the read fails, report the PR number

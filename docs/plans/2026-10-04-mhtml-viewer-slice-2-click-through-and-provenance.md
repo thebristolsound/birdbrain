@@ -225,21 +225,24 @@ fields take both:
   without the address loses what the relationship means.
 - **Writer.** `appendManifestEntry` in `src/main/services/manifest.ts` stamps a `capture` entry at
   the highest of the type's minimum, `fieldMinReaderSchemaVersion`, and the caller's option,
-  capped at `MANIFEST_SCHEMA_VERSION`. `fieldMinReaderSchemaVersion` raises only an entry carrying
-  `exhibitNumber`, to 3. Without a matching change it would stamp 2 or 3 on an entry carrying the
-  new fields, and the reader rule would reject the entry the build itself wrote. It learns the
-  fields and returns 5 for an entry that carries them.
+  capped at `MANIFEST_SCHEMA_VERSION`. `fieldMinReaderSchemaVersion` returns 5 for an entry
+  carrying an Egress field, 3 for one carrying `exhibitNumber`, and 0 otherwise. Without a
+  matching case it would stamp 2 or 3 on an entry carrying the link fields and no Egress field,
+  and the reader rule would reject the entry the build itself wrote. It gains a case that returns
+  the link fields' number.
 
-`MANIFEST_SCHEMA_VERSION` is 4 today (`src/shared/constants.ts`), and 5 is already claimed by the
-chain-head anchoring design (`docs/specs/2026-10-02-chain-head-anchoring-design.md`, the
-`timestamping` entry). ADR-0032's Egress fields and ADR-0035's artifact inventory also wait on a
-verifier release. The three fields join whichever schema-5 verifier release ships first, rather
-than taking a release of their own (ruling 3). The ADR records that choice. If no schema-5 release
-is in flight when Part B is ready, Part B takes 5 itself and the next one takes 6. If a schema-5
-verifier has already shipped without the fields, they take 6: that verifier passes the too-old
-check at 5 and fails its strict parse, so stamping 5 would read as a broken chain in a release
-already in recipients' hands. The number is settled when step 2 starts, against the releases that
-have shipped, not against the ones in flight.
+`MANIFEST_SCHEMA_VERSION` is 5 on `main` since PR #1747 (`src/shared/constants.ts`), which
+taught the verifier ADR-0032's optional Egress fields on `capture` entries as schema-5 fields: a
+refine in `schemas.ts` requires 5 for an entry carrying one, and `fieldMinReaderSchemaVersion`
+stamps 5 on it. Nothing writes them yet, and on 2026-10-06 no tag contained that change. The
+chain-head anchoring design's `timestamping` entry also targets 5, and ADR-0035's artifact
+inventory waits on a verifier release too. The three fields join whichever schema-5 verifier
+release ships first, rather than taking a release of their own (ruling 3). The ADR records that
+choice. When step 2 lands in `schemas.ts` before the first schema-5 verifier release is tagged,
+the fields take 5. When that release is tagged first, they take 6: a shipped schema-5 verifier
+passes the too-old check at 5 and fails its strict parse on the fields, so stamping 5 would read
+as a broken chain in a release already in recipients' hands. The number is settled when step 2
+starts, against the releases that have shipped, not against the ones in flight.
 
 ### B4. Order of work
 
@@ -248,13 +251,15 @@ have shipped, not against the ones in flight.
    and Duplicate ones: a link Capture is a new Capture that names the Capture holding the link; it
    observed the destination afresh and is a new sighting, not a copy.
 2. **Verifier release.** `src/shared/schemas.ts` learns the optional fields and both refine rules
-   from B3, and `fieldMinReaderSchemaVersion` in `src/main/services/manifest.ts` returns 5 for an
-   entry that carries them, so the reader and the writer halves of the rule land in one release.
-   Verify-core round-trips an entry that carries them. Known-answer tests cover a schema-5 entry
-   that passes, the same entry read by the schema-4 rules reporting that the verifier is too old,
-   a schema-4 entry carrying the fields rejected, and each partial set (the id alone, the id and
+   from B3, and `fieldMinReaderSchemaVersion` in `src/main/services/manifest.ts` returns the
+   number B3 settles for an entry that carries them, so the reader and the writer halves of the
+   rule land in one release. Verify-core round-trips an entry that carries them. Known-answer
+   tests, beside the Egress cases in `tests/shared/verify/manifestSchema5.test.ts` and
+   `manifestSchema5TooOld.test.ts`, cover an entry at that number that passes, the same entry
+   read by the previous number's rules reporting that the verifier is too old, an entry carrying
+   the fields under the previous number rejected, and each partial set (the id alone, the id and
    the hash, the hash and the address, and the rest) rejected. A writer test appends an entry
-   carrying the fields and asserts `schemaVersion: 5`, beside the existing `exhibitNumber` case
+   carrying the fields and asserts its `schemaVersion`, beside the existing `exhibitNumber` case
    that asserts 3 (`tests/main/services/exhibitNumbering.test.ts`). A tagged release ships before
    step 3 merges.
 3. **Writer.**

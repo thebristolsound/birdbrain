@@ -59,13 +59,13 @@ follows at 3 has two halves, and the fields take both. The schema accepts them o
 whose `schemaVersion` is at least 5, so a schema-4 verifier reports that it is too old, and only
 as a complete set of three, so an entry carrying one or two of them is rejected. The writer's
 `fieldMinReaderSchemaVersion` in `src/main/services/manifest.ts` stamps 5 on an entry that carries
-them, as it stamps 3 for `exhibitNumber`. They join the first verifier release that teaches
-schema 5, which the chain-head anchoring design also needs. If no schema-5 release is in flight
-when this work is ready, this work takes 5 and the next takes 6. If a schema-5 verifier has
-already shipped without these fields, they take 6: that verifier passes the too-old check at 5 and
-fails its strict parse, so stamping 5 would read as a broken chain in a release already in
-recipients' hands. That release ships before any build writes the fields, as
-[ADR-0023](0023-exhibits-are-the-unit-of-evidence.md) requires.
+them, as it stamps 3 for `exhibitNumber` and 5 for the Egress fields. Schema 5 exists on `main`
+since PR #1747 taught the verifier ADR-0032's Egress fields, and no tagged release carried it on
+2026-10-06. The fields join that first schema-5 verifier release when they land in the schema
+before it is tagged. When it is tagged first, they take 6: a shipped schema-5 verifier passes the
+too-old check at 5 and fails its strict parse on the fields, so stamping 5 would read as a broken
+chain in a release already in recipients' hands. The release that knows the fields ships before
+any build writes them, as [ADR-0023](0023-exhibits-are-the-unit-of-evidence.md) requires.
 
 ## Considered options
 

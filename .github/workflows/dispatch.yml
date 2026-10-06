@@ -179,6 +179,12 @@ jobs:
           JOB_STATUS: ${{ job.status }}
         run: bash .github/scripts/dispatch/cleanup.sh
 
+      # On every exit, a cancel and the job timeout included: run.sh scrubs only once
+      # `claude` returns, and the transcript is written while it runs (see scrub.sh).
+      - name: Scrub the artifact
+        if: always()
+        run: bash .github/scripts/dispatch/scrub.sh
+
       # include-hidden-files, because .dispatch is a dot-directory and the action
       # skips those by default: run 34090872909 reported "No files were found
       # with the provided path" and uploaded nothing, which is the whole report

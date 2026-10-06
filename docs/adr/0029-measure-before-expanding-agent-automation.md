@@ -8,6 +8,11 @@ Extends [ADR-0028](0028-dispatch-works-a-hand-picked-queue.md) with a restart co
 for scheduled Dispatch and Doc curator. Its queue, review, and issue-filing rules remain
 in force.
 
+**Amended 2026-10-06:** the maintainer confirmed that scheduled Dispatch is restarted. It has
+fired every four hours since 2026-10-02, bounded by the spend cap in
+`.github/scripts/dispatch/pregate.sh` (the maintainer's ruling of 2026-09-28 on #1310). Doc
+curator stays off under the condition below.
+
 ## Context
 
 ADR-0028 records unsustainable agent spend and maintainer review load. A subsequent

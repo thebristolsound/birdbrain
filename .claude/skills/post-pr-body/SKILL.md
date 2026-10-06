@@ -67,9 +67,11 @@ as a handoff, never asserted.
 
 `scripts/check.sh` runs as a `PreToolUse` hook on `Bash`, registered in `.claude/settings.json`
 so it sees every session on every spawn path. It acts only when the hook payload's `agent_type`
-is in the `bound=` list at the top of the script (`birdbrain-implementer` today); an interactive
-session or an unbound agent passes through. Agent frontmatter `hooks:` are not used: sessions
-that supply the agent roster through the SDK (t3code) drop them, verified 2026-08-29.
+is in the `bound=` list at the top of the script (`birdbrain-implementer` today), or when
+`BIRDBRAIN_DISPATCH=1`, which `.github/scripts/dispatch/run.sh` sets for every session of a
+scheduled cycle; an interactive session or an unbound agent passes through. Agent frontmatter
+`hooks:` are not used: sessions that supply the agent roster through the SDK (t3code) drop
+them, verified 2026-08-29.
 It acts on `gh pr create`, `gh pr edit`, their `agh` forms, and `gh api` calls on a `/pulls`
 endpoint that write (`-X POST|PATCH|PUT`, or any `-f`/`-F`/`--input` field, which makes `gh api`
 POST implicitly):

@@ -64,6 +64,7 @@ expect 0 "$(hook "gh api repos/o/r/pulls/12 -X PATCH -f state=closed")" "hook al
 expect 0 "$(hook "gh api repos/o/r/pulls/12/reviews -X POST -f event=APPROVE")" "hook ignores a review post"
 expect 0 "$(hook "gh pr create --draft --title t --body 'inline'" "")" "hook passes through an interactive session"
 expect 0 "$(hook "gh pr create --draft --title t --body 'inline'" "birdbrain-reviewer")" "hook passes through an unbound agent"
+expect 2 "$(BIRDBRAIN_DISPATCH=1 hook "gh pr create --draft --title t --body 'inline'" "")" "hook binds a headless dispatch session"
 
 echo "$fails failure(s)"
 [ "$fails" -eq 0 ]

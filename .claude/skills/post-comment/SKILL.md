@@ -71,8 +71,9 @@ Rules for every kind:
 
 `scripts/check.sh` runs as a `PreToolUse` hook on `Bash`, registered in `.claude/settings.json`
 beside the commit and PR body hooks. It acts only when the hook payload's `agent_type` is in
-the `bound=` list at the top of the script (`birdbrain-implementer` today); the dispatcher and
-reviewer invoke it by instruction in step 2 above. It acts on `gh issue comment`,
+the `bound=` list at the top of the script (`birdbrain-implementer` today), or when
+`BIRDBRAIN_DISPATCH=1`, which `.github/scripts/dispatch/run.sh` sets for every session of a
+scheduled cycle. A local dispatcher and the reviewer invoke it by instruction in step 2 above. It acts on `gh issue comment`,
 `gh pr comment`, their `agh` forms, and `gh api` POSTs to a `/comments` or `/replies` endpoint,
 linting the `--body-file` or `--input` file and blocking `--body`.
 

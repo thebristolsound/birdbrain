@@ -15,7 +15,7 @@ root="${CLAUDE_PROJECT_DIR:-$(git -C "$here" rev-parse --show-toplevel)}"
 lint() {
   local file="$1" out
   if [ ! -f "$file" ]; then
-    echo "post-commit-message: message file not found: $file" >&2
+    echo "post-commit-message: message file not found: $file. The hook runs before the command does, so a file this same command writes (a heredoc ahead of the commit) does not exist yet: write the file in one call, then run this command in the next." >&2
     return 1
   fi
   # A missing linter is not a bad message: say so, with its own exit code, so the agent
@@ -53,8 +53,11 @@ read -r agent cwd cmd < <(printf '%s' "$input" | node -e '
 cmd="$(printf '%s' "$cmd" | base64 -d)"
 
 # The hook is registered in .claude/settings.json, so it sees every session; it acts only for
-# the agents named in $bound (the payload's agent_type). Interactive sessions pass through.
-case " $bound " in *" $agent "*) ;; *) exit 0 ;; esac
+# the agents named in $bound (the payload's agent_type), and for every agent of a headless
+# dispatch cycle, which sets BIRDBRAIN_DISPATCH=1 (.github/scripts/dispatch/run.sh): its
+# top-level session posts claims and verdicts under no agent_type. Interactive sessions pass
+# through.
+case " $bound " in *" $agent "*) ;; *) [ "${BIRDBRAIN_DISPATCH:-}" = 1 ] || exit 0 ;; esac
 
 # `git merge` and `git revert` write their own commit with a generated message that no file
 # can carry through the linter. Allow only the forms that stop before the commit; the checked

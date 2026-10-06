@@ -98,9 +98,10 @@ Single-context layout: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/ag
 
 ### Background jobs (project-local carve-out)
 
-Scheduled Dispatch and Doc curator are paused. Before proposing a restart or adding
-automation machinery, read [ADR-0029](docs/adr/0029-measure-before-expanding-agent-automation.md):
-verify basic spending limits and obtain explicit maintainer authorization to restart.
+Scheduled Dispatch runs every four hours under the pre-gate's spend cap; Doc curator is
+paused. Before restarting Doc curator or adding automation machinery, read
+[ADR-0029](docs/adr/0029-measure-before-expanding-agent-automation.md): verify basic spending
+limits and obtain explicit maintainer authorization.
 
 Unattended jobs working a `ready-for-agent` issue, and any session that opens or labels an agent
 PR, follow [Background jobs](docs/agents/background-jobs.md): the wait-for-confirmation opt-out,

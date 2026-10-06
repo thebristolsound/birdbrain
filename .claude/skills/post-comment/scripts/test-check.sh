@@ -43,6 +43,8 @@ expect 0 "$(hook "gh api repos/o/r/pulls/12/comments/99/replies -X POST --input 
 expect 2 "$(hook "gh api repos/o/r/issues/12/comments -X POST --input fail-reply.json")" "hook blocks a failing api payload"
 expect 0 "$(hook "gh issue comment 12 --body 'inline'" "")" "hook passes through an interactive session"
 expect 0 "$(hook "gh issue comment 12 --body 'inline'" "birdbrain-reviewer")" "hook passes through an unbound agent"
+expect 2 "$(BIRDBRAIN_DISPATCH=1 hook "gh issue comment 12 --body 'inline'" "")" "hook binds a headless dispatch session"
+expect 2 "$(BIRDBRAIN_DISPATCH=1 hook "gh issue comment 12 --body-file /nonexistent/claim.md" "")" "hook blocks a dispatch comment whose file does not exist yet"
 
 echo "$fails failure(s)"
 [ "$fails" -eq 0 ]

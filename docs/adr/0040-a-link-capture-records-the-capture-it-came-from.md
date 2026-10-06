@@ -4,8 +4,9 @@
 
 **Date:** 2026-10-04
 
-The maintainer ruled on the questions this record settles on 2026-10-04. Nothing in it is
-implemented. The work is planned in
+The maintainer ruled on the questions this record settles on 2026-10-04. The record itself
+awaits acceptance, which changes the status line. Nothing in it is implemented. The work is
+planned in
 [the slice 2 plan](../plans/2026-10-04-mhtml-viewer-slice-2-click-through-and-provenance.md),
 Part B.
 
@@ -53,11 +54,17 @@ links out of its MHTML again shows it.
 sighting, unlike a Duplicate.
 
 **The fields need schema 5.** `ManifestCaptureEntrySchema` is strict, so a verifier that does not
-know the fields would read an entry carrying them as a broken chain. The fields are valid only on
-an entry whose `schemaVersion` is at least 5, the rule `exhibitNumber` follows at 3, so a schema-4
-verifier reports "verifier too old". They join the first verifier release that teaches schema 5,
-which the chain-head anchoring design also needs; if none is in flight when this work is ready,
-this work takes 5 and the next takes 6. That release ships before any build writes the fields, as
+know the fields would read an entry carrying them as a broken chain. The rule `exhibitNumber`
+follows at 3 has two halves, and the fields take both. The schema accepts them only on an entry
+whose `schemaVersion` is at least 5, so a schema-4 verifier reports that it is too old, and only
+as a complete set of three, so an entry carrying one or two of them is rejected. The writer's
+`fieldMinReaderSchemaVersion` in `src/main/services/manifest.ts` stamps 5 on an entry that carries
+them, as it stamps 3 for `exhibitNumber`. They join the first verifier release that teaches
+schema 5, which the chain-head anchoring design also needs. If no schema-5 release is in flight
+when this work is ready, this work takes 5 and the next takes 6. If a schema-5 verifier has
+already shipped without these fields, they take 6: that verifier passes the too-old check at 5 and
+fails its strict parse, so stamping 5 would read as a broken chain in a release already in
+recipients' hands. That release ships before any build writes the fields, as
 [ADR-0023](0023-exhibits-are-the-unit-of-evidence.md) requires.
 
 ## Considered options
@@ -77,9 +84,14 @@ this work takes 5 and the next takes 6. That release ships before any build writ
 
 - The `captures` table gains `linked_from_capture_id`, `linked_from_content_hash` and `link_href`
   by migration, so the viewer can show "From a link in" beside the existing Duplicate and
-  Recapture links, and the report can print the rows.
-- The recapture queue checks in the main process that the source exists and is in the job's Case
-  before it accepts a link job.
+  Recapture links, and the report can print the rows. A Case Archive import remaps
+  `linked_from_capture_id` as it remaps `supersedes_capture_id` and `duplicate_of_capture_id`, and
+  the archive schema version rises so an older release refuses the archive rather than dropping
+  the columns on import.
+- The recapture queue accepts a link job only when the job carries exactly one URL and it equals
+  `linkHref`, and the source exists, is in the job's Case and verifies against the chain. It takes
+  `linkedFromContentHash` from the source's signed entry, as the Duplicate path does, and not from
+  the database row, which Database Admin can edit.
 - A Recapture of a link Capture does not inherit the fields. It records its own
   `supersedesCaptureId`.
 - A Capture of a Wayback snapshot of a link (the slice 3 plan) does not carry the fields: the

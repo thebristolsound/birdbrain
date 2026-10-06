@@ -29,25 +29,51 @@ link pointed at around the time the page that holds the link was captured, so `s
 ranks against that moment. Reusing the function keeps one archive.org client, so when ADR-0032's
 Egress setting is built, both the Capture lookup and the link lookup follow it from one place.
 
-The answer is phrased with `formatSnapshotDelta` from `src/shared/wayback.ts`, with the reference
-point named: "3d before this page was captured", not "before capture", because the link's
-destination was never captured.
+The function asks the CDX API for `statuscode:200` rows only and collapses them by digest
+(`buildCdxUrl`), and this slice does not change that, so the answer is narrower than "archived":
 
-A link check asks for a smaller result than the Capture lookup's 200 rows: 20 is enough to show
-the closest snapshot and a count. When the result reaches the limit, the count reads "20 or
-more".
+- An empty result means archive.org returned no successful snapshot. An archived redirect or
+  error page is not reported, so a destination whose only records are a 301 and a 404 reads the
+  same as one archive.org never saw. The cell says "No successful snapshot" (the Capture panel
+  says "No snapshots found" on the same reasoning) and never says "Not archived" for it.
+- The count is of distinct archived versions, not of snapshots: identical content captured many
+  times returns one row. The cell counts versions, in that word, and never snapshots.
+
+An unfiltered mode that also returns redirects and errors would be the fuller answer for a dead
+destination. It changes `waybackMachine.ts`, which S8 keeps unchanged, so it is left as a
+follow-up for the maintainer to rule on.
+
+The answer is phrased with `formatSnapshotDelta` from `src/shared/wayback.ts`, with the reference
+point named ("3 days before this page was captured") rather than the function's own "before
+capture" wording, because the link's destination was never captured.
+
+A link check asks for a smaller result than the 200 rows of the Capture lookup: 20 is enough to
+show the closest version and a count. When the result reaches the limit, the cell says that 20 or
+more versions exist.
 
 ### S2. What may be looked up?
 
 Each lookup discloses the address to archive.org, so the main process decides, not only the menu:
 
-- A new channel, `wayback:lookupLink`, takes `{ captureId, url }`. Main refuses a URL that is not
-  `http:` or `https:`, and a URL that names this computer or a loopback, private, link-local or
-  other non-public address. Sending an intranet host name to a third party is a disclosure of the
-  Operator's own network, the same harm slice 1's D9 guards against in the other direction.
+- A new channel, `wayback:lookupLink`, takes `{ captureId, url }`. Main applies
+  `captureLinkBlockReason`, which refuses what it can see in the address itself: a scheme other
+  than `http:` or `https:`, the host `localhost` or a name under `.localhost`, and a literal IPv4
+  or IPv6 address in a loopback, private, link-local or other non-public range. It does not
+  refuse a host name, so `http://wiki/` or `http://intranet.example/` passes it today, and a name
+  that resolves to a private address passes it by design (the function's own comment). Sending
+  such a name to a third party is a disclosure of the Operator's own network, the same harm
+  slice 1's D9 guards against in the other direction, so this slice recommends one extension,
+  below.
 - `captureLinkBlockReason` moves from `src/renderer/components/captures/guestLink.ts` to
   `src/shared/` so main and the menu apply one rule. Its tests move with it. The renderer import
-  changes; the function does not.
+  changes; the move itself does not change the function.
+- **Recommended, awaiting a ruling (ruling 3).** The shared function also refuses a host with no
+  dot (`wiki`, `intranet`) and a name under a reserved private suffix (`.local`, `.internal`,
+  `.home.arpa`), with a "Points at a private network" reason. The Capture link menu then
+  refuses the same addresses, which is the intended effect, because slice 1's D9 names the same
+  harm. A dotted name that resolves to a private address is still sent: checking it means
+  resolving it, which is itself a disclosure to the resolver. That gap stays open and is named
+  here rather than papered over.
 - Main does not check that the URL appears in the Capture's link list. The list is derived data
   with ceilings, and a link past the row ceiling is still a link the Operator can see in the page.
 
@@ -58,13 +84,17 @@ Each lookup discloses the address to archive.org, so the main process decides, n
   existing disclosure hint, `WAYBACK_DISCLOSURE_HINT`, reworded for a link: "Looking up this link
   discloses it to archive.org."
 - **Many links.** "Look up all in Wayback" in the Links tab toolbar, over the rows the current
-  search and "External only" filter show. It opens a confirmation that states the count, the
-  destination (archive.org), and that each address is disclosed, and lists how many rows S2
-  excludes and why. This follows step 6 of
+  search and "External only" filter show. The addresses are de-duplicated first: the link list
+  (`src/main/services/captureLinks.ts`) collapses a link into one row only when its text, frame
+  and document URL also match, so one destination can sit in several rows, and one request
+  serves them all. The confirmation lists every address that
+  will be sent, after S2's refusals, the de-duplication and S4's cap, and lists the refused
+  addresses with their reasons, so the Operator reads the exact list rather than a count. This
+  follows step 6 of
   [the Case investigation engine design](../specs/2026-10-02-case-investigation-engine-design.md),
-  which asks that every external lookup show its destination and query before it is sent. The
-  dialog also says the lookups leave from the Operator's own address, because the Egress setting
-  is not built yet.
+  which asks that each external lookup show its destination and its exact query or URL before it
+  is sent. The dialog names the destination (archive.org) and says that the requests leave from
+  the Operator's own address, because the Egress setting is not built yet.
 
 No lookup ever runs without one of these two actions, matching the existing rule that a Wayback
 lookup is user-initiated.
@@ -78,11 +108,11 @@ lookup is user-initiated.
   were not checked.
 - The Operator can cancel a running batch from the Links tab. A cancel stops before the next
   request.
-- A batch is capped at a fixed number of links; above it, the confirmation says the first N are
-  checked. The cap is the implementer's to measure against the pause, so a full batch finishes in
-  a few minutes.
+- A batch is capped at a fixed number of addresses after de-duplication; above it, the
+  confirmation lists the first N and says the rest are not checked. The cap is for the
+  implementer to measure against the pause, so a full batch finishes in a few minutes.
 - Progress arrives as events on one channel, keyed by Capture id and address, so the rows update
-  as answers land.
+  as answers land; an answer updates every row that holds its address.
 
 ### S5. Can a link's snapshot be pinned?
 
@@ -103,9 +133,10 @@ present it as corroboration of the source page. A link's snapshot gets these act
 
 ### S6. Where do answers show, and how long do they last?
 
-- **Links tab.** Each web row gains a Wayback cell: not checked, checking, not archived, "12
-  snapshots, closest 3d before this page was captured", or the error. The cell opens the snapshot
-  actions in S5.
+- **Links tab.** Each web row gains a Wayback cell with one of five states: not checked, checking,
+  no successful snapshot, a result such as "12 versions, closest 3 days before this page was
+  captured" (the S1 wording), or the error. The cell is a control of its own beside the row's link
+  button (the slice 2 plan, A5), so opening the snapshot actions in S5 never activates the row.
 - **Page tab.** The menu's "Look up in Wayback" shows the answer as a toast with an "Open at
   archive.org" action. The hover bubble does not show Wayback answers.
 - Answers live in the React Query cache, keyed by Capture id and address, with the same five
@@ -117,12 +148,16 @@ present it as corroboration of the source page. A link's snapshot gets these act
 
 - **Unit.** The `wayback:lookupLink` handler: an allowed address calls `lookupSnapshots` with the
   source Capture's timestamp and the smaller limit; a refused address never calls it; an unknown
-  Capture id is rejected. The moved `captureLinkBlockReason` keeps every existing case. The batch
-  runner with a fake fetch: one request at a time, the pause, stop on 429 with the partial answers
-  kept, cancel between requests, the cap. The delta wording with the named reference point.
+  Capture id is rejected. The moved `captureLinkBlockReason` keeps every existing case, and gains
+  the host-name cases if ruling 3 accepts them. The batch runner with a fake fetch: one request
+  at a time, the pause, stop on 429 with the partial answers kept, cancel between requests, the
+  cap, and one request for an address that several rows hold. The delta wording with the named
+  reference point.
 - **Component (jsdom).** `entityMenu` entries: the item for a web link, turned off with the reason
   for a refused address, absent for other schemes. `LinksTab`: each Wayback cell state, the
-  confirmation's counts and exclusions, the progress update, cancel. No test reaches archive.org.
+  confirmation's address list and its refusals, the progress update reaching every row that
+  holds the address, activating the Wayback cell without activating the row, cancel. No test
+  reaches archive.org.
 - **E2E.** None that reaches archive.org. If the implementer adds one, the CDX base URL must be
   injectable so the spec points it at a local sentinel server.
 
@@ -131,7 +166,8 @@ present it as corroboration of the source page. A link's snapshot gets these act
 `src/main/services/waybackMachine.ts` is blocking tier in
 `docs/specs/2026-07-31-evidence-affecting-paths-assessment.md` ("Corroboration lookups pinned as
 evidence references"), so a PR that changes it is `evidence-affecting`. S1 is designed so that it
-need not change: the handler calls `lookupSnapshots` with a `limit` option it already accepts. If
+need not change: the handler calls `lookupSnapshots` with a `limit` option it already accepts, and
+S1 and S6 word the answer as the 200-only, digest-collapsed result it is. If
 the batch runner lives beside it rather than in a new `src/main/services/waybackLinkCheck.ts`, the
 PR becomes evidence-affecting. The runner goes in the new file. `LinksTab.tsx` becomes blocking tier
 when issue #1728 lands, and from then on this slice's PR is `evidence-affecting` whichever file
@@ -160,8 +196,19 @@ The maintainer accepted each recommendation the first draft of this plan made.
    toolbar, because the toolbar states the snapshot's time and source in the stored page itself.
 2. **Batch lookups (S3, S4).** Shipped in this slice as the second PR, because checking a page's
    outbound links one by one is the manual work this slice exists to remove.
+3. **Host-name refusals (S2). Open.** Added 2026-10-06 after the pre-pass review of PR #1734, and
+   not yet ruled on: refuse a host with no dot and a name under a reserved private suffix.
 
 ## Sequencing
 
 Independent of slice 2. The `captureLinkBlockReason` move (S2) is a small first commit that slice
 2 and issue #1726 can also build on.
+
+## Revisions
+
+2026-10-06, after the pre-pass review of PR #1734: S1 and S6 describe the answer the reused
+function returns, 200-only and digest-collapsed, in its own terms; S2 states what
+`captureLinkBlockReason` refuses today and recommends the host-name extension; S3 lists every
+address in the confirmation and de-duplicates first; S6 keeps the Wayback cell out of the row's
+button. Review findings adopted into the plan, not rulings, except that the S2 extension waits on
+ruling 3.

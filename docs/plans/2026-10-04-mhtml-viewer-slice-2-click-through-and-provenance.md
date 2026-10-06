@@ -43,8 +43,9 @@ The refused navigation was considered first and rejected for three reasons:
   form submission. `WebContentsWillFrameNavigateEventParams` in Electron's typings carries `url`,
   `isSameDocument`, `isMainFrame`, `frame` and `initiator`, and no user-gesture field, so the
   guard cannot tell a click from a refresh.
-- Moving the selection from inside the guard would make the guard, which is blocking tier, carry
-  user-interface behaviour.
+- Moving the selection from inside the guard would make its decision function,
+  `decideFrameNavigation` in `src/main/webviewPolicy.ts`, or its call site in `src/main/index.ts`,
+  which is blocking tier, carry user-interface behaviour.
 
 The design that works in every frame:
 
@@ -104,8 +105,8 @@ No forward stack. Following the same link again is the forward action.
 ### A4. What happens on a link the Case does not hold?
 
 The status bubble at the bottom left of the Page pane changes from the hover
-destination to "Not in this Case", with a Capture link button that runs the same action as the
-menu item. The button is turned off with the same reason text when `captureLinkBlockReason`
+destination to a "Not in this Case" notice with a Capture link button that runs the same action
+as the menu item. The button is turned off with the same reason text when `captureLinkBlockReason`
 refuses the address. The bubble clears on the next press in the guest.
 
 The alternative was to do nothing and leave the menu as the only route. The maintainer chose the
@@ -113,10 +114,15 @@ button on 2026-10-04 (ruling 1).
 
 ### A5. Does the Links tab click through too?
 
-Yes. A left click, or Enter on a focused row, on a row marked "In Case" opens the captured copy
-and pushes the trail, the same as a click in the Page tab. A row that is not in the Case does
-nothing on a left click; its menu still offers Capture link. Rows become focusable buttons for
-this, which also gives the tab keyboard access it lacks today.
+Yes, with A2's table applied to the row's destination. A left click, or Enter on the focused
+link, on a row marked "In Case" opens the captured copy and pushes the trail, the same as a click
+in the Page tab. `LinksTab.tsx` marks a same-page link "In Case" on purpose, because the viewed
+Capture holds it, and `resolveCaptureForUrl` drops the fragment, so such a row resolves to the
+viewed Capture itself; A2's second row applies and it does nothing. A row that is not in the Case
+does nothing on a left click; its menu still offers Capture link. The link text in each row
+becomes a focusable button, rather than the whole row, so another cell can hold a control of its
+own (the slice 3 plan's Wayback cell) without nesting a button inside a button. This also gives
+the tab keyboard access it lacks today.
 
 ### A6. Does the Wayback compare pane click through?
 
@@ -133,13 +139,14 @@ stay on in both.
   The trail actions in `appStore`: push, pop, pop past a deleted Capture, clear on another
   selection, clear on Case change.
 - **Component (jsdom).** `MhtmlViewer` with a mocked guest: a click on a held link selects it and
-  pushes the trail; a click on an unheld link shows the bubble; a click with `linkClicks` off does
-  nothing. `CaptureViewer` shows and runs Back. `LinksTab` opens an "In Case" row on click and on
-  Enter.
+  pushes the trail; a click on a link the Case does not hold shows the bubble; a click with
+  `linkClicks` off does nothing. `CaptureViewer` shows and runs Back. `LinksTab` opens an "In Case"
+  row on click and on Enter, and does nothing for a same-page row.
 - **E2E.** Extend `e2e/mhtml-link-interactivity.spec.ts`. The fixture Case gains a second Capture
   whose URL is one of the fixture's absolute links. Through the existing `sendInputEvent` harness:
   a left click on that link in the main frame and in the iframe opens the second Capture; Back
-  returns; a click on an unheld link shows "Not in this Case"; a middle click and a modified click
+  returns; a click on a link the Case does not hold shows "Not in this Case"; a middle click and a
+modified click
   do nothing. Every existing assertion still holds, above all that the sentinel server receives
   zero requests.
 
@@ -148,9 +155,10 @@ stay on in both.
 `MhtmlViewer.tsx` is blocking tier in
 `docs/specs/2026-07-31-evidence-affecting-paths-assessment.md`, so the PR is
 `evidence-affecting` and gets human review. No stored, anchored or exported value changes, and
-neither the guard (`src/main/index.ts`, `decideFrameNavigation`) nor the webview's
-`webpreferences` change. The PR's Evidence impact section says that the guard's refusals are
-unchanged and that the E2E's zero-request assertion still passes.
+neither the guard (`decideFrameNavigation` in `src/main/webviewPolicy.ts`, called from the
+blocking-tier `src/main/index.ts`) nor the webview's `webpreferences` change. The PR's Evidence
+impact section says that the guard's refusals are unchanged and that the E2E's zero-request
+assertion still passes.
 
 ### A9. Files Part A is expected to change
 
@@ -207,16 +215,31 @@ Considered for the Manifest, and settled as follows:
 ### B3. Schema version and verifier sequencing
 
 `ManifestCaptureEntrySchema` is `.strict()`, so a verifier that does not know the fields reads an
-entry carrying them as a broken chain. The same refine rule `exhibitNumber` follows applies: the
-fields are valid only on an entry whose `schemaVersion` is at least 5, so a schema-4 verifier
-reports "verifier too old" (X25), not a broken chain.
+entry carrying them as a broken chain. The rule `exhibitNumber` follows has two halves, and the
+fields take both:
 
-`MANIFEST_SCHEMA_VERSION` 5 is already claimed by the chain-head anchoring design
-(`docs/specs/2026-10-02-chain-head-anchoring-design.md`, the `timestamping` entry). ADR-0032's
-Egress fields and ADR-0035's artifact inventory also wait on a verifier release. The three fields
-join whichever schema-5 verifier release ships first, rather than taking a release of their own
-(ruling 3). The ADR records that choice; if no schema-5 release is in flight when Part B is
-ready, Part B takes 5 itself and the next one takes 6.
+- **Reader.** The refine in `src/shared/schemas.ts` accepts the fields only on an entry whose
+  `schemaVersion` is at least 5, so a schema-4 verifier reports "verifier too old" (X25), not a
+  broken chain. A second refine accepts them only as a complete set: an entry carrying one or two
+  of the three is rejected, because an id without the hash loses the byte binding and a hash
+  without the address loses what the relationship means.
+- **Writer.** `appendManifestEntry` in `src/main/services/manifest.ts` stamps a `capture` entry at
+  the highest of the type's minimum, `fieldMinReaderSchemaVersion`, and the caller's option,
+  capped at `MANIFEST_SCHEMA_VERSION`. `fieldMinReaderSchemaVersion` raises only an entry carrying
+  `exhibitNumber`, to 3. Without a matching change it would stamp 2 or 3 on an entry carrying the
+  new fields, and the reader rule would reject the entry the build itself wrote. It learns the
+  fields and returns 5 for an entry that carries them.
+
+`MANIFEST_SCHEMA_VERSION` is 4 today (`src/shared/constants.ts`), and 5 is already claimed by the
+chain-head anchoring design (`docs/specs/2026-10-02-chain-head-anchoring-design.md`, the
+`timestamping` entry). ADR-0032's Egress fields and ADR-0035's artifact inventory also wait on a
+verifier release. The three fields join whichever schema-5 verifier release ships first, rather
+than taking a release of their own (ruling 3). The ADR records that choice. If no schema-5 release
+is in flight when Part B is ready, Part B takes 5 itself and the next one takes 6. If a schema-5
+verifier has already shipped without the fields, they take 6: that verifier passes the too-old
+check at 5 and fails its strict parse, so stamping 5 would read as a broken chain in a release
+already in recipients' hands. The number is settled when step 2 starts, against the releases that
+have shipped, not against the ones in flight.
 
 ### B4. Order of work
 
@@ -224,38 +247,68 @@ ready, Part B takes 5 itself and the next one takes 6.
    2026-10-04 with status Proposed, settling B1 to B3 and the Shared Case question. `CONTEXT.md` gains a relationship line beside the Recapture
    and Duplicate ones: a link Capture is a new Capture that names the Capture holding the link; it
    observed the destination afresh and is a new sighting, not a copy.
-2. **Verifier release.** `src/shared/schemas.ts` learns the optional fields and the refine rule;
-   verify-core round-trips an entry that carries them; known-answer tests cover a schema-5 entry
-   that passes, the same entry read by the schema-4 rules reporting "too old", and a schema-4
-   entry carrying the field rejected. A tagged release ships before step 3 merges.
+2. **Verifier release.** `src/shared/schemas.ts` learns the optional fields and both refine rules
+   from B3, and `fieldMinReaderSchemaVersion` in `src/main/services/manifest.ts` returns 5 for an
+   entry that carries them, so the reader and the writer halves of the rule land in one release.
+   Verify-core round-trips an entry that carries them. Known-answer tests cover a schema-5 entry
+   that passes, the same entry read by the schema-4 rules reporting that the verifier is too old,
+   a schema-4 entry carrying the fields rejected, and each partial set (the id alone, the id and
+   the hash, the hash and the address, and the rest) rejected. A writer test appends an entry
+   carrying the fields and asserts `schemaVersion: 5`, beside the existing `exhibitNumber` case
+   that asserts 3 (`tests/main/services/exhibitNumbering.test.ts`). A tagged release ships before
+   step 3 merges.
 3. **Writer.**
-   - `RecaptureJob`, `RecaptureEnqueuePayload` and `useRecaptureMutations` gain `linkedFrom`:
-     `{ captureId, contentHash, href }`.
-   - `recapture.ts` checks in main that the source Capture exists and is in the job's Case, and
-     rejects the job otherwise, then passes the three fields through `captureLifecycle.ingest`.
-     The Content Hash is read in main from the source's row, not taken from the renderer.
+   - `RecaptureJob`, `RecaptureEnqueuePayload` and `useRecaptureMutations` gain a `linkedFrom`
+     object holding the source Capture id and the link address. The renderer never supplies the
+     Content Hash.
+   - `recapture.ts` accepts a link job only when the payload's `urls` holds exactly one URL and it
+     equals the link address, so a renderer defect cannot sign a relationship to an address the
+     job did not render. It then checks in main that the source Capture exists and is in the
+     job's Case, verifies the source's `capture` entry against the chain, and takes
+     `linkedFromContentHash` from that entry, as the Duplicate path in `captureLifecycle.ts` takes
+     `sourceEntry.contentHash`. The `captures` row is not the source: `updateRow` in Database Admin
+     allows the `captures` table, so a row value is editable where a signed entry is not. A job
+     that fails any check is rejected. The three fields then pass through
+     `captureLifecycle.ingest`.
    - A migration (`pnpm db:migration:new link-capture-provenance`) adds `linked_from_capture_id`,
-     `linked_from_content_hash` and `link_href` to `captures`.
+     `linked_from_content_hash` and `link_href` to `captures`. `CAPTURE_COLUMNS` in
+     `src/main/services/db/captureRepo.ts` gains the three columns; its drift test against
+     `PRAGMA table_info` fails until it does.
+   - Case Archive. Export needs no change: `collectCapturesForCase` selects every column.
+     `importCaptureRows` remaps `linked_from_capture_id` through `ctx.mapId`, beside the
+     `supersedes_capture_id` and `duplicate_of_capture_id` cases, so an imported link Capture
+     resolves its imported source rather than keeping the source installation's id.
+     `CASE_ARCHIVE_SCHEMA_VERSION` in `src/main/services/caseArchive.ts` rises from 8 to 9, by
+     that constant's own rule: a release that does not know the columns drops them on import,
+     because its `CAPTURE_COLUMNS` does not read them, and the version gate turns that into the
+     "update Birdbrain" refusal instead.
    - `useLinkMenuTarget` sends the source Capture id and the link address.
-   - `CaptureViewer.tsx` shows "From a link in <title>", which opens the source, beside "Duplicate
-     of".
-   - `reportHtml.ts` adds the rows beside "Supersedes" and "Duplicate of".
+   - `CaptureViewer.tsx` shows a "From a link in <title>" link, which opens the source, beside the
+     "Duplicate of" link.
+   - `reportHtml.ts` adds the rows beside the "Supersedes" and "Duplicate of" rows.
    - A Recapture of a link Capture does not inherit the fields: it records its own
      `supersedesCaptureId`.
 
 ### B5. Tests for Part B
 
-The schema cases in step 2. In step 3: `tests/main/services/recapture.test.ts` covers a link job
-that writes the three fields, a job whose source is in another Case or deleted (rejected), and an
-ordinary job that writes none of them; a lifecycle test pins the entry body with and without the
-fields; the migration test; `MhtmlViewer.test.tsx` pins the enqueue payload from the menu; the
-report test pins the new rows. The E2E from Part A gains one step: Capture link on an unheld link,
-wait for the stored event, and read the new Capture's "From a link in" header.
+The schema and writer cases in step 2. In step 3: `tests/main/services/recapture.test.ts` covers
+a link job that writes the three fields, a job whose source is in another Case, deleted or fails
+verification (rejected), a job whose `urls` is empty, holds two addresses or differs from the
+link address (rejected), and an ordinary job that writes none of them; a lifecycle test pins the
+entry body with and without the fields; the migration test and the `CAPTURE_COLUMNS` drift test;
+`tests/main/services/caseArchiveRoundTrip.test.ts` exports and imports a link Capture and asserts
+that `linked_from_capture_id` is remapped, not copied, as its `supersedes_capture_id` case does;
+the `CASE_ARCHIVE_SCHEMA_VERSION` pin in `tests/main/services/caseArchive.test.ts` moves to 9 and
+its newer-version refusal cases still pass; `MhtmlViewer.test.tsx` pins the enqueue payload from
+the menu; the report test pins the new rows. The E2E from Part A gains one step: Capture link on
+a link the Case does not hold, wait for the stored event, and read the new Capture's "From a link
+in" header.
 
 ### B6. Evidence impact of Part B
 
-Evidence-affecting at blocking tier: `recapture.ts`, `captureLifecycle.ts` and `reportHtml.ts`
-are blocking, and `schemas.ts` is advisory. Steps 2 and 3 are separate PRs, each with human
+Evidence-affecting at blocking tier: `manifest.ts` in step 2, and `recapture.ts`,
+`captureLifecycle.ts`, `caseArchive.ts` and `reportHtml.ts` in step 3, are blocking;
+`schemas.ts` is advisory. Steps 2 and 3 are separate PRs, each with human
 review and no auto-merge. Step 3 also touches more than ten files and adds a migration, so under
 ADR-0016 its implementation plan needs the maintainer's approval before work starts.
 
@@ -263,7 +316,7 @@ ADR-0016 its implementation plan needs the maintainer's approval before work sta
 
 The maintainer accepted each recommendation the first draft of this plan made.
 
-1. **An unheld link (A4).** A click on a link the Case does not hold shows "Not in this Case" with
+1. **A link the Case does not hold (A4).** A click on such a link shows "Not in this Case" with
    a Capture link button. It is the action the Operator most likely wants, and it runs the same
    guarded path as the menu.
 2. **The source's Content Hash (B2).** A member of a Shared Case can Capture a link from another
@@ -278,3 +331,11 @@ Part A is independent of Part B and can ship first. Part B's step 3 depends on s
 Issue #1726 (refuse a public link that redirects to a private address) changes the same
 background renderer path, but is independent of this slice; if it lands first, the
 `recapture.test.ts` cases above are written against its version.
+
+## Revisions
+
+2026-10-06, after the pre-pass review of PR #1734: A5 applies A2's self-Capture rule to the Links
+tab and makes the link text the button; B3 and B4 step 2 add the writer half of the schema rule,
+the complete-set rule and the schema-6 case; B4 step 3 binds the job to one URL, reads the
+Content Hash from the verified entry, and adds the `CAPTURE_COLUMNS`, import remap and archive
+version changes. These are review findings adopted into the plan, not rulings.

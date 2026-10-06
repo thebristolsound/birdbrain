@@ -38,7 +38,7 @@ authenticates as the machine account.
    `agh` (ADR-0005, ADR-0014); under `gh` it proceeds, because the maintainer running it is the
    human review. A label read that fails refuses the merge rather than reading as "no label."
 5. The `merge-gate` check (ADR-0041) replaces the code-owner review rule, so no author needs
-   the bypass. When it is the red check, the script starts a re-run on the head branch first,
+   the bypass. When it is the red check, the script re-runs the gate's last attempt first,
    because a pre-pass verdict is a commit status and triggers nothing. `--admin` takes the
    ruleset bypass for an emergency; the script never chooses it, and `agh` refuses it.
 

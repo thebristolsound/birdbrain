@@ -10,28 +10,29 @@ name: Merge gate
 # that judges it.
 #
 # A commit status (the agent/pre-pass verdict) triggers no PR event, so a verdict posted after
-# the last run leaves this check stale. The `merge` label, the next push, or a
-# workflow_dispatch on the PR's head branch (merge.sh does this) runs it again.
+# the last run leaves this check stale. The `merge` label, the next push, or a re-run of the
+# last attempt (merge.sh does this) runs it again.
+#
+# The job definition, unlike the rule script, comes from the PR's branch, as for every
+# pull_request workflow, so a same-repository branch could replace it. The trusted controls are
+# the jobs in merge-on-label.yml, which run from the default branch: auto-merge is armed only on
+# the maintainer's label and disarmed on every push.
 
 on:
   pull_request:
     types: [opened, reopened, synchronize, labeled, unlabeled, ready_for_review, edited]
   pull_request_review:
     types: [submitted, dismissed]
-  workflow_dispatch:
-    inputs:
-      pr:
-        description: PR number to judge; dispatch on the PR's head branch so the check lands on its head commit
-        required: true
 
 permissions:
   contents: read
   pull-requests: read
   issues: read
   statuses: read
+  checks: read
 
 concurrency:
-  group: merge-gate-${{ github.event.pull_request.number || inputs.pr }}
+  group: merge-gate-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
 jobs:
@@ -50,6 +51,6 @@ jobs:
       - name: Judge the PR
         env:
           GH_TOKEN: ${{ github.token }}
-          PR: ${{ github.event.pull_request.number || inputs.pr }}
+          PR: ${{ github.event.pull_request.number }}
           BIRDBRAIN_AGENT_GH_LOGIN: ${{ vars.BIRDBRAIN_AGENT_GH_LOGIN }}
         run: node .github/scripts/merge/gate.mjs "$GITHUB_REPOSITORY" "$PR"

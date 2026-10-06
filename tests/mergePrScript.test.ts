@@ -23,7 +23,12 @@ const requiredRules = (contexts: string[]) => [
   { type: 'pull_request', parameters: {} }
 ]
 
-const run = (name: string, conclusion: string) => ({ name, status: 'completed', conclusion })
+const run = (name: string, conclusion: string) => ({
+  name,
+  status: 'completed',
+  conclusion,
+  details_url: ''
+})
 
 const routes = (
   rules: unknown,
@@ -162,13 +167,15 @@ describe.skipIf(!HAS_JQ)('merge.sh takes the admin bypass only when asked', () =
     expect(mergeCall(result.calls)).toBeUndefined()
   })
 
-  it('starts a merge-gate re-run on the head branch when the gate is the red check', () => {
-    const gate = invoke(
-      routes(requiredRules(['lint', 'merge-gate']), [...green, run('merge-gate', 'failure')]),
-      []
-    )
+  it('re-runs the last merge-gate attempt when the gate is the red check', () => {
+    const gateRun = {
+      ...run('merge-gate', 'failure'),
+      details_url: 'https://github.com/o/r/actions/runs/4242/job/99'
+    }
+    const gate = invoke(routes(requiredRules(['lint', 'merge-gate']), [...green, gateRun]), [])
     expect(gate.status).toBe(1)
-    expect(gate.calls).toContain('workflow run merge-gate.yml --ref feature -f pr=7')
+    expect(gate.calls).toContain('run rerun 4242')
+    expect(gate.calls.some((call) => call.startsWith('workflow run'))).toBe(false)
     expect(gate.stderr).toContain('required checks not green at head: merge-gate=completed/failure')
     expect(mergeCall(gate.calls)).toBeUndefined()
   })

@@ -90,12 +90,16 @@ if [ "$runs" -eq 0 ]; then
   fi
 else
   # A pre-pass verdict is a commit status, which triggers no PR event, so merge-gate can be
-  # stale after one. Re-run it on the head branch rather than asking the caller to find out why.
+  # stale after one. Re-run its last attempt: a re-run keeps the workflow definition that run
+  # was started with, where a dispatch on the head branch would run whatever that branch holds.
   case " $bad_checks " in
     *" merge-gate="*)
-      if [ "$head_repo" = "$base_repo" ] && [ "$dry" -eq 0 ]; then
-        "$cli" workflow run merge-gate.yml --ref "$head_ref" -f pr="$n" >/dev/null \
-          && say "merge-gate re-run started on $head_ref" || say "WARN could not start a merge-gate re-run"
+      gate_run="$(node -e '
+const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).check_runs.filter(r=>r.name==="merge-gate")
+const m=(c[0]?.details_url||"").match(/\/actions\/runs\/(\d+)/); process.stdout.write(m?m[1]:"")' "$work/checks.json")"
+      if [ -n "$gate_run" ] && [ "$dry" -eq 0 ]; then
+        "$cli" run rerun "$gate_run" >/dev/null \
+          && say "merge-gate re-run started (run $gate_run)" || say "WARN could not re-run merge-gate (run $gate_run)"
       fi ;;
   esac
   [ -z "$bad_checks" ] || fail "required checks not green at head: $bad_checks"

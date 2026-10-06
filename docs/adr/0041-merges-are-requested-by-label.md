@@ -64,6 +64,13 @@ Evidence-Affecting Change is the maintainer's, whoever opened the pull request.
   `agent/pre-pass` from being a required check.
 - The merge workflow runs on `pull_request_target` with the machine account's token. It must
   never check out or run the pull request's code.
+- `merge-gate` runs on `pull_request`, so its job definition comes from the pull request's
+  branch and a same-repository branch could replace it; only the rule script is read from the
+  default branch. The trusted controls are the `merge-on-label.yml` jobs, which run from the
+  default branch: auto-merge is armed only on the maintainer's `merge` label, and disarmed on a
+  push, on the label's removal, and when a closed issue becomes evidence-affecting. A manual
+  merge by an account with write access remains possible once the checks are green, as it was
+  for any account allowed the bypass before.
 - A pre-pass verdict is a commit status, which starts no workflow on the pull request, so
   `merge-gate` can be stale after one. The `merge` label and every push run it again, and
   `merge.sh` starts a re-run when the gate is its red check.

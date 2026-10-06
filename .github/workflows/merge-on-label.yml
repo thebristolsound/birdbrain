@@ -10,12 +10,21 @@ name: Merge on label
 # PRs get none under pull_request. Neither job checks out or runs the PR's code: the checkout
 # is the default branch, and the PR body is read as data.
 #
-# The `withdraw` job runs on every push: it removes `approved` and `merge` and turns auto-merge
-# off, so a sign-off and a merge request always name the commit that lands.
+# Auto-merge stays armed only while the request stands:
+# - `withdraw`, on every push, removes `approved` and `merge` and turns auto-merge off, so a
+#   sign-off and a merge request always name the commit that lands. merge-gate also ignores an
+#   `approved` applied before the head arrived, so a failed withdraw does not reopen the door.
+# - `cancel`, when `merge` is removed, turns auto-merge off.
+# - `reject`, when anyone but the maintainer applies `merge`, removes it and says why. It reads
+#   no secret, so it needs no spend guard.
+# - `issue-evidence`, when an issue gains `evidence-affecting`, cancels the merge request of
+#   every open PR that closes it: merge-gate cannot see an issue label change until it next runs.
 
 on:
   pull_request_target:
-    types: [labeled, synchronize]
+    types: [labeled, unlabeled, synchronize]
+  issues:
+    types: [labeled]
 
 permissions:
   contents: read
@@ -23,14 +32,14 @@ permissions:
   issues: write
 
 concurrency:
-  group: merge-on-label-${{ github.event.pull_request.number }}
+  group: merge-on-label-${{ github.event.pull_request.number || github.event.issue.number }}
   cancel-in-progress: false
 
 jobs:
   request:
     # The spend guard (#1310): a job that reads a stored secret runs only when the maintainer
     # started the attempt. The step below also refuses any other label sender, with a comment.
-    if: github.event.action == 'labeled' && github.event.label.name == 'merge' && github.triggering_actor == 'thebristolsound'
+    if: github.event_name == 'pull_request_target' && github.event.action == 'labeled' && github.event.label.name == 'merge' && github.triggering_actor == 'thebristolsound'
     environment: paid-runs
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -39,6 +48,7 @@ jobs:
         with:
           ref: ${{ github.event.repository.default_branch }}
           sparse-checkout: |
+            .nvmrc
             .github/CODEOWNERS
             .claude/skills/merge-pr/scripts
             .claude/skills/post-pr-body/scripts
@@ -88,6 +98,9 @@ jobs:
               || refuse "the description has no Summary section to build the merge message from"
           fi
 
+          # The run may have queued behind a removal; enable nothing the maintainer took back.
+          gh api "repos/$GITHUB_REPOSITORY/issues/$PR/labels" --jq '.[].name' | grep -qx merge \
+            || { echo "the merge label is gone; nothing enabled"; exit 0; }
           login="$(GH_TOKEN="$AGENT_TOKEN" gh api user --jq .login)"
           [ "$login" = "${AGENT_LOGIN:-birdbrain-agent}" ] || refuse "the machine account token authenticates as $login"
           GH_TOKEN="$AGENT_TOKEN" gh pr merge "$PR" --repo "$GITHUB_REPOSITORY" --auto --squash \
@@ -95,8 +108,71 @@ jobs:
             || refuse "GitHub would not enable auto-merge; read the pull request's merge box"
           echo "auto-merge enabled at ${SHA:0:12} with subject: $(cat "$out/subject.txt")"
 
+  reject:
+    if: github.event_name == 'pull_request_target' && github.event.action == 'labeled' && github.event.label.name == 'merge' && github.triggering_actor != 'thebristolsound'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Remove a merge request the maintainer did not make
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          SENDER: ${{ github.triggering_actor }}
+        run: |
+          set -euo pipefail
+          gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --remove-label merge >/dev/null
+          printf 'Merge request removed: only the maintainer may request a merge, and %s applied the label.\n' "$SENDER" > comment.md
+          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file comment.md
+
+  cancel:
+    if: github.event_name == 'pull_request_target' && github.event.action == 'unlabeled' && github.event.label.name == 'merge'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Turn auto-merge off
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          auto="$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json autoMergeRequest --jq '.autoMergeRequest != null')"
+          if [ "$auto" = "true" ]; then
+            gh pr merge "$PR" --repo "$GITHUB_REPOSITORY" --disable-auto
+            echo "auto-merge disabled"
+          fi
+
+  issue-evidence:
+    if: github.event_name == 'issues' && github.event.label.name == 'evidence-affecting'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Cancel merge requests on PRs that close this issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          # Only a first line starting "Closes" names closed issues, as merge-gate reads it.
+          prs="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls?state=open&per_page=100" | jq -r --arg n "$ISSUE" '
+            .[] | ((.body // "") | split("\n")[0] // "") as $first
+            | select(($first | startswith("Closes ")) and ($first | test("#" + $n + "\\b")))
+            | .number')"
+          for pr in $prs; do
+            labels="$(gh api "repos/$GITHUB_REPOSITORY/issues/$pr/labels" --jq '.[].name')"
+            if printf '%s\n' "$labels" | grep -qx merge; then
+              gh pr edit "$pr" --repo "$GITHUB_REPOSITORY" --remove-label merge >/dev/null
+              echo "#$pr: removed merge"
+            fi
+            auto="$(gh pr view "$pr" --repo "$GITHUB_REPOSITORY" --json autoMergeRequest --jq '.autoMergeRequest != null')"
+            if [ "$auto" = "true" ]; then
+              gh pr merge "$pr" --repo "$GITHUB_REPOSITORY" --disable-auto
+              printf 'Merge request cancelled: issue #%s is now evidence-affecting, so this change needs the maintainer sign-off before it merges.\n' "$ISSUE" > comment.md
+              gh pr comment "$pr" --repo "$GITHUB_REPOSITORY" --body-file comment.md
+            fi
+          done
+
   withdraw:
-    if: github.event.action == 'synchronize'
+    if: github.event_name == 'pull_request_target' && github.event.action == 'synchronize'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

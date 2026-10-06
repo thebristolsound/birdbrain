@@ -32,8 +32,9 @@ Each step is one commit on this branch unless noted. Steps 1 to 4 change no repo
    the `Closes` issues' labels, the `agent/pre-pass` status and reviews at head, with a read-only
    token, and exits 0 or 1 per ADR-0041 decision 1. The rule lives in a small script with unit
    tests in `tests/mergeGate.test.ts`. A pre-pass verdict is a commit status and triggers no
-   PR event, so the workflow also takes `workflow_dispatch` on the head branch, which
-   `merge.sh` fires when `merge-gate` is the red check.
+   PR event, so `merge.sh` re-runs the last gate attempt when `merge-gate` is the red check. A
+   re-run keeps its original workflow definition; a dispatch on the head branch would run the
+   branch's own, which the Codex review on #1750 flagged.
 3. **Withdraw on push.** In the same workflow, a second job on `synchronize` removes `approved`
    and `merge` and runs `gh pr merge --disable-auto`. It needs a write token, so it runs on
    `pull_request_target` and does not check out the pull request.

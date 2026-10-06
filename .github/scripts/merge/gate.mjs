@@ -29,10 +29,31 @@ export function trustedPrepass(statuses, trusted) {
   return mine ? mine.state : 'absent'
 }
 
-// Who last applied a label, from the issue events in chronological order.
-export function lastLabelledBy(events, label) {
+// Who last applied a label and when, from the issue events in chronological order.
+export function lastLabelled(events, label) {
   const hits = events.filter((e) => e.event === 'labeled' && e.label?.name === label)
-  return hits.length ? (hits[hits.length - 1].actor?.login ?? null) : null
+  const last = hits[hits.length - 1]
+  return last ? { by: last.actor?.login ?? null, at: last.created_at } : { by: null, at: null }
+}
+
+// When the head commit arrived, from server-side records a pusher cannot backdate: the first
+// check suite GitHub created for the sha, and the newest force push (which can move the head
+// back to a sha whose suites are older than a sign-off given on another head).
+export function headArrivedAt(checkSuites, events) {
+  const suites = checkSuites.map((c) => Date.parse(c.created_at)).filter((t) => !Number.isNaN(t))
+  if (!suites.length) return null
+  const pushes = events
+    .filter((e) => e.event === 'head_ref_force_pushed')
+    .map((e) => Date.parse(e.created_at))
+  return Math.max(Math.min(...suites), ...pushes)
+}
+
+// The maintainer's effective review: the newest that approves, requests changes or was
+// dismissed. A comment-only review changes nothing.
+export function effectiveReview(reviews, maintainer) {
+  const states = ['APPROVED', 'CHANGES_REQUESTED', 'DISMISSED']
+  const mine = reviews.filter((r) => r.user === maintainer && states.includes(r.state))
+  return mine[mine.length - 1] ?? null
 }
 
 export function decide(f) {
@@ -43,13 +64,18 @@ export function decide(f) {
   }
   const evidence = f.labels.includes('evidence-affecting') || f.issueEvidence.length > 0
   if (evidence) {
-    const approvedReview = f.reviews.some(
-      (r) => r.state === 'APPROVED' && r.user === f.maintainer && r.commit === f.headSha
-    )
-    const approvedLabel = f.labels.includes('approved') && f.approvedBy === f.maintainer
+    const review = effectiveReview(f.reviews, f.maintainer)
+    const approvedReview = review?.state === 'APPROVED' && review.commit === f.headSha
+    // A label carries no commit, so it counts only when applied after the head arrived; the
+    // withdraw job removing it on push is a second line, not the one this rests on.
+    const approvedLabel =
+      f.labels.includes('approved') &&
+      f.approved.by === f.maintainer &&
+      f.headArrivedAt !== null &&
+      Date.parse(f.approved.at) > f.headArrivedAt
     if (!approvedReview && !approvedLabel) {
       reasons.push(
-        `evidence-affecting with no sign-off at head: needs an approving review from ${f.maintainer} or the approved label applied by ${f.maintainer}`
+        `evidence-affecting with no sign-off at head: needs an approving review from ${f.maintainer} on this commit, or the approved label applied by ${f.maintainer} after this commit arrived`
       )
     }
   }
@@ -76,6 +102,7 @@ function main([repo, n]) {
     const issueEvidence = closedIssues(pr.body).filter((i) =>
       api(`repos/${repo}/issues/${i}/labels`).some((l) => l.name === 'evidence-affecting')
     )
+    const events = api(`repos/${repo}/issues/${n}/events?per_page=100`)
     const facts = {
       headSha,
       labels,
@@ -90,7 +117,13 @@ function main([repo, n]) {
         user: r.user?.login,
         commit: r.commit_id
       })),
-      approvedBy: lastLabelledBy(api(`repos/${repo}/issues/${n}/events?per_page=100`), 'approved')
+      approved: lastLabelled(events, 'approved'),
+      headArrivedAt: headArrivedAt(
+        api(`repos/${repo}/commits/${headSha}/check-suites?per_page=100`).flatMap(
+          (page) => page.check_suites ?? page
+        ),
+        events
+      )
     }
     const verdict = decide(facts)
     console.log(

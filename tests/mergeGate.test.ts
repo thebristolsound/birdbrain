@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   closedIssues,
   decide,
-  lastLabelledBy,
+  effectiveReview,
+  headArrivedAt,
+  lastLabelled,
   maintainerOf,
   trustedPrepass
   // @ts-expect-error - workflow script with no type declarations; the tsconfigs exclude .github/
@@ -16,8 +18,11 @@ const base = {
   issueEvidence: [] as number[],
   prepass: 'absent',
   reviews: [] as Array<{ state: string; user: string; commit: string }>,
-  approvedBy: null as string | null
+  approved: { by: null, at: null } as { by: string | null; at: string | null },
+  headArrivedAt: Date.parse('2026-10-06T10:00:00Z') as number | null
 }
+const AFTER = '2026-10-06T11:00:00Z'
+const BEFORE = '2026-10-06T09:00:00Z'
 
 describe('merge-gate decide', () => {
   it('passes a PR with no agent label and no evidence label', () => {
@@ -55,16 +60,36 @@ describe('merge-gate decide', () => {
 
   it('accepts the approved label only when the maintainer applied it', () => {
     const labels = ['evidence-affecting', 'approved']
-    expect(decide({ ...base, labels, approvedBy: 'owner' }).pass).toBe(true)
-    expect(decide({ ...base, labels, approvedBy: 'birdbrain-agent' }).pass).toBe(false)
+    expect(decide({ ...base, labels, approved: { by: 'owner', at: AFTER } }).pass).toBe(true)
+    expect(decide({ ...base, labels, approved: { by: 'birdbrain-agent', at: AFTER } }).pass).toBe(
+      false
+    )
+  })
+
+  it('ignores an approved label applied before the head commit arrived', () => {
+    const labels = ['evidence-affecting', 'approved']
+    expect(decide({ ...base, labels, approved: { by: 'owner', at: BEFORE } }).pass).toBe(false)
+    expect(
+      decide({ ...base, labels, approved: { by: 'owner', at: AFTER }, headArrivedAt: null }).pass
+    ).toBe(false)
+  })
+
+  it('lets a later change request withdraw an approval on the same commit', () => {
+    const reviews = [
+      { state: 'APPROVED', user: 'owner', commit: HEAD },
+      { state: 'COMMENTED', user: 'owner', commit: HEAD },
+      { state: 'CHANGES_REQUESTED', user: 'owner', commit: HEAD }
+    ]
+    expect(decide({ ...base, labels: ['evidence-affecting'], reviews }).pass).toBe(false)
   })
 
   it('needs both a pre-pass and a sign-off on an evidence-affecting agent PR', () => {
     const labels = ['agent-pr', 'evidence-affecting', 'approved']
-    const verdict = decide({ ...base, labels, approvedBy: 'owner', prepass: 'failure' })
+    const approved = { by: 'owner', at: AFTER }
+    const verdict = decide({ ...base, labels, approved, prepass: 'failure' })
     expect(verdict.pass).toBe(false)
     expect(verdict.reasons).toHaveLength(1)
-    expect(decide({ ...base, labels, approvedBy: 'owner', prepass: 'success' }).pass).toBe(true)
+    expect(decide({ ...base, labels, approved, prepass: 'success' }).pass).toBe(true)
   })
 })
 
@@ -90,13 +115,42 @@ describe('merge-gate facts', () => {
     expect(trustedPrepass([], ['owner'])).toBe('absent')
   })
 
-  it('reports who last applied a label', () => {
+  it('reports who last applied a label, and when', () => {
     const events = [
-      { event: 'labeled', label: { name: 'approved' }, actor: { login: 'owner' } },
+      {
+        event: 'labeled',
+        label: { name: 'approved' },
+        actor: { login: 'owner' },
+        created_at: BEFORE
+      },
       { event: 'unlabeled', label: { name: 'approved' }, actor: { login: 'github-actions[bot]' } },
-      { event: 'labeled', label: { name: 'approved' }, actor: { login: 'someone' } }
+      {
+        event: 'labeled',
+        label: { name: 'approved' },
+        actor: { login: 'someone' },
+        created_at: AFTER
+      }
     ]
-    expect(lastLabelledBy(events, 'approved')).toBe('someone')
-    expect(lastLabelledBy(events, 'merge')).toBeNull()
+    expect(lastLabelled(events, 'approved')).toEqual({ by: 'someone', at: AFTER })
+    expect(lastLabelled(events, 'merge')).toEqual({ by: null, at: null })
+  })
+
+  it('dates the head from its first check suite or a later force push', () => {
+    const suites = [{ created_at: AFTER }, { created_at: BEFORE }]
+    expect(headArrivedAt(suites, [])).toBe(Date.parse(BEFORE))
+    const pushed = [{ event: 'head_ref_force_pushed', created_at: '2026-10-06T12:00:00Z' }]
+    expect(headArrivedAt(suites, pushed)).toBe(Date.parse('2026-10-06T12:00:00Z'))
+    expect(headArrivedAt([], pushed)).toBeNull()
+  })
+
+  it("reads the maintainer's newest decisive review", () => {
+    const reviews = [
+      { state: 'CHANGES_REQUESTED', user: 'owner', commit: HEAD },
+      { state: 'APPROVED', user: 'owner', commit: HEAD },
+      { state: 'COMMENTED', user: 'owner', commit: HEAD },
+      { state: 'CHANGES_REQUESTED', user: 'someone', commit: HEAD }
+    ]
+    expect(effectiveReview(reviews, 'owner')?.state).toBe('APPROVED')
+    expect(effectiveReview([], 'owner')).toBeNull()
   })
 })

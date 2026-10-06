@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { createHash } from 'crypto'
-import { mkdtempSync, readFileSync, rmSync } from 'fs'
+import { appendFileSync, mkdtempSync, readFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { appendManifestEntry, initManifest, verifyManifestChain } from '@main/services/manifest'
@@ -291,6 +291,23 @@ describe('manifest schema 5 — the package verifier', () => {
       'the signed capture entry records that the TLS Cert Chain re-fetch was skipped because ' +
         'the Egress was not Direct, and names no Egress for the page'
     )
+  })
+
+  it('quotes no Egress value from an entry behind a FAILed chain', () => {
+    // A parse-stage break returns before any signature is checked, so the
+    // entry before it is schema-valid but unverified: its label could be forged.
+    writeEgressPackage(pkgDir)
+    appendFileSync(join(pkgDir, 'manifest.jsonl'), '{not json\n', 'utf-8')
+    const result = verifyEvidencePackage(pkgDir)
+    expect(rowFor(result, 'manifest chain')?.status).toBe('fail')
+    expect(rowFor(result, `capture ${EGRESS_CAPTURE_ID} egress`)).toEqual({
+      name: `capture ${EGRESS_CAPTURE_ID} egress`,
+      status: 'skip',
+      reason:
+        "not reported: the manifest chain FAILed, so this entry's Egress fields are unverified"
+    })
+    expect(rowFor(result, `capture ${EGRESS_CAPTURE_ID} user agent`)).toBeUndefined()
+    expect(JSON.stringify(result.checks)).not.toContain('Frankfurt VPN')
   })
 
   it('adds no Egress row for a capture entry without the fields', () => {

@@ -441,6 +441,9 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   // empty set if a later outcome ever reaches here without one.
   const breakIndex = chain.valid ? undefined : (chain.brokenAt ?? 0)
   const entries = breakIndex === undefined ? shippedEntries : shippedEntries.slice(0, breakIndex)
+  // The same entries when the chain FAILed, for the rows that quote an entry's
+  // own values back to the reader rather than checking a file against them.
+  const unverifiedEntries = new Set<ManifestEntry>(chain.valid ? [] : entries)
 
   // §7.1b Shared Case (schema 4). A package of a Shared Case encloses every
   // other member's chain as `manifest.<installationId>.jsonl` beside the
@@ -819,15 +822,27 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
     // The Egress fields (ADR-0032), stated as annotations rather than checks:
     // they live only in the signed entry, which the manifest chain row already
     // reports on, so each row is a SKIP that reports what the entry records. An
-    // entry carrying none of them adds no row.
+    // entry carrying none of them adds no row. Behind a FAILed chain the
+    // exporter's entries are unverified (see `entries` above), so their values
+    // are not quoted as signed: a forged label would read as the Operator's.
     const egress = describeEgress(cap)
-    if (egress) add(`capture ${cap.captureId} egress`, 'skip', egress)
-    if (cap.userAgent !== undefined) {
-      add(
-        `capture ${cap.captureId} user agent`,
-        'skip',
-        `the signed capture entry records user agent ${JSON.stringify(cap.userAgent)}`
-      )
+    if (unverifiedEntries.has(cap)) {
+      if (egress !== undefined || cap.userAgent !== undefined) {
+        add(
+          `capture ${cap.captureId} egress`,
+          'skip',
+          "not reported: the manifest chain FAILed, so this entry's Egress fields are unverified"
+        )
+      }
+    } else {
+      if (egress) add(`capture ${cap.captureId} egress`, 'skip', egress)
+      if (cap.userAgent !== undefined) {
+        add(
+          `capture ${cap.captureId} user agent`,
+          'skip',
+          `the signed capture entry records user agent ${JSON.stringify(cap.userAgent)}`
+        )
+      }
     }
 
     // Screenshot — content-addressed by its own sha256, which equals the signed

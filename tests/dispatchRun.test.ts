@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { spawnSync } from 'child_process'
+import { execFileSync, spawnSync } from 'child_process'
 import {
   chmodSync,
   existsSync,
@@ -23,13 +23,14 @@ const CREDENTIAL = `ghp_${'Ab3'.repeat(12)}`
 // A stand-in for the CLI: the nth call copies leave-<n>/ into the working directory,
 // as the agent copies a reviewer report, prints responses/<n>.json, and exits with
 // exit-<n> when that file exists. It records its arguments (NUL-separated, since the
-// prompt spans lines) and the background flag.
+// prompt spans lines), the background flag and the hook binding.
 const STUB = `#!/usr/bin/env bash
 dir="$(dirname "$0")"
 n=$(( $(cat "$dir/count" 2>/dev/null || echo 0) + 1 ))
 echo "$n" > "$dir/count"
 printf '%s\\0' "$@" > "$dir/args-$n"
 printf '%s' "\${CLAUDE_CODE_DISABLE_BACKGROUND_TASKS:-}" > "$dir/env-$n"
+printf '%s' "\${BIRDBRAIN_DISPATCH:-}" > "$dir/dispatch-env-$n"
 if [ -d "$dir/leave-$n" ]; then cp -R "$dir/leave-$n/." .; fi
 cat "$dir/responses/$n.json" || exit
 if [ -f "$dir/exit-$n" ]; then exit "$(cat "$dir/exit-$n")"; fi
@@ -248,5 +249,59 @@ describe('dispatch run.sh', () => {
     expect(status).toBe(3)
     expect(stderr).toContain('claude -p exited 3')
     expect(stderr).toContain('Error: the CLI stopped before its result')
+  })
+
+  it('keeps the stream as a scrubbed transcript without the spend, and reads the result from it', () => {
+    const stream = [
+      { type: 'system', subtype: 'init', session_id: SESSION },
+      { type: 'assistant', message: { content: [{ type: 'text', text: `token ${CREDENTIAL}` }] } },
+      result(REPORT, 2)
+    ]
+    writeFileSync(
+      join(bin, 'responses', '1.json'),
+      `${stream.map((event) => JSON.stringify(event)).join('\n')}\nnot json\n`
+    )
+
+    const { status, stderr } = run()
+
+    expect(status, stderr).toBe(0)
+    const lines = dispatchFile('transcript.jsonl').trim().split('\n')
+    expect(lines).toHaveLength(4)
+    expect(lines[3]).toBe('not json')
+    expect(lines[1]).toContain('ghp_<REDACTED>')
+    expect(lines.slice(0, 3).flatMap((line) => spendKeys(JSON.parse(line)))).toEqual([])
+    expect(JSON.parse(dispatchFile('result.json'))).toMatchObject({
+      type: 'result',
+      result: REPORT
+    })
+    const args = argsOf(1)
+    expect(args[args.indexOf('--output-format') + 1]).toBe('stream-json')
+    expect(args).toContain('--verbose')
+  })
+
+  it('binds the posting hooks to every session of the cycle', () => {
+    respond(result(REPORT, 1))
+
+    expect(run().status).toBe(0)
+    expect(readFileSync(join(bin, 'dispatch-env-1'), 'utf8')).toBe('1')
+  })
+
+  it('on Actions, trusts the workspace and swaps includeIf credentials for a plain include', () => {
+    respond(result(REPORT, 1))
+    const home = join(root, 'home')
+    mkdirSync(home)
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: work, encoding: 'utf8' })
+    git('init', '-q')
+    git('config', '--local', 'includeIf.gitdir:/w/.git.path', '/tmp/cred.config')
+    git('config', '--local', 'includeIf.gitdir:/w/.git/worktrees/*.path', '/tmp/cred.config')
+
+    const { status, stderr } = run({ GITHUB_ACTIONS: 'true', HOME: home })
+
+    expect(status, stderr).toBe(0)
+    expect(git('config', '--local', '--get-regexp', '^include').trim()).toBe(
+      'include.path /tmp/cred.config'
+    )
+    const config = JSON.parse(readFileSync(join(home, '.claude.json'), 'utf8'))
+    expect(Object.values(config.projects)).toEqual([{ hasTrustDialogAccepted: true }])
   })
 })

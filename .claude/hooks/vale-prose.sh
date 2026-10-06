@@ -46,20 +46,24 @@ if [ "$status" -ge 2 ]; then
 fi
 
 # Added or changed line numbers against HEAD; an untracked file has no diff and counts whole.
+# The hunk list goes through a file and the report over stdin: either can exceed the size one
+# environment value may hold, and that exec failure would read as a pass.
+hunks="$(mktemp)"
+trap 'rm -f "$hunks"' EXIT
 if git -C "$top" ls-files --error-unmatch -- "$rel" >/dev/null 2>&1; then
-  hunks="$(git -C "$top" diff -U0 HEAD -- "$rel" | grep '^@@' || true)"
+  git -C "$top" diff -U0 HEAD -- "$rel" | grep '^@@' > "$hunks" || true
 else
-  hunks="all"
+  printf 'all' > "$hunks"
 fi
 
-# The report goes over stdin: a large document's JSON can exceed the size one environment
-# value may hold, and that exec failure would read as a pass.
 findings="$(printf '%s' "$report" | HUNKS="$hunks" node -e '
+  const fs = require("fs")
   let raw = ""
   process.stdin.on("data", (d) => (raw += d)).on("end", () => {
   const changed = new Set()
-  const all = process.env.HUNKS === "all"
-  for (const h of process.env.HUNKS.split("\n")) {
+  const hunks = fs.readFileSync(process.env.HUNKS, "utf8")
+  const all = hunks === "all"
+  for (const h of hunks.split("\n")) {
     const m = /^@@ -\S+ \+(\d+)(?:,(\d+))? @@/.exec(h)
     if (!m) continue
     const start = Number(m[1])

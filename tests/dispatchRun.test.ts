@@ -100,6 +100,8 @@ const run = (env: Record<string, string> = {}) =>
     encoding: 'utf8',
     env: {
       ...process.env,
+      // Off the Actions branch unless a case opts in: on a runner the inherited value is true.
+      GITHUB_ACTIONS: '',
       PATH: `${bin}:${process.env.PATH}`,
       GITHUB_STEP_SUMMARY: join(root, 'summary.md'),
       RUN_URL: 'https://example.test/run/1',
@@ -277,6 +279,8 @@ describe('dispatch run.sh', () => {
     const args = argsOf(1)
     expect(args[args.indexOf('--output-format') + 1]).toBe('stream-json')
     expect(args).toContain('--verbose')
+    // Without it the stream carries a subagent's tool events and not its text.
+    expect(args).toContain('--forward-subagent-text')
   })
 
   it('binds the posting hooks to every session of the cycle', () => {

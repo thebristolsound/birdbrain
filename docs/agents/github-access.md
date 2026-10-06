@@ -212,7 +212,9 @@ above about MCP writes remain accurate for non-dispatch work.
 - The checkout's git credential is that token, so branch pushes from the implementer go out
   as the machine account over HTTPS, and commit author and committer are set to it.
 - Project MCP servers are disabled for the cycle.
-- The end-of-cycle report lands in the run's step summary. The raw result and the session transcript (`transcript.jsonl`, every event of the cycle, subagents included) are a run artifact, kept 7 days.
+- The end-of-cycle report lands in the run's step summary. The raw result and the session
+  transcript (`transcript.jsonl`: the cycle's event stream, with subagent text forwarded) are a
+  run artifact, kept 7 days and scrubbed before upload on every exit of the job.
 - A credential step probes `CLAUDE_CODE_OAUTH_TOKEN` with one Haiku call before the toolchain
   installs, and reads the optional variable `CLAUDE_CODE_OAUTH_TOKEN_EXPIRES` (YYYY-MM-DD)
   the way the identity step reads the GitHub token's date. A token that is rejected or past

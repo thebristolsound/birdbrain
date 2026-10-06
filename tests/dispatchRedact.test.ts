@@ -60,7 +60,7 @@ describe('dispatch redact.sh', () => {
     expect(redact(prose).stdout).toBe(prose)
   })
 
-  it('defines redact and nothing else when sourced', () => {
+  it('defines redact, scrub and strip_spend and nothing else when sourced', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'dispatch-redact-'))
     // Options, working directory, umask, IFS, traps, exported values, and function and variable
     // names, printed before and after the source with a '#' line between the three parts.
@@ -82,8 +82,11 @@ describe('dispatch redact.sh', () => {
       expect(stderr).toBe('')
       const [before, sourced, after] = stdout.split('#\n')
       expect(sourced).toBe('')
-      expect(after.split('\n')).toContain('redact')
-      expect(after.split('\n').filter((line) => line !== 'redact')).toEqual(before.split('\n'))
+      const functions = ['redact', 'scrub', 'strip_spend']
+      expect(after.split('\n')).toEqual(expect.arrayContaining(functions))
+      expect(after.split('\n').filter((line) => !functions.includes(line))).toEqual(
+        before.split('\n')
+      )
       expect(readdirSync(cwd)).toEqual([])
     } finally {
       rmSync(cwd, { recursive: true, force: true })

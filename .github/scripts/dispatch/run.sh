@@ -22,16 +22,6 @@ set -euo pipefail
 
 # shellcheck source=.github/scripts/dispatch/redact.sh
 . "$(dirname "${BASH_SOURCE[0]}")/redact.sh"
-scrub() { redact < "$1" > "$1.redacted" && mv "$1.redacted" "$1"; }
-# Drops total_cost_usd and every modelUsage.<model>.costUSD wherever the envelope's
-# shape puts them, so neither the artifact nor a failed call's log shows the spend
-# (#1369). The transcript is one JSON event per line, so this works line by line, and
-# a line jq cannot parse is kept as it is, so a failed call's stdout still gets logged.
-strip_spend() {
-  jq -R -r '. as $l | try (fromjson
-    | walk(if type == "object" then del(.total_cost_usd, .costUSD) else . end) | tojson)
-    catch $l' "$1" > "$1.stripped" && mv "$1.stripped" "$1"
-}
 # Listed in full first: each scrub writes a .redacted file that a find still walking
 # the folder could return.
 scrub_reports() {
@@ -117,20 +107,24 @@ flags=(
   --output-format stream-json --verbose
   --strict-mcp-config --mcp-config '{"mcpServers":{}}'
   --disallowedTools Monitor
+  # Without it the stream carries a subagent's tool events and not its text, by the
+  # flag's own description, and the reviewer's reasoning is what a retrospective reads.
+  --forward-subagent-text
 )
 
 # $@ = the arguments that go ahead of the shared flags.
 run_claude() {
   set +e
-  # stream-json keeps every event of the session, subagents included, as the run's
-  # transcript. The final-message envelope alone left a retrospective nothing to read
-  # but the cycle's own account of itself.
+  # stream-json keeps every event of the session as the run's transcript. The
+  # final-message envelope alone left a retrospective nothing to read but the cycle's
+  # own account of itself.
   claude "$@" "${flags[@]}" > .dispatch/transcript.jsonl 2> .dispatch/claude.err
   status=$?
   set -e
-  # Before anything reads, echoes or uploads these files, unless a cancel ends the
-  # run inside the call. The failure path is the one that carries a credential, so
-  # redacting after it would redact nothing.
+  # Before anything here reads or echoes these files: the failure path is the one that
+  # carries a credential, so redacting after it would redact nothing. A cancel or the
+  # job timeout ends the run inside the call, before this line; the upload is covered
+  # by dispatch.yml running scrub.sh first.
   scrub .dispatch/transcript.jsonl
   scrub .dispatch/claude.err
   strip_spend .dispatch/transcript.jsonl

@@ -67,8 +67,9 @@ that runs a reviewer pre-pass or a fix round on an `agent-pr` PR takes the same 
 dispatcher does. Follow section 2 of `.claude/skills/dispatch/SKILL.md`: read the linked issue for
 a live claim, post `Cycle claim: PR #<pr>` on it through `agh`, settle, and post
 `Cycle release: PR #<pr>` when the round ends. Without the claim, a dispatcher fire can start a
-second reviewer on the same head. On 2026-10-05 only the timing of the session's pending status
-kept run 37235446754 off #1721.
+second reviewer on the same head: run 37235446754 (2026-10-04) found #1721 with a pending
+pre-pass status posted 27 seconds before the run was created, and its pre-gate started the cycle
+anyway, because a pending status is not a claim.
 
 ## Jev shadow lenses
 

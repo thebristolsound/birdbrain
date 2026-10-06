@@ -57,8 +57,9 @@ env:
     /etc/apt/apt-mirrors.txt 2>/dev/null || true
 
 # Draft PRs are gated at the `changes` job below, which every other job needs — its
-# gate step leaves the job's outputs empty, which skips all six. A draft is not asking to merge, and the author has
-# already run the same gates locally (lint, typecheck, test, coverage:diff, build).
+# gate step leaves the job's outputs empty, which skips the five code jobs and
+# `docs-build`. A draft is not asking to merge, and the author has already run the
+# same gates locally (lint, typecheck, test, coverage:diff, build).
 #
 # `agent-pr` is exempt and must stay exempt: the dispatch routine polls `gh pr checks`
 # on a draft agent PR and will not start the reviewer pre-pass until the six ci.yml

@@ -141,7 +141,10 @@ this section to the global CLAUDE.md or other repos.
 Commit messages, PR bodies and issue or PR comments each have one shape, held with its linter
 in a skill: `.claude/skills/post-commit-message/`, `post-pr-body/`, `post-comment/`. Write the
 text to a file, run the skill's `scripts/check.sh <file>`, then pass the file (`git commit -F`,
-`--body-file`, `--input`). Merges go through `.claude/skills/merge-pr/scripts/merge.sh <n>`
+`--body-file`, `--input`). The maintainer merges by applying the `merge` label, which enables
+auto-merge with the composed message once the `merge-gate` check passes; an `evidence-affecting`
+PR also needs the maintainer's approving review or `approved` label at head (ADR-0041). Scripted
+merges, the dispatcher's included, go through `.claude/skills/merge-pr/scripts/merge.sh <n>`
 (ADR-0022).
 
 ### Worktrees

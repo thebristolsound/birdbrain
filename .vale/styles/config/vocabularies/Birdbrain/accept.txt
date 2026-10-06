@@ -480,3 +480,7 @@ replayable
 sandboxing
 serverless
 ZIPs
+
+; Added 2026-10-06 for the MHTML viewer slice 3 plan, which quotes the
+; evidence-affecting paths assessment's "Corroboration lookups" reason
+[Ll]ookups

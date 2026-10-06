@@ -16,6 +16,7 @@ with an empty body. This skill supplies it and then checks the result instead of
 .claude/skills/merge-pr/scripts/merge.sh <n>              # you, as the maintainer
 .claude/skills/merge-pr/scripts/merge.sh <n> --cli agh    # the dispatcher (ADR-0027)
 .claude/skills/merge-pr/scripts/merge.sh <n> --dry-run    # stop after composing the message
+.claude/skills/merge-pr/scripts/merge.sh <n> --admin      # emergency: merge through the bypass
 ```
 
 `--cli agh` defines `agh` from `BIRDBRAIN_AGENT_GH_TOKEN` and refuses to continue unless it
@@ -36,20 +37,17 @@ authenticates as the machine account.
 4. `evidence-affecting`, on the PR or an issue named on its `Closes` line: refused under
    `agh` (ADR-0005, ADR-0014); under `gh` it proceeds, because the maintainer running it is the
    human review. A label read that fails refuses the merge rather than reading as "no label."
-5. A PR the `gh` login authored: `main` requires an approving code-owner review, and GitHub does
-   not let a PR's author approve it. Under `gh`, when the PR's author is the `gh` login, the
-   merge takes the admin bypass (`--admin`), and only when the newest `agent/pre-pass` status
-   posted by the maintainer or the machine account is `success`; statuses from anyone else,
-   including the "Not an agent PR" pass `pre-pass-gate.yml` posts as `github-actions[bot]`,
-   do not count (the dispatcher's rule), and any other state refuses. An agent PR opened under
-   the maintainer's account is authored by the `gh` login and takes the bypass the same way.
-   A PR opened under any other account, the machine account's and Dependabot's included,
-   merges without the bypass and needs the maintainer's approval on GitHub first. `agh` never
-   takes it.
+5. The `merge-gate` check (ADR-0041) replaces the code-owner review rule, so no author needs
+   the bypass. When it is the red check, the script re-runs the gate's last attempt first,
+   because a pre-pass verdict is a commit status and triggers nothing. `--admin` takes the
+   ruleset bypass for an emergency; the script never chooses it, and `agh` refuses it.
+
+The routine maintainer path is the `merge` label, not this script: `.github/workflows/merge-on-label.yml`
+composes the same message with `scripts/compose.mjs` and enables auto-merge as the machine
+account.
 
 The dispatcher's other conditions (a `success` pre-pass verdict on this sha, slot state, the
-blocking-tier path list) stay the dispatcher's to establish; the script reads the pre-pass only
-for the bypass in check 5.
+blocking-tier path list) stay the dispatcher's to establish.
 
 ## What it does
 

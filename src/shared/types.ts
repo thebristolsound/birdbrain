@@ -83,6 +83,17 @@ export type CaptureMethod = (typeof CAPTURE_METHODS)[number]
 export const CONSENT_SUPPRESSIONS = ['filter-list'] as const
 export type ConsentSuppression = (typeof CONSENT_SUPPRESSIONS)[number]
 
+// The Egress a render was sent through when it was not Direct (ADR-0032). A
+// capture entry names no Egress for Direct, so there is no 'direct' value.
+export const EGRESS_KINDS = ['proxy', 'tor'] as const
+export type EgressKind = (typeof EGRESS_KINDS)[number]
+
+// Why a capture entry carries no TLS Cert Chain re-fetch. The re-fetch opens a
+// raw socket that cannot use a SOCKS proxy without a new dependency, so it does
+// not run while the Egress is not Direct (ADR-0032, rule 3).
+export const TLS_REFETCH_SKIPS = ['egress-not-direct'] as const
+export type TlsRefetchSkip = (typeof TLS_REFETCH_SKIPS)[number]
+
 // Orthogonal trusted-time axis (#120), independent of integrity status. A
 // capture is 'rfc3161' once an RFC 3161 token anchors its content hash,
 // 'pending' while an eligible (v2) capture awaits stamping, and 'none' for

@@ -21,6 +21,7 @@ import { canonicalStringify } from '@shared/verify'
 import { MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import { buildSyntheticToken } from '../helpers/timestampFixtures'
 import { seedMixedKindCase, type MixedKindCase } from '../helpers/mixedKindCase'
+import { EGRESS_CAPTURE_ID, writeEgressPackage } from '../helpers/egressPackage'
 import type { ExportOptions } from '@shared/types'
 
 // Integration test for the BUILT SEA binary (#122 §11). It is GATED on the
@@ -378,6 +379,23 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
     const proc = spawnSync(binaryPath, [pkgDir], { encoding: 'utf-8' })
     expect(proc.status, proc.stdout + proc.stderr).toBe(0)
     expect(proc.stdout).toContain('RESULT: PASS')
+  })
+
+  // #1694 through the BUILT binary: a capture entry carrying the four Egress
+  // fields verifies, and the report states its Egress kind and label. The
+  // same fixture runs in-process in tests/shared/verify/manifestSchema5.test.ts.
+  it('exits 0 with a PASS report naming the Egress a capture entry records', () => {
+    const egressDir = mkdtempSync(join(tmpdir(), 'bb-binegress-'))
+    writeEgressPackage(egressDir)
+    const proc = spawnSync(binaryPath, [egressDir], { encoding: 'utf-8' })
+    expect(proc.status, proc.stdout + proc.stderr).toBe(0)
+    expect(proc.stdout).toContain('RESULT: PASS')
+    expect(proc.stdout).toContain(
+      `[SKIP] capture ${EGRESS_CAPTURE_ID} egress — the signed capture entry records Egress ` +
+        'proxy, labelled "Frankfurt VPN"'
+    )
+    expect(proc.stdout).toContain(`[SKIP] capture ${EGRESS_CAPTURE_ID} user agent`)
+    rmSync(egressDir, { recursive: true, force: true })
   })
 
   // #399 AC 2 through the BUILT binary: a Working Copy is reported as not a

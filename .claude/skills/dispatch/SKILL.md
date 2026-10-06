@@ -79,7 +79,11 @@ agh() { GH_TOKEN="$BIRDBRAIN_AGENT_GH_TOKEN" gh "$@"; }
   `gh issue edit`, `gh api ... -X POST`, and status post below runs through `agh`. Reads may use
   either. The token is a classic `repo`-scope PAT and could push — you still never do
   (ADR-0006). After each write that creates something (claim comment, PR), confirm
-  `.user.login` is the machine account.
+  `.user.login` is the machine account. `gh pr edit` fails under that token because it asks
+  for a scope beyond `repo`; change a PR's body through REST instead. Build the payload in one
+  call (`jq -n --rawfile body <file> '{body: $body}' > <json>`), then send it in the next
+  (`agh api -X PATCH repos/thebristolsound/birdbrain/pulls/<n> --input <json>`), so the
+  post-pr-body hook finds the file it lints.
 - **The web is never a dispatch host (ADR-0026).** The sandbox proxy presents the session
   identity whatever credential is offered (#960), so a web cycle fails the identity check and
   stops here. Scheduled fires run on GitHub Actions instead.
@@ -772,8 +776,10 @@ post them.
 
 ### Wait for CI first — the pre-pass is the expensive instrument
 
-**Do not start the pre-pass while CI is still running on the head commit.** Poll
-`bash .github/scripts/dispatch/checks.sh <n>` until its `pending` list is empty, then branch on
+**Do not start the pre-pass while CI is still running on the head commit.** Run
+`bash .github/scripts/dispatch/checks.sh --wait 540 <n>`, which re-reads every 30 seconds and
+stays under the Bash tool's ten-minute cap; exit 124 means checks are still pending, so run it
+again. Do not write your own poll loop. Once its `pending` list is empty, branch on
 its `failing` list, which counts only the checks "Session rules" counts. A check it lists as
 `ignored` neither holds the poll nor makes CI red; name it in the report. A non-zero exit is not
 a green: do not run the pre-pass, and report the exit.
@@ -786,8 +792,9 @@ a green: do not run the pre-pass, and report the exit.
 - **CI green** → run the pre-pass.
 
 **Every check reporting `skipping` is the #784 bug, not a conclusion.** If the poll shows
-`build`, `changes`, `e2e`, `lint`, `test` and `typecheck` all in `skipped` on a labelled draft
-agent PR, the labels did not reach the `opened` webhook and no further event will re-run them.
+`build`, `e2e`, `lint`, `test` and `typecheck` all in `skipped` on a labelled draft agent PR
+(`changes` passes or skips), the labels reached GitHub after `changes` read them, 20 seconds
+after the PR opened, and no further event will re-run them.
 Waiting cannot resolve it. Recover in this order, and stop at the first step that fails:
 
 1. Read the labels directly: `gh api repos/thebristolsound/birdbrain/issues/<n>/labels --jq

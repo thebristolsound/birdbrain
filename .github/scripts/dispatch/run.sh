@@ -25,14 +25,12 @@ set -euo pipefail
 scrub() { redact < "$1" > "$1.redacted" && mv "$1.redacted" "$1"; }
 # Drops total_cost_usd and every modelUsage.<model>.costUSD wherever the envelope's
 # shape puts them, so neither the artifact nor a failed call's log shows the spend
-# (#1369). A file jq cannot parse is kept, so a failed call's stdout still gets logged.
+# (#1369). The transcript is one JSON event per line, so this works line by line, and
+# a line jq cannot parse is kept as it is, so a failed call's stdout still gets logged.
 strip_spend() {
-  if jq -c 'walk(if type == "object" then del(.total_cost_usd, .costUSD) else . end)' \
-    "$1" > "$1.stripped"; then
-    mv "$1.stripped" "$1"
-  else
-    rm -f "$1.stripped"
-  fi
+  jq -R -r '. as $l | try (fromjson
+    | walk(if type == "object" then del(.total_cost_usd, .costUSD) else . end) | tojson)
+    catch $l' "$1" > "$1.stripped" && mv "$1.stripped" "$1"
 }
 # Listed in full first: each scrub writes a .redacted file that a find still walking
 # the folder could return.
@@ -46,14 +44,36 @@ mode="${1:-cycle}"
 summary="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
 mkdir -p .dispatch/reports
 # A leftover first-call result would be summed into this run's meta.json.
-rm -f .dispatch/result-1.json .dispatch/claude-1.err .dispatch/report-1.md
+rm -f .dispatch/result-1.json .dispatch/claude-1.err .dispatch/report-1.md \
+  .dispatch/transcript-1.jsonl
+
+if [ "${GITHUB_ACTIONS:-}" = true ]; then
+  # Every fire logged "Ignoring 33 permissions.allow entries ... this workspace has not
+  # been trusted". The runner is the only user of this home directory.
+  cfg="$HOME/.claude.json"
+  [ -s "$cfg" ] || echo '{}' > "$cfg"
+  jq --arg d "$PWD" '.projects[$d].hasTrustDialogAccepted = true' "$cfg" > "$cfg.new" \
+    && mv "$cfg.new" "$cfg"
+
+  # actions/checkout supplies the token through conditional includeIf entries, and the
+  # harness refuses worktree isolation for a configuration that has them. Two fires
+  # (37129293732, 37415689600) worked around it two different ways mid-cycle. A plain
+  # include of the same credential file keeps pushes working; the checkout's post step
+  # still deletes that file at the end of the job.
+  mapfile -t inc < <(git config --local --get-regexp '^includeif\..*\.path$' || true)
+  if [ "${#inc[@]}" -gt 0 ]; then
+    file="${inc[0]#* }"
+    for entry in "${inc[@]}"; do git config --local --unset-all "${entry%% *}"; done
+    git config --local include.path "$file"
+  fi
+fi
 
 context="You are running unattended from GitHub Actions run ${RUN_URL:-<unknown>} (ADR-0026).
 The environment probe reads LOCAL here: nothing sits between gh and GitHub.
 GH_TOKEN and the checkout's git credential are both the machine account, so bare gh and agh are the same identity, and the implementer pushes as the machine account over HTTPS.
 Node 20 and pnpm are already on PATH; no mise prefix is needed.
 The machine token carries repo scope and not gist scope, so a pre-pass 'Full report:' link cannot be a gist here. Copy each reviewer full report to .dispatch/reports/pr-<number>-<short sha>.md, which is uploaded as the dispatch-run artifact of this run, and make the link read: ${RUN_URL:-<unknown>} (artifact dispatch-run, reports/pr-<number>-<short sha>.md). The runner filesystem is gone once the job ends, so a bare path is not a link.
-This process exits when your turn ends, and anything left running in the background dies with it. Run every subagent (Agent tool) call in the foreground with run_in_background: false, start no background shells or monitors, and poll CI with foreground commands of under nine minutes each (the Bash tool caps a command at ten), repeated until the checks conclude. End your turn only with the section 5 report, and start it with a heading line containing 'Dispatch cycle report': this runner treats a result without one as an unfinished cycle."
+This process exits when your turn ends, and anything left running in the background dies with it. Run every subagent (Agent tool) call in the foreground with run_in_background: false, start no background shells or monitors, and wait for CI with bash .github/scripts/dispatch/checks.sh --wait 540 <pr>, repeated while it exits 124 (the Bash tool caps a command at ten minutes). End your turn only with the section 5 report, and start it with a heading line containing 'Dispatch cycle report': this runner treats a result without one as an unfinished cycle."
 
 case "$mode" in
   report)
@@ -86,11 +106,15 @@ scrub .dispatch/prompt.txt
 # cycle found the round still owed. The variable drops run_in_background from
 # the Agent and Bash tools. Monitor has no foreground form, so it goes too.
 export CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1
+# Binds the post-comment, post-commit-message and post-pr-body hooks to every session
+# of the cycle, the top-level dispatcher included, which has no agent_type for them to
+# match. Run 37129293732 posted a claim comment its linter had rejected.
+export BIRDBRAIN_DISPATCH=1
 flags=(
   --model "${DISPATCH_MODEL:-claude-opus-5-5}"
   --effort "${DISPATCH_EFFORT:-high}"
   --dangerously-skip-permissions
-  --output-format json
+  --output-format stream-json --verbose
   --strict-mcp-config --mcp-config '{"mcpServers":{}}'
   --disallowedTools Monitor
 )
@@ -98,16 +122,24 @@ flags=(
 # $@ = the arguments that go ahead of the shared flags.
 run_claude() {
   set +e
-  claude "$@" "${flags[@]}" > .dispatch/result.json 2> .dispatch/claude.err
+  # stream-json keeps every event of the session, subagents included, as the run's
+  # transcript. The final-message envelope alone left a retrospective nothing to read
+  # but the cycle's own account of itself.
+  claude "$@" "${flags[@]}" > .dispatch/transcript.jsonl 2> .dispatch/claude.err
   status=$?
   set -e
   # Before anything reads, echoes or uploads these files, unless a cancel ends the
   # run inside the call. The failure path is the one that carries a credential, so
   # redacting after it would redact nothing.
-  scrub .dispatch/result.json
+  scrub .dispatch/transcript.jsonl
   scrub .dispatch/claude.err
-  strip_spend .dispatch/result.json
+  strip_spend .dispatch/transcript.jsonl
   scrub_reports
+  # The result event is the envelope the rest of this script reads. A call that failed
+  # before emitting one leaves whatever it printed, which the failure path below shows.
+  jq -R -c 'fromjson? | select(type == "object" and .type == "result")' \
+    .dispatch/transcript.jsonl | tail -n 1 > .dispatch/result.json
+  [ -s .dispatch/result.json ] || cp .dispatch/transcript.jsonl .dispatch/result.json
 
   if [ "$status" -ne 0 ]; then
     # Both streams, because a fast non-zero exit puts the reason on stdout as a
@@ -148,6 +180,7 @@ if ! has_report && [ "$(result_of .dispatch/result.json | jq -r '.is_error // fa
   # The first call's files stay in the artifact beside the resumed call's.
   mv .dispatch/result.json .dispatch/result-1.json
   mv .dispatch/claude.err .dispatch/claude-1.err
+  mv .dispatch/transcript.jsonl .dispatch/transcript-1.jsonl
   mv .dispatch/report.md .dispatch/report-1.md
   resume="Your turn ended before the section 5 report. This is a headless run, so ending the turn ended the process: any background agent, shell, monitor or CI wait you were relying on no longer exists, and nothing it would have done has happened. Re-read the current state from GitHub (claims, PR heads, checks, comments) rather than trusting what you last saw, finish the cycle in the foreground under the same rules, and end your turn with the section 5 report."
   run_claude -p "$resume" --resume "$session_id"

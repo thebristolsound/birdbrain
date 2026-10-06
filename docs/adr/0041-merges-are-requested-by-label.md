@@ -64,8 +64,9 @@ Evidence-Affecting Change is the maintainer's, whoever opened the pull request.
   `agent/pre-pass` from being a required check.
 - The merge workflow runs on `pull_request_target` with the machine account's token. It must
   never check out or run the pull request's code.
-- A rejected alternative, below, would have been simpler; this one keeps the composed squash
-  message and an enforced sign-off on evidence work.
+- A pre-pass verdict is a commit status, which starts no workflow on the pull request, so
+  `merge-gate` can be stale after one. The `merge` label and every push run it again, and
+  `merge.sh` starts a re-run when the gate is its red check.
 
 ## Alternatives rejected
 

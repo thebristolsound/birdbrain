@@ -1,6 +1,6 @@
 # Label-to-merge: replace the review rule with a gate check and a merge label
 
-**Status:** awaiting maintainer approval
+**Status:** approved 2026-10-06 (plan and settings); steps 1 to 5 and 8 built, 6 and 7 open
 **Date:** 2026-10-06
 **Decision:** [ADR-0041](../adr/0041-merges-are-requested-by-label.md) (proposed)
 
@@ -24,16 +24,16 @@
 
 Each step is one commit on this branch unless noted. Steps 1 to 4 change no repository setting.
 
-1. **Extract the message composer.** Move subject and body composition out of `merge.sh` into
-   `.claude/skills/merge-pr/scripts/compose.sh <n> <out-dir>`, writing `subject.txt` and
-   `body.txt`. `merge.sh` calls it. Test: `merge.sh <n> --dry-run` on three merged pull requests
-   produces the subject and body that landed.
+1. **Message composer.** Already separate: `.claude/skills/merge-pr/scripts/compose.mjs` writes
+   `subject.txt` and `body.txt`, and the merge workflow calls it directly. No change.
 2. **`merge-gate` workflow.** `.github/workflows/merge-gate.yml`, on `pull_request`
    (`opened`, `reopened`, `synchronize`, `labeled`, `unlabeled`, `ready_for_review`) and
    `pull_request_review` (`submitted`, `dismissed`). One job named `merge-gate` that reads labels,
    the `Closes` issues' labels, the `agent/pre-pass` status and reviews at head, with a read-only
    token, and exits 0 or 1 per ADR-0041 decision 1. The rule lives in a small script with unit
-   tests under `tests/scripts/`.
+   tests in `tests/mergeGate.test.ts`. A pre-pass verdict is a commit status and triggers no
+   PR event, so the workflow also takes `workflow_dispatch` on the head branch, which
+   `merge.sh` fires when `merge-gate` is the red check.
 3. **Withdraw on push.** In the same workflow, a second job on `synchronize` removes `approved`
    and `merge` and runs `gh pr merge --disable-auto`. It needs a write token, so it runs on
    `pull_request_target` and does not check out the pull request.

@@ -1,26 +1,30 @@
 #!/usr/bin/env bash
 # Squash-merge one PR the way ADR-0022 expects, then read back what landed.
-#   merge.sh <pr-number> [--cli gh|agh] [--dry-run]
+#   merge.sh <pr-number> [--cli gh|agh] [--dry-run] [--admin]
 # --cli agh runs every GitHub write as the machine account (ADR-0027); the dispatcher uses it.
 # --dry-run stops after composing the subject and body.
+# --admin merges through the ruleset bypass. Emergencies only: the routine path for the
+# maintainer is the `merge` label (ADR-0041), and merge-gate replaces the review rule.
 set -u
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="${CLAUDE_PROJECT_DIR:-$(git -C "$here" rev-parse --show-toplevel)}"
 body_check="$root/.claude/skills/post-pr-body/scripts/check.sh"
 
-n="" cli="gh" dry=0
+n="" cli="gh" dry=0 admin=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --cli) cli="$2"; shift 2 ;;
     --cli=*) cli="${1#--cli=}"; shift ;;
     --dry-run) dry=1; shift ;;
+    --admin) admin="--admin"; shift ;;
     -*) echo "merge-pr: unknown flag $1" >&2; exit 2 ;;
     *) n="$1"; shift ;;
   esac
 done
-[ -n "$n" ] || { echo "usage: merge.sh <pr-number> [--cli gh|agh] [--dry-run]" >&2; exit 2; }
+[ -n "$n" ] || { echo "usage: merge.sh <pr-number> [--cli gh|agh] [--dry-run] [--admin]" >&2; exit 2; }
 case "$cli" in gh|agh) ;; *) echo "merge-pr: --cli must be gh or agh" >&2; exit 2 ;; esac
+[ -n "$admin" ] && [ "$cli" = "agh" ] && { echo "merge-pr: --admin is the maintainer's emergency path, never the machine account's" >&2; exit 2; }
 if [ "$cli" = "agh" ]; then
   # agh is a shell function on the maintainer's machine (docs/agents/github-access.md); a script
   # has to define it from the same token and prove the identity before any write (ADR-0027).
@@ -85,6 +89,15 @@ if [ "$runs" -eq 0 ]; then
     fail "no check runs at head ${head_sha:0:12}; CI has not run on this commit, so nothing is green"
   fi
 else
+  # A pre-pass verdict is a commit status, which triggers no PR event, so merge-gate can be
+  # stale after one. Re-run it on the head branch rather than asking the caller to find out why.
+  case " $bad_checks " in
+    *" merge-gate="*)
+      if [ "$head_repo" = "$base_repo" ] && [ "$dry" -eq 0 ]; then
+        "$cli" workflow run merge-gate.yml --ref "$head_ref" -f pr="$n" >/dev/null \
+          && say "merge-gate re-run started on $head_ref" || say "WARN could not start a merge-gate re-run"
+      fi ;;
+  esac
   [ -z "$bad_checks" ] || fail "required checks not green at head: $bad_checks"
   [ -z "$other_bad" ] || say "WARN checks not required on main and not green at head: $other_bad"
   say "required checks green at head: $required ($runs runs)"
@@ -117,27 +130,9 @@ if [ -n "$evidence" ]; then
   say "evidence-affecting ($evidence): merging as the human reviewer"
 fi
 
-# 4b. A PR the gh login authored: main requires a code-owner approval GitHub will not let its
-#     author give, so it merges through the admin bypass, and only on a success pre-pass at this
-#     head. Only a status the maintainer or the machine account posted counts, the dispatcher's
-#     rule (dispatch skill, "Session rules"; trusted_statuses in lib.sh): anyone with push access
-#     can post one, and pre-pass-gate.yml posts "Not an agent PR" as github-actions[bot]. The
-#     combined status names no creator, so this reads the list, newest first.
-admin=""
-if [ "$cli" = "gh" ]; then
-  author="$(field user.login)"
-  me="$(gh api user --jq .login)" || fail "cannot read the gh login"
-  if [ -n "$author" ] && [ "$author" = "$me" ]; then
-    machine="${BIRDBRAIN_AGENT_GH_LOGIN:-birdbrain-agent}"
-    posted="$(gh api --paginate "repos/{owner}/{repo}/commits/$head_sha/statuses?per_page=100" \
-      --jq '.[] | select(.context=="agent/pre-pass") | (.creator.login // "") + " " + .state')" \
-      || fail "cannot read the statuses at head"
-    prepass="$(printf '%s\n' "$posted" | awk -v a="$me" -v b="$machine" '$1==a||$1==b{print $2; exit}')"
-    [ "$prepass" = "success" ] || fail "PR #$n is authored by $me, so it merges through the admin bypass, which needs a success agent/pre-pass at head from $me or $machine (it is ${prepass:-missing})"
-    admin="--admin"
-    say "authored by $me: merging with the admin bypass on a success pre-pass"
-  fi
-fi
+# 4b. The review rule is gone (ADR-0041); merge-gate, checked above, is the sign-off. --admin is
+#     the emergency bypass and is never chosen here on the caller's behalf.
+[ -n "$admin" ] && say "merging with the admin bypass, as asked"
 
 # 5. Subject and body for the squash commit.
 node "$here/compose.mjs" "$work/body.md" "$title" "$n" "$work" > "$work/composed.txt" || fail "cannot compose the merge message"

@@ -137,6 +137,28 @@ function exhibitLabel(exhibitId: string, numbers: Map<string, number | string>):
   return number === undefined ? `exhibit ${exhibitId} (unnumbered)` : `Exhibit ${number}`
 }
 
+// What a capture entry's Egress fields record, or undefined when it carries
+// neither a kind nor a skipped re-fetch. The label, like the user agent printed
+// beside it, is free text, so both are printed with JSON escaping: a newline in
+// either cannot start a report line of its own.
+function describeEgress(cap: Extract<ManifestEntry, { type: 'capture' }>): string | undefined {
+  const { egressKind, egressLabel, tlsSkipped } = cap
+  const skipped = 'the TLS Cert Chain re-fetch was skipped because the Egress was not Direct'
+  if (egressKind === undefined) {
+    // A skipped re-fetch with no kind, a shape an extension capture can take
+    // (ADR-0032): the page did not go through the Egress, so no route is named.
+    return tlsSkipped === undefined
+      ? undefined
+      : `the signed capture entry records that ${skipped}, and names no Egress for the page`
+  }
+  const label = egressLabel === undefined ? '' : `, labelled ${JSON.stringify(egressLabel)}`
+  const tls = tlsSkipped === undefined ? '' : `; ${skipped}`
+  return (
+    `the signed capture entry records Egress ${egressKind}${label}${tls}. ` +
+    'It records what Birdbrain asked the browser to do, not which address the site saw'
+  )
+}
+
 // Joins package-relative segments (which originate from the UNTRUSTED
 // evidence.json) under `base`, returning undefined if the result escapes the
 // package directory. `path.join` normalizes but does not prevent `..` escape.
@@ -419,6 +441,9 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
   // empty set if a later outcome ever reaches here without one.
   const breakIndex = chain.valid ? undefined : (chain.brokenAt ?? 0)
   const entries = breakIndex === undefined ? shippedEntries : shippedEntries.slice(0, breakIndex)
+  // The same entries when the chain FAILed, for the rows that quote an entry's
+  // own values back to the reader rather than checking a file against them.
+  const unverifiedEntries = new Set<ManifestEntry>(chain.valid ? [] : entries)
 
   // §7.1b Shared Case (schema 4). A package of a Shared Case encloses every
   // other member's chain as `manifest.<installationId>.jsonl` beside the
@@ -792,6 +817,32 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
       add(name, 'fail', `capture ${cap.captureId}: content hash does not match manifest`)
     } else {
       add(name, 'pass')
+    }
+
+    // The Egress fields (ADR-0032), stated as annotations rather than checks:
+    // they live only in the signed entry, which the manifest chain row already
+    // reports on, so each row is a SKIP that reports what the entry records. An
+    // entry carrying none of them adds no row. Behind a FAILed chain the
+    // exporter's entries are unverified (see `entries` above), so their values
+    // are not quoted as signed: a forged label would read as the Operator's.
+    const egress = describeEgress(cap)
+    if (unverifiedEntries.has(cap)) {
+      if (egress !== undefined || cap.userAgent !== undefined) {
+        add(
+          `capture ${cap.captureId} egress`,
+          'skip',
+          "not reported: the manifest chain FAILed, so this entry's Egress fields are unverified"
+        )
+      }
+    } else {
+      if (egress) add(`capture ${cap.captureId} egress`, 'skip', egress)
+      if (cap.userAgent !== undefined) {
+        add(
+          `capture ${cap.captureId} user agent`,
+          'skip',
+          `the signed capture entry records user agent ${JSON.stringify(cap.userAgent)}`
+        )
+      }
     }
 
     // Screenshot — content-addressed by its own sha256, which equals the signed

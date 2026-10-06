@@ -308,10 +308,10 @@ describe('manifest schema 3 — frozen entry hashes', () => {
 })
 
 describe('manifest schema 3 — the schema', () => {
-  it('reads up to schema version 4', () => {
-    // Bumped from 3 by the Shared Case entry types (#1509); the schema-3
-    // answers below are unchanged by that bump.
-    expect(MANIFEST_SCHEMA_VERSION).toBe(4)
+  it('reads up to schema version 5', () => {
+    // Bumped from 3 by the Shared Case entry types (#1509) and to 5 by the
+    // Egress fields (#1694); the schema-3 answers below are unchanged by either.
+    expect(MANIFEST_SCHEMA_VERSION).toBe(5)
   })
 
   it('knows exactly the thirteen entry types', () => {

@@ -16,12 +16,15 @@
 # Output: {sha, failing, pending, passed, skipped, ignored}: check names, and one
 # line per check run or status not counted.
 #
-# --wait re-reads every 30 seconds until `pending` is empty or the seconds run out,
+# --wait re-reads every 30 seconds (CHECKS_POLL_SECONDS) until `pending` is empty or the seconds run out,
 # then prints the last read. Exit 0 when nothing is pending, 124 when the wait ran
 # out with checks still pending. A cycle polled with its own loop instead, and run
 # 37129293732 spent nine minutes in one that could not parse this output. Keep the
 # wait under the Bash tool's ten-minute cap.
 set -euo pipefail
+# read_checks runs inside $(...), where bash otherwise drops -e and a failed read would
+# print a partial result with exit 0.
+shopt -s inherit_errexit
 
 # shellcheck source=.github/scripts/dispatch/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
@@ -82,5 +85,5 @@ while :; do
     [ "$wait" -eq 0 ] && exit 0
     exit 124
   fi
-  sleep 30
+  sleep "${CHECKS_POLL_SECONDS:-30}"
 done

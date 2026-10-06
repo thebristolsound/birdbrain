@@ -69,11 +69,17 @@ afterEach(() => {
   stub = undefined
 })
 
-const checks = (r: GhRoutes) => {
+const checks = (r: GhRoutes, args: string[] = []) => {
   stub = makeGhStub(r)
-  const result = spawnSync('bash', [SCRIPT, '7'], {
+  const result = spawnSync('bash', [SCRIPT, ...args, '7'], {
     encoding: 'utf8',
-    env: { ...process.env, PATH: stub.path, GITHUB_REPOSITORY: 'o/r', LOGIN: PIPELINE }
+    env: {
+      ...process.env,
+      PATH: stub.path,
+      GITHUB_REPOSITORY: 'o/r',
+      LOGIN: PIPELINE,
+      CHECKS_POLL_SECONDS: '1'
+    }
   })
   return { ...result, out: result.status === 0 ? JSON.parse(result.stdout) : null }
 }
@@ -168,5 +174,26 @@ describe.skipIf(!HAS_JQ)('checks.sh counts only the jobs of this PR and trusted 
     const r = routes({})
     delete r[`${API}/actions/runs/100/jobs?per_page=100`]
     expect(checks(r).status).not.toBe(0)
+  })
+})
+
+describe.skipIf(!HAS_JQ)('checks.sh --wait', () => {
+  it('returns at once when nothing is pending', () => {
+    const { status, out } = checks(routes({}), ['--wait', '60'])
+    expect(status).toBe(0)
+    expect(out.passed).toEqual(['build', 'lint', 'test'])
+  })
+
+  it('exits 124 with the last read when checks are still pending at the deadline', () => {
+    const r = routes({ checkRuns: [{ id: 1, name: 'lint', status: 'in_progress' }] })
+    const result = checks(r, ['--wait', '1'])
+    expect(result.status).toBe(124)
+    expect(JSON.parse(result.stdout).pending).toEqual(['lint'])
+  })
+
+  it('fails when a read fails', () => {
+    const r = routes({})
+    delete r[`${API}/actions/runs/100/jobs?per_page=100`]
+    expect(checks(r, ['--wait', '1']).status).not.toBe(0)
   })
 })

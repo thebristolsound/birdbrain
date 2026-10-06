@@ -800,11 +800,16 @@ for that reason. A non-zero exit is not a green: do not run the pre-pass, and re
   `main` run that shows it, and treat the rest of the list as the whole of CI.
 - **CI green** → run the pre-pass.
 
-**Every check reporting `skipping` is the #784 bug, not a conclusion.** If the poll shows
-`build`, `e2e`, `lint`, `test` and `typecheck` all in `skipped` on a labelled draft agent PR
-(`changes` passes or skips), the labels reached GitHub after `changes` read them, 20 seconds
-after the PR opened, and no further event will re-run them.
-Waiting cannot resolve it. Recover in this order, and stop at the first step that fails:
+**The five code jobs reporting `skipped` on a labelled draft agent PR is one of two things.**
+`ci.yml`'s `changes` job skips `build`, `e2e`, `lint`, `test` and `typecheck` on purpose when
+every changed file matches the docs-only pattern in its `filter` step (`docs/`, `website/`,
+`.claude/`, `.github/ISSUE_TEMPLATE/`, `CONTEXT.md`, `LICENSE`, root `*.md`); that is a green,
+and the pre-pass runs. Read the PR's files
+(`gh api --paginate repos/thebristolsound/birdbrain/pulls/<n>/files --jq '.[].filename'`) and
+compare them with that pattern, which is the one definition. If any file falls outside it, the
+skips are the #784 bug, not a conclusion: the labels reached GitHub after `changes` read them,
+20 seconds after the PR opened, and no further event will re-run them. Waiting cannot resolve
+it. Recover in this order, and stop at the first step that fails:
 
 1. Read the labels directly: `gh api repos/thebristolsound/birdbrain/issues/<n>/labels --jq
    '[.[].name]'`. A non-zero exit is not an empty set. If the read fails, report the PR number

@@ -6,16 +6,24 @@ import { canonicalStringify } from '@shared/verify/canonicalJson'
 import { verifyEntrySignature } from '@shared/verify/signature'
 import { buildTrustedTimeIndexFromEntries } from '@shared/verify/trustedTime'
 import type { TrustedTimeResult } from '@shared/verify/trustedTime'
+import type { EgressKind, TlsRefetchSkip } from '@shared/types'
 
 // The digests a verified `capture` entry carries, keyed by manifest index
 // (#234). This is what a hash-verified claim rests on: `screenshotHash` /
 // `textHash` are read from HERE, never from the `captures` DB mirror, which
 // is a cache maintained for convenience and carries no chain integrity of its
 // own (migrations.ts:369 — "the manifest remains the authority").
+//
+// The Egress fields (ADR-0032) are carried on the same footing, each set only
+// when the verified entry carries it.
 export interface CaptureChainEntry {
   contentHash: string
   screenshotHash?: string
   textHash?: string
+  egressKind?: EgressKind
+  egressLabel?: string
+  userAgent?: string
+  tlsSkipped?: TlsRefetchSkip
 }
 
 // An entry this build cannot read because it comes from a newer schema: its
@@ -416,10 +424,15 @@ export function verifyManifestChainText(
   for (const entry of verifiedEntries) {
     if (entry.type === 'capture') {
       captureHashesByIndex.set(entry.index, entry.contentHash)
+      const { egressKind, egressLabel, userAgent, tlsSkipped } = entry
       captureEntriesByIndex.set(entry.index, {
         contentHash: entry.contentHash,
         screenshotHash: entry.screenshotHash,
-        textHash: entry.textHash
+        textHash: entry.textHash,
+        ...(egressKind !== undefined ? { egressKind } : {}),
+        ...(egressLabel !== undefined ? { egressLabel } : {}),
+        ...(userAgent !== undefined ? { userAgent } : {}),
+        ...(tlsSkipped !== undefined ? { tlsSkipped } : {})
       })
     }
   }

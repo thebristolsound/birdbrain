@@ -494,11 +494,11 @@ const ManifestCaptureEntrySchema = z
     // The Egress the render was sent through (ADR-0032, #1694), schema-5
     // fields. Each is OMITTED when absent, never '' or null, so every entry
     // written without them keeps its canonical body and chain hash. No
-    // `egressKind` is the Direct case. `egressLabel` is the Operator's own name
-    // for the Egress; `userAgent` is the string the render sent; `tlsSkipped`
-    // says the TLS Cert Chain re-fetch did not run because the Egress was not
-    // Direct. What they record is what Birdbrain asked the browser to do, not
-    // which address the target saw.
+    // `egressKind` means the page was not sent through an Egress. `egressLabel`
+    // is the Operator's own name for the Egress; `userAgent` is the string the
+    // render sent; `tlsSkipped` says the TLS Cert Chain re-fetch did not run
+    // because the Egress was not Direct. What they record is what Birdbrain
+    // asked the browser to do, not which address the target saw.
     egressKind: z.enum(EGRESS_KINDS, { error: "`egressKind` must be 'proxy' or 'tor'" }).optional(),
     egressLabel: z.string().min(1).optional(),
     userAgent: z.string().min(1).optional(),
@@ -529,15 +529,14 @@ const ManifestCaptureEntrySchema = z
     message: 'the Egress fields on a capture entry require schemaVersion 5',
     path: ['schemaVersion']
   })
-  // A label or a skipped re-fetch describes an Egress that is not Direct, so
-  // either one without a kind contradicts itself.
+  // A label names an Egress, so a label without a kind contradicts itself.
+  // `tlsSkipped` deliberately needs no kind: an extension capture's page loads
+  // in the Operator's own browser, not through the Egress, while its re-fetch
+  // is still skipped (ADR-0032). A distributed verifier cannot be recalled, so
+  // it must not refuse that shape before the writer (#1695) settles it.
   .refine((entry) => entry.egressLabel === undefined || entry.egressKind !== undefined, {
     message: '`egressLabel` requires `egressKind`',
     path: ['egressLabel']
-  })
-  .refine((entry) => entry.tlsSkipped === undefined || entry.egressKind !== undefined, {
-    message: '`tlsSkipped` requires `egressKind`',
-    path: ['tlsSkipped']
   })
   .refine((entry) => entry.tlsSkipped === undefined || entry.tls === undefined, {
     message: '`tlsSkipped` and `tls` cannot both be present',

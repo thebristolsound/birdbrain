@@ -124,7 +124,8 @@ describe('manifest schema 5 — the schema', () => {
       { egressKind: 'proxy' },
       { egressKind: 'proxy', egressLabel: 'Frankfurt VPN' },
       { userAgent: EGRESS_FIELDS.userAgent },
-      { egressKind: 'tor', tlsSkipped: 'egress-not-direct' }
+      { egressKind: 'tor', tlsSkipped: 'egress-not-direct' },
+      { tlsSkipped: 'egress-not-direct' }
     ]
     for (const field of fields) {
       const result = parse({ ...CAPTURE_BODY, ...field, schemaVersion: 4 })
@@ -139,11 +140,23 @@ describe('manifest schema 5 — the schema', () => {
     expect(parse({ ...CAPTURE_BODY, userAgent: 'UA', schemaVersion: 5 }).success).toBe(true)
   })
 
-  it('refuses a label or a skipped re-fetch without an Egress kind', () => {
+  it('refuses a label without an Egress kind', () => {
     const label = parse({ ...CAPTURE_BODY, egressLabel: 'Frankfurt VPN', schemaVersion: 5 })
     expect(label.error?.issues[0]?.message).toBe('`egressLabel` requires `egressKind`')
-    const skipped = parse({ ...CAPTURE_BODY, tlsSkipped: 'egress-not-direct', schemaVersion: 5 })
-    expect(skipped.error?.issues[0]?.message).toBe('`tlsSkipped` requires `egressKind`')
+  })
+
+  it('verifies a skipped re-fetch with no Egress kind, the extension capture shape', () => {
+    // The page loads in the Operator's own browser, not through the Egress,
+    // while the re-fetch is still skipped (ADR-0032). A verifier that refused
+    // this would report the Operator's own signed chain as broken.
+    const extension = {
+      ...CAPTURE_BODY,
+      method: 'extension',
+      tlsSkipped: 'egress-not-direct',
+      schemaVersion: 5
+    }
+    expect(parse(extension).success).toBe(true)
+    expect(verify(buildSignedChain([extension]))).toMatchObject({ valid: true })
   })
 
   it('refuses a skipped re-fetch beside a re-fetch result', () => {
@@ -267,6 +280,17 @@ describe('manifest schema 5 — the package verifier', () => {
         'browser to do, not which address the site saw'
     )
     expect(rowFor(result, `capture ${EGRESS_CAPTURE_ID} user agent`)).toBeUndefined()
+  })
+
+  it('reports a skipped re-fetch with no Egress kind without naming a route', () => {
+    writeEgressPackage(pkgDir, { tlsSkipped: 'egress-not-direct' })
+    const result = verifyEvidencePackage(pkgDir)
+    expect(result.checks.filter((check) => check.status === 'fail')).toEqual([])
+    expect(result.pass).toBe(true)
+    expect(rowFor(result, `capture ${EGRESS_CAPTURE_ID} egress`)?.reason).toBe(
+      'the signed capture entry records that the TLS Cert Chain re-fetch was skipped because ' +
+        'the Egress was not Direct, and names no Egress for the page'
+    )
   })
 
   it('adds no Egress row for a capture entry without the fields', () => {

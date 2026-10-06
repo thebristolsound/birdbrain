@@ -137,18 +137,22 @@ function exhibitLabel(exhibitId: string, numbers: Map<string, number | string>):
   return number === undefined ? `exhibit ${exhibitId} (unnumbered)` : `Exhibit ${number}`
 }
 
-// What a capture entry's Egress fields record, or undefined when it names no
-// Egress. The label, like the user agent printed beside it, is free text, so
-// both are printed with JSON escaping: a newline in either cannot start a
-// report line of its own.
+// What a capture entry's Egress fields record, or undefined when it carries
+// neither a kind nor a skipped re-fetch. The label, like the user agent printed
+// beside it, is free text, so both are printed with JSON escaping: a newline in
+// either cannot start a report line of its own.
 function describeEgress(cap: Extract<ManifestEntry, { type: 'capture' }>): string | undefined {
   const { egressKind, egressLabel, tlsSkipped } = cap
-  if (egressKind === undefined) return undefined
+  const skipped = 'the TLS Cert Chain re-fetch was skipped because the Egress was not Direct'
+  if (egressKind === undefined) {
+    // A skipped re-fetch with no kind, a shape an extension capture can take
+    // (ADR-0032): the page did not go through the Egress, so no route is named.
+    return tlsSkipped === undefined
+      ? undefined
+      : `the signed capture entry records that ${skipped}, and names no Egress for the page`
+  }
   const label = egressLabel === undefined ? '' : `, labelled ${JSON.stringify(egressLabel)}`
-  const tls =
-    tlsSkipped === undefined
-      ? ''
-      : '; the TLS Cert Chain re-fetch was skipped because the Egress was not Direct'
+  const tls = tlsSkipped === undefined ? '' : `; ${skipped}`
   return (
     `the signed capture entry records Egress ${egressKind}${label}${tls}. ` +
     'It records what Birdbrain asked the browser to do, not which address the site saw'

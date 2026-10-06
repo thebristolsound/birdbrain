@@ -205,7 +205,7 @@ documents and adding one layering table plus the enforcement mechanism per bound
 **`INVARIANTS.md`.**
 The invariants exist and are load-bearing, but they are scattered across `CONTEXT.md` (assurance
 baseline), `.coderabbit.yaml` (append-only migrations), `src/shared/verify/` (chain rules), and named
-test files. There is no one place a reviewer can check a diff against. Issue #1000 already reports one
+test files. A reviewer has no single place to check a diff against. Issue #1000 already reports one
 concrete instance — manifest capture entries have no cross-field provenance invariants — and #984
 reports two files holding evidence-viewer invariants that no evidence-path entry covers. The failure
 mode is an invariant that only exists in one person's head being broken by a change that passes every

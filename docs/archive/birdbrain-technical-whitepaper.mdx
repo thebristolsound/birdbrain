@@ -243,7 +243,7 @@ CI runs a full-history gitleaks scan and an advisory `pnpm audit` (known accepte
 
 ## 8. Observability and operations
 
-Observability is minimal and deliberate. There is no logging framework, no crash reporter, and no telemetry; diagnostics are `console.warn`/`console.error`. For an evidence tool, silent operation is partly a feature (nothing phones home), but operators debugging a failed capture have limited artifacts to consult; a local, rotating log file would improve supportability without changing the privacy posture (§12).
+Observability is minimal and deliberate. Birdbrain has no logging framework, no crash reporter, and no telemetry; diagnostics are `console.warn`/`console.error`. For an evidence tool, silent operation is partly a feature (nothing phones home), but operators debugging a failed capture have limited artifacts to consult; a local, rotating log file would improve supportability without changing the privacy posture (§12).
 
 Operational maturity instead shows up in CI and tests:
 
@@ -286,7 +286,7 @@ Code organization follows the process boundary cleanly: `src/main/services/` (on
 - **Packaging**: electron-builder; Windows NSIS, macOS dmg+zip, Linux AppImage+deb. `sharp`'s native modules are asar-unpacked; the built extension ships inside the app's resources so the tour's extension step can point at it.
 - **Updates**: electron-updater against GitHub Releases. Auto-download only where auto-install is safe (Windows NSIS; Linux only when running as AppImage; macOS notify-only pending signing). Checks run 30 s after launch and every 4 h, only in packaged builds, and installation always requires explicit user action.
 - **Channels**: stable/beta via GitHub prerelease flags; first-run channel is derived from the installed build's own version string.
-- **Infrastructure footprint**: none. There is no server component to operate; GitHub hosts releases and the update feed. This is a meaningful property for security review: the vendor cannot access user data because no vendor infrastructure touches it.
+- **Infrastructure footprint**: none. Birdbrain has no server component to operate; GitHub hosts releases and the update feed. This is a meaningful property for security review: the vendor cannot access user data because no vendor infrastructure touches it.
 - **Known deployment gaps**: artifacts are unsigned (SmartScreen/Gatekeeper friction, and macOS auto-update stays disabled until Developer ID signing lands); Windows release builds pin `windows-2022` to keep node-gyp/better-sqlite3 building.
 
 ---
@@ -295,7 +295,7 @@ Code organization follows the process boundary cleanly: `src/main/services/` (on
 
 Grounded in code structure, explicit code comments, and documented limitations rather than any stated plan:
 
-1. **Code signing and notarization.** The single highest-leverage item; it unblocks macOS auto-update (the gate is already written) and removes install friction.
+1. **Code signing and notarization.** The single highest-impact item; it unblocks macOS auto-update (the gate is already written) and removes install friction.
 2. **Style CSP tightening.** Eliminate `'unsafe-inline'` for styles; the script-src pipeline already demonstrates build-time enforcement.
 3. **safeStorage fallback hardening.** Refuse to persist secrets in plaintext, or require explicit operator acknowledgment on platforms without OS key storage.
 4. **CSV formula-injection prefixing.** Small, cheap, and closes the one injection path the escaping layer currently leaves open.

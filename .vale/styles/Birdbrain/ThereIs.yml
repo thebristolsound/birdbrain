@@ -1,0 +1,8 @@
+extends: existence
+message: "Do not open a sentence with '%s'. Name the actor: 'Birdbrain has no ...', not 'There is no ...'."
+link: https://github.com/thebristolsound/birdbrain/blob/main/docs/agents/writing-guide.md#mechanics
+level: error
+scope: sentence
+nonword: true
+tokens:
+  - '^There (?:is|are|was|were)\b'

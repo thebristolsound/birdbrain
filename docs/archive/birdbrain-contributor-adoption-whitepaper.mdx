@@ -404,7 +404,7 @@ Birdbrain's documented outbound connections are narrow:
 - GitHub Releases for update checks and downloads;
 - feature-specific corroboration such as Wayback Machine or TLS endpoint checks where implemented.
 
-There is no telemetry and no required account.
+Birdbrain has no telemetry and requires no account.
 
 ### Threat model boundaries
 
@@ -435,7 +435,7 @@ Birdbrain currently emphasizes operator-facing state over telemetry. Implemented
 - HTTP reachability checks; and
 - a pipeline test that exercises synthetic Capture storage and verification.
 
-The application also emits console warnings and errors. There is no general-purpose metrics system, distributed tracing, crash-reporting backend, durable diagnostic event store, or telemetry service.
+The application also emits console warnings and errors. Birdbrain has no general-purpose metrics system, distributed tracing, crash-reporting backend, durable diagnostic event store, or telemetry service.
 
 That choice is consistent with a privacy-sensitive desktop tool, but it makes field debugging harder. A future diagnostics system should be local-first, redacted by default, explicit about export, and careful not to create a new evidence egress path.
 
@@ -637,7 +637,7 @@ The most valuable community input will come from real investigative workflows:
 - which capture failures matter most in practice;
 - how Cases should be transferred between Operators;
 - what archive compatibility guarantees adopters need;
-- which extracted indicators are worth first-class support;
+- which extracted indicators warrant dedicated support;
 - what managed deployment policies small organizations need.
 
 ## Conclusion

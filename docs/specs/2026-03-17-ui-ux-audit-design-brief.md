@@ -1,7 +1,7 @@
 # Birdbrain UI/UX Audit & Design Brief
 
 ## Context
-Birdbrain is an open-source web investigation & capture tool built as an Electron + React desktop app with a companion Chrome extension. It enables investigators to capture web pages, extract entities (people, emails, domains, etc.), tag/organize findings, and perform AI-powered analysis. The current UI is functional but utilitarian — it needs a complete overhaul for revolutionary simplicity and modern minimalist flair while preserving all existing functionality.
+Birdbrain is an open-source web investigation & capture tool built as an Electron + React desktop app with a companion Chrome extension. It enables investigators to capture web pages, extract entities (people, emails, domains, etc.), tag/organize findings, and perform analysis with AI models. The current UI is functional but utilitarian — it needs a complete overhaul for simplicity and modern minimalist flair while preserving all existing functionality.
 
 ---
 
@@ -101,7 +101,7 @@ No routing library — view switching is state-driven via Zustand store (`appMod
 **Pain points**:
 - Table-only view — no visual grouping or clustering
 - Filters are basic dropdowns with no visual feedback
-- Expandable rows are not obviously interactive
+- Expandable rows lack a visual interaction cue
 - No entity search within the table
 - No way to merge/link duplicate entities
 - Confidence values are just numbers — no visual indicator in table view
@@ -127,7 +127,7 @@ No routing library — view switching is state-driven via Zustand store (`appMod
 
 **Pain points**:
 - The relationship between selectors and capture filtering is not intuitive
-- Create form is collapsible but not obviously so
+- Create form is collapsible but lacks a visual cue for that action
 - Match counts are just numbers — no preview of what matched
 - No visual testing/preview of a pattern before creating it
 - Cross-filtering state is not visually connected to the captures tab

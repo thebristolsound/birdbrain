@@ -1,0 +1,35 @@
+extends: existence
+message: "Cut '%s': it would read the same on another product's page. State the concrete fact."
+link: https://github.com/thebristolsound/birdbrain/blob/main/docs/agents/writing-guide.md#prose
+level: error
+ignorecase: true
+tokens:
+  # Inflated adjectives
+  - "powerful"
+  - "seamless(?:ly)?"
+  - "robust(?:ly)?"
+  - "comprehensive(?:ly)?"
+  - "cutting-edge"
+  - "enterprise-grade"
+  - "first-class"
+  - "world-class"
+  - "best-in-class"
+  - "state-of-the-art"
+  - "game-changing"
+  - "revolutionary"
+  - "blazing(?:ly)? fast"
+  - "AI-(?:powered|driven|enabled)"
+  # Empty openers and transitions
+  - "it(?:'s| is) (?:important|worth) (?:to note|noting)(?: that)?"
+  - "it should be noted(?: that)?"
+  - "in today's (?:\\w+ )?(?:landscape|world)"
+  - "let's dive in"
+  - "at the end of the day"
+  - "needless to say"
+  - "plays? an? (?:key|crucial|vital|pivotal) role"
+  - "a testament to"
+  # Words that tell a stuck reader the task is easy
+  - "easily"
+  - "simply"
+  - "obviously"
+  - "of course"

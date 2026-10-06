@@ -6,7 +6,7 @@
 
 ## Problem
 
-Birdbrain has a one-way, court-oriented evidence export (report + verification materials). There is no way to move a case between instances — for sharing with a collaborator or for backup/restore. The evidence zip omits notes, tags, selectors, annotations, favorites, analyses, and extracted data, and nothing can read it back in.
+Birdbrain has a one-way, court-oriented evidence export (report + verification materials). Birdbrain cannot move a case between instances — for sharing with a collaborator or for backup/restore. The evidence zip omits notes, tags, selectors, annotations, favorites, analyses, and extracted data, and nothing can read it back in.
 
 ## Decisions (made with user)
 

@@ -9,7 +9,7 @@ Birdbrain has adopted a standards-based OSINT assurance baseline in
 jurisdiction notes, architectural consequences, and decision gate live in
 [`docs/agents/osint-investigation-standards.md`](docs/agents/osint-investigation-standards.md).
 
-There is no universal "OSINT-compliant" product certification. Birdbrain must make narrow,
+No universal "OSINT-compliant" product certification exists. Birdbrain must make narrow,
 versioned, independently testable claims across investigation methodology, acquisition,
 preservation, analysis, provenance, security, privacy, accessibility, and reporting.
 

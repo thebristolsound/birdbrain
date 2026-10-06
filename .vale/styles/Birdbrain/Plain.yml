@@ -1,0 +1,25 @@
+extends: substitution
+message: "Use '%s' instead of '%s'."
+link: https://github.com/thebristolsound/birdbrain/blob/main/docs/agents/writing-guide.md#mechanics
+level: error
+ignorecase: true
+action:
+  name: replace
+swap:
+  utilize: use
+  utilizes: uses
+  utilized: used
+  utilizing: using
+  utilization: use
+  leverage: use
+  leverages: uses
+  leveraged: used
+  leveraging: using
+  prior to: before
+  due to the fact that: because
+  in the event that: if
+  a number of: several
+  (?:is|are) able to: can
+  at this point in time: now
+  with regards? to: about
+  the majority of: most

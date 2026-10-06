@@ -1,0 +1,23 @@
+extends: script
+message: "Three sentences in a row open with '%s'. Vary the subject or merge two of them."
+link: https://github.com/thebristolsound/birdbrain/blob/main/docs/agents/writing-guide.md#prose
+level: suggestion
+scope: paragraph
+script: |
+  text := import("text")
+  matches := []
+  // The first word of every sentence in the paragraph.
+  found := text.re_find(`(?:^|[.!?]\s+)([A-Z][A-Za-z'-]*)`, scope, -1)
+  if !is_undefined(found) {
+    run := 1
+    for i := 1; i < len(found); i++ {
+      if found[i][1].text == found[i-1][1].text {
+        run += 1
+        if run == 3 {
+          matches = append(matches, {begin: found[i][1].begin, end: found[i][1].end})
+        }
+      } else {
+        run = 1
+      }
+    }
+  }

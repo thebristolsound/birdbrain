@@ -50,7 +50,7 @@ Five sections in a fixed order, a hard cap, and one closing line:
    `merge-pr` runs under `gh`) accepts both forms, and still wants the line last when present.
 
 Everything above `## Verification` fits in 40 top-layer lines; collapsed lines do not count.
-There are no other `##` sections: no acceptance-criteria walkthroughs, no reviewer notes, no
+The body has no other `##` sections: no acceptance-criteria walkthroughs, no reviewer notes, no
 visual evidence unless the UI changed (then one image link inside the Changes block). Fenced
 blocks appear only inside a `<details>` block. Claims name only actions you took and states
 you observed after taking them; a label another actor applies or a check CI will run is named

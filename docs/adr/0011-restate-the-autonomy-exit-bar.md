@@ -87,7 +87,7 @@ sentence worth writing down.
   issue (#354/#355) also count separately, because the duplication *is* the failure.
 - **No exclusions.** The ledger's fast-track exclusion rule is retired. It existed because the
   old bar's merge half measured the maintainer rather than the routine; these clauses measure
-  what the routine did, which no merge decision can distort. Clause 2 is robust to overrides
+  what the routine did, which no merge decision can distort. Overrides do not affect Clause 2
   by construction — a defect merged over a pre-pass that named it was named. Retiring the rule
   also ends the state where 17 of 29 cycles were invisible to the measurement.
 - **Clause 1 is adjudicated mechanically**, from the API: the end-of-cycle report claims

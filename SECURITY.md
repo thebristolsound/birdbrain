@@ -40,7 +40,7 @@ The complete list of outbound connections Birdbrain can make:
 4. **Consent-banner filter lists** (`secure.fanboy.co.nz`, `ublockorigin.github.io`) — public cookie-banner filter lists, downloaded before a background recapture.
 5. **GitHub releases** — update checks and downloads.
 
-There is no telemetry, no account, and no other network activity. Captured evidence leaves the machine only when you export it. Note that items 2–4 disclose the captured or looked-up URL (or your interest in it) to a third party or to the target itself; if you investigate through a VPN or Tor, route the whole machine so these requests do not take your bare network path.
+Birdbrain has no telemetry, no account, and no other network activity. Captured evidence leaves the machine only when you export it. Note that items 2–4 disclose the captured or looked-up URL (or your interest in it) to a third party or to the target itself; if you investigate through a VPN or Tor, route the whole machine so these requests do not take your bare network path.
 
 ## Dependency advisories and distribution
 
@@ -57,7 +57,7 @@ Most findings are cleared outright by a version override in `pnpm-workspace.yaml
 
 Pre-declared so they are not rediscovered as findings:
 
-- **Release artifacts are unsigned.** There is currently no Authenticode signing or macOS notarization. Update integrity relies on electron-updater's SHA-512 hashes in the `latest*.yml` metadata served from GitHub releases over HTTPS. Expect OS installer warnings.
+- **Release artifacts are unsigned.** Birdbrain currently has no Authenticode signing or macOS notarization. Update integrity relies on electron-updater's SHA-512 hashes in the `latest*.yml` metadata served from GitHub releases over HTTPS. Expect OS installer warnings.
 - **Renderer CSP allows `'unsafe-inline'`** for scripts and styles (build-tooling constraint), mitigated by sandboxing, context isolation, and the loopback-only `connect-src`.
 - **`safeStorage` plaintext fallback.** On systems without an OS credential store, the signing key is stored unencrypted in the user-data directory.
 - **Loopback GET endpoints are unauthenticated.** `/api/status`, `/api/cases`, and `/api/selectors/active` require no token, so any local process can read case names and selector patterns. Mutations require the token — but `/api/status` returns that token to origin-less requests (e.g. `curl`), which is how the extension pairs with the app, so a local process can obtain it and write captures. Defending against hostile code already running as the Birdbrain user is out of scope (see above).

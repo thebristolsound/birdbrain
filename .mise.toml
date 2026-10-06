@@ -3,3 +3,6 @@
 # CLAUDE.md "Commands". Keep in sync with .nvmrc and CI's node-version-file.
 [tools]
 node = "20"
+# Vale runs the prose check in .claude/hooks/vale-prose.sh. Keep the version in sync with
+# VALE_VERSION in .claude/hooks/session-start.sh, which installs it where mise is absent.
+vale = "3.24.0"

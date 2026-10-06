@@ -163,7 +163,7 @@ dispatch, not during it.
 **Two tickets are dead and want closing rather than planned.**
 
 - **#534 is obsolete.** Its subject file, `src/renderer/components/selectors/SelectorTable.tsx`,
-  was deleted by #766 (`95f62cd3`, the consolidated-Signals change). There is no sortable Matches
+  was deleted by #766 (`95f62cd3`, the consolidated-Signals change). The view has no sortable Matches
   header and no `w-24` any more, and `--d-head` is now referenced by nothing outside
   `globals.css`. Close it, and file the orphaned token separately if anyone cares.
 - **#944 is already fixed on `main`.** The hook-boundary padded-digest case it asks for is at

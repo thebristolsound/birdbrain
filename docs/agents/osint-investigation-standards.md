@@ -11,7 +11,7 @@ accessibility, and release processes
 
 ## Executive position
 
-There is no single "OSINT compliant" product standard or certification. A defensible
+No single "OSINT compliant" product standard or certification exists. A defensible
 investigation system is built from several independent assurance layers:
 
 1. lawful and ethical investigative methodology;

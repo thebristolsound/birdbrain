@@ -350,7 +350,7 @@ Decision 2's own text at lines 74 to 76 states that nothing else is rewritten,
 and that any additional purge candidate must be added to this record first,
 with its own rationale, before it joins the filter scope. The 265 commit
 message bodies and the 14 tracked files counted earlier are additional
-candidates. Whoever writes the #269 tooling therefore cannot simply add them:
+candidates. Whoever writes the #269 tooling therefore cannot add them outright:
 they need either a decision recorded here with a rationale, or an explicit
 exclusion with a stated reason. This amendment records the two surfaces and
 takes neither.
@@ -593,7 +593,7 @@ that residue covers, and what the rewrite would cost.
 ### Decisions 1 and 2: accept, and preserve the history
 
 **Outcome.** No history rewrite. The personal addresses in the history's
-identity fields are accepted as public. There is no `git-filter-repo` pass, no
+identity fields are accepted as public. No `git-filter-repo` pass, no
 force-push, and no rewrite inside the freeze window. Commit ids, tags and
 signatures stay as they are. No GitHub Support removal is requested. This
 supersedes Decision 1's outcome to remediate, Decision 2's scoped rewrite, the 2026-09-09

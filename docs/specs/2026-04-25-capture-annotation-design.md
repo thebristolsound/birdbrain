@@ -66,7 +66,7 @@ Invariants:
 - One annotation set per capture (1:1). No versioning in v1; latest state wins.
 - Original `screenshotPath` and the capture's `entryHash` are immutable.
 - Annotations are ignored by hash verification — they live in their own tables and never participate in the capture hash chain. Burned annotated PNGs included in an export are hashed independently inside the existing audit trail section of the export report.
-- Pinned comments are first-class shapes: number + position live in the shapes array; body lives normalized in `annotation_pins`.
+- Pinned comments are shapes in their own right: number + position live in the shapes array; body lives normalized in `annotation_pins`.
 
 ### Data model
 
@@ -271,7 +271,7 @@ interface EditorState {
 
 ### Export integration — main-process burn
 
-The existing export pipeline writes a **single self-contained HTML file** with base64-embedded screenshots (`src/main/services/export.ts`). There is no multi-file bundle. v1 plugs into this model directly: when annotations are burned, the embedded base64 PNG for that capture is replaced by the burned version, and pin bodies are rendered as a numbered legend below the screenshot in the report.
+The existing export pipeline writes a **single self-contained HTML file** with base64-embedded screenshots (`src/main/services/export.ts`). The pipeline produces no multi-file bundle. v1 plugs into this model directly: when annotations are burned, the embedded base64 PNG for that capture is replaced by the burned version, and pin bodies are rendered as a numbered legend below the screenshot in the report.
 
 `ExportOptions.include` gains one new field:
 

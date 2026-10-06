@@ -44,7 +44,7 @@ this repository, in issues, in commit messages, and in the private channel. The 
 stays private with the maintainer. Never write a role, employer, or location beside a
 codename. Pick one tester who has used an evidence tool before and one who has not.
 
-There are no waves, lapse triggers, or backfills. Those existed to tell silence from
+The public beta has no waves, lapse triggers, or backfills. Those existed to tell silence from
 satisfaction across six unobserved testers; an observed session has no silence to read.
 
 **The public** is anyone who downloads the beta. They are not tracked, not codenamed, and

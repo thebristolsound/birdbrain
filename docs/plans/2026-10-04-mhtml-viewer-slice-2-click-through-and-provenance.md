@@ -328,7 +328,7 @@ The maintainer accepted each recommendation the first draft of this plan made.
    member's Capture, so the entry records `linkedFromContentHash` beside the id. Ruled by the
    maintainer on 2026-10-04 after the first set of rulings, and recorded in ADR-0040.
 3. **Schema number (B3).** The fields join the first schema-5 verifier release rather than taking
-   a number of their own.
+   a schema number of their own.
 
 ## Sequencing
 

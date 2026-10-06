@@ -189,7 +189,7 @@ Run by hand only. Nothing here is a CI check or a scheduled job (ADR-0029, ADR-0
 
 ## Accounts and usage windows
 
-There is no dollar cost and no cap the runner can enforce. Both subscriptions meter usage in
+A run has no dollar cost and no cap the runner can enforce. Both subscriptions meter usage in
 rolling windows shared with interactive work, so a full run competes with the maintainer's own
 sessions. The runner therefore:
 

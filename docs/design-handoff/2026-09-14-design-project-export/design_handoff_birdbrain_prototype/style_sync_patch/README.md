@@ -73,7 +73,7 @@ opacity, border at 20%, foreground at full (lifted one step in dark mode).
 **Elevation is flat.** Separation comes from `border-border` against `bg-card`;
 hover raises the border to `border-border-strong`, never a shadow.
 `--shadow-overlay` is the only shadow in routine use (menus, dialogs, popovers).
-There is no decorative glow anywhere — v1's hero glow token is gone.
+The design has no decorative glow anywhere — v1's hero glow token is gone.
 
 ## Design tokens
 Colors, fonts and dark-mode overrides in `globals.css` are **unchanged** — the

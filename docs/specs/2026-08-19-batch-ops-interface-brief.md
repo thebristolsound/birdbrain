@@ -37,7 +37,7 @@ The manifest is an append-only hash chain; rollback is truncation to a byte anch
 unlinked before the DB row is deleted, per capture. Once capture _k_'s files are gone its entry
 cannot be rolled back honestly. Therefore a batch delete is **prefix-commit**: entries 1..k-1
 committed, entry _k_ rolled back, k+1..N never attempted. The result type states exactly that.
-There is no batch-level entry, no batch atomicity claim, and no new Manifest Entry type.
+The design has no batch-level entry, no batch atomicity claim, and no new Manifest Entry type.
 
 ## Shared types (`src/shared/ipc.ts`)
 

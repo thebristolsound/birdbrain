@@ -162,7 +162,7 @@ Hunchly exports contain a single case per ZIP. The `created_username` and `refer
 }
 ```
 
-Notes are the investigator's analytical work product — observations, connections, and context that cannot be derived from the captured pages alone. This export contains 80 notes, many with substantial investigative commentary. There are also 74 note screenshots in the `note_screenshots/` directory (keyed by page ID as `{id}.jpeg`).
+Notes are the investigator's analytical work product — observations, connections, and context that cannot be derived from the captured pages alone. This export contains 80 notes, many with substantial investigative commentary. The `note_screenshots/` directory also contains 74 note screenshots (keyed by page ID as `{id}.jpeg`).
 
 **Required work:**
 - New `notes` table: `(id TEXT PK, capture_id TEXT FK, case_id TEXT FK, text TEXT, created_at TEXT)`

@@ -298,7 +298,7 @@ part, its `Content-Location`, its stored size and a `decode` function that runs 
 `linksFromMhtml` checks each part's stored size against the ceilings and calls `decode` only for a
 part it admits. `extractHtmlPartsFromMhtml` exists and is built on the same list, and
 `extractHtmlFromMhtml` is the join over it; `tests/main/services/mhtmlDecoder.test.ts` pins the
-joined output. There are four ceilings: the three named above and one on the total stored size of
+joined output. Four ceilings apply: the three named above and one on the total stored size of
 the parts read. The splitter returns no `Content-ID`, and nothing in the merged code needs one.
 
 **D13. What does the result carry?** The fields below are the ones in `src/shared/types.ts` as
@@ -580,7 +580,7 @@ was not carried out before #1709 merged. These rulings replace it.
 - 2026-10-04: second review round on PR #1709. Two statements in the first 2026-10-02 implementation entry no longer hold and the 2026-10-03 entry replaces them: the `file:///` gap was unreachable in the MHTML viewer only, and a clicked MHTML iframe commits another document, not an error page. Deviations in the shipped code that this log had not recorded:
   - D2: `src/main/index.ts` records the main frame's commit from `did-navigate` and each frame's commit from `did-frame-navigate`, keyed by frame tree node id, not from `did-start-navigation` or `did-finish-load`.
   - D4.4: no listener on the webview element closes the menu. `src/main/guestMouseDown.ts` reads the guest's `before-mouse-event` and sends `event:guestMouseDown`, and the viewer closes the menu on it. Focus in the guest does not close the menu; a press does.
-  - D12: `captureLinks.ts` splits with `listHtmlPartsInMhtml`, which returns each part's `Content-Location`, stored size and a `decode` function, so ceilings apply before decoding. `extractHtmlPartsFromMhtml`, the decoded list D12 names, is built on it. There is a fourth ceiling, on the total stored size of the parts read.
+  - D12: `captureLinks.ts` splits with `listHtmlPartsInMhtml`, which returns each part's `Content-Location`, stored size and a `decode` function, so ceilings apply before decoding. `extractHtmlPartsFromMhtml`, the decoded list D12 names, is built on it. A fourth ceiling applies to the total stored size of the parts read.
   - D13: rows collapse on `href`, text, frame and document URL, not on the first three alone. `skippedParts` is three counts, one for each ceiling, not one number. The mismatch flag covers every web destination (`http:` or `https:`), `same-page` links included.
   - Changed in this round: with no links and skipped frames, the tab shows the skip notices and says the part it read holds no links. Reading stops at the first link past the row ceiling, so a repeat count on a truncated list covers the page up to that point, and the notice says so. The renderer no longer keeps the link list after the tab closes and reads it again on every open, because an import can reuse a deleted Capture's id.
 

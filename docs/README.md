@@ -66,4 +66,20 @@ all.
 
 ## Prose linting
 
-`.vale.ini` at the repo root is the project's Vale config; it overrides any global one for files under this repo. Project vocabulary lives in `.vale/styles/config/vocabularies/Birdbrain/accept.txt` so Birdbrain terms are not accepted in unrelated projects. Run `vale sync` once per clone to fetch the Google package (ignored by git). Only `*.md` is linted; `.mdx` needs `mdx2vast`, which is not installed. A doc you write should pass `vale <file>` with zero errors; residual warnings for this project's own vocabulary are expected.
+`.vale.ini` at the repo root is the project's Vale config; it overrides any global one for files under this repo. Project vocabulary lives in `.vale/styles/config/vocabularies/Birdbrain/accept.txt` so Birdbrain terms are not accepted in unrelated projects. Run `vale sync` once per clone to fetch the Google package (ignored by git). `*.md` and `*.mdx` are both linted; the pinned Vale (`.mise.toml`) parses `.mdx` natively, including the prose inside a component such as `<Warning>`. A doc you write should pass `vale <file>` with zero errors; residual warnings for this project's own vocabulary are expected.
+
+The `Birdbrain` style in `.vale/styles/Birdbrain/` encodes [the writing guide](agents/writing-guide.md):
+
+| Rule              | Level      | Flags                                                               |
+| ----------------- | ---------- | ------------------------------------------------------------------- |
+| `Filler`          | error      | Inflated adjectives, empty openers, and words that call a task easy |
+| `Assurance`       | error      | Assurance words that name no standard and no concrete property      |
+| `Plain`           | error      | A fancy word that has a plain replacement                           |
+| `ThereIs`         | error      | A sentence that opens with "There is" or "There are"                |
+| `Terms`           | suggestion | Multi-word `_Avoid_` synonyms from `CONTEXT.md`                     |
+| `PassiveBy`       | suggestion | Passive voice with a named actor                                    |
+| `RepeatedOpeners` | suggestion | Three sentences in a row that start with the same word              |
+
+A file that has to quote a forbidden word gets a per-file section in `.vale.ini`, or a `<!-- vale Birdbrain.<Rule> = NO -->` and `= YES` pair around the passage in a `.md` file. An `.mdx` page writes the same pair as MDX comments, `{/* vale Birdbrain.<Rule> = NO */}` and `{/* vale Birdbrain.<Rule> = YES */}`.
+
+`.claude/hooks/vale-prose.sh` runs after every agent Edit or Write to a `.md` or `.mdx` file. It blocks on an error-level `Birdbrain` rule in a line that differs from `HEAD`, so older text never blocks an unrelated edit, and it passes with a note when Vale cannot run. `.mise.toml` pins Vale and `scripts/setup-worktree.sh` installs it, so a prepared worktree has the gate; the session-start hook installs it in a remote container. Run it by hand as `.claude/hooks/vale-prose.sh <file>`. Preflight and CI do not run Vale.

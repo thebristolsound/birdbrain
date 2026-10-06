@@ -14,7 +14,7 @@ Birdbrain adopts the standards register in
 as the engineering baseline for evidence-affecting architecture, implementation, validation,
 release, and product-claim decisions.
 
-There is no universal "OSINT-compliant" software standard. A defensible investigation workflow
+No universal "OSINT-compliant" software standard exists. A defensible investigation workflow
 combines several independent assurance layers: lawful and ethical methodology, validated
 acquisition, digital-evidence preservation, reproducible analysis, provenance, cryptography,
 secure development, privacy and human-rights safeguards, accessible reporting, and
@@ -118,8 +118,10 @@ report finding without a recorded human review.
 
 ### Claims and jurisdiction profiles
 
+<!-- vale Birdbrain.Assurance = NO -->
 Birdbrain must not make generic claims such as "court-admissible," "court-ready,"
 "forensic-grade," "tamper-proof," "authentic," or "compliant." A conformance claim must name
+<!-- vale Birdbrain.Assurance = YES -->
 the product and evidence-profile versions, intended use, applicable standard or law, validation
 report, supported environment, exceptions, and limitations.
 

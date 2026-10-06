@@ -24,9 +24,9 @@ These are settled. Do not redesign them; design around them.
 
 | #   | Decision                                                                                                                                            |
 | --- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Sharing is per Case. There is no top-level "team" concept, no organization, no accounts. Identity is the installation's existing signing key.         |
+| 1   | Sharing is per Case. Birdbrain has no top-level "team" concept, no organization, no accounts. Identity is the installation's existing signing key.    |
 | 2   | Roles: one Owner (the Case creator) who invites and revokes; every other member writes. No read-only role in this version.                           |
-| 3   | The whole Case is shared. There is no per-Exhibit sharing.                                                                                          |
+| 3   | The whole Case is shared. Birdbrain has no per-Exhibit sharing.                                                                                     |
 | 4   | Invite flow is one-way: the Owner generates an invite string, sends it out of band (Signal, email), the peer pastes it, the Owner approves the join. |
 | 5   | An invite is single use and expires after 24 hours. The Owner must be online when the peer joins.                                                   |
 | 6   | Each member has a short **Member Code** (default: initials of their operator name) the Owner assigns at approval; unique within the Case.            |
@@ -125,9 +125,11 @@ Each shows the acting member.
 The repo's claim-discipline rules apply to every string in the mock
 (`docs/agents/writing-guide.md`, "Claim discipline"):
 
+<!-- vale Birdbrain.Assurance = NO -->
 - Do not write *secure*, *end-to-end encrypted*, *tamper-proof*, or *private* without
   qualification. Say what is true: connections between peers are encrypted; Case files on disk
   are not; the relay sees who connected and when, not what was sent.
+<!-- vale Birdbrain.Assurance = YES -->
 - Do not imply the app verifies who a person is. A key fingerprint identifies an installation.
   Confirming that the fingerprint belongs to the person you expect is the user's out-of-band
   step; the mock may suggest it, never require it.

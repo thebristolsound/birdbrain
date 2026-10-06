@@ -235,7 +235,7 @@ In `src/renderer/lib/api/db.ts:100-106`, switch the `restore` mutation from `onS
 Today every caller must know the close/reopen ordering (`dbSnapshots.ts:431-432`), so the module
 is shallow. Afterwards the interface is one function and one union, and the ordering, scratch name,
 lock, and intact gate are implementation: that is the depth gain, and one file to fix is the
-locality gain. The leverage is that a third source, such as a Case Archive database, gets every
+locality gain. The payoff is that a third source, such as a Case Archive database, gets every
 guard without new code.
 
 The seam is the hooks object. Each hook has two adapters: the production jobs and a recording fake

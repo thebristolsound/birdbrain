@@ -1,0 +1,11 @@
+extends: existence
+message: "'%s' is passive with a named actor. Make the actor the subject: 'A key signs each entry', not 'Each entry is signed by a key'."
+link: https://github.com/thebristolsound/birdbrain/blob/main/docs/agents/writing-guide.md#mechanics
+level: suggestion
+ignorecase: true
+nonword: true
+# Narrower than Google.Passive, which stays off: agentless passives are often
+# right in this register, but "is <participle> by <actor>" always has an actor
+# to promote.
+tokens:
+  - '\b(?:is|are|was|were|be|been|being)\s+(?:\w+ly\s+)?(?:\w+ed|\w+[^e]en|built|kept|made|held|sent|set|run|read|bound|drawn|shown|known|done)\s+by\b'

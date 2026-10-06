@@ -3,7 +3,7 @@
 Paths in this document are repository-root relative.
 
 The public docs site is served by Mintlify at <https://docs.birdbrain.cc> from the content in
-`website/content/`. `birdbrain.cc` forwards there. There is no build step in this repository:
+`website/content/`. `birdbrain.cc` forwards there. This repository has no build step:
 Mintlify's GitHub App deploys `main` after every merge.
 
 `website/content/` holds everything Mintlify reads:

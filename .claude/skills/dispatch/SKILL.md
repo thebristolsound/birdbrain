@@ -31,8 +31,8 @@ esac
 
 - **Local (WSL/desktop)** — `gh` talks to GitHub with no proxy in front of it, so everything
   works: porcelain (`gh pr create`, `gh issue edit`, `gh label`) and `gh api` writes alike.
-  There is **no GitHub MCP server configured locally**, so the `mcp__github__*` tools named
-  below simply will not exist. Use `gh` — subject to authorization, below.
+  The local environment has **no GitHub MCP server configured**, so the `mcp__github__*` tools named
+  below will not exist. Use `gh` — subject to authorization, below.
 - **GitHub Actions (`.github/workflows/dispatch.yml`, ADR-0026)** reads as `LOCAL`, and is:
   nothing sits between `gh` and GitHub. The workflow has already written
   `~/.config/birdbrain-agent/env` from the repository secret and passed the identity check
@@ -235,7 +235,7 @@ exits immediately unless `CLAUDE_CODE_REMOTE=true`, by design. So:
 
 ## 1. Slot check
 
-There is **one slot** (ADR-0028). Each is held by one of **two markers**, counted together
+ADR-0028 defines **one slot**. Each is held by one of **two markers**, counted together
 (ADR-0006, `docs/agents/triage-labels.md`): an open PR labelled `agent-pr`, and an open issue
 labelled `agent-wip` — the claim for a cycle whose PR does not exist yet:
 

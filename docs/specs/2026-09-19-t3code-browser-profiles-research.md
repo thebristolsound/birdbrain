@@ -131,7 +131,7 @@ restart, or when deleting a profile, would report success and delete nothing."
 
 ## How the launcher starts a browser
 
-It does not start one. There is no external Chromium launch anywhere in the profile feature.
+It does not start one. The profile feature has no external Chromium launch anywhere.
 
 A grep of `apps/desktop`, `apps/server`, `apps/web`, `packages`, and `docs` at `b44c1ce5` for
 `user-data-dir`, `remote-debugging`, `chromium.launch`, `launchPersistentContext`,
@@ -287,7 +287,7 @@ cookie import into it rather than an external browser. Specific pieces that carr
 
 ## What does not transfer
 
-- **The hardened external Chromium question is unanswered by t3code.** There is no
+- **The hardened external Chromium question is unanswered by t3code.** The implementation has no
   `--user-data-dir` launcher, no CDP connection to a real browser, and no Playwright context. The
   pinned alternative in the plan gets no model, flag set, or state layout from this codebase.
 - **Everything about environments.** The scope hashed into the partition is

@@ -19,7 +19,7 @@ two narratives say finds the link. Other Joints need none: a shared address, use
 target, or mail header is found by fielded search over stored representations, and each side
 resolves to an exact span at its Content Hash.
 
-Birdbrain's readers include people documenting things powerful people would rather were not
+Birdbrain's readers include people documenting things that people with power would rather were not
 documented ([ADR-0029](0029-position-birdbrain-for-civil-society-investigations.md)). Some will want no model near a Case. A hosted
 model, such as TypeSafe's Jev, which this repository already uses on its own issues and pull
 requests ([ADR-0031](0031-shadow-lenses-observe-before-they-gate.md)), sends text off the machine; its documentation also says adversarial text in

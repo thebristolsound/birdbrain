@@ -7,7 +7,7 @@ something a session can work around:
   `src/main/ipcHandlers.ts` (`CASES_INSPECT_ARCHIVE`). Every harness tool acts on the
   Playwright `Page`, which cannot see or click a native modal. A session that clicks Import
   will hang on a dialog it has no way to dismiss.
-- **There is no sample archive.** `e2e/fixtures/` holds the launch fixture and seeding
+- **No sample archive exists.** `e2e/fixtures/` holds the launch fixture and seeding
   helpers but no archive, and every run starts from an empty `mkdtemp` profile, so there is
   nothing to import.
 

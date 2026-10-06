@@ -25,12 +25,12 @@ downloaded.
 
 ## Platforms
 
-| Platform | Format | Status |
-| --- | --- | --- |
-| Windows 10 / 11 | NSIS `.exe` | Supported. The installer is unsigned, so SmartScreen warns the first time you run it. Updates install in place. |
-| Ubuntu | AppImage | Supported, and the primary Linux format. Updates replace the file in place. |
-| Ubuntu | `.deb` | Best-effort. Updates download through the in-app updater but install only when you click **Restart to update** and enter your system password, so watch the releases page for updates and advisories. |
-| macOS 13 or later | `.dmg` | Experimental. Present only on a release whose macOS build succeeded. Unsigned, not notarized, and not launch-tested before publishing. The app does not install updates on macOS. |
+| Platform          | Format      | Status                                                                                                                                                                                                |
+| ----------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Windows 10 / 11   | NSIS `.exe` | Supported. The installer is unsigned, so SmartScreen warns the first time you run it. Updates install in place.                                                                                       |
+| Ubuntu            | AppImage    | Supported, and the primary Linux format. Updates replace the file in place.                                                                                                                           |
+| Ubuntu            | `.deb`      | Best-effort. Updates download through the in-app updater but install only when you click **Restart to update** and enter your system password, so watch the releases page for updates and advisories. |
+| macOS 13 or later | `.dmg`      | Experimental. Present only on a release whose macOS build succeeded. Unsigned, not notarized, and not launch-tested before publishing. The app does not install updates on macOS.                     |
 
 ## Install on Windows
 
@@ -166,7 +166,7 @@ as its
 [security policy](https://github.com/thebristolsound/birdbrain/blob/main/SECURITY.md#reporting-a-vulnerability)
 describes.
 
-There is no channel for sending a `.birdbrain` case archive to the maintainer, and a bug report
+The project has no channel for sending a `.birdbrain` case archive to the maintainer, and a bug report
 never needs one: the diagnostic bundle Birdbrain builds for you excludes your captures and your
 case database. [Install and first capture](/docs/tester-guide) describes how to create that
 bundle and what it holds.

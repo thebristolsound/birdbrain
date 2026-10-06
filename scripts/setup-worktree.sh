@@ -17,6 +17,8 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 log() { echo "[setup-worktree] $*"; }
 
 if command -v mise >/dev/null 2>&1; then
+  # Installs the pinned tools (.mise.toml): Node, and Vale for the prose hook.
+  mise install --quiet 2>/dev/null || log "WARNING: mise install failed; pinned tools may be missing"
   eval "$(mise env -s bash 2>/dev/null || true)"
 fi
 
@@ -40,8 +42,15 @@ if [ ! -x node_modules/.bin/commitlint ]; then
   exit 1
 fi
 
-if command -v vale >/dev/null 2>&1 && [ ! -d .vale/styles/Google ]; then
+# The edit hook (.claude/hooks/vale-prose.sh) passes without Vale, so a missing binary is
+# an error here: it is the only point where the hook's absence is visible.
+if ! command -v vale >/dev/null 2>&1; then
+  log "ERROR: vale missing; the prose hook cannot run. Install mise (https://mise.jdx.dev) and re-run."
+  exit 1
+fi
+if [ ! -d .vale/styles/Google ]; then
   vale sync || log "WARNING: vale sync failed; prose linting unavailable until it succeeds"
 fi
+log "vale $(vale --version | sed -E 's/^vale version //')"
 
 log "ready"

@@ -4,6 +4,8 @@ import {
   CAPTURE_METHODS,
   CONSENT_SUPPRESSIONS,
   DEFAULT_UI_DENSITY,
+  EGRESS_KINDS,
+  TLS_REFETCH_SKIPS,
   UI_DENSITIES
 } from '@shared/types'
 import type {
@@ -387,8 +389,9 @@ export function formatExtensionAttachError(err: z.core.$ZodError): string {
 // timestamp *creation* / RFC 3161 (see #120) and screenshot/text hashing
 // (see #118). v3 adds the `exhibit`, `derivation` and `renumber` entry types
 // (ADR-0023) and generalizes `deletion` and `timestamp` to any Exhibit;
-// `capture` entries gain only an optional `exhibitNumber` (X46). Mixed-version
-// chains are normal — never retro-sign legacy entries.
+// `capture` entries gain only an optional `exhibitNumber` (X46). v5 adds the
+// optional Egress fields on `capture` (ADR-0032). Mixed-version chains are
+// normal — never retro-sign legacy entries.
 
 // Bounded integer: rejects negatives, floats, NaN, and unknown-future versions
 // (e.g. a v4 entry parsed by a v3 verifier). Auto-tightens on every version bump.
@@ -488,6 +491,18 @@ const ManifestCaptureEntrySchema = z
     // field, and never `.default()`: an injected value would change the
     // re-hashed body.
     exhibitNumber: z.number().int().positive().optional(),
+    // The Egress the render was sent through (ADR-0032, #1694), schema-5
+    // fields. Each is OMITTED when absent, never '' or null, so every entry
+    // written without them keeps its canonical body and chain hash. No
+    // `egressKind` is the Direct case. `egressLabel` is the Operator's own name
+    // for the Egress; `userAgent` is the string the render sent; `tlsSkipped`
+    // says the TLS Cert Chain re-fetch did not run because the Egress was not
+    // Direct. What they record is what Birdbrain asked the browser to do, not
+    // which address the target saw.
+    egressKind: z.enum(EGRESS_KINDS, { error: "`egressKind` must be 'proxy' or 'tor'" }).optional(),
+    egressLabel: z.string().min(1).optional(),
+    userAgent: z.string().min(1).optional(),
+    tlsSkipped: z.enum(TLS_REFETCH_SKIPS).optional(),
     sizeBytes: z.number(),
     operatorId: z.string(),
     operatorName: z.string(),
@@ -507,6 +522,37 @@ const ManifestCaptureEntrySchema = z
     message: '`exhibitNumber` on a capture entry requires schemaVersion 3',
     path: ['schemaVersion']
   })
+  // The same rule for the Egress fields: a schema-4 reader's strict capture
+  // shape has none of them, so it meets them as "verifier too old" only under
+  // a stamp of 5.
+  .refine((entry) => !carriesEgressField(entry) || entry.schemaVersion >= 5, {
+    message: 'the Egress fields on a capture entry require schemaVersion 5',
+    path: ['schemaVersion']
+  })
+  // A label or a skipped re-fetch describes an Egress that is not Direct, so
+  // either one without a kind contradicts itself.
+  .refine((entry) => entry.egressLabel === undefined || entry.egressKind !== undefined, {
+    message: '`egressLabel` requires `egressKind`',
+    path: ['egressLabel']
+  })
+  .refine((entry) => entry.tlsSkipped === undefined || entry.egressKind !== undefined, {
+    message: '`tlsSkipped` requires `egressKind`',
+    path: ['tlsSkipped']
+  })
+  .refine((entry) => entry.tlsSkipped === undefined || entry.tls === undefined, {
+    message: '`tlsSkipped` and `tls` cannot both be present',
+    path: ['tlsSkipped']
+  })
+
+function carriesEgressField(entry: {
+  egressKind?: unknown
+  egressLabel?: unknown
+  userAgent?: unknown
+  tlsSkipped?: unknown
+}): boolean {
+  const { egressKind, egressLabel, userAgent, tlsSkipped } = entry
+  return [egressKind, egressLabel, userAgent, tlsSkipped].some((field) => field !== undefined)
+}
 
 // Deletion of an anchored Exhibit. `captureId` and `contentHash` accept ANY
 // Exhibit id and Content Hash from schema v3 on, not only a Capture's

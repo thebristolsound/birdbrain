@@ -137,6 +137,24 @@ function exhibitLabel(exhibitId: string, numbers: Map<string, number | string>):
   return number === undefined ? `exhibit ${exhibitId} (unnumbered)` : `Exhibit ${number}`
 }
 
+// What a capture entry's Egress fields record, or undefined when it names no
+// Egress. The label, like the user agent printed beside it, is free text, so
+// both are printed with JSON escaping: a newline in either cannot start a
+// report line of its own.
+function describeEgress(cap: Extract<ManifestEntry, { type: 'capture' }>): string | undefined {
+  const { egressKind, egressLabel, tlsSkipped } = cap
+  if (egressKind === undefined) return undefined
+  const label = egressLabel === undefined ? '' : `, labelled ${JSON.stringify(egressLabel)}`
+  const tls =
+    tlsSkipped === undefined
+      ? ''
+      : '; the TLS Cert Chain re-fetch was skipped because the Egress was not Direct'
+  return (
+    `the signed capture entry records Egress ${egressKind}${label}${tls}. ` +
+    'It records what Birdbrain asked the browser to do, not which address the site saw'
+  )
+}
+
 // Joins package-relative segments (which originate from the UNTRUSTED
 // evidence.json) under `base`, returning undefined if the result escapes the
 // package directory. `path.join` normalizes but does not prevent `..` escape.
@@ -792,6 +810,20 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
       add(name, 'fail', `capture ${cap.captureId}: content hash does not match manifest`)
     } else {
       add(name, 'pass')
+    }
+
+    // The Egress fields (ADR-0032), stated as annotations rather than checks:
+    // they live only in the signed entry, which the manifest chain row already
+    // reports on, so each row is a SKIP that reports what the entry records. An
+    // entry carrying none of them adds no row.
+    const egress = describeEgress(cap)
+    if (egress) add(`capture ${cap.captureId} egress`, 'skip', egress)
+    if (cap.userAgent !== undefined) {
+      add(
+        `capture ${cap.captureId} user agent`,
+        'skip',
+        `the signed capture entry records user agent ${JSON.stringify(cap.userAgent)}`
+      )
     }
 
     // Screenshot — content-addressed by its own sha256, which equals the signed

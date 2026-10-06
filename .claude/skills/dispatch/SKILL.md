@@ -461,7 +461,10 @@ not in the set this section iterates, and they merge by human hand. If you find 
 
 1. **Every required check on `main` is green.** Read the PR head's checks with `checks.sh`
    ("Session rules"): each required check must be in `passed` or `skipped` and in neither
-   `failing` nor `pending`. A check that never reported is not a green either.
+   `failing` nor `pending`. A check that never reported is not a green either. `merge-gate`
+   is the one required check the script leaves out (section 4, "Wait for CI first"): it is
+   green once condition 2 holds, and `merge.sh` re-runs it when the verdict came after its
+   last run.
 2. **`agent/pre-pass` reports `success`.** The context must exist on *this* head sha, from a
    creator "Session rules" counts. A verdict posted against an earlier sha says nothing about
    the current one; section 4's pin-the-sha rule is the same rule.
@@ -778,17 +781,23 @@ post them.
 
 **Do not start the pre-pass while CI is still running on the head commit.** Run
 `bash .github/scripts/dispatch/checks.sh --wait 540 <n>`, which re-reads every 30 seconds and
-stays under the Bash tool's ten-minute cap; exit 124 means checks are still pending, so run it
-again. Do not write your own poll loop. Once its `pending` list is empty, branch on
-its `failing` list, which counts only the checks "Session rules" counts. A check it lists as
-`ignored` neither holds the poll nor makes CI red; name it in the report. A non-zero exit is not
-a green: do not run the pre-pass, and report the exit.
+returns within the wait plus one read, under the Bash tool's ten-minute cap; exit 124 means
+checks are still pending, so run it again. Do not write your own poll loop. Once its `pending`
+list is empty, branch on its `failing` list, which counts only the checks "Session rules"
+counts. A check it lists as `ignored` neither holds the poll nor makes CI red; name it in the
+report. `merge-gate` lands there (ADR-0041): its rule reads the verdict this step precedes,
+so it is red on every agent PR until the pre-pass posts `success`, and the script leaves it out
+for that reason. A non-zero exit is not a green: do not run the pre-pass, and report the exit.
 
 - **CI red** → do **not** run the pre-pass. Hand the failure straight to
   `birdbrain-implementer` as a cheap, mechanical fix round: the PR number, the failing job, and
   the instruction to read `gh run view --job <id> --log-failed` itself. Re-poll after its push.
   A red check means the diff is about to change, so an adversarial pass over it is spent on a
-  tree that will not survive.
+  tree that will not survive. One exception: a check that is also failing on `main`'s own
+  latest run of the same workflow is not this PR's red. `Dependency audit` (security.yml) is one
+  on 2026-10-06: red on `main` at fdd421e0 (run 37507444052) from advisories the lockfile
+  already carried, and not required by the ruleset. Name such a check in the report, with the
+  `main` run that shows it, and treat the rest of the list as the whole of CI.
 - **CI green** → run the pre-pass.
 
 **Every check reporting `skipping` is the #784 bug, not a conclusion.** If the poll shows

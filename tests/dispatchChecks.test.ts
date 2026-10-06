@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { spawnSync } from 'child_process'
-import { resolve } from 'path'
+import { chmodSync, existsSync, readFileSync, writeFileSync } from 'fs'
+import { join, resolve } from 'path'
 import { HAS_JQ } from './helpers/jq'
 import { type GhRoutes, type GhStub, makeGhStub } from './helpers/ghStub'
 
@@ -69,8 +70,16 @@ afterEach(() => {
   stub = undefined
 })
 
-const checks = (r: GhRoutes, args: string[] = []) => {
+// A `sleep` beside the gh stub that logs each duration it was asked for before sleeping.
+const SLEEP = `#!/usr/bin/env bash
+echo "$1" >> "$(dirname "$0")/sleeps.log"
+exec /bin/sleep "$1"
+`
+
+const checks = (r: GhRoutes, args: string[] = [], env: Record<string, string> = {}) => {
   stub = makeGhStub(r)
+  writeFileSync(join(stub.dir, 'sleep'), SLEEP)
+  chmodSync(join(stub.dir, 'sleep'), 0o755)
   const result = spawnSync('bash', [SCRIPT, ...args, '7'], {
     encoding: 'utf8',
     env: {
@@ -78,10 +87,16 @@ const checks = (r: GhRoutes, args: string[] = []) => {
       PATH: stub.path,
       GITHUB_REPOSITORY: 'o/r',
       LOGIN: PIPELINE,
-      CHECKS_POLL_SECONDS: '1'
+      CHECKS_POLL_SECONDS: '1',
+      ...env
     }
   })
   return { ...result, out: result.status === 0 ? JSON.parse(result.stdout) : null }
+}
+
+const sleeps = () => {
+  const log = join(stub?.dir ?? '', 'sleeps.log')
+  return existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n').map(Number) : []
 }
 
 describe.skipIf(!HAS_JQ)('checks.sh counts only the jobs of this PR and trusted statuses', () => {
@@ -132,6 +147,24 @@ describe.skipIf(!HAS_JQ)('checks.sh counts only the jobs of this PR and trusted 
     expect(out.failing).toEqual([])
     expect(out.ignored).toEqual([
       `check run test (${app}, ${id}): not a job of the latest workflow runs for this PR`
+    ])
+  })
+
+  // merge-gate fails every agent PR until agent/pre-pass is success (ADR-0041), and the wait
+  // here is what precedes that verdict.
+  it.each([
+    ['failing', { conclusion: 'failure' }],
+    ['running', { status: 'in_progress' }]
+  ])('leaves a %s merge-gate job of the PR run out, as the verdict it waits for', (_label, run) => {
+    const { status, stderr, out } = checks(
+      routes({ checkRuns: [...JOBS.slice(0, 2), { ...JOBS[2], name: 'merge-gate', ...run }] })
+    )
+    expect(status, stderr).toBe(0)
+    expect(out.failing).toEqual([])
+    expect(out.pending).toEqual([])
+    expect(out.passed).toEqual(['lint', 'test'])
+    expect(out.ignored).toEqual([
+      'check run merge-gate (github-actions, 3): reads the pre-pass verdict (ADR-0041), not CI'
     ])
   })
 
@@ -189,6 +222,14 @@ describe.skipIf(!HAS_JQ)('checks.sh --wait', () => {
     const result = checks(r, ['--wait', '1'])
     expect(result.status).toBe(124)
     expect(JSON.parse(result.stdout).pending).toEqual(['lint'])
+  })
+
+  it('never sleeps past the deadline, so the command returns within the wait plus one read', () => {
+    const r = routes({ checkRuns: [{ id: 1, name: 'lint', status: 'in_progress' }] })
+    const result = checks(r, ['--wait', '2'], { CHECKS_POLL_SECONDS: '30' })
+    expect(result.status).toBe(124)
+    expect(sleeps().length).toBeGreaterThan(0)
+    expect(sleeps().every((seconds) => seconds > 0 && seconds <= 2)).toBe(true)
   })
 
   it('fails when a read fails', () => {

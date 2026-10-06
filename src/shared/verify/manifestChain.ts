@@ -14,8 +14,8 @@ import type { EgressKind, TlsRefetchSkip } from '@shared/types'
 // is a cache maintained for convenience and carries no chain integrity of its
 // own (migrations.ts:369 — "the manifest remains the authority").
 //
-// The Egress fields (ADR-0032) are reported from here on the same footing:
-// each is set only when the verified entry carries it.
+// The Egress fields (ADR-0032) are carried on the same footing, each set only
+// when the verified entry carries it.
 export interface CaptureChainEntry {
   contentHash: string
   screenshotHash?: string

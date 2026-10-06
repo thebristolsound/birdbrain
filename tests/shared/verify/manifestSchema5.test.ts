@@ -23,8 +23,8 @@ import {
 //      bytes as before the bump, so every chain already written still verifies;
 //   2. a capture entry WITH all four hashes to one frozen digest, reproduced
 //      outside this codebase by `jq -cS` and by Python's sorted-key JSON;
-//   3. the app verifier and the package verifier both verify such an entry and
-//      report its Egress kind and label;
+//   3. the app verifier verifies such an entry and carries the fields in its
+//      result, and the package verifier reports its Egress kind and label;
 //   4. an Egress kind outside `proxy`/`tor`, or any of the fields under a stamp
 //      below 5, fails the schema.
 // The fourth answer's other half, a schema-4 verifier meeting the fields, is in
@@ -216,7 +216,7 @@ describe('manifest schema 5 — the app verifier', () => {
     expect(versions).toEqual([2, 5, 5, 5])
   })
 
-  it('verifies a capture entry carrying all four fields and reports them', () => {
+  it('verifies a capture entry carrying all four fields and carries them in its result', () => {
     appendManifestEntry(caseDir, capture('cap-0'))
     appendManifestEntry(caseDir, {
       ...capture('cap-1'),

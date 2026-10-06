@@ -55,6 +55,7 @@ expect 0 "$(hook "git revert -n abc1234")" "hook allows revert -n"
 expect 0 "$(hook "git merge main" "")" "hook passes a merge through an interactive session"
 expect 0 "$(hook "git commit -m 'fix(x): y'" "")" "hook passes through an interactive session"
 expect 0 "$(hook "git commit -m 'fix(x): y'" "birdbrain-reviewer")" "hook passes through an unbound agent"
+expect 2 "$(BIRDBRAIN_DISPATCH=1 hook "git commit -m 'fix(x): y'" "")" "hook binds a headless dispatch session"
 
 echo "$fails failure(s)"
 [ "$fails" -eq 0 ]

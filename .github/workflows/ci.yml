@@ -56,18 +56,21 @@ env:
     sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g'
     /etc/apt/apt-mirrors.txt 2>/dev/null || true
 
-# Draft PRs are gated at the `changes` job below, which every other job needs — a
-# skipped `changes` skips all six. A draft is not asking to merge, and the author has
+# Draft PRs are gated at the `changes` job below, which every other job needs — its
+# gate step leaves the job's outputs empty, which skips all six. A draft is not asking to merge, and the author has
 # already run the same gates locally (lint, typecheck, test, coverage:diff, build).
 #
 # `agent-pr` is exempt and must stay exempt: the dispatch routine polls `gh pr checks`
 # on a draft agent PR and will not start the reviewer pre-pass until the six ci.yml
 # jobs report a conclusion (.claude/skills/dispatch/SKILL.md, "Wait for CI first").
 # Skipping CI there would strand that loop. (`skipped` is itself a conclusion, which is
-# why `docs-build` skipping on a PR that touches no docs does not.) The label is applied
-# at `gh pr create` time, so the `opened` event already carries it — which is why
-# `labeled` is not in the trigger types above; adding it would run the full matrix on
-# every label change.
+# why `docs-build` skipping on a PR that touches no docs does not.)
+#
+# The labels are read from the API, not from the event payload. `gh pr create --label`
+# creates the PR and labels it in a second call, so the `opened` payload can carry no
+# labels, and a `labeled` event is not a trigger here: every CI job on #1747 skipped
+# that way, the #784 failure after its fix. Adding `labeled` would not help either: a
+# later label change would start a run whose skipped jobs replace the green ones.
 #
 # `agent-authored` is exempt for the same reason. It is the off-slot marker (#561):
 # an agent PR that does not hold the strict-serial slot never carries `agent-pr`, so
@@ -89,16 +92,39 @@ jobs:
   # on a force push or a new ref), and main is the last check before a release tag.
   changes:
     runs-on: ubuntu-latest
-    if: >-
-      github.event_name != 'pull_request'
-      || github.event.pull_request.draft == false
-      || contains(github.event.pull_request.labels.*.name, 'agent-pr')
-      || contains(github.event.pull_request.labels.*.name, 'agent-authored')
     timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
     outputs:
       code: ${{ steps.filter.outputs.code }}
       website: ${{ steps.filter.outputs.website }}
     steps:
+      # The draft gate. A draft without an agent label stops here, and every job below
+      # skips on the empty outputs. The second read covers the gap between the PR's
+      # creation and its labels; a non-agent draft pays those 20 seconds.
+      - id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ "$EVENT" != pull_request ] || [ "$DRAFT" != true ]; then
+            echo 'run=true' >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          for attempt in 1 2; do
+            labels="$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/labels" --jq '[.[].name]')"
+            echo "Labels (read $attempt): $labels"
+            if jq -e 'index("agent-pr") or index("agent-authored")' <<< "$labels" > /dev/null; then
+              echo 'run=true' >> "$GITHUB_OUTPUT"; exit 0
+            fi
+            if [ "$attempt" -eq 1 ]; then sleep 20; fi
+          done
+          echo 'run=false' >> "$GITHUB_OUTPUT"
+          echo '::notice::Draft without an agent label - lint, typecheck, test, build and e2e are skipped.'
+
       # The second checkout in this file that keeps its credentials, for the same
       # reason as `test`: the filter step runs `git fetch` and this repo is private,
       # so a fetch without the persisted token fails with "could not read Username".
@@ -106,11 +132,12 @@ jobs:
       # lifecycle scripts and project code reading the token after checkout — does
       # not arise here: this job never installs and runs nothing but git and grep.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.gate.outputs.run == 'true'
         with:
           fetch-depth: 0
 
       - id: filter
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && steps.gate.outputs.run == 'true'
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |

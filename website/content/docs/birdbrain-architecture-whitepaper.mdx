@@ -589,8 +589,8 @@ rebuild paths, and persisted verification results support that strategy.
 
 The current design is appropriate for thousands of local records and
 workstation-sized evidence collections, subject to artifact size and hardware.
-No repository benchmark establishes a formal capacity envelope, so this paper
-guarantees no higher figure.
+No repository benchmark establishes a formal capacity envelope, so do not treat
+a higher figure as guaranteed.
 
 Birdbrain does not scale horizontally. `better-sqlite3` is
 synchronous and single-process, the Capture Server maintains local active-Case
@@ -715,7 +715,7 @@ verification result. Verification can switch keys across these boundaries,
 allowing a chain to preserve prior installation history and continue under the
 receiving installation.
 
-A chain therefore never presents history signed elsewhere as signed by the
+The import boundary avoids pretending that all history was signed by the
 current workstation.
 
 ### Sidecars as recoverable authority

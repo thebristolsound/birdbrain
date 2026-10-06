@@ -429,7 +429,7 @@ to the list without a refetch.
 Chains written before the sandbox landed hold what the self-test of the day put in the first case
 in the list, and there are two eras of it. The earlier of the two deleted the capture row and its
 artifacts directly and recorded no deletion at all, so those chains hold a bare `capture` entry as
-as part of normal operation rather than through any failure — these are the entries the export's
+part of normal operation rather than through any failure — these are the entries the export's
 unreconciled-entry disclosure was written to explain. A later self-test routed its cleanup through
 the deletion path with the reason `pipeline-test`, so those chains hold a matching `capture` and
 `deletion` pair, or a bare `capture` entry where that cleanup failed.

@@ -158,7 +158,7 @@ One review pass, then two parallel slices:
   (1) apply the `design_handoff_style_sync/` patch, (2) extension pass —
   hide-UI-during-capture + the popup case-select, (3) a
   references-index spike proving mentions→backlinks extraction on real case
-  data. Each lands independently; together they unblock most of the
+  data. Each lands independently; together they unblock the majority of the
   checklist.
 
 Anything Modified/Rejected: send back the constraint, not a redesign — the

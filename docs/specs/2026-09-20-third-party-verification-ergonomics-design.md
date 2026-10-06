@@ -68,9 +68,9 @@ composes them by hand.
 ### Verdict header
 
 The verdict is not known until the last check has run, so the script cannot print it
-first. It buffers the per-check lines to a temporary file, prints the verdict line, then prints
-the detail. The script already uses `mktemp` and already cleans up on an `EXIT` trap, so this
-adds no new required tool.
+before the last check has run. It buffers the per-check lines to a temporary file, prints the
+verdict line, then prints the detail. The script already uses `mktemp` and already cleans up
+on an `EXIT` trap, so this adds no new required tool.
 
 The header states the verdict, the package scope and the counts:
 

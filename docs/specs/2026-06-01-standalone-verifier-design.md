@@ -461,8 +461,8 @@ The unsigned index must agree with the verified truth:
 
 Before any of the above, `evidence.json` is parsed and structurally validated
 against a new minimal zod schema covering the fields the verifier consumes
-(`verificationMaterials.manifestHead*`, `captures[].id`, `artifacts[]`). The schema has
-no schema for `evidence.json` today — it is emitted by a bare `JSON.stringify` in
+(`verificationMaterials.manifestHead*`, `captures[].id`, `artifacts[]`). `evidence.json` has
+no schema today — it is emitted by a bare `JSON.stringify` in
 `buildEvidenceZip` — so PR2 adds `EvidencePackageSchema` to `src/shared/schemas.ts`
 and (ideally) asserts it in the export test. An unparseable/invalid index is itself
 a FAIL ("evidence.json missing/invalid: <detail>"), but §7.1–§7.3 still run from

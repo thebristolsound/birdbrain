@@ -593,7 +593,7 @@ that residue covers, and what the rewrite would cost.
 ### Decisions 1 and 2: accept, and preserve the history
 
 **Outcome.** No history rewrite. The personal addresses in the history's
-identity fields are accepted as public. The release process includes no `git-filter-repo` pass, no
+identity fields are accepted as public. No `git-filter-repo` pass, no
 force-push, and no rewrite inside the freeze window. Commit ids, tags and
 signatures stay as they are. No GitHub Support removal is requested. This
 supersedes Decision 1's outcome to remediate, Decision 2's scoped rewrite, the 2026-09-09

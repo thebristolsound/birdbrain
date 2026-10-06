@@ -164,8 +164,8 @@ gh api "repos/$R/actions/runs?status=queued" --jq .total_count
 ```
 
 Until step 16, do not merge and do not push a tag. The tag ruleset already limits `v*` tags
-to the administrator role; the freeze is that you create none. GitHub has no ruleset toggle in
-this step (#270, 2026-09-09 correction, mechanic 1). Disabling a dynamic workflow has not been
+to the administrator role; the freeze is that you create none. This step has no ruleset toggle
+(#270, 2026-09-09 correction, mechanic 1). Disabling a dynamic workflow has not been
 rehearsed: if any `gh workflow disable` call fails, that is stop condition S2.
 
 ### Step 2: run the final scans (30 minutes)

@@ -1496,8 +1496,7 @@ describe.skipIf(!HAS_JQ)('pregate.sh holds section 2a while merge.sh would refus
       check_runs: Array<Record<string, unknown>>
     }
     runs.check_runs[2].details_url = `https://github.com/${REPO}/actions/runs/4242/job/1`
-    fx[`POST repos/${REPO}/actions/runs/4242/rerun`] = {}
-    const result = run(fx)
+    const result = run({ ...fx, [`POST repos/${REPO}/actions/runs/4242/rerun`]: {} })
     expect(result.status, result.stderr).toBe(0)
     expect(result.writes).toContain(`POST repos/${REPO}/actions/runs/4242/rerun`)
     expect(result.summary).toContain('merge-gate was stale, so its run 4242 was re-run')

@@ -12,11 +12,20 @@ name: Merge on label
 #
 # Auto-merge stays armed only while the request stands:
 # - `withdraw`, on every push, removes `approved` and `merge` and turns auto-merge off, so a
-#   sign-off and a merge request always name the commit that lands. merge-gate also ignores an
-#   `approved` applied before the head arrived, so a failed withdraw does not reopen the door.
+#   sign-off and a merge request always name the commit that lands. merge-gate also needs the
+#   `merge/approved` stamp on the current head, so a failed withdraw does not reopen the door.
 # - `cancel`, when `merge` is removed, turns auto-merge off.
 # - `reject`, when anyone but the maintainer applies `merge`, removes it and says why. It reads
-#   no secret, so it needs no spend guard.
+#   no secret, so it needs no spend guard. Authorization reads the label's sender, never
+#   triggering_actor, which names whoever re-ran the attempt.
+# - `stamp`, when the maintainer applies `approved`, posts a `merge/approved` status on the
+#   commit that was the head when the label went on. merge-gate counts the label only with that
+#   stamp on the current head, so the sign-off names one commit however the head later moves.
+#   An `approved` from anyone else is removed.
+#
+# No concurrency group: GitHub keeps one pending run per group and cancels the rest, which could
+# drop a withdrawal queued behind a request. Each run instead reconciles what it acts on: the
+# request re-reads the label and arms auto-merge only for the head it was labelled at.
 # - `issue-evidence`, when an issue gains `evidence-affecting`, cancels the merge request of
 #   every open PR that closes it: merge-gate cannot see an issue label change until it next runs.
 
@@ -30,10 +39,7 @@ permissions:
   contents: read
   pull-requests: write
   issues: write
-
-concurrency:
-  group: merge-on-label-${{ github.event.pull_request.number || github.event.issue.number }}
-  cancel-in-progress: false
+  statuses: write
 
 jobs:
   request:
@@ -109,7 +115,7 @@ jobs:
           echo "auto-merge enabled at ${SHA:0:12} with subject: $(cat "$out/subject.txt")"
 
   reject:
-    if: github.event_name == 'pull_request_target' && github.event.action == 'labeled' && github.event.label.name == 'merge' && github.triggering_actor != 'thebristolsound'
+    if: github.event_name == 'pull_request_target' && github.event.action == 'labeled' && github.event.label.name == 'merge' && github.event.sender.login != 'thebristolsound'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -117,12 +123,35 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
-          SENDER: ${{ github.triggering_actor }}
+          SENDER: ${{ github.event.sender.login }}
         run: |
           set -euo pipefail
           gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --remove-label merge >/dev/null
           printf 'Merge request removed: only the maintainer may request a merge, and %s applied the label.\n' "$SENDER" > comment.md
           gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file comment.md
+
+  stamp:
+    if: github.event_name == 'pull_request_target' && github.event.action == 'labeled' && github.event.label.name == 'approved'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Stamp the sign-off on the labelled commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          SENDER: ${{ github.event.sender.login }}
+        run: |
+          set -euo pipefail
+          if [ "$SENDER" != "thebristolsound" ]; then
+            gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --remove-label approved >/dev/null
+            printf 'Sign-off removed: only the maintainer may approve, and %s applied the label.\n' "$SENDER" > comment.md
+            gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file comment.md
+            exit 0
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$SHA" -f state=success -f context=merge/approved \
+            -f description="Signed off by $SENDER on this commit" >/dev/null
+          echo "stamped merge/approved on ${SHA:0:12}"
 
   cancel:
     if: github.event_name == 'pull_request_target' && github.event.action == 'unlabeled' && github.event.label.name == 'merge'

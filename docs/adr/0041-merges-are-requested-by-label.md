@@ -37,10 +37,12 @@ Evidence-Affecting Change is the maintainer's, whoever opened the pull request.
    - the pull request carries no agent label, or its `agent/pre-pass` status at head is
      success; and
    - it is not an Evidence-Affecting Change, or the maintainer has signed off at head, either
-     by an approving review or, on a pull request the maintainer opened, by applying the
-     `approved` label after the latest push.
+     by an approving review on the head commit or, on a pull request the maintainer opened, by
+     the `approved` label. Applying the label makes a workflow post a `merge/approved` status on
+     the commit that was the head at that moment, and the gate counts the label only with that
+     status on the current head, so the sign-off names one commit however the head later moves.
 2. **A push withdraws the sign-off.** On every push the workflow removes `approved` and `merge`
-   and turns off auto-merge, so a sign-off always names the commit that lands.
+   and turns off auto-merge. Removing `merge` also turns auto-merge off.
 3. **The maintainer requests a merge with the `merge` label.** A second workflow checks that a
    code owner applied it, composes the squash subject and body exactly as `merge-pr` does, and
    enables GitHub auto-merge as the machine account against the head commit. GitHub merges when

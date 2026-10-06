@@ -1482,6 +1482,27 @@ describe.skipIf(!HAS_JQ)('pregate.sh holds section 2a while merge.sh would refus
   const held = (checks: string) =>
     `PR #${PR} is approved, ready and non-evidence, but merge.sh would refuse it: required check(s) ${checks} not green at its head`
 
+  it('re-runs a stale merge-gate instead of holding the PR on it', () => {
+    const fx = withChecks([
+      green('lint'),
+      green('test'),
+      { name: 'merge-gate', conclusion: 'failure' }
+    ])
+    const rules = fx[`repos/${REPO}/rules/branches/main`] as Array<{ parameters?: unknown }>
+    rules[0].parameters = {
+      required_status_checks: [{ context: 'lint' }, { context: 'test' }, { context: 'merge-gate' }]
+    }
+    const runs = fx[`repos/${REPO}/commits/${SHA}/check-runs?per_page=100`] as {
+      check_runs: Array<Record<string, unknown>>
+    }
+    runs.check_runs[2].details_url = `https://github.com/${REPO}/actions/runs/4242/job/1`
+    fx[`POST repos/${REPO}/actions/runs/4242/rerun`] = {}
+    const result = run(fx)
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.writes).toContain(`POST repos/${REPO}/actions/runs/4242/rerun`)
+    expect(result.summary).toContain('merge-gate was stale, so its run 4242 was re-run')
+  })
+
   it('runs section 2a when every required check is green at the head', () => {
     const result = run(withChecks([green('lint'), green('test'), green('build')]))
     expect(result.status, result.stderr).toBe(0)

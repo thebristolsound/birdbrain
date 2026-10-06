@@ -1,6 +1,6 @@
 # Label-to-merge: replace the review rule with a gate check and a merge label
 
-**Status:** approved 2026-10-06 (plan and settings); steps 1 to 5 and 8 built, 6 and 7 open
+**Status:** approved 2026-10-06; built and merged in #1750 (`deabdcb2`); step 6 applied 2026-10-06; step 7 open
 **Date:** 2026-10-06
 **Decision:** [ADR-0041](../adr/0041-merges-are-requested-by-label.md) (proposed)
 
@@ -50,6 +50,11 @@ Each step is one commit on this branch unless noted. Steps 1 to 4 change no repo
    2. Add `merge-gate` to the required checks.
    3. Set the `pull_request` rule to `required_approving_review_count: 0` and
       `require_code_owner_review: false`, keeping squash-only.
+   Applied 2026-10-06 after #1750 merged: `allow_auto_merge: true`; required checks gained
+   `merge-gate` (GitHub Actions, integration 15368); the `pull_request` rule now has
+   `required_approving_review_count: 0`, `require_code_owner_review: false` and
+   `require_last_push_approval: false`, still squash-only. Rollback restores the values under
+   "Current state".
 7. **Prove it.** On a throwaway docs pull request: label `merge` before checks finish and see it
    merge when they go green, with the composed message and the `push` workflows running on
    `main`. On an `evidence-affecting` test pull request: `merge` alone does not merge; `approved`

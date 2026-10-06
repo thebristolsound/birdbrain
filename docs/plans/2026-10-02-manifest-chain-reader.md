@@ -115,8 +115,9 @@ export interface ChainInput {
 export interface ChainView {
   local: ChainVerifyResult // the local chain's verdict, unchanged
   shared: SharedCaseVerifyResult | null // findings, roster, exclusions, lineage; null when not run
-  entries: readonly ManifestEntry[] // typed; the fact scope invariant 3 defines
-  factsIncludeUnread: boolean // true when onTooOld read past an unreadable entry
+  entries: readonly ManifestEntry[] // typed; the parsed prefix of the fact scope (invariant 3)
+  unreadEntries: readonly UnreadEntry[] // the unreadable entry and every written line after it
+  factsIncludeUnread: boolean // true when unreadEntries is not empty
   signerRuns(): SignerRun[]
   activeExhibits(): ActiveExhibit[]
   exhibitNumber(chainId: string): number | undefined
@@ -126,15 +127,36 @@ export interface ChainView {
   entrySignature(chainId: string): 'signed' | 'unsigned-legacy' | 'no-entry'
 }
 
+// A line `ManifestEntrySchema` does not accept, kept as the chain walk keeps `tooNew.raw`
+// (`manifestChain.ts:233-246`): never cast into the union, never dropped.
+export interface UnreadEntry {
+  index: number
+  raw: Record<string, unknown>
+}
+
 export function keyFor(boundaries: Boundary[], localPem: string, index: number): string
 export function readChain(input: ChainInput): ChainView
 
-// src/main/services/manifest.ts, the adapter
-export function readCaseChain(caseDir: string, localPem: string, rows: CaseRow[]): ChainView
+// src/main/services/manifest.ts, the adapter: takes the snapshots the caller already holds
+export function readCaseChain(
+  manifest: ManifestSnapshot, // `readManifestSnapshot`, manifest.ts:191-196
+  shared: SharedCaseSnapshot, // `readSharedCaseSnapshot`, taken straight after, :276-287
+  caseDir: string, // for `import-id-map.json` only
+  localPem: string,
+  rows: CaseRow[]
+): ChainView
 ```
 
 `SignerRun` carries `fromIndex`, `toIndex`, `pem`, `carriedByImportAt`, `pemSha256`, and
 `spkiSha256`. `ChainName.via` is `'own' | 'id-map' | 'inferred'`.
+
+The adapter reads no chain file. Export takes one `ManifestSnapshot` and one `SharedCaseSnapshot`
+with nothing awaited between (`export.ts:625-628`) and packages `manifest.jsonl` from the first
+(`:1360`); the view is derived from those same objects, so a Timestamp Token or Shared Case update
+landing between two reads cannot make the report, the Certification, and the package describe
+different bytes. The adapter does read `import-id-map.json`, as `readAnchoredIdMap` does
+(`captureLifecycle.ts:656-672`): the map counts only when its digest matches the signed `import`
+entry's `idMapSha256`, so a map rewritten after the snapshot is ignored, never applied.
 
 Write-side answers stay outside the view. `nextExhibitNumber` (`captureLifecycle.ts:301`,
 `:1159`, `staging.ts:218`, `exhibitBackfill.ts:318`) and the backfill's prior-derivation read ask
@@ -149,7 +171,9 @@ whether something was ever written, run on every new Exhibit, and verify nothing
    and its findings stay in `shared`, as in `evidencePackage.ts:430-478`.
 3. Fact scope: on a pass, every entry. On a break, the prefix before `brokenAt`. On an unreadable
    newer-schema entry, the prefix when `onTooOld` is `'stop'`, and every written line, with
-   `factsIncludeUnread` set, when it is `'read-written'`. The view never truncates silently.
+   `factsIncludeUnread` set, when it is `'read-written'`: the parsed prefix in `entries`, the
+   unreadable entry and the lines after it in `unreadEntries`, because `ManifestEntrySchema`
+   accepts none of those. The fact methods read both lists. The view never truncates silently.
 4. `binds` accepts only `via: 'own' | 'id-map'`, and only for a case id the custody records name.
    `chainName` may answer `'inferred'`, for naming package files only.
 5. `chainName` resolves over every row in `input.rows`, so it can refuse an id another row holds
@@ -169,7 +193,9 @@ compare against the shipped head, stays outside the view.
 
 - Chain content never throws; it becomes a verdict.
 - An id map whose digest matches no `import` entry is ignored.
-- `keyFor` throws `RangeError` for an index outside the chain.
+- `keyFor` is total over `index`: an index past the last boundary resolves to `localPem`, as
+  `manifestChain.ts:353-356` does today, and nothing in its arguments carries the chain length.
+  Each caller's loop bounds the index.
 
 ## Placement
 
@@ -276,11 +302,12 @@ known-answer test must use a source Case with no thumbnails.
 ## Risks
 
 - **Verification cost.** Export does not check the chain today; the view does, once per export.
-  Build it once per snapshot. Paths that add an Exhibit never build one.
+  Build it once, from the snapshots export already takes. Paths that add an Exhibit never build
+  one.
 - **#1199.** Two genuine newer-schema shapes still read as broken. Slice 1 must leave them
   exactly as they are.
 - **Fact scope on a newer-schema entry.** If a slice wires `onTooOld: 'stop'` into export, a newer
-  verifier FAILs a genuine package. Slice 0's newer-schema fixture guards it.
+  verifier fails a genuine package. Slice 0's newer-schema fixture guards it.
 
 ## Maintainer rulings (2026-10-02)
 
@@ -296,7 +323,7 @@ known-answer test must use a source Case with no thumbnails.
 ## Review disposition
 
 1. Accepted. `caseArchive.ts:426-517` imports with `verifierTooOld`; added `onTooOld`, the
-   behaviour row, the fixture, and question 5.
+   behaviour row, the fixture, and the newer-schema question (ruling 5).
 2. Accepted. `captureLifecycle.ts:1099-1113` refuses inference; `binds` takes own or id-map only
    and the writers moved to a ticket gated on question 3.
 3. Accepted. `manifestChain.ts:326-334` pushes the unreadable entry's key; slice 1 extracts a
@@ -313,8 +340,9 @@ known-answer test must use a source Case with no thumbnails.
 10. Accepted. Per-era frozen packages in slice 0; the "only slice 8" claim corrected.
 11. Accepted. Per-file import ban added to slice 2.
 12. Accepted. Whole packages, recorded differences, and Linux-only stated.
-13. Accepted in part. Question 4 narrowed to the Data screen; question 5 settled as a new field and
-    index schema 3. Question 3 narrowed rather than closed: the bindings are settled by #827's
+13. Accepted in part. The fingerprint question narrowed to the Data screen (ruling 4); the
+    unreconciled-list question settled as a new field and index schema 3, with no ruling needed.
+    The writer question (ruling 3) narrowed rather than closed: the bindings are settled by #827's
     comments, but writer behaviour on an unresolved row is not.
 14. Accepted. Numbering now cites PR #1672's body; failure 3 noted for the ticket's test.
 15. Accepted. Placement cites the reviewer and ADR-0031; Working Copy effects stated.

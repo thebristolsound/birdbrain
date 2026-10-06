@@ -115,9 +115,13 @@ export interface RestoreHooks {
   afterReopen: () => Promise<void> // production: persona cleanup, then clear a vanished Active Case
 }
 
+export type RestoreDeps =
+  | ({ dbPath: string; mode: 'live' } & RestoreHooks) // the two Settings restores; slice 1
+  | { dbPath: string; mode: 'bootstrap' } // startup, before `initDatabase`; slice 5
+
 export async function restoreDatabase(
   source: RestoreSource,
-  deps: { dbPath: string } & RestoreHooks
+  deps: RestoreDeps
 ): Promise<RestoreOutcome>
 ```
 
@@ -130,7 +134,9 @@ is the only part that runs closed.
 
 1. Take a module-level in-flight flag; a second call returns `rejected: in_progress`. The two
    restore channels share one scratch name, and `backup()` yields between steps, so without the
-   flag two restores interleave.
+   flag two restores interleave. The flag is released in a `finally` that encloses steps 2 to 11,
+   so a rejecting `afterReopen` or an unexpected throw cannot leave every later restore in the
+   session answering `in_progress`.
 2. Resolve the source. Compare it with `dbPath` and with the scratch path by `statSync(..., {
    bigint: true })` `dev` and `ino` fields, not by path string, so case-folded Windows paths and
    symlinks resolve to `same_file`. A source equal to the scratch path must be rejected before
@@ -140,15 +146,25 @@ is the only part that runs closed.
    beside `dbPath`. `backup()` copies 100 pages per `setImmediate` step
    (`node_modules/better-sqlite3/lib/methods/backup.js`, `runBackup`) and treats `SQLITE_BUSY` as
    progress (`src/objects/backup.cpp`, `JS_transfer`), so a progress handler throws after a
-   bounded number of steps with no change in remaining pages, giving `source_busy`. Remove only
-   the source sidecars this read created, as `assertReadable` does.
+   bounded number of steps with no change in remaining pages, giving `source_busy`. For a
+   snapshot source, remove only the sidecars this read created, as `assertReadable` does
+   (`dbSnapshots.ts:252-272`): the module owns that directory. For a file source, remove nothing
+   beside it. Another process can create a `-wal` or `-shm` there while the asynchronous
+   `backup()` runs, and the same cleanup would unlink live SQLite state; a read-only open that
+   leaves an empty sidecar beside a picked file is the cost.
 4. Run every check on the scratch copy, not the source, so what is checked is what gets
    installed. Open it read-write and require `user_version` from 1 to `LATEST_SCHEMA_VERSION`
    and a `cases` table (a snapshot additionally needs `user_version === fromVersion`).
 5. If the scratch copy is older, migrate it there: a detached `migrateFile(path)` exported from
-   `core.ts` that takes the usual pre-migration snapshot, runs `runMigrations`, and never sets
-   the module-level handle. A failure here is `rejected: migration_failed` with the live database
-   untouched; today the same file replaces the live database and fails on reopen.
+   `core.ts` that runs `runMigrations` on the scratch copy, takes no pre-migration snapshot, and
+   never sets the module-level handle. No snapshot because `createPreMigrationSnapshot` writes
+   to `snapshotDirFor(path)`, which is `db-snapshots/` beside the database
+   (`dbSnapshots.ts:66-68`), then prunes to `SNAPSHOT_RETENTION` (`:31`, `:375`); a scratch file
+   beside `dbPath` resolves to the production directory, so a rejected candidate's snapshot would
+   join the recovery list and could evict a genuine one. Nothing is lost by skipping it: the
+   source file is untouched and is the pre-migration state. A failure here is
+   `rejected: migration_failed` with the live database untouched; today the same file replaces
+   the live database and fails on reopen.
 6. `wal_checkpoint(TRUNCATE)`, close, assert no `-wal`/`-shm` sits beside the scratch, then
    `fsync` it. (`backup()` opens and closes its own destination handle, so the module never holds
    it; this explicit open is what folds any WAL back in.)
@@ -163,10 +179,34 @@ is the only part that runs closed.
    migrating it. After phase A this needs corruption that predates the restore.
 10. `initDatabase(dbPath)`; the file is already current, so no migration runs and the remaining
     failure modes are I/O. Failure returns `reopen_failed`.
-11. `afterReopen()`, then release the flag.
+11. `afterReopen()`. The `finally` from step 1 releases the flag.
 
 Expected outcomes are returned, never thrown, and carry no filesystem path; the cause is logged.
 The handler is the adapter from outcome to `IpcFailure`.
+
+### Bootstrap mode
+
+Slice 5 enters `restoreDatabase` before `initDatabase` has run, with a present `birdbrain.db` that
+fails `isIntactDatabase`. The live sequence cannot run there: phase A keeps the live database
+open, slice 4's safety snapshot calls `db.backup()` on it, and `beforeClose` stops a
+`sessionService` that `index.ts:487` builds only after `initDatabase` (`:410`). `mode: 'bootstrap'`
+differs from `'live'` at exactly these points:
+
+- Phase A steps 1 to 6 run unchanged: none reads the live database. The same-file check stats
+  `dbPath`, which exists; `backup()` reads the source; `migrateFile` runs on the scratch copy.
+- The safety snapshot (slice 4) cannot `backup()` a file SQLite will not open. Instead, phase A
+  copies the bytes of `birdbrain.db` and any `-wal`/`-shm` beside it into `db-snapshots/` under a
+  `damaged-<stamp>` name that `SNAPSHOT_FILE_RE` (`dbSnapshots.ts:52`) does not match, so no
+  listing offers it for restore, `pruneSnapshots` (`:177-187`) never counts it against the three
+  slots, and `sweepPartials` (`:200-212`) leaves it alone. A copy failure is
+  `rejected: copy_failed`.
+- Step 7 has nothing to stop and nothing to close; `closeDatabase()` is a no-op on a null handle
+  anyway (`core.ts:64-73`).
+- Step 9 returns `replace_failed` with `databaseIntact: false` on a rename failure: the file was
+  already not intact, and the raw copy from phase A holds its bytes.
+- Step 11 has no hook. Startup continues at `index.ts:412`, whose `removeOrphanedPartitions`
+  (`personaSessions.ts:157-171`) finds the same orphans the live hook's `clearOrphanedPartitions`
+  (`:176-192`) does, and no Active Case exists yet to clear.
 
 ### What the renderer shows
 
@@ -243,7 +283,7 @@ Each slice is one PR, green on `pnpm preflight` alone. Every slice touches the b
   call plus the outcome mapping, and switch the `restore` mutation to `onSettled`. Add the
   reproduction tests to `ipcHandlers.test.ts`, and the non-SQLite, newer-schema, WAL-source,
   same-file, in-progress, and `EPERM`-rename cases to `dbRestore.test.ts`. In
-  `tester-guide.mdx:184-187`, note that a restore refused before anything was replaced leaves the
+  `tester-guide.mdx:186-189`, note that a restore refused before anything was replaced leaves the
   database as it was.
 - [ ] **Slice 2: move the snapshot restore.** Add `{ kind: 'snapshot' }` and shrink
   `db:restoreSnapshot` to one call. This changes behavior, and the PR says so: a truncated snapshot
@@ -295,9 +335,18 @@ destroys the case database. Filed as #1700; slice 1 closes it.
    empty schema, and offers the snapshot list. This is slice 5 (below); it touches the
    blocking-tier `index.ts`.
 
-- [ ] **Slice 5: startup refuses a damaged database.** Gate `initDatabase` at `index.ts:410` on
-  `isIntactDatabase`; on failure, show a dialog that lists snapshots and restores one through
-  `restoreDatabase`. Once this lands, the not-intact message can advise a restart again.
+- [ ] **Slice 5: startup refuses a damaged database.** After slices 2 and 4. Before
+  `initDatabase` at `index.ts:410`, `statSync` the path. A missing file is a first launch and goes
+  to `initDatabase` as today, which creates the file (`core.ts:41`) and migrates the empty schema
+  with no snapshot (`core.ts:24-26`). A present file is gated on `isIntactDatabase`. The gate
+  cannot stand alone: `isIntactDatabase` answers `false` for a missing file too
+  (`dbSnapshots.ts:291-295`), so gating every launch on it would send each fresh profile into
+  recovery with no snapshot to offer. On a present file that fails the gate, show a dialog that
+  lists snapshots and restores the chosen one through `restoreDatabase` in bootstrap mode, which
+  needs `{ kind: 'snapshot' }` from slice 2 and the name pattern from slice 4. With no
+  snapshot to list, the dialog says so and exits as the startup failure at `index.ts:638-645`
+  does, without migrating the file; whether it also offers a file picker is left open. Once this
+  lands, the not-intact message can advise a restart again.
 
 ## Review disposition
 

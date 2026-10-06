@@ -60,6 +60,16 @@ merge on all required checks green plus an `agent/pre-pass` success verdict, and
 (comment findings on the issue, relabel `needs-info`/`ready-for-human`, vacate the slot) whenever
 the issue fails the ready-for-agent bar at intake or mid-work.
 
+## Interactive sessions on an agent PR
+
+Scheduled Dispatch works the PR that holds the slot every four hours, so an interactive session
+that runs a reviewer pre-pass or a fix round on an `agent-pr` PR takes the same cycle claim a
+dispatcher does. Follow section 2 of `.claude/skills/dispatch/SKILL.md`: read the linked issue for
+a live claim, post `Cycle claim: PR #<pr>` on it through `agh`, settle, and post
+`Cycle release: PR #<pr>` when the round ends. Without the claim, a dispatcher fire can start a
+second reviewer on the same head. On 2026-10-05 only the timing of the session's pending status
+kept run 37235446754 off #1721.
+
 ## Jev shadow lenses
 
 Two Jev shadow lenses run event-driven from `.github/workflows/jev-lens.yml` (ADR-0031): `lens:*`

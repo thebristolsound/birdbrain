@@ -100,6 +100,15 @@ if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   else
     log "WARNING: could not resolve the pinned Node via mise; 'node --version' may be wrong for this repo (see CLAUDE.md Node note)"
   fi
+  # Same for Vale, which .claude/hooks/vale-prose.sh needs and which passes silently without.
+  if [ -x "$MISE_BIN" ] \
+    && VALE_DIR="$(cd "$PROJECT_DIR" && "$MISE_BIN" where vale 2>/dev/null)" \
+    && [ -x "$VALE_DIR/bin/vale" ]; then
+    export PATH="$VALE_DIR/bin:$PATH"
+    persist_env "export PATH=\"$VALE_DIR/bin:\$PATH\""
+  elif ! command -v vale >/dev/null 2>&1; then
+    log "WARNING: vale is not installed; the prose hook will pass every edit. Run 'mise install'."
+  fi
   # Measurement only (ADR-0029): how much the teardown skill could reclaim. Bounded, never fatal.
   TEARDOWN="$PROJECT_DIR/.claude/skills/teardown/scripts/teardown.sh"
   if [ -x "$TEARDOWN" ]; then
@@ -199,7 +208,44 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 3. Project dependencies
+# 3. Vale
+# ---------------------------------------------------------------------------
+# .claude/hooks/vale-prose.sh blocks an edit that breaks the writing guide, but it passes
+# when Vale is absent, so a container without Vale has no prose gate at all. The remote
+# image has no mise, so install the pinned release directly. Never fatal. Keep VALE_VERSION
+# in sync with .mise.toml.
+
+VALE_VERSION="3.24.0"
+
+install_vale() {
+  local arch tarball
+  case "$(uname -m)" in
+    x86_64) arch="64-bit" ;;
+    aarch64 | arm64) arch="arm64" ;;
+    *) log "vale: no release for $(uname -m)"; return 1 ;;
+  esac
+  tarball="vale_${VALE_VERSION}_Linux_${arch}.tar.gz"
+  curl -fsSL --max-time 120 \
+    "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/${tarball}" \
+    -o /tmp/vale.tar.gz \
+    && install -d -m 0755 /usr/local/bin \
+    && tar -xzf /tmp/vale.tar.gz -C /usr/local/bin vale \
+    && rm -f /tmp/vale.tar.gz
+}
+
+if command -v vale >/dev/null 2>&1; then
+  log "vale already installed ($(vale --version))"
+elif install_vale && command -v vale >/dev/null 2>&1; then
+  log "installed $(vale --version)"
+else
+  log "WARNING: vale install failed; the prose hook will pass every Markdown edit this session."
+fi
+if command -v vale >/dev/null 2>&1 && [ ! -d "$PROJECT_DIR/.vale/styles/Google" ]; then
+  (cd "$PROJECT_DIR" && vale sync >/dev/null 2>&1) || log "WARNING: vale sync failed; prose linting unavailable"
+fi
+
+# ---------------------------------------------------------------------------
+# 4. Project dependencies
 # ---------------------------------------------------------------------------
 # Plain `install` rather than `--frozen-lockfile`, so the container's cached state is
 # reused across sessions. postinstall runs scripts/ensure-electron.mjs (the backstop

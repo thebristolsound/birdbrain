@@ -20,7 +20,7 @@
 
 ## 1. What "binding" means here
 
-**Binding origin proof:** the TLS certificate chain recorded is the chain Chrome observed on the specific HTTP response that produced the captured content. The cert is correlated 1:1 with the network transaction at capture time. The capture has no re-fetch gap.
+**Binding origin proof:** the TLS certificate chain recorded is the chain Chrome observed on the specific HTTP response that produced the captured content. The cert is correlated 1:1 with the network transaction at capture time. There is no re-fetch gap.
 
 **Corroboration-only:** a separate TLS connection is made from the Birdbrain main process (Node `tls`/`https`) after the capture is stored. It records whatever cert the origin was serving at re-fetch time, which is typically seconds to minutes after capture. The cert is not correlated with the specific captured transaction.
 
@@ -249,7 +249,7 @@ Binding mode adds real forensic value in investigations of live, freshly-navigat
 
 ## 8. Open questions for follow-up validation
 
-1. **Cache hit rate in real investigations:** how often are captured pages served from Chrome's disk cache? If most targets are sites the investigator has visited before, the effective binding hit rate may be much lower than 70–85%.
+1. **Cache hit rate in real investigations:** how often are captured pages served from Chrome's disk cache? If the majority of targets are sites the investigator has visited before, the effective binding hit rate may be much lower than 70–85%.
 
 2. **Infobar user research:** do Birdbrain's target users (investigators, legal professionals) find the "debugging this browser" infobar alarming, or do they understand it as consistent with running a forensic tool? This gates the binding mode UX decision.
 

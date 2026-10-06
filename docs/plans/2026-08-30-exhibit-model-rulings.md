@@ -63,7 +63,7 @@ derivative processing, immutability, permission scoping); round 3 took each in t
 records what produced it; no Entity or Link tables; the Link Map stays a projection. Enrichment
 outputs are anchored Derived Files whose derivation is named `transform:<name>` (amended by X42). Grounds: the
 2026-08-12 Maltego research (`docs/specs/2026-08-12-maltego-graph-node-research.md`) shows
-Maltego's depth is Entities with merge rules, links represented as graph objects, Transforms and Machines, and its
+Maltego's depth is Entities with merge rules, first-class links, Transforms and Machines, and its
 documented gap is provenance; a graph-native model now is a second product.
 
 **X11 (R10) - round 1 is provisional.** The twelve #803 questions of 2026-08-29 are re-asked

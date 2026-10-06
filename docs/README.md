@@ -82,4 +82,4 @@ The `Birdbrain` style in `.vale/styles/Birdbrain/` encodes [the writing guide](a
 
 A file that has to quote a forbidden word gets a per-file section in `.vale.ini`, or a `<!-- vale Birdbrain.<Rule> = NO -->` and `= YES` pair around the passage in a `.md` file. MDX cannot take those comments.
 
-`.claude/hooks/vale-prose.sh` runs after every agent Edit or Write to a `.md` or `.mdx` file. It blocks on an error-level `Birdbrain` rule in a line that differs from `HEAD`, so older text never blocks an unrelated edit, and it passes with a note when Vale cannot run. Run it by hand as `.claude/hooks/vale-prose.sh <file>`. Preflight and CI do not run Vale.
+`.claude/hooks/vale-prose.sh` runs after every agent Edit or Write to a `.md` or `.mdx` file. It blocks on an error-level `Birdbrain` rule in a line that differs from `HEAD`, so older text never blocks an unrelated edit, and it passes with a note when Vale cannot run. `.mise.toml` pins Vale and `scripts/setup-worktree.sh` installs it, so a prepared worktree has the gate; the session-start hook installs it in a remote container. Run it by hand as `.claude/hooks/vale-prose.sh <file>`. Preflight and CI do not run Vale.

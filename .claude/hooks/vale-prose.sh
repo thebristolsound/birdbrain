@@ -34,7 +34,7 @@ rel="${file#"$top"/}"
 git -C "$top" check-ignore -q -- "$rel" && exit 0
 
 if ! command -v vale >/dev/null 2>&1; then
-  echo "vale-prose: vale is not installed, prose check skipped" >&2
+  echo "vale-prose: vale is not installed (scripts/setup-worktree.sh installs it), prose check skipped" >&2
   exit 0
 fi
 
@@ -52,7 +52,11 @@ else
   hunks="all"
 fi
 
-findings="$(REPORT="$report" HUNKS="$hunks" node -e '
+# The report goes over stdin: a large document's JSON can exceed the size one environment
+# value may hold, and that exec failure would read as a pass.
+findings="$(printf '%s' "$report" | HUNKS="$hunks" node -e '
+  let raw = ""
+  process.stdin.on("data", (d) => (raw += d)).on("end", () => {
   const changed = new Set()
   const all = process.env.HUNKS === "all"
   for (const h of process.env.HUNKS.split("\n")) {
@@ -63,14 +67,15 @@ findings="$(REPORT="$report" HUNKS="$hunks" node -e '
     for (let i = 0; i < count; i++) changed.add(start + i)
   }
   let data = {}
-  try { data = JSON.parse(process.env.REPORT) } catch {}
+  try { data = JSON.parse(raw) } catch {}
   for (const [file, alerts] of Object.entries(data)) {
     for (const a of alerts) {
       if (a.Severity !== "error" || !a.Check.startsWith("Birdbrain.")) continue
       if (!all && !changed.has(a.Line)) continue
       console.log(file + ":" + a.Line + ":" + a.Span[0] + " " + a.Check + " " + a.Message)
     }
-  }')"
+  }
+  })')"
 
 [ -z "$findings" ] && exit 0
 {

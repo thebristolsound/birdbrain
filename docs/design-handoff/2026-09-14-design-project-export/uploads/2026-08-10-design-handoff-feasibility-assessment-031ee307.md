@@ -62,7 +62,7 @@ Greenfield, and everything the read-only design needs already exists server-side
 
 The Selector action is cheap; Tag and Quote are a capture-server scope change the brief suspected, and the suspicion is confirmed.
 
-- Complete route list of the capture server today: `GET /api/status`, `GET /api/cases`, `POST /api/cases/:id/activate`, `POST /api/session/start|stop`, `POST /api/captures`, `POST /api/captures/test`, `GET /api/selectors/active`, `POST /api/selectors` (`captureServer.ts:161-472`). The server has **no** note-write route and **no** tag-apply route; notes and tags exist only over Electron IPC (`src/shared/ipc.ts:77-85,123-129`).
+- Complete route list of the capture server today: `GET /api/status`, `GET /api/cases`, `POST /api/cases/:id/activate`, `POST /api/session/start|stop`, `POST /api/captures`, `POST /api/captures/test`, `GET /api/selectors/active`, `POST /api/selectors` (`captureServer.ts:161-472`). There is **no** note-write route and **no** tag-apply route; notes and tags exist only over Electron IPC (`src/shared/ipc.ts:77-85,123-129`).
 - Tag/Quote therefore need two new authenticated routes plus Zod schemas following the `SelectorCreateSchema` pattern (`captureServer.ts:431-435`). CORS currently allows only GET and POST (`captureServer.ts:144`).
 - Recommendation: land a selector-only selection bar first (route exists, per-tab caveat from item 1 noted), and sequence the note/tag endpoints as their own decision — they widen the loopback API surface, which has been kept deliberately small.
 

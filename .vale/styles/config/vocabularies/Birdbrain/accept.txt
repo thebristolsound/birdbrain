@@ -468,3 +468,15 @@ Rekor
 Sato
 Marlow
 retellings
+
+; Added 2026-10-06 so the architecture whitepaper passes Vale.Spelling
+Authenticode
+blockmaps
+deletable
+inspectability
+journaling
+rebuildable
+replayable
+sandboxing
+serverless
+ZIPs

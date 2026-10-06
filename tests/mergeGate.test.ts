@@ -5,6 +5,7 @@ import {
   lastLabelledBy,
   maintainerOf,
   trustedPrepass
+  // @ts-expect-error - workflow script with no type declarations; the tsconfigs exclude .github/
 } from '../.github/scripts/merge/gate.mjs'
 
 const HEAD = 'a'.repeat(40)

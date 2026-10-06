@@ -28,7 +28,10 @@ concurrency:
 
 jobs:
   request:
-    if: github.event.action == 'labeled' && github.event.label.name == 'merge'
+    # The spend guard (#1310): a job that reads a stored secret runs only when the maintainer
+    # started the attempt. The step below also refuses any other label sender, with a comment.
+    if: github.event.action == 'labeled' && github.event.label.name == 'merge' && github.triggering_actor == 'thebristolsound'
+    environment: paid-runs
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

@@ -135,60 +135,41 @@ describe.skipIf(!HAS_JQ)('merge.sh gates on the required checks of main', () => 
   })
 })
 
-describe.skipIf(!HAS_JQ)("merge.sh takes the admin bypass only for the gh login's own PR", () => {
+// ADR-0041: merge-gate replaces the code-owner review rule, so the script never chooses the
+// bypass for the caller; --admin is the maintainer's explicit emergency path.
+describe.skipIf(!HAS_JQ)('merge.sh takes the admin bypass only when asked', () => {
   const rules = requiredRules(['lint'])
   const green = [run('lint', 'success')]
-  const own = (prePass: { by: string; state: string }[]) =>
-    routes(rules, green, { author: 'maintainer', prePass })
   const mergeCall = (calls: string[]) => calls.find((call) => call.startsWith('pr merge '))
 
-  it('passes --admin to the merge on a success pre-pass from the machine account', () => {
+  it("merges the gh login's own PR without --admin", () => {
     // The stub has no route for `pr merge`, so the script stops after the call it makes.
-    const result = invoke(own([{ by: 'birdbrain-agent', state: 'success' }]), [])
-    expect(result.stdout).toContain(
-      'merge-pr: authored by maintainer: merging with the admin bypass on a success pre-pass'
-    )
+    const result = invoke(routes(rules, green, { author: 'maintainer' }), [])
+    expect(result.stdout).not.toContain('admin bypass')
+    expect(mergeCall(result.calls)).toMatch(/^pr merge 7 --squash --match-head-commit /)
+  })
+
+  it('passes --admin to the merge when the caller asks for it', () => {
+    const result = invoke(routes(rules, green, { author: 'maintainer' }), ['--admin'])
+    expect(result.stdout).toContain('merge-pr: merging with the admin bypass, as asked')
     expect(mergeCall(result.calls)).toMatch(/^pr merge 7 --squash --admin --match-head-commit /)
   })
 
-  it('accepts a success pre-pass the maintainer posted', () => {
-    const result = dryRun(own([{ by: 'maintainer', state: 'success' }]))
-    expect(result.status).toBe(0)
-    expect(result.stdout).toContain('merging with the admin bypass')
+  it('refuses --admin for the machine account', () => {
+    const result = invoke(routes(rules, green), ['--cli', 'agh', '--admin'])
+    expect(result.status).toBe(2)
+    expect(result.stderr).toContain("never the machine account's")
+    expect(mergeCall(result.calls)).toBeUndefined()
   })
 
-  it("refuses on the workflow's automatic pass, which no trusted account posted", () => {
-    const result = dryRun(own([{ by: 'github-actions[bot]', state: 'success' }]))
-    expect(result.status).toBe(1)
-    expect(result.stderr).toContain(
-      'needs a success agent/pre-pass at head from maintainer or birdbrain-agent (it is missing)'
-    )
-  })
-
-  it('reads the newest trusted pre-pass, skipping newer ones from anyone else', () => {
-    const failed = dryRun(
-      own([
-        { by: 'github-actions[bot]', state: 'success' },
-        { by: 'birdbrain-agent', state: 'failure' },
-        { by: 'birdbrain-agent', state: 'success' }
-      ])
-    )
-    expect(failed.status).toBe(1)
-    expect(failed.stderr).toContain('(it is failure)')
-  })
-
-  it('refuses with no pre-pass at all', () => {
-    const result = dryRun(own([]))
-    expect(result.status).toBe(1)
-    expect(result.stderr).toContain('(it is missing)')
-  })
-
-  it("merges someone else's PR without --admin", () => {
-    const result = invoke(
-      routes(rules, green, { prePass: [{ by: 'birdbrain-agent', state: 'success' }] }),
+  it('starts a merge-gate re-run on the head branch when the gate is the red check', () => {
+    const gate = invoke(
+      routes(requiredRules(['lint', 'merge-gate']), [...green, run('merge-gate', 'failure')]),
       []
     )
-    expect(result.stdout).not.toContain('admin bypass')
-    expect(mergeCall(result.calls)).toMatch(/^pr merge 7 --squash --match-head-commit /)
+    expect(gate.status).toBe(1)
+    expect(gate.calls).toContain('workflow run merge-gate.yml --ref feature -f pr=7')
+    expect(gate.stderr).toContain('required checks not green at head: merge-gate=completed/failure')
+    expect(mergeCall(gate.calls)).toBeUndefined()
   })
 })

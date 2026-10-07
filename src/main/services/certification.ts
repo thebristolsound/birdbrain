@@ -228,8 +228,6 @@ export interface CertificationFields {
   sharedCase: ExportSharedCase | null
 }
 
-const LAWYER_TBD_MARKER = '[LEGAL WORDING TO BE SUPPLIED BY COUNSEL]'
-
 export function buildCertificationFields(
   data: CertificationInput,
   toolVersion: string
@@ -507,32 +505,22 @@ function renderCertificationHtml(fields: CertificationFields): string {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Certificate of authenticity — ${esc(fields.caseName)}</title>
+<title>Export statement — ${esc(fields.caseName)}</title>
 <style>${REPORT_PAGE_CSS}</style>
 </head>
 <body>
 <section class="sheet">
   <header class="wordmark">
     <span class="wordmark-name">${esc(fields.toolName)}</span>
-    <span class="wordmark-kind">Supporting certification</span>
+    <span class="wordmark-kind">Export statement</span>
   </header>
   <div class="rule-heavy"></div>
 
   <p class="eyebrow">Case</p>
-  <h1 class="case-name">Certificate of authenticity</h1>
-  <p class="case-desc">${esc(fields.caseName)} — supporting certification offered under
-  FRE 902(13)/(14) or the equivalent rule of the forum, subject to the wording notice below.</p>
-
-  <!-- LAWYER-TBD: The sworn declaration / certification legal wording for the applicable
-       jurisdiction and rule (e.g. FRE 902(13)/(14), 28 U.S.C. § 1746) has NOT been drafted.
-       Counsel must supply the operative certifying language. Do not treat the placeholder
-       banner below as finalized legal text. ${LAWYER_TBD_MARKER} -->
-  <div class="tbd">
-    <p class="tbd-title">${esc(LAWYER_TBD_MARKER)}</p>
-    <p>The operative sworn declaration and certifying wording for the relevant jurisdiction and
-    rule must be supplied by counsel. This document is scaffolding: it records the tool, the
-    process and the certifier, and asserts nothing about the legal sufficiency of that record.</p>
-  </div>
+  <h1 class="case-name">${esc(fields.caseName)}</h1>
+  <p class="case-desc">This statement records which tool produced the export, how the exhibits
+  were captured and hashed, which trusted-time and signature checks apply to them, and who ran
+  the export. It is a factual record of the package, not a legal declaration.</p>
   ${
     fields.isDemo
       ? `<div class="alert">
@@ -608,7 +596,7 @@ function renderCertificationHtml(fields: CertificationFields): string {
   <div class="rule-medium"></div>
   ${entrySignatureProse}
 
-  <h2 style="margin-top:22pt">Certifier</h2>
+  <h2 style="margin-top:22pt">Operator</h2>
   <div class="rule-medium"></div>
   <div class="field-grid rule-top">
     <div class="field"><div class="field-label">Name (self-asserted)</div>
@@ -635,18 +623,10 @@ function renderCertificationHtml(fields: CertificationFields): string {
 
   <div class="alert">
     <p class="alert-title">Self-asserted identity</p>
-    <p>The certifier identity above — name, role and organisation — is entered by the operator.
+    <p>The operator identity above — name, role and organisation — is entered by the operator.
     It is <strong>not</strong> cryptographically authenticated by ${esc(fields.toolName)}, which
     does not verify the operator's real-world identity. Signed manifest entries bind to the
     installation identifier, not to any named person.</p>
-  </div>
-
-  <div class="sig-grid">
-    <div class="sig-line">
-      <span class="sig-caption">Signature of certifier</span>
-      <span class="sig-name">${esc(certifierLine(certifier))}</span>
-    </div>
-    <div class="sig-line"><span class="sig-caption">Date</span></div>
   </div>
 </section>
 
@@ -704,7 +684,7 @@ function sharedCaseFields(shared: ExportSharedCase): string {
       <div class="field-value">${
         shared.members.length > 0
           ? lines(shared.members.map(describeSharedCaseMember))
-          : 'One member: the certifier below'
+          : 'One member: the operator below'
       }</div></div>
     ${lineage.join('')}
     <div class="field wide"><div class="field-label">${
@@ -722,11 +702,6 @@ function sharedCaseFields(shared: ExportSharedCase): string {
         shared.verified ? 'passed' : `failed — ${esc(shared.finding ?? 'no finding recorded')}`
       }</div></div>
   </div>`
-}
-
-function certifierLine(certifier: CertificationFields['certifier']): string {
-  const tail = [certifier.operatorRole, certifier.operatorOrganization].filter(Boolean).join(', ')
-  return tail ? `${certifier.operatorName} — ${tail}` : certifier.operatorName
 }
 
 /**

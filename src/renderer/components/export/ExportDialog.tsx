@@ -445,8 +445,8 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
                   <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-accent" strokeWidth={1.8} />
                   <span>
                     Evidence package: ships the full signed Manifest chain and the Certification,
-                    and appends a signed export entry to the case audit trail. The Certification is
-                    signed by the Operator.
+                    and appends a signed export entry to the case audit trail. The Certification
+                    names the Operator.
                   </span>
                 </div>
               )}

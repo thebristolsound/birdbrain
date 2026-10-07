@@ -1132,22 +1132,41 @@ export const WorkingCopyMarkerSchema = z.object({
 
 // --- Settings file --------------------------------------------------------
 
+// The one definition of a usable TSA endpoint, shared by the lenient load path,
+// the strict edit path and the Settings pane: a parseable http(s) URL. Returns
+// the trimmed URL, or null when the value is not one.
+export function parseTsaUrl(value: string): string | null {
+  const trimmed = value.trim()
+  try {
+    const { protocol } = new URL(trimmed)
+    return protocol === 'http:' || protocol === 'https:' ? trimmed : null
+  } catch {
+    return null
+  }
+}
+
 // `tsaUrl` is a trust-boundary value handed straight to fetch(). Normalize it on
 // load so a hand-edited or legacy settings file can't push a whitespace or
 // non-http(s) endpoint into the timestamp worker. Crucially this NEVER throws —
 // invalid input is coerced to the DigiCert default — so an only-tsaUrl-invalid
 // file doesn't fail safeParse and reset every other setting to defaults.
 function normalizeTsaUrl(value: unknown): string {
-  if (typeof value !== 'string') return DEFAULT_TSA_URL
-  const trimmed = value.trim()
-  if (!trimmed) return DEFAULT_TSA_URL
-  try {
-    const { protocol } = new URL(trimmed)
-    return protocol === 'http:' || protocol === 'https:' ? trimmed : DEFAULT_TSA_URL
-  } catch {
-    return DEFAULT_TSA_URL
-  }
+  if (typeof value !== 'string' || !value.trim()) return DEFAULT_TSA_URL
+  return parseTsaUrl(value) ?? DEFAULT_TSA_URL
 }
+
+// An edit is refused instead (#1522): coercing it would move an operator who
+// mistyped their own authority back to the default without a word. An empty
+// value still stores the default.
+const TsaUrlEditSchema = z.string().transform((value, ctx) => {
+  if (!value.trim()) return DEFAULT_TSA_URL
+  const url = parseTsaUrl(value)
+  if (url === null) {
+    ctx.addIssue({ code: 'custom', message: 'not an http:// or https:// address' })
+    return z.NEVER
+  }
+  return url
+})
 
 export const BirdbrainSettingsSchema = z.object({
   captureScreenshots: z.boolean(),
@@ -1204,3 +1223,8 @@ export const BirdbrainSettingsSchema = z.object({
 // Keys the schema no longer declares, such as the retired AI analysis fields,
 // are stripped rather than rejected, so an older file still parses.
 export const PartialBirdbrainSettingsSchema = BirdbrainSettingsSchema.partial()
+
+// Used on edit: the load schema with `tsaUrl` strict. See TsaUrlEditSchema.
+export const SettingsUpdateSchema = PartialBirdbrainSettingsSchema.extend({
+  tsaUrl: TsaUrlEditSchema.optional().default(DEFAULT_TSA_URL)
+})

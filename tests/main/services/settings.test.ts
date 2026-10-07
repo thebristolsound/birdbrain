@@ -14,7 +14,8 @@ import {
   getSettings,
   updateSettings,
   resetSettings,
-  getDefaultSettings
+  getDefaultSettings,
+  InvalidSettingsError
 } from '@main/services/settings'
 import { DEFAULT_TSA_URL } from '@shared/constants'
 import { DEFAULT_UI_DENSITY, UI_DENSITIES, type UiDensity } from '@shared/types'
@@ -100,9 +101,42 @@ describe('settings', () => {
     expect(getSettings().tsaUrl).toBe('https://freetsa.org/tsr')
   })
 
-  it('normalizes a non-http(s) TSA endpoint to the default', () => {
-    updateSettings({ tsaUrl: 'ftp://evil.example/tsa' })
+  // #1522. An edit used to be coerced to the default like a bad value on load, so
+  // one typing mistake moved an operator off their own authority without a word.
+  it.each(['not a url', 'ftp://example.test/tsa', '  not a url  ', 'ftp://evil.example/tsa'])(
+    'refuses the TSA endpoint %j and keeps the configured one',
+    (tsaUrl) => {
+      updateSettings({ tsaUrl: 'https://custom.example/tsr', theme: 'light' })
+      const before = readFileSync(settingsFile, 'utf-8')
+      expect(() => updateSettings({ tsaUrl, theme: 'dark' })).toThrow(InvalidSettingsError)
+      expect(() => updateSettings({ tsaUrl })).toThrow(/tsaUrl: not an http:\/\/ or https:\/\//)
+      expect(readFileSync(settingsFile, 'utf-8')).toBe(before)
+      expect(getSettings().tsaUrl).toBe('https://custom.example/tsr')
+      expect(getSettings().theme).toBe('light')
+    }
+  )
+
+  it('refuses a TSA endpoint that is not a string', () => {
+    updateSettings({ tsaUrl: 'https://custom.example/tsr' })
+    expect(() => updateSettings({ tsaUrl: 42 as unknown as string })).toThrow(InvalidSettingsError)
+    expect(getSettings().tsaUrl).toBe('https://custom.example/tsr')
+  })
+
+  it('stores a whitespace-padded valid TSA endpoint trimmed', () => {
+    updateSettings({ tsaUrl: '  https://tsa.example/tsr  ' })
+    expect(getSettings().tsaUrl).toBe('https://tsa.example/tsr')
+  })
+
+  it('stores the default when the TSA endpoint is cleared', () => {
+    updateSettings({ tsaUrl: 'https://custom.example/tsr' })
+    updateSettings({ tsaUrl: '   ' })
     expect(getSettings().tsaUrl).toBe(DEFAULT_TSA_URL)
+  })
+
+  it('leaves the TSA endpoint alone when an edit does not name it', () => {
+    updateSettings({ tsaUrl: 'https://custom.example/tsr' })
+    updateSettings({ theme: 'light' })
+    expect(getSettings().tsaUrl).toBe('https://custom.example/tsr')
   })
 
   it('coerces an invalid stored tsaUrl without resetting other settings', () => {

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { DEFAULT_UI_DENSITY, type BirdbrainSettings } from '@shared/types'
-import { PartialBirdbrainSettingsSchema } from '@shared/schemas'
+import { PartialBirdbrainSettingsSchema, SettingsUpdateSchema } from '@shared/schemas'
 import { DEFAULT_DEDUPE_WINDOW_SECONDS, DEFAULT_TSA_URL } from '@shared/constants'
 import { logger } from '@main/services/logger'
 
@@ -202,10 +202,19 @@ function readStoredSettings(): BirdbrainSettings {
   }
 }
 
+// Thrown by updateSettings before anything is written, so the stored settings
+// are unchanged. The settings:update handler reports it as a structured failure.
+export class InvalidSettingsError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'InvalidSettingsError'
+  }
+}
+
 export function updateSettings(partial: Partial<BirdbrainSettings>): BirdbrainSettings {
-  const parsed = PartialBirdbrainSettingsSchema.safeParse(partial)
+  const parsed = SettingsUpdateSchema.safeParse(partial)
   if (!parsed.success) {
-    throw new Error(
+    throw new InvalidSettingsError(
       `Invalid settings: ${parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`
     )
   }

@@ -49,8 +49,11 @@ export function effectiveReview(reviews, maintainer) {
 
 export function decide(f) {
   const reasons = []
+  // The reviewer pre-pass stands in for the maintainer's attention on PRs the machine account
+  // opened. A PR opened under the maintainer's account comes from a session the maintainer
+  // watched, so its agent label alone does not demand one.
   const agent = f.labels.some((l) => AGENT_LABELS.includes(l))
-  if (agent && f.prepass !== 'success') {
+  if (agent && f.author === f.machine && f.prepass !== 'success') {
     reasons.push(`agent PR without a success agent/pre-pass at head (it is ${f.prepass})`)
   }
   const evidence = f.labels.includes('evidence-affecting') || f.issueEvidence.length > 0
@@ -92,6 +95,8 @@ function main([repo, n]) {
     const statuses = api(`repos/${repo}/commits/${headSha}/statuses?per_page=100`)
     const facts = {
       headSha,
+      author: pr.user?.login,
+      machine,
       labels,
       maintainer,
       issueEvidence,

@@ -1,6 +1,6 @@
 # Label-to-merge: replace the review rule with a gate check and a merge label
 
-**Status:** approved 2026-10-06; built and merged in #1750 (`deabdcb2`); step 6 applied 2026-10-06; step 7 open
+**Status:** approved 2026-10-06; built and merged in #1750 (`deabdcb2`); step 6 applied 2026-10-06; step 7 open; pre-pass scoped to machine-account PRs 2026-10-07
 **Date:** 2026-10-06
 **Decision:** [ADR-0041](../adr/0041-merges-are-requested-by-label.md) (proposed)
 

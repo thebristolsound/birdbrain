@@ -12,6 +12,8 @@ import {
 const HEAD = 'a'.repeat(40)
 const base = {
   headSha: HEAD,
+  author: 'birdbrain-agent',
+  machine: 'birdbrain-agent',
   labels: [] as string[],
   maintainer: 'owner',
   issueEvidence: [] as number[],
@@ -30,6 +32,10 @@ describe('merge-gate decide', () => {
       expect(decide({ ...base, labels: [label], prepass: 'pending' }).pass).toBe(false)
       expect(decide({ ...base, labels: [label], prepass: 'success' }).pass).toBe(true)
     }
+  })
+
+  it("skips the pre-pass on an agent PR opened under the maintainer's account", () => {
+    expect(decide({ ...base, author: 'owner', labels: ['agent-authored'] }).pass).toBe(true)
   })
 
   it('blocks an evidence-affecting PR with no sign-off', () => {

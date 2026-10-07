@@ -8,7 +8,7 @@ This record answers the first follow-up in the
 [Case investigation engine spec](../specs/2026-10-02-case-investigation-engine-design.md). Where
 it places the records, and what Case delete, Case Archive, and export do to them, it restates
 that spec as merged and as ruled on 2026-10-04. The Case revision's mechanism, the change log,
-and the rule for the two exceptions are new here and await the maintainer's acceptance, which
+the rule for the two exceptions, and the addition of Selectors to the run inputs are new here and await the maintainer's acceptance, which
 changes the status line. Nothing in it is implemented.
 
 ## Context
@@ -69,7 +69,10 @@ below are **Case data**: rows in the app's SQLite database, keyed to the Case, l
 - **Case delete** removes them with the Case's other rows and writes no per-row deletion
   entries, as [ADR-0001](0001-case-delete-skips-manifest.md) already rules for Captures.
 - **A Case Archive** carries them in `data.json` with the Case's other rows, under the same id
-  remapping as Notes. Import checks every artifact against the digests the archive header
+  remapping as Notes, and adding them raises `CASE_ARCHIVE_SCHEMA_VERSION`. An older build
+  refuses an archive newer than itself, so it rejects one that carries these rows instead of
+  importing the Case without them, which it would otherwise do because its importer reads only
+  the tables it knows. Import checks every artifact against the digests the archive header
   declares and recomputes the package hash, so it catches a damaged file or an edit that left
   those digests alone. The header is unsigned, so a deliberate edit that also rewrites the
   digests passes that check, and the chain verification that runs on import cannot catch it,
@@ -86,14 +89,23 @@ below are **Case data**: rows in the app's SQLite database, keyed to the Case, l
 
 ### The Case revision
 
-The **Case revision** is a per-Case pair: a generation identifier and a counter. Two revisions
-are equal only when both parts are.
+The **Case revision** is a per-Case triple: a generation identifier, a counter, and the Manifest
+head. Two revisions are equal only when all three parts are.
 
-- **The counter advances in the same transaction as every write to a run input**, enforced by
-  database triggers on each input table rather than by repository code, so no writer can skip
-  it: not Settings -> Database, a reprocess, a sync, or an import. The run inputs are the ones
-  the engine spec names: Manifest Entries, Withheld from analysis, Source Class, copy marks, the
-  Operator's own identifiers, Subjects, Joints, decisions, Notes, and Extracted Data rows.
+- **The counter advances in the same transaction as every write to a run input stored in the
+  database**, enforced by database triggers on each input table rather than by repository code,
+  so no writer can skip it: not Settings -> Database, a reprocess, a sync, or an import. Those
+  inputs are the ones the engine spec names other than Manifest Entries: Withheld from analysis,
+  Source Class, copy marks, the Operator's own identifiers, Subjects, Joints, decisions, Notes,
+  and Extracted Data rows. Selectors join them, because the spec's inventory step reads them
+  too: creating, editing, enabling, disabling, or deleting one moves the counter.
+- **The Manifest head is the index and hash of the last entry in the Case's `manifest.jsonl`**,
+  read from the file whenever the revision is read. Manifest Entries are the one run input kept
+  outside the database: `appendManifestEntry` writes the file directly, and writers such as the
+  timestamp worker and export append entries with no database write, so no trigger can see them.
+  Comparing the head instead catches every append, and a rollback that truncates the file
+  changes the head too. A run never writes a Manifest Entry, so neither exception below applies
+  to this part: any change to the head puts every run out of date.
 - **The generation identifier is a random value that changes whenever the database or the Case
   is replaced** rather than edited: a snapshot restore, any future restore from a backup, and a
   Case Archive import. A counter alone can repeat after a restore while the state behind it
@@ -105,14 +117,19 @@ are equal only when both parts are.
 
 Every advance of the counter writes a **change log** row: the Case, the new counter value, the
 kind of change, and, for a decision, the Joint, Subject, or surfaced span it acted on. The log
-holds ids and kinds, never text.
+holds ids and kinds, never text. Manifest changes need no rows here: the entries after a run's
+stored head are already the record of what changed in the chain.
 
 - A run stores its proposals, the Subjects proposed with them, and the material it surfaced in
   one write that checks the revision first. Its run record keeps the revision that write
-  produced, and the ids of every Joint, Subject, and surfaced span it stored or sighted again.
-- **A run is out of date** when the Case's generation differs from the one its record kept, or
-  when the change log holds any row after its stored revision other than a decision on a Joint,
-  Subject, or surfaced span that run stored or sighted. Its own output does not count because
+  produced, and the ids of the Joints, Subjects, and surfaced spans that write created. Those are
+  the run's own proposals. A Joint, Subject, or span that existed before the write is not one,
+  even when the run proposed it again: the run read it, and its decisions, as input.
+- **A run is out of date** when the Case's generation or Manifest head differs from the one its
+  record kept, or when the change log holds any row after its stored counter other than a
+  decision on one of that run's own proposals. A decision on anything that existed before the
+  run, such as reversing the acceptance of a Joint another run proposed, puts it out of date,
+  because the run computed its paths and search keys from the earlier state. Its own output does not count because
   the stored revision already includes it; the Operator's own decisions on its proposals do not
   count because the rule excepts them. Both exceptions apply to that run only: to every other
   run, the stored proposals and the decisions on them are changes like any other.
@@ -161,7 +178,9 @@ holds ids and kinds, never text.
 
 - Implementation needs a schema migration for the new tables, the triggers, the change log, and
   the generation identifier. The restore and import paths must replace the generation. The
-  Case Archive collectors, importers, and `ID_PROBE_TABLES` gain the new tables.
+  Case Archive collectors, importers, and `ID_PROBE_TABLES` gain the new tables, and
+  `CASE_ARCHIVE_SCHEMA_VERSION` rises with them. Every revision read also reads the Manifest
+  head from `manifest.jsonl`, the MCP server's included.
 - The export change touches `src/main/services/export.ts`, a blocking-tier path, so that pull
   request is evidence-affecting and needs human review.
 - These rows have the integrity of Notes, no more. Anyone with write access to the database,

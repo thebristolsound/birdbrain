@@ -1,6 +1,6 @@
 # Investigation records are Case data outside the Manifest
 
-**Status:** Proposed
+**Status:** Accepted
 
 **Date:** 2026-10-06
 
@@ -8,8 +8,8 @@ This record answers the first follow-up in the
 [Case investigation engine spec](../specs/2026-10-02-case-investigation-engine-design.md). Where
 it places the records, and what Case delete, Case Archive, and export do to them, it restates
 that spec as merged and as ruled on 2026-10-04. The Case revision's mechanism, the change log,
-the rule for the two exceptions, and the addition of Selectors to the run inputs are new here and await the maintainer's acceptance, which
-changes the status line. Nothing in it is implemented.
+the rule for the two exceptions, and the addition of Selectors to the run inputs are new here;
+the maintainer accepted them on 2026-10-06. Nothing in it is implemented.
 
 ## Context
 

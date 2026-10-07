@@ -34,8 +34,9 @@ Evidence-Affecting Change is the maintainer's, whoever opened the pull request.
 1. **A workflow replaces the review rule.** The ruleset stops requiring an approving review and
    instead requires a check named `merge-gate`, the conclusion of a workflow job. The job is
    green when:
-   - the pull request carries no agent label, or its `agent/pre-pass` status at head is
-     success; and
+   - the machine account did not open it with an agent label, or its `agent/pre-pass` status
+     at head is success. A pull request opened under the maintainer's account comes from a
+     session the maintainer watched, so it needs no pre-pass (ruled 2026-10-07); and
    - it is not an Evidence-Affecting Change, or the maintainer has signed off at head, either
      by an approving review on the head commit or, on a pull request the maintainer opened, by
      the `approved` label. Applying the label makes a workflow post a `merge/approved` status on

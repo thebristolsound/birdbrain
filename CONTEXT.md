@@ -284,7 +284,7 @@ _Avoid_: draft export, partial package.
 
 **Certification**:
 The operator statement in an Evidence Package naming the tool, hash algorithm, process, TSA identity, and per-Capture Trusted Time counts.
-_Avoid_: cover sheet, declaration.
+_Avoid_: cover sheet, declaration, certificate, attestation.
 
 **Verify Runbook**:
 The `VERIFY.md` instructions telling a third party how to check the package with standard tools, independent of Birdbrain. The canonical TSA check (`openssl ts -verify`) lives here. `verify.sh`, enclosed beside it, is the same six steps as a runnable script; the runbook stays the explanation and the authority.

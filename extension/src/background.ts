@@ -776,6 +776,7 @@ async function manualCaptureTab(
   pendingManualCaptures.add(key)
   let card: CaptureCardDetails | undefined
   let outcome: Record<string, unknown> | undefined
+  let navigatedAway = false
   try {
     // The whole capture runs inside the suppression boundary: injected
     // extension UI (toast, selector highlights) is stripped before any frame or
@@ -800,7 +801,20 @@ async function manualCaptureTab(
       // The last capture to finish collecting frames owns the upload toast.
       if (lastOnTab) sendToastWhenCaptureIdle(tabId, { type: 'SHOW_CAPTURE_TOAST' })
 
+      // `url` was read by the caller before the bracket opened. The same
+      // two-sample, canonical check as the ingest branch of
+      // handleSelectionAction, whose comment explains both samples. The stop
+      // check follows the read so a stop sent during it still lands.
+      const settledTab = await chrome.tabs.get(tabId)
       if (cancelledManualCaptures.has(key)) return
+      if (
+        canonicalizeUrl(tab.url ?? '') !== canonicalizeUrl(url) ||
+        canonicalizeUrl(settledTab.url ?? '') !== canonicalizeUrl(url)
+      ) {
+        navigatedAway = true
+        return
+      }
+
       uploadingManualCaptures.add(key)
       const result = await sendMhtmlCapture({
         source: 'manual',
@@ -857,6 +871,12 @@ async function manualCaptureTab(
         type: 'UPDATE_CAPTURE_TOAST',
         status: 'skipped',
         message: 'Capture stopped — nothing saved'
+      })
+    } else if (navigatedAway) {
+      sendCaptureOutcomeToast(tabId, {
+        type: 'UPDATE_CAPTURE_TOAST',
+        status: 'error',
+        message: 'Page navigated during capture — nothing saved'
       })
     }
   } catch (err) {

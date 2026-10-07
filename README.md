@@ -154,8 +154,6 @@ you cannot afford to lose.
   database alone.
 - You can create personas and import their cookies, but captures do not use a persona yet.
 - The extension runs in Chrome and Chromium only.
-- The certification page in an evidence package holds a placeholder where the legal wording
-  will go. That wording has not been drafted.
 - Data formats may change between beta releases.
 
 ## Network use

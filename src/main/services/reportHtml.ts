@@ -871,7 +871,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
 <section class="sheet cover">
   <header class="wordmark">
     <span class="wordmark-name">Birdbrain</span>
-    <span class="wordmark-kind">Forensic capture report</span>
+    <span class="wordmark-kind">Capture report</span>
   </header>
   <div class="rule-heavy"></div>
 
@@ -946,7 +946,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   </div>
 
   <div class="attest-box">
-    <p class="box-title">${packaged ? 'Attested state of this package' : 'State of the captures described'}</p>
+    <p class="box-title">${packaged ? 'State of this package' : 'State of the captures described'}</p>
     <div class="tally">
       ${
         verificationRan
@@ -1474,10 +1474,10 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
 
   signature: {
     id: 'signature',
-    title: 'Operator statement and signature',
+    title: 'Operator statement',
     render: ({ data }) => `
 <section class="sheet">
-  <h2>Operator statement and signature</h2>
+  <h2>Operator statement</h2>
   <div class="rule-medium"></div>
   ${
     data.verifications.length > 0
@@ -1490,20 +1490,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   values recomputed from the stored bytes at the time of export, and I make no statement about
   whether the stored bytes still match them.</p>`
   }
-  <div class="tbd">
-    <p class="tbd-title">Sworn declaration wording not supplied</p>
-    <p>The statement above is a factual operator statement, not a sworn declaration. Certifying
-    language for the applicable rule and jurisdiction must be supplied by counsel; it is not
-    asserted here and must not be inferred. See <code>certification.html</code> in this
-    package.</p>
-  </div>
-  <div class="sig-grid">
-    <div class="sig-line">
-      <span class="sig-caption">Signature of operator</span>
-      <span class="sig-name">${esc(operatorLine(data))}</span>
-    </div>
-    <div class="sig-line"><span class="sig-caption">Date</span></div>
-  </div>
+  <p>Operator: ${esc(operatorLine(data))}.</p>
 </section>`
   }
 }
@@ -2051,7 +2038,7 @@ export function buildHtmlReport(
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Forensic capture report — ${esc(data.caseName)}</title>
+<title>Capture report — ${esc(data.caseName)}</title>
 <style>${REPORT_PAGE_CSS}</style>
 </head>
 <body>
@@ -2073,20 +2060,20 @@ ${body}
  * sheet depends on paper dimensions (no viewport units, no fixed heights).
  */
 export const REPORT_PAGE_CSS = `
-@page { size: letter; margin: 0.75in 0.7in 0.9in; }
+@page { size: letter; margin: 0.8in 0.75in 0.9in; }
 
 :root {
-  --ink: #09090b;
-  --ink-2: #18181b;
-  --ink-3: #3f3f46;
-  --ink-4: #52525b;
-  --muted: #71717a;
-  --faint: #a1a1aa;
-  --hair: #e4e4e7;
-  --rule: #d4d4d8;
-  --wash: #f4f4f5;
-  --sans: Inter, "Inter Variable", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --ink: #111111;
+  --ink-2: #222222;
+  --ink-3: #444444;
+  --ink-4: #555555;
+  --muted: #666666;
+  --faint: #888888;
+  --hair: #dddddd;
+  --rule: #bbbbbb;
+  --wash: #f5f5f5;
+  --sans: "Helvetica Neue", Helvetica, Arial, "Liberation Sans", sans-serif;
+  --mono: Menlo, Consolas, "Liberation Mono", "DejaVu Sans Mono", monospace;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -2094,13 +2081,12 @@ html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 body {
   font-family: var(--sans);
   font-size: 11pt;
-  line-height: 1.55;
-  color: var(--ink-2);
+  line-height: 1.45;
+  color: var(--ink);
   background: #fff;
-  max-width: 7.1in;
+  max-width: 8.5in;
   margin: 0 auto;
-  padding: 0.75in 0.7in 0.9in;
-  text-wrap: pretty;
+  padding: 0.6in 0.75in 1in;
 }
 @media print { body { max-width: none; padding: 0; } }
 
@@ -2110,65 +2096,61 @@ a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
 a:hover { color: var(--ink-4); }
 .break { overflow-wrap: anywhere; }
 .nowrap { white-space: nowrap; }
-.fine { font-size: 9.5pt; line-height: 1.5; color: var(--ink-3); margin-top: 10pt; }
+.fine { font-size: 9.5pt; line-height: 1.45; color: var(--ink-3); margin-top: 8pt; }
 em { font-style: italic; }
-strong, .strong { font-weight: 650; color: var(--ink); }
+strong, .strong { font-weight: 700; color: var(--ink); }
 
 /* Sheets ---------------------------------------------------------------- */
-.sheet { break-after: page; page-break-after: always; }
-.sheet:last-of-type { break-after: auto; page-break-after: auto; }
-.exhibit { break-inside: auto; }
-
-/* On screen the page breaks are invisible, so sections would otherwise run
-   together with nothing between them. Separate them with a rule and space, and
-   give the document room to breathe at the end — print keeps its own geometry. */
+/* Text sections flow one after another; only an exhibit starts a new page,
+   because its plate is sized to a sheet. */
+.sheet { margin-top: 26pt; }
+.sheet:first-of-type { margin-top: 0; }
+.exhibit { break-before: page; page-break-before: always; break-inside: auto; }
 @media screen {
-  .sheet + .sheet { border-top: 1px solid var(--rule); margin-top: 34pt; padding-top: 30pt; }
   body { padding-bottom: 3rem; }
-  .running { margin-top: 34pt; }
 }
 
 /* Cover ----------------------------------------------------------------- */
-.wordmark { display: flex; justify-content: space-between; align-items: baseline; }
-.wordmark-name { font-size: 12pt; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink); }
-.wordmark-kind { font-family: var(--mono); font-size: 8pt; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
-.rule-heavy { height: 3px; background: var(--ink); margin: 9pt 0 24pt; }
-.rule-medium { height: 2px; background: var(--ink); margin: 4pt 0 13pt; }
-.rule-medium.tight { margin: 10pt 0 0; }
-.rule-top { border-top: 1px solid var(--ink); }
-.eyebrow { font-size: 7.5pt; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); margin-bottom: 7pt; }
-.eyebrow.spaced { margin-top: 22pt; }
-.case-name { font-size: 25pt; line-height: 1.15; font-weight: 700; letter-spacing: -0.02em; color: var(--ink); }
-.case-desc { font-size: 11.5pt; line-height: 1.5; color: var(--ink-3); margin-top: 10pt; max-width: 58ch; }
+.wordmark { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid var(--ink); padding-bottom: 5pt; }
+.wordmark-name { font-size: 11pt; font-weight: 700; color: var(--ink); }
+.wordmark-kind { font-size: 10pt; color: var(--ink-3); }
+.rule-heavy { height: 0; margin: 0 0 16pt; }
+.rule-medium { height: 1px; background: var(--rule); margin: 4pt 0 10pt; }
+.rule-medium.tight { margin: 8pt 0 0; }
+.rule-top { border-top: 1px solid var(--rule); }
+.eyebrow { font-size: 10pt; font-weight: 700; color: var(--ink); margin-bottom: 4pt; }
+.eyebrow.spaced { margin-top: 18pt; }
+.case-name { font-size: 18pt; line-height: 1.25; font-weight: 700; color: var(--ink); }
+.case-desc { font-size: 11pt; line-height: 1.45; color: var(--ink-3); margin-top: 6pt; }
 
-.field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 30pt; }
-.field { border-bottom: 1px solid var(--hair); padding: 8pt 0; min-width: 0; }
+.field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24pt; }
+.field { border-bottom: 1px solid var(--hair); padding: 6pt 0; min-width: 0; }
 .field.wide { grid-column: 1 / -1; }
-.field-label { font-size: 7pt; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
-.field-value { font-size: 10.5pt; line-height: 1.4; color: var(--ink); margin-top: 3pt; overflow-wrap: anywhere; }
-.field-value .sub { display: block; font-size: 9pt; line-height: 1.45; color: var(--ink-4); margin-top: 2pt; }
+.field-label { font-size: 9pt; color: var(--muted); }
+.field-value { font-size: 10.5pt; line-height: 1.4; color: var(--ink); margin-top: 2pt; overflow-wrap: anywhere; }
+.field-value .sub { display: block; font-size: 9pt; line-height: 1.4; color: var(--ink-4); margin-top: 2pt; }
 
-.attest-box { border: 1px solid var(--ink); padding: 12pt 13pt; margin-top: 22pt; }
-.box-title { font-size: 7.5pt; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink); }
-.tally { display: flex; flex-wrap: wrap; gap: 20pt; margin-top: 9pt; }
-.tally-value { font-size: 17pt; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
-.tally-label { font-size: 8pt; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-4); margin-top: 1pt; }
-.box-note { font-size: 9pt; line-height: 1.5; color: var(--ink-3); border-top: 1px solid var(--hair); margin-top: 10pt; padding-top: 8pt; }
+.attest-box { border: 1px solid var(--rule); padding: 10pt 12pt; margin-top: 18pt; }
+.box-title { font-size: 10pt; font-weight: 700; color: var(--ink); }
+.tally { display: flex; flex-wrap: wrap; gap: 20pt; margin-top: 8pt; }
+.tally-value { font-size: 12pt; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+.tally-label { font-size: 9pt; color: var(--ink-4); margin-top: 1pt; }
+.box-note { font-size: 9.5pt; line-height: 1.45; color: var(--ink-3); border-top: 1px solid var(--hair); margin-top: 8pt; padding-top: 6pt; }
 
 /* Headings & prose ------------------------------------------------------ */
-h2 { font-size: 15pt; font-weight: 700; letter-spacing: -0.01em; color: var(--ink); }
-.sheet > p { margin-top: 9pt; }
-.micro-heading { font-size: 7pt; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin-top: 15pt; margin-bottom: 5pt; }
+h2 { font-size: 14pt; font-weight: 700; color: var(--ink); }
+.sheet > p { margin-top: 8pt; }
+.micro-heading { font-size: 9.5pt; font-weight: 700; color: var(--ink); margin-top: 12pt; margin-bottom: 4pt; }
 
 /* Contents -------------------------------------------------------------- */
 .toc { list-style: none; }
-.toc-row { display: flex; align-items: baseline; gap: 8pt; padding: 6pt 0; border-bottom: 1px solid var(--wash); }
+.toc-row { display: flex; align-items: baseline; gap: 8pt; padding: 4pt 0; border-bottom: 1px solid var(--hair); }
 .toc-label { font-size: 10.5pt; color: var(--ink); }
 
 /* Scope ----------------------------------------------------------------- */
-.scope-row { display: grid; grid-template-columns: 1.15in 1fr; gap: 15pt; padding: 9pt 0; border-bottom: 1px solid var(--hair); break-inside: avoid; }
-.scope-row dt { font-size: 7.5pt; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink); }
-.scope-row dd { font-size: 10.5pt; line-height: 1.5; color: var(--ink-2); }
+.scope-row { display: grid; grid-template-columns: 1.3in 1fr; gap: 14pt; padding: 8pt 0; border-bottom: 1px solid var(--hair); break-inside: avoid; }
+.scope-row dt { font-size: 10pt; font-weight: 700; color: var(--ink); }
+.scope-row dd { font-size: 10.5pt; line-height: 1.45; color: var(--ink-2); }
 
 /* Steps ----------------------------------------------------------------- */
 .steps { list-style: none; counter-reset: step; }
@@ -2176,82 +2158,72 @@ h2 { font-size: 15pt; font-weight: 700; letter-spacing: -0.01em; color: var(--in
    child of a grid container becomes its own grid item — the prose landed in the 20pt counter
    column and wrapped one word per line (#633). Absolute positioning keeps the same 32pt
    indent without making the item a container. */
-.steps > li { counter-increment: step; position: relative; padding: 8pt 0 8pt 32pt; border-bottom: 1px solid var(--hair); break-inside: avoid; font-size: 10.5pt; line-height: 1.5; }
-.steps > li::before { content: counter(step); position: absolute; left: 0; top: 8pt; font-family: var(--mono); font-weight: 700; color: var(--ink); }
+.steps > li { counter-increment: step; position: relative; padding: 7pt 0 7pt 28pt; border-bottom: 1px solid var(--hair); break-inside: avoid; font-size: 10.5pt; line-height: 1.45; }
+.steps > li::before { content: counter(step) "."; position: absolute; left: 0; top: 7pt; font-weight: 700; color: var(--ink); }
 
 /* Notes & alerts (greyscale-safe: weight and rules carry the emphasis) --- */
-.note { border-left: 3px solid var(--ink); padding: 8pt 0 8pt 11pt; margin-top: 13pt; break-inside: avoid; }
-.note-title { font-size: 7.5pt; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink); }
-.note p + p, .note-title + p { font-size: 9.5pt; line-height: 1.5; color: var(--ink-2); margin-top: 4pt; }
-.alert { border: 2px solid var(--ink); padding: 10pt 12pt; margin-top: 13pt; break-inside: avoid; }
-.alert-title { font-size: 8.5pt; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink); }
-.alert p + p { font-size: 9.5pt; line-height: 1.5; margin-top: 5pt; }
+.note { border-left: 2px solid var(--rule); padding: 6pt 0 6pt 10pt; margin-top: 12pt; break-inside: avoid; }
+.note-title { font-size: 10pt; font-weight: 700; color: var(--ink); }
+.note p + p, .note-title + p { font-size: 10pt; line-height: 1.45; color: var(--ink-2); margin-top: 3pt; }
+.alert { border: 1px solid var(--ink); padding: 8pt 10pt; margin-top: 12pt; break-inside: avoid; }
+.alert-title { font-size: 10pt; font-weight: 700; color: var(--ink); }
+.alert p + p { font-size: 10pt; line-height: 1.45; margin-top: 4pt; }
 
 /* Index table ----------------------------------------------------------- */
-table.index { width: 100%; border-collapse: collapse; margin-top: 13pt; }
-table.index th { text-align: left; font-size: 7pt; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-4); padding: 0 6pt 5pt 0; border-bottom: 1.5px solid var(--ink); }
-table.index td { vertical-align: top; padding: 8pt 6pt 8pt 0; border-bottom: 1px solid var(--hair); font-size: 9.5pt; }
+table.index { width: 100%; border-collapse: collapse; margin-top: 12pt; }
+table.index th { text-align: left; font-size: 9.5pt; font-weight: 700; color: var(--ink); padding: 0 6pt 4pt 0; border-bottom: 1px solid var(--ink); }
+table.index td { vertical-align: top; padding: 6pt 6pt 6pt 0; border-bottom: 1px solid var(--hair); font-size: 10pt; }
 table.index th:last-child, table.index td:last-child { padding-right: 0; }
 table.index tr { break-inside: avoid; }
 td.num, th.num { width: 22pt; font-weight: 700; color: var(--ink); }
-.ex-title { display: block; font-size: 10pt; font-weight: 600; color: var(--ink); line-height: 1.3; }
-.ex-url { display: block; font-size: 8pt; color: var(--ink-4); margin-top: 2pt; overflow-wrap: anywhere; }
-.state-primary { display: block; font-size: 8pt; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); }
-.state-secondary { display: block; font-size: 8pt; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-4); margin-top: 2pt; }
+.ex-title { display: block; font-size: 10pt; font-weight: 700; color: var(--ink); line-height: 1.3; }
+.ex-url { display: block; font-size: 9pt; color: var(--ink-4); margin-top: 2pt; overflow-wrap: anywhere; }
+.state-primary { display: block; font-size: 10pt; font-weight: 700; color: var(--ink); }
+.state-secondary { display: block; font-size: 9pt; color: var(--ink-4); margin-top: 2pt; }
 
-.legend { border: 1px solid var(--rule); margin-top: 18pt; break-inside: avoid; }
-.legend .box-title { padding: 8pt 11pt; border-bottom: 1px solid var(--rule); background: var(--wash); }
-.legend-row { display: grid; grid-template-columns: 0.95in 1fr; gap: 12pt; padding: 6pt 11pt; font-size: 9.5pt; line-height: 1.45; }
-.legend-row span:first-child { font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.legend { border: 1px solid var(--rule); margin-top: 16pt; break-inside: avoid; }
+.legend .box-title { padding: 6pt 10pt; border-bottom: 1px solid var(--rule); background: var(--wash); }
+.legend-row { display: grid; grid-template-columns: 1.1in 1fr; gap: 12pt; padding: 5pt 10pt; font-size: 10pt; line-height: 1.4; }
+.legend-row span:first-child { font-weight: 700; }
 
 /* Exhibits -------------------------------------------------------------- */
-.exhibit-head { display: flex; align-items: baseline; gap: 9pt; }
-.exhibit-tag { font-size: 8.5pt; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: #fff; background: var(--ink); padding: 3pt 7pt; }
-.exhibit-of { font-size: 8pt; letter-spacing: 0.06em; color: var(--muted); }
-.exhibit-title { font-size: 16pt; font-weight: 700; line-height: 1.25; letter-spacing: -0.01em; color: var(--ink); margin-top: 9pt; }
-.exhibit-url { font-size: 9.5pt; font-family: var(--mono); line-height: 1.4; color: var(--ink-2); margin-top: 4pt; overflow-wrap: anywhere; }
+.exhibit-head { display: flex; align-items: baseline; gap: 8pt; }
+.exhibit-tag { font-size: 11pt; font-weight: 700; color: var(--ink); }
+.exhibit-of { font-size: 9.5pt; color: var(--muted); }
+.exhibit-title { font-size: 14pt; font-weight: 700; line-height: 1.25; color: var(--ink); margin-top: 6pt; }
+.exhibit-url { font-size: 9.5pt; font-family: var(--mono); line-height: 1.4; color: var(--ink-2); margin-top: 3pt; overflow-wrap: anywhere; }
 
 /* Two-column exhibit plate: metadata rail beside the reproduced image. The
    columns are independent, so a long rail and a tall image each flow without
    clipping the other. min-width:0 on both keeps long digests and URLs from
    forcing the grid wider than the sheet. */
-.plate-grid { display: grid; grid-template-columns: 2.3in 1fr; gap: 0 24pt; margin-top: 14pt; align-items: start; }
+.plate-grid { display: grid; grid-template-columns: 2.3in 1fr; gap: 0 22pt; margin-top: 12pt; align-items: start; }
 .rail, .plate-main { min-width: 0; }
-.rail { border-top: 1px solid var(--ink); }
-.rail .micro-heading { margin-top: 13pt; margin-bottom: 3pt; }
-.rail .micro-heading.first { margin-top: 7pt; }
-.rail-row { border-bottom: 1px solid var(--hair); padding: 5pt 0; }
-.rail-label { font-size: 6.5pt; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
-.rail-value { font-size: 9pt; line-height: 1.4; color: var(--ink); margin-top: 2pt; overflow-wrap: anywhere; }
-.rail-value .sub { display: block; font-size: 8pt; line-height: 1.45; color: var(--ink-4); margin-top: 3pt; }
+.rail { border-top: 1px solid var(--rule); }
+.rail .micro-heading { margin-top: 10pt; margin-bottom: 2pt; }
+.rail .micro-heading.first { margin-top: 6pt; }
+.rail-row { border-bottom: 1px solid var(--hair); padding: 4pt 0; }
+.rail-label { font-size: 8.5pt; color: var(--muted); }
+.rail-value { font-size: 9.5pt; line-height: 1.4; color: var(--ink); margin-top: 1pt; overflow-wrap: anywhere; }
+.rail-value .sub { display: block; font-size: 8.5pt; line-height: 1.4; color: var(--ink-4); margin-top: 2pt; }
 .rail-value .strong { font-size: 9.5pt; }
 .plate-main > .alert:first-child, .plate-main > .plate:first-child { margin-top: 0; }
 
-.plate { margin-top: 14pt; break-inside: avoid; }
-.plate-frame { border: 1px solid var(--ink); background: var(--wash); padding: 7pt; }
+.plate { margin-top: 12pt; break-inside: avoid; }
+.plate-frame { border: 1px solid var(--rule); background: var(--wash); padding: 6pt; }
 .plate-frame img { display: block; width: 100%; height: auto; max-height: 6.4in; object-fit: contain; object-position: top; }
-.plate figcaption { margin-top: 6pt; border-bottom: 1px solid var(--rule); padding-bottom: 6pt; }
-.cap-text { display: block; font-size: 9.5pt; line-height: 1.45; color: var(--ink-2); }
-.cap-meta { display: block; font-size: 8pt; line-height: 1.45; color: var(--ink-4); overflow-wrap: anywhere; margin-top: 3pt; }
+.plate figcaption { margin-top: 5pt; border-bottom: 1px solid var(--hair); padding-bottom: 5pt; }
+.cap-text { display: block; font-size: 9.5pt; line-height: 1.4; color: var(--ink-2); }
+.cap-meta { display: block; font-size: 8.5pt; line-height: 1.4; color: var(--ink-4); overflow-wrap: anywhere; margin-top: 2pt; }
 .legend-block { break-inside: avoid; }
-.pins { padding-left: 16pt; font-size: 9.5pt; line-height: 1.5; }
+.pins { padding-left: 16pt; font-size: 9.5pt; line-height: 1.45; }
 .pins li { margin-top: 3pt; }
 
-/* Signature ------------------------------------------------------------- */
-.tbd { border: 2px dashed var(--muted); padding: 9pt 11pt; margin-top: 13pt; break-inside: avoid; }
-.tbd-title { font-size: 7.5pt; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-3); }
-.tbd p + p { font-size: 9.5pt; line-height: 1.5; color: var(--ink-3); margin-top: 4pt; }
-.sig-grid { display: grid; grid-template-columns: 1fr 1.7in; gap: 32pt; margin-top: 40pt; break-inside: avoid; }
-.sig-line { border-top: 1px solid var(--ink); padding-top: 5pt; }
-.sig-caption { display: block; font-size: 7.5pt; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-4); }
-.sig-name { display: block; font-size: 10pt; color: var(--ink); margin-top: 7pt; }
-
-/* Running footer: position:fixed repeats on every printed page. No page
-   number here — see PDF_FOOTER_TEMPLATE for numbered output. */
-.running { display: flex; justify-content: space-between; gap: 16pt; font-size: 7.5pt; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); border-top: 1px solid var(--hair); padding-top: 7pt; margin-top: 24pt; }
-@media print {
-  .running { position: fixed; bottom: 0; left: 0; right: 0; margin: 0; padding: 5pt 0; background: #fff; }
-}
+/* Document footer, printed once at the end. It is not position:fixed: sections
+   flow across pages now, and a fixed strip would print over whatever text
+   reached the bottom of a page. Per-page numbering comes from the print engine
+   (PDF_FOOTER_TEMPLATE), never from this file. */
+.running { display: flex; justify-content: space-between; gap: 16pt; font-size: 8.5pt; color: var(--muted); border-top: 1px solid var(--hair); padding-top: 5pt; margin-top: 22pt; }
 
 /* Narrow screens ---------------------------------------------------------
    Every multi-column grid above is sized in inches for paper. Below roughly a
@@ -2264,12 +2236,11 @@ td.num, th.num { width: 22pt; font-weight: 700; color: var(--ink); }
   .field-grid, .plate-grid { grid-template-columns: 1fr; }
   .plate-grid { gap: 0; }
   .rail { border-top: none; }
-  .plate-main { margin-top: 16pt; }
+  .plate-main { margin-top: 14pt; }
   .scope-row, .legend-row { grid-template-columns: 1fr; gap: 4pt; }
-  .sig-grid { grid-template-columns: 1fr; gap: 24pt; }
   .tally { gap: 14pt; }
-  .case-name { font-size: 20pt; }
-  .exhibit-title { font-size: 14pt; }
+  .case-name { font-size: 16pt; }
+  .exhibit-title { font-size: 13pt; }
   /* The index table cannot fold, so let it scroll inside its own box rather
      than forcing the whole document to scroll sideways. */
   table.index { display: block; overflow-x: auto; white-space: nowrap; }
@@ -2284,8 +2255,8 @@ td.num, th.num { width: 22pt; font-weight: 700; color: var(--ink); }
  * Hide the in-document .running strip when using this to avoid two footers.
  */
 export const PDF_FOOTER_TEMPLATE = `
-<div style="width:100%;font-family:Arial,Helvetica,sans-serif;font-size:7pt;letter-spacing:0.08em;
-text-transform:uppercase;color:#71717a;padding:0 0.7in;display:flex;justify-content:space-between">
+<div style="width:100%;font-family:Arial,Helvetica,sans-serif;font-size:8pt;color:#666666;
+padding:0 0.75in;display:flex;justify-content:space-between">
   <span class="title"></span>
   <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
 </div>`

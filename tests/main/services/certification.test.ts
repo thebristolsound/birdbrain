@@ -158,7 +158,7 @@ function countReportSignatureRows(report: string, status: keyof typeof REPORT_SI
 // or tripped by wording elsewhere in the certificate.
 function entrySignatureSection(cert: string) {
   const start = cert.indexOf('Entry signatures</h2>')
-  const end = cert.indexOf('Certifier</h2>', start)
+  const end = cert.indexOf('Operator</h2>', start)
   expect(start).toBeGreaterThan(-1)
   expect(end).toBeGreaterThan(start)
   return cert.slice(start, end)
@@ -277,13 +277,17 @@ describe('certification', () => {
     expect(html).toContain('Installation identifier')
   })
 
-  it('includes the lawyer-TBD placeholder marker', async () => {
+  it('carries no legal placeholder, rule citation or signature line (#848)', async () => {
     await ingest(caseId, '<html><body>One</body></html>', 'https://example.com/a', 'Page A')
     const entries = await exportZip()
     const html = entries.get('certification.html')!.toString('utf-8')
 
-    expect(html).toContain('[LEGAL WORDING TO BE SUPPLIED BY COUNSEL]')
-    expect(html).toContain('LAWYER-TBD')
+    expect(html).not.toContain('TO BE SUPPLIED BY COUNSEL')
+    expect(html).not.toContain('LAWYER-TBD')
+    expect(html).not.toContain('FRE 902')
+    expect(html).not.toContain('Certificate of authenticity')
+    expect(html).not.toContain('sig-grid')
+    expect(html).toContain('not a legal declaration')
   })
 
   it('includes the F6 self-asserted identity statement', async () => {

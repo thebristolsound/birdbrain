@@ -32,8 +32,7 @@ const APPROVED_GRID_SELECTORS: Record<string, string> = {
   '.field-grid': 'children are .field divs',
   '.scope-row': 'children are exactly one <dt> and one <dd>',
   '.legend-row': 'children are exactly two <span>s (legendRow())',
-  '.plate-grid': 'children are <aside class="rail"> and the exhibit body',
-  '.sig-grid': 'children are .sig-line divs'
+  '.plate-grid': 'children are <aside class="rail"> and the exhibit body'
 }
 
 /** Rules that declare `display: grid`, including inside @media blocks. */

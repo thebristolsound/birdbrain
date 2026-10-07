@@ -145,40 +145,77 @@ in-process local adapter whose purpose is to bridge a browser extension and a
 desktop application without opening the application's privileged internals to
 the renderer or network.
 
-### High-level diagram description
+### High-level diagram
 
-A diagram should contain the following blocks and arrows:
+```mermaid
+flowchart LR
+  subgraph browser["Chromium browser"]
+    subgraph untrusted["Untrusted web content"]
+      page["Active web page"]
+    end
+    subgraph ext["Birdbrain extension"]
+      cs["Content script"]
+      bg["Background service worker"]
+      popup["Popup"]
+    end
+  end
 
-1. **Chromium browser and Birdbrain extension** on the left. Inside it, show a
-   content script, background service worker, and popup. Draw arrows from the
-   active web page into the content script for page content and visible context.
-2. **Loopback trust boundary** in the center-left. Inside it, place the Hono
-   Capture Server on `127.0.0.1:19845`. Draw an authenticated HTTP arrow from the
-   extension to this block, labeled "MHTML, screenshot, extracted text, headers,
-   metadata, bearer token."
-3. **Electron main process** in the center. Place the Capture Lifecycle, Selector
-   Lifecycle, Case archive/export services, verification core adapters,
-   timestamp worker, background recapture renderer, and integration clients
-   inside it. Draw an arrow from the Capture Server to the Capture Lifecycle.
-4. **Local persistence** below the main process. Split it into SQLite and
-   per-Case filesystem storage. Draw arrows from lifecycle and repository
-   components to SQLite. Draw separate arrows to MHTML, screenshot, text
-   sidecars, timestamp tokens, and `manifest.jsonl`.
-5. **Electron renderer** on the right. Show React, TanStack Router, React Query,
-   and Zustand. Between renderer and main, place the preload/context bridge.
-   Label the bidirectional arrow "typed IPC commands, queries, and events."
-6. **External optional services** above the main process. Include an RFC 3161
-   timestamp authority, Wayback Machine, origin TLS endpoints, and GitHub
-   Releases. Draw outbound-only arrows from their owning main-process services.
-   Label each arrow with the data sent: content hash for the timestamp
-   authority; URL for Wayback and TLS corroboration; version/update traffic for
-   GitHub.
-7. **Evidence consumer** below or to the far right. Draw an export arrow from the
-   main process to an evidence ZIP or `.birdbrain` Case archive, then an arrow
-   into the standalone verifier and a separate `openssl ts -verify` step.
+  subgraph loopback["Loopback boundary"]
+    server["Capture Server (Hono)<br/>127.0.0.1:19845"]
+  end
 
-Visually distinguish three boundaries: untrusted web content, local application
-privilege, and external network services.
+  subgraph local["Local application privilege"]
+    subgraph main["Electron main process"]
+      capture["Capture Lifecycle"]
+      selector["Selector Lifecycle"]
+      archive["Case archive and export"]
+      verifyCore["Verification core adapters"]
+      tsWorker["Timestamp worker"]
+      recapture["Background recapture renderer"]
+      clients["Integration clients"]
+    end
+    preload["Preload context bridge"]
+    subgraph renderer["Electron renderer"]
+      ui["React, TanStack Router,<br/>React Query, Zustand"]
+    end
+    subgraph persistence["Local persistence"]
+      sqlite[("SQLite")]
+      files["Per-Case files: MHTML, screenshot,<br/>text sidecars, timestamp tokens,<br/>manifest.jsonl"]
+    end
+  end
+
+  subgraph external["External network services (optional)"]
+    tsa["RFC 3161 timestamp authority"]
+    wayback["Wayback Machine"]
+    tls["Origin TLS endpoints"]
+    gh["GitHub Releases"]
+  end
+
+  subgraph consumer["Evidence consumer"]
+    pkg["Evidence ZIP or .birdbrain Case archive"]
+    verifier["Standalone verifier"]
+    openssl["openssl ts -verify"]
+  end
+
+  page -->|"page content, visible context"| cs
+  cs --> bg
+  bg -->|"authenticated HTTP: MHTML, screenshot,<br/>extracted text, headers, metadata, bearer token"| server
+  popup --> server
+  server --> capture
+  capture --> sqlite
+  selector --> sqlite
+  capture --> files
+  tsWorker --> files
+  ui <-->|"typed IPC commands, queries, and events"| preload
+  preload <--> main
+  tsWorker -->|"content hash"| tsa
+  clients -->|"URL"| wayback
+  clients -->|"URL"| tls
+  clients -->|"version and update traffic"| gh
+  archive -->|"export"| pkg
+  pkg --> verifier
+  pkg --> openssl
+```
 
 ### Component breakdown
 

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
 import { AddSelectorRow, type SelectorPrefill } from '@renderer/components/signals/AddSelectorRow'
 import { AddTagRow } from '@renderer/components/signals/AddTagRow'
 
@@ -140,6 +140,71 @@ describe('AddSelectorRow', () => {
     expect(screen.getByTestId('add-selector-input').getAttribute('placeholder')).toBe(
       'Add regex selector'
     )
+  })
+
+  // #1754: an invalid regex would be saved and then match nothing.
+  it('refuses an invalid regex with an inline error and keeps the value', () => {
+    const { onAdd, input } = renderSelectorRow()
+
+    fireEvent.click(screen.getByTestId('add-selector-mode'))
+    fireEvent.change(input, { target: { value: '(unclosed' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(onAdd).not.toHaveBeenCalled()
+    expect(input.value).toBe('(unclosed')
+    expect(screen.getByRole('alert').textContent).toMatch(/Not a valid regular expression/)
+    expect(input.getAttribute('aria-invalid')).toBe('true')
+
+    // Editing clears the error, and a fixed pattern goes through.
+    fireEvent.change(input, { target: { value: '(closed)' } })
+    expect(screen.queryByRole('alert')).toBeNull()
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onAdd).toHaveBeenCalledWith('(closed)', true)
+  })
+
+  it('accepts the same characters as exact text', () => {
+    const { onAdd, input } = renderSelectorRow()
+
+    fireEvent.change(input, { target: { value: '(unclosed' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(onAdd).toHaveBeenCalledWith('(unclosed', false)
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  // #1755: folding the drawer on pointer-down moved the list under the pointer,
+  // so the click meant for a row below landed elsewhere.
+  it('keeps the drawer through a click elsewhere and folds it after the release', async () => {
+    const { input } = renderSelectorRow()
+    fireEvent.focus(input)
+    const drawer = () => screen.queryByRole('radiogroup', { name: 'Match mode' })
+    expect(drawer()).toBeTruthy()
+
+    fireEvent.pointerDown(document.body)
+    fireEvent.blur(input)
+    expect(drawer()).toBeTruthy()
+
+    await act(async () => {
+      fireEvent.pointerUp(document.body)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(drawer()).toBeNull()
+  })
+
+  it('stays open when the press ends back in the input', async () => {
+    const { input } = renderSelectorRow()
+    fireEvent.focus(input)
+
+    fireEvent.pointerDown(document.body)
+    fireEvent.blur(input)
+    input.focus()
+    fireEvent.focus(input)
+    await act(async () => {
+      fireEvent.pointerUp(document.body)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    expect(screen.getByRole('radiogroup', { name: 'Match mode' })).toBeTruthy()
   })
 })
 

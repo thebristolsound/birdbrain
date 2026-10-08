@@ -1325,6 +1325,59 @@ describe('ipcHandlers — selectors', () => {
     expect(expectOk<unknown[]>(await invoke(IPC_CHANNELS.SELECTORS_LIST, caseId))).toHaveLength(0)
   })
 
+  // #1754: a regex that does not compile is saved but matches nothing, so the
+  // count would read as "the term is absent". Every write path refuses one.
+  it('refuses an invalid regex on create, bulk create and update, and writes nothing', async () => {
+    const created = await invoke<{ ok: boolean; code?: string; error?: string }>(
+      IPC_CHANNELS.SELECTORS_CREATE,
+      { caseId, pattern: '(unclosed', isRegex: true, origin: 'manual' }
+    )
+    expect(created.ok).toBe(false)
+    expect(created.code).toBe('SELECTOR_PATTERN_INVALID')
+
+    const bulk = await invoke<{ ok: boolean; code?: string }>(IPC_CHANNELS.SELECTORS_BULK_CREATE, {
+      caseId,
+      selectors: [
+        { pattern: 'fine', isRegex: false },
+        { pattern: '[a-', isRegex: true }
+      ]
+    })
+    expect(bulk.ok).toBe(false)
+    expect(bulk.code).toBe('SELECTOR_PATTERN_INVALID')
+    expect(expectOk<unknown[]>(await invoke(IPC_CHANNELS.SELECTORS_LIST, caseId))).toHaveLength(0)
+
+    // The same characters are fine as exact text, and stay fine until regex is
+    // switched on; then the update is refused and the row is unchanged.
+    const exact = expectOk<{ id: string }>(
+      await invoke(IPC_CHANNELS.SELECTORS_CREATE, { caseId, pattern: 'a(b', isRegex: false })
+    )
+    const toggled = await invoke<{ ok: boolean; code?: string }>(IPC_CHANNELS.SELECTORS_UPDATE, {
+      id: exact.id,
+      isRegex: true
+    })
+    expect(toggled.ok).toBe(false)
+    expect(toggled.code).toBe('SELECTOR_PATTERN_INVALID')
+
+    const regex = expectOk<{ id: string }>(
+      await invoke(IPC_CHANNELS.SELECTORS_CREATE, { caseId, pattern: 'ab+', isRegex: true })
+    )
+    const renamed = await invoke<{ ok: boolean; code?: string }>(IPC_CHANNELS.SELECTORS_UPDATE, {
+      id: regex.id,
+      pattern: 'ab(+'
+    })
+    expect(renamed.ok).toBe(false)
+    expect(renamed.code).toBe('SELECTOR_PATTERN_INVALID')
+
+    const stored = expectOk<Array<{ id: string; pattern: string; isRegex: boolean }>>(
+      await invoke(IPC_CHANNELS.SELECTORS_LIST, caseId)
+    )
+    expect(stored.find((s) => s.id === exact.id)).toMatchObject({ pattern: 'a(b', isRegex: false })
+    expect(stored.find((s) => s.id === regex.id)).toMatchObject({ pattern: 'ab+', isRegex: true })
+
+    // A valid change still goes through.
+    expectOk(await invoke(IPC_CHANNELS.SELECTORS_UPDATE, { id: regex.id, pattern: 'ab{2}' }))
+  })
+
   // #829. The channel answers once the pass is scheduled, so the boolean is the
   // whole contract: true for a selector that exists, false for one that does not.
   it('schedules a rescan for a known selector and refuses an unknown id', async () => {
@@ -1589,6 +1642,23 @@ describe('ipcHandlers — settings', () => {
 
     const reset = expectOk<{ operatorName?: string }>(await invoke(IPC_CHANNELS.SETTINGS_RESET))
     expect(reset).toBeDefined()
+  })
+
+  it('reports a refused settings edit as a structured failure (#1522)', async () => {
+    expectOk(await invoke(IPC_CHANNELS.SETTINGS_UPDATE, { tsaUrl: 'https://custom.example/tsr' }))
+    const refused = await invoke(IPC_CHANNELS.SETTINGS_UPDATE, { tsaUrl: 'not a url' })
+    expect(refused).toMatchObject({ ok: false, code: 'INVALID_SETTINGS' })
+    const stored = expectOk<{ tsaUrl: string }>(await invoke(IPC_CHANNELS.SETTINGS_GET))
+    expect(stored.tsaUrl).toBe('https://custom.example/tsr')
+  })
+
+  it('still rejects a settings failure that is not a validation refusal', async () => {
+    const boom = new Error('disk gone')
+    const spy = vi.spyOn(settings, 'updateSettings').mockImplementationOnce(() => {
+      throw boom
+    })
+    await expect(invoke(IPC_CHANNELS.SETTINGS_UPDATE, { theme: 'light' })).rejects.toBe(boom)
+    spy.mockRestore()
   })
 
   it('returns null when the storage-path picker is cancelled and a path otherwise', async () => {

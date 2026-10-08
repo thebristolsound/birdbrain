@@ -8,6 +8,7 @@ import {
 import { Card, CardContent, Input, Label } from '@renderer/components/ui'
 import { cn } from '@renderer/lib/utils'
 import { DEFAULT_TSA_URL } from '@shared/constants'
+import { parseTsaUrl } from '@shared/schemas'
 
 export function OperatorConfig() {
   const { data: identity } = useQuery(identityQueryOptions)
@@ -17,6 +18,7 @@ export function OperatorConfig() {
   const [operatorOrganization, setOperatorOrganization] = useState('')
   const [tsaUrl, setTsaUrl] = useState('')
   const [nameError, setNameError] = useState('')
+  const [tsaError, setTsaError] = useState('')
   const initialized = useRef(false)
   const { update } = useSettingsMutations()
 
@@ -48,9 +50,20 @@ export function OperatorConfig() {
     await update.mutateAsync({ operatorName, operatorRole, operatorOrganization })
   }
 
+  // An invalid address is refused here and by main (#1522), and the typed text
+  // stays so it can be corrected. Clearing the field asks for the default.
   async function saveTsaUrl() {
-    // Fall back to the DigiCert default if the field is cleared.
-    await update.mutateAsync({ tsaUrl: tsaUrl.trim() || DEFAULT_TSA_URL })
+    if (tsaUrl.trim() && parseTsaUrl(tsaUrl) === null) {
+      setTsaError('Not an http:// or https:// address. The saved authority has not changed.')
+      return
+    }
+    try {
+      const saved = await update.mutateAsync({ tsaUrl: tsaUrl.trim() || DEFAULT_TSA_URL })
+      setTsaUrl(saved.tsaUrl)
+      setTsaError('')
+    } catch {
+      setTsaError('The address could not be saved.')
+    }
   }
 
   // Written straight through rather than mirrored into local state: the switch
@@ -188,8 +201,18 @@ export function OperatorConfig() {
               onChange={(e) => setTsaUrl(e.target.value)}
               onBlur={saveTsaUrl}
               placeholder={DEFAULT_TSA_URL}
-              className="border-border bg-surface font-mono text-[11px]"
+              aria-invalid={tsaError ? true : undefined}
+              aria-describedby={tsaError ? 'operator-tsa-error' : undefined}
+              className={cn(
+                'border-border bg-surface font-mono text-[11px]',
+                tsaError && 'border-red-500'
+              )}
             />
+            {tsaError && (
+              <p id="operator-tsa-error" role="alert" className="mt-1 text-[11px] text-red-500">
+                {tsaError}
+              </p>
+            )}
             <p className="mt-1 text-[11px] text-text-muted">
               {tsaEnabled
                 ? 'RFC 3161 timestamp server. Defaults to DigiCert. Each request discloses the capture content hash, this device’s IP address and the time of the request to that authority.'

@@ -173,7 +173,13 @@ describe('Operator card', () => {
   // what declining costs and what it does not.
   describe('trusted-timestamping switch', () => {
     function mountOperator(tsaEnabled: boolean | undefined) {
-      const update = vi.fn().mockResolvedValue({})
+      // Resolves with the merged settings, as settings:update does: the pane
+      // shows the stored address after a save (#1522).
+      const update = vi.fn(async (partial: object) => ({
+        tsaUrl: DEFAULT_TSA_URL,
+        tsaEnabled,
+        ...partial
+      }))
       fakeBridge({
         settings: {
           getIdentity: vi.fn().mockResolvedValue({
@@ -246,6 +252,113 @@ describe('Operator card', () => {
       mountOperator(undefined)
       const toggle = await screen.findByRole('switch', { name: 'Trusted timestamping' })
       await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('true'))
+    })
+  })
+
+  // #1522. An invalid address used to be saved as the default without a word,
+  // moving an operator off the authority they had chosen.
+  describe('Trusted Timestamp Authority field', () => {
+    const CUSTOM = 'https://custom.example/tsr'
+
+    // A bridge that stores what update is given, trimmed as main stores it, so
+    // a remount reads back what a save left behind.
+    function storingBridge(initial: string) {
+      let stored = { tsaUrl: initial, tsaEnabled: true }
+      const update = vi.fn(async (partial: { tsaUrl?: string }) => {
+        stored = { ...stored, ...partial, tsaUrl: partial.tsaUrl?.trim() ?? stored.tsaUrl }
+        return stored
+      })
+      fakeBridge({
+        settings: {
+          getIdentity: vi.fn().mockResolvedValue({
+            operatorName: 'A. Analyst',
+            operatorRole: '',
+            operatorOrganization: '',
+            installationId: 'install-1'
+          }),
+          get: vi.fn(async () => stored),
+          update
+        }
+      })
+      return update
+    }
+
+    async function tsaField() {
+      const field = await screen.findByLabelText('Trusted Timestamp Authority')
+      await waitFor(() => expect((field as HTMLInputElement).value).not.toBe(''))
+      return field as HTMLInputElement
+    }
+
+    it.each(['not a url', 'ftp://example.test/tsa', '  not a url  '])(
+      'refuses %j with an error, sends nothing and keeps the typed text',
+      async (typed) => {
+        const update = storingBridge(CUSTOM)
+        mount(<OperatorConfig />)
+        const field = await tsaField()
+        fireEvent.change(field, { target: { value: typed } })
+        fireEvent.blur(field)
+        const alert = await screen.findByRole('alert')
+        expect(alert.textContent).toBe(
+          'Not an http:// or https:// address. The saved authority has not changed.'
+        )
+        expect(field.getAttribute('aria-invalid')).toBe('true')
+        expect(field.getAttribute('aria-describedby')).toBe(alert.id)
+        expect(field.value).toBe(typed)
+        expect(update).not.toHaveBeenCalled()
+      }
+    )
+
+    it('stores the default for an empty field and shows no error', async () => {
+      const update = storingBridge(CUSTOM)
+      mount(<OperatorConfig />)
+      const field = await tsaField()
+      fireEvent.change(field, { target: { value: '  ' } })
+      fireEvent.blur(field)
+      await waitFor(() => expect(field.value).toBe(DEFAULT_TSA_URL))
+      expect(update).toHaveBeenCalledWith({ tsaUrl: DEFAULT_TSA_URL })
+      expect(screen.queryByRole('alert')).toBeNull()
+    })
+
+    it('shows the stored value after a save and clears an earlier error', async () => {
+      const update = storingBridge(DEFAULT_TSA_URL)
+      mount(<OperatorConfig />)
+      const field = await tsaField()
+      fireEvent.change(field, { target: { value: 'not a url' } })
+      fireEvent.blur(field)
+      await screen.findByRole('alert')
+      fireEvent.change(field, { target: { value: `  ${CUSTOM}  ` } })
+      fireEvent.blur(field)
+      await waitFor(() => expect(field.value).toBe(CUSTOM))
+      expect(update).toHaveBeenCalledWith({ tsaUrl: CUSTOM })
+      expect(screen.queryByRole('alert')).toBeNull()
+      expect(field.getAttribute('aria-invalid')).toBeNull()
+    })
+
+    it('shows the valid authority on reopening after a refused edit', async () => {
+      storingBridge(DEFAULT_TSA_URL)
+      const first = mount(<OperatorConfig />)
+      const field = await tsaField()
+      fireEvent.change(field, { target: { value: CUSTOM } })
+      fireEvent.blur(field)
+      await waitFor(() => expect(field.value).toBe(CUSTOM))
+      fireEvent.change(field, { target: { value: 'not a url' } })
+      fireEvent.blur(field)
+      await screen.findByRole('alert')
+      first.unmount()
+      mount(<OperatorConfig />)
+      await waitFor(async () => expect((await tsaField()).value).toBe(CUSTOM))
+      expect(screen.queryByRole('alert')).toBeNull()
+    })
+
+    it('keeps the typed text and says so when main refuses the save', async () => {
+      const update = storingBridge(CUSTOM)
+      update.mockRejectedValueOnce(new Error('Invalid settings'))
+      mount(<OperatorConfig />)
+      const field = await tsaField()
+      fireEvent.change(field, { target: { value: 'https://other.example/tsr' } })
+      fireEvent.blur(field)
+      expect((await screen.findByRole('alert')).textContent).toBe('The address could not be saved.')
+      expect(field.value).toBe('https://other.example/tsr')
     })
   })
 })

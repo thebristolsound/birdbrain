@@ -105,7 +105,46 @@ async function captureScreenshot(tabId: number): Promise<Blob | undefined> {
   }
 }
 
-async function captureFullPageScreenshot(tabId: number): Promise<Blob | undefined> {
+// The kinds a screenshot path can produce, from most of the page to least.
+// The two full-page helpers fall back down this list rather than fail, so
+// they report what they produced and the caller tells the operator when it
+// is less than what was asked for (#1667).
+type ScreenshotKind = 'scrolling' | 'full-page' | 'viewport' | 'none'
+
+interface ScreenshotResult {
+  blob: Blob | undefined
+  kind: ScreenshotKind
+}
+
+const SCREENSHOT_KIND_RANK: Record<ScreenshotKind, number> = {
+  scrolling: 3,
+  'full-page': 2,
+  viewport: 1,
+  none: 0
+}
+
+const PRODUCED_SCREENSHOT_NOTE: Record<ScreenshotKind, string> = {
+  scrolling: 'scrolling screenshot taken',
+  'full-page': 'full-page screenshot taken',
+  viewport: 'visible part of the page only',
+  none: 'no screenshot taken'
+}
+
+/** What was asked for and what was taken, or undefined when nothing fell back. */
+function screenshotFallbackNote(
+  requested: 'scrolling' | 'full-page',
+  { kind }: ScreenshotResult
+): string | undefined {
+  if (SCREENSHOT_KIND_RANK[kind] >= SCREENSHOT_KIND_RANK[requested]) return undefined
+  return `${requested} screenshot failed; ${PRODUCED_SCREENSHOT_NOTE[kind]}`
+}
+
+async function viewportFallback(tabId: number): Promise<ScreenshotResult> {
+  const blob = await captureScreenshot(tabId)
+  return { blob, kind: blob ? 'viewport' : 'none' }
+}
+
+async function captureFullPageScreenshot(tabId: number): Promise<ScreenshotResult> {
   try {
     const response = await chrome.tabs.sendMessage(tabId, {
       type: 'CAPTURE_FULL_PAGE',
@@ -113,7 +152,7 @@ async function captureFullPageScreenshot(tabId: number): Promise<Blob | undefine
     })
     if (response?.screenshot) {
       const res = await fetch(response.screenshot)
-      return await res.blob()
+      return { blob: await res.blob(), kind: 'full-page' }
     }
     if (response?.suppressionFailed) throw pageNotCleanError(response.error)
     if (response?.error) {
@@ -122,15 +161,15 @@ async function captureFullPageScreenshot(tabId: number): Promise<Blob | undefine
         response.error
       )
     }
-    return captureScreenshot(tabId)
+    return viewportFallback(tabId)
   } catch (err) {
     if (err instanceof CaptureUiSuppressionError) throw err
     console.warn('[Birdbrain] Full-page capture threw, falling back to viewport:', String(err))
-    return captureScreenshot(tabId)
+    return viewportFallback(tabId)
   }
 }
 
-async function captureScrollingPageScreenshot(tabId: number): Promise<Blob | undefined> {
+async function captureScrollingPageScreenshot(tabId: number): Promise<ScreenshotResult> {
   try {
     const response = await chrome.tabs.sendMessage(tabId, {
       type: 'CAPTURE_FULL_PAGE_SCROLLING',
@@ -139,7 +178,7 @@ async function captureScrollingPageScreenshot(tabId: number): Promise<Blob | und
     })
     if (response?.screenshot) {
       const res = await fetch(response.screenshot)
-      return await res.blob()
+      return { blob: await res.blob(), kind: 'scrolling' }
     }
     if (response?.suppressionFailed) throw pageNotCleanError(response.error)
     if (response?.error) {
@@ -796,7 +835,9 @@ async function manualCaptureTab(
             : Promise.resolve(undefined)
         ])
       )
-      const [mhtmlBlob, tab, textContent, screenshot] = frames
+      const [mhtmlBlob, tab, textContent, shot] = frames
+      const fallbackNote =
+        shot && screenshotFallbackNote(scrolling ? 'scrolling' : 'full-page', shot)
 
       // The last capture to finish collecting frames owns the upload toast.
       if (lastOnTab) sendToastWhenCaptureIdle(tabId, { type: 'SHOW_CAPTURE_TOAST' })
@@ -823,7 +864,7 @@ async function manualCaptureTab(
         title: tab.title || url,
         timestamp: new Date().toISOString(),
         textContent,
-        screenshot,
+        screenshot: shot?.blob,
         mhtml: mhtmlBlob,
         browserVersion: getBrowserVersion(),
         userAgent: getUserAgentString(),
@@ -840,9 +881,12 @@ async function manualCaptureTab(
         manifestIndex: result.manifestIndex ?? null
       })
 
-      const toastStatus = result.screenshotStatus === 'dropped' ? 'degraded' : 'success'
+      // A dropped screenshot outranks a fallback: no screenshot of any kind was stored.
       const toastMessage =
-        result.screenshotStatus === 'dropped' ? 'Captured (screenshot too large)' : undefined
+        result.screenshotStatus === 'dropped'
+          ? 'Captured (screenshot too large)'
+          : fallbackNote && `Captured (${fallbackNote})`
+      const toastStatus = toastMessage ? 'degraded' : 'success'
       if (lastOnTab) {
         card = {
           caseId,
@@ -948,15 +992,19 @@ function quoteNoteTitle(pageTitle: string, url: string): string {
   return `Quote - ${pageTitle.trim() || url}`.slice(0, 160)
 }
 
-// The manual path reports a dropped screenshot as a 'degraded' toast. The bar
-// has no toast, so the same fact rides its inline result — without it a
-// capture lands short of a frame and reads as an unqualified success.
+// The manual path reports a dropped screenshot or a screenshot fallback as a
+// 'degraded' toast. The bar has no toast, so the same fact rides its inline
+// result — without it a capture lands short of a frame and reads as an
+// unqualified success. A dropped screenshot wins, as it does on the toast.
 function attachDetail(
   base: string,
-  result: { screenshotStatus: ScreenshotStatus; screenshotWarning?: string }
+  result: { screenshotStatus: ScreenshotStatus; screenshotWarning?: string },
+  fallbackNote?: string
 ): string {
-  if (result.screenshotStatus !== 'dropped') return base
-  return `${base} — ${result.screenshotWarning || 'screenshot too large'}`
+  if (result.screenshotStatus === 'dropped') {
+    return `${base} — ${result.screenshotWarning || 'screenshot too large'}`
+  }
+  return fallbackNote ? `${base} — ${fallbackNote}` : base
 }
 
 /**
@@ -1003,7 +1051,8 @@ async function handleSelectionAction(
   // error here means nothing was created.
   const attach = async (
     payload: AttachCapturePayload,
-    pageTitle: string
+    pageTitle: string,
+    fallbackNote?: string
   ): Promise<SelectionActionResponse> => {
     if (action === 'tag') {
       const result = await applyTagToUrl({
@@ -1015,7 +1064,7 @@ async function handleSelectionAction(
       recordSelectionCapture(tabId, url, result.captured)
       return {
         ok: true,
-        detail: attachDetail(`Tagged "${result.tag.name}"`, result),
+        detail: attachDetail(`Tagged "${result.tag.name}"`, result, fallbackNote),
         captured: result.captured
       }
     }
@@ -1029,7 +1078,7 @@ async function handleSelectionAction(
     recordSelectionCapture(tabId, url, result.captured)
     return {
       ok: true,
-      detail: attachDetail('Quote saved to case notes', result),
+      detail: attachDetail('Quote saved to case notes', result, fallbackNote),
       captured: result.captured
     }
   }
@@ -1071,7 +1120,7 @@ async function handleSelectionAction(
           captureScreenshotsEnabled ? captureFullPageScreenshot(tabId) : Promise.resolve(undefined)
         ])
       )
-      const [mhtmlBlob, tab, textContent, screenshot] = frames
+      const [mhtmlBlob, tab, textContent, shot] = frames
 
       // The frames describe whatever the tab was showing while they were
       // taken, while `url` came from the sender at message time. If the tab
@@ -1101,13 +1150,14 @@ async function handleSelectionAction(
           timestamp: new Date().toISOString(),
           textContent,
           mhtml: mhtmlBlob,
-          screenshot,
+          screenshot: shot?.blob,
           browserVersion: getBrowserVersion(),
           userAgent: getUserAgentString(),
           extensionVersion: getExtensionVersion(),
           ...getResponseFactsForCapture(tabId, url)
         },
-        tab.title || ''
+        tab.title || '',
+        shot && screenshotFallbackNote('full-page', shot)
       )
     })
   } catch (err) {

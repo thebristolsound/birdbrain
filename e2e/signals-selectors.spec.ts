@@ -51,10 +51,10 @@ test.describe('Selectors on the Signals screen', () => {
     await expect(regexRow.getByTestId('signal-count')).toHaveText('1', { timeout: 15000 })
 
     // The rail describes the selected selector and lists where it appears.
-    // The add row's match-mode cards fold away when it loses focus, which moves
-    // the list up. Blur first so the click lands on the row it aims at.
-    await input.blur()
-    await expect(page.getByRole('radiogroup', { name: 'Match mode' })).toBeHidden()
+    // Clicked straight from the focused add row: the match-mode cards under it
+    // fold once the click is done, not before, so the row stays under the
+    // pointer (#1755).
+    await expect(page.getByRole('radiogroup', { name: 'Match mode' })).toBeVisible()
     await acmeRow.getByTestId('signal-name-block').click()
     await expect(acmeRow).toHaveAttribute('aria-selected', 'true')
     const rail = page.getByTestId('signal-rail')
@@ -112,5 +112,39 @@ test.describe('Selectors on the Signals screen', () => {
     await page.getByTestId('delete-selector-confirm').click()
     await expect(acmeRow).toHaveCount(0)
     await expect(regexRow).toBeVisible()
+  })
+
+  test('an invalid regex is refused with an inline error and saves nothing', async ({ page }) => {
+    const caseId = await createCase(page, 'Selectors Invalid Regex E2E')
+    await page.getByRole('button', { name: 'Signals', exact: true }).click()
+    await page.waitForURL(/#\/cases\/.+\/signals/)
+
+    await page.getByTestId('add-selector-mode').click()
+    const input = page.getByTestId('add-selector-input')
+    await input.fill('(unclosed')
+    await input.press('Enter')
+
+    // The error names the problem and the typed value stays for fixing (#1754).
+    await expect(page.getByTestId('add-selector-error')).toContainText(
+      'Not a valid regular expression'
+    )
+    await expect(input).toHaveValue('(unclosed')
+    await expect(page.getByRole('row', { name: '(unclosed', exact: true })).toHaveCount(0)
+    const stored = await page.evaluate(
+      (id) =>
+        (
+          window as unknown as {
+            birdbrain: { selectors: { list: (id: string) => Promise<unknown[]> } }
+          }
+        ).birdbrain.selectors.list(id),
+      caseId
+    )
+    expect(stored).toEqual([])
+
+    // Fixing the pattern clears the error and adds the selector.
+    await input.fill('(closed)')
+    await expect(page.getByTestId('add-selector-error')).toHaveCount(0)
+    await input.press('Enter')
+    await expect(page.getByRole('row', { name: '(closed)', exact: true })).toBeVisible()
   })
 })

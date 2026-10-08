@@ -8,6 +8,7 @@ import {
 } from 'react'
 import { Plus } from 'lucide-react'
 import { parseSelectorInput } from '@renderer/components/signals/signalsModel'
+import { regexPatternError } from '@shared/selectorPattern'
 
 /** A pattern to load into the row, from a selector's Duplicate action. */
 export interface SelectorPrefill {
@@ -48,19 +49,63 @@ export const AddSelectorRow = forwardRef<HTMLInputElement, AddSelectorRowProps>(
     const [value, setValue] = useState('')
     const [regexMode, setRegexMode] = useState(false)
     const [drawerOpen, setDrawerOpen] = useState(false)
+    const [regexError, setRegexError] = useState<string | null>(null)
     const inputRef = useRef<HTMLInputElement>(null)
+    const pointerDownRef = useRef(false)
     useImperativeHandle(ref, () => inputRef.current as HTMLInputElement)
+
+    // Whether a pointer is pressed anywhere, so a blur can tell a click on
+    // something else from a Tab away.
+    useEffect(() => {
+      const down = () => {
+        pointerDownRef.current = true
+      }
+      const up = () => {
+        pointerDownRef.current = false
+      }
+      window.addEventListener('pointerdown', down, true)
+      window.addEventListener('pointerup', up, true)
+      window.addEventListener('pointercancel', up, true)
+      return () => {
+        window.removeEventListener('pointerdown', down, true)
+        window.removeEventListener('pointerup', up, true)
+        window.removeEventListener('pointercancel', up, true)
+      }
+    }, [])
+
+    // A click elsewhere blurs the input on pointer-down. Folding the drawer
+    // then moves the list up under the pointer, and the click lands on
+    // whatever has moved there, or on nothing (#1755). So a blur from a press
+    // waits for the release and the click it produces before folding.
+    function handleBlur() {
+      const fold = () => {
+        if (document.activeElement !== inputRef.current) setDrawerOpen(false)
+      }
+      if (!pointerDownRef.current) {
+        setDrawerOpen(false)
+        return
+      }
+      const settle = () => {
+        window.removeEventListener('pointerup', settle, true)
+        window.removeEventListener('pointercancel', settle, true)
+        setTimeout(fold, 0)
+      }
+      window.addEventListener('pointerup', settle, true)
+      window.addEventListener('pointercancel', settle, true)
+    }
 
     useEffect(() => {
       if (!prefill) return
       setValue(prefill.pattern)
       setRegexMode(prefill.isRegex)
+      setRegexError(null)
       inputRef.current?.focus()
     }, [prefill])
 
     function handleKey(event: KeyboardEvent<HTMLInputElement>) {
       if (event.key === 'Escape') {
         setValue('')
+        setRegexError(null)
         return
       }
       if (event.key === 'ArrowDown') {
@@ -71,6 +116,12 @@ export const AddSelectorRow = forwardRef<HTMLInputElement, AddSelectorRowProps>(
       if (event.key !== 'Enter') return
       const parsed = parseSelectorInput(value, regexMode)
       if (!parsed) return
+      // An invalid regex would be saved and then match nothing (#1754).
+      const invalid = parsed.isRegex ? regexPatternError(parsed.pattern) : null
+      if (invalid) {
+        setRegexError(invalid)
+        return
+      }
       // Cleared but still focused: adding selectors is a typing run, and the
       // design's placeholder says so ("Enter to save and keep typing").
       if (onAdd(parsed.pattern, parsed.isRegex)) setValue('')
@@ -85,18 +136,26 @@ export const AddSelectorRow = forwardRef<HTMLInputElement, AddSelectorRowProps>(
           <input
             ref={inputRef}
             value={value}
-            onChange={(event) => setValue(event.target.value)}
+            onChange={(event) => {
+              setValue(event.target.value)
+              setRegexError(null)
+            }}
             onKeyDown={handleKey}
             onFocus={() => setDrawerOpen(true)}
-            onBlur={() => setDrawerOpen(false)}
+            onBlur={handleBlur}
             aria-label="Add selector"
+            aria-invalid={regexError ? true : undefined}
+            aria-describedby={regexError ? 'add-selector-error' : undefined}
             data-testid="add-selector-input"
             placeholder={regexMode ? 'Add regex selector' : 'Add selector'}
             className="min-w-0 flex-1 border-none bg-transparent font-mono text-xs text-text-primary outline-none"
           />
           <button
             type="button"
-            onClick={() => setRegexMode((v) => !v)}
+            onClick={() => {
+              setRegexMode((v) => !v)
+              setRegexError(null)
+            }}
             title={regexMode ? 'Regex — click for exact text' : 'Exact text — click for regex'}
             data-testid="add-selector-mode"
             className={[
@@ -112,6 +171,17 @@ export const AddSelectorRow = forwardRef<HTMLInputElement, AddSelectorRowProps>(
             Enter ↵
           </kbd>
         </div>
+
+        {regexError && (
+          <p
+            id="add-selector-error"
+            role="alert"
+            data-testid="add-selector-error"
+            className="mt-1.5 text-[11px] text-red-400"
+          >
+            Not a valid regular expression: {regexError}
+          </p>
+        )}
 
         {drawerOpen && (
           <div
@@ -130,6 +200,7 @@ export const AddSelectorRow = forwardRef<HTMLInputElement, AddSelectorRowProps>(
                 onMouseDown={(event) => {
                   event.preventDefault()
                   setRegexMode(card.regex)
+                  setRegexError(null)
                 }}
                 className={[
                   'flex min-w-0 flex-1 items-center gap-2 rounded px-[10px] py-1.5 text-left transition-colors',

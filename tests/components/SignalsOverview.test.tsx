@@ -258,6 +258,37 @@ describe('SignalsOverview', () => {
     await waitFor(() => expect(update).toHaveBeenCalledWith({ id: 's1', isRegex: true }))
   })
 
+  // #1754: switching regex on for text that does not compile as a regex would
+  // save a selector that matches nothing.
+  it('refuses to switch regex on for a pattern that does not compile', async () => {
+    const update = vi.fn(async () => selectors[0])
+    install({
+      selectors: { update, list: vi.fn(async () => [{ ...selectors[0], pattern: 'a(b' }]) }
+    })
+    renderScreen()
+    const row = await screen.findByTestId('signal-row-s1')
+
+    fireEvent.click(within(row).getByText('Aa'))
+
+    expect(update).not.toHaveBeenCalled()
+    expect(String(notifyInfo.mock.calls[0][0])).toMatch(/^‘a\(b’ is not a valid regular expression/)
+  })
+
+  it('refuses to rename a regex selector to a pattern that does not compile', async () => {
+    const update = vi.fn(async () => selectors[1])
+    install({ selectors: { update } })
+    renderScreen()
+    await screen.findByTestId('signal-row-s2')
+
+    fireEvent.doubleClick(screen.getByTestId('signal-row-s2'))
+    const input = screen.getByLabelText('Edit selector pattern')
+    fireEvent.change(input, { target: { value: 'bc1[' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(update).not.toHaveBeenCalled()
+    expect(String(notifyInfo.mock.calls[0][0])).toMatch(/is not a valid regular expression/)
+  })
+
   it('renames a selector by its pattern and a tag by its name', async () => {
     const update = vi.fn(async () => selectors[0])
     const updateTag = vi.fn(async () => tags[0])

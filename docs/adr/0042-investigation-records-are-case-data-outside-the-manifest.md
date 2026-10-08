@@ -155,7 +155,9 @@ stored head are already the record of what changed in the chain.
   as ADR-0023 leaves them, and this record reserves nothing for them.
 - **Not decided here:** whether the Operator's own interactive Case search hides withheld
   Exhibits, and whether the retrieval spec's class-based search exclusion becomes this flag or a
-  fourth meaning of "exclusion." Both are the engine spec's second follow-up.
+  fourth meaning of "exclusion." Both are the engine spec's second follow-up. *Answered by
+  [ADR-0044](0044-case-search-indexes-are-rebuildable-caches-outside-the-manifest.md): Case search
+  shows a withheld Exhibit with a mark, and the class-based search exclusion is withdrawn.*
 
 ## Considered options
 

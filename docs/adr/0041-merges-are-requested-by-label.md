@@ -7,7 +7,8 @@
 Decided by the maintainer on 2026-10-06 in a triage session. Amends
 [ADR-0005](0005-unattended-agents-on-the-evidence-path.md) and
 [ADR-0014](0014-tier-the-evidence-backstop-and-widen-the-dispatch-slot.md) on what "never
-auto-merge" means for an Evidence-Affecting Change. The squash message rule of
+auto-merge" means for an Evidence-Affecting Change, and amends the `main` ruleset that
+[ADR-0008](0008-public-release-decisions.md) selected under Decision 4. The squash message rule of
 [ADR-0022](0022-one-shape-per-posting-surface.md) and the machine account of
 [ADR-0027](0027-agent-prs-are-opened-by-a-machine-account.md) are unchanged. Nothing is built; the
 plan is `docs/plans/2026-10-06-label-to-merge.md`.
@@ -54,11 +55,17 @@ Evidence-Affecting Change is the maintainer's, whoever opened the pull request.
    account still never decides to merge one: the dispatcher does not apply either label.
 5. **The bypass is for emergencies.** `merge.sh` stays as the manual fallback and no longer
    reaches for `--admin` on its own.
+6. **The ruleset does not require signed commits.** Commits from the machine account and from
+   implementer worktrees are unsigned. With the rule in place, GitHub refused to merge their
+   pull requests with every required check green and auto-merge armed, so each one needed the
+   bypass. The maintainer removed the rule on 2026-10-07.
 
 ## Consequences
 
 - Merging is one label on the pull request page, for the maintainer's pull requests, the
   machine account's, and Dependabot's.
+- No rule checks who made a branch commit. Its author is whatever the committing tool recorded,
+  and the `merge` label, not a signature, is the maintainer's mark on what lands.
 - The merge runs as the machine account, so the `push` workflows on `main` (CI, docs, security)
   run as they do today. A merge made with the workflow's own `GITHUB_TOKEN` would not trigger
   them.

@@ -40,9 +40,15 @@ let contextMenuListener: ContextMenuListener | undefined
 const events: string[] = []
 const toasts: Array<{ status?: string; message?: string }> = []
 
-// Per-test control over what each capture path answers
-let fullPageResponse: Record<string, unknown> = { screenshot: 'data:image/png;base64,AAAA' }
-let scrollingResponse: Record<string, unknown> = { screenshot: 'data:image/png;base64,AAAA' }
+// Per-test control over what each capture path answers. Each frame has its
+// own data URL, and the fetch stub turns a URL into a blob of that text, so
+// a test can tell which frame was uploaded.
+const FULL_PAGE_FRAME = 'data:image/png;base64,AAAA'
+const SCROLLING_FRAME = 'data:image/png;base64,SSSS'
+const VIEWPORT_FRAME = 'data:image/png;base64,BBBB'
+let fullPageResponse: Record<string, unknown> = { screenshot: FULL_PAGE_FRAME }
+let scrollingResponse: Record<string, unknown> | 'throw' = { screenshot: SCROLLING_FRAME }
+let viewportFails = false
 let prepareResponse: Record<string, unknown> | 'throw' = { ok: true }
 let executeScriptFails = false
 
@@ -120,7 +126,7 @@ beforeAll(async () => {
   vi.spyOn(console, 'warn').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
 
-  vi.stubGlobal('fetch', async () => ({ blob: async () => new Blob(['png']) }))
+  vi.stubGlobal('fetch', async (url: string) => ({ blob: async () => new Blob([url]) }))
   vi.stubGlobal('chrome', {
     runtime: {
       id: EXTENSION_ID,
@@ -146,7 +152,8 @@ beforeAll(async () => {
       },
       captureVisibleTab: () => {
         events.push('captureVisibleTab')
-        return Promise.resolve('data:image/png;base64,BBBB')
+        if (viewportFails) return Promise.reject(new Error('Tab is not visible'))
+        return Promise.resolve(VIEWPORT_FRAME)
       },
       sendMessage: (
         _tabId: number,
@@ -159,8 +166,11 @@ beforeAll(async () => {
             : Promise.resolve(prepareResponse)
         }
         if (message.type === 'CAPTURE_FULL_PAGE') return Promise.resolve(fullPageResponse)
-        if (message.type === 'CAPTURE_FULL_PAGE_SCROLLING')
-          return Promise.resolve(scrollingResponse)
+        if (message.type === 'CAPTURE_FULL_PAGE_SCROLLING') {
+          return scrollingResponse === 'throw'
+            ? Promise.reject(new Error('Receiving end does not exist'))
+            : Promise.resolve(scrollingResponse)
+        }
         if (message.type === 'CHECK_SELECTORS') return Promise.resolve([])
         if (message.type === 'UPDATE_CAPTURE_TOAST' || message.type === 'SHOW_CAPTURE_TOAST') {
           toasts.push({ status: message.status, message: message.message })
@@ -214,8 +224,9 @@ beforeAll(async () => {
 beforeEach(() => {
   events.length = 0
   toasts.length = 0
-  fullPageResponse = { screenshot: 'data:image/png;base64,AAAA' }
-  scrollingResponse = { screenshot: 'data:image/png;base64,AAAA' }
+  fullPageResponse = { screenshot: FULL_PAGE_FRAME }
+  scrollingResponse = { screenshot: SCROLLING_FRAME }
+  viewportFails = false
   prepareResponse = { ok: true }
   executeScriptFails = false
   vi.mocked(sendMhtmlCapture).mockClear()
@@ -297,5 +308,140 @@ describe('background screenshot paths under suppression (#386)', () => {
     expect(events).not.toContain('saveAsMHTML')
     expect(vi.mocked(sendMhtmlCapture)).not.toHaveBeenCalled()
     expect(toasts.at(-1)?.status).toBe('error')
+  })
+})
+
+// Every field the manual path sends to the app. A fallback changes what the
+// operator is told and nothing the app receives: no field names the kind of
+// screenshot requested or taken (#1667 leaves that to the record-side work).
+const UPLOAD_FIELDS = [
+  'browserVersion',
+  'caseId',
+  'extensionVersion',
+  'mhtml',
+  'screenshot',
+  'source',
+  'textContent',
+  'timestamp',
+  'title',
+  'url',
+  'userAgent'
+]
+
+function uploadedFields(): string[] {
+  const payload = vi.mocked(sendMhtmlCapture).mock.calls.at(-1)?.[0] ?? {}
+  return Object.keys(payload).sort()
+}
+
+async function captureScrolling(): Promise<void> {
+  await contextMenuListener?.({ menuItemId: 'birdbrain-capture-scrolling' }, TAB)
+  await flush()
+}
+
+async function captureFullPage(): Promise<void> {
+  dispatch({ type: 'MANUAL_CAPTURE', tabId: TAB.id, caseId: 'case-a' })
+  await flush()
+}
+
+describe('a screenshot fallback is reported to the operator (#1667)', () => {
+  it.each([
+    { name: 'a full-page capture with no fallback', run: captureFullPage, frame: FULL_PAGE_FRAME },
+    { name: 'a scrolling capture with no fallback', run: captureScrolling, frame: SCROLLING_FRAME }
+  ])('reports $name as a plain success', async ({ run, frame }) => {
+    await run()
+
+    expect(toasts.at(-1)).toEqual({ status: 'success', message: undefined })
+    expect(await uploadedScreenshot()?.text()).toBe(frame)
+    expect(uploadedFields()).toEqual(UPLOAD_FIELDS)
+  })
+
+  it.each([
+    { name: 'answers with an error', response: { error: 'scroll phase timed out' } },
+    { name: 'throws', response: 'throw' as const }
+  ])(
+    'reports a scrolling capture whose content script $name as degraded to full-page',
+    async ({ response }) => {
+      scrollingResponse = response
+
+      await captureScrolling()
+
+      expect(toasts.at(-1)).toEqual({
+        status: 'degraded',
+        message: 'Captured (scrolling screenshot failed; full-page screenshot taken)'
+      })
+      expect(await uploadedScreenshot()?.text()).toBe(FULL_PAGE_FRAME)
+      expect(uploadedFields()).toEqual(UPLOAD_FIELDS)
+    }
+  )
+
+  it('reports a full-page capture that fell back to the viewport', async () => {
+    fullPageResponse = { error: 'OffscreenCanvas is not available in this context' }
+
+    await captureFullPage()
+
+    expect(toasts.at(-1)).toEqual({
+      status: 'degraded',
+      message: 'Captured (full-page screenshot failed; visible part of the page only)'
+    })
+    expect(await uploadedScreenshot()?.text()).toBe(VIEWPORT_FRAME)
+    expect(uploadedFields()).toEqual(UPLOAD_FIELDS)
+  })
+
+  it('reports the viewport outcome when a scrolling capture falls back twice', async () => {
+    scrollingResponse = { error: 'scroll phase timed out' }
+    fullPageResponse = { error: 'OffscreenCanvas is not available in this context' }
+
+    await captureScrolling()
+
+    expect(toasts.at(-1)).toEqual({
+      status: 'degraded',
+      message: 'Captured (scrolling screenshot failed; visible part of the page only)'
+    })
+    expect(await uploadedScreenshot()?.text()).toBe(VIEWPORT_FRAME)
+    expect(uploadedFields()).toEqual(UPLOAD_FIELDS)
+  })
+
+  it('reports a capture whose every screenshot path failed as having none', async () => {
+    fullPageResponse = { error: 'OffscreenCanvas is not available in this context' }
+    viewportFails = true
+
+    await captureFullPage()
+
+    expect(toasts.at(-1)).toEqual({
+      status: 'degraded',
+      message: 'Captured (full-page screenshot failed; no screenshot taken)'
+    })
+    expect(uploadedScreenshot()).toBeUndefined()
+    expect(uploadedFields()).toEqual(UPLOAD_FIELDS)
+  })
+
+  it('keeps the dropped-screenshot message when a fallback also happened', async () => {
+    scrollingResponse = { error: 'scroll phase timed out' }
+    vi.mocked(sendMhtmlCapture).mockResolvedValueOnce({
+      ...UPLOAD_RESULT,
+      screenshotStatus: 'dropped'
+    })
+
+    await captureScrolling()
+
+    expect(toasts.at(-1)).toEqual({
+      status: 'degraded',
+      message: 'Captured (screenshot too large)'
+    })
+    expect(await uploadedScreenshot()?.text()).toBe(FULL_PAGE_FRAME)
+    expect(uploadedFields()).toEqual(UPLOAD_FIELDS)
+  })
+
+  it('fails the capture rather than report a fallback when its frame cannot be cleared', async () => {
+    scrollingResponse = { error: 'scroll phase timed out' }
+    fullPageResponse = { error: 'detached host', suppressionFailed: true }
+
+    await captureScrolling()
+
+    expect(vi.mocked(sendMhtmlCapture)).not.toHaveBeenCalled()
+    expect(toasts.at(-1)).toEqual({
+      status: 'error',
+      message: 'Capture aborted: Birdbrain UI could not be removed from the page'
+    })
   })
 })

@@ -46,6 +46,8 @@ const events: string[] = []
 
 let prepareResponse: Record<string, unknown> = { ok: true }
 let mhtmlFails = false
+const FULL_PAGE_SHOT = { screenshot: 'data:image/png;base64,AAAA' }
+let fullPageResponse: Record<string, unknown> = FULL_PAGE_SHOT
 // What chrome.tabs.get answers once the frames are in — the navigation cases
 // re-point it so the collected bytes belong to a page other than the sender's.
 let tabAfterFrames: typeof TAB = TAB
@@ -176,9 +178,7 @@ beforeAll(async () => {
       sendMessage: (_tabId: number, message: { type: string }) => {
         events.push(message.type)
         if (message.type === 'PREPARE_FOR_CAPTURE') return Promise.resolve(prepareResponse)
-        if (message.type === 'CAPTURE_FULL_PAGE') {
-          return Promise.resolve({ screenshot: 'data:image/png;base64,AAAA' })
-        }
+        if (message.type === 'CAPTURE_FULL_PAGE') return Promise.resolve(fullPageResponse)
         if (message.type === 'CHECK_SELECTORS') return Promise.resolve([])
         return Promise.resolve(undefined)
       }
@@ -219,6 +219,7 @@ beforeEach(() => {
   events.length = 0
   prepareResponse = { ok: true }
   mhtmlFails = false
+  fullPageResponse = FULL_PAGE_SHOT
   tabAfterFrames = TAB
   tabGetQueue = []
   vi.mocked(createSelector).mockClear()
@@ -430,6 +431,42 @@ describe('SELECTION_ACTION: tag and quote ride the #392 attach endpoints', () =>
     expect(response).toEqual({
       ok: true,
       detail: 'Tagged "evil-example-com" — Screenshot too large (12 MB); capture stored without it',
+      captured: true
+    })
+  })
+
+  it('says so inline when the full-page screenshot fell back to the visible part (#1667)', async () => {
+    fullPageResponse = { error: 'OffscreenCanvas is not available in this context' }
+
+    const response = (await dispatchWithResponse({
+      type: 'SELECTION_ACTION',
+      action: 'quote',
+      text: 'evil@example.com'
+    })) as SelectionActionResponse
+
+    expect(response).toEqual({
+      ok: true,
+      detail:
+        'Quote saved to case notes — full-page screenshot failed; visible part of the page only',
+      captured: true
+    })
+    expect(events).toContain('captureVisibleTab')
+    expect(vi.mocked(createNoteOnUrl).mock.calls[0][0].payload.screenshot).toBeInstanceOf(Blob)
+  })
+
+  it('keeps the dropped-screenshot detail when a fallback also happened (#1667)', async () => {
+    fullPageResponse = { error: 'OffscreenCanvas is not available in this context' }
+    vi.mocked(applyTagToUrl).mockResolvedValueOnce({ ...TAG_RESULT, screenshotStatus: 'dropped' })
+
+    const response = (await dispatchWithResponse({
+      type: 'SELECTION_ACTION',
+      action: 'tag',
+      text: 'evil@example.com'
+    })) as SelectionActionResponse
+
+    expect(response).toEqual({
+      ok: true,
+      detail: 'Tagged "evil-example-com" — screenshot too large',
       captured: true
     })
   })

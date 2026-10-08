@@ -63,7 +63,11 @@ fi
 # 3. Failure streaks. Only scheduled runs count: a supervised workflow_dispatch
 #    fire is someone already looking. Idle dispatch fires exit green at the
 #    pre-gate, so a streak here is a fire that had work and could not do it.
+#    A workflow the owner disabled (the paused doc curator) is skipped: its
+#    old streak is a known, chosen state, not a regression.
 for wf in "${WORKFLOWS[@]}"; do
+  state="$(gh api "repos/$R/actions/workflows/$wf" --jq .state 2>/dev/null || echo unknown)"
+  [ "$state" = disabled_manually ] && continue
   runs="$(gh api "repos/$R/actions/workflows/$wf/runs?event=schedule&status=completed&per_page=50" \
     --jq '[.workflow_runs[] | {conclusion, created_at}]' 2>/dev/null || echo '[]')"
   total="$(jq 'length' <<< "$runs")"

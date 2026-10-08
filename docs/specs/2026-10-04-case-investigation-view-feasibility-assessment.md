@@ -304,3 +304,29 @@ distinguishing detail on same-name Subjects (7); a tab under the Subject for a s
 Joint (8); a path as haloed Joints plus a sentence, never a line (9); a double rule with both
 Member Codes (10, extended by state 12); "proposed by" in one place for the base layer and a
 provider (11); and own identifiers in Settings beside Personas (12).
+
+## Revision received 2026-10-06
+
+The designer revised the mock against this assessment. The accepted revision is
+[`docs/design-handoff/2026-10-06-case-investigation-view/`](../design-handoff/2026-10-06-case-investigation-view/),
+and it supersedes the 2026-10-04 bundle. Engineering read the revised source against the
+Modify items above and against
+[ADR-0042](../adr/0042-investigation-records-are-case-data-outside-the-manifest.md), but did
+not click through the prototype in a browser.
+
+An earlier revision that day left three gaps, which the accepted revision closes:
+
+- **Decisions on Joints the run did not create.** Each Joint now records the run that created
+  it, and a decision on a Joint from another run puts the shown run out of date, as ADR-0042
+  requires.
+- **Adding an own identifier.** Adding an identifier in Settings now puts the run out of date,
+  as removing one already did (S9).
+- **The README rules.** The README's rule on which changes put a run out of date now matches
+  ADR-0042, and its token names, model placeholder and narrow-window width match the prototype.
+
+Two differences remain, and the build follows ADR-0042 and state 13 rather than the mock:
+
+- Editing a Note outside the Investigate section leaves the shown run current in the prototype.
+  ADR-0042 lists a changed Note among the changes that put a run out of date.
+- The reference drawings in `Case Investigation.dc.html` still name a specific local model. The
+  live prototype uses `Local model (placeholder)`.

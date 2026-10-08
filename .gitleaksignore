@@ -95,3 +95,10 @@ fc4a365e1be2cc7f7b4134e4084ae97c47c5cc68:docs/design-handoff/2026-09-14-birdbrai
 # line is sample page text for a fictional phishing kit ("Session token:
 # nj_..."), invented for the mock. It is not a real credential.
 8f8832e004d9a8202f6eb411b9c12b6fc7adb2a2:docs/design-handoff/2026-10-04-case-investigation-view/Birdbrain.dc.html:generic-api-key:7223
+#
+# The revised case investigation bundle (PR #1762) carries the same fictional
+# "Session token: nj_..." page text, a mock value, not a credential.
+6d84fd822296ddd3e2f979bdecf08246a9945468:docs/design-handoff/2026-10-06-case-investigation-view/Birdbrain.dc.html:generic-api-key:7343
+#
+# The squash merge of PR #1762 onto main re-tripped the same mock line.
+6edd186bb6f828660cf947ce189041f31ed3429c:docs/design-handoff/2026-10-06-case-investigation-view/Birdbrain.dc.html:generic-api-key:7343

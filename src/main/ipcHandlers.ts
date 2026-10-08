@@ -4,6 +4,7 @@ import { MAX_BATCH_CAPTURE_IDS } from '@shared/constants'
 import { safeFilename } from '@shared/safeFilename'
 import { MENTION_TARGET_TYPES } from '@shared/noteDoc'
 import { validateIgnorePattern } from '@shared/urlPatterns'
+import { regexPatternError } from '@shared/selectorPattern'
 import type {
   CreateCaseParams,
   UpdateCaseParams,
@@ -606,6 +607,18 @@ export function registerIpcHandlers(deps: {
   })
 
   // Selectors
+  // A regex that does not compile matches nothing (safeRegexTest swallows the
+  // SyntaxError), so saving one would report the term as absent (#1754).
+  function refuseInvalidRegex(pattern: string, isRegex: boolean | undefined): void {
+    if (!isRegex) return
+    const reason = regexPatternError(pattern)
+    if (reason) {
+      throw new IpcFailure(
+        `‘${pattern}’ is not a valid regular expression: ${reason}`,
+        'SELECTOR_PATTERN_INVALID'
+      )
+    }
+  }
   handle(IPC_CHANNELS.SELECTORS_LIST, (_, caseId: string) => selectorRepo.listSelectors(caseId))
   handle(IPC_CHANNELS.SELECTORS_GET, (_, id: string) => selectorRepo.getSelector(id))
   handle(IPC_CHANNELS.SELECTORS_CREATE, (_, params: CreateSelectorParams) => {
@@ -615,14 +628,24 @@ export function registerIpcHandlers(deps: {
     if (typeof params?.pattern !== 'string' || params.pattern.trim() === '') {
       throw new IpcFailure('A selector needs a pattern', 'SELECTOR_PATTERN_EMPTY')
     }
+    refuseInvalidRegex(params.pattern, params.isRegex)
     return selectorLifecycle.createSelector(params)
   })
-  handle(IPC_CHANNELS.SELECTORS_BULK_CREATE, (_, params: BulkCreateSelectorsParams) =>
-    selectorLifecycle.bulkCreateSelectors(params)
-  )
-  handle(IPC_CHANNELS.SELECTORS_UPDATE, (_, params: UpdateSelectorParams) =>
-    selectorLifecycle.updateSelector(params)
-  )
+  handle(IPC_CHANNELS.SELECTORS_BULK_CREATE, (_, params: BulkCreateSelectorsParams) => {
+    for (const selector of params?.selectors ?? []) {
+      refuseInvalidRegex(selector.pattern, selector.isRegex)
+    }
+    return selectorLifecycle.bulkCreateSelectors(params)
+  })
+  handle(IPC_CHANNELS.SELECTORS_UPDATE, (_, params: UpdateSelectorParams) => {
+    // Checked against the result of the update, not the payload alone: turning
+    // regex on for an exact-text pattern such as 'a(b' sends no pattern at all.
+    const existing = params?.id ? selectorRepo.getSelector(params.id) : undefined
+    if (existing && (params.pattern !== undefined || params.isRegex !== undefined)) {
+      refuseInvalidRegex(params.pattern ?? existing.pattern, params.isRegex ?? existing.isRegex)
+    }
+    return selectorLifecycle.updateSelector(params)
+  })
   handle(IPC_CHANNELS.SELECTORS_RESCAN, (_, id: string) => selectorLifecycle.rescanSelector(id))
   handle(IPC_CHANNELS.SELECTORS_DELETE, (_, id: string) => selectorRepo.deleteSelector(id))
   handle(IPC_CHANNELS.SELECTORS_LIST_ACTIVE, () => {
@@ -944,7 +967,15 @@ export function registerIpcHandlers(deps: {
   // Settings
   handle(IPC_CHANNELS.SETTINGS_GET, () => settings.getSettings())
   handle(IPC_CHANNELS.SETTINGS_UPDATE, (_, partial: Partial<BirdbrainSettings>) => {
-    const updated = settings.updateSettings(partial)
+    let updated: BirdbrainSettings
+    try {
+      updated = settings.updateSettings(partial)
+    } catch (err) {
+      if (err instanceof settings.InvalidSettingsError) {
+        throw new IpcFailure(err.message, 'INVALID_SETTINGS')
+      }
+      throw err
+    }
     // A channel switch or auto-check toggle must reconfigure the live updater.
     updaterService.applySettingsChange(partial)
     return updated

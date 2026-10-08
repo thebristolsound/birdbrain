@@ -24,6 +24,7 @@ import {
 } from '@renderer/lib/api/tags'
 import { queryKeys } from '@renderer/lib/api/keys'
 import { notify } from '@renderer/lib/notify'
+import { regexPatternError } from '@shared/selectorPattern'
 import { useAppStore } from '@renderer/stores/appStore'
 import { CreateSelectorCard } from '@renderer/components/selectors/CreateSelectorCard'
 import { AutoCaptureCard } from '@renderer/components/signals/AutoCaptureCard'
@@ -209,7 +210,18 @@ export function SignalsOverview() {
     return true
   }
 
+  // A regex that does not compile is saved but matches nothing, which reads as
+  // "the term is absent" (#1754). The add row shows its own inline error; the
+  // row's rename and regex chip land here.
+  function refuseInvalidRegex(pattern: string): boolean {
+    const reason = regexPatternError(pattern)
+    if (!reason) return false
+    notify.info(`‘${pattern}’ is not a valid regular expression: ${reason}`)
+    return true
+  }
+
   async function handleRenameSelector(signal: Signal, value: string) {
+    if (signal.isRegex && refuseInvalidRegex(value)) return
     if (refuseDuplicateSelector(value, signal.isRegex, signal.id)) return
     await updateSelector({ id: signal.id, pattern: value })
     refreshSelectors()
@@ -333,6 +345,7 @@ export function SignalsOverview() {
         }}
         onToggleRegex={() => {
           if (signal.kind !== 'selector') return
+          if (!signal.isRegex && refuseInvalidRegex(signal.sub)) return
           void updateSelector({ id: signal.id, isRegex: !signal.isRegex }).then(refreshSelectors)
         }}
         onRename={(value) => {

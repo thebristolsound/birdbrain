@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="_ds/birdbrain-ui-9632b0b0-024d-4a3c-94db-688afdd4768f/fonts/fonts.css">
+  <link rel="stylesheet" href="_ds/birdbrain-ui-9632b0b0-024d-4a3c-94db-688afdd4768f/_ds_bundle.css">
+  <link rel="stylesheet" href="_ds/birdbrain-ui-9632b0b0-024d-4a3c-94db-688afdd4768f/styles.css">
+  <style>
+    html,body{margin:0;padding:0;}
+    body{background:var(--color-canvas);}
+    a{color:var(--color-accent);text-decoration:none;}
+    a:hover{color:var(--color-accent-hover);}
+    :root{--bb-ok:#047857;--bb-warn:#b45309;--bb-alert:#dc2626;--m1:#0284c7;--m2:#b45309;}
+    html.dark{--bb-ok:#34d399;--bb-warn:#fbbf24;--bb-alert:#f87171;--m1:#38bdf8;--m2:#fbbf24;}
+  </style>
+</helmet>
+
+<section style="padding:32px 40px 48px;font-family:var(--font-body);color:var(--color-text-primary);min-width:1280px;border-bottom:1px solid var(--color-border)">
+  <div style="max-width:880px;margin-bottom:24px">
+    <div style="font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-faint)">Birdbrain · design mock · 2026-10-04 · turn 2</div>
+    <h1 style="margin:6px 0 8px;font-family:var(--font-display);font-size:22px;font-weight:800;letter-spacing:-0.02em">Case investigation view · surfaces and states</h1>
+    <p style="margin:0 0 10px;font-size:12px;line-height:1.6;color:var(--color-text-secondary);text-wrap:pretty">Direction <a href="#1a">1a</a> with the Joint list beside it is the pick: the map reads as a map, and the list under it is the keyboard and screen-reader equivalent (decision 26). The live version is the <strong style="color:var(--color-text-primary)">Investigate</strong> section of <a href="Birdbrain.dc.html">Birdbrain.dc.html</a> (sixth sidebar item, after Signals): setup → run → map and list → Joint detail → source inspector, with accept, reject, add, dismiss, undo, Source Class, Withheld from analysis, copy marks, and path picking working. Tweaks there switch on the AI layer and the narrow-window tabs. Turn 3 carried the states below into the live screen (real interaction where the Case allows it; the <span style="font-family:var(--font-mono)">sharedCase</span> and <span style="font-family:var(--font-mono)">manySubjects</span> tweaks otherwise) and added hover, keyboard, fold, fit-to-pane and label-to-span behaviour to the map. These drawings stay as the reference, first slice first, then AI layer, then later.</p>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 24px;font-size:11px;line-height:1.55;color:var(--color-text-secondary)">
+      <div><strong style="color:var(--color-text-primary)">Q3 · Where it lives.</strong> A sixth Case section, Investigate, between Signals and Data. The view is Case-scoped and stateful enough to deserve its own entry; Notes and Joint detail reach it with "Find material" actions.</div>
+      <div><strong style="color:var(--color-text-primary)">Q4 · Tabs below 1150px.</strong> Three panes need 500 + 340 + about 320 for detail. Under 1150 the panes become Joints · Joint detail · Source tabs; the selected Joint and Exhibit carry across.</div>
+      <div><strong style="color:var(--color-text-primary)">Q5 · Two axes.</strong> Text axis as a mono chip (<span style="font-family:var(--font-mono);border:1px solid var(--color-border-strong);border-radius:3px;padding:0 4px">present</span> / absent / cannot-check), reading as italic prose ("reads as supports"). Different type, different grammar, so absent + supports reads as a paraphrase.</div>
+      <div><strong style="color:var(--color-text-primary)">Q6 · Strength without a grade.</strong> One sentence of counts, always in the same order; the weak mark is a bordered ▵ chip carrying its reason, never a colour.</div>
+      <div><strong style="color:var(--color-text-primary)">Q7, Q8, Q9.</strong> Same-name Subjects carry a distinguishing detail in the kind line. A one-Subject Joint hangs as a tab under its Subject. A path is a haloed set of existing Joints plus a sentence; it is never a line.</div>
+      <div><strong style="color:var(--color-text-primary)">Q10, Q11, Q12.</strong> Contested is a double rule plus both Member Codes with their decisions. AI-proposed Joints carry "proposed by ‹provider · model›" in the same place base-layer Joints carry their rule. Own identifiers live in Settings beside Personas, and each Case shows its synced entries read-only.</div>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+
+    <!-- 2a empty case -->
+    <div id="2a" style="width:380px">
+      <div style="display:flex;align-items:center;gap:8px;margin:0 0 8px"><a href="#2a" style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">2a</a><span style="font-size:12px;font-weight:600">State 1 · Empty Case</span><span style="font-size:10px;color:var(--color-text-faint)">first slice</span></div>
+      <div style="background:var(--color-card);border:1px solid var(--color-border);border-radius:6px;padding:28px 20px;text-align:center"><div style="font-family:var(--font-display);font-size:13px;font-weight:700">Nothing to read yet</div><div style="margin-top:4px;font-size:11.5px;line-height:1.5;color:var(--color-text-muted)">This Case holds no Exhibits. Capture pages with the extension or import a Case file; a run needs at least one Exhibit it can read.</div></div>
+    </div>
+
+    <!-- 2b no joints found -->
+    <div id="2b" style="width:380px">
+      <div style="display:flex;align-items:center;gap:8px;margin:0 0 8px"><a href="#2b" style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">2b</a><span style="font-size:12px;font-weight:600">State 3 · No Joints found</span><span style="font-size:10px;color:var(--color-text-faint)">first slice</span></div>
+      <div style="background:var(--color-card);border:1px solid var(--color-border);border-radius:6px;padding:14px;font-size:11.5px;line-height:1.5"><div style="font-weight:600">The run proposed no Joints</div><div style="margin-top:4px;color:var(--color-text-muted)">62 Exhibits read, 1 withheld. AI analysis is off: this run matched shared identifiers and identical text only. It cannot find a paraphrased retelling or a relation stated only in prose, so an empty result never means there is no connection.</div><div style="margin-top:8px;display:flex;gap:6px"><span style="border:1px solid var(--color-border-strong);border-radius:4px;padding:2px 8px;font-size:11px">Gaps · 4</span><span style="border:1px solid var(--color-border-strong);border-radius:4px;padding:2px 8px;font-size:11px">Start a Joint from a Note claim</span></div></div>
+    </div>
+
+    <!-- 2c cannot-check + hash mismatch -->
+    <div id="2c" style="width:440px">
+      <div style="display:flex;align-items:center;gap:8px;margin:0 0 8px"><a href="#2c" style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">2c</a><span style="font-size:12px;font-weight:600">States 4, 5 · cannot-check · Changed since capture · missing</span><span style="font-size:10px;color:var(--color-text-faint)">first slice</span></div>
+      <div style="display:flex;flex-direction:column;gap:6px;font-size:11.5px;line-height:1.5">
+        <div style="background:var(--color-card);border:1px solid var(--color-border);border-radius:4px;padding:7px 10px"><div style="display:flex;align-items:center;gap:8px"><span style="font-family:var(--font-mono);font-size:10px;border:1px solid var(--color-border-strong);border-radius:3px;padding:0 4px">E-44</span><span style="color:var(--color-text-muted)">original · image alt text</span><span style="flex:1"></span><span style="font-family:var(--font-mono);font-size:10px;border:1px solid var(--color-border-strong);border-radius:3px;padding:0 5px">cannot-check</span><span style="font-style:italic;color:var(--color-text-muted);font-size:10.5px">no reading</span></div><div style="margin-top:2px;color:var(--color-text-muted)">The claimed text sits inside a photographed poster; the run cannot read text in images. Distinct from <span style="font-family:var(--font-mono);font-size:10px">absent</span>, which means the stored text was read and the passage is not there.</div></div>
+        <div style="background:var(--color-card);border:1px dotted var(--color-border-strong);border-radius:4px;padding:7px 10px;color:var(--color-text-muted)"><div style="display:flex;align-items:center;gap:8px"><span style="font-family:var(--font-mono);font-size:10px;border:1px solid var(--color-border-strong);border-radius:3px;padding:0 4px">E-19</span><span>text passage · contributors list</span><span style="flex:1"></span><span style="font-size:10px;font-weight:600;color:var(--bb-alert)">Changed since capture</span></div><div style="margin-top:2px">Stored bytes no longer match the Content Hash. Span unavailable; no preview is shown. "Calloway wrote for the Gazette" lists this span under No longer counted.</div></div>
+        <div style="background:var(--color-card);border:1px dotted var(--color-border-strong);border-radius:4px;padding:7px 10px;color:var(--color-text-muted)"><div style="display:flex;align-items:center;gap:8px"><span style="font-family:var(--font-mono);font-size:10px;border:1px solid var(--color-border-strong);border-radius:3px;padding:0 4px">E-27</span><span>PDF page 4</span><span style="flex:1"></span><span style="font-size:10px;font-weight:600;color:var(--bb-alert)">missing</span></div><div style="margin-top:2px">The stored file is missing. Same treatment: unavailable, never plausible support.</div></div>
+      </div>
+    </div>
+
+    <!-- 2d run basis out of date / invalidated / canceled -->
+    <div id="2d" style="width:520px">
+      <div style="display:flex;align-items:center;gap:8px;margin:0 0 8px"><a href="#2d" style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">2d</a><span style="font-size:12px;font-weight:600">States 2, 10, 15 · canceled · basis out of date · invalidated</span><span style="font-size:10px;color:var(--color-text-faint)">first slice, AI-layer line inline</span></div>
+      <div style="display:flex;flex-direction:column;gap:6px;font-size:11px;line-height:1.5">
+        <div style="display:flex;align-items:center;gap:10px;background:var(--color-card);border:1px solid var(--color-border);border-radius:4px;padding:6px 12px;color:var(--color-text-muted)"><span>Run canceled at 39 of 62 Exhibits. Partial results were discarded; showing run 1.</span></div>
+        <div style="display:flex;align-items:center;gap:10px;background:var(--color-card);border:1px solid var(--color-border);border-radius:4px;padding:6px 12px;color:var(--color-text-muted)"><span>Run canceled at 39 of 62 Exhibits. Partial results were discarded. <span style="color:var(--color-text-primary)">Text had already gone to Anthropic · claude-sonnet-4 (EU); canceling cannot recall it.</span></span><span style="flex:1"></span><span style="font-size:9.5px;color:var(--color-text-faint);white-space:nowrap">AI layer</span></div>
+        <div style="display:flex;align-items:center;gap:10px;background:var(--color-card);border:1px solid var(--color-border);border-radius:4px;padding:6px 12px"><span>The Case changed after this run started (new Exhibit E-61). These results reflect the Case as of 14:02 UTC, 3 October 2026; accepted and rejected Joints stay as they are.</span><span style="flex:1"></span><button style="height:24px;border-radius:4px;border:1px solid var(--color-border-strong);background:transparent;padding:0 9px;font-family:var(--font-body);font-size:11px;color:var(--color-text-primary);white-space:nowrap">Run again</button></div>
+        <div style="display:flex;align-items:center;gap:10px;background:var(--color-card);border:1px solid var(--color-border);border-radius:4px;padding:6px 12px"><span>The Case changed while the run was reading it. The run stopped and reports nothing. Showing run 1.</span><span style="flex:1"></span><button style="height:24px;border-radius:4px;border:1px solid var(--color-border-strong);background:transparent;padding:0 9px;font-family:var(--font-body);font-size:11px;color:var(--color-text-primary);white-space:nowrap">Restart</button></div>
+        <div style="display:flex;align-items:center;gap:10px;background:var(--color-card);border:1px dotted var(--color-border-strong);border-radius:4px;padding:6px 12px"><span style="width:18px;border-top:2px dotted var(--color-text-muted)"></span><span><span style="font-weight:600">Proposed</span> · The Ferryman and Rowan Pike (byline) share an address · <span style="color:var(--color-text-muted)">proposed from the Case as of 14:02 UTC, 3 October 2026; run 2 did not repeat it. Stays until you accept or reject.</span></span></div>
+      </div>
+    </div>
+
+    <!-- 2e withheld + same-name -->
+    <div id="2e" style="width:440px">
+      <div style="display:flex;align-items:center;gap:8px;margin:0 0 8px"><a href="#2e" style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">2e</a><span style="font-size:12px;font-weight:600">States 6, 8 · Withheld Exhibit · same-name Subjects</span><span style="font-size:10px;color:var(--color-text-faint)">first slice</span></div>
+      <div style="display:flex;flex-direction:column;gap:6px;font-size:11.5px;line-height:1.5">
+        <div style="background:var(--color-card);border:1px solid var(--color-border);border-radius:4px;padding:7px 10px"><div style="display:flex;align-items:center;gap:8px"><span style="font-family:var(--font-mono);font-size:10px;border:1px solid var(--color-border-strong);border-radius:3px;padding:0 4px">E-07</span><span>Operator working notes (exported)</span><span style="flex:1"></span><label style="display:flex;align-items:center;gap:6px"><input type="checkbox" checked="{{ true }}" readOnly="{{ true }}" style="margin:0"><span>Withheld from analysis</span></label></div><div style="margin-top:2px;color:var(--color-text-muted)">Your flag, set 28 Sep 2026. Appears in the setup's withheld list and here; never as support or surfaced material. In a Shared Case this line names every member whose flag is set: "withheld by you and MB".</div></div>
+        <div style="background:var(--color-card);border:1px solid var(--color-border);border-radius:4px;padding:7px 10px"><div style="display:flex;gap:6px;margin-bottom:6px"><span style="border:1px dotted var(--color-border-strong);border-radius:6px;padding:4px 8px"><span style="font-weight:600">Rowan Pike</span> <span style="font-size:10px;color:var(--color-text-faint)">person · byline, Gazette</span></span><span style="border:1px dotted var(--color-border-strong);border-radius:6px;padding:4px 8px"><span style="font-weight:600">Rowan Pike</span> <span style="font-size:10px;color:var(--color-text-faint)">person · mail From: header</span></span></div><div style="color:var(--color-text-muted)">Gap entry: "Rowan Pike (byline) and Rowan Pike (mail header) · no Exhibit joins them." E-40's From: header is unreviewed material on each Subject; you choose which it belongs to, or neither. No Joint is proposed from a shared name.</div></div>
+      </div>
+    </div>
+
+    <!-- 2f contested, shared case -->
+    <div id="2f" style="width:520px">
+      <div style="display:flex;align-items:center;gap:8px;margin:0 0 8px"><a href="#2f" style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">2f</a><span style="font-size:12px;font-weight:600">State 12 · Contested Joint (Shared Case)</span><span style="font-size:10px;color:var(--color-text-faint)">first slice</span></div>
+      <div style="background:var(--color-card);border:1px solid var(--color-border);border-radius:6px;padding:12px 14px;font-size:11.5px;line-height:1.5;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:flex-start;gap:10px"><span style="width:22px;flex-shrink:0;margin-top:8px;height:3px;border-top:1px solid var(--color-text-primary);border-bottom:1px solid var(--color-text-primary)"></span><div><div style="font-family:var(--font-display);font-size:14px;font-weight:700"><span>Contested</span> · M. Calloway and Jun Sato are one writer</div><div style="font-size:11px;color:var(--color-text-muted)">Proposed by base layer · shared identifier · Exhibits carry Member Codes (NK-11, MB-04)</div></div></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div style="border:1px solid var(--color-border);border-radius:4px;padding:8px 10px"><div style="display:flex;align-items:center;gap:6px"><span style="height:8px;width:8px;border-radius:9999px;background:var(--color-accent)"></span><span style="font-family:var(--font-mono);font-size:10px;font-weight:600">NK</span><span style="color:var(--color-text-muted)">you</span><span style="flex:1"></span><span style="font-weight:600">Accepted</span></div><div style="margin-top:4px;font-size:10.5px;color:var(--color-text-muted)">3 Oct 2026, 14:11 UTC · your machine's clock</div><div style="margin-top:4px;display:grid;grid-template-columns:76px 1fr;gap:2px 8px;font-size:10.5px"><span style="color:var(--color-text-muted)">Assumptions</span><span>Northline checks bylines.</span><span style="color:var(--color-text-muted)">Confidence</span><span>Fairly sure.</span><span style="color:var(--color-text-muted)">Alternatives</span><span style="color:var(--color-text-faint)">not recorded</span></div></div>
+          <div style="border:1px solid var(--color-border);border-radius:4px;padding:8px 10px"><div style="display:flex;align-items:center;gap:6px"><span style="height:8px;width:8px;border-radius:9999px;background:var(--m2)"></span><span style="font-family:var(--font-mono);font-size:10px;font-weight:600">MB</span><span style="color:var(--color-text-muted)">M. Brandt</span><span style="flex:1"></span><span style="font-weight:600">Rejected</span></div><div style="margin-top:4px;font-size:10.5px;color:var(--color-text-muted)">3 Oct 2026, 15:40 UTC · MB's machine's clock</div><div style="margin-top:4px;font-size:10.5px;color:var(--color-text-muted)">Decisions are grouped by member, never interleaved: the two clocks are not comparable, so the view does not say who decided first.</div></div>
+        </div>
+        <div style="font-size:10.5px;color:var(--color-text-muted)">On the map: double rule, label "Contested · NK accepted · MB rejected". Listed under Gaps → Contested Joints. A proposed Joint is seen only by the member whose run proposed it.</div>
+      </div>
+    </div>
+
+    <!-- 2g unreviewed on accepted (state 11) -->
+    <div id="2g" style="width:440px">
+      <div style="display:flex;align-items:center;gap:8px;margin:0 0 8px"><a href="#2g" style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">2g</a><span style="font-size:12px;font-weight:600">State 11 · Unreviewed material on an accepted Joint</span><span style="font-size:10px;color:var(--color-text-faint)">first slice + AI mark</span></div>
+      <div style="display:flex;flex-direction:column;gap:6px;font-size:11.5px;line-height:1.5">
+        <div style="background:var(--color-card);border:1px solid var(--color-border);border-left:3px solid var(--bb-warn);border-radius:4px;padding:7px 10px"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-family:var(--font-mono);font-size:10px;border:1px solid var(--color-border-strong);border-radius:3px;padding:0 4px">E-52</span><span style="color:var(--color-text-muted)">unclassified · text passage · speaker list</span><span style="flex:1"></span><span style="font-family:var(--font-mono);font-size:10px;border:1px solid var(--color-border-strong);border-radius:3px;padding:0 5px">present</span><span style="font-style:italic;color:var(--color-text-muted);font-size:10.5px">reads as unclear</span></div><div style="margin-top:3px;font-family:var(--font-mono);font-size:10.5px">M. Calloway (Lisbon) · 4 April 2021, 16:00 — in conversation</div><div style="margin-top:2px;color:var(--color-text-muted)">Places Calloway in Lisbon on the day E-11 places Sato in Toronto. The base layer never reads a span as conflicting; only you can. The Joint stays accepted and is listed under Gaps until you add or dismiss this.</div></div>
+        <div style="background:var(--color-card);border:1px solid var(--color-border);border-left:3px solid var(--bb-alert);border-radius:4px;padding:7px 10px"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-family:var(--font-mono);font-size:10px;border:1px solid var(--color-border-strong);border-radius:3px;padding:0 4px">E-52</span><span style="color:var(--color-text-muted)">same span</span><span style="flex:1"></span><span style="font-family:var(--font-mono);font-size:10px;border:1px solid var(--color-border-strong);border-radius:3px;padding:0 5px">present</span><span style="font-size:10.5px;font-weight:600;color:var(--bb-alert)">◆ read as conflicts by Ollama · llama3.1</span></div><div style="margin-top:2px;color:var(--color-text-muted)">AI layer: the stronger mark. Still unreviewed, still a proposed reading; the list row shows "◆ read as conflicting by Ollama · llama3.1".</div><span style="font-size:9.5px;color:var(--color-text-faint)">AI layer</span></div>
+      </div>
+    </div>
+
+    <!-- 2h AI layer on: header + matched facts (state 13) + failed (16) -->
+    <div id="2h" style="width:560px">
+      <div style="display:flex;align-items:center;gap:8px;margin:0 0 8px"><a href="#2h" style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">2h</a><span style="font-size:12px;font-weight:600">States 13, 16 · AI layer on · failed or partial</span><span style="font-size:10px;color:var(--color-text-faint)">AI layer</span></div>
+      <div style="display:flex;flex-direction:column;gap:6px;font-size:11.5px;line-height:1.5">
+        <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:4px;padding:6px 12px;font-size:10px;color:var(--color-text-muted);display:flex;flex-wrap:wrap;gap:4px 14px"><span>62 Exhibits read · 1 withheld</span><span>Sources: stored Case only</span><span>Ollama · llama3.1 (local)</span><span>3,140 pairs screened · 46 compared in full · 120 compared without screening · 310 not compared</span></div>
+        <div style="background:var(--color-card);border:1px solid var(--color-border);border-radius:4px;padding:8px 10px">
+          <div style="display:flex;align-items:center;gap:8px"><span style="width:18px;border-top:2px dotted var(--color-text-muted)"></span><span><span style="font-weight:600">Proposed</span> · Jun Sato and The Ferryman are one writer</span><span style="flex:1"></span><span style="font-size:10px;color:var(--color-text-muted)">proposed by Ollama · llama3.1 · matching story</span></div>
+          <div style="margin-top:6px;font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-faint)">Matched facts</div>
+          <div style="margin-top:4px;display:flex;flex-direction:column;gap:3px">
+            <div style="display:flex;align-items:center;gap:8px;border:1px solid var(--color-border);border-radius:4px;padding:4px 8px"><span style="flex:1">grew up within sight of the Harrow Point ferry</span><span style="font-size:10px;color:var(--color-text-muted)">E-11 · para 3 ↔ E-38 · para 1</span><span style="font-family:var(--font-mono);font-size:10px;border:1px solid var(--color-border-strong);border-radius:3px;padding:0 5px">rare</span><span style="font-size:10.5px;color:var(--color-accent)">Reject pair</span></div>
+            <div style="display:flex;align-items:center;gap:8px;border:1px solid var(--color-border);border-radius:4px;padding:4px 8px"><span style="flex:1">the bell rang twice for the last crossing</span><span style="font-size:10px;color:var(--color-text-muted)">E-11 · para 3 ↔ E-38 · para 1</span><span style="font-family:var(--font-mono);font-size:10px;border:1px solid var(--color-border-strong);border-radius:3px;padding:0 5px">rare</span><span style="font-size:10.5px;color:var(--color-accent)">Reject pair</span></div>
+            <div style="display:flex;align-items:center;gap:8px;border:1px solid var(--color-border);border-radius:4px;padding:4px 8px;color:var(--color-text-faint)"><span style="flex:1;text-decoration:line-through">left school at sixteen</span><span style="font-size:10px">E-11 · para 5 ↔ E-38 · para 2</span><span style="font-family:var(--font-mono);font-size:10px;border:1px solid var(--color-border-strong);border-radius:3px;padding:0 5px">common</span><span style="font-size:10px">rejected by you</span><span style="font-size:10.5px;color:var(--color-accent)">Restore</span></div>
+          </div>
+        </div>
+        <div style="background:var(--color-card);border:1px solid var(--color-border);border-radius:4px;padding:8px 12px"><div style="display:flex;align-items:center;gap:8px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--bb-warn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg><span style="font-weight:600">Ollama · llama3.1 stopped partway</span><span style="flex:1"></span><button style="height:24px;border-radius:4px;border:1px solid var(--color-border-strong);background:transparent;padding:0 9px;font-family:var(--font-body);font-size:11px;color:var(--color-text-primary)">Retry</button></div><div style="margin-top:2px;color:var(--color-text-muted)">Screening finished; comparison stopped after 12 of 46 pairs. The base layer's results below are complete. This run did not finish its AI analysis and is not a finished run that found no AI-proposed Joints. Work is never handed to a hosted provider.</div></div>
+      </div>
+    </div>
+
+    <!-- 2i settings + disclosure (surface 8, state 14) -->
+    <div id="2i" style="width:520px">
+      <div style="display:flex;align-items:center;gap:8px;margin:0 0 8px"><a href="#2i" style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">2i</a><span style="font-size:12px;font-weight:600">Surface 8, state 14 · AI analysis settings · hosted disclosure</span><span style="font-size:10px;color:var(--color-text-faint)">AI layer</span></div>
+      <div style="display:flex;gap:10px;align-items:flex-start">
+        <div style="flex:1;background:var(--color-card);border:1px solid var(--color-border);border-radius:6px;padding:12px;font-size:11.5px;line-height:1.5;display:flex;flex-direction:column;gap:8px">
+          <div style="font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-faint)">Settings · AI analysis · this installation</div>
+          <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" checked="{{ true }}" readOnly="{{ true }}" style="margin:0"><span>Enable AI analysis</span></label>
+          <div style="color:var(--color-text-muted);font-size:10.5px">While off, no AI control appears anywhere in the app. Turning it on sends nothing.</div>
+          <div style="border-top:1px solid var(--color-border);padding-top:8px;display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;gap:8px"><span style="font-weight:600;width:150px;flex-shrink:0">Ollama · llama3.1</span><span style="color:var(--color-text-muted)">local model · text stays on this machine</span></div>
+            <div style="display:flex;gap:8px"><span style="font-weight:600;width:150px;flex-shrink:0">Anthropic · claude-sonnet-4</span><span style="color:var(--color-text-muted)">hosted service · text goes to Anthropic, region EU</span></div>
+          </div>
+          <div style="margin-top:4px;font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-faint)">Case · Operation Nightjar · per provider</div>
+          <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" checked="{{ true }}" readOnly="{{ true }}" style="margin:0"><span>Ollama · llama3.1</span><span style="color:var(--color-text-faint);font-size:10.5px">on for this Case</span></label>
+          <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" readOnly="{{ true }}" style="margin:0"><span>Anthropic · claude-sonnet-4</span><span style="color:var(--color-text-faint);font-size:10.5px">off · default</span></label>
+        </div>
+        <div style="width:230px;background:var(--color-card);border:1px solid var(--color-border);border-radius:8px;box-shadow:var(--shadow-overlay);padding:12px;font-size:11px;line-height:1.5;display:flex;flex-direction:column;gap:6px">
+          <div style="font-family:var(--font-display);font-size:13px;font-weight:700">Turn on Anthropic for this Case?</div>
+          <div style="display:grid;grid-template-columns:62px 1fr;gap:2px 8px;font-size:10.5px"><span style="color:var(--color-text-muted)">Provider</span><span>Anthropic</span><span style="color:var(--color-text-muted)">Model</span><span>claude-sonnet-4 · 2026-05</span><span style="color:var(--color-text-muted)">Region</span><span>EU (Frankfurt)</span><span style="color:var(--color-text-muted)">Receives</span><span>shortlisted passages from eligible Exhibits, the inquiry, Note passages you select; never withheld material</span><span style="color:var(--color-text-muted)">Egress</span><span>proxy · 10.8.0.1</span></div>
+          <div style="color:var(--color-text-muted);font-size:10.5px">Turning on sends nothing. You review the exact text before each run's first request.</div>
+          <div style="display:flex;justify-content:flex-end;gap:6px"><button style="height:26px;border-radius:4px;border:1px solid var(--color-border-strong);background:transparent;padding:0 10px;font-family:var(--font-body);font-size:11px;color:var(--color-text-primary)">Cancel</button><button style="height:26px;border-radius:4px;border:none;background:var(--color-accent);padding:0 10px;font-family:var(--font-body);font-size:11px;font-weight:600;color:#fff">Turn on for this Case</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2j review before sending (state 17) -->
+    <div id="2j" style="width:440px">
+      <div style="display:flex;align-items:center;gap:8px;margin:0 0 8px"><a href="#2j" style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">2j</a><span style="font-size:12px;font-weight:600">State 17 · Review before sending to a hosted provider</span><span style="font-size:10px;color:var(--color-text-faint)">AI layer</span></div>
+      <div style="background:var(--color-card);border:1px solid var(--color-border);border-radius:8px;box-shadow:var(--shadow-overlay);padding:14px;font-size:11.5px;line-height:1.5;display:flex;flex-direction:column;gap:8px">
+        <div style="font-family:var(--font-display);font-size:13px;font-weight:700">This text will leave this machine</div>
+        <div style="font-size:10.5px;color:var(--color-text-muted)">Anthropic · claude-sonnet-4 · EU (Frankfurt) · Egress: proxy. Anthropic sees the request.</div>
+        <div style="border:1px solid var(--color-border);border-radius:4px;padding:6px 8px"><div style="font-size:10px;color:var(--color-text-faint)">Inquiry</div>Are M. Calloway, Jun Sato, and The Ferryman the same writer?</div>
+        <div style="border:1px solid var(--color-border);border-radius:4px;padding:6px 8px"><div style="font-size:10px;color:var(--color-text-faint)">Note passages · 2</div><div style="font-family:var(--font-mono);font-size:10.5px">N-3 · "Calloway and The Ferryman are the same writer."</div><div style="font-family:var(--font-mono);font-size:10.5px">N-5 · "Sato's Toronto interview, 4 April."</div></div>
+        <div style="border:1px solid var(--color-border);border-radius:4px;padding:6px 8px"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:10px;color:var(--color-text-faint)">Shortlisted Exhibit passages · 46</span><span style="flex:1"></span><span style="font-size:10.5px;color:var(--color-accent)">Open list</span></div><div style="font-family:var(--font-mono);font-size:10.5px;color:var(--color-text-muted)">E-11 para 3 · E-38 para 1 · E-17 bio · E-23 header · 42 more</div></div>
+        <div style="font-size:10.5px;color:var(--color-text-muted)">Birdbrain blocks Note text that repeats a withheld Exhibit (E-07). It cannot detect a short or reworded quotation.</div>
+        <div style="display:flex;justify-content:flex-end;gap:6px"><button style="height:26px;border-radius:4px;border:1px solid var(--color-border-strong);background:transparent;padding:0 10px;font-family:var(--font-body);font-size:11px;color:var(--color-text-primary)">Cancel</button><button style="height:26px;border-radius:4px;border:none;background:var(--color-accent);padding:0 10px;font-family:var(--font-body);font-size:11px;font-weight:600;color:#fff">Send</button></div>
+      </div>
+    </div>
+
+    <!-- 2k own identifiers (surface 9) -->
+    <div id="2k" style="width:440px">
+      <div style="display:flex;align-items:center;gap:8px;margin:0 0 8px"><a href="#2k" style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">2k</a><span style="font-size:12px;font-weight:600">Surface 9 · Your own identifiers</span><span style="font-size:10px;color:var(--color-text-faint)">first slice · Settings, beside Personas</span></div>
+      <div style="background:var(--color-card);border:1px solid var(--color-border);border-radius:6px;padding:12px;font-size:11.5px;line-height:1.5;display:flex;flex-direction:column;gap:6px">
+        <div style="color:var(--color-text-muted);font-size:10.5px">Accounts and addresses that belong to you or your Personas. Runs never follow them. Each Case shows its synced entries read-only, as "marked by NK"; a Persona's label and notes never sync.</div>
+        <div style="display:flex;align-items:center;gap:8px;border:1px solid var(--color-border);border-radius:4px;padding:5px 8px"><span style="font-family:var(--font-mono);font-size:10.5px">@harbour_watch</span><span style="color:var(--color-text-faint);font-size:10.5px">ferrybell.social · Persona "Harbour"</span><span style="flex:1"></span><span style="font-size:10.5px;color:var(--color-accent)">Remove</span></div>
+        <div style="display:flex;align-items:center;gap:8px;border:1px solid var(--color-border);border-radius:4px;padding:5px 8px"><span style="font-family:var(--font-mono);font-size:10.5px">ops@nightjar-research.example</span><span style="color:var(--color-text-faint);font-size:10.5px">mail · marked from E-40 header</span><span style="flex:1"></span><span style="font-size:10.5px;color:var(--color-accent)">Remove</span></div>
+        <div style="display:flex;align-items:center;gap:8px;border:1px dotted var(--color-border-strong);border-radius:4px;padding:5px 8px;color:var(--color-text-muted)"><span style="font-family:var(--font-mono);font-size:10.5px">r.pike@harrowpointgazette.example</span><span style="font-size:10.5px">marked by MB · Shared Case Nightjar</span><span style="flex:1"></span><span style="font-size:10.5px;color:var(--color-text-faint)">theirs</span></div>
+        <div style="display:flex;gap:6px;align-items:center"><input placeholder="Add an account or address" style="flex:1;height:26px;border-radius:4px;border:1px solid var(--color-border-strong);background:var(--color-canvas);padding:0 8px;font-family:var(--font-body);font-size:11.5px;color:var(--color-text-primary)"><button style="height:26px;border-radius:4px;border:1px solid var(--color-border-strong);background:transparent;padding:0 10px;font-family:var(--font-body);font-size:11px;color:var(--color-text-primary)">Add</button></div>
+      </div>
+    </div>
+
+    <!-- 2l lookup consent (later, state 9) -->
+    <div id="2l" style="width:440px">
+      <div style="display:flex;align-items:center;gap:8px;margin:0 0 8px"><a href="#2l" style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">2l</a><span style="font-size:12px;font-weight:600">State 9 · Lookup consent prompt</span><span style="font-size:10px;color:var(--color-text-faint)">later · per-request (GAP G7 open)</span></div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="background:var(--color-card);border:1px solid var(--color-border);border-radius:8px;box-shadow:var(--shadow-overlay);padding:14px;font-size:11.5px;line-height:1.5;display:flex;flex-direction:column;gap:6px">
+          <div style="font-family:var(--font-display);font-size:13px;font-weight:700">Send a lookup to web.archive.org?</div>
+          <div style="display:grid;grid-template-columns:76px 1fr;gap:2px 8px;font-size:10.5px"><span style="color:var(--color-text-muted)">Destination</span><span>web.archive.org</span><span style="color:var(--color-text-muted)">Request</span><span style="font-family:var(--font-mono);word-break:break-all">GET /cdx/search/cdx?url=theferryman.example/issues/14</span><span style="color:var(--color-text-muted)">Egress</span><span>Direct · no VPN seen</span></div>
+          <div style="color:var(--color-text-muted);font-size:10.5px">web.archive.org sees this request and your network address. A page found this way is a candidate with its own observation time; it supports nothing until you capture it as a new Exhibit.</div>
+          <div style="display:flex;justify-content:flex-end;gap:6px"><button style="height:26px;border-radius:4px;border:1px solid var(--color-border-strong);background:transparent;padding:0 10px;font-family:var(--font-body);font-size:11px;color:var(--color-text-primary)">Cancel</button><button style="height:26px;border-radius:4px;border:none;background:var(--color-accent);padding:0 10px;font-family:var(--font-body);font-size:11px;font-weight:600;color:#fff">Send</button></div>
+        </div>
+        <div style="background:var(--color-card);border:1px solid var(--color-border);border-radius:8px;padding:12px 14px;font-size:11px;line-height:1.5;display:flex;flex-direction:column;gap:6px">
+          <div style="font-weight:600">First contact with a site in this Case over a Direct connection</div>
+          <div style="color:var(--color-text-muted);font-size:10.5px">No VPN or proxy is seen. The site can record your network address alongside this Case's interest in it.</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap"><button style="height:24px;border-radius:4px;border:1px solid var(--color-border-strong);background:transparent;padding:0 9px;font-family:var(--font-body);font-size:11px;color:var(--color-text-primary)">Continue</button><button style="height:24px;border-radius:4px;border:1px solid var(--color-border-strong);background:transparent;padding:0 9px;font-family:var(--font-body);font-size:11px;color:var(--color-text-primary)">Set up a proxy</button><button style="height:24px;border-radius:4px;border:none;background:transparent;padding:0 9px;font-family:var(--font-body);font-size:11px;color:var(--color-text-muted)">Stop warning on this network</button></div>
+          <div style="font-size:10px;color:var(--color-text-faint)">Shown before the consent prompt. Drawn per request; whether some destinations may be approved once per run is G7, still open in the engine spec.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2m source trail candidate (later, surface 5) -->
+    <div id="2m" style="width:380px">
+      <div style="display:flex;align-items:center;gap:8px;margin:0 0 8px"><a href="#2m" style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">2m</a><span style="font-size:12px;font-weight:600">Surface 5 · Source trail with a candidate</span><span style="font-size:10px;color:var(--color-text-faint)">later</span></div>
+      <div style="background:var(--color-surface);border:1px dotted var(--color-border-strong);border-radius:6px;padding:10px 12px;font-size:11px;line-height:1.5;display:flex;flex-direction:column;gap:6px">
+        <div style="font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-faint)">Source trail · not the stored Exhibit</div>
+        <div style="font-family:var(--font-mono);font-size:10px;color:var(--color-text-muted);word-break:break-all">https://theferryman.example/issues/14</div>
+        <div style="border:1px solid var(--color-border);border-radius:4px;padding:6px 8px;background:var(--color-card)"><div style="display:flex;align-items:center;gap:6px"><span style="border:1px solid var(--color-border-strong);border-radius:3px;padding:0 4px;font-size:9.5px;color:var(--color-text-muted)">CANDIDATE</span><span style="font-family:var(--font-mono);font-size:10px">web.archive.org/web/20210315…/issues/14</span></div><div style="margin-top:2px;color:var(--color-text-muted);font-size:10.5px">Observed 4 Oct 2026, 10:12 UTC by lookup. Not compared with E-38 until captured.</div><div style="margin-top:4px"><button style="height:24px;border-radius:4px;border:1px solid var(--color-border-strong);background:transparent;padding:0 9px;font-family:var(--font-body);font-size:11px;color:var(--color-text-primary)">Capture as a new Exhibit</button></div></div>
+        <div style="border:1px solid var(--color-border);border-radius:4px;padding:6px 8px;background:var(--color-card)"><div style="font-size:10.5px;color:var(--color-text-muted)">After capture: E-61 · sha256 4c0d…e7a1 beside E-38 · sha256 92f0…a4e8, each with its own observation time.</div></div>
+        <div><button style="border:none;background:transparent;padding:0;font-family:var(--font-body);font-size:11px;color:var(--color-accent)">Find the original…</button> <span style="color:var(--color-text-faint);font-size:10px">opens the consent prompt (<a href="#2l">2l</a>)</span></div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<section style="padding:32px 40px 64px;font-family:var(--font-body);color:var(--color-text-primary);min-width:1280px">
+  <div style="max-width:880px;margin-bottom:28px">
+    <div style="font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-faint)">Birdbrain · design mock · 2026-10-04 · turn 1</div>
+    <h1 style="margin:6px 0 8px;font-family:var(--font-display);font-size:22px;font-weight:800;letter-spacing:-0.02em">Case investigation view · Joint map directions</h1>
+    <p style="margin:0 0 14px;font-size:12px;line-height:1.6;color:var(--color-text-secondary);text-wrap:pretty">Three directions for surface 3 (the Joint map and list), drawn on the pseudonym Case. All three share one status grammar so the pick is about layout: <strong style="color:var(--color-text-primary)">accepted</strong> is a solid 2px line, <strong style="color:var(--color-text-primary)">proposed</strong> a round-dotted line (dots, not dashes, so it never reads as the Link Map's dashed authored reference), <strong style="color:var(--color-text-primary)">rejected</strong> a hairline with a cross and struck text, <strong style="color:var(--color-text-primary)">contested</strong> a double rule. Every status also appears as a word. A path through a third Subject is never drawn as a line of its own: the Joints along it are haloed and a sentence below names it. The map header reads "Joint map · Case as of…" so it is never mistaken for the Overview's Link map.</p>
+  </div>
+
+  <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap">
+
+    <!-- 1a graph -->
+    <div id="1a" style="width:700px">
+      <div style="display:flex;align-items:center;gap:8px;margin:0 0 10px"><a href="#1a" style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">1a</a><span style="font-size:12px;font-weight:600">Node-and-edge graph</span><span style="font-size:11px;color:var(--color-text-faint)">Subjects as kind-labelled cards; the claim and status sit on the line</span></div>
+      <div style="background:var(--color-card);border:1px solid var(--color-border);border-radius:6px;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--color-border)">
+          <span style="font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em">Joint map</span>
+          <span style="font-size:10px;color:var(--color-text-faint)">Case as of 14:02 UTC, 3 October 2026 · 6 Subjects · 4 Joints · showing all</span>
+          <span style="flex:1"></span>
+          <span style="font-size:10px;color:var(--color-text-muted)">63 Exhibits read · 2 withheld</span>
+        </div>
+        <div style="position:relative;height:400px;background:var(--color-canvas)">
+          <svg width="700" height="400" viewBox="0 0 700 400" style="position:absolute;inset:0;transform:translateY(12px)" fill="none" stroke-linecap="round">
+            <line x1="200" y1="92" x2="500" y2="92" stroke="var(--color-text-primary)" stroke-width="2"></line>
+            <line x1="500" y1="92" x2="500" y2="292" stroke="var(--color-text-muted)" stroke-width="1.6" stroke-dasharray="0.1 5"></line>
+            <line x1="200" y1="92" x2="200" y2="292" stroke="var(--color-text-primary)" stroke-width="2"></line>
+            <line x1="200" y1="292" x2="500" y2="292" stroke="var(--color-text-faint)" stroke-width="1"></line>
+            <line x1="344" y1="286" x2="356" y2="298" stroke="var(--color-text-faint)" stroke-width="1.2"></line><line x1="356" y1="286" x2="344" y2="298" stroke="var(--color-text-faint)" stroke-width="1.2"></line>
+            <circle cx="500" cy="192" r="18" fill="var(--color-accent-subtle)" stroke="var(--color-accent)" stroke-width="1" stroke-dasharray="2 3"></circle>
+            <circle cx="350" cy="92" r="18" fill="var(--color-accent-subtle)" stroke="var(--color-accent)" stroke-width="1" stroke-dasharray="2 3"></circle>
+          </svg>
+          <!-- Subjects -->
+          <div style="position:absolute;left:120px;top:70px;width:160px;height:44px;box-sizing:border-box;background:var(--color-card);border:1px solid var(--color-border-strong);border-radius:6px;padding:6px 10px;box-shadow:var(--shadow-card)"><div style="font-size:12px;font-weight:600">M. Calloway</div><div style="font-size:10px;color:var(--color-text-faint)">pseudonym · 2 Joints</div></div>
+          <div style="position:absolute;left:420px;top:70px;width:160px;height:44px;box-sizing:border-box;background:var(--color-card);border:1px solid var(--color-border-strong);border-radius:6px;padding:6px 10px;box-shadow:var(--shadow-card)"><div style="font-size:12px;font-weight:600">Jun Sato</div><div style="font-size:10px;color:var(--color-text-faint)">pseudonym · 2 Joints</div></div>
+          <div style="position:absolute;left:420px;top:270px;width:160px;height:44px;box-sizing:border-box;background:var(--color-card);border:1px solid var(--color-border-strong);border-radius:6px;padding:6px 10px;box-shadow:var(--shadow-card)"><div style="font-size:12px;font-weight:600">The Ferryman</div><div style="font-size:10px;color:var(--color-text-faint)">pseudonym · 1 proposed, 1 rejected</div></div>
+          <div style="position:absolute;left:120px;top:270px;width:160px;height:44px;box-sizing:border-box;background:var(--color-card);border:1px solid var(--color-border-strong);border-radius:6px;padding:6px 10px;box-shadow:var(--shadow-card)"><div style="font-size:12px;font-weight:600">Harrow Point Gazette</div><div style="font-size:10px;color:var(--color-text-faint)">site · 1 accepted, 1 rejected</div></div>
+          <!-- single-Subject Joint: a tab hung off the Subject -->
+          <div style="position:absolute;left:132px;top:114px;width:136px;background:var(--color-card);border:1px solid var(--color-border);border-top:0;border-radius:0 0 6px 6px;padding:4px 8px;font-size:10px;line-height:1.4"><span style="font-weight:600">Accepted</span> · used handle @mcall_<div style="color:var(--color-text-faint)">1 original source</div></div>
+          <!-- same-name Subjects, no Joint -->
+          <div style="position:absolute;left:604px;top:130px;width:88px;box-sizing:border-box;background:var(--color-card);border:1px dotted var(--color-border-strong);border-radius:6px;padding:5px 8px"><div style="font-size:11px;font-weight:600">Rowan Pike</div><div style="font-size:9.5px;color:var(--color-text-faint)">person · byline, Gazette</div><div style="font-size:9.5px;color:var(--color-text-faint)">no Joint yet</div></div>
+          <div style="position:absolute;left:604px;top:212px;width:88px;box-sizing:border-box;background:var(--color-card);border:1px dotted var(--color-border-strong);border-radius:6px;padding:5px 8px"><div style="font-size:11px;font-weight:600">Rowan Pike</div><div style="font-size:9.5px;color:var(--color-text-faint)">person · mail From: header</div><div style="font-size:9.5px;color:var(--color-text-faint)">no Joint yet</div></div>
+          <!-- edge labels -->
+          <div style="position:absolute;left:270px;top:40px;width:160px;text-align:center;font-size:10px;line-height:1.4"><span style="background:var(--color-canvas);padding:0 4px"><span style="font-weight:600">Accepted</span> · one writer</span><br><span style="background:var(--color-canvas);padding:0 4px;color:var(--color-text-muted)">2 contemporaneous, 1 rare match</span><br><span style="background:var(--color-canvas);padding:0 4px;color:var(--bb-warn)">● unreviewed material</span></div>
+          <div style="position:absolute;left:338px;top:160px;width:150px;text-align:right;font-size:10px;line-height:1.4"><span style="font-weight:600">Proposed</span> · one writer<br><span style="color:var(--color-text-muted)">1 source, unclassified</span><br><span style="border:1px solid var(--color-border-strong);border-radius:3px;padding:0 4px;font-size:9px;color:var(--color-text-muted)">rests on one source</span></div>
+          <div style="position:absolute;left:60px;top:160px;width:130px;text-align:right;font-size:10px;line-height:1.4"><span style="font-weight:600">Accepted</span> · wrote for<br><span style="color:var(--color-text-muted)">1 original, 1 later copy</span></div>
+          <div style="position:absolute;left:260px;top:320px;width:180px;text-align:center;font-size:10px;line-height:1.4;color:var(--color-text-faint)"><span style="text-decoration:line-through">Rejected · republished 12 March</span><br>rejected by you · recoverable</div>
+          <!-- path sentence -->
+          <div style="position:absolute;left:12px;right:12px;bottom:10px;display:flex;align-items:center;gap:8px;background:var(--color-card);border:1px solid var(--color-border);border-radius:6px;padding:7px 10px;font-size:11px"><span style="font-family:var(--font-mono);font-size:9px;border:1px solid var(--color-border-strong);border-radius:3px;padding:1px 5px;color:var(--color-text-muted)">PATH</span><span>M. Calloway → Jun Sato → The Ferryman · <strong>possible path, not joined by accepted Joints</strong>: Sato — Ferryman is proposed.</span><span style="flex:1"></span><span style="color:var(--color-text-faint);font-size:10px">no direct Joint</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 1b lanes -->
+    <div id="1b" style="width:700px">
+      <div style="display:flex;align-items:center;gap:8px;margin:0 0 10px"><a href="#1b" style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">1b</a><span style="font-size:12px;font-weight:600">Stacked lanes per Subject</span><span style="font-size:11px;color:var(--color-text-faint)">Subjects are rows; each Joint is a column bar spanning the one or two rows it touches</span></div>
+      <div style="background:var(--color-card);border:1px solid var(--color-border);border-radius:6px;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--color-border)">
+          <span style="font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em">Joint map</span>
+          <span style="font-size:10px;color:var(--color-text-faint)">Case as of 14:02 UTC, 3 October 2026 · 6 Subjects · 4 Joints · sorted by Joint count</span>
+          <span style="flex:1"></span>
+          <span style="font-size:10px;color:var(--color-text-muted)">63 Exhibits read · 2 withheld</span>
+        </div>
+        <div style="position:relative;height:412px;background:var(--color-canvas)">
+          <!-- lanes -->
+          <div style="position:absolute;left:0;right:0;top:60px;height:48px;border-top:1px solid var(--color-border);display:flex;align-items:center;padding:0 12px;gap:8px"><div style="width:168px;flex-shrink:0"><div style="font-size:12px;font-weight:600">M. Calloway</div><div style="font-size:10px;color:var(--color-text-faint)">pseudonym</div></div></div>
+          <div style="position:absolute;left:0;right:0;top:108px;height:48px;border-top:1px solid var(--color-border);display:flex;align-items:center;padding:0 12px;gap:8px"><div style="width:168px;flex-shrink:0"><div style="font-size:12px;font-weight:600">Jun Sato</div><div style="font-size:10px;color:var(--color-text-faint)">pseudonym</div></div></div>
+          <div style="position:absolute;left:0;right:0;top:156px;height:48px;border-top:1px solid var(--color-border);display:flex;align-items:center;padding:0 12px;gap:8px"><div style="width:168px;flex-shrink:0"><div style="font-size:12px;font-weight:600">The Ferryman</div><div style="font-size:10px;color:var(--color-text-faint)">pseudonym</div></div></div>
+          <div style="position:absolute;left:0;right:0;top:204px;height:48px;border-top:1px solid var(--color-border);display:flex;align-items:center;padding:0 12px;gap:8px"><div style="width:168px;flex-shrink:0"><div style="font-size:12px;font-weight:600">Harrow Point Gazette</div><div style="font-size:10px;color:var(--color-text-faint)">site</div></div></div>
+          <div style="position:absolute;left:0;right:0;top:252px;height:48px;border-top:1px solid var(--color-border);display:flex;align-items:center;padding:0 12px;gap:8px;color:var(--color-text-muted)"><div style="width:168px;flex-shrink:0"><div style="font-size:12px;font-weight:600">Rowan Pike</div><div style="font-size:10px;color:var(--color-text-faint)">person · byline, Gazette · no Joint yet</div></div></div>
+          <div style="position:absolute;left:0;right:0;top:300px;height:48px;border-top:1px solid var(--color-border);border-bottom:1px solid var(--color-border);display:flex;align-items:center;padding:0 12px;gap:8px;color:var(--color-text-muted)"><div style="width:168px;flex-shrink:0"><div style="font-size:12px;font-weight:600">Rowan Pike</div><div style="font-size:10px;color:var(--color-text-faint)">person · mail From: header · no Joint yet</div></div></div>
+          <!-- column headers -->
+          <div style="position:absolute;left:200px;top:8px;width:110px;font-size:10px;line-height:1.35"><span style="font-weight:600">Accepted</span> · one writer<br><span style="color:var(--color-text-muted)">2 contemp., 1 rare match</span><br><span style="color:var(--bb-warn)">● unreviewed</span></div>
+          <div style="position:absolute;left:320px;top:8px;width:110px;font-size:10px;line-height:1.35"><span style="font-weight:600">Proposed</span> · one writer<br><span style="color:var(--color-text-muted)">1 source, unclassified</span><br><span style="border:1px solid var(--color-border-strong);border-radius:3px;padding:0 4px;font-size:9px;color:var(--color-text-muted)">one source</span></div>
+          <div style="position:absolute;left:440px;top:8px;width:110px;font-size:10px;line-height:1.35"><span style="font-weight:600">Accepted</span> · wrote for<br><span style="color:var(--color-text-muted)">1 original, 1 later copy</span></div>
+          <div style="position:absolute;left:560px;top:8px;width:120px;font-size:10px;line-height:1.35;color:var(--color-text-faint)"><span style="text-decoration:line-through">Rejected · republished</span><br>by you · recoverable</div>
+          <div style="position:absolute;left:200px;top:352px;width:110px;font-size:10px;line-height:1.35"><span style="font-weight:600">Accepted</span> · used handle @mcall_<br><span style="color:var(--color-text-muted)">about Calloway only</span></div>
+          <svg width="700" height="400" viewBox="0 0 700 400" style="position:absolute;inset:0" fill="none" stroke-linecap="round">
+            <line x1="226" y1="72" x2="226" y2="120" stroke="var(--color-text-primary)" stroke-width="2"></line>
+            <circle cx="226" cy="72" r="4" fill="var(--color-text-primary)"></circle><circle cx="226" cy="120" r="4" fill="var(--color-text-primary)"></circle>
+            <line x1="346" y1="120" x2="346" y2="168" stroke="var(--color-text-muted)" stroke-width="1.6" stroke-dasharray="0.1 5"></line>
+            <circle cx="346" cy="120" r="4" fill="var(--color-canvas)" stroke="var(--color-text-muted)" stroke-width="1.4"></circle><circle cx="346" cy="168" r="4" fill="var(--color-canvas)" stroke="var(--color-text-muted)" stroke-width="1.4"></circle>
+            <line x1="466" y1="72" x2="466" y2="216" stroke="var(--color-text-primary)" stroke-width="2"></line>
+            <circle cx="466" cy="72" r="4" fill="var(--color-text-primary)"></circle><circle cx="466" cy="216" r="4" fill="var(--color-text-primary)"></circle>
+            <line x1="586" y1="168" x2="586" y2="216" stroke="var(--color-text-faint)" stroke-width="1"></line>
+            <line x1="581" y1="187" x2="591" y2="197" stroke="var(--color-text-faint)" stroke-width="1.2"></line><line x1="591" y1="187" x2="581" y2="197" stroke="var(--color-text-faint)" stroke-width="1.2"></line>
+            <circle cx="586" cy="168" r="3.5" fill="var(--color-canvas)" stroke="var(--color-text-faint)"></circle><circle cx="586" cy="216" r="3.5" fill="var(--color-canvas)" stroke="var(--color-text-faint)"></circle>
+            <rect x="221" y="66" width="10" height="12" rx="3" fill="var(--color-text-primary)" opacity="0"></rect>
+            <path d="M220 72 a6 6 0 1 1 12 0" stroke="var(--color-text-primary)" stroke-width="2" transform="translate(0 258)"></path><line x1="220" y1="330" x2="220" y2="336" stroke="var(--color-text-primary)" stroke-width="2"></line><line x1="232" y1="330" x2="232" y2="336" stroke="var(--color-text-primary)" stroke-width="2"></line>
+          </svg>
+          <div style="position:absolute;left:12px;right:12px;bottom:8px;display:flex;align-items:center;gap:8px;font-size:11px;color:var(--color-text-muted)"><span style="font-family:var(--font-mono);font-size:9px;border:1px solid var(--color-border-strong);border-radius:3px;padding:1px 5px">PATH</span>Calloway → Sato → Ferryman · possible path, not joined by accepted Joints (Sato — Ferryman is proposed).</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 1c text-first -->
+    <div id="1c" style="width:700px">
+      <div style="display:flex;align-items:center;gap:8px;margin:0 0 10px"><a href="#1c" style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-faint)">1c</a><span style="font-size:12px;font-weight:600">Text-first list with a map inset</span><span style="font-size:11px;color:var(--color-text-faint)">The Joint list is the primary surface; the inset is a locator</span></div>
+      <div style="background:var(--color-card);border:1px solid var(--color-border);border-radius:6px;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--color-border)">
+          <span style="font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em">Joints</span>
+          <span style="font-size:10px;color:var(--color-text-faint)">Case as of 14:02 UTC, 3 October 2026 · 4 Joints · 6 Subjects, 2 without a Joint</span>
+          <span style="flex:1"></span>
+          <span style="font-size:10px;color:var(--color-text-muted)">63 Exhibits read · 2 withheld</span>
+        </div>
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) 220px;height:470px">
+          <div style="display:flex;flex-direction:column;border-right:1px solid var(--color-border)">
+            <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid var(--color-border)"><div style="width:22px;flex-shrink:0;height:0;border-top:2px solid var(--color-text-primary)"></div><div style="flex:1;min-width:0"><div style="font-size:12px"><span style="font-weight:600">Accepted</span> · M. Calloway and Jun Sato are one writer</div><div style="font-size:10px;color:var(--color-text-muted)">2 contemporaneous sources · 1 rare match · 0 conflicts · <span style="color:var(--bb-warn)">● 1 unreviewed item</span></div></div><span style="font-size:10px;color:var(--color-text-faint)">base layer · identifier</span></div>
+            <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid var(--color-border)"><div style="width:22px;flex-shrink:0;height:0;border-top:2px dotted var(--color-text-muted)"></div><div style="flex:1;min-width:0"><div style="font-size:12px"><span style="font-weight:600">Proposed</span> · Jun Sato and The Ferryman are one writer</div><div style="font-size:10px;color:var(--color-text-muted)">1 source, unclassified · <span style="border:1px solid var(--color-border-strong);border-radius:3px;padding:0 4px;font-size:9px">rests on one source</span></div></div><span style="font-size:10px;color:var(--color-text-faint)">base layer · exact text</span></div>
+            <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid var(--color-border)"><div style="width:22px;flex-shrink:0;height:0;border-top:2px solid var(--color-text-primary)"></div><div style="flex:1;min-width:0"><div style="font-size:12px"><span style="font-weight:600">Accepted</span> · M. Calloway wrote for Harrow Point Gazette</div><div style="font-size:10px;color:var(--color-text-muted)">1 original · 1 later copy · 0 conflicts</div></div><span style="font-size:10px;color:var(--color-text-faint)">base layer · identifier</span></div>
+            <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid var(--color-border)"><div style="width:22px;flex-shrink:0;height:0;border-top:2px solid var(--color-text-primary)"></div><div style="flex:1;min-width:0"><div style="font-size:12px"><span style="font-weight:600">Accepted</span> · M. Calloway used the handle @mcall_ <span style="font-size:10px;color:var(--color-text-faint)">· about one Subject</span></div><div style="font-size:10px;color:var(--color-text-muted)">1 original source</div></div><span style="font-size:10px;color:var(--color-text-faint)">base layer · identifier</span></div>
+            <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid var(--color-border);color:var(--color-text-faint)"><div style="width:22px;flex-shrink:0;position:relative;height:0;border-top:1px solid var(--color-text-faint)"><span style="position:absolute;left:8px;top:-7px;font-size:10px;line-height:1">×</span></div><div style="flex:1;min-width:0"><div style="font-size:12px"><span style="font-weight:600">Rejected</span> · <span style="text-decoration:line-through">The Ferryman republished the 12 March article</span></div><div style="font-size:10px">rejected by you, 14:31 UTC · Restore</div></div></div>
+            <div style="padding:8px 12px;font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-faint)">Subjects without a Joint</div>
+            <div style="display:flex;gap:8px;padding:0 12px"><div style="border:1px dotted var(--color-border-strong);border-radius:6px;padding:5px 8px;font-size:11px"><span style="font-weight:600">Rowan Pike</span> <span style="color:var(--color-text-faint)">person · byline, Gazette</span></div><div style="border:1px dotted var(--color-border-strong);border-radius:6px;padding:5px 8px;font-size:11px"><span style="font-weight:600">Rowan Pike</span> <span style="color:var(--color-text-faint)">person · mail From: header</span></div></div>
+            <span style="flex:1"></span>
+            <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-top:1px solid var(--color-border);font-size:11px"><span style="font-family:var(--font-mono);font-size:9px;border:1px solid var(--color-border-strong);border-radius:3px;padding:1px 5px;color:var(--color-text-muted)">PATH</span><span style="border:1px solid var(--color-border-strong);border-radius:4px;padding:1px 6px">M. Calloway</span><span style="color:var(--color-text-faint)">to</span><span style="border:1px solid var(--color-border-strong);border-radius:4px;padding:1px 6px">The Ferryman</span><span style="color:var(--color-text-muted)">through Jun Sato · possible path, not joined by accepted Joints</span></div>
+          </div>
+          <div style="position:relative;background:var(--color-canvas)">
+            <div style="padding:8px 10px;font-family:var(--font-display);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--color-text-faint)">Joint map</div>
+            <svg width="220" height="200" viewBox="0 0 220 200" style="position:absolute;left:0;top:30px" fill="none" stroke-linecap="round">
+              <line x1="50" y1="50" x2="170" y2="50" stroke="var(--color-text-primary)" stroke-width="2"></line>
+              <line x1="170" y1="50" x2="170" y2="150" stroke="var(--color-text-muted)" stroke-width="1.6" stroke-dasharray="0.1 5"></line>
+              <line x1="50" y1="50" x2="50" y2="150" stroke="var(--color-text-primary)" stroke-width="2"></line>
+              <line x1="50" y1="150" x2="170" y2="150" stroke="var(--color-text-faint)" stroke-width="1"></line>
+              <line x1="106" y1="146" x2="114" y2="154" stroke="var(--color-text-faint)"></line><line x1="114" y1="146" x2="106" y2="154" stroke="var(--color-text-faint)"></line>
+              <rect x="20" y="38" width="60" height="24" rx="4" fill="var(--color-card)" stroke="var(--color-border-strong)"></rect>
+              <rect x="140" y="38" width="60" height="24" rx="4" fill="var(--color-card)" stroke="var(--color-border-strong)"></rect>
+              <rect x="140" y="138" width="60" height="24" rx="4" fill="var(--color-card)" stroke="var(--color-border-strong)"></rect>
+              <rect x="20" y="138" width="60" height="24" rx="4" fill="var(--color-card)" stroke="var(--color-border-strong)"></rect>
+              <rect x="28" y="62" width="44" height="8" rx="2" fill="var(--color-card)" stroke="var(--color-border)"></rect>
+            </svg>
+            <div style="position:absolute;left:22px;top:73px;width:56px;text-align:center;font-size:9px;font-weight:600">Calloway</div>
+            <div style="position:absolute;left:142px;top:73px;width:56px;text-align:center;font-size:9px;font-weight:600">Sato</div>
+            <div style="position:absolute;left:142px;top:173px;width:56px;text-align:center;font-size:9px;font-weight:600">Ferryman</div>
+            <div style="position:absolute;left:22px;top:173px;width:56px;text-align:center;font-size:9px;font-weight:600">Gazette</div>
+            <div style="position:absolute;left:10px;right:10px;top:260px;font-size:10px;line-height:1.5;color:var(--color-text-muted)">Inset shows Subjects with a Joint. Select a Joint here or in the list; both select. Two more Subjects have no Joint.</div>
+            <div style="position:absolute;left:10px;right:10px;bottom:10px;display:grid;grid-template-columns:1fr 1fr;gap:4px 8px;font-size:9.5px;color:var(--color-text-muted)"><span style="display:flex;align-items:center;gap:5px"><span style="width:14px;border-top:2px solid var(--color-text-primary)"></span>accepted</span><span style="display:flex;align-items:center;gap:5px"><span style="width:14px;border-top:2px dotted var(--color-text-muted)"></span>proposed</span><span style="display:flex;align-items:center;gap:5px"><span style="width:14px;border-top:1px solid var(--color-text-faint)"></span>rejected</span><span style="display:flex;align-items:center;gap:5px"><span style="width:14px;height:3px;border-top:1px solid var(--color-text-primary);border-bottom:1px solid var(--color-text-primary)"></span>contested</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="margin-top:28px;max-width:880px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;font-size:11px;line-height:1.55;color:var(--color-text-secondary)">
+    <div><strong style="color:var(--color-text-primary)">1a</strong> Reads as a map at a glance and scales to ~1,000 Exhibits by showing the Subjects the inquiry touches (others fold under "N more Subjects, none with a Joint to these"). Single-Subject Joints hang as a tab under the Subject. Needs the list beside it for keyboard access.</div>
+    <div><strong style="color:var(--color-text-primary)">1b</strong> Rows are already a list, so map and list are one surface: every Joint is a column, read top to bottom. Weakest when many Joints touch the same two Subjects (columns multiply). Paths read as adjacent columns, never as a line.</div>
+    <div><strong style="color:var(--color-text-primary)">1c</strong> Puts the claim text first, which is what the Operator decides on. The map is a locator, visibly smaller than the Link Map so the two never compete. Cheapest to build; least able to show structure for a Case about many Subjects.</div>
+  </div>
+</section>
+</x-dc>
+</body>
+</html>

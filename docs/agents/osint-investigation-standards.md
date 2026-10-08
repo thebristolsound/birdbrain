@@ -103,7 +103,7 @@ for amendments and maintain separate state-law profiles.
 Birdbrain emits a factual export statement naming the tool and version, operator, acquisition
 method, hashes, trusted-time and signature results, known limitations, and verification
 instructions. It is not a certification template and carries no signature line or rule citation
-([ADR-0042](../adr/0042-export-documents-are-factual-records-not-legal-instruments.md)). A
+([ADR-0043](../adr/0043-export-documents-are-factual-records-not-legal-instruments.md)). A
 qualified person drafts any certification the forum requires from that record, and the rule's
 notice procedure remains a case responsibility.
 

@@ -269,8 +269,12 @@ The Operator's classification of what kind of source an Exhibit is: original, co
 _Avoid_: provenance class, source type, origin.
 
 **Withheld from analysis**:
-An Operator flag on an Exhibit that keeps every analysis in its Case from reading it, so it never appears as support or as surfaced material. Unrelated to a Shared Case exclusion from export and to the URL exclusion policy.
+An Operator flag on an Exhibit that keeps every analysis in its Case from reading it, so it never appears as support or as surfaced material. The Operator's own Case search still shows the Exhibit, marked as withheld. Unrelated to a Shared Case exclusion from export and to the URL exclusion policy.
 _Avoid_: excluded, hidden, suppressed (for this flag).
+
+**Own Identifier**:
+An address, handle, domain, or other identifier the Operator marks as their own, such as a Persona's account shown in a captured page's header. No analysis follows it, so a Joint never rests on the Operator's own presence in a Capture.
+_Avoid_: my account, self selector, persona identifier.
 
 ### Export and verification
 
@@ -342,6 +346,9 @@ _Avoid_: risky change, core change, forensic change.
 - **Joints** never derive from other **Joints**: a **Subject** reached only through another **Subject** is a path of **Joints**, and a direct **Joint** between the ends needs Exhibit spans of its own
 - Material surfaced for a **Joint** arrives unreviewed: it supports or conflicts with the **Joint** only once the Operator adds it, and it never changes whether the **Joint** is accepted
 - A **Joint** and every Operator decision on it are Case data like a **Note**: attributed to the **Operator**, recording which layer proposed the **Joint**, and never a **Manifest Entry**
+- An account **Subject** is never a **Persona**; the Operator marks a **Persona**'s accounts as **Own Identifiers**, which no analysis follows
+- A document **Subject** is bound to one **Exhibit**, or, after the investigation engine's first slice, to one message inside an `mbox` **Exhibit**
+- A path between **Subjects** counts only accepted **Joints**
 - The **Package Layout** names where every member of an **Evidence Package** sits; the writer, **Package Verification** and the **Verify Runbook** all read it from one place
 - An **Evidence Package** contains the **Manifest**, a **Certification**, a **Verify Runbook**, and the exported **Exhibits**; **Package Verification** establishes the chain from the **Manifest** and reconciles the unsigned index against it
 

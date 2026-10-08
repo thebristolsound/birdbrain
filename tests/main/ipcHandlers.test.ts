@@ -1644,6 +1644,23 @@ describe('ipcHandlers — settings', () => {
     expect(reset).toBeDefined()
   })
 
+  it('reports a refused settings edit as a structured failure (#1522)', async () => {
+    expectOk(await invoke(IPC_CHANNELS.SETTINGS_UPDATE, { tsaUrl: 'https://custom.example/tsr' }))
+    const refused = await invoke(IPC_CHANNELS.SETTINGS_UPDATE, { tsaUrl: 'not a url' })
+    expect(refused).toMatchObject({ ok: false, code: 'INVALID_SETTINGS' })
+    const stored = expectOk<{ tsaUrl: string }>(await invoke(IPC_CHANNELS.SETTINGS_GET))
+    expect(stored.tsaUrl).toBe('https://custom.example/tsr')
+  })
+
+  it('still rejects a settings failure that is not a validation refusal', async () => {
+    const boom = new Error('disk gone')
+    const spy = vi.spyOn(settings, 'updateSettings').mockImplementationOnce(() => {
+      throw boom
+    })
+    await expect(invoke(IPC_CHANNELS.SETTINGS_UPDATE, { theme: 'light' })).rejects.toBe(boom)
+    spy.mockRestore()
+  })
+
   it('returns null when the storage-path picker is cancelled and a path otherwise', async () => {
     expect(expectOk(await invoke(IPC_CHANNELS.SETTINGS_CHOOSE_STORAGE_PATH))).toBeNull()
     showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: ['/data/x'] })

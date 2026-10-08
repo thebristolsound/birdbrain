@@ -967,7 +967,15 @@ export function registerIpcHandlers(deps: {
   // Settings
   handle(IPC_CHANNELS.SETTINGS_GET, () => settings.getSettings())
   handle(IPC_CHANNELS.SETTINGS_UPDATE, (_, partial: Partial<BirdbrainSettings>) => {
-    const updated = settings.updateSettings(partial)
+    let updated: BirdbrainSettings
+    try {
+      updated = settings.updateSettings(partial)
+    } catch (err) {
+      if (err instanceof settings.InvalidSettingsError) {
+        throw new IpcFailure(err.message, 'INVALID_SETTINGS')
+      }
+      throw err
+    }
     // A channel switch or auto-check toggle must reconfigure the live updater.
     updaterService.applySettingsChange(partial)
     return updated

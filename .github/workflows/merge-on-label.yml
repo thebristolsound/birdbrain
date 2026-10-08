@@ -28,6 +28,11 @@ name: Merge on label
 # request re-reads the label and arms auto-merge only for the head it was labelled at.
 # - `issue-evidence`, when an issue gains `evidence-affecting`, cancels the merge request of
 #   every open PR that closes it: merge-gate cannot see an issue label change until it next runs.
+#
+# `withdraw`, `cancel` and `issue-evidence` take contents: write. Without it GitHub refuses to
+# turn auto-merge off ("Resource not accessible by integration"), and a push left it armed
+# (#1753, 2026-10-07). None of them checks out code, so the wider token writes only what the
+# step's own gh calls do.
 
 on:
   pull_request_target:
@@ -155,6 +160,10 @@ jobs:
 
   cancel:
     if: github.event_name == 'pull_request_target' && github.event.action == 'unlabeled' && github.event.label.name == 'merge'
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -172,6 +181,10 @@ jobs:
 
   issue-evidence:
     if: github.event_name == 'issues' && github.event.label.name == 'evidence-affecting'
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -202,6 +215,10 @@ jobs:
 
   withdraw:
     if: github.event_name == 'pull_request_target' && github.event.action == 'synchronize'
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

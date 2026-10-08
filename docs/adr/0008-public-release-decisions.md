@@ -640,6 +640,10 @@ selection.
   registry publish guard to the required checks. The maintainer's bypass applies
   only when merging a pull request, so nobody pushes to `main` directly. The
   deploy-key bypass is removed.
+
+  *Amended by [ADR-0041](0041-merges-are-requested-by-label.md): since 2026-10-06
+  the ruleset requires no approving review and requires the `merge-gate` check
+  instead, and since 2026-10-07 it no longer requires signed commits.*
 - A tag ruleset lets only the maintainer create `v*` tags.
 - Blank issues are turned off, so reports come through the bug and feature forms.
 

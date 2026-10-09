@@ -23,6 +23,7 @@
     "dev:extension": "node scripts/dev-extension.mjs",
     "build:verifier": "node scripts/build-verifier.mjs",
     "build:demo-fixture": "node scripts/build-demo-fixture.mjs",
+    "eval:retrieval": "node scripts/run-retrieval-eval.mjs",
     "build:notices": "node scripts/third-party-notices/notices.mjs",
     "test": "cross-env ELECTRON_RUN_AS_NODE=1 electron ./node_modules/vitest/vitest.mjs run",
     "test:watch": "cross-env ELECTRON_RUN_AS_NODE=1 electron ./node_modules/vitest/vitest.mjs",

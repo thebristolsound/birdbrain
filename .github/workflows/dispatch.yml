@@ -19,14 +19,16 @@ name: Dispatch
 #
 # Schedule enabled 2026-09-07 at rollout step 4 of the design brief, after three
 # report-only fires and one supervised cycle ran clean on 2026-09-07. Hourly at
-# :43 was the cadence #310 chose; every four hours at :43 since 2026-09-16, the
-# maintainer's call while the repository is private and every fire is billed
-# minutes. A scheduled fire always runs in cycle mode and lets section 3 pick;
-# workflow_dispatch stays for supervised fires.
+# :43 was the cadence #310 chose; every four hours from 2026-09-16 while the
+# repository was private and every fire billed minutes; hourly again since the
+# repository went public, where hosted-runner minutes are free (ADR-0045). The
+# pre-gate's spend cap, not this schedule, bounds paid cycles. A scheduled fire
+# always runs in cycle mode and lets section 3 pick; workflow_dispatch stays for
+# supervised fires.
 
 on:
   schedule:
-    - cron: '43 */4 * * *'
+    - cron: '43 * * * *'
   workflow_dispatch:
     inputs:
       mode:

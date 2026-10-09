@@ -1,0 +1,158 @@
+name: PR review
+
+# Reviews one PR the maintainer opened per fire, unattended (ADR-0046): the reviewer
+# reads it at a pinned commit, and the machine account posts the verdict as a comment
+# and sets a `review:` state label. It never pushes, merges, or writes a status the
+# merge gate reads, so it cannot block a merge.
+#
+# Identity. The pre-gate and the post step write as the machine account (ADR-0012).
+# The review step runs with this job's own GITHUB_TOKEN, which is read-only, so the
+# Claude session cannot write to GitHub at all.
+#
+# Cost. The pre-gate picks the PR from the API alone, under its own spend cap: 4
+# reviews in 24 hours and 1 per PR in 6, counted from this workflow's runs and
+# separate from dispatch's. A fire with nothing owed ends before the toolchain
+# installs. Hourly at :13, half an hour from dispatch's :43.
+
+on:
+  schedule:
+    - cron: '13 * * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'report: pick and report, write nothing. review: review the PR picked.'
+        type: choice
+        options:
+          - report
+          - review
+        default: report
+      pr:
+        description: 'Optional: consider only this PR. Every eligibility check still applies.'
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+  checks: read
+  statuses: read
+  actions: read
+
+concurrency:
+  group: pr-review
+  cancel-in-progress: false
+
+env:
+  APT_OPTS: -o Acquire::Retries=3 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15
+  DROP_AZURE_MIRROR: >-
+    sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g'
+    /etc/apt/apt-mirrors.txt
+  MODE: ${{ github.event_name == 'schedule' && 'review' || inputs.mode }}
+  TARGET_PR: ${{ github.event_name == 'schedule' && '' || inputs.pr }}
+  DISPATCH_MODEL: claude-opus-5-5
+  DISPATCH_EFFORT: high
+  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+jobs:
+  review:
+    # The spend guard of dispatch.yml (#1310): paid credentials live in `paid-runs`, and
+    # the job admits a scheduled first attempt or an attempt the maintainer started.
+    if: >-
+      (github.event_name == 'schedule' && github.run_attempt == '1')
+      || github.triggering_actor == 'thebristolsound'
+    environment: paid-runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ secrets.BIRDBRAIN_AGENT_GH_TOKEN }}
+    steps:
+      # fetch-depth: 0 because the reviewer diffs against origin/main. The default
+      # token: this job pushes nothing.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Identity
+        id: identity
+        env:
+          BIRDBRAIN_AGENT_GH_TOKEN: ${{ secrets.BIRDBRAIN_AGENT_GH_TOKEN }}
+          BIRDBRAIN_AGENT_GH_LOGIN: ${{ vars.BIRDBRAIN_AGENT_GH_LOGIN }}
+          BIRDBRAIN_AGENT_GH_TOKEN_EXPIRES: ${{ vars.BIRDBRAIN_AGENT_GH_TOKEN_EXPIRES }}
+        run: bash .github/scripts/dispatch/identity.sh
+
+      - name: Pre-gate
+        id: gate
+        env:
+          LOGIN: ${{ steps.identity.outputs.login }}
+        run: bash .github/scripts/pr-review/pregate.sh "$MODE"
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        if: steps.gate.outputs.run == 'true'
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: steps.gate.outputs.run == 'true'
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # The pre-gate's spend cap counts a review by this step's start (CAP_PAID_STEP in
+      # .github/scripts/pr-review/pregate.sh), so rename both together. Pinned with
+      # dispatch.yml; bump them together.
+      - name: Claude credential
+        if: steps.gate.outputs.run == 'true'
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          CLAUDE_CODE_OAUTH_TOKEN_EXPIRES: ${{ vars.CLAUDE_CODE_OAUTH_TOKEN_EXPIRES }}
+        run: |
+          npm install -g @anthropic-ai/claude-code@2.1.288
+          bash .github/scripts/health/claude-token.sh
+
+      - name: Install system dependencies
+        if: steps.gate.outputs.run == 'true'
+        timeout-minutes: 5
+        run: |
+          ${{ env.DROP_AZURE_MIRROR }}
+          sudo apt-get $APT_OPTS update
+          sudo apt-get $APT_OPTS install -y build-essential python3 \
+            libgtk-3-0 libnotify-dev libnss3 libxss1 \
+            libasound2t64 libxtst6 xauth libgbm1 libsecret-1-0
+
+      - name: Install project dependencies
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          pnpm install
+          openssl version
+
+      - name: Review
+        id: review
+        if: steps.gate.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          PR: ${{ steps.gate.outputs.pr }}
+          SHA: ${{ steps.gate.outputs.sha }}
+        run: bash .github/scripts/pr-review/run.sh
+
+      # On every exit of a review the pre-gate started, so a cancel, a timeout or a
+      # session that wrote no usable verdict still leaves the PR labelled.
+      - name: Post
+        if: always() && steps.gate.outputs.run == 'true'
+        env:
+          PR: ${{ steps.gate.outputs.pr }}
+          SHA: ${{ steps.gate.outputs.sha }}
+          RUN_OUTCOME: ${{ steps.review.outcome }}
+        run: bash .github/scripts/pr-review/post.sh
+
+      - name: Scrub the artifact
+        if: always()
+        run: bash .github/scripts/dispatch/scrub.sh
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: pr-review-run
+          path: .dispatch/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7

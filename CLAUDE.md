@@ -98,8 +98,9 @@ Single-context layout: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/ag
 
 ### Background jobs (project-local carve-out)
 
-Scheduled Dispatch runs every hour with two slots, under the spend cap; Doc curator is
-paused. Before restarting Doc curator or adding automation machinery, read
+Scheduled Dispatch runs every hour with two slots, under the spend cap; Scheduled PR review
+reviews one maintainer PR an hour under its own cap (ADR-0046); Doc curator is paused. Before
+restarting Doc curator or adding automation machinery, read
 [ADR-0029](docs/adr/0029-measure-before-expanding-agent-automation.md): verify basic spending
 limits and obtain explicit maintainer authorization.
 

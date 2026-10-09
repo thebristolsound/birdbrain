@@ -653,6 +653,13 @@ export const LOG_CODES = [
   // re-open: migrating a truncated file forward would build a fresh, empty
   // schema over the operator's data (#428).
   'db.snapshot_restore_left_no_database',
+  // Restore from File (#1700). A refusal changed nothing; a failed replace is
+  // the one step that touched the database file, so it is recorded on its own.
+  'db.restore_rejected',
+  'db.restore_replace_failed',
+  // The restore went through, but the snapshot taken before migrating the
+  // restored file stayed in the staging folder rather than joining the list.
+  'db.restore_snapshot_move_failed',
   'db.reopen_failed',
   // Fallback for notify.error() with no explicit code. Its presence in a log
   // is a signal to give that call site a real code.

@@ -97,10 +97,12 @@ export function dbAdminMutationOptions(queryClient: QueryClient) {
       onSuccess: invalidateAll,
       meta: { action: 'clean up orphaned records' }
     },
+    // onSettled for the reason given at restoreSnapshot below. Only a cancelled
+    // dialog skips it: that resolves with `restored: false` and changed nothing.
     restore: {
       mutationFn: () => window.birdbrain.db.restore(),
-      onSuccess: (result: { restored: boolean }) => {
-        if (result.restored) invalidateAll()
+      onSettled: (result: { restored: boolean } | undefined) => {
+        if (result?.restored !== false) invalidateAll()
       },
       meta: { action: 'restore the database' }
     },

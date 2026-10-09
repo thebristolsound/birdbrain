@@ -180,7 +180,20 @@ describe('dbAdminMutationOptions', () => {
 
     const opts = dbAdminMutationOptions(qc).restore
     const data = await opts.mutationFn()
-    opts.onSuccess?.(data)
+    opts.onSettled?.(data)
+
+    expect(spy).toHaveBeenCalledWith()
+  })
+
+  it('restore invalidates every query when it fails too', () => {
+    const qc = new QueryClient()
+    const spy = vi.spyOn(qc, 'invalidateQueries')
+
+    // A failed mutation settles with no data. Some failures come after the
+    // file was replaced, so the caches may describe a database that is gone.
+    const opts = dbAdminMutationOptions(qc).restore
+    expect('onSuccess' in opts).toBe(false)
+    opts.onSettled?.(undefined)
 
     expect(spy).toHaveBeenCalledWith()
   })
@@ -265,7 +278,7 @@ describe('dbAdminMutationOptions cancellation', () => {
 
     const opts = dbAdminMutationOptions(qc).restore
     const data = await opts.mutationFn()
-    opts.onSuccess?.(data)
+    opts.onSettled?.(data)
 
     expect(spy).not.toHaveBeenCalled()
   })

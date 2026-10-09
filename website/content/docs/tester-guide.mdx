@@ -204,7 +204,9 @@ includes capture files; **Backup Database** copies the database alone.
 **A failed restore is not a guarantee either.** If the restore fails, treat the
 result as unknown. A restore error does not prove the previous database is still
 intact, and case data can end up inconsistent. Check the case before carrying
-on, or restore a backup.
+on, or restore a backup. The exception is a refusal whose message ends "Nothing was
+changed.", such as Restore from File turning down a file that is not a Birdbrain
+database: Birdbrain stopped before replacing anything, and your database stays as it was.
 
 Two more things a restore does not do, both worth knowing before you click it:
 

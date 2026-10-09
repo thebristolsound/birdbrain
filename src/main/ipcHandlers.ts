@@ -42,6 +42,7 @@ import type {
 } from '@shared/ipc'
 import * as dbAdmin from '@main/services/db/dbAdmin'
 import * as dbSnapshots from '@main/services/db/dbSnapshots'
+import { restoreDatabase, type RestoreRejection } from '@main/services/db/dbRestore'
 import { existsSync } from 'fs'
 import { join, resolve } from 'path'
 import { pathToFileURL } from 'url'
@@ -1294,6 +1295,21 @@ export function registerIpcHandlers(deps: {
     'Another program is reading the database, such as an AI agent connected to Birdbrain. ' +
     'Wait for it to finish or close it, then try the restore again.'
 
+  // Fixed text with no path in it: the cause is in the log, and the renderer
+  // shows this message as it is.
+  const RESTORE_REJECTED_MESSAGES: Record<Exclude<RestoreRejection, 'in_use'>, string> = {
+    in_progress: 'Another restore is already running. Wait for it to finish.',
+    not_found: 'The chosen file could not be found.',
+    same_file: 'The chosen file is the database Birdbrain is already using.',
+    not_a_database: 'The chosen file is not a Birdbrain database.',
+    newer_schema: 'The chosen file comes from a newer version of Birdbrain.',
+    source_busy: 'Another program is using the chosen file. Close it, then try again.',
+    copy_failed: 'The chosen file could not be copied. See the log for details.',
+    migration_failed:
+      'The chosen file could not be upgraded to this version of Birdbrain. ' +
+      'See the log for details.'
+  }
+
   handle(IPC_CHANNELS.DB_RESTORE, async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog({
       filters: [{ name: 'SQLite Database', extensions: ['db'] }],
@@ -1302,19 +1318,40 @@ export function registerIpcHandlers(deps: {
     if (canceled || filePaths.length === 0) return { restored: false }
 
     const userDataPath = process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')
-    const dbPath = join(userDataPath, 'birdbrain.db')
-    const { closeDatabase, emptyWalBeforeReplace, initDatabase } =
-      await import('@main/services/db/core')
-    const { copyFileSync } = await import('fs')
+    const outcome = await restoreDatabase(
+      { kind: 'file', path: filePaths[0] },
+      { dbPath: join(userDataPath, 'birdbrain.db') }
+    )
 
-    if (!emptyWalBeforeReplace()) throw new IpcFailure(DB_IN_USE_MESSAGE, 'DB_IN_USE')
-    closeDatabase()
-    copyFileSync(filePaths[0], dbPath)
-    await initDatabase(dbPath)
-    // As for a snapshot restore below: an older file drops newer personas.
-    await personaSessions.clearOrphanedPartitions(userDataPath)
-
-    return { restored: true }
+    switch (outcome.status) {
+      case 'restored':
+        // As for a snapshot restore below: an older file drops newer personas.
+        await personaSessions.clearOrphanedPartitions(userDataPath)
+        return { restored: true }
+      case 'rejected':
+        if (outcome.reason === 'in_use') throw new IpcFailure(DB_IN_USE_MESSAGE, 'DB_IN_USE')
+        throw new IpcFailure(
+          `${RESTORE_REJECTED_MESSAGES[outcome.reason]} Nothing was changed.`,
+          'DB_RESTORE_REJECTED'
+        )
+      case 'replace_failed':
+        // Not "restart" when the file is damaged: startup has no intact check
+        // and would migrate it, while a restore works with no database open.
+        throw new IpcFailure(
+          outcome.databaseIntact
+            ? 'The restore could not replace the database. Your database is still open, as ' +
+                'it was before. See the log for details.'
+            : 'The restore could not replace the database, and the database file is no ' +
+                'longer readable. Do not restart Birdbrain: restore a backup now. See the log ' +
+                'for details.',
+          'DB_RESTORE_FAILED'
+        )
+      case 'reopen_failed':
+        throw new IpcFailure(
+          'The database could not be re-opened after the restore. Restart Birdbrain.',
+          'DB_REOPEN_FAILED'
+        )
+    }
   })
 
   handle(IPC_CHANNELS.DB_SNAPSHOTS, () => {

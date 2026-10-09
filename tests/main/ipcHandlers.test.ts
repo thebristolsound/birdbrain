@@ -118,6 +118,20 @@ vi.mock('@main/services/persona/personaSessions', async (importActual) => {
   }
 })
 
+// The file restore runs for real; a test that needs an outcome no real file
+// produces (a failed rename, a failed re-open) queues it here instead.
+const restoreOutcomes = vi.hoisted(() => ({ next: [] as unknown[] }))
+vi.mock('@main/services/db/dbRestore', async (importActual) => {
+  const actual = await importActual<typeof import('@main/services/db/dbRestore')>()
+  return {
+    ...actual,
+    restoreDatabase: (...a: Parameters<typeof actual.restoreDatabase>) =>
+      restoreOutcomes.next.length > 0
+        ? Promise.resolve(restoreOutcomes.next.shift())
+        : actual.restoreDatabase(...a)
+  }
+})
+
 // --- Real services ----------------------------------------------------------
 import { IPC_CHANNELS } from '@shared/ipc'
 import { MAX_BATCH_CAPTURE_IDS } from '@shared/constants'
@@ -143,6 +157,7 @@ import {
 import Database from 'better-sqlite3'
 import { closeDatabase, getDb, initDatabase, LATEST_SCHEMA_VERSION } from '@main/services/db/core'
 import { createPreMigrationSnapshot } from '@main/services/db/dbSnapshots'
+import type { RestoreOutcome, RestoreRejection } from '@main/services/db/dbRestore'
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
 import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
@@ -2324,6 +2339,180 @@ describe('ipcHandlers — database admin', () => {
       reader.close()
     }
   })
+
+  // #1700: the picked file is checked before it can replace anything, and a
+  // refusal leaves the database open and as it was.
+  it('refuses a zero-length file and keeps the live database', async () => {
+    const kept = expectOk<{ id: string }>(await invoke(IPC_CHANNELS.CASES_CREATE, { name: 'Kept' }))
+    const empty = join(userDataPath, 'empty.db')
+    writeFileSync(empty, '')
+    showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [empty] })
+
+    const res = await invoke<{ ok: boolean; code?: string; error?: string }>(
+      IPC_CHANNELS.DB_RESTORE
+    )
+
+    expect(res.ok).toBe(false)
+    expect(res.code).toBe('DB_RESTORE_REJECTED')
+    expect(res.error).toBe('The chosen file is not a Birdbrain database. Nothing was changed.')
+    expect(expectOk(await invoke(IPC_CHANNELS.CASES_GET, kept.id))).toMatchObject({ name: 'Kept' })
+    expect(clearOrphanedPartitions).not.toHaveBeenCalled()
+  })
+
+  it('refuses a file that is not a database and leaves the live file a database', async () => {
+    const notDb = join(userDataPath, 'notes.db')
+    writeFileSync(notDb, 'These are meeting notes, not a database.\n'.repeat(200))
+    showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [notDb] })
+
+    const res = await invoke<{ ok: boolean; code?: string; error?: string }>(
+      IPC_CHANNELS.DB_RESTORE
+    )
+
+    expect(res.ok).toBe(false)
+    expect(res.code).toBe('DB_RESTORE_REJECTED')
+    expect(readFileSync(dbPath).subarray(0, 16).toString('latin1')).toBe('SQLite format 3\0')
+    expectOk(await invoke(IPC_CHANNELS.DB_STATS))
+  })
+
+  // Each refusal a real file can provoke through the handler. The live
+  // database is checked by a case created before the attempt, which a restore
+  // that replaced anything would lose.
+  function writeDatabase(path: string, userVersion: number, withCases: boolean): void {
+    const conn = new Database(path)
+    try {
+      conn.exec(withCases ? 'CREATE TABLE cases (id TEXT PRIMARY KEY)' : 'CREATE TABLE t (x)')
+      conn.pragma(`user_version = ${userVersion}`)
+    } finally {
+      conn.close()
+    }
+  }
+
+  it.each([
+    {
+      picked: 'a database with no cases table',
+      prepare: (path: string) => writeDatabase(path, LATEST_SCHEMA_VERSION, false),
+      message: 'The chosen file is not a Birdbrain database.'
+    },
+    {
+      picked: 'a database at schema version 0',
+      prepare: (path: string) => writeDatabase(path, 0, true),
+      message: 'The chosen file is not a Birdbrain database.'
+    },
+    {
+      picked: 'a database from a newer version',
+      prepare: (path: string) => writeDatabase(path, LATEST_SCHEMA_VERSION + 1, true),
+      message: 'The chosen file comes from a newer version of Birdbrain.'
+    },
+    {
+      picked: 'a file that is not there',
+      prepare: () => undefined,
+      message: 'The chosen file could not be found.'
+    }
+  ])('refuses $picked and keeps the live database', async ({ prepare, message }) => {
+    const kept = expectOk<{ id: string }>(await invoke(IPC_CHANNELS.CASES_CREATE, { name: 'Kept' }))
+    const picked = join(userDataPath, 'picked.db')
+    prepare(picked)
+    showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [picked] })
+
+    const res = await invoke<{ ok: boolean; code?: string; error?: string }>(
+      IPC_CHANNELS.DB_RESTORE
+    )
+
+    expect(res).toMatchObject({ ok: false, code: 'DB_RESTORE_REJECTED' })
+    expect(res.error).toBe(`${message} Nothing was changed.`)
+    expect(expectOk(await invoke(IPC_CHANNELS.CASES_GET, kept.id))).toMatchObject({ name: 'Kept' })
+    expect(getDb().pragma('user_version', { simple: true })).toBe(LATEST_SCHEMA_VERSION)
+  })
+
+  it('refuses the live database itself and keeps it open', async () => {
+    const kept = expectOk<{ id: string }>(await invoke(IPC_CHANNELS.CASES_CREATE, { name: 'Kept' }))
+    showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [dbPath] })
+
+    const res = await invoke<{ ok: boolean; code?: string; error?: string }>(
+      IPC_CHANNELS.DB_RESTORE
+    )
+
+    expect(res).toMatchObject({ ok: false, code: 'DB_RESTORE_REJECTED' })
+    expect(res.error).toBe(
+      'The chosen file is the database Birdbrain is already using. Nothing was changed.'
+    )
+    expect(expectOk(await invoke(IPC_CHANNELS.CASES_GET, kept.id))).toMatchObject({ name: 'Kept' })
+  })
+
+  // Every reason, including those no file in this suite provokes: the record
+  // makes adding a reason without a message here a compile error.
+  const REJECTIONS: Record<Exclude<RestoreRejection, 'in_use'>, true> = {
+    in_progress: true,
+    not_found: true,
+    same_file: true,
+    not_a_database: true,
+    newer_schema: true,
+    source_busy: true,
+    copy_failed: true,
+    migration_failed: true
+  }
+
+  it.each(Object.keys(REJECTIONS) as Array<keyof typeof REJECTIONS>)(
+    'reports a %s refusal with no path, ending "Nothing was changed."',
+    async (reason) => {
+      restoreOutcomes.next.push({ status: 'rejected', reason } satisfies RestoreOutcome)
+      showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [dbPath] })
+
+      const res = await invoke<{ ok: boolean; code?: string; error?: string }>(
+        IPC_CHANNELS.DB_RESTORE
+      )
+
+      expect(res).toMatchObject({ ok: false, code: 'DB_RESTORE_REJECTED' })
+      expect(res.error).toMatch(/ Nothing was changed\.$/)
+      expect(res.error).not.toMatch(/[/\\]/)
+      expect(clearOrphanedPartitions).not.toHaveBeenCalled()
+    }
+  )
+
+  it('maps an in-use refusal to the existing DB_IN_USE failure', async () => {
+    restoreOutcomes.next.push({ status: 'rejected', reason: 'in_use' } satisfies RestoreOutcome)
+    showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [dbPath] })
+
+    const res = await invoke<{ ok: boolean; code?: string; error?: string }>(
+      IPC_CHANNELS.DB_RESTORE
+    )
+
+    expect(res).toMatchObject({ ok: false, code: 'DB_IN_USE' })
+    expect(res.error).toContain('Another program is reading the database')
+  })
+
+  it.each([
+    {
+      outcome: { status: 'replace_failed', databaseIntact: true },
+      code: 'DB_RESTORE_FAILED',
+      says: 'Your database is still open, as it was before.'
+    },
+    {
+      outcome: { status: 'replace_failed', databaseIntact: false },
+      code: 'DB_RESTORE_FAILED',
+      says: 'Do not restart Birdbrain: restore a backup now.'
+    },
+    {
+      outcome: { status: 'reopen_failed' },
+      code: 'DB_REOPEN_FAILED',
+      says: 'could not be re-opened after the restore. Restart Birdbrain.'
+    }
+  ] satisfies Array<{ outcome: RestoreOutcome; code: string; says: string }>)(
+    'maps a $outcome.status outcome to $code',
+    async ({ outcome, code, says }) => {
+      restoreOutcomes.next.push(outcome)
+      showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [dbPath] })
+
+      const res = await invoke<{ ok: boolean; code?: string; error?: string }>(
+        IPC_CHANNELS.DB_RESTORE
+      )
+
+      expect(res).toMatchObject({ ok: false, code })
+      expect(res.error).toContain(says)
+      expect(res.error).not.toContain(userDataPath)
+      expect(clearOrphanedPartitions).not.toHaveBeenCalled()
+    }
+  )
 
   it('refuses both restores while another connection is mid-read, keeping the database', async () => {
     const conn = new Database(dbPath)

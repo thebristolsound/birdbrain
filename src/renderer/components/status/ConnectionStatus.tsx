@@ -6,7 +6,10 @@ export function ConnectionStatus() {
 
   if (connectedToExtension) {
     return (
-      <div className="flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1">
+      <div
+        className="flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1"
+        title="Connected"
+      >
         <motion.span
           className="h-1.5 w-1.5 rounded-full bg-emerald-500"
           animate={{
@@ -19,7 +22,11 @@ export function ConnectionStatus() {
             ease: 'easeInOut'
           }}
         />
-        <span className="text-[11px] font-medium text-emerald-400">Connected</span>
+        {/* Below lg the native window controls leave the top bar too short for the word
+            at the minimum window width (e2e/topbar-layout.spec.ts); the dot stays. */}
+        <span className="sr-only text-[11px] font-medium text-emerald-400 lg:not-sr-only">
+          Connected
+        </span>
       </div>
     )
   }

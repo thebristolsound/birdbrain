@@ -41,7 +41,8 @@ import {
   WEBVIEW_PARTITIONS
 } from '@main/webviewPolicy'
 import { forwardGuestMouseDown } from '@main/guestMouseDown'
-import { initSettings, getSettings } from '@main/services/settings'
+import { initSettings, getSettings, onThemeChange } from '@main/services/settings'
+import { titleBarOptions, titleBarOverlay, windowBackgroundColor } from '@main/windowChrome'
 import { initInstallationId, getInstallationId } from '@main/services/installationId'
 import { initSigningKey, SigningKeyUnacknowledgedError } from '@main/services/signingKey'
 import { initServerToken } from '@main/services/serverToken'
@@ -68,6 +69,9 @@ import { IPC_CHANNELS, type DeepLinkTarget, type SelectorRematchedEvent } from '
 import { sendEvent } from '@main/ipcWrap'
 
 let mainWindow: BrowserWindow | null = null
+
+// One listener per live window; the previous window's is dropped on recreate (macOS).
+let windowThemeWatcher: (() => void) | null = null
 // Deep link received before the renderer was ready (cold start); flushed once
 // the window finishes loading.
 let pendingNavigate: DeepLinkTarget | null = null
@@ -225,7 +229,8 @@ function createWindow(): BrowserWindow {
     minHeight: MIN_WINDOW_SIZE.height,
     show: false,
     title: 'Birdbrain',
-    backgroundColor: '#000000',
+    backgroundColor: windowBackgroundColor(getSettings().theme),
+    ...titleBarOptions(getSettings().theme),
     ...(process.platform === 'linux' || process.platform === 'win32'
       ? { icon: join(__dirname, '../../resources/icon.png') }
       : {}),
@@ -246,6 +251,16 @@ function createWindow(): BrowserWindow {
 
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null
+  })
+
+  // Recolour the native window controls when the renderer switches theme, so the
+  // overlay never shows the old theme's bar colour beside the new one.
+  windowThemeWatcher?.()
+  windowThemeWatcher = onThemeChange((theme) => {
+    if (win.isDestroyed()) return
+    win.setBackgroundColor(windowBackgroundColor(theme))
+    const overlay = titleBarOverlay(theme)
+    if (overlay) win.setTitleBarOverlay(overlay)
   })
 
   // Flush a deep link that arrived before the renderer was listening (cold start).

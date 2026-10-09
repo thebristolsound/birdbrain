@@ -34,16 +34,16 @@ const KINDS = [
     check(lines, top, blocks, findings) {
       const items = lines.filter((l, i) => top[i] && /^\d+\. \S/.test(l))
       if (items.length > VERDICT_MAX_FINDINGS) {
-        findings.push(`verdict lists ${items.length} findings on the top layer; the cap is ${VERDICT_MAX_FINDINGS}, the rest go in the full report`)
+        findings.push(`verdict lists ${items.length} findings on the top layer; the cap is ${VERDICT_MAX_FINDINGS}, move the rest into the Full report block`)
       }
       if (lines.some((l, i) => top[i] && /^\|/.test(l))) {
         findings.push('the findings table goes inside the full report; the top layer is a numbered list of plain sentences')
       }
       const report = blocks.find((b) => /^Full report\b/i.test(b.summary))
       if (!report) {
-        findings.push('verdict lacks a <details> block whose <summary> starts with "Full report"')
+        findings.push('verdict lacks a <details> block whose <summary> starts with "Full report"; add one, e.g. <summary>Full report</summary>')
       } else if (!report.lines.some((l) => COMMIT_ID.test(l) || /^Full report: \S+/.test(l.trim()))) {
-        findings.push('the full report names the reviewed commit id (or carries a "Full report: <link>" line when it is too large to nest)')
+        findings.push('the Full report block does not name the reviewed commit; add its commit id inside the block (or a "Full report: <link>" line when the report is too large to nest)')
       }
     }
   },
@@ -55,10 +55,10 @@ const KINDS = [
     check(lines, top, blocks, findings) {
       const first = lines[0].trim()
       if (/^Not applied:/.test(first) && (first.match(/[.!?](?=\s|$)/g) || []).length > 1) {
-        findings.push('a "Not applied" reply is one sentence')
+        findings.push('a "Not applied" reply is one sentence; cut it to "Not applied: <reason>." and move the rest into a <details> block')
       }
       if (first === 'Applied.' && !blocks.some((b) => b.lines.some((l) => COMMIT_ID.test(l)))) {
-        findings.push('an "Applied." reply names the commit inside a <details> block')
+        findings.push('an "Applied." reply names the commit inside a <details> block; add one below it holding the commit id')
       }
     }
   },
@@ -70,16 +70,16 @@ const KINDS = [
     check(lines, top, blocks, findings) {
       const text = lines.join('\n')
       for (const field of ['**What:**', '**Where:**', '**Reproduce:**']) {
-        if (!text.includes(field)) findings.push(`missing the ${field} field`)
+        if (!text.includes(field)) findings.push(`missing the ${field} field; add a line starting "${field}" (see the template)`)
       }
       const whatIdx = lines.findIndex((l) => l.startsWith('**What:**'))
-      if (whatIdx >= 0 && !top[whatIdx]) findings.push('**What:** is on the top layer, in plain words')
+      if (whatIdx >= 0 && !top[whatIdx]) findings.push('**What:** is inside a <details> block; move it above the block, in plain words')
       const inner = blocks.flatMap((b) => b.lines)
       const where = inner.find((l) => l.startsWith('**Where:**'))
       if (lines.some((l, i) => top[i] && l.startsWith('**Where:**'))) {
         findings.push('**Where:** goes inside the <details> block; it names a file:line')
       } else if (where && !/\S+:\d+/.test(where)) {
-        findings.push('**Where:** must name a file:line')
+        findings.push('**Where:** must name a file:line; write it as path:line, e.g. src/main/index.ts:42')
       }
       if (lines.some((l, i) => top[i] && l.startsWith('**Reproduce:**'))) {
         findings.push('**Reproduce:** goes inside the <details> block')
@@ -92,6 +92,8 @@ const KINDS = [
 const VERDICT_LOOKALIKE = /^\*\*(Reviewer pre-pass|Review verdict)/
 // An applied reply that carries more than the word.
 const APPLIED_LOOKALIKE = /^applied\b/i
+const KIND_HINT =
+  'if this is a verdict, reply, claim or defect, line 1 is "**Review verdict: request changes**", "Applied.", "Not applied: <reason>.", "Cycle claim: PR #<n>" or "Defect: <clause>"'
 
 export function lintComment(raw) {
   const findings = []
@@ -100,14 +102,14 @@ export function lintComment(raw) {
   while (all.length && all[all.length - 1].trim() === '') all.pop()
   while (all.length && all[0].trim() === '') all.shift()
   stripDisclosure(all)
-  if (!all.length) return ['comment is empty']
+  if (!all.length) return ['comment is empty; write a first line for one of the kinds in the template']
   if (all.some((l) => DISCLOSURE[1].test(l))) findings.push('the disclosure note appears more than once or not first; keep one copy at the top')
 
   const first = all[0].trim()
   const kind = KINDS.find((k) => k.first.test(first))
   for (const [re, what] of FORBIDDEN) {
     if (kind && kind.name === 'bot trigger' && what === 'CodeRabbit text') continue
-    if (re.test(text)) findings.push(`comment contains ${what}`)
+    if (re.test(text)) findings.push(`comment contains ${what}; delete it`)
   }
 
   const layers = parseLayers(all)
@@ -128,7 +130,7 @@ export function lintComment(raw) {
     findings.push(`${kind ? kind.name : 'comment'} has ${counted} lines on the top layer; the cap is ${cap}, the rest goes in a <details> block`)
   }
   if (kind && kind.details === 'none' && blocks.length) {
-    findings.push(`a ${kind.name} has no <details> block`)
+    findings.push(`a ${kind.name} has no <details> block; delete the block and keep only the top layer`)
   }
   if (kind && kind.details === 'required' && !blocks.length) {
     findings.push(`a ${kind.name} carries its detail in a <details> block below the top layer`)
@@ -136,7 +138,13 @@ export function lintComment(raw) {
   if (kind && kind.check) kind.check(all, top, blocks, findings)
 
   const exempt = (i) => i === 0 && Boolean(kind && kind.machineFirst)
-  findings.push(...plainLanguageFindings(all, top, exempt))
+  const plain = plainLanguageFindings(all, top, exempt)
+  // Jargon on line 1 usually means the author was aiming for a kind and missed its first line.
+  if (!kind) {
+    const i = plain.findIndex((f) => f.startsWith('line 1:'))
+    if (i >= 0) plain[i] += `; ${KIND_HINT}`
+  }
+  findings.push(...plain)
   findings.push(...summaryFindings(blocks))
   return findings
 }

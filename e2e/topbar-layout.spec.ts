@@ -46,6 +46,13 @@ test.describe('Top bar layout', () => {
       await expect(page.getByTestId('topbar-rec')).toBeVisible({ timeout: 10000 })
       await expect(page.getByRole('switch', { name: 'Capture Session' })).toBeVisible()
 
+      // The bar drags the window, so the switch's label text has to opt out or a click
+      // on it moves the window instead of toggling the session.
+      const labelRegion = await page
+        .getByText('Capture Session', { exact: true })
+        .evaluate((el) => getComputedStyle(el).getPropertyValue('app-region'))
+      expect(labelRegion).toBe('no-drag')
+
       for (const width of [1400, 1100, 1000, 900]) {
         await electronApp.windows()[0].setViewportSize({ width, height: 800 })
         await expect(async () => {

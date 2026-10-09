@@ -165,7 +165,7 @@ describe.skipIf(!HAS_JQ)('pregate.sh while main is red', () => {
     expect(result.status).toBe(0)
     expect(result.run).toBe('false')
     expect(result.reason).toBe(
-      'the slot is free and 1 queued issue(s) wait, but main is red (test)'
+      'a slot is free and 1 queued issue(s) wait, but main is red (test)'
     )
   })
 
@@ -198,7 +198,7 @@ describe.skipIf(!HAS_JQ)('pregate.sh while main is green', () => {
       ...frontier
     })
     expect(result.run).toBe('true')
-    expect(result.reason).toBe('the slot is free and 1 unblocked queued issue(s) wait')
+    expect(result.reason).toBe('a slot is free and 1 unblocked queued issue(s) wait')
   })
 
   it('counts main as green when the rules read fails', () => {

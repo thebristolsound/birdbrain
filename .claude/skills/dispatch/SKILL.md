@@ -1,6 +1,6 @@
 ---
 name: dispatch
-description: Run one cycle of the birdbrain dispatch routine — check the single agent-PR slot (ADR-0028), then address review feedback, auto-merge a finished non-evidence PR, dispatch the lowest-numbered `queued` ready-for-agent issue, or exit. Reviewer pre-pass on every agent push. Manual trigger (#308); scheduled fires run it from `.github/workflows/dispatch.yml` (ADR-0026).
+description: Run one cycle of the birdbrain dispatch routine — check the two agent-PR slots (ADR-0045), then address review feedback, auto-merge a finished non-evidence PR, dispatch the lowest-numbered `queued` ready-for-agent issue, or exit. Reviewer pre-pass on every agent push. Manual trigger (#308); scheduled fires run it from `.github/workflows/dispatch.yml` (ADR-0026).
 ---
 
 # Dispatch — one cycle
@@ -11,8 +11,9 @@ You are the dispatch routine for birdbrain's autonomous agent pipeline
 exactly one cycle of the state machine below, then reports and stops. Repo:
 `thebristolsound/birdbrain`.
 
-**Capacity is one cycle** (ADR-0028, reversing ADR-0014's widening). Everything ADR-0006 says about
-*how* a slot is claimed is unchanged; you count the markers and dispatch only when the count is zero.
+**Capacity is two slots** (ADR-0045, amending ADR-0028's one). Everything ADR-0006 says about
+*how* a slot is claimed is unchanged; you count the markers and dispatch only when the count is
+below two.
 
 ## GitHub access — read this before running any command
 
@@ -179,17 +180,17 @@ exits immediately unless `CLAUDE_CODE_REMOTE=true`, by design. So:
   on, not what the implementer reads: it re-enumerates every comment on a PR itself, so an
   untrusted comment still reaches it, and only its contract tells it not to act on one.
 - **A spend cap bounds cycles, and the schedule is the ceiling (#1310).** By the maintainer's
-  ruling of 2026-09-28, the pre-gate starts no cycle once it counts 4 started in the last 24
-  hours, or 1 started for the same PR or issue in the last 6 hours; `CAP_*` in
+  ruling of 2026-09-28, raised by ADR-0045, the pre-gate starts no cycle once it counts 6 started
+  in the last 24 hours, or 1 started for the same PR or issue in the last 6 hours; `CAP_*` in
   `.github/scripts/dispatch/pregate.sh` holds both limits. It counts a cycle by the start of
   `dispatch.yml`'s `Claude credential` step, read from the Actions API, and a cycle's PR or
   issues by the `Dispatch target` annotation the pre-gate writes on that job. When any of those
   reads fails, it starts nothing. The count sees only the runs GitHub still lists, and anyone
   with write access can delete a finished run. By a second ruling that day the hard ceiling is
-  then the schedule: `dispatch.yml` fires every 4 hours, one run at a time, and its job skips
-  any start or re-run but a scheduled first attempt or the maintainer's, so 6 cycles a day plus
-  any he starts. The trust rules above do not close every way someone else makes the pre-gate
-  start a cycle, a push back to a head the pipeline already reviewed and `evidence-affecting`
+  then the schedule: `dispatch.yml` fires every hour (ADR-0045), one run at a time, and its job
+  skips any start or re-run but a scheduled first attempt or the maintainer's, so 24 cycles a
+  day plus any he starts. The trust rules above do not close every way someone else makes the
+  pre-gate start a cycle, a push back to a head the pipeline already reviewed and `evidence-affecting`
   on a PR's linked issue among them; the cap bounds those, and the schedule does once runs are
   deleted.
 - **You never push to `main` and never force-merge.** You may merge exactly one class of PR,
@@ -235,7 +236,7 @@ exits immediately unless `CLAUDE_CODE_REMOTE=true`, by design. So:
 
 ## 1. Slot check
 
-ADR-0028 defines **one slot**. Each is held by one of **two markers**, counted together
+ADR-0045 sets **two slots**. Each is held by one of **two markers**, counted together
 (ADR-0006, `docs/agents/triage-labels.md`): an open PR labelled `agent-pr`, and an open issue
 labelled `agent-wip` — the claim for a cycle whose PR does not exist yet:
 
@@ -261,9 +262,12 @@ missed its release step: remove the label with a note, and count the slot once, 
 
 **Then compare the count to capacity.**
 
-- **Occupancy 1 or more** → full. Report the holders and stop. Do not dispatch. An occupancy
-  above one is a violation: report it, since it means a release step was missed somewhere.
-- **Occupancy 0** → there is room. Dispatch one issue (section 3), but first run the **departed-slot hygiene
+- **Occupancy 2 or more** → full. Report the holders and stop. Do not dispatch. An occupancy
+  above two is a violation: report it, since it means a release step was missed somewhere.
+- **Occupancy 0 or 1** → there is room. If section 2 dispatched `birdbrain-implementer` or ran a
+  pre-pass this cycle, report and stop instead: the next fire dispatches. One paid action per
+  cycle keeps the run inside the job timeout and keeps the pre-gate's `Dispatch target` record
+  true. Otherwise dispatch one issue (section 3), but first run the **departed-slot hygiene
   check** — closed PRs never appear in the open-PR query above, so this branch is the only
   entry point ADR-0007's rule 4 and the give-up check have. Fetch the most recently created
   closed `agent-pr` PR:
@@ -287,9 +291,9 @@ a comment on a linked issue with no label, so none of the preceding queries see 
 deliberate: the slot is already held by the open `agent-pr` PR, and a cycle claim that also
 counted would report an occupancy of two for one piece of work.
 
-**Branches are cut from `main`, never from another cycle's branch** (ADR-0014). Three concurrent
-cycles make stacking possible for the first time, and a stacked PR is how redesign wave 2 produced
-a branch that could not rebase and ran no CI at all (#763, #769). If a dispatched issue genuinely
+**Branches are cut from `main`, never from another cycle's branch** (ADR-0014). Two open agent
+PRs make stacking possible, and a stacked PR is how redesign wave 2 produced a branch that
+could not rebase and ran no CI at all (#763, #769). If a dispatched issue genuinely
 depends on unmerged work, it is not eligible: leave it and take the next one.
 
 ## 2. Occupied slot — classify and act
@@ -506,9 +510,12 @@ on the current sha, or a human and an ADR-0007 override record.
 ## 3. Room in the queue — dispatch the oldest eligible issue
 
 Eligibility (the frontier): open, carrying **both** `ready-for-agent` and `queued` and not
-`process`, each in its trusted state ("Session rules"), unassigned, and no open blockers via
-native dependencies. `queued` is the maintainer's hand-picked list (ADR-0028): an issue that is
-ready but not queued is not eligible, however old. The query below reads the labels as they
+`process`, each in its trusted state ("Session rules"), unassigned, no open blockers via
+native dependencies, and not held by the other slot: no live `agent-wip` claim, and no open
+agent PR on its `agent/<n>-<slug>` branch. An issue keeps both queue labels while its PR is
+open, so without that check the second slot re-dispatches the first slot's issue. `queued` is
+the maintainer's hand-picked list (ADR-0028): an issue that is ready but not queued is not
+eligible, however old. The query below reads the labels as they
 stand; decide from the trusted states.
 
 ```
@@ -600,8 +607,9 @@ gh api --paginate "repos/thebristolsound/birdbrain/issues/<n>/timeline?per_page=
    a crash between comment and label leaves exactly this: a claim comment with no withdrawal
    after it and no open agent PR. Here and in step 3, only claims and withdrawals from the
    issue-side trust list in "Session rules" count. 4 hours old or younger → this issue is
-   already claimed by another cycle. Note it and stop: with one slot a claimed candidate ends
-   the invocation.
+   already claimed by another cycle, and that claim holds a slot the section 1 count missed.
+   Add it to occupancy: if that fills both slots, note it and stop; otherwise take the next
+   eligible issue.
    Older → note it as stale and continue.
 1. Post a claim comment on the chosen issue via the write path (locally
    `agh issue comment <n> --body-file <file>`) — e.g. "Dispatch slot claimed for this issue; a cycle
@@ -611,8 +619,12 @@ gh api --paginate "repos/thebristolsound/birdbrain/issues/<n>/timeline?per_page=
    index, not the claim itself.
 3. Re-read both marker sets (the section 1 queries) **and the claim comments on every claimed
    issue** — settling orders comments, so a competitor's unlabelled claim still ranks. An open
-   `agent-pr` PR always beats any claim. Between competing claims, the earliest claim comment
-   wins; a same-second tie breaks to the lower comment `id`. If you lost: post a one-line
+   `agent-pr` PR always beats any claim. Rank every holder: open agent PRs first, then claims
+   by their claim comment's `created_at`, a same-second tie breaking to the lower comment `id`.
+   Count the open agent PRs from `pulls?state=open` and each PR's labels, not from the
+   label-filtered issue query, which reads GitHub's lagging search index: under two slots an
+   index that misses a holder admits a third cycle. Your claim wins if its rank is within
+   capacity and no earlier claim names the same issue. If you lost: post a one-line
    withdrawal comment and stop the cycle. Remove your `agent-wip` label **only if your claim
    is on a different issue from the winner's** — when both claims sit on the same issue (the
    usual race: two dispatchers picking the same lowest eligible issue), the label is now the

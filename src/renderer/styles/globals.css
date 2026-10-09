@@ -276,6 +276,18 @@ body {
   }
 }
 
+/* === Window drag region ===
+   The OS title bar is hidden (src/main/windowChrome.ts), so the top bar is what moves
+   the window. Anything interactive inside it opts back out, otherwise a click there
+   starts a drag instead of landing. Portalled menus render outside the bar and need
+   nothing. */
+.app-drag {
+  app-region: drag;
+}
+.app-drag :is(button, input, a, select, textarea, [role='button'], [role='switch']) {
+  app-region: no-drag;
+}
+
 /* === Scrollbar === */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }

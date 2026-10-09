@@ -15,6 +15,7 @@ import {
   updateSettings,
   resetSettings,
   getDefaultSettings,
+  onThemeChange,
   InvalidSettingsError
 } from '@main/services/settings'
 import { DEFAULT_TSA_URL } from '@shared/constants'
@@ -33,6 +34,24 @@ describe('settings', () => {
 
   afterEach(() => {
     rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  describe('onThemeChange', () => {
+    it('fires only when an update or reset moves the theme', () => {
+      const listener = vi.fn()
+      const off = onThemeChange(listener)
+      updateSettings({ operatorName: 'Matt' })
+      expect(listener).not.toHaveBeenCalled()
+      updateSettings({ theme: 'light' })
+      expect(listener).toHaveBeenCalledWith('light')
+      updateSettings({ theme: 'light' })
+      expect(listener).toHaveBeenCalledTimes(1)
+      resetSettings()
+      expect(listener).toHaveBeenLastCalledWith('dark')
+      off()
+      updateSettings({ theme: 'light' })
+      expect(listener).toHaveBeenCalledTimes(2)
+    })
   })
 
   it('returns default settings when no file exists', () => {

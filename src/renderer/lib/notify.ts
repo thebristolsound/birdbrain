@@ -185,6 +185,8 @@ const CODE_LABELS: Record<LogCode, string> = {
     "Couldn't restore the database snapshot, and the database file is no longer readable",
   'db.restore_rejected': 'Restore refused — the database was not changed',
   'db.restore_replace_failed': "Couldn't replace the database with the restored file",
+  'db.restore_snapshot_move_failed':
+    "Restored the database, but couldn't add its pre-migration snapshot to the list",
   'db.reopen_failed': "Couldn't re-open the database — restart Birdbrain",
   'signingKey.unprotected_key_acknowledged':
     "This installation's signing key is not protected at rest — see Settings → Diagnostics",

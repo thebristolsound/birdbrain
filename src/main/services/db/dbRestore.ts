@@ -1,5 +1,16 @@
 import Database from 'better-sqlite3'
-import { closeSync, existsSync, fsyncSync, openSync, renameSync, rmSync, statSync } from 'node:fs'
+import {
+  closeSync,
+  existsSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  statSync
+} from 'node:fs'
+import { dirname, isAbsolute, join, relative, sep } from 'node:path'
 import {
   closeDatabase,
   emptyWalBeforeReplace,
@@ -7,7 +18,12 @@ import {
   LATEST_SCHEMA_VERSION,
   migrateFile
 } from '@main/services/db/core'
-import { isIntactDatabase } from '@main/services/db/dbSnapshots'
+import {
+  isIntactDatabase,
+  listStoredSnapshots,
+  pruneSnapshots,
+  snapshotDirFor
+} from '@main/services/db/dbSnapshots'
 import { logger } from '@main/services/logger'
 
 // Restoring the database from a file the operator picked (#1700). Everything
@@ -22,7 +38,7 @@ export type RestoreRejection =
   | 'in_progress' // another restore is running
   | 'in_use' // another connection is mid-read on the live database
   | 'not_found' // the picked file is not there
-  | 'same_file' // the picked file is the live database, or the scratch copy
+  | 'same_file' // the picked file is the live database, or inside the staging folder
   | 'not_a_database' // not SQLite, user_version below 1, or no `cases` table
   | 'newer_schema' // user_version above LATEST_SCHEMA_VERSION
   | 'source_busy' // another program holds a lock on the picked file
@@ -37,7 +53,14 @@ export type RestoreOutcome =
 
 // Beside the database so the rename is a same-filesystem move, and distinct
 // from the snapshot restore's staging name, which that restore clears on entry.
-export const SCRATCH_SUFFIX = '.file-restore.partial'
+// A folder, not a file: migrating the copy writes its pre-migration snapshot to
+// a `db-snapshots` folder beside it, and that must not be the live one, where a
+// refused copy would be listed for restore and cost a retention slot.
+export const STAGING_SUFFIX = '.file-restore.partial'
+
+export function scratchPathFor(dbPath: string): string {
+  return join(`${dbPath}${STAGING_SUFFIX}`, 'restore.db')
+}
 
 const DB_SIDECAR_SUFFIXES = ['-wal', '-shm'] as const
 
@@ -85,7 +108,8 @@ async function restore(sourcePath: string, dbPath: string): Promise<RestoreOutco
   // Checked first and again before the close: see the second call below.
   if (!emptyWalBeforeReplace()) return rejected('in_use')
 
-  const scratch = `${dbPath}${SCRATCH_SUFFIX}`
+  const staging = `${dbPath}${STAGING_SUFFIX}`
+  const scratch = scratchPathFor(dbPath)
   let sourceStat: FileIdentity
   try {
     sourceStat = statIdentity(sourcePath)
@@ -93,17 +117,17 @@ async function restore(sourcePath: string, dbPath: string): Promise<RestoreOutco
     return rejected('not_found', err)
   }
   if (!sourceStat.isFile) return rejected('not_a_database')
-  // By device and inode, not path string, so another path to the same file,
-  // such as a symlink, is caught. The scratch is compared before anything
-  // clears it, since clearing it would delete the source.
-  if (isSameFile(sourceStat, dbPath) || isSameFile(sourceStat, scratch)) {
+  // The live database by device and inode, not path string, so another path to
+  // the same file, such as a symlink, is caught. The staging folder is checked
+  // before anything clears it, since clearing it would delete the source.
+  if (isSameFile(sourceStat, dbPath) || isInside(sourcePath, staging)) {
     return rejected('same_file')
   }
 
-  clearScratch(scratch)
+  clearStaging(staging)
   const refusal = await prepareScratch(sourcePath, scratch)
   if (refusal) {
-    clearScratch(scratch)
+    clearStaging(staging)
     return refusal
   }
 
@@ -111,7 +135,7 @@ async function restore(sourcePath: string, dbPath: string): Promise<RestoreOutco
   // open while the copy was prepared, and its WAL may have grown since. An
   // empty WAL is what makes deleting the live sidecars below lose nothing.
   if (!emptyWalBeforeReplace()) {
-    clearScratch(scratch)
+    clearStaging(staging)
     return rejected('in_use')
   }
   closeDatabase()
@@ -122,20 +146,45 @@ async function restore(sourcePath: string, dbPath: string): Promise<RestoreOutco
     await renameWithRetry(scratch, dbPath)
   } catch (err) {
     logger.error('db', 'db.restore_replace_failed', undefined, err)
-    clearScratch(scratch)
+    clearStaging(staging)
     // Not migrated or re-opened when it is no longer a database: opening a
     // zero-length file builds a fresh, empty schema over the operator's data.
     if (!isIntactDatabase(dbPath)) return { status: 'replace_failed', databaseIntact: false }
     return (await reopen(dbPath)) ?? { status: 'replace_failed', databaseIntact: true }
   }
 
+  adoptSnapshots(scratch, dbPath)
+  clearStaging(staging)
   return (await reopen(dbPath)) ?? { status: 'restored' }
+}
+
+// Once the copy is installed, the snapshot taken before migrating it is a
+// snapshot of the live database: moved into the live folder and pruned there,
+// as `createPreMigrationSnapshot` prunes. Neither failure undoes the restore,
+// which has already happened, so each is logged.
+function adoptSnapshots(scratch: string, dbPath: string): void {
+  const staged = listStoredSnapshots(scratch)
+  if (staged.length === 0) return
+  const dir = snapshotDirFor(dbPath)
+  try {
+    mkdirSync(dir, { recursive: true })
+    for (const { fileName, path } of staged) renameSync(path, join(dir, fileName))
+  } catch (err) {
+    logger.warn('db', 'db.restore_snapshot_move_failed', undefined, err)
+    return
+  }
+  try {
+    pruneSnapshots(dbPath)
+  } catch (err) {
+    logger.warn('db', 'db.snapshot_prune_failed', undefined, err)
+  }
 }
 
 // Copies the picked file to the scratch path and makes it installable: checked,
 // migrated, and flushed. Returns the refusal, or null when the copy is ready.
 async function prepareScratch(sourcePath: string, scratch: string): Promise<RestoreOutcome | null> {
   try {
+    mkdirSync(dirname(scratch), { recursive: true })
     await copyToScratch(sourcePath, scratch)
   } catch (err) {
     return rejected(classify(err, 'copy_failed'), err)
@@ -281,15 +330,24 @@ function isSameFile(source: FileIdentity, path: string): boolean {
   }
 }
 
+// Resolved first, so a symlink into the folder is caught too. False when the
+// folder is not there, since there is then nothing to clear.
+function isInside(path: string, dir: string): boolean {
+  try {
+    const rel = relative(realpathSync.native(dir), realpathSync.native(path))
+    return rel !== '' && rel.split(sep)[0] !== '..' && !isAbsolute(rel)
+  } catch {
+    return false
+  }
+}
+
 // Non-throwing: on the way in the copy truncates whatever is there anyway, and
 // on the way out its own error must not replace the one being reported.
-function clearScratch(scratch: string): void {
-  for (const path of [scratch, ...DB_SIDECAR_SUFFIXES.map((suffix) => `${scratch}${suffix}`)]) {
-    try {
-      rmSync(path, { force: true })
-    } catch {
-      // A leftover scratch costs disk space; nothing reads or trusts it.
-    }
+function clearStaging(staging: string): void {
+  try {
+    rmSync(staging, { recursive: true, force: true })
+  } catch {
+    // A leftover staging folder costs disk space; nothing reads or trusts it.
   }
 }
 

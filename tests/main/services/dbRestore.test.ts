@@ -15,7 +15,7 @@ import {
   writeSync
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import Database from 'better-sqlite3'
 
 // The rename is the one step that touches the live database, and its failures
@@ -68,8 +68,8 @@ vi.mock('@main/services/db/core', async (importOriginal) => {
 
 import { closeDatabase, getDb, initDatabase, LATEST_SCHEMA_VERSION } from '@main/services/db/core'
 import { createCase, getCase } from '@main/services/db/caseRepo'
-import { listStoredSnapshots } from '@main/services/db/dbSnapshots'
-import { restoreDatabase, SCRATCH_SUFFIX } from '@main/services/db/dbRestore'
+import { listStoredSnapshots, snapshotDirFor } from '@main/services/db/dbSnapshots'
+import { restoreDatabase, scratchPathFor } from '@main/services/db/dbRestore'
 import { logger } from '@main/services/logger'
 
 let dir: string
@@ -96,10 +96,34 @@ function setUserVersion(path: string, version: number): void {
 }
 
 // Anything at `birdbrain.db.<something>` is a second copy of the database:
-// the scratch, or something renamed aside. `-wal`/`-shm` belong to the open
-// connection and are not counted.
+// the staging folder, or something renamed aside. `-wal`/`-shm` belong to the
+// open connection and are not counted.
 function dottedSiblings(): string[] {
   return readdirSync(dir).filter((f) => f.startsWith('birdbrain.db.'))
+}
+
+// Three snapshots of the operator's own database, already in the live folder:
+// a full retention set, so one more snapshot there would evict the oldest.
+const SEEDED_SNAPSHOTS = [
+  'pre-migration-v30-to-v37-2026-03-01T00-00-00-000Z.db',
+  'pre-migration-v30-to-v37-2026-02-01T00-00-00-000Z.db',
+  'pre-migration-v30-to-v37-2026-01-01T00-00-00-000Z.db'
+]
+
+function seedSnapshots(): void {
+  const snapshots = snapshotDirFor(dbPath)
+  mkdirSync(snapshots, { recursive: true })
+  for (const name of SEEDED_SNAPSHOTS) writeFileSync(join(snapshots, name), 'a snapshot')
+}
+
+function snapshotNames(): string[] {
+  return listStoredSnapshots(dbPath).map(({ fileName }) => fileName)
+}
+
+async function olderBackup(): Promise<string> {
+  const older = await backupTo('older.db')
+  setUserVersion(older, LATEST_SCHEMA_VERSION - 1)
+  return older
 }
 
 beforeEach(async () => {
@@ -188,6 +212,7 @@ describe('restoreDatabase from a file', () => {
 
   it('refuses a copy whose migration fails, keeping the live database open', async () => {
     const kept = createCase({ name: 'Kept' })
+    seedSnapshots()
     // Reports schema v26, so the v27 block runs against it, and it has no
     // notes table for that block to alter.
     const broken = join(dir, 'broken.db')
@@ -204,6 +229,51 @@ describe('restoreDatabase from a file', () => {
     expect(outcome).toEqual({ status: 'rejected', reason: 'migration_failed' })
     expect(getCase(kept.id)).toMatchObject({ name: 'Kept' })
     expect(dottedSiblings()).toEqual([])
+    // The snapshot taken of the refused copy before its migration is not
+    // listed for restore, and no snapshot of the operator's was pruned for it.
+    expect(snapshotNames()).toEqual(SEEDED_SNAPSHOTS)
+  })
+
+  it("adds the restored file's snapshot to the live list, keeping the usual number", async () => {
+    seedSnapshots()
+    const older = await olderBackup()
+
+    const outcome = await restoreDatabase({ kind: 'file', path: older }, { dbPath })
+
+    expect(outcome).toEqual({ status: 'restored' })
+    const [newest, ...rest] = listStoredSnapshots(dbPath)
+    expect(newest).toMatchObject({ fromVersion: LATEST_SCHEMA_VERSION - 1 })
+    expect(rest.map(({ fileName }) => fileName)).toEqual(SEEDED_SNAPSHOTS.slice(0, 2))
+    expect(dottedSiblings()).toEqual([])
+  })
+
+  it('keeps the restore when its snapshot cannot be moved into the live list', async () => {
+    const warn = vi.spyOn(logger, 'warn')
+    const older = await olderBackup()
+    fsHooks.renameFault = (to) => (to.startsWith(snapshotDirFor(dbPath)) ? errno('EIO') : null)
+
+    const outcome = await restoreDatabase({ kind: 'file', path: older }, { dbPath })
+
+    expect(outcome).toEqual({ status: 'restored' })
+    expectOpen()
+    expect(snapshotNames()).toEqual([])
+    expect(warn.mock.calls.map(([, code]) => code)).toEqual(['db.restore_snapshot_move_failed'])
+    expect(dottedSiblings()).toEqual([])
+  })
+
+  it('keeps the restore when pruning the live list fails', async () => {
+    const warn = vi.spyOn(logger, 'warn')
+    seedSnapshots()
+    // The snapshot retention evicts, made a folder so removing it throws.
+    const oldest = join(snapshotDirFor(dbPath), SEEDED_SNAPSHOTS[2])
+    rmSync(oldest)
+    mkdirSync(oldest)
+
+    const outcome = await restoreDatabase({ kind: 'file', path: await olderBackup() }, { dbPath })
+
+    expect(outcome).toEqual({ status: 'restored' })
+    expectOpen()
+    expect(warn.mock.calls.map(([, code]) => code)).toEqual(['db.snapshot_prune_failed'])
   })
 
   it('logs the cause of a refusal, naming the reason when there is no error behind it', async () => {
@@ -280,13 +350,27 @@ describe('restoreDatabase from a file', () => {
   })
 
   it('refuses the scratch file itself without deleting it', async () => {
-    const scratch = `${dbPath}${SCRATCH_SUFFIX}`
+    const scratch = scratchPathFor(dbPath)
+    mkdirSync(dirname(scratch))
     copyFileSync(await backupTo('backup.db'), scratch)
 
     const outcome = await restoreDatabase({ kind: 'file', path: scratch }, { dbPath })
 
     expect(outcome).toEqual({ status: 'rejected', reason: 'same_file' })
     expect(existsSync(scratch)).toBe(true)
+  })
+
+  it('refuses a file in the staging folder reached through a symlink', async () => {
+    const staged = join(dirname(scratchPathFor(dbPath)), 'db-snapshots', 'staged.db')
+    mkdirSync(dirname(staged), { recursive: true })
+    copyFileSync(await backupTo('backup.db'), staged)
+    const link = join(dir, 'link.db')
+    symlinkSync(staged, link)
+
+    const outcome = await restoreDatabase({ kind: 'file', path: link }, { dbPath })
+
+    expect(outcome).toEqual({ status: 'rejected', reason: 'same_file' })
+    expect(existsSync(staged)).toBe(true)
   })
 
   it('refuses a second restore while one is running, and accepts one afterwards', async () => {
@@ -359,9 +443,7 @@ describe('restoreDatabase from a file', () => {
   it('refuses when the scratch copy cannot be written', async () => {
     const kept = createCase({ name: 'Kept' })
     const backup = await backupTo('backup.db')
-    // A directory where the copy goes: nothing can be written there and the
-    // restore cannot clear it.
-    mkdirSync(`${dbPath}${SCRATCH_SUFFIX}`)
+    vi.spyOn(Database.prototype, 'backup').mockRejectedValue(errno('ENOSPC'))
 
     const outcome = await restoreDatabase({ kind: 'file', path: backup }, { dbPath })
 

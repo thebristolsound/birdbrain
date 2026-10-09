@@ -59,11 +59,18 @@ from a published prerelease `v1.0.1-beta.30` that carried `latest-linux.yml`:
 - **Non-semver tags are harmless.** `GitHubProvider` skips any tag that fails `semver.valid`, so
   `diag/curator-marker` never reaches the updater.
 
-The trigger therefore changes, and that choice goes to the maintainer.
+The trigger therefore changes. The maintainer chose a manual run from main: `release.yml` runs on
+`workflow_dispatch`, reads the version from `package.json`, refuses a version already tagged, and
+uploads to an untagged draft that publication tags. ADR-0047 records the rejected alternatives.
+
+Steps 2 to 4 below are implemented on `chore/move-releases-repo`. The publish job creates an
+untagged draft rather than a draft on a pushed tag, and the bridge runs as its own `bridge` job,
+which copies the published release, so the job that holds `RELEASES_REPO_TOKEN` cannot write to
+this repository.
 
 ## Step 2: the decision record (PR 1)
 
-Add ADR-0046, titled "Releases publish from the source repository." It records three things:
+Add ADR-0047, titled "Releases publish from the source repository." It records three things:
 
 - **Reversal:** it reverses the #567 split and the reasoning at ADR-0008 line 424, which deleted
   the main repository's releases to avoid a second download surface. After the archive in step 6
@@ -103,7 +110,7 @@ Add ADR-0046, titled "Releases publish from the source repository." It records t
   `permissions:`" assertion at line 311. The new assertion says that the top-level permissions
   are `contents: read`, that only `publish` widens to `contents: write`, and that `publish` has
   no `pnpm` or `checkout`-then-run step. Changing this test is deliberate, because the property
-  it guarded is the one ADR-0046 replaces. The repository strings at lines 305 and 333 follow
+  it guarded is the one ADR-0047 replaces. The repository strings at lines 305 and 333 follow
   the move.
 - **Spend guard:** `tests/spendGuardWorkflows.test.ts:23` lists `RELEASES_REPO_TOKEN`, and that
   entry stays until PR 3.
@@ -113,7 +120,7 @@ under ADR-0016.
 
 ## Step 5: cut and verify the bridge release (maintainer)
 
-1. Tag `v1.0.1-beta.23` after PR 1 merges.
+1. After PR 1 merges, bump `package.json` to `1.0.1-beta.23` and run `release.yml` from main.
 2. Extract `resources/app-update.yml` from the published deb and confirm it says
    `repo: birdbrain`.
 3. Run the probe against both repositories. Both report `1.0.1-beta.23`.

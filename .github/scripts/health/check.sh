@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Daily health check for the scheduled automation: are the two credentials the
-# scheduled workflows carry alive, and has any scheduled workflow gone red and
-# stayed red? Writes every finding to .health/findings.md and sets the
-# `findings` output; alert.sh turns that file into the alert issue.
+# Twice-daily health check for the scheduled automation: are the two credentials
+# the scheduled workflows carry alive, has any scheduled workflow gone red and
+# stayed red, and has the agent pipeline stalled while staying green (stall.sh)?
+# Writes every finding to .health/findings.md and sets the `findings` output;
+# alert.sh turns that file into the alert issue.
 #
 # Why this exists: the dispatch fire failed 39 times in a row on an invalid
 # CLAUDE_CODE_OAUTH_TOKEN (2026-09-20 to 2026-09-23) and the doc curator every
@@ -81,6 +82,15 @@ for wf in "${WORKFLOWS[@]}"; do
     finding "$wf: last $streak scheduled runs none succeeded$qualifier, $since to $latest; https://github.com/$R/actions/workflows/$wf?query=event%3Aschedule"
   fi
 done
+
+# 4. Stalls: pipeline work that should be moving while every run stays green.
+if stalls="$(bash "$here/stall.sh")"; then
+  while IFS= read -r line; do
+    if [ -n "$line" ]; then finding "$line"; fi
+  done <<< "$stalls"
+else
+  finding "stall.sh exited non-zero, so the stall rules did not all run; see the run log"
+fi
 
 if [ -s "$findings" ]; then
   echo "findings=true" >> "$out"

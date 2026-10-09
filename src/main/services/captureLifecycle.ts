@@ -1,7 +1,7 @@
 import { createReadStream, readFileSync } from 'fs'
 import { createHash, randomUUID } from 'crypto'
 import { join } from 'path'
-import { defaultCaptureStore } from '@main/services/captureStore'
+import { defaultCaptureStore, StagedRestoreError } from '@main/services/captureStore'
 import type { CaptureStore } from '@main/services/captureStore'
 import * as captureRepo from '@main/services/db/captureRepo'
 import { getExhibit } from '@main/services/db/exhibitRepo'
@@ -188,6 +188,9 @@ export interface CaptureLifecycle {
   // id fails the whole call before any write. Contract:
   // docs/specs/2026-08-19-batch-ops-interface-brief.md.
   deleteMany: (caseId: string, captureIds: string[]) => Promise<BatchDeleteResult>
+  // Startup sweep over every Case for staged deletes a crash interrupted
+  // (#1786): restores files whose row is live, purges the rest. Never throws.
+  recoverPendingDeletes: () => Promise<void>
   // Byte copy of an existing capture into a second row of the same case (#827).
   // The copy observed nothing itself, so it gets its own artifacts, its own
   // signed manifest entry marked `method: 'duplicate'`, and a link back to what
@@ -789,8 +792,15 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
   // The single-capture delete body, shared by `delete` and `deleteMany`.
   // A per-capture fault is reported as a `rolled_back` outcome whose `stage`
   // names the call that threw; for an MHTML capture the manifest seam has
-  // already rolled the entry back by then. The one throw left is a manifest
-  // fault (the rollback itself failed), which no outcome can state honestly.
+  // already rolled the entry back by then. The two throws left are faults no
+  // outcome can state honestly: the manifest rollback itself failed, or a
+  // staged file could not be moved back (StagedRestoreError).
+  //
+  // Files are staged, not unlinked (#1786): an unlink cannot be undone, so a
+  // fault on the second file used to leave the first one gone under a
+  // `rolled_back` outcome. Staging renames them aside, the row delete commits,
+  // and only then are they purged. Every fault before the commit moves them
+  // back, which is what `rolled_back` claims.
   async function deleteOne(capture: Capture, reason?: string): Promise<DeleteOneResult> {
     const captureId = capture.id
     if (capture.format === 'mhtml') {
@@ -810,48 +820,114 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
             ...(reason !== undefined ? { reason } : {})
           },
           () => {
-            // Files first, DB row second. If the filesystem unlink throws,
-            // the manifest rolls back with both DB and files intact (full retry).
-            // If the DB delete fails after files are gone, the manifest still
-            // rolls back and the user sees a broken capture row they can retry —
-            // strictly better than the inverse, where a filesystem failure
-            // after the DB delete would leave permanently orphaned files.
-            store.deleteArtifacts(capture.caseId, captureId)
+            // Files aside first, DB row second: a staging fault leaves row,
+            // files and (after the seam's rollback) manifest as they were.
+            store.stageArtifacts(capture.caseId, captureId)
             stage = 'db'
-            const deleted = captureRepo.deleteCapture(captureId)
-            if (!deleted) throw new ManifestRollback()
+            deleteRowOrRestore(capture)
           }
         )
-        return { outcome: { captureId, status: 'deleted' } }
       } catch (err) {
-        // `rolled_back` asserts the entry is not in the chain. If the rollback
-        // truncate itself failed the entry is still there (the #622 artefact),
-        // so that claim would be false: surface the manifest fault as a throw
-        // rather than a tidy outcome.
+        // `rolled_back` asserts the entry is not in the chain and the files
+        // are back. A failed rollback truncate (the #622 artefact) or a failed
+        // restore makes that claim false, so surface it as a throw.
+        if (err instanceof StagedRestoreError) throw err
         if (getManifestHead(caseDir).nextIndex !== headBefore) throw err
         return {
           outcome: { captureId, status: 'rolled_back', stage, error: outcomeError(err) },
           cause: err
         }
       }
+      purgeAfterCommit(capture)
+      return { outcome: { captureId, status: 'deleted' } }
     }
 
     // Legacy html capture: no manifest entry exists for it, so none is written
-    // (as before). Files first, row second, for the same reason as the MHTML
-    // branch: with no entry to roll back, an unlink failure after the row is
-    // gone would orphan the files for good. The row vanishing between snapshot
-    // and delete is the same "not there" the snapshot would have reported.
+    // (as before). Same stage, commit, purge order as the MHTML branch.
     try {
-      store.deleteArtifacts(capture.caseId, captureId)
+      store.stageArtifacts(capture.caseId, captureId)
     } catch (err) {
+      if (err instanceof StagedRestoreError) throw err
       return {
         outcome: { captureId, status: 'rolled_back', stage: 'artifacts', error: outcomeError(err) },
         cause: err
       }
     }
-    const deleted = captureRepo.deleteCapture(captureId)
-    if (!deleted) return { outcome: { captureId, status: 'rejected', reason: 'not_found' } }
+    let deleted: boolean
+    try {
+      deleted = captureRepo.deleteCapture(captureId)
+    } catch (err) {
+      store.restoreStaged(capture.caseId, captureId)
+      throw err
+    }
+    if (!deleted) {
+      // The row vanishing between snapshot and delete is the same "not there"
+      // the snapshot would have reported; its files go back where they were.
+      store.restoreStaged(capture.caseId, captureId)
+      return { outcome: { captureId, status: 'rejected', reason: 'not_found' } }
+    }
+    purgeAfterCommit(capture)
     return { outcome: { captureId, status: 'deleted_unmanifested' } }
+  }
+
+  // The commit step of a staged delete. A failed or refused row delete puts
+  // the staged files back before the error reaches the manifest seam.
+  function deleteRowOrRestore(capture: Capture): void {
+    let deleted: boolean
+    try {
+      deleted = captureRepo.deleteCapture(capture.id)
+    } catch (err) {
+      store.restoreStaged(capture.caseId, capture.id)
+      throw err
+    }
+    if (!deleted) {
+      store.restoreStaged(capture.caseId, capture.id)
+      throw new ManifestRollback()
+    }
+  }
+
+  // Past the commit the row is gone and the entry is permanent, so a purge
+  // fault must not change the outcome. The leftover directory is logged and
+  // swept by recoverPendingDeletes.
+  function purgeAfterCommit(capture: Capture): void {
+    try {
+      store.purgeStaged(capture.caseId, capture.id)
+    } catch (err) {
+      logger.error(
+        'captureLifecycle',
+        'captureLifecycle.delete_purge_failed',
+        { captureId: ident(capture.id) },
+        err
+      )
+    }
+  }
+
+  // Resolves staging directories a crash or a failed restore left in a Case
+  // (#1786). A live row means the delete never committed: its files go back.
+  // A missing row means it did: the leftovers are purged. Never throws, so a
+  // stuck file cannot block deleting other captures; a failure is logged and
+  // retried on the next pass.
+  function recoverCase(caseId: string): void {
+    let staged: string[]
+    try {
+      staged = store.listStagedDeletes(caseId)
+    } catch (err) {
+      logger.error('captureLifecycle', 'captureLifecycle.delete_recovery_failed', undefined, err)
+      return
+    }
+    for (const captureId of staged) {
+      try {
+        if (captureRepo.getCapture(captureId)) store.restoreStaged(caseId, captureId)
+        else store.purgeStaged(caseId, captureId)
+      } catch (err) {
+        logger.error(
+          'captureLifecycle',
+          'captureLifecycle.delete_recovery_failed',
+          { captureId: ident(captureId) },
+          err
+        )
+      }
+    }
   }
 
   // Which case a request lands in, or why it cannot. Case resolution runs
@@ -1003,6 +1079,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
       const probe = captureRepo.getCapture(captureId)
       if (!probe) return false
       return withCaseSlot(probe.caseId, async () => {
+        recoverCase(probe.caseId)
         // Re-read under the slot: a batch ahead of us in the queue may have
         // removed it while we waited.
         const capture = captureRepo.getCapture(captureId)
@@ -1015,6 +1092,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
 
     async deleteMany(caseId, captureIds) {
       return withCaseSlot(caseId, async () => {
+        recoverCase(caseId)
         // Snapshot validation happens under the slot, not before it: a batch
         // queued behind another must see the rows the earlier batch removed as
         // not_found, not as live rows it then fails to delete.
@@ -1067,6 +1145,19 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
           manifest: { baseIndex, committedEntries }
         }
       })
+    },
+
+    async recoverPendingDeletes() {
+      let caseIds: string[]
+      try {
+        caseIds = caseRepo.listCases().map((c) => c.id)
+      } catch (err) {
+        logger.error('captureLifecycle', 'captureLifecycle.delete_recovery_failed', undefined, err)
+        return
+      }
+      for (const id of caseIds) {
+        await withCaseSlot(id, async () => recoverCase(id))
+      }
     },
 
     async duplicate(captureId) {

@@ -601,6 +601,10 @@ if (!gotSingleInstanceLock) {
         }
       })
 
+      // Put back or purge the files of any capture delete a crash interrupted
+      // (#1786) before anything else can delete in those Cases.
+      void captureLifecycle.recoverPendingDeletes()
+
       // Background recapture queue (#recapture). Renders pages in a hidden window
       // and reuses the capture pipeline's observability events.
       const recaptureService = createRecaptureService({

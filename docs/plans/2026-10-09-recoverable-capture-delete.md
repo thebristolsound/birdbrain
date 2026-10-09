@@ -1,6 +1,6 @@
 # Recoverable capture delete
 
-**Status:** proposed 2026-10-09, waiting for maintainer approval
+**Status:** approved 2026-10-09; steps 1 to 4 built, step 5 is the PR verification
 **Date:** 2026-10-09
 **Issue:** #1786
 
@@ -87,6 +87,6 @@ Recovery never deletes a file whose capture row is live.
 
 ## Approval criteria tripped
 
-This plan waits for approval under ADR-0016 because it touches blocking-tier evidence files
+This plan waited for approval under ADR-0016 because it touches blocking-tier evidence files
 (`captureLifecycle.ts`, `captureStore.ts`, listed in
 `docs/specs/2026-07-31-evidence-affecting-paths-assessment.md`).

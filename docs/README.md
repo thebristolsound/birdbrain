@@ -15,12 +15,18 @@ Author-time documentation for the project. All folders are tracked, including `p
 
 `plans/` has been tracked since July 2026. Plans remain author-time artifacts: they get checked off and go stale, and staleness is expected.
 
+The repository is public, so every committed plan stays readable in git history after the file is deleted. Three rules follow from that:
+
+- **Plan an exploitable, unfixed vulnerability in a private GitHub security advisory, never in `plans/`.** This is the line `SECURITY.md` draws for issues: a non-sensitive hardening gap may be planned in public.
+- **Use invented data in examples, fixtures, and screenshots.** A plan must not carry a real capture's URL, a persona's cookies, a case name or anything else from a real investigation. Secret scanning catches tokens, not these.
+- **A plan records intent, not guarantees.** The [threat model](../website/content/docs/threat-model.mdx) and the ADRs state what Birdbrain guarantees. Where a plan disagrees with them, they win.
+
 The rule for whether a doc may ship in the same PR as the code it describes, plans included, lives in one place: the "Documentation conventions" section in `CLAUDE.md`. It covers every folder in the preceding table. Do not restate it here, because a second copy is free to drift out of step with the first (#514).
 
 ## Conventions
 
 - New design or spec? Drop it in `specs/` with today's date as the prefix.
-- New implementation plan? Drop it in `plans/` with today's date as the prefix.
+- New implementation plan? Drop it in `plans/` with today's date as the prefix, and put a `**Status:**` line under the title: `active`, `done`, or `abandoned`, with a link to the PR or the superseding ADR once it is not `active`.
 - Superseding an existing doc? Move the old file to `archive/` (keep its original name) before adding the replacement.
 - Permanent technical reference (architecture, pipelines, protocols)? Goes in `website/content/docs/` without a date prefix, as `.mdx` with `title`/`description` frontmatter, plus an entry in `navigation` in `website/content/docs.json`. See `docs/agents/website.md` for the MDX constraints (braces, link form, image paths).
 - Writing any of the above? See [`agents/writing-guide.md`](agents/writing-guide.md) for audience, claim discipline, tone, and the shape each document type takes.

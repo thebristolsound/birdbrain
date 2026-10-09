@@ -44,7 +44,7 @@ Adding a long-lived reference page, and the Vale setup for prose linting, are de
 
 **Writing style.** `docs/agents/writing-guide.md` is the adopted writing standard for all repo prose: Diataxis structure for published pages plus a mechanical rulebook (voice, ordering, formatting). CodeRabbit reads it as review criteria for `docs/**`, `website/content/docs/**`, and root Markdown.
 
-**`docs/plans/` is tracked (since July 2026).** Plans are still author-time working notes: they get checked off and go stale, and staleness is expected.
+**`docs/plans/` is tracked (since July 2026).** Plans are still author-time working notes: they get checked off and go stale, and staleness is expected. ADRs, `CONTEXT.md`, the threat model and the code outrank any plan; read a plan as what someone intended, not as current behaviour. What a plan in a public repository must leave out is in `docs/README.md`.
 
 **Docs may ship in the same PR as the code they describe.** The repository does not require specs, plans, ADRs, or reference docs to have their own PR or commit. Bundling a doc with the `src/**` change it documents is normal and preferred — a guide for a feature that has not merged yet is worth less on its own, and the split costs more than it returns.
 

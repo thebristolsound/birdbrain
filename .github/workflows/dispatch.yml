@@ -82,8 +82,7 @@ jobs:
     # release-macos.yml its second half, claude.yml and jev-lens.yml's triage their own.
     #
     # Neither part stops a write collaborator who merges his own workflow change to
-    # main, which the main branch rules allow while they require no approval, or a
-    # re-run of a release.yml run, which has no actor check.
+    # main, which the main branch rules allow while they require no approval.
     if: >-
       (github.event_name == 'schedule' && github.run_attempt == '1')
       || github.triggering_actor == 'thebristolsound'

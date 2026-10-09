@@ -286,57 +286,99 @@ const jobBlock = (content: string, job: string): string => {
   return next === -1 ? content.slice(start) : content.slice(start, start + 1 + next)
 }
 
-describe('release.yml attaches both files once every build has uploaded', () => {
-  const job = jobBlock(RELEASE_YML, 'sbom-and-checksums')
+describe('release.yml publishes before it hashes', () => {
+  const job = jobBlock(RELEASE_YML, 'publish')
+  const at = (name: string): number => job.indexOf(`name: ${name}`)
 
-  it('runs one job after both build jobs, and hashes after the bill of materials is up', () => {
-    expect(job).toContain('needs: [build-app, build-extension]')
-    expect(job.indexOf('name: Upload the bill of materials')).toBeGreaterThan(0)
-    expect(job.indexOf('name: Hash every asset on the release')).toBeGreaterThan(
-      job.indexOf('name: Upload the bill of materials')
-    )
+  it('runs one job after both build jobs, and hashes the release once it is published', () => {
+    expect(job).toContain('needs: [prepare, build-app, build-extension]')
+    expect(at('Export the bill of materials')).toBeGreaterThan(0)
+    expect(at('Publish the release')).toBeGreaterThan(at('Export the bill of materials'))
+    expect(at('Hash every asset on the release')).toBeGreaterThan(at('Publish the release'))
+    expect(at('Upload the checksum file')).toBeGreaterThan(at('Hash every asset on the release'))
   })
 
   // The release notes name both files, so a rename in one place would publish notes that
   // point at a file the page does not carry (#603).
-  it('names each file the same way in the script call, the upload and the notes', () => {
+  it('names each file the same way in the script calls and the notes', () => {
     expect(job).toContain('"$GITHUB_REPOSITORY" "dist/birdbrain-$TAG.spdx.json"')
-    expect(job).toContain('files: dist/birdbrain-${{ github.ref_name }}.spdx.json')
-    expect(job).toContain('thebristolsound/birdbrain-releases "$TAG" dist/SHA256SUMS.txt')
-    expect(job).toContain('files: dist/SHA256SUMS.txt')
+    expect(job).toContain('"$GITHUB_REPOSITORY" "$TAG" dist/SHA256SUMS.txt')
+    expect(job).toContain('gh release upload "$TAG" dist/SHA256SUMS.txt')
     expect(RELEASE_YML).toContain('\\`birdbrain-${TAG}.spdx.json\\` is that bill of materials')
     expect(RELEASE_YML).toContain('\\`sha256sum --check --ignore-missing SHA256SUMS.txt\\`')
   })
 
-  it('reads with the workflow token, and nothing widens the read-only permissions', () => {
+  // A pushed version tag is in the update feed before its files are uploaded, so the run
+  // starts by hand and GitHub creates the tag when the draft is published (ADR-0047).
+  it('starts by hand and lets publication create the tag', () => {
+    expect(RELEASE_YML).toMatch(/^on:\n {2}workflow_dispatch:\n/m)
+    expect(RELEASE_YML).not.toMatch(/^ {2}push:/m)
+    expect(job).toContain('--draft --prerelease')
+    expect(job).toContain('--target "$GITHUB_SHA"')
+    expect(job).toContain('--draft=false')
+  })
+})
+
+describe('release.yml write access', () => {
+  const blocks = (content: string) =>
+    [...content.matchAll(/^( *)permissions:\n(?:\1 {2}\S.*\n)+/gm)].map((m) => m[0])
+
+  it('widens to contents: write in the publish job only', () => {
     expect(RELEASE_YML).toMatch(/^permissions:\n {2}contents: read\n/m)
-    expect(RELEASE_YML.match(/^ *permissions:/gm)).toHaveLength(1)
-    expect(job.match(/GH_TOKEN: .*/g)).toEqual([
-      'GH_TOKEN: ${{ github.token }}',
-      'GH_TOKEN: ${{ github.token }}'
+    expect(blocks(RELEASE_YML)).toEqual([
+      'permissions:\n  contents: read\n',
+      '    permissions:\n      contents: write\n'
     ])
+    expect(jobBlock(RELEASE_YML, 'publish')).toContain('    permissions:\n      contents: write\n')
   })
 
-  it('fails the run when a file to upload is missing', () => {
-    expect(job.match(/fail_on_unmatched_files: true/g)).toHaveLength(2)
+  // The job that can write runs only GitHub's own tools and the release scripts.
+  it('runs no install, build or project script in the publish job', () => {
+    const job = jobBlock(RELEASE_YML, 'publish')
+    expect(job).not.toMatch(/\bpnpm\b|\bnpm\b|\bnode\b|\bnpx\b/)
+    const scripts = [...job.matchAll(/bash (\S+)/g)].map((m) => m[1])
+    expect(scripts).toEqual([
+      '.github/scripts/release/sbom.sh',
+      '.github/scripts/release/checksums.sh'
+    ])
+    expect(
+      job.match(/GH_TOKEN: .*/g)?.every((line) => line === 'GH_TOKEN: ${{ github.token }}')
+    ).toBe(true)
+  })
+
+  it('reads the bridge token only in the bridge job', () => {
+    const uses = [...RELEASE_YML.matchAll(/secrets\.RELEASES_REPO_TOKEN/g)]
+    const bridge = jobBlock(RELEASE_YML, 'bridge')
+    expect(uses).toHaveLength(2)
+    expect(bridge.match(/secrets\.RELEASES_REPO_TOKEN/g)).toHaveLength(2)
+    expect(bridge).toContain('"$BRIDGE" "$TAG" dist/SHA256SUMS.txt')
+    expect(bridge).toContain('BRIDGE: thebristolsound/birdbrain-releases')
   })
 })
 
 describe('release-macos.yml rewrites the checksum file after a backfill', () => {
   const content = readFileSync(join(ROOT, '.github', 'workflows', 'release-macos.yml'), 'utf8')
-  const job = jobBlock(content, 'refresh-checksums')
+  const job = jobBlock(content, 'publish')
 
   it('hashes the tag it backfilled once the macOS upload has finished', () => {
     expect(job).toContain('needs: build-macos')
     expect(job).toContain('TAG: ${{ inputs.tag }}')
-    expect(job).toContain('GH_TOKEN: ${{ github.token }}')
-    expect(job).toContain('thebristolsound/birdbrain-releases "$TAG" dist/SHA256SUMS.txt')
+    expect(job).toContain('"$GITHUB_REPOSITORY" "$TAG" dist/SHA256SUMS.txt')
+    expect(job.indexOf('name: Hash every asset on the release')).toBeGreaterThan(
+      job.indexOf('name: Upload the macOS files')
+    )
   })
 
-  it('replaces the file on that release, failing the run when it is missing', () => {
-    expect(job).toContain('tag_name: ${{ inputs.tag }}')
-    expect(job).toContain('files: dist/SHA256SUMS.txt')
-    expect(job).toContain('fail_on_unmatched_files: true')
-    expect(job).not.toContain('overwrite_files: false')
+  it('replaces the file on that release', () => {
+    expect(job).toContain(
+      'gh release upload "$TAG" dist/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --clobber'
+    )
+  })
+
+  it('writes only from the publish job', () => {
+    expect(content).toMatch(/^permissions:\n {2}contents: read\n/m)
+    expect(content.match(/^ *contents: write$/gm)).toHaveLength(1)
+    expect(job).toContain('    permissions:\n      contents: write\n')
+    expect(job).not.toMatch(/\bpnpm\b/)
   })
 })

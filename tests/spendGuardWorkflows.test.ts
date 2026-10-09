@@ -11,8 +11,6 @@ const GUARD = "github.triggering_actor == 'thebristolsound'"
 const SCHEDULED = "(github.event_name == 'schedule' && github.run_attempt == '1')"
 // hunks also admits the machine account, which pushes agent PRs.
 const GUARD_OR_MACHINE = `(${GUARD} || github.triggering_actor == 'birdbrain-agent')`
-// release.yml runs on a `v*` tag push, and a tag ruleset lets only the maintainer create one.
-const EXEMPT = ['release.yml']
 // The maintainer's follow-up spend ruling of 2026-09-28: the paid credentials belong in this
 // environment, which admits only main and `v*` tags. hunks runs on pull request refs, which it
 // refuses, so it goes without.
@@ -109,7 +107,7 @@ const readsSecret = ({ block }: Job): boolean =>
   block.some((line) => /\bsecrets\.[A-Z_]+/.test(line))
 
 const secretJobs = allJobs
-  .filter((job) => !EXEMPT.includes(job.file) && readsSecret(job))
+  .filter(readsSecret)
   .map(({ file, job, condition, scheduled }): [string, string, string, boolean] => [
     file,
     job,
@@ -132,8 +130,7 @@ describe('spend guard on jobs that read a stored secret', () => {
       'jev-lens.yml triage',
       'merge-on-label.yml request',
       'pr-review.yml review',
-      'release-macos.yml build-macos',
-      'release-macos.yml refresh-checksums'
+      'release.yml bridge'
     ])
   })
 

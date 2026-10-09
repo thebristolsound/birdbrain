@@ -5,10 +5,13 @@ import { toast } from 'sonner'
 import { AppToaster, TOAST_DURATION_MS } from '@renderer/components/ui/toaster'
 import { notify } from '@renderer/lib/notify'
 
-afterEach(() => {
+// sonner removes a dismissed toast on timers it never clears (a 200 ms exit). Unmounting at
+// once left them to fire after jsdom was torn down: "window is not defined" in a green run.
+afterEach(async () => {
   act(() => {
     toast.dismiss()
   })
+  await waitFor(() => expect(document.querySelector('[data-sonner-toast]')).toBeNull())
   cleanup()
 })
 

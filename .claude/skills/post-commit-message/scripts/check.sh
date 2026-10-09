@@ -12,6 +12,19 @@ bound="birdbrain-implementer"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="${CLAUDE_PROJECT_DIR:-$(git -C "$here" rev-parse --show-toplevel)}"
 
+# A branch cut before a linter change runs its own copy, which can disagree with main's: a
+# text that passes here can fail on main, or the reverse. Say so on stderr; never block.
+warn_if_stale() {
+  local repo f rel
+  repo="$(git -C "$here" rev-parse --show-toplevel 2>/dev/null)" || return 0
+  for f in "$@"; do
+    rel="${f#"$repo"/}"
+    git -C "$repo" cat-file -e "origin/main:$rel" 2>/dev/null || continue
+    git -C "$repo" diff --quiet origin/main -- "$rel" 2>/dev/null && continue
+    echo "post-commit-message: note: $rel differs from origin/main, so main's linter may judge this file differently. If this branch did not change it, rebase onto origin/main." >&2
+  done
+}
+
 lint() {
   local file="$1" out
   if [ ! -f "$file" ]; then
@@ -24,6 +37,7 @@ lint() {
     echo "post-commit-message: commitlint is not installed in $root, so the message was not checked. Run scripts/setup-worktree.sh, then re-run the same command." >&2
     return 3
   fi
+  warn_if_stale "$root/commitlint.config.mjs"
   if out="$(cd "$root" && pnpm exec commitlint --edit "$file" 2>&1)"; then
     return 0
   fi

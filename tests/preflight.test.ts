@@ -7,6 +7,7 @@ import {
   BLOCK_VERSION,
   DEFAULT_OUT,
   childEnv,
+  describeVale,
   dirtyTreeProblem,
   formatVerificationBlock,
   nodeVersionProblem,
@@ -181,6 +182,23 @@ describe('touchesExtension', () => {
   })
 })
 
+describe('describeVale', () => {
+  it('says when Vale did not run, since the prose check passes without it', () => {
+    expect(describeVale('vale-prose: vale is not installed (...), prose check skipped')).toBe(
+      'not checked, Vale is not installed or could not run'
+    )
+  })
+
+  it('reports how many changed files it read', () => {
+    expect(describeVale('vale-prose: checked 1 Markdown file(s) changed since abc')).toBe(
+      '1 changed Markdown file checked'
+    )
+    expect(describeVale('vale-prose: checked 3 Markdown file(s) changed since abc')).toBe(
+      '3 changed Markdown files checked'
+    )
+  })
+})
+
 describe('childEnv', () => {
   it('requires OpenSSL and jq, and drops the diff-coverage floor override', () => {
     const env = childEnv({ PATH: '/usr/bin', COVERAGE_DIFF_MIN: '0', COVERAGE_DIFF_BASE: 'main' })
@@ -267,6 +285,13 @@ describe('preflight execution', () => {
   const prepare = () => {
     mkdirSync(join(repo, 'bin'))
     mkdirSync(join(repo, 'scripts'))
+    mkdirSync(join(repo, '.claude', 'hooks'), { recursive: true })
+    writeFileSync(
+      join(repo, '.claude', 'hooks', 'vale-prose.sh'),
+      `printf '{"command":"vale-prose","flag":"%s","base":"%s"}\\n' "$1" "$2" >> calls.jsonl
+echo 'vale-prose: checked 0 Markdown file(s) changed since x' >&2
+`
+    )
     writeFileSync(join(repo, '.gitignore'), '.preflight/\ncalls.jsonl\n')
     writeFileSync(
       join(repo, 'bin', 'pnpm'),
@@ -298,7 +323,7 @@ console.log(JSON.stringify({ scored: true, pct: failed ? 80 : 100, total: 10, mi
 process.exit(failed ? 1 : 0)
 `
     )
-    git('add', 'bin/pnpm', 'scripts/diff-coverage.mjs', '.gitignore')
+    git('add', 'bin/pnpm', 'scripts/diff-coverage.mjs', '.gitignore', '.claude/hooks/vale-prose.sh')
     git('commit', '-qm', 'fixtures')
   }
 
@@ -336,6 +361,12 @@ process.exit(failed ? 1 : 0)
     expect(block).toContain('2 passed (2)')
     expect(block).toContain('pnpm coverage:diff')
     expect(block).not.toContain('`pnpm test`')
+    expect(calls.find((call) => call.command === 'vale-prose')).toEqual({
+      command: 'vale-prose',
+      flag: '--base',
+      base: git('rev-parse', 'HEAD').trim()
+    })
+    expect(block).toContain('`vale-prose --base` - pass (exit 0) - 0 changed Markdown files')
   })
 
   it('refuses to stamp a result if HEAD changes during coverage', () => {

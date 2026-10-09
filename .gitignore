@@ -90,6 +90,8 @@ coverage/
 !.claude/skills/teardown/
 # Buckets an issue's findings by severity; docs/agents/issue-tracker.md has triage run it.
 !.claude/skills/jev-severity/
+# Launches and drives the app headless under Xvfb; /run and agents checking UI changes load it.
+!.claude/skills/run-birdbrain/
 # The SessionStart hook that settings.json runs.
 !.claude/hooks/
 .codex

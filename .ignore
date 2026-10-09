@@ -1,0 +1,6 @@
+# ripgrep reads this file, and so do the agent Grep and Glob tools built on it; git does not.
+# These design bundles inline every asset into lines of about 900 KB, so a single match
+# prints megabytes: one repository-wide search returned 5.3 MB, nearly all from these files.
+# The line-based .dc.html mocks beside them stay searchable. To read a bundle, name its path.
+docs/design-handoff/**/Birdbrain-standalone.html
+docs/design-handoff/2026-09-14-design-project-export/Birdbrain.html

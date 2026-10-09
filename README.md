@@ -18,19 +18,6 @@ an experimental macOS build, and is in public beta.
 
 ![A case in Birdbrain, showing the capture list, a saved page, and its chain of custody](website/content/images/screenshot-case.png)
 
-## Why it exists
-
-I started Birdbrain after the capture tool I relied on was bought by a larger company and its
-free tier went away. That tool was closed source, had no way to extend it, and now leads into
-a product that needs an account and a subscription. I wanted the same job done by something
-anyone can download, read, and change, without giving up quality to get it.
-
-The job itself is personal. As an OSINT researcher I usually know what I am trying to prove.
-The hard part is going back to gather every piece and being sure I did not miss one.
-Birdbrain exists so that each piece is captured once, kept in the case it belongs to, and can
-be shown to a reader later exactly as it was.
-
-
 ## How it works
 
 1. **Capture.** Click the extension on a page. Birdbrain saves the page as MHTML, a full-page

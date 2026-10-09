@@ -13,6 +13,24 @@ import { CaptureHealth } from '@renderer/components/status/CaptureHealth'
 import { ExportMenu } from '@renderer/components/export/ExportMenu'
 import { useTheme } from '@renderer/hooks/useTheme'
 import { useUpdateStatus } from '@renderer/hooks/useUpdateStatus'
+import {
+  WINDOW_CONTROLS_LEFT_PROPERTY,
+  WINDOW_CONTROLS_RIGHT_PROPERTY
+} from '@renderer/lib/windowControls'
+
+// Margins that keep the bar's content clear of the native window controls: the OS title
+// bar is hidden and this bar stands in for it. lib/windowControls.ts publishes the room
+// each side needs. They go on the outermost item of each side rather than on the header,
+// because the two side groups are `flex-1 basis-0` and padding on either would make them
+// unequal, moving the search off the window's centre (e2e/topbar-layout.spec.ts). The
+// -0.25rem is the logo's own `-ml-1`, which the inline margin replaces.
+const START_INSET = {
+  marginLeft: `calc(-0.25rem + var(${WINDOW_CONTROLS_LEFT_PROPERTY}, 0px))`
+} as const
+const END_INSET = { marginRight: `var(${WINDOW_CONTROLS_RIGHT_PROPERTY}, 0px)` } as const
+
+const HEADER_CLASS =
+  'app-drag flex h-12 shrink-0 items-center gap-3 border-b border-border bg-surface px-4'
 
 export function TopBar() {
   const navigate = useNavigate()
@@ -39,9 +57,9 @@ export function TopBar() {
   // Simplified settings header
   if (isOnSettings) {
     return (
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border bg-surface px-4">
+      <header className={HEADER_CLASS}>
         {/* Logo */}
-        <div className="flex items-center gap-2 px-1 -ml-1">
+        <div className="flex items-center gap-2 px-1 -ml-1" style={START_INSET}>
           <img src={logoImg} alt="Birdbrain" className="h-6 w-6" />
           <span className="font-display text-xs font-extrabold tracking-tight text-text-primary">
             Birdbrain
@@ -64,7 +82,13 @@ export function TopBar() {
           </div>
         )}
 
-        <Button variant="ghost" size="icon-sm" onClick={toggleTheme} title="Toggle theme">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={toggleTheme}
+          title="Toggle theme"
+          style={END_INSET}
+        >
           {theme === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
         </Button>
       </header>
@@ -72,7 +96,7 @@ export function TopBar() {
   }
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border bg-surface px-4">
+    <header className={HEADER_CLASS}>
       {/* The side groups share what the search leaves equally, so the search sits at the
           window's centre until a side needs more than its half. The case name's track
           gives way first, down to the switcher icon; then the search shrinks. */}
@@ -81,6 +105,7 @@ export function TopBar() {
         <button
           onClick={() => navigate({ to: '/' })}
           className="flex items-center gap-2 rounded-md px-1 -ml-1 hover:bg-elevated transition-colors"
+          style={START_INSET}
           title="Home"
         >
           <img src={logoImg} alt="Birdbrain" className="h-6 w-6" />
@@ -148,7 +173,13 @@ export function TopBar() {
           )}
         </Button>
 
-        <Button variant="ghost" size="icon-sm" onClick={toggleTheme} title="Toggle theme">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={toggleTheme}
+          title="Toggle theme"
+          style={END_INSET}
+        >
           {theme === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
         </Button>
       </div>

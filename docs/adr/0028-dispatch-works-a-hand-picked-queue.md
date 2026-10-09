@@ -4,6 +4,9 @@
 
 **Date:** 2026-09-11
 
+**Amended 2026-10-08 by [ADR-0045](0045-dispatch-runs-two-slots-every-hour.md):** the slot count
+in rule 3 is two. The queue, the filing gate and the `process` freeze stand.
+
 Amends [ADR-0014](0014-tier-the-evidence-backstop-and-widen-the-dispatch-slot.md) (the slot
 count returns to one) and [ADR-0005](0005-unattended-agents-on-the-evidence-path.md) (the
 frontier definition). Withdraws the file-every-defect rule in `CLAUDE.md`. The evidence tiers,

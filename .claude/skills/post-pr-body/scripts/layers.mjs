@@ -8,18 +8,50 @@ const SUMMARY_LINE = /^\s*<summary>(.*)<\/summary>\s*$/i
 
 // Proxies for jargon. Each is a thing a reader outside the repository cannot act on; the
 // author says it in words on the top layer and puts the token inside a details block.
+// The third entry is the plain-words alternative the finding suggests.
 const JARGON = [
-  [/`/, 'inline code'],
-  [/\b(?=[0-9a-f]*[a-f])(?=[0-9a-f]*\d)[0-9a-f]{7,40}\b/, 'a commit id'],
-  [/\b[\w.-]+\.(ts|tsx|js|jsx|mjs|cjs|json|md|mdx|sh|ya?ml|css|html|sql)\b/i, 'a file name'],
-  [/(^|[\s(\[])(?!https?:\/\/)(\.{0,2}\/)?[\w@.-]*\/[\w@./-]*\/[\w@./-]*/, 'a directory path'],
-  [/\bADR-\d+/, 'an ADR number'],
-  [/\b(pnpm|npx|npm|eslint|vitest|tsc|jq)\b/, 'a tool name'],
+  [/`/, 'inline code', 'describe the code in words'],
+  [
+    /\b(?=[0-9a-f]*[a-f])(?=[0-9a-f]*\d)[0-9a-f]{7,40}\b/,
+    'a commit id',
+    'say "the latest commit" or describe the change'
+  ],
+  [
+    /\b[\w.-]+\.(ts|tsx|js|jsx|mjs|cjs|json|md|mdx|sh|ya?ml|css|html|sql)\b/i,
+    'a file name',
+    'name what the file does ("the settings screen")'
+  ],
+  [
+    /(^|[\s(\[])(?!https?:\/\/)(\.{0,2}\/)?[\w@.-]*\/[\w@./-]*\/[\w@./-]*/,
+    'a directory path',
+    'name the area in words ("the capture code")'
+  ],
+  [/\bADR-\d+/, 'an ADR number', 'name the decision in words ("the one-fix-round rule")'],
+  [
+    /\b(pnpm|npx|npm|eslint|vitest|tsc|jq)\b/,
+    'a tool name',
+    'name what it checks ("the tests", "the type check", "the style check")'
+  ],
   [
     /\b(pre-pass|preflight|typecheck|linter|lint|worktree|merge base|diff coverage|known-answer|sha)\b/i,
-    'repository jargon'
+    'repository jargon',
+    null
   ]
 ]
+
+// Plain words for each repository term, keyed by its lower-case form.
+const PLAIN_TERMS = {
+  'pre-pass': 'review',
+  preflight: 'full check run',
+  typecheck: 'type check',
+  linter: 'style check',
+  lint: 'style check',
+  worktree: 'working copy',
+  'merge base': 'where the branch started',
+  'diff coverage': 'test coverage of the changed lines',
+  'known-answer': 'reference test',
+  sha: 'commit'
+}
 
 /**
  * Splits lines into the visible top layer and the collapsed details blocks, and checks that
@@ -46,7 +78,7 @@ export function parseLayers(lines) {
     }
     if (DETAILS_CLOSE.test(line)) {
       if (open < 0) {
-        findings.push(`line ${i + 1}: </details> without an open <details>`)
+        findings.push(`line ${i + 1}: </details> without an open <details>; add the <details> and <summary> lines above it, or delete it`)
         continue
       }
       const inner = lines.slice(open + 1, i)
@@ -59,13 +91,15 @@ export function parseLayers(lines) {
         )
       } else {
         summary = m[1].trim()
-        if (!summary) findings.push(`line ${open + first + 2}: an empty <summary>`)
+        if (!summary) {
+          findings.push(`line ${open + first + 2}: an empty <summary>; name the contents in plain words, e.g. <summary>Test output</summary>`)
+        }
         if (inner[first + 1] !== undefined && inner[first + 1].trim() !== '') {
           findings.push(`line ${open + first + 2}: a blank line follows </summary> so Markdown renders inside the block`)
         }
       }
       if (inner.some((l) => /^## /.test(l))) {
-        findings.push(`line ${open + 1}: a <details> block holds no "## " heading; sections stay on the top layer`)
+        findings.push(`line ${open + 1}: a <details> block holds no "## " heading; use bold text inside the block, or move the section to the top layer`)
       }
       for (let k = open; k <= i; k++) visible[k] = false
       blocks.push({ start: open, end: i, summary, lines: inner })
@@ -73,11 +107,11 @@ export function parseLayers(lines) {
       continue
     }
     if (open < 0 && /<\/?summary>/i.test(line)) {
-      findings.push(`line ${i + 1}: <summary> outside a <details> block`)
+      findings.push(`line ${i + 1}: <summary> outside a <details> block; make it the first line after <details>`)
     }
   }
   if (open >= 0) {
-    findings.push(`line ${open + 1}: <details> is never closed`)
+    findings.push(`line ${open + 1}: <details> is never closed; add </details> after the block's last line`)
     for (let k = open; k < lines.length; k++) visible[k] = false
   }
   return { visible, blocks, findings }
@@ -91,9 +125,12 @@ export function parseLayers(lines) {
  */
 export function jargonIn(line) {
   const text = line.replace(/<!--[\s\S]*?-->/g, '').replace(/\[[^\]]*\]\([^)]*\)/g, (m) => m.replace(/\([^)]*\)$/, ''))
-  for (const [re, what] of JARGON) {
+  for (const [re, what, alt] of JARGON) {
     const m = text.match(re)
-    if (m) return `${what} ("${m[0].trim().slice(0, 40)}")`
+    if (!m) continue
+    const token = m[0].trim()
+    const instead = alt || `write "${PLAIN_TERMS[token.toLowerCase()]}"`
+    return `${what} ("${token.slice(0, 40)}"); ${instead}`
   }
   return null
 }
@@ -115,7 +152,7 @@ export function plainLanguageFindings(lines, visible, exempt = () => false) {
       return
     }
     const hit = jargonIn(line)
-    if (hit) findings.push(`line ${i + 1}: the top layer is plain language, found ${hit}; say it in words or move it into a <details> block`)
+    if (hit) findings.push(`line ${i + 1}: the top layer is plain language, found ${hit}, or move it into a <details> block`)
   })
   return findings
 }

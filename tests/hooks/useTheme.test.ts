@@ -5,7 +5,13 @@ import { resolve } from 'node:path'
 import { createElement, type ReactNode } from 'react'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { useTheme, THEME_FADE_CLASS, THEME_FADE_MS } from '@renderer/hooks/useTheme'
+import {
+  useTheme,
+  reconcilePersistedTheme,
+  THEME_FADE_CLASS,
+  THEME_FADE_MS
+} from '@renderer/hooks/useTheme'
+import { queryKeys } from '@renderer/lib/api/keys'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { stubMatchMedia } from '../components/matchMediaStub'
 
@@ -104,6 +110,39 @@ describe('useTheme', () => {
     act(() => result.current.toggleTheme())
 
     expect(root.classList.contains(THEME_FADE_CLASS)).toBe(false)
+  })
+})
+
+describe('reconcilePersistedTheme', () => {
+  let client: QueryClient
+  let get: ReturnType<typeof vi.fn>
+  let update: ReturnType<typeof vi.fn>
+
+  function persist(theme: 'dark' | 'light') {
+    get = vi.fn(async () => ({ theme }))
+    update = vi.fn(async (partial: { theme: 'dark' | 'light' }) => ({ theme: partial.theme }))
+    fakeBridge({ settings: { get, update } })
+  }
+
+  beforeEach(() => {
+    localStorage.clear()
+    client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  })
+
+  it('writes the page theme back when settings.json holds the other one', async () => {
+    // The window opened its controls light from settings.json; the page painted dark.
+    persist('light')
+    await reconcilePersistedTheme(client)
+    expect(update).toHaveBeenCalledWith({ theme: 'dark' })
+    expect(client.getQueryData(queryKeys.settings)).toEqual({ theme: 'dark' })
+  })
+
+  it('writes nothing when the two already agree', async () => {
+    localStorage.setItem('theme', 'light')
+    persist('light')
+    await reconcilePersistedTheme(client)
+    expect(get).toHaveBeenCalledOnce()
+    expect(update).not.toHaveBeenCalled()
   })
 })
 

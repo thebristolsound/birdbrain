@@ -4,6 +4,9 @@
 
 **Date:** 2026-09-06
 
+**Amended 2026-10-08 by [ADR-0045](0045-dispatch-runs-two-slots-every-hour.md):** the schedule is
+hourly again. The repository is public, and standard hosted-runner minutes are free.
+
 Amends [ADR-0027](0027-agent-prs-are-opened-by-a-machine-account.md) rules 3, 4 and 5. Does
 not reopen [ADR-0011](0011-restate-the-autonomy-exit-bar.md): the believability streak stays
 withdrawn, and this decision puts a proven tool on a timer rather than resuming a pilot.

@@ -87,6 +87,24 @@ fetch_refs() {
 
 fetch_refs
 
+# Report whether the machine account's token (ADR-0027) is available, so a session reads the
+# fact instead of recalling it from memory that can go stale (#1774). Sourced the way the
+# dispatch routine loads it, in a subshell with output discarded so neither the token nor a
+# malformed file can leak or fail the session. Never prints the token.
+report_agent_token() {
+  local env_file="$HOME/.config/birdbrain-agent/env"
+  if [ ! -f "$env_file" ]; then
+    log "machine-account token: unavailable ($env_file not found)"
+  elif (unset BIRDBRAIN_AGENT_GH_TOKEN; set +eu; . "$env_file" >/dev/null 2>&1
+        [ -n "${BIRDBRAIN_AGENT_GH_TOKEN:-}" ]) </dev/null 2>/dev/null; then
+    log "machine-account token: available ($env_file sets BIRDBRAIN_AGENT_GH_TOKEN)"
+  else
+    log "machine-account token: unavailable ($env_file does not set BIRDBRAIN_AGENT_GH_TOKEN)"
+  fi
+}
+
+report_agent_token
+
 if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   # Never fatal: a missing/broken mise must not block local sessions from starting.
   MISE_BIN="$(command -v mise || true)"

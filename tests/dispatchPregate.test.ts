@@ -380,9 +380,11 @@ const run = (
 
 const PARKED = ['agent-pr', 'agent-authored', 'awaiting-maintainer']
 const UNPARKED = ['agent-pr', 'agent-authored']
-const IDLE = 'the slot is held and no open agent PR needs the routine'
-const QUEUE_EMPTY = 'the slot is free but the queue is empty'
-const FRONTIER = 'the slot is free and 1 unblocked queued issue(s) wait'
+const IDLE = 'every slot is held and no open agent PR needs the routine'
+const QUEUE_EMPTY = 'a slot is free but the queue is empty'
+// One agent PR holds one of the two slots (ADR-0045), and these worlds queue nothing.
+const NOTHING_OWED = QUEUE_EMPTY
+const FRONTIER = 'a slot is free and 1 unblocked queued issue(s) wait'
 const SKIPPED = `PR #${PR} is parked for the maintainer; skipped until he removes awaiting-maintainer`
 const LABEL_AFTER_PARK = '2026-09-21T08:00:00Z'
 const APPLIED_AGAIN_AT = '2026-09-21T09:00:00Z'
@@ -405,13 +407,13 @@ const appliedAgain = (by: string | null, at = LABEL_AFTER_PARK) =>
 const expectReappliedWithoutRun = (args: Args, by: string | null, at = LABEL_AFTER_PARK) => {
   const first = run(fixtures(args))
   expect(first.status, first.stderr).toBe(0)
-  expect(first.outputs).toEqual({ run: 'false', reason: IDLE })
+  expect(first.outputs).toEqual({ run: 'false', reason: NOTHING_OWED })
   expect(first.writes).toEqual([REAPPLY])
   expect(first.summary).toContain(appliedAgain(by, at))
   for (let fire = 0; fire < 2; fire++) {
     const next = run(fixtures(applyAgain(args)))
     expect(next.status, next.stderr).toBe(0)
-    expect(next.outputs).toEqual({ run: 'false', reason: IDLE })
+    expect(next.outputs).toEqual({ run: 'false', reason: NOTHING_OWED })
     expect(next.writes).toEqual([])
     expect(next.summary).toContain(SKIPPED)
   }
@@ -439,7 +441,7 @@ describe.skipIf(!HAS_JQ)('pregate.sh on a PR parked for the maintainer', () => {
       })
     )
     expect(result.status, result.stderr).toBe(0)
-    expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+    expect(result.outputs).toEqual({ run: 'false', reason: NOTHING_OWED })
     expect(result.summary).toContain(SKIPPED)
     expect(result.writes).toEqual([])
   })
@@ -453,7 +455,7 @@ describe.skipIf(!HAS_JQ)('pregate.sh on a PR parked for the maintainer', () => {
       })
     )
     expect(result.status, result.stderr).toBe(0)
-    expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+    expect(result.outputs).toEqual({ run: 'false', reason: NOTHING_OWED })
   })
 
   it.each([PIPELINE, MAINTAINER, COLLABORATOR])(
@@ -468,7 +470,7 @@ describe.skipIf(!HAS_JQ)('pregate.sh on a PR parked for the maintainer', () => {
         })
       )
       expect(result.status, result.stderr).toBe(0)
-      expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+      expect(result.outputs).toEqual({ run: 'false', reason: NOTHING_OWED })
     }
   )
 
@@ -551,8 +553,8 @@ describe.skipIf(!HAS_JQ)('pregate.sh on a PR parked for the maintainer', () => {
       for (const { status, stderr } of fires) expect(status, stderr).toBe(0)
       expect(fires.map(({ outputs }) => outputs)).toEqual([
         { run: 'true', reason: woken() },
-        { run: 'false', reason: IDLE },
-        { run: 'false', reason: IDLE }
+        { run: 'false', reason: NOTHING_OWED },
+        { run: 'false', reason: NOTHING_OWED }
       ])
     }
   )
@@ -568,7 +570,7 @@ describe.skipIf(!HAS_JQ)('pregate.sh on a PR parked for the maintainer', () => {
       comments: [...wake.comments, { login: PIPELINE, at: AFTER_WAKE }]
     }
     expect(run(fixtures(wake)).outputs).toEqual({ run: 'true', reason: woken() })
-    expect(run(fixtures(answered)).outputs).toEqual({ run: 'false', reason: IDLE })
+    expect(run(fixtures(answered)).outputs).toEqual({ run: 'false', reason: NOTHING_OWED })
     const later = '2026-09-21T11:00:00Z'
     const result = run(
       fixtures({ ...answered, comments: [...answered.comments, { login: MAINTAINER, at: later }] })
@@ -589,7 +591,7 @@ describe.skipIf(!HAS_JQ)('pregate.sh on a PR parked for the maintainer', () => {
     const result = run(
       fixtures({ ...wake, comments: [...wake.comments, { login: PIPELINE, at: AFTER_WAKE }] })
     )
-    expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+    expect(result.outputs).toEqual({ run: 'false', reason: NOTHING_OWED })
   })
 
   it.each([
@@ -612,7 +614,7 @@ describe.skipIf(!HAS_JQ)('pregate.sh on a PR parked for the maintainer', () => {
         fixtures({ labels: UNPARKED, comments: [{ login: PIPELINE, at: VERDICT_AT }], events })
       )
       expect(result.status, result.stderr).toBe(0)
-      expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+      expect(result.outputs).toEqual({ run: 'false', reason: NOTHING_OWED })
       expect(result.writes).toEqual([REAPPLY])
       expect(result.summary).toContain(appliedAgain(COLLABORATOR, at))
       events.push({ event: 'labeled', label: 'awaiting-maintainer', by: PIPELINE, at })
@@ -717,7 +719,7 @@ describe.skipIf(!HAS_JQ)('pregate.sh on a PR parked for the maintainer', () => {
       })
     )
     expect(result.status, result.stderr).toBe(0)
-    expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+    expect(result.outputs).toEqual({ run: 'false', reason: NOTHING_OWED })
     expect(result.summary).toContain(SKIPPED)
   })
 })
@@ -761,7 +763,7 @@ describe.skipIf(!HAS_JQ)('pregate.sh trust list', () => {
       })
     )
     expect(result.status, result.stderr).toBe(0)
-    expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+    expect(result.outputs).toEqual({ run: 'false', reason: NOTHING_OWED })
     expect(result.summary).toContain(
       `PR #${PR} has activity from outside the trust list, not counted: ${COLLABORATOR} at ${AFTER_HEAD}\n`
     )
@@ -772,7 +774,7 @@ describe.skipIf(!HAS_JQ)('pregate.sh trust list', () => {
       fixtures({ labels: UNPARKED, comments: [{ login: COLLABORATOR, at: AFTER_HEAD }] })
     )
     expect(result.status, result.stderr).toBe(0)
-    expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+    expect(result.outputs).toEqual({ run: 'false', reason: NOTHING_OWED })
   })
 
   it('runs for the maintainer', () => {
@@ -805,7 +807,7 @@ describe.skipIf(!HAS_JQ)('pregate.sh trust list', () => {
           ...botActivity(login, surface)
         })
       )
-      expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+      expect(result.outputs).toEqual({ run: 'false', reason: NOTHING_OWED })
       expect(result.summary).toContain(`not counted: ${login} at ${AFTER_HEAD}`)
     }
   )
@@ -870,7 +872,7 @@ describe.skipIf(!HAS_JQ)('pregate.sh counts labels and pushes only from trusted 
       })
     )
     expect(result.status, result.stderr).toBe(0)
-    expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+    expect(result.outputs).toEqual({ run: 'false', reason: NOTHING_OWED })
     expect(result.summary).toContain(
       `PR #${PR} head ${SHA.slice(0, 8)} was pushed by ${pusher === null ? 'an unrecorded account' : named}, outside the trust list; no verdict owed`
     )
@@ -905,7 +907,7 @@ describe.skipIf(!HAS_JQ)('pregate.sh counts labels and pushes only from trusted 
       ]
     })
     expect(result.status, result.stderr).toBe(0)
-    expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+    expect(result.outputs).toEqual({ run: 'false', reason: NOTHING_OWED })
     expect(result.summary).toContain(
       `PR #${PR} head ${SHA.slice(0, 8)} was pushed by an unrecorded account, outside the trust list; no verdict owed`
     )
@@ -1050,6 +1052,62 @@ const QUEUED_ISSUE: Issue = {
   events: queuedBy(MAINTAINER, 'ready-for-agent', 'queued')
 }
 
+const OTHER_CLAIM: Issue = {
+  number: 6,
+  labels: ['agent-wip'],
+  events: [{ event: 'labeled', label: 'agent-wip', by: PIPELINE, at: ago(20) }]
+}
+
+// Two slots (ADR-0045): an open agent PR holds one, and the frontier leaves out the issue the
+// other slot already holds, which keeps both queue labels until its PR merges.
+describe.skipIf(!HAS_JQ)('pregate.sh with two slots', () => {
+  const PULLS = `repos/${REPO}/pulls?state=open&per_page=100`
+  const quietPr = (branch = BRANCH) => {
+    const world = fixtures({ labels: UNPARKED, comments: [], state: 'success' })
+    const [pull] = world[PULLS] as { head: { sha: string; ref: string } }[]
+    return { ...world, [PULLS]: [{ ...pull, head: { ...pull.head, ref: branch } }] }
+  }
+  const withPr = (pr: Record<string, unknown>, issues: Issue[]) => ({
+    ...pr,
+    ...issueWorld(issues),
+    [PULLS]: pr[PULLS]
+  })
+  const claimed = (n: number): Issue => ({
+    number: n,
+    labels: ['ready-for-agent', 'queued', 'agent-wip'],
+    events: [
+      ...queuedBy(MAINTAINER, 'ready-for-agent', 'queued'),
+      { event: 'labeled', label: 'agent-wip', by: PIPELINE, at: ago(20) }
+    ]
+  })
+
+  it('dispatches into the second slot while one agent PR is open', () => {
+    const result = run(withPr(quietPr(), [QUEUED_ISSUE]))
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.outputs).toEqual({ run: 'true', reason: FRONTIER })
+  })
+
+  it('is full with one agent PR and one live claim', () => {
+    const result = run(withPr(quietPr(), [OTHER_CLAIM, QUEUED_ISSUE]))
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+  })
+
+  it('leaves out a queued issue whose agent PR is open', () => {
+    const result = run(withPr(quietPr(`agent/${ISSUE}-fix`), [QUEUED_ISSUE]))
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.outputs).toEqual({ run: 'false', reason: QUEUE_EMPTY })
+    expect(result.summary).toContain(`Issue #${ISSUE} is held by a claim or an open agent PR`)
+  })
+
+  it('leaves out a queued issue that carries a live claim', () => {
+    const result = run(issueWorld([claimed(ISSUE)]))
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.outputs).toEqual({ run: 'false', reason: QUEUE_EMPTY })
+    expect(result.summary).toContain(`Issue #${ISSUE} is held by a claim or an open agent PR`)
+  })
+})
+
 type Outcome = { run: string; reason: string }
 
 // One label: how to build the world with the label on or off, what the gate decides in each
@@ -1093,8 +1151,13 @@ const SUBJECTS: Record<string, Subject> = {
   'agent-wip': {
     noun: 'Issue',
     n: 5,
+    // A live claim on issue 6 holds the other slot, so the label on issue 5 decides the fire.
     world: (events, on) =>
-      issueWorld([{ number: 5, labels: on ? ['agent-wip'] : [], events }, QUEUED_ISSUE]),
+      issueWorld([
+        { number: 5, labels: on ? ['agent-wip'] : [], events },
+        OTHER_CLAIM,
+        QUEUED_ISSUE
+      ]),
     whenOn: { run: 'false', reason: IDLE },
     whenOff: { run: 'true', reason: FRONTIER },
     adder: PIPELINE,
@@ -1112,7 +1175,7 @@ const SUBJECTS: Record<string, Subject> = {
         events,
         comments: [{ login: PIPELINE, at: VERDICT_AT }]
       }),
-    whenOn: { run: 'false', reason: IDLE },
+    whenOn: { run: 'false', reason: NOTHING_OWED },
     whenOff: {
       run: 'true',
       reason: `PR #${PR} has activity at ${VERDICT_AT} newer than its head (${HEAD_AT})`
@@ -1133,14 +1196,14 @@ const SUBJECTS: Record<string, Subject> = {
         events,
         comments: []
       }),
-    whenOn: { run: 'false', reason: IDLE },
+    whenOn: { run: 'false', reason: NOTHING_OWED },
     whenOff: { run: 'true', reason: MERGE },
     adder: PIPELINE,
     remover: MAINTAINER,
     strip: false,
     times: ['2026-09-19T09:00:00Z', LABEL_AFTER_PARK],
     // The pre-gate leaves the label on, and merge.sh refuses a PR that carries it.
-    untrustedAdd: { run: 'false', reason: IDLE }
+    untrustedAdd: { run: 'false', reason: NOTHING_OWED }
   },
   'ready-for-agent': {
     noun: 'Issue',
@@ -1297,7 +1360,7 @@ describe.skipIf(!HAS_JQ)('pregate.sh reads every label in its trusted state', ()
       fixtures({ labels, state: 'success', draft: false, comments: [], events })
     const first = run(approved(UNPARKED, [opened, removed]))
     expect(first.status, first.stderr).toBe(0)
-    expect(first.outputs).toEqual({ run: 'false', reason: IDLE })
+    expect(first.outputs).toEqual({ run: 'false', reason: NOTHING_OWED })
     expect(first.writes).toEqual([
       `POST repos/${REPO}/issues/${PR}/labels labels[]=evidence-affecting`
     ])
@@ -1305,7 +1368,7 @@ describe.skipIf(!HAS_JQ)('pregate.sh reads every label in its trusted state', ()
     const putBack: LabelEvent = { ...opened, at: APPLIED_AGAIN_AT }
     for (let fire = 0; fire < 2; fire++) {
       const next = run(approved([...UNPARKED, 'evidence-affecting'], [opened, removed, putBack]))
-      expect(next.outputs).toEqual({ run: 'false', reason: IDLE })
+      expect(next.outputs).toEqual({ run: 'false', reason: NOTHING_OWED })
       expect(next.writes).toEqual([])
     }
   })
@@ -1320,6 +1383,7 @@ describe.skipIf(!HAS_JQ)('pregate.sh reads every label in its trusted state', ()
           { event: 'unlabeled', label: 'agent-wip', by: COLLABORATOR, at: LATER }
         ]
       },
+      OTHER_CLAIM,
       QUEUED_ISSUE
     ])
     const filler = Array.from({ length: 100 }, () =>
@@ -1381,7 +1445,7 @@ describe.skipIf(!HAS_JQ)('pregate.sh counts agent/pre-pass only from trusted cre
       const forged: Status = { state, by: COLLABORATOR, at: FORGED_AT, description }
       const result = ready([forged, verdict])
       expect(result.status, result.stderr).toBe(0)
-      expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+      expect(result.outputs).toEqual({ run: 'false', reason: NOTHING_OWED })
       expect(result.summary).toContain(notCounted(`${state} by ${COLLABORATOR} at ${FORGED_AT}`))
       // The same status from the pipeline decides as it did before this rule.
       const trusted = ready([{ ...forged, by: PIPELINE }, verdict])
@@ -1523,7 +1587,7 @@ describe.skipIf(!HAS_JQ)('pregate.sh holds section 2a while merge.sh would refus
   ] as const)('holds section 2a over %s', (_label, head, named) => {
     const result = run(withChecks([...head]))
     expect(result.status, result.stderr).toBe(0)
-    expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+    expect(result.outputs).toEqual({ run: 'false', reason: NOTHING_OWED })
     expect(result.summary).toContain(held(named))
   })
 
@@ -1531,7 +1595,7 @@ describe.skipIf(!HAS_JQ)('pregate.sh holds section 2a while merge.sh would refus
     const result = run(
       withChecks([green('lint'), green('test')], [{ context: 'test', state: 'failure' }])
     )
-    expect(result.outputs).toEqual({ run: 'false', reason: IDLE })
+    expect(result.outputs).toEqual({ run: 'false', reason: NOTHING_OWED })
     expect(result.summary).toContain(held('test'))
   })
 
@@ -1551,7 +1615,7 @@ describe.skipIf(!HAS_JQ)('pregate.sh holds section 2a while merge.sh would refus
 
 // The spend cap across the fires of one day on a PR the pre-gate would start a cycle for on
 // every fire: the first runs, a fire half an hour later is held for the PR, one 6.5 hours after
-// the last cycle runs, and one after four cycles in 24 hours is held in total.
+// the last cycle runs, and one after six cycles in 24 hours is held in total.
 const expectCapped = (fixture: Record<string, unknown>, reason: string) => {
   const onPr = (...hours: number[]) => hours.map((h) => ({ hoursAgo: h, targets: [PR] }))
   const fires: [Paid[], string][] = [
@@ -1561,7 +1625,10 @@ const expectCapped = (fixture: Record<string, unknown>, reason: string) => {
       `run=false (the spend cap holds every cycle owed: #${PR} had one in the last 6 hours)`
     ],
     [onPr(6.5), `run=true (${reason})`],
-    [onPr(6.5, 12.5, 18.5, 23), 'run=false (the spend cap holds this cycle: 4 paid cycles started']
+    [
+      onPr(6.5, 9.5, 12.5, 15.5, 18.5, 23),
+      'run=false (the spend cap holds this cycle: 6 paid cycles started'
+    ]
   ]
   for (const [paid, want] of fires) {
     const result = run({ ...fixture, ...paidHistory(paid) })
@@ -1571,34 +1638,34 @@ const expectCapped = (fixture: Record<string, unknown>, reason: string) => {
   }
 }
 
-// The maintainer's ruling of 2026-09-28 on #1310: at most 4 paid cycles in any 24 hours, and at
+// The maintainer's ruling of 2026-09-28 on #1310, raised by ADR-0045: at most 6 paid cycles in any 24 hours, and at
 // most 1 for any PR or issue in any 6 hours, counted from the dispatch workflow's own jobs.
 describe.skipIf(!HAS_JQ)('pregate.sh spend cap', () => {
   const OWED = fixtures({ labels: UNPARKED, comments: [{ login: PIPELINE, at: VERDICT_AT }] })
   const ACTIVITY = `PR #${PR} has activity at ${VERDICT_AT} newer than its head (${HEAD_AT})`
-  const TOTAL = 'the spend cap holds this cycle: 4 paid cycles started since '
+  const TOTAL = 'the spend cap holds this cycle: 6 paid cycles started since '
   const HELD_PR = `the spend cap holds every cycle owed: #${PR} had one in the last 6 hours`
   const NOTICE = '::notice title=Dispatch target::'
   const others = (...hours: number[]) => hours.map((h, i) => ({ hoursAgo: h, targets: [100 + i] }))
 
   it('starts a cycle below both limits and records the PR it is for', () => {
-    const result = run({ ...OWED, ...paidHistory(others(2, 8, 14)) })
+    const result = run({ ...OWED, ...paidHistory(others(2, 5, 8, 11, 14)) })
     expect(result.status, result.stderr).toBe(0)
     expect(result.outputs).toEqual({ run: 'true', reason: ACTIVITY })
     expect(result.stdout).toContain(`${NOTICE}${PR}\n`)
   })
 
-  it('holds every cycle once 4 have started in 24 hours', () => {
-    const result = run({ ...OWED, ...paidHistory(others(2, 8, 14, 20)) })
+  it('holds every cycle once 6 have started in 24 hours', () => {
+    const result = run({ ...OWED, ...paidHistory(others(2, 5, 8, 11, 14, 20)) })
     expect(result.status, result.stderr).toBe(0)
     expect(result.outputs.run).toBe('false')
     expect(result.outputs.reason).toContain(TOTAL)
-    expect(result.outputs.reason).toContain(`and the limit is 4 in 24 hours: ${ACTIVITY}`)
+    expect(result.outputs.reason).toContain(`and the limit is 6 in 24 hours: ${ACTIVITY}`)
     expect(result.stdout).not.toContain(NOTICE)
   })
 
   it('holds report mode at the total limit too', () => {
-    const result = run({ ...OWED, ...paidHistory(others(2, 8, 14, 20)) }, {}, 'report')
+    const result = run({ ...OWED, ...paidHistory(others(2, 5, 8, 11, 14, 20)) }, {}, 'report')
     expect(result.outputs.run).toBe('false')
     expect(result.outputs.reason).toContain(`${TOTAL}`)
     expect(result.outputs.reason).toContain('report mode always runs')
@@ -1611,11 +1678,11 @@ describe.skipIf(!HAS_JQ)('pregate.sh spend cap', () => {
   })
 
   it.each([
-    ['a cycle older than 24 hours', others(2, 8, 14, 25)],
+    ['a cycle older than 24 hours', others(2, 5, 8, 11, 14, 25)],
     [
       'a fire whose Claude step was skipped',
       [
-        ...others(2, 8, 14),
+        ...others(2, 5, 8, 11, 14),
         { hoursAgo: 20, targets: null, step: { status: 'completed', conclusion: 'skipped' } }
       ]
     ]
@@ -1627,18 +1694,18 @@ describe.skipIf(!HAS_JQ)('pregate.sh spend cap', () => {
   it.each([
     [
       'a run cancelled after its Claude step started',
-      { hoursAgo: 20, targets: [104], step: { status: 'completed', conclusion: 'cancelled' } }
+      { hoursAgo: 20, targets: [105], step: { status: 'completed', conclusion: 'cancelled' } }
     ],
     [
       'a cycle still running',
-      { hoursAgo: 1, targets: [104], step: { status: 'in_progress', conclusion: null } }
+      { hoursAgo: 1, targets: [105], step: { status: 'in_progress', conclusion: null } }
     ],
     [
       'a re-run of a run created five days earlier',
-      { hoursAgo: 3, targets: [104], createdDaysAgo: 5 }
+      { hoursAgo: 3, targets: [105], createdDaysAgo: 5 }
     ]
   ] as const)('counts %s', (_label, last) => {
-    const result = run({ ...OWED, ...paidHistory([...others(2, 8, 14), last]) })
+    const result = run({ ...OWED, ...paidHistory([...others(2, 5, 8, 11, 14), last]) })
     expect(result.outputs.run).toBe('false')
     expect(result.outputs.reason).toContain(TOTAL)
   })

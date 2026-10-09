@@ -211,7 +211,25 @@ export class InvalidSettingsError extends Error {
   }
 }
 
+type ThemeListener = (theme: BirdbrainSettings['theme']) => void
+const themeListeners = new Set<ThemeListener>()
+
+// Fires after a write or held change moves the theme. The main window recolours its
+// native chrome from this; the renderer already applied the theme itself before asking.
+export function onThemeChange(listener: ThemeListener): () => void {
+  themeListeners.add(listener)
+  return () => {
+    themeListeners.delete(listener)
+  }
+}
+
+function notifyIfThemeChanged(before: BirdbrainSettings, after: BirdbrainSettings): void {
+  if (before.theme === after.theme) return
+  for (const listener of themeListeners) listener(after.theme)
+}
+
 export function updateSettings(partial: Partial<BirdbrainSettings>): BirdbrainSettings {
+  const before = getSettings()
   const parsed = SettingsUpdateSchema.safeParse(partial)
   if (!parsed.success) {
     throw new InvalidSettingsError(
@@ -232,19 +250,24 @@ export function updateSettings(partial: Partial<BirdbrainSettings>): BirdbrainSe
     } catch (err) {
       unsavedChoices = { ...unsavedChoices, ...supplied }
       logger.warn('settings', 'settings.unreadable_write_refused', undefined, err)
-      return getSettings()
+      const held = getSettings()
+      notifyIfThemeChanged(before, held)
+      return held
     }
   }
-  const updated = { ...getSettings(), ...supplied }
+  const updated = { ...before, ...supplied }
   writeFileSync(settingsPath, JSON.stringify(updated, null, 2), 'utf-8')
   unsavedChoices = {}
+  notifyIfThemeChanged(before, updated)
   return updated
 }
 
 export function resetSettings(): BirdbrainSettings {
+  const before = getSettings()
   const defaults = { ...DEFAULT_SETTINGS }
   writeFileSync(settingsPath, JSON.stringify(defaults, null, 2), 'utf-8')
   unsavedChoices = {}
+  notifyIfThemeChanged(before, defaults)
   return defaults
 }
 

@@ -62,7 +62,7 @@ the issue fails the ready-for-agent bar at intake or mid-work.
 
 ## Interactive sessions on an agent PR
 
-Scheduled Dispatch works the PR that holds the slot every four hours, so an interactive session
+Scheduled Dispatch works the PRs that hold its two slots every hour, so an interactive session
 that runs a reviewer pre-pass or a fix round on an `agent-pr` PR takes the same cycle claim a
 dispatcher does. Follow section 2 of `.claude/skills/dispatch/SKILL.md`: read the linked issue for
 a live claim, post `Cycle claim: PR #<pr>` on it through `agh`, settle, and post

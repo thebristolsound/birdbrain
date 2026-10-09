@@ -90,16 +90,21 @@ if [ "$runs" -eq 0 ]; then
   fi
 else
   # A pre-pass verdict is a commit status, which triggers no PR event, so merge-gate can be
-  # stale after one. Re-run its last attempt: a re-run keeps the workflow definition that run
-  # was started with, where a dispatch on the head branch would run whatever that branch holds.
+  # stale after one. Re-run the last attempt of every red merge-gate run at head, since one
+  # commit can carry several: a re-run keeps the workflow definition that run was started with,
+  # where a dispatch on the head branch would run whatever that branch holds.
   case " $bad_checks " in
     *" merge-gate="*)
-      gate_run="$(node -e '
-const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).check_runs.filter(r=>r.name==="merge-gate")
-const m=(c[0]?.details_url||"").match(/\/actions\/runs\/(\d+)/); process.stdout.write(m?m[1]:"")' "$work/checks.json")"
-      if [ -n "$gate_run" ] && [ "$dry" -eq 0 ]; then
-        "$cli" run rerun "$gate_run" >/dev/null \
-          && say "merge-gate re-run started (run $gate_run)" || say "WARN could not re-run merge-gate (run $gate_run)"
+      gate_runs="$(node -e '
+const ok=new Set(["success","skipped","neutral"])
+const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).check_runs.filter(r=>r.name==="merge-gate"&&!(r.status==="completed"&&ok.has(r.conclusion)))
+const ids=c.map(r=>(r.details_url||"").match(/\/actions\/runs\/(\d+)/)?.[1]).filter(Boolean)
+process.stdout.write([...new Set(ids)].join(" "))' "$work/checks.json")"
+      if [ "$dry" -eq 0 ]; then
+        for gate_run in $gate_runs; do
+          "$cli" run rerun "$gate_run" >/dev/null \
+            && say "merge-gate re-run started (run $gate_run)" || say "WARN could not re-run merge-gate (run $gate_run)"
+        done
       fi ;;
   esac
   [ -z "$bad_checks" ] || fail "required checks not green at head: $bad_checks"

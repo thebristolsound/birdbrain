@@ -179,4 +179,24 @@ describe.skipIf(!HAS_JQ)('merge.sh takes the admin bypass only when asked', () =
     expect(gate.stderr).toContain('required checks not green at head: merge-gate=completed/failure')
     expect(mergeCall(gate.calls)).toBeUndefined()
   })
+
+  it('re-runs every red merge-gate run at head once each and skips green ones', () => {
+    const gateRun = (id: number, conclusion: string) => ({
+      ...run('merge-gate', conclusion),
+      details_url: `https://github.com/o/r/actions/runs/${id}/job/${id + 1}`
+    })
+    const gate = invoke(
+      routes(requiredRules(['lint', 'merge-gate']), [
+        ...green,
+        gateRun(4242, 'failure'),
+        gateRun(4343, 'failure'),
+        gateRun(4343, 'failure'),
+        gateRun(4444, 'success')
+      ]),
+      []
+    )
+    const reruns = gate.calls.filter((call) => call.startsWith('run rerun'))
+    expect(reruns).toEqual(['run rerun 4242', 'run rerun 4343'])
+    expect(mergeCall(gate.calls)).toBeUndefined()
+  })
 })

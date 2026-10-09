@@ -109,3 +109,44 @@ prove and what they do not.
   capture pipeline self-test.
 - Database tools cover backup and restore, snapshots before upgrades, vacuum, and search index
   rebuilds.
+
+## Limits
+
+This is beta software. Use synthetic or low-stakes material where you can, and export anything
+you cannot afford to lose.
+
+- You capture each page yourself. Automatic capture while you browse is turned off in this
+  beta, and Birdbrain does not save video.
+- A case belongs to one investigator on one machine. You can move a case to another machine as
+  an archive file.
+- Birdbrain does not encrypt the database or capture files at rest. Confidentiality of the
+  stored case relies on your operating system's full-disk encryption.
+- The signing key is a file encrypted through the operating system's credential store. On a
+  machine without one, Birdbrain asks you to accept storing the key as plain text. Birdbrain
+  decides this once, when it creates the key.
+- Deleting a capture removes its files, but its URL, capture time, and hashes stay in the
+  append-only manifest and appear in exports that include the audit trail.
+- Redaction boxes hide text only in the report. The evidence package still contains the
+  original screenshot and the full saved page.
+- Capture details show the result of the last verification run, not the state of the file now.
+  Click **Re-verify** for a current result.
+- Export is the only backup that includes capture files. The in-app database backup copies the
+  database alone.
+- You can create personas and import their cookies, but captures do not use a persona yet.
+- The extension runs in Chrome and Chromium only.
+- Data formats may change between beta releases.
+
+## Network use
+
+Birdbrain makes these outbound connections:
+
+- the capture's hash, never its content, to the timestamp authority
+- the captured site, once more, to record its TLS certificate
+- the target site, when you paste URLs or recapture. The desktop app loads the page itself,
+  from your IP address, with a user agent that names Birdbrain
+- the Internet Archive, when you ask for a lookup
+- the filter list host, to download cookie-banner lists
+- GitHub, to check for updates
+
+[SECURITY.md](https://github.com/thebristolsound/birdbrain/blob/main/SECURITY.md) lists the
+fixed hosts. If you work through a VPN or Tor, route the whole machine through it.

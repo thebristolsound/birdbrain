@@ -1,5 +1,8 @@
 import { useState, useCallback, useEffect } from 'react'
+import type { QueryClient } from '@tanstack/react-query'
 import { useSettingsMutations } from '@renderer/lib/queries'
+import { settingsQueryOptions } from '@renderer/lib/api/settings'
+import { queryKeys } from '@renderer/lib/api/keys'
 
 type Theme = 'light' | 'dark'
 
@@ -26,6 +29,17 @@ function applyTheme(theme: Theme): void {
   } else {
     document.documentElement.classList.remove('dark')
   }
+}
+
+// The page takes its theme from localStorage (theme-init.js), the native window controls
+// from settings.json (src/main/windowChrome.ts). A toggle writes both, so a settings write
+// that never landed leaves them apart until the next toggle. The page is what the operator
+// sees, so its theme is written back once at startup; main recolours the controls on it.
+export async function reconcilePersistedTheme(queryClient: QueryClient): Promise<void> {
+  const theme = getInitialTheme()
+  const persisted = await queryClient.fetchQuery(settingsQueryOptions)
+  if (persisted.theme === theme) return
+  queryClient.setQueryData(queryKeys.settings, await window.birdbrain.settings.update({ theme }))
 }
 
 function prefersReducedMotion(): boolean {

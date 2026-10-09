@@ -1,6 +1,7 @@
 # Case retrieval, first slice: link and header search, exact checks, and an unreviewed view
 
-Plan only. Nothing here is built. It plans the "Smallest first slice" of
+Plan only. Nothing here is built. The maintainer approved it on 2026-10-09 (Rulings). It plans
+the "Smallest first slice" of
 [the Case retrieval pipeline spec](../specs/2026-10-02-case-retrieval-pipeline-design.md), under
 [ADR-0044](../adr/0044-case-search-indexes-are-rebuildable-caches-outside-the-manifest.md), which
 places the new search records in the app's database as a rebuildable cache outside the Manifest.
@@ -114,8 +115,8 @@ collector and no export reads either table.
 ### D2. Search form: a trigram index over `norm`
 
 An identifier with punctuation must match as typed, including a domain inside a longer URL. An
-FTS5 table declared with `tokenize='trigram'` over `norm` does that without the word splitting #1590
-describes. The bundled SQLite is 3.53.4, and `trigram` has existed since 3.34. The table is
+FTS5 table declared with `tokenize='trigram'` over `norm` does that without the word splitting
+#1590 describes. The bundled SQLite is 3.53.4, and `trigram` has existed since 3.34. The table is
 external-content over `exhibit_search_fields`, kept in step by triggers, the pattern migration 25
 set for `captures_fts`. A query shorter than three characters falls back to `LIKE` on `norm`, as
 `searchExtractedData` already does.
@@ -185,8 +186,8 @@ A new IPC channel, `search:fields`, returns `FieldHit` rows: the Case and Exhibi
 Number, the Content Hash, the field, the value, a short preview, and the locator. Before it returns
 a hit, the query compares the build row's `content_hash` with the Exhibit's current one, and a
 mismatch comes back as unavailable, never as a hit (ADR-0044). The search bar adds a group beside
-Captures and Notes, labelled by field, such as **Link target**, **Image alt text**, or **From header**. Each row
-names the Exhibit Number and the first 12 characters of the Content Hash.
+Captures and Notes, labelled by field, such as **Link target**, **Image alt text**, or **From
+header**. Each row names the Exhibit Number and the first 12 characters of the Content Hash.
 
 Extracted Text hits keep their shape and gain the Exhibit Number and Content Hash in the row. They
 gain no locator in this slice: FTS5 reports no match offsets, and a query with `OR`, `NEAR`, or a
@@ -224,7 +225,7 @@ the Captures four ways: by `header.from` value, by `header.reply-to` value, by l
 Captures of the Case. A header or link row opens its span as in D7. An `extracted_data`
 identifier has no locator, so its row opens the Capture only.
 
-Where the view lives, and N, are questions for the maintainer (Q1, Q3).
+The view is a tab on the Data screen, and N is 2, adjustable in the view (Rulings 1 and 3).
 
 ### D9. Withheld from analysis
 
@@ -292,14 +293,14 @@ Steps 2, 3, 4 and 6 add rows outside the Manifest and change no stored or anchor
 Manifest Entry, no Exhibit byte, and no Case Archive format. They touch blocking-tier paths, so the
 path backstop fires, and each pull request says in its Evidence impact section why the change is
 not evidence-affecting, as the #1590 brief does. Step 5 reports whether a span is present in
-stored bytes, which is an interpretation of evidence, so this plan treats it as evidence-affecting
-unless the maintainer rules otherwise (Q4).
+stored bytes, which is an interpretation of evidence, so it is evidence-affecting (Rulings 4).
 
 ## Tests
 
-- **Link extraction.** A link in the main frame and in an embedded frame; `<base>`; an `area`; an image
-  link's alt; a relative and an unparseable `href`; a quoted-printable part; offsets that slice
-  back to the value in the decoded part; a part the budgets refuse, counted in the build row.
+- **Link extraction.** A link in the main frame and in an embedded frame; `<base>`; an `area`;
+  an image link's alt; a relative and an unparseable `href`; a quoted-printable part; offsets that
+  slice back to the value in the decoded part; a part the budgets refuse, counted in the build
+  row.
 - **Header extraction.** A block with folded lines; a lone `From:` line in prose, which is not a
   block; CRLF and LF line endings; offsets that slice back to the value in the `.txt` file.
 - **Migration 38.** The tables, the trigram table and its triggers; the cascade from Capture
@@ -313,19 +314,23 @@ unless the maintainer rules otherwise (Q4).
   with `deleted_at` set does not, and a Persisted Match removes it.
 - **End to end.** Search reaches a header hit and opens the Text tab at the span.
 
-## Questions for the maintainer
+## Rulings, 2026-10-09
 
-1. **Where should the unreviewed view live?** Recommendation: a tab on the Data screen beside the
-   extracted-data view, because it groups the same identifiers. The investigation view design
-   has no such screen yet.
-2. **Should a hit open as a highlighted span in the Text tab, or a highlighted row in the Links
-   tab?** No screen does this today. Recommendation: yes for this slice, and the source inspector
-   in the investigation view design can take it over later.
-3. **How rare is a rare identifier?** Recommendation: found in at most 2 Captures of the Case,
-   adjustable in the view.
-4. **Is the exact check in step 5 evidence-affecting?** Recommendation: yes. It states whether a
-   span is present in stored bytes. An Operator will read that as a statement about the evidence,
-   so it should carry the maintainer's sign-off.
-5. **What size should the synthetic Case be?** The spec asks for a "synthetic Case of comparable size." A round
-   number of Captures is enough, and the plan records it as the evaluation size, not as a fact
-   about any Case.
+The maintainer approved this plan and accepted each recommendation it made.
+
+1. **Where the unreviewed view lives (D8).** A tab on the Data screen, beside the extracted-data
+   view, because it groups the same identifiers.
+2. **How a hit opens (D7).** A header hit opens the Text tab with its span highlighted, and a link
+   hit opens the Links tab with its row highlighted. The source inspector in the investigation
+   view design can take this over later.
+3. **A rare identifier (D8).** One found in at most 2 Captures of the Case, adjustable in the view.
+4. **The exact check (step 5).** Evidence-affecting. It states whether a span is present in stored
+   bytes, and an Operator will read that as a statement about the evidence, so its pull request
+   carries the maintainer's sign-off.
+
+## Open question
+
+**What size should the synthetic Case be?** The spec asks for a "synthetic Case of comparable
+size." A round number of Captures is enough, and the plan records it as the evaluation size, not
+as a fact about any Case. The step 1 generator takes the size as a parameter, so it can be built
+before the answer; the baseline run waits for it.

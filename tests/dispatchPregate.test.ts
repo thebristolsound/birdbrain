@@ -1736,6 +1736,57 @@ describe.skipIf(!HAS_JQ)('pregate.sh spend cap', () => {
     expect(result.stdout).not.toContain(NOTICE)
   })
 
+  // A local host (scripts/dispatch-local.sh) has no Actions run to count, so it records each
+  // paid cycle it starts in a ledger the pre-gate reads beside the run list.
+  const ledger = (entries: { hoursAgo: number; targets: number[] | null }[] | string) => {
+    const path = join(dir, 'ledger.jsonl')
+    writeFileSync(
+      path,
+      typeof entries === 'string'
+        ? entries
+        : entries
+            .map((e) =>
+              JSON.stringify({ at: hoursAgo(e.hoursAgo), targets: e.targets, mode: 'cycle' })
+            )
+            .join('\n') + '\n'
+    )
+    return { DISPATCH_LOCAL_LEDGER: path }
+  }
+
+  it('counts the cycles a local host recorded toward the total', () => {
+    const result = run(
+      { ...OWED, ...paidHistory(others(2, 8, 14)) },
+      ledger([{ hoursAgo: 1, targets: [200] }])
+    )
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.outputs.run).toBe('false')
+    expect(result.outputs.reason).toContain(TOTAL)
+  })
+
+  it('holds a PR for a local cycle recorded against it, and not for one 7 hours old', () => {
+    const held = run(OWED, ledger([{ hoursAgo: 5, targets: [PR] }]))
+    expect(held.outputs).toEqual({ run: 'false', reason: HELD_PR })
+    const free = run(OWED, ledger([{ hoursAgo: 7, targets: [PR] }]))
+    expect(free.outputs).toEqual({ run: 'true', reason: ACTIVITY })
+  })
+
+  it('leaves a local cycle older than 24 hours out of the count', () => {
+    const result = run(
+      { ...OWED, ...paidHistory(others(2, 8, 14)) },
+      ledger([{ hoursAgo: 25, targets: [PR] }])
+    )
+    expect(result.outputs).toEqual({ run: 'true', reason: ACTIVITY })
+  })
+
+  it('holds when the ledger cannot be read as JSON lines', () => {
+    const result = run(OWED, ledger('not json\n'))
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.outputs).toEqual({
+      run: 'false',
+      reason: `could not count the paid cycles already started, so the spend cap holds this one: ${ACTIVITY}`
+    })
+  })
+
   // Review round 5 on #1629, R1: a collaborator force-pushes the branch back to H1, the head the
   // pipeline requested changes on at 09:00, after H2 was approved at 10:30. The pre-gate counts
   // the pipeline's 10:30 comment as activity on H1 on every fire. R1b: H1's failure is the one

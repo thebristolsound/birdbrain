@@ -136,3 +136,7 @@ report-*.html
 
 # sharp built against the system libvips for the test runner (scripts/build-test-sharp.mjs)
 /.cache/test-sharp/
+
+# The dispatch cycle's scratch directory (.github/scripts/dispatch/run.sh); scripts/dispatch-local.sh
+# moves it into its run directory at the end, and a run that was killed can leave it behind.
+.dispatch/

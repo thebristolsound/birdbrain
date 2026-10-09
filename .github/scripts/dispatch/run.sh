@@ -3,7 +3,9 @@
 #
 # $1 = mode (report | cycle). Env: CLAUDE_CODE_OAUTH_TOKEN, DISPATCH_MODEL, DISPATCH_EFFORT,
 # RUN_URL, GH_TOKEN (machine token, the identity every gh call carries here),
-# TARGET_ISSUE (optional, narrows section 3 to one issue).
+# TARGET_ISSUE (optional, narrows section 3 to one issue), DISPATCH_HOST (actions, the
+# default, or local for scripts/dispatch-local.sh), DISPATCH_RUN_DIR (the local host's run
+# directory, where its reports stay).
 #
 # TARGET_ISSUE exists for a supervised fire. Section 3 walks the frontier in
 # ascending order and takes the first eligible issue, which is the right rule
@@ -13,8 +15,9 @@
 # to the next candidate.
 #
 # The prompt is the skill invocation plus the facts the skill cannot probe for
-# itself on this host, including where a reviewer's full report has to be left
-# for the verdict comment's link to survive the runner.
+# itself on this host: how it got here, whose credential gh and git carry, and
+# where a reviewer's full report has to be left for the verdict comment's link to
+# survive the process. Those three vary by host (DISPATCH_HOST); the rest is shared.
 #
 # Project MCP servers are disabled: none are configured, and a server start on
 # the runner would be startup time spent for nothing.
@@ -32,6 +35,24 @@ scrub_reports() {
 
 mode="${1:-cycle}"
 summary="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
+
+case "${DISPATCH_HOST:-actions}" in
+  actions)
+    where="You are running unattended from GitHub Actions run ${RUN_URL:-<unknown>} (ADR-0026)."
+    credential="GH_TOKEN and the checkout's git credential are both the machine account, so bare gh and agh are the same identity, and the implementer pushes as the machine account over HTTPS."
+    reports="Copy each reviewer full report to .dispatch/reports/pr-<number>-<short sha>.md, which is uploaded as the dispatch-run artifact of this run, and make the link read: ${RUN_URL:-<unknown>} (artifact dispatch-run, reports/pr-<number>-<short sha>.md). The runner filesystem is gone once the job ends, so a bare path is not a link."
+    ;;
+  local)
+    where="You are running unattended on the maintainer's machine as ${RUN_URL:-<unknown>}, through scripts/dispatch-local.sh (docs/agents/dispatch-local.md)."
+    credential="GH_TOKEN for this process is the machine token and gh is the git credential helper, so bare gh and agh are the same identity, and the implementer pushes as the machine account over HTTPS."
+    reports="Copy each reviewer full report to .dispatch/reports/pr-<number>-<short sha>.md, which this run keeps on the maintainer's machine, and make the link read: ${DISPATCH_RUN_DIR:-<run directory>}/dispatch/reports/pr-<number>-<short sha>.md (on the maintainer's machine). The path outlives the process; nothing on GitHub can open it."
+    ;;
+  *)
+    echo "Unknown DISPATCH_HOST '${DISPATCH_HOST}'; actions or local" >&2
+    exit 2
+    ;;
+esac
+
 mkdir -p .dispatch/reports
 # A leftover first-call result would be summed into this run's meta.json.
 rm -f .dispatch/result-1.json .dispatch/claude-1.err .dispatch/report-1.md \
@@ -58,11 +79,11 @@ if [ "${GITHUB_ACTIONS:-}" = true ]; then
   fi
 fi
 
-context="You are running unattended from GitHub Actions run ${RUN_URL:-<unknown>} (ADR-0026).
+context="$where
 The environment probe reads LOCAL here: nothing sits between gh and GitHub.
-GH_TOKEN and the checkout's git credential are both the machine account, so bare gh and agh are the same identity, and the implementer pushes as the machine account over HTTPS.
+$credential
 Node 20 and pnpm are already on PATH; no mise prefix is needed.
-The machine token carries repo scope and not gist scope, so a pre-pass 'Full report:' link cannot be a gist here. Copy each reviewer full report to .dispatch/reports/pr-<number>-<short sha>.md, which is uploaded as the dispatch-run artifact of this run, and make the link read: ${RUN_URL:-<unknown>} (artifact dispatch-run, reports/pr-<number>-<short sha>.md). The runner filesystem is gone once the job ends, so a bare path is not a link.
+The machine token carries repo scope and not gist scope, so a pre-pass 'Full report:' link cannot be a gist here. $reports
 This process exits when your turn ends, and anything left running in the background dies with it. Run every subagent (Agent tool) call in the foreground with run_in_background: false, start no background shells or monitors, and wait for CI with bash .github/scripts/dispatch/checks.sh --wait 540 <pr>, repeated while it exits 124 (the Bash tool caps a command at ten minutes). End your turn only with the section 5 report, and start it with a heading line containing 'Dispatch cycle report': this runner treats a result without one as an unfinished cycle."
 
 case "$mode" in

@@ -290,6 +290,45 @@ describe('dispatch run.sh', () => {
     expect(readFileSync(join(bin, 'dispatch-env-1'), 'utf8')).toBe('1')
   })
 
+  it('tells the cycle where it runs: the Actions run by default, the run directory on the local host', () => {
+    respond(result(REPORT, 1), result(REPORT, 1))
+
+    expect(run().status).toBe(0)
+    const actions = argsOf(1)[argsOf(1).indexOf('-p') + 1]
+    expect(actions).toContain('GitHub Actions run https://example.test/run/1')
+    expect(actions).toContain(
+      'https://example.test/run/1 (artifact dispatch-run, reports/pr-<number>-<short sha>.md)'
+    )
+
+    const local = run({
+      DISPATCH_HOST: 'local',
+      DISPATCH_RUN_DIR: '/state/runs/1',
+      RUN_URL: 'local dispatch run 1 on box'
+    })
+    expect(local.status, local.stderr).toBe(0)
+    const prompt = argsOf(2)[argsOf(2).indexOf('-p') + 1]
+    expect(prompt).toContain("on the maintainer's machine as local dispatch run 1 on box")
+    expect(prompt).toContain(
+      "/state/runs/1/dispatch/reports/pr-<number>-<short sha>.md (on the maintainer's machine)"
+    )
+    expect(prompt).toContain('gh is the git credential helper')
+    expect(prompt).not.toContain('artifact dispatch-run')
+    // The shared half of the context is the same on both hosts.
+    expect(prompt).toContain('run_in_background: false')
+    expect(prompt).toContain("heading line containing 'Dispatch cycle report'")
+  })
+
+  it('refuses a host it does not know before touching anything', () => {
+    respond(result(REPORT, 1))
+
+    const { status, stderr } = run({ DISPATCH_HOST: 'cloud' })
+
+    expect(status).toBe(2)
+    expect(stderr).toContain("Unknown DISPATCH_HOST 'cloud'")
+    expect(calls()).toBe(0)
+    expect(existsSync(join(work, '.dispatch'))).toBe(false)
+  })
+
   it('on Actions, trusts the workspace and swaps includeIf credentials for a plain include', () => {
     respond(result(REPORT, 1))
     const home = join(root, 'home')

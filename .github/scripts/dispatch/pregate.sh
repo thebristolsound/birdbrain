@@ -12,10 +12,12 @@
 # trusted_prepass), and the rest is named in the step summary. And how much: the
 # spend cap below holds a cycle past its limits, and holds when it cannot count.
 # It counts only the runs GitHub still lists, and anyone with write access can
-# delete a finished run. The ceiling is then dispatch.yml's schedule, which the
-# maintainer accepted on 2026-09-28: a fire every 4 hours, one run at a time,
-# and a job that skips any start or re-run but a scheduled first attempt or
-# his, so 6 cycles a day plus any he starts. The trust rules do not close every
+# delete a finished run; the local host adds the cycles its own ledger records
+# (DISPATCH_LOCAL_LEDGER), of which the Actions pre-gate has no record. The
+# ceiling is then dispatch.yml's schedule, which the maintainer accepted on
+# 2026-09-28: a fire every 4 hours, one run at a time, and a job that skips any
+# start or re-run but a scheduled first attempt or his, so 6 cycles a day plus
+# any he starts. The trust rules do not close every
 # way someone outside the list makes this step start a cycle, a push back to a
 # head the pipeline already reviewed and a label on a PR's linked issue among
 # them; the cap bounds those, and the schedule does once runs are deleted.
@@ -28,7 +30,8 @@
 #
 # $1 = mode. report mode always runs; it exists to compare a runner's
 # classification against an interactive session's.
-# Env: GH_TOKEN (machine token), LOGIN (machine login, optional).
+# Env: GH_TOKEN (machine token), LOGIN (machine login, optional),
+#      DISPATCH_LOCAL_LEDGER (optional: a local host's record of its paid cycles).
 # Output: run=true|false, reason.
 set -euo pipefail
 
@@ -151,6 +154,15 @@ paid_cycles() {
       || return 1
     cycles="$cycles"$'\n'
   done <<<"$found"
+  # A local host (scripts/dispatch-local.sh) has no Actions run to count, so it
+  # records each paid cycle it starts as one JSON line {at, targets} in
+  # DISPATCH_LOCAL_LEDGER. Read when set; a line that is not JSON fails the count,
+  # and the caller holds.
+  if [ -n "${DISPATCH_LOCAL_LEDGER:-}" ] && [ -s "$DISPATCH_LOCAL_LEDGER" ]; then
+    batch="$(jq -c --arg since "$cap_total_since" 'select(.at >= $since) | {at, targets}' \
+      "$DISPATCH_LOCAL_LEDGER")" || return 1
+    cycles="$cycles$batch"$'\n'
+  fi
   jq -s -c . <<<"$cycles"
 }
 

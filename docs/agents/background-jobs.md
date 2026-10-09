@@ -71,6 +71,14 @@ second reviewer on the same head: run 37235446754 (2026-10-04) found #1721 with 
 pre-pass status posted 27 seconds before the run was created, and its pre-gate started the cycle
 anyway, because a pending status is not a claim.
 
+## The scheduled PR review
+
+`.github/workflows/pr-review.yml` reviews one PR the maintainer opened each hour, under its own
+cap of 4 reviews a day (ADR-0046). The machine account posts the verdict as a comment and sets
+one `review:` state label: `passed`, `changes`, `stale` after a later push, `failed`, or
+`skipped`. It never pushes, merges, or writes a status the merge gate reads. Apply
+`review:skipped` to a PR to keep the job off it.
+
 ## Jev shadow lenses
 
 Two Jev shadow lenses run event-driven from `.github/workflows/jev-lens.yml` (ADR-0031): `lens:*`

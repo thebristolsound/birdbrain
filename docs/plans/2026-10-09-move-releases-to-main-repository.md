@@ -38,6 +38,29 @@ the remaining option is to push the tag last: create the draft against a commit,
 publication create the tag. The `on: push: tags` trigger would then need replacing, so that
 outcome goes back to the maintainer before step 2.
 
+### Result (2026-10-09)
+
+Measured on `thebristolsound/feed-probe` (public, scratch) with electron-updater 6.8.9, starting
+from a published prerelease `v1.0.1-beta.30` that carried `latest-linux.yml`:
+
+| State | `releases.atom` | Probe |
+| --- | --- | --- |
+| Bare tag `v1.0.1-beta.31` pushed | lists beta.31 first | 404 on beta.31 `latest-linux.yml` |
+| Draft release on that tag | still lists beta.31 | 404 on beta.31 |
+| Draft for `v1.0.1-beta.32` against `main`, no tag | no beta.32 entry, no tag | unchanged |
+| That draft published | lists beta.32 first | finds `1.0.1-beta.32` |
+
+- **A draft does not hide its tag.** The feed lists every version tag, including in a
+  repository that already has published releases. Draft-then-publish under `on: push: tags` leaves the error
+  window open.
+- **An untagged draft closes the window.** GitHub creates the tag at publication, when the
+  assets are already attached.
+- **The window under a tag push lasts one release run.** The beta.22 run took 6 minutes.
+- **Non-semver tags are harmless.** `GitHubProvider` skips any tag that fails `semver.valid`, so
+  `diag/curator-marker` never reaches the updater.
+
+The trigger therefore changes, and that choice goes to the maintainer.
+
 ## Step 2: the decision record (PR 1)
 
 Add ADR-0046, titled "Releases publish from the source repository." It records three things:

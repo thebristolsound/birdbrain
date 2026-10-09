@@ -25,7 +25,8 @@ import Database from 'better-sqlite3'
 // fault for the target it acts on.
 const fsHooks = vi.hoisted(() => ({
   renameFault: null as null | ((to: string) => Error | null),
-  renameCalls: 0
+  renameCalls: 0,
+  statFault: null as null | ((path: string) => Error | null)
 }))
 
 vi.mock('node:fs', async (importOriginal) => {
@@ -37,7 +38,14 @@ vi.mock('node:fs', async (importOriginal) => {
       const fault = fsHooks.renameFault?.(to)
       if (fault) throw fault
       return actual.renameSync(from, to)
-    }
+    },
+    // A permission error on the picked file, which a root test runner cannot
+    // provoke with modes.
+    statSync: ((path: string, options?: { bigint?: boolean }) => {
+      const fault = fsHooks.statFault?.(path)
+      if (fault) throw fault
+      return actual.statSync(path, options)
+    }) as typeof actual.statSync
   }
 })
 
@@ -135,6 +143,7 @@ beforeEach(async () => {
 afterEach(() => {
   fsHooks.renameFault = null
   fsHooks.renameCalls = 0
+  fsHooks.statFault = null
   coreHooks.failInit = false
   coreHooks.afterMigrate = null
   vi.restoreAllMocks()
@@ -274,6 +283,15 @@ describe('restoreDatabase from a file', () => {
     expect(outcome).toEqual({ status: 'restored' })
     expectOpen()
     expect(warn.mock.calls.map(([, code]) => code)).toEqual(['db.snapshot_prune_failed'])
+  })
+
+  it('reports a picked file it cannot read as not copied, not as missing', async () => {
+    const backup = await backupTo('backup.db')
+    fsHooks.statFault = (path) => (path === backup ? errno('EACCES') : null)
+
+    const outcome = await restoreDatabase({ kind: 'file', path: backup }, { dbPath })
+
+    expect(outcome).toEqual({ status: 'rejected', reason: 'copy_failed' })
   })
 
   it('logs the cause of a refusal, naming the reason when there is no error behind it', async () => {

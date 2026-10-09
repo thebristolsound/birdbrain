@@ -114,7 +114,9 @@ async function restore(sourcePath: string, dbPath: string): Promise<RestoreOutco
   try {
     sourceStat = statIdentity(sourcePath)
   } catch (err) {
-    return rejected('not_found', err)
+    const code = (err as { code?: unknown } | null)?.code
+    // Only a missing file is reported as one; a permission error is not.
+    return rejected(code === 'ENOENT' || code === 'ENOTDIR' ? 'not_found' : 'copy_failed', err)
   }
   if (!sourceStat.isFile) return rejected('not_a_database')
   // The live database by device and inode, not path string, so another path to

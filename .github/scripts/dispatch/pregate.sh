@@ -35,6 +35,8 @@ set -euo pipefail
 
 # shellcheck source=.github/scripts/dispatch/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+# shellcheck source=.github/scripts/dispatch/cap.sh
+. "$(dirname "${BASH_SOURCE[0]}")/cap.sh"
 
 R="${GITHUB_REPOSITORY:-thebristolsound/birdbrain}"
 mode="${1:-cycle}"
@@ -86,7 +88,7 @@ stale_before="$(date -u -d "$CLAIM_MAX_AGE" +%FT%TZ)"
 # CAP_PER_TARGET started for the same PR or issue in CAP_PER_TARGET_WINDOW,
 # whatever made it want one. It counts a cycle when CAP_PAID_STEP, the first
 # step after this one that calls Claude, has started in a job of a CAP_WORKFLOW
-# run GitHub still lists (see paid_cycles, and the header on deleted runs). Its
+# run GitHub still lists (paid_cycles in cap.sh, and the header on deleted runs). Its
 # targets are the PR or issues this step started it for, which start records as
 # a CAP_TARGET_TITLE annotation on the job.
 CAP_TOTAL=6
@@ -106,54 +108,6 @@ decide() {
   echo "reason=$2" >> "$out"
   echo "Pre-gate: run=$1 ($2)" | tee -a "$summary"
   exit 0
-}
-
-# Every paid cycle in the CAP_WORKFLOW runs GitHub still lists, started since
-# cap_total_since, one per job (attempt), as [{at, targets}]: when its
-# CAP_PAID_STEP started, and the numbers in its CAP_TARGET_TITLE annotations, or
-# null when it has none (a job from before the cap, which then counts against
-# every target). A skipped step never started; a cancelled one did. Fails on any
-# failed read, and the caller holds.
-paid_cycles() {
-  local page=1 runs ids="" batch id jobs found="" job at notes targets cycles=""
-  while :; do
-    runs="$(gh api "repos/$R/actions/workflows/$CAP_WORKFLOW/runs?per_page=100&page=$page")" \
-      || return 1
-    # A run's newest attempt can be in the window while the run was created
-    # before it, so a run with more than one attempt is read whatever its times.
-    batch="$(jq -r --arg since "$cap_total_since" '.workflow_runs[]
-      | select(.updated_at >= $since or (.run_started_at // "") >= $since or .run_attempt > 1)
-      | .id' <<<"$runs")" || return 1
-    ids="$ids $batch"
-    [ "$(jq '.workflow_runs | length' <<<"$runs")" -eq 100 ] || break
-    jq -e --arg after "$cap_rerun_since" 'any(.workflow_runs[]; .created_at >= $after)' \
-      <<<"$runs" >/dev/null || break
-    page=$(( page + 1 ))
-  done
-  for id in $ids; do
-    jobs="$(gh api --paginate "repos/$R/actions/runs/$id/jobs?filter=all&per_page=100")" \
-      || return 1
-    batch="$(jq -s -r --arg step "$CAP_PAID_STEP" --arg since "$cap_total_since" \
-      --arg now "$(date -u +%FT%TZ)" '.[].jobs[] | . as $j | .steps[]? | select(.name == $step)
-        | select(.status == "in_progress" or (.status == "completed" and .conclusion != "skipped"))
-        | (.started_at // $j.started_at // $now) as $at | select($at >= $since)
-        | "\($j.check_run_url | sub(".*/"; ""))\t\($at)"' <<<"$jobs")" || return 1
-    found="$found$batch"$'\n'
-  done
-  while IFS=$'\t' read -r job at; do
-    [ -n "$job" ] || continue
-    targets=null
-    if [[ ! "$at" < "$cap_target_since" ]]; then
-      notes="$(list "repos/$R/check-runs/$job/annotations?per_page=100")" || return 1
-      targets="$(jq -c --arg title "$CAP_TARGET_TITLE" '[.[] | select(.title == $title) | .message]
-        | if length == 0 then null else [.[] | scan("[0-9]+") | tonumber] end' <<<"$notes")" \
-        || return 1
-    fi
-    cycles="$cycles$(jq -n -c --arg at "$at" --argjson t "$targets" '{at: $at, targets: $t}')" \
-      || return 1
-    cycles="$cycles"$'\n'
-  done <<<"$found"
-  jq -s -c . <<<"$cycles"
 }
 
 # Start a cycle for reason $2 owed to $1, the PR or issue numbers it is for

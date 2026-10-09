@@ -75,7 +75,7 @@
       {
         "provider": "github",
         "owner": "thebristolsound",
-        "repo": "birdbrain-releases"
+        "repo": "birdbrain"
       }
     ],
     "asarUnpack": [

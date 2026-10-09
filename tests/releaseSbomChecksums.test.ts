@@ -20,9 +20,10 @@ const RELEASE_YML = readFileSync(join(ROOT, '.github', 'workflows', 'release.yml
 // The script tests spawn bash, node and jq; the 5s default is tight on a loaded machine.
 const SPAWN_TIMEOUT = 30_000
 
-// A `gh` first on PATH for the two release scripts. `gh api [-H <header>] <endpoint>` answers
-// with the next entry listed for the endpoint, repeating the last one; a null entry fails the
-// way an HTTP error does, and anything unlisted fails too. Every call is logged.
+// A `gh` first on PATH for the release scripts. `gh api [options] <endpoint>` answers with the
+// next entry listed for the endpoint, prefixed with the method when the call names one with
+// -X, repeating the last entry; a null entry fails the way an HTTP error does, and anything
+// unlisted fails too. Every call is logged.
 const GH_STUB = `#!/usr/bin/env node
 const fs = require('fs')
 const path = require('path')
@@ -35,9 +36,11 @@ const fail = (message) => {
   process.exit(1)
 }
 if (args[0] !== 'api') fail('unsupported: ' + args.join(' '))
-const endpoint = args.find((arg, i) => i > 0 && !arg.startsWith('-') && args[i - 1] !== '-H')
-const answers = routes[endpoint]
-if (!answers) fail('no route for ' + endpoint)
+const valued = ['-H', '-X', '-f', '-F', '--input', '--jq']
+const endpoint = args.find((arg, i) => i > 0 && !arg.startsWith('-') && !valued.includes(args[i - 1]))
+const method = args.includes('-X') ? args[args.indexOf('-X') + 1] + ' ' : ''
+const answers = routes[method + endpoint]
+if (!answers) fail('no route for ' + method + endpoint)
 const call = fs.readFileSync(log, 'utf8').split('\\n').filter((l) => l === args.join(' '))
 const answer = answers[Math.min(call.length, answers.length) - 1]
 if (answer === null) fail('HTTP 404 for ' + endpoint)
@@ -147,8 +150,8 @@ describe.skipIf(!HAS_JQ)('sbom.sh exports the bill of materials', () => {
 })
 
 const RELEASES = 'o/releases'
-const TAG = 'v1.0.0'
-const RELEASE = `repos/${RELEASES}/releases/tags/${TAG}`
+const RELEASE_ID = '7'
+const RELEASE = `repos/${RELEASES}/releases/${RELEASE_ID}`
 // One of each asset release.yml attaches, not in name order.
 const ASSETS: Record<string, string> = {
   'Birdbrain-Setup-1.0.0.exe': 'windows installer',
@@ -177,7 +180,7 @@ const releaseRoutes = (assets: Record<string, string | null>): Routes => {
 
 describe.skipIf(!HAS_JQ)('checksums.sh hashes every asset on the release', () => {
   const out = () => join(dir, 'dist', 'SHA256SUMS.txt')
-  const checksums = (routes: Routes) => run('checksums.sh', [RELEASES, TAG, out()], routes)
+  const checksums = (routes: Routes) => run('checksums.sh', [RELEASES, RELEASE_ID, out()], routes)
   const downloads = (calls: string[]) =>
     calls.filter((call) => call.startsWith('api -H Accept: application/octet-stream '))
 
@@ -239,17 +242,17 @@ describe.skipIf(!HAS_JQ)('checksums.sh hashes every asset on the release', () =>
     [
       'the release cannot be read',
       { [RELEASE]: [null] },
-      `cannot read release ${TAG} of ${RELEASES}`
+      `cannot read release ${RELEASE_ID} of ${RELEASES}`
     ],
     [
       'the release lists no assets',
       releaseRoutes({}),
-      `${TAG} on ${RELEASES} has no assets to hash`
+      `release ${RELEASE_ID} of ${RELEASES} has no assets to hash`
     ],
     [
       'an asset download fails',
       releaseRoutes({ ...ASSETS, 'latest.yml': null }),
-      `cannot download latest.yml from release ${TAG} of ${RELEASES}`
+      `cannot download latest.yml from release ${RELEASE_ID} of ${RELEASES}`
     ]
   ])(
     'fails, and writes nothing, when %s',
@@ -271,7 +274,7 @@ describe.skipIf(!HAS_JQ)('checksums.sh hashes every asset on the release', () =>
       const result = checksums(releaseRoutes(ASSETS))
 
       expect(result.status).toBe(1)
-      expect(result.stderr).toContain(`cannot hash the assets of ${TAG}`)
+      expect(result.stderr).toContain(`cannot hash the assets of release ${RELEASE_ID}`)
       expect(existsSync(out())).toBe(false)
     },
     SPAWN_TIMEOUT
@@ -286,57 +289,224 @@ const jobBlock = (content: string, job: string): string => {
   return next === -1 ? content.slice(start) : content.slice(start, start + 1 + next)
 }
 
-describe('release.yml attaches both files once every build has uploaded', () => {
-  const job = jobBlock(RELEASE_YML, 'sbom-and-checksums')
+const REPO_P = 'o/r'
+const PTAG = 'v1.0.0'
+const DRAFT_ID = 9
+const LIST = `repos/${REPO_P}/releases`
+const BY_TAG = `repos/${REPO_P}/releases/tags/${PTAG}`
+const UPLOAD = (name: string) =>
+  `POST https://uploads.github.com/repos/${REPO_P}/releases/${DRAFT_ID}/assets?name=${name}`
+const FILES: Record<string, string> = {
+  'latest-linux.yml': 'version: 1.0.0\n',
+  'birdbrain_1.0.0_amd64.deb': 'deb',
+  'SHA256SUMS.txt': 'left by an earlier step'
+}
 
-  it('runs one job after both build jobs, and hashes after the bill of materials is up', () => {
-    expect(job).toContain('needs: [build-app, build-extension]')
-    expect(job.indexOf('name: Upload the bill of materials')).toBeGreaterThan(0)
-    expect(job.indexOf('name: Hash every asset on the release')).toBeGreaterThan(
-      job.indexOf('name: Upload the bill of materials')
-    )
+// The routes for one publication of FILES: no published release for the tag, an empty
+// release list, the draft, and the draft's assets as checksums.sh reads them back.
+const publishRoutes = (overrides: Routes = {}): Routes => {
+  const attached = ['birdbrain_1.0.0_amd64.deb', 'latest-linux.yml']
+  return {
+    [BY_TAG]: [null],
+    [LIST]: ['[]'],
+    [`POST ${LIST}`]: [JSON.stringify({ id: DRAFT_ID })],
+    ...Object.fromEntries([...attached, 'SHA256SUMS.txt'].map((name) => [UPLOAD(name), ['{}']])),
+    [`repos/${REPO_P}/releases/${DRAFT_ID}`]: [
+      JSON.stringify({ assets: attached.map((name, i) => ({ id: 100 + i, name })) })
+    ],
+    ...Object.fromEntries(
+      attached.map((name, i) => [`repos/${REPO_P}/releases/assets/${100 + i}`, [FILES[name]]])
+    ),
+    [`PATCH repos/${REPO_P}/releases/${DRAFT_ID}`]: ['{}'],
+    ...overrides
+  }
+}
+
+describe.skipIf(!HAS_JQ)('publish.sh publishes a release complete, then never again', () => {
+  const files = () => join(dir, 'dist')
+  const notes = () => join(dir, 'notes.md')
+  const publish = (routes: Routes, env: NodeJS.ProcessEnv = { PUBLISH_TOKEN: 'maintainer' }) => {
+    mkdirSync(files(), { recursive: true })
+    for (const [name, content] of Object.entries(FILES)) writeFileSync(join(files(), name), content)
+    writeFileSync(notes(), 'notes')
+    return run('publish.sh', [REPO_P, PTAG, 'abc123', notes(), files()], routes, env)
+  }
+  const index = (calls: string[], fragment: string) => calls.findIndex((c) => c.includes(fragment))
+
+  it(
+    'creates an untagged pre-release draft, attaches every file and the checksums, then publishes',
+    () => {
+      const result = publish(publishRoutes())
+
+      expect(result.stderr).toBe('')
+      expect(result.status).toBe(0)
+      const create = result.calls.find((c) => c.startsWith(`api -X POST ${LIST}`))
+      expect(create).toContain('-f tag_name=v1.0.0')
+      expect(create).toContain('-f target_commitish=abc123')
+      expect(create).toContain('-F draft=true')
+      expect(create).toContain('-F prerelease=true')
+      expect(create).toContain(`-F body=@${notes()}`)
+      const sums = index(result.calls, 'assets?name=SHA256SUMS.txt')
+      expect(index(result.calls, 'assets?name=latest-linux.yml')).toBeLessThan(sums)
+      expect(index(result.calls, `releases/assets/100`)).toBeLessThan(sums)
+      expect(index(result.calls, '-X PATCH')).toBe(result.calls.length - 1)
+      expect(result.calls.at(-1)).toContain('-F draft=false')
+      expect(result.calls.filter((c) => c.includes('assets?name='))).toHaveLength(3)
+      expect(readFileSync(join(files(), 'SHA256SUMS.txt'), 'utf8')).toBe(
+        `${sha256('deb')}  birdbrain_1.0.0_amd64.deb\n${sha256(FILES['latest-linux.yml'])}  latest-linux.yml\n`
+      )
+    },
+    SPAWN_TIMEOUT
+  )
+
+  it(
+    'publishes with PUBLISH_TOKEN and builds the draft with GH_TOKEN',
+    () => {
+      const tokenLog = join(dir, 'tokens.log')
+      const wrapped = `#!/usr/bin/env bash\necho "$GH_TOKEN $*" >>'${tokenLog}'\nexec '${join(dir, 'gh-real')}' "$@"\n`
+      writeFileSync(join(dir, 'gh-real'), GH_STUB, { mode: 0o755 })
+      writeFileSync(join(dir, 'gh'), wrapped, { mode: 0o755 })
+      writeFileSync(join(dir, 'routes.json'), '{}')
+      const result = publish(publishRoutes(), { GH_TOKEN: 'workflow', PUBLISH_TOKEN: 'maintainer' })
+
+      expect(result.status).toBe(0)
+      const tokens = readFileSync(tokenLog, 'utf8').trimEnd().split('\n')
+      expect(tokens.filter((line) => line.startsWith('maintainer '))).toEqual([
+        `maintainer api -X PATCH repos/${REPO_P}/releases/${DRAFT_ID} -F draft=false`
+      ])
+      expect(tokens.slice(0, -1).every((line) => line.startsWith('workflow '))).toBe(true)
+    },
+    SPAWN_TIMEOUT
+  )
+
+  it(
+    'stops without a change when the tag is already published',
+    () => {
+      const result = publish(publishRoutes({ [BY_TAG]: ['{"id": 1}'] }))
+
+      expect(result.status).toBe(0)
+      expect(result.stdout).toContain('v1.0.0 is already published on o/r')
+      expect(result.calls).toEqual([`api ${BY_TAG}`])
+    },
+    SPAWN_TIMEOUT
+  )
+
+  it(
+    'deletes a draft an earlier attempt left for the same tag, and only that one',
+    () => {
+      const list = [
+        { id: 3, draft: true, tag_name: PTAG },
+        { id: 4, draft: true, tag_name: 'v0.9.0' },
+        { id: 5, draft: false, tag_name: 'v0.8.0' }
+      ]
+      const result = publish(
+        publishRoutes({
+          [LIST]: [JSON.stringify(list)],
+          [`DELETE repos/${REPO_P}/releases/3`]: ['']
+        })
+      )
+
+      expect(result.status).toBe(0)
+      expect(result.calls.filter((c) => c.includes('-X DELETE'))).toEqual([
+        `api -X DELETE repos/${REPO_P}/releases/3`
+      ])
+      expect(index(result.calls, '-X DELETE')).toBeLessThan(index(result.calls, `-X POST ${LIST}`))
+    },
+    SPAWN_TIMEOUT
+  )
+
+  it.each([
+    ['PUBLISH_TOKEN is unset', publishRoutes(), {}, 'PUBLISH_TOKEN is not set'],
+    [
+      'an upload fails',
+      publishRoutes({ [UPLOAD('latest-linux.yml')]: [null] }),
+      undefined,
+      'cannot attach latest-linux.yml to the draft for v1.0.0 on o/r'
+    ],
+    [
+      'the checksums cannot be written',
+      publishRoutes({ [`repos/${REPO_P}/releases/assets/100`]: [null] }),
+      undefined,
+      'cannot download birdbrain_1.0.0_amd64.deb'
+    ]
+  ])(
+    'fails, and leaves the release a draft, when %s',
+    (_, routes, env, message) => {
+      const result = publish(routes, env ?? { PUBLISH_TOKEN: 'maintainer' })
+
+      expect(result.status).toBe(1)
+      expect(result.stderr).toContain(message)
+      expect(result.calls.some((c) => c.includes('-X PATCH'))).toBe(false)
+    },
+    SPAWN_TIMEOUT
+  )
+})
+
+describe('release.yml publishes through publish.sh', () => {
+  const job = jobBlock(RELEASE_YML, 'publish')
+  const at = (name: string): number => job.indexOf(`name: ${name}`)
+
+  it('runs one job after both build jobs, with the bill of materials exported first', () => {
+    expect(job).toContain('needs: [prepare, build-app, build-extension]')
+    expect(at('Export the bill of materials')).toBeGreaterThan(0)
+    expect(at('Publish the release')).toBeGreaterThan(at('Export the bill of materials'))
   })
 
   // The release notes name both files, so a rename in one place would publish notes that
   // point at a file the page does not carry (#603).
-  it('names each file the same way in the script call, the upload and the notes', () => {
+  it('names each file the same way in the script calls and the notes', () => {
     expect(job).toContain('"$GITHUB_REPOSITORY" "dist/birdbrain-$TAG.spdx.json"')
-    expect(job).toContain('files: dist/birdbrain-${{ github.ref_name }}.spdx.json')
-    expect(job).toContain('thebristolsound/birdbrain-releases "$TAG" dist/SHA256SUMS.txt')
-    expect(job).toContain('files: dist/SHA256SUMS.txt')
+    expect(job).toContain(
+      '"$GITHUB_REPOSITORY" "$TAG" "$GITHUB_SHA" "$RUNNER_TEMP/release-notes.md" dist'
+    )
     expect(RELEASE_YML).toContain('\\`birdbrain-${TAG}.spdx.json\\` is that bill of materials')
     expect(RELEASE_YML).toContain('\\`sha256sum --check --ignore-missing SHA256SUMS.txt\\`')
   })
 
-  it('reads with the workflow token, and nothing widens the read-only permissions', () => {
-    expect(RELEASE_YML).toMatch(/^permissions:\n {2}contents: read\n/m)
-    expect(RELEASE_YML.match(/^ *permissions:/gm)).toHaveLength(1)
-    expect(job.match(/GH_TOKEN: .*/g)).toEqual([
-      'GH_TOKEN: ${{ github.token }}',
-      'GH_TOKEN: ${{ github.token }}'
-    ])
-  })
-
-  it('fails the run when a file to upload is missing', () => {
-    expect(job.match(/fail_on_unmatched_files: true/g)).toHaveLength(2)
+  // A pushed version tag is in the update feed before its files are uploaded, so the run
+  // starts by hand and GitHub creates the tag when the draft is published (ADR-0047).
+  it('starts by hand, and nothing in it pushes a tag', () => {
+    expect(RELEASE_YML).toMatch(/^on:\n {2}workflow_dispatch:\n/m)
+    expect(RELEASE_YML).not.toMatch(/^ {2}push:/m)
+    expect(RELEASE_YML).not.toMatch(/git (tag|push)/)
   })
 })
 
-describe('release-macos.yml rewrites the checksum file after a backfill', () => {
-  const content = readFileSync(join(ROOT, '.github', 'workflows', 'release-macos.yml'), 'utf8')
-  const job = jobBlock(content, 'refresh-checksums')
+describe('release.yml write access', () => {
+  const blocks = (content: string) =>
+    [...content.matchAll(/^( *)permissions:\n(?:\1 {2}\S.*\n)+/gm)].map((m) => m[0])
 
-  it('hashes the tag it backfilled once the macOS upload has finished', () => {
-    expect(job).toContain('needs: build-macos')
-    expect(job).toContain('TAG: ${{ inputs.tag }}')
-    expect(job).toContain('GH_TOKEN: ${{ github.token }}')
-    expect(job).toContain('thebristolsound/birdbrain-releases "$TAG" dist/SHA256SUMS.txt')
+  it('widens to contents: write in the publish job only', () => {
+    expect(RELEASE_YML).toMatch(/^permissions:\n {2}contents: read\n/m)
+    expect(blocks(RELEASE_YML)).toEqual([
+      'permissions:\n  contents: read\n',
+      '    permissions:\n      contents: write\n'
+    ])
+    expect(jobBlock(RELEASE_YML, 'publish')).toContain('    permissions:\n      contents: write\n')
   })
 
-  it('replaces the file on that release, failing the run when it is missing', () => {
-    expect(job).toContain('tag_name: ${{ inputs.tag }}')
-    expect(job).toContain('files: dist/SHA256SUMS.txt')
-    expect(job).toContain('fail_on_unmatched_files: true')
-    expect(job).not.toContain('overwrite_files: false')
+  // The jobs that can write, or hold a token that can, run only GitHub's tools and the
+  // release scripts.
+  it.each(['publish', 'bridge'])('runs no install, build or project script in %s', (name) => {
+    const job = jobBlock(RELEASE_YML, name)
+    expect(job).not.toMatch(/\bpnpm\b|\bnpm\b|\bnode\b|\bnpx\b/)
+    for (const [, script] of job.matchAll(/bash (\S+)/g)) {
+      expect(script).toMatch(/^\.github\/scripts\/release\/[a-z]+\.sh$/)
+    }
+  })
+
+  it('hands the maintainer token to publish.sh in the publish job only', () => {
+    const uses = [...RELEASE_YML.matchAll(/secrets\.RELEASE_TAG_TOKEN/g)]
+    expect(uses).toHaveLength(1)
+    expect(jobBlock(RELEASE_YML, 'publish')).toContain(
+      'PUBLISH_TOKEN: ${{ secrets.RELEASE_TAG_TOKEN }}'
+    )
+  })
+
+  it('reads the bridge token only in the bridge job', () => {
+    const bridge = jobBlock(RELEASE_YML, 'bridge')
+    expect([...RELEASE_YML.matchAll(/secrets\.RELEASES_REPO_TOKEN/g)]).toHaveLength(1)
+    expect(bridge).toContain('GH_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}')
+    expect(bridge).toContain('thebristolsound/birdbrain-releases "$TAG" main')
   })
 })

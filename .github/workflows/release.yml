@@ -1,38 +1,214 @@
 name: Release
 
-on:
-  push:
-    tags:
-      - 'v*'
-
-# Read-only throughout. Releases are published to the separate public repository
-# thebristolsound/birdbrain-releases (see #567) using RELEASES_REPO_TOKEN, so no job
-# needs write access to this repository at all — the token build/package code can
-# reach through GITHUB_TOKEN stays read-only.
+# Run from main in the Actions tab, or `gh workflow run release.yml --ref main`. The run
+# releases the version in package.json at the commit it runs on, and refuses one that is
+# already tagged.
 #
-# RELEASES_REPO_TOKEN belongs in the `paid-runs` environment, which admits the `v*` tag
-# this runs on, so every job that reads it names the environment (#1310; dispatch.yml has
-# the note). Unlike the other paid workflows, no job here checks who started the attempt.
+# No tag is pushed to start it (ADR-0047). The updater reads the repository's
+# releases.atom, which lists every version tag the moment it exists, with or without a
+# release, and a beta that checks for updates before the files are uploaded gets a 404 on
+# latest*.yml. So `publish` uploads to a draft that has no tag, and GitHub creates the tag
+# when the draft is published, with every file already attached.
+on:
+  workflow_dispatch:
+
+# Read-only except for `publish`, the one job that writes to this repository. It runs no
+# install, no build and no project code other than .github/scripts/release/, so the code
+# the build legs run never holds a token that can write here.
 permissions:
   contents: read
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
-  create-release:
-    environment: paid-runs
+  prepare:
+    # Spend guard (#1310), as in dispatch.yml. Every other job needs this one.
+    if: github.triggering_actor == 'thebristolsound'
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # No job in this file pushes; keep the token out of .git/config where
-          # build/package code running after checkout could read it.
           persist-credentials: false
 
-      # A release page carries ~17 assets, four of which a tester wants. Generate the
-      # download guidance from the tag rather than hand-writing it per release, so the
-      # filenames on the page can never drift from the ones actually published (#603).
+      - name: Read the version and refuse one already tagged
+        id: version
+        run: |
+          [ "$GITHUB_REF" = refs/heads/main ] ||
+            { echo "::error::Run this from main, not $GITHUB_REF."; exit 1; }
+          tag="v$(jq -r .version package.json)"
+          [[ $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] ||
+            { echo "::error::package.json has no usable version: $tag"; exit 1; }
+          status=0
+          git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null || status=$?
+          case $status in
+            0) echo "::error::$tag is already tagged. Bump the version first."; exit 1 ;;
+            2) ;;
+            *) echo "::error::Cannot read the tags of origin."; exit 1 ;;
+          esac
+          echo "tag=$tag" >>"$GITHUB_OUTPUT"
+
+  build-app:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # windows-latest now resolves to a VS 2026 (v18) image that node-gyp <12.1
+          # can't detect, breaking the better-sqlite3 native build. Pin to windows-2022
+          # until pnpm ships node-gyp >=12.1 (pnpm/pnpm#10268).
+          - os: windows-2022
+            script: package:win
+            smoke: node scripts/package-smoke.mjs
+            # latest.yml by name, not dist/*.yml — that also matches electron-builder's
+            # builder-debug.yml config dump, which is build debris and publishes runner
+            # paths on a public page (#603). The linux leg is already narrow.
+            # Every line here is a path pattern, so a comment inside the block would be
+            # read as one.
+            glob: |
+              dist/*.exe
+              dist/*.blockmap
+              dist/latest.yml
+          - os: ubuntu-latest
+            script: package:linux
+            smoke: xvfb-run --auto-servernum node scripts/package-smoke.mjs
+            glob: |
+              dist/*.AppImage
+              dist/*.deb
+              dist/*-linux.yml
+          # Experimental (#605 removed it, restored as experimental): unsigned, not
+          # notarized, and no smoke, since package-smoke.mjs drives win32 and linux only.
+          # continue-on-error keeps a failed macOS leg from holding back `publish` for
+          # the Windows and Linux files, so the release notes say the macOS files may be
+          # missing.
+          - os: macos-latest
+            script: package:mac
+            experimental: true
+            glob: |
+              dist/*.dmg
+              dist/*.zip
+              dist/*.blockmap
+              dist/latest-mac.yml
+
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental == true }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install Python setuptools (needed for node-gyp)
+        run: python3 -m pip install --break-system-packages setuptools || pip3 install --break-system-packages setuptools || true
+
+      - run: pnpm install
+
+      - name: Build and package
+        run: pnpm ${{ matrix.script }}
+
+      # Install (Windows) or run (Ubuntu) the artifact this leg just built and require
+      # the capture server to answer: the pre-ship gate's "install -> launch" step, by
+      # machine, on the exact bytes about to be published. A Windows or Ubuntu leg whose
+      # artifact does not boot uploads nothing. The macOS leg has no smoke, so this
+      # guard does not cover the macOS files or latest-mac.yml.
+      - name: Smoke the packaged app
+        if: matrix.smoke
+        timeout-minutes: 5
+        run: ${{ matrix.smoke }}
+
+      - name: Hand the files to publish
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: app-${{ matrix.os }}
+          path: ${{ matrix.glob }}
+          if-no-files-found: error
+
+  build-extension:
+    needs: prepare
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install
+
+      - name: Build Chrome extension
+        run: pnpm build:extension
+
+      - name: Zip extension
+        run: mkdir -p dist && cd extension/dist && zip -r ../../dist/birdbrain-extension.zip .
+
+      - name: Hand the file to publish
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: extension
+          path: dist/birdbrain-extension.zip
+          if-no-files-found: error
+
+  # Publishes the release through publish.sh, which attaches every file, the bill of
+  # materials and the checksum file (#1625) to a draft before it publishes. The repository
+  # has immutable releases on, so nothing can be added or replaced afterwards, and a macOS
+  # file the experimental leg failed to build waits for the next version (ADR-0047).
+  publish:
+    needs: [prepare, build-app, build-extension]
+    # Spend guard (#1310) and environment, as in dispatch.yml, which has the reasons. The
+    # environment admits only main and tags the maintainer created, so a workflow pushed
+    # to another branch cannot reach the maintainer's token.
+    if: github.triggering_actor == 'thebristolsound'
+    environment: paid-runs
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist
+          merge-multiple: true
+
+      # The build legs upload whatever matched, so check here that nothing the Windows and
+      # Linux updaters or the release notes rely on is missing. The macOS files are
+      # optional, as the experimental leg is.
+      - name: Check every required file was built
+        working-directory: dist
+        run: |
+          missing=0
+          for pattern in latest.yml latest-linux.yml '*.exe' '*.exe.blockmap' '*.AppImage' \
+            '*.deb' birdbrain-extension.zip; do
+            compgen -G "$pattern" >/dev/null ||
+              { echo "::error::No $pattern among the built files."; missing=1; }
+          done
+          exit "$missing"
+
       - name: Compose release notes
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.prepare.outputs.tag }}
         run: |
           VERSION="${TAG#v}"
           cat > "$RUNNER_TEMP/release-notes.md" <<EOF
@@ -46,19 +222,21 @@ jobs:
           click **More info**, then **Run anyway**. Code signing lands at the first non-beta release.
 
           **If a capture turns out not to be what Birdbrain claimed**, the advisory is a pinned issue on
-          this repository plus a patched release through the updater. That release reaches Windows and
+          [thebristolsound/birdbrain](https://github.com/thebristolsound/birdbrain/issues) plus a
+          patched release through the updater. That release reaches Windows and
           AppImage installs in place. A \`.deb\` install updates only on **Restart to update**, so \`.deb\`
           users have to look here.
 
           **The source is public.** Birdbrain is open source under the MIT license and is built in
-          [thebristolsound/birdbrain](https://github.com/thebristolsound/birdbrain). This repository
-          holds the builds only.
+          [thebristolsound/birdbrain](https://github.com/thebristolsound/birdbrain), which also
+          publishes these builds.
 
           ### What to report
 
-          Open an issue on this repository. Report a security vulnerability privately through the
-          [source repository's Security tab](https://github.com/thebristolsound/birdbrain/security),
-          not in an issue here.
+          Open an issue in
+          [thebristolsound/birdbrain](https://github.com/thebristolsound/birdbrain/issues).
+          Report a security vulnerability privately through its
+          [Security tab](https://github.com/thebristolsound/birdbrain/security), not in an issue.
 
           **Do not report:** layout, spacing, visual design, wording, labels, or a general sense that it
           feels dated. The UI is changing substantially and those decisions are made.
@@ -142,192 +320,59 @@ jobs:
           [Install and first capture](https://docs.birdbrain.cc/docs/tester-guide).
           EOF
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
-        with:
-          # The tag is pushed here, but the Release is published in the public
-          # releases repository: it is the electron-builder `publish` target in
-          # package.json, so it is the feed every installed build's updater reads
-          # (#567). The tag does not exist there, so pin where it is cut rather than
-          # relying on a default.
-          repository: thebristolsound/birdbrain-releases
-          token: ${{ secrets.RELEASES_REPO_TOKEN }}
-          target_commitish: main
-          draft: false
-          # A literal, not derived from the tag name. ADR-0008 Decision 3: "No release is
-          # promoted to a full release while artifacts are unsigned." Change this, and the
-          # same input in release-macos.yml, only when that decision's revisit trigger is met:
-          #   "A release process that signs every artifact and notarizes macOS builds,
-          #   with both verified on the release's actual output — acquiring a
-          #   certificate or notarization capability alone does not qualify. Only after
-          #   that verification may releases be promoted to full releases and this
-          #   restriction be lifted."
-          prerelease: true
-          body_path: ${{ runner.temp }}/release-notes.md
-
-  build-app:
-    needs: create-release
-    environment: paid-runs
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # windows-latest now resolves to a VS 2026 (v18) image that node-gyp <12.1
-          # can't detect, breaking the better-sqlite3 native build. Pin to windows-2022
-          # until pnpm ships node-gyp >=12.1 (pnpm/pnpm#10268).
-          - os: windows-2022
-            script: package:win
-            smoke: node scripts/package-smoke.mjs
-            # latest.yml by name, not dist/*.yml — that also matches electron-builder's
-            # builder-debug.yml config dump, which is build debris and publishes runner
-            # paths on a public page (#603). The linux leg is already narrow.
-            # Every line here is globbed, so a comment inside the block would be an
-            # unmatched pattern and fail_on_unmatched_files would fail the run.
-            glob: |
-              dist/*.exe
-              dist/*.blockmap
-              dist/latest.yml
-          - os: ubuntu-latest
-            script: package:linux
-            smoke: xvfb-run --auto-servernum node scripts/package-smoke.mjs
-            glob: |
-              dist/*.{AppImage,deb}
-              dist/*-linux.yml
-          # Experimental (#605 removed it, restored as experimental): unsigned, not
-          # notarized, and no smoke, since package-smoke.mjs drives win32 and linux only.
-          # continue-on-error keeps a failed macOS leg from skipping sbom-and-checksums
-          # for the Windows and Linux assets, so the release notes say the macOS files
-          # may be missing.
-          - os: macos-latest
-            script: package:mac
-            experimental: true
-            glob: |
-              dist/*.dmg
-              dist/*.zip
-              dist/*.blockmap
-              dist/latest-mac.yml
-
-    runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.experimental == true }}
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-
-      - name: Install Python setuptools (needed for node-gyp)
-        run: python3 -m pip install --break-system-packages setuptools || pip3 install --break-system-packages setuptools || true
-
-      - run: pnpm install
-
-      - name: Build and package
-        run: pnpm ${{ matrix.script }}
-
-      # Install (Windows) or run (Ubuntu) the artifact this leg just built and require
-      # the capture server to answer: the pre-ship gate's "install -> launch" step, by
-      # machine, on the exact bytes about to be published. A Windows or Ubuntu leg whose
-      # artifact does not boot uploads nothing. The macOS leg has no smoke, so this
-      # guard does not cover the macOS files or latest-mac.yml.
-      - name: Smoke the packaged app
-        if: matrix.smoke
-        timeout-minutes: 5
-        run: ${{ matrix.smoke }}
-
-      - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
-        with:
-          repository: thebristolsound/birdbrain-releases
-          token: ${{ secrets.RELEASES_REPO_TOKEN }}
-          files: ${{ matrix.glob }}
-          # Fail loudly if any expected artifact (installer, blockmap, or the
-          # latest*.yml update manifest) is missing rather than shipping a
-          # partial, broken electron-updater feed with no CI signal.
-          fail_on_unmatched_files: true
-
-  build-extension:
-    needs: create-release
-    environment: paid-runs
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-
-      - run: pnpm install
-
-      - name: Build Chrome extension
-        run: pnpm build:extension
-
-      - name: Zip extension
-        run: mkdir -p dist && cd extension/dist && zip -r ../../dist/birdbrain-extension.zip .
-
-      - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
-        with:
-          repository: thebristolsound/birdbrain-releases
-          token: ${{ secrets.RELEASES_REPO_TOKEN }}
-          files: dist/birdbrain-extension.zip
-
-  # The bill of materials and the checksum file (#1625). It waits for every build job,
-  # so the checksums are taken from the assets as the release serves them. A macOS
-  # backfill through release-macos.yml writes the file again after its upload.
-  sbom-and-checksums:
-    needs: [build-app, build-extension]
-    environment: paid-runs
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      # The workflow token, under this file's contents: read, is the least the export
-      # accepts; sbom.sh cites GitHub's documented permission.
+      # sbom.sh cites GitHub's documented permission, contents: read.
       - name: Export the bill of materials
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
         run: |
           bash .github/scripts/release/sbom.sh \
             "$GITHUB_REPOSITORY" "dist/birdbrain-$TAG.spdx.json"
 
-      - name: Upload the bill of materials
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
-        with:
-          repository: thebristolsound/birdbrain-releases
-          token: ${{ secrets.RELEASES_REPO_TOKEN }}
-          files: dist/birdbrain-${{ github.ref_name }}.spdx.json
-          fail_on_unmatched_files: true
-
-      # After the upload above, so the bill of materials is hashed with the rest.
-      - name: Hash every asset on the release
+      # The workflow token builds the draft. Publishing creates the tag, which the tag
+      # ruleset admits only from the maintainer, so that one call uses the maintainer's
+      # token (ADR-0047).
+      - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          PUBLISH_TOKEN: ${{ secrets.RELEASE_TAG_TOKEN }}
         run: |
-          bash .github/scripts/release/checksums.sh \
-            thebristolsound/birdbrain-releases "$TAG" dist/SHA256SUMS.txt
+          bash .github/scripts/release/publish.sh \
+            "$GITHUB_REPOSITORY" "$TAG" "$GITHUB_SHA" "$RUNNER_TEMP/release-notes.md" dist
 
-      - name: Upload the checksum file
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+  # Installs from v1.0.1-beta.18 to v1.0.1-beta.22 read their update feed from
+  # thebristolsound/birdbrain-releases, fixed in each build's app-update.yml. This copies
+  # the release there once, byte for byte, so those installs reach a build whose feed is
+  # this repository. Remove this job, and RELEASES_REPO_TOKEN with it, once that release
+  # is out (ADR-0047).
+  bridge:
+    needs: [prepare, publish]
+    # Spend guard (#1310) and environment, as in dispatch.yml, which has the reasons.
+    if: github.triggering_actor == 'thebristolsound'
+    environment: paid-runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: thebristolsound/birdbrain-releases
-          token: ${{ secrets.RELEASES_REPO_TOKEN }}
-          files: dist/SHA256SUMS.txt
-          fail_on_unmatched_files: true
+          persist-credentials: false
+
+      # publish.sh writes the checksum file again from the copies it attaches there.
+      - name: Download the published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir dist
+          rm dist/SHA256SUMS.txt
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body \
+            >"$RUNNER_TEMP/release-notes.md"
+
+      # That repository has no tag ruleset, so one token does both.
+      - name: Publish the release there
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
+        run: |
+          PUBLISH_TOKEN=$GH_TOKEN bash .github/scripts/release/publish.sh \
+            thebristolsound/birdbrain-releases "$TAG" main "$RUNNER_TEMP/release-notes.md" dist

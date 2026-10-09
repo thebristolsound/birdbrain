@@ -334,3 +334,17 @@ The maintainer approved this plan and accepted each recommendation it made.
 size." A round number of Captures is enough, and the plan records it as the evaluation size, not
 as a fact about any Case. The step 1 generator takes the size as a parameter, so it can be built
 before the answer; the baseline run waits for it.
+
+## Progress
+
+- **2026-10-09, step 1.** Opened as #1796: the synthetic evaluation Case, its runner
+  (`pnpm eval:retrieval`), and the assessment
+  (`docs/specs/2026-10-09-case-retrieval-first-slice-assessment.md`) with two smoke runs, at 60
+  and 1,000 Captures. They are not the baseline.
+- **Smoke finding.** Today's Data screen search already finds hosts in link targets and addresses
+  in page text, as extracted values with no position. For those identifiers the slice adds
+  positions, the check, and an answer in the search bar, not discovery. Neither of today's search
+  paths finds image alt text.
+- **Next.** The maintainer answers the open question on size and queues #1590 (step 0). Then
+  `pnpm eval:retrieval --eval-captures=<n>` on `main` gives the baseline, which must run before
+  step 4 changes search. Step 2 can start in parallel.

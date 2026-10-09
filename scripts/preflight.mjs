@@ -19,6 +19,7 @@
 //   pnpm lint
 //   pnpm lint:boundaries
 //   pnpm lint:agents-md      advisory: reports drift between the two files, never fails
+//   pnpm lint:adr            no two ADRs share a number
 //   pnpm typecheck
 //   pnpm build
 //   pnpm build:extension      only when the diff against the base touches extension/
@@ -233,6 +234,7 @@ const main = async () => {
   await run('pnpm', ['lint'], 'pnpm lint')
   await run('pnpm', ['lint:boundaries'], 'pnpm lint:boundaries')
   await run('pnpm', ['lint:agents-md'], 'pnpm lint:agents-md', describeAgentsMd)
+  await run('pnpm', ['lint:adr'], 'pnpm lint:adr')
   await run('pnpm', ['typecheck'], 'pnpm typecheck')
   await run('pnpm', ['build'], 'pnpm build')
   if (touchesExtension(changed)) {

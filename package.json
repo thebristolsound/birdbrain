@@ -35,6 +35,7 @@
     "lint:boundaries": "depcruise src extension/src tests e2e",
     "mcp": "cross-env ELECTRON_RUN_AS_NODE=1 electron ./out/main/mcp.js",
     "lint:agents-md": "node scripts/lint-agents-md.mjs",
+    "lint:adr": "node scripts/check-adr-numbers.mjs",
     "db:migration:new": "node scripts/new-migration.mjs",
     "lint:slop": "node scripts/slop-audit/cli.mjs",
     "audit:check": "node scripts/audit-check.mjs",

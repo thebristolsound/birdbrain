@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   prepare:
-    # Spend guard (#1310), as in release-macos.yml. Every other job needs this one.
+    # Spend guard (#1310), as in dispatch.yml. Every other job needs this one.
     if: github.triggering_actor == 'thebristolsound'
     runs-on: ubuntu-latest
     outputs:
@@ -164,13 +164,17 @@ jobs:
           path: dist/birdbrain-extension.zip
           if-no-files-found: error
 
-  # Creates the release, attaches every file, the bill of materials included, publishes
-  # it, then writes the checksum file (#1625) from the assets as the published release
-  # serves them. checksums.sh reads the release by tag, which GitHub does not do for a
-  # draft. A macOS backfill through release-macos.yml writes the file again after its
-  # upload.
+  # Publishes the release through publish.sh, which attaches every file, the bill of
+  # materials and the checksum file (#1625) to a draft before it publishes. The repository
+  # has immutable releases on, so nothing can be added or replaced afterwards, and a macOS
+  # file the experimental leg failed to build waits for the next version (ADR-0047).
   publish:
     needs: [prepare, build-app, build-extension]
+    # Spend guard (#1310) and environment, as in dispatch.yml, which has the reasons. The
+    # environment admits only main and tags the maintainer created, so a workflow pushed
+    # to another branch cannot reach the maintainer's token.
+    if: github.triggering_actor == 'thebristolsound'
+    environment: paid-runs
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -324,39 +328,16 @@ jobs:
           bash .github/scripts/release/sbom.sh \
             "$GITHUB_REPOSITORY" "dist/birdbrain-$TAG.spdx.json"
 
-      # --prerelease is a literal, not derived from the tag name. ADR-0008 Decision 3: "No
-      # release is promoted to a full release while artifacts are unsigned." Change this,
-      # and the same flag in release-macos.yml, only when that decision's revisit trigger is
-      # met:
-      #   "A release process that signs every artifact and notarizes macOS builds,
-      #   with both verified on the release's actual output — acquiring a
-      #   certificate or notarization capability alone does not qualify. Only after
-      #   that verification may releases be promoted to full releases and this
-      #   restriction be lifted."
+      # The workflow token builds the draft. Publishing creates the tag, which the tag
+      # ruleset admits only from the maintainer, so that one call uses the maintainer's
+      # token (ADR-0047).
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
+          PUBLISH_TOKEN: ${{ secrets.RELEASE_TAG_TOKEN }}
         run: |
-          set -o pipefail
-          # A draft left by a failed attempt has no tag, so no one can see it. Replace it.
-          gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \
-            --jq ".[] | select(.draft and .tag_name == \"$TAG\") | .id" |
-            while read -r id; do gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id"; done
-          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --draft --prerelease \
-            --title "$TAG" --target "$GITHUB_SHA" --notes-file "$RUNNER_TEMP/release-notes.md"
-          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
-
-      - name: Hash every asset on the release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          bash .github/scripts/release/checksums.sh \
-            "$GITHUB_REPOSITORY" "$TAG" dist/SHA256SUMS.txt
-
-      - name: Upload the checksum file
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$TAG" dist/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --clobber
+          bash .github/scripts/release/publish.sh \
+            "$GITHUB_REPOSITORY" "$TAG" "$GITHUB_SHA" "$RUNNER_TEMP/release-notes.md" dist
 
   # Installs from v1.0.1-beta.18 to v1.0.1-beta.22 read their update feed from
   # thebristolsound/birdbrain-releases, fixed in each build's app-update.yml. This copies
@@ -372,13 +353,13 @@ jobs:
     timeout-minutes: 30
     env:
       TAG: ${{ needs.prepare.outputs.tag }}
-      BRIDGE: thebristolsound/birdbrain-releases
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
+      # publish.sh writes the checksum file again from the copies it attaches there.
       - name: Download the published release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -388,27 +369,10 @@ jobs:
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body \
             >"$RUNNER_TEMP/release-notes.md"
 
+      # That repository has no tag ruleset, so one token does both.
       - name: Publish the release there
         env:
           GH_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
         run: |
-          set -o pipefail
-          gh api --paginate "repos/$BRIDGE/releases" \
-            --jq ".[] | select(.draft and .tag_name == \"$TAG\") | .id" |
-            while read -r id; do gh api -X DELETE "repos/$BRIDGE/releases/$id"; done
-          gh release create "$TAG" dist/* --repo "$BRIDGE" --draft --prerelease \
-            --title "$TAG" --target main --notes-file "$RUNNER_TEMP/release-notes.md"
-          gh release edit "$TAG" --repo "$BRIDGE" --draft=false
-
-      # That repository is public, so the workflow token reads it.
-      - name: Hash every asset on the release there
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          bash .github/scripts/release/checksums.sh \
-            "$BRIDGE" "$TAG" dist/SHA256SUMS.txt
-
-      - name: Upload the checksum file there
-        env:
-          GH_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
-        run: gh release upload "$TAG" dist/SHA256SUMS.txt --repo "$BRIDGE" --clobber
+          PUBLISH_TOKEN=$GH_TOKEN bash .github/scripts/release/publish.sh \
+            thebristolsound/birdbrain-releases "$TAG" main "$RUNNER_TEMP/release-notes.md" dist

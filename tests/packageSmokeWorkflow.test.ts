@@ -189,22 +189,14 @@ describe('package smoke and release workflow consistency', () => {
   })
 
   // ADR-0008 Decision 3 allows no full release while artifacts are unsigned. A tag-name
-  // expression left that to whoever typed the tag (#1356), so every release the workflows
-  // create carries the literal --prerelease flag, and release-macos.yml creates none.
-  it('creates every release in both release workflows as a pre-release, by a literal flag', () => {
-    const creates = (filename: string) =>
-      [...readWorkflow(filename).matchAll(/gh release create(?:[^\n]*\\\n)*[^\n]*/g)].map(
-        ([command]) => command
-      )
+  // expression left that to whoever typed the tag (#1356), so the one call that creates a
+  // release, in publish.sh, sets prerelease to the literal true, and release.yml sets none.
+  it('creates every release as a pre-release, by a literal', () => {
+    const script = readFileSync(join(ROOT, '.github', 'scripts', 'release', 'publish.sh'), 'utf8')
 
-    expect(creates('release.yml')).toHaveLength(2)
-    for (const command of creates('release.yml')) {
-      expect(command).toMatch(/ --prerelease( |$)/)
-    }
-    expect(creates('release-macos.yml')).toEqual([])
-    for (const filename of ['release.yml', 'release-macos.yml']) {
-      expect(readWorkflow(filename)).not.toMatch(/prerelease[:=]/)
-    }
+    expect([...script.matchAll(/-F prerelease=(\S*)/g)].map(([, value]) => value)).toEqual(['true'])
+    expect(script).toMatch(/-F draft=true -F prerelease=true/)
+    expect(readWorkflow('release.yml')).not.toMatch(/prerelease/)
   })
 })
 

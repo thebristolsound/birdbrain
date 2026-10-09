@@ -79,7 +79,7 @@ jobs:
     # workflow, and a re-run keeps github.actor from the first attempt. So the job
     # admits a scheduled fire's first attempt, or an attempt github.triggering_actor
     # says the maintainer started. doc-curator.yml and health.yml carry this guard,
-    # release-macos.yml its second half, claude.yml and jev-lens.yml's triage their own.
+    # claude.yml and jev-lens.yml's triage their own.
     #
     # Neither part stops a write collaborator who merges his own workflow change to
     # main, which the main branch rules allow while they require no approval.

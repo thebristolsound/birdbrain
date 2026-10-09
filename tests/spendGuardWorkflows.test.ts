@@ -19,6 +19,7 @@ const PAID_SECRETS = [
   'BIRDBRAIN_AGENT_GH_TOKEN',
   'CLAUDE_CODE_OAUTH_TOKEN',
   'RELEASES_REPO_TOKEN',
+  'RELEASE_TAG_TOKEN',
   'TYPESAFE_API_KEY'
 ]
 const NO_ENVIRONMENT = ['jev-lens.yml hunks']
@@ -130,7 +131,8 @@ describe('spend guard on jobs that read a stored secret', () => {
       'jev-lens.yml triage',
       'merge-on-label.yml request',
       'pr-review.yml review',
-      'release.yml bridge'
+      'release.yml bridge',
+      'release.yml publish'
     ])
   })
 

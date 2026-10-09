@@ -30,6 +30,15 @@ Three facts constrain the move. Each was measured on 2026-10-09.
   created the tag with its files already attached.
 - **The tag-push trigger opens that window on every release.** The `1.0.1-beta.22` run took 6
   minutes from tag to last upload.
+- **The machine account can write to the source repository.** `birdbrain-agent` has write
+  access to `thebristolsound/birdbrain` and read access to `birdbrain-releases`. Write access lets
+  an account edit releases, the installers are unsigned, and the updater trusts the SHA-512 in
+  the same release's `latest*.yml`. The updater also accepts a tag without the `v` prefix:
+  `1.0.1-beta.41` on the scratch repository was offered as an update. The tag ruleset covered only
+  `v*`.
+- **The workflow token cannot be limited to one workflow.** Any workflow on a branch the machine
+  account pushes can request `contents: write`, so a ruleset bypass for GitHub Actions is a
+  bypass for every such workflow.
 
 ## Decision
 
@@ -39,11 +48,21 @@ Three facts constrain the move. Each was measured on 2026-10-09.
   `workflow_dispatch`, releases the version in `package.json`, and refuses a version that is
   already tagged. No tag is pushed. The `publish` job uploads every file to a draft with no tag and
   then publishes it, so GitHub creates the tag after the files are attached.
-- **One job per workflow can write to the repository.** The workflow token stays at
-  `contents: read`, and only the `publish` jobs of `release.yml` and `release-macos.yml` widen it
-  to `contents: write`. Those jobs check out the repository but run no install, no build, and no
-  project code other than `.github/scripts/release/`. The build jobs hand their files over as
-  workflow artifacts and never hold a token that can write.
+- **One job can write to the repository.** The workflow token stays at `contents: read`, and
+  only the `publish` job of `release.yml` widens it to `contents: write`. That job and `bridge`
+  check out the repository but run no install, no build, and no project code other than
+  `.github/scripts/release/`. The build jobs hand their files over as workflow artifacts and never
+  hold a token that can write.
+- **Releases are immutable.** The repository has GitHub's immutable releases on. Once published,
+  a release's files cannot be added, replaced or deleted, and its tag cannot be reused, even after
+  the release is deleted. `publish.sh` therefore attaches every file and `SHA256SUMS.txt` to the
+  draft before it publishes, and `release-macos.yml`, which backfilled macOS files onto a
+  published release, is removed.
+- **Only the maintainer creates tags.** The tag ruleset covers every tag, not only `v*`, and
+  admits only the admin role. `publish.sh` builds the draft with the workflow token and makes the
+  one publishing call with `RELEASE_TAG_TOKEN`, the maintainer's token in the `paid-runs`
+  environment. That environment admits only main and tags the maintainer created, so a workflow
+  the machine account pushes to a branch cannot read it.
 - **One release goes to both repositories.** The first release after this change is also copied,
   byte for byte, to `birdbrain-releases` by the `bridge` job, so installs from `1.0.1-beta.18` to
   `1.0.1-beta.22` reach a build that reads the new feed. The `bridge` job and
@@ -56,10 +75,15 @@ Three facts constrain the move. Each was measured on 2026-10-09.
 
 - **The build legs lose access to the paid environment.** They read no stored secret, so they no
   longer name `paid-runs`. The spend guard moves from the tag ruleset to an actor check on the
-  `prepare` job, which every other job needs, and on the `bridge` job, which reads the secret.
-- **A bare version tag still breaks updates.** Anyone who pushes a `v*` tag to
-  `thebristolsound/birdbrain` by hand puts it in the feed. The tag ruleset that lets only the
-  maintainer create one stays in place.
+  `prepare` job, which every other job needs, and on the `publish` and `bridge` jobs, which read
+  secrets.
+- **A failed macOS build waits for the next version.** The macOS leg stays experimental, and
+  immutable releases leave no way to add its files later.
+- **A writer can still delete a release.** Write access deletes an immutable release, and its
+  tag stays in the feed, so installs see an update error until the next release. That is an
+  outage, not an install of changed files.
+- **A bare version tag still breaks updates.** A tag the maintainer pushes by hand goes into the
+  feed before any release has files.
 - **The 22 older tags stay in the feed.** `v0.1.0-alpha.2` through `v1.0.1-beta.22` have no
   release in this repository. The feed orders entries newest first, so a new release heads it
   and electron-updater reads that entry.
@@ -74,5 +98,10 @@ Three facts constrain the move. Each was measured on 2026-10-09.
   not valid versions, so this also closes the window. It keeps a tag push, but the `paid-runs`
   environment would have to admit the new pattern, and the trigger would differ from the tag
   readers expect.
-- **Widen `RELEASES_REPO_TOKEN` to the source repository.** A stored secret with write access to
-  the source repository is a larger standing credential than a workflow token scoped to one job.
+- **Widen `RELEASES_REPO_TOKEN` to the source repository.** That token would do every write. The
+  maintainer's token does only the publishing call, and the workflow token does the rest.
+- **Let GitHub Actions bypass the tag ruleset.** Any workflow the machine account pushes to a
+  branch could then create a release tag.
+- **Keep the feed in `birdbrain-releases`.** It keeps the machine account away from the feed, but
+  keeps two places for issues and advisories. Immutable releases and the wider tag ruleset keep
+  changed files out of the source repository's feed, though not a deleted release.

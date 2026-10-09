@@ -96,8 +96,8 @@ Add ADR-0047, titled "Releases publish from the source repository." It records t
     matches today's experimental macOS leg.
   - Bridge release only: the same job also creates the release in `birdbrain-releases` with
     `RELEASES_REPO_TOKEN`. PR 3 removes this.
-- **`release-macos.yml`:** split the job the same way, into a read-only macOS build job and a
-  `contents: write` upload job that targets the main repository.
+- **`release-macos.yml`:** removed after the review of PR #1794. Immutable releases accept no
+  files after publication, so there is nothing to backfill onto.
 - **`create-release`:** the job goes away, because `publish` creates the release.
 
 ## Step 4: code and tests (PR 1)
@@ -119,6 +119,15 @@ PR 1 changes more than 10 files and widens a workflow permission, so it waits fo
 under ADR-0016.
 
 ## Step 5: cut and verify the bridge release (maintainer)
+
+Before the first run, from the review of PR #1794:
+
+1. Turn on immutable releases for `thebristolsound/birdbrain`.
+2. Change the `release-tags` ruleset to include every tag (`~ALL`), keeping the admin role as
+   the only bypass. `scripts/cutover/dry-run.sh` checks the old `refs/tags/v*` pattern and will
+   report the change.
+3. Create a fine-grained token with Contents read and write on `thebristolsound/birdbrain` and
+   store it as `RELEASE_TAG_TOKEN` in the `paid-runs` environment.
 
 1. After PR 1 merges, bump `package.json` to `1.0.1-beta.23` and run `release.yml` from main.
 2. Extract `resources/app-update.yml` from the published deb and confirm it says

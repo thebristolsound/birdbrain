@@ -1,0 +1,20 @@
+# Gitleaks config, read from the repo root by `gitleaks git` in security.yml.
+# Content-based allowlists survive squash merges, unlike the fingerprints in
+# .gitleaksignore, which embed a commit id.
+
+[extend]
+useDefault = true
+
+# The design-handoff mocks show a fictional phishing page with the text
+# "Session token: nj_5f2c9a71e0b4". It is invented mock content, not a
+# credential. Both conditions must hold, so any other secret in these files,
+# and this value anywhere else, is still reported.
+[[allowlists]]
+description = "Fake nj_ session token in design-handoff mocks"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = [
+  '''^docs/design-handoff/''',
+  '''^design_handoff_birdbrain_prototype/'''
+]
+regexes = ['''^nj_5f2c9a71e0b4$''']

@@ -49,7 +49,8 @@ jobs:
 
       # Scans every commit on every ref, not just the pushed branch, so a secret
       # committed to any historical branch fails the build. Known false positives
-      # are allowlisted by fingerprint in .gitleaksignore.
+      # are allowlisted by content in .gitleaks.toml (read from the repo root) or
+      # by fingerprint in .gitleaksignore.
       - name: Scan git history
         run: ./gitleaks git --log-opts="--all" --redact --no-banner --verbose
 

@@ -1,5 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, rmSync, existsSync, readFileSync, chmodSync, mkdirSync } from 'fs'
+import {
+  mkdtempSync,
+  rmSync,
+  existsSync,
+  readFileSync,
+  chmodSync,
+  mkdirSync,
+  writeFileSync
+} from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
@@ -7,6 +15,7 @@ import { createHash } from 'crypto'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
 import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
+import * as caseRepoModule from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
 import { getCapture, insertCapture, listCaptures } from '@main/services/db/captureRepo'
 import {
@@ -1599,6 +1608,94 @@ describe('createCaptureLifecycle.deleteMany (#394)', () => {
       expect(mhtmlExists(a)).toBe(true)
       expect(existsSync(stagedDir(a.id))).toBe(false)
       expect(mhtmlExists(b)).toBe(true)
+    })
+
+    it('a throwing row delete puts the mhtml back before the rollback', async () => {
+      const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+      const [a] = await ingestN(lifecycle, 1)
+      vi.spyOn(captureRepo, 'deleteCapture').mockImplementation(() => {
+        throw new Error('SQLITE_BUSY: simulated')
+      })
+      const baseIndex = getManifestHead(caseDir).nextIndex
+
+      const result = await lifecycle.deleteMany(caseId, [a.id])
+
+      expect(result.outcomes).toMatchObject([{ status: 'rolled_back', stage: 'db' }])
+      expect(mhtmlExists(a)).toBe(true)
+      expect(existsSync(stagedDir(a.id))).toBe(false)
+      expect(manifestEntries()).toHaveLength(baseIndex)
+    })
+
+    describe('legacy html capture', () => {
+      function legacyWithFile(): { id: string; html: string } {
+        const legacy = insertCapture({
+          caseId,
+          url: 'https://legacy.example.com',
+          title: 'Legacy',
+          hash: 'x'.repeat(64),
+          timestamp: '2026-04-05T12:00:00.000Z'
+        })
+        const html = createCaptureStore({ getRoot: getStorageRoot }).artifactPaths(
+          caseId,
+          legacy.id,
+          'html'
+        ).abs
+        writeFileSync(html, '<html>legacy</html>')
+        return { id: legacy.id, html }
+      }
+
+      it('a throwing row delete restores the html and surfaces the error', async () => {
+        const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+        const legacy = legacyWithFile()
+        vi.spyOn(captureRepo, 'deleteCapture').mockImplementation(() => {
+          throw new Error('SQLITE_BUSY: simulated')
+        })
+
+        await expect(lifecycle.delete(legacy.id)).rejects.toThrow('SQLITE_BUSY')
+
+        expect(readFileSync(legacy.html, 'utf-8')).toBe('<html>legacy</html>')
+        expect(existsSync(stagedDir(legacy.id))).toBe(false)
+      })
+
+      it('a row gone at delete time restores the html and reports not_found', async () => {
+        const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+        const legacy = legacyWithFile()
+        vi.spyOn(captureRepo, 'deleteCapture').mockReturnValue(false)
+
+        const result = await lifecycle.deleteMany(caseId, [legacy.id])
+
+        expect(result.outcomes).toEqual([
+          { captureId: legacy.id, status: 'rejected', reason: 'not_found' }
+        ])
+        expect(readFileSync(legacy.html, 'utf-8')).toBe('<html>legacy</html>')
+        expect(existsSync(stagedDir(legacy.id))).toBe(false)
+      })
+    })
+
+    it('a recovery that cannot list staged deletes logs and lets the delete proceed', async () => {
+      const real = createCaptureStore({ getRoot: getStorageRoot })
+      const lifecycle = createCaptureLifecycle({
+        selectorLifecycle: selectorStub,
+        store: {
+          ...real,
+          listStagedDeletes: () => {
+            throw new Error('EACCES: simulated')
+          }
+        }
+      })
+      const [a] = await ingestN(lifecycle, 1)
+
+      expect(await lifecycle.delete(a.id)).toBe(true)
+      expect(getCapture(a.id)).toBeUndefined()
+    })
+
+    it('the startup sweep resolves without throwing when the case list cannot be read', async () => {
+      const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+      vi.spyOn(caseRepoModule, 'listCases').mockImplementation(() => {
+        throw new Error('SQLITE_CORRUPT: simulated')
+      })
+
+      await expect(lifecycle.recoverPendingDeletes()).resolves.toBeUndefined()
     })
 
     it('a delete in the Case runs the same recovery first', async () => {

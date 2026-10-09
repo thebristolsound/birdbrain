@@ -284,7 +284,7 @@ body {
 .app-drag {
   app-region: drag;
 }
-.app-drag :is(button, input, a, select, textarea, [role='button'], [role='switch']) {
+.app-drag :is(button, input, a, select, textarea, label, [role='button'], [role='switch']) {
   app-region: no-drag;
 }
 

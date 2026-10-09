@@ -30,10 +30,6 @@ The hard part is going back to gather every piece and being sure I did not miss 
 Birdbrain exists so that each piece is captured once, kept in the case it belongs to, and can
 be shown to a reader later exactly as it was.
 
-<!-- vale Vale.Terms = NO -->
-The name comes from an acquaintance who called me a birdbrain. It was meant as an insult. I
-kept it.
-<!-- vale Vale.Terms = YES -->
 
 ## How it works
 

@@ -375,6 +375,14 @@ describe('release-macos.yml rewrites the checksum file after a backfill', () => 
     )
   })
 
+  it('runs only from main, since publish runs the checked-out release script', () => {
+    const conditions = [...content.matchAll(/^ {4}if: (.*)$/gm)].map(([, condition]) => condition)
+    expect(conditions).toHaveLength(2)
+    for (const condition of conditions) {
+      expect(condition).toContain("github.ref == 'refs/heads/main'")
+    }
+  })
+
   it('writes only from the publish job', () => {
     expect(content).toMatch(/^permissions:\n {2}contents: read\n/m)
     expect(content.match(/^ *contents: write$/gm)).toHaveLength(1)

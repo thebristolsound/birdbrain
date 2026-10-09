@@ -27,8 +27,9 @@ permissions:
 jobs:
   build-macos:
     # Spend guard (#1310), dispatch.yml's cycle guard without the schedule clause; the
-    # reasons are there.
-    if: github.triggering_actor == 'thebristolsound'
+    # reasons are there. Main only: a dispatch can name any branch, and `publish` runs
+    # that branch's checksums.sh with a token that can write.
+    if: github.triggering_actor == 'thebristolsound' && github.ref == 'refs/heads/main'
     runs-on: macos-latest
 
     steps:
@@ -76,7 +77,7 @@ jobs:
   # workflow runs on, not the tag, which may predate the script.
   publish:
     needs: build-macos
-    if: github.triggering_actor == 'thebristolsound'
+    if: github.triggering_actor == 'thebristolsound' && github.ref == 'refs/heads/main'
     permissions:
       contents: write
     runs-on: ubuntu-latest

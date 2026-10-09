@@ -40,7 +40,7 @@ All design docs, specs, and implementation plans live under `docs/` per the layo
 - **Architecture decisions** → `docs/adr/NNNN-<slug>.md` — **tracked**
 - **Superseded** → `docs/archive/` (preserve original filename) — **tracked**
 
-Adding a long-lived reference page, and the Vale setup for prose linting, are described in `docs/README.md`. A doc you write should pass `vale <file>` with zero errors.
+Adding a long-lived reference page, and the Vale setup for prose linting, are described in `docs/README.md`. Check the docs you changed with `.claude/hooks/vale-prose.sh --base origin/main`: it reports Vale errors on the lines the branch changed, and preflight runs it. A whole-file `vale <file>` also reports errors that predate your edit.
 
 **Writing style.** `docs/agents/writing-guide.md` is the adopted writing standard for all repo prose: Diataxis structure for published pages plus a mechanical rulebook (voice, ordering, formatting). CodeRabbit reads it as review criteria for `docs/**`, `website/content/docs/**`, and root Markdown.
 

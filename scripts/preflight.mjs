@@ -20,6 +20,8 @@
 //   pnpm lint:boundaries
 //   pnpm lint:agents-md      advisory: reports drift between the two files, never fails
 //   pnpm lint:adr            no two ADRs share a number
+//   vale-prose --base        Vale errors on Markdown lines changed since the merge base;
+//                            reports "not checked" rather than failing when Vale is absent
 //   pnpm typecheck
 //   pnpm build
 //   pnpm build:extension      only when the diff against the base touches extension/
@@ -141,6 +143,16 @@ const describeAgentsMd = (output) => {
   return line ? line.slice(prefix.length) : 'no lint:agents-md summary found in output'
 }
 
+// The prose check fails open without Vale, so a bare pass would hide that nothing was read.
+export const describeVale = (output) => {
+  if (/prose check skipped/.test(output))
+    return 'not checked, Vale is not installed or could not run'
+  const checked = /checked (\d+) Markdown file/.exec(output)
+  return checked
+    ? `${checked[1]} changed Markdown file${checked[1] === '1' ? '' : 's'} checked`
+    : undefined
+}
+
 const describeVitest = (output) => {
   const parsed = parseVitestSummary(output)
   return parsed ? `${parsed.summary} (${parsed.total})` : 'no Vitest summary found in output'
@@ -235,6 +247,12 @@ const main = async () => {
   await run('pnpm', ['lint:boundaries'], 'pnpm lint:boundaries')
   await run('pnpm', ['lint:agents-md'], 'pnpm lint:agents-md', describeAgentsMd)
   await run('pnpm', ['lint:adr'], 'pnpm lint:adr')
+  await run(
+    'bash',
+    [join('.claude', 'hooks', 'vale-prose.sh'), '--base', mergeBase],
+    'vale-prose --base',
+    describeVale
+  )
   await run('pnpm', ['typecheck'], 'pnpm typecheck')
   await run('pnpm', ['build'], 'pnpm build')
   if (touchesExtension(changed)) {

@@ -323,6 +323,25 @@ describe('NotesOverview list column', () => {
     expect(localStorage.getItem('captureListCollapsed')).toBe('false')
   })
 
+  it('steps through the notes from the rail', async () => {
+    localStorage.setItem('captureListCollapsed', 'true')
+    notes = [
+      makeNote('a', 'Newest', { createdAt: '2026-08-03T00:00:00Z' }),
+      makeNote('b', 'Middle', { createdAt: '2026-08-02T00:00:00Z' })
+    ]
+    renderNotes()
+    const title = () => screen.getByLabelText('Note title') as HTMLInputElement
+    await waitFor(() => expect(title().value).toBe('Newest'))
+    expect(screen.getByTitle('Previous note')).toHaveProperty('disabled', true)
+
+    fireEvent.click(screen.getByTitle('Next note'))
+    await waitFor(() => expect(title().value).toBe('Middle'))
+    expect(screen.getByTitle('Next note')).toHaveProperty('disabled', true)
+
+    fireEvent.click(screen.getByTitle('Previous note'))
+    await waitFor(() => expect(title().value).toBe('Newest'))
+  })
+
   it('opens collapsed when the Captures list was left collapsed', async () => {
     localStorage.setItem('captureListCollapsed', 'true')
     notes = [makeNote('a', 'Zulu')]

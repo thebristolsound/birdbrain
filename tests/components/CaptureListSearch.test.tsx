@@ -351,3 +351,23 @@ describe('CaptureList clear affordances', () => {
     expect(screen.getAllByRole('button', { name: CLEAR_NARROWING_LABEL })).toHaveLength(3)
   })
 })
+
+describe('CaptureList toolbar', () => {
+  it('re-sorts from the sort menu and narrows from the format and date filters', async () => {
+    renderList()
+    await settledTitles(3)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Newest first' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Title A–Z' }))
+    expect(screen.getByRole('button', { name: 'Title A–Z' })).toBeDefined()
+    expect((await titles())[0]).toContain('Acme quarterly')
+    expect((await titles())[2]).toContain('Unrelated notice')
+
+    fireEvent.click(screen.getByRole('button', { name: /^Filter$/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'HTML' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Last 7 days' }))
+    expect(screen.getByTestId('capture-list-narrowing').textContent).toContain('HTML')
+    expect(screen.getByTestId('capture-list-narrowing').textContent).toContain('Last 7 days')
+    await settledTitles(0)
+  })
+})

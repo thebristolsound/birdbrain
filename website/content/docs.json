@@ -36,13 +36,13 @@
     "links": [
       {
         "label": "Downloads",
-        "href": "https://github.com/thebristolsound/birdbrain-releases/releases"
+        "href": "https://github.com/thebristolsound/birdbrain/releases"
       }
     ]
   },
   "footer": {
     "socials": {
-      "github": "https://github.com/thebristolsound/birdbrain-releases"
+      "github": "https://github.com/thebristolsound/birdbrain"
     }
   }
 }

@@ -5,7 +5,7 @@ OSINT investigators and journalists who need to capture web pages as evidence, o
 into cases, and show later that the record has not changed. It runs on Windows and Ubuntu, has
 an experimental macOS build, and is in public beta.
 
-[![Release](https://img.shields.io/github/v/release/thebristolsound/birdbrain-releases?include_prereleases&label=release)](https://github.com/thebristolsound/birdbrain-releases/releases)
+[![Release](https://img.shields.io/github/v/release/thebristolsound/birdbrain?include_prereleases&label=release)](https://github.com/thebristolsound/birdbrain/releases)
 [![CI](https://github.com/thebristolsound/birdbrain/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/thebristolsound/birdbrain/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 ![Status: beta](https://img.shields.io/badge/status-beta-yellow)
@@ -41,11 +41,10 @@ against and what they do not.
 
 ## Get it
 
-Builds are on the [releases page](https://github.com/thebristolsound/birdbrain-releases/releases),
-in a separate public repository that holds releases only. You need no GitHub account to
-download one. The Windows installer and the Ubuntu AppImage are supported; the macOS build is
-experimental. The extension is not on the Chrome Web Store yet, so it loads unpacked, and the
-app's **Setup Guide** walks you through that.
+Builds are on the [releases page](https://github.com/thebristolsound/birdbrain/releases) of this
+repository. You need no GitHub account to download one. The Windows installer and the Ubuntu
+AppImage are supported; the macOS build is experimental. The extension is not on the Chrome Web
+Store yet, so it loads unpacked, and the app's **Setup Guide** walks you through that.
 
 [Download](https://docs.birdbrain.cc/docs/download) has the platform notes and the published
 hashes. [Install and first capture](https://docs.birdbrain.cc/docs/tester-guide) has the steps.
@@ -61,8 +60,8 @@ cases ([#1508](https://github.com/thebristolsound/birdbrain/issues/1508)) and au
 
 ## Reporting a problem
 
-Report bugs as an issue on the
-[releases repository](https://github.com/thebristolsound/birdbrain-releases/issues).
+Report bugs as an [issue](https://github.com/thebristolsound/birdbrain/issues) on this
+repository.
 **Settings → Diagnostics → Report a problem** builds a diagnostic bundle to attach. The bundle
 excludes your captures and your case database, but it carries your installation identifier,
 which also appears in every evidence package you export. Do not put a live investigation

@@ -624,6 +624,13 @@ export const LOG_CODES = [
   // failed either way; this records that its copies may still be on disk,
   // unreferenced by any row.
   'captureLifecycle.duplicate_cleanup_failed',
+  // A committed capture delete could not remove its staged files (#1786). The
+  // delete succeeded; the files sit in the Case's pending-delete directory
+  // until the next recovery pass purges them.
+  'captureLifecycle.delete_purge_failed',
+  // Recovery could not put back or purge a staged capture delete (#1786). It
+  // retries on the next delete in that Case and at the next launch.
+  'captureLifecycle.delete_recovery_failed',
   'backgroundRenderer.trim_failed',
   'backgroundRenderer.consent_blocker_disable_failed',
   'backgroundRenderer.consent_blocker_enable_failed',

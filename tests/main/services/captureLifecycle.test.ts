@@ -1,5 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, rmSync, existsSync, readFileSync, chmodSync } from 'fs'
+import {
+  mkdtempSync,
+  rmSync,
+  existsSync,
+  readFileSync,
+  chmodSync,
+  mkdirSync,
+  writeFileSync
+} from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
@@ -7,6 +15,7 @@ import { createHash } from 'crypto'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
 import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
+import * as caseRepoModule from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
 import { getCapture, insertCapture, listCaptures } from '@main/services/db/captureRepo'
 import {
@@ -15,7 +24,7 @@ import {
   appendManifestEntry,
   getManifestHead
 } from '@main/services/manifest'
-import { createCaptureStore } from '@main/services/captureStore'
+import { createCaptureStore, StagedRestoreError } from '@main/services/captureStore'
 import type { CaptureStore } from '@main/services/captureStore'
 import type { BatchDeleteOutcome } from '@shared/ipc'
 import type { Capture } from '@shared/types'
@@ -995,13 +1004,14 @@ describe('createCaptureLifecycle.deleteMany (#394)', () => {
     return existsSync(join(getStorageRoot(), capture.mhtmlPath!))
   }
 
-  // A store whose deleteArtifacts throws for one capture id and otherwise
-  // delegates to a real store rooted in this test's temp dir.
+  // A store whose stageArtifacts throws for one capture id, before moving
+  // anything, and otherwise delegates to a real store rooted in this test's
+  // temp dir.
   function storeFailingOn(failId: string): CaptureStore {
     const real = createCaptureStore({ getRoot: getStorageRoot })
     return {
       ...real,
-      deleteArtifacts: (cid, capId) => {
+      stageArtifacts: (cid, capId) => {
         if (capId === failId) {
           // Shaped like a real fs error: message carries the absolute path,
           // `code` carries the errno.
@@ -1011,7 +1021,7 @@ describe('createCaptureLifecycle.deleteMany (#394)', () => {
           err.code = 'EACCES'
           throw err
         }
-        real.deleteArtifacts(cid, capId)
+        real.stageArtifacts(cid, capId)
       }
     }
   }
@@ -1114,7 +1124,7 @@ describe('createCaptureLifecycle.deleteMany (#394)', () => {
     expect(listCaptures(caseId)).toHaveLength(0)
   })
 
-  it('rolls back at the k-th capture when its row delete fails: stage=db, files gone, row remains', async () => {
+  it('rolls back at the k-th capture when its row delete fails: stage=db, files restored, row remains', async () => {
     const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
     const caps = await ingestN(lifecycle, 3)
     const failing = caps[1]
@@ -1143,10 +1153,11 @@ describe('createCaptureLifecycle.deleteMany (#394)', () => {
     expect(manifestEntries()).toHaveLength(baseIndex + 1)
     expect(verifyManifestChain(caseDir).valid).toBe(true)
 
-    // db stage: k's files are gone but its row remains (retry proceeds through
-    // the same path); k+1 untouched.
+    // db stage: k's staged files went back before the rollback (#1786), so
+    // row and files are both intact; k+1 untouched.
     expect(getCapture(failing.id)).toBeDefined()
-    expect(mhtmlExists(failing)).toBe(false)
+    expect(mhtmlExists(failing)).toBe(true)
+    expect(existsSync(join(caseDir, '.pending-delete', failing.id))).toBe(false)
     expect(getCapture(caps[2].id)).toBeDefined()
     expect(mhtmlExists(caps[2])).toBe(true)
 
@@ -1306,12 +1317,12 @@ describe('createCaptureLifecycle.deleteMany (#394)', () => {
         selectorLifecycle: selectorStub,
         store: {
           ...real,
-          deleteArtifacts: (cid, capId) => {
+          stageArtifacts: (cid, capId) => {
             if (capId === b.id) {
               chmodSync(manifestPath, 0o444)
               throw new Error('EBUSY: simulated unlink failure')
             }
-            real.deleteArtifacts(cid, capId)
+            real.stageArtifacts(cid, capId)
           }
         }
       })
@@ -1479,6 +1490,236 @@ describe('createCaptureLifecycle.deleteMany (#394)', () => {
     expect(verifyManifestChain(caseDir).valid).toBe(true)
     expect(getCapture(a.id)).toBeUndefined()
     expect(scanUnreconciledDeletions().findings).toEqual([])
+  })
+
+  describe('staged delete (#1786)', () => {
+    function stagedDir(captureId: string): string {
+      return join(caseDir, '.pending-delete', captureId)
+    }
+
+    // Gives the capture a screenshot, then puts a non-empty directory where
+    // that screenshot would be staged: the mhtml moves aside, the png rename
+    // then fails. Real files, no fs mock.
+    function obstructPngStaging(capture: Capture): string {
+      const store = createCaptureStore({ getRoot: getStorageRoot })
+      const png = store.writeScreenshot(caseId, capture.id, Buffer.from('png-bytes')).abs
+      mkdirSync(join(stagedDir(capture.id), `${capture.id}.png`, 'obstruction'), {
+        recursive: true
+      })
+      return png
+    }
+
+    function expectIntact(capture: Capture, png: string): void {
+      expect(getCapture(capture.id)).toBeDefined()
+      expect(mhtmlExists(capture)).toBe(true)
+      expect(readFileSync(png, 'utf-8')).toBe('png-bytes')
+      expect(existsSync(join(stagedDir(capture.id), `${capture.id}.mhtml`))).toBe(false)
+    }
+
+    it('deleteMany: a fault after the mhtml moved puts it back and reports rolled_back truthfully', async () => {
+      const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+      const [a] = await ingestN(lifecycle, 1)
+      const png = obstructPngStaging(a)
+      const baseIndex = getManifestHead(caseDir).nextIndex
+
+      const result = await lifecycle.deleteMany(caseId, [a.id])
+
+      expect(result.outcomes).toMatchObject([
+        { captureId: a.id, status: 'rolled_back', stage: 'artifacts' }
+      ])
+      expectIntact(a, png)
+      expect(manifestEntries()).toHaveLength(baseIndex)
+      expect(verifyManifestChain(caseDir).valid).toBe(true)
+    })
+
+    it('delete: the same fault surfaces as a throw with row, files and manifest intact', async () => {
+      const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+      const [a] = await ingestN(lifecycle, 1)
+      const png = obstructPngStaging(a)
+      const baseIndex = getManifestHead(caseDir).nextIndex
+
+      await expect(lifecycle.delete(a.id)).rejects.toThrow()
+
+      expectIntact(a, png)
+      expect(manifestEntries()).toHaveLength(baseIndex)
+    })
+
+    it('throws rather than report rolled_back when the staged files cannot be moved back', async () => {
+      const real = createCaptureStore({ getRoot: getStorageRoot })
+      const lifecycle = createCaptureLifecycle({
+        selectorLifecycle: selectorStub,
+        store: {
+          ...real,
+          restoreStaged: (_cid, capId) => {
+            throw new StagedRestoreError(capId, new Error('EBUSY: simulated'))
+          }
+        }
+      })
+      const [a] = await ingestN(lifecycle, 1)
+      vi.spyOn(captureRepo, 'deleteCapture').mockReturnValue(false)
+      const baseIndex = getManifestHead(caseDir).nextIndex
+
+      await expect(lifecycle.deleteMany(caseId, [a.id])).rejects.toThrow(StagedRestoreError)
+
+      // Nothing lost: the row is live, the entry rolled back, and the mhtml is
+      // parked where recovery will find it.
+      expect(getCapture(a.id)).toBeDefined()
+      expect(manifestEntries()).toHaveLength(baseIndex)
+      expect(existsSync(join(stagedDir(a.id), `${a.id}.mhtml`))).toBe(true)
+
+      vi.restoreAllMocks()
+      await createCaptureLifecycle({ selectorLifecycle: selectorStub }).recoverPendingDeletes()
+      expect(mhtmlExists(a)).toBe(true)
+      expect(existsSync(stagedDir(a.id))).toBe(false)
+    })
+
+    it('a purge fault after the commit still reports deleted, and recovery sweeps the leftovers', async () => {
+      const real = createCaptureStore({ getRoot: getStorageRoot })
+      const lifecycle = createCaptureLifecycle({
+        selectorLifecycle: selectorStub,
+        store: {
+          ...real,
+          purgeStaged: () => {
+            throw new Error('EBUSY: simulated purge failure')
+          }
+        }
+      })
+      const [a] = await ingestN(lifecycle, 1)
+
+      const result = await lifecycle.deleteMany(caseId, [a.id])
+
+      expect(result.outcomes).toEqual([{ captureId: a.id, status: 'deleted' }])
+      expect(getCapture(a.id)).toBeUndefined()
+      expect(existsSync(stagedDir(a.id))).toBe(true)
+
+      await createCaptureLifecycle({ selectorLifecycle: selectorStub }).recoverPendingDeletes()
+      expect(existsSync(stagedDir(a.id))).toBe(false)
+    })
+
+    it('the startup sweep also restores staged files in an archived Case', async () => {
+      const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+      const [a] = await ingestN(lifecycle, 1)
+      createCaptureStore({ getRoot: getStorageRoot }).stageArtifacts(caseId, a.id)
+      updateCase({ id: caseId, archived: true })
+
+      await lifecycle.recoverPendingDeletes()
+
+      expect(mhtmlExists(a)).toBe(true)
+      expect(existsSync(stagedDir(a.id))).toBe(false)
+    })
+
+    it('recovery after a crash before the commit restores the files of a live row', async () => {
+      const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+      const [a, b] = await ingestN(lifecycle, 2)
+      // The crash window: files staged, row never deleted.
+      createCaptureStore({ getRoot: getStorageRoot }).stageArtifacts(caseId, a.id)
+      expect(mhtmlExists(a)).toBe(false)
+
+      await lifecycle.recoverPendingDeletes()
+
+      expect(mhtmlExists(a)).toBe(true)
+      expect(existsSync(stagedDir(a.id))).toBe(false)
+      expect(mhtmlExists(b)).toBe(true)
+    })
+
+    it('a throwing row delete puts the mhtml back before the rollback', async () => {
+      const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+      const [a] = await ingestN(lifecycle, 1)
+      vi.spyOn(captureRepo, 'deleteCapture').mockImplementation(() => {
+        throw new Error('SQLITE_BUSY: simulated')
+      })
+      const baseIndex = getManifestHead(caseDir).nextIndex
+
+      const result = await lifecycle.deleteMany(caseId, [a.id])
+
+      expect(result.outcomes).toMatchObject([{ status: 'rolled_back', stage: 'db' }])
+      expect(mhtmlExists(a)).toBe(true)
+      expect(existsSync(stagedDir(a.id))).toBe(false)
+      expect(manifestEntries()).toHaveLength(baseIndex)
+    })
+
+    describe('legacy html capture', () => {
+      function legacyWithFile(): { id: string; html: string } {
+        const legacy = insertCapture({
+          caseId,
+          url: 'https://legacy.example.com',
+          title: 'Legacy',
+          hash: 'x'.repeat(64),
+          timestamp: '2026-04-05T12:00:00.000Z'
+        })
+        const html = createCaptureStore({ getRoot: getStorageRoot }).artifactPaths(
+          caseId,
+          legacy.id,
+          'html'
+        ).abs
+        writeFileSync(html, '<html>legacy</html>')
+        return { id: legacy.id, html }
+      }
+
+      it('a throwing row delete restores the html and surfaces the error', async () => {
+        const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+        const legacy = legacyWithFile()
+        vi.spyOn(captureRepo, 'deleteCapture').mockImplementation(() => {
+          throw new Error('SQLITE_BUSY: simulated')
+        })
+
+        await expect(lifecycle.delete(legacy.id)).rejects.toThrow('SQLITE_BUSY')
+
+        expect(readFileSync(legacy.html, 'utf-8')).toBe('<html>legacy</html>')
+        expect(existsSync(stagedDir(legacy.id))).toBe(false)
+      })
+
+      it('a row gone at delete time restores the html and reports not_found', async () => {
+        const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+        const legacy = legacyWithFile()
+        vi.spyOn(captureRepo, 'deleteCapture').mockReturnValue(false)
+
+        const result = await lifecycle.deleteMany(caseId, [legacy.id])
+
+        expect(result.outcomes).toEqual([
+          { captureId: legacy.id, status: 'rejected', reason: 'not_found' }
+        ])
+        expect(readFileSync(legacy.html, 'utf-8')).toBe('<html>legacy</html>')
+        expect(existsSync(stagedDir(legacy.id))).toBe(false)
+      })
+    })
+
+    it('a recovery that cannot list staged deletes logs and lets the delete proceed', async () => {
+      const real = createCaptureStore({ getRoot: getStorageRoot })
+      const lifecycle = createCaptureLifecycle({
+        selectorLifecycle: selectorStub,
+        store: {
+          ...real,
+          listStagedDeletes: () => {
+            throw new Error('EACCES: simulated')
+          }
+        }
+      })
+      const [a] = await ingestN(lifecycle, 1)
+
+      expect(await lifecycle.delete(a.id)).toBe(true)
+      expect(getCapture(a.id)).toBeUndefined()
+    })
+
+    it('the startup sweep resolves without throwing when the case list cannot be read', async () => {
+      const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+      vi.spyOn(caseRepoModule, 'listCases').mockImplementation(() => {
+        throw new Error('SQLITE_CORRUPT: simulated')
+      })
+
+      await expect(lifecycle.recoverPendingDeletes()).resolves.toBeUndefined()
+    })
+
+    it('a delete in the Case runs the same recovery first', async () => {
+      const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+      const [a, b] = await ingestN(lifecycle, 2)
+      createCaptureStore({ getRoot: getStorageRoot }).stageArtifacts(caseId, a.id)
+
+      expect(await lifecycle.delete(b.id)).toBe(true)
+
+      expect(mhtmlExists(a)).toBe(true)
+      expect(existsSync(stagedDir(a.id))).toBe(false)
+    })
   })
 
   it('throws before the loop when the manifest head is unreadable, writing nothing', async () => {

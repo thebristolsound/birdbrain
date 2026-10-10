@@ -164,6 +164,10 @@ const CODE_LABELS: Record<LogCode, string> = {
     "The duplicate was created, but its trusted-time status couldn't be refreshed",
   'captureLifecycle.duplicate_cleanup_failed':
     "The duplicate failed, and its copied files couldn't be removed",
+  'captureLifecycle.delete_purge_failed':
+    "The capture was deleted, but its files couldn't be removed yet",
+  'captureLifecycle.delete_recovery_failed':
+    "Couldn't put back or remove the files of an interrupted capture delete",
   'backgroundRenderer.trim_failed': "Couldn't trim the screenshot",
   'backgroundRenderer.consent_blocker_disable_failed':
     "Couldn't turn off the cookie-notice blocker",

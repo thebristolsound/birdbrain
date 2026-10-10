@@ -457,7 +457,8 @@ export function createCaptureStore(deps: { getRoot: () => string }): CaptureStor
       try {
         rmdirSync(dir)
       } catch {
-        // Not empty or never created: nothing of this capture is left in it.
+        // Never created, or still holding files an earlier recovery could not
+        // restore; the next recovery handles those.
       }
       throw err
     }

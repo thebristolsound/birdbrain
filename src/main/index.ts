@@ -602,7 +602,7 @@ if (!gotSingleInstanceLock) {
       })
 
       // Put back or purge the files of any capture delete a crash interrupted
-      // (#1786) before anything else can delete in those Cases.
+      // (#1786). Not awaited: a delete that runs first recovers its own Case.
       void captureLifecycle.recoverPendingDeletes()
 
       // Background recapture queue (#recapture). Renders pages in a hidden window

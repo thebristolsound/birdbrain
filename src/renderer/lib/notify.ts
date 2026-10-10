@@ -167,7 +167,7 @@ const CODE_LABELS: Record<LogCode, string> = {
   'captureLifecycle.delete_purge_failed':
     "The capture was deleted, but its files couldn't be removed yet",
   'captureLifecycle.delete_recovery_failed':
-    "Couldn't finish tidying up after an interrupted capture delete",
+    "Couldn't put back or remove the files of an interrupted capture delete",
   'backgroundRenderer.trim_failed': "Couldn't trim the screenshot",
   'backgroundRenderer.consent_blocker_disable_failed':
     "Couldn't turn off the cookie-notice blocker",

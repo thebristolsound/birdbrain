@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures/electronApp'
+import { seedCapture, serverToken } from './fixtures/seed'
 
 type Box = { x: number; y: number; width: number; height: number }
 type Page = import('@playwright/test').Page
@@ -114,5 +115,40 @@ test.describe('Top bar layout', () => {
       expect(width).toBe(400)
       expect(Math.abs(x + width / 2 - 700)).toBeLessThanOrEqual(1)
     }).toPass({ timeout: 5000 })
+  })
+
+  test('the Export dialog covers the narrow-window details overlay', async ({
+    electronApp,
+    page
+  }) => {
+    const caseId = await createCase(page, 'Export over overlay')
+    await seedCapture(page, caseId, await serverToken(page), { slug: 'export-overlay' })
+    await electronApp.windows()[0].setViewportSize({ width: 1000, height: 800 })
+    await page.evaluate((id) => {
+      window.location.hash = `/cases/${id}/captures`
+    }, caseId)
+    await page.getByTestId('capture-item').first().click()
+    await page.getByTitle('Show details', { exact: true }).click()
+    const overlay = page.getByTestId('capture-details-overlay')
+    await expect(overlay).toBeVisible()
+
+    await page
+      .getByTestId('case-action-bar')
+      .getByRole('button', { name: /Export/ })
+      .click()
+    await page.getByRole('menuitem', { name: 'Export evidence report' }).click()
+    await expect(page.getByRole('dialog', { name: 'Export case' })).toBeVisible()
+
+    // The topmost element over the overlay belongs to the dialog's backdrop, not the overlay.
+    const { x, y, width, height } = (await overlay.boundingBox())!
+    const covered = await page.evaluate(
+      ({ px, py }) => {
+        const top = document.elementFromPoint(px, py)
+        const panel = document.querySelector('[data-testid="capture-details-overlay"]')
+        return !!top && !panel?.contains(top)
+      },
+      { px: x + width / 2, py: y + height - 20 }
+    )
+    expect(covered).toBe(true)
   })
 })

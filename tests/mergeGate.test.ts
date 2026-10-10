@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   closedIssues,
+  credentialFiles,
   decide,
   approvalStamp,
   effectiveReview,
@@ -14,6 +15,7 @@ const base = {
   headSha: HEAD,
   author: 'birdbrain-agent',
   machine: 'birdbrain-agent',
+  files: [] as string[],
   labels: [] as string[],
   maintainer: 'owner',
   issueEvidence: [] as number[],
@@ -84,6 +86,62 @@ describe('merge-gate decide', () => {
     expect(verdict.pass).toBe(false)
     expect(verdict.reasons).toHaveLength(1)
     expect(decide({ ...base, labels, approvalStamp: 'success', prepass: 'success' }).pass).toBe(
+      true
+    )
+  })
+})
+
+describe('merge-gate on changes that reach the release credentials', () => {
+  const approve = [{ state: 'APPROVED', user: 'owner', commit: HEAD }]
+
+  it('names every workflow and every release script, and nothing else', () => {
+    expect(
+      credentialFiles([
+        '.github/workflows/release.yml',
+        '.github/workflows/new.yml',
+        '.github/scripts/release/publish.sh',
+        '.github/scripts/dispatch/run.sh',
+        'src/main/index.ts',
+        'docs/.github/workflows/x.yml'
+      ])
+    ).toEqual([
+      '.github/workflows/release.yml',
+      '.github/workflows/new.yml',
+      '.github/scripts/release/publish.sh'
+    ])
+  })
+
+  it('blocks such a PR from anyone but the maintainer until the maintainer signs off at head', () => {
+    for (const author of ['birdbrain-agent', 'dependabot[bot]', 'someone']) {
+      const files = ['.github/scripts/release/publish.sh']
+      const blocked = decide({ ...base, author, files })
+      expect(blocked.pass).toBe(false)
+      expect(blocked.credential).toBe(true)
+      expect(blocked.reasons[0]).toContain('.github/scripts/release/publish.sh')
+      expect(blocked.reasons[0]).toContain('no sign-off at head')
+      expect(decide({ ...base, author, files, reviews: approve }).pass).toBe(true)
+      const stale = [{ ...approve[0], commit: 'b'.repeat(40) }]
+      expect(decide({ ...base, author, files, reviews: stale }).pass).toBe(false)
+    }
+  })
+
+  it('accepts the stamped approved label as the sign-off', () => {
+    const files = ['.github/workflows/ci.yml']
+    const labels = ['approved']
+    expect(decide({ ...base, files, labels, approvalStamp: 'success' }).pass).toBe(true)
+    expect(decide({ ...base, files, labels, approvalStamp: 'absent' }).pass).toBe(false)
+  })
+
+  it("passes such a PR opened under the maintainer's account", () => {
+    const files = ['.github/workflows/release.yml']
+    expect(decide({ ...base, author: 'owner', files }).pass).toBe(true)
+  })
+
+  it('gives an evidence-affecting PR that also touches a workflow one reason for each', () => {
+    const files = ['.github/workflows/ci.yml']
+    const verdict = decide({ ...base, files, labels: ['evidence-affecting'] })
+    expect(verdict.reasons).toHaveLength(2)
+    expect(decide({ ...base, files, labels: ['evidence-affecting'], reviews: approve }).pass).toBe(
       true
     )
   })

@@ -153,7 +153,7 @@ Organized by feature under `src/renderer/components/`:
 - **data/** - The Data screen's parts (#1149, #1150): `dataTreeModel.ts`, `dataTableModel.ts` and `ledgerModel.ts` (pure models over the exhibit inventory and the manifest snapshot), DataTree, ArtifactTable, ArtifactTabs, the per-row tabs (PropertiesTab, ExtractedTextTab, HeadersTlsTab, ManifestLedger), IntegrityStrip, DiscardStagedDialog, `useDataContextMenu.ts` (the #1151 menu targets over the same callbacks the inline controls use), and IndicatorsView (the extracted-data browser, shown for the rail's top-level Indicators group and its category and subcategory nodes, whose selection it shares). `dashboard/cases/DataExplorer.tsx` is the shell that mounts them
 - **export/** - ExportDialog, ExportMenu, ExportProgress, exportNotice.ts (the written-export toast)
 - **extension/** - InstallExtensionStepper, installSteps.tsx
-- **layout/** - TopBar, Sidebar, CommandPalette
+- **layout/** - TopBar, CaseActionBar (the case's session switch and Export, under the top bar), Sidebar, CommandPalette
 - **onboarding/** - The coach-mark tour: OnboardingTour (the single mount), useTourEngine, WelcomeCard, CoachMark, ScreenCard, plus the pure `tourSteps.ts` (chapters, counters, completion rules) and `tourGeometry.ts` (layout maths). `startTour(chapter)` dispatches the `birdbrain:tour` event any entry point uses
 - **notes/** - AddNoteModal, CreateNoteCard, NoteCard, NoteBody, NoteEditor, NotesOverview, useNoteEditor.ts
 - **overview/** - CaseOverview, CaseSubhead, ActivityTimeline, MetricRow, RecentCapturesStrip, SelectorCoverageBlock, SinceLastVisitBanner, SourcesBlock, VerifyBar, overviewModel.ts

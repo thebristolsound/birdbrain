@@ -44,14 +44,13 @@ test.describe('Top bar layout', () => {
         webContents.send('event:sessionStateChanged', { sessionActive: true, activeCaseId: id })
       }, caseId)
       await expect(page.getByTestId('topbar-rec')).toBeVisible({ timeout: 10000 })
-      await expect(page.getByRole('switch', { name: 'Capture Session' })).toBeVisible()
 
-      // The bar drags the window, so the switch's label text has to opt out or a click
-      // on it moves the window instead of toggling the session.
-      const labelRegion = await page
-        .getByText('Capture Session', { exact: true })
-        .evaluate((el) => getComputedStyle(el).getPropertyValue('app-region'))
-      expect(labelRegion).toBe('no-drag')
+      // The session switch and Export sit in the case action bar, so the top bar's
+      // right side does not grow toward the native window controls while recording.
+      const actionBar = page.getByTestId('case-action-bar')
+      await expect(actionBar.getByRole('switch', { name: 'Capture Session' })).toBeVisible()
+      await expect(actionBar.getByRole('button', { name: /Export/ })).toBeVisible()
+      await expect(controls.getByRole('switch', { name: 'Capture Session' })).toHaveCount(0)
 
       for (const width of [1400, 1100, 1000, 900]) {
         await electronApp.windows()[0].setViewportSize({ width, height: 800 })

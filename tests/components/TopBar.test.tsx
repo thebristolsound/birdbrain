@@ -46,7 +46,6 @@ vi.mock('@renderer/components/status/SessionControls', () => ({
 }))
 vi.mock('@renderer/components/status/ConnectionStatus', () => ({ ConnectionStatus: () => null }))
 vi.mock('@renderer/components/status/CaptureHealth', () => ({ CaptureHealth: () => null }))
-vi.mock('@renderer/components/export/ExportMenu', () => ({ ExportMenu: () => null }))
 
 import { TopBar } from '@renderer/components/layout/TopBar'
 
@@ -74,13 +73,20 @@ afterEach(() => {
 })
 
 describe('the case chrome', () => {
-  it('shows the case switcher, search and session controls inside a case', async () => {
+  it('shows the case switcher and search inside a case', async () => {
     renderAt('/cases/case1/overview')
     await waitFor(() =>
       expect(screen.getByTestId('topbar-case-name').textContent).toContain('Operation Kestrel')
     )
     expect(screen.getByTestId('global-search-input')).toBeTruthy()
-    expect(screen.getByTestId('session-controls')).toBeTruthy()
+  })
+
+  // They sit in CaseActionBar, so the bar's right side keeps one width beside the
+  // native window controls.
+  it('leaves the session switch to the case action bar', async () => {
+    renderAt('/cases/case1/overview')
+    await waitFor(() => expect(screen.getByTestId('topbar-case-name')).toBeTruthy())
+    expect(screen.queryByTestId('session-controls')).toBeNull()
   })
 
   it('treats the new-case wizard as no case, like the dashboard', () => {

@@ -202,7 +202,7 @@ export function CapturesRoute() {
   // Keyed on the panel set, so collapsing a column cannot overwrite the widths
   // the full three-column configuration was last dragged to.
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({ id: PANEL_GROUP_ID, panelIds })
-  const listWidth = useListColumnWidth()
+  const listWidth = useListColumnWidth(LIST_PANEL.id)
 
   const currentIndex = captures.findIndex((c) => c.id === selectedCaptureId)
   const goPrev = useCallback(() => {
@@ -311,7 +311,7 @@ export function CapturesRoute() {
         defaultLayout={defaultLayout}
         onLayoutChanged={(layout, meta) => {
           onLayoutChanged(layout, meta)
-          listWidth.onLayoutChanged(meta)
+          listWidth.onLayoutChanged(layout, meta)
         }}
         style={{ flex: '1 1 0%', width: 'auto', minWidth: 0 }}
       >

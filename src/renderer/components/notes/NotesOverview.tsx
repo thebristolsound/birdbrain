@@ -88,7 +88,7 @@ function NotesWorkspace({ caseId }: { caseId: string }) {
   const { create, remove } = useNotesMutations(caseId)
   const resolve = useMentionResolver(caseId)
   const { collapsed, setCollapsed } = useListColumnCollapsed()
-  const listWidth = useListColumnWidth()
+  const listWidth = useListColumnWidth(LIST_PANEL_ID)
   const {
     data: allNotes = [],
     isLoading,
@@ -436,7 +436,7 @@ function NotesWorkspace({ caseId }: { caseId: string }) {
         <Group
           id="notes-columns"
           orientation="horizontal"
-          onLayoutChanged={(_layout, meta) => listWidth.onLayoutChanged(meta)}
+          onLayoutChanged={listWidth.onLayoutChanged}
           style={{ flex: '1 1 0%', width: 'auto', minWidth: 0 }}
         >
           <Panel

@@ -189,14 +189,14 @@ describe('package smoke and release workflow consistency', () => {
   })
 
   // ADR-0008 Decision 3 allows no full release while artifacts are unsigned. A tag-name
-  // expression left that to whoever typed the tag (#1356), so every prerelease input in the
-  // two workflows that write to a release is the literal true.
-  it('sets every prerelease input in both release workflows to a literal true', () => {
-    const prereleaseInputs = (filename: string) =>
-      [...readWorkflow(filename).matchAll(/^ *prerelease: *(.*)$/gm)].map(([, value]) => value)
+  // expression left that to whoever typed the tag (#1356), so the one call that creates a
+  // release, in publish.sh, sets prerelease to the literal true, and release.yml sets none.
+  it('creates every release as a pre-release, by a literal', () => {
+    const script = readFileSync(join(ROOT, '.github', 'scripts', 'release', 'publish.sh'), 'utf8')
 
-    expect(prereleaseInputs('release.yml')).toEqual(['true'])
-    expect(prereleaseInputs('release-macos.yml')).toEqual(['true'])
+    expect([...script.matchAll(/-F prerelease=(\S*)/g)].map(([, value]) => value)).toEqual(['true'])
+    expect(script).toMatch(/-F draft=true -F prerelease=true/)
+    expect(readWorkflow('release.yml')).not.toMatch(/prerelease/)
   })
 })
 

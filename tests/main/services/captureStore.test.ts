@@ -6,20 +6,29 @@ import {
   existsSync,
   writeFileSync,
   mkdirSync,
-  createWriteStream
+  createWriteStream,
+  renameSync
 } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { createHash } from 'crypto'
 import { Readable, Writable } from 'stream'
-import { createCaptureStore, parseArtifactFilename } from '@main/services/captureStore'
+import {
+  createCaptureStore,
+  parseArtifactFilename,
+  StagedRestoreError
+} from '@main/services/captureStore'
 import type { CaptureStore } from '@main/services/captureStore'
 
-// Wrap createWriteStream so a single test can substitute a failing stream;
-// everything else in 'fs' stays real.
+// Wrap createWriteStream and renameSync so a single test can substitute a
+// failing stream or rename; everything else in 'fs' stays real.
 vi.mock('fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('fs')>()
-  return { ...actual, createWriteStream: vi.fn(actual.createWriteStream) }
+  return {
+    ...actual,
+    createWriteStream: vi.fn(actual.createWriteStream),
+    renameSync: vi.fn(actual.renameSync)
+  }
 })
 
 // The store is created with an injected root getter — no initStorage — proving
@@ -205,6 +214,102 @@ describe('captureStore', () => {
 
     it('is a no-op when nothing exists', () => {
       expect(() => store.deleteArtifacts('case-none', 'cap-none')).not.toThrow()
+    })
+  })
+
+  // The reversible delete (#1786): rename aside, then restore or purge.
+  describe('staged delete', () => {
+    const NAMES = ['cap-1.mhtml', 'cap-1.png', 'cap-1.txt', 'cap-1_thumb.jpg']
+    let dir: string
+    let staged: string
+
+    beforeEach(() => {
+      dir = join(tempDir, 'case-1')
+      staged = join(dir, '.pending-delete', 'cap-1')
+      mkdirSync(dir, { recursive: true })
+      for (const name of NAMES) writeFileSync(join(dir, name), name)
+      writeFileSync(join(dir, 'cap-2.mhtml'), 'other capture untouched')
+    })
+
+    afterEach(() => {
+      vi.mocked(renameSync).mockReset()
+    })
+
+    function failRenameOf(name: string): void {
+      const real = vi.mocked(renameSync).getMockImplementation()!
+      vi.mocked(renameSync).mockImplementation((from, to) => {
+        if (String(from).endsWith(name)) {
+          const err: NodeJS.ErrnoException = new Error(`EBUSY: simulated rename of ${name}`)
+          err.code = 'EBUSY'
+          throw err
+        }
+        return real(from, to)
+      })
+    }
+
+    it('moves every present artifact and the thumbnail aside under their own names', () => {
+      store.stageArtifacts('case-1', 'cap-1')
+
+      for (const name of NAMES) {
+        expect(existsSync(join(dir, name))).toBe(false)
+        expect(readFileSync(join(staged, name), 'utf-8')).toBe(name)
+      }
+      expect(existsSync(join(dir, 'cap-2.mhtml'))).toBe(true)
+      expect(store.listStagedDeletes('case-1')).toEqual(['cap-1'])
+    })
+
+    it('restores staged files to their original paths and removes the staging directory', () => {
+      store.stageArtifacts('case-1', 'cap-1')
+      store.restoreStaged('case-1', 'cap-1')
+
+      for (const name of NAMES) expect(readFileSync(join(dir, name), 'utf-8')).toBe(name)
+      expect(existsSync(staged)).toBe(false)
+      expect(store.listStagedDeletes('case-1')).toEqual([])
+    })
+
+    it('purges staged files and leaves other captures alone', () => {
+      store.stageArtifacts('case-1', 'cap-1')
+      store.purgeStaged('case-1', 'cap-1')
+
+      expect(existsSync(staged)).toBe(false)
+      for (const name of NAMES) expect(existsSync(join(dir, name))).toBe(false)
+      expect(existsSync(join(dir, 'cap-2.mhtml'))).toBe(true)
+    })
+
+    it('moves the earlier files back when a later rename fails, then rethrows', () => {
+      // mhtml moves first; png is the one that refuses.
+      failRenameOf('cap-1.png')
+
+      expect(() => store.stageArtifacts('case-1', 'cap-1')).toThrow('EBUSY')
+
+      for (const name of NAMES) expect(readFileSync(join(dir, name), 'utf-8')).toBe(name)
+      expect(existsSync(staged)).toBe(false)
+    })
+
+    it('throws StagedRestoreError when moving a staged file back fails too', () => {
+      const real = vi.mocked(renameSync).getMockImplementation()!
+      vi.mocked(renameSync).mockImplementation((from, to) => {
+        // The png rename aside fails, and so does moving the mhtml back.
+        if (String(from).endsWith('cap-1.png')) throw new Error('EBUSY: png')
+        if (String(from).startsWith(staged)) throw new Error('EBUSY: restore')
+        return real(from, to)
+      })
+
+      expect(() => store.stageArtifacts('case-1', 'cap-1')).toThrow(StagedRestoreError)
+      // Nothing is lost: the mhtml is parked in the staging directory.
+      expect(readFileSync(join(staged, 'cap-1.mhtml'), 'utf-8')).toBe('cap-1.mhtml')
+    })
+
+    it('restoreStaged tries every file before throwing, and is a no-op with nothing staged', () => {
+      store.stageArtifacts('case-1', 'cap-1')
+      failRenameOf(join('.pending-delete', 'cap-1', 'cap-1.mhtml'))
+
+      expect(() => store.restoreStaged('case-1', 'cap-1')).toThrow(StagedRestoreError)
+      expect(readFileSync(join(dir, 'cap-1.png'), 'utf-8')).toBe('cap-1.png')
+      expect(existsSync(join(staged, 'cap-1.mhtml'))).toBe(true)
+
+      expect(() => store.restoreStaged('case-none', 'cap-none')).not.toThrow()
+      expect(store.listStagedDeletes('case-none')).toEqual([])
     })
   })
 

@@ -37,8 +37,11 @@ function isEmptySchema(conn: Database.Database): boolean {
   return row.count === 0
 }
 
-export async function initDatabase(dbPath: string): Promise<Database.Database> {
-  const conn = new Database(dbPath)
+async function openMigrated(
+  dbPath: string,
+  options?: Database.Options
+): Promise<Database.Database> {
+  const conn = new Database(dbPath, options)
   conn.pragma('journal_mode = WAL')
   conn.pragma('foreign_keys = ON')
   conn.pragma('busy_timeout = 5000')
@@ -46,14 +49,28 @@ export async function initDatabase(dbPath: string): Promise<Database.Database> {
     await snapshotBeforeMigrations(conn, dbPath)
     runMigrations(conn)
   } catch (err) {
-    // The module-level handle stays unset on failure, so `getDb()` throws
-    // "Database not initialized" rather than handing out a connection to a
-    // database this process refused to migrate.
     conn.close()
     throw err
   }
-  db = conn
+  return conn
+}
+
+export async function initDatabase(dbPath: string): Promise<Database.Database> {
+  // Assigned only once the migrations have run, so on failure `getDb()` throws
+  // "Database not initialized" rather than handing out a connection to a
+  // database this process refused to migrate.
+  db = await openMigrated(dbPath)
   return db
+}
+
+// Brings a database file that is not the open one to the current schema, with
+// the same snapshot-first migration `initDatabase` runs, and closes it again.
+// It never sets the module-level handle, so the open database is untouched
+// whether this succeeds or throws. A restore migrates its copy here before the
+// copy can replace anything.
+export async function migrateFile(path: string): Promise<void> {
+  const conn = await openMigrated(path, { fileMustExist: true })
+  conn.close()
 }
 
 // The MCP server's connection (ADR-0038). SQLite itself refuses every write on

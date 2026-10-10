@@ -3,14 +3,18 @@ import {
   createWriteStream,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
+  renameSync,
+  rmdirSync,
+  rmSync,
   statSync,
   unlinkSync,
   writeFileSync,
   type WriteStream
 } from 'fs'
 import { copyFile, unlink } from 'fs/promises'
-import { join } from 'path'
+import { basename, join } from 'path'
 import { createHash } from 'crypto'
 import { finished } from 'stream/promises'
 import { getStorageRoot } from '@main/services/storage'
@@ -55,6 +59,23 @@ export const CASE_SUBDIRECTORIES: readonly string[] = [
   ...Object.values(EXHIBIT_KIND_SUBDIRECTORIES),
   STAGING_SUBDIRECTORY
 ]
+
+// Where a capture delete parks its files between staging and purge (#1786):
+// `{caseId}/.pending-delete/{captureId}/`, each file under its original name.
+// Deliberately absent from CASE_SUBDIRECTORIES: it is transient bookkeeping,
+// not part of the Case layout, so the orphan scan leaves it alone and only
+// the delete path and its recovery touch it.
+export const PENDING_DELETE_DIRECTORY = '.pending-delete'
+
+// A staged file could not be moved back to its original path, so the files
+// are NOT where they were before the delete began. They are still on disk in
+// the staging directory; recovery restores them.
+export class StagedRestoreError extends Error {
+  constructor(captureId: string, cause: unknown) {
+    super(`could not restore staged artifacts for capture ${captureId}`, { cause })
+    this.name = 'StagedRestoreError'
+  }
+}
 
 export interface ArtifactPaths {
   // Relative path (caseId/captureId.ext) — the form persisted onto capture rows.
@@ -118,6 +139,16 @@ export interface CaptureStore {
     targetCaptureId: string
   ) => Promise<CopiedArtifacts>
   deleteArtifacts: (caseId: string, captureId: string) => void
+  // The reversible delete (#1786). `stageArtifacts` renames every artifact and
+  // the thumbnail into the capture's staging directory; if a rename fails it
+  // moves the staged files back and rethrows, or throws StagedRestoreError when
+  // that restore fails too. `restoreStaged` moves staged files back to their
+  // original paths. `purgeStaged` removes the staging directory for good.
+  stageArtifacts: (caseId: string, captureId: string) => void
+  restoreStaged: (caseId: string, captureId: string) => void
+  purgeStaged: (caseId: string, captureId: string) => void
+  // Capture ids with a staging directory left in the Case, for recovery.
+  listStagedDeletes: (caseId: string) => string[]
 }
 
 // Recognizes capture artifact filenames inside a case directory, mapping a
@@ -366,6 +397,85 @@ export function createCaptureStore(deps: { getRoot: () => string }): CaptureStor
     }
   }
 
+  function pendingDeleteRoot(caseId: string): string {
+    return join(caseDir(caseId), PENDING_DELETE_DIRECTORY)
+  }
+
+  function stagedDir(caseId: string, captureId: string): string {
+    return join(pendingDeleteRoot(caseId), captureId)
+  }
+
+  // Every path a capture's files may occupy, artifacts then thumbnail.
+  function ownedPaths(caseId: string, captureId: string): string[] {
+    return [
+      ...CAPTURE_ARTIFACT_TYPES.map((type) => artifactPaths(caseId, captureId, type).abs),
+      thumbnailPaths(caseId, captureId).abs
+    ]
+  }
+
+  function restoreStaged(caseId: string, captureId: string): void {
+    const dir = stagedDir(caseId, captureId)
+    if (!existsSync(dir)) return
+    // Attempt every file before reporting, so one locked file does not leave
+    // the others parked as well.
+    let firstError: unknown
+    for (const name of readdirSync(dir)) {
+      try {
+        renameSync(join(dir, name), join(caseDir(caseId), name))
+      } catch (err) {
+        firstError ??= err
+      }
+    }
+    if (firstError !== undefined) throw new StagedRestoreError(captureId, firstError)
+    rmdirSync(dir)
+  }
+
+  function stageArtifacts(caseId: string, captureId: string): void {
+    const dir = stagedDir(caseId, captureId)
+    const moved: Array<{ from: string; to: string }> = []
+    try {
+      for (const from of ownedPaths(caseId, captureId)) {
+        if (!existsSync(from)) continue
+        mkdirSync(dir, { recursive: true })
+        // Same directory tree, same filesystem: each rename is atomic, and
+        // unlike an unlink it can be undone.
+        const to = join(dir, basename(from))
+        renameSync(from, to)
+        moved.push({ from, to })
+      }
+    } catch (err) {
+      // Undo exactly what this call moved, newest first.
+      let restoreError: unknown
+      for (const { from, to } of moved.reverse()) {
+        try {
+          renameSync(to, from)
+        } catch (e) {
+          restoreError ??= e
+        }
+      }
+      if (restoreError !== undefined) throw new StagedRestoreError(captureId, restoreError)
+      try {
+        rmdirSync(dir)
+      } catch {
+        // Never created, or still holding files an earlier recovery could not
+        // restore; the next recovery handles those.
+      }
+      throw err
+    }
+  }
+
+  function purgeStaged(caseId: string, captureId: string): void {
+    rmSync(stagedDir(caseId, captureId), { recursive: true, force: true })
+  }
+
+  function listStagedDeletes(caseId: string): string[] {
+    const root = pendingDeleteRoot(caseId)
+    if (!existsSync(root)) return []
+    return readdirSync(root, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+  }
+
   return {
     caseDir,
     artifactPaths,
@@ -381,7 +491,11 @@ export function createCaptureStore(deps: { getRoot: () => string }): CaptureStor
     readThumbnail,
     writeThumbnail,
     copyArtifacts,
-    deleteArtifacts
+    deleteArtifacts,
+    stageArtifacts,
+    restoreStaged,
+    purgeStaged,
+    listStagedDeletes
   }
 }
 

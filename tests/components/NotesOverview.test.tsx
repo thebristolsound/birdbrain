@@ -323,6 +323,21 @@ describe('NotesOverview list column', () => {
     expect(localStorage.getItem('captureListCollapsed')).toBe('false')
   })
 
+  it('keeps the open editor and its unsaved draft across collapse and expand', async () => {
+    notes = [makeNote('a', 'Zulu')]
+    renderNotes()
+    const title = (await screen.findByLabelText('Note title')) as HTMLInputElement
+    await waitFor(() => expect(title.value).toBe('Zulu'))
+    fireEvent.change(title, { target: { value: 'Zulu draft' } })
+
+    fireEvent.click(screen.getByTestId('notes-list-collapse'))
+    expect(screen.getByLabelText('Note title')).toBe(title)
+    fireEvent.click(screen.getByTestId('notes-list-rail-expand'))
+    await screen.findByLabelText('Notes list')
+    expect(screen.getByLabelText('Note title')).toBe(title)
+    expect(title.value).toBe('Zulu draft')
+  })
+
   it('steps through the notes from the rail', async () => {
     localStorage.setItem('captureListCollapsed', 'true')
     notes = [

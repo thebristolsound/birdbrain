@@ -414,52 +414,54 @@ function NotesWorkspace({ caseId }: { caseId: string }) {
   )
 
   // The same column as the Captures list (layout/ListColumn.tsx): the same bounds, the same
-  // rail, and one collapsed flag for both screens.
+  // rail, and one collapsed flag for both screens. As there, the rail sits outside the Group
+  // and only the list panel comes and goes, so the editor stays mounted across a collapse and
+  // keeps a draft that has not saved yet.
   return (
     <div className="flex h-full min-h-0 flex-1 overflow-hidden" data-testid="notes-workspace">
-      {collapsed ? (
-        <>
-          <ListColumnRail
-            noun="note"
-            icon={StickyNote}
-            testId="notes-list-rail"
-            count={all.length}
-            onExpand={() => setCollapsed(false)}
-            onPrev={() => void selectNote(notes[selectedIndex - 1].id)}
-            onNext={() => void selectNote(notes[selectedIndex + 1].id)}
-            canGoPrev={selectedIndex > 0}
-            canGoNext={selectedIndex >= 0 && selectedIndex < notes.length - 1}
-          />
-          {detail}
-        </>
-      ) : (
-        <Group
-          id="notes-columns"
-          orientation="horizontal"
-          onLayoutChanged={listWidth.onLayoutChanged}
-          style={{ flex: '1 1 0%', width: 'auto', minWidth: 0 }}
-        >
-          <Panel
-            id={LIST_PANEL_ID}
-            {...LIST_COLUMN_SIZE}
-            groupResizeBehavior="preserve-pixel-size"
-            panelRef={listWidth.panelRef}
-            className="flex min-w-0 border-r border-border"
-            style={{ overflow: 'hidden' }}
-          >
-            {list}
-          </Panel>
-          <Separator id="notes-list-separator" className={SEPARATOR_CLASS} />
-          <Panel
-            id={DETAIL_PANEL_ID}
-            minSize={360}
-            className="flex min-w-0"
-            style={{ overflow: 'hidden' }}
-          >
-            {detail}
-          </Panel>
-        </Group>
+      {collapsed && (
+        <ListColumnRail
+          noun="note"
+          icon={StickyNote}
+          testId="notes-list-rail"
+          count={all.length}
+          onExpand={() => setCollapsed(false)}
+          onPrev={() => void selectNote(notes[selectedIndex - 1].id)}
+          onNext={() => void selectNote(notes[selectedIndex + 1].id)}
+          canGoPrev={selectedIndex > 0}
+          canGoNext={selectedIndex >= 0 && selectedIndex < notes.length - 1}
+        />
       )}
+      <Group
+        id="notes-columns"
+        orientation="horizontal"
+        onLayoutChanged={listWidth.onLayoutChanged}
+        style={{ flex: '1 1 0%', width: 'auto', minWidth: 0 }}
+      >
+        {!collapsed && (
+          <>
+            <Panel
+              id={LIST_PANEL_ID}
+              {...LIST_COLUMN_SIZE}
+              groupResizeBehavior="preserve-pixel-size"
+              panelRef={listWidth.panelRef}
+              className="flex min-w-0 border-r border-border"
+              style={{ overflow: 'hidden' }}
+            >
+              {list}
+            </Panel>
+            <Separator id="notes-list-separator" className={SEPARATOR_CLASS} />
+          </>
+        )}
+        <Panel
+          id={DETAIL_PANEL_ID}
+          minSize={360}
+          className="flex min-w-0"
+          style={{ overflow: 'hidden' }}
+        >
+          {detail}
+        </Panel>
+      </Group>
     </div>
   )
 }

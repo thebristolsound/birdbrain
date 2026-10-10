@@ -15,6 +15,7 @@ vi.mock('@renderer/lib/notify', () => ({
 import { NotesOverview } from '@renderer/components/notes/NotesOverview'
 import { NOTE_COMPOSER_EVENT, openNoteComposer } from '@renderer/components/onboarding/tourEffects'
 import { fakeBridge } from '../renderer/fakeBridge'
+import { stubResizeObserver } from './resizeObserverStub'
 
 const makeNote = (id: string, title: string, extra: Partial<Note> = {}): Note => ({
   id,
@@ -42,6 +43,8 @@ function renderNotes() {
 }
 beforeEach(() => {
   vi.clearAllMocks()
+  stubResizeObserver()
+  localStorage.clear()
   window.matchMedia = vi
     .fn()
     .mockReturnValue({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })
@@ -80,10 +83,14 @@ beforeEach(() => {
 afterEach(cleanup)
 
 async function openMenu(name: string) {
+  // jsdom lays everything out at 0x0, so a press at the origin lands on the list's
+  // resize handle, and the panel group cancels it before the menu sees it.
   fireEvent.pointerDown(screen.getByRole('button', { name }), {
     button: 0,
     ctrlKey: false,
-    pointerType: 'mouse'
+    pointerType: 'mouse',
+    clientX: 500,
+    clientY: 500
   })
   await screen.findByRole('menu')
 }
@@ -295,6 +302,32 @@ describe('Notes workspace', () => {
     await screen.findByText('Failed to search notes.')
     fireEvent.click(screen.getByText('Retry search'))
     await screen.findByText('No notes match')
+  })
+})
+
+describe('NotesOverview list column', () => {
+  it('collapses to the rail the Captures list uses, and remembers it for both screens', async () => {
+    notes = [makeNote('a', 'Zulu'), makeNote('b', 'Alpha')]
+    renderNotes()
+    await screen.findByTestId('note-row-a')
+
+    fireEvent.click(screen.getByTestId('notes-list-collapse'))
+
+    expect(screen.queryByLabelText('Notes list')).toBeNull()
+    expect(screen.getByTestId('notes-list-rail')).toBeTruthy()
+    expect(screen.getByTitle('2 notes')).toBeTruthy()
+    expect(localStorage.getItem('captureListCollapsed')).toBe('true')
+
+    fireEvent.click(screen.getByTestId('notes-list-rail-expand'))
+    expect(await screen.findByLabelText('Notes list')).toBeTruthy()
+    expect(localStorage.getItem('captureListCollapsed')).toBe('false')
+  })
+
+  it('opens collapsed when the Captures list was left collapsed', async () => {
+    localStorage.setItem('captureListCollapsed', 'true')
+    notes = [makeNote('a', 'Zulu')]
+    renderNotes()
+    expect(await screen.findByTestId('notes-list-rail')).toBeTruthy()
   })
 })
 

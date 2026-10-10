@@ -1,15 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import {
-  ArrowUpDown,
-  Filter,
-  Crosshair,
-  X,
-  Check,
-  ChevronLeft,
-  LayoutGrid,
-  List as ListIcon,
-  Search
-} from 'lucide-react'
+import { ArrowUpDown, Filter, Crosshair, X, Check } from 'lucide-react'
 import { useQuery, useQueries } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'motion/react'
 import { capturesQueryOptions, captureMatchingSelectorsQueryOptions } from '@renderer/lib/queries'
@@ -25,6 +15,12 @@ import { CaptureSelectionBar } from '@renderer/components/captures/CaptureSelect
 import { useCaptureSelection } from '@renderer/components/captures/useCaptureSelection'
 import { useCaptureContextMenu } from '@renderer/components/captures/useCaptureContextMenu'
 import { EntityContextMenu } from '@renderer/components/contextmenu/EntityContextMenu'
+import {
+  ListColumnFooter,
+  ListColumnHeader,
+  ListColumnSearch,
+  ListColumnViewToggle
+} from '@renderer/components/layout/ListColumn'
 import {
   computeDisplayedCaptures,
   CLEAR_NARROWING_LABEL,
@@ -226,231 +222,197 @@ export function CaptureList({
 
   return (
     <aside className="flex h-full flex-1 flex-col bg-surface min-w-0">
-      {/* Header row 1: per-list search, collapse, capture menu. */}
-      <div className="border-b p-2 border-border">
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1 min-w-0">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-text-muted" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search captures…"
-              aria-label="Filter captures in this list"
-              data-testid="capture-list-search"
-              className="w-full rounded border border-border-strong bg-canvas py-1.5 pl-7 pr-2.5 text-xs text-text-primary placeholder:text-text-faint"
-            />
-          </div>
-          <button
-            onClick={onCollapse}
-            title="Collapse list"
-            data-testid="capture-list-collapse"
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-text-muted hover:bg-elevated hover:text-text-secondary"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </button>
-          <CaptureMenu caseId={caseId} />
-        </div>
-        {/* Header row 2: sort, filter, view toggle. */}
-        <div className="mt-1 flex items-center gap-1">
-          <div className="flex min-w-0 gap-1">
-            {/* Sort dropdown */}
-            <div ref={sortRef} className="relative">
-              <button
-                onClick={() => {
-                  setShowSortMenu(!showSortMenu)
-                  setShowFilterMenu(false)
-                }}
-                className={`flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-[11px] hover:bg-elevated ${
-                  sortBy !== 'newest' ? 'text-accent' : 'text-text-muted hover:text-text-muted'
-                }`}
-              >
-                <ArrowUpDown className="h-3 w-3" />
-                {SORT_OPTIONS.find((o) => o.value === sortBy)?.label ?? 'Sort'}
-              </button>
-              {showSortMenu && (
-                <div className="absolute left-0 top-full z-50 mt-1 w-40 rounded-lg border border-border bg-card py-1 shadow-lg">
-                  {SORT_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => {
-                        setSortBy(opt.value)
-                        setShowSortMenu(false)
-                      }}
-                      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-elevated ${
-                        sortBy === opt.value ? 'text-accent' : 'text-text-secondary'
-                      }`}
-                    >
-                      <Check
-                        className={`h-3 w-3 shrink-0 ${sortBy === opt.value ? 'opacity-100' : 'opacity-0'}`}
-                      />
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            {/* Filter dropdown */}
-            <div ref={filterRef} className="relative">
-              <button
-                onClick={() => {
-                  setShowFilterMenu(!showFilterMenu)
-                  setShowSortMenu(false)
-                }}
-                className={`flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-[11px] hover:bg-elevated ${
-                  activeFilterCount > 0 ? 'text-accent' : 'text-text-muted hover:text-text-muted'
-                }`}
-              >
-                <Filter className="h-3 w-3" />
-                Filter
-                {activeFilterCount > 0 && (
-                  <span className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[9px] font-medium text-white">
-                    {activeFilterCount}
-                  </span>
-                )}
-              </button>
-              {showFilterMenu && (
-                <div
-                  data-testid="capture-list-filter-menu"
-                  className="absolute left-0 top-full z-50 mt-1 w-48 rounded-lg border border-border bg-card py-1 shadow-lg"
+      <ListColumnHeader
+        search={
+          <ListColumnSearch
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search captures…"
+            aria-label="Filter captures in this list"
+            data-testid="capture-list-search"
+          />
+        }
+        collapseLabel="Collapse list"
+        collapseTestId="capture-list-collapse"
+        onCollapse={onCollapse}
+        action={<CaptureMenu caseId={caseId} />}
+        toolbar={
+          <>
+            <div className="flex min-w-0 gap-1">
+              {/* Sort dropdown */}
+              <div ref={sortRef} className="relative">
+                <button
+                  onClick={() => {
+                    setShowSortMenu(!showSortMenu)
+                    setShowFilterMenu(false)
+                  }}
+                  className={`flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-[11px] hover:bg-elevated ${
+                    sortBy !== 'newest' ? 'text-accent' : 'text-text-muted hover:text-text-muted'
+                  }`}
                 >
-                  {/* Format section */}
-                  <div className="px-3 py-1 text-[10px] font-medium uppercase tracking-wider text-text-faint">
-                    Format
-                  </div>
-                  {FORMAT_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => setFormatFilter(opt.value)}
-                      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-elevated ${
-                        formatFilter === opt.value ? 'text-accent' : 'text-text-secondary'
-                      }`}
-                    >
-                      <Check
-                        className={`h-3 w-3 shrink-0 ${formatFilter === opt.value ? 'opacity-100' : 'opacity-0'}`}
-                      />
-                      {opt.label}
-                    </button>
-                  ))}
-                  {/* Divider */}
-                  <div className="my-1 border-t border-border" />
-                  {/* Date section */}
-                  <div className="px-3 py-1 text-[10px] font-medium uppercase tracking-wider text-text-faint">
-                    Date
-                  </div>
-                  {DATE_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => setDateFilter(opt.value)}
-                      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-elevated ${
-                        dateFilter === opt.value ? 'text-accent' : 'text-text-secondary'
-                      }`}
-                    >
-                      <Check
-                        className={`h-3 w-3 shrink-0 ${dateFilter === opt.value ? 'opacity-100' : 'opacity-0'}`}
-                      />
-                      {opt.label}
-                    </button>
-                  ))}
-                  {/* Divider */}
-                  <div className="my-1 border-t border-border" />
-                  {/* Tags section (#918). Multi-select and a union: ticking a
-                      second tag widens the list to captures carrying either. */}
-                  <div className="px-3 py-1 text-[10px] font-medium uppercase tracking-wider text-text-faint">
-                    Tags
-                  </div>
-                  {filterableTags.length === 0 ? (
-                    <div
-                      data-testid="capture-list-filter-no-tags"
-                      className="px-3 py-1.5 text-[11px] text-text-faint"
-                    >
-                      No tags in this case
-                    </div>
-                  ) : (
-                    <div className="max-h-36 overflow-y-auto">
-                      {filterableTags.map((tag) => {
-                        const active = activeTagFilters.includes(tag.id)
-                        return (
-                          <button
-                            key={tag.id}
-                            onClick={() => toggleTagFilter(tag.id)}
-                            aria-pressed={active}
-                            data-testid={`capture-list-filter-tag-${tag.id}`}
-                            className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-elevated ${
-                              active ? 'text-accent' : 'text-text-secondary'
-                            }`}
-                          >
-                            <Check
-                              className={`h-3 w-3 shrink-0 ${active ? 'opacity-100' : 'opacity-0'}`}
-                            />
-                            <span className="truncate">{tag.name}</span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )}
-                  {/* Divider */}
-                  <div className="my-1 border-t border-border" />
-                  {/* Favorites toggle */}
-                  <button
-                    onClick={() => setFavoritesOnly(!favoritesOnly)}
-                    className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-elevated ${
-                      favoritesOnly ? 'text-accent' : 'text-text-secondary'
-                    }`}
-                  >
-                    <Check
-                      className={`h-3 w-3 shrink-0 ${favoritesOnly ? 'opacity-100' : 'opacity-0'}`}
-                    />
-                    Favorites only
-                  </button>
-                  {/* Clear all: the same handler as the strip and the empty state,
-                      so it clears every narrowing rather than only this menu's. */}
-                  {isNarrowed && (
-                    <>
-                      <div className="my-1 border-t border-border" />
+                  <ArrowUpDown className="h-3 w-3" />
+                  {SORT_OPTIONS.find((o) => o.value === sortBy)?.label ?? 'Sort'}
+                </button>
+                {showSortMenu && (
+                  <div className="absolute left-0 top-full z-50 mt-1 w-40 rounded-lg border border-border bg-card py-1 shadow-lg">
+                    {SORT_OPTIONS.map((opt) => (
                       <button
+                        key={opt.value}
                         onClick={() => {
-                          clearNarrowing()
-                          setShowFilterMenu(false)
+                          setSortBy(opt.value)
+                          setShowSortMenu(false)
                         }}
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-red-400 hover:bg-elevated"
+                        className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-elevated ${
+                          sortBy === opt.value ? 'text-accent' : 'text-text-secondary'
+                        }`}
                       >
-                        <X className="h-3 w-3 shrink-0" />
-                        {CLEAR_NARROWING_LABEL}
+                        <Check
+                          className={`h-3 w-3 shrink-0 ${sortBy === opt.value ? 'opacity-100' : 'opacity-0'}`}
+                        />
+                        {opt.label}
                       </button>
-                    </>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* Filter dropdown */}
+              <div ref={filterRef} className="relative">
+                <button
+                  onClick={() => {
+                    setShowFilterMenu(!showFilterMenu)
+                    setShowSortMenu(false)
+                  }}
+                  className={`flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-[11px] hover:bg-elevated ${
+                    activeFilterCount > 0 ? 'text-accent' : 'text-text-muted hover:text-text-muted'
+                  }`}
+                >
+                  <Filter className="h-3 w-3" />
+                  Filter
+                  {activeFilterCount > 0 && (
+                    <span className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[9px] font-medium text-white">
+                      {activeFilterCount}
+                    </span>
                   )}
-                </div>
-              )}
+                </button>
+                {showFilterMenu && (
+                  <div
+                    data-testid="capture-list-filter-menu"
+                    className="absolute left-0 top-full z-50 mt-1 w-48 rounded-lg border border-border bg-card py-1 shadow-lg"
+                  >
+                    {/* Format section */}
+                    <div className="px-3 py-1 text-[10px] font-medium uppercase tracking-wider text-text-faint">
+                      Format
+                    </div>
+                    {FORMAT_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => setFormatFilter(opt.value)}
+                        className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-elevated ${
+                          formatFilter === opt.value ? 'text-accent' : 'text-text-secondary'
+                        }`}
+                      >
+                        <Check
+                          className={`h-3 w-3 shrink-0 ${formatFilter === opt.value ? 'opacity-100' : 'opacity-0'}`}
+                        />
+                        {opt.label}
+                      </button>
+                    ))}
+                    {/* Divider */}
+                    <div className="my-1 border-t border-border" />
+                    {/* Date section */}
+                    <div className="px-3 py-1 text-[10px] font-medium uppercase tracking-wider text-text-faint">
+                      Date
+                    </div>
+                    {DATE_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => setDateFilter(opt.value)}
+                        className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-elevated ${
+                          dateFilter === opt.value ? 'text-accent' : 'text-text-secondary'
+                        }`}
+                      >
+                        <Check
+                          className={`h-3 w-3 shrink-0 ${dateFilter === opt.value ? 'opacity-100' : 'opacity-0'}`}
+                        />
+                        {opt.label}
+                      </button>
+                    ))}
+                    {/* Divider */}
+                    <div className="my-1 border-t border-border" />
+                    {/* Tags section (#918). Multi-select and a union: ticking a
+                      second tag widens the list to captures carrying either. */}
+                    <div className="px-3 py-1 text-[10px] font-medium uppercase tracking-wider text-text-faint">
+                      Tags
+                    </div>
+                    {filterableTags.length === 0 ? (
+                      <div
+                        data-testid="capture-list-filter-no-tags"
+                        className="px-3 py-1.5 text-[11px] text-text-faint"
+                      >
+                        No tags in this case
+                      </div>
+                    ) : (
+                      <div className="max-h-36 overflow-y-auto">
+                        {filterableTags.map((tag) => {
+                          const active = activeTagFilters.includes(tag.id)
+                          return (
+                            <button
+                              key={tag.id}
+                              onClick={() => toggleTagFilter(tag.id)}
+                              aria-pressed={active}
+                              data-testid={`capture-list-filter-tag-${tag.id}`}
+                              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-elevated ${
+                                active ? 'text-accent' : 'text-text-secondary'
+                              }`}
+                            >
+                              <Check
+                                className={`h-3 w-3 shrink-0 ${active ? 'opacity-100' : 'opacity-0'}`}
+                              />
+                              <span className="truncate">{tag.name}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                    {/* Divider */}
+                    <div className="my-1 border-t border-border" />
+                    {/* Favorites toggle */}
+                    <button
+                      onClick={() => setFavoritesOnly(!favoritesOnly)}
+                      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] hover:bg-elevated ${
+                        favoritesOnly ? 'text-accent' : 'text-text-secondary'
+                      }`}
+                    >
+                      <Check
+                        className={`h-3 w-3 shrink-0 ${favoritesOnly ? 'opacity-100' : 'opacity-0'}`}
+                      />
+                      Favorites only
+                    </button>
+                    {/* Clear all: the same handler as the strip and the empty state,
+                      so it clears every narrowing rather than only this menu's. */}
+                    {isNarrowed && (
+                      <>
+                        <div className="my-1 border-t border-border" />
+                        <button
+                          onClick={() => {
+                            clearNarrowing()
+                            setShowFilterMenu(false)
+                          }}
+                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-red-400 hover:bg-elevated"
+                        >
+                          <X className="h-3 w-3 shrink-0" />
+                          {CLEAR_NARROWING_LABEL}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-          <span className="flex-1" />
-          <div
-            role="group"
-            aria-label="List view"
-            className="flex shrink-0 items-center gap-0.5 rounded-md border border-border bg-canvas p-0.5"
-          >
-            <button
-              onClick={() => onChangeView('detailed')}
-              title="Detailed view"
-              aria-pressed={view === 'detailed'}
-              className={`flex h-5 w-[22px] items-center justify-center rounded ${
-                view === 'detailed' ? 'bg-card text-text-primary' : 'text-text-faint'
-              }`}
-            >
-              <LayoutGrid className="h-3 w-3" />
-            </button>
-            <button
-              onClick={() => onChangeView('list')}
-              title="List view"
-              aria-pressed={view === 'list'}
-              className={`flex h-5 w-[22px] items-center justify-center rounded ${
-                view === 'list' ? 'bg-card text-text-primary' : 'text-text-faint'
-              }`}
-            >
-              <ListIcon className="h-3 w-3" />
-            </button>
-          </div>
-        </div>
+            <ListColumnViewToggle view={view} onChange={onChangeView} groupLabel="Capture view" />
+          </>
+        }
+      >
         {/* Narrowing strip: names every narrowing hiding rows, with one control
             that clears all of them. */}
         {isNarrowed && (
@@ -470,7 +432,7 @@ export function CaptureList({
             </button>
           </div>
         )}
-      </div>
+      </ListColumnHeader>
 
       {/* Inline selection bar: rises whenever the visible multi-set is non-empty */}
       {selectionActive && (
@@ -530,12 +492,9 @@ export function CaptureList({
         )}
       </div>
 
-      {/* Footer */}
-      <div className="border-t p-3 bg-surface border-border">
-        <div className="text-center text-[11px] text-text-muted">
-          Showing {displayedCaptures.length} of {captures.length} captures
-        </div>
-      </div>
+      <ListColumnFooter>
+        Showing {displayedCaptures.length} of {captures.length} captures
+      </ListColumnFooter>
     </aside>
   )
 }

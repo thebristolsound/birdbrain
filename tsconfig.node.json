@@ -20,7 +20,9 @@
     // under scripts/ (#405). Listing it here puts it inside the typecheck gate:
     // it imports the same services the app does, so a change that breaks it
     // fails now rather than the next time someone regenerates the fixture.
-    "scripts/demo-fixture/**/*.ts"
+    "scripts/demo-fixture/**/*.ts",
+    // The retrieval evaluation generator is the same kind of code, for the same reason.
+    "scripts/retrieval-eval/**/*.ts"
   ],
   "exclude": ["src/packages/**/tests/**"]
 }

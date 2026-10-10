@@ -8,6 +8,15 @@ import { fileURLToPath } from 'node:url'
 
 const AGENT_LABELS = ['agent-pr', 'agent-authored']
 
+// Paths whose change reaches a release credential (ADR-0048): every workflow, since any job
+// that names the paid-runs environment can read its secrets, and the scripts release.yml runs
+// with the maintainer's tag token.
+const CREDENTIAL_PATHS = [/^\.github\/workflows\//, /^\.github\/scripts\/release\//]
+
+export function credentialFiles(files) {
+  return files.filter((file) => CREDENTIAL_PATHS.some((path) => path.test(file)))
+}
+
 // Issues a PR closes: only a first line starting "Closes" names them, as in merge.sh.
 export function closedIssues(body) {
   const first = (body ?? '').replace(/\r\n/g, '\n').split('\n')[0]
@@ -56,20 +65,25 @@ export function decide(f) {
   if (agent && f.author === f.machine && f.prepass !== 'success') {
     reasons.push(`agent PR without a success agent/pre-pass at head (it is ${f.prepass})`)
   }
+  const review = effectiveReview(f.reviews, f.maintainer)
+  const approvedReview = review?.state === 'APPROVED' && review.commit === f.headSha
+  // The label counts only with the stamp on this commit; the withdraw job removing the label
+  // on push is a second line, not the one this rests on.
+  const approvedLabel = f.labels.includes('approved') && f.approvalStamp === 'success'
+  const signedOff = approvedReview || approvedLabel
+  const needs = `needs an approving review from ${f.maintainer} on this commit, or the approved label applied by ${f.maintainer} while this commit was the head`
   const evidence = f.labels.includes('evidence-affecting') || f.issueEvidence.length > 0
-  if (evidence) {
-    const review = effectiveReview(f.reviews, f.maintainer)
-    const approvedReview = review?.state === 'APPROVED' && review.commit === f.headSha
-    // The label counts only with the stamp on this commit; the withdraw job removing the label
-    // on push is a second line, not the one this rests on.
-    const approvedLabel = f.labels.includes('approved') && f.approvalStamp === 'success'
-    if (!approvedReview && !approvedLabel) {
-      reasons.push(
-        `evidence-affecting with no sign-off at head: needs an approving review from ${f.maintainer} on this commit, or the approved label applied by ${f.maintainer} while this commit was the head`
-      )
-    }
+  if (evidence && !signedOff) {
+    reasons.push(`evidence-affecting with no sign-off at head: ${needs}`)
   }
-  return { pass: reasons.length === 0, agent, evidence, reasons }
+  // A PR the maintainer opened comes from a session the maintainer watched, as for the pre-pass.
+  const credential = f.author === f.maintainer ? [] : credentialFiles(f.files)
+  if (credential.length > 0 && !signedOff) {
+    reasons.push(
+      `changes ${credential.join(', ')}, which reach the release credentials, with no sign-off at head: ${needs}`
+    )
+  }
+  return { pass: reasons.length === 0, agent, evidence, credential: credential.length > 0, reasons }
 }
 
 function api(path) {
@@ -93,10 +107,15 @@ function main([repo, n]) {
       api(`repos/${repo}/issues/${i}/labels`).some((l) => l.name === 'evidence-affecting')
     )
     const statuses = api(`repos/${repo}/commits/${headSha}/statuses?per_page=100`)
+    // A rename names its old path too, so moving a file out of a credential path still counts.
+    const files = api(`repos/${repo}/pulls/${n}/files?per_page=100`).flatMap((file) =>
+      file.previous_filename ? [file.filename, file.previous_filename] : [file.filename]
+    )
     const facts = {
       headSha,
       author: pr.user?.login,
       machine,
+      files,
       labels,
       maintainer,
       issueEvidence,
@@ -110,7 +129,7 @@ function main([repo, n]) {
     }
     const verdict = decide(facts)
     console.log(
-      `PR #${n} at ${headSha.slice(0, 12)}: agent=${verdict.agent} evidence=${verdict.evidence}`
+      `PR #${n} at ${headSha.slice(0, 12)}: agent=${verdict.agent} evidence=${verdict.evidence} credential=${verdict.credential}`
     )
     if (verdict.evidence && issueEvidence.length)
       console.log(`evidence-affecting through issue(s) #${issueEvidence.join(', #')}`)

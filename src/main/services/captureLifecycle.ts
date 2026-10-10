@@ -188,7 +188,7 @@ export interface CaptureLifecycle {
   // id fails the whole call before any write. Contract:
   // docs/specs/2026-08-19-batch-ops-interface-brief.md.
   deleteMany: (caseId: string, captureIds: string[]) => Promise<BatchDeleteResult>
-  // Startup sweep over every Case for staged deletes a crash interrupted
+  // Startup sweep over every Case, archived ones included, for staged deletes a crash interrupted
   // (#1786): restores files whose row is live, purges the rest. Never throws.
   recoverPendingDeletes: () => Promise<void>
   // Byte copy of an existing capture into a second row of the same case (#827).
@@ -1150,7 +1150,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
     async recoverPendingDeletes() {
       let caseIds: string[]
       try {
-        caseIds = caseRepo.listCases().map((c) => c.id)
+        caseIds = caseRepo.listAllCaseIds()
       } catch (err) {
         logger.error('captureLifecycle', 'captureLifecycle.delete_recovery_failed', undefined, err)
         return

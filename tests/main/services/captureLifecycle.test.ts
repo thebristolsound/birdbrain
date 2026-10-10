@@ -1596,6 +1596,18 @@ describe('createCaptureLifecycle.deleteMany (#394)', () => {
       expect(existsSync(stagedDir(a.id))).toBe(false)
     })
 
+    it('the startup sweep also restores staged files in an archived Case', async () => {
+      const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+      const [a] = await ingestN(lifecycle, 1)
+      createCaptureStore({ getRoot: getStorageRoot }).stageArtifacts(caseId, a.id)
+      updateCase({ id: caseId, archived: true })
+
+      await lifecycle.recoverPendingDeletes()
+
+      expect(mhtmlExists(a)).toBe(true)
+      expect(existsSync(stagedDir(a.id))).toBe(false)
+    })
+
     it('recovery after a crash before the commit restores the files of a live row', async () => {
       const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
       const [a, b] = await ingestN(lifecycle, 2)

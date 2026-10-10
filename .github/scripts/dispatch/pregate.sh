@@ -12,13 +12,14 @@
 # trusted_prepass), and the rest is named in the step summary. And how much: the
 # spend cap below holds a cycle past its limits, and holds when it cannot count.
 # It counts only the runs GitHub still lists, and anyone with write access can
-# delete a finished run. The ceiling is then dispatch.yml's schedule, which the
-# maintainer accepted on 2026-09-28: a fire every 4 hours, one run at a time,
-# and a job that skips any start or re-run but a scheduled first attempt or
-# his, so 6 cycles a day plus any he starts. The trust rules do not close every
-# way someone outside the list makes this step start a cycle, a push back to a
-# head the pipeline already reviewed and a label on a PR's linked issue among
-# them; the cap bounds those, and the schedule does once runs are deleted.
+# delete a finished run. The ceiling is then dispatch.yml's schedule: a fire
+# every hour since ADR-0045 (every 4 hours when the maintainer accepted the
+# ceiling on 2026-09-28), one run at a time, and a job that skips any start or
+# re-run but a scheduled first attempt or his, so 24 cycles a day plus any he
+# starts. The trust rules do not close every way someone outside the list makes
+# this step start a cycle, a push back to a head the pipeline already reviewed
+# and a label on a PR's linked issue among them; the cap bounds those, and the
+# schedule does once runs are deleted.
 #
 # The conservative default is not enough on its own, because three of the
 # answers here can be wrong in the direction that never runs. A stale claim is
@@ -34,6 +35,8 @@ set -euo pipefail
 
 # shellcheck source=.github/scripts/dispatch/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+# shellcheck source=.github/scripts/dispatch/cap.sh
+. "$(dirname "${BASH_SOURCE[0]}")/cap.sh"
 
 R="${GITHUB_REPOSITORY:-thebristolsound/birdbrain}"
 mode="${1:-cycle}"
@@ -74,20 +77,21 @@ label_trust="$(jq -n -c --arg park "$AWAITING_MAINTAINER_LABEL" '{
 jq_counted='def role: if . == $owner then "m" elif ($me != "" and . == $me) then "p" else "" end;
   def counted: ((.actor.login // "") | role) as $r
     | $r != "" and ($trust[.label.name][.event] | contains($r));'
-# One slot, and only hand-picked work fills it (ADR-0028). Keep both in step with
-# sections 1 and 3 of .claude/skills/dispatch/SKILL.md.
-capacity=1
+# Two slots (ADR-0045), and only hand-picked work fills them (ADR-0028). Keep both
+# in step with sections 1 and 3 of .claude/skills/dispatch/SKILL.md.
+capacity=2
 stale_before="$(date -u -d "$CLAIM_MAX_AGE" +%FT%TZ)"
 
-# The spend cap, from the maintainer's ruling of 2026-09-28 on #1310: this step
-# starts no cycle once it counts CAP_TOTAL started in CAP_TOTAL_WINDOW, or
+# The spend cap, from the maintainer's ruling of 2026-09-28 on #1310, with
+# CAP_TOTAL raised from 4 to 6 by ADR-0045: this step starts no cycle once it
+# counts CAP_TOTAL started in CAP_TOTAL_WINDOW, or
 # CAP_PER_TARGET started for the same PR or issue in CAP_PER_TARGET_WINDOW,
 # whatever made it want one. It counts a cycle when CAP_PAID_STEP, the first
 # step after this one that calls Claude, has started in a job of a CAP_WORKFLOW
-# run GitHub still lists (see paid_cycles, and the header on deleted runs). Its
+# run GitHub still lists (paid_cycles in cap.sh, and the header on deleted runs). Its
 # targets are the PR or issues this step started it for, which start records as
 # a CAP_TARGET_TITLE annotation on the job.
-CAP_TOTAL=4
+CAP_TOTAL=6
 CAP_TOTAL_WINDOW='24 hours ago'
 CAP_PER_TARGET=1
 CAP_PER_TARGET_WINDOW='6 hours ago'
@@ -104,54 +108,6 @@ decide() {
   echo "reason=$2" >> "$out"
   echo "Pre-gate: run=$1 ($2)" | tee -a "$summary"
   exit 0
-}
-
-# Every paid cycle in the CAP_WORKFLOW runs GitHub still lists, started since
-# cap_total_since, one per job (attempt), as [{at, targets}]: when its
-# CAP_PAID_STEP started, and the numbers in its CAP_TARGET_TITLE annotations, or
-# null when it has none (a job from before the cap, which then counts against
-# every target). A skipped step never started; a cancelled one did. Fails on any
-# failed read, and the caller holds.
-paid_cycles() {
-  local page=1 runs ids="" batch id jobs found="" job at notes targets cycles=""
-  while :; do
-    runs="$(gh api "repos/$R/actions/workflows/$CAP_WORKFLOW/runs?per_page=100&page=$page")" \
-      || return 1
-    # A run's newest attempt can be in the window while the run was created
-    # before it, so a run with more than one attempt is read whatever its times.
-    batch="$(jq -r --arg since "$cap_total_since" '.workflow_runs[]
-      | select(.updated_at >= $since or (.run_started_at // "") >= $since or .run_attempt > 1)
-      | .id' <<<"$runs")" || return 1
-    ids="$ids $batch"
-    [ "$(jq '.workflow_runs | length' <<<"$runs")" -eq 100 ] || break
-    jq -e --arg after "$cap_rerun_since" 'any(.workflow_runs[]; .created_at >= $after)' \
-      <<<"$runs" >/dev/null || break
-    page=$(( page + 1 ))
-  done
-  for id in $ids; do
-    jobs="$(gh api --paginate "repos/$R/actions/runs/$id/jobs?filter=all&per_page=100")" \
-      || return 1
-    batch="$(jq -s -r --arg step "$CAP_PAID_STEP" --arg since "$cap_total_since" \
-      --arg now "$(date -u +%FT%TZ)" '.[].jobs[] | . as $j | .steps[]? | select(.name == $step)
-        | select(.status == "in_progress" or (.status == "completed" and .conclusion != "skipped"))
-        | (.started_at // $j.started_at // $now) as $at | select($at >= $since)
-        | "\($j.check_run_url | sub(".*/"; ""))\t\($at)"' <<<"$jobs")" || return 1
-    found="$found$batch"$'\n'
-  done
-  while IFS=$'\t' read -r job at; do
-    [ -n "$job" ] || continue
-    targets=null
-    if [[ ! "$at" < "$cap_target_since" ]]; then
-      notes="$(list "repos/$R/check-runs/$job/annotations?per_page=100")" || return 1
-      targets="$(jq -c --arg title "$CAP_TARGET_TITLE" '[.[] | select(.title == $title) | .message]
-        | if length == 0 then null else [.[] | scan("[0-9]+") | tonumber] end' <<<"$notes")" \
-        || return 1
-    fi
-    cycles="$cycles$(jq -n -c --arg at "$at" --argjson t "$targets" '{at: $at, targets: $t}')" \
-      || return 1
-    cycles="$cycles"$'\n'
-  done <<<"$found"
-  jq -s -c . <<<"$cycles"
 }
 
 # Start a cycle for reason $2 owed to $1, the PR or issue numbers it is for
@@ -593,6 +549,12 @@ done
 
 # Section 3: is there room, and anything to put in it?
 if [ "$occupancy" -lt "$capacity" ]; then
+  # With two slots the other one may already hold a queued issue, which keeps both
+  # queue labels until its PR merges: a live claim, or an open agent PR on the
+  # agent/<n>-<slug> branch section 2 resolves its linked issue from.
+  held="$(jq -c --argjson prs "$prs" --argjson wip "$wip" '$wip + [.[]
+    | select(.number as $p | $prs | index($p)) | (.head.ref // "")
+    | capture("^agent/(?<n>[0-9]+)-") | .n | tonumber]' <<<"$pulls")"
   # Section 3 rejects a candidate whose native blocked_by dependencies are not
   # all closed, and rejecting it changes no label, so a frontier counted without
   # that query repeats a full install and Claude session every fire for work the
@@ -605,6 +567,10 @@ if [ "$occupancy" -lt "$capacity" ]; then
     # in its trusted state.
     jq -e '.["ready-for-agent"].on and .queued.on and (.process.on | not)' <<<"${states[$n]}" \
       >/dev/null || continue
+    if jq -e --argjson n "$n" 'index($n)' <<<"$held" >/dev/null; then
+      echo "Issue #$n is held by a claim or an open agent PR; not frontier" >> "$summary"
+      continue
+    fi
     blockers="$(gh api "repos/$R/issues/$n/dependencies/blocked_by" \
       --jq '[.[] | select(.state == "open")] | length' 2>/dev/null || echo 0)"
     if [ "${blockers:-0}" -eq 0 ]; then
@@ -616,11 +582,11 @@ if [ "$occupancy" -lt "$capacity" ]; then
   done
   # The cycle may pick any of them, so each counts as its target.
   if [ "$frontier" -gt 0 ]; then
-    unless_red "$frontier_issues" "the slot is free and $frontier unblocked queued issue(s) wait" \
+    unless_red "$frontier_issues" "a slot is free and $frontier unblocked queued issue(s) wait" \
       || true
-    [ -z "$red" ] || decide false "the slot is free and $frontier queued issue(s) wait, but main is red ($red)"
+    [ -z "$red" ] || decide false "a slot is free and $frontier queued issue(s) wait, but main is red ($red)"
   fi
-  idle "the slot is free but the queue is empty"
+  idle "a slot is free but the queue is empty${red:+ while main is red ($red)}"
 fi
 
-idle "the slot is held and no open agent PR needs the routine${red:+ while main is red ($red)}"
+idle "every slot is held and no open agent PR needs the routine${red:+ while main is red ($red)}"

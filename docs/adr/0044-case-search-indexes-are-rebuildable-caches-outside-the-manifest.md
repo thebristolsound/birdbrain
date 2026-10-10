@@ -1,6 +1,6 @@
 # Case search indexes are rebuildable caches outside the Manifest
 
-**Status:** Proposed
+**Status:** Accepted
 
 **Date:** 2026-10-07
 
@@ -10,8 +10,8 @@ ADR on the boundary of the search records it adds. The
 [Case investigation engine spec](../specs/2026-10-02-case-investigation-engine-design.md) asks
 whether the Operator's own Case search hides an Exhibit Withheld from analysis, which
 [ADR-0042](0042-investigation-records-are-case-data-outside-the-manifest.md) left open. On
-2026-10-07 the maintainer decided the second: Case search does not hide it. Nothing in this record
-is implemented.
+2026-10-07 the maintainer decided the second: Case search does not hide it. The maintainer
+accepted this record on 2026-10-09. Nothing in it is implemented.
 
 ## Context
 

@@ -62,7 +62,7 @@ the issue fails the ready-for-agent bar at intake or mid-work.
 
 ## Interactive sessions on an agent PR
 
-Scheduled Dispatch works the PR that holds the slot every four hours, so an interactive session
+Scheduled Dispatch works the PRs that hold its two slots every hour, so an interactive session
 that runs a reviewer pre-pass or a fix round on an `agent-pr` PR takes the same cycle claim a
 dispatcher does. Follow section 2 of `.claude/skills/dispatch/SKILL.md`: read the linked issue for
 a live claim, post `Cycle claim: PR #<pr>` on it through `agh`, settle, and post
@@ -70,6 +70,14 @@ a live claim, post `Cycle claim: PR #<pr>` on it through `agh`, settle, and post
 second reviewer on the same head: run 37235446754 (2026-10-04) found #1721 with a pending
 pre-pass status posted 27 seconds before the run was created, and its pre-gate started the cycle
 anyway, because a pending status is not a claim.
+
+## The scheduled PR review
+
+`.github/workflows/pr-review.yml` reviews one PR the maintainer opened each hour, under its own
+cap of 4 reviews a day (ADR-0046). The machine account posts the verdict as a comment and sets
+one `review:` state label: `passed`, `changes`, `stale` after a later push, `failed`, or
+`skipped`. It never pushes, merges, or writes a status the merge gate reads. Apply
+`review:skipped` to a PR to keep the job off it.
 
 ## Jev shadow lenses
 

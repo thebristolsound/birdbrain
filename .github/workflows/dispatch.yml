@@ -19,14 +19,16 @@ name: Dispatch
 #
 # Schedule enabled 2026-09-07 at rollout step 4 of the design brief, after three
 # report-only fires and one supervised cycle ran clean on 2026-09-07. Hourly at
-# :43 was the cadence #310 chose; every four hours at :43 since 2026-09-16, the
-# maintainer's call while the repository is private and every fire is billed
-# minutes. A scheduled fire always runs in cycle mode and lets section 3 pick;
-# workflow_dispatch stays for supervised fires.
+# :43 was the cadence #310 chose; every four hours from 2026-09-16 while the
+# repository was private and every fire billed minutes; hourly again since the
+# repository went public, where hosted-runner minutes are free (ADR-0045). The
+# pre-gate's spend cap, not this schedule, bounds paid cycles. A scheduled fire
+# always runs in cycle mode and lets section 3 pick; workflow_dispatch stays for
+# supervised fires.
 
 on:
   schedule:
-    - cron: '43 */4 * * *'
+    - cron: '43 * * * *'
   workflow_dispatch:
     inputs:
       mode:
@@ -77,11 +79,10 @@ jobs:
     # workflow, and a re-run keeps github.actor from the first attempt. So the job
     # admits a scheduled fire's first attempt, or an attempt github.triggering_actor
     # says the maintainer started. doc-curator.yml and health.yml carry this guard,
-    # release-macos.yml its second half, claude.yml and jev-lens.yml's triage their own.
+    # claude.yml and jev-lens.yml's triage their own.
     #
     # Neither part stops a write collaborator who merges his own workflow change to
-    # main, which the main branch rules allow while they require no approval, or a
-    # re-run of a release.yml run, which has no actor check.
+    # main, which the main branch rules allow while they require no approval.
     if: >-
       (github.event_name == 'schedule' && github.run_attempt == '1')
       || github.triggering_actor == 'thebristolsound'

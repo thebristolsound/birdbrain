@@ -222,14 +222,17 @@ above about MCP writes remain accurate for non-dispatch work.
 
 ## The health workflow
 
-`.github/workflows/health.yml` runs daily at 06:20 UTC and on demand. It checks both
+`.github/workflows/health.yml` runs at 06:20 and 18:20 UTC and on demand. It checks both
 credentials (rejected, wrong login, expired, or within 14 days of the expiry variable) and the
 scheduled run history of `dispatch.yml`, `doc-curator.yml` and `stale-agent-issues.yml` (two
-or more consecutive scheduled runs without a success). Any finding opens one issue labelled
-`health-alert` and `process`, assigned to the repository owner, and fails the run; the issue is
-rewritten on every later run, gets a comment when the findings change, and closes itself on
-the first clean run. Scripts live in `.github/scripts/health/`; `claude-token.sh` is the same
-probe the dispatch workflow runs.
+or more consecutive scheduled runs without a success). `stall.sh` adds three checks for a
+pipeline that stays green but stops moving: an agent PR untouched for 24 hours, a PR parked
+`awaiting-maintainer` or labelled `merge` and still open after 24 hours, and a free slot with
+a queued issue that has waited 12 hours while no dispatch cycle reached Claude. Any finding
+opens one issue labelled `health-alert` and `process`, assigned to the repository owner, and
+fails the run; the issue is rewritten on every later run, gets a comment when the findings
+change, and closes itself on the first clean run. Scripts live in `.github/scripts/health/`;
+`claude-token.sh` is the same probe the dispatch workflow runs.
 
 Rotating the Claude token: `claude setup-token` on the subscription account, then
 `gh secret set CLAUDE_CODE_OAUTH_TOKEN --body "$(cat file)"` (the substitution strips the

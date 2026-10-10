@@ -132,6 +132,27 @@ if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   if [ -x "$TEARDOWN" ]; then
     (cd "$PROJECT_DIR" && timeout 15 "$TEARDOWN" sweep --count 2>/dev/null) || log "teardown count skipped (timed out or failed)"
   fi
+  # A PR with the `merge` label and no check still running should be merging. One sat BLOCKED
+  # with green checks until the maintainer noticed by hand, so name each one here with its
+  # merge state and any failed check. Bounded, never fatal, silent when gh cannot answer.
+  if command -v gh >/dev/null 2>&1; then
+    # shellcheck disable=SC2016 # $failed is a jq variable, not a shell one
+    (cd "$PROJECT_DIR" && timeout 15 gh pr list --label merge --state open \
+      --json number,title,mergeStateStatus,autoMergeRequest,statusCheckRollup --jq '
+        .[]
+        | select([.statusCheckRollup[]
+            | select(if .__typename == "StatusContext" then (.state == "PENDING" or .state == "EXPECTED")
+                     else .status != "COMPLETED" end)] | length == 0)
+        | ([.statusCheckRollup[]
+            | select(.conclusion == "FAILURE" or .conclusion == "TIMED_OUT"
+                     or .state == "FAILURE" or .state == "ERROR")
+            | .name // .context] | unique) as $failed
+        | "#\(.number) is \(.mergeStateStatus), auto-merge \(if .autoMergeRequest then "on" else "off" end)"
+          + "\(if ($failed | length) > 0 then ", failed: \($failed | join(", "))" else "" end): \(.title)"
+      ' 2>/dev/null) | while IFS= read -r line; do
+      log "NOTE: merge-labelled PR not merging, no checks running: $line"
+    done || true
+  fi
   # A t3code worktree gets dependencies from scripts/setup-worktree.sh at creation. When that
   # did not run, the first failure is a posting check reporting a missing linter, so say it here.
   if [ ! -d "$PROJECT_DIR/node_modules" ]; then

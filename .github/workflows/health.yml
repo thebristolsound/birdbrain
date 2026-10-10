@@ -1,24 +1,28 @@
 name: Health
 
-# Daily check that the scheduled automation can still run: the two credentials
-# it carries answer, and no scheduled workflow has gone red and stayed red.
+# Twice-daily check that the scheduled automation can still run: the two
+# credentials it carries answer, no scheduled workflow has gone red and stayed
+# red, and the agent pipeline has not stalled while staying green (stall.sh).
 # Findings open (or refresh) one `health-alert` issue assigned to the owner and
 # fail this run; a clean day closes the issue. Scripts: .github/scripts/health/.
 #
 # Added 2026-09-23 after the dispatch fire failed 39 times in a row on an
 # invalid CLAUDE_CODE_OAUTH_TOKEN and the doc curator every Monday since
 # 2026-08-24, with nothing raising either. Runs at 06:20 UTC, ahead of the
-# Monday curator (06:00 has a 20-minute skew) and between dispatch fires.
+# Monday curator (06:00 has a 20-minute skew) and between dispatch fires, and
+# again at 18:20 UTC since the stall checks were added on 2026-10-09.
 
 on:
   schedule:
     - cron: '20 6 * * *'
+    - cron: '20 18 * * *'
   workflow_dispatch:
 
 permissions:
   contents: read
   actions: read
   issues: write
+  pull-requests: read
 
 concurrency:
   group: health

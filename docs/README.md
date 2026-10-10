@@ -15,12 +15,18 @@ Author-time documentation for the project. All folders are tracked, including `p
 
 `plans/` has been tracked since July 2026. Plans remain author-time artifacts: they get checked off and go stale, and staleness is expected.
 
+The repository is public, so every committed plan stays readable in git history after the file is deleted. Three rules follow from that:
+
+- **Plan an exploitable, unfixed vulnerability in a private GitHub security advisory, never in `plans/`.** This is the line `SECURITY.md` draws for issues: a non-sensitive hardening gap may be planned in public.
+- **Use invented data in examples, fixtures, and screenshots.** A plan must not carry a real capture's URL, a persona's cookies, a case name or anything else from a real investigation. Secret scanning catches tokens, not these.
+- **A plan records intent, not guarantees.** The [threat model](../website/content/docs/threat-model.mdx) and the ADRs state what Birdbrain guarantees. Where a plan disagrees with them, they win.
+
 The rule for whether a doc may ship in the same PR as the code it describes, plans included, lives in one place: the "Documentation conventions" section in `CLAUDE.md`. It covers every folder in the preceding table. Do not restate it here, because a second copy is free to drift out of step with the first (#514).
 
 ## Conventions
 
 - New design or spec? Drop it in `specs/` with today's date as the prefix.
-- New implementation plan? Drop it in `plans/` with today's date as the prefix.
+- New implementation plan? Drop it in `plans/` with today's date as the prefix, and put a `**Status:**` line under the title: `active`, `done`, or `abandoned`, with a link to the PR or the superseding ADR once it is not `active`.
 - Superseding an existing doc? Move the old file to `archive/` (keep its original name) before adding the replacement.
 - Permanent technical reference (architecture, pipelines, protocols)? Goes in `website/content/docs/` without a date prefix, as `.mdx` with `title`/`description` frontmatter, plus an entry in `navigation` in `website/content/docs.json`. See `docs/agents/website.md` for the MDX constraints (braces, link form, image paths).
 - Writing any of the above? See [`agents/writing-guide.md`](agents/writing-guide.md) for audience, claim discipline, tone, and the shape each document type takes.
@@ -66,7 +72,7 @@ all.
 
 ## Prose linting
 
-`.vale.ini` at the repo root is the project's Vale config; it overrides any global one for files under this repo. Project vocabulary lives in `.vale/styles/config/vocabularies/Birdbrain/accept.txt` so Birdbrain terms are not accepted in unrelated projects. Run `vale sync` once per clone to fetch the Google package (ignored by git). `*.md` and `*.mdx` are both linted; the pinned Vale (`.mise.toml`) parses `.mdx` natively, including the prose inside a component such as `<Warning>`. A doc you write should pass `vale <file>` with zero errors; residual warnings for this project's own vocabulary are expected.
+`.vale.ini` at the repo root is the project's Vale config; it overrides any global one for files under this repo. Project vocabulary lives in `.vale/styles/config/vocabularies/Birdbrain/accept.txt` so Birdbrain terms are not accepted in unrelated projects. Run `vale sync` once per clone to fetch the Google package (ignored by git). `*.md` and `*.mdx` are both linted; the pinned Vale (`.mise.toml`) parses `.mdx` natively, including the prose inside a component such as `<Warning>`. A doc you write should have no Vale errors on the lines you changed: `.claude/hooks/vale-prose.sh --base origin/main` checks them, committed or not. A whole-file `vale <file>` also reports errors that predate your edit. Residual warnings for this project's own vocabulary are expected.
 
 The `Birdbrain` style in `.vale/styles/Birdbrain/` encodes [the writing guide](agents/writing-guide.md):
 
@@ -82,4 +88,4 @@ The `Birdbrain` style in `.vale/styles/Birdbrain/` encodes [the writing guide](a
 
 A file that has to quote a forbidden word gets a per-file section in `.vale.ini`, or a `<!-- vale Birdbrain.<Rule> = NO -->` and `= YES` pair around the passage in a `.md` file. An `.mdx` page writes the same pair as MDX comments, `{/* vale Birdbrain.<Rule> = NO */}` and `{/* vale Birdbrain.<Rule> = YES */}`.
 
-`.claude/hooks/vale-prose.sh` runs after every agent Edit or Write to a `.md` or `.mdx` file. It blocks on an error-level `Birdbrain` rule in a line that differs from `HEAD`, so older text never blocks an unrelated edit, and it passes with a note when Vale cannot run. `.mise.toml` pins Vale and `scripts/setup-worktree.sh` installs it, so a prepared worktree has the gate; the session-start hook installs it in a remote container. Run it by hand as `.claude/hooks/vale-prose.sh <file>`. Preflight and CI do not run Vale.
+`.claude/hooks/vale-prose.sh` runs after every agent Edit or Write to a `.md` or `.mdx` file. It blocks on an error-level `Birdbrain` rule in a line that differs from `HEAD`, so older text never blocks an unrelated edit, and it passes with a note when Vale cannot run. `.mise.toml` pins Vale and `scripts/setup-worktree.sh` installs it, so a prepared worktree has the gate; the session-start hook installs it in a remote container. Run it by hand as `.claude/hooks/vale-prose.sh <file>` to check lines changed since `HEAD`, or as `.claude/hooks/vale-prose.sh --base origin/main` to check every Markdown file the branch changed, which still works after a commit and catches edits made through the shell, which the hook never sees. Preflight runs the `--base` form against the merge base; CI does not run Vale.

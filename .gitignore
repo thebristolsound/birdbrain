@@ -86,10 +86,14 @@ coverage/
 !.claude/skills/merge-pr/
 # The maintainer-present sweep of every open PR.
 !.claude/skills/pr-sweep/
+# The scheduled review of one maintainer PR, which pr-review.yml runs unattended.
+!.claude/skills/pr-review/
 # Closes finished worktrees and sweeps stale ones; the implementer agent runs it.
 !.claude/skills/teardown/
 # Buckets an issue's findings by severity; docs/agents/issue-tracker.md has triage run it.
 !.claude/skills/jev-severity/
+# Launches and drives the app headless under Xvfb; /run and agents checking UI changes load it.
+!.claude/skills/run-birdbrain/
 # The SessionStart hook that settings.json runs.
 !.claude/hooks/
 .codex

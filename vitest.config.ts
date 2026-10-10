@@ -2,6 +2,13 @@ import { defineConfig } from 'vitest/config'
 import { resolve } from 'path'
 import react from '@vitejs/plugin-react'
 
+// Vitest's defaults are 5 s per test and 10 s per hook. Under the full suite with coverage,
+// tests that take about 100 ms alone have crossed both (evidencePackage, export),
+// and each miss cost a two-minute preflight rerun. A hang still fails, just later. Set per
+// project: `extends: false` below means a root-level value would not reach them.
+const TEST_TIMEOUT_MS = 15_000
+const HOOK_TIMEOUT_MS = 30_000
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -135,6 +142,8 @@ export default defineConfig({
         test: {
           name: 'node',
           environment: 'node',
+          testTimeout: TEST_TIMEOUT_MS,
+          hookTimeout: HOOK_TIMEOUT_MS,
           // Vitest 5 flipped clearMocks to true. Suites that assert cumulative
           // call counts across the `it`s of one file were written against the
           // old default, so hold it rather than re-scope those assertions here.
@@ -158,6 +167,8 @@ export default defineConfig({
         test: {
           name: 'jsdom',
           environment: 'jsdom',
+          testTimeout: TEST_TIMEOUT_MS,
+          hookTimeout: HOOK_TIMEOUT_MS,
           clearMocks: false,
           include: [
             'tests/components/**/*.test.tsx',

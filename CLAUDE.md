@@ -40,11 +40,11 @@ All design docs, specs, and implementation plans live under `docs/` per the layo
 - **Architecture decisions** → `docs/adr/NNNN-<slug>.md` — **tracked**
 - **Superseded** → `docs/archive/` (preserve original filename) — **tracked**
 
-Adding a long-lived reference page, and the Vale setup for prose linting, are described in `docs/README.md`. A doc you write should pass `vale <file>` with zero errors.
+Adding a long-lived reference page, and the Vale setup for prose linting, are described in `docs/README.md`. Check the docs you changed with `.claude/hooks/vale-prose.sh --base origin/main`: it reports Vale errors on the lines the branch changed, and preflight runs it. A whole-file `vale <file>` also reports errors that predate your edit.
 
 **Writing style.** `docs/agents/writing-guide.md` is the adopted writing standard for all repo prose: Diataxis structure for published pages plus a mechanical rulebook (voice, ordering, formatting). CodeRabbit reads it as review criteria for `docs/**`, `website/content/docs/**`, and root Markdown.
 
-**`docs/plans/` is tracked (since July 2026).** Plans are still author-time working notes: they get checked off and go stale, and staleness is expected.
+**`docs/plans/` is tracked (since July 2026).** Plans are still author-time working notes: they get checked off and go stale, and staleness is expected. ADRs, `CONTEXT.md`, the threat model and the code outrank any plan; read a plan as what someone intended, not as current behaviour. What a plan in a public repository must leave out is in `docs/README.md`.
 
 **Docs may ship in the same PR as the code they describe.** The repository does not require specs, plans, ADRs, or reference docs to have their own PR or commit. Bundling a doc with the `src/**` change it documents is normal and preferred — a guide for a feature that has not merged yet is worth less on its own, and the split costs more than it returns.
 
@@ -98,8 +98,9 @@ Single-context layout: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/ag
 
 ### Background jobs (project-local carve-out)
 
-Scheduled Dispatch runs every four hours under the pre-gate's spend cap; Doc curator is
-paused. Before restarting Doc curator or adding automation machinery, read
+Scheduled Dispatch runs every hour with two slots, under the spend cap; Scheduled PR review
+reviews one maintainer PR an hour under its own cap (ADR-0046); Doc curator is paused. Before
+restarting Doc curator or adding automation machinery, read
 [ADR-0029](docs/adr/0029-measure-before-expanding-agent-automation.md): verify basic spending
 limits and obtain explicit maintainer authorization.
 

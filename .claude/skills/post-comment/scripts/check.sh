@@ -10,12 +10,26 @@ bound="birdbrain-implementer"
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# A branch cut before a linter change runs its own copy, which can disagree with main's: a
+# text that passes here can fail on main, or the reverse. Say so on stderr; never block.
+warn_if_stale() {
+  local repo f rel
+  repo="$(git -C "$here" rev-parse --show-toplevel 2>/dev/null)" || return 0
+  for f in "$@"; do
+    rel="${f#"$repo"/}"
+    git -C "$repo" cat-file -e "origin/main:$rel" 2>/dev/null || continue
+    git -C "$repo" diff --quiet origin/main -- "$rel" 2>/dev/null && continue
+    echo "post-comment: note: $rel differs from origin/main, so main's linter may judge this file differently. If this branch did not change it, rebase onto origin/main." >&2
+  done
+}
+
 lint() {
   local file="$1" out
   if [ ! -f "$file" ]; then
     echo "post-comment: comment file not found: $file. The hook runs before the command does, so a file this same command writes (a heredoc ahead of the gh call) does not exist yet: write the file in one call, then run this command in the next." >&2
     return 1
   fi
+  warn_if_stale "$here/lint-comment.mjs"
   if out="$(node "$here/lint-comment.mjs" "$file" 2>&1)"; then
     return 0
   fi

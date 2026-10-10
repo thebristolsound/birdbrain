@@ -10,7 +10,7 @@
 # stale sweep only closes issues the machine account filed, which this is not.
 #
 # The label lookup goes through the list endpoint's `labels=` filter, which
-# CLAUDE.md notes lags a direct read by seconds. At a daily cadence that lag
+# CLAUDE.md notes lags a direct read by seconds. At a twice-daily cadence that lag
 # cannot matter.
 #
 # Env in: GH_TOKEN (github.token, issues: write), GITHUB_REPOSITORY,
@@ -44,7 +44,7 @@ fi
 
 count="$(wc -l < "$findings")"
 {
-  printf 'The scheduled automation has %s problem(s) that will not fix themselves. Each line below says what is broken and what to do about it. This issue is rewritten by every daily health run and closes itself once the check comes back clean.\n\n' "$count"
+  printf 'The scheduled automation has %s problem(s) that will not fix themselves. Each line below says what is broken and what to do about it. This issue is rewritten by every health run (06:20 and 18:20 UTC) and closes itself once the check comes back clean.\n\n' "$count"
   printf 'Last checked: %s\n\n' "$now"
   printf '<details>\n<summary>Findings</summary>\n\n'
   cat "$findings"

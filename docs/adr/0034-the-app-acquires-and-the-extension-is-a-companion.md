@@ -4,6 +4,19 @@
 
 **Date:** 2026-09-30
 
+**Amended 2026-10-11:** two of the maintainer's rulings of 2026-10-10, listed in
+[the stage-2 spec's Decisions and rulings](../specs/2026-10-10-capture-engine-launched-browser-design.md#decisions-and-rulings),
+change the Decision below. Under ruling 37 (decision D1), "with a remote-debugging port" reads
+"with a remote-debugging connection": the maintainer chose a debugging pipe, and Birdbrain builds
+a port fallback only if the pipe proves problematic. Ruling 53 (decision D20) narrows "Recording
+is scoped to a Capture Session in a launched browser": a launched browser runs only inside a
+Capture Session. Launching one starts a Capture Session if none is running and joins the running
+one otherwise. Ending the Capture Session closes the browser. Closing the browser's last window
+closes the browser and leaves the Capture Session running. A ruling of 2026-10-11, recorded on
+[#1833](https://github.com/thebristolsound/birdbrain/issues/1833), makes one exception: the
+windowless seeding launch during a Persona cookie import, which opens no window, loads no page,
+follows the Egress, and is refused while another launched browser is running.
+
 Amends [ADR-0002](0002-tls-capture-corroboration-only.md) (binding is no longer deferred where
 the engine attaches before the request) and
 [ADR-0030](0030-persona-is-a-provenance-axis-beside-operator.md) (the `persona-window` method and

@@ -4,6 +4,15 @@
 
 **Date:** 2026-10-02
 
+**Amended 2026-10-11:** the maintainer's ruling 49 of 2026-10-10, decision D13 in
+[the stage-2 spec's Decisions and rulings](../specs/2026-10-10-capture-engine-launched-browser-design.md#decisions-and-rulings),
+adds one exception to "The Case's exclusion policy applies to passive Captures as it does to
+clicked ones". An exclusion pattern whose check times out counts as a match for a passive
+Capture, so the engine skips the page. A clicked Capture keeps today's behavior: the timed-out
+pattern counts as no match and the Capture is admitted
+(`src/main/services/exclusionPolicy.ts:37-38`).
+[#600](https://github.com/thebristolsound/birdbrain/issues/600) carries the same change.
+
 Amends [ADR-0013](0013-passive-capture-scoped-to-a-declared-window.md) (the Capture Scope and the
 Capture Method split) and adds `launched-passive` to the Capture Methods of
 [ADR-0034](0034-the-app-acquires-and-the-extension-is-a-companion.md). Confirmed by the

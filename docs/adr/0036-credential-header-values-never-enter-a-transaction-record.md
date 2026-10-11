@@ -4,6 +4,14 @@
 
 **Date:** 2026-10-02
 
+**Amended 2026-10-11 by
+[ADR-0050](0050-a-launched-browser-records-no-request-body.md):** in a Transaction Record from a
+launched browser (`launched` or `launched-passive`), the engine withholds every request body as
+well as the four header values below, and the inventory lists each request whose body it
+withheld. A token in a request body no longer stays in such a record; a token in a response body,
+a URL, or a header not on the list still does. The request-body rule is part of the Evidence
+Profile beside the header list. `background` records are unchanged.
+
 Confirmed by the maintainer on 2026-10-02 after an automated review of
 [ADR-0035](0035-one-transaction-record-per-capture.md) raised the conflict. Nothing in this
 record is implemented.

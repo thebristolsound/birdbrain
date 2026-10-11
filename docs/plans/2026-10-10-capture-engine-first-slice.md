@@ -2,14 +2,17 @@
 
 **Status:** active
 
-Plan only. Nothing here is built, and nothing here is approved. It plans
+Plan only. Nothing here is built. It plans
 [the capture engine first-slice spec](../specs/2026-09-30-capture-engine-design.md) under
 [ADR-0034](../adr/0034-the-app-acquires-and-the-extension-is-a-companion.md),
 [ADR-0035](../adr/0035-one-transaction-record-per-capture.md) and
 [ADR-0036](../adr/0036-credential-header-values-never-enter-a-transaction-record.md), and fulfils
-brief CE-P of [the agent briefs plan](2026-10-10-three-programme-agent-briefs.md). The maintainer
-approves it together with the spec (the agent briefs plan, gates table). Until then, every step
-and decision below is a proposal.
+brief CE-P of [the agent briefs plan](2026-10-10-three-programme-agent-briefs.md).
+
+The plan awaits approval. On 2026-10-10 the maintainer ruled on its open questions, the spec's
+open questions 1, 2, and 5, and most of its gates (Rulings, 2026-10-10), and deferred approving
+the spec and this plan until reading #1803. Until then, every step and decision those rulings do
+not settle is a proposal.
 
 It reflects `origin/main` at `df531d36`: `MANIFEST_SCHEMA_VERSION` 5 (`src/shared/constants.ts`),
 `CASE_ARCHIVE_SCHEMA_VERSION` 8 (`src/main/services/caseArchive.ts`), `LATEST_SCHEMA_VERSION` 37
@@ -45,8 +48,8 @@ each check, carry, copy, or remove the two new files.
 Out of scope: launched browsers, the Companion, Firefox, the Content Hash of a Capture without
 MHTML, and a WACZ export (#799), which the spec leaves out (spec, Not in this slice); WebSocket
 frames; the `launched`, `launched-passive`, and `companion` values (D13); display of the new
-fields in the app, which waits for the #1694 ruling; Working Copy exports (D10); and the extension
-half of #1667.
+fields in the app, which #1816 carries after CE-8; Working Copy exports (D10); and the extension
+half of #1667, which closes in favor of CE-S3.
 
 ## What exists today
 
@@ -208,7 +211,9 @@ for i in 1 2 3 4; do env -u ELECTRON_RUN_AS_NODE PROBE_OUT=out/fresh$i PROBE_PAS
 
 ## Decisions
 
-Each decision is this plan's recommendation until the maintainer approves the plan.
+The maintainer accepted D1 to D7 as the shape step 1 freezes (open question D) and ruled D15 as
+written. Every other decision, and any part of D8 or D14 that no ruling names, is this plan's
+recommendation until the maintainer approves the plan.
 
 ### D1. Six optional fields on the `capture` entry
 
@@ -225,8 +230,8 @@ Each decision is this plan's recommendation until the maintainer approves the pl
 avoid for it. `boundTls` sits beside `tls`, never inside it (spec, Bound TLS Details), so the entry
 says which of the two TLS facts it holds (ADR-0034, What this amends). In this slice only
 background Captures write the fields; extension Captures write none, and a Duplicate re-anchors its
-source's except Bound TLS Details (D11). The names are proposals: step 1's review may rename them,
-and the maintainer approves the final shape there, before any release carries it.
+source's except Bound TLS Details (D11). The maintainer accepted these names and shapes on
+2026-10-10 (open question D).
 
 **`boundTlsAbsent` departs from the spec.** The spec says that when the main document came from
 the cache, Bound TLS Details are absent "and the inventory says why" (spec, Bound TLS Details),
@@ -235,13 +240,16 @@ and the agent briefs plan puts that reason in the Transaction Record part of the
 inventory and writes no Bound TLS Details (D11), so an inventory part saying Bound TLS Details are
 present, copied to a Duplicate, would contradict the Duplicate's own entry. The alternative is an
 inventory part, `boundTls: { present: true } | { present: false; reason }`, which a Duplicate
-rewrites instead of copying. Open question D asks the maintainer to rule.
+rewrites instead of copying. The maintainer ruled for the top-level `boundTlsAbsent` (open
+question D).
 
 ### D2. One schema number, integers only, and refines only where a shape contradicts itself
 
 - Step 1 takes the next manifest schema number, N, settled when it starts against the releases that
   have shipped (the agent briefs plan, manifest schema lane). If another schema step holds a number
-  no release has shipped, step 1 joins it. Each D1 field stamps N through
+  no release has shipped, step 1 joins it. The maintainer ruled on 2026-10-10 that beta.23 (#1799)
+  ships as is, carrying only the schema-5 (Egress) reader, so the ADR-0040 and #586 schema steps
+  share the later release with step 1's verifier. Each D1 field stamps N through
   `fieldMinReaderSchemaVersion`, and a refine refuses one stamped below N, as for the Egress fields.
 - Each part of a new field admits only the values this slice can write. #599 states the rule for a
   Capture Method, "A value nothing can produce is its own false statement", and this plan applies
@@ -278,10 +286,8 @@ rewrites instead of copying. Open question D asks the maintainer to rule.
 - Step 1 adds `transactionRecordPath(digest)` and `pdfPath(digest)` to `lib/paths.ts` and their
   shell helpers to `lib/shell.ts`, so the writer, Package Verification, and `verify.sh` read one
   definition (`CONTEXT.md`, Package Layout).
-- The extension is spec open question 2 (below) and has to be settled before step 1, because the
-  path function fixes it in a released verifier. With `.warc` instead, the paths become
-  `{captureId}.warc` and `transaction-records/{sha256}.warc`, and step 3 needs no two-part extension
-  rule.
+- The extension is `.warc.gz`, ruled on 2026-10-10 (spec open question 2, below). It had to be
+  settled before step 1, because the path function fixes it in a released verifier.
 
 ### D4. The inventory
 
@@ -433,9 +439,9 @@ against a Chromium 152 response.
   (spec open question 1) and the credential marker, so the file describes itself to a reader that
   has only the WARC. It holds no host name, address, or proxy. One `request` and one `response`
   record per complete exchange, and the records in the table below for every other exchange.
-- **Compression.** Each record is its own gzip member (spec open question 2). `warcio`'s serializer
-  takes a `gzip` option and serializes one record at a time (`WARCSerializer` in
-  `src/lib/warcserializer.ts` of the 2.4.12 tarball).
+- **Compression.** Each record is its own gzip member (spec open question 2, ruled 2026-10-10).
+  `warcio`'s serializer takes a `gzip` option and serializes one record at a time
+  (`WARCSerializer` in `src/lib/warcserializer.ts` of the 2.4.12 tarball).
 - **Digests.** `WARC-Payload-Digest` is `sha256:` followed by hex, over the stored, decoded body.
   That is `warcio`'s default (`sha-256`, prefix `sha256:`, base32 off, same file), so a test can
   compare it with Node's `createHash('sha256')`.
@@ -451,7 +457,9 @@ against a Chromium 152 response.
   `requestHeaders` on the request and response, and the headers of both `ExtraInfo` events. The
   `associatedCookies`, `blockedCookies`, and `exemptedCookies` arrays carry cookie values and are
   never serialized. Step 8 names the marker, and the docs quote it.
-- **Decoded bodies under original headers.** Spec open question 1, below.
+- **Decoded bodies under original headers.** The writer keeps the reported `Content-Encoding`,
+  `Transfer-Encoding`, and `Content-Length` under `x-orig-` names and writes the stored body's
+  length as `Content-Length` (spec open question 1, ruled 2026-10-10).
 - **Addresses.** The writer sets `WARC-IP-Address` only while the Egress is Direct. Through a proxy,
   CDP's `remoteIPAddress` and `remotePort` can name the proxy, and ADR-0032 rule 5 keeps the proxy's
   host and port out of every record (the agent briefs plan, CE-7).
@@ -515,21 +523,25 @@ the existing unit runner. The wiring stays in `backgroundRenderer.ts`. Step 7 ad
 ### D13. `launched` stays out of step 1
 
 ADR-0034 names `launched`, and carrying it in step 1 would save stage 2 one verifier release if
-stage 2 adds no field of its own. This plan leaves it out:
+stage 2 added no field of its own. This plan leaves it out:
 
-- The stage 2 spec (CE-S2) is not written. If a `launched` entry needs fields this slice has not
-  designed (the launched browser, its profile, a Capture Session), stage 2 needs its own verifier
+- Stage 2 adds fields.
+  [The stage 2 spec](../specs/2026-10-10-capture-engine-launched-browser-design.md) (CE-S2), on an
+  unmerged branch, gives a `launched` entry the browser product, version, and family (its section
+  "Manifest, schema, and verifier"), and the maintainer ruled on 2026-10-10 to sign them (CE-S2
+  decision D12). The shape step 1 freezes holds none of them, so stage 2 needs its own verifier
   release anyway.
 - A verifier that accepts `launched` now accepts it in the shape of a `background` entry, and
   Package Verification compares the method with `evidence.json`'s origin. `CAPTURE_METHODS` also
   feeds the app's types, so the value would reach every surface that labels a method before
   anything writes it. #599's rule applies.
-- `launched-passive` stays with #600, as #599 rules ("This lands **with** the restoration (#600),
-  not before"), and `companion` waits for CE-S3 (ADR-0034, Decision, order of work).
+- `launched-passive` stays out too. The maintainer ruled on 2026-10-10 that the verifier learns it
+  in a release before #600's writer merges (CE-S2 decision D5), and #599's "This lands **with**
+  the restoration (#600), not before" is to be clarified. `companion` waits for CE-S3 (ADR-0034,
+  Decision, order of work).
 
 The cost is one more verifier release, and one more upgrade for Shared Case members on mixed
-versions, when stage 2 ships. If CE-S2 merges before step 1 starts and finds that a `launched`
-entry needs no new field, step 1 can carry the value.
+versions, when stage 2 ships.
 
 ### D14. Shared Cases
 
@@ -539,16 +551,17 @@ briefs plan, SC-2), so a Shared Case carries and hash-checks both files whicheve
 merges first. The two-peer `MemoryTransport` test that a receiver hash-checks
 the Transaction Record and the PDF before showing them then belongs to whichever of SC-2 and steps 9
 and 10 merges second. This replaces the agent briefs plan's rule that CE-7 waits for SC-2 (open
-question C).
+question C, ruled 2026-10-10).
 
 ### D15. The probe runs in CI on each Electron change
 
 The gates table offers an Electron-run CI test in CE-7 or a rule that every Electron bump attaches
-a rerun. **Recommendation:** the CI test: step 9 commits the script, and the maintainer adds the
-CI job. Dependabot groups npm minor and patch updates into one weekly pull request with no
-exception for Electron, so an Electron patch can arrive in a pull request nobody reads as a
-browser change, and ADR-0004 names a browser change as a trigger for revalidation (ADR-0004,
-Validation and independent verification).
+a rerun. **Ruled 2026-10-10:** the CI test on each Electron change: step 9 commits the probe
+script, and the maintainer opens the pull request that adds the CI job (ADR-0048 sign-off).
+Dependabot groups npm minor and patch updates into one weekly pull request with no exception for
+Electron, so an Electron patch can arrive in a pull request nobody reads as a browser change, and
+ADR-0004 names a browser change as a trigger for revalidation (ADR-0004, Validation and
+independent verification).
 
 Step 9 commits the probe script as a file (proposed path `scripts/capture-probe/main.js`), with
 the command that runs its off and on passes and the output it expects. The passes run without the
@@ -580,14 +593,19 @@ approval, so the steps extend it before then and nothing changes it after.
 
 ## The spec's open questions
 
-The maintainer answers these with the plan. Each has a recommendation and its evidence.
+The maintainer ruled on questions 1 and 2 on 2026-10-10, each as this plan recommended. Questions
+3 to 5 rest on fields of D4: the `budget` record, the `cached` count, and the `webSockets` count,
+which the maintainer accepted with D1 to D7 (open question D). That settles question 5. The parts
+of questions 3 and 4 that no signed field fixes, the step 9 values and the `features.mdx`
+statement, stay recommendations until the plan is approved. Each section keeps the evidence behind
+its answer.
 
 ### 1. Decoded bodies under original headers
 
-**Recommendation:** rename `Content-Encoding` and `Transfer-Encoding` to `x-orig-content-encoding`
-and `x-orig-transfer-encoding` with their values kept, write the stored length as
-`Content-Length`, keep the reported length as `x-orig-content-length`, and state the renaming in
-`warcinfo` and in `features.mdx`.
+**Ruled 2026-10-10:** rename `Content-Encoding` and `Transfer-Encoding` to
+`x-orig-content-encoding` and `x-orig-transfer-encoding` with their values kept, write the stored
+length as `Content-Length`, and keep the reported length as `x-orig-content-length`. The writer
+states the renaming in `warcinfo` (D8), and step 9 states it in `features.mdx`.
 
 The spec asks what browser-based archiving tools write, and to follow it if it is documented (spec,
 Open questions). This plan found no published statement, and the two Webrecorder recorders differ
@@ -607,12 +625,12 @@ that decodes by header then does not try to inflate a body that is already decod
 "the default behavior is to decode transfer and content encoding" (its README, Accessing WARC
 Content). Keeping the values under `x-orig-` names fits ADR-0035's "The record states what the
 browser reported".
-`x-orig-content-length` is this plan's addition: browsertrix-crawler overwrites the reported length
-and keeps no copy. If the maintainer wants the tool's practice exactly, drop that one header.
+`x-orig-content-length` is this plan's addition, which the ruling keeps: browsertrix-crawler
+overwrites the reported length and keeps no copy.
 
 ### 2. Compression
 
-**Recommendation:** `.warc.gz`, with each record its own gzip member. Settle it before step 1.
+**Ruled 2026-10-10:** `.warc.gz`, with each record its own gzip member, settled before step 1.
 
 - WARC 1.1 Annex D, which is informative, recommends GZIP and says "this property should be
   exploited to compress each record of a WARC file independently", with the suffix `.warc.gz`. The
@@ -673,13 +691,14 @@ produce a cache event in a fresh partition at all (risk 4).
 
 ### 5. WebSocket traffic
 
-**Recommendation:** frames stay out of the record, and the inventory counts the connections
-(`webSockets`, D4), so a page that opened one never reads as fully recorded (ADR-0035, Decision).
-This is settled before step 1, because the count is a signed field.
+**Ruled 2026-10-10, with D4 (open question D):** frames stay out of the record, and the inventory
+counts the connections (`webSockets`, D4), so a page that opened one never reads as fully recorded
+(ADR-0035, Decision). It had to be settled before step 1, because the count is a signed field.
 
 ## The `warcio` licence and the test readers
 
-The maintainer still owes this gate (the agent briefs plan, gates table). Facts, read 2026-10-10:
+The maintainer ruled on this gate (the agent briefs plan, gates table) on 2026-10-10, as this plan
+recommended. Facts, read 2026-10-10:
 
 - The npm registry declares `Apache-2.0` for every release from 2.4.5 to 2.4.12, the latest
   (published 2026-09-04), from the repository `webrecorder/warcio.js`, and so does the
@@ -691,15 +710,15 @@ The maintainer still owes this gate (the agent briefs plan, gates table). Facts,
   `hash-wasm`, `base32-encode`, `tempy`, `uuid-random`, and `yargs` (each MIT), and
   `@types/pako` and `@types/stream-buffers` (MIT). The lockfile decides the transitive set.
 
-**Licence recommendation.** Take the package under both texts. Step 8 adds an `overrides.json`
+**Licence ruling.** Birdbrain takes the package under both texts. Step 8 adds an `overrides.json`
 entry for `warcio` with `append: true`, a note stating the disagreement, and a new
 `texts/Apache-2.0.txt`, the pattern the `@img/sharp-win32-arm64` entry follows. The packaged notice
 then carries the MIT text the package ships and the Apache-2.0 text it declares. Birdbrain itself is
-MIT (`package.json`). Asking upstream to reconcile the two is external publishing, so it is the
-maintainer's call, and it does not hold step 8. Reading both licences as satisfiable together is
-not a legal review.
+MIT (`package.json`). The 2026-10-02 approval of `warcio` covers its eight runtime dependencies and
+the transitive set the lockfile adds (open question G). The maintainer makes no upstream request to
+reconcile the two texts now. Reading both licences as satisfiable together is not a legal review.
 
-**WARC test reader.** **Recommendation:** a reader written in the package's own tests, with no
+**WARC test reader.** **Ruled 2026-10-10:** a reader written in the package's own tests, with no
 dependency. It frames records by `Content-Length`, inflates each gzip member with Node's `zlib`,
 reads the `WARC/1.1` headers, and recomputes `WARC-Block-Digest` and `WARC-Payload-Digest` without
 importing `warcio`: the independent path ADR-0004 asks for. Step 9 adds a manual check to the
@@ -708,14 +727,13 @@ validation record, `warcio check` from the separate Python implementation (1.8.1
 was last published on 2019-02-24 and is not recommended.
 
 **PDF parser.** Without a parser, a blank PDF passes every automated test, and a known answer for
-the PDF is that it holds the page. **Recommendation:** `pdfjs-dist` 5.6.205 as an exact-pinned
+the PDF is that it holds the page. **Ruled 2026-10-10:** `pdfjs-dist` 5.6.205 as an exact-pinned
 devDependency (Mozilla's pdf.js, Apache-2.0, no required dependencies; optional `@napi-rs/canvas`
 and `node-readable-to-web-readable-stream`). It is the last release whose `engines.node` admits Node
 20 (`>=20.19.0 || >=22.13.0 || >=24`); from 5.7.284, the latest being 6.4.299, it declares
 `>=22.13.0 || >=24`, outside the Node 20 the toolchain pins. Tests run on Electron 44.5.1's Node
-24.21.0. Dependabot then needs an ignore entry for 5.7 and later, as `dependency-cruiser` has. The
-fallback adds no dependency: step 10 checks the `%PDF-` header and the `%%EOF` trailer, and the
-validation record carries a manual `pypdf` reading, which is how the probe read its PDFs.
+24.21.0. Dependabot then needs an ignore entry for 5.7 and later, as `dependency-cruiser` has, and
+the ruling includes it.
 
 ## Order of work
 
@@ -725,20 +743,20 @@ release that carries step 1's verifier.
 | Step | Brief | Change | Lane held | Blocking-tier paths | Files | Waits for |
 | --- | --- | --- | --- | --- | --- | --- |
 | 0 | new | Renderer spike (docs only) | none | none | 2 | nothing |
-| 1 | CE-5 | Verifier and schema: D1 to D3, D14 | Manifest schema | `src/shared/verify/**`, `src/verifier/**`, `manifest.ts`, the layout package (row added) | 12-14 | Plan approval, the beta.23 decision, the lane, step 0 |
+| 1 | CE-5 | Verifier and schema: D1 to D3, D14 | Manifest schema | `src/shared/verify/**`, `src/verifier/**`, `manifest.ts`, the layout package (row added) | 12-14 | Plan approval, the lane, step 0 |
 | 2 | CE-6 | Mirror columns (D9) | Migration | `db/**` | 6-8 | Step 1, the lane |
 | 3 | CE-9, Case half | Store, Case Archive, Duplicate, deletion, orphan scan, `verifySidecars` | Case Archive | `captureStore.ts`, `caseArchive.ts`, `captureLifecycle.ts`, `db/**` | 9-11 | Steps 1 and 2, the lane |
 | 4 | CE-7 and CE-8, export halves | Package placement, `evidence.json`, `verify.sh`, `VERIFY.md` | none | `export.ts`, `verifyScript.ts`, `verifyRunbook.ts` | 5-7 | Steps 1 and 3 |
 | 5 | CE-9, report half | `report.html` states the new fields | none | `reportHtml.ts` | 3-4 | Step 2 |
 | 6 | CE-8, first part | Scroll-to-load and screenshot record | none | `backgroundRenderer.ts`, `recapture.ts`, `captureLifecycle.ts` | 7-9 | Release, steps 2, 3, and 5 |
 | 7 | CE-7, first part | Exchange collector and Bound TLS conversion (pure) | none | the new package (row added) | 6-8 | Plan approval, step 0 |
-| 8 | CE-7, second part | WARC writer (pure), `warcio`, notice override | none | the package | 7-9 | Step 7, the licence gate |
-| 9 | CE-7, wiring | Record the Transaction Record and Bound TLS Details; probe script (D15) | none | `backgroundRenderer.ts`, `recapture.ts`, `captureLifecycle.ts` | 10-12 | Release, steps 3 to 8, CE-2, CE-3, the probe gate, SC-2 unless open question C |
-| 10 | CE-8, last part | PDF | none | `backgroundRenderer.ts`, `recapture.ts`, `captureLifecycle.ts` | 6-8 | Step 9, the test-reader gate |
+| 8 | CE-7, second part | WARC writer (pure), `warcio`, notice override | none | the package | 7-9 | Step 7 |
+| 9 | CE-7, wiring | Record the Transaction Record and Bound TLS Details; probe script (D15) | none | `backgroundRenderer.ts`, `recapture.ts`, `captureLifecycle.ts` | 10-12 | Release, steps 3 to 8, CE-2, CE-3 |
+| 10 | CE-8, last part | PDF | none | `backgroundRenderer.ts`, `recapture.ts`, `captureLifecycle.ts` | 6-8 | Step 9 |
 
 File counts are estimates, not taken from a prototype. Steps 2 to 5, 7, and 8 write no new field
-from acquisition, so this plan proposes that they merge before the release (open question A).
-Steps 6, 9, and 10 are the writers; each merges only after the release.
+from acquisition, so they may merge before the release (open question A, ruled 2026-10-10). Steps
+6, 9, and 10 are the writers; each merges only after the release.
 
 Every code step ends with `BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test` and `pnpm preflight` at head,
 with exit codes captured. `pnpm test <path>` takes no `--`. Locally, the e2e suite needs the offline
@@ -830,7 +848,7 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   and the row mapping follow.
 - **No Case Archive bump here.** An older importer drops the new columns, but every one is null until
   step 6 writes it, so nothing is lost. Step 3 bumps the version once for the columns and the files,
-  and merges before step 6 (open question B).
+  and merges before any writer (open question B, ruled 2026-10-10).
 - **Done when.** The migration test shows the six nullable TEXT columns, the `CAPTURE_COLUMNS` drift
   test passes, and a Capture row with every new column set survives a Case Archive round trip.
 - **Verify with.** The new migration test (proposed name
@@ -895,8 +913,9 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   described as the browser's summary of the captured transaction (`CONTEXT.md`, Relationships). The
   wording follows ADR-0035 and ADR-0036: the headers are present and their values are not, and the
   record is never complete beyond what the inventory supports.
-- **Not here.** Display in the app (`ForensicsTab.tsx` and the Data screen) waits for the #1694
-  ruling.
+- **Not here.** Display in the app is #1816, filed to follow CE-8 (steps 6 and 10): it shows the
+  Egress, the inventory, the Scroll-to-load outcome, and Bound TLS Details on a Capture, kept apart
+  from the TLS Cert Chain view.
 - **Done when.** A report for a Capture carrying every field renders each of them, a report for a
   Capture without them renders as today, and no new wording calls the Transaction Record complete or
   uses an unqualified assurance word (`docs/agents/writing-guide.md`, Claim discipline).
@@ -921,7 +940,8 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   `WebContents`, and the screenshot functions through scaled, truncated, trimmed, and none. An e2e
   Recapture of an invented fixture page records `stopped-growing`, its height, and the screenshot
   facts in the entry and the row. `e2e/recapture.spec.ts` still passes. This records the background
-  half of #1667; whether #1667 closes stays the maintainer's call.
+  half of #1667, which then closes; its extension half closes in favor of CE-S3 (ruled
+  2026-10-10).
 - **Verify with.** `pnpm test tests/main/services/backgroundRenderer.test.ts` (on Linux, run
   `pnpm build:test-sharp` first and set `BIRDBRAIN_TEST_SYSTEM_SHARP=1`, because the test imports
   sharp; see "sharp under Electron on Linux" in `docs/agents/testing.md`),
@@ -1018,8 +1038,7 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   certificate allowance and a certificate signed by the fixture's test authority is refused, as
   CE-2's brief asks of its loopback allowance (the agent briefs plan, CE-2). The D15 script's
   command runs both passes and reports no difference beyond the one step 0 question 7 records. If
-  open question C goes this plan's way and SC-2 has merged, the two-peer `MemoryTransport` test
-  passes for the record.
+  SC-2 has merged, the two-peer `MemoryTransport` test passes for the record (open question C).
 - **Verify with.**
   `pnpm test tests/main/services/backgroundRenderer.test.ts tests/main/services/recapture.test.ts tests/main/services/captureLifecycle.test.ts`
   (the sharp note in step 6 applies),
@@ -1038,18 +1057,15 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   acceptance. `CONTEXT.md` rewrites the Capture clause to say that `background` Captures carry a
   PDF today, and keeps _Planned_ on other Capture Methods; `features.mdx` updates Capture, and
   adds the PDF to the Integrity bullet that lists what Birdbrain hashes and to the Export bullet
-  that lists what an evidence package contains. If the maintainer approves `pdfjs-dist` at the
-  test-reader gate, the step adds `pdfjs-dist` 5.6.205, exact-pinned, to `devDependencies`, and an
-  `ignore` entry for `pdfjs-dist` with `versions: ['>=5.7']` to `.github/dependabot.yml`, beside
-  the `dependency-cruiser` entry (outside the paths ADR-0048 holds). Otherwise it uses the
-  fallback.
+  that lists what an evidence package contains. As the test-reader gate ruled on 2026-10-10, the
+  step adds `pdfjs-dist` 5.6.205, exact-pinned, to `devDependencies`, and an `ignore` entry for
+  `pdfjs-dist` with `versions: ['>=5.7']` to `.github/dependabot.yml`, beside the
+  `dependency-cruiser` entry (outside the paths ADR-0048 holds).
 - **Done when.** With the probe's print-only image as a fixture, the image's request is absent from
-  the Transaction Record. The stored file parses as one page holding the fixture's text (under the
-  approved parser), or starts with `%PDF-` and ends with `%%EOF` with a manual `pypdf` reading in
-  the validation record (the fallback). A unit test in which `printToPDF` never settles stores the
-  Capture with the PDF absent as `failed`, inside the Recapture timeout. A package exported from
-  the Capture verifies, and a changed PDF byte fails. If SC-2 has merged, the two-peer test passes
-  for the PDF.
+  the Transaction Record. The stored file parses under `pdfjs-dist` as one page holding the
+  fixture's text. A unit test in which `printToPDF` never settles stores the Capture with the PDF
+  absent as `failed`, inside the Recapture timeout. A package exported from the Capture verifies,
+  and a changed PDF byte fails. If SC-2 has merged, the two-peer test passes for the PDF.
 - **Verify with.**
   `pnpm test tests/main/services/backgroundRenderer.test.ts tests/main/services/recapture.test.ts tests/main/services/captureLifecycle.test.ts`
   (the sharp note in step 6 applies), `pnpm test:e2e e2e/recapture-transaction-record.spec.ts`
@@ -1060,8 +1076,8 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
 
 **Each lane is held once.** Step 1 holds the manifest schema lane from opening to merge, after CE-3
 and the schema steps ahead of it (the agent briefs plan, lanes table). Step 2 holds the migration
-lane. Step 3 holds the Case Archive lane, and is this slice's only Case Archive bump if open
-question B goes this plan's way. No writer step holds a lane.
+lane. Step 3 holds the Case Archive lane, and is this slice's only Case Archive bump (open question
+B, ruled 2026-10-10). No writer step holds a lane.
 
 **Proposed hot-file order**, replacing the agent briefs plan's CE-5 to CE-9 entries:
 
@@ -1074,24 +1090,23 @@ question B goes this plan's way. No writer step holds a lane.
   `caseArchive.ts`: step 3 only. `reportHtml.ts`: step 5 only.
 
 **What runs at once.** Step 0 can start now. After approval, steps 1 and 7 share no file, and step
-8 follows step 7 once the licence gate clears. After step 1 merges, steps 2 to 5 run in order of
-their waits while the release is pending. Under the review cap of two evidence-affecting pull
-requests (the agent briefs plan, What limits parallelism), pairs such as 1 with 7, 2 with 8, 3 with
-5, and 4 with 6 fit.
+8 follows step 7. After step 1 merges, steps 2 to 5 run in order of their waits while the release
+is pending. Under the review cap of two evidence-affecting pull requests (the agent briefs plan,
+What limits parallelism), pairs such as 1 with 7, 2 with 8, 3 with 5, and 4 with 6 fit.
 
 ### What this changes in the agent briefs plan
 
 | Brief | Here |
 | --- | --- |
 | CE-5 | Step 1, after step 0 |
-| CE-6 | Step 2, without its Case Archive bump (open question B) |
-| CE-7 | Steps 7, 8, and 9; its Evidence Package half moves to step 4 |
+| CE-6 | Step 2, without its Case Archive bump (open question B, ruled) |
+| CE-7 | Steps 7, 8, and 9; its Evidence Package half moves to step 4, and step 9 does not wait for SC-2 (open question C, ruled) |
 | CE-8 | Steps 6 and 10; its Evidence Package half moves to step 4 |
-| CE-9 | Steps 3 and 5, moved ahead of the writers |
+| CE-9 | Steps 3 and 5, moved ahead of the writers; the orphan scan reports only stray files, replacing "flags a Capture missing either" (open question F, ruled) |
 | New | Step 0, a renderer spike before the verifier freezes the shapes |
 | SC-2 | Builds its blob list from `CAPTURE_ENTRY_HASH_FIELDS` in `src/shared/verify/manifestChain.ts` (D2), whichever of SC-2 and step 1 creates it |
 
-The maintainer accepts these with the plan, together with open questions A to C.
+The rows marked ruled were settled on 2026-10-10. The maintainer accepts the rest with the plan.
 
 ## Evidence impact
 
@@ -1150,41 +1165,43 @@ Most of these move into step 0, so they surface before step 1 freezes a shape.
 
 ## Decisions the maintainer owes
 
-Each row is a gate from the agent briefs plan that names this plan or one of its steps. None is
-decided here.
+Each row is a gate from the agent briefs plan that names this plan or one of its steps. The
+maintainer ruled on most of them on 2026-10-10; a row marked owed is still open.
 
-| Gate | Steps it blocks | This plan's recommendation |
+| Gate | Steps it blocks | Ruling, 2026-10-10, or what is owed |
 | --- | --- | --- |
-| Approve the capture engine spec and this plan | all but step 0 | Approve; D1 to D16, the five answers above, and open questions A to F are what approval settles |
-| Before beta.23 (#1799, a draft pull request) is tagged, decide which schema steps land in it | 1 | Leave step 1 out: it cannot be reviewed before this plan is approved. Step 1 then takes the next number with the other steps left out of beta.23 |
-| Settle the `warcio` licence and approve the test-only readers | 8, and 9 and 10 through it | Both licence texts through an `append` override; a hand-written WARC reader plus a manual Python `warcio check`; `pdfjs-dist` 5.6.205, pinned |
-| Choose how the probe is rerun on each Electron upgrade | 9 | The CI test (D15): step 9 commits the script, and the maintainer opens the pull request that adds the CI job, because ADR-0048 holds workflow changes for sign-off and the machine account cannot push them |
-| Tag a release carrying step 1's verifier, with notes telling Shared Case members to upgrade together | 6, 9, 10 | Steps 2 to 5, 7, and 8 do not wait for it (open question A) |
-| Tag a release carrying #1747, and rule whether update checks follow the Egress | 9, through CE-3 (#1695) | None here |
-| Rule on #1694: where the app displays capture fields | Display beyond `report.html` | Step 5 covers only `report.html`, which either ruling keeps |
-| Whether #1667 closes once its background half is recorded | none | Step 6 records it; the extension half stays with CE-S3 or #1667 |
-| File and triage each step as an issue that meets the ready-for-agent bar, and queue it | all | One issue per step, with its done-when and verification commands from this plan |
-| Authorize off-slot lanes and rule on the review cap | throughput | None here |
+| Approve the capture engine spec and this plan | all but step 0 | Owed. Deferred until the maintainer reads #1803 with these rulings folded in; approval settles every step and decision no ruling covers |
+| Before beta.23 (#1799, a draft pull request) is tagged, decide which schema steps land in it | 1 | Ruled: beta.23 ships as is, carrying only the schema-5 (Egress) reader; the ADR-0040 and #586 schema steps share the later release with step 1's verifier |
+| Settle the `warcio` licence and approve the test-only readers | 8, and 9 and 10 through it | Ruled as recommended: both licence texts through an `append` override, the 2026-10-02 approval covering the runtime and transitive dependencies, and no upstream request now; a hand-written WARC reader plus a manual Python `warcio check`; `pdfjs-dist` 5.6.205, exact-pinned, with a Dependabot ignore for 5.7 and later |
+| Choose how the probe is rerun on each Electron upgrade | 9 | Ruled as recommended: the CI test on each Electron change (D15); step 9 commits the script, and the maintainer opens the pull request that adds the CI job (ADR-0048 sign-off) |
+| Tag a release carrying step 1's verifier, with notes telling Shared Case members to upgrade together | 6, 9, 10 | Owed: the tag. Steps 2 to 5, 7, and 8 do not wait for it (open question A, ruled). The ADR-0040 and #586 schema steps ship in the same release |
+| Tag a release carrying #1747, and rule whether update checks follow the Egress | 9, through CE-3 (#1695) | Ruled: `electron-updater` traffic goes through the proxy and fails closed, in CE-3's scope and acceptance. beta.23 (#1799) is the release that carries #1747 |
+| Rule on #1694: where the app displays capture fields | Display beyond `report.html` | Ruled: #1694 closed with its verifier half merged; #1816, after CE-8, shows the Egress, the inventory, the Scroll-to-load outcome, and Bound TLS Details on a Capture, apart from the TLS Cert Chain view. Step 5 covers only `report.html` |
+| Whether #1667 closes once its background half is recorded | none | Ruled: #1667 closes when step 6 records its background half; its extension half closes in favor of CE-S3 |
+| File and triage each step as an issue that meets the ready-for-agent bar, and queue it | all | Owed: one issue per step, with its done-when and verification commands from this plan |
+| Authorize off-slot lanes and rule on the review cap | throughput | Ruled for lanes: no unattended lane beyond dispatch's two slots and no new spend bound; larger parallel batches run only in interactive sessions the maintainer watches. The ruling does not address the review cap |
 
 ## Open questions
 
-Each is the maintainer's. The recommendation and its evidence are in the section named.
+The maintainer ruled on each on 2026-10-10, A to F as this plan recommended. Each question keeps
+the evidence behind its ruling, and the decision it names holds the detail.
 
 **A. May steps 2 to 5, 7, and 8 merge before the release that carries step 1?** The agent briefs plan
 says that release blocks CE-7 to CE-9. None of these steps writes a new field from acquisition.
 Duplicate (step 3) re-anchors the fields only from a source entry that has them, and only a writer
-that waits for the release can create one. **Recommendation:** yes, so the wait for the release
-overlaps with review.
+that waits for the release can create one. **Ruled 2026-10-10:** yes. Steps 2 to 5, 7, and 8 may
+merge before the release that carries step 1's verifier, so the wait for the release overlaps with
+review; only the writer steps, 6, 9, and 10, wait for it.
 
 **B. Does one Case Archive bump in step 3 replace the bump the agent briefs plan gives CE-6?** An
 older importer drops the step 2 columns, but they stay null until step 6, which merges after step
-3. **Recommendation:** yes, on the condition that step 3 merges before any writer. If the maintainer
-keeps the bump in step 2, step 2 also holds the Case Archive lane.
+3. **Ruled 2026-10-10:** yes. Step 3, the files step, carries the slice's one Case Archive bump and
+must merge before any writer; CE-6 (step 2) does not bump.
 
 **C. Does step 9 still wait for SC-2 (#1512)?** With D14, SC-2 carries and checks both files
-whichever merges first. **Recommendation:** drop the wait, and give the two-peer test to whichever
-of SC-2 and steps 9 and 10 merges second. SC-2 waits on several gates of its own (the agent briefs
-plan, gates table), so the wait would hold the slice on unrelated decisions.
+whichever merges first. **Ruled 2026-10-10:** step 9 no longer waits for SC-2, and whichever of
+SC-2 and steps 9 and 10 merges second adds the two-peer test. SC-2 waits on several gates of its
+own (the agent briefs plan, gates table), so the wait would hold the slice on unrelated decisions.
 
 **D. Accept D1 to D7 as the shape step 1 freezes?** That includes the `webSockets` count, the
 Scroll-to-load outcomes without `failed`, `scrollLockLifted`, the literal `true` values D2's rule
@@ -1204,27 +1221,29 @@ choices:
   Record part of the inventory. D1 gives the reason for the departure: a Duplicate re-anchors the
   inventory and has no Bound TLS Details of its own.
 
-**Recommendation:** accept, including `certificateTransparencyCompliance` and the top-level
-`boundTlsAbsent`, and treat step 1's review as the last chance to rename.
+**Ruled 2026-10-10:** accept D1 to D7 as the shape step 1 freezes, including
+`certificateTransparencyCompliance`, `serverSignatureAlgorithm`, `encryptedClientHello`, `mac`, and
+the top-level `boundTlsAbsent`.
 
 **E. When `Network.enable` does not answer, or the body fetches, the writer, or the print fail or
-time out, keep the Capture or fail the Recapture?** **Recommendation:** keep it, with the Transaction Record or the PDF absent as
-`failed`. MHTML and a screenshot are what a `background` Capture holds today, and ADR-0035 lets a
-Capture say it has no Transaction Record (ADR-0035, Decision).
+time out, keep the Capture or fail the Recapture?** **Ruled 2026-10-10:** keep the Capture, with
+the Transaction Record or the PDF recorded absent as `failed`. MHTML and a screenshot are what a
+`background` Capture holds today, and ADR-0035 lets a Capture say it has no Transaction Record
+(ADR-0035, Decision).
 
 **F. Should the orphan scan flag a Capture whose Transaction Record or PDF file is missing?** The
 agent briefs plan's CE-9 says it flags one. `cleanOrphans` deletes every Capture row the scan
 reports, with its Exhibit row, so a missing record would delete a Capture whose MHTML is intact.
-The screenshot works that way today. **Recommendation:** the orphan scan reports only stray files,
-and a missing Transaction Record or PDF is left to `verifySidecars`, which reports it as `missing`
-when the Capture is verified. This replaces the CE-9 clause "flags a Capture missing either". A
-separate category that `cleanOrphans` ignores would also keep the Capture, but it changes
-`OrphanReport` in `src/shared/ipc.ts` and the settings screen that lists the report
-(`DbUtilities.tsx`), a display change with no ruling behind it.
+The screenshot works that way today. **Ruled 2026-10-10:** the orphan scan reports only stray
+files, and a missing Transaction Record or PDF surfaces as `missing` in verification, which
+`verifySidecars` reports when the Capture is verified. This replaces the agent briefs plan's CE-9
+clause "flags a Capture missing either". A separate category that `cleanOrphans` ignores would
+also keep the Capture, but it changes `OrphanReport` in `src/shared/ipc.ts` and the settings
+screen that lists the report (`DbUtilities.tsx`), a display change with no ruling behind it.
 
 **G. Does the 2026-10-02 approval of `warcio` cover its eight runtime dependencies and the
-transitive set the lockfile adds?** This plan makes no recommendation: the scope of that approval
-is the maintainer's record.
+transitive set the lockfile adds?** This plan made no recommendation, because the scope of that
+approval is the maintainer's record. **Ruled 2026-10-10:** yes, it covers both.
 
 ### Not verified for this plan
 
@@ -1258,9 +1277,58 @@ is the maintainer's record.
   spec nor any test settles it, and step 7 defines it.
 - Whether the collector can tell an over-budget body from one the browser no longer held.
 
-## Rulings
+## Rulings, 2026-10-10
 
-None yet.
+The maintainer ruled on each item below on 2026-10-10. Approval of this plan and the spec is not
+among them: the maintainer approves both on #1803 after reading the plan with these rulings
+folded in.
+
+- **Spec open question 1, decoded bodies.** The writer keeps the original `Content-Encoding`,
+  `Transfer-Encoding`, and `Content-Length` under `x-orig-` names and rewrites `Content-Length` to
+  the stored body's length.
+- **Spec open question 2, compression.** Birdbrain stores the Transaction Record as `.warc.gz`,
+  one gzip member per record.
+- **Open question A, merging before the release.** Steps 2 to 5, 7, and 8 may merge before the
+  release that carries step 1's verifier; only the writer steps, 6, 9, and 10, wait for it.
+- **Open question B, the Case Archive bump.** Step 3 carries the slice's one Case Archive bump and
+  merges before any writer; CE-6 (step 2) does not bump.
+- **Open question C, SC-2.** Step 9 no longer waits for SC-2; whichever of SC-2 and steps 9 and 10
+  merges second adds the two-peer test.
+- **Open question D, the shape step 1 freezes.** D1 to D7 as written, including
+  `certificateTransparencyCompliance`, `serverSignatureAlgorithm`, `encryptedClientHello`, `mac`,
+  and the top-level `boundTlsAbsent`. This also settles spec open question 5: WebSocket frames stay
+  out, and the inventory counts the connections.
+- **Open question E, failures.** When `Network.enable`, a body fetch, the writer, or the print
+  fails, the engine keeps the Capture and records the Transaction Record or the PDF absent as
+  `failed`.
+- **Open question F, the orphan scan.** The orphan scan reports only stray files, and
+  `verifySidecars` reports a missing Transaction Record or PDF as `missing`. This replaces the
+  agent briefs plan's CE-9 clause "flags a Capture missing either".
+- **Open question G and the `warcio` licence.** Birdbrain takes `warcio` under both texts, through
+  an `append` entry in `overrides.json` with the Apache-2.0 text. The 2026-10-02 approval covers its
+  eight runtime dependencies and the lockfile's transitive set. The maintainer makes no upstream
+  request now.
+- **Test readers.** A hand-written WARC reader in the tests, plus a manual Python `warcio check` in
+  the validation record; `pdfjs-dist` 5.6.205 as an exact-pinned devDependency, with a Dependabot
+  ignore for 5.7 and later.
+- **Probe rerun (D15).** A CI test on each Electron change. Step 9 commits the probe script, and the
+  maintainer opens the pull request that adds the CI job (ADR-0048 sign-off).
+- **beta.23.** beta.23 (#1799) ships as is, carrying only the schema-5 (Egress) reader. The
+  ADR-0040 and #586 schema steps share the later release with step 1's verifier.
+- **Update checks.** `electron-updater` traffic follows the Egress: it goes through the proxy and
+  fails closed. CE-3 (#1695) carries this in its scope and acceptance.
+- **Display (#1694).** #1694 is closed, its verifier half merged. #1816, filed to follow CE-8, shows
+  the Egress, the inventory, the Scroll-to-load outcome, and Bound TLS Details on a Capture, kept
+  apart from the TLS Cert Chain view.
+- **#1667.** It closes when step 6 records its background half; its extension half closes in favor
+  of CE-S3.
+- **#598 (CE-10).** Extraction runs in a utility process, and #598 is ready-for-agent with that
+  direction. Steps 6, 9, and 10 still follow CE-10 in `captureLifecycle.ts` (Lanes and hot files).
+- **Parallel lanes.** No unattended lane beyond dispatch's two slots, and no new spend bound; larger
+  parallel batches run only in interactive sessions the maintainer watches.
+- **Stage 2 rulings that bear on D13.** The verifier learns `launched-passive` in a release before
+  #600's writer merges, and #599 is to be clarified (CE-S2 decision D5). A `launched` entry signs
+  the browser product, version, and family (CE-S2 decision D12).
 
 ## Progress
 
@@ -1273,3 +1341,8 @@ None yet.
   measured the `about:blank` entry, D7 follows the TLS spike's field list, D8 states the records
   of each partial exchange, steps 9 and 10 say where their time comes from, and open question F
   recommends one option.
+- **2026-10-10.** Folded in the maintainer's rulings of the same day (Rulings, 2026-10-10): open
+  questions A to G, the spec's open questions 1, 2, and 5, the `warcio` licence and test-reader
+  gate, the probe rerun, beta.23, update checks, #1694, #1667, #598, and parallel lanes. D13 now
+  cites the stage 2 spec and the two stage 2 rulings that bear on it. The plan and the spec still
+  await the maintainer's approval on #1803.

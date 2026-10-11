@@ -1440,8 +1440,18 @@ describe('ipcHandlers — notes', () => {
     expect(expectOk(await invoke(IPC_CHANNELS.NOTES_GET, note.id))).toBeDefined()
     expect(expectOk<number>(await invoke(IPC_CHANNELS.NOTES_COUNT, caseId))).toBe(1)
     expect(expectOk(await invoke(IPC_CHANNELS.NOTES_SEARCH, caseId, 'finding'))).toBeDefined()
+    // #1590: a domain is searched as a phrase rather than rejected as syntax.
+    const domain = expectOk<{ id: string }>(
+      await invoke(IPC_CHANNELS.NOTES_CREATE, { caseId, body: 'registrant of example.com' })
+    )
+    expect(
+      expectOk<{ id: string }[]>(
+        await invoke(IPC_CHANNELS.NOTES_SEARCH, caseId, 'example.com')
+      ).map((n) => n.id)
+    ).toEqual([domain.id])
+    expectOk(await invoke(IPC_CHANNELS.NOTES_DELETE, domain.id))
     // A query FTS5 cannot parse is reported as a failure, not as zero matches.
-    const bad = (await invoke(IPC_CHANNELS.NOTES_SEARCH, caseId, 'example.com')) as {
+    const bad = (await invoke(IPC_CHANNELS.NOTES_SEARCH, caseId, 'finding AND')) as {
       ok: boolean
       code?: string
     }
@@ -1628,13 +1638,25 @@ describe('ipcHandlers — annotations', () => {
 describe('ipcHandlers — search', () => {
   it('searches captures and reports a query FTS5 cannot parse as a failure', async () => {
     expect(expectOk(await invoke(IPC_CHANNELS.SEARCH, 'case-1', 'hello'))).toBeDefined()
-    for (const query of ['"unbalanced', 'example.com', 'alice@example.org']) {
-      const res = (await invoke(IPC_CHANNELS.SEARCH, 'case-1', query)) as {
+    for (const query of ['hello AND', 'OR hello']) {
+      const res = (await invoke(IPC_CHANNELS.SEARCH, caseId, query)) as {
         ok: boolean
         code?: string
       }
       expect(res.ok).toBe(false)
       expect(res.code).toBe('SEARCH_FAILED')
+    }
+  })
+
+  // #1590: these were syntax errors before the query was prepared for MATCH.
+  it('finds a Capture by a domain, an email address and a web address', async () => {
+    const { id } = seedCapture({
+      textContent: 'mail alice@example.org at example.com or https://example.com/path'
+    })
+    for (const query of ['example.com', 'alice@example.org', 'https://example.com/path']) {
+      // toContain: the default seed's URL, https://example.com, also matches example.com.
+      const found = expectOk<{ id: string }[]>(await invoke(IPC_CHANNELS.SEARCH, caseId, query))
+      expect(found.map((c) => c.id)).toContain(id)
     }
   })
 })

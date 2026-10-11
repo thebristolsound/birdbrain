@@ -768,8 +768,8 @@ export function registerIpcHandlers(deps: {
     try {
       return noteRepo.searchNotes(caseId, query)
     } catch {
-      // FTS5 throws on some input (unmatched quotes, `.` or `@` in a bareword). An empty
-      // array here would read as "no matches", so report the failure instead.
+      // FTS5 still throws on a query toFtsMatchQuery leaves invalid, such as a dangling
+      // `foo AND`. An empty array here would read as "no matches", so report the failure.
       throw new IpcFailure('Search could not run', 'SEARCH_FAILED')
     }
   })

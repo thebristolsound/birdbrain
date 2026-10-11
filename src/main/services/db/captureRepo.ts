@@ -10,6 +10,7 @@ import type {
 } from '@shared/types'
 import { TlsCertChainResultSchema } from '@shared/schemas'
 import { getDb, type ImportCtx } from '@main/services/db/core'
+import { toFtsMatchQuery } from '@main/services/db/ftsQuery'
 import {
   deleteExhibit,
   backfillExhibitsForCaptures,
@@ -323,6 +324,7 @@ export function getCaptureCountsByCase(): Record<string, number> {
 // --- Search ---
 
 export function searchCaptures(query: string, caseId?: string): Capture[] {
+  const match = toFtsMatchQuery(query)
   const rows = getDb()
     .prepare(
       `SELECT c.* FROM captures c
@@ -331,7 +333,7 @@ export function searchCaptures(query: string, caseId?: string): Capture[] {
        WHERE captures_fts MATCH ?${caseId ? ' AND c.case_id = ?' : ''}
        ORDER BY rank`
     )
-    .all(...(caseId ? [query, caseId] : [query])) as Array<Record<string, unknown>>
+    .all(...(caseId ? [match, caseId] : [match])) as Array<Record<string, unknown>>
   return rows.map(rowToCapture)
 }
 

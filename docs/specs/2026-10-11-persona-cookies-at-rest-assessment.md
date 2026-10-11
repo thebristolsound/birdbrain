@@ -57,7 +57,8 @@ would show the #414 warning.
 The switch does not account for the plain text. It chooses which key store supplies a key. The
 database holds no encrypted value at all, and the fuse that turns cookie encryption on reads
 `Disabled` in the binary that ran, so no key took part. The `cookieEncryption` section of
-Electron's [fuses documentation](https://github.com/electron/electron/blob/main/docs/tutorial/fuses.md)
+Electron's
+[fuses documentation at `v44.5.1`](https://github.com/electron/electron/blob/v44.5.1/docs/tutorial/fuses.md)
 gives the default as Disabled and says: "By default, the SQLite database that Chromium uses to
 store cookies stores the values in plaintext." This run did not measure a launch without the
 switch on a desktop with a working key store.
@@ -65,11 +66,14 @@ switch on a desktop with a working key store.
 ## The build Birdbrain ships
 
 This run used the unpackaged build. The `build` block in `package.json` (`:55`) sets no
-`electronFuses` and no `afterPack` or `afterSign` hook. electron-builder's `doAddElectronFuses`
-returns without changing any fuse when `electronFuses` is unset (app-builder-lib 26.15.3,
-`out/platformPackager.js:259-262`). A packaged build therefore keeps the `Disabled` state that
-step 14 reads from the Electron binary. This check did not run the `pnpm package:linux` output,
-and did not run on macOS or Windows.
+`electronFuses`, no `electronDist`, and no `afterPack` or `afterSign` hook. Without
+`electronDist`, electron-builder unpacks its own download of the `electron` release zip for the
+installed version (app-builder-lib 26.15.3, `out/electron/ElectronFramework.js:212-222`), the
+same artifact the `electron` package downloads (`node_modules/electron/install.js:40-42`). Its
+`doAddElectronFuses` returns without changing any fuse when `electronFuses` is unset
+(`out/platformPackager.js:259-262`). A packaged build therefore keeps the release's default fuse
+state, the `Disabled` that step 14 reads from the Linux binary. This check did not run the
+`pnpm package:linux` output, and did not run on macOS or Windows.
 
 ## The Settings warning
 
@@ -95,7 +99,7 @@ with the fuse off Electron's documentation says the cookie values are still plai
 
 ## Other text that repeats the claim
 
-The brief for #1824 limits this change to the three sentences and the warning. Four other
+The brief for #1824 limits this change to the three sentences and the warning. Seven other
 places still describe the cookie store as one the operating system key may protect, and stay as
 they are:
 
@@ -104,6 +108,11 @@ they are:
   asserts.
 - The import button's title while import is blocked, "Acknowledge the unprotected cookie store
   above to import" (`PersonasSection.tsx:250`).
+- The comment above the acknowledgement state, which calls the store unprotected "on this
+  machine" (`PersonasSection.tsx:33-35`), and the comment above the import gate, which compares
+  an unknown state to "an unprotected store" (`:45-46`).
+- The test named "shows no warning when the store is protected"
+  (`tests/components/PersonasSection.test.tsx:251`).
 - The comment above `PersonaStorageState` (`src/shared/types.ts:314-316`).
 - The comment above `personaStorageStateQueryOptions` (`src/renderer/lib/api/personas.ts:10-12`).
 
@@ -255,9 +264,10 @@ driver>
 exit 0
 ```
 
-`send.sh` returned before `launch` finished: its loop stops when the pane's current command is
-not `xvfb-run`, `sh` or `node`, and the pane still ran the shell when it first looked. The
-`until` loop waits for the `driver>` prompt instead.
+`send.sh` returned before `launch` finished, so the `until` loop waits for the `driver>` prompt
+instead. Besides the prompt, `send.sh` stops waiting when the pane's current command is not
+`xvfb-run`, `sh` or `node` (`send.sh:18-21`). The run did not record which command the pane
+reported, so this record cannot say why `send.sh` returned early.
 
 ### 6. Record the runtime
 

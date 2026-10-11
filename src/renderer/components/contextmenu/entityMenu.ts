@@ -442,6 +442,12 @@ export function captureMenuEntries(target: CaptureMenuTarget): MenuEntry[] {
       run: actions.duplicate
     },
     {
+      id: 'capture-recapture',
+      label: 'Recapture',
+      icon: RefreshCcw,
+      run: actions.recapture
+    },
+    {
       id: 'capture-delete',
       label: 'Delete capture…',
       icon: Trash2,

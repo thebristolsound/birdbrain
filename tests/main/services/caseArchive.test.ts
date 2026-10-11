@@ -843,6 +843,67 @@ describe('caseArchive import', () => {
     expect(verification.computedHash).toBe(originalHashes[0])
   })
 
+  // #1523 known-answer: the exporter's saved verification result travels in
+  // data.json and the import writes null over it, so the imported Capture has
+  // no lastVerifiedStatus, which the Overview counts as unverified
+  // (tests/renderer/overviewModel.test.ts). The signed import entry is built
+  // from the inspection, not the rows, so clearing them leaves it as it was.
+  it('imports a Capture the exporter verified as unverified, with the import entry unchanged', async () => {
+    expect((await verifyCapture(mhtmlCaptureId)).status).toBe('verified')
+    const verifiedArchive = join(tempDir, 'verified.birdbrain')
+    await exportCaseArchive(caseId, verifiedArchive)
+    const data = JSON.parse(
+      readStoredZip(readFileSync(verifiedArchive)).get('data.json')!.toString('utf-8')
+    ) as { captures: Array<Record<string, unknown>> }
+    const exported = data.captures.find((row) => row.id === mhtmlCaptureId)!
+    expect(exported.last_verified_status).toBe('verified')
+    expect(exported.last_verified_at).toEqual(expect.any(String))
+    expect(exported.last_verified_hash).toBe(originalHashes[0])
+
+    const report = inspectCaseArchive(verifiedArchive)
+    const { newCaseId } = await importCaseArchive(verifiedArchive)
+
+    const entry = readEntries(
+      readFileSync(join(getStorageRoot(), newCaseId, 'manifest.jsonl'), 'utf-8')
+    ).find((e) => e.type === 'import')!
+    expect(Object.keys(entry).sort()).toEqual([
+      'caseId',
+      'entryHash',
+      'idMapSha256',
+      'index',
+      'operatorId',
+      'operatorName',
+      'packageHash',
+      'prevHash',
+      'schemaVersion',
+      'signature',
+      'sourceCaseId',
+      'sourceInstallationId',
+      'sourcePublicKeyPem',
+      'timestamp',
+      'toolVersion',
+      'type',
+      'verificationResult'
+    ])
+    expect(entry.verificationResult).toEqual(report.verification)
+    expect(entry.verificationResult).toEqual({
+      overallValid: true,
+      chainValid: true,
+      artifactCount: report.verification.artifactCount,
+      artifactFailureCount: 0,
+      captureCount: 2,
+      captureHashFailureCount: 0
+    })
+
+    const imported = listCaptures(newCaseId)
+    expect(imported).toHaveLength(2)
+    for (const capture of imported) {
+      expect(capture.lastVerifiedStatus).toBeUndefined()
+      expect(capture.lastVerifiedAt).toBeUndefined()
+      expect(capture.lastVerifiedHash).toBeUndefined()
+    }
+  })
+
   // #391 known-answer: export a case whose note carries two tags — one shared
   // with a capture, one reachable only through note_tags — and import it back
   // into the database that still holds the source rows, so every note id

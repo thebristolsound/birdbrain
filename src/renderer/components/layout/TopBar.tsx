@@ -10,7 +10,6 @@ import { SearchBar } from '@renderer/components/search/SearchBar'
 import { SessionControls } from '@renderer/components/status/SessionControls'
 import { ConnectionStatus } from '@renderer/components/status/ConnectionStatus'
 import { CaptureHealth } from '@renderer/components/status/CaptureHealth'
-import { ExportMenu } from '@renderer/components/export/ExportMenu'
 import { useTheme } from '@renderer/hooks/useTheme'
 import { useUpdateStatus } from '@renderer/hooks/useUpdateStatus'
 import {
@@ -146,16 +145,11 @@ export function TopBar() {
         data-testid="topbar-controls"
         className="flex flex-1 basis-0 items-center justify-end gap-2"
       >
-        {activeCaseId && <SessionControls />}
-
+        {/* The case's session switch and Export live in CaseActionBar, under this bar. */}
         {sessionActive && <RecIndicator />}
 
         <ConnectionStatus />
         <CaptureHealth />
-
-        {activeCaseId && activeCase && (
-          <ExportMenu caseId={activeCase.id} caseName={activeCase.name} />
-        )}
 
         <Button
           variant="ghost"

@@ -1,15 +1,19 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
-import { CaptureListRail } from '@renderer/components/captures/CaptureListRail'
+import { Camera } from 'lucide-react'
+import { ListColumnRail } from '@renderer/components/layout/ListColumn'
 
-function renderRail(props: Partial<Parameters<typeof CaptureListRail>[0]> = {}) {
+function renderRail(props: Partial<Parameters<typeof ListColumnRail>[0]> = {}) {
   const onExpand = vi.fn()
   const onPrev = vi.fn()
   const onNext = vi.fn()
   render(
-    <CaptureListRail
-      captureCount={3}
+    <ListColumnRail
+      noun="capture"
+      icon={Camera}
+      testId="capture-list-rail"
+      count={3}
       onExpand={onExpand}
       onPrev={onPrev}
       onNext={onNext}
@@ -23,7 +27,7 @@ function renderRail(props: Partial<Parameters<typeof CaptureListRail>[0]> = {}) 
 
 afterEach(cleanup)
 
-describe('CaptureListRail', () => {
+describe('ListColumnRail', () => {
   it('expands from either the chevron or the capture count', () => {
     const { onExpand } = renderRail()
 
@@ -34,7 +38,7 @@ describe('CaptureListRail', () => {
   })
 
   it('singularises the capture count', () => {
-    renderRail({ captureCount: 1 })
+    renderRail({ count: 1 })
     expect(screen.getByTitle('1 capture')).toBeDefined()
   })
 
@@ -46,6 +50,16 @@ describe('CaptureListRail', () => {
 
     expect(onPrev).toHaveBeenCalledOnce()
     expect(onNext).toHaveBeenCalledOnce()
+  })
+
+  it('names the items it stands in for', () => {
+    renderRail({ noun: 'note', count: 2, testId: 'notes-list-rail' })
+
+    expect(screen.getByTestId('notes-list-rail-expand').getAttribute('title')).toBe(
+      'Expand note list'
+    )
+    expect(screen.getByTitle('2 notes')).toBeDefined()
+    expect(screen.getByTitle('Next note')).toBeDefined()
   })
 
   it('disables the steppers at the ends of the list', () => {

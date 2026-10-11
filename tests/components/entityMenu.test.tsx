@@ -116,7 +116,7 @@ function actionById(entries: MenuEntry[], id: string): MenuAction {
 }
 
 describe('capture menu, single target', () => {
-  it('offers the ten actions the app has an inline route for, in the designed order', () => {
+  it('offers the eleven actions the app has an inline route for, in the designed order', () => {
     expect(labels(captureMenuEntries(captureTarget()))).toEqual([
       'Open capture',
       'Add to selection',
@@ -127,6 +127,7 @@ describe('capture menu, single target', () => {
       'Quote into note',
       'Add to favorites',
       'Duplicate',
+      'Recapture',
       'Delete capture…'
     ])
   })

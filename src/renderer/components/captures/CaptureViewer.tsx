@@ -22,7 +22,6 @@ import { AnnotationEditor } from '@renderer/components/captures/annotation/Annot
 import { Button } from '@renderer/components/ui'
 import { CaptureViewerToolbar } from '@renderer/components/captures/CaptureViewerToolbar'
 import { CaptureDownloadMenu } from '@renderer/components/captures/CaptureDownloadMenu'
-import { BrowserChromeFrame } from '@renderer/components/captures/BrowserChromeFrame'
 import { WaybackCompare } from '@renderer/components/captures/WaybackCompare'
 import { LinksTab } from '@renderer/components/captures/LinksTab'
 import { useAnnotationEditor } from '@renderer/components/captures/annotation/useAnnotationEditor'
@@ -297,7 +296,6 @@ export function CaptureViewer() {
                 key={capture.id}
                 captureId={capture.id}
                 imageUrl={`data:image/png;base64,${content}`}
-                url={capture.url}
               />
             ) : (
               <div className="flex flex-col items-center justify-center gap-1 p-8 text-center">
@@ -368,15 +366,7 @@ function ArchivedCopyBanner({ timestamp }: { timestamp: string }) {
   )
 }
 
-function ScreenshotTabPanel({
-  captureId,
-  imageUrl,
-  url
-}: {
-  captureId: string
-  imageUrl: string
-  url: string
-}) {
+function ScreenshotTabPanel({ captureId, imageUrl }: { captureId: string; imageUrl: string }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null)
   const [container, setContainer] = useState<{ w: number; h: number }>({ w: 0, h: 0 })
@@ -429,8 +419,8 @@ function ScreenshotTabPanel({
   return (
     <div className="flex h-full w-full flex-col">
       <div className="flex-1 min-h-0 p-3">
-        <BrowserChromeFrame url={url}>
-          <div ref={containerRef} className="relative h-full w-full bg-canvas">
+        <div className="h-full w-full overflow-hidden rounded-md border border-border bg-canvas">
+          <div ref={containerRef} className="relative h-full w-full">
             {dims && container.w > 0 && (
               <AnnotationEditor
                 key={captureId}
@@ -470,7 +460,7 @@ function ScreenshotTabPanel({
               }}
             />
           </div>
-        </BrowserChromeFrame>
+        </div>
       </div>
     </div>
   )

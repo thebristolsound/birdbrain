@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures/electronApp'
+import { seedCapture, serverToken } from './fixtures/seed'
 
 type Box = { x: number; y: number; width: number; height: number }
 type Page = import('@playwright/test').Page
@@ -44,14 +45,13 @@ test.describe('Top bar layout', () => {
         webContents.send('event:sessionStateChanged', { sessionActive: true, activeCaseId: id })
       }, caseId)
       await expect(page.getByTestId('topbar-rec')).toBeVisible({ timeout: 10000 })
-      await expect(page.getByRole('switch', { name: 'Capture Session' })).toBeVisible()
 
-      // The bar drags the window, so the switch's label text has to opt out or a click
-      // on it moves the window instead of toggling the session.
-      const labelRegion = await page
-        .getByText('Capture Session', { exact: true })
-        .evaluate((el) => getComputedStyle(el).getPropertyValue('app-region'))
-      expect(labelRegion).toBe('no-drag')
+      // The session switch and Export sit in the case action bar, so the top bar's
+      // right side does not grow toward the native window controls while recording.
+      const actionBar = page.getByTestId('case-action-bar')
+      await expect(actionBar.getByRole('switch', { name: 'Capture Session' })).toBeVisible()
+      await expect(actionBar.getByRole('button', { name: /Export/ })).toBeVisible()
+      await expect(controls.getByRole('switch', { name: 'Capture Session' })).toHaveCount(0)
 
       for (const width of [1400, 1100, 1000, 900]) {
         await electronApp.windows()[0].setViewportSize({ width, height: 800 })
@@ -115,5 +115,40 @@ test.describe('Top bar layout', () => {
       expect(width).toBe(400)
       expect(Math.abs(x + width / 2 - 700)).toBeLessThanOrEqual(1)
     }).toPass({ timeout: 5000 })
+  })
+
+  test('the Export dialog covers the narrow-window details overlay', async ({
+    electronApp,
+    page
+  }) => {
+    const caseId = await createCase(page, 'Export over overlay')
+    await seedCapture(page, caseId, await serverToken(page), { slug: 'export-overlay' })
+    await electronApp.windows()[0].setViewportSize({ width: 1000, height: 800 })
+    await page.evaluate((id) => {
+      window.location.hash = `/cases/${id}/captures`
+    }, caseId)
+    await page.getByTestId('capture-item').first().click()
+    await page.getByTitle('Show details', { exact: true }).click()
+    const overlay = page.getByTestId('capture-details-overlay')
+    await expect(overlay).toBeVisible()
+
+    await page
+      .getByTestId('case-action-bar')
+      .getByRole('button', { name: /Export/ })
+      .click()
+    await page.getByRole('menuitem', { name: 'Export evidence report' }).click()
+    await expect(page.getByRole('dialog', { name: 'Export case' })).toBeVisible()
+
+    // The topmost element over the overlay belongs to the dialog's backdrop, not the overlay.
+    const { x, y, width, height } = (await overlay.boundingBox())!
+    const covered = await page.evaluate(
+      ({ px, py }) => {
+        const top = document.elementFromPoint(px, py)
+        const panel = document.querySelector('[data-testid="capture-details-overlay"]')
+        return !!top && !panel?.contains(top)
+      },
+      { px: x + width / 2, py: y + height - 20 }
+    )
+    expect(covered).toBe(true)
   })
 })

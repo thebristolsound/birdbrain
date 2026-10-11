@@ -32,6 +32,7 @@
     "coverage:diff": "node scripts/diff-coverage.mjs",
     "coverage:all": "node scripts/coverage-all.mjs",
     "preflight": "node scripts/preflight.mjs",
+    "check": "node scripts/check.mjs",
     "lint": "eslint . --ext .ts,.tsx",
     "lint:boundaries": "depcruise src extension/src tests e2e",
     "mcp": "cross-env ELECTRON_RUN_AS_NODE=1 electron ./out/main/mcp.js",

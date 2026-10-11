@@ -9,6 +9,7 @@ import { useTagFilters } from '@renderer/hooks/useTagFilters'
 import { useAppStore } from '@renderer/stores/appStore'
 import type { BirdbrainSettings } from '@shared/types'
 import { Skeleton } from '@renderer/components/ui'
+import { CaseActionBar } from '@renderer/components/layout/CaseActionBar'
 
 export function CaseWorkspace() {
   const { caseId } = useParams({ from: '/cases/$caseId' })
@@ -85,6 +86,7 @@ export function CaseWorkspace() {
 
   return (
     <div className="flex h-full flex-col">
+      <CaseActionBar caseData={activeCase} />
       {/* Split workspaces own their scroll regions and fill the available height. */}
       {isCaptures || isData || isSignals || isNotes ? (
         <div className="flex-1 overflow-hidden">

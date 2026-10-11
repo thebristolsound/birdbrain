@@ -146,5 +146,12 @@ test.describe('Captures three-column layout', () => {
     await page.getByTestId('capture-item').first().click()
     await expect(page.getByTestId('capture-details-aside')).toBeVisible()
     expect(Math.abs((await widthOf(page, 'capture-list')) - listBeforeReload)).toBeLessThan(4)
+
+    // 6. The Notes screen opens its list at the width the Captures list was dragged to.
+    await page.evaluate((id) => {
+      window.location.hash = `/cases/${id}/notes`
+    }, caseId)
+    await expect(page.getByTestId('notes-list-panel')).toBeVisible()
+    expect(Math.abs((await widthOf(page, 'notes-list-panel')) - listBeforeReload)).toBeLessThan(2)
   })
 })

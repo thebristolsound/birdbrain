@@ -134,7 +134,7 @@ test.describe('Case archive export/import round-trip', () => {
 
       // The import dialog shows the verification report before committing.
       await expect(page.getByText('Import Case Archive')).toBeVisible({ timeout: 10000 })
-      await expect(page.getByText('Archive verified')).toBeVisible()
+      await expect(page.getByTestId('archive-checks-passed')).toBeVisible()
       await expect(
         page.getByRole('paragraph').filter({ hasText: 'Archive Roundtrip Case' })
       ).toBeVisible()

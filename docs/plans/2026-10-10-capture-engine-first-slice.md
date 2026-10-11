@@ -328,9 +328,9 @@ inventory: {
 - **MHTML and the screenshot are always present.** A failed `savePage` or screenshot fails the
   render today, and this slice keeps that, so no build can write either as absent (D2's rule).
 - **Reasons.** `not-taken` means this build does not take the file: step 6's build writes it for
-  the Transaction Record and the PDF. `failed` means the engine tried and failed, and the log
-  carries the error. The list is closed, so a released verifier never meets a reason it does not
-  know.
+  the Transaction Record and the PDF. `failed` means the engine tried and failed, or refused a PDF
+  over step 10's size bounds, and the log carries the error. The list is closed, so a released
+  verifier never meets a reason it does not know.
 - **The Transaction Record counts.** Each comes from one CDP event or check.
   - `exchanges`: request and response record pairs written. Each `Network.requestWillBeSent` starts
     one, so every redirect hop counts (probe spike, "A redirect is two exchanges under one request
@@ -490,8 +490,9 @@ Step 2 adds six nullable TEXT columns that mirror D1: two hashes (`transaction_r
 `bound_tls`, and `bound_tls_absent`), as `tls_cert_chain` holds the TLS Cert Chain. It adds no
 path columns: the Capture Store derives every path from the Capture id and the type, the `.txt`
 file already works that way, and path columns are what drifted on import (#1592). The mirror is
-a cache for the report and for queries. Every check reads the signed entry (the comment above
-`CaptureChainEntry` in `manifestChain.ts`).
+a cache for queries and in-app display. Every check, and the report (step 5), reads the signed
+entry (the comment above `CaptureChainEntry` in `manifestChain.ts`), because Settings -> Database
+can hand-edit the row (the Duplicate path's comment in `captureLifecycle.ts`).
 
 ### D10. Both files always ship
 
@@ -901,7 +902,8 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   beside `screenshotPath` and `screenshotSha256`. `verify.sh` binds them in its content bind step,
   beside the screenshot, and `VERIFY.md` names them there. `VERIFY.md` step 5 also says that the
   Transaction Record holds the four credential headers with their values replaced: the headers
-  are present, their values are not (ADR-0036, Consequences). The step list in
+  are present, their values are not, and a token in a URL, a body, or any other header stays in
+  the record (ADR-0036, Consequences). The step list in
   `verifyProcedure.ts` does not change, so the procedure keeps six steps.
 - **Done when.** A package exported from a hand-made Capture carrying both hashes ships both files
   at the D3 paths, and Package Verification passes in the app and under the standalone verifier. A
@@ -916,19 +918,24 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
 
 ### Step 5. The report states the new fields (CE-9, report half)
 
-- **Changes.** `reportHtml.ts` reads the step 2 columns and states, for each Capture that has them:
-  every file present or absent with its reason, the Transaction Record counts, the Scroll-to-load
-  outcome, the screenshot's scaled, truncated, and trimmed state, and Bound TLS Details. Bound TLS
+- **Changes.** `reportHtml.ts` states, for each Capture whose signed entry carries them: every file
+  present or absent with its reason, the Transaction Record counts, the Scroll-to-load outcome, the
+  screenshot's scaled, truncated, and trimmed state, and Bound TLS Details. `export.ts` resolves
+  these fields from the same manifest snapshot `resolveEntrySignatures` reads, keyed by capture id,
+  and never from the step 2 columns, which Settings -> Database can hand-edit (D9). Bound TLS
   Details get their own block, apart from the TLS Cert Chain's "Corroboration only" note, and are
   described as the browser's summary of the captured transaction (`CONTEXT.md`, Relationships). The
-  wording follows ADR-0035 and ADR-0036: the headers are present and their values are not, and the
-  record is never complete beyond what the inventory supports.
+  wording follows ADR-0035 and ADR-0036: the headers are present and their values are not, tokens
+  in a URL, a body, or any other header stay in the record, and the record is never complete
+  beyond what the inventory supports.
 - **Not here.** Display in the app (`ForensicsTab.tsx` and the Data screen) is #1816, filed to
   follow CE-8 (steps 6 and 10): it shows the Egress, the inventory, the Scroll-to-load outcome, and
   Bound TLS Details on a Capture, kept apart from the TLS Cert Chain view.
 - **Done when.** A report for a Capture carrying every field renders each of them, a report for a
-  Capture without them renders as today, and no new wording calls the Transaction Record complete or
-  uses an unqualified assurance word (`docs/agents/writing-guide.md`, Claim discipline).
+  Capture without them renders as today, a report for a Capture whose step 2 columns were edited
+  after ingest states the signed entry's values, and no new wording calls the Transaction Record
+  complete or uses an unqualified assurance word (`docs/agents/writing-guide.md`, Claim
+  discipline).
 - **Verify with.** A new report test beside `tests/main/services/reportLayoutInvariants.test.ts`,
   then `pnpm preflight`.
 - **Revert.** Strands nothing.
@@ -1019,11 +1026,14 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   Transaction Record and Bound TLS Details clauses, and the Capture clause's mention of the
   Transaction Record, to say that `background` Captures carry them today, and keeps _Planned_ on
   the `launched` half (step 6 gives the reason). `features.mdx` states beside the capability that
-  credential header values are replaced (ADR-0036), that a resource reused inside a page leaves no
-  trace, the `x-orig-` renaming, and that Bound TLS Details are the browser's summary. It also adds
-  the Transaction Record to the Integrity bullet that lists what Birdbrain hashes and to the Export
-  bullet that lists what an evidence package contains. A test-only certificate allowance, from
-  step 0's question 6, joins CE-2's loopback allowance, which a packaged build cannot turn on.
+  credential header values are replaced (ADR-0036), that a token in a URL, a request or response
+  body, or any header not on the list stays in the record, so an export of a signed-in page can
+  still hold a reusable credential (ADR-0036, Consequences), that a resource reused inside a page
+  leaves no trace, the `x-orig-` renaming, and that Bound TLS Details are the browser's summary.
+  It also adds the Transaction Record to the Integrity bullet that lists what Birdbrain hashes and
+  to the Export bullet that lists what an evidence package contains. A test-only certificate
+  allowance, from step 0's question 6, joins CE-2's loopback allowance, which a packaged build
+  cannot turn on.
 - **Time.** The render races one deadline and, when the deadline wins, rejects with "Recapture
   timed out" and stores nothing; `FINAL_ARTIFACT_RESERVE_MS` reserves 20 s for the screenshot,
   MHTML, and text only (`renderPageInHiddenWindow`). Two new phases need time at the end: the
@@ -1063,7 +1073,14 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   collection (spec, PDF). The print runs under its own timeout inside the reserve step 9 raised,
   which step 10 raises again by that timeout. Ingest writes the file, `pdfHash`, and the PDF part
   with `afterCollection: true`. A print that fails, throws, or times out records the PDF absent as
-  `failed`, and the Capture stores. The step completes the validation record for the maintainer's
+  `failed`, and the Capture stores. The PDF gets the size bounds MHTML and the screenshot already
+  have (`MAX_MHTML_SIZE` and `MAX_SCREENSHOT_SIZE` in `src/shared/constants.ts`), because
+  `printToPDF` returns the whole file as one `Buffer` in the main process and an export holds it
+  in memory again. Before printing, the render skips the print when the page's `contentHeight`
+  (D6) exceeds a layout bound; after printing, it discards a `Buffer` over `MAX_PDF_SIZE`. Both
+  record the PDF absent as `failed`, the log names the bound, and the Capture stores. Both
+  constants join `constants.ts`, with values chosen from the fixture sizes, as open question 3
+  does for the Transaction Record. The step completes the validation record for the maintainer's
   acceptance. `CONTEXT.md` rewrites the Capture clause to say that `background` Captures carry a
   PDF today, and keeps _Planned_ on other Capture Methods; `features.mdx` updates Capture, and
   adds the PDF to the Integrity bullet that lists what Birdbrain hashes and to the Export bullet
@@ -1074,8 +1091,11 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
 - **Done when.** With the probe's print-only image as a fixture, the image's request is absent from
   the Transaction Record. The stored file parses under `pdfjs-dist` as one page holding the
   fixture's text. A unit test in which `printToPDF` never settles stores the Capture with the PDF
-  absent as `failed`, inside the Recapture timeout. A package exported from the Capture verifies,
-  and a changed PDF byte fails. If SC-2 has merged, the two-peer test passes for the PDF.
+  absent as `failed`, inside the Recapture timeout. A unit test with `contentHeight` over the
+  layout bound never calls `printToPDF`, and one in which `printToPDF` returns a `Buffer` over
+  `MAX_PDF_SIZE` writes no `.pdf` file; each stores the Capture with the PDF absent as `failed`.
+  A package exported from the Capture verifies, and a changed PDF byte fails. If SC-2 has merged,
+  the two-peer test passes for the PDF.
 - **Verify with.**
   `pnpm test tests/main/services/backgroundRenderer.test.ts tests/main/services/recapture.test.ts tests/main/services/captureLifecycle.test.ts`
   (the sharp note in step 6 applies), `pnpm test:e2e e2e/recapture-transaction-record.spec.ts`

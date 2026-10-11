@@ -188,7 +188,8 @@ root `index.d.ts`. Whether the main-process build resolves it was not checked.
 
 ## What a human must still measure
 
-#1697 stays open for these measurements after the no-go ruling.
+After the no-go ruling, #1697 stays open for the Tor measurements (the first, second, and
+last items below) and the two-network run (the third).
 
 - **Relay-only through Tor, at the Rust level.** The binding cannot run it. Build two `iroh` 1.0.2
   endpoints with `clear_ip_transports()`, `proxy_url` set to a Tor `HTTPTunnelPort`,
@@ -228,7 +229,7 @@ builds it:
 - **Check that the main-process build resolves the binding**, since `main` and `types` name
   missing files.
 - **Dial from a ticket that holds the node id and relay URL only.** The invite carries no direct
-  addresses (ruling 2 under "Rulings"), so the first connection starts on the relay. SC-6
+  addresses (ruling 74 under "Rulings"), so the first connection starts on the relay. SC-6
   (#1810) owns the invite format.
 
 The platform gate stands as the spec describes it (`:242-248`): the 1.1.0 registry metadata lists
@@ -236,30 +237,32 @@ no `darwin-x64` package among its optional dependencies.
 
 ## Rulings
 
-The maintainer ruled on 2026-10-10. Rulings 1 and 2 settle the two open questions this note
-raised; ruling 3 settles relay hosting for testers (#1508).
+The maintainer ruled on 2026-10-10. The numbers are those of that day's decision walkthrough.
+Rulings 4 and 74 settle the two open questions this note raised; ruling 16 settles relay hosting
+for testers (#1508).
 
-1. **Anonymous-team mode (ADR-0032 rule 1, #1697): no-go on `@number0/iroh` 1.1.0.** The ruling
-   is posted on #1697, which stays open for the human Tor and two-network measurements. It
-   matches this note's recommendation, which named what would reopen the question: a binding
-   that exposes `proxy_url`, `clear_ip_transports`, `net_report_config`, and
-   `portmapper_config`, and the Rust-level Tor run above showing an endpoint with no IP sockets
-   picking a home relay. Evidence: answers 1 and 2, the relay probes and port mapping that the
-   binding cannot turn off, and the SOCKS-only Tor presets. The recommendation put the partial
-   mode the binding runs today under the same ruling: loopback-bound sockets plus relay-only
-   tickets kept every address but loopback from the peer in this test, though not from the relay
-   or n0.
-2. **Invite contents: a `bbinvite1` invite carries only the node id and relay URL, never direct
-   addresses.** The spec put direct addresses in the invite (`:161-163`). Evidence: the default
-   ticket gives the Owner's public address and every interface address to anyone who reads the
-   invite string. Dropping them costs a relay connection on first contact (62 to 72 ms against 1
-   to 2 ms direct), and on one host hole punching moved every run to a direct path within 188 ms.
-   The joiner still learns the addresses after connecting; nobody else who reads the string does.
-   SC-6 (#1810) owns the invite format.
-3. **Relay hosting: the first testers use n0's public relays.** Before the handoff to testers,
-   one real sync between two machines through the relay is recorded. Birdbrain hosts its own
-   relay only if a tester cannot reach n0's. This note reached n0's relays from one host on one
-   network only.
+- **Ruling 4, anonymous-team mode (ADR-0032 rule 1, #1697): no-go on `@number0/iroh` 1.1.0.**
+  The ruling is posted on #1697, which stays open for the human Tor and two-network
+  measurements. The posted ruling says to revisit it when the binding gains a proxy setting. The
+  no-go matches this note's recommendation, whose evidence bar for reopening was a binding that
+  exposes `proxy_url`, `clear_ip_transports`, `net_report_config`, and `portmapper_config`, and
+  the Rust-level Tor run above showing an endpoint with no IP sockets picking a home relay.
+  Evidence: answers 1 and 2, the relay probes and port mapping that the binding cannot turn off,
+  and the SOCKS-only Tor presets. The recommendation put the partial mode the binding runs today
+  under the same ruling: loopback-bound sockets plus relay-only tickets kept every address but
+  loopback from the peer in this test, though not from the relay or n0. The no-go covers it: the
+  app offers no partial mode on 1.1.0. Ruling 74 makes every invite's ticket relay-only regardless.
+- **Ruling 74, invite ticket: the Iroh ticket in a `bbinvite1` invite carries only the node id
+  and relay URL, never direct addresses.** The spec puts direct addresses in the invite
+  (`:161-163`). Evidence: the default ticket gives the Owner's public address and every
+  interface address to anyone who reads the invite string. Dropping them costs a relay
+  connection on first contact (62 to 72 ms against 1 to 2 ms direct), and on one host hole
+  punching moved every run to a direct path within 188 ms. The joiner still learns the addresses
+  after connecting; nobody else who reads the string does. SC-6 (#1810) owns the invite format.
+- **Ruling 16, relay hosting: the first testers use n0's public relays.** Before the handoff to
+  testers, someone records one real sync between two machines through the relay; the ruling
+  names no owner. Birdbrain hosts its own relay only if a tester cannot reach n0's. This note
+  reached n0's relays from one host on one network only.
 
 ## The probe
 

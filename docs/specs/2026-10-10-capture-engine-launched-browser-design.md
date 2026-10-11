@@ -169,7 +169,10 @@ Each design section below names the requirements it serves.
 
 And four security requirements:
 
-- **S1.** Only Birdbrain's main process can drive the launched browser.
+- **S1.** Only Birdbrain can drive the launched browser. S1 holds only if decision D1 picks the
+  pipe: through a debugging port any local process can drive the browser (see
+  [The browser connection](#the-browser-connection)), so a fixed port drops S1 and the validation
+  item that tests it.
 - **S2.** A Persona's cookie values stay in its browser profile's own store. The engine never
   asks the launched browser for them and replaces them in the events that carry them.
 - **S3.** Browser profiles are isolated from each other and from the Operator's everyday browser.
@@ -193,30 +196,36 @@ only when it launches it (see [Browser discovery and launch](#browser-discovery-
 
 ### Starting a Capture Session in a launched browser
 
-The Operator has an Active Case and an operator name. They start a Capture Session in a launched
-browser and choose the browser, a Persona or none, and what the Capture Session captures without
-a click: nothing, every page that loads, or the pages an Active Case Selector matches. The last two
-appear only once #600 lands. The start dialog shows the Egress and its label without letting the
-Operator change them, and the CE-4 warning while the Egress is Direct and no VPN is seen. Birdbrain
-then launches the browser and shows the Capture Session panel. The first tab is `about:blank`.
+The Operator has an Active Case and an operator name. They launch a browser from Birdbrain and
+choose the browser, a Persona or none, and what the Capture Session captures without a click:
+nothing, every page that loads, or the pages an Active Case Selector matches. The last two appear
+only once #600 lands. The start dialog shows the Egress and its label without letting the Operator
+change them, and the CE-4 warning while the Egress is Direct and no VPN is seen. Birdbrain then
+launches the browser and shows the Capture Session panel. The first tab is `about:blank`.
 
 *Engine rules:*
 
-- **The launched browser lives exactly as long as its Capture Session.** Starting the Capture
-  Session launches it, ending the Capture Session closes it, and closing its last window ends the
-  Capture Session. No launched browser runs outside a Capture Session, so every page loaded in it
-  is one the engine could record from its first request, the promise of ADR-0034:69-71. If a
-  Capture Session is already running for the extension, the launched browser joins it and its
-  Active Case.
-- **The operator name is checked at start.** `admit` refuses a Capture without one; checking at
-  start keeps an Operator from browsing for an hour and then finding every Capture refused.
+- **A launched browser never outlives its Capture Session** (recommended, decision D20).
+  Launching a browser starts a Capture Session if none is running; if one is already running, the
+  browser joins it and its Active Case. Ending the Capture Session closes the browser. Closing the
+  browser's last window closes the browser only, and the Capture Session keeps running until the
+  Operator stops it in Birdbrain: the session service holds one running flag (`sessionActive`,
+  `src/main/services/session.ts:22-27`) with one `start` and one `stop` (:118-127), which the
+  extension uses too, and `CONTEXT.md` defines a Capture Session by the Operator starting and
+  stopping work (:70). No launched browser runs outside a Capture Session, so every page loaded in
+  it is one the engine could record from its first request, the promise of ADR-0034:69-71.
+- **Birdbrain checks the operator name before it launches the browser.** `admit` refuses a
+  Capture without one; checking at launch keeps an Operator from browsing for an hour and then
+  finding every Capture refused.
 - **One launched browser at a time** (recommended, decision D10). Two signed-in browsers under two
   Personas side by side make wrong-persona capture easier, a risk the threat-model delta (#546)
   owes an answer for (ADR-0030:94-96).
-- **The Persona is chosen per Capture Session.** The persona plan chose a per-job picker with no
-  app-wide state (`docs/plans/2026-09-19-persona-cookie-import.md`, decision 6). A launched browser
-  holds one browser profile for its whole life, so the Capture Session carries the Persona, and
-  every Capture's stamp comes from the same value that chose the browser profile.
+- **The Operator chooses the Persona when launching the browser** (recommended, decision D21),
+  from a picker that defaults to none, and the choice holds for that browser's life. The persona
+  plan chose a per-job picker with no app-wide state
+  (`docs/plans/2026-09-19-persona-cookie-import.md`, decision 6). A launched browser holds one
+  browser profile for its whole life, so the launch is the job: the same value chooses the browser
+  profile and stamps every Capture taken in it.
 
 ### Browsing
 
@@ -257,10 +266,11 @@ says why, and passive capture skips it.
 ### Ending the Capture Session
 
 The Operator stops the Capture Session in Birdbrain, which asks for confirmation and then closes
-the browser, or closes the browser's last window, which ends the Capture Session. Quitting
-Birdbrain closes the browser. A browser left running after Birdbrain exits would look like a
-recording browser and record nothing; whether Chromium exits when its debugging pipe closes is
-not measured (open question P8).
+the browser. Closing the browser's last window closes the browser only: the Capture Session keeps
+running, and the panel says the browser has closed (decision D20). Quitting Birdbrain closes the
+browser. A browser left running after Birdbrain exits would look like a recording browser and
+record nothing; whether Chromium exits when its debugging pipe closes is not measured (open
+question P8).
 
 ## Design
 
@@ -430,8 +440,8 @@ Serves E1.
    component extensions as `background_page` and `service_worker` targets with network traffic of
    their own.
 
-`flatten`, `filter`, and the `Network.enable` buffer limits are marked experimental in
-`devtools-protocol` 0.0.1716261.
+`flatten`, `filter`, the `Network.enable` buffer limits, and its `enableDurableMessages` parameter
+are marked experimental in `devtools-protocol` 0.0.1716261.
 
 **The engine enables a closed set of domains:** `Target` on the browser connection, `Network` on
 each recorded target, and `Page` only if the probe shows it changes nothing the page records
@@ -503,13 +513,28 @@ overlap (:34-35).
    (first-slice spec, open question 3). A body over budget, or one the browser no longer held, goes
    into the inventory. Nothing about a page the Operator did not capture is written to disk. The
    main-process cost of fetching every body during an hour of browsing is open question P12.
-4. **Credential values are replaced on arrival.** The four header values of ADR-0036 are replaced
-   in the event handler, before the exchange is held anywhere: in `headers`, in `headersText`, and
-   in the cookie lists the extra-info events carry: `associatedCookies` on
-   `Network.requestWillBeSentExtraInfo`, and `blockedCookies` and `exemptedCookies` on
-   `Network.responseReceivedExtraInfo`, which hold cookie objects with their values and, for the
-   response lists, the raw `cookieLine`. The first slice replaces before writing; in a running
-   Capture Session the engine holds the recording for minutes, so the rule moves earlier.
+4. **Credential values are replaced on arrival.** The engine replaces the four header values of
+   ADR-0036 in its event handler, before it holds the exchange anywhere, in every header map,
+   header text, and cookie list of any `Network` event. In `devtools-protocol` 0.0.1716261 those
+   are:
+   - `headers` on `Request`;
+   - `headers`, `headersText`, `requestHeaders` ("Refined HTTP request headers that were actually
+     transmitted over the network"), and `requestHeadersText` on `Response`, which arrives in
+     `Network.responseReceived` and, for a redirect hop, as `redirectResponse` on
+     `Network.requestWillBeSent`;
+   - `headers` and `associatedCookies` on `Network.requestWillBeSentExtraInfo`;
+   - `headers`, `headersText`, `blockedCookies`, and `exemptedCookies` on
+     `Network.responseReceivedExtraInfo`, whose cookie lists hold cookie objects with their values
+     and the raw `cookieLine`;
+   - `headers` on `Network.responseReceivedEarlyHints`, the raw headers of a `103` response;
+   - the request and response headers of a WebSocket handshake
+     (`Network.webSocketWillSendHandshakeRequest`, `Network.webSocketHandshakeResponseReceived`),
+     and a signed exchange's `outerResponse` and the `responseHeaders` of its header
+     (`Network.signedExchangeReceived`).
+
+   A unit test feeds the handler a synthetic event with a marker value in each of those fields
+   and asserts that none survives. The first slice replaces before writing; in a running Capture
+   Session the engine holds the recording for minutes, so the rule moves earlier.
 5. **The cut.** The cut is the point in the browser connection's message stream at which the engine
    sends its first artifact command. An exchange belongs to the Capture if its
    `requestWillBeSent` arrived before the cut. One not finished when the artifacts are done is
@@ -540,7 +565,14 @@ For a clicked Capture of tab T:
 1. Check that T is in the default browser context and its URL is `http` or `https`, and check the
    URL against the exclusion policy.
 2. Run Scroll-to-load if the Operator asked for it, and keep its outcome for the inventory (the
-   outcome CE-8 makes `scrollToLoadLazyContent` return).
+   outcome CE-8 makes `scrollToLoadLazyContent` return). That function drives an Electron
+   `WebContents` through main-world `executeJavaScript` (`backgroundRenderer.ts:215-262`), which a
+   launched browser does not have, so stage 2 runs the same step and reset scripts over CDP with
+   `Runtime.evaluate` in the isolated world and returns the same outcome. The overflow unlock
+   (`SCROLL_UNLOCK_SCRIPT`, :166-180), which sets `overflow` to `visible` on the `html` and `body`
+   elements to lift a consent wall's scroll lock, does not run in a launched browser: it is a style
+   edit the page can observe, and the Operator is present to dismiss the wall. P3 covers what the
+   scroll scripts change for the page.
 3. Wait for network quiet on T's CDP sessions, bounded. The background renderer's
    `NETWORK_IDLE_MS` and `INITIAL_NETWORK_IDLE_MAX_MS` (`backgroundRenderer.ts:15-16`) are the
    starting values.
@@ -585,11 +617,18 @@ request inside the current navigation, so a Capture of that page would hold the 
 in its Transaction Record. ADR-0030 rules that "Passwords are never stored" (:63), and an export
 carries the record to people the Operator does not control (ADR-0036:32-35).
 
-The network layer cannot tell a password field from any other form field. The recommendation:
-until an ADR amends ADR-0036 to say which request bodies a launched-browser record keeps, the engine
-records no request body in a `launched` or `launched-passive` Transaction Record. The inventory
-lists each withheld body by request. The cost is that a search or form submission sent by `POST`
-loses its body.
+The network layer cannot tell a password field from any other form field. The recommendation: the
+engine records no request body in a `launched` or `launched-passive` Transaction Record, and the
+inventory lists each withheld body by request. The cost is that a search or form submission sent
+by `POST` loses its body.
+
+Either answer needs an ADR before step 4. Withholding bodies changes what a Transaction Record
+holds: ADR-0035 gives the record the tab's navigation "from its first request to the moment of
+Capture" (:28-32), ADR-0036 replaces four header values only, keeps tokens in a body in the
+record, and makes its list part of the Evidence Profile (:26-30, :43-46), and `CONTEXT.md` says "a
+secret in any other header, a URL, or a body stays in the record" (:58). That ADR amends ADR-0035,
+ADR-0036, and that glossary clause. Recording bodies keeps the Persona's password in the record,
+so that ADR amends ADR-0030 instead.
 
 ### Browser profiles per Persona
 
@@ -664,12 +703,28 @@ time a browser launches, so when the browser profile is seeded is a decision (D7
   the partition after the import (#1499).
 - **(c) Each store has its own import.** Simplest, and the Operator needs the cookie file twice.
 
-Under every option the mapping matches `importCookies`: the engine sets a host-only cookie by URL
-with no `domain`, because a `domain` widens it to subdomains (`cookieFiles/types.ts:5-12`).
-`sameSite` maps to the protocol's `Strict`, `Lax`, and `None`, and `unspecified` leaves it unset. A
-cookie the browser refuses joins the rejection list as `rejected-by-session`. Cookie values pass
-through Birdbrain's memory; the engine never logs them or writes them to a file. Per-store counts
-on the `personas` row would need a migration and take the migration lane.
+Under option (a), an import for a Persona whose launched browser is running asks the Operator to
+end the Capture Session first, as deletion does. Chromium runs one browser process per data
+directory ("no more than one copy of the application can be running at once with a given data
+directory", `chrome/browser/process_singleton.h:39-42`), so the seeding launch cannot start on a
+browser profile that is in use.
+
+Under every option the engine maps `hostOnly` for CDP, which reads `domain` differently from
+Electron. Electron turns any `domain` into a subdomain cookie, so `importCookies` passes no
+`domain` for a host-only cookie and the file's `domain` otherwise (`cookieFiles/types.ts:5-12`,
+`personaSessions.ts:88-98`). `Storage.setCookies` makes a subdomain cookie only when `domain`
+starts with a period; without one it clears the domain, and the cookie becomes host-only
+(`MakeCookieFromProtocolValues`, `content/browser/devtools/protocol/network_handler.cc:461-474`).
+The Netscape parser keeps the domain as the file wrote it and takes `hostOnly` from the
+include-subdomains column (`cookieFiles/netscape.ts:35-53`), so a row for `example.com` with
+`TRUE` in that column arrives with no leading period. Copying `importCookies`' mapping would narrow
+that cookie to one host in the launched browser while the partition keeps it as a subdomain
+cookie. The engine therefore passes `domain` with a leading period for a cookie whose `hostOnly` is
+false, and `url` with no `domain` for a host-only cookie. `sameSite` maps to the protocol's
+`Strict`, `Lax`, and `None`, and `unspecified` leaves it unset. A cookie the browser refuses joins
+the rejection list as `rejected-by-session`. Cookie values pass through Birdbrain's memory; the
+engine never logs them or writes them to a file. Per-store counts on the `personas` row would need
+a migration and take the migration lane.
 
 A cookie with no expiry is a session cookie in the launched browser too, and may be gone after the
 browser closes (P14). A sign-in by hand in the launched browser changes that browser profile only;
@@ -713,8 +768,10 @@ An enterprise policy, or an extension in the browser profile, can therefore repl
 the WebRTC policy. The engine checks the effect:
 
 - **WebRTC.** Before showing the first tab, the engine gathers ICE candidates on it with no ICE
-  servers, as the probe page did. A candidate while the Egress is not Direct means the policy is
-  not in force: the engine closes the browser and says so.
+  servers, as the probe page did, from an isolated world on that tab's `about:blank`. The probe
+  gathered them from a loaded `http` page instead, so P6 asks whether the result matches. A
+  candidate while the Egress is not Direct means the policy is not in force: the engine closes the
+  browser and says so.
 - **Remote endpoint.** Through the SOCKS5 fixture, CDP reported the proxy's own address and port as
   `remoteIPAddress` and `remotePort` on every response sent through it. While the Egress is not
   Direct, a recorded response whose remote endpoint is present, is not loopback or link-local, and
@@ -801,6 +858,16 @@ it runs regular expressions in the page with no budget and highlights by editing
 runs where extraction runs after CE-10, because a 200 ms budget per Selector on a large page is
 main-process time.
 
+**A timeout has to be visible.** `safeRegexTest` answers false for a pattern that does not parse,
+for a budget that expires, and for no match alike (`safeRegex.ts:10-13`, :38-40);
+`selectorMatchesText` "Never throws" (`selectorRepo.ts:143-145`); and `matchIgnoredUrl`, which
+`matchCaseExclusion` reaches, takes the same test as a parameter (`src/shared/urlPatterns.ts:73-95`,
+`exclusionPolicy.ts:40-49`). No caller can tell a timeout today. Stage 2 changes `safeRegexTest`
+so it reports a timeout apart from no match, and the moved `selectorMatchesText` and
+`matchCaseExclusion` pass that answer on. The live check and the Selector Lifecycle use the same
+changed functions, so they still cannot drift. The extension calls `matchIgnoredUrl` without the
+sandbox (`extension/src/background.ts:695`), so the change keeps that call's answer as it is.
+
 **No highlights in the page.** The Capture Session panel lists the Selectors that matched the tab
 in front instead. That live result writes no Persisted Match: Persisted Matches still come from
 ingest (`runPostCaptureWork`, `captureLifecycle.ts:745`), so the Selector Lifecycle stays the only
@@ -816,7 +883,7 @@ or "pages a Selector matches" (ADR-0037:33-36). Then:
   that page; the inventory gives the reason each is absent;
 - the Case's exclusion policy is checked with `matchCaseExclusion` on the committed URL before
   anything is collected, and `admit` checks again. For passive capture a pattern that times out
-  counts as a match, so the page is skipped (decision D13);
+  counts as a match, so the page is skipped (decision D13), which needs the timeout answer above;
 - a page on a loopback or private address is not passively captured, using the shared address
   classification CE-2 (#1726) introduces;
 - every passive Capture carries a Transaction Record (ADR-0037:33-36). If the tab's recording is
@@ -878,10 +945,18 @@ account the page showed: an Operator can sign in or out by hand in the launched 
 stamp does not follow that. Export wording stays with #543, and CE-S3 sets the `companion`
 wording. The label rules of ADR-0030 are unchanged: the label is frozen at acquisition (:40-41).
 
-`CONTEXT.md` changes with the code that makes each clause true: the Capture Method entry, the
-Capture Session entry (a launched browser runs only inside a Capture Session), the Persona
-relationship line, which gains the launched mechanism beside the background and extension ones,
-and the gaps in decision D18.
+`CONTEXT.md` changes with the code that makes each clause true:
+
+- the Capture Method entry, whose `launched` clause, "a Transaction Record when a Capture Session
+  is running" (:78), changes with decision D20;
+- the Capture Session entry: a launched browser runs only inside a Capture Session (D20);
+- the Capture Lifecycle entry, whose admission covers "a request from any extension route" (:74)
+  and gains the launched route;
+- the Transaction Record entry, whose "a secret in any other header, a URL, or a body stays in
+  the record" (:58) changes with the ADR decision D3 needs;
+- the Persona relationship line, which gains the launched mechanism beside the background and
+  extension ones;
+- the gaps in decision D18.
 
 ### Manifest, schema, and verifier
 
@@ -924,10 +999,10 @@ CE-5.
 | A response from the cache, a service worker, the back-forward cache, or a speculative load | No exchange or a partial one | Inventory reason |
 | A credential header | Value replaced on arrival | Inventory lists the header names (ADR-0036) |
 | A request body | Withheld, if decision D3 takes the recommendation | Inventory lists the request |
-| An exclusion pattern or Selector check times out on a passive page | Skips the page | `skipped` event in the capture activity feed |
+| An exclusion pattern or Selector check times out on a passive page | Skips the page, once `safeRegexTest` reports a timeout apart from no match | `skipped` event in the capture activity feed |
 | A tab in a private window | Refuses the Capture | Panel |
 | A tab crashes | Discards its recording | Panel |
-| The browser exits or the connection closes | Ends the Capture Session | Message to the Operator; Captures already taken stand |
+| The browser exits or the connection closes | Discards the browser's recordings and stops its passive capture; the Capture Session keeps running (decision D20) | Message to the Operator; Captures already taken stand |
 | Birdbrain exits while the browser runs | Cannot reattach to a pipe. If the browser is still running at the next start, asks the Operator to close it | Message to the Operator |
 | Cookie seeding refuses a cookie | Counts it | Import result per store, `rejected-by-session` |
 
@@ -977,12 +1052,11 @@ What this does not show:
 - **The browser updates itself.** Chrome, Edge, and Brave update outside Birdbrain's release
   cycle, and the engine relies on commands the protocol marks experimental (`Page.captureSnapshot`,
   the `Network.enable` buffer limits, `flatten`). The probe result holds for the versions it ran
-  on. Each Capture names its browser and version, and open question P22 covers how validation keeps
-  up.
+  on. Each Capture names its browser and version, and decision D23 covers how validation keeps up.
 - **The Egress can be routed around** by a policy or an extension (see [Egress](#egress)).
 - **The Operator can mistake one browser for the other.** The launched Chrome has the same icon as
   the everyday Chrome. A Capture taken in the wrong browser has the wrong method and, possibly, the
-  wrong Persona (P21).
+  wrong Persona (decision D22).
 - **Main-process load.** CDP events for every request of every tab reach Birdbrain while a Capture
   Session runs, whether or not anything is captured.
 
@@ -1007,18 +1081,26 @@ servers reached through CE-2's test-only loopback allowance:
   and the reason in the inventory.
 - **Credentials.** A fixture cookie, an `Authorization` value, and a password field's value appear
   in no file Birdbrain wrote: WARC, inventory, logs, or temporary files. The test searches for the
-  known values.
+  known values. The synthetic-event unit test of step 4 in
+  [the recording section](#from-a-session-long-recording-to-one-transaction-record-per-capture)
+  passes.
 - **Egress.** Every exchange's remote endpoint is the SOCKS5 fixture's; with the proxy stopped,
   launch is refused and the target's log shows no request; the WebRTC check finds no candidate; a
-  net log in a loopback-only network namespace shows no socket to any address but the proxy.
-- **Connection.** With the pipe, the browser process opens no listening socket and writes no
-  `DevToolsActivePort` file.
+  net log in a loopback-only network namespace shows no socket to any address but the proxy. That
+  run uses `unshare -rn sh -c 'ip link set lo up && xvfb-run --auto-servernum pnpm test <file>'`,
+  where `<file>` is the suite's Egress test, which passes `--log-net-log` to its own launch only
+  (S4). Step 1 confirms the command runs on Linux.
+- **Connection.** If decision D1 picks the pipe (S1), the browser process opens no listening
+  socket and writes no `DevToolsActivePort` file. A fixed port has no item here, because it does
+  not meet S1.
 - **Command log.** The client's log contains no `Runtime.enable`, `Log.enable`,
   `Performance.enable`, `Debugger.enable`, or cookie-reading command.
 - **Isolation.** A cookie seeded into one Persona's browser profile is not sent from another's; the
   fixture checks cookie names and compares values in memory only. A seeded cookie appears in the
-  first request to a cookie-echo fixture, and the WARC holds the marker in its place. A Capture in a
-  private window is refused.
+  first request to a cookie-echo fixture, and the WARC holds the marker in its place. A seeded
+  cookie whose `hostOnly` is false is sent to a subdomain fixture, and a host-only one is not. An
+  import for a Persona whose browser is running is refused with the reason. A Capture in a private
+  window is refused.
 - **Selector parity.** For a fixed set of patterns and pages, the launched-browser match agrees with
   `selectorMatchesText` on the stored Extracted Text.
 - **Passive capture.** Stopping the Capture Session stops capture; an excluded URL produces no
@@ -1049,7 +1131,7 @@ servers reached through CE-2's test-only loopback allowance:
   Birdbrain's memory and adds less main-process work, but Chrome's buffer then decides which bodies
   survive an hour of browsing, and the engine cannot choose. Fetching at `loadingFinished` follows
   the first slice; if P12 shows its cost is too high, this is the fallback, with every evicted body
-  in the inventory.
+  in the inventory. Durable messages (P12) may change how many bodies survive.
 - **A library launcher's default arguments.** Puppeteer's defaults select the plain-text password
   store and a mock keychain and set the automation flag.
 - **An Electron persona window** (`persona-window`, #1505). Rejected in ADR-0034: its fingerprint
@@ -1081,33 +1163,68 @@ commands named below.
    [stage-1 probe](2026-10-02-capture-engine-probe-spike.md), with the script in the doc. Done when
    each P question has a measured answer or is marked not measurable on the machines available.
    Verify with `.claude/hooks/vale-prose.sh --base origin/main`.
-2. **Verifier release step.** `launched`, the browser identity field, the stage-2 inventory reasons,
-   and the passive rule field, per decisions D5 and D12, unless CE-5 carries them. Holds the
-   manifest schema lane in the order the roadmap gives. Starts in `src/shared/schemas.ts`,
-   `src/shared/types.ts`, `src/shared/verify/`, and `src/verifier/`. Done when entries written
-   before the change still verify, an entry carrying each new value and field verifies in the shared
-   and the standalone verifier, and an entry with an unknown method or reason fails strict parse.
-   Also verify with `pnpm build:verifier`. A tagged release ships it before step 4 merges.
+2. **Verifier release step.** `launched`, the browser identity fields, the stage-2 inventory
+   reasons, and the passive rule field, per decisions D5 and D12, unless CE-5 carries them. Each
+   new value and field gets a refine that requires the next schema version, as `exhibitNumber`
+   requires 3 and the Egress fields require 5 (`src/shared/schemas.ts:517-531`), and
+   `fieldMinReaderSchemaVersion` stamps that version on an entry that carries one
+   (`src/main/services/manifest.ts:774-781`), so an older verifier reports itself too old instead
+   of reporting a broken chain. `MANIFEST_SCHEMA_VERSION` (`src/shared/constants.ts:81`) takes the
+   next number after CE-5's, settled when the step starts against the releases that have shipped,
+   as CE-5's is; whatever CE-5 carries shares CE-5's number instead. The roadmap's manifest schema
+   lane gives stage 2 no slot: this step joins it after the release carrying CE-5's verifier, and
+   #1498's Persona fields, if re-triaged, keep their place beside CE-5 under CE-5's number. Starts
+   in `src/shared/schemas.ts`, `src/shared/types.ts`, `src/shared/constants.ts`,
+   `src/main/services/manifest.ts`, `src/shared/verify/`, and `src/verifier/`. Done when entries
+   written before the change still verify, an entry carrying each new value and field verifies in
+   the shared and the standalone verifier, an entry with an unknown method or reason fails strict
+   parse, and an entry carrying a new value under an older stamp fails its refine. Also verify with
+   `pnpm build:verifier`. A tagged release ships it before step 4 merges, and its release notes
+   tell Shared Case members to upgrade together, as the roadmap's gates ask of the releases
+   carrying #1747 and CE-5's verifier.
 3. **Launcher, connection, browser profiles, and Egress, with no Capture.** After CE-3 merges, the
-   probe, and decisions D1, D2, D8, D9, D10, and D19. Starts in a new module under
+   probe, and decisions D1, D2, D8, D9, D10, D14, D16, D19, and D23. Starts in a new module under
    `src/main/services/`, placed per `docs/agents/architecture.md`, and `settings.ts` after CE-4 in
-   the hot-file order. Done when a Capture Session launches and closes the browser; the connection,
-   Egress, and command-log validation items pass; ending a Capture Session deletes a throwaway
-   browser profile; and the orphan sweep removes a browser profile whose Persona row is gone.
-4. **Clicked `launched` Captures.** After CE-7, CE-8, CE-10, step 2's release, and decisions D3 and
-   D6. Holds the `captureLifecycle.ts` hot file after CE-9 in the roadmap's order. Done when the
-   first slice's known answers, attach before request, the cut, and the credentials items pass
-   against a launched Chrome, and a package exported from a `launched` Capture verifies. Also verify
-   with `pnpm test:e2e`.
-5. **Persona browser profiles and seeding.** After #1498's release and decisions D7, D11, D15, D16,
-   and D17. Done when the isolation items pass, deleting a Persona removes its browser profiles,
-   and Capture detail, `report.html`, `certification.html`, and `VERIFY.md` show the confirmed
-   wording. Takes the migration lane only if decision D7 adds per-store counts to the `personas`
-   row.
+   the hot-file order. Adds the launched-browser known-answer suite under `tests/main/services/`,
+   in a directory named for that module (`<module>` below), run on Linux with
+   `xvfb-run --auto-servernum pnpm test tests/main/services/<module>/` against the browser that
+   decision D23 picks; steps 4 to 6 add their items to it. Done when a Capture Session launches and
+   closes the browser; the connection, Egress, and command-log validation items pass in that suite;
+   the engine denies geolocation and warns of an extension target, per decisions D16 and D14;
+   ending a Capture Session deletes a throwaway browser profile; and the orphan sweep removes a
+   browser profile whose Persona row is gone.
+4. **Clicked `launched` Captures.** After CE-7, CE-8, CE-10, step 2's release, decisions D3, D6,
+   and D22, and the ADR that D3's answer needs. Holds the `captureLifecycle.ts` hot file after CE-9
+   in the roadmap's order. Starts in the step-3 module, `captureLifecycle.ts` (`admit` and the
+   launched route), and the WARC writer and inventory modules CE-7 and CE-8 add. Done when the
+   first slice's known answers, attach before request, the cut, and the credentials items pass in
+   the suite against a launched Chrome; a package exported from a `launched` Capture verifies; and
+   a two-peer `MemoryTransport` test, as CE-7 and CE-8 have, shows that the receiver verifies a
+   `launched` Capture's entry and that its Shared Case walk passes. Also verify with
+   `pnpm test:e2e`.
+5. **Persona browser profiles and seeding.** After #1498's release and decisions D7, D11, D15,
+   D17, and D21. Starts in the step-3 module, `src/main/services/persona/personaSessions.ts`,
+   `src/main/services/persona/cookieFiles/`, `reportHtml.ts`, `certification.ts`,
+   `verifyRunbook.ts`, and the Capture detail components under
+   `src/renderer/components/captures/`. Done when the isolation items pass, deleting a Persona
+   removes its browser profiles, and Capture detail, `report.html`, `certification.html`, and
+   `VERIFY.md` show the confirmed wording. Takes the migration lane only if decision D7 adds
+   per-store counts to the `personas` row.
 6. **Passive capture (#600 with #599).** After step 4, the verifier release that decision D5
-   settles, and decision D13.
-   Done when #600's and #599's acceptance criteria pass, with the Selector parity and passive
-   capture items, and `CONTEXT.md` drops _Planned_ from the clauses it makes true.
+   settles, and decision D13, with the ADR-0037 amendment if D13 takes the recommendation. Starts
+   in the step-3 module, `src/main/services/db/selectorRepo.ts`, `selectorLifecycle.ts`,
+   `safeRegex.ts`, `exclusionPolicy.ts`, `src/shared/urlPatterns.ts`, `reportHtml.ts`,
+   `certification.ts`, `verifyRunbook.ts`, and
+   `src/renderer/components/captures/captureMethodLabel.ts`. The PR adds the module that takes
+   `selectorMatchesText` out of `selectorRepo.ts` as a blocking row in the evidence-affecting paths
+   assessment, worded as the #400 amendment is: it decides which Selectors a launched page matches
+   and the Persisted Matches it feeds. Outside `src/main/services/db/**`, that module would
+   otherwise match no entry (assessment, "Known gap: carve-outs are caught by review, not by a
+   check"). Done when #600's and #599's acceptance criteria pass, with the Selector parity and
+   passive capture items; a test shows that a timed-out exclusion pattern skips a passive page; a
+   two-peer `MemoryTransport` test shows that the receiver verifies a `launched-passive` Capture's
+   entry and that its Shared Case walk passes; and `CONTEXT.md` drops _Planned_ from the clauses it
+   makes true.
 
 The migration and Case Archive lanes are untouched unless the `captures` row mirrors the new fields
 (the plan decides), because `launched` Captures carry the same files as the first slice.
@@ -1122,15 +1239,18 @@ tagging the release that carries CE-5's verifier.
 
 - **D1. Transport.** The pipe or a fixed port. Recommended: the pipe, because only Birdbrain can
   drive the browser, at the cost of a page-visible `navigator.webdriver === true`
-  ([The browser connection](#the-browser-connection)). Needs ADR-0034's "with a remote-debugging
-  port" amended to "remote-debugging connection".
+  ([The browser connection](#the-browser-connection)). S1 holds only with the pipe: with a fixed
+  port, a second client using only the URL from `/json/version` was accepted. Needs ADR-0034's
+  "with a remote-debugging port" amended to "remote-debugging connection".
 - **D2. CDP client.** A client in `src/main`, `chrome-remote-interface`, `puppeteer-core`, or
   `playwright-core`. Recommended: a client in `src/main`, no new runtime dependency
   ([The CDP client](#the-cdp-client)). Using `devtools-protocol` for types is a separate
   development-dependency approval.
-- **D3. Request bodies.** Record none in a launched-browser Transaction Record until an ADR amends
-  ADR-0036, or record them and amend ADR-0030. Recommended: record none
-  ([Credentials and passwords](#credentials-and-passwords)).
+- **D3. Request bodies.** Record none in a launched-browser Transaction Record, or record them.
+  Recommended: record none ([Credentials and passwords](#credentials-and-passwords)). Either
+  answer needs an ADR before step 4: withholding amends ADR-0035, ADR-0036, and the Transaction
+  Record entry of `CONTEXT.md`, which says a secret in a body stays in the record; recording amends
+  ADR-0030, which rules that passwords are never stored.
 - **D4. Where the CDP client runs.** Part of the #598 gate: if the direction is a utility process,
   does the CDP client run there too, so extraction cannot stall it?
 - **D5. `launched-passive` sequencing.** #599 says the value lands with #600, "not before", and its
@@ -1156,7 +1276,12 @@ tagging the release that carries CE-5's verifier.
   (recommended: record them); whether a `launched-passive` entry records which rule took it
   (recommended) and keeps the matching Selectors off the signed entry (recommended).
 - **D13. Exclusion timeouts.** For passive capture, treat a timed-out exclusion pattern as a match
-  (recommended). Clicked Captures keep today's behavior.
+  (recommended). Clicked Captures keep today's behavior, where a timeout admits the Capture
+  (`exclusionPolicy.ts:34-41`). A passive-only rule amends ADR-0037's "The Case's exclusion policy
+  applies to passive Captures as it does to clicked ones" (:35-36) and the same constraint in
+  #600. Applying the rule to clicked Captures too needs no such amendment, and changes what
+  `admit` and Recapture refuse. Any answer needs `safeRegexTest` to report a timeout apart from no
+  match ([Selector matching](#selector-matching-and-passive-capture)).
 - **D14. Policy or extension proxy override.** Warn in the panel when an extension target appears
   (recommended), and rule whether Birdbrain refuses Captures while one is present and the Egress
   is not Direct.
@@ -1172,6 +1297,36 @@ tagging the release that carries CE-5's verifier.
   the extension only. Add or amend both when #600 lands (recommended).
 - **D19. The Capture Session panel.** A product surface with no repo precedent: it needs a design
   before step 3 builds it.
+- **D20. A launched browser runs only inside a Capture Session.** Recommended: launching starts a
+  Capture Session if none is running and joins the running one otherwise; ending the Capture
+  Session closes the browser; closing the browser's last window closes the browser and leaves the
+  Capture Session running
+  ([Starting a Capture Session](#starting-a-capture-session-in-a-launched-browser)). This narrows
+  two records, which both allow a `launched` Capture outside a running Capture Session: the
+  Capture Method entry of `CONTEXT.md` gives `launched` "a Transaction Record when a Capture
+  Session is running" (:78), and ADR-0034 scopes recording to a Capture Session in a launched
+  browser (:69-71). The alternative keeps a launched browser open outside a Capture Session, and
+  its `launched` Captures then carry no Transaction Record and no Bound TLS Details, because
+  ADR-0034 records only during a Capture Session.
+- **D21. The Persona of a launched browser.** The Operator chooses it when launching the browser,
+  default none, and it holds for that browser's life (recommended, because a launched browser
+  holds one browser profile). This extends the persona plan's decision 6, a per-job picker for
+  Recapture and add-URL, to a job that takes many Captures, and changes the wrong-persona
+  mitigation the threat-model delta (#546) owes: one choice stamps every Capture taken in that
+  browser, where the plan's picker sets the stamp of one render
+  (`docs/plans/2026-09-19-persona-cookie-import.md`, decision 6 and Phase 6).
+- **D22. Telling the browsers apart.** How the Operator tells the launched browser from the
+  everyday one at a glance, beyond the Capture Session panel: the launched Chrome has the same
+  icon as the everyday Chrome (see [Risks](#risks)). A product surface with no repo precedent.
+  Recommended: settle it with the panel design (D19), before step 4 adds the first Capture.
+- **D23. A browser for the known-answer suite.** The suite needs a Chromium browser on the CI
+  runner at a pinned version, because a pass names the version it ran on (E7). Options: a pinned
+  Chrome for Testing build that the test setup fetches, with `@puppeteer/browsers` (a new
+  dependency) or with a download script; a browser already on the runner image, which this spec
+  did not check and which changes when the image does; or no CI run, with the suite run by hand per
+  pairing. How Edge, Brave, and branded Chrome are rechecked when they update is part of the same
+  decision. Recommended: a pinned Chrome for Testing build, decided before step 3, which adds the
+  suite.
 
 ## Open questions
 
@@ -1186,15 +1341,20 @@ plan or the maintainer settles.
   page in a way the page can observe, and whether a tab that is not in front can be captured.
 - **P3. `Page` and isolated-world reads.** Whether `Page.enable`, `Page.frameNavigated`,
   `Page.createIsolatedWorld`, and `Runtime.evaluate` in an isolated world change anything the page
-  records, rerunning the first slice's probe checks, including the `Error.stack` getter count.
+  records, rerunning the first slice's probe checks, including the `Error.stack` getter count. The
+  checks cover the Scroll-to-load step and reset scripts too: they scroll the page by design, and
+  the probe records what else they change.
 - **P4. Popups, new tabs, and cross-site navigation.** Measured once for `window.open`. Whether a
   `target=_blank` link and a cross-site navigation keep the target and CDP session attached and
-  the first request seen.
+  the first request seen, and whether durable messages (P12) keep bodies across a cross-site
+  navigation.
 - **P5. Out-of-process iframes and workers.** Which target reports their requests.
 - **P6. WebRTC.** Whether each product honors `--webrtc-ip-handling-policy` (Chrome 150 on Linux
   did), and whether `--force-webrtc-ip-handling-policy` is read only by `content_shell` and
   headless, which rests on a code search. If no switch holds for a product, that product cannot
-  launch while the Egress is not Direct.
+  launch while the Egress is not Direct. Whether ICE gathering from an isolated world on the first
+  tab's `about:blank` gives the probe's result on a loaded `http` page; if it does not, the check
+  needs a page of its own, which the probe names.
 - **P7. The pipe on each platform.** Windows and macOS support is read from
   `devtools_pipe_handler.cc`, not run; Snap- and Flatpak-packaged browsers are untried.
 - **P8. When the pipe closes.** Whether the browser exits when Birdbrain does, and what a "Relaunch
@@ -1206,13 +1366,21 @@ plan or the maintainer settles.
 - **P11. Message order.** Whether the browser connection's message stream keeps order across a
   tab's CDP sessions; the cut depends on it.
 - **P12. Body fetching cost.** Main-process cost of fetching every body at `loadingFinished` over an
-  hour of browsing, against how often Chrome's buffer drops a body when fetched at Capture time.
+  hour of browsing, against how often Chrome's buffer drops a body when fetched at Capture time,
+  with and without durable messages. `Network.enable` takes `enableDurableMessages`
+  (experimental), which keeps response bodies outside the renderer "so that these survive a
+  cross-process navigation" and requires `maxTotalBufferSize`. The protocol says that parameter
+  is being deprecated in favor of `Network.configureDurableMessages` (experimental), "due to the
+  possibility of deadlocks when awaiting Network.enable before issuing
+  Runtime.runIfWaitingForDebugger", which is the order
+  [Attach before request](#attach-before-request) uses, so the probe measures the command too.
 - **P13. Traffic around the proxy.** Whether all of the browser's own traffic (updates, Safe
   Browsing, sync) follows `--proxy-server`; QUIC, DNS prefetch, and preconnect under a proxy; and
   what CDP reports as the remote address through an HTTP proxy.
 - **P14. Seeding mechanics.** Whether `--no-startup-window` starts the pipe handler without a
   window; whether `Browser.close` writes cookies set with `Storage.setCookies` to disk; whether a
-  session cookie survives a launched browser restart.
+  session cookie survives a launched browser restart; what a seeding launch does when a browser
+  left from an earlier run still holds the browser profile (`process_singleton.h:39-42`).
 - **P15. Preferences written before first launch.** Whether Chrome keeps a
   `credentials_enable_service` value written into a new browser profile.
 - **P16. Cookies at rest.** Which key store each product selects for a non-default data directory on
@@ -1225,10 +1393,7 @@ plan or the maintainer settles.
   not observed under `xvfb-run`.
 - **P20. Discovery.** Install locations per operating system for Edge, Brave, and Chromium, and for
   Snap and Flatpak installs; what `Browser.getVersion` reports as the product for Brave.
-- **P21. Telling the browsers apart.** How the Operator can tell the launched browser from the
-  everyday one at a glance, beyond the Capture Session panel.
-- **P22. Keeping validation current.** Whether CI runs the stage-2 known-answer tests against Chrome
-  for Testing, and how Edge, Brave, and branded Chrome are checked when they update.
+- **P21, P22.** Moved to decisions D22 and D23: neither is a measurement.
 - **P23. Global `WebSocket` in the main process.** Checked only under `ELECTRON_RUN_AS_NODE`;
   matters only for transport option B.
 - **P24. MHTML equivalence.** Whether `Page.captureSnapshot` output matches what `wc.savePage`
@@ -1250,8 +1415,8 @@ the in-app display of capture fields (#1694's gate), and a WACZ export (#799).
 The implementation adds an acquisition path, changes the Manifest and the verifier (and the
 database schema, if the `captures` row mirrors the new fields), and launches software that holds
 the Operator's or a Persona's signed-in sessions. It is evidence-affecting at the blocking tier, so
-it gets human review and does not merge automatically. New acquisition modules join the blocking
-tier of the
+it gets human review and does not merge automatically. New acquisition modules, and the
+selector-matching module step 6 moves out of `selectorRepo.ts`, join the blocking tier of the
 [evidence-affecting paths assessment](2026-07-31-evidence-affecting-paths-assessment.md). The plan
 waits for approval, and the changes to `SECURITY.md` and the threat model ship with the
 code that makes them true.

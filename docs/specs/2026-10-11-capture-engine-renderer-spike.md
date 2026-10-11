@@ -54,8 +54,8 @@ main document.
 - **Commit.** `2598173f`, as above. Neither #1693 nor #1726 had merged at that commit: both were
   open on 2026-10-11 (`gh issue view 1693` and `gh issue view 1726`, state `OPEN`). The fixture
   runs therefore needed no loopback allowance: `validateUrl` in
-  `src/main/services/recapture.ts:99` checks only the scheme, and all 16 fixture runs, on
-  `127.0.0.1` and `localhost`, stored a Capture.
+  `src/main/services/recapture.ts:99` checks only the scheme, and all 16 fixture runs, every
+  target on `127.0.0.1`, stored a Capture.
 - **Runtime the app reported.** `process.versions`, written by the scratch renderer on every
   render: Electron 44.5.1, Chromium 152.0.7977.130, Node 24.21.0, V8 15.2.124.28-electron.0.
   These are the versions the plan's probe rerun read (plan, `:151`).
@@ -64,10 +64,10 @@ main document.
   ("Test").
 - **Tooling.** Node 20.20.2 and pnpm 10.28.2 for the scripts, Playwright 1.63.0, OpenSSL 3.0.13.
 - **Port 19845.** Free before every app run: `ss -ltnp | grep 19845` matched nothing (exit 1).
-- **Internet.** `e2e/recapture.spec.ts` sets no `BIRDBRAIN_CONSENT_LISTS`, so the app fetched the
-  two public consent lists (`src/main/services/consentBlocker.ts:12-17`) through the main
-  process's `fetch` (`:47`). That traffic never passes through the hidden window, so it is not in
-  the event file.
+- **Internet.** `e2e/recapture.spec.ts` sets no `BIRDBRAIN_CONSENT_LISTS`, so for that spec the
+  app fetches the two public consent lists (`src/main/services/consentBlocker.ts:12-17`) through
+  the main process's `fetch` (`:47`). That traffic never passes through the hidden window, so it
+  is not in the event file.
 
 ## Method
 
@@ -90,7 +90,7 @@ The diff under "Reproduce" changes only `src/main/services/backgroundRenderer.ts
 - after the post-scroll idle wait and before the screenshot, reads every frame's
   `WebFrameMain.osProcessId` and the `http`/`https` entries of `Target.getTargets`;
 - reads `history.length` in the page and `wc.navigationHistory` three times: before the target,
-  after it loads, and before the screenshot;
+  after it loads, and before the screenshot (the `direct` mode of question 7 skips the first);
 - after `wc.savePage` (`:519`), lists the MHTML's `Content-Location` lines;
 - when `BIRDBRAIN_SPIKE_TEST_CERT` names a PEM file, installs
   `session.setCertificateVerifyProc` on the render's session, which accepts that exact leaf
@@ -150,7 +150,7 @@ The three `q1-e2e-*` runs come from the e2e suite, not from `run.mjs` (question 
 - The certificate allowance, the fixture consent list, and the `Network` domain exist only in the
   scratch build.
 - The scratch change records events in memory and writes them at the end of the render. It
-  fetches no bodies: `Network.getResponseBody` was never called.
+  fetches no bodies: it never calls `Network.getResponseBody`.
 
 ## Question 1: the e2e specs with the domain on
 
@@ -214,8 +214,9 @@ where collection stops."
 
 **Run.** `q2-savepage` is the purpose-built page: a stylesheet carrying a font and a `no-store`
 background image, a `max-age` image, a `no-store` image, a `srcset` image, a `<link rel="icon">`,
-a same-origin iframe with a `no-store` image, a print-only background, and a `loading="lazy"`
-image 3,000 px down. Every fixture run carries the same markers, so all 16 count.
+a `no-store` same-origin iframe with a `no-store` image, a print-only background, and a
+`no-store`, `loading="lazy"` image 3,000 px down. Every run records the `savepage-start` and
+`savepage-end` markers, so all 16 fixture runs count.
 
 **Observed.** For every run: `savePage` duration in milliseconds, `Network` events during it, and
 server requests during it.
@@ -288,15 +289,16 @@ jq '[.runs[] | (.markers | map({(.marker): .eventIndex}) | add) as $e | $e["text
 0
 ```
 
-All three exit 0. `wc.savePage` took 0 to 4 ms on these pages. The MHTML holds the four
-`no-store` resources with no new request, so the serializer wrote them from memory. The last
-number is the count of `Network` events between `screenshot-start` and `text-end` across all 19
-runs. Three side observations: the icon and the print-only image were never requested, and the
-`srcset` image reached the server but has no `Content-Location` line in the MHTML.
+All three exit 0. `wc.savePage` took 0 to 4 ms on these pages. The MHTML holds all five
+`no-store` resources (the iframe document and four images) with no new request, so the
+serializer wrote them from memory. The last number is the count of `Network` events between
+`screenshot-start` and `text-end` across all 19 runs. Three side observations: the icon and the
+print-only image were never requested, and the `srcset` image reached the server but has no
+`Content-Location` line in the MHTML.
 
 **Verdict.** None: no fixture server logged a request between the start and the end of
 `wc.savePage` in any of the 16 fixture runs, and no `Network` event arrived during `savePage`, or
-during the screenshot before it, in any of the 19 runs.
+during the screenshot before it, in any of the 18 runs with the domain on.
 
 ## Question 3: a request the consent filter cancels
 
@@ -512,10 +514,10 @@ Both exit 0. Each page's image response carried `securityDetails` too. Against t
 No field arrived under a name D7 does not list.
 
 **Verdict.** The second stop condition does not hold: every main document response carried
-`securityDetails`, and every D7 field is present under its D7 name, with `mac` present only for
-the CBC cipher and the timestamp list empty; `keyExchange` was the empty string on TLS 1.3 and
-`ECDHE_RSA` on both TLS 1.2 runs, `keyExchangeGroup` was `X25519` on all three, and `mac` was
-`HMAC-SHA1` on the CBC run and absent on the two AEAD runs.
+`securityDetails` with every D7 field under its D7 name and the timestamp list empty;
+`keyExchange` was the empty string on TLS 1.3 and `ECDHE_RSA` on both TLS 1.2 runs,
+`keyExchangeGroup` was `X25519` on all three, and `mac` was `HMAC-SHA1` on the CBC run and absent
+on the two AEAD runs.
 
 ## Question 7: `history.length`
 
@@ -589,36 +591,49 @@ runs holds:
 - `events`, the `{ method, params }` pairs in arrival order, unmodified. This is the input step 7's
   collector reads.
 
-Every `http`, `https`, `ws`, and `wss` URL in it has the host `127.0.0.1` or `localhost`, and it
-holds no certificate or key bytes (see "Reproduce" for both checks).
+Every `http`, `https`, `ws`, and `wss` URL in it has the host `127.0.0.1` or `localhost` (row 27
+under "Reproduce"). Gitleaks found no key in it (row 20), and `grep -c -- '-----BEGIN' $J` prints
+`0` (exit 1), so it holds no PEM block.
 
 ## Notes for later steps
 
 - **Where collection stops (step 9).** No event and no request arrived during the screenshot or
   `savePage` in any run, so on these fixtures stopping after `savePage` and stopping before the
-  screenshot record the same events. A page with timers or long polls still running at that point
-  would separate the two; these fixtures have none.
+  screenshot record the same events. The event count is the last number under question 2; the
+  request count comes from
+  `jq '[.runs[] | select(.serverLog) | (.markers | map({(.marker): .}) | add) as $m | [.serverLog[] | select(.at >= $m["screenshot-start"].at and .at <= $m["text-end"].at)] | length] | add' $J`,
+  which prints `0` (exit 0). A page with timers or long polls still running at that point would
+  separate the two; these fixtures have none.
 - **Event order (step 7).** In 5 exchanges across the file, an `ExtraInfo` event arrived before
   its `Network.requestWillBeSent`, for example the image in `q4-cross-port-redirect`. The count
   comes from
   `jq '[.runs[] | [.events[] | select(.params.requestId)] | group_by(.params.requestId)[] | select(.[0].method | endswith("ExtraInfo"))] | length' $J`
   (exit 0).
 - **Two cache shapes (step 7, D4 `cached`).** A disk cache hit arrives as `responseReceived` with
-  `fromDiskCache: true` and no `requestServedFromCache`. A memory cache hit arrives as
-  `requestServedFromCache` followed by `responseReceived` with `fromDiskCache: false`.
+  `fromDiskCache: true` and no `requestServedFromCache`. The other hit, the script the iframe
+  reused, arrives as `requestServedFromCache` followed by `responseReceived` with
+  `fromDiskCache: false`; no field says which cache served it.
 - **Revalidation (steps 7 and 8).** A `304` revalidation arrives as `responseReceived` with status
   `200` and `responseReceivedExtraInfo` with `statusCode: 304`. D8 prefers the `ExtraInfo`
   headers, so the writer has to pick which status line it writes.
 - **Consent cancels (step 7, D4 `cancelled`).** `canceled` is `false` on a request the consent
   filter blocked; `errorText` and `blockedReason` identify it.
 - **Test certificate allowance (step 9).** A `setCertificateVerifyProc` on the render's session
-  that accepts one leaf was enough: Chromium reported `securityState: "secure"` and full
-  `securityDetails`.
+  that accepts one leaf was enough: every HTTPS response carried full `securityDetails`
+  (question 6). `securityState` does not show the allowance at work: it was `"secure"` on all 43
+  plain `http` loopback responses as well as the 6 `https` ones, per
+  `jq -r '[.runs[].events[] | select(.method == "Network.responseReceived") | "\(.params.response.url | split(":")[0]) \(.params.response.securityState)"] | group_by(.) | map("\(.[0])\t\(length)")[]' $J`
+  (exit 0).
+- **`history.length` in D15's script (step 9).** With `wc.loadURL`, the target read 1 without
+  `about:blank` and 2 with it, the shape of the probe's off and on passes, so D15's script expects
+  the two passes one apart, unless the maintainer takes the `location.replace` trade under "Rulings
+  this asks for".
 
 ## What this does not show
 
-- One pass of each run. An earlier pass of all 19 runs, before the MHTML listing joined the
-  scratch change, gave the same verdicts; its files were deleted and nothing here cites them.
+- One pass of each run. An earlier pass ran before the MHTML listing joined the scratch change;
+  row 17 under "Reproduce" deleted its output, so this page neither cites it nor compares against
+  it.
 - HTTP/1.1 only. The fixture servers speak neither HTTP/2 nor HTTP/3.
 - The test authority is private, so no certificate transparency log knows the leaf. The timestamp
   list was empty and `certificateTransparencyCompliance` was `unknown`; the eight timestamp entry

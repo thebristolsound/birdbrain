@@ -5,8 +5,10 @@ Audience: the designer working in the "Birdbrain UI" design project. Engineering
 maintainer.
 Status: draft for the designer. None of the designs it describes is built. It follows the
 maintainer's rulings of 2026-10-10, by the numbers the roadmap gives them under "Ruled on
-2026-10-10" (Roadmap :88-146); rulings 37 to 56 are the stage-2 spec's decisions D1 to D23 except
-D18 (Roadmap :132-133). Its content comes from the sources below, and it adds no product decision:
+2026-10-10" (Roadmap :88-146). The roadmap groups rulings 37 to 56 as the stage-2 spec's decisions
+D1 to D23 except D18 (Roadmap :132-133) without numbering each one; the decision each of those
+ruling numbers carries below comes from #1825, the issue this brief answers. Its content comes
+from the sources below, and it adds no product decision:
 where the sources leave something open, "Questions for the designer" asks it. It covers only what a
 designer needs to draw the surfaces.
 
@@ -120,9 +122,9 @@ These are settled. Do not redesign them; design around them.
 | 46 (D10) | One launched browser at a time in the first stage-2 release. | Spec :232-234, :1369-1370 |
 | 47 (D11) | The Persona wording on a Capture is "captured in the Persona's launched browser" for `launched` and "taken without a click in the Persona's launched browser" for `launched-passive`. The `background` and `extension` wording does not change. | Spec :1011-1022, :1371-1372 |
 | 50 (D14) | While the Egress is not Direct, the Capture Session panel warns when an extension appears in the browser profile, and Birdbrain does not refuse Captures. | Spec :859-861, :1382-1384 |
-| 53 (D20) | A launched browser runs only inside a Capture Session. Launching one starts a Capture Session if none is running, or joins the running one and its Active Case. Ending the Capture Session closes the browser. Closing the browser's last window closes the browser only, and the Capture Session keeps running until the Operator stops it in Birdbrain. | Spec :219-228, :281-284, :1398-1406 |
+| 53 (D20) | A launched browser runs only inside a Capture Session. Launching one starts a Capture Session if none is running, or joins the running one and its Active Case. Ending the Capture Session closes the browser. Closing the browser's last window closes the browser only, and the Capture Session keeps running until the Operator stops it in Birdbrain. A ruling of 2026-10-11, recorded on #1829, makes one exception: the windowless launch that seeds a browser profile during a Persona cookie import, which belongs to the Persona screen and is out of scope here. | Spec :219-228, :281-284, :727-730, :1398-1406 |
 | 54 (D21) | The Operator chooses the Persona when launching the browser, from a picker that defaults to none, and the choice holds for that browser's life: it chooses the browser profile and stamps every Capture taken in it. | Spec :235-241, :1407-1412 |
-| 55 (D19 and D22) | An agent writes this brief for the Capture Session panel and for telling the launched browser apart from the everyday one, and the designer designs both in the Birdbrain UI design project. Engineering runs a feasibility pass on the mock before the stage-2 clicked-Capture step. | Spec :193-198, :1394-1397, :1413-1416 |
+| 55 (D19 and D22) | An agent writes this brief for the Capture Session panel and for telling the launched browser apart from the everyday one, and the designer designs both in the Birdbrain UI design project. Engineering runs a feasibility pass on the mock before the stage-2 clicked-Capture step. | Spec :193-198, :1394-1397, :1413-1416; Roadmap :733-741 |
 | 68 (engine plan open question 15) | The investigation header shows a "not read" count beside "read" and "withheld", and the gap list's "Searches not yet run" group has an entry naming the kinds the run did not read. | Plan :1742-1748 |
 | 70 (the engine plan's gate "Design the Withheld from analysis mark") | The Withheld from analysis mark and the "not read" count join this brief, beside the Capture Session panel. | Roadmap :141; Plan :1664 |
 
@@ -141,7 +143,7 @@ These are settled. Do not redesign them; design around them.
 | 9 | The panel's list of Selectors a page matches writes no Persisted Match. Persisted Matches still come only from ingest. | Spec :255-258, :949-953 |
 | 10 | Captures already taken stand when the browser closes or a check ends the Capture Session. No failure at the level of a Capture Session writes a Manifest Entry. | Spec :856-857, :1090, :1094-1095 |
 | 11 | The Operator adds Tags and Notes in Birdbrain, on the new Capture. | Spec :265-266 |
-| 12 | A withheld Exhibit stays in the Operator's own Case search, carries the Withheld from analysis mark, and still opens, so the Operator can read it and clear the flag. In a Shared Case the mark names each member who holds a flag. A member clears only their own flag, and the Exhibit stays withheld until every member who set one has cleared it. | ADR-0044 :66-70; Plan :1318-1327; Engine spec :161 |
+| 12 | A withheld Exhibit stays in the Operator's own Case search, carries the Withheld from analysis mark, and still opens, so the Operator can read it and clear the flag. In a Shared Case the mark names each member who holds a flag. A member clears only their own flag, and the Exhibit stays withheld until every member who set one has cleared it. The Owner can clear a revoked member's flag, as a recorded action. | ADR-0044 :66-70; Plan :1318-1327; Engine spec :161 |
 | 13 | Setting or clearing a withholding flag puts a shown investigation run out of date. | Assessment :206-214 |
 | 14 | The run reports how many eligible Exhibits it did not read, by kind and reason. | Plan :909-910, :1067-1069 |
 | 15 | WCAG 2.2 AA is the product target. | `docs/agents/osint-investigation-standards.md:59` |
@@ -153,8 +155,7 @@ Draw each surface in the existing design language of the Birdbrain UI project. U
 semantic tokens, not raw color values (`docs/agents/architecture.md:119`). The surfaces are numbered
 so the engineering response can give a verdict per item.
 
-Most of what follows is needed for the first stage-2 release and for the investigation work. Two
-labels mark parts to draw after the rest:
+Most of what follows carries no label. Two labels mark parts to draw after the rest:
 
 - **Once #600 lands.** Passive capture: the Capture Session captures every page that loads, or the
   pages an Active Case Selector matches, without a click (Spec :211-213, :955-985).
@@ -191,9 +192,10 @@ shows:
   pages an Active Case Selector matches (Spec :211-213). _Once #600 lands_ for the last two; until
   then a Capture Session in a launched browser captures nothing without a click.
 - **Egress.** Its kind and label, shown and not editable (Spec :213-214; constraint 4).
-- **The no-VPN warning.** While the Egress is Direct and no VPN is seen, the warning #1696 builds,
-  which says Birdbrain can see the machine's network path, not the browser's (Spec :214, :874-876;
-  ADR-0032, `docs/adr/0032-route-app-egress-but-do-not-disguise-the-browser.md:102-104`).
+- **The no-VPN warning.** While the Egress is Direct and no VPN is seen, the warning #1696 builds
+  (the spec's CE-4, Roadmap :495), which says Birdbrain can see the machine's network path, not the
+  browser's (Spec :214, :874-876; ADR-0032,
+  `docs/adr/0032-route-app-egress-but-do-not-disguise-the-browser.md:102-104`).
 - **Operator name.** Birdbrain checks it before launch (constraint 3). Draw what the dialog shows
   when none is set.
 - **One launched browser at a time.** While a launched browser is open, the Operator cannot launch
@@ -218,10 +220,10 @@ browser's window is your call (question 1).
   (Spec :255-258). The Selector list writes no Persisted Match (constraint 9). If a page matched
   here and its stored Extracted Text does not, the Capture exists with no Persisted Match (Spec
   :949-953).
-- **Tabs that cannot be captured.** A tab in a private window is listed, not capturable, with the
-  reason (Spec :276-277, :506-508). A tab whose address is not `http` or `https`, such as a browser
-  settings page, is never captured (Spec :513-514). A crashed tab cannot be captured until it loads
-  again (Spec :515-516).
+- **Tabs that cannot be captured.** A tab in a private window is listed with the reason it cannot
+  be captured (Spec :276-277, :506-508). A tab whose address is not `http` or `https`, such as a
+  browser settings page, is never captured (Spec :513-514). A crashed tab cannot be captured until
+  it loads again (Spec :515-516).
 - **Capture control.** It names the tab it will capture, with that tab's title, URL, and Persona,
   before the Operator clicks (Spec :905-906).
 - **Keyboard shortcut and tab picker.** The Operator can also capture with a keyboard shortcut that
@@ -266,16 +268,16 @@ Any cue must meet these constraints:
   fakes the browser's automation state (Spec :334-335, :411-413).
 - **A blank first tab.** The first tab opens at `about:blank` and makes no request (Spec :215,
   :318).
-- **No automation infobar.** The engine never passes `--enable-automation`, so Chrome's "controlled
-  by automated test software" infobar does not appear (Spec :322-324, :895-897). Whether Chrome
-  shows any other banner in this configuration was not observed (open question P19, Spec
-  :1486-1487).
+- **No automation switch.** The engine never passes `--enable-automation`, the switch that raises
+  Chrome's "controlled by automated test software" infobar (Spec :322-324, :895-897). Whether
+  Chrome shows that infobar or any other banner in this configuration was not observed (open
+  question P19, Spec :1486-1487).
 
 Draw cues on Birdbrain's side first: in the panel, in the Capture control, and wherever Birdbrain
 shows a running Capture Session. If you propose a cue on the browser's side (its window, its
 browser profile, or its theme), mark it for the feasibility pass, because the spec measured none.
-The nearest measurement is open question P15: the engine writes one preference into a new browser
-profile before the first launch, and whether Chrome keeps a value written that way was not checked
+The nearest open question is P15: the engine writes one preference into a new browser profile
+before the first launch, and whether Chrome keeps a value written that way was not checked
 (Spec :689-695, :1477-1478).
 
 ### 5. The Withheld from analysis mark
@@ -333,10 +335,10 @@ The count exists so that a PDF holding a starting Subject's address never reads 
 
 ## States to draw
 
-States 1 to 15 belong to the first stage-2 release. State 16 waits for #600, and state 17 is drawn
-only if the port fallback is built. States 18 to 20 are the withheld mark, and 21 and 22 the
-investigation view. Each Capture Session state cites its row in the spec's failure table (Spec
-:1070-1095) where it has one.
+States 1 to 15 carry no label. State 16 waits for #600, and state 17 is drawn only if the port
+fallback is built. States 18 to 20 are the withheld mark, and 21 and 22 the investigation view.
+Each Capture Session state cites its row in the spec's failure table (Spec :1070-1095) where it
+has one.
 
 1. **No supported browser found.** Birdbrain found none, or the chosen executable is a product it
    does not recognize or is below the version floor. Birdbrain does not start a Capture Session and
@@ -352,8 +354,9 @@ investigation view. Each Capture Session state cites its row in the spec's failu
    to start (Spec :479-482, :1080). A Capture of the second tab carries no Transaction Record and no
    Bound TLS Details, and its inventory says recording did not cover the page (Spec :573-575,
    :1081).
-6. **A tab in a private window.** Listed, not capturable, with the reason: a private window has its
-   own cookie store, so a Persona stamp on its Capture would be false (Spec :506-508, :1088).
+6. **A tab in a private window.** Listed with the reason it cannot be captured: a private window
+   has its own cookie store, so a Persona stamp on its Capture would be false (Spec :506-508,
+   :1088).
 7. **A Capture abandoned.** A new document committed in the tab while the Capture was being taken.
    The engine abandons the Capture instead of mixing two documents, and says so in the panel and the
    capture activity feed (Spec :567-569, :1082).
@@ -384,7 +387,7 @@ investigation view. Each Capture Session state cites its row in the spec's failu
 16. _Once #600 lands:_ **Passive capture running.** The panel shows the rule in force, Captures
     taken without a click, a skipped page with its reason, and a same-document navigation (the
     spec's "route change inside an application") shown as not captured (Spec :975-976, :981-983).
-17. _Only if built:_ **The port fallback's takeover warning.** The Capture Session runs in port
+17. _Only if built:_ **The takeover warning of the port fallback.** The Capture Session runs in port
     mode, and the warning says another process on the machine could take over the browser (ruling
     37; Spec :401-405).
 18. **A withheld result in each placement.** In the search bar's Capture results, in a fielded
@@ -392,7 +395,8 @@ investigation view. Each Capture Session state cites its row in the spec's failu
 19. **A withheld result opened.** The Operator opens it, reads it, and sees how to clear their flag
     (ADR-0044 :69-70).
 20. **A Shared Case result withheld by another member.** The mark names that member, for example
-    "withheld by MB", and the Operator cannot clear MB's flag (Engine spec :161; Plan :1323-1324).
+    "withheld by MB", and the Operator cannot clear MB's flag, unless MB's membership was revoked
+    and the Operator is the Owner (constraint 12; Engine spec :161; Plan :1323-1324).
 21. **A run with a non-zero "not read" count.** For example: 55 read, 3 withheld, and 4 not read,
     which are 2 PDFs, 1 `mbox` file, and 1 Capture whose field records come from an older build
     (Plan :909-910, :1046-1049, :1058-1066).
@@ -458,7 +462,8 @@ The designer's calls, not settled by the sources:
    the unread Exhibits hold nothing?
 6. What does the panel show if the capture shortcut cannot be registered on the Operator's desktop?
    Electron's documentation warns that GNOME 50 rejects such a binding with no error surfaced to the
-   app, and the spec leaves Linux desktops open (open question P17, Spec :907-911, :1482-1483).
+   app when the app ID does not resolve, and the spec leaves Linux desktops open (open question P17,
+   Spec :907-911, :1482-1483).
 7. Where in Settings does the list of found browsers live, and how does a browser's version read
    before Birdbrain has confirmed it by launching it (surface 1)?
 8. Where does the Operator launch a browser from? The spec says only "from Birdbrain" (Spec :210).
@@ -466,7 +471,9 @@ The designer's calls, not settled by the sources:
    that neither looks like a verdict on the page and the Selector list never looks like a saved
    match (constraint 9)?
 10. Does the not-read gap list entry open the list of unread Exhibits? The sources say the entry
-    names the unread kinds (Plan :1742-1748) and say nothing about opening it.
+    names the unread kinds (Plan :1742-1748), and the view brief lists an entry for a search not
+    yet run without an action in the first slice (View brief :338-339). Neither says whether the
+    not-read entry counts as one of those.
 11. From which of the four placements in surface 5, if any, can the Operator clear their own flag
     without opening the Exhibit?
 12. _Once #600 lands:_ can the Operator change what a running Capture Session captures without a
@@ -480,7 +487,7 @@ Do not draw these:
 - The Persona screen and the browser cookie import, which CE-A and a later ticket under #541 cover
   (Roadmap :762-775; Spec :783-788, :1509-1511).
 - The in-app display of a Capture's capture facts: its Egress, inventory, Scroll-to-load outcome,
-  and Bound TLS Details (#1816; Spec :1509).
+  and Bound TLS Details (#1816; Roadmap :786-790; Spec :1509).
 - The unreviewed view and fielded search themselves, apart from the mark on them (Retrieval plan
   :183-228).
 - The Companion and the extension changes of stage 3 (CE-S3; Spec :1505).

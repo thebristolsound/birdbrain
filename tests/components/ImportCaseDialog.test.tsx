@@ -184,11 +184,45 @@ describe('ImportCaseDialog', () => {
     gate.resolve({ newCaseId: 'case-new-1' })
   })
 
-  it('shows a green banner when the archive is verified', () => {
+  // #1523: the passing banner names the checks the inspection ran and says the
+  // imported Captures start unverified, rather than calling the archive verified.
+  it('names each passed archive check and says the imported Captures start unverified', () => {
     render(<ImportCaseDialog report={makeReport()} onClose={vi.fn()} />)
 
-    expect(screen.getByText('Archive verified')).toBeDefined()
+    const banner = screen.getByTestId('archive-checks-passed')
+    expect(banner.textContent).toContain('Archive checks passed')
+    expect([...banner.querySelectorAll('li')].map((li) => li.textContent)).toEqual([
+      "Custody chain valid against the archive's own signing key",
+      'Packaged files match the hashes the archive records',
+      'Packaged Captures match their recorded hashes'
+    ])
+    expect(banner.textContent).toContain(
+      'The imported Case lists every Capture as unverified until you run Verify all on this installation.'
+    )
+    expect(screen.queryByText('Archive verified')).toBeNull()
     expect(screen.queryByText('Verification failed')).toBeNull()
+  })
+
+  it('shows no passed-checks banner for a failing or unreadable archive', () => {
+    const failing = {
+      overallValid: false,
+      chainValid: false,
+      artifactCount: 42,
+      artifactFailureCount: 0,
+      captureCount: 42,
+      captureHashFailureCount: 0
+    }
+    render(<ImportCaseDialog report={makeReport({ verification: failing })} onClose={vi.fn()} />)
+    expect(screen.queryByTestId('archive-checks-passed')).toBeNull()
+    cleanup()
+
+    render(
+      <ImportCaseDialog
+        report={makeReport({ verification: failing, verifierTooOld: { reason: 'too old' } })}
+        onClose={vi.fn()}
+      />
+    )
+    expect(screen.queryByTestId('archive-checks-passed')).toBeNull()
   })
 
   it('disables import for a failing report until the override checkbox is ticked', () => {

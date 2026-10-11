@@ -12,7 +12,7 @@
 set -euo pipefail
 
 # The locked tracking issue the maintainer opened. Curation reads it; nothing else does.
-FRICTION_ISSUE=0
+FRICTION_ISSUE=1822
 
 here="$(dirname "${BASH_SOURCE[0]}")"
 # shellcheck source=.github/scripts/dispatch/redact.sh

@@ -6,11 +6,11 @@
 page keeps saying Birdbrain does not encrypt cases at rest.
 
 **Decisions this revisits:** the round 1 map (#284) put encrypting the live store out of scope
-on 2026-07-31, with a revisit trigger of "any move toward a public (non-invited) release."
-The
-public beta brief (`docs/specs/2026-09-06-public-beta-brief.md`) kept that posture. This spec
-proposes reversing it. Approval needs a new ADR that records the reversal and passes the
-ADR-0004 gate for evidence-affecting decisions.
+on 2026-07-31, with a revisit trigger of "any move toward a public (non-invited) release." The public beta brief
+(`docs/specs/2026-09-06-public-beta-brief.md`) kept that posture, and the Shared Cases design
+(`docs/specs/2026-09-19-collaborative-cases-design.md`, decision 12) records "At-rest
+encryption: None added." This spec proposes reversing both. Approval needs a new ADR that
+records the reversal and passes the ADR-0004 gate for evidence-affecting decisions.
 
 **Audience:** the maintainer deciding whether to approve, and whoever implements it.
 
@@ -80,6 +80,9 @@ Draft, to be sharpened in the ADR. ADR-0004 requires both halves.
 > leave Birdbrain decrypted. Settings, logs, and browser Persona profiles are not covered. Data
 > written before encryption was turned on can survive in free disk space. Full-disk encryption
 > is still recommended.
+>
+> In a Shared Case, encryption covers your copy. Each member's own installation protects that
+> member's copy, and a member you remove keeps the copy they already hold.
 
 ## Threat model
 
@@ -95,6 +98,8 @@ Draft, to be sharpened in the ADR. ADR-0004 requires both halves.
 | Memory, swap, hibernation files                             | No                                                           | Decrypted pages exist in memory while the app runs.                                   |
 | Plaintext written before migration                          | No                                                           | Freed blocks are not wiped; full-disk encryption covers them.                         |
 | The Operator                                                | No                                                           | The Operator holds the key, as with the signing key.                                  |
+| Another member's replica of a Shared Case                   | Only if that member's installation encrypts                  | Each member encrypts its own replica under its own key.                               |
+| A member removed from a Shared Case                         | No                                                           | They keep their replica, and their own key opens it.                                  |
 
 ## Design
 
@@ -234,6 +239,45 @@ Settings -> Diagnostics gains a "Case data encryption" row: on or off, which wra
 Key (credential store, passphrase, or recovery code), and the migration state. The diagnostics
 bundle records the same fields and never the key.
 
+### Shared Cases
+
+Shared Cases are partly built. Manifest schema 4 with Shared Case verification, the members
+table, and Shared Case export, import, and fork (#1509, #1510, #1511) are done. Peer-to-peer sync
+(#1512, #1811), the Iroh transport and node key (#1809), and invite and join (#1810) are not. The
+contract is `docs/specs/2026-09-19-collaborative-cases-design.md`.
+
+- **Keys stay per installation.** Every member holds a full replica (decision 3 of that design).
+  The sender reads through the decrypting API, Iroh carries the bytes over its encrypted
+  connection, and the receiver writes them through the sealed writer under its own Data Key. No
+  member holds another member's key, and adding or removing a member changes no key.
+- **Remote member chains.** That design stores each remote member's chain as
+  `manifest.<installationId>.jsonl`, "byte-for-byte as received." Under this design the
+  rule becomes: the file decrypts, line by line, to exactly the bytes received. Entry Hashes
+  and signatures cover those bytes, so verification results do not change. Verifying member
+  chains in the app (`src/shared/verify/sharedCase.ts`, called from `manifest.ts`) reads through
+  the decrypting API. Export writes the decrypted bytes, so `verify.sh` and `birdbrain-verify`
+  read package files as they do today.
+- **Received Exhibit files.** The sync session hashes each file on arrival and rejects a
+  mismatch. The receiver hashes the plaintext as it writes the sealed file, the same as for a
+  local Capture, and deletes the partial file on a mismatch. No plaintext copy reaches disk
+  before the check.
+- **New files in the Case directory.** `members.json` and `sync-state.json` are sealed like
+  every other file under the storage root.
+- **The Iroh node key.** #1809 plans to store it in its own file, wrapped with `safeStorage` like
+  the signing key, with the same plaintext fallback. Under this design the Data Key wraps it
+  instead, so it follows the passphrase and recovery code paths and has no plaintext fallback.
+  If #1809 lands first, the migration wraps the node key again under the Data Key.
+- **Members without encryption.** Encryption covers one installation's copy. A member running an
+  older Birdbrain holds a plaintext replica of the same Case. Proposed rule: the sync `hello`
+  message carries the sender's at-rest encryption state. A peer that reports none, or omits the
+  field, gets `bye` with a named reason, and the Members UI shows which member is blocked and
+  why. The state is self-reported, so a modified client can lie. The rule stops cooperating
+  members from leaking a Case by accident and does nothing more. See open question 5.
+- **Removed members.** A revoked member keeps its replica (decision 11 of that design), and its
+  own Data Key still opens it. Encryption does not change this.
+- **Handoff by Case Archive.** Shared Case export and fork produce a plaintext package, like
+  every export. Archive encryption is #418.
+
 ### Reading the data without Birdbrain
 
 A published reference page documents both formats well enough to decrypt by hand:
@@ -296,6 +340,8 @@ a `decrypt` command that takes the recovery code and a data folder and writes a 
 - **Data migration:** rewrites every file and the database on existing installations. It needs
   interruption and resume tests, and a test that the Content Hash of every migrated file still
   matches its Manifest Entry.
+- **Shared Cases contract:** decision 12 of the Shared Cases design and its "byte-for-byte as
+  received" rule change. The ADR amends that design alongside the #284 scope decision.
 - **Public claims:** the five pages that say Birdbrain does not encrypt, plus the two
   live-store lines named above, change in the PR that turns encryption on, not before.
 
@@ -311,6 +357,10 @@ a `decrypt` command that takes the recovery code and a data folder and writes a 
 6. Migration for existing installations.
 7. The `decrypt` command, the reference page, and the public claim changes.
 
+The sealed read and write API from step 5 should land before the sync step that writes received
+files (#1811), so the sync work is written against it once. If the sharing work lands first,
+its file reads and writes move onto the sealed API in step 5.
+
 ## Open questions for the maintainer
 
 1. **Default or opt-in.** Should new installations start encrypted with no choice, or should
@@ -323,3 +373,6 @@ a `decrypt` command that takes the recovery code and a data folder and writes a 
 4. **Existing installations.** Migrate automatically at the next launch, or wait until the
    Operator starts it? Recommendation: prompt at launch, and let the Operator defer it a limited
    number of times.
+5. **Shared Case members without encryption.** Should sync refuse a member whose installation
+   does not report encryption? Recommendation: yes. Without the rule, one member's plaintext
+   replica undoes the protection on everyone else's copy.

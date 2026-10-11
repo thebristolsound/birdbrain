@@ -1,6 +1,6 @@
 # Agent friction notes and crib notes
 
-**Status:** Draft, awaiting maintainer decisions
+**Status:** Draft; decisions taken 2026-10-10, implementation not yet approved
 
 **Research:** [How the CodeRabbit learning feature works](../specs/2026-10-10-coderabbit-learnings-research.md)
 
@@ -72,11 +72,11 @@ human approves every entry, where the CodeRabbit approval delay applies an entry
 its deadline. Entries expire after 30 days without confirmation, where CodeRabbit has no
 expiry and relies on a manual quarterly review.
 
-### Where raw notes live (decision 1)
+### Where raw notes live
 
-Ranked options:
+Decided 2026-10-10: option 1. The options as ranked:
 
-1. **Comments on one locked tracking issue (recommended).** The dispatcher posts one comment
+1. **Comments on one locked tracking issue (chosen).** The dispatcher posts one comment
    per cycle carrying the notes of every agent in the cycle. A new `friction notes` kind in
    the `post-comment` linter holds the shape. Locking the issue limits comments to
    collaborators, and readers filter by author. It needs no new token scope, store or branch,
@@ -89,12 +89,13 @@ Ranked options:
    PRs would be lost.
 4. **The dispatch artifact alone.** Rejected: it expires after 7 days.
 
-### Which runs participate (decision 2)
+### Which runs participate
 
 Start with the scheduled runs: the dispatcher, the implementer and the reviewer it spawns,
 and the scheduled PR review. Subagents return notes in their report; only the poster, which
-holds the machine token, writes them. Interactive sessions can join later through the same
-comment shape; they are left out of phase 1 so the measurement covers one population.
+holds the machine token, writes them. Interactive sessions do not post notes (decided
+2026-10-10), so the measurement covers one population. They can join later through the same
+comment shape.
 
 ### Guarding against padding
 
@@ -114,9 +115,13 @@ Each phase is a separate PR and a separate maintainer approval. The work carries
 2. **Capture only, two weeks.** Add the note section to the implementer handoff, the reviewer
    report, the dispatch end-of-cycle report and the scheduled PR review; add the comment kind
    and its linter fixtures; have the dispatcher post. No run reads the notes.
-3. **First curation.** A `curate-friction` skill reads the comments since the last curation,
-   groups them by anchor, and proposes outcomes for the maintainer to accept. The maintainer
-   runs it interactively. Output is document fixes plus the first `crib-notes.md`.
+3. **Curation: a trial run, then weekly.** A `curate-friction` skill reads the comments since
+   the last curation, groups them by anchor, and proposes outcomes for the maintainer to
+   accept. The maintainer runs it interactively. The first run is a trial a few days into
+   phase 2, once the issue holds notes from several cycles, to check the whole path: notes
+   posted in the right shape, the skill reading them, and its proposals being usable. Fixes
+   found by the trial land before the weekly schedule starts. After that, curation is a fixed
+   weekly task. Output is document fixes plus `crib-notes.md`.
 4. **Read side.** The implementer, reviewer and dispatch skill gain one pointer line to
    `crib-notes.md`. Proceed only if phase 3 found anchors that recur across runs.
 
@@ -129,9 +134,10 @@ Each phase is a separate PR and a separate maintainer approval. The work carries
   file adds context to every run.
 - Maintainer time spent curating, counted as intervention under ADR-0029.
 
-## Open questions for the maintainer
+## Decisions
 
-- Which raw store: the locked tracking issue (recommended) or the orphan branch?
-- Should interactive sessions post notes from the start, or only after the phase 2 measurement?
-- Is curation a recurring maintainer task (for example weekly), or run only when the issue
-  passes a count of new notes?
+Taken by the maintainer on 2026-10-10:
+
+- **Raw store:** one locked GitHub issue, one comment per cycle.
+- **Interactive sessions:** they do not post notes during the measurement.
+- **Curation cadence:** a fixed weekly task, preceded by one trial curation early in phase 2.

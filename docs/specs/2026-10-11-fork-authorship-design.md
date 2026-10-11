@@ -1,9 +1,12 @@
 # Fork authorship: design
 
-Date: 2026-10-11
-Status: proposed, awaiting maintainer approval. Nothing below ships today.
-Issue: #1812 (this note). The fix it proposes is #1638.
-Read at `origin/main` `2598173f`: every `path:line` below is at that commit.
+**Date:** 2026-10-11
+
+**Status:** Proposed, awaiting maintainer approval. Nothing below ships today.
+
+**Issue:** #1812 (this note). The fix it proposes is #1638.
+
+**Read at:** `origin/main` `2598173f`. Every `path:line` below is at that commit.
 
 ## Problem
 
@@ -30,8 +33,9 @@ Evidence Packages and the standalone verifier neither state nor check a per-Exhi
   whose accepted entry at the row's `manifestIndex` is an `exhibit` or `capture` entry for the
   row's Content Hash, held by that author (`manifest.ts:379-393`). It tries the local chain first,
   then each member or lineage chain file named for the author (`manifest.ts:371-378`). A row no
-  chain answers for gets a failed chain, which the app reports as `chain-broken`. When none of the
-  chains it tried failed verification, the reason is
+  chain answers for gets a failed chain, which the app reports as `chain-broken`
+  (`src/main/services/exhibits.ts:499-500`, `src/main/services/captureLifecycle.ts:457-465`).
+  When neither the author's chain files nor the Owner's chain failed verification, the reason is
   `no verified chain of <id> holds entry <n> for these bytes` (`manifest.ts:394-405`).
 - `planImportChains` (`src/main/services/caseArchive.ts:543`) forks when the archive's Shared Case
   walk names an Owner, knows which member exported the archive, and holds the Owner's chain
@@ -59,11 +63,12 @@ chain holds the Owner's own `member-add` after its last `import`: the walk build
 the entries from the last `import` on (`src/shared/verify/sharedCase.ts:477`) and names an Owner
 only from a first `member-add` with role `owner` and the chain's own key
 (`sharedCase.ts:284-303`). An ordinary import continues a chain with no `member-add` after its
-last `import`, with one exception: an archive whose own chain holds `member-add` entries the walk
-rejects, so that the walk names no Owner. `planImportChains` then takes the ordinary path, the
-failed walk fails the archive's chain check (`caseArchive.ts:423-425`), and the import goes ahead
-only under the operator's override (`caseArchive.ts:652-656`), which the `import` records in its
-`verificationResult`.
+last `import`, with one exception: an archive whose own chain holds `member-add` entries after its
+last `import` but fails the walk, because the chain does not verify or the walk rejects its roster,
+so that the walk names no Owner (`sharedCase.ts:455-477`). `planImportChains` then takes the
+ordinary path, the failed walk fails the archive's chain check (`caseArchive.ts:423-425`), and the
+import goes ahead only under the operator's override (`caseArchive.ts:652-656`), which the
+`import` records in its `verificationResult`.
 
 The source Owner signed those `member-add` entries, the chain check verifies them under the key
 the `import` names (`schemas.ts:701-704`), and the `import`'s `prevHash` binds them. So the signed
@@ -172,13 +177,14 @@ The full unit suite exited 0 under the sketch. "Scratch runs" below gives the co
 When a row verifies under the rule, the installation the row names signed the entry, or continued
 the chain that holds it through an ordinary import before any fork import. The rule does not
 constrain an installation that mints its own source chain under a key it holds and imports it:
-`SECURITY.md` already puts an Operator forging a consistent chain out of scope.
+`SECURITY.md` already puts an Operator forging a consistent chain out of scope (`SECURITY.md:22`).
 
 One case reads differently from `planImportChains`: the archive from Question 1 whose own chain
-holds `member-add` entries the walk rejects, imported under the override. `planImportChains`
-continues that chain as an ordinary import, and the rule reads its `import` as a fork import
-because a `member-add` comes before it, so the importer holds none of the history. That reading
-is the stricter one, and the `import`'s `verificationResult` already records the failed check.
+holds `member-add` entries after its last `import` but fails the walk, imported under the
+override. `planImportChains` continues that chain as an ordinary import, and the rule reads its
+`import` as a fork import because a `member-add` comes before it, so the importer holds none of
+the history. That reading is the stricter one, and the `import`'s `verificationResult` already
+records the failed check.
 
 ## Forks made before the rule
 
@@ -193,9 +199,10 @@ one of the source Owner's rows, changes from `verified` to `chain-broken` with t
 
 For a Case already forked, the report therefore changes only for a row whose author was changed
 after the import. It changes the next time the app verifies that row. A Capture's recorded last
-result (`last_verified_status` on `captures`, `src/main/services/db/captureRepo.ts:152-154`)
-keeps the earlier outcome until then. The fix rewrites no chain: the rule changes how the app
-reads the entries, not the entries.
+result (`last_verified_status` on `captures`, which `verifyCapture` writes at
+`src/main/services/captureLifecycle.ts:621-625`) keeps the earlier outcome until then. Other
+Exhibit kinds record no result (`src/main/services/exhibits.ts:440-443`). The fix rewrites no
+chain: the rule changes how the app reads the entries, not the entries.
 
 ## Alternatives considered
 
@@ -248,10 +255,11 @@ writer step merges, as [ADR-0023](../adr/0023-exhibits-are-the-unit-of-evidence.
 
 In the `manifest.ts` hot-file order of the same plan (line 52), the fix goes after SC-1 and before
 #1815: SC-1, #1638, #1815 (if it changes `withDeletionEntry`), SC-2, CE-P step 1, SC-6. SC-1 is
-queued and starts in the read side of `manifest.ts` (plan line 184), where `heldBy` sits. #1815
-and SC-2 work the write side (`withDeletionEntry` at plan lines 442-443, `appendManifestEntry` at
-plan line 199). The order saves rebase work only: the fix depends on no other brief. Its tests go
-in `tests/main/services/sharedCaseExport.test.ts`, which SC-V also edits (plan lines 371-372).
+queued and starts in the read side of `manifest.ts` (plan lines 182-184), where `heldBy` sits.
+#1815 and SC-2 work the write side (`withDeletionEntry` at plan lines 442-443,
+`appendManifestEntry` at plan line 199). The order saves rebase work only: the fix depends on no
+other brief. Its tests go in `tests/main/services/sharedCaseExport.test.ts`, which SC-V also edits
+(plan lines 371-372).
 The fix stays evidence-affecting, on #1638.
 
 ## Acceptance criteria for the fix
@@ -280,7 +288,8 @@ In criterion 4's Case, the forking member's own lineage row already reads `chain
 `2598173f`, before any relabel, for a reason outside this rule. The walk keys a lineage chain
 carried through two imports as `<fork Case>/<source Case>/<installation>`
 (`sharedCase.ts:557-559`), and `authorChainOf` looks it up as `<source Case>/<installation>`
-(`manifest.ts:371-378`). The new test asserts on the relabelled Owner row only.
+(`manifest.ts:371-378`). #1836 tracks that defect. The new test asserts on the relabelled Owner
+row only.
 
 ## Scratch runs
 

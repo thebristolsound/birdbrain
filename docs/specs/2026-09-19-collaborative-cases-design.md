@@ -214,7 +214,8 @@ earliest-created author's, by `created_at`, with ties broken by `installationId`
 The investigation records join the working layer under an amendment the maintainer approved on
 2026-10-10. It is E23 in the
 [Case investigation engine plan](../plans/2026-10-10-case-investigation-engine.md), whose E1
-defines the tables and whose E2 defines each table's key and the head rule used below.
+defines the tables, whose E2 defines each table's key and the head rule used below, and whose E3
+defines the Case revision triggers.
 
 1. **Rows.** Ten tables join the working layer: `subjects`, `joints`, `joint_spans`,
    `subject_spans`, `joint_decisions`, `span_decisions`, `source_class_marks`, `copy_marks`,
@@ -262,8 +263,8 @@ defines the tables and whose E2 defines each table's key and the head rule used 
 9. **The Case revision.** A received row fires the same triggers as a local one, so it advances the
    counter and invalidates a running investigation run. Received Manifest entries move this
    installation's Manifest head only when the session writes its `merge` entry (Sync session,
-   step 6); before then, the `exhibits` triggers move the counter when a received Exhibit's row
-   lands.
+   step 6); before then, the Case revision triggers on `exhibits` (plan E3) move the counter when
+   a received Exhibit's row lands.
 10. **Decisions received on this installation's proposals.** ADR-0042's rule excepts any decision
     on a run's own proposals, so a decision another member makes on them, received by sync, leaves
     the run current.

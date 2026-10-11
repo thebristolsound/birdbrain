@@ -5,11 +5,11 @@
 Plan only. Nothing here is built, and the maintainer has not approved the plan as a whole:
 approval is the gate "Approve the CI-P engine plan" in the
 [agent briefs for three programmes](2026-10-10-three-programme-agent-briefs.md), which blocks
-CI-8 onward, CI-D, CI-R, and CI-E, and the maintainer gives it on PR #1805. On 2026-10-10 the
-maintainer ruled on the open questions and on five of the gates, the Shared Case amendment (E23)
-among them, and made questions 17, 20, and 21 checks for CI-E and CI-9; each ruling is recorded
-where its question or gate appears. This document is brief CI-P in that plan, and plans the
-base-layer first slice of the
+CI-8 onward, including CI-9b, CI-10a, CI-D1, CI-D2, CI-R, CI-E, and CI-B, and the maintainer
+gives it on PR #1805. On 2026-10-10 the maintainer ruled on the open questions and on five of the
+gates, the Shared Case amendment (E23) among them, and made questions 17, 20, and 21 checks for
+CI-E and CI-9; each ruling is recorded where its question or gate appears. This document is brief
+CI-P in that plan, and plans the base-layer first slice of the
 [Case investigation engine spec](../specs/2026-10-02-case-investigation-engine-design.md) under
 [ADR-0039](../adr/0039-ai-analysis-is-an-opt-in-layer-over-a-model-free-base.md), which makes the
 base layer model-free;
@@ -37,10 +37,11 @@ Content Hash. The Operator accepts and rejects Joints and adds and dismisses spa
 Source Class, copy marks, and Withheld from analysis, and keep a list of Own Identifiers. The
 slice uses no model and no external lookup, and a run writes no Manifest Entry. The spec's first
 slice also needs "no new public API" (spec, "First slice"); this plan adds one read-only MCP tool,
-`get_case_revision` (E6), and nothing else to the MCP surface #547 maps. ADR-0042 has the MCP
-server read the same Case revision as the app, the roadmap's CI-9 brief asks for that read with a
-test on the MCP path, and an MCP client reaches the server only through its tools. The maintainer
-approves or drops the tool with this plan.
+`get_case_revision` (E6), and adds no other tool to the MCP surface #547 maps. CI-D1 changes what
+the existing tools return for a withheld Exhibit, as the 2026-10-10 MCP ruling requires (Gates).
+ADR-0042 has the MCP server read the same Case revision as the app, the roadmap's CI-9 brief asks
+for that read with a test on the MCP path, and an MCP client reaches the server only through its
+tools. The maintainer approves or drops the tool with this plan.
 
 The slice is finished when one runner shows four things on the synthetic Case:
 
@@ -728,7 +729,9 @@ other table empty in that window: CI-9b merges before CI-D1, CI-D2, and CI-R.
   before and after each tool call and discards a run whose revision moved. That harness is not
   briefed here.
 - On 2026-10-10 the maintainer ruled that MCP tools list a withheld Exhibit with its mark and never
-  return its content or values drawn from it (Gates). CI-9 changes no existing tool.
+  return its content or values drawn from it (Gates). CI-9 changes no existing tool. CI-D1, the
+  first brief that lets an Operator set the flag, implements the ruling and audits every
+  registered tool.
 
 ### E7. Consistency: revision checks around synchronous batches
 
@@ -1305,10 +1308,10 @@ changes only when a rule's matching logic changes (open question 16, ruled 2026-
   method and the key-backed fake's runs. CI-9 adds the trigger timing, CI-10 the sweeps and the
   first real runs, CI-12 the gap entries, and CI-B the confirmation run and the time to review.
 - **Command.** CI-E adds `pnpm eval:engine`, beside #1796's `pnpm eval:retrieval`, with three
-  flags: `--eval-captures=1000` for the ruled size, `--variant=a` or `--variant=b`,
-  and `--engine=key` or `--engine=real`. With `--engine=real` the runner scores `runUnstored()`
-  (E10) until CI-R merges, and stored runs read through the view from then on. The done-when list
-  below names the command each brief runs.
+  flags: `--eval-captures=<n>`, run at 1,000 Captures, the size ruled on 2026-10-10;
+  `--variant=a` or `--variant=b`; and `--engine=key` or `--engine=real`. With `--engine=real` the
+  runner scores `runUnstored()` (E10) until CI-R merges, and stored runs read through the view from
+  then on. The done-when list below names the command each brief runs.
 
 ## Search and sharing
 
@@ -1326,7 +1329,7 @@ retrieval slice returns Exhibits:
   withheld after; a third run appends its results to the retrieval first-slice assessment. The
   withheld Exhibit appears in Case search with its mark, and in no analysis query. The engine runner
   imports the same withheld pages, so one definition serves both evaluations.
-- CI-14 changes no MCP tool; the brief that implements the 2026-10-10 MCP ruling does (Gates).
+- CI-14 changes no MCP tool; CI-D1 implements the 2026-10-10 MCP ruling (Gates).
 
 CI-14's tests seed the flag through CI-9b's repository, so CI-14 does not wait on CI-D1, though an
 Operator can set the flag only once CI-D1 merges.
@@ -1366,8 +1369,7 @@ The maintainer approved this amendment as proposed on 2026-10-10, item 6 include
 3. **Subject identity across members.** A document Subject is bound to its Exhibit and an
    identifier Subject to its kind, platform, and comparison key. Subjects with the same binding read
    as one Subject, and `identity_hash` uses bindings in place of row ids, so two members' proposals
-   of one Joint match. Person, pseudonym, and other unbound Subjects never combine (open
-   question 4).
+   of one Joint match. Person, pseudonym, and other unbound Subjects never combine.
 4. **Decisions** sync attributed to their author, and so do adds and dismisses. Each member's
    current decision on a Joint or span is their own head row, found through `replaces` (E2);
    members who disagree leave the Joint
@@ -1407,19 +1409,19 @@ Each brief is one pull request. Waves are the roadmap's; file counts are estimat
 | --- | --- | --- | --- | --- | --- | --- |
 | CI-8 | 2 | E10: `src/shared/investigation.ts`, the `investigation:` channels and preload, the renderer API module, the engine interface, and the fake engine and its invented fixture | CI-P approved | none | none (IPC files are advisory) | 7-9 |
 | CI-9 | 4 | E1, E3, E4, E6, E8: the migration, triggers, and view; `caseRevision.ts`; generation replacement in both restores; `get_case_revision` and its `mcp.mdx` line; a Case revision entry in `CONTEXT.md`; trigger timings | CI-2, CI-3, CI-P approved | migration | `db/**` | 10-12 |
-| CI-9b | 4 | E5: repositories, collectors, importers, `ID_PROBE_TABLES`, the `replaces` remap, the archive version | CI-9 | Case Archive | `db/**`, `caseArchive.ts` | 8-10 |
 | CI-10a | 4 | E11: the `fields/2` extractor | CI-4, CI-5 | none | `db/**` (build service) | 4-6 |
 | CI-E | 4 | E14 to E21: pages, seed, key, inquiries, scorer, the key-backed fake, network guard, faulty wrappers, variant B, assessment started | CI-P approved, CI-2, CI-8 | none | none | 8-10 |
-| CI-10 | 5 | The base-layer package, the batch reader, the four rules, document Subjects, expansion, holder counts, the threshold sweeps | CI-9b, CI-10a, CI-E's key | none | `db/**` (reader), `src/shared/verify/**` (`url` on `CaptureChainEntry`), `src/main/services/investigation/**` (its row, open question 19) | 10-12 |
-| CI-D1 | 5 | Withheld from analysis, Source Class, copy marks, and Own Identifier services and IPC; the `mcp.mdx` sentence | CI-9b | none | `db/**` | 7-9 |
-| CI-D2 | 5 | Joint and span decisions with acceptance context and undo; Subjects added and kept by hand; the same-name choice | CI-9b | none | `db/**` | 7-9 |
-| CI-R | 5 | Run lifecycle, the stored write, out of date, changes since a run, compaction, runs left `running` by a quit; the Notes editor action | CI-8, CI-9b | none | `db/**`, `src/main/services/investigation/**` (open question 19) | 8-10 |
-| CI-11 | 6 | Claim checks: `checkFieldHit`, the `textHash` comparison, the `capture-url` check | CI-6 (after its sign-off), CI-10 | none | `db/**`; the check module, under `src/main/services/investigation/**` (open question 19) | 5-7 |
-| CI-12 | 6 | The derived view: paths, strength summary, weak mark, gap list, local source trail | CI-10's threshold run, CI-R | none | `db/**` (read queries) | 6-8 |
+| CI-9b | 5 | E5: repositories, collectors, importers, `ID_PROBE_TABLES`, the `replaces` remap, the archive version | CI-9 | Case Archive | `db/**`, `caseArchive.ts` | 8-10 |
+| CI-10 | 6 | The base-layer package, the batch reader, the four rules, document Subjects, expansion, holder counts, the threshold sweeps | CI-9b, CI-10a, CI-E's key | none | `db/**` (reader), `src/shared/verify/**` (`url` on `CaptureChainEntry`), `src/main/services/investigation/**` (its row, open question 19) | 10-12 |
+| CI-D1 | 6 | Withheld from analysis, Source Class, copy marks, and Own Identifier services and IPC; the 2026-10-10 MCP ruling in the MCP server: every registered tool audited, and a withheld Exhibit listed with its mark and none of its content or values drawn from it; the `mcp.mdx` update | CI-9b | none | `db/**` | 13-16 |
+| CI-D2 | 6 | Joint and span decisions with acceptance context and undo; Subjects added and kept by hand; the same-name choice | CI-9b | none | `db/**` | 7-9 |
+| CI-R | 6 | Run lifecycle, the stored write, out of date, changes since a run, compaction, runs left `running` by a quit; the Notes editor action | CI-8, CI-9b | none | `db/**`, `src/main/services/investigation/**` (open question 19) | 8-10 |
 | CI-14 | 6 | E22 | CI-5, CI-7, CI-9b, the mark's design | none | `db/**`; `src/renderer/components/data/**` or `DataExplorer.tsx`, whichever holds CI-7's tab | 6-8 |
-| CI-S | 6 | E23, implemented | SC-2, CI-9b, CI-D1, CI-D2, CI-R | none | `db/**`, `src/main/services/sharing/` | 8-12 |
-| CI-13 | 7 | Exporting Joints with their lineage | CI-11, CI-12 | none | `export.ts` | 5-7 |
-| CI-B | 7 | The bar confirmation run: every E17 measure on variants A and B with the real engine, unkeyed proposals classified, time to review | CI-10, CI-11, CI-12, CI-D1, CI-D2, CI-R | none | none | 3-5 |
+| CI-11 | 7 | Claim checks: `checkFieldHit`, the `textHash` comparison, the `capture-url` check | CI-6 (after its sign-off), CI-10 | none | `db/**`; the check module, under `src/main/services/investigation/**` (open question 19) | 5-7 |
+| CI-12 | 7 | The derived view: paths, strength summary, weak mark, gap list, local source trail | CI-10's threshold run, CI-R | none | `db/**` (read queries) | 6-8 |
+| CI-S | 7 | E23, implemented | SC-2, CI-9b, CI-D1, CI-D2, CI-R | none | `db/**`, `src/main/services/sharing/` | 8-12 |
+| CI-13 | 8 | Exporting Joints with their lineage | CI-11, CI-12 | none | `export.ts` | 5-7 |
+| CI-B | 8 | The bar confirmation run: every E17 measure on variants A and B with the real engine, unkeyed proposals classified, time to review | CI-10, CI-11, CI-12, CI-D1, CI-D2, CI-R | none | none | 3-5 |
 | CI-V1 to CI-V5 | As the roadmap | As the roadmap briefs them; CI-V1 registers the route and components, and the `Sidebar.tsx` and command palette entries land in CI-V5 (Gates); CI-V4's gap list renders the not-read entry (open question 15) | As the roadmap; CI-V5 merges after CI-B and the bar gate | none | As the roadmap | |
 
 Whichever of CI-10 and CI-R merges second wires the base-layer package into the run lifecycle;
@@ -1467,8 +1469,12 @@ edits `website/` also runs `pnpm dlx mint broken-links` from `website/content/`.
 - **CI-D1.** A member clears only their own flag; an Owner's clear of a revoked member's flag lifts
   the withholding; the eligibility view follows each; a second member's unmark leaves the first
   member's Own Identifier entry marked; a flag with a NULL holder whose author is another
-  installation reads as that member's flag; `mcp.mdx` states that MCP tools still return withheld
-  Exhibits until the brief that implements the 2026-10-10 MCP ruling merges.
+  installation reads as that member's flag; in an imported Case, the importing Operator clears a
+  flag whose author is the source installation with a new row they author, which lifts the
+  withholding (open question 5). The PR lists every registered MCP tool with what it returns for a
+  withheld Exhibit; for each tool that returns Exhibit content or values drawn from it, a test
+  shows a withheld Exhibit listed with its mark and none of its content; and `mcp.mdx` states the
+  rule.
 - **CI-D2.** Accept is refused until the Joint has an available reviewed supporting span, one on
   each side for a Joint between two Subjects; every add, dismiss, and decision can be undone with a
   new row; two decisions by one member on one Joint, written in the same millisecond, resolve to
@@ -1517,7 +1523,8 @@ rest take effect only if the maintainer approves this plan.
    migration, and runs in wave 4.
 3. **CI-D splits into CI-D1 (Exhibit-level marks) and CI-D2 (Joint, span, and Subject decisions).**
    The MCP gate blocked "the first brief that lets an Operator set the flag", which is CI-D1 alone,
-   so CI-D2 never waited on that ruling, which the maintainer gave on 2026-10-10.
+   so CI-D2 never waited on that ruling, which the maintainer gave on 2026-10-10. CI-D1
+   implements it.
 4. **The run's single revision-checked write moves from CI-D to CI-R,** because that write is where
    a run is stored or invalidated.
 5. **The same-name choice moves from CI-R to CI-D2.** It writes a span decision and starts a Joint
@@ -1529,7 +1536,7 @@ rest take effect only if the maintainer approves this plan.
    fake the roadmap names (E18). It records every measure the spec lists except time to review,
    which moves to CI-B (E17), because timing one person's review means something only on the real
    engine's result.
-8. **CI-B is new,** in wave 7: the bar confirmation run the CI-V5 merge waits on.
+8. **CI-B is new,** in wave 8: the bar confirmation run the CI-V5 merge waits on.
 9. **CI-12 and CI-14 keep their roadmap dependencies,** with CI-9b in place of CI-9, because they
    seed rows through CI-9b's repositories. **CI-12 also depends on CI-R,** because its view and its
    keyed gaps need stored runs (Order of work). **CI-S depends on CI-R as well,** since the
@@ -1556,8 +1563,12 @@ changed (ADR-0042, Consequences).
   reports `rolled_back`. Case delete cascades through every input table, so a throw fails the Case
   delete. A Case Archive import fires the triggers inside its one transaction, so a throw rolls
   the whole import back. An `exhibits` trigger also sits in the path that writes each new Exhibit
-  row, so CI-9's PR states what a throw there does to ingest and to a Staging Pool commit. CI-9
-  also changes both restore paths. Evidence-affecting by path (`db/**`).
+  row, so CI-9's PR states what a throw there does to ingest and to a Staging Pool commit. The
+  `exhibits` delete trigger and the cascaded `exhibit_search_builds` delete also fire inside the
+  Capture delete path above and in Settings -> Database orphan cleanup, and a throw in an
+  `exhibit_search_builds` trigger fails that Exhibit's field build, on ingest or in the
+  Settings -> Database rebuild. CI-9 also changes both restore paths. Evidence-affecting by path
+  (`db/**`).
 - **CI-9b** changes the Case Archive format. An importer that drops a table loses the Operator's
   decisions without an error, so the round-trip and collision tests carry the PR. Evidence-affecting
   by path (`caseArchive.ts`).
@@ -1567,8 +1578,9 @@ changed (ADR-0042, Consequences).
   CI-D1. That module sits under `src/main/services/investigation/**`, which the maintainer put on
   the blocking tier on 2026-10-10 (open question 19), so CI-10 is evidence-affecting by path.
 - **CI-D1** writes the only access control analysis has (ADR-0042). A wrong eligibility read sends
-  withheld text into analysis, which fails the safety gate. This plan recommends that triage call
-  it evidence-affecting.
+  withheld text into analysis, which fails the safety gate. It also decides what MCP tools return
+  for a withheld Exhibit, and a tool the audit misses sends withheld content to an MCP client. This
+  plan recommends that triage call it evidence-affecting.
 - **CI-11** reports whether a span is present in stored bytes, the class retrieval plan Ruling 4
   treats as evidence-affecting.
 - **CI-13** edits `export.ts`, blocking tier (ADR-0042, Consequences).
@@ -1623,7 +1635,9 @@ Joint records the Operator's judgement.
 - **Heads (CI-D1).** Two marks with no replacement conflict; a choice replacing both resolves; an
   Owner clear of a revoked member's flag lifts the withholding; the eligibility view follows each;
   a second member's unmark leaves the first member's Own Identifier entry marked; a NULL holder
-  reads as the row's author.
+  reads as the row's author; in an imported Case, the importing Operator clears a flag whose
+  author is the source installation with a new row they author, which lifts the withholding (open
+  question 5).
 - **Decision heads (CI-D2).** Two decisions by one member on one Joint, written in the same
   millisecond, resolve to the second through `replaces`; another member's decision replaces
   neither.
@@ -1642,13 +1656,13 @@ its evidence.
 
 | Gate | Blocks | Ruling or recommendation |
 | --- | --- | --- |
-| Approve the CI-P engine plan, and file and triage CI-P | CI-8 onward, CI-D, CI-R, CI-E | Open: the maintainer reads this plan and approves it on PR #1805 |
+| Approve the CI-P engine plan (#1805) | CI-8 onward, including CI-9b, CI-10a, CI-D1, CI-D2, CI-R, CI-E, and CI-B | Open: the maintainer reads this plan and approves it on PR #1805 |
 | Pick the synthetic Case size | CI-2's baseline, CI-5, CI-9's trigger timings, every engine run | **Ruled 2026-10-10:** 1,000 Captures, for CI-2's baseline and every engine run. The spec sizes its design for "a Case of about 1,000 Exhibits", and PR #1796 already ingested 1,000 pages in 24.1 s |
 | Sign off `checkFieldHit` (retrieval plan, Ruling 4) | CI-6's merge, and through it CI-7 and CI-11 | Open. None; this plan only depends on it |
 | Pick #598's direction (a utility process, or extraction moved off the capture's critical path) | CE-10 in the roadmap; here, the fallback if CI-10's longest batch freezes the app for too long, which moves the engine off the main process in that direction (E7) | **Ruled 2026-10-10:** extraction runs in a utility process (CE-10), and CI-4's field build may share it, so the engine's fallback (E7) is a utility process too |
 | How the Investigate section stays out of releases | CI-V1's merge | **Ruled 2026-10-10:** option (a). CI-V1 registers the route and components, and the `Sidebar.tsx` and command palette entries land in CI-V5. It adds no pattern, and the fake engine's packaged-build rule (E10) fits it |
-| Design the Withheld from analysis mark | CI-14 | **Routed 2026-10-10:** the mark goes into the designer UI brief for the Capture Session panel (launched-browser spec, D19 and D22), with the investigation header's "not read" count (open question 15). The design itself still gates CI-14 |
-| Whether MCP tools return withheld Exhibits (ADR-0044, #547) | Under this plan's split, CI-D1's merge | **Ruled 2026-10-10:** MCP tools list a withheld Exhibit with its mark and never return its content or values drawn from it, and the brief that implements the ruling audits every registered tool. ADR-0044 notes that an MCP client is often a model whose provider sits outside the in-app consent, and the spec keeps withheld text from every provider. The tools that return Exhibit content or values drawn from it include `get_capture_text`, `get_capture_html`, `get_capture_screenshot`, `get_exhibit_file`, `search_captures`, `search_extracted_data`, and `list_extracted_data` |
+| Design the Withheld from analysis mark | CI-14 | **Routed 2026-10-10:** the mark goes into the designer UI brief for the Capture Session panel (CE-U in the roadmap; launched-browser spec, D19 and D22), with the investigation header's "not read" count (open question 15). The design itself still gates CI-14 |
+| Whether MCP tools return withheld Exhibits (ADR-0044, #547) | Under this plan's split, CI-D1's merge | **Ruled 2026-10-10:** MCP tools list a withheld Exhibit with its mark and never return its content or values drawn from it, and the brief that implements the ruling audits every registered tool. CI-D1, the first brief that lets an Operator set the flag, is that brief. ADR-0044 notes that an MCP client is often a model whose provider sits outside the in-app consent, and the spec keeps withheld text from every provider. The tools that return Exhibit content or values drawn from it include `get_capture_text`, `get_capture_html`, `get_capture_screenshot`, `get_exhibit_file`, `search_captures`, `search_extracted_data`, and `list_extracted_data` |
 | Approve the Shared Case amendment (E23), and rule on #543 for syncing Own Identifiers with the marking member's Member Code | CI-S | **Ruled 2026-10-10:** E23 approved as proposed, item 6 included: Own Identifiers sync per holder with the marking member's Member Code, and no Persona label or note syncs, which rules #543 for that case. The filter cannot work without the entries. CI-P's PR applies E23 to the collaborative cases design |
 | Confirm the base-layer bar and the safety gate on the synthetic Case | CI-V5's merge and any release showing the Investigate section | Open. Read CI-B's results |
 | The local model and runtime ADR, and the view brief's open gaps G3 and G7 | The AI layer and later view states | Open. None; this plan stores run records without deciding whether they reopen (G3) |
@@ -1729,7 +1743,9 @@ implements it amends ADR-0042 in the same PR, so no code ships against an unamen
     Exhibits unread, and the header's read count would otherwise omit them without saying so.
     **Ruled:** a "not read" count beside "read" and "withheld" in the header (feasibility
     assessment, S2), and a gap-list entry in the "searches not yet run" group that names the unread
-    kinds. Both go to the designer, in the UI brief for the Capture Session panel (Gates).
+    kinds. The header count goes, with the Withheld mark, into the designer UI brief for the
+    Capture Session panel (CE-U in the roadmap; Gates); the gap-list entry naming the unread kinds
+    is a designer item.
 16. **Does changing a threshold change the rule version?** The spec's determinism sentence names
     rule versions, not parameters, and its "same Joint" includes the rule version, so a version
     change makes the next run propose every claim again as a new, undecided proposal. **Ruled:**

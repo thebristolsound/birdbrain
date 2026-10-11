@@ -323,8 +323,11 @@ export function getCaptureCountsByCase(): Record<string, number> {
 
 // --- Search ---
 
+// The captures_fts columns, so a column filter such as `url:` survives query preparation.
+const CAPTURES_FTS_COLUMNS = ['title', 'url', 'content']
+
 export function searchCaptures(query: string, caseId?: string): Capture[] {
-  const match = toFtsMatchQuery(query)
+  const match = toFtsMatchQuery(query, CAPTURES_FTS_COLUMNS)
   const rows = getDb()
     .prepare(
       `SELECT c.* FROM captures c

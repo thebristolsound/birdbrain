@@ -239,6 +239,9 @@ export function getNoteCount(caseId: string): number {
   return row.count
 }
 
+// The notes_fts columns, so a column filter such as `title:` survives query preparation.
+const NOTES_FTS_COLUMNS = ['title', 'body']
+
 export function searchNotes(caseId: string, query: string): Note[] {
   if (!query.trim()) return []
   const rows = getDb()
@@ -248,7 +251,7 @@ export function searchNotes(caseId: string, query: string): Note[] {
        WHERE notes_fts MATCH ? AND n.case_id = ?
        ORDER BY rank`
     )
-    .all(toFtsMatchQuery(query), caseId) as Array<Record<string, unknown>>
+    .all(toFtsMatchQuery(query, NOTES_FTS_COLUMNS), caseId) as Array<Record<string, unknown>>
   return rows.map(rowToNote)
 }
 

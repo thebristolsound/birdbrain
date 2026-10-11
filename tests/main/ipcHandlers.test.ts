@@ -1638,7 +1638,7 @@ describe('ipcHandlers — annotations', () => {
 describe('ipcHandlers — search', () => {
   it('searches captures and reports a query FTS5 cannot parse as a failure', async () => {
     expect(expectOk(await invoke(IPC_CHANNELS.SEARCH, 'case-1', 'hello'))).toBeDefined()
-    for (const query of ['hello AND', 'OR hello']) {
+    for (const query of ['hello AND', 'OR hello', 'hello -world']) {
       const res = (await invoke(IPC_CHANNELS.SEARCH, caseId, query)) as {
         ok: boolean
         code?: string

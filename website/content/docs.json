@@ -26,12 +26,22 @@
         "group": "Trust and privacy",
         "pages": [
           "docs/threat-model",
-          "docs/birdbrain-privacy-adoption-whitepaper",
-          "docs/birdbrain-architecture-whitepaper"
+          "docs/adoption-guide",
+          "docs/architecture"
         ]
       }
     ]
   },
+  "redirects": [
+    {
+      "source": "/docs/birdbrain-architecture-whitepaper",
+      "destination": "/docs/architecture"
+    },
+    {
+      "source": "/docs/birdbrain-privacy-adoption-whitepaper",
+      "destination": "/docs/adoption-guide"
+    }
+  ],
   "navbar": {
     "links": [
       {

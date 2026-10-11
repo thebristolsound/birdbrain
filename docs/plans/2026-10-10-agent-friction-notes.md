@@ -1,6 +1,8 @@
 # Agent friction notes and crib notes
 
-**Status:** Draft; decisions taken 2026-10-10, implementation not yet approved
+**Status:** Approved 2026-10-11; phases 1 and 2 in progress
+
+**Decision:** [ADR-0050](../adr/0050-agents-leave-friction-notes-for-human-curation.md)
 
 **Research:** [How the CodeRabbit learning feature works](../specs/2026-10-10-coderabbit-learnings-research.md)
 
@@ -76,8 +78,9 @@ expiry and relies on a manual quarterly review.
 
 Decided 2026-10-10: option 1. The options as ranked:
 
-1. **Comments on one locked tracking issue (chosen).** The dispatcher posts one comment
-   per cycle carrying the notes of every agent in the cycle. A new `friction notes` kind in
+1. **Comments on one locked tracking issue (chosen).** The session leaves the notes of every
+   agent in the run in one file, and a workflow step posts them as one comment, as the machine
+   account. A new `friction notes` kind in
    the `post-comment` linter holds the shape. Locking the issue limits comments to
    collaborators, and readers filter by author. It needs no new token scope, store or branch,
    it is durable, and it adds one issue rather than one per note. The cost is notification
@@ -114,7 +117,7 @@ Each phase is a separate PR and a separate maintainer approval. The work carries
    for the read side.
 2. **Capture only, two weeks.** Add the note section to the implementer handoff, the reviewer
    report, the dispatch end-of-cycle report and the scheduled PR review; add the comment kind
-   and its linter fixtures; have the dispatcher post. No run reads the notes.
+   and its linter fixtures; add the workflow step that posts. No run reads the notes.
 3. **Curation: a trial run, then weekly.** A `curate-friction` skill reads the comments since
    the last curation, groups them by anchor, and proposes outcomes for the maintainer to
    accept. The maintainer runs it interactively. The first run is a trial a few days into

@@ -5,7 +5,8 @@ Status: design, not implemented. Nothing below ships today.
 Companion: [Shared Case members UI design brief](2026-09-19-shared-case-members-ui-brief.md)
 holds the designer-facing surface list. This document is the engineering contract.
 Decisions come from a grilling session with the maintainer on 2026-09-19; every
-recommendation was accepted.
+recommendation was accepted. On 2026-10-10 the maintainer approved an amendment that adds the
+investigation records to the working layer ("Working-layer rows").
 
 ## Problem
 
@@ -209,6 +210,63 @@ only with a valid signature from a roster member and a version above the stored 
 
 Tag display merges by `name`; the merged chip lists each author on hover. Tag color is the
 earliest-created author's, by `created_at`, with ties broken by `installationId`.
+
+The investigation records join the working layer under an amendment the maintainer approved on
+2026-10-10. It is E23 in the
+[Case investigation engine plan](../plans/2026-10-10-case-investigation-engine.md), whose E1
+defines the tables and whose E2 defines each table's key and the head rule used below.
+
+1. **Rows.** Ten tables join the working layer: `subjects`, `joints`, `joint_spans`,
+   `subject_spans`, `joint_decisions`, `span_decisions`, `source_class_marks`, `copy_marks`,
+   `withheld_flags`, and `own_identifiers`. They carry the same four columns, the same signing over
+   canonical JSON, and the same rule that remote rows are inserted only with a roster member's
+   valid signature and a version above the stored one. Within one author's rows the `rows` step
+   sends Subjects, then Joints, then spans, then decisions. That order holds nothing across
+   authors, because the step pulls each author's rows by `(authorInstallationId, sinceVersion)`
+   (Sync session, step 5): member B's decision on member A's Joint can arrive before A's Joint
+   row, and `joint_decisions.joint_id` would refuse it. The receiver therefore applies every row
+   one session receives in one transaction with SQLite's `defer_foreign_keys` pragma on, so each
+   foreign key is checked at commit, after the Joint has arrived. A peer that holds B's decision
+   also holds A's Joint, because its own insert passed the same check; a session that ends without
+   the referenced row rolls back, and the next session retries.
+2. **When a Joint syncs.** A Joint, the Subjects it names, and its spans sync once any member's
+   head decision on it is `accept`. Until then they stay with the member whose run proposed them.
+   A reject of a Joint that has not synced stays local, and syncs once another member accepts a
+   Joint with the same `identity_hash`; the Joint then reads as contested. A same-name span syncs
+   only with the Joint its choice started; a `none` choice stays local. A held-back row keeps the
+   version it took at write time, and each peer's cursor for that author passes that version once
+   the author syncs any later row, so the author's installation gives a held-back row a fresh
+   per-author version, and signs it again, when it becomes eligible.
+3. **Subject identity across members.** A document Subject is bound to its Exhibit and an
+   identifier Subject to its kind, platform, and comparison key. Subjects with the same binding
+   read as one Subject, and `identity_hash` uses bindings in place of row ids, so two members'
+   proposals of one Joint match. Person, pseudonym, and other unbound Subjects never combine.
+4. **Decisions** sync attributed to their author, and so do adds and dismisses. Each member's
+   current decision on a Joint or span is their own head row, found through `replaces`; members
+   who disagree leave the Joint contested, and a dismiss by another member shows beside a span
+   this installation counts.
+5. **Withheld from analysis** syncs per holder, and a NULL holder means the row's author. An
+   installation withholds an Exhibit while any holder's head is `set`. A member clears only their
+   own flag, and an Owner clears a revoked member's flag with a row the Owner authors.
+6. **Own Identifiers** sync per holder, as flags do: their kind, platform, stored value, holder,
+   and the marking member's Member Code. `persona_id`, and with it the Persona's label and notes,
+   never syncs. Each installation normalizes the stored value with its own rule version. A member
+   removes only their own entries, and an Owner removes a revoked member's entries with a row the
+   Owner authors. The 2026-10-10 approval rules #543 for this case.
+7. **Source Class and copy marks** sync with their `replaces` lists. Heads with different values
+   read as a conflict until a member writes a row replacing them.
+8. **Never synced:** investigation run records and their child tables (they list what this
+   installation read and, later, what it sent to a provider), `case_revisions`, and
+   `case_change_log`, beside the local-only state in decision 17. A synced decision carries its
+   basis run's start time and proposal hash, so lineage survives without the run record.
+9. **The Case revision.** A received row fires the same triggers as a local one, so it advances the
+   counter and invalidates a running investigation run. Received Manifest entries move this
+   installation's Manifest head only when the session writes its `merge` entry (Sync session,
+   step 6); before then, the `exhibits` triggers move the counter when a received Exhibit's row
+   lands.
+10. **Decisions received on this installation's proposals.** ADR-0042's rule excepts any decision
+    on a run's own proposals, so a decision another member makes on them, received by sync, leaves
+    the run current.
 
 ### Database
 

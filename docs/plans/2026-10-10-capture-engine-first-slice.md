@@ -10,7 +10,7 @@ Plan only. Nothing here is built. It plans
 brief CE-P of [the agent briefs plan](2026-10-10-three-programme-agent-briefs.md).
 
 The plan awaits approval. On 2026-10-10 the maintainer ruled on its open questions, the spec's
-open questions 1, 2, and 5, and most of its gates (Rulings, 2026-10-10), and deferred approving
+open questions 1 and 2, and most of its gates (Rulings, 2026-10-10), and deferred approving
 the spec and this plan until reading #1803. Until then, every step and decision those rulings do
 not settle is a proposal.
 
@@ -211,9 +211,10 @@ for i in 1 2 3 4; do env -u ELECTRON_RUN_AS_NODE PROBE_OUT=out/fresh$i PROBE_PAS
 
 ## Decisions
 
-The maintainer accepted D1 to D7 as the shape step 1 freezes (open question D) and ruled D15 as
-written. Every other decision, and any part of D8 or D14 that no ruling names, is this plan's
-recommendation until the maintainer approves the plan.
+The maintainer accepted D1 to D7 as the shape step 1 freezes (open question D) and ruled D15's
+rerun policy (the CI test, the script in step 9, the maintainer's CI-job pull request). Every other
+decision, and any part of D8, D14, or D15 that no ruling names, is this plan's recommendation until
+the maintainer approves the plan.
 
 ### D1. Six optional fields on the `capture` entry
 
@@ -530,15 +531,20 @@ stage 2 added no field of its own. This plan leaves it out:
   unmerged branch, gives a `launched` entry the browser product, version, and family (its section
   "Manifest, schema, and verifier"), and the maintainer ruled on 2026-10-10 to sign them (CE-S2
   decision D12). The shape step 1 freezes holds none of them, so stage 2 needs its own verifier
-  release anyway.
+  release anyway. The same section asks whether CE-5 carries the inventory reasons stage 2 adds
+  (served by a service worker, restored from the back-forward cache, request body withheld, and
+  others). The D4 reason list the maintainer accepted is closed at `not-taken` and `failed`, so
+  stage 2's inventory reasons also ride stage 2's verifier step.
 - A verifier that accepts `launched` now accepts it in the shape of a `background` entry, and
   Package Verification compares the method with `evidence.json`'s origin. `CAPTURE_METHODS` also
   feeds the app's types, so the value would reach every surface that labels a method before
-  anything writes it. #599's rule applies.
+  anything writes it.
 - `launched-passive` stays out too. The maintainer ruled on 2026-10-10 that the verifier learns it
-  in a release before #600's writer merges (CE-S2 decision D5), and #599's "This lands **with**
-  the restoration (#600), not before" is to be clarified. `companion` waits for CE-S3 (ADR-0034,
-  Decision, order of work).
+  in a release before #600's writer merges, that the glossary and reporting surfaces change with
+  #600, and that #599's "This lands **with** the restoration (#600), not before" is to be clarified
+  (CE-S2 decision D5). A `launched-passive` entry records which rule took it, every page or a
+  Selector match (CE-S2 decision D12), a field the shape step 1 freezes does not hold, so the value
+  rides stage 2's verifier step. `companion` waits for CE-S3 (ADR-0034, Decision, order of work).
 
 The cost is one more verifier release, and one more upgrade for Shared Case members on mixed
 versions, when stage 2 ships.
@@ -595,10 +601,11 @@ approval, so the steps extend it before then and nothing changes it after.
 
 The maintainer ruled on questions 1 and 2 on 2026-10-10, each as this plan recommended. Questions
 3 to 5 rest on fields of D4: the `budget` record, the `cached` count, and the `webSockets` count,
-which the maintainer accepted with D1 to D7 (open question D). That settles question 5. The parts
-of questions 3 and 4 that no signed field fixes, the step 9 values and the `features.mdx`
-statement, stay recommendations until the plan is approved. Each section keeps the evidence behind
-its answer.
+which the maintainer accepted with D1 to D7 (open question D). That settles this slice's answer to
+question 5; whether WebSocket frames belong in the record stays a later decision, as the spec says.
+The parts of questions 3 and 4 that no signed field fixes, the step 9 values and the
+`features.mdx` statement, stay recommendations until the plan is approved. Each section keeps the
+evidence behind its answer.
 
 ### 1. Decoded bodies under original headers
 
@@ -691,14 +698,17 @@ produce a cache event in a fresh partition at all (risk 4).
 
 ### 5. WebSocket traffic
 
-**Ruled 2026-10-10, with D4 (open question D):** frames stay out of the record, and the inventory
-counts the connections (`webSockets`, D4), so a page that opened one never reads as fully recorded
-(ADR-0035, Decision). It had to be settled before step 1, because the count is a signed field.
+**Settled for this slice by the open question D ruling (2026-10-10):** the inventory counts the
+connections (`webSockets`, D4), so a page that opened one never reads as fully recorded (ADR-0035,
+Decision). Frames stay out of this slice, as the spec says, and whether they belong in the record
+stays a later decision. The count had to be settled before step 1, because it is a signed field.
 
 ## The `warcio` licence and the test readers
 
-The maintainer ruled on this gate (the agent briefs plan, gates table) on 2026-10-10, as this plan
-recommended. Facts, read 2026-10-10:
+The maintainer ruled on this gate (the agent briefs plan, gates table) on 2026-10-10. The licence
+and test-reader rulings follow this plan's recommendations. The scope of the 2026-10-02 approval
+(open question G) and the upstream request, which this plan left to the maintainer, are the
+maintainer's own rulings. Facts, read 2026-10-10:
 
 - The npm registry declares `Apache-2.0` for every release from 2.4.5 to 2.4.12, the latest
   (published 2026-09-04), from the repository `webrecorder/warcio.js`, and so does the
@@ -913,9 +923,9 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   described as the browser's summary of the captured transaction (`CONTEXT.md`, Relationships). The
   wording follows ADR-0035 and ADR-0036: the headers are present and their values are not, and the
   record is never complete beyond what the inventory supports.
-- **Not here.** Display in the app is #1816, filed to follow CE-8 (steps 6 and 10): it shows the
-  Egress, the inventory, the Scroll-to-load outcome, and Bound TLS Details on a Capture, kept apart
-  from the TLS Cert Chain view.
+- **Not here.** Display in the app (`ForensicsTab.tsx` and the Data screen) is #1816, filed to
+  follow CE-8 (steps 6 and 10): it shows the Egress, the inventory, the Scroll-to-load outcome, and
+  Bound TLS Details on a Capture, kept apart from the TLS Cert Chain view.
 - **Done when.** A report for a Capture carrying every field renders each of them, a report for a
   Capture without them renders as today, and no new wording calls the Transaction Record complete or
   uses an unqualified assurance word (`docs/agents/writing-guide.md`, Claim discipline).
@@ -930,7 +940,7 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   and ingest writes `scrollToLoad` and an `inventory` with MHTML and the screenshot present and the
   Transaction Record and PDF absent as `not-taken`, plus the row mirror. The step starts the D16
   validation record. `CONTEXT.md` rewrites the Scroll-to-load clause to say that `background`
-  Captures record the phase today, and keeps _Planned_ on the extension's half (#1667). It rewrites
+  Captures record the phase today, and keeps _Planned_ on the extension's half (CE-S3). It rewrites
   the Capture clause to say that `background` Captures carry the inventory today, and keeps
   _Planned_ on the inventory for other Capture Methods and on the Transaction Record and PDF.
   `CONTEXT.md` is the glossary, and the writing guide forbids describing unshipped behaviour in
@@ -1084,8 +1094,8 @@ B, ruled 2026-10-10). No writer step holds a lane.
 - `backgroundRenderer.ts`: CE-1, CE-2, CE-3, #1499, then steps 6, 9, and 10.
 - `recapture.ts`: CE-2, CE-3, #1499, the link-capture writer, then steps 6, 9, and 10.
 - `captureLifecycle.ts`: step 3 can land ahead of the agent briefs plan's order at rebase cost
-  only; steps 6, 9, and 10 take the places of CE-7 and CE-8, after CE-3, CI-4, SC-2b, and CE-10,
-  as in the agent briefs plan.
+  only; steps 6, 9, and 10 take the places of CE-7 and CE-8, after #1815, CE-3, CI-4, SC-2b, and
+  CE-10, as in the agent briefs plan.
 - `manifest.ts`: step 1 only. `export.ts`, `verifyScript.ts`, and `verifyRunbook.ts`: step 4 only.
   `caseArchive.ts`: step 3 only. `reportHtml.ts`: step 5 only.
 
@@ -1106,7 +1116,8 @@ What limits parallelism), pairs such as 1 with 7, 2 with 8, 3 with 5, and 4 with
 | New | Step 0, a renderer spike before the verifier freezes the shapes |
 | SC-2 | Builds its blob list from `CAPTURE_ENTRY_HASH_FIELDS` in `src/shared/verify/manifestChain.ts` (D2), whichever of SC-2 and step 1 creates it |
 
-The rows marked ruled were settled on 2026-10-10. The maintainer accepts the rest with the plan.
+On 2026-10-10 the maintainer ruled on the parts marked ruled, and accepts the rest of each row
+with the plan.
 
 ## Evidence impact
 
@@ -1166,16 +1177,17 @@ Most of these move into step 0, so they surface before step 1 freezes a shape.
 ## Decisions the maintainer owes
 
 Each row is a gate from the agent briefs plan that names this plan or one of its steps. The
-maintainer ruled on most of them on 2026-10-10; a row marked owed is still open.
+maintainer ruled on most of them on 2026-10-10; a row, or the part of a row, marked owed is still
+open.
 
 | Gate | Steps it blocks | Ruling, 2026-10-10, or what is owed |
 | --- | --- | --- |
 | Approve the capture engine spec and this plan | all but step 0 | Owed. Deferred until the maintainer reads #1803 with these rulings folded in; approval settles every step and decision no ruling covers |
 | Before beta.23 (#1799, a draft pull request) is tagged, decide which schema steps land in it | 1 | Ruled: beta.23 ships as is, carrying only the schema-5 (Egress) reader; the ADR-0040 and #586 schema steps share the later release with step 1's verifier |
-| Settle the `warcio` licence and approve the test-only readers | 8, and 9 and 10 through it | Ruled as recommended: both licence texts through an `append` override, the 2026-10-02 approval covering the runtime and transitive dependencies, and no upstream request now; a hand-written WARC reader plus a manual Python `warcio check`; `pdfjs-dist` 5.6.205, exact-pinned, with a Dependabot ignore for 5.7 and later |
+| Settle the `warcio` licence and approve the test-only readers | 8, and 9 and 10 through it | Ruled: both licence texts through an `append` override, the 2026-10-02 approval covering the runtime and transitive dependencies, and no upstream request now; a hand-written WARC reader plus a manual Python `warcio check`; `pdfjs-dist` 5.6.205, exact-pinned, with a Dependabot ignore for 5.7 and later |
 | Choose how the probe is rerun on each Electron upgrade | 9 | Ruled as recommended: the CI test on each Electron change (D15); step 9 commits the script, and the maintainer opens the pull request that adds the CI job (ADR-0048 sign-off) |
 | Tag a release carrying step 1's verifier, with notes telling Shared Case members to upgrade together | 6, 9, 10 | Owed: the tag. Steps 2 to 5, 7, and 8 do not wait for it (open question A, ruled). The ADR-0040 and #586 schema steps ship in the same release |
-| Tag a release carrying #1747, and rule whether update checks follow the Egress | 9, through CE-3 (#1695) | Ruled: `electron-updater` traffic goes through the proxy and fails closed, in CE-3's scope and acceptance. beta.23 (#1799) is the release that carries #1747 |
+| Tag a release carrying #1747, and rule whether update checks follow the Egress | 9, through CE-3 (#1695) | Owed: the beta.23 tag; #1799 ships as is, carrying #1747's schema-5 reader. Ruled: `electron-updater` traffic goes through the proxy and fails closed, in CE-3's scope and acceptance |
 | Rule on #1694: where the app displays capture fields | Display beyond `report.html` | Ruled: #1694 closed with its verifier half merged; #1816, after CE-8, shows the Egress, the inventory, the Scroll-to-load outcome, and Bound TLS Details on a Capture, apart from the TLS Cert Chain view. Step 5 covers only `report.html` |
 | Whether #1667 closes once its background half is recorded | none | Ruled: #1667 closes when step 6 records its background half; its extension half closes in favor of CE-S3 |
 | File and triage each step as an issue that meets the ready-for-agent bar, and queue it | all | Owed: one issue per step, with its done-when and verification commands from this plan |
@@ -1296,8 +1308,9 @@ folded in.
   merges second adds the two-peer test.
 - **Open question D, the shape step 1 freezes.** D1 to D7 as written, including
   `certificateTransparencyCompliance`, `serverSignatureAlgorithm`, `encryptedClientHello`, `mac`,
-  and the top-level `boundTlsAbsent`. This also settles spec open question 5: WebSocket frames stay
-  out, and the inventory counts the connections.
+  and the top-level `boundTlsAbsent`. This settles spec open question 5 for this slice: the
+  inventory counts WebSocket connections, frames stay out of this slice as the spec says, and
+  whether they belong in the record stays a later decision.
 - **Open question E, failures.** When `Network.enable`, a body fetch, the writer, or the print
   fails, the engine keeps the Capture and records the Transaction Record or the PDF absent as
   `failed`.
@@ -1327,8 +1340,9 @@ folded in.
 - **Parallel lanes.** No unattended lane beyond dispatch's two slots, and no new spend bound; larger
   parallel batches run only in interactive sessions the maintainer watches.
 - **Stage 2 rulings that bear on D13.** The verifier learns `launched-passive` in a release before
-  #600's writer merges, and #599 is to be clarified (CE-S2 decision D5). A `launched` entry signs
-  the browser product, version, and family (CE-S2 decision D12).
+  #600's writer merges, the glossary and reporting surfaces change with #600, and #599 is to be
+  clarified (CE-S2 decision D5). A `launched` entry signs the browser product, version, and family,
+  and a `launched-passive` entry records which rule took it (CE-S2 decision D12).
 
 ## Progress
 
@@ -1342,7 +1356,7 @@ folded in.
   of each partial exchange, steps 9 and 10 say where their time comes from, and open question F
   recommends one option.
 - **2026-10-10.** Folded in the maintainer's rulings of the same day (Rulings, 2026-10-10): open
-  questions A to G, the spec's open questions 1, 2, and 5, the `warcio` licence and test-reader
+  questions A to G, the spec's open questions 1 and 2, the `warcio` licence and test-reader
   gate, the probe rerun, beta.23, update checks, #1694, #1667, #598, and parallel lanes. D13 now
   cites the stage 2 spec and the two stage 2 rulings that bear on it. The plan and the spec still
   await the maintainer's approval on #1803.

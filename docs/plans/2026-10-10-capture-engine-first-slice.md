@@ -94,9 +94,11 @@ Paths are under `src/main/services/` unless named in full.
 - **Files by name.** The Capture Store names a Capture's files `{caseId}/{captureId}.{type}`
   (`artifactPaths` in `captureStore.ts`). One list, `CAPTURE_ARTIFACT_TYPES` (`mhtml`, `html`,
   `png`, `txt`), drives Duplicate's copy, deletion, the staged delete and its restore, and Case
-  Archive export, which names each file `files/{captureId}.{type}` (`exportCaseArchive`). Two
-  readers split a name at its last dot: the Case Archive import loop, which writes
-  `mapId(oldId) + ext`, and `parseArtifactFilename`, whose pattern knows single extensions only.
+  Archive export, which names each file `files/{captureId}.{type}` (`exportCaseArchive`). The
+  Case Archive import loop splits a name at its last dot and writes `mapId(oldId) + ext`.
+  `parseArtifactFilename` matches `^(.+)\.(html|png|txt|mhtml|jpg)$`, so it returns null for
+  `{id}.warc.gz` and `{id}.pdf`, and `findOrphans` skips a name it cannot parse: today the
+  orphan scan ignores both names.
 - **The orphan scan deletes what it reports.** `findOrphans` in `db/dbAdmin.ts` reports a flat file
   whose parsed id has no Capture, and a Capture row whose `html_path`, `screenshot_path`, or
   `mhtml_path` file is missing. `cleanOrphans` deletes every reported file, and every reported
@@ -172,17 +174,25 @@ run used, so the rerun exercised changes inside Electron only. All three configu
 | `Network.enable` on a window that has not navigated | no reply in 4 of 4 runs | no reply in 4 of 4 (94 to 96 s each, ended by the 90 s timeout); no page process lost |
 | `loadingFailed` events, on pass | not reported | 0 |
 
-**What it means for this plan.** The three facts the plan rests on hold on the pinned Electron:
-enabling `Network` changes none of the listed page facts, `Network.enable` still needs a page
+**What it means for this plan.** Three measured facts hold on the pinned Electron: enabling
+`Network` changes none of the page facts the probe compared, `Network.enable` still needs a page
 loaded first (step 9 loads `about:blank`), and `webContents.printToPDF` still works in the
-offscreen window (step 10). The rerun covers no Chromium change, so the next Chromium bump is where
-D15's check matters. Its limits are the probe's own (probe spike, What this does not show): plain
-HTTP from one origin, no Playwright, no consent filter, and one run per pass.
+offscreen window (step 10). The compared facts leave out `history.length`, and the `about:blank`
+load changes it. A scratch script run for this plan on Electron 44.5.1 under `xvfb-run`, in an
+offscreen sandboxed window with a fresh partition and the debugger attached, read
+`history.length` 1 when the target loaded directly and 2 when `about:blank` loaded first, with
+`wc.navigationHistory.length()` also 2. The probe's off pass loads the target directly and its on
+pass loads `about:blank` first, and neither records `history.length`. Step 0 question 7 takes it
+up. The rerun covers no Chromium change, so the next Chromium bump is where D15's check matters.
+Its limits are the probe's own (probe spike, What this does not show): plain HTTP from one origin,
+no Playwright, no consent filter, and one run per pass.
 
 **How it ran.** The probe has no standalone file. The script is the one under "The probe" in the
 probe spike at `df531d36`, extracted unchanged into a scratch worktree whose dependencies came from
-`scripts/setup-worktree.sh` on Node 20.20.2. The off and on passes exited 0; the four fresh-window
-runs exited 1, the probe's own exit after its timeout. Nothing was committed. The branch
+`scripts/setup-worktree.sh` on Node 20.20.2. The off and on passes exited 0. The four
+fresh-window runs exited 1 through the script's `FATAL` handler: the 90 s timer began shutdown,
+which rejected the pending `Network.enable` with `target closed while handling command` (each
+run's log). The timer's own exit code is 2. Nothing was committed. The branch
 `drafts/2026-10-02-capture-engine-probe-spike` holds the older 44.3.0 script, which writes to a
 fixed directory, tracks no redirect hops, and records no enable error; the rerun did not use it.
 
@@ -218,6 +228,15 @@ background Captures write the fields; extension Captures write none, and a Dupli
 source's except Bound TLS Details (D11). The names are proposals: step 1's review may rename them,
 and the maintainer approves the final shape there, before any release carries it.
 
+**`boundTlsAbsent` departs from the spec.** The spec says that when the main document came from
+the cache, Bound TLS Details are absent "and the inventory says why" (spec, Bound TLS Details),
+and the agent briefs plan puts that reason in the Transaction Record part of the inventory
+(CE-7). This plan puts the reason beside `boundTls` instead. A Duplicate re-anchors its source's
+inventory and writes no Bound TLS Details (D11), so an inventory part saying Bound TLS Details are
+present, copied to a Duplicate, would contradict the Duplicate's own entry. The alternative is an
+inventory part, `boundTls: { present: true } | { present: false; reason }`, which a Duplicate
+rewrites instead of copying. Open question D asks the maintainer to rule.
+
 ### D2. One schema number, integers only, and refines only where a shape contradicts itself
 
 - Step 1 takes the next manifest schema number, N, settled when it starts against the releases that
@@ -244,7 +263,9 @@ and the maintainer approves the final shape there, before any release carries it
   omitted when undefined, so no writer step touches `manifest.ts`.
 - Step 1 creates the shared list of the hash fields a `capture` entry anchors (`contentHash`,
   `screenshotHash`, `textHash`, `transactionRecordHash`, `pdfHash`), or extends it if SC-2 (#1512)
-  created it first (D14).
+  created it first (D14). The list is an exported constant, `CAPTURE_ENTRY_HASH_FIELDS` (a
+  proposed name), in `src/shared/verify/manifestChain.ts` beside `CaptureChainEntry`, and SC-2's
+  brief uses the same name and module (What this changes in the agent briefs plan).
 
 ### D3. File names and the Package Layout
 
@@ -363,24 +384,41 @@ image and records `trimmed: false`. Both functions return these facts beside the
 
 ### D7. Bound TLS Details
 
-`boundTls` records the main document response's `securityDetails`, limited to the fields the spec
-lists (spec, Bound TLS Details): `protocol`, `keyExchange`, `keyExchangeGroup` (optional), `cipher`,
-`mac` (optional), `subjectName`, `sanList`, `issuer`, `validFrom`, `validTo`, and the signed
-certificate timestamps, each with `status`, `origin`, `logDescription`, `logId`, `timestamp`,
-`hashAlgorithm`, `signatureAlgorithm`, and `signatureData`.
+`boundTls` records the main document response's `securityDetails`. The spec asks for "the
+structured fields the TLS spike lists" and names eight in a parenthetical: protocol, key exchange,
+cipher, subject, subject alternative names, issuer, validity, and the signed certificate
+timestamps (spec, Bound TLS Details). The TLS spike's list has four more: `certificateId`,
+`certificateTransparencyCompliance`, `serverSignatureAlgorithm`, and `encryptedClientHello`
+([the TLS spike](../specs/2026-05-17-chrome-debugger-tls-spike.md), section 2.1). This plan keeps
+the spike's list except `certificateId`, and adds `mac`:
 
+| Field | Kept | Why |
+| --- | --- | --- |
+| `protocol`, `cipher`, `subjectName`, `sanList`, `issuer`, `validFrom`, `validTo` | yes | The spec's parenthetical names each. |
+| `signedCertificateTimestampList`, each with `status`, `origin`, `logDescription`, `logId`, `timestamp`, `hashAlgorithm`, `signatureAlgorithm`, and `signatureData` | yes | The spec's parenthetical names the timestamps. |
+| `keyExchange`, `keyExchangeGroup` (optional) | yes | CDP splits the key exchange the spec names across both: `keyExchange` is "the empty string if not applicable", and `keyExchangeGroup` is the "(EC)DH group used by the connection, if applicable". |
+| `mac` (optional) | yes | Neither list names it. CDP splits the cipher the spec names across `cipher` and `mac`, and reports `mac` only for a cipher that has one ("AEAD ciphers do not have separate MACs"). |
+| `certificateTransparencyCompliance` | yes | The TLS spike names CT compliance as the field that shows whether the certificate was CT-logged (section 2.1). CDP describes it as whether the request complied with Certificate Transparency policy, and its three values (`unknown`, `not-compliant`, `compliant`) are a closed set the schema can admit exactly. |
+| `serverSignatureAlgorithm` (optional) | yes | The spike lists it. It is an integer TLS SignatureScheme code point, so it keeps the canonical JSON invariants. |
+| `encryptedClientHello` | yes | The spike lists it. It is a boolean. |
+| `certificateId` | no | A handle into the render's own session, which means nothing once the render ends. |
+
+- `keyExchange` may be `''`, and the schema admits the empty string for it. The newer capture
+  fields `egressLabel` and `userAgent` use `.min(1)` and are never `''`
+  (`ManifestCaptureEntrySchema`); a verifier that copied that rule would reject every `boundTls`
+  whose connection reports no separate key exchange, and no released verifier can be recalled.
+  Step 0 question 6 records the value Chromium 152 reports.
 - CDP gives `validFrom` and `validTo` as seconds since the epoch and an SCT `timestamp` as
   milliseconds, all as plain numbers. Step 7 converts each to an ISO 8601 string, the form the TLS
   Cert Chain's `refetchedAt` uses (`tlsCertChain.ts`), so no fraction enters the entry. The TLS
   Cert Chain stores validity as the text Node's `valid_from` and `valid_to` report, which is not
   ISO 8601, so the two TLS facts will not share a date format.
-- Left out: `certificateId`, a handle into the render's own session, and
-  `certificateTransparencyCompliance`, `serverSignatureAlgorithm`, and `encryptedClientHello`, which
-  the spec does not list. Adding one later costs a schema step (open question D).
+- Adding a field later costs a schema step (open question D).
 - `boundTlsAbsent` is `not-recorded` when the Capture has no Transaction Record, `not-https` for an
   `http:` main document, `from-cache` when the main document's response reports a cache hit (spec,
   Bound TLS Details), and `not-reported` when the response carried no `securityDetails` for any
-  other reason. A fresh partition makes `from-cache` rare; the spec still asks for the reason.
+  other reason. A fresh partition makes `from-cache` rare; the spec still asks for the reason. The
+  field sits beside `boundTls`, outside the inventory, which departs from the spec (D1).
 - The field is the browser's summary and holds no certificate bytes, so it supports no independent
   signature check (spec, Bound TLS Details). The report and `features.mdx` say so beside it.
 
@@ -394,7 +432,7 @@ against a Chromium 152 response.
   and the capture id (spec, Transaction Record), plus fixed statements of the header renaming
   (spec open question 1) and the credential marker, so the file describes itself to a reader that
   has only the WARC. It holds no host name, address, or proxy. One `request` and one `response`
-  record per exchange. A redirect gets a `response` record with headers and no body.
+  record per complete exchange, and the records in the table below for every other exchange.
 - **Compression.** Each record is its own gzip member (spec open question 2). `warcio`'s serializer
   takes a `gzip` option and serializes one record at a time (`WARCSerializer` in
   `src/lib/warcserializer.ts` of the 2.4.12 tarball).
@@ -417,6 +455,24 @@ against a Chromium 152 response.
 - **Addresses.** The writer sets `WARC-IP-Address` only while the Egress is Direct. Through a proxy,
   CDP's `remoteIPAddress` and `remotePort` can name the proxy, and ADR-0032 rule 5 keeps the proxy's
   host and port out of every record (the agent briefs plan, CE-7).
+
+**Partial exchanges.** The spec has the inventory, not the WARC, account for every exchange that
+is not complete (spec, Transaction Record), and ADR-0035 never lets the record read as more
+complete than the inventory supports. Apart from a redirect, which has no body of its own, a
+`response` record with no body would read as a complete empty response, so each partial exchange
+gets the records below. WARC 1.1 defines `WARC-Truncated` for a record whose content block was cut
+short, with the reasons `length`, `time`, `disconnect`, and `unspecified`. `warcio`'s
+`WARCRecord.create` takes arbitrary `warcHeaders` (`src/lib/warcrecord.ts` in the 2.4.12
+tarball).
+
+| Exchange (D4 count) | Records written |
+| --- | --- |
+| Complete | `request`, and `response` with the body |
+| Redirect hop | `request`, and `response` with headers and no body, as the spec says: the browser keeps no body for one |
+| Body omitted (`bodiesOmitted`) | `request`, and `response` with headers, no body, and `WARC-Truncated: unspecified`, because one count covers an over-budget body and one the browser no longer held (D4) |
+| Request body incomplete (`incompleteRequestBodies`) | `request` holding what `Network.getRequestPostData` returned, with `WARC-Truncated: unspecified`; its response follows the other rows |
+| Failed, cancelled, or in flight (`failed`, `cancelled`, `inFlight`) | `request` only |
+| Served from the cache (`cached`) | `request` only |
 
 ### D9. The `captures` row
 
@@ -477,9 +533,10 @@ entry needs no new field, step 1 can carry the value.
 
 ### D14. Shared Cases
 
-Step 1 creates or extends the shared list of anchored hash fields (D2). SC-2 builds its blob list
-from that list (the agent briefs plan, SC-2), so a Shared Case carries and hash-checks both files
-whichever of the two merges first. The two-peer `MemoryTransport` test that a receiver hash-checks
+Step 1 creates or extends the shared list of anchored hash fields, `CAPTURE_ENTRY_HASH_FIELDS` in
+`src/shared/verify/manifestChain.ts` (D2). SC-2 builds its blob list from that list (the agent
+briefs plan, SC-2), so a Shared Case carries and hash-checks both files whichever of the two
+merges first. The two-peer `MemoryTransport` test that a receiver hash-checks
 the Transaction Record and the PDF before showing them then belongs to whichever of SC-2 and steps 9
 and 10 merges second. This replaces the agent briefs plan's rule that CE-7 waits for SC-2 (open
 question C).
@@ -487,28 +544,39 @@ question C).
 ### D15. The probe runs in CI on each Electron change
 
 The gates table offers an Electron-run CI test in CE-7 or a rule that every Electron bump attaches
-a rerun. **Recommendation:** the CI test, in step 9. Dependabot groups npm minor and patch updates
-into one weekly pull request with no exception for Electron, so an Electron patch can arrive in a
-pull request nobody reads as a browser change, and ADR-0004 names a browser change as a trigger
-for revalidation (ADR-0004, Validation and independent verification).
+a rerun. **Recommendation:** the CI test: step 9 commits the script, and the maintainer adds the
+CI job. Dependabot groups npm minor and patch updates into one weekly pull request with no
+exception for Electron, so an Electron patch can arrive in a pull request nobody reads as a
+browser change, and ADR-0004 names a browser change as a trigger for revalidation (ADR-0004,
+Validation and independent verification).
 
-Step 9 commits the probe script as a file (proposed path `scripts/capture-probe/main.js`) and runs
-its off and on passes, without the 90 s fresh-window case, as a standalone Electron script under
-`xvfb-run`, the probe's own form, on any pull request that changes the `electron`
-version in `pnpm-lock.yaml`. The check fails when `navigator.webdriver`, the `window.chrome` keys,
-the `Error.stack` getter count, or the resource timing list differ between the passes. Running it
-inside the e2e suite would add Playwright's own CDP session, which could move the `Error.stack`
-count the check measures; that effect is unmeasured. The limit: the script reproduces the window
-configuration, not the app's code.
+Step 9 commits the probe script as a file (proposed path `scripts/capture-probe/main.js`), with
+the command that runs its off and on passes and the output it expects. The passes run without the
+90 s fresh-window case, as a standalone Electron script under `xvfb-run`, the probe's own form.
+The script fails when `navigator.webdriver`, the `window.chrome` keys, the `Error.stack` getter
+count, the resource timing list, or `history.length` differ between the passes; step 0 question 7
+decides whether `history.length` must be equal or may differ by the one entry `about:blank` adds.
+Running it inside the e2e suite would add Playwright's own CDP session, which could move the
+`Error.stack` count the check measures; that effect is unmeasured. The limit: the script
+reproduces the window configuration, not the app's code.
+
+**The CI job is the maintainer's pull request.** Running the script on any pull request that
+changes the `electron` version in `pnpm-lock.yaml` needs a job in `.github/workflows/ci.yml`. The
+machine account's token carries no `workflow` scope, so an agent branch cannot land that edit
+(the header comment of `tests/helpers/jq.ts`), and ADR-0048 holds every change under
+`.github/workflows/` until the maintainer signs off at head. The job goes in its own small pull
+request that the maintainer opens after step 9 merges, which ADR-0048 exempts.
 
 ### D16. The validation record
 
 ADR-0004 requires a version-specific validation record for every evidence-affecting release, with
 environments, expected and observed results, deviations, false positives and negatives, known
 limitations, and the acceptance decision (ADR-0004, Validation and independent verification).
-Step 6 starts `docs/specs/2026-10-NN-capture-engine-first-slice-validation.md`, steps 9 and 10
-extend it, and the maintainer records the acceptance decision in it before the release that ships
-the writers.
+Step 6 starts `docs/specs/2026-10-NN-capture-engine-first-slice-validation-assessment.md`, steps
+9 and 10 extend it, and the maintainer records the acceptance decision in it before the release
+that ships the writers. `-assessment.md` is one of the suffixes `docs/README.md` lists for
+`specs/`, which treats a spec as immutable once approved. The acceptance decision is this record's
+approval, so the steps extend it before then and nothing changes it after.
 
 ## The spec's open questions
 
@@ -556,11 +624,12 @@ and keeps no copy. If the maintainer wants the tool's practice exactly, drop tha
   `gzip` text was 70 bytes on the wire and 4,200 decoded. No real page's sizes are measured yet.
 - `warcio` writes gzip members when given `gzip: true` (its README, "Writing WARC Files"). The test
   reader inflates them with Node's `zlib`, which needs no dependency.
-- The cost is in two name splitters, the Case Archive import loop and `parseArtifactFilename`. Each
-  reads `.gz` as the extension, so an import that remaps a Capture's id would write its record
-  under the old id, apart from its Capture. If `parseArtifactFilename` only added `gz` to its
-  pattern, it would read the id as `{id}.warc`, find no Capture, and let `cleanOrphans` delete the
-  file. Step 3 teaches both the two-part extension, with tests, before any Capture has the file.
+- The cost is in two name readers. The Case Archive import loop reads `.gz` as the extension, so
+  an import that remaps a Capture's id would write its record under the old id, apart from its
+  Capture. `parseArtifactFilename` matches neither new name today, so the orphan scan ignores a
+  stray `.warc.gz` or `.pdf`. If it only added `gz` to its pattern, it would read the id as
+  `{id}.warc`, find no Capture, and let `cleanOrphans` delete the file. Step 3 teaches both the
+  two-part extension, with tests, before any Capture has the file.
   `fileExt` in `caseArchive.ts` names only non-Capture Exhibit and pooled files and needs no
   change.
 - Installed importers are not exposed: step 3 bumps `CASE_ARCHIVE_SCHEMA_VERSION`, and
@@ -655,7 +724,7 @@ release that carries step 1's verifier.
 
 | Step | Brief | Change | Lane held | Blocking-tier paths | Files | Waits for |
 | --- | --- | --- | --- | --- | --- | --- |
-| 0 | new | Renderer spike (docs only) | none | none | 1-2 | nothing |
+| 0 | new | Renderer spike (docs only) | none | none | 2 | nothing |
 | 1 | CE-5 | Verifier and schema: D1 to D3, D14 | Manifest schema | `src/shared/verify/**`, `src/verifier/**`, `manifest.ts`, the layout package (row added) | 12-14 | Plan approval, the beta.23 decision, the lane, step 0 |
 | 2 | CE-6 | Mirror columns (D9) | Migration | `db/**` | 6-8 | Step 1, the lane |
 | 3 | CE-9, Case half | Store, Case Archive, Duplicate, deletion, orphan scan, `verifySidecars` | Case Archive | `captureStore.ts`, `caseArchive.ts`, `captureLifecycle.ts`, `db/**` | 9-11 | Steps 1 and 2, the lane |
@@ -664,7 +733,7 @@ release that carries step 1's verifier.
 | 6 | CE-8, first part | Scroll-to-load and screenshot record | none | `backgroundRenderer.ts`, `recapture.ts`, `captureLifecycle.ts` | 7-9 | Release, steps 2, 3, and 5 |
 | 7 | CE-7, first part | Exchange collector and Bound TLS conversion (pure) | none | the new package (row added) | 6-8 | Plan approval, step 0 |
 | 8 | CE-7, second part | WARC writer (pure), `warcio`, notice override | none | the package | 7-9 | Step 7, the licence gate |
-| 9 | CE-7, wiring | Record the Transaction Record and Bound TLS Details; probe check in CI | none | `backgroundRenderer.ts`, `recapture.ts`, `captureLifecycle.ts` | 10-12 | Release, steps 3 to 8, CE-2, CE-3, the probe gate, SC-2 unless open question C |
+| 9 | CE-7, wiring | Record the Transaction Record and Bound TLS Details; probe script (D15) | none | `backgroundRenderer.ts`, `recapture.ts`, `captureLifecycle.ts` | 10-12 | Release, steps 3 to 8, CE-2, CE-3, the probe gate, SC-2 unless open question C |
 | 10 | CE-8, last part | PDF | none | `backgroundRenderer.ts`, `recapture.ts`, `captureLifecycle.ts` | 6-8 | Step 9, the test-reader gate |
 
 File counts are estimates, not taken from a prototype. Steps 2 to 5, 7, and 8 write no new field
@@ -679,9 +748,9 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
 
 ### Step 0. Renderer spike (docs only)
 
-- **Changes.** Nothing merges but the doc. On a scratch branch, `renderPageInHiddenWindow` loads
-  `about:blank`, sends `Network.enable` with the probe's limits, loads the target, and records every
-  `Network` event. The spike then answers six questions:
+- **Changes.** Nothing merges but the doc and the recorded event streams. On a scratch branch,
+  `renderPageInHiddenWindow` loads `about:blank`, sends `Network.enable` with the probe's limits,
+  loads the target, and records every `Network` event. The spike then answers seven questions:
   1. Do `e2e/recapture.spec.ts` and `e2e/recapture-consent.spec.ts` still pass with the domain on?
      This tests the comment from #180.
   2. Which requests reach the fixture server during `wc.savePage`? The answer fixes where collection
@@ -696,10 +765,20 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   6. Served over HTTPS with a generated certificate, accepted through a test-only
      `setCertificateVerifyProc` on the render's session, does the main document's
      `Network.responseReceived` carry `securityDetails`, and do its field names match D7 on
-     Chromium 152?
+     Chromium 152? The spike records the `keyExchange`, `keyExchangeGroup`, and `mac` values it
+     sees.
+  7. What does the target read as `history.length`? A scratch run for this plan read 2 after
+     `about:blank` and 1 without it (Probe rerun on Electron 44.5.1). Can the renderer remove the
+     `about:blank` entry before the target's document commits, for example with
+     `wc.navigationHistory.clear()`, so the target reads 1? If no way works, step 9 records the
+     difference as a known limitation in the D16 validation record and in `features.mdx` beside
+     the capability, and D15's script expects it.
 - **Deliverable.** `docs/specs/2026-10-NN-capture-engine-renderer-spike.md`, with the commands, the
-  output, and a verdict for each question, and the scratch branch named so step 7 can copy the
-  recorded event streams. Fixture content is invented.
+  output, and a verdict for each question. The recorded `Network` event streams are committed
+  beside it as a JSON file (proposed name
+  `docs/specs/2026-10-NN-capture-engine-renderer-spike-events.json`), which step 7 copies into
+  `src/packages/transaction-record/tests/fixtures/`. A scratch branch cannot be the source: the
+  teardown sweep removes local branches (`docs/agents/worktrees.md`). Fixture content is invented.
 - **Done when.** Each question has an answer from a run. If question 1 fails, the doc says so and
   step 9 needs an Electron-run harness shaped like the probe. If question 4 shows an iframe's
   requests missing, step 1 stops: the inventory needs a design for child targets, which goes to the
@@ -717,15 +796,24 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   through `verifyEvidencePackage`. No app code sets a new field. The pull request adds
   `src/packages/evidence-package-layout/**` to the assessment's blocking tier.
 - **Package Verification rows.** `capture <id> transaction record` and `capture <id> pdf`: SKIP for
-  an absent hash, PASS for a matching file, FAIL otherwise. No string the verifier prints calls the
-  Transaction Record complete, a packet capture, or bytes from the wire (ADR-0035, Decision; spec,
-  What the record is and is not).
+  an absent hash, PASS for a matching file, FAIL otherwise. A third row,
+  `capture <id> transaction record headers`, is a SKIP that reports an entry fact, like the Egress
+  rows (`describeEgress` in `evidencePackage.ts`): it quotes
+  `inventory.transactionRecord.replacedHeaders` and states that the record holds those headers
+  with their values replaced. ADR-0036 requires it: "the glossary and the verifier say so: the
+  headers are present, their values are not" (ADR-0036, Consequences). Behind a failed manifest
+  chain the row reports the names as unverified, as the Egress row does, and an entry with no
+  Transaction Record adds no row. No string the verifier prints calls the Transaction Record
+  complete, a packet capture, or bytes from the wire (ADR-0035, Decision; spec, What the record is
+  and is not).
 - **Done when.** A fixture `capture` entry carrying every D1 field verifies in the app verifier and
   the standalone verifier, and a frozen digest for it passes (the #1747 known-answer pattern). Its
   body hashes the same through `canonicalStringify` and the `jq -cS` recipe. A fractional number in
-  a new field fails the schema. Every existing frozen digest and fixture package verifies
-  unchanged. A reader at the previous schema number meets the fields and reports "verifier too
-  old", never a broken chain. Each D2 refine rejects its contradicting shape with a named error. In
+  a new field fails the schema. A `boundTls` with `keyExchange` `''`, `keyExchangeGroup` present,
+  and `mac` absent passes the schema. A test pins the text of the headers row, and of its
+  unverified form. Every existing frozen digest and fixture package verifies unchanged. A reader
+  at the previous schema number meets the fields and reports "verifier too old", never a broken
+  chain. Each D2 refine rejects its contradicting shape with a named error. In
   a fixture package, a changed byte in either file fails, a missing file fails, and an absent hash
   skips. The new path functions pass the layout package's literal guard test.
 - **Verify with.** `BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test tests/shared/verify`,
@@ -757,16 +845,19 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
 - **Changes.** `CaptureArtifactType` gains the two types and write methods for them
   (`captureStore.ts`). One rule for a two-part extension serves `parseArtifactFilename` and the
   Case Archive import loop. Duplicate follows D11. `verifySidecars` checks both hashes. The orphan
-  scan follows open question F. `CASE_ARCHIVE_SCHEMA_VERSION` takes the next number, and its
-  comment names the step 2 columns and the two files.
+  scan reports a stray `.warc.gz` or `.pdf`, and never reports a Capture because its Transaction
+  Record or PDF file is missing (open question F). `CASE_ARCHIVE_SCHEMA_VERSION` takes the next
+  number, and its comment names the step 2 columns and the two files.
 - **Done when.** The store writes, reads, copies, stages, restores, and deletes both files, with a
   test each. A Case Archive round trip carries both files, including for a Capture whose id the
   import remaps. A Case Archive header from this build states the new version, and an importer at
-  version 8 refuses it with its "Update Birdbrain" message. `parseArtifactFilename` maps both names
-  to the Capture id; the orphan scan reports a stray `.warc.gz` and `.pdf` and never reports a live
-  Capture's file, and `cleanOrphans` leaves a live Capture's files and row in place. A Duplicate of
-  a source whose entry carries the D1 fields copies both files, re-anchors the fields D11 names,
-  writes no Bound TLS Details, and refuses a copy whose bytes differ. `verifySidecars` reports a
+  the previous `CASE_ARCHIVE_SCHEMA_VERSION` refuses it with its "Update Birdbrain" message.
+  `parseArtifactFilename` maps both names to the Capture id; the orphan scan reports a stray
+  `.warc.gz` and `.pdf` and never reports a live Capture's file. A Capture whose Transaction Record
+  or PDF file is missing stays out of the scan's report, so `cleanOrphans` leaves its files and
+  row in place, and `verifySidecars` reports it as `missing`. A Duplicate of a source whose entry
+  carries the D1 fields copies both files, re-anchors the fields D11 names, writes no Bound TLS
+  Details, and refuses a copy whose bytes differ. `verifySidecars` reports a
   changed file as `tampered` and an absent one as `missing` (the #1661 pattern). Fixtures are
   hand-made bytes, because nothing acquires the files yet.
 - **Verify with.** `pnpm test tests/main/services/captureStore.test.ts`,
@@ -780,15 +871,19 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
 
 - **Changes.** `export.ts` places both files at the D3 paths and lists them in `evidence.json`
   beside `screenshotPath` and `screenshotSha256`. `verify.sh` binds them in its content bind step,
-  beside the screenshot, and `VERIFY.md` names them there. The step list in `verifyProcedure.ts`
-  does not change, so the procedure keeps six steps.
+  beside the screenshot, and `VERIFY.md` names them there. `VERIFY.md` step 5 also says that the
+  Transaction Record holds the four credential headers with their values replaced: the headers
+  are present, their values are not (ADR-0036, Consequences). The step list in
+  `verifyProcedure.ts` does not change, so the procedure keeps six steps.
 - **Done when.** A package exported from a hand-made Capture carrying both hashes ships both files
   at the D3 paths, and Package Verification passes in the app and under the standalone verifier. A
   changed byte in either file, or a missing file, fails Package Verification and fails `verify.sh`
   under `runVerifyScript`. A package from a Capture without them has the same members as today.
 - **Verify with.** `pnpm test tests/main/services/export.test.ts`,
-  `BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test tests/shared/verify/evidencePackage.test.ts`, then
-  `pnpm preflight`.
+  `BIRDBRAIN_REQUIRE_OPENSSL=1 pnpm test tests/shared/verify/evidencePackage.test.ts`,
+  `BIRDBRAIN_REQUIRE_OPENSSL=1 BIRDBRAIN_REQUIRE_JQ=1 pnpm test tests/main/services/verifyRunbookExecution.test.ts`
+  (it runs `verify.sh` through `runVerifyScript` only when `openssl` and `jq` are present, and it
+  imports sharp, so on Linux the sharp note in step 6 applies), then `pnpm preflight`.
 - **Revert.** Strands nothing before step 9.
 
 ### Step 5. The report states the new fields (CE-9, report half)
@@ -815,18 +910,23 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   `trimTrailingBackground` return the D6 facts. `RenderedPage` and the ingest parameters carry them,
   and ingest writes `scrollToLoad` and an `inventory` with MHTML and the screenshot present and the
   Transaction Record and PDF absent as `not-taken`, plus the row mirror. The step starts the D16
-  validation record. `CONTEXT.md` drops _Planned_ from the Scroll-to-load clause and says the
-  inventory exists, keeping the Transaction Record and PDF clauses _Planned_; `features.mdx`
-  updates its Capture section.
+  validation record. `CONTEXT.md` rewrites the Scroll-to-load clause to say that `background`
+  Captures record the phase today, and keeps _Planned_ on the extension's half (#1667). It rewrites
+  the Capture clause to say that `background` Captures carry the inventory today, and keeps
+  _Planned_ on the inventory for other Capture Methods and on the Transaction Record and PDF.
+  `CONTEXT.md` is the glossary, and the writing guide forbids describing unshipped behaviour in
+  the present tense (`docs/agents/writing-guide.md`, Claim discipline). `features.mdx` updates its
+  Capture section.
 - **Done when.** Unit tests drive `scrollToLoadLazyContent` through each ending in D5 with a mocked
   `WebContents`, and the screenshot functions through scaled, truncated, trimmed, and none. An e2e
   Recapture of an invented fixture page records `stopped-growing`, its height, and the screenshot
   facts in the entry and the row. `e2e/recapture.spec.ts` still passes. This records the background
   half of #1667; whether #1667 closes stays the maintainer's call.
-- **Verify with.** `pnpm test tests/main/services/backgroundRenderer.test.ts`,
+- **Verify with.** `pnpm test tests/main/services/backgroundRenderer.test.ts` (on Linux, run
+  `pnpm build:test-sharp` first and set `BIRDBRAIN_TEST_SYSTEM_SHARP=1`, because the test imports
+  sharp; see "sharp under Electron on Linux" in `docs/agents/testing.md`),
   `pnpm test tests/main/services/recapture.test.ts`,
-  `pnpm test tests/main/services/captureLifecycle.test.ts` (on Linux, run `pnpm build:test-sharp`
-  first and set `BIRDBRAIN_TEST_SYSTEM_SHARP=1`, because `trimTrailingBackground` uses sharp),
+  `pnpm test tests/main/services/captureLifecycle.test.ts`,
   `pnpm test:e2e e2e/recapture.spec.ts`, the docs checks, then `pnpm preflight`.
 - **Revert.** Captures written in the meantime keep fields that the released verifier reads and
   steps 3 to 5 carry.
@@ -837,7 +937,7 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   events in, as recorded method and params pairs; exchanges and the D4 counts out) and `boundTls.ts`
   (a `securityDetails` object in, D7's `boundTls` out, times as ISO strings). The pull request adds
   `src/packages/transaction-record/**` to the assessment as a blocking row.
-- **Done when.** From the event streams step 0 recorded and from sequences built on the probe's
+- **Done when.** From the event streams step 0 committed and from sequences built on the probe's
   observations: each redirect hop becomes its own exchange under a reused request id; each count in
   D4 has a sequence that moves it, and none of those exchanges is counted as complete; the output
   order is deterministic. The step defines how it tells an incomplete request body from a complete
@@ -855,34 +955,53 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
 - **Done when.** The test reader parses the writer's output and every block and payload digest
   holds. Each payload digest equals the SHA-256 of the decoded fixture payload, for a body served
   with `gzip` and one served plain. A redirect has a `response` record with headers and no body.
-  For a fixture that carries cookie, `Authorization`, and `Set-Cookie` values in every header source
-  CDP offers, including both `ExtraInfo` events and the cookie arrays, no byte of the inflated output
-  holds any of the values, and `replacedHeaders` names each header. The `x-orig-` renames and the
-  pseudo-header rule hold. `warcinfo` holds the four spec facts and the two fixed statements, and no
-  host name, address, or proxy. No `WARC-IP-Address` appears when the input says the Egress is not
-  Direct. `pnpm build` bundles `warcio`, and `pnpm build:notices` passes.
+  For each row of D8's partial-exchange table, a fixture exchange gets the records the row names,
+  and no partial exchange is written as a complete response or as a complete empty one. For a
+  fixture that carries `Cookie`, `Set-Cookie`, `Authorization`, and `Proxy-Authorization` values,
+  with mixed-case header names, in every header source CDP offers, including both `ExtraInfo`
+  events and the cookie arrays, no byte of the inflated output holds any of the values, and
+  `replacedHeaders` names each of the four. The `x-orig-` renames and the pseudo-header rule hold.
+  `warcinfo` holds the four spec facts and the two fixed statements, and no host name, address, or
+  proxy. No `WARC-IP-Address` appears when the input says the Egress is not Direct.
+  `pnpm build:notices` passes. `pnpm build` does not show that `warcio` loads in the app, because
+  electron-vite leaves production dependencies external in the main process
+  (`externalizeDepsPlugin` in `electron.vite.config.ts`); step 9's e2e spec, which runs against
+  the `pnpm build` output, loads it.
 - **Verify with.** `pnpm test src/packages/transaction-record/tests`, `pnpm lint:boundaries`,
-  `pnpm build`, `pnpm build:notices`, then `pnpm preflight`.
+  `pnpm build:notices`, then `pnpm preflight`.
 - **Revert.** Nothing calls it before step 9; the revert also removes the dependency.
 
 ### Step 9. Record the Transaction Record and Bound TLS Details (CE-7, wiring)
 
 - **Changes.** In `renderPageInHiddenWindow`: CE-3's proxy on the partition before the first
   navigation, then attach, load `about:blank`, send `Network.enable` with the budget under a bounded
-  wait, and load the target. The collector reads `wc.debugger` `message` events; each body is
-  fetched when its `loadingFinished` arrives; collection stops when the screenshot starts (spec,
-  Transaction Record). The writer's output, the inventory part, and the main document's
-  `securityDetails` travel on `RenderedPage`. Ingest writes the file through step 3's store method,
-  `transactionRecordHash`, `boundTls` or `boundTlsAbsent`, the inventory part, and the row. If
-  `Network.enable` fails or times out, the inventory records the Transaction Record absent as
-  `failed`, `boundTlsAbsent` is `not-recorded`, and the Capture stores (open question E). The TLS
-  Cert Chain re-fetch runs as today, and its field stays separate. The step also adds the D15 probe
-  check and extends the validation record. `CONTEXT.md` drops _Planned_ from the Transaction Record
-  and Bound TLS Details clauses; `features.mdx` states beside the capability that credential header
-  values are replaced (ADR-0036), that a resource reused inside a page leaves no trace, the
-  `x-orig-` renaming, and that Bound TLS Details are the browser's summary. A test-only certificate
-  allowance, from step 0's question 6, joins CE-2's loopback allowance, which a packaged build
-  cannot turn on.
+  wait, remove the `about:blank` entry if step 0 question 7 found a way, and load the target. The
+  collector reads `wc.debugger` `message` events; each body is fetched when its `loadingFinished`
+  arrives; collection stops at the point step 0 question 2 fixes and the spike records. The spec
+  puts that point "at the moment the screenshot and MHTML are taken" (spec, Transaction Record).
+  The writer's output, the inventory part, and the main document's `securityDetails` travel on
+  `RenderedPage`. Ingest writes the file through step 3's store method, `transactionRecordHash`,
+  `boundTls` or `boundTlsAbsent`, the inventory part, and the row. If `Network.enable` fails or
+  times out, the inventory records the Transaction Record absent as `failed`, `boundTlsAbsent` is
+  `not-recorded`, and the Capture stores (open question E). The TLS Cert Chain re-fetch runs as
+  today, and its field stays separate. The step also commits the D15 probe script with its
+  command and expected output, and extends the validation record. `CONTEXT.md` rewrites the
+  Transaction Record and Bound TLS Details clauses, and the Capture clause's mention of the
+  Transaction Record, to say that `background` Captures carry them today, and keeps _Planned_ on
+  the `launched` half (step 6 gives the reason). `features.mdx` states beside the capability that
+  credential header values are replaced (ADR-0036), that a resource reused inside a page leaves no
+  trace, the `x-orig-` renaming, and that Bound TLS Details are the browser's summary. It also adds
+  the Transaction Record to the Integrity bullet that lists what Birdbrain hashes and to the Export
+  bullet that lists what an evidence package contains. A test-only certificate allowance, from
+  step 0's question 6, joins CE-2's loopback allowance, which a packaged build cannot turn on.
+- **Time.** The render races one deadline and, when the deadline wins, rejects with "Recapture
+  timed out" and stores nothing; `FINAL_ARTIFACT_RESERVE_MS` reserves 20 s for the screenshot,
+  MHTML, and text only (`renderPageInHiddenWindow`). Two new phases need time at the end: the
+  body fetches still pending when collection stops, and the writer. Step 9 raises the reserve by
+  their time and gives each phase its own timeout inside it, so the 120 s Recapture timeout stays.
+  It picks the values with the size budget (open question 3). When either phase times out or
+  throws, the inventory records the Transaction Record absent as `failed`, `boundTlsAbsent` is
+  `not-recorded`, and the Capture stores.
 - **Done when.** Against a local fixture server reached through CE-2's loopback allowance, a new e2e
   spec shows the spec's known answers (spec, Validation): `gzip` and plain digests; a redirect,
   same-origin and cross-origin; failed, cancelled, in-flight, and over-budget requests; and a cached
@@ -892,28 +1011,49 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   fixture served over TLS with a known certificate, through that certificate allowance, `boundTls`
   matches its subject, SANs, issuer, and validity; an `http:` page writes `not-https`. With CE-3's
   SOCKS5 fixture and a proxy Egress, neither the record nor the inventory holds the proxy's host or
-  port. `e2e/recapture.spec.ts` and
-  `e2e/recapture-consent.spec.ts` still pass. The D15 check runs in CI. If open question C goes this
-  plan's way and SC-2 has merged, the two-peer `MemoryTransport` test passes for the record.
-- **Verify with.** The unit tests for the three files,
-  `pnpm test:e2e e2e/recapture.spec.ts e2e/recapture-consent.spec.ts` plus the new spec (proposed
-  name `e2e/recapture-transaction-record.spec.ts`), the docs checks, then `pnpm preflight`.
+  port. `e2e/recapture.spec.ts` and `e2e/recapture-consent.spec.ts` still pass. A unit test in
+  which a pending body fetch never settles, and one in which the writer throws, each store the
+  Capture with the Transaction Record absent as `failed`, inside the Recapture timeout. A unit test
+  shows that with the test switch absent, or with `app.isPackaged` true, the render installs no
+  certificate allowance and a certificate signed by the fixture's test authority is refused, as
+  CE-2's brief asks of its loopback allowance (the agent briefs plan, CE-2). The D15 script's
+  command runs both passes and reports no difference beyond the one step 0 question 7 records. If
+  open question C goes this plan's way and SC-2 has merged, the two-peer `MemoryTransport` test
+  passes for the record.
+- **Verify with.**
+  `pnpm test tests/main/services/backgroundRenderer.test.ts tests/main/services/recapture.test.ts tests/main/services/captureLifecycle.test.ts`
+  (the sharp note in step 6 applies),
+  `pnpm test:e2e e2e/recapture.spec.ts e2e/recapture-consent.spec.ts e2e/recapture-transaction-record.spec.ts`
+  (the last is the new spec's proposed name), the D15 script's command, the docs checks, then
+  `pnpm preflight`.
 - **Revert.** Captures written keep their record, and steps 3 to 5 still carry it.
 
 ### Step 10. PDF (CE-8, last part)
 
 - **Changes.** `webContents.printToPDF` runs after the screenshot, the MHTML, and the end of
-  collection (spec, PDF). Ingest writes the file, `pdfHash`, and the PDF part with
-  `afterCollection: true`. A failed print records the PDF absent as `failed`, and the Capture
-  stores. The step completes the validation record for the maintainer's acceptance. `CONTEXT.md`
-  drops the last _Planned_ clause from Capture; `features.mdx` updates Capture.
+  collection (spec, PDF). The print runs under its own timeout inside the reserve step 9 raised,
+  which step 10 raises again by that timeout. Ingest writes the file, `pdfHash`, and the PDF part
+  with `afterCollection: true`. A print that fails, throws, or times out records the PDF absent as
+  `failed`, and the Capture stores. The step completes the validation record for the maintainer's
+  acceptance. `CONTEXT.md` rewrites the Capture clause to say that `background` Captures carry a
+  PDF today, and keeps _Planned_ on other Capture Methods; `features.mdx` updates Capture, and
+  adds the PDF to the Integrity bullet that lists what Birdbrain hashes and to the Export bullet
+  that lists what an evidence package contains. If the maintainer approves `pdfjs-dist` at the
+  test-reader gate, the step adds `pdfjs-dist` 5.6.205, exact-pinned, to `devDependencies`, and an
+  `ignore` entry for `pdfjs-dist` with `versions: ['>=5.7']` to `.github/dependabot.yml`, beside
+  the `dependency-cruiser` entry (outside the paths ADR-0048 holds). Otherwise it uses the
+  fallback.
 - **Done when.** With the probe's print-only image as a fixture, the image's request is absent from
   the Transaction Record. The stored file parses as one page holding the fixture's text (under the
   approved parser), or starts with `%PDF-` and ends with `%%EOF` with a manual `pypdf` reading in
-  the validation record (the fallback). A package exported from the Capture verifies, and a changed
-  PDF byte fails. If SC-2 has merged, the two-peer test passes for the PDF.
-- **Verify with.** The unit tests for the three files, the e2e spec with a PDF case, the docs
-  checks, then `pnpm preflight`.
+  the validation record (the fallback). A unit test in which `printToPDF` never settles stores the
+  Capture with the PDF absent as `failed`, inside the Recapture timeout. A package exported from
+  the Capture verifies, and a changed PDF byte fails. If SC-2 has merged, the two-peer test passes
+  for the PDF.
+- **Verify with.**
+  `pnpm test tests/main/services/backgroundRenderer.test.ts tests/main/services/recapture.test.ts tests/main/services/captureLifecycle.test.ts`
+  (the sharp note in step 6 applies), `pnpm test:e2e e2e/recapture-transaction-record.spec.ts`
+  with a PDF case added to it, the docs checks, then `pnpm preflight`.
 - **Revert.** Captures written keep their PDF, and steps 3 to 5 still carry it.
 
 ## Lanes and hot files
@@ -928,7 +1068,8 @@ question B goes this plan's way. No writer step holds a lane.
 - `backgroundRenderer.ts`: CE-1, CE-2, CE-3, #1499, then steps 6, 9, and 10.
 - `recapture.ts`: CE-2, CE-3, #1499, the link-capture writer, then steps 6, 9, and 10.
 - `captureLifecycle.ts`: step 3 can land ahead of the agent briefs plan's order at rebase cost
-  only; steps 6, 9, and 10 follow CE-3.
+  only; steps 6, 9, and 10 take the places of CE-7 and CE-8, after CE-3, CI-4, SC-2b, and CE-10,
+  as in the agent briefs plan.
 - `manifest.ts`: step 1 only. `export.ts`, `verifyScript.ts`, and `verifyRunbook.ts`: step 4 only.
   `caseArchive.ts`: step 3 only. `reportHtml.ts`: step 5 only.
 
@@ -948,6 +1089,7 @@ requests (the agent briefs plan, What limits parallelism), pairs such as 1 with 
 | CE-8 | Steps 6 and 10; its Evidence Package half moves to step 4 |
 | CE-9 | Steps 3 and 5, moved ahead of the writers |
 | New | Step 0, a renderer spike before the verifier freezes the shapes |
+| SC-2 | Builds its blob list from `CAPTURE_ENTRY_HASH_FIELDS` in `src/shared/verify/manifestChain.ts` (D2), whichever of SC-2 and step 1 creates it |
 
 The maintainer accepts these with the plan, together with open questions A to C.
 
@@ -1001,7 +1143,10 @@ Most of these move into step 0, so they surface before step 1 freezes a shape.
 7. **Export memory and size.** Every exported file sits in memory before the ZIP archive is
    written, and one archive stays under 4 GiB. Step 9 reports the largest record its fixtures
    produce, for the budget.
-8. **A later Chromium changes what a page can observe with `Network` on.** D15's check in CI.
+8. **A later Chromium changes what a page can observe with `Network` on.** D15's script, run in CI
+   by the job the maintainer adds.
+9. **The `about:blank` load is visible to the page.** It adds an entry to `history.length`. Step 0
+   question 7.
 
 ## Decisions the maintainer owes
 
@@ -1013,7 +1158,7 @@ decided here.
 | Approve the capture engine spec and this plan | all but step 0 | Approve; D1 to D16, the five answers above, and open questions A to F are what approval settles |
 | Before beta.23 (#1799, a draft pull request) is tagged, decide which schema steps land in it | 1 | Leave step 1 out: it cannot be reviewed before this plan is approved. Step 1 then takes the next number with the other steps left out of beta.23 |
 | Settle the `warcio` licence and approve the test-only readers | 8, and 9 and 10 through it | Both licence texts through an `append` override; a hand-written WARC reader plus a manual Python `warcio check`; `pdfjs-dist` 5.6.205, pinned |
-| Choose how the probe is rerun on each Electron upgrade | 9 | The CI test (D15) |
+| Choose how the probe is rerun on each Electron upgrade | 9 | The CI test (D15): step 9 commits the script, and the maintainer opens the pull request that adds the CI job, because ADR-0048 holds workflow changes for sign-off and the machine account cannot push them |
 | Tag a release carrying step 1's verifier, with notes telling Shared Case members to upgrade together | 6, 9, 10 | Steps 2 to 5, 7, and 8 do not wait for it (open question A) |
 | Tag a release carrying #1747, and rule whether update checks follow the Egress | 9, through CE-3 (#1695) | None here |
 | Rule on #1694: where the app displays capture fields | Display beyond `report.html` | Step 5 covers only `report.html`, which either ruling keeps |
@@ -1043,22 +1188,39 @@ plan, gates table), so the wait would hold the slice on unrelated decisions.
 
 **D. Accept D1 to D7 as the shape step 1 freezes?** That includes the `webSockets` count, the
 Scroll-to-load outcomes without `failed`, `scrollLockLifted`, the literal `true` values D2's rule
-gives `requested` and `afterCollection`, Bound TLS Details without `certificateTransparencyCompliance`,
-`serverSignatureAlgorithm`, and `encryptedClientHello`, and a Duplicate that re-anchors the
-inventory and Scroll-to-load but writes no Bound TLS Details (D11). **Recommendation:** accept, and
-treat step 1's review as the last chance to rename.
+gives `requested` and `afterCollection`, and a Duplicate that re-anchors the inventory and
+Scroll-to-load but writes no Bound TLS Details (D11). It also includes two Bound TLS Details
+choices:
 
-**E. When `Network.enable` does not answer, or the print fails, keep the Capture or fail the
-Recapture?** **Recommendation:** keep it, with the Transaction Record or the PDF absent as
+- **The fields.** The spec asks for "the structured fields the TLS spike lists", and its
+  parenthetical names eight. D7 keeps the TLS spike's list except `certificateId`, so
+  `certificateTransparencyCompliance`, `serverSignatureAlgorithm`, and `encryptedClientHello` are
+  in, and adds `mac`, which neither lists, because CDP splits the cipher across `cipher` and
+  `mac`. The TLS spike names CT compliance as the field that shows whether the certificate was
+  CT-logged. A field left out now costs a schema step to add, and a field kept cannot be removed
+  from a released verifier.
+- **Where the absence reason sits.** D1 puts `boundTlsAbsent` beside `boundTls`. The spec has
+  "the inventory says why", and the agent briefs plan's CE-7 puts the reason in the Transaction
+  Record part of the inventory. D1 gives the reason for the departure: a Duplicate re-anchors the
+  inventory and has no Bound TLS Details of its own.
+
+**Recommendation:** accept, including `certificateTransparencyCompliance` and the top-level
+`boundTlsAbsent`, and treat step 1's review as the last chance to rename.
+
+**E. When `Network.enable` does not answer, or the body fetches, the writer, or the print fail or
+time out, keep the Capture or fail the Recapture?** **Recommendation:** keep it, with the Transaction Record or the PDF absent as
 `failed`. MHTML and a screenshot are what a `background` Capture holds today, and ADR-0035 lets a
 Capture say it has no Transaction Record (ADR-0035, Decision).
 
 **F. Should the orphan scan flag a Capture whose Transaction Record or PDF file is missing?** The
 agent briefs plan's CE-9 says it flags one. `cleanOrphans` deletes every Capture row the scan
 reports, with its Exhibit row, so a missing record would delete a Capture whose MHTML is intact.
-The screenshot works that way today. **Recommendation:** leave a missing file to `verifySidecars`,
-which reports it as `missing`, and have the orphan scan report only stray files; or report it in a
-category `cleanOrphans` does not act on.
+The screenshot works that way today. **Recommendation:** the orphan scan reports only stray files,
+and a missing Transaction Record or PDF is left to `verifySidecars`, which reports it as `missing`
+when the Capture is verified. This replaces the CE-9 clause "flags a Capture missing either". A
+separate category that `cleanOrphans` ignores would also keep the Capture, but it changes
+`OrphanReport` in `src/shared/ipc.ts` and the settings screen that lists the report
+(`DbUtilities.tsx`), a display change with no ruling behind it.
 
 **G. Does the 2026-10-02 approval of `warcio` cover its eight runtime dependencies and the
 transitive set the lockfile adds?** This plan makes no recommendation: the scope of that approval
@@ -1077,8 +1239,13 @@ is the maintainer's record.
   SOCKS5 Egress is unmeasured.
 - That `jq -cS` and `canonicalStringify` serialize a fractional number differently: the plan relies
   on the invariant the `canonicalJson.ts` header comment states, not on a run.
-- Whether `warcio` 2.4.12 bundles under electron-vite and runs under the `ELECTRON_RUN_AS_NODE`
-  test runner (step 8 checks).
+- Whether `warcio` 2.4.12 runs under the `ELECTRON_RUN_AS_NODE` test runner (step 8's tests
+  check) and loads in the built app, where electron-vite leaves it external (step 9's e2e spec
+  checks).
+- Whether the renderer can remove the `about:blank` entry before the target commits, for example
+  with `wc.navigationHistory.clear()` (step 0 question 7).
+- What `keyExchange` holds for the TLS versions Chromium 152 negotiates with the fixture (step 0
+  question 6).
 - Whether `pnpm install` on the Node 20 toolchain accepts `pdfjs-dist` 5.6.205, and whether its text
   extraction works without the optional `@napi-rs/canvas`.
 - The transitive licences of `warcio`'s dependencies: the lockfile decides the set, and
@@ -1101,3 +1268,8 @@ None yet.
   `df531d36`. The probe rerun on Electron 44.5.1 is done, with no change (see that section). Step 0
   has not run. [The agent briefs plan](2026-10-10-three-programme-agent-briefs.md) sits on an
   unmerged branch, so links to it resolve once it merges.
+- **2026-10-10.** Revised after a review: the probe's CI job moves to a pull request the
+  maintainer opens (ADR-0048), step 0 gains a `history.length` question after a scratch run
+  measured the `about:blank` entry, D7 follows the TLS spike's field list, D8 states the records
+  of each partial exchange, steps 9 and 10 say where their time comes from, and open question F
+  recommends one option.

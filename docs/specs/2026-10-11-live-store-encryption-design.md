@@ -2,12 +2,13 @@
 
 **Date:** 2026-10-11
 
-**Status:** Design, awaiting approval. Nothing here is implemented. Until it ships, every public
-page keeps saying Birdbrain does not encrypt cases at rest.
+**Status:** Approved by [ADR-0049](../adr/0049-the-live-store-is-encrypted-at-rest.md) on
+2026-10-11. Nothing here is implemented. Until it ships, every public page keeps saying
+Birdbrain does not encrypt cases at rest.
 
 **Decisions this revisits:** the round 1 map (#284) put encrypting the live store out of scope
-on 2026-07-31, with a revisit trigger of "any move toward a public (non-invited) release." The public beta brief
-(`docs/specs/2026-09-06-public-beta-brief.md`) kept that posture, and the Shared Cases design
+on 2026-07-31, with a revisit trigger of "any move toward a public (non-invited) release." The
+public beta brief (`docs/specs/2026-09-06-public-beta-brief.md`) kept that posture, and the Shared Cases design
 (`docs/specs/2026-09-19-collaborative-cases-design.md`, decision 12) records "At-rest
 encryption: None added." This spec proposes reversing both. Approval needs a new ADR that
 records the reversal and passes the ADR-0004 gate for evidence-affecting decisions.
@@ -362,6 +363,8 @@ files (#1811), so the sync work is written against it once. If the sharing work 
 its file reads and writes move onto the sealed API in step 5.
 
 ## Open questions for the maintainer
+
+The maintainer decided all five as recommended on 2026-10-11, recorded in ADR-0049.
 
 1. **Default or opt-in.** Should new installations start encrypted with no choice, or should
    encryption be a setting? The plain claim needs it on by default. Recommendation: on by

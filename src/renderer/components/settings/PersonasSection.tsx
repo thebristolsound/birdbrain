@@ -92,9 +92,8 @@ export function PersonasSection() {
             <AlertTriangle size={14} className="mt-0.5 shrink-0 text-amber-500" />
             <div className="space-y-2">
               <p>
-                The operating system credential store is unavailable on this machine, so imported
-                cookies sit on disk unprotected, readable by anything that can read this
-                user&rsquo;s files.
+                Imported cookies sit on disk unencrypted, readable by anything that can read this
+                user&rsquo;s files. This build of Birdbrain does not encrypt its cookie store.
               </p>
               <label className="flex items-center gap-2">
                 <input

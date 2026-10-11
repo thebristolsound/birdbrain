@@ -56,9 +56,12 @@ Recorded in ADR-0030 and the `CONTEXT.md` entry for **Persona** (phase 0, 2026-0
 7. **Two wordings for the stamp.** `background` captures say persona session used;
    `extension` captures say persona declared by operator.
 8. **Cookie files are read, loaded, and discarded.** The file bytes are never copied into the
-   install. Only Chromium's own cookie store on the partition holds the values, protected by the
-   same OS key `safeStorage.isEncryptionAvailable()` reports on. When that returns false the
-   import UI shows the #414 warning and requires acknowledgement.
+   install. Only Chromium's own cookie store on the partition holds the values, and it holds them
+   unencrypted in the partition's `Cookies` database under the user-data folder: Electron's
+   `EnableCookieEncryption` fuse is off in the build Birdbrain ships, and turning it on is #88
+   ([at-rest assessment](../specs/2026-10-11-persona-cookies-at-rest-assessment.md)). When
+   `safeStorage.isEncryptionAvailable()` returns false the import UI shows the #414 warning and
+   requires acknowledgement.
 9. **Optional Manifest fields, no schema bump, verifier ships first.** `personaId` and
    `personaLabel` are optional on `capture` entries and on `exhibit` entries whose origin is
    `extension`, `background` or `extension-image`. `derivation` entries carry nothing; they

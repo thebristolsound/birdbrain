@@ -16,6 +16,12 @@ profile, not a Capture in an Electron window, and the `persona-window` method is
 Persona may hold one browser session per engine, both seeded from the same cookie import. The
 registry, the frozen label, and the Manifest fields are unchanged.
 
+**Corrected 2026-10-11 by the
+[Persona cookies at-rest assessment](../specs/2026-10-11-persona-cookies-at-rest-assessment.md):**
+a running build stores a Persona's cookie values unencrypted, because Electron's
+`EnableCookieEncryption` fuse is off in the build Birdbrain ships. "No secrets beyond the browser
+session" now says so and no longer credits the OS key. Turning the fuse on is #88.
+
 Resolves #542 and #544 under map #541. Grilled and confirmed by the maintainer on 2026-09-19;
 the working plan is `docs/plans/2026-09-19-persona-cookie-import.md`.
 
@@ -61,8 +67,11 @@ evasion, and the research also shows it breaks Cloudflare challenges.
 
 **No secrets beyond the browser session.** Cookie files are read, loaded into the session, and
 discarded; their bytes are never copied under the install. Passwords are never stored. The
-only copy of a cookie value is Chromium's own store for that session, protected by the OS key
-that `safeStorage` reports on, with the #414 warning when that key is absent.
+only copy of a cookie value is Chromium's own store for that session, the partition's `Cookies`
+database under the user-data folder, and it holds the values unencrypted: Electron's
+`EnableCookieEncryption` fuse is off in the build Birdbrain ships, so neither the operating
+system key nor `safeStorage` protects them. Turning the fuse on is #88. Settings shows the #414
+warning, which says the cookies are unencrypted, only when `safeStorage` reports no key.
 
 **Optional Manifest fields, no schema bump.** `personaId` and `personaLabel` are optional on
 `capture` entries and on `exhibit` entries whose origin is `extension`, `background` or

@@ -155,6 +155,17 @@ describe('target pages', () => {
     ].join('\n')
     for (const marker of TARGET_ONLY_STRINGS) expect(corpus).toContain(marker)
   })
+
+  it("leave the mail header's Reply-To address and host out of every query", () => {
+    const html = readFileSync(join(PAGES_DIR, 'mail-header.html'), 'utf-8')
+    const address = /^Reply-To: &lt;(.+)&gt;$/m.exec(html)?.[1] ?? ''
+    expect(address).toContain('@')
+    const [localPart, host] = address.toLowerCase().split('@')
+    for (const query of QUERIES) {
+      const text = query.text.toLowerCase()
+      for (const part of [localPart, host]) expect(text).not.toContain(part)
+    }
+  })
 })
 
 describe('renderReport', () => {

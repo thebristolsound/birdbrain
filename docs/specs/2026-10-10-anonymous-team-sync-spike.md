@@ -4,7 +4,8 @@
 
 **Status:** Partial. Questions 1, 2, and 4 are answered. Question 3 ran through n0's public relay
 without Tor, because the binding has no proxy setting and the test host has no Tor; what remains
-is under "What a human must still measure." A measurement, not a decision.
+is under "What a human must still measure." The maintainer's rulings of 2026-10-10 are under
+"Rulings."
 
 Answers the four questions on #1697 for the anonymous-team mode that
 [ADR-0032](../adr/0032-route-app-egress-but-do-not-disguise-the-browser.md) rule 1 names as later
@@ -12,9 +13,8 @@ work (`0032-route-app-egress-but-do-not-disguise-the-browser.md:51-56`): relay-o
 so teammates never learn each other's addresses, with the relay connection sent through the
 Egress, so the relay does not either. Decision 2 of the
 [collaborative cases design](2026-09-19-collaborative-cases-design.md) chose Iroh as the transport
-(`:45`). After this note merges, the maintainer rules go or no-go on the mode; the recommendation
-and its evidence are under "Open questions." Repository citations describe `origin/main` at
-`df531d36`.
+(`:45`). On 2026-10-10 the maintainer ruled no-go on the mode; the ruling and its evidence are
+under "Rulings." Repository citations describe `origin/main` at `df531d36`.
 
 ## Answers
 
@@ -56,8 +56,9 @@ Runtime: Node 20.20.2 on Linux x64 under WSL2, with `@number0/iroh` 1.1.0 and it
 the repository with install scripts turned off. Version strings in the binary name `iroh` 1.0.2
 and `iroh-relay` 1.0.2. Binding paths below are files in the 1.1.0 npm tarball, whose panic
 messages call `src/` by its source name, `iroh-js/src/`. Rust paths are in the `iroh` 1.0.2 crate
-from crates.io unless they name `iroh-relay` 1.0.2. SC-5 and SC-6 are the Iroh transport brief and
-the invite brief in the three-programme agent briefs plan
+from crates.io unless they name `iroh-relay` 1.0.2. SC-5 (#1809, Iroh transport, node key
+persistence, and packaging) and SC-6 (#1810, invite, join, and roster writers) are the two issues
+#1513 was split into on 2026-10-10. Their briefs are in the three-programme agent briefs plan
 (`docs/plans/2026-10-10-three-programme-agent-briefs.md`, not yet on `main`).
 
 The probe at the end of this page binds two endpoints in one process, a server and a client,
@@ -187,6 +188,8 @@ root `index.d.ts`. Whether the main-process build resolves it was not checked.
 
 ## What a human must still measure
 
+#1697 stays open for these measurements after the no-go ruling.
+
 - **Relay-only through Tor, at the Rust level.** The binding cannot run it. Build two `iroh` 1.0.2
   endpoints with `clear_ip_transports()`, `proxy_url` set to a Tor `HTTPTunnelPort`,
   `net_report_config(NetReportConfig::minimal())`, `portmapper_config(PortmapperConfig::Disabled)`,
@@ -207,8 +210,9 @@ root `index.d.ts`. Whether the main-process build resolves it was not checked.
 
 ## Verdict for SC-5
 
-SC-5 can proceed as briefed. The binding connects two endpoints through n0's relay and carries
-payloads, and nothing here changes the transport design. Five findings change how SC-5 builds it:
+SC-5 (#1809) can proceed as briefed. The binding connects two endpoints through n0's relay and
+carries payloads, and nothing here changes the transport design. Five findings change how SC-5
+builds it:
 
 - **Call no `watch*` method on 1.1.0.** Poll `paths()` and `addr()` instead, or wait for a release
   that carries `iroh-ffi` PR #281.
@@ -223,28 +227,39 @@ payloads, and nothing here changes the transport design. Five findings change ho
   evidence for it.
 - **Check that the main-process build resolves the binding**, since `main` and `types` name
   missing files.
-- **Decide what the invite's Iroh ticket carries** (open question 2).
+- **Dial from a ticket that holds the node id and relay URL only.** The invite carries no direct
+  addresses (ruling 2 under "Rulings"), so the first connection starts on the relay. SC-6
+  (#1810) owns the invite format.
 
 The platform gate stands as the spec describes it (`:242-248`): the 1.1.0 registry metadata lists
 no `darwin-x64` package among its optional dependencies.
 
-## Open questions
+## Rulings
 
-1. **Go or no-go on anonymous-team mode** (ADR-0032 rule 1, #1697). Recommendation: no-go on
-   `@number0/iroh` 1.1.0, recorded on #1697, reopened when a binding exposes `proxy_url`,
-   `clear_ip_transports`, `net_report_config`, and `portmapper_config`, and the Rust-level Tor
-   run above shows an endpoint with no IP sockets picking a home relay. Evidence: answers 1 and
-   2, the relay probes and port mapping that the binding cannot turn off, and the SOCKS-only Tor
-   presets. A partial mode runs on the binding today: loopback-bound sockets plus relay-only
+The maintainer ruled on 2026-10-10. Rulings 1 and 2 settle the two open questions this note
+raised; ruling 3 settles relay hosting for testers (#1508).
+
+1. **Anonymous-team mode (ADR-0032 rule 1, #1697): no-go on `@number0/iroh` 1.1.0.** The ruling
+   is posted on #1697, which stays open for the human Tor and two-network measurements. It
+   matches this note's recommendation, which named what would reopen the question: a binding
+   that exposes `proxy_url`, `clear_ip_transports`, `net_report_config`, and
+   `portmapper_config`, and the Rust-level Tor run above showing an endpoint with no IP sockets
+   picking a home relay. Evidence: answers 1 and 2, the relay probes and port mapping that the
+   binding cannot turn off, and the SOCKS-only Tor presets. The recommendation put the partial
+   mode the binding runs today under the same ruling: loopback-bound sockets plus relay-only
    tickets kept every address but loopback from the peer in this test, though not from the relay
-   or n0. Whether that part is worth offering belongs to the same ruling.
-2. **Should the invite's Iroh ticket carry direct addresses?** The spec says it does
-   (`:161-163`). Recommendation: carry the node id and relay URL only. Evidence: the default
+   or n0.
+2. **Invite contents: a `bbinvite1` invite carries only the node id and relay URL, never direct
+   addresses.** The spec put direct addresses in the invite (`:161-163`). Evidence: the default
    ticket gives the Owner's public address and every interface address to anyone who reads the
    invite string. Dropping them costs a relay connection on first contact (62 to 72 ms against 1
    to 2 ms direct), and on one host hole punching moved every run to a direct path within 188 ms.
    The joiner still learns the addresses after connecting; nobody else who reads the string does.
-   The change touches the invite format, which SC-6 owns.
+   SC-6 (#1810) owns the invite format.
+3. **Relay hosting: the first testers use n0's public relays.** Before the handoff to testers,
+   one real sync between two machines through the relay is recorded. Birdbrain hosts its own
+   relay only if a tester cannot reach n0's. This note reached n0's relays from one host on one
+   network only.
 
 ## The probe
 

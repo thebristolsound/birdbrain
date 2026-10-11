@@ -137,7 +137,7 @@ export const formatVerificationBlock = ({ sha, nodeVersion, base, mergeBase, ste
 
 // lint:agents-md is advisory and always exits 0, so the row would otherwise read
 // a bare pass whether or not the two files drifted. Report what it found.
-const describeAgentsMd = (output) => {
+export const describeAgentsMd = (output) => {
   const prefix = 'lint:agents-md: '
   const line = output.split('\n').find((candidate) => candidate.startsWith(prefix))
   return line ? line.slice(prefix.length) : 'no lint:agents-md summary found in output'

@@ -7,17 +7,21 @@
 // (staged, unstaged and untracked) against the merge base and maps it:
 //
 //   changed code files       eslint on those files; Vitest `related` on them
-//   any TS file or tsconfig  every project in the `typecheck` script, in parallel
-//                            (all six together take about as long as the slowest,
+//   eslint.config.js         pnpm lint, the whole repository
+//   any TS file, tsconfig,   every project in the `typecheck` script, in parallel
+//   package.json or lockfile (all six together take about as long as the slowest,
 //                            so selecting projects would save little)
-//   code under the graph     pnpm lint:boundaries
+//   code under the graph,    pnpm lint:boundaries
+//   or the cruise's config
 //   Markdown                 vale-prose --base, changed lines only
 //   docs/adr/                lint:adr
-//   CLAUDE.md or AGENTS.md   lint:agents-md, advisory
+//   CLAUDE.md or AGENTS.md   lint:agents-md, advisory; drift shows as a warning
 //
 // Vitest runs the whole suite instead of `related` when its config, its setup
-// files or the lockfile changed, or when a code file was deleted or renamed:
-// `related` cannot find a test that still imports a file that is gone.
+// files, the lockfile or a non-code file under tests/ changed, or when a code
+// file was deleted or renamed. `related` follows imports, so it cannot find a
+// test that still imports a file that is gone, or one that reads a fixture
+// from disk.
 //
 // Build, the extension build, coverage thresholds and diff coverage are left to
 // preflight; the summary says so rather than implying a full verify.
@@ -25,10 +29,16 @@
 // Usage: node scripts/check.mjs [--base <ref>] [--dry-run]
 
 import { execFileSync, spawn } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { childEnv, describeVale, nodeVersionProblem, parseVitestSummary } from './preflight.mjs'
+import {
+  childEnv,
+  describeAgentsMd,
+  describeVale,
+  nodeVersionProblem,
+  parseVitestSummary
+} from './preflight.mjs'
 
 export const DEFAULT_OUT = join('.preflight', 'check.md')
 
@@ -36,9 +46,22 @@ const CODE_FILE = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/
 const TS_FILE = /\.(ts|tsx|mts|cts)$/
 const PROSE_FILE = /\.(md|mdx)$/
 const TSCONFIG = /(^|\/)tsconfig[^/]*\.json$/
+const LINT_CONFIG = /^eslint\.config\.[cm]?[jt]s$/
+const DEPENDENCY_METADATA = ['package.json', 'pnpm-lock.yaml']
+// tsconfig.boundaries.json is dependency-cruiser's alias map, and it extends tsconfig.json.
+const BOUNDARY_CONFIG = ['.dependency-cruiser.cjs', 'tsconfig.boundaries.json', 'tsconfig.json']
 const TEST_ROOTS = ['src/', 'tests/', 'extension/', 'scripts/', 'e2e/']
 const GRAPH_ROOTS = ['src/', 'extension/src/', 'tests/', 'e2e/']
 const WHOLE_SUITE_INPUTS = [/^vitest\.config\.ts$/, /^tests\/setup\//, /^pnpm-lock\.yaml$/]
+const isWholeSuiteInput = (path) =>
+  WHOLE_SUITE_INPUTS.some((pattern) => pattern.test(path)) ||
+  (path.startsWith('tests/') && !CODE_FILE.test(path))
+
+// Package binaries run from their entry points under Node, not through pnpm: Windows pnpm needs
+// a shell, and the shell would parse the changed paths these checks take (see runCheck).
+const ESLINT = join('node_modules', 'eslint', 'bin', 'eslint.js')
+const TSC = join('node_modules', 'typescript', 'bin', 'tsc')
+const ELECTRON = join('node_modules', 'electron', 'cli.js')
 
 export const LEFT_TO_PREFLIGHT = 'build, extension build, coverage thresholds, diff coverage'
 
@@ -83,36 +106,49 @@ export const planChecks = (changes, { mergeBase, projects }) => {
   const code = present.filter((path) => CODE_FILE.test(path))
   const checks = []
 
-  if (code.length > 0) {
+  // The repository ignores *.config.js, so linting only the changed config would check nothing.
+  const lintConfig = all.find((path) => LINT_CONFIG.test(path))
+  if (lintConfig) {
+    checks.push({
+      name: 'lint',
+      scope: `whole repository, ${lintConfig} changed`,
+      command: 'pnpm',
+      args: ['lint']
+    })
+  } else if (code.length > 0) {
     checks.push({
       name: 'lint',
       scope: plural(code.length, 'file'),
-      command: 'pnpm',
-      args: ['exec', 'eslint', '--no-warn-ignored', ...code]
+      command: 'node',
+      args: [ESLINT, '--no-warn-ignored', ...code]
     })
   }
 
-  if (all.some((path) => TS_FILE.test(path) || TSCONFIG.test(path))) {
+  if (
+    all.some(
+      (path) => TS_FILE.test(path) || TSCONFIG.test(path) || DEPENDENCY_METADATA.includes(path)
+    )
+  ) {
     for (const project of projects) {
       checks.push({
         name: `typecheck ${project}`,
-        command: 'pnpm',
-        args: ['exec', 'tsc', '--noEmit', '-p', project]
+        command: 'node',
+        args: [TSC, '--noEmit', '-p', project]
       })
     }
   }
 
   const deletedCode = changes.filter((change) => change.deleted && CODE_FILE.test(change.path))
-  const suiteInput = all.find((path) => WHOLE_SUITE_INPUTS.some((pattern) => pattern.test(path)))
+  const suiteInput = all.find(isWholeSuiteInput)
   const testable = code.filter((path) => TEST_ROOTS.some((root) => path.startsWith(root)))
-  const vitest = ['exec', 'electron', './node_modules/vitest/vitest.mjs']
+  const vitest = [ELECTRON, './node_modules/vitest/vitest.mjs']
   if (suiteInput || deletedCode.length > 0) {
     checks.push({
       name: 'test',
       scope: suiteInput
         ? `whole suite, ${suiteInput} changed`
         : `whole suite, ${deletedCode[0].path} was deleted or renamed`,
-      command: 'pnpm',
+      command: 'node',
       args: [...vitest, 'run'],
       describe: describeVitest
     })
@@ -120,7 +156,7 @@ export const planChecks = (changes, { mergeBase, projects }) => {
     checks.push({
       name: 'test',
       scope: `related to ${plural(testable.length, 'file')}`,
-      command: 'pnpm',
+      command: 'node',
       args: [...vitest, 'related', '--run', '--passWithNoTests', ...testable],
       describe: describeVitest
     })
@@ -129,7 +165,7 @@ export const planChecks = (changes, { mergeBase, projects }) => {
   if (
     all.some(
       (path) =>
-        path === '.dependency-cruiser.cjs' ||
+        BOUNDARY_CONFIG.includes(path) ||
         (CODE_FILE.test(path) && GRAPH_ROOTS.some((root) => path.startsWith(root)))
     )
   ) {
@@ -155,7 +191,10 @@ export const planChecks = (changes, { mergeBase, projects }) => {
       scope: 'advisory',
       command: 'pnpm',
       args: ['lint:agents-md'],
-      advisory: true
+      advisory: true,
+      describe: describeAgentsMd,
+      // It exits 0 on drift as well, so any summary but a match is the warning.
+      warns: (output) => !/^lint:agents-md: .* match$/m.test(output)
     })
   }
 
@@ -198,6 +237,11 @@ const describeVitest = (output) => {
 
 const label = (check) => (check.scope ? `${check.name} (${check.scope})` : check.name)
 
+const statusOf = ({ exitCode, advisory, warning }) => {
+  if (exitCode !== 0) return advisory ? 'warn' : 'FAIL'
+  return warning ? 'warn' : 'pass'
+}
+
 export const formatSummary = ({ base, mergeBase, changedCount, results }) => {
   const width = Math.max(...results.map((result) => label(result).length))
   const lines = [
@@ -205,7 +249,7 @@ export const formatSummary = ({ base, mergeBase, changedCount, results }) => {
       `since ${base} (merge base ${mergeBase.slice(0, 9)})`
   ]
   for (const result of results) {
-    const status = result.exitCode === 0 ? 'pass' : result.advisory ? 'warn' : 'FAIL'
+    const status = statusOf(result)
     const timing = `exit ${result.exitCode}  ${(result.ms / 1000).toFixed(1)}s`
     const detail = result.detail ? `  ${result.detail}` : ''
     lines.push(`  ${status}  ${label(result).padEnd(width)}  ${timing}${detail}`)
@@ -217,9 +261,11 @@ export const formatSummary = ({ base, mergeBase, changedCount, results }) => {
 const runCheck = (check, { cwd, env }) =>
   new Promise((settle) => {
     const started = Date.now()
-    // Corepack's Windows pnpm is a .cmd shim, which Node only spawns through a shell.
+    // Corepack's Windows pnpm is a .cmd shim, which Node only spawns through a shell. Every pnpm
+    // check runs a package script with fixed arguments; changed paths only reach the Node checks.
     const shell = check.command === 'pnpm' && process.platform === 'win32'
-    const child = spawn(check.command, check.args, {
+    const command = check.command === 'node' ? process.execPath : check.command
+    const child = spawn(command, check.args, {
       cwd,
       env: check.env ?? env,
       shell,
@@ -231,7 +277,8 @@ const runCheck = (check, { cwd, env }) =>
     const finish = (exitCode) => {
       const ms = Date.now() - started
       const detail = check.describe?.(output)
-      settle({ ...check, exitCode, output, ms, detail })
+      const warning = check.warns?.(output) ?? false
+      settle({ ...check, exitCode, output, ms, detail, warning })
     }
     child.on('error', (error) => {
       output += `${error.message}\n`
@@ -243,6 +290,10 @@ const runCheck = (check, { cwd, env }) =>
 const main = async () => {
   const cwd = process.cwd()
   const args = parseArgs(process.argv.slice(2))
+  const outPath = resolve(cwd, DEFAULT_OUT)
+
+  // Clear the last summary first: a run that writes none must not leave one that looks current.
+  rmSync(outPath, { force: true })
 
   let mergeBase
   try {
@@ -298,9 +349,9 @@ const main = async () => {
   )
 
   const failures = results.filter((result) => result.exitCode !== 0)
-  const sections = failures.map(
-    (result) => `--- ${label(result)} ---\n${result.output.trimEnd()}\n`
-  )
+  const sections = results
+    .filter((result) => result.exitCode !== 0 || result.warning)
+    .map((result) => `--- ${label(result)} ---\n${result.output.trimEnd()}\n`)
   const summary = formatSummary({
     base: args.base,
     mergeBase,
@@ -310,7 +361,6 @@ const main = async () => {
   for (const section of sections) console.log(`\n${section}`)
   console.log(`\n${summary}`)
 
-  const outPath = resolve(cwd, DEFAULT_OUT)
   mkdirSync(dirname(outPath), { recursive: true })
   writeFileSync(outPath, [summary, ...sections].join('\n'))
   console.log(`check: summary written to ${DEFAULT_OUT}; it is not a Verification block.`)

@@ -8,6 +8,13 @@ import { parseLayers, plainLanguageFindings, summaryFindings } from '../../post-
 const GENERIC_CAP = 20
 const VERDICT_MAX_FINDINGS = 5
 const COMMIT_ID = /\b[0-9a-f]{7,40}\b/
+// Friction notes (ADR-0050): at most three per agent, and a run has at most three agents, so
+// the top layer is the first line, nine notes and the blank lines around them.
+const FRICTION_CAP = 12
+const FRICTION_PER_AGENT = 3
+const FRICTION_SOURCES = ['dispatcher', 'implementer', 'reviewer', 'pr-review']
+const FRICTION_KINDS = ['friction', 're-derived', 'confusing']
+const FRICTION_HEADER = '| # | from | kind | anchor | cost | fix |'
 const BOT_TRIGGER = /^@(coderabbitai|codex) (review|full review|security review)$/
 // The leading note an agent adds when posting as the maintainer (global agent instructions).
 const DISCLOSURE = [/^> \[!NOTE\]$/, /^> [A-Z][\w.-]*( [A-Z][\w.-]*)? responding on behalf of Matt\.$/]
@@ -85,8 +92,77 @@ const KINDS = [
         findings.push('**Reproduce:** goes inside the <details> block')
       }
     }
+  },
+  {
+    name: 'friction notes',
+    first: /^Friction notes: (dispatch cycle|PR review)$/,
+    cap: FRICTION_CAP,
+    details: 'required',
+    check: frictionFindings
   }
 ]
+
+// One numbered plain sentence per note on top, and one table row per note in the block.
+function frictionFindings(lines, top, blocks, findings) {
+  const items = lines.filter((l, i) => top[i] && /^\d+\. \S/.test(l))
+  if (!items.length) {
+    findings.push('friction notes list each note as a numbered plain sentence; a run with no notes posts nothing')
+  }
+  const block = blocks.find((b) => /^Each note in full$/i.test(b.summary))
+  if (!block) {
+    findings.push('friction notes carry a <details> block with <summary>Each note in full</summary> holding the notes table')
+    return
+  }
+  const at = block.lines.findIndex((l) => l.trim() === FRICTION_HEADER)
+  if (at < 0) {
+    findings.push(`the notes table starts with the header "${FRICTION_HEADER}"`)
+    return
+  }
+  const rows = []
+  for (const l of block.lines.slice(at + 2)) {
+    if (!l.trim().startsWith('|')) break
+    rows.push(tableCells(l))
+  }
+  if (rows.length !== items.length) {
+    findings.push(`the top layer lists ${items.length} notes and the table ${rows.length}; write one row per note`)
+  }
+  const perSource = {}
+  rows.forEach((cells, k) => {
+    const n = k + 1
+    if (cells.length !== 6) {
+      findings.push(`table row ${n} has ${cells.length} cells; it has six: #, from, kind, anchor, cost, fix`)
+      return
+    }
+    const [num, from, kind, anchor, cost, fix] = cells
+    if (num !== String(n)) findings.push(`table row ${n} is numbered "${num}"; number the rows as the top layer does`)
+    if (FRICTION_SOURCES.includes(from)) perSource[from] = (perSource[from] || 0) + 1
+    else findings.push(`table row ${n}: "from" is one of ${FRICTION_SOURCES.join(', ')}`)
+    if (!FRICTION_KINDS.includes(kind)) findings.push(`table row ${n}: "kind" is one of ${FRICTION_KINDS.join(', ')}`)
+    if (!anchor) findings.push(`table row ${n} has no anchor; name the heading, script, command or workflow step`)
+    else if (/:\d+\b|#L\d+/.test(anchor)) {
+      findings.push(`table row ${n}: the anchor names a line number, which moves; cite a heading, script, command or workflow step`)
+    }
+    if (!cost || /^(none|unknown|n\/a|-)$/i.test(cost)) {
+      findings.push(`table row ${n} has no concrete cost; name what the run did to recover, or drop the note`)
+    }
+    if (!fix) findings.push(`table row ${n} has no fix; give the one-line change, or write unknown`)
+  })
+  for (const [from, count] of Object.entries(perSource)) {
+    if (count > FRICTION_PER_AGENT) {
+      findings.push(`the ${from} has ${count} notes; the cap is ${FRICTION_PER_AGENT} per agent, keep the ones that cost the most`)
+    }
+  }
+}
+
+// A Markdown table row's cells, trimmed and without surrounding backticks.
+function tableCells(line) {
+  return line
+    .trim()
+    .replace(/^\|/, '')
+    .replace(/(?<!\\)\|$/, '')
+    .split(/(?<!\\)\|/)
+    .map((c) => c.trim().replace(/^`(.*)`$/, '$1'))
+}
 
 // A verdict whose first line uses the old marker or the wrong verdict word.
 const VERDICT_LOOKALIKE = /^\*\*(Reviewer pre-pass|Review verdict)/

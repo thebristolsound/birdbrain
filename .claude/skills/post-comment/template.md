@@ -90,6 +90,28 @@ pnpm test tests/components/LegacyHtmlViewer.test.tsx
 </details>
 ````
 
+## Friction notes (12 lines; the table collapsed; posted by a workflow step)
+
+The session writes this file and stops. The step that posts it appends a second block naming
+the run, the commit it started from, and the date.
+
+```
+Friction notes: dispatch cycle
+
+1. The implementer had to work out again which accounts count as trusted reviewers, because the rule is split across two guides.
+2. The dispatcher could not tell from the instructions whether a closed pull request still holds a slot.
+
+<details>
+<summary>Each note in full</summary>
+
+| # | from | kind | anchor | cost | fix |
+|---|---|---|---|---|---|
+| 1 | implementer | re-derived | `.claude/skills/dispatch/SKILL.md#session-rules` | read the whole dispatch skill to find the list | link the trusted-account list from the implementer brief |
+| 2 | dispatcher | confusing | `.claude/skills/dispatch/SKILL.md#1-slot-check` | queried the slot labels twice | unknown |
+
+</details>
+```
+
 ## Anything else (20 lines; details optional)
 
 ```

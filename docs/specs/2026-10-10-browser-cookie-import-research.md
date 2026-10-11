@@ -191,9 +191,10 @@ ADR-0034 likewise works within Chrome 136's refusal of remote debugging on the d
 
 **Ruling 73 sets the at-rest condition.**
 
-- Someone verifies on a running build whether Persona partition cookies are encrypted at rest.
-- If they are not, ADR-0030's at-rest sentence, persona plan decision 8, and the
-  `personaSessions.ts` comment are corrected to state what is true.
+- The roadmap's CE-AR brief checks on a running build whether Persona partition cookies are
+  encrypted at rest.
+- If they are not, CE-AR corrects ADR-0030's at-rest sentence, persona plan decision 8, and the
+  `personaSessions.ts` comment to state what is true.
 - Enabling the `cookieEncryption` fuse stays its own change (#88).
 - No browser import ships before the wording is true. The recommendation's "fixed" could have
   meant turning the fuse on; the ruling asks for true wording and leaves the fuse to #88.
@@ -221,13 +222,14 @@ rest is the research's own list.
    - #543 gains the question of whether to disclose the seed source.
    - #1498 decides whether the seed field ships in its release.
    - A new ticket under #541, to be grilled before it is `ready-for-agent`.
-4. Roadmap changes:
+4. Roadmap and spec changes:
    - Add a row for the Chromium key-reader dependencies to the table "Decisions and approvals
      the maintainer owes" in the roadmap. Import scope and the choice between fixing the fuse and
      fixing the wording are ruled.
-   - Extend the CE-S2 brief in the roadmap and step 5 of the spec's proposed PR split with three
-     items: the browser as a cookie source, the S3 exception, and the rule that both browsers are
-     closed. The spec's seeding section and S3 already carry all three.
+   - Step 5 of the spec's proposed PR split leaves the browser import out and names the new
+     ticket under #541 that builds it, as ruling 72 routes the build. The spec's seeding section
+     and S3 carry the browser as a cookie source, the S3 exception, and the rule that both
+     browsers are closed, and the roadmap's CE-A brief records the ruling.
 
 ## Not verified
 

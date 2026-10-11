@@ -450,6 +450,10 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
 
   async function render(): Promise<RenderedPage> {
     wc.session.setPermissionRequestHandler((_wc, _permission, callback) => callback(false))
+    // Without a check handler, permission checks (Notification.permission,
+    // navigator.permissions.query) report `granted` while every request above is
+    // refused; denying checks makes the page see the policy the render enforces.
+    wc.session.setPermissionCheckHandler(() => false)
     wc.setWindowOpenHandler(() => ({ action: 'deny' }))
     wc.setAudioMuted(true)
 

@@ -56,7 +56,8 @@ const { MockBrowserWindow } = vi.hoisted(() => {
       onCompleted: vi.fn(),
       onErrorOccurred: vi.fn()
     },
-    setPermissionRequestHandler: vi.fn()
+    setPermissionRequestHandler: vi.fn(),
+    setPermissionCheckHandler: vi.fn()
   })
 
   class MockBrowserWindow implements FakeWindow {
@@ -315,6 +316,32 @@ describe('renderPageInHiddenWindow', () => {
     expect(win.isDestroyed()).toBe(false)
     await result.cleanup()
     expect(win.isDestroyed()).toBe(true)
+  }, 30_000)
+
+  it('denies every permission check as well as every permission request', async () => {
+    const result = await renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000 })
+    const session = ctl.lastWindow!.webContents.session as {
+      setPermissionRequestHandler: ReturnType<typeof vi.fn>
+      setPermissionCheckHandler: ReturnType<typeof vi.fn>
+    }
+
+    expect(session.setPermissionCheckHandler).toHaveBeenCalledTimes(1)
+    const [checkHandler] = session.setPermissionCheckHandler.mock.calls[0] as [
+      (...args: unknown[]) => boolean
+    ]
+    for (const permission of ['notifications', 'geolocation', 'media', 'clipboard-read']) {
+      expect(checkHandler(null, permission, 'https://example.test', {})).toBe(false)
+    }
+
+    const [requestHandler] = session.setPermissionRequestHandler.mock.calls[0] as [
+      (wc: unknown, permission: string, callback: (granted: boolean) => void) => void
+    ]
+    const callback = vi.fn()
+    requestHandler(null, 'notifications', callback)
+    expect(callback).toHaveBeenCalledWith(false)
+
+    for await (const _chunk of result.mhtmlStream) void _chunk
+    await result.cleanup()
   }, 30_000)
 
   it('records no suppression when the consent blocker is unavailable', async () => {

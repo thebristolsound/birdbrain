@@ -30,7 +30,8 @@ Both rows come from the read-only query in step 12 of the commands below. For ea
 the value sits in `value` and `encrypted_value` is empty. Both cookies are persistent
 (`is_persistent` 1, step 13), the kind Chromium keeps on disk across restarts.
 `grep` found each marker in the partition's `Cookies` database and in no other file under the
-partition folder, the `Cookies-journal` and the HTTP cache included (step 11).
+partition folder (step 11). That folder held 49 files, among them an empty `Cookies-journal`
+and six HTTP cache files (step 16, a listing of the copy step 11 made).
 
 ## Runtime
 
@@ -495,3 +496,33 @@ exit 2
 ```
 
 The `ls` shows that `quit` deleted the user-data folder, as `driver.mjs:257-259` says.
+
+### 16. List the copy
+
+This step ran during review, after the run, against the copy from step 11. The first `find`
+prints the first and last status-change time of any entry in the copy. They are 5
+milliseconds apart, the moment `cp` wrote the copy, so nothing has changed it since. The second
+`find` prints each cookie and cache file's size in bytes, then its path.
+
+```console
+$ find /tmp/ce-ar-copy -printf '%C+\n' | sort | sed -n '1p;$p'
+2026-10-11+12:29:50.8521645250
+2026-10-11+12:29:50.8573130950
+exit 0
+$ find /tmp/ce-ar-copy/persona-d1d94c27-d97d-4edb-930b-3b394f861e59 -type f \( -name 'Cookies*' -o -path '*/Cache/*' \) -printf '%s %P\n' | sort -k2
+629 Cache/Cache_Data/248d461cda1ada24_0
+430 Cache/Cache_Data/a855e3c61050b4ab_0
+24 Cache/Cache_Data/index
+72 Cache/Cache_Data/index-dir/the-real-index
+4 Cache/No_Vary_Search/journal.baj
+20 Cache/No_Vary_Search/snapshot.baf
+20480 Cookies
+0 Cookies-journal
+exit 0
+$ find /tmp/ce-ar-copy/persona-d1d94c27-d97d-4edb-930b-3b394f861e59 -type f | wc -l
+49
+exit 0
+$ grep -a -r -l -e ATREST-IMPORT-7f3c -e ATREST-LOGIN-9b1e /tmp/ce-ar-copy
+/tmp/ce-ar-copy/persona-d1d94c27-d97d-4edb-930b-3b394f861e59/Cookies
+exit 0
+```

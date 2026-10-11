@@ -126,10 +126,15 @@ recorded two `resize` events, two `visualViewport` resize events, and two `Resiz
 callbacks on the root element. It recorded no scroll, focus, visibility, or intersection change.
 
 **A tab that is not in front can be captured.** With another tab in front, the first tab's
-`visibilityState` was `hidden`. `Page.captureScreenshot` on it returned the page's content, without
-`captureBeyondViewport` in 18 ms on Chrome and 24 ms on Chrome for Testing, and with it in 107 ms
-and 116 ms. The page stayed `hidden` and recorded no `visibilitychange`; the capture with
-`captureBeyondViewport` added one more `resize` event.
+`visibilityState` was `hidden`. `Page.captureScreenshot` on it returned the page's content twice,
+first without `captureBeyondViewport`, then with it. The script timed both from the start of the
+first: the first ended after 18 ms on Chrome and 24 ms on Chrome for Testing, the second after 107
+ms and 116 ms. The page stayed `hidden` and recorded no further `visibilitychange`. Between the
+read after the front capture and the read after both background captures, the page recorded one
+more `resize` and one more `visualViewport` resize; the other tab opened in that interval too, so
+the script does not show which step caused them. On Chrome for Testing with
+`--disable-field-trial-config` (the P24 run), the first background capture took 2,265 ms, in one
+run.
 
 Chrome for Testing shows an infobar (P19), so its viewport was 1,050 × 861 where Chrome's was 1,050
 × 917.
@@ -137,7 +142,7 @@ Chrome for Testing shows an infobar (P19), so its viewport was 1,050 × 861 wher
 | Product and platform | Answer |
 | --- | --- |
 | Chrome 150, Linux | Window does not move; the page sees `resize`, `visualViewport` resize, and `ResizeObserver` events; a tab behind another can be captured |
-| Chrome for Testing 149, Linux | Same as Chrome 150, with a viewport 56 pixels shorter |
+| Chrome for Testing 149, Linux | Same as Chrome 150, with a viewport 56 pixels shorter; with `--disable-field-trial-config`, the first background capture took 2,265 ms |
 | Edge, Brave, Chromium, Linux | Not measured on this host: not installed |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
 | Chrome, Edge, Brave, Chromium, macOS | Not measured on this host: the host runs Linux |
@@ -160,6 +165,11 @@ pipe makes it), the keys of `window.chrome` (`loadTimes`, `csi`, `app`), `docume
 | The same scripts in the main world, as `scrollToLoadLazyContent` runs them (`src/main/services/backgroundRenderer.ts:215-262`) | The same, with one scroll event more |
 | `SCROLL_UNLOCK_SCRIPT` first, on a page whose `html` and `body` carry inline `overflow: hidden`, then `overflow: clip` | The unlock script returned `null` and changed no style: programmatic scrolling still moved the page, so `pickRoot` found it scrollable. The page saw the same scrolling as above |
 | `Runtime.enable` before the load, as a positive control | Nothing recorded. The `Error.stack` getter was read zero times |
+
+In three of the eight runs with the scroll scripts (the `overflow: clip` run on Chrome, and the
+main-world and `overflow: hidden` runs on Chrome for Testing), the page also recorded one `focus`
+event. No run without the scroll scripts recorded one, and one run per variant does not show
+whether the scripts or the new tab's activation caused it.
 
 The positive control means the `Error.stack` count cannot show whether a domain is detectable on
 these builds: it stayed at zero with the `Runtime` domain on. The comment above the scroll helpers
@@ -184,9 +194,11 @@ either inline style.
 ### P4: Popups, new tabs, and cross-site navigation
 
 **Awaiting `Network.enable` before resuming stalls a tab a page opens with no JavaScript opener,
-and a tab the browser opens with a URL sends its document request before the engine can record
-it.** The `newtabs` configuration opened a tab eight ways from a fixture page, with each order of
-setup. The second column says whether the target's `TargetInfo` carried an `openerId`.
+and the document request of a tab the browser opens with a URL appears on no CDP session.** The
+`newtabs` configuration opened a tab eight ways from a fixture page, with each order of setup. Its
+`Network.enable` carried the buffer limits only, without `enableDurableMessages`, the parameter the
+protocol's deadlock note names (spec, lines 1463-1469). The second column says whether the
+target's `TargetInfo` carried an `openerId`.
 
 | How the tab opened | `openerId` | Awaited order | Pipelined order |
 | --- | --- | --- | --- |
@@ -431,7 +443,8 @@ each durable-message mode: a 9,000,000-byte payload came back as 5,877,053 bytes
 (`configureDurableMessages`) and as 7,951,424 bytes (`enableDurableMessages`), equal to the payload
 up to byte 2,097,152 and different after it, with no error. The first batch run of the same
 configurations, before the script recorded details, counted three wrong bodies in Chrome for
-Testing's `enableDurableMessages` mode and none elsewhere. No wrong body appeared without durable
+Testing's `enableDurableMessages` mode and none elsewhere; the second run wrote to the same file
+names, so no output of the first survives to show it. No wrong body appeared without durable
 messages.
 
 An hour of browsing was not measured; the per-megabyte figure is what this run supports.
@@ -447,8 +460,9 @@ An hour of browsing was not measured; the per-megabyte figure is what this run s
 ### P13: Traffic around the proxy
 
 **In a loopback-only network namespace, behind a SOCKS5 or an HTTP proxy, every TCP connection
-the browser attempted went to the proxy, and no DNS query left. One UDP socket to a public address
-was connected and sent nothing.**
+the browser attempted went to the proxy, and no DNS query left. The IPv6 reachability check of
+Chrome's host resolver tried UDP connects to a public address; every one failed, and none sent a
+byte.**
 
 The spec's Egress wrapper ran first, with the probe in place of `pnpm test <file>`:
 
@@ -470,14 +484,18 @@ image, an anchor, and a `fetch`. The SOCKS5 and HTTP runs also passed
 `--webrtc-ip-handling-policy=disable_non_proxied_udp`. The namespace had only `lo`, and the page
 read `navigator.onLine` as `false`.
 
-| Run, both browsers | TCP connections attempted (net log) | DNS queries at the listener | UDP sockets connected (net log) | Asked of the proxy |
+| Run, both browsers | TCP connections attempted (net log) | DNS queries at the listener | UDP connects attempted (net log) | Asked of the proxy |
 | --- | --- | --- | --- | --- |
-| Direct | The fixture page only | A and HTTPS records for every host the browser or the page named, the `dns-prefetch` and `preconnect` hosts included | `127.0.0.1:53`, which sent the queries; `[2001:4860:4860::8888]:443`, which failed with `net_error` -109 and sent nothing | No proxy |
-| SOCKS5 | The proxy only | None | `[2001:4860:4860::8888]:443` only, nothing sent | Every host the browser and the page named, by name, except the `dns-prefetch` host and the anchor's |
-| HTTP | The proxy only | None | The same | The same hosts except the `preconnect` one, as `CONNECT` for `https` and absolute URLs for `http` |
+| Direct | The fixture page only | A and HTTPS records for every host the browser or the page named except the anchor's, the `dns-prefetch` and `preconnect` hosts included | `127.0.0.1:53`, which sent the queries; `[2001:4860:4860::8888]:443`, 18 times on Chrome and 26 on Chrome for Testing, each failing with `net_error` -109 and sending nothing | No proxy |
+| SOCKS5 | The proxy only | None | `[2001:4860:4860::8888]:443` only: 14 times on Chrome and 6 on Chrome for Testing, each failing with -109 and sending nothing | Every host the browser and the page named, by name, except the `dns-prefetch` host and the anchor's |
+| HTTP | The proxy only | None | The same: 13 times on Chrome and 6 on Chrome for Testing | The same hosts except the `preconnect` one, as `CONNECT` for `https` and absolute URLs for `http` |
 
-The net log does not name the code that opened the UDP socket to `2001:4860:4860::8888`. No QUIC
-session appears in any net log; no fixture served QUIC, so this does not show QUIC under a proxy.
+Each UDP socket to `2001:4860:4860::8888` belongs to a net log source that logged
+`HOST_RESOLVER_MANAGER_IPV6_REACHABILITY_CHECK` with `cached: false` and `ipv6_available: false`,
+one socket per check the browser did not answer from its cache. In the SOCKS5 and HTTP runs every
+such check ran inside the connect job that connected to the proxy. No `UDP_BYTES_SENT` event names
+that address. No QUIC session appears in any net log; no fixture served QUIC, so this does not show
+QUIC under a proxy.
 
 Through the HTTP proxy, CDP reported the proxy's own address and port as `remoteIPAddress` and
 `remotePort` for the fixture page and for the `403` the proxy returned for the refused image. Through
@@ -493,7 +511,7 @@ looked up or requested. Method lists the hosts the other configurations' proxy r
 
 | Product and platform | Answer |
 | --- | --- |
-| Chrome 150, Linux | Behind SOCKS5 or HTTP, no TCP connection and no DNS query went around the proxy; one UDP socket to `2001:4860:4860::8888` connected and sent nothing; the HTTP proxy's endpoint is the reported remote address |
+| Chrome 150, Linux | Behind SOCKS5 or HTTP, no TCP connection and no DNS query went around the proxy; the IPv6 reachability check's UDP connects to `2001:4860:4860::8888` failed and sent nothing; the HTTP proxy's endpoint is the reported remote address |
 | Chrome for Testing 149, Linux | Same as Chrome 150, with fewer hosts of its own |
 | Edge, Brave, Chromium, Linux | Not measured on this host: not installed |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
@@ -557,8 +575,10 @@ persistent cookie. After `Browser.close`, the script read the first three bytes 
 `encrypted_value` in the copied `Cookies` database, and the browser's own histograms from
 `--enable-logging=stderr --v=1`. Electron's main process, on the same session, reported
 `safeStorage.getSelectedStorageBackend()`, `isEncryptionAvailable()`, and the first three bytes of
-`encryptString`. The app reaches `safeStorage` at `src/main/services/signingKey.ts:27` and calls only
-`isEncryptionAvailable()` (`signingKey.ts:58-60`, `src/main/services/persona/personaSessions.ts:196-198`).
+`encryptString`. The app reaches `safeStorage` at `src/main/services/signingKey.ts:27`, never calls
+`getSelectedStorageBackend()`, and decides whether a key protects its data with
+`isEncryptionAvailable()` (`signingKey.ts:58-60`, :64, :76;
+`src/main/services/persona/personaSessions.ts:196-198`).
 
 | Session | Chrome 150 and Chrome for Testing 149 | Electron 44.5.1 `safeStorage` | Match |
 | --- | --- | --- | --- |
@@ -645,7 +665,7 @@ will suffer." On Chrome for Testing it appeared in place of the Chrome for Testi
 
 **Only Google Chrome is installed at a known path, and Chrome for Testing reports itself as
 `Chrome`.** The `discover` configuration launched nothing. Of the Linux paths that `playwright-core`
-1.63.0 lists for Chrome and Edge channels (`lib/coreBundle.js:33222-33256`), only
+1.63.0 lists for Chrome and Edge channels (`lib/coreBundle.js:33222-33276`), only
 `/opt/google/chrome/chrome` exists. On `PATH`, `google-chrome` and `google-chrome-stable` resolve to
 `/opt/google/chrome/google-chrome`; `microsoft-edge`, `microsoft-edge-stable`, `brave-browser`,
 `brave`, `chromium`, and `chromium-browser` are absent. `snap list` shows no browser, and `flatpak`
@@ -809,10 +829,12 @@ settled for Linux on the builds measured.
   endpoint (P9), which the check's "is present" condition already skips.
 - **Validation, Egress** (lines 1176-1181): contradicted. The wrapper as written does not start the
   browser: inside `unshare -rn` the process runs as root, and Chrome exits with "Running as root
-  without --no-sandbox is not supported" (P13). Adding a nested `unshare -U --map-user=<uid>
-  --map-group=<gid>` around the command ran it, with the renderer sandbox on. The item's "no socket
-  to any address but the proxy" would fail on the UDP socket to `2001:4860:4860::8888`, which
-  connected and sent nothing; the item needs to say whether it counts sockets or bytes sent.
+  without --no-sandbox is not supported" (P13). The runs that worked added a nested `unshare -U
+  --map-user=<uid> --map-group=<gid>` around the command, and a mount namespace for the DNS
+  listener; with both the browser started with the renderer sandbox on. The nested user namespace
+  alone was not tried. The item's "no socket to any address but the proxy" would fail on the IPv6
+  reachability check's UDP sockets to `2001:4860:4860::8888`, which failed to connect and sent
+  nothing; the item needs to say whether it counts sockets or bytes sent.
 - **Validation, Connection** (lines 1182-1184): contradicted as worded. With the pipe the browser
   opens no TCP listener and writes no `DevToolsActivePort`, but it listens on its Unix singleton
   socket (P7). The item needs to say which sockets it means.
@@ -841,7 +863,8 @@ settled for Linux on the builds measured.
   it applies its field-trial testing configuration, which changed its MHTML (P24), and it shows an
   infobar that shortens the viewport (P2, P19). A CI suite on Chrome for Testing measures a browser
   that differs from branded Chrome in those ways unless it passes `--disable-field-trial-config`,
-  and whether that switch is on Chrome's unsupported-flag list was not checked.
+  and whether that switch is on Chrome's unsupported-flag list was not checked. With that switch, a
+  background-tab screenshot took 2,265 ms where branded Chrome took 18 ms, in one run (P2).
 - **What a page can tell, banners** (lines 895-897): settled. No automation infobar appears (P19).
 - **The pipe on Windows and macOS** (decision D1, P7): not settled. Stage-2 step 4 stays blocked.
 - **The keyboard shortcut** (lines 907-911): works under X11 with no desktop (P17); Wayland and
@@ -2263,8 +2286,10 @@ nameserver 127.0.0.1
 
 The batch, as it ran. `batch.out` holds one `exit <code> <command>` line per run, for the pull
 request body. The P12 `bodies` commands ran a second time, unchanged, after the script
-began recording mismatch details (`fetched.mismatches`); P12 reports that second run. The other
-configurations ran on the script without those lines, which only `bodies` uses.
+began recording mismatch details (`fetched.mismatches`); P12 reports that second run. The script's
+last edit landed during P13's Direct run on Chrome: the five P13 runs after that one ran on the
+script below, and the earlier configurations on a copy without those lines, which only `bodies`
+uses.
 
 ```shell
 #!/usr/bin/env bash

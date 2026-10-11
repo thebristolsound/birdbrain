@@ -30,8 +30,9 @@ Evidence Packages and the standalone verifier neither state nor check a per-Exhi
   whose accepted entry at the row's `manifestIndex` is an `exhibit` or `capture` entry for the
   row's Content Hash, held by that author (`manifest.ts:379-393`). It tries the local chain first,
   then each member or lineage chain file named for the author (`manifest.ts:371-378`). A row no
-  chain answers for gets a failed chain, which the app reports as `chain-broken` with the reason
-  `no verified chain of <id> holds entry <n> for these bytes` (`manifest.ts:401-405`).
+  chain answers for gets a failed chain, which the app reports as `chain-broken`. When none of the
+  chains it tried failed verification, the reason is
+  `no verified chain of <id> holds entry <n> for these bytes` (`manifest.ts:394-405`).
 - `planImportChains` (`src/main/services/caseArchive.ts:543`) forks when the archive's Shared Case
   walk names an Owner, knows which member exported the archive, and holds the Owner's chain
   (`caseArchive.ts:553-570`). The new Case's chain is then the source Owner's chain, the `import`
@@ -54,14 +55,15 @@ The `import` entry does not. A fork's `import` and an ordinary one carry the sam
 and rows it writes.
 
 The entries the `import` follows do. A fork's `import` continues the source Owner's chain, and that
-chain holds the Owner's own `member-add` after its last `import`: the walk names an Owner only
-from a first `member-add` with role `owner` and the chain's own key
-(`src/shared/verify/sharedCase.ts:284-303`). An ordinary import continues a chain with no
-`member-add` after its last `import`, with one exception: an archive whose own chain holds
-`member-add` entries the walk rejects, so that the walk names no Owner. `planImportChains` then
-takes the ordinary path, the failed walk fails the archive's chain check
-(`caseArchive.ts:423-425`), and the import goes ahead only under the operator's override
-(`caseArchive.ts:652-656`), which the `import` records in its `verificationResult`.
+chain holds the Owner's own `member-add` after its last `import`: the walk builds the roster from
+the entries from the last `import` on (`src/shared/verify/sharedCase.ts:477`) and names an Owner
+only from a first `member-add` with role `owner` and the chain's own key
+(`sharedCase.ts:284-303`). An ordinary import continues a chain with no `member-add` after its
+last `import`, with one exception: an archive whose own chain holds `member-add` entries the walk
+rejects, so that the walk names no Owner. `planImportChains` then takes the ordinary path, the
+failed walk fails the archive's chain check (`caseArchive.ts:423-425`), and the import goes ahead
+only under the operator's override (`caseArchive.ts:652-656`), which the `import` records in its
+`verificationResult`.
 
 The source Owner signed those `member-add` entries, the chain check verifies them under the key
 the `import` names (`schemas.ts:701-704`), and the `import`'s `prevHash` binds them. So the signed
@@ -165,8 +167,7 @@ With the sketch applied to `manifest.ts` at `2598173f` and reverted afterwards, 
 test returned `chain-broken` for both relabels, the relabel after an ordinary import of a fork
 returned `chain-broken`, and the case in criterion 5 below returned `verified` under the Owner
 and `chain-broken` relabelled to the forking installation (today it returns `verified` for both).
-The full unit suite with the scratch tests added exited 0: 375 test files passed and 1 skipped,
-6,131 tests passed and 17 skipped.
+The full unit suite exited 0 under the sketch. "Scratch runs" below gives the commands and output.
 
 When a row verifies under the rule, the installation the row names signed the entry, or continued
 the chain that holds it through an ordinary import before any fork import. The rule does not
@@ -203,11 +204,11 @@ reads the entries, not the entries.
   the forking installation (#1638). A scratch run of this variant at `2598173f` returned
   `verified`. It also drops a legitimate holder: after two ordinary imports, the second importer
   no longer holds the first source's entries.
-- **A signed fork marker on the `import` entry.** The 2026-10-10 ruling expected this answer. It
-  would be an optional field on `import`, for example `importKind: 'fork'`, present on a fork's
-  `import` and omitted on an ordinary one, the omit-when-absent pattern `exportClass` follows
-  (`schemas.ts:656-660`). A strict reader at schema 5 that meets an unknown key reports a broken
-  chain, not "verifier too old" (the reasoning at `schemas.ts:613-615` and
+- **A signed fork marker on the `import` entry.** The 2026-10-10 ruling named this as the likely
+  answer. It would be an optional field on `import`, for example `importKind: 'fork'`, present on
+  a fork's `import` and omitted on an ordinary one, the omit-when-absent pattern `exportClass`
+  follows (`schemas.ts:656-660`). A strict reader at schema 5 that meets an unknown key reports a
+  broken chain, not "verifier too old" (the reasoning at `schemas.ts:613-615` and
   `manifest.ts:764-767`). An `import` carrying the field would therefore be stamped above 5, at
   the number the manifest schema lane holds when it merges, with a refine like `memberCode`'s
   (`schemas.ts:778-781`), and `heldBy` would skip an `import` whose `importKind` is `fork`.
@@ -229,7 +230,11 @@ reads the entries, not the entries.
   reads the whole history, and whether lineage files are present, which no signature covers. An
   ordinary import of a fork's archive would then count as a fork import, and its importer, once it
   shared the Case, would not hold the entries the fork wrote after its own `import`. The
-  recommended rule reads only the entries between one `import` and the one before it.
+  recommended rule reads only the entries between one `import` and the one before it. The walk
+  keeps its own test, so after the fix the two read such an import differently: the walk verifies
+  the fork's entries as another Case's history and cites them under the fork's Case id
+  (`sharedCase.ts:519-529`, `:563-565` and `:702-705`), while `heldBy` makes the later importer
+  their holder.
 
 ## Schema lane and merge order
 
@@ -243,11 +248,11 @@ writer step merges, as [ADR-0023](../adr/0023-exhibits-are-the-unit-of-evidence.
 
 In the `manifest.ts` hot-file order of the same plan (line 52), the fix goes after SC-1 and before
 #1815: SC-1, #1638, #1815 (if it changes `withDeletionEntry`), SC-2, CE-P step 1, SC-6. SC-1 is
-queued and starts in the read side of `manifest.ts` (line 184), where `heldBy` sits. #1815 and
-SC-2 work the write side (`withDeletionEntry` at lines 442-443, `appendManifestEntry` at line
-199). The order saves rebase work only: the fix depends on no other brief. Its tests go in
-`tests/main/services/sharedCaseExport.test.ts`, which SC-V also edits (lines 371-372). The fix
-stays evidence-affecting, on #1638.
+queued and starts in the read side of `manifest.ts` (plan line 184), where `heldBy` sits. #1815
+and SC-2 work the write side (`withDeletionEntry` at plan lines 442-443, `appendManifestEntry` at
+plan line 199). The order saves rebase work only: the fix depends on no other brief. Its tests go
+in `tests/main/services/sharedCaseExport.test.ts`, which SC-V also edits (plan lines 371-372).
+The fix stays evidence-affecting, on #1638.
 
 ## Acceptance criteria for the fix
 
@@ -277,9 +282,72 @@ carried through two imports as `<fork Case>/<source Case>/<installation>`
 (`sharedCase.ts:557-559`), and `authorChainOf` looks it up as `<source Case>/<installation>`
 (`manifest.ts:371-378`). The new test asserts on the relabelled Owner row only.
 
+## Scratch runs
+
+Every "scratch run" above is one of these, run at `2598173f` on Node 20.20.2. None of this code
+is in the commit.
+
+The three cases are `it` blocks added inside the `describe` of a copy of
+`sharedCaseExport.test.ts`, at `tests/main/services/scratch1812.test.ts`, so they reuse its
+fixtures. Each one exports the replica with `exportCaseArchive`, deletes the source Case with
+`deleteCase` so the import keeps the row ids, imports with `importCaseArchive`, relabels a row with
+the `UPDATE exhibits SET author_installation_id` statement of `sharedCaseExport.test.ts:879-881`,
+and records the status and reason `verifyExhibit` returns. Cases A and B move the forking
+member's own row to Exhibit Number 9 before they relabel the Owner's row to that installation. In
+case C the two rows carry 2 and 1, and nothing moves. One installation runs every step, so in B
+the importing installation is also the forking one: the `skip` column below, where B's relabel
+still verifies, shows that the later ordinary import alone accepts it.
+
+- **A (#1638):** `memberReplica()`, forked. The source Owner's row relabelled to the forking
+  installation, then to `installation-unknown-0001`.
+- **B (criterion 4):** a fork built as in A, exported, deleted and imported again, an ordinary
+  import. The forking member's own row unedited, the source Owner's row unedited, then the source
+  Owner's row relabelled to the importing installation.
+- **C (criterion 5):** `memberReplicaAfterImport()`, forked. The earlier archive's row under the
+  Owner, then relabelled to the forking installation.
+
+For the runs, `heldBy` read an environment variable and applied one variant: `today` (the code at
+`2598173f`), `rule` (the sketch above), `skip` (an `import` counts unless it is a fork import,
+with no stop), `nearest` (only the first `import` after the entry counts) and `writer` (no
+`import` clause).
+
+```sh
+HELD_BY_VARIANT=<variant> pnpm test tests/main/services/scratch1812.test.ts
+```
+
+All five runs exited 0 with `Tests  3 passed | 20 skipped (23)`: the 20 skipped are the copied
+tests. The results:
+
+| Case and row | `today` | `rule` | `skip` | `nearest` | `writer` |
+|---|---|---|---|---|---|
+| A, Owner's row as forking installation | verified | chain-broken | chain-broken | verified | chain-broken |
+| A, Owner's row as unknown installation | chain-broken | chain-broken | chain-broken | chain-broken | chain-broken |
+| B, forking member's own row, unedited | chain-broken | chain-broken | chain-broken | chain-broken | chain-broken |
+| B, Owner's row, unedited | verified | verified | verified | verified | verified |
+| B, Owner's row as importing installation | verified | chain-broken | verified | verified | chain-broken |
+| C, earlier archive's row under the Owner | verified | verified | verified | verified | chain-broken |
+| C, earlier archive's row as forking installation | verified | chain-broken | chain-broken | chain-broken | chain-broken |
+
+Every `chain-broken` above carried the reason
+`no verified chain of <id> holds entry <n> for these bytes`.
+
+The existing tests and the full suite, with the scratch file present:
+
+```sh
+HELD_BY_VARIANT=rule pnpm test tests/main/services/sharedCaseExport.test.ts
+# exit 0: Tests  20 passed (20)
+HELD_BY_VARIANT=writer pnpm test tests/main/services/sharedCaseExport.test.ts
+# exit 1: Tests  2 failed | 18 passed (20), the tests at :485 and :858
+HELD_BY_VARIANT=rule pnpm test
+# exit 0: Test Files  375 passed | 1 skipped (376)
+#         Tests  6112 passed | 37 skipped (6149)
+```
+
+The full run's 37 skipped tests include the scratch file's 20 copies.
+
 ## Open question
 
 1. This note reads a fork from the history the `import` follows, where the 2026-10-10 ruling
-   expected a signed marker on the `import`. Approve the history rule, which needs no schema
-   change and covers forks already made, or choose the marker and its place in the manifest
-   schema lane?
+   named a signed marker on the `import` as the likely answer. Approve the history rule, which
+   needs no schema change and covers forks already made, or choose the marker and its place in
+   the manifest schema lane?

@@ -5,7 +5,7 @@
 **Date:** 2026-09-30
 
 **Amended 2026-10-11 by
-[ADR-0050](0050-a-launched-browser-records-no-request-body.md):** a Transaction Record from a
+[ADR-0051](0051-a-launched-browser-records-no-request-body.md):** a Transaction Record from a
 launched browser (`launched` or `launched-passive`) holds no request body. It still covers the
 tab's navigation from its first request to the moment of Capture, and the inventory lists each
 request whose body the engine withheld. A `background` record keeps request bodies as the

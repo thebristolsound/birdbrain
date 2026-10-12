@@ -11,11 +11,12 @@ database and left `encrypted_value` empty.
 **Audience:** The maintainer, and whoever writes the browser cookie import ADR or turns on
 cookie encryption (#88).
 
-This check tests one claim, made in three places: that the operating system key `safeStorage`
-reports on protects a Persona's cookies on disk. The three places are ADR-0030's "No secrets
-beyond the browser session" paragraph, decision 8 of the
+This check tests one claim, which the issue names in three places: that the operating system
+key `safeStorage` reports on protects a Persona's cookies on disk. The three places are
+ADR-0030's "No secrets beyond the browser session" paragraph, decision 8 of the
 [persona cookie import plan](../plans/2026-09-19-persona-cookie-import.md), and the comment
-above `partitionForPersona`. The issue is #1824, under map #541. Line citations are to
+above `partitionForPersona`. Other text that makes the claim is listed under "Other text that
+repeats the claim". The issue is #1824, under map #541. Line citations are to
 `2598173f`, the commit built, and record a reading at that commit; the files this change
 corrects are cited as they stood before it.
 

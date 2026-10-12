@@ -75,6 +75,13 @@ function runElectron(passThrough) {
   const env = { ...process.env }
   delete env.ELECTRON_RUN_AS_NODE
   const result = spawnSync(command, args, { cwd: root, stdio: 'inherit', env })
+  if (result.error) {
+    throw new Error(
+      result.error.code === 'ENOENT'
+        ? `${command} not found; install it or set DISPLAY`
+        : `could not start ${command}: ${result.error.message}`
+    )
+  }
   if (result.status !== 0) {
     throw new Error(`evaluation exited with status ${result.status ?? 'signal ' + result.signal}`)
   }

@@ -50,10 +50,12 @@ Chrome for Testing is not one of the four products. It is the kind of build that
 for the CI suite, so each entry gives it a row of its own.
 
 **Rows not measured.** Edge, Brave, and Chromium are not installed on this host, and this run
-installed nothing: no system package and no downloaded archive. The Windows and macOS rows are not
-measured because the host runs Linux. The probe launched nothing on the Windows side of this WSL2
-machine: from WSL2 a Windows browser starts through interop, so a reading would not show how the
-pipe behaves when Birdbrain itself runs on Windows.
+installed nothing: no system package and no downloaded archive. The record holds no attempt to
+install them, through the package manager or as an unbranded Chromium archive, so whether this host
+could have installed them is not known. The Windows and macOS rows are not measured because the host
+runs Linux. The probe launched nothing on the Windows side of this WSL2 machine: from WSL2 a Windows
+browser starts through interop, so a reading would not show how the pipe behaves when Birdbrain
+itself runs on Windows.
 
 **Launch.** The design's argument list (spec, lines 310-318): `--user-data-dir=<new temporary
 directory>`, `--remote-debugging-pipe`, `--no-first-run`, `--no-default-browser-check`,
@@ -321,11 +323,18 @@ lines 405-409 and 1291-1294).
 **The browser exits when the pipe closes, and a restart from inside the browser ends it without
 bringing it back.** A helper process launched the browser and then went away three ways:
 
-| What the helper did | Browser exited after |
+| What the helper did | Browser exited after the script's clock started |
 | --- | --- |
-| Killed with `SIGKILL`, as if Birdbrain crashed | 100 ms on Chrome, 101 ms on Chrome for Testing (the polling interval) |
-| Exited normally without `Browser.close` | About 600 ms |
-| Closed both pipe streams and kept running | About 600 ms |
+| Killed with `SIGKILL`, as if Birdbrain crashed | 100 ms on Chrome, 101 ms on Chrome for Testing (the polling interval); the clock started at the kill |
+| Exited normally without `Browser.close` | About 600 ms; the clock started 400-500 ms before the helper exited |
+| Closed both pipe streams and kept running | About 600 ms; the clock started 400-500 ms before the helper closed the pipe |
+
+The rows are not comparable. In the last two the helper acts 1,500 ms after it writes
+`p8-holder.json`, while the script starts its clock 1,000 ms after it finds that file, polling every
+100 ms. Going by those waits and the 100 ms poll for the browser, the browser exited within about
+200 ms of the pipe closing, close to the crash row. That figure is worked out from the script's
+waits, not measured: the result files also record when the helper exited (`holderExitedAfterMs`),
+and this document does not report that value. About 600 ms stands as an upper bound.
 
 No process naming the browser profile was left in any case. For a restart, the script typed
 `chrome://restart` into the address bar through the X Test extension. The browser exited with code 0,
@@ -336,7 +345,7 @@ checked.
 
 | Product and platform | Answer |
 | --- | --- |
-| Chrome 150, Linux | Exits within about 0.6 s of the pipe closing; a restart exits and does not return |
+| Chrome 150, Linux | Exits within 0.6 s of the pipe closing, an upper bound; a restart exits and does not return |
 | Chrome for Testing 149, Linux | Same as Chrome 150 |
 | Edge, Brave, Chromium, Linux | Not measured on this host: not installed |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
@@ -475,7 +484,11 @@ to start: `Running as root without --no-sandbox is not supported. See https://cr
 The runs reported here add a mount namespace, so that `/etc/resolv.conf` can point at the probe's
 DNS listener on `127.0.0.1:53`, and a nested user namespace that maps the caller's own uid and gid
 back. Under it the browser started with its sandbox on: each renderer's `Seccomp` field in
-`/proc/<pid>/status` read 2. The commands are under [The probe](#the-probe).
+`/proc/<pid>/status` read 2. The commands are under [The probe](#the-probe). Each ends in
+`&& wait`, which returns 0 whatever the background DNS listener exited with, so a run's exit code
+covers the browser run and not the listener. The Direct runs show the listener working, since it
+logged their queries; in the SOCKS5 and HTTP runs it logged none, and the exit code does not tell
+that apart from a listener that had stopped.
 
 Each run passed `--log-net-log`, left the browser idle for 120 seconds, then loaded a page that
 names invented hosts in a `dns-prefetch` link, a `preconnect` link, an `http` image, an `https`
@@ -489,6 +502,12 @@ read `navigator.onLine` as `false`.
 | Direct | The fixture page only | A and HTTPS records for every host the browser or the page named except the anchor's, the `dns-prefetch` and `preconnect` hosts included | `127.0.0.1:53`, which sent the queries; `[2001:4860:4860::8888]:443`, 18 times on Chrome and 26 on Chrome for Testing, each failing with `net_error` -109 and sending nothing | No proxy |
 | SOCKS5 | The proxy only | None | `[2001:4860:4860::8888]:443` only: 14 times on Chrome and 6 on Chrome for Testing, each failing with -109 and sending nothing | Every host the browser and the page named, by name, except the `dns-prefetch` host and the anchor's |
 | HTTP | The proxy only | None | The same: 13 times on Chrome and 6 on Chrome for Testing | The same hosts except the `preconnect` one, as `CONNECT` for `https` and absolute URLs for `http` |
+
+The script does not produce the UDP connect counts, the `net_error` value, or the tie to the
+reachability check in the next paragraph: `summarizeNetLog` keeps each address once, records no
+error code, and matches resolver events only when they name a host. Those figures come from reading
+the raw net logs outside the script. This document holds neither that reading nor the logs, which
+stayed in `<S>/out` on the probe host, so nobody can check them from here.
 
 Each UDP socket to `2001:4860:4860::8888` belongs to a net log source that logged
 `HOST_RESOLVER_MANAGER_IPV6_REACHABILITY_CHECK` with `cached: false` and `ipv6_available: false`,
@@ -555,13 +574,15 @@ file still held `false` after `Browser.close`. After a sign-in on a fixture form
 written file, the value was `true` (`default`), and the bubble appeared with the fixture username
 and password filled in.
 
-In both runs, and on both browsers, the browser then tried to reach
+In both runs, and on both browsers, the browser tried to reach
 `passwordsleakcheck-pa.googleapis.com` and `content-autofill.googleapis.com` through the proxy,
-which refused them. The written preference did not stop either.
+which refused them, so no request reached Google. The written preference did not stop either
+attempt. The proxy log the script writes keeps no timestamps, so it does not show whether the
+attempts came before or after the sign-in.
 
 | Product and platform | Answer |
 | --- | --- |
-| Chrome 150, Linux | Kept; no save-password offer; the leak-check host was still contacted |
+| Chrome 150, Linux | Kept; no save-password offer; the browser still tried to reach the leak-check host, and the proxy refused it |
 | Chrome for Testing 149, Linux | Same as Chrome 150 |
 | Edge, Brave, Chromium, Linux | Not measured on this host: not installed |
 | Chrome, Edge, Brave, Chromium, Windows | Not measured on this host: the host runs Linux |
@@ -569,16 +590,19 @@ which refused them. The written preference did not stop either.
 
 ### P16: Cookies at rest
 
-**On this host neither browser stored its cookies under a key from the operating system, and
-Electron's `getSelectedStorageBackend()` did not predict what the browser did.** A fixture set one
+**With the host as it is, neither browser stored its cookies under a key from the operating
+system; with a new unlocked keyring on a private bus, both did. Electron's
+`getSelectedStorageBackend()` did not predict what the browser did.** A fixture set one
 persistent cookie. After `Browser.close`, the script read the first three bytes of its
 `encrypted_value` in the copied `Cookies` database, and the browser's own histograms from
-`--enable-logging=stderr --v=1`. Electron's main process, on the same session, reported
-`safeStorage.getSelectedStorageBackend()`, `isEncryptionAvailable()`, and the first three bytes of
-`encryptString`. The app reaches `safeStorage` at `src/main/services/signingKey.ts:27`, never calls
-`getSelectedStorageBackend()`, and decides whether a key protects its data with
-`isEncryptionAvailable()` (`signingKey.ts:58-60`, :64, :76;
-`src/main/services/persona/personaSessions.ts:196-198`).
+`--enable-logging=stderr --v=1`. Electron's main process, in a run of its own under each of the same
+three setups, reported `safeStorage.getSelectedStorageBackend()`, `isEncryptionAvailable()`, and the
+first three bytes of `encryptString`. The app reaches `safeStorage` at
+`src/main/services/signingKey.ts:27`, never calls `getSelectedStorageBackend()`, and decides whether
+a key protects its data with `isEncryptionAvailable()` (`signingKey.ts:58-60`, :64, :76;
+`src/main/services/persona/personaSessions.ts:196-198`). Each GNOME run, browser or Electron, had a
+private bus and a keyring directory of its own, so the table compares setups, not one shared
+session.
 
 | Session | Chrome 150 and Chrome for Testing 149 | Electron 44.5.1 `safeStorage` | Match |
 | --- | --- | --- | --- |
@@ -840,11 +864,12 @@ settled for Linux on the builds measured.
   socket (P7). The item needs to say which sockets it means.
 - **Chrome features that carry a Persona out** (decision D15, lines 689-695): settled for password
   saving. A `credentials_enable_service` value written before the first launch is kept and stops
-  the save-password offer (P15). The browser still contacted
-  `passwordsleakcheck-pa.googleapis.com` after the fixture sign-in, which D15 does not cover.
-- **The key store** (decision D17, lines 696-707): measured for Linux (P16). On this WSL2 host the
-  launched browser asks the Secret Service for a key, fails on the locked keyring, and stores cookies
-  under the `v10` prefix that comes without an operating-system key. Electron's
+  the save-password offer (P15). The browser still tried to reach
+  `passwordsleakcheck-pa.googleapis.com` in the sign-in runs, and the probe's proxy refused it; D15
+  does not cover that request.
+- **The key store** (decision D17, lines 696-707): measured for Linux (P16). On this WSL2 host as it
+  is, the launched browser asks the Secret Service for a key, fails on the locked keyring, and
+  stores cookies under the `v10` prefix that comes without an operating-system key. Electron's
   `getSelectedStorageBackend()` does not predict the browser's choice; `isEncryptionAvailable()`
   agreed with it in all three sessions.
 - **Cookie seeding** (decision D7, lines 727-734 and 745-749): settled. `--no-startup-window` opens
@@ -855,9 +880,9 @@ settled for Linux on the builds measured.
   the Persona screen
   states (line 807) held on Chrome and not on Chrome for Testing.
 - **Ending the Capture Session and the failure table** (lines 281-286, 1090-1091): settled. The
-  browser exits within about 0.6 s when the pipe closes, in each of the three ways the probe closed
-  it, so "a browser left running after Birdbrain exits" did not occur. A restart from inside the browser
-  ends it without a relaunch, which is the "browser exits" row (P8).
+  browser exits within 0.6 s, an upper bound, when the pipe closes, in each of the three ways the
+  probe closed it, so "a browser left running after Birdbrain exits" did not occur. A restart from
+  inside the browser ends it without a relaunch, which is the "browser exits" row (P8).
 - **Identification** (lines 302-306) and **decision D23**: Chrome for Testing reports
   `Chrome/149.0.7827.55`, so the product string cannot tell it from branded Chrome (P20). By default
   it applies its field-trial testing configuration, which changed its MHTML (P24), and it shows an

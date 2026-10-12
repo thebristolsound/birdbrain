@@ -493,8 +493,10 @@ test.describe('stored-page viewer links', () => {
 
     // A window resize while scrolled, and then a collapsed details column, each move
     // the guest on screen.
+    // Scrolled far enough that the sub-frame link sits a menu's height above the window's
+    // bottom edge, where Radix would otherwise shift the menu up off the pointer.
     await page.setViewportSize({ width: 1250, height: 850 })
-    expect(await scrollPane(60)).toBeGreaterThan(0)
+    expect(await scrollPane(120)).toBeGreaterThan(0)
     await page.setViewportSize({ width: 1200, height: 800 })
     await settle()
     await rightClick('public', 'sub', 'Link actions: https://example.test/sub', 'main')

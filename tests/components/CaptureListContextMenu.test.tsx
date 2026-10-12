@@ -205,6 +205,15 @@ describe('capture row context menu', () => {
     await waitFor(() => expect(toggleFavorite).toHaveBeenCalledWith('cap-b'))
   })
 
+  it('recaptures the right-clicked row alone', async () => {
+    renderList()
+    await openRowMenu(1)
+    fireEvent.click(screen.getByTestId('context-menu-item-capture-recapture'))
+    await waitFor(() =>
+      expect(enqueueCaptures).toHaveBeenCalledWith({ caseId: 'case1', captureIds: ['cap-b'] })
+    )
+  })
+
   it('applies a tag from the submenu to the one row', async () => {
     renderList()
     await openRowMenu(1)

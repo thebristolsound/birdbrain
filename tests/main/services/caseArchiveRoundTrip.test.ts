@@ -254,8 +254,9 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
       importNoteTagRows(src.noteTags, ctx)
     })
 
-    // Captures: field-for-field modulo id/case_id/supersedes remap and the
-    // artifact paths re-rooted under the new case (#1592).
+    // Captures: field-for-field modulo id/case_id/supersedes remap, the
+    // artifact paths re-rooted under the new case (#1592), and the saved
+    // verification result cleared (#1523).
     const reroot = (path: unknown) =>
       typeof path === 'string' ? path.replace(`${c.id}/`, `${NEW_CASE}/`) : path
     const expectedCaptures = src.captures
@@ -268,7 +269,10 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
           : null,
         html_path: reroot(r.html_path),
         screenshot_path: reroot(r.screenshot_path),
-        mhtml_path: reroot(r.mhtml_path)
+        mhtml_path: reroot(r.mhtml_path),
+        last_verified_at: null,
+        last_verified_hash: null,
+        last_verified_status: null
       }))
       .sort(byId)
     expect(collectCapturesForCase(NEW_CASE).sort(byId)).toEqual(expectedCaptures)
@@ -280,6 +284,14 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
     expect(imported2.supersedes_capture_id).toBe(mapId(cap1.id)) // REMAPPED, not copied
     expect(imported2.method).toBe('background') // non-default survived
     expect(imported2.consent_suppression).toBe('filter-list')
+    // cap1 left the source verified and the export carried that result; the
+    // import writes null, so the imported Capture reads unverified (#1523).
+    const source1 = src.captures.find((r) => r.id === cap1.id) as Row
+    expect(source1.last_verified_status).toBe('verified')
+    const imported1 = collectCapturesForCase(NEW_CASE).find((r) => r.id === mapId(cap1.id)) as Row
+    expect(imported1.last_verified_at).toBeNull()
+    expect(imported1.last_verified_hash).toBeNull()
+    expect(imported1.last_verified_status).toBeNull()
 
     // Extracted Text arrives via ctx.getText (staged sidecars in production).
     expect(getCaptureTextContent(mapId(cap1.id))).toBe(`text-of-${cap1.id}`)

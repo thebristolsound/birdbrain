@@ -11,6 +11,7 @@ Open source web investigation & capture tool. Electron desktop app with a compan
 - `pnpm lint:boundaries` - Packages under `src/packages/` are importable only through their root files, and no import cycles
 - `pnpm lint:agents-md` - Advisory, never fails. `CLAUDE.md` and `AGENTS.md` are normally the same document: edit `CLAUDE.md`, then copy it over `AGENTS.md` (no symlink: `core.symlinks=false` checkouts turn it into a one-line file)
 - `pnpm preflight` - The full verify block: refuses a dirty tree and a non-20.x Node, runs lint, typecheck, unit tests, build, coverage thresholds and diff coverage, and writes `.preflight/verification.md`
+- `pnpm check` - The loop between edits: runs on a dirty tree, picks lint, typecheck, related tests, boundaries and Vale from what changed since `origin/main`, and runs them in parallel. It skips build and coverage, so its summary in `.preflight/check.md` is not a Verification block; `--dry-run` prints the plan
 - `pnpm build:test-sharp` - Linux only: build sharp against the system libvips for the test runner, then run tests with `BIRDBRAIN_TEST_SYSTEM_SHARP=1`. Works around a SIGSEGV in tests that use sharp under Electron; see "sharp under Electron on Linux" in [Testing](docs/agents/testing.md)
 - `pnpm db:migration:new <slug>` - Scaffold the next schema migration: appends a fail-closed `if (version < N)` block to `migrations.ts` and bumps `LATEST_SCHEMA_VERSION` in `core.ts` in one run, refusing when the two already disagree
 - `pnpm test:e2e` - Runs `pnpm build` first

@@ -165,6 +165,15 @@ export const CAPTURE_COLUMNS: ReadonlyArray<{ column: string; default: unknown }
 
 const ARTIFACT_PATH_COLUMNS = new Set(['html_path', 'screenshot_path', 'mhtml_path'])
 
+// The exporting installation's saved verification result. An archive still
+// carries it, but the import writes null: a result is what verification on
+// this installation found, so an imported Capture starts unverified (#1523).
+const VERIFICATION_RESULT_COLUMNS = new Set([
+  'last_verified_at',
+  'last_verified_hash',
+  'last_verified_status'
+])
+
 const CAPTURE_INSERT_SQL = `INSERT INTO captures (${CAPTURE_COLUMNS.map((c) => c.column).join(
   ', '
 )}) VALUES (${CAPTURE_COLUMNS.map(() => '?').join(', ')})`
@@ -479,8 +488,8 @@ export function collectCaptureFavoritesForCase(caseId: string): Record<string, u
 
 // Rows come from a (possibly old-epoch) archive: missing keys fall back to the
 // drift-tested CAPTURE_COLUMNS defaults. id/case_id/supersedes_capture_id/
-// duplicate_of_capture_id are remapped; every capture gets a capture_texts row
-// via ctx.getText.
+// duplicate_of_capture_id are remapped, the verification result is cleared;
+// every capture gets a capture_texts row via ctx.getText.
 export function importCaptureRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
   const d = getDb()
   const insertCap = d.prepare(CAPTURE_INSERT_SQL)
@@ -494,6 +503,7 @@ export function importCaptureRows(rows: Record<string, unknown>[], ctx: ImportCt
       ...CAPTURE_COLUMNS.map((c) => {
         if (c.column === 'id') return newId
         if (c.column === 'case_id') return ctx.newCaseId
+        if (VERIFICATION_RESULT_COLUMNS.has(c.column)) return null
         // The archive's files land under the new case and id, so a path left
         // verbatim names the source case: missing elsewhere, and on the same
         // install it reads the source case's bytes (#1592).

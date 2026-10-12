@@ -268,7 +268,8 @@ test('two-pane workspace keeps one editor and saves a formatted image note', asy
   await expect(page.getByTestId('note-body-input')).toHaveCount(1)
   const listBox = await page.getByLabel('Notes list', { exact: true }).boundingBox()
   const detailBox = await page.getByLabel('Note workspace', { exact: true }).boundingBox()
-  expect(listBox?.width).toBe(320)
+  // The Captures list's column: 316px wide, less the panel's 1px border.
+  expect(listBox?.width).toBe(315)
   expect(detailBox!.x).toBeGreaterThan(listBox!.x)
   await expect(page.getByText('3 notes in this case')).toBeVisible()
   await page.getByRole('button', { name: 'List view', exact: true }).click()

@@ -1,19 +1,17 @@
 // Layout facts for the three-column Captures screen, kept out of the route so
 // the branchy visibility rules are unit-testable without a DOM.
 //
-// The bounds are the design's own: list 316/240/560, details 400/320/680.
-// react-resizable-panels reads bare numbers as pixels.
+// The bounds are the design's own: list 316/240/560 (shared with the Notes list,
+// layout/listColumnSize.ts), details 400/320/680. react-resizable-panels reads bare
+// numbers as pixels.
+
+import { LIST_COLUMN_SIZE } from '@renderer/components/layout/listColumnSize'
 
 export const PANEL_GROUP_ID = 'captures-columns'
 
 export const RAIL_WIDTH_PX = 40
 
-export const LIST_PANEL = {
-  id: 'capture-list',
-  defaultSize: 316,
-  minSize: 240,
-  maxSize: 560
-} as const
+export const LIST_PANEL = { id: 'capture-list', ...LIST_COLUMN_SIZE } as const
 
 export const VIEWER_PANEL = {
   id: 'capture-viewer',

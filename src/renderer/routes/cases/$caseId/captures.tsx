@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from '@tanstack/react-router'
+import { Camera } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels'
 import {
@@ -12,7 +13,8 @@ import { CaptureList } from '@renderer/components/captures/CaptureList'
 import { CaptureViewer } from '@renderer/components/captures/CaptureViewer'
 import { CaptureDetailsPanel } from '@renderer/components/captures/CaptureDetailsPanel'
 import { CaptureDetailsRail } from '@renderer/components/captures/CaptureDetailsRail'
-import { CaptureListRail } from '@renderer/components/captures/CaptureListRail'
+import { ListColumnRail } from '@renderer/components/layout/ListColumn'
+import { SEPARATOR_CLASS } from '@renderer/components/layout/listColumnSize'
 import { WaybackPanel } from '@renderer/components/captures/WaybackPanel'
 import {
   capturePanelIds,
@@ -22,10 +24,9 @@ import {
   PANEL_GROUP_ID,
   VIEWER_PANEL
 } from '@renderer/components/captures/captureColumns'
-import {
-  useCaptureListCollapsed,
-  useCaptureView
-} from '@renderer/components/captures/useCaptureView'
+import { useCaptureView } from '@renderer/components/captures/useCaptureView'
+import { useListColumnCollapsed } from '@renderer/hooks/useListColumnCollapsed'
+import { useListColumnWidth } from '@renderer/hooks/useListColumnWidth'
 import { useCopyCaptureUrl } from '@renderer/components/captures/useCopyCaptureUrl'
 import { useCopyCaptureHash } from '@renderer/components/captures/useCopyCaptureHash'
 import { useDuplicateCapture } from '@renderer/components/captures/useDuplicateCapture'
@@ -46,11 +47,6 @@ import { notify } from '@renderer/lib/notify'
 import type { BatchDeleteOutcome, BatchDeleteResult } from '@shared/ipc'
 
 const COLLAPSE_THRESHOLD = 1100
-
-// 7px hit strip, invisible until the library flags it hovered, focused or
-// being dragged — the design's own treatment for both splitters.
-const SEPARATOR_CLASS =
-  'w-[7px] shrink-0 self-stretch bg-transparent transition-colors data-[separator=hover]:bg-accent/40 data-[separator=active]:bg-accent/40 data-[separator=focus]:bg-accent/40 focus-visible:outline-none'
 
 // Prefix-commit result, stated without an atomicity claim (batch-ops brief):
 // committed entries, the single rolled-back failure and its stage, the ids
@@ -124,7 +120,7 @@ export function CapturesRoute() {
   const activeViewerTab = useAppStore((s) => s.activeViewerTab)
   const viewportWidth = useViewportWidth()
   const { view, setView } = useCaptureView()
-  const { collapsed: listCollapsed, setCollapsed: setListCollapsed } = useCaptureListCollapsed()
+  const { collapsed: listCollapsed, setCollapsed: setListCollapsed } = useListColumnCollapsed()
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   // The capture the note composer is open for, rather than a bare boolean: a
@@ -206,6 +202,7 @@ export function CapturesRoute() {
   // Keyed on the panel set, so collapsing a column cannot overwrite the widths
   // the full three-column configuration was last dragged to.
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({ id: PANEL_GROUP_ID, panelIds })
+  const listWidth = useListColumnWidth(LIST_PANEL.id)
 
   const currentIndex = captures.findIndex((c) => c.id === selectedCaptureId)
   const goPrev = useCallback(() => {
@@ -293,8 +290,11 @@ export function CapturesRoute() {
   return (
     <div className="relative flex h-full flex-1 overflow-hidden">
       {columns.list === 'rail' && (
-        <CaptureListRail
-          captureCount={captures.length}
+        <ListColumnRail
+          noun="capture"
+          icon={Camera}
+          testId="capture-list-rail"
+          count={captures.length}
           onExpand={() => setListCollapsed(false)}
           onPrev={goPrev}
           onNext={goNext}
@@ -309,7 +309,10 @@ export function CapturesRoute() {
         id={PANEL_GROUP_ID}
         orientation="horizontal"
         defaultLayout={defaultLayout}
-        onLayoutChanged={onLayoutChanged}
+        onLayoutChanged={(layout, meta) => {
+          onLayoutChanged(layout, meta)
+          listWidth.onLayoutChanged(layout, meta)
+        }}
         style={{ flex: '1 1 0%', width: 'auto', minWidth: 0 }}
       >
         {columns.list === 'panel' && (
@@ -319,6 +322,8 @@ export function CapturesRoute() {
               defaultSize={LIST_PANEL.defaultSize}
               minSize={LIST_PANEL.minSize}
               maxSize={LIST_PANEL.maxSize}
+              groupResizeBehavior="preserve-pixel-size"
+              panelRef={listWidth.panelRef}
               className="flex min-w-0 border-r border-border"
               style={{ overflow: 'hidden' }}
             >

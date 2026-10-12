@@ -113,9 +113,23 @@ export function ImportCaseDialog({ report, onClose }: ImportCaseDialogProps) {
         </div>
 
         {verification.overallValid ? (
-          <div className="mb-4 flex items-center gap-2 rounded border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-400">
-            <ShieldCheck className="h-4 w-4 shrink-0" strokeWidth={1.8} />
-            Archive verified
+          <div
+            data-testid="archive-checks-passed"
+            className="mb-4 rounded border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-400"
+          >
+            <div className="mb-2 flex items-center gap-2 font-medium">
+              <ShieldCheck className="h-4 w-4 shrink-0" strokeWidth={1.8} />
+              Archive checks passed
+            </div>
+            <ul className="mb-2 list-inside list-disc space-y-1 text-xs">
+              <li>Custody chain valid against the archive&apos;s own signing key</li>
+              <li>Packaged files match the hashes the archive records</li>
+              <li>Packaged Captures match their recorded hashes</li>
+            </ul>
+            <p className="text-xs">
+              The imported Case lists every Capture as unverified until you run Verify all on this
+              installation.
+            </p>
           </div>
         ) : verifierTooOld ? (
           <div

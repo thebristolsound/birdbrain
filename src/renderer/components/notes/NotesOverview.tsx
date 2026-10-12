@@ -5,7 +5,8 @@ import { motion } from 'motion/react'
 import { useReduceMotion } from '@renderer/hooks/useReduceMotion'
 import { useTimeTick } from '@renderer/hooks/useTimeTick'
 import { DropdownMenu } from 'radix-ui'
-import { Search, Plus, StickyNote, ArrowUpDown, Filter, List, Rows3, Check } from 'lucide-react'
+import { Group, Panel, Separator } from 'react-resizable-panels'
+import { Plus, StickyNote, ArrowUpDown, Filter, Check } from 'lucide-react'
 import {
   notesQueryOptions,
   notesSearchQueryOptions,
@@ -17,6 +18,16 @@ import { notify } from '@renderer/lib/notify'
 import { Button } from '@renderer/components/ui'
 import { NOTE_COMPOSER_EVENT } from '@renderer/components/onboarding/tourEffects'
 import { useAppStore } from '@renderer/stores/appStore'
+import { useListColumnCollapsed } from '@renderer/hooks/useListColumnCollapsed'
+import { useListColumnWidth } from '@renderer/hooks/useListColumnWidth'
+import {
+  ListColumnFooter,
+  ListColumnHeader,
+  ListColumnRail,
+  ListColumnSearch,
+  ListColumnViewToggle
+} from '@renderer/components/layout/ListColumn'
+import { LIST_COLUMN_SIZE, SEPARATOR_CLASS } from '@renderer/components/layout/listColumnSize'
 import { EMPTY_NOTE_DOC } from '@shared/noteDoc'
 import { NoteWorkspaceDetail } from '@renderer/components/notes/NoteWorkspaceDetail'
 import { NoteListRow } from '@renderer/components/notes/NoteListRow'
@@ -33,6 +44,9 @@ const menuClass =
 const itemClass =
   'flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 outline-none focus:bg-elevated'
 
+const LIST_PANEL_ID = 'notes-list-panel'
+const DETAIL_PANEL_ID = 'note-detail-panel'
+
 export function NotesOverview() {
   const { caseId } = useParams({ from: '/cases/$caseId/notes' })
   return <NotesWorkspace key={caseId} caseId={caseId} />
@@ -47,17 +61,13 @@ function NotesSearchInput({ onSearch }: { onSearch: (query: string) => void }) {
     return () => clearTimeout(timer)
   }, [value, onSearch])
   return (
-    <div className="relative min-w-0 flex-1">
-      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-text-muted" />
-      <input
-        data-testid="notes-search"
-        aria-label="Search notes"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        placeholder="Search notes…"
-        className="w-full rounded border border-border bg-canvas py-1.5 pl-7 pr-2 text-xs text-text-primary outline-none focus:border-accent"
-      />
-    </div>
+    <ListColumnSearch
+      data-testid="notes-search"
+      aria-label="Search notes"
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      placeholder="Search notes…"
+    />
   )
 }
 
@@ -77,6 +87,8 @@ function NotesWorkspace({ caseId }: { caseId: string }) {
   const creating = useRef(false)
   const { create, remove } = useNotesMutations(caseId)
   const resolve = useMentionResolver(caseId)
+  const { collapsed, setCollapsed } = useListColumnCollapsed()
+  const listWidth = useListColumnWidth(LIST_PANEL_ID)
   const {
     data: allNotes = [],
     isLoading,
@@ -184,14 +196,32 @@ function NotesWorkspace({ caseId }: { caseId: string }) {
       </div>
     )
 
-  return (
-    <div className="flex h-full min-h-0 flex-1 overflow-hidden" data-testid="notes-workspace">
-      <aside
-        aria-label="Notes list"
-        className="flex w-[320px] shrink-0 flex-col border-r border-border bg-surface"
-      >
-        <div className="flex items-center gap-2 border-b border-border p-2">
-          <NotesSearchInput key={searchKey} onSearch={setDebouncedQuery} />
+  const selectedIndex = selected ? notes.findIndex((n) => n.id === selected.id) : -1
+
+  const detail = selected ? (
+    <NoteWorkspaceDetail
+      key={selected.id}
+      note={selected}
+      notes={all}
+      flushRef={flushRef}
+      onDelete={deleteNote}
+      requestDelete={deleteRequest === selected.id}
+      clearDeleteRequest={() => setDeleteRequest(null)}
+    />
+  ) : (
+    <main className="flex flex-1 items-center justify-center bg-canvas text-xs text-text-faint">
+      Create a note to start writing.
+    </main>
+  )
+
+  const list = (
+    <aside aria-label="Notes list" className="flex h-full min-w-0 flex-1 flex-col bg-surface">
+      <ListColumnHeader
+        search={<NotesSearchInput key={searchKey} onSearch={setDebouncedQuery} />}
+        collapseLabel="Collapse list"
+        collapseTestId="notes-list-collapse"
+        onCollapse={() => setCollapsed(true)}
+        action={
           <button
             data-testid="notes-new-button"
             title="New note"
@@ -202,218 +232,236 @@ function NotesWorkspace({ caseId }: { caseId: string }) {
           >
             <Plus className="h-3.5 w-3.5" />
           </button>
-        </div>
-        <div className="flex items-center gap-1 border-b border-border px-1.5 py-1">
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger
-              aria-label="Sort notes"
-              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] hover:bg-elevated ${sort !== 'newest' ? 'text-accent' : 'text-text-muted'}`}
-            >
-              <ArrowUpDown className="h-3 w-3" />
-              Sort
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Portal>
-              <DropdownMenu.Content className={menuClass} align="start">
-                {(
-                  [
-                    ['newest', 'Newest first'],
-                    ['oldest', 'Oldest first'],
-                    ['title', 'Title A–Z']
-                  ] as const
-                ).map(([value, label]) => (
-                  <DropdownMenu.CheckboxItem
-                    key={value}
-                    checked={sort === value}
-                    onSelect={() => setSort(value)}
-                    className={itemClass}
-                  >
-                    <span className="w-3">
-                      {sort === value ? <Check className="h-3 w-3" /> : null}
-                    </span>
-                    {label}
-                  </DropdownMenu.CheckboxItem>
-                ))}
-              </DropdownMenu.Content>
-            </DropdownMenu.Portal>
-          </DropdownMenu.Root>
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger
-              aria-label="Filter notes"
-              className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] hover:bg-elevated ${activeCount ? 'text-accent' : 'text-text-muted'}`}
-            >
-              <Filter className="h-3 w-3" />
-              Filter
-              {activeCount ? (
-                <span className="rounded-full bg-accent/10 px-1.5 text-accent">{activeCount}</span>
-              ) : null}
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Portal>
-              <DropdownMenu.Content className={menuClass} align="start">
-                <DropdownMenu.Label className="px-2 py-1 text-[10px] uppercase text-text-faint">
-                  Tag
-                </DropdownMenu.Label>
-                {[{ targetId: '', label: 'All tags' }, ...tags].map((t) => (
-                  <DropdownMenu.CheckboxItem
-                    key={t.targetId}
-                    checked={tag === t.targetId}
-                    onSelect={() => setTag(t.targetId)}
-                    className={itemClass}
-                  >
-                    <span className="w-3">
-                      {tag === t.targetId ? <Check className="h-3 w-3" /> : null}
-                    </span>
-                    {t.targetId ? `#${resolve('tag', t.targetId).label || t.label}` : t.label}
-                  </DropdownMenu.CheckboxItem>
-                ))}
-                <DropdownMenu.Separator className="my-1 h-px bg-border" />
-                <DropdownMenu.Label className="px-2 py-1 text-[10px] uppercase text-text-faint">
-                  Date
-                </DropdownMenu.Label>
-                {(
-                  [
-                    ['all', 'Any time'],
-                    ['today', 'Last 24 hours'],
-                    ['7days', 'Last 7 days']
-                  ] as const
-                ).map(([value, label]) => (
-                  <DropdownMenu.CheckboxItem
-                    key={value}
-                    checked={date === value}
-                    onSelect={() => setDate(value)}
-                    className={itemClass}
-                  >
-                    <span className="w-3">
-                      {date === value ? <Check className="h-3 w-3" /> : null}
-                    </span>
-                    {label}
-                  </DropdownMenu.CheckboxItem>
-                ))}
-              </DropdownMenu.Content>
-            </DropdownMenu.Portal>
-          </DropdownMenu.Root>
-          <div
-            role="group"
-            aria-label="Note view"
-            className="ml-auto flex rounded border border-border bg-canvas p-0.5"
-          >
-            <button
-              aria-label="Detailed view"
-              title="Detailed view"
-              aria-pressed={view === 'detailed'}
-              onClick={() => setView('detailed')}
-              className={`rounded p-1 ${view === 'detailed' ? 'bg-surface text-text-primary' : 'text-text-faint'}`}
-            >
-              <Rows3 className="h-3 w-3" />
-            </button>
-            <button
-              aria-label="List view"
-              title="List view"
-              aria-pressed={view === 'list'}
-              onClick={() => setView('list')}
-              className={`rounded p-1 ${view === 'list' ? 'bg-surface text-text-primary' : 'text-text-faint'}`}
-            >
-              <List className="h-3 w-3" />
+        }
+        toolbar={
+          <>
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger
+                aria-label="Sort notes"
+                className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] hover:bg-elevated ${sort !== 'newest' ? 'text-accent' : 'text-text-muted'}`}
+              >
+                <ArrowUpDown className="h-3 w-3" />
+                Sort
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content className={menuClass} align="start">
+                  {(
+                    [
+                      ['newest', 'Newest first'],
+                      ['oldest', 'Oldest first'],
+                      ['title', 'Title A–Z']
+                    ] as const
+                  ).map(([value, label]) => (
+                    <DropdownMenu.CheckboxItem
+                      key={value}
+                      checked={sort === value}
+                      onSelect={() => setSort(value)}
+                      className={itemClass}
+                    >
+                      <span className="w-3">
+                        {sort === value ? <Check className="h-3 w-3" /> : null}
+                      </span>
+                      {label}
+                    </DropdownMenu.CheckboxItem>
+                  ))}
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger
+                aria-label="Filter notes"
+                className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] hover:bg-elevated ${activeCount ? 'text-accent' : 'text-text-muted'}`}
+              >
+                <Filter className="h-3 w-3" />
+                Filter
+                {activeCount ? (
+                  <span className="rounded-full bg-accent/10 px-1.5 text-accent">
+                    {activeCount}
+                  </span>
+                ) : null}
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content className={menuClass} align="start">
+                  <DropdownMenu.Label className="px-2 py-1 text-[10px] uppercase text-text-faint">
+                    Tag
+                  </DropdownMenu.Label>
+                  {[{ targetId: '', label: 'All tags' }, ...tags].map((t) => (
+                    <DropdownMenu.CheckboxItem
+                      key={t.targetId}
+                      checked={tag === t.targetId}
+                      onSelect={() => setTag(t.targetId)}
+                      className={itemClass}
+                    >
+                      <span className="w-3">
+                        {tag === t.targetId ? <Check className="h-3 w-3" /> : null}
+                      </span>
+                      {t.targetId ? `#${resolve('tag', t.targetId).label || t.label}` : t.label}
+                    </DropdownMenu.CheckboxItem>
+                  ))}
+                  <DropdownMenu.Separator className="my-1 h-px bg-border" />
+                  <DropdownMenu.Label className="px-2 py-1 text-[10px] uppercase text-text-faint">
+                    Date
+                  </DropdownMenu.Label>
+                  {(
+                    [
+                      ['all', 'Any time'],
+                      ['today', 'Last 24 hours'],
+                      ['7days', 'Last 7 days']
+                    ] as const
+                  ).map(([value, label]) => (
+                    <DropdownMenu.CheckboxItem
+                      key={value}
+                      checked={date === value}
+                      onSelect={() => setDate(value)}
+                      className={itemClass}
+                    >
+                      <span className="w-3">
+                        {date === value ? <Check className="h-3 w-3" /> : null}
+                      </span>
+                      {label}
+                    </DropdownMenu.CheckboxItem>
+                  ))}
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
+            <ListColumnViewToggle view={view} onChange={setView} groupLabel="Note view" />
+          </>
+        }
+      />
+      <div
+        data-testid="notes-list"
+        className="flex min-h-0 flex-1 flex-col gap-[var(--d-listgap)] overflow-y-auto px-2 py-[var(--d-listgap)]"
+      >
+        {debouncedQuery && search.isError ? (
+          <div className="p-4 text-xs text-red-400">
+            Failed to search notes.
+            <button className="ml-2 underline" onClick={() => void search.refetch()}>
+              Retry search
             </button>
           </div>
-        </div>
-        <div
-          data-testid="notes-list"
-          className="flex min-h-0 flex-1 flex-col gap-[var(--d-listgap)] overflow-y-auto px-2 py-[var(--d-listgap)]"
-        >
-          {debouncedQuery && search.isError ? (
-            <div className="p-4 text-xs text-red-400">
-              Failed to search notes.
-              <button className="ml-2 underline" onClick={() => void search.refetch()}>
-                Retry search
+        ) : debouncedQuery && search.isFetching ? (
+          <p className="p-4 text-xs text-text-muted">Searching notes…</p>
+        ) : !notes.length ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-2.5 px-5 py-8 text-center">
+            <motion.div
+              animate={reduceMotion ? undefined : { y: [0, -4, 0] }}
+              transition={{ duration: 4.5, repeat: Infinity, ease: 'easeInOut' }}
+              className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-canvas"
+            >
+              <StickyNote className="h-4 w-4 text-text-faint" />
+            </motion.div>
+            <h2 className="text-xs font-semibold text-text-secondary">
+              {narrowed ? 'No notes match' : 'No notes yet'}
+            </h2>
+            {narrowed && (
+              <p className="max-w-[200px] text-[11px] leading-relaxed text-text-faint">
+                Try a broader search, or clear the filters on this list.
+              </p>
+            )}
+            {narrowed ? (
+              <button
+                onClick={clearFilters}
+                className="rounded border border-border px-2.5 py-1 text-[11px] text-text-secondary hover:bg-elevated"
+              >
+                Clear filters
               </button>
-            </div>
-          ) : debouncedQuery && search.isFetching ? (
-            <p className="p-4 text-xs text-text-muted">Searching notes…</p>
-          ) : !notes.length ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-2.5 px-5 py-8 text-center">
-              <motion.div
-                animate={reduceMotion ? undefined : { y: [0, -4, 0] }}
-                transition={{ duration: 4.5, repeat: Infinity, ease: 'easeInOut' }}
-                className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-canvas"
-              >
-                <StickyNote className="h-4 w-4 text-text-faint" />
-              </motion.div>
-              <h2 className="text-xs font-semibold text-text-secondary">
-                {narrowed ? 'No notes match' : 'No notes yet'}
-              </h2>
-              {narrowed && (
-                <p className="max-w-[200px] text-[11px] leading-relaxed text-text-faint">
-                  Try a broader search, or clear the filters on this list.
-                </p>
-              )}
-              {narrowed ? (
-                <button
-                  onClick={clearFilters}
-                  className="rounded border border-border px-2.5 py-1 text-[11px] text-text-secondary hover:bg-elevated"
-                >
-                  Clear filters
-                </button>
-              ) : null}
-            </div>
-          ) : (
-            notes.map((note) => (
-              <EntityContextMenu
-                key={note.id}
-                target={{
-                  kind: 'note',
-                  noteId: note.id,
-                  title: note.title || 'Untitled note',
-                  sourceUrl: note.sourceUrl ?? null,
-                  actions: {
-                    edit: () => {
-                      void selectNote(note.id)
-                    },
-                    openSourceUrl: () => {
-                      if (note.sourceUrl)
-                        void openCaptureExternal(note.sourceUrl).catch((cause) =>
-                          notify.error("Couldn't open the link in your browser", { cause })
-                        )
-                    },
-                    remove: () => {
-                      void selectNote(note.id).then((selected) => {
-                        if (selected) setDeleteRequest(note.id)
-                      })
-                    }
+            ) : null}
+          </div>
+        ) : (
+          notes.map((note) => (
+            <EntityContextMenu
+              key={note.id}
+              target={{
+                kind: 'note',
+                noteId: note.id,
+                title: note.title || 'Untitled note',
+                sourceUrl: note.sourceUrl ?? null,
+                actions: {
+                  edit: () => {
+                    void selectNote(note.id)
+                  },
+                  openSourceUrl: () => {
+                    if (note.sourceUrl)
+                      void openCaptureExternal(note.sourceUrl).catch((cause) =>
+                        notify.error("Couldn't open the link in your browser", { cause })
+                      )
+                  },
+                  remove: () => {
+                    void selectNote(note.id).then((selected) => {
+                      if (selected) setDeleteRequest(note.id)
+                    })
                   }
-                }}
-              >
-                <NoteListRow
-                  note={note}
-                  selected={selected?.id === note.id}
-                  view={view}
-                  resolve={resolve}
-                  onSelect={() => void selectNote(note.id)}
-                />
-              </EntityContextMenu>
-            ))
-          )}
-        </div>
-        <footer className="border-t border-border px-3 py-2.5 text-[11px] text-text-faint">
-          {narrowed
-            ? `${notes.length} of ${all.length} notes shown`
-            : `${all.length} ${all.length === 1 ? 'note' : 'notes'} in this case`}
-        </footer>
-      </aside>
-      {selected ? (
-        <NoteWorkspaceDetail
-          key={selected.id}
-          note={selected}
-          notes={all}
-          flushRef={flushRef}
-          onDelete={deleteNote}
-          requestDelete={deleteRequest === selected.id}
-          clearDeleteRequest={() => setDeleteRequest(null)}
+                }
+              }}
+            >
+              <NoteListRow
+                note={note}
+                selected={selected?.id === note.id}
+                view={view}
+                resolve={resolve}
+                onSelect={() => void selectNote(note.id)}
+              />
+            </EntityContextMenu>
+          ))
+        )}
+      </div>
+      <ListColumnFooter>
+        {narrowed
+          ? `${notes.length} of ${all.length} notes shown`
+          : `${all.length} ${all.length === 1 ? 'note' : 'notes'} in this case`}
+      </ListColumnFooter>
+    </aside>
+  )
+
+  // The same column as the Captures list (layout/ListColumn.tsx): the same bounds, the same
+  // rail, and one collapsed flag for both screens. As there, the rail sits outside the Group
+  // and only the list panel comes and goes, so the editor stays mounted across a collapse and
+  // keeps a draft that has not saved yet.
+  return (
+    <div className="flex h-full min-h-0 flex-1 overflow-hidden" data-testid="notes-workspace">
+      {collapsed && (
+        <ListColumnRail
+          noun="note"
+          icon={StickyNote}
+          testId="notes-list-rail"
+          count={all.length}
+          onExpand={() => setCollapsed(false)}
+          onPrev={() => void selectNote(notes[selectedIndex - 1].id)}
+          onNext={() => void selectNote(notes[selectedIndex + 1].id)}
+          canGoPrev={selectedIndex > 0}
+          canGoNext={selectedIndex >= 0 && selectedIndex < notes.length - 1}
         />
-      ) : (
-        <main className="flex flex-1 items-center justify-center bg-canvas text-xs text-text-faint">
-          Create a note to start writing.
-        </main>
       )}
+      <Group
+        id="notes-columns"
+        orientation="horizontal"
+        onLayoutChanged={listWidth.onLayoutChanged}
+        style={{ flex: '1 1 0%', width: 'auto', minWidth: 0 }}
+      >
+        {!collapsed && (
+          <>
+            <Panel
+              id={LIST_PANEL_ID}
+              {...LIST_COLUMN_SIZE}
+              groupResizeBehavior="preserve-pixel-size"
+              panelRef={listWidth.panelRef}
+              className="flex min-w-0 border-r border-border"
+              style={{ overflow: 'hidden' }}
+            >
+              {list}
+            </Panel>
+            <Separator id="notes-list-separator" className={SEPARATOR_CLASS} />
+          </>
+        )}
+        <Panel
+          id={DETAIL_PANEL_ID}
+          minSize={360}
+          className="flex min-w-0"
+          style={{ overflow: 'hidden' }}
+        >
+          {detail}
+        </Panel>
+      </Group>
     </div>
   )
 }

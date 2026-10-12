@@ -6,7 +6,7 @@ import {
 import type { TrustedTimeResult } from '@shared/verify/trustedTime'
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
-import { readManifestSnapshot } from '@main/services/manifest'
+import { readManifestSnapshot, readSharedCaseSnapshot } from '@main/services/manifest'
 import { getStorageRoot } from '@main/services/storage'
 
 export type { TrustedTimeResult }
@@ -15,7 +15,24 @@ export type { TrustedTimeResult }
 // lenient dialect); the resolution rule itself lives in verify-core
 // (`@shared/verify/trustedTime`).
 
-// Resolves the per-capture trusted-time axis from the manifest alone (so the DB mirror remains rebuildable).
+// The entries trusted time is resolved over (#1713): the local chain's, and in a
+// Shared Case the `timestamp` entries of every other member and lineage chain
+// the walk accepted. A member writes a stamp to its own chain, so another
+// member's stamp is only in theirs; a chain the walk did not accept adds
+// nothing. Only stamps are taken, so whether a hash is 'pending' or 'none'
+// stays the local chain's answer.
+function trustedTimeEntries(caseDir: string): Record<string, unknown>[] {
+  const manifest = readManifestSnapshot(caseDir)
+  const { verification } = readSharedCaseSnapshot(caseDir, manifest)
+  if (!verification) return manifest.entries
+  const stamps = [...verification.entries]
+    .filter(([key]) => key !== verification.localInstallationId)
+    .flatMap(([, accepted]) => accepted)
+    .filter((entry) => entry.type === 'timestamp')
+  return [...manifest.entries, ...stamps]
+}
+
+// Resolves the per-capture trusted-time axis from the Case's chains alone (so the DB mirror remains rebuildable).
 /**
  * Resolves the trusted timestamp status for a content hash within a case.
  *
@@ -24,7 +41,7 @@ export type { TrustedTimeResult }
  * @returns The trusted time result indicating the timestamp status
  */
 export function resolveTrustedTime(caseDir: string, contentHash: string): TrustedTimeResult {
-  return resolveTrustedTimeFromEntries(readManifestSnapshot(caseDir).entries, contentHash)
+  return resolveTrustedTimeFromEntries(trustedTimeEntries(caseDir), contentHash)
 }
 
 // Resolves the trusted-time axis for EVERY capture in a case in a single manifest
@@ -38,7 +55,7 @@ export function resolveTrustedTime(caseDir: string, contentHash: string): Truste
  * @returns A `Map` keyed by content hash, with `TrustedTimeResult` values. Content hashes absent from the map are implicitly `'none'`.
  */
 export function buildTrustedTimeIndex(caseDir: string): Map<string, TrustedTimeResult> {
-  return buildTrustedTimeIndexFromEntries(readManifestSnapshot(caseDir).entries)
+  return buildTrustedTimeIndexFromEntries(trustedTimeEntries(caseDir))
 }
 
 // Read-and-refresh for a single capture: resolves the authoritative trusted-time

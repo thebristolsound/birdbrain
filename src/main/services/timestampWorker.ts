@@ -73,6 +73,9 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
     const caseDir = join(getStorageRoot(), capture.caseId)
 
     try {
+      // A stamp may already anchor these bytes, in another member's chain of a
+      // Shared Case or one the mirror has not caught up with: no TSA request.
+      if (reconcileCaptureTrustedTime(capture).trustedTime === 'rfc3161') return true
       const token = await requestToken(capture.hash, tsaUrl)
       const parsed = parseTimestampToken(token)
       if (parsed.messageImprintHex !== capture.hash) {

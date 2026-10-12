@@ -1,9 +1,15 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, appendFileSync } from 'fs'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { mkdtempSync, rmSync, appendFileSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { createHash } from 'crypto'
-import { initManifest, appendManifestEntry, verifyManifestChain } from '@main/services/manifest'
+import { createHash, createSign, generateKeyPairSync } from 'crypto'
+import {
+  initManifest,
+  appendManifestEntry,
+  verifyManifestChain,
+  readManifestSnapshot,
+  readSharedCaseSnapshot
+} from '@main/services/manifest'
 import {
   resolveTrustedTime,
   buildTrustedTimeIndex,
@@ -14,6 +20,16 @@ import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
 import { insertCapture, getCapture, setCaptureTrustedTime } from '@main/services/db/captureRepo'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
+import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
+import { initSettings, updateSettings } from '@main/services/settings'
+import { initInstallationId, resetInstallationId } from '@main/services/installationId'
+import { createTimestampWorker } from '@main/services/timestampWorker'
+import { canonicalStringify } from '@shared/verify'
+import {
+  resolveTrustedTimeFromEntries,
+  buildTrustedTimeIndexFromEntries
+} from '@shared/verify/trustedTime'
+import { memberChainPath } from '../../../src/packages/evidence-package-layout/index'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 
 function hashOf(input: string): string {
@@ -277,5 +293,298 @@ describe('reconcileCaptureTrustedTime / reconcileAllMirrors (DB mirror reconcili
     reconcileAllMirrors()
 
     expect(getCapture(cap.id)?.trustedTimeStatus).toBe('pending')
+  })
+})
+
+// #1713. A member writes its stamps to its own chain, so in a Shared Case the
+// stamp over another member's Capture is only in that member's chain. This
+// installation is the Owner; the peer is a member whose chain holds a Capture
+// and the stamp over it, merged into the Owner's chain.
+describe('trusted time in a Shared Case', () => {
+  const OWNER_ID = 'installation-owner-0001'
+  const PEER_ID = 'installation-peer-0001'
+  const TIME = '2026-09-27T10:00:00.000Z'
+  // The committed DigiCert token and the digest it attests: the known answer
+  // for a stamp read off another member's chain.
+  const DIGICERT_IMPRINT = readFileSync(
+    join(process.cwd(), 'tests/fixtures/timestamp/content-hash.txt'),
+    'utf-8'
+  ).trim()
+  const DIGICERT_TOKEN = readFileSync(
+    join(process.cwd(), 'tests/fixtures/timestamp/digicert-token.der')
+  )
+  const keyPair = (): { publicKey: string; privateKey: string } =>
+    generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: 'spki', format: 'pem' },
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
+    })
+  const PEER_KEY = keyPair()
+  const OTHER_KEY = keyPair()
+  const signWith =
+    (privateKey: string) =>
+    (entryHash: string): string =>
+      createSign('sha256').update(entryHash).sign(privateKey, 'base64')
+
+  // A signed chain built line by line, the way appendManifestEntry builds one.
+  class Chain {
+    lines: string[] = []
+    hashes: string[] = []
+    constructor(private sign: (entryHash: string) => string) {}
+    append(body: Record<string, unknown>): this {
+      const full = { ...body, index: this.lines.length, prevHash: this.hashes.at(-1) ?? '' }
+      const entryHash = createHash('sha256').update(canonicalStringify(full)).digest('hex')
+      this.lines.push(JSON.stringify({ ...full, entryHash, signature: this.sign(entryHash) }))
+      this.hashes.push(entryHash)
+      return this
+    }
+    get jsonl(): string {
+      return this.lines.join('\n') + '\n'
+    }
+  }
+
+  let tempDir: string
+  let caseId: string
+  let caseDir: string
+
+  beforeEach(async () => {
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-tt-shared-'))
+    initStorage(join(tempDir, 'captures'))
+    await initDatabase(':memory:')
+    initSettings(tempDir)
+    updateSettings({ tsaUrl: 'http://tsa.example.com', operatorName: 'Owner' })
+    initInstallationId(tempDir)
+    caseId = createCase({ name: 'Shared' }).id
+    caseDir = join(getStorageRoot(), caseId)
+    ensureCaseDir(caseId)
+  })
+
+  afterEach(() => {
+    closeDatabase()
+    resetInstallationId()
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  const by = (operatorId: string) => ({
+    operatorId,
+    operatorName: operatorId,
+    toolVersion: '0.9.0'
+  })
+
+  const memberAdd = (id: string, pem: string, code: string, role: 'owner' | 'member') => ({
+    type: 'member-add',
+    caseId,
+    memberInstallationId: id,
+    memberPublicKeyPem: pem,
+    memberCode: code,
+    memberOperatorName: id,
+    nodeId: `node-${id}`,
+    role,
+    timestamp: TIME,
+    ...by(OWNER_ID),
+    schemaVersion: 4
+  })
+
+  const captureEntry = (contentHash: string) => ({
+    type: 'capture',
+    captureId: `cap-${contentHash.slice(0, 8)}`,
+    caseId,
+    url: 'https://example.com/peer',
+    timestamp: TIME,
+    contentHash,
+    sizeBytes: 1,
+    ...by(PEER_ID),
+    schemaVersion: 2
+  })
+
+  const stampEntry = (contentHash: string, token: Buffer) => ({
+    type: 'timestamp',
+    caseId,
+    captureContentHash: contentHash,
+    timestamp: TIME,
+    tsaToken: token.toString('base64'),
+    ...by(PEER_ID),
+    schemaVersion: 2
+  })
+
+  // Writes the Owner's manifest and the peer's chain. `peerSign` signs the
+  // peer's entries; a key other than the one the roster names breaks the chain.
+  function sharedCase(
+    peerEntries: Record<string, unknown>[],
+    peerSign = signWith(PEER_KEY.privateKey)
+  ): void {
+    const peer = new Chain(peerSign)
+    for (const entry of peerEntries) peer.append(entry)
+    const owner = new Chain(signEntryHash)
+      .append(memberAdd(OWNER_ID, getPublicKeyPem(), 'CO', 'owner'))
+      .append(memberAdd(PEER_ID, PEER_KEY.publicKey, 'RP', 'member'))
+    const index = peer.lines.length - 1
+    owner.append({
+      type: 'merge',
+      caseId,
+      heads: [
+        {
+          installationId: PEER_ID,
+          index,
+          entryHash: peer.hashes[index],
+          entriesReceived: peer.lines.length
+        }
+      ],
+      timestamp: TIME,
+      ...by(OWNER_ID),
+      schemaVersion: 4
+    })
+    writeFileSync(join(caseDir, 'manifest.jsonl'), owner.jsonl)
+    writeFileSync(join(caseDir, memberChainPath(PEER_ID)), peer.jsonl)
+  }
+
+  const stampedPeerCase = (): void =>
+    sharedCase([captureEntry(DIGICERT_IMPRINT), stampEntry(DIGICERT_IMPRINT, DIGICERT_TOKEN)])
+
+  // A Capture row of this installation's database over `hash`, its mirror
+  // reading `mirror`.
+  function captureRow(hash: string, mirror: 'none' | 'pending'): string {
+    const cap = insertCapture({
+      caseId,
+      url: 'https://example.com/peer',
+      title: 'Peer capture',
+      hash,
+      timestamp: TIME,
+      format: 'mhtml'
+    })
+    setCaptureTrustedTime(cap.id, mirror)
+    return cap.id
+  }
+
+  // What the local chain alone answers, which is all the app read before #1713.
+  const localOnly = (hash: string) =>
+    resolveTrustedTimeFromEntries(readManifestSnapshot(caseDir).entries, hash)
+
+  const sharedVerification = () =>
+    readSharedCaseSnapshot(caseDir, readManifestSnapshot(caseDir)).verification
+
+  it('builds a Shared Case whose walk accepts the peer chain', () => {
+    stampedPeerCase()
+
+    expect(sharedVerification()?.valid).toBe(true)
+    expect(sharedVerification()?.entries.get(PEER_ID)).toHaveLength(2)
+  })
+
+  it("resolves another member's stamp from that member's accepted chain", () => {
+    stampedPeerCase()
+
+    expect(localOnly(DIGICERT_IMPRINT).trustedTime).toBe('none')
+    expect(resolveTrustedTime(caseDir, DIGICERT_IMPRINT)).toEqual({
+      trustedTime: 'rfc3161',
+      tsaName: 'DigiCert SHA256 RSA4096 Timestamp Responder 2025 1',
+      stampedAt: '2026-05-30T19:31:07.000Z'
+    })
+  })
+
+  it('includes that stamp in the one-pass index', () => {
+    stampedPeerCase()
+
+    expect(buildTrustedTimeIndex(caseDir).get(DIGICERT_IMPRINT)).toEqual(
+      resolveTrustedTime(caseDir, DIGICERT_IMPRINT)
+    )
+  })
+
+  it('stores that stamp in the mirror on reconcile and on rebuild', () => {
+    stampedPeerCase()
+    const id = captureRow(DIGICERT_IMPRINT, 'none')
+
+    const result = reconcileCaptureTrustedTime({ id, caseId, hash: DIGICERT_IMPRINT })
+    expect(result.trustedTime).toBe('rfc3161')
+    expect(getCapture(id)?.trustedTimeStatus).toBe('rfc3161')
+
+    setCaptureTrustedTime(id, 'none')
+    reconcileAllMirrors()
+    expect(getCapture(id)?.trustedTimeStatus).toBe('rfc3161')
+  })
+
+  it('takes nothing from a member chain the walk did not accept', () => {
+    sharedCase(
+      [captureEntry(DIGICERT_IMPRINT), stampEntry(DIGICERT_IMPRINT, DIGICERT_TOKEN)],
+      signWith(OTHER_KEY.privateKey)
+    )
+
+    expect(sharedVerification()?.findings.map((f) => f.outcome)).toContain('chain-broken')
+    expect(resolveTrustedTime(caseDir, DIGICERT_IMPRINT)).toEqual(localOnly(DIGICERT_IMPRINT))
+    expect(buildTrustedTimeIndex(caseDir).get(DIGICERT_IMPRINT)).toBeUndefined()
+  })
+
+  it("leaves pending or none to the local chain for another member's unstamped Capture", () => {
+    const hash = hashOf('peer-unstamped')
+    sharedCase([captureEntry(hash)])
+
+    expect(resolveTrustedTime(caseDir, hash)).toEqual(localOnly(hash))
+    expect(resolveTrustedTime(caseDir, hash).trustedTime).toBe('none')
+    expect(buildTrustedTimeIndex(caseDir).get(hash)).toBeUndefined()
+  })
+
+  it('keeps the local stamp when both chains hold one for the same bytes', () => {
+    const genTime = new Date('2026-05-30T09:05:00.000Z')
+    const hash = hashOf('stamped-twice')
+    const localToken = buildSyntheticToken({ contentHash: hash, genTime, tsaDnsName: 'local.tsa' })
+    const peerToken = buildSyntheticToken({ contentHash: hash, genTime, tsaDnsName: 'peer.tsa' })
+    sharedCase([captureEntry(hash), stampEntry(hash, peerToken)])
+    appendManifestEntry(caseDir, {
+      type: 'timestamp',
+      caseId,
+      captureContentHash: hash,
+      timestamp: TIME,
+      tsaToken: localToken.toString('base64'),
+      ...by(OWNER_ID)
+    })
+
+    expect(resolveTrustedTime(caseDir, hash).tsaName).toBe('local.tsa')
+    expect(buildTrustedTimeIndex(caseDir).get(hash)?.tsaName).toBe('local.tsa')
+  })
+
+  it("asks no TSA to stamp a Capture another member's chain already stamps", async () => {
+    stampedPeerCase()
+    const id = captureRow(DIGICERT_IMPRINT, 'pending')
+    const requestToken = vi.fn(async () => DIGICERT_TOKEN)
+    const before = readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8')
+
+    expect(await createTimestampWorker({ requestToken }).stampCapture(id)).toBe(true)
+
+    expect(requestToken).not.toHaveBeenCalled()
+    expect(readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8')).toBe(before)
+    expect(getCapture(id)?.trustedTimeStatus).toBe('rfc3161')
+  })
+
+  it('asks no TSA when the local chain stamps a Capture the mirror still calls pending', async () => {
+    initManifest(caseDir)
+    const hash = hashOf('local-stamped')
+    appendCapture(caseDir, hash)
+    const token = buildSyntheticToken({ contentHash: hash, genTime: new Date(TIME) })
+    appendTimestamp(caseDir, hash, token.toString('base64'))
+    const id = captureRow(hash, 'pending')
+    const requestToken = vi.fn(async () => token)
+
+    expect(await createTimestampWorker({ requestToken }).stampCapture(id)).toBe(true)
+
+    expect(requestToken).not.toHaveBeenCalled()
+    expect(getCapture(id)?.trustedTimeStatus).toBe('rfc3161')
+  })
+
+  it('resolves a Case that is not shared from the local chain exactly', () => {
+    initManifest(caseDir)
+    const stamped = hashOf('unshared-stamped')
+    const pending = hashOf('unshared-pending')
+    appendCapture(caseDir, stamped)
+    appendCapture(caseDir, pending)
+    const token = buildSyntheticToken({ contentHash: stamped, genTime: new Date(TIME) })
+    appendTimestamp(caseDir, stamped, token.toString('base64'))
+    const { entries } = readManifestSnapshot(caseDir)
+
+    expect(sharedVerification()).toBeUndefined()
+    for (const hash of [stamped, pending, hashOf('absent')]) {
+      expect(resolveTrustedTime(caseDir, hash)).toEqual(
+        resolveTrustedTimeFromEntries(entries, hash)
+      )
+    }
+    expect(buildTrustedTimeIndex(caseDir)).toEqual(buildTrustedTimeIndexFromEntries(entries))
   })
 })

@@ -28,7 +28,7 @@ rerun the spike without the scratch branch.
 | 4. Cross-site iframe and cross-port redirect | Stop condition: the iframe's subresource requests never reach `wc.debugger`. Both redirect hops do. The iframe runs in its own renderer process. |
 | 5. Cache events in a fresh partition | Yes: three fixtures gave `fromDiskCache: true`, and one gave `Network.requestServedFromCache`. |
 | 6. `securityDetails` over HTTPS | Present on every main document response, with every D7 field under its D7 name. `keyExchange` is `""` on TLS 1.3. |
-| 7. `history.length` | 2 after `about:blank`, 1 without it. Of five methods, only `location.replace` made the target read 1, and it changed the request the server saw. |
+| 7. `history.length` | 2 after `about:blank`, 1 without it. Of five methods, only `location.replace` made the target read 1 from its first script, and it changed the request the server saw; `navigationHistory.clear()` after commit gave 1 only after `load`. |
 
 ## Rulings this asks for
 
@@ -40,11 +40,19 @@ rerun the spike without the scratch branch.
    accounts for requests made inside an out-of-process iframe.
 2. **The `about:blank` entry (question 7, not a stop condition).** The plan's fallback, recording
    the difference as a known limitation, still applies, because no method removed the entry
-   before the target's document committed. One method, navigating from `about:blank` with
-   `location.replace`, made the target read 1, at the cost of sending
-   `Sec-Fetch-Site: cross-site` instead of `none` on the main document request. Whether step 9
-   takes that trade or keeps `wc.loadURL` and records the limitation is a choice no ruling covers
-   yet.
+   before the target's document committed. Two methods changed what the target read, each at a
+   cost (question 7, "Observed"):
+   - Navigating from `about:blank` with `location.replace` made the target read 1 from its first
+     script, but the main document request carried `Sec-Fetch-Site: cross-site` instead of
+     `none`.
+   - `wc.navigationHistory.clear()` on the target's `did-navigate` kept `none`, but the page read
+     2 at parse, `DOMContentLoaded`, and `load`, and 1 only at `load` plus 1 s and before the
+     screenshot.
+
+   Whether clearing after commit suits D15's script depends on when that script reads
+   `history.length`. D15 does not say, and step 9 has not written the script yet, so this spike
+   cannot say either. Step 9's choice among the `location.replace` trade, clearing after commit,
+   and keeping `wc.loadURL` with the limitation recorded is one no ruling covers yet.
 
 Question 6 does not meet the second stop condition: `securityDetails` arrived on every HTTPS
 main document.
@@ -58,7 +66,8 @@ main document.
   target on `127.0.0.1`, stored a Capture.
 - **Runtime the app reported.** `process.versions`, written by the scratch renderer on every
   render: Electron 44.5.1, Chromium 152.0.7977.130, Node 24.21.0, V8 15.2.124.28-electron.0.
-  These are the versions the plan's probe rerun read (plan, `:151`).
+  The plan's probe rerun read the same Electron, Chromium, and Node versions (plan, `:157-158`);
+  the plan names no V8 version.
 - **Operating system.** Ubuntu 24.04.4 LTS under WSL2, Linux 6.18.33.2-microsoft-standard-WSL2.
   Every app run used `xvfb-run` with the `env` prefix from `.claude/skills/run-birdbrain/SKILL.md`
   ("Test").
@@ -156,7 +165,7 @@ The three `q1-e2e-*` runs come from the e2e suite, not from `run.mjs` (question 
 
 **Question.** "Do `e2e/recapture.spec.ts` and `e2e/recapture-consent.spec.ts` still pass with the
 domain on? This tests the comment from #180." The comment sits above `createNetworkIdleTracker`
-(`src/main/services/backgroundRenderer.ts:48-51`) and says that enabling a CDP event domain from
+(`src/main/services/backgroundRenderer.ts:48-52`) and says that enabling a CDP event domain from
 `webContents.debugger` "evicts any other CDP client attached to the same target", which "breaks
 Playwright's own debugger session in E2E".
 
@@ -206,6 +215,8 @@ Both commands exit 0.
 **Verdict.** Pass for both specs with the domain on: `e2e/recapture-consent.spec.ts` passed and
 `e2e/recapture.spec.ts` passed, Playwright exit 0; Playwright's own session also evaluated a
 script inside the hidden window after `Network.enable`, which the #180 comment says would break.
+The comment names `Page/Network.enable`; the scratch change sent `Network.enable` only, so this
+contradicts the comment for the `Network` domain and leaves `Page.enable` untested.
 
 ## Question 2: requests during `wc.savePage`
 
@@ -624,10 +635,10 @@ under "Reproduce"). Gitleaks found no key in it (row 20), and `grep -c -- '-----
   plain `http` loopback responses as well as the 6 `https` ones, per
   `jq -r '[.runs[].events[] | select(.method == "Network.responseReceived") | "\(.params.response.url | split(":")[0]) \(.params.response.securityState)"] | group_by(.) | map("\(.[0])\t\(length)")[]' $J`
   (exit 0).
-- **`history.length` in D15's script (step 9).** With `wc.loadURL`, the target read 1 without
-  `about:blank` and 2 with it, the shape of the probe's off and on passes, so D15's script expects
-  the two passes one apart, unless the maintainer takes the `location.replace` trade under "Rulings
-  this asks for".
+- **`history.length` in D15's script (step 9).** With `wc.loadURL` and no history change, the
+  target read 1 without `about:blank` and 2 with it, the shape of the probe's off and on passes,
+  so D15's script expects the two passes one apart, unless step 9 takes another option under
+  ruling 2 in "Rulings this asks for".
 
 ## What this does not show
 

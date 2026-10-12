@@ -1,6 +1,6 @@
 ---
 name: post-comment
-description: The shapes for every comment an agent posts to a GitHub issue or PR (cycle claim and release, pre-pass verdict, review reply, give-up and defect filing, anything else), and the linter that checks a comment file before it is posted. Referenced by the dispatch skill and the reviewer.
+description: The shapes for every comment an agent posts to a GitHub issue or PR (cycle claim and release, pre-pass verdict, review reply, give-up and defect filing, friction notes, anything else), and the linter that checks a comment file before it is posted. Referenced by the dispatch skill and the reviewer.
 ---
 
 # post-comment
@@ -36,12 +36,20 @@ checked as top layer.
 | pre-pass verdict | `**Review verdict: <verdict>**` | 10 lines | required | at most 5 numbered findings, one plain sentence each; the block's summary starts `Full report` and names the reviewed commit id |
 | review reply | `Applied.` or `Not applied: <one sentence>` | 1 line | commit for `Applied.` | one reply per thread, nothing else |
 | give-up or defect | `Give-up: <one clause>` or `Defect: <one clause>` | 10 lines | required | `**What:**` on top; `**Where:**` as `file:line` and `**Reproduce:**` inside the block |
+| friction notes | `Friction notes: dispatch cycle` or `Friction notes: PR review` | 12 lines | required | one numbered plain sentence per note; a block under `<summary>Each note in full</summary>` holds one table row per note; at most 3 notes per agent |
 | anything else | free | 20 lines | optional | none |
 
 `<verdict>` is `approve for human review` or `request changes`. The full pre-pass report goes
 on the PR inside the verdict's `<details>` block, collapsed under `Full report`; when it
 exceeds GitHub's comment limit, the block holds the findings table and a `Full report: <link>`
 line instead. It never goes in the open and never as a second comment.
+
+Friction notes (ADR-0050) go only to the tracking issue, and only a workflow step posts them;
+the session writes the file. The table header is `| # | from | kind | anchor | cost | fix |`.
+`from` is `dispatcher`, `implementer`, `reviewer` or `pr-review`, and `kind` is `friction`, `re-derived` or
+`confusing`. The anchor is a heading, script, command or workflow step, never a line number.
+The cost is what the run did to recover, and a note without one is not written. The fix is the
+one-line change to the anchor, or `unknown`. A run with no notes writes no file.
 
 The two cycle first lines and the override record's first line are read back by scripts
 (`cleanup.sh`, the override hygiene check), so they are exempt from the plain-language check.

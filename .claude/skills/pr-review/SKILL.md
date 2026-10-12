@@ -64,6 +64,15 @@ Copy the reviewer's full report to the path the prompt names. Then write
 Run `bash .claude/skills/post-comment/scripts/check.sh .dispatch/verdict.md` and fix the file
 until it exits 0.
 
+## 4a. Leave the friction notes
+
+Take the `Friction notes` section of the reviewer's report, and add your own on the same
+terms: zero to three, zero expected, each with a concrete cost. If either has a note, write
+them to `.dispatch/friction.md` in the friction notes shape of the `post-comment` skill, with
+`Friction notes: PR review` as line 1, `reviewer` or `pr-review` in the `from` column, and run
+its `check.sh` on the file until it exits 0. With no notes, write no file. The workflow's
+`Friction notes` step posts it to the tracking issue (ADR-0050). A note never becomes an issue.
+
 ## 5. Report
 
 End your turn with a heading line containing `PR review report`, then the PR number, the

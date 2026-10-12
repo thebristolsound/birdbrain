@@ -38,7 +38,7 @@ export const TARGET_PAGES: TargetPage[] = [
     file: 'mail-header.html',
     url: 'https://webmail.ostrander.example.net/msg/4471/original',
     annotated: false,
-    tests: 'an unannotated mail header whose Reply-To address no query names'
+    tests: 'an unannotated mail header whose Reply-To address and host no query names'
   },
   {
     key: 'rare-address',
@@ -52,7 +52,7 @@ export const TARGET_PAGES: TargetPage[] = [
     file: 'address-variant.html',
     url: 'https://brindle-forum.example.org/thread/91',
     annotated: false,
-    tests: 'the Reply-To address written with other capitalization and punctuation'
+    tests: 'the queried address in other capitalization and punctuation'
   },
   {
     key: 'annotated-shop',
@@ -79,6 +79,7 @@ export const TARGET_ONLY_STRINGS = [
   'northgate-ledger',
   'QM-5521',
   'tessellate',
+  'corvane',
   'larchfield',
   'reconciliation',
   '7781'

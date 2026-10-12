@@ -26,21 +26,21 @@ export const QUERIES: EvalQuery[] = [
     tests: 'image alt text with its words reordered; the mail header page holds the same words'
   },
   {
-    id: 'reply-to-host',
+    id: 'address-host',
     text: 'tessellate-mail.example.net',
-    expected: ['mail-header', 'address-variant'],
-    tests: 'the host of a Reply-To address'
+    expected: ['address-variant'],
+    tests: 'the host of an address the page writes in other capitals'
   },
   {
-    id: 'reply-to-address',
+    id: 'whole-address',
     text: 'c.hale.payouts@tessellate-mail.example.net',
-    expected: ['mail-header', 'address-variant'],
-    tests: 'a whole address, punctuation included'
+    expected: ['address-variant'],
+    tests: 'a whole address, punctuation included, that the page writes in other capitals'
   },
   {
     id: 'address-capitals',
     text: 'C.HALE.PAYOUTS',
-    expected: ['mail-header', 'address-variant'],
+    expected: ['address-variant'],
     tests: 'the local part of the address only, in capitals'
   },
   {

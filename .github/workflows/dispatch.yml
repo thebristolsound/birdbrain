@@ -180,6 +180,12 @@ jobs:
           JOB_STATUS: ${{ job.status }}
         run: bash .github/scripts/dispatch/cleanup.sh
 
+      # The notes the cycle left for the tracking issue (ADR-0050). Never fails the job.
+      - name: Friction notes
+        if: always() && steps.gate.outputs.run == 'true' && env.MODE == 'cycle'
+        continue-on-error: true
+        run: bash .github/scripts/dispatch/friction.sh
+
       # On every exit, a cancel and the job timeout included: run.sh scrubs only once
       # `claude` returns, and the transcript is written while it runs (see scrub.sh).
       - name: Scrub the artifact

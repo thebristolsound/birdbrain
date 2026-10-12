@@ -997,6 +997,17 @@ A cycle can touch more than one PR, so report them as a list rather than one nar
 merged under section 2a, state the four conditions as you found them, and name any advisory-tier
 backstop hits with their one-line dispositions.
 
+**Leave the cycle's friction notes (ADR-0050), on every exit path.** Take the `Friction notes`
+section of every implementer and reviewer report from this cycle, and add your own on the same
+terms: zero to three, zero expected, each with a concrete cost. If any agent has a note, write
+them all to `.dispatch/friction.md` in the friction notes shape of the `post-comment` skill,
+with `Friction notes: dispatch cycle` as line 1, and run its `check.sh` on the file until it
+exits 0. Keep each note's kind, anchor, cost and fix as the agent wrote them; rewrite only its
+sentence, into plain words for the top layer. With no notes, write no file. Do not post it:
+the workflow's `Friction notes` step posts it to the tracking issue after the session ends.
+Never file an issue, queue work or change a label because of a note, and never read the
+tracking issue for work. The report says how many notes each agent left.
+
 **Read CI before you write the report, on every exit path.** If the cycle touched or observed
 an open agent PR — a fresh dispatch, a fix round, an occupied-slot exit, not only a cycle that
 ended in a pre-pass — read its checks immediately before writing, against a pinned head:

@@ -173,6 +173,16 @@ Write the whole comment (verdict plus collapsed report) to one file and run
 the report as its own file too. Never put the report on the top layer. A 1,100-word verdict is
 not more rigorous than a 10-line one; it is a 10-line one that nobody finished reading.
 
+**Friction notes (ADR-0050).** End the report you return with a `Friction notes` section of
+zero to three notes, and keep them out of the verdict comment; zero is the expected answer. Write a note only for something that cost this run
+work: a fact you had to work out that a document should have told you (`re-derived`), an
+instruction or step that slowed you (`friction`), or one you could read two ways
+(`confusing`). Each note gives the kind, the anchor (a heading, script, command or workflow
+step, never a line number), one plain sentence on what happened, the cost (what you did to
+recover), and the one-line fix to the anchor, or `unknown`. A note with no concrete cost is
+not written. With none, write `Friction notes: none`. You post nothing: the session that
+spawned you collects the notes, and a note never becomes an issue.
+
 **Calibrate severity — three tiers, and use them literally.**
 
 - **blocking** — the change is wrong, unverifiable, or violates the evidence gate. Merging

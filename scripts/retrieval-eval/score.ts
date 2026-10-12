@@ -8,7 +8,7 @@ import type { EvalQuery } from './queries'
 
 /** What one search path answered for one query. */
 export interface PathAnswer {
-  /** Target keys in the order the path ranked the Captures they name, without repeats. */
+  /** Result keys in the path's order, without repeats: see `rankedKeys`. */
   ranked: string[]
   /** How many results the path returned in all, targets or not. */
   returned: number
@@ -19,14 +19,25 @@ export interface PathAnswer {
 export interface ScoredQuery {
   queryId: string
   path: string
-  /** 1-based rank of the first expected target, or null when none was returned. */
+  /** 1-based rank of the first expected target among all results, or null when none was returned. */
   firstRank: number | null
   top5: boolean
   top20: boolean
   returned: number
-  /** For a query whose correct answer is no result: whether the path returned none. */
+  /** Every expected target came back; for a query whose correct answer is no result, none did. */
   passed: boolean
   error?: string
+}
+
+/**
+ * Keys for a path's results in its order: a result's target key, or `other:<id>` for a result that
+ * is no target, so a target's rank counts every result above it.
+ */
+export function rankedKeys(
+  ids: readonly string[],
+  targets: Readonly<Record<string, string>>
+): string[] {
+  return [...new Set(ids.map((id) => targets[id] ?? `other:${id}`))]
 }
 
 export function firstRank(ranked: string[], expected: readonly string[]): number | null {
@@ -37,7 +48,10 @@ export function firstRank(ranked: string[], expected: readonly string[]): number
 export function scoreQuery(query: EvalQuery, path: string, answer: PathAnswer): ScoredQuery {
   const rank = answer.error ? null : firstRank(answer.ranked, query.expected)
   const passed =
-    !answer.error && (query.expected.length === 0 ? answer.returned === 0 : rank !== null)
+    !answer.error &&
+    (query.expected.length === 0
+      ? answer.returned === 0
+      : query.expected.every((key) => answer.ranked.includes(key)))
   return {
     queryId: query.id,
     path,
@@ -50,6 +64,12 @@ export function scoreQuery(query: EvalQuery, path: string, answer: PathAnswer): 
   }
 }
 
+/** `count` values spread evenly across `values`, first included; all of them when there are fewer. */
+export function spread<T>(values: readonly T[], count: number): T[] {
+  if (values.length <= count) return [...values]
+  return Array.from({ length: count }, (_, i) => values[Math.floor((i * values.length) / count)])
+}
+
 /** Nearest-rank percentile; null for no values. */
 export function percentile(values: readonly number[], p: number): number | null {
   if (values.length === 0) return null
@@ -58,8 +78,10 @@ export function percentile(values: readonly number[], p: number): number | null 
   return sorted[rank - 1]
 }
 
+/** Per query, so a query that starts answering does not change another query's figures. */
 export interface PathLatency {
   path: string
+  queryId: string
   medianMs: number | null
   p95Ms: number | null
   samples: number
@@ -79,7 +101,7 @@ export interface EvalReport {
   queries: EvalQuery[]
   scored: ScoredQuery[]
   latency: PathLatency[]
-  /** Pages of each index table, from SQLite's dbstat. */
+  /** Pages of each index table, from SQLite's dbstat, after the full rebuild and before re-indexing. */
   indexSizes: IndexSize[]
   /** Full rebuild of the Extracted Text index, in milliseconds. */
   fullRebuildMs: number
@@ -126,11 +148,12 @@ export function renderReport(report: EvalReport): string {
   lines.push('')
 
   lines.push('## Latency', '')
-  lines.push('| Path | Median (ms) | 95th percentile (ms) | Samples |')
-  lines.push('| --- | --- | --- | --- |')
+  lines.push('| Path | Query | Median (ms) | 95th percentile (ms) | Samples |')
+  lines.push('| --- | --- | --- | --- | --- |')
   for (const latency of report.latency) {
     lines.push(
-      `| ${latency.path} | ${ms(latency.medianMs)} | ${ms(latency.p95Ms)} | ${latency.samples} |`
+      `| ${latency.path} | ${latency.queryId} | ${ms(latency.medianMs)} | ${ms(latency.p95Ms)} | ` +
+        `${latency.samples} |`
     )
   }
   lines.push('')

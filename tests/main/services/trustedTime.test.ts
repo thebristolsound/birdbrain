@@ -619,6 +619,60 @@ describe('trusted time in a Shared Case', () => {
     expect(() => resolveTrustedTime(caseDir, hashOf('not-own'))).toThrow()
   })
 
+  // The issue's own scenario: this installation is a member, the Owner's chain
+  // and a peer member's chain are the remote ones, and each stamps a Capture of
+  // its own.
+  it("resolves stamps from the Owner's and a peer's chain when this installation is a member", () => {
+    const LOCAL_ID = 'installation-member-0001'
+    const OWNER_KEY = keyPair()
+    const ownerHash = hashOf('owner-capture')
+    const ownerToken = buildSyntheticToken({
+      contentHash: ownerHash,
+      genTime: new Date(TIME),
+      tsaDnsName: 'owner.tsa'
+    })
+    const peer = new Chain(signWith(PEER_KEY.privateKey))
+      .append(captureEntry(DIGICERT_IMPRINT))
+      .append(stampEntry(DIGICERT_IMPRINT, DIGICERT_TOKEN))
+    const owner = new Chain(signWith(OWNER_KEY.privateKey))
+      .append(memberAdd(OWNER_ID, OWNER_KEY.publicKey, 'CO', 'owner'))
+      .append(memberAdd(LOCAL_ID, getPublicKeyPem(), 'LM', 'member'))
+      .append(memberAdd(PEER_ID, PEER_KEY.publicKey, 'RP', 'member'))
+      .append({ ...captureEntry(ownerHash), ...by(OWNER_ID) })
+      .append({ ...stampEntry(ownerHash, ownerToken), ...by(OWNER_ID) })
+    const local = new Chain(signEntryHash).append({
+      type: 'merge',
+      caseId,
+      heads: [OWNER_ID, PEER_ID].map((installationId) => {
+        const chain = installationId === OWNER_ID ? owner : peer
+        const index = chain.lines.length - 1
+        return {
+          installationId,
+          index,
+          entryHash: chain.hashes[index],
+          entriesReceived: chain.lines.length
+        }
+      }),
+      timestamp: TIME,
+      ...by(LOCAL_ID),
+      schemaVersion: 4
+    })
+    writeFileSync(join(caseDir, 'manifest.jsonl'), local.jsonl)
+    writeFileSync(join(caseDir, memberChainPath(OWNER_ID)), owner.jsonl)
+    writeFileSync(join(caseDir, memberChainPath(PEER_ID)), peer.jsonl)
+
+    expect(sharedVerification()?.localInstallationId).toBe(LOCAL_ID)
+    expect(localOnly(DIGICERT_IMPRINT).trustedTime).toBe('none')
+    expect(localOnly(ownerHash).trustedTime).toBe('none')
+    expect(resolveTrustedTime(caseDir, DIGICERT_IMPRINT).tsaName).toBe(
+      'DigiCert SHA256 RSA4096 Timestamp Responder 2025 1'
+    )
+    expect(resolveTrustedTime(caseDir, ownerHash).tsaName).toBe('owner.tsa')
+    const index = buildTrustedTimeIndex(caseDir)
+    expect(index.get(DIGICERT_IMPRINT)?.trustedTime).toBe('rfc3161')
+    expect(index.get(ownerHash)?.tsaName).toBe('owner.tsa')
+  })
+
   it("asks no TSA to stamp a Capture another member's chain already stamps", async () => {
     stampedPeerCase()
     const id = captureRow(DIGICERT_IMPRINT, 'pending')

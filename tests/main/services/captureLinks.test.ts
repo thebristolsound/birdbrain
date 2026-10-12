@@ -3,7 +3,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { Capture } from '@shared/types'
-import { CAPTURE_LINK_BUDGETS, linksFromMhtml, readCaptureLinks } from '@main/services/captureLinks'
+import { linksFromMhtml, readCaptureLinks } from '@main/services/captureLinks'
+import { CAPTURE_LINK_BUDGETS } from '@main/services/htmlParts'
 
 // Known answers for the Links tab's parser (#1708 D12, D13).
 

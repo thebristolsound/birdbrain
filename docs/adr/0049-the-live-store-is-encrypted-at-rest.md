@@ -16,9 +16,9 @@ on ships, every public page keeps saying Birdbrain does not encrypt Cases at res
 ## Context
 
 Birdbrain stores each Case in one SQLite database and a folder of files under the storage
-root, all in plaintext. The only secrets it wraps at rest are the signing key and the OpenRouter
-credential, through Electron `safeStorage`, and only when the operating system provides a
-credential store. Five public pages say Birdbrain does not encrypt Cases at rest.
+root, all in plaintext. The only secret it wraps at rest is the signing key, through Electron
+`safeStorage`, and only when the operating system provides a credential store. Five public pages
+say Birdbrain does not encrypt Cases at rest; the design names them.
 
 The round 1 map ruled live-store encryption out for three reasons: it fights independent
 verification, a lost key destroys evidence, and full-disk encryption covers the stolen laptop.
@@ -54,13 +54,16 @@ code and documented formats keep a lost credential store from being fatal.
   prompt.
 - **A recovery code is mandatory.** The app shows a 128-bit recovery code once, and the Operator
   types it back before encryption starts. scrypt and AES-256-GCM wrap a second copy of the Data
-  Key under it. The app never stores the code.
+  Key under it. The app never stores the code. Where copies of that wrapped key are kept so the
+  code still works after an operating system reinstall, and the key derivation parameters, are
+  proposed in the design and pending the maintainer.
 - **No plaintext fallback.** On Linux with no credential store, the app asks for a passphrase at
   every launch and wraps the Data Key under it with scrypt. The recovery code still applies.
 
 ### Rollout
 
-- **New installations start encrypted, with no off switch.**
+- **New installations start encrypted, with no off switch.** How the recovery code is confirmed
+  before the first database write is proposed in the design and pending the maintainer.
 - **Existing installations get a prompt at launch.** The Operator can defer it a fixed number of
   times, which the implementation plan sets. After the last deferral, encryption runs at that
   launch. The job is resumable. It checks every file against its Content Hash before replacing
@@ -155,9 +158,9 @@ independent verification does not change. Archive encryption stays with #418.
 - If the MHTML spike shows Chromium will not render MHTML from a custom scheme, viewing needs a
   decrypted temporary file per view. That changes the claim, and this record is amended before
   file encryption ships.
-- The encrypted read and write path for files lands before the Shared Case sync step that writes
-  received files (#1811).
-- The public pages that say Birdbrain does not encrypt, and the two lines that describe the live
-  store as readable with ordinary tools (`adoption-guide.mdx`, `threat-model.mdx`), change in the
-  PR that turns encryption on.
+- The encrypted read and write path for files lands before the Shared Case sync session that
+  writes received files (#1512).
+- The public pages that say Birdbrain does not encrypt, and the two passages that describe the
+  live store as readable with ordinary tools (`adoption-guide.mdx`, `threat-model.mdx`), change in
+  the PR that turns encryption on. The design lists each one.
 - The read-only MCP server is unavailable to Operators until a later decision restores it.

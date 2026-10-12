@@ -297,7 +297,7 @@ Ruling 70; ADR-0044 :66-70; Plan E22 (:1318-1332). The mark appears in four plac
   selected (`SearchBar.tsx:114-119`). In the retrieval slice a header result opens the Text tab with
   the span highlighted, and a link result opens the Links tab with the row highlighted (Retrieval
   plan :199-201, :225-226). ADR-0044 words this as the result opening "in the source inspector"
-  (:69-70).
+  (:69-70). The two sources disagree on where the result opens (question 13).
 
 A withheld result still opens, so the Operator can read it and clear their flag (constraint 12). In
 a Shared Case the mark names each member who holds a flag (Plan :1323-1324; Engine spec :161).
@@ -479,6 +479,12 @@ The designer's calls, not settled by the sources:
 12. _Once #600 lands:_ can the Operator change what a running Capture Session captures without a
     click, from the panel? The spec puts the choice in the start dialog (Spec :211-213) and also
     says the Operator chooses it during a running Capture Session (Spec :955-956).
+13. Where does a withheld result open? ADR-0044 says it opens in the source inspector (:69-70),
+    where the accepted investigation mock draws the **Withheld from analysis** checkbox (Mock
+    :305-306). The retrieval slice opens a header result on the Text tab and a link result on the
+    Links tab, with the span or row highlighted (Retrieval plan :199-201), and a Capture result
+    opens the Captures screen today (`SearchBar.tsx:114-119`). States 18 and 19 depend on the
+    answer.
 
 ## Not in scope
 

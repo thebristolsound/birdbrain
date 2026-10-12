@@ -3,6 +3,7 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { noInlinedFonts } from './scripts/no-inlined-fonts'
+import { reactCompilerBabel } from './scripts/react-compiler'
 
 // Removes script-src 'unsafe-inline' from the renderer CSP in production builds
 // only. Dev keeps it because @vitejs/plugin-react injects an inline refresh
@@ -78,6 +79,6 @@ export default defineConfig({
       // nothing measurable and the CSP stays as strict as it was.
       assetsInlineLimit: 0
     },
-    plugins: [react(), tailwindcss(), strictProdCsp, noInlinedFonts]
+    plugins: [react({ babel: reactCompilerBabel() }), tailwindcss(), strictProdCsp, noInlinedFonts]
   }
 })

@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitest/config'
 import { resolve } from 'path'
 import react from '@vitejs/plugin-react'
+import { reactCompilerBabel } from './scripts/react-compiler'
 
 // Vitest's defaults are 5 s per test and 10 s per hook. Under the full suite with coverage,
 // tests that take about 100 ms alone have crossed both (evidencePackage, export),
@@ -155,7 +156,7 @@ export default defineConfig({
       },
       {
         extends: false,
-        plugins: [react()],
+        plugins: [react({ babel: reactCompilerBabel(__dirname) })],
         resolve: {
           alias: {
             '@main': resolve(__dirname, 'src/main'),

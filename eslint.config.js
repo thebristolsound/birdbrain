@@ -1,6 +1,16 @@
 import js from '@eslint/js'
 import tseslint from 'typescript-eslint'
 import prettierConfig from 'eslint-config-prettier'
+import reactHooks from 'eslint-plugin-react-hooks'
+
+// The plugin's React Compiler diagnostics, without its two classic hooks rules: those would
+// fail the build across code nobody is changing. Warnings, because each marks a component the
+// compiler skips (it does not miscompile it), and lint fails only on errors.
+const reactCompilerRules = Object.fromEntries(
+  Object.keys(reactHooks.configs['recommended-latest'].rules)
+    .filter((name) => !['react-hooks/rules-of-hooks', 'react-hooks/exhaustive-deps'].includes(name))
+    .map((name) => [name, 'warn'])
+)
 
 export default tseslint.config(
   js.configs.recommended,
@@ -47,6 +57,11 @@ export default tseslint.config(
         fetch: 'readonly'
       }
     }
+  },
+  {
+    files: ['src/renderer/**/*.{ts,tsx}'],
+    plugins: { 'react-hooks': reactHooks },
+    rules: reactCompilerRules
   },
   {
     files: ['e2e/**/*.ts'],

@@ -1067,4 +1067,80 @@ export function runMigrations(db: Database.Database): void {
       db.pragma('user_version = 37')
     })()
   }
+
+  if (version < 38) {
+    db.transaction(() => {
+      // Case search fields (docs/plans/2026-10-09-case-retrieval-first-slice.md, D1
+      // and D2): link targets, image link alt text and mail headers, each with the
+      // span it came from. ADR-0044 makes these a rebuildable cache outside the
+      // Manifest, so no Case Archive carries them and nothing is backfilled here;
+      // an Exhibit with no build row has simply not been indexed yet.
+      //
+      // The build row holds the Content Hash and extractor version the fields were
+      // built from, so a field row inherits both through `exhibit_id`. Every built
+      // Exhibit gets one, fields or not, so "not built" and "built, found nothing"
+      // stay distinct. `exhibit_search_fields_fts` indexes `norm` with the trigram
+      // tokenizer: an identifier with punctuation matches as typed, inside a longer
+      // URL too, without the word splitting the Extracted Text index does. It is
+      // external-content and trigger-maintained, as `captures_fts` is (v25).
+      // Each statement is IF NOT EXISTS so the block can run again over its own
+      // tables, as a restored copy marked one version back does.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS exhibit_search_builds (
+          exhibit_id TEXT PRIMARY KEY REFERENCES exhibits(id) ON DELETE CASCADE,
+          case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+          content_hash TEXT NOT NULL,
+          text_hash TEXT,
+          extractor TEXT NOT NULL,
+          built_at TEXT NOT NULL,
+          outcome TEXT NOT NULL, -- 'built' | 'partial' | 'no-source' | 'failed'
+          skipped_json TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_exhibit_search_builds_case_id
+          ON exhibit_search_builds(case_id);
+
+        CREATE TABLE IF NOT EXISTS exhibit_search_fields (
+          id INTEGER PRIMARY KEY,
+          exhibit_id TEXT NOT NULL
+            REFERENCES exhibit_search_builds(exhibit_id) ON DELETE CASCADE,
+          case_id TEXT NOT NULL,
+          field TEXT NOT NULL, -- 'link.href' | 'link.alt' | 'header.from' | ...
+          value TEXT NOT NULL,
+          norm TEXT NOT NULL,
+          source TEXT NOT NULL, -- 'html-part' | 'text'
+          part INTEGER,
+          start_offset INTEGER NOT NULL,
+          end_offset INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_exhibit_search_fields_lookup
+          ON exhibit_search_fields(case_id, field, norm);
+        CREATE INDEX IF NOT EXISTS idx_exhibit_search_fields_exhibit_id
+          ON exhibit_search_fields(exhibit_id);
+
+        CREATE VIRTUAL TABLE IF NOT EXISTS exhibit_search_fields_fts USING fts5(
+          norm,
+          content=exhibit_search_fields,
+          content_rowid=id,
+          tokenize='trigram'
+        );
+
+        CREATE TRIGGER IF NOT EXISTS exhibit_search_fields_ai
+          AFTER INSERT ON exhibit_search_fields BEGIN
+          INSERT INTO exhibit_search_fields_fts(rowid, norm) VALUES (new.id, new.norm);
+        END;
+        CREATE TRIGGER IF NOT EXISTS exhibit_search_fields_ad
+          AFTER DELETE ON exhibit_search_fields BEGIN
+          INSERT INTO exhibit_search_fields_fts(exhibit_search_fields_fts, rowid, norm)
+          VALUES('delete', old.id, old.norm);
+        END;
+        CREATE TRIGGER IF NOT EXISTS exhibit_search_fields_au
+          AFTER UPDATE ON exhibit_search_fields BEGIN
+          INSERT INTO exhibit_search_fields_fts(exhibit_search_fields_fts, rowid, norm)
+          VALUES('delete', old.id, old.norm);
+          INSERT INTO exhibit_search_fields_fts(rowid, norm) VALUES (new.id, new.norm);
+        END;
+      `)
+      db.pragma('user_version = 38')
+    })()
+  }
 }

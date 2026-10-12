@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import Database from 'better-sqlite3'
-import { closeDatabase, getDb, initDatabase } from '@main/services/db/core'
+import { closeDatabase, getDb, initDatabase, LATEST_SCHEMA_VERSION } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
 import { insertCapture, setCaptureVerification } from '@main/services/db/captureRepo'
 
@@ -75,7 +75,7 @@ describe('migration v37 (imported capture paths)', () => {
 
     await initDatabase(dbPath)
 
-    expect(getDb().pragma('user_version', { simple: true })).toBe(37)
+    expect(getDb().pragma('user_version', { simple: true })).toBe(LATEST_SCHEMA_VERSION)
     expect(row('new-id')).toEqual({
       mhtml_path: `${imported}/new-id.mhtml`,
       screenshot_path: `${imported}/new-id.png`,

@@ -90,6 +90,27 @@ describe('toFtsMatchQuery', () => {
     expect(prepare('title:example.com*')).toBe('title:"example.com"*')
   })
 
+  // Quoting these would drop the `-` or `^`, or leave an empty phrase, turning
+  // an error into a search that matches the excluded word, ignores the anchor
+  // or, under AND, matches nothing.
+  it('leaves a punctuated exclusion, anchor or bare punctuation for FTS5 to refuse', () => {
+    for (const query of [
+      'acme -example.com',
+      '-alice@example.org',
+      '-well-known',
+      'acme -https://example.com/path',
+      'fraud OR -example.com',
+      '-example.com*',
+      'title:-example.com',
+      '^example.com',
+      'acme AND &',
+      'fraud AND .',
+      'acme /'
+    ]) {
+      expect(prepare(query)).toBe(query)
+    }
+  })
+
   it('does not read a word that only looks like a column filter as one', () => {
     expect(prepare('body:example.com')).toBe('"body:example.com"')
     expect(toFtsMatchQuery('body:example.com', ['title', 'body'])).toBe('body:"example.com"')
@@ -213,12 +234,38 @@ describe('searches through toFtsMatchQuery', () => {
     expect(() => searchCaptures('foo AND', caseId)).toThrow()
   })
 
-  // A leading minus is not an exclusion in FTS5. Quoting it would quietly
-  // return the Captures the operator meant to leave out, so it still fails.
+  // A leading minus is not an exclusion in FTS5, so a plain-word exclusion
+  // already fails as written.
   it('still throws on a web-style exclusion rather than matching the excluded word', () => {
     capture('acme fraud')
     expect(() => searchCaptures('acme -fraud', caseId)).toThrow()
     expect(() => searchCaptures('acme - fraud', caseId)).toThrow()
+  })
+
+  it('still throws on a punctuated exclusion, anchor or bare punctuation', () => {
+    capture('acme report on example.com fraud')
+    capture('acme well-known registrant')
+    capture('acme report, clean')
+    for (const query of [
+      'acme -example.com',
+      '-alice@example.org',
+      'acme -well-known',
+      'acme -https://example.com/path',
+      'fraud OR -example.com',
+      '-example.com*',
+      'title:-example.com',
+      '^example.com',
+      'acme AND &',
+      'fraud AND .',
+      'acme /'
+    ]) {
+      expect(() => searchCaptures(query, caseId)).toThrow()
+    }
+  })
+
+  it('still throws on a punctuated exclusion in the notes search', () => {
+    createNote({ caseId, title: 'Lead', body: 'Registrant domain is example.com' })
+    expect(() => searchNotes(caseId, 'registrant -example.com')).toThrow()
   })
 
   it('finds a Capture by a hyphenated word', () => {

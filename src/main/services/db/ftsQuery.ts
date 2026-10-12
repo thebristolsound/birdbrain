@@ -21,6 +21,11 @@ const BW = '[A-Za-z0-9_\\x1A\\u0080-\\uFFFF]'
 // accepts inside a word run. Anything else in a word is an FTS5 syntax error.
 const READABLE_WORD = new RegExp(`^(?:${BW}|[:*^+-])*$`)
 
+// ASCII letters and digits and any non-ASCII character. The default tokenizer
+// splits on every other ASCII character, so a phrase with none of these is
+// empty.
+const SEARCHABLE = /[A-Za-z0-9\u0080-\uFFFF]/
+
 function isBoundary(ch: string): boolean {
   return WHITESPACE.has(ch) || DELIMITERS.has(ch) || ch === '"'
 }
@@ -43,8 +48,7 @@ function phrase(text: string): string {
 // FTS5 reads `-` only as the start of a column exclusion such as
 // `-title:acme`. Between two bareword characters and not followed by a column
 // name and `:`, it is a hyphenated word (`well-known`, `2026-10-11`), which
-// FTS5 rejects. A leading `-` is left alone, so `acme -fraud` still fails
-// rather than quietly matching the excluded word.
+// FTS5 rejects.
 function prepareWord(word: string, columns: string): string {
   const hyphenated = new RegExp(`${BW}-(?!(?:${columns}):)${BW}`, 'i')
   if (READABLE_WORD.test(word) && !hyphenated.test(word)) return word
@@ -52,7 +56,13 @@ function prepareWord(word: string, columns: string): string {
   // search the rest as a phrase: `title:example.com*` -> `title:"example.com"*`.
   const filter = new RegExp(`^(?:-?(?:${columns}))?:`, 'i').exec(word)?.[0] ?? ''
   const star = word.endsWith('*') ? '*' : ''
-  return `${filter}${phrase(word.slice(filter.length, word.length - star.length))}${star}`
+  const body = word.slice(filter.length, word.length - star.length)
+  // Left as written, so FTS5 still refuses them: a body starting with `-` or
+  // `^`, where a phrase would drop the operator and match the excluded or
+  // unanchored word (`acme -example.com`), and a body with nothing to search
+  // for, which would be an empty phrase that `acme AND &` matches nowhere.
+  if (/^[-^]/.test(body) || !SEARCHABLE.test(body)) return word
+  return `${filter}${phrase(body)}${star}`
 }
 
 // `columns` names the FTS table's columns, so that a column filter in front of

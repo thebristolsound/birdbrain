@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, rmSync, appendFileSync, readFileSync, writeFileSync } from 'fs'
+import { mkdtempSync, mkdirSync, rmSync, appendFileSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { createHash, createSign, generateKeyPairSync } from 'crypto'
@@ -539,6 +539,84 @@ describe('trusted time in a Shared Case', () => {
 
     expect(resolveTrustedTime(caseDir, hash).tsaName).toBe('local.tsa')
     expect(buildTrustedTimeIndex(caseDir).get(hash)?.tsaName).toBe('local.tsa')
+  })
+
+  // A structurally valid token with no TSA signature, back-dated. In-app
+  // resolution checks a token's structure only, so a member's chain can carry
+  // one over any hash.
+  const forgedStamp = (hash: string) =>
+    stampEntry(
+      hash,
+      buildSyntheticToken({
+        contentHash: hash,
+        genTime: new Date('2020-01-01T00:00:00.000Z'),
+        tsaDnsName: 'not-a-tsa'
+      })
+    )
+
+  it("takes no stamp from another member's chain over this installation's own Capture", async () => {
+    const hash = hashOf('own-capture')
+    sharedCase([forgedStamp(hash)])
+    appendManifestEntry(caseDir, {
+      type: 'capture',
+      captureId: 'cap-own',
+      caseId,
+      url: 'https://example.com/own',
+      timestamp: TIME,
+      contentHash: hash,
+      sizeBytes: 1,
+      ...by(OWNER_ID)
+    })
+    expect(sharedVerification()?.entries.get(PEER_ID)).toHaveLength(1)
+
+    expect(resolveTrustedTime(caseDir, hash)).toEqual({ trustedTime: 'pending' })
+    expect(buildTrustedTimeIndex(caseDir).get(hash)).toEqual({ trustedTime: 'pending' })
+
+    const id = captureRow(hash, 'pending')
+    const ownToken = buildSyntheticToken({
+      contentHash: hash,
+      genTime: new Date(TIME),
+      tsaDnsName: 'local.tsa'
+    })
+    const requestToken = vi.fn(async () => ownToken)
+    expect(await createTimestampWorker({ requestToken }).stampCapture(id)).toBe(true)
+
+    expect(requestToken).toHaveBeenCalledOnce()
+    expect(resolveTrustedTime(caseDir, hash).tsaName).toBe('local.tsa')
+    expect(getCapture(id)?.trustedTimeStatus).toBe('rfc3161')
+  })
+
+  it("takes no stamp from another member's chain over this installation's own Exhibit", () => {
+    const hash = hashOf('own-exhibit')
+    sharedCase([forgedStamp(hash)])
+    appendManifestEntry(caseDir, {
+      type: 'exhibit',
+      exhibitId: 'exh-own',
+      caseId,
+      kind: 'document',
+      origin: 'manual-upload',
+      name: 'own.pdf',
+      exhibitNumber: 1,
+      path: `${caseId}/documents/exh-own.pdf`,
+      contentHash: hash,
+      sizeBytes: 1,
+      timestamp: TIME,
+      ...by(OWNER_ID)
+    })
+
+    expect(resolveTrustedTime(caseDir, hash)).toEqual({ trustedTime: 'none' })
+    expect(buildTrustedTimeIndex(caseDir).get(hash)).toBeUndefined()
+  })
+
+  it('reads no other chain to resolve a hash the local chain records as its own', () => {
+    initManifest(caseDir)
+    const own = hashOf('own-no-walk')
+    appendCapture(caseDir, own)
+    // A directory where a member's chain file belongs: reading the chains throws.
+    mkdirSync(join(caseDir, memberChainPath(PEER_ID)))
+
+    expect(resolveTrustedTime(caseDir, own)).toEqual({ trustedTime: 'pending' })
+    expect(() => resolveTrustedTime(caseDir, hashOf('not-own'))).toThrow()
   })
 
   it("asks no TSA to stamp a Capture another member's chain already stamps", async () => {

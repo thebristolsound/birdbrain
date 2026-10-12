@@ -15,20 +15,37 @@ export type { TrustedTimeResult }
 // lenient dialect); the resolution rule itself lives in verify-core
 // (`@shared/verify/trustedTime`).
 
+// The Content Hashes the local chain records as its own Capture or Exhibit.
+function ownContentHashes(entries: Record<string, unknown>[]): Set<string> {
+  const own = new Set<string>()
+  for (const { type, contentHash } of entries) {
+    if ((type === 'capture' || type === 'exhibit') && typeof contentHash === 'string') {
+      own.add(contentHash)
+    }
+  }
+  return own
+}
+
 // The entries trusted time is resolved over (#1713): the local chain's, and in a
 // Shared Case the `timestamp` entries of every other member and lineage chain
 // the walk accepted. A member writes a stamp to its own chain, so another
 // member's stamp is only in theirs; a chain the walk did not accept adds
 // nothing. Only stamps are taken, so whether a hash is 'pending' or 'none'
-// stays the local chain's answer.
-function trustedTimeEntries(caseDir: string): Record<string, unknown>[] {
+// stays the local chain's answer. A hash the local chain records as its own
+// Content takes no stamp from another chain: in-app resolution checks a
+// token's structure, not its TSA signature, so another member's chain must not
+// stand in for this installation's own stamp or stop the worker requesting it.
+// `contentHash` narrows the read to one hash, skipping the walk for own Content.
+function trustedTimeEntries(caseDir: string, contentHash?: string): Record<string, unknown>[] {
   const manifest = readManifestSnapshot(caseDir)
+  const own = ownContentHashes(manifest.entries)
+  if (contentHash !== undefined && own.has(contentHash)) return manifest.entries
   const { verification } = readSharedCaseSnapshot(caseDir, manifest)
   if (!verification) return manifest.entries
   const stamps = [...verification.entries]
     .filter(([key]) => key !== verification.localInstallationId)
     .flatMap(([, accepted]) => accepted)
-    .filter((entry) => entry.type === 'timestamp')
+    .filter((entry) => entry.type === 'timestamp' && !own.has(entry.captureContentHash))
   return [...manifest.entries, ...stamps]
 }
 
@@ -41,7 +58,7 @@ function trustedTimeEntries(caseDir: string): Record<string, unknown>[] {
  * @returns The trusted time result indicating the timestamp status
  */
 export function resolveTrustedTime(caseDir: string, contentHash: string): TrustedTimeResult {
-  return resolveTrustedTimeFromEntries(trustedTimeEntries(caseDir), contentHash)
+  return resolveTrustedTimeFromEntries(trustedTimeEntries(caseDir, contentHash), contentHash)
 }
 
 // Resolves the trusted-time axis for EVERY capture in a case in a single manifest

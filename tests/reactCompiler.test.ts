@@ -22,6 +22,10 @@ describe('compilesWithReactCompiler', () => {
     expect(compiles('src/renderer/components/data/DataTree.tsx')).toBe(false)
   })
 
+  it('leaves the data-layer hooks uncompiled', () => {
+    expect(compiles('src/renderer/lib/api/notes.ts')).toBe(false)
+  })
+
   it('compiles nothing outside the renderer', () => {
     expect(compiles('src/shared/noteDoc.ts')).toBe(false)
     expect(compiles('tests/components/NoteToolbar.test.tsx')).toBe(false)

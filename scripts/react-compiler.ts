@@ -12,9 +12,15 @@ import { loadIncludeList, matchEntry } from './jev-lens/backstop.mjs'
 
 type Entry = { path: string; tier: 'blocking' | 'advisory'; why: string }
 
+// The data-layer hooks stay uncompiled: the compiler's cache checks count as uncovered
+// branches, and that folder's 90% branch gate in vitest.config.ts is there to measure query
+// keys and invalidation, not memoization.
+const UNCOMPILED = ['src/renderer/lib/api/']
+
 export function compilesWithReactCompiler(file: string, entries: Entry[], root: string): boolean {
   const path = relative(root, file).split(sep).join('/')
   if (!path.startsWith('src/renderer/')) return false
+  if (UNCOMPILED.some((prefix) => path.startsWith(prefix))) return false
   return (matchEntry(entries, path) as Entry | null)?.tier !== 'blocking'
 }
 

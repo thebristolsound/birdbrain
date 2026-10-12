@@ -178,7 +178,7 @@ const caseSteps = (demoCase: boolean): TourStep[] => [
   {
     target: 'export',
     route: 'overview',
-    title: 'Court-ready exports',
+    title: 'Export the case',
     body: demoCase
       ? 'Every artifact is hashed on capture and sealed in a signed manifest — and a package ' +
         'built from this demo case says so on its cover sheet. Delete it when you are done, or ' +

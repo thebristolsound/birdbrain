@@ -40,8 +40,10 @@ import { fillerPage } from './filler'
 import { QUERIES } from './queries'
 import {
   percentile,
+  rankedKeys,
   renderReport,
   scoreQuery,
+  spread,
   type EvalReport,
   type IndexSize,
   type PathAnswer,
@@ -146,6 +148,8 @@ async function build(size: number): Promise<CaseRecord> {
   if (size < TARGET_PAGES.length) {
     throw new Error(`--eval-captures must be at least ${TARGET_PAGES.length}, the target pages`)
   }
+  // A build that fails must not leave the last Case's ids beside the new profile for a measure run.
+  rmSync(CASE_FILE, { force: true })
   await openProfile(true)
   const scratch = join(OUT_DIR, 'scratch')
   rmSync(scratch, { recursive: true, force: true })
@@ -272,10 +276,6 @@ interface SearchPath {
   answer: (query: string) => PathAnswer
 }
 
-function uniqueKeys(keys: Array<TargetKey | undefined>): TargetKey[] {
-  return [...new Set(keys.filter((key): key is TargetKey => key !== undefined))]
-}
-
 function searchPaths(record: CaseRecord): SearchPath[] {
   return [
     {
@@ -284,7 +284,10 @@ function searchPaths(record: CaseRecord): SearchPath[] {
       answer: (query) => {
         const captures = captureRepo.searchCaptures(query, record.caseId)
         return {
-          ranked: uniqueKeys(captures.map((capture) => record.targets[capture.id])),
+          ranked: rankedKeys(
+            captures.map((capture) => capture.id),
+            record.targets
+          ),
           returned: captures.length
         }
       }
@@ -296,8 +299,9 @@ function searchPaths(record: CaseRecord): SearchPath[] {
       answer: (query) => {
         const rows = extractedDataRepo.searchExtractedData(record.caseId, query)
         return {
-          ranked: uniqueKeys(
-            rows.flatMap((row) => row.sourceUrls.map((u) => record.targetUrls[u]))
+          ranked: rankedKeys(
+            rows.flatMap((row) => row.sourceUrls),
+            record.targetUrls
           ),
           returned: rows.length
         }
@@ -354,36 +358,43 @@ function measure(record: CaseRecord): EvalReport {
   const scored: ScoredQuery[] = []
   const latency: PathLatency[] = []
   for (const path of paths) {
-    const samples: number[] = []
     for (const query of QUERIES) {
       const answer = attempt(path, query.text)
       scored.push(scoreQuery(query, path.name, answer))
-      if (answer.error) continue
-      for (let run = 0; run < TIMED_RUNS; run += 1) {
-        samples.push(timeMs(() => path.answer(query.text)))
+      const samples: number[] = []
+      if (!answer.error) {
+        for (let run = 0; run < TIMED_RUNS; run += 1) {
+          samples.push(timeMs(() => path.answer(query.text)))
+        }
       }
+      latency.push({
+        path: path.name,
+        queryId: query.id,
+        medianMs: percentile(samples, 50),
+        p95Ms: percentile(samples, 95),
+        samples: samples.length
+      })
     }
-    latency.push({
-      path: path.name,
-      medianMs: percentile(samples, 50),
-      p95Ms: percentile(samples, 95),
-      samples: samples.length
-    })
   }
 
   const db = getDb()
   const fullRebuildMs = timeMs(() =>
     db.exec("INSERT INTO captures_fts(captures_fts) VALUES ('rebuild')")
   )
+  // Before the re-index samples below, which add index segments.
+  const sizes = indexSizes()
   // An UPDATE fires capture_texts_au, which deletes and re-inserts the row's
-  // index entries: the incremental cost of one Capture's text.
+  // index entries: the incremental cost of one Capture's text. The target pages
+  // are ingested first, so the sample is spread across the Case.
   const reindex = db.prepare('UPDATE capture_texts SET content = content WHERE capture_id = ?')
-  const sampleIds = (
-    db
-      .prepare('SELECT capture_id FROM capture_texts ORDER BY id LIMIT ?')
-      .all(INCREMENTAL_SAMPLES) as Array<{ capture_id: string }>
+  const captureIds = (
+    db.prepare('SELECT capture_id FROM capture_texts ORDER BY id').all() as Array<{
+      capture_id: string
+    }>
   ).map((row) => row.capture_id)
-  const incremental = sampleIds.map((id) => timeMs(() => reindex.run(id)))
+  const incremental = spread(captureIds, INCREMENTAL_SAMPLES).map((id) =>
+    timeMs(() => reindex.run(id))
+  )
 
   const unreviewed = unreviewedCaptureIds(record.caseId)
   return {
@@ -395,7 +406,7 @@ function measure(record: CaseRecord): EvalReport {
     queries: QUERIES,
     scored,
     latency,
-    indexSizes: indexSizes(),
+    indexSizes: sizes,
     fullRebuildMs,
     incrementalMedianMs: percentile(incremental, 50),
     unreviewedCaptures: unreviewed.length,

@@ -9,10 +9,11 @@ import { logger } from '@main/services/logger'
 
 // One persistent Electron partition per Persona (ADR-0030, mechanism). The
 // partition is the only place a cookie value lives after import: Chromium
-// keeps it in its own store for the partition, protected by the OS key
-// `safeStorage` reports on, and nothing here copies the file's bytes under
-// the install. Phase 3 renders through the partition; this phase only seeds
-// and clears it.
+// keeps it unencrypted in the partition's `Cookies` database under the
+// user-data folder, because Electron's `EnableCookieEncryption` fuse is off
+// in the build Birdbrain ships (turning it on is #88), and nothing here
+// copies the file's bytes under the install. Phase 3 renders through the
+// partition; this phase only seeds and clears it.
 export function partitionForPersona(personaId: string): string {
   return `persist:persona-${personaId}`
 }

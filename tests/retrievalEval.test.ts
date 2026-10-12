@@ -6,8 +6,10 @@ import { QUERIES } from '../scripts/retrieval-eval/queries'
 import {
   firstRank,
   percentile,
+  rankedKeys,
   renderReport,
   scoreQuery,
+  spread,
   type EvalReport
 } from '../scripts/retrieval-eval/score'
 import { POOLED_FILE, TARGET_ONLY_STRINGS, TARGET_PAGES } from '../scripts/retrieval-eval/targets'
@@ -34,6 +36,14 @@ describe('firstRank', () => {
   })
 })
 
+describe('rankedKeys', () => {
+  it('keeps non-target results in place, so they count toward a target rank', () => {
+    const ranked = rankedKeys(['f1', 't1', 'f2', 't1'], { t1: 'mail-header' })
+    expect(ranked).toEqual(['other:f1', 'mail-header', 'other:f2'])
+    expect(firstRank(ranked, ['mail-header'])).toBe(2)
+  })
+})
+
 describe('scoreQuery', () => {
   const query = { id: 'q', text: 'x', expected: ['mail-header' as const], tests: 't' }
 
@@ -48,6 +58,15 @@ describe('scoreQuery', () => {
       returned: 9
     })
     expect(six).toMatchObject({ firstRank: 6, top5: false, top20: true })
+  })
+
+  it('passes a query with several expected targets only when every one came back', () => {
+    const both = { ...query, expected: ['mail-header' as const, 'address-variant' as const] }
+    expect(scoreQuery(both, 'p', { ranked: ['mail-header'], returned: 1 }).passed).toBe(false)
+    expect(
+      scoreQuery(both, 'p', { ranked: ['address-variant', 'other:x', 'mail-header'], returned: 3 })
+        .passed
+    ).toBe(true)
   })
 
   it('fails a query whose path threw, and keeps the error', () => {
@@ -80,6 +99,17 @@ describe('percentile', () => {
 
   it('returns null for no samples', () => {
     expect(percentile([], 50)).toBeNull()
+  })
+})
+
+describe('spread', () => {
+  it('picks evenly spaced values from the whole list, first included', () => {
+    const values = Array.from({ length: 100 }, (_, i) => i)
+    expect(spread(values, 4)).toEqual([0, 25, 50, 75])
+  })
+
+  it('returns every value when there are no more than asked for', () => {
+    expect(spread([1, 2, 3], 5)).toEqual([1, 2, 3])
   })
 })
 
@@ -125,6 +155,17 @@ describe('target pages', () => {
     ].join('\n')
     for (const marker of TARGET_ONLY_STRINGS) expect(corpus).toContain(marker)
   })
+
+  it("leave the mail header's Reply-To address and host out of every query", () => {
+    const html = readFileSync(join(PAGES_DIR, 'mail-header.html'), 'utf-8')
+    const address = /^Reply-To: &lt;(.+)&gt;$/m.exec(html)?.[1] ?? ''
+    expect(address).toContain('@')
+    const [localPart, host] = address.toLowerCase().split('@')
+    for (const query of QUERIES) {
+      const text = query.text.toLowerCase()
+      for (const part of [localPart, host]) expect(text).not.toContain(part)
+    }
+  })
 })
 
 describe('renderReport', () => {
@@ -140,7 +181,9 @@ describe('renderReport', () => {
         scoreQuery(QUERIES[0], 'Case search', { ranked: [], returned: 0, error: 'boom' }),
         scoreQuery(QUERIES[0], 'Data search', { ranked: ['image-link'], returned: 1 })
       ],
-      latency: [{ path: 'Case search', medianMs: 0.1, p95Ms: 0.2, samples: 3 }],
+      latency: [
+        { path: 'Case search', queryId: 'image-link-host', medianMs: 0.1, p95Ms: 0.2, samples: 3 }
+      ],
       indexSizes: [{ name: 'captures_fts_data', bytes: 4096 }],
       fullRebuildMs: 1,
       incrementalMedianMs: null,
@@ -150,6 +193,7 @@ describe('renderReport', () => {
     const markdown = renderReport(report)
     expect(markdown).toContain('| image-link-host | Case search | - | no | no | 0 | no | boom |')
     expect(markdown).toContain('| image-link-host | Data search | 1 | yes | yes | 1 | yes |  |')
+    expect(markdown).toContain('| Case search | image-link-host | 0.10 | 0.20 | 3 |')
     expect(markdown).toContain('| captures_fts_data | 4096 | 410 |')
     expect(markdown).toContain('Targets among them: mail-header.')
   })

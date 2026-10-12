@@ -228,6 +228,18 @@ describe('PersonasSection unprotected cookie store (#414)', () => {
     await waitFor(() => expect(importCookies).toHaveBeenCalledWith('p-1'))
   })
 
+  // The build leaves cookie encryption off, so the store is unencrypted
+  // whatever the credential store reports (persona cookies at-rest
+  // assessment, 2026-10-11); the text must not tie protection to it.
+  it('says imported cookies are unencrypted without crediting the credential store', async () => {
+    renderSection()
+    const warning = (await screen.findByTestId('persona-unprotected-warning')).textContent
+    expect(warning).toMatch(/^Imported cookies sit on disk unencrypted, readable by anything/)
+    expect(warning).toMatch(/can read this user’s files\. This build of Birdbrain does not/)
+    expect(warning).toMatch(/does not encrypt its cookie store\./)
+    expect(warning).not.toMatch(/credential store|protected|operating system/i)
+  })
+
   it('blocks import with no warning while the storage state is unknown', async () => {
     storageState.mockImplementation(() => new Promise(() => undefined))
     renderSection()

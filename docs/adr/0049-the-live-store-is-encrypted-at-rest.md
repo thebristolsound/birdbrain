@@ -67,7 +67,9 @@ code and documented formats keep a lost credential store from being fatal.
 - **Existing installations get a prompt at launch.** The Operator can defer it a fixed number of
   times, which the implementation plan sets. After the last deferral, encryption runs at that
   launch. The job is resumable. It checks every file against its Content Hash before replacing
-  it, and it replaces the plaintext pre-migration snapshots with encrypted ones.
+  it, and it replaces the plaintext pre-migration snapshots with encrypted ones. Whether the job
+  finishes before the app opens or runs beside it is proposed in the design and pending the
+  maintainer.
 
 ### The read-only MCP server
 
@@ -116,6 +118,9 @@ independent verification does not change. Archive encryption stays with #418.
    which stay plaintext, so it does not change. Verification inside the app reads through the
    decrypting API. A wrong key fails when the database opens, before any read. A sealed file
    that fails authentication or is truncated is an integrity failure, never silently skipped.
+   The one exception is the conversion of an existing installation: on a resume it reads a file
+   that fails the sealed check as plaintext. How that check reports a damaged sealed file is
+   proposed in the design and pending the maintainer.
    Losing both the credential store and the recovery code loses the live store; exports remain
    the backup Birdbrain recommends, and the setup screen says so.
 5. **Safety effects.** A seized or synced data folder no longer exposes Case content without the

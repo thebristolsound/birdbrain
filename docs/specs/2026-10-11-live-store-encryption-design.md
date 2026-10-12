@@ -126,9 +126,10 @@ Draft, to be sharpened in the ADR. ADR-0004 requires both halves.
   envelope reveals nothing without the code. The Operator must type the code back before
   encryption starts. The code is never stored.
 - **scrypt parameters.** *Proposed, pending the maintainer:* N = 2^17, r = 8, p = 1, recorded
-  in each envelope so a later version can raise them. They need 128 MiB of memory, above Node's
-  32 MiB default, so the call passes `maxmem`; Node 20 rejects the call without it. One
-  derivation took 284 ms on Node 20.20.2.
+  in each envelope so a later version can raise them. They need slightly more than 128 MiB of
+  memory, above Node's 32 MiB default, so the call passes `maxmem`; Node 20 rejects the call
+  without it. On Node 20.20.2, `maxmem` of exactly 128 MiB is rejected and 128 MiB plus 16 KiB
+  is accepted. One derivation took 284 ms on Node 20.20.2.
 - **Where the envelope is kept.** *Proposed, pending the maintainer:* an operating system
   reinstall removes `<userData>`, and the code cannot recover anything without an envelope. The
   app writes the same envelope to three places: `<userData>/data-key.recovery`, the storage root
@@ -137,9 +138,10 @@ Draft, to be sharpened in the ADR. ADR-0004 requires both halves.
   it gains that second write. The storage root copy helps only when the root is outside
   `<userData>`, which is not the default. The code and any one copy recover the Data Key.
 - **Lost credential store.** On an operating system reinstall, a moved data folder, or an
-  unreadable keyring, the app asks for the recovery code. It uses the envelope in `<userData>` or
-  at the storage root when one is there, and otherwise asks the Operator to pick the envelope
-  file. It unwraps the Data Key and wraps it again with the new credential store.
+  unreadable keyring, the app asks for the recovery code, unwraps the Data Key from an envelope,
+  and wraps it again with the new credential store. *Proposed, pending the maintainer:* it uses
+  the envelope in `<userData>` or at the storage root when one is there, and otherwise asks the
+  Operator to pick the envelope file.
 
 All primitives are in Node's `crypto` module. The key hierarchy adds no dependency.
 
@@ -160,9 +162,9 @@ All primitives are in Node's `crypto` module. The key hierarchy adds no dependen
 - **WAL.** SQLite3 Multiple Ciphers encrypts WAL frames, so WAL mode stays.
 - **Snapshots, restore, and the operator's backup.** Snapshots are written with `db.backup()`
   into a keyed destination, so they are ciphertext too. The operator's backup copies the
-  encrypted file, writes the recovery envelope beside it, and can be restored only with the Data
-  Key or the recovery code. The restore
-  dialog must accept both a legacy plaintext file and an encrypted one.
+  encrypted file and can be restored only with the Data Key or the recovery code. *Proposed,
+  pending the maintainer:* the backup also writes the recovery envelope beside the copy. The
+  restore dialog must accept both a legacy plaintext file and an encrypted one.
 - **Tests.** In-memory databases stay without a key. One test opens a keyed temporary file and asserts
   that a known marker string never appears in the raw bytes of the database or its WAL.
 
@@ -248,10 +250,18 @@ database instead:
   for the same reason.
 - **New installations** have no database when the setup window runs, so the first database write
   is already ciphertext. They need no migration and leave no plaintext in free disk space.
+- **Settings and the storage root come first.** The setup window writes an envelope at the
+  storage root, and today `initSettings` and the storage root resolution run after
+  `initDatabase`. Neither reads the database: `initSettings` reads `settings.json`, and
+  `initStorage` only records the folder and creates it. Both move ahead of the setup window,
+  with the existing fallback to `<userData>/captures` when the configured folder cannot be
+  used. When that fallback fires, the setup window writes the storage root envelope to the
+  default folder and tells the Operator that this copy sits inside `<userData>` and does not
+  survive a reinstall.
 - **Existing installations** get the prompt in the same window, also before `initDatabase`.
-  Deferring continues startup unencrypted. Accepting runs steps 1 and 2 below while no
-  connection is open, then startup continues. Steps 3 to 5 touch only files and run after startup
-  as a resumable, idempotent job, like `exhibitBackfill.ts`.
+  Deferring continues startup unencrypted. Accepting runs all five steps below in the setup
+  window, with progress shown, before `initDatabase` and before anything else in the app reads
+  or writes the store. See "The conversion runs before startup" below for why.
 
 1. Generate the Data Key and wrap it with the credential store. Show the recovery code and wait
    until the Operator confirms it. The prompt recommends exporting each Case first; an Operator
@@ -273,9 +283,33 @@ database instead:
    rename. Step 3 leaves these files alone so that this step reads plaintext lines.
 5. Re-take the pre-migration snapshots as encrypted copies and delete the plaintext ones.
 
-Until the job records completion in the database, readers treat a file that fails the sealed
-check as plaintext. After that, and on a new installation, a file that fails authentication is
-an integrity failure.
+**The conversion runs before startup.** *Proposed, pending the maintainer.* Nothing in the app
+holds a Case's writes while another task rewrites its files. `manifest.ts` has no lock.
+`withManifestEntry` appends a line, awaits its caller's work, and on a failure truncates the
+file at the byte offset it read before the append. Appends come from at least six modules
+(`captureLifecycle.ts`, `caseArchive.ts`, `exhibitBackfill.ts`, `export.ts`, `staging.ts`, and
+`timestampWorker.ts`). If step 4 renamed a sealed Manifest into place during that await, the
+rollback would cut the sealed file at a plaintext offset, and an append between step 4's read
+and its rename would drop out of the chain. Step 3 races the app's own file moves in a similar
+way: deleting a Capture renames its files into `.pending-delete/` (`captureStore.ts`), and a
+later step 3 rename would put a sealed copy back at the old path. Running every step before
+`initDatabase` removes the race: no append path, worker, or window exists yet. It follows the
+precedent of `runExhibitBackfill`, which startup awaits before any window opens "so no read
+path sees a half-numbered Case" (`src/main/index.ts`). The consequences:
+
+- The app never appends to a chain file that step 4 has not reached. When startup continues,
+  every chain file is sealed, and every append writes a sealed line.
+- The cost is time. The app does not open until the conversion finishes, and the wait grows
+  with the size of the store. The throughput spike under "Suggested order" gives the figure the
+  prompt uses for its estimate. If the Operator quits during the conversion, the next launch
+  resumes it in the setup window, and the app still does not open on a partly converted store.
+- Only the conversion reads a file that fails the sealed check as plaintext, in its resume
+  check. In that check, a file whose header parses but whose first segment fails to
+  authenticate is reported to the Operator and left as it is, never sealed a second time. Every
+  read the app makes comes after the conversion finishes, so a sealed file that fails
+  authentication is always an integrity failure there, as the ADR states.
+
+The alternatives are listed under "Proposed choices pending the maintainer", item 6.
 
 ### Linux with no credential store
 
@@ -459,4 +493,15 @@ and marked there. None is decided.
    the ciphertext.
 5. **The first-launch flow** (First launch and turning encryption on). Proposed: a setup window
    before the database opens, used for new installations, the prompt on existing ones, and the
-   Linux passphrase.
+   Linux passphrase. Settings and the storage root are resolved before it opens, so the storage
+   root envelope has a folder to go to.
+6. **When an existing installation's files convert** (The conversion runs before startup).
+   Proposed and recommended: every step, chain files included, runs in the setup window before
+   the database opens, so no append, rollback, or file move can run at the same time. Of the
+   three options it is the only one that leaves no race and adds no lock. Its cost is a longer
+   first launch after the Operator accepts. The alternatives:
+   - Convert after startup, holding each Case's writes while its files convert. `manifest.ts`
+     has no lock today, so every module that appends, the rollback, and the delete path would
+     have to take a new one, and a missed caller brings the race back.
+   - Convert the chain files before startup and the other files after it. This closes the chain
+     race but leaves step 3's rename racing the delete path's moves into `.pending-delete/`.

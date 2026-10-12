@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { StickyNote, Pencil, Trash2, ExternalLink, X, Check } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { captureThumbnailQueryOptions, useNotesMutations } from '@renderer/lib/queries'
@@ -45,20 +45,23 @@ interface NoteCardEditorProps {
  */
 function NoteCardEditor({ note, caseId, isPending, onSave, onCancel }: NoteCardEditorProps) {
   const [title, setTitle] = useState(note.title)
-  const [bodyDoc, setBodyDoc] = useState<string | null>(note.bodyDoc ?? null)
+  const readBody = useRef<(() => string) | null>(null)
   const editor = useNoteEditor({
     caseId,
     noteId: note.id,
     bodyDoc: note.bodyDoc,
     plainText: note.body,
-    onChange: setBodyDoc,
+    onChange: (read) => {
+      readBody.current = read
+    },
     testId: 'note-body-input'
   })
 
   function handleSubmit() {
-    // A legacy note the user opened but did not retype still has no bodyDoc in
-    // state; serialize what the editor lifted its plain text into.
-    const doc = bodyDoc ?? (editor ? JSON.stringify(editor.getJSON()) : null)
+    // A legacy note the user opened but did not retype has no bodyDoc;
+    // serialize what the editor lifted its plain text into.
+    const doc =
+      readBody.current?.() ?? note.bodyDoc ?? (editor ? JSON.stringify(editor.getJSON()) : null)
     if (doc === null) return
     onSave({ title, bodyDoc: doc })
   }

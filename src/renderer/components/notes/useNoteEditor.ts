@@ -19,7 +19,11 @@ export interface UseNoteEditorArgs {
   /** Plain text of a legacy note, wrapped into paragraphs when bodyDoc is absent. */
   plainText?: string
   editable?: boolean
-  onChange?: (bodyDoc: string) => void
+  /**
+   * Called on every edit with a reader for the serialized document, so a host
+   * that needs the document only when it saves does not serialize per keystroke.
+   */
+  onChange?: (readBodyDoc: () => string) => void
   /**
    * Lands on the contenteditable element itself, not a wrapper — Playwright's
    * fill() needs the element that actually accepts text.
@@ -114,11 +118,10 @@ export function useNoteEditor({
       // React 19 StrictMode double-invokes effects; deferring the first render
       // keeps the editor from mounting twice into the same element.
       immediatelyRender: false,
-      // Off by default in v3, which leaves toolbar active states stale until the
-      // document changes — a cursor moved into bold text would not light Bold.
-      // Notes are short enough that re-rendering per transaction is free.
-      shouldRerenderOnTransaction: true,
-      onUpdate: ({ editor }) => onChange?.(JSON.stringify(editor.getJSON()))
+      // Re-rendering per transaction stays off (the v3 default): it re-rendered
+      // the whole host on every keystroke and cursor move. Anything that reads
+      // editor state during render subscribes through useEditorState instead.
+      onUpdate: ({ editor }) => onChange?.(() => JSON.stringify(editor.getJSON()))
     },
     // useEditor defaults to `[]`, which builds the editor once and then ignores
     // every later extension list. The chip's node view closes over the case, so

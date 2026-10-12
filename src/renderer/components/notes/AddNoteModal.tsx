@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useEditorState } from '@tiptap/react'
 import { X } from 'lucide-react'
 import { useNotesMutations } from '@renderer/lib/queries'
 import { NoteEditor } from '@renderer/components/notes/NoteEditor'
@@ -37,17 +38,20 @@ export function AddNoteModal({
 }: AddNoteModalProps) {
   const { create, update } = useNotesMutations(caseId)
   const [title, setTitle] = useState('')
-  const [bodyDoc, setBodyDoc] = useState<string | null>(null)
+  const readBody = useRef<(() => string) | null>(null)
   // See CreateNoteCard: the Tag action writes the draft out early, and from
   // then on Save updates that note instead of creating a second one (#391).
   const [draftNoteId, setDraftNoteId] = useState<string | null>(null)
   const editor = useNoteEditor({
     caseId,
     noteId: draftNoteId ?? undefined,
-    onChange: setBodyDoc,
+    onChange: (read) => {
+      readBody.current = read
+    },
     testId: 'add-note-body'
   })
-  const hasBody = editor ? !editor.isEmpty : false
+  const hasBody =
+    useEditorState({ editor, selector: ({ editor }) => !!editor && !editor.isEmpty }) ?? false
 
   useEffect(() => {
     if (!open || !editor) return
@@ -57,11 +61,12 @@ export function AddNoteModal({
     // into document form so the investigator can format from there.
     const doc = prefillBody ? plainTextToNoteDoc(prefillBody) : EMPTY_NOTE_DOC
     editor.commands.setContent(doc)
-    setBodyDoc(JSON.stringify(doc))
+    const prefilled = JSON.stringify(doc)
+    readBody.current = () => prefilled
   }, [open, editor, captureTitle, prefillTitle, prefillBody])
 
   async function persistDraft(): Promise<string> {
-    const doc = bodyDoc ?? JSON.stringify(EMPTY_NOTE_DOC)
+    const doc = readBody.current?.() ?? JSON.stringify(EMPTY_NOTE_DOC)
     if (draftNoteId) {
       await update.mutateAsync({ id: draftNoteId, title: title.trim(), bodyDoc: doc })
       return draftNoteId

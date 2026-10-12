@@ -152,22 +152,24 @@ export function CaptureDetailsPanel({
   const noteEditor = useNoteEditor({
     caseId,
     noteId: inline.boundNoteId ?? undefined,
-    onChange: inline.setValue,
+    onChange: inline.change,
     testId: 'inline-note-editor'
   })
 
   // Push the hook's document into the editor when it changes from outside —
-  // a different capture selected, or Esc reverting. The equality guard keeps
-  // the user's own keystrokes from bouncing back and resetting the cursor.
+  // a different capture selected, a newer server copy, or Esc reverting.
+  // Typing does not change `loaded`, so this does not run per keystroke. The
+  // equality guard keeps a reload of the same document from resetting the cursor.
+  const { loaded } = inline
   useEffect(() => {
     if (!noteEditor) return
-    if (JSON.stringify(noteEditor.getJSON()) === inline.value) return
+    if (JSON.stringify(noteEditor.getJSON()) === loaded.doc) return
     try {
-      noteEditor.commands.setContent(JSON.parse(inline.value), { emitUpdate: false })
+      noteEditor.commands.setContent(JSON.parse(loaded.doc), { emitUpdate: false })
     } catch {
       noteEditor.commands.clearContent()
     }
-  }, [noteEditor, inline.value])
+  }, [noteEditor, loaded])
 
   const isFavorite = favorites.has(capture.id)
   const provenance = getProvenanceColor(capture.lastVerifiedStatus)
@@ -191,7 +193,7 @@ export function CaptureDetailsPanel({
   void tick
 
   async function handleAddNote() {
-    if (inline.isDirty) {
+    if (inline.isDirty()) {
       await inline.flush()
     }
     onOpenAddNote()

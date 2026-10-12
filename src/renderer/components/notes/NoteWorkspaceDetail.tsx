@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type MutableRefObject } from 'react'
 import { useBlocker, useNavigate } from '@tanstack/react-router'
+import { useEditorState } from '@tiptap/react'
 import { Camera, PanelRight, Trash2 } from 'lucide-react'
 import type { Note } from '@shared/types'
 import type { MentionTargetType } from '@shared/noteDoc'
@@ -8,7 +9,11 @@ import { useAppStore } from '@renderer/stores/appStore'
 import { NoteEditor } from '@renderer/components/notes/NoteEditor'
 import { useNoteEditor } from '@renderer/components/notes/useNoteEditor'
 import { useNoteAutosave } from '@renderer/components/notes/useNoteAutosave'
-import { noteAge, noteMentions } from '@renderer/components/notes/notesWorkspaceModel'
+import {
+  editorMentions,
+  noteAge,
+  noteMentions
+} from '@renderer/components/notes/notesWorkspaceModel'
 import { useMentionResolver } from '@renderer/components/notes/mention/useMentionSources'
 import { mentionRoute, mentionSelection } from '@renderer/components/notes/mention/mentionModel'
 
@@ -30,13 +35,16 @@ export function NoteWorkspaceDetail({
   clearDeleteRequest
 }: NoteWorkspaceDetailProps) {
   const { update } = useNotesMutations(note.caseId)
-  const { draft, change, state, flush, savedAt } = useNoteAutosave(note, update.mutateAsync)
+  const { title, changeTitle, changeBody, state, flush, savedAt } = useNoteAutosave(
+    note,
+    update.mutateAsync
+  )
   const editor = useNoteEditor({
     caseId: note.caseId,
     noteId: note.id,
     bodyDoc: note.bodyDoc,
     plainText: note.body,
-    onChange: (bodyDoc) => change({ bodyDoc }),
+    onChange: changeBody,
     testId: 'note-body-input'
   })
   const navigate = useNavigate()
@@ -66,7 +74,14 @@ export function NoteWorkspaceDetail({
     else store.setSelectedSignalId(id)
     void navigate({ to: mentionRoute(type), params: { caseId: note.caseId } })
   }
-  const mentions = noteMentions(draft.bodyDoc)
+  // From the editor rather than the saved draft so the rail follows typing; the
+  // subscription re-renders only when the list of mentions changes.
+  const mentions =
+    useEditorState({
+      editor,
+      selector: ({ editor }) =>
+        editor ? editorMentions(editor.state.doc) : noteMentions(note.bodyDoc)
+    }) ?? []
   const outgoing = [...new Map(mentions.map((m) => [`${m.targetType}:${m.targetId}`, m])).values()]
   // Parses every note in the case, so it must not rerun on each keystroke.
   const incoming = useMemo(
@@ -88,9 +103,9 @@ export function NoteWorkspaceDetail({
         <input
           aria-label="Note title"
           data-testid="note-title-input"
-          value={draft.title}
+          value={title}
           placeholder="Untitled note"
-          onChange={(e) => change({ title: e.target.value })}
+          onChange={(e) => changeTitle(e.target.value)}
           onBlur={() => void flush()}
           className="w-full border-0 bg-transparent font-display text-[22px] font-extrabold tracking-tight text-text-primary outline-none"
         />

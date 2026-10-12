@@ -1,6 +1,6 @@
 # Case retrieval first slice: evaluation
 
-**Status:** Started. The baseline waits for the evaluation size.
+**Status:** Baseline recorded. Step 6 adds the slice's own search.
 **Date:** 2026-10-09
 **Audience:** Maintainer and implementers of the retrieval first slice.
 
@@ -71,9 +71,53 @@ The queries differ from the indexed wording:
 | `plain-word`       | `Quillmere`                                  | `annotated-shop`  |
 | `pooled-only`      | `reconciliation 7781`                        | no result         |
 
-## Baseline
+## Baseline, 2026-10-12
 
-Not yet run. It waits for the evaluation size, the plan's open question.
+The baseline ran on `main` at commit `6724907d` with 1,000 Captures, the evaluation size the
+maintainer set on 2026-10-12. It includes step 0: #1807 fixed #1590, so Case search reads a term
+with punctuation as an exact phrase. Step 6 repeats this run at the same size.
+
+- **Case search** answered all eight queries without an error. For the four queries that name an
+  address or its host in page text (`address-host`, `whole-address`, `address-capitals`, and
+  `rare-address`), the target was its only result. It returned nothing for `image-link-host`,
+  whose host appears only in a link target, which Extracted Text does not hold. On
+  `image-link-alt` it returned 5 pages, none of them the target. For the plain word it ranked
+  `annotated-shop` first of 78, and it returned nothing for the pooled file's words.
+- **Data search** gave the smoke runs' answers. For all five host and address queries it ranked
+  the target first and returned 1 or 2 values. For the plain word, `annotated-shop` came at
+  position 613. It missed the alt text and returned nothing for the pooled file's words.
+- **Unreviewed Captures** were 631 of 1,000, and all four unannotated targets were among them.
+
+| Measure                                                    | Value           |
+| ---------------------------------------------------------- | --------------- |
+| Build: render and ingest 1,000 pages                       | 24.2 s          |
+| Case search latency, median, for each of the 8 queries     | 0.09 to 0.37 ms |
+| Case search latency, ninety-fifth percentile, for each one | 0.11 to 0.59 ms |
+| Data search latency, median, for each of the 8 queries     | 0.07 to 2.06 ms |
+| Data search latency, ninety-fifth percentile, for each one | 0.12 to 2.40 ms |
+| `captures_fts` tables, bytes per Capture                   | 631             |
+| `extracted_data` and its FTS5 tables, bytes per Capture    | 4,952           |
+| Full rebuild of `captures_fts`                             | 12.59 ms        |
+| Re-indexing one Capture's text, median                     | 0.07 ms         |
+
+Times from a single run are rough. The smoke run at the same size took 57.8 s to build, and its
+search latencies were two to three times these, so step 6 should repeat its run before reading a
+latency change as the slice's.
+
+### What the baseline means for the plan
+
+- **Identifiers in page text are findable today.** With step 0 merged, Case search returns the
+  page that holds an address or host in its text, and Data search finds the same identifier as an
+  extracted value. For those, the slice adds a position in the page, the check, and a field label
+  in the search bar, not discovery.
+- **A host only in a link target is findable on the Data screen alone.** Case search returns
+  nothing for it, and Data search returns the value with no position. The slice's `link.href`
+  records put it in the search bar with a position.
+- **Alt text is findable nowhere today.** Neither path found `image-link-alt`, so the slice's
+  `link.alt` records are new coverage.
+- **The unreviewed set is large.** 631 of 1,000 Captures have no Note and no Persisted Match. The
+  unreviewed view's groups have to shrink that list to something an Operator can read; step 6
+  measures how far they do.
 
 ## Smoke runs, 2026-10-10
 
@@ -107,14 +151,3 @@ At 1,000 Captures:
 | `extracted_data` and its FTS5 tables, bytes per Capture                 | 4,952           |
 | Full rebuild of `captures_fts`                                          | 32.49 ms        |
 | Re-indexing one Capture's text, median                                  | 0.20 ms         |
-
-## What the smoke runs mean for the plan
-
-- **Identifiers are findable today, on the Data screen.** Hosts in link targets and addresses in
-  page text already reach Data search as extracted values. For those, the slice adds a position
-  in the page, the check, and an answer in the search bar, not discovery.
-- **Alt text is findable nowhere today.** Neither path found `image-link-alt`, so the slice's
-  `link.alt` records are new coverage.
-- **The unreviewed set is large.** 631 of 1,000 Captures have no Note and no Persisted Match. The
-  unreviewed view's groups have to shrink that list to something an Operator can read; step 6
-  measures how far they do.

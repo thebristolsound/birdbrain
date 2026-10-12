@@ -328,12 +328,11 @@ The maintainer approved this plan and accepted each recommendation it made.
    bytes, and an Operator will read that as a statement about the evidence, so its pull request
    carries the maintainer's sign-off.
 
-## Open question
+## Ruling, 2026-10-12
 
-**What size should the synthetic Case be?** The spec asks for a "synthetic Case of comparable
-size." A round number of Captures is enough, and the plan records it as the evaluation size, not
-as a fact about any Case. The step 1 generator takes the size as a parameter, so it can be built
-before the answer; the baseline run waits for it.
+5. **The evaluation size (D10).** 1,000 Captures. The spec asks for a "synthetic Case of
+   comparable size"; this is the evaluation size, not a fact about any Case. The baseline and step
+   6 both run with `--eval-captures=1000`.
 
 ## Progress
 
@@ -345,6 +344,9 @@ before the answer; the baseline run waits for it.
   in page text, as extracted values with no position. For those identifiers the slice adds
   positions, the check, and an answer in the search bar, not discovery. Neither of today's search
   paths finds image alt text.
-- **Next.** The maintainer answers the open question on size and queues #1590 (step 0). Then
-  `pnpm eval:retrieval --eval-captures=<n>` on `main` gives the baseline, which must run before
-  step 4 changes search. Step 2 can start in parallel.
+- **2026-10-12, step 1 finished.** #1796 merged, and #1818 merged its review fixes, which count
+  every result toward a target's rank. Step 0 merged as #1807. The baseline ran on `main` at 1,000
+  Captures and is in the assessment. Case search now also finds addresses and hosts in page
+  text. It still misses a host that appears only in a link target, and neither search path finds
+  image alt text.
+- **Next.** Step 2.

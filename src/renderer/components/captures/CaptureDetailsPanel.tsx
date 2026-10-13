@@ -69,7 +69,7 @@ export function CaptureDetailsPanel({
   onOpenAddNote
 }: Props) {
   const reduce = useReduceMotion()
-  const tick = useTimeTick(60_000)
+  const now = useTimeTick(60_000)
   const { data: notes = [] } = useQuery(notesQueryOptions(caseId))
   const { create: createNote, update: updateNote } = useNotesMutations(caseId)
   const { favorites, toggleFavorite } = useFavorites(caseId)
@@ -190,9 +190,6 @@ export function CaptureDetailsPanel({
         animate: presets.fadeUp.animate,
         transition: presets.fadeUp.transition
       }
-
-  // Saved-at re-renders with `tick` so "Saved 2m ago" stays fresh.
-  void tick
 
   async function handleAddNote() {
     if (inline.isDirty()) {
@@ -415,7 +412,7 @@ export function CaptureDetailsPanel({
           value={
             <span title={new Date(capture.timestamp).toLocaleString()}>
               {[
-                formatRelativeTime(capture.timestamp),
+                formatRelativeTime(capture.timestamp, now),
                 capture.format === 'mhtml' ? 'MHTML Archive' : 'HTML Page',
                 CAPTURE_METHOD_LABELS[capture.method] ?? ''
               ]
@@ -555,7 +552,7 @@ export function CaptureDetailsPanel({
         {inline.savedAt && (
           <p className="mt-1.5 flex items-center gap-1 text-[10px] text-text-faint">
             <StickyNote className="h-3 w-3" />
-            Saved {formatRelativeTime(inline.savedAt)}
+            Saved {formatRelativeTime(inline.savedAt, now)}
           </p>
         )}
       </section>

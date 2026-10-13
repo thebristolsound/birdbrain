@@ -10,6 +10,11 @@ REVIEW_FAILED='review:failed'
 REVIEW_SKIPPED='review:skipped'
 REVIEW_STATES=("$REVIEW_PASSED" "$REVIEW_CHANGES" "$REVIEW_STALE" "$REVIEW_FAILED" "$REVIEW_SKIPPED")
 
+# The maintainer's request for a review now. Not a state: it sits beside one, and the
+# post step removes it on every outcome.
+# shellcheck disable=SC2034 # read by pregate.sh and post.sh, which source this file
+REVIEW_REQUESTED='review:requested'
+
 # The first line inside a verdict's Full report block. The post step refuses a verdict
 # without it, and the pre-gate reads the reviewed commit back from it.
 REVIEWED_COMMIT_PREFIX='Reviewed commit: '

@@ -35,7 +35,7 @@ read, which `label_history` in `pregate.sh` already makes.
 ## Steps
 
 1. **Create the label.** Run `gh label create review:requested --color 1d76db --description "The maintainer asked for a review now; the next PR review fire takes it (ADR-0046)"`.
-   This is a write to the repository's settings, so it runs after the maintainer approves the PR.
+   Done 2026-10-12, before merge: nothing on `main` reads the label until this change lands.
 2. **Add the constant to `.github/scripts/pr-review/lib.sh`.** Add `REVIEW_REQUESTED='review:requested'`
    outside `REVIEW_STATES`, so `set_review_label` never removes it as a competing state.
 3. **Update `.github/scripts/pr-review/pregate.sh`.**

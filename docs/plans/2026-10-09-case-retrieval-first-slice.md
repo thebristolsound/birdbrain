@@ -349,4 +349,11 @@ The maintainer approved this plan and accepted each recommendation it made.
   Captures and is in the assessment. Case search now also finds addresses and hosts in page
   text. It still misses a host that appears only in a link target, and neither search path finds
   image alt text.
-- **Next.** Step 2.
+- **2026-10-13, step 2 finished.** #1846 merged migration 38, the extractor, and the stored-page
+  reader it shares with the Links tab. Its review fix bounds the header scan and a legacy page by
+  the same budgets.
+- **Step 3.** The build service runs on ingest, when the Case workspace opens
+  (`cases:ensureSearchFields`), after a Case Archive import, on reprocess, and in the Settings
+  rebuild. The import IPC handler starts the pass and does not wait for it, so `caseArchive.ts` is
+  unchanged. A `failed` build row stays until a rebuild or a new extractor version.
+- **Next.** Step 4, once step 3 merges.

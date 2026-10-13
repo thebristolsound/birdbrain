@@ -69,10 +69,10 @@
   --color-warning-fg: #92400e;
 
   /* Categorical hue foregrounds: case type pills and the NEW badge. Light
-     uses the 700 step. On its own 10% tint over --color-canvas, sky and pink
-     clear 4.5:1 but orange measures 4.48:1 (4.66 over --color-card). Dark
-     keeps the bright hue (see below). */
-  --color-hue-orange-fg: #c2410c;
+     uses the 700 step, and orange the 800 step because its 700 lands at
+     4.28:1 on its own 10% tint over --color-surface. Each clears 4.5:1 on its
+     tint over canvas, surface and card. Dark keeps the bright hue (see below). */
+  --color-hue-orange-fg: #9a3412;
   --color-hue-sky-fg: #0369a1;
   --color-hue-pink-fg: #be185d;
 

@@ -332,6 +332,38 @@ describe('useInlineNoteEditor', () => {
     act(() => result.current.revert())
     expect(result.current.currentDoc()).toBe(doc('original'))
   })
+
+  it('autosaves text typed while the first create was still in flight', async () => {
+    let resolveCreate: (n: Note) => void = () => {}
+    const onCreate = vi.fn(() => new Promise<Note>((resolve) => (resolveCreate = resolve)))
+    const onUpdate = vi.fn(async ({ id, bodyDoc }: { id: string; bodyDoc: string }) => ({
+      ...note(id, 'ab', '2026-02-03T00:00:00Z'),
+      bodyDoc
+    }))
+    const { result } = renderHook(() =>
+      useInlineNoteEditor({ notes: [], captureId: 'cap-1', captureTitle, onCreate, onUpdate })
+    )
+    act(() => result.current.change(() => doc('a')))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500)
+    })
+    expect(onCreate).toHaveBeenCalledTimes(1)
+    // This debounce fires while the create is still out, so it only waits on it.
+    act(() => result.current.change(() => doc('ab')))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500)
+    })
+    await act(async () => {
+      resolveCreate(note('n1', 'a', '2026-02-02T00:00:00Z'))
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500)
+    })
+    expect(onCreate).toHaveBeenCalledTimes(1)
+    expect(onUpdate).toHaveBeenCalledWith({ id: 'n1', bodyDoc: doc('ab') })
+    expect(result.current.isDirty()).toBe(false)
+  })
+
   it('does not re-render the host or read the document while the user types', async () => {
     const notes = [note('a', 'hi', '2026-02-01T00:00:00Z')]
     const onUpdate = vi.fn().mockResolvedValue(undefined)

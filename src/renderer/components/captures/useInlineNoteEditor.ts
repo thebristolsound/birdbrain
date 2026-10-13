@@ -114,6 +114,17 @@ export function useInlineNoteEditor({
     }
   }, [effectiveLatest, boundNoteId, currentDoc, load])
 
+  // The debounce timer outlives the render that started it, so it calls the
+  // latest flush rather than the one it closed over.
+  const flushRef = useRef<() => Promise<string | null>>(async () => null)
+  const scheduleFlush = useCallback(() => {
+    cancelDebounce()
+    debounceRef.current = window.setTimeout(() => {
+      debounceRef.current = null
+      void flushRef.current().catch(() => {})
+    }, DEBOUNCE_MS)
+  }, [cancelDebounce])
+
   /**
    * Returns the id of the note the editor is bound to once the write settles,
    * or null when there is nothing to bind to (a blank editor with no note).
@@ -148,15 +159,15 @@ export function useInlineNoteEditor({
       lastBoundIdRef.current = created.id
       lastServerBodyRef.current = noteDocString(created)
       lastServerUpdatedRef.current = created.updatedAt
+      // A flush that fired during the create only waited on it, so text typed
+      // meanwhile has nothing else to save it.
+      if (currentDoc() !== lastServerBodyRef.current) scheduleFlush()
       return created.id
     } finally {
       createInFlightRef.current = null
     }
-  }, [boundNoteId, cancelDebounce, captureTitle, currentDoc, onCreate, onUpdate])
+  }, [boundNoteId, cancelDebounce, captureTitle, currentDoc, onCreate, onUpdate, scheduleFlush])
 
-  // The debounce timer outlives the render that started it, so it calls the
-  // latest flush rather than the one it closed over.
-  const flushRef = useRef(flush)
   useEffect(() => {
     flushRef.current = flush
   }, [flush])
@@ -165,13 +176,9 @@ export function useInlineNoteEditor({
   const change = useCallback(
     (readDoc: () => string) => {
       readEditedRef.current = readDoc
-      cancelDebounce()
-      debounceRef.current = window.setTimeout(() => {
-        debounceRef.current = null
-        void flushRef.current().catch(() => {})
-      }, DEBOUNCE_MS)
+      scheduleFlush()
     },
-    [cancelDebounce]
+    [scheduleFlush]
   )
 
   const revert = useCallback(() => {

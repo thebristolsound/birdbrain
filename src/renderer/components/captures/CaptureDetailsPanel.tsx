@@ -157,9 +157,11 @@ export function CaptureDetailsPanel({
   })
 
   // Push the hook's document into the editor when it changes from outside —
-  // a different capture selected, a newer server copy, or Esc reverting.
-  // Typing does not change `loaded`, so this does not run per keystroke. The
-  // equality guard keeps a reload of the same document from resetting the cursor.
+  // the bound note changes, a newer server copy lands, or Esc reverts. Moving
+  // between two captures that both have no note binds no new note, so the
+  // draft carries over. Typing does not change `loaded`, so this does not run
+  // per keystroke. The equality guard keeps a reload of the same document from
+  // resetting the cursor.
   const { loaded } = inline
   useEffect(() => {
     if (!noteEditor) return

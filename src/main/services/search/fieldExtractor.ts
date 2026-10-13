@@ -89,7 +89,7 @@ export function extractFields(
     fields.push(field)
     return true
   }
-  for (const field of sources.text === null ? [] : headerFieldsFromText(sources.text)) {
+  for (const field of sources.text === null ? [] : headerFields(sources.text)) {
     if (!add(field)) break
   }
   for (const part of parts) {
@@ -106,7 +106,8 @@ function htmlInputs(
   if (mhtml) return readHtmlParts(mhtml, captureUrl, budgets)
   const skippedParts = { tooLarge: 0, overPartCount: 0, overTotalSize: 0 }
   if (html === null) return { parts: [], skippedParts, mainDocumentSkipped: false }
-  if (Buffer.byteLength(html, 'utf8') > budgets.maxPartBytes) {
+  const size = Buffer.byteLength(html, 'utf8')
+  if (budgets.maxParts < 1 || size > budgets.maxPartBytes || size > budgets.maxTotalBytes) {
     return { parts: [], skippedParts, mainDocumentSkipped: true }
   }
   return {
@@ -183,16 +184,14 @@ interface Line {
   start: number
 }
 
-function linesOf(text: string): Line[] {
-  const lines: Line[] = []
+function* linesOf(text: string): Generator<Line> {
   const breaks = /\r\n|\n|\r/g
   let start = 0
   for (let match = breaks.exec(text); match; match = breaks.exec(text)) {
-    lines.push({ text: text.slice(start, match.index), start })
+    yield { text: text.slice(start, match.index), start }
     start = match.index + match[0].length
   }
-  lines.push({ text: text.slice(start), start })
-  return lines
+  yield { text: text.slice(start), start }
 }
 
 const HEADER_LINE = /^([A-Za-z][A-Za-z0-9-]*):(?=[ \t]|$)/
@@ -206,16 +205,12 @@ interface HeaderField {
 }
 
 // Header blocks: two or more consecutive header lines, each with its folded
-// continuation lines, holding at least one of BLOCK_MARKERS.
-function headerBlocks(text: string): HeaderField[][] {
-  const blocks: HeaderField[][] = []
+// continuation lines, holding at least one of BLOCK_MARKERS. Lazy, so the row ceiling
+// stops the scan rather than trimming a list built from the whole text.
+function* headerBlocks(text: string): Generator<HeaderField[]> {
   let block: HeaderField[] = []
-  const close = (): void => {
-    if (block.length >= 2 && block.some((field) => BLOCK_MARKERS.has(field.name))) {
-      blocks.push(block)
-    }
-    block = []
-  }
+  const isBlock = (): boolean =>
+    block.length >= 2 && block.some((field) => BLOCK_MARKERS.has(field.name))
   for (const line of linesOf(text)) {
     const header = HEADER_LINE.exec(line.text)
     if (header) {
@@ -228,11 +223,11 @@ function headerBlocks(text: string): HeaderField[][] {
     } else if (block.length > 0 && CONTINUATION_LINE.test(line.text)) {
       block[block.length - 1].end = line.start + line.text.trimEnd().length
     } else {
-      close()
+      if (isBlock()) yield block
+      block = []
     }
   }
-  close()
-  return blocks
+  if (isBlock()) yield block
 }
 
 // The span with its leading and trailing whitespace, line breaks included, left out.
@@ -276,29 +271,34 @@ function mailboxSpans(value: string): Span[] {
 }
 
 // The address in a mailbox, in lower case, without its display name, angle brackets,
-// comments or folding whitespace. A mailbox with no address keeps its text, in lower
-// case with its whitespace collapsed.
+// comments or folding whitespace. A quoted local part keeps its spaces and loses only
+// its line breaks. A mailbox with no address keeps its text, in lower case with its
+// whitespace collapsed.
 function addressNorm(mailbox: string): string {
   const bracketed = /<([^<>]*)>[^<>]*$/.exec(mailbox)
   const address = bracketed ? bracketed[1] : mailbox.replace(/\([^()]*\)/g, '')
   if (!bracketed && !address.includes('@')) return mailbox.replace(/\s+/g, ' ').toLowerCase()
-  return address.replace(/\s+/g, '').toLowerCase()
+  return address
+    .replace(/("(?:[^"\\]|\\.)*")|\s+/g, (_, quoted?: string) =>
+      quoted ? quoted.replace(/\r\n|\n|\r/g, '') : ''
+    )
+    .toLowerCase()
 }
 
 export function headerFieldsFromText(text: string): ExtractedField[] {
-  const fields: ExtractedField[] = []
-  const push = (name: string, start: number, end: number, norm: string): void => {
-    if (!norm) return
-    fields.push({
-      field: `header.${name}`,
-      value: text.slice(start, end),
-      norm,
-      source: 'text',
-      part: null,
-      startOffset: start,
-      endOffset: end
-    })
-  }
+  return [...headerFields(text)]
+}
+
+function* headerFields(text: string): Generator<ExtractedField> {
+  const fieldAt = (name: string, start: number, end: number, norm: string): ExtractedField => ({
+    field: `header.${name}`,
+    value: text.slice(start, end),
+    norm,
+    source: 'text',
+    part: null,
+    startOffset: start,
+    endOffset: end
+  })
   for (const block of headerBlocks(text)) {
     for (const field of block) {
       if (!RECORDED_HEADERS.has(field.name)) continue
@@ -307,13 +307,12 @@ export function headerFieldsFromText(text: string): ExtractedField[] {
       const value = text.slice(start, end)
       if (ADDRESS_HEADERS.has(field.name)) {
         for (const span of mailboxSpans(value)) {
-          const mailbox = value.slice(span.start, span.end)
-          push(field.name, start + span.start, start + span.end, addressNorm(mailbox))
+          const norm = addressNorm(value.slice(span.start, span.end))
+          if (norm) yield fieldAt(field.name, start + span.start, start + span.end, norm)
         }
       } else {
-        push(field.name, start, end, value.replace(/\s+/g, ' '))
+        yield fieldAt(field.name, start, end, value.replace(/\s+/g, ' '))
       }
     }
   }
-  return fields
 }

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { listHtmlPartsInMhtml } from '@main/services/mhtmlDecoder'
 import { CAPTURE_LINK_BUDGETS } from '@main/services/htmlParts'
 import {
@@ -253,6 +253,37 @@ describe('extractFields: links', () => {
     ).toMatchObject({ fields: [], mainDocumentSkipped: true })
   })
 
+  it('applies the part count and total size budgets to a legacy HTML Capture', () => {
+    const html = page('<a href="/main">m</a>')
+    const sources = { captureUrl: CAPTURE_URL, mhtml: null, html, text: null }
+    for (const budgets of [
+      { ...CAPTURE_LINK_BUDGETS, maxParts: 0 },
+      { ...CAPTURE_LINK_BUDGETS, maxTotalBytes: 10 }
+    ]) {
+      expect(extractFields(sources, budgets)).toMatchObject({
+        fields: [],
+        mainDocumentSkipped: true
+      })
+    }
+  })
+
+  it('stops scanning header blocks at the row ceiling', () => {
+    const block = 'From: a@example.net\nMessage-ID: <1@example.net>\n\n'
+    const text = block.repeat(5000)
+    const slice = vi.spyOn(String.prototype, 'slice')
+    try {
+      const capped = extractFields(
+        { captureUrl: CAPTURE_URL, mhtml: null, html: null, text },
+        { ...CAPTURE_LINK_BUDGETS, maxRows: 2 }
+      )
+      expect(capped.fields).toHaveLength(2)
+      expect(capped.truncated).toBe(true)
+      expect(slice.mock.calls.length).toBeLessThan(100)
+    } finally {
+      slice.mockRestore()
+    }
+  })
+
   it('stops at the row ceiling and says so', () => {
     const buffer = mhtml([
       {
@@ -379,6 +410,14 @@ describe('headerFieldsFromText', () => {
     const fields = headerFieldsFromText('From: Lena Marsh\nReply-To:\nReturn-Path: <>')
     expect(pick(fields)).toEqual([
       { field: 'header.from', value: 'Lena Marsh', norm: 'lena marsh' }
+    ])
+  })
+
+  it('keeps the spaces in a quoted local part, and drops its line breaks', () => {
+    const text = 'From: <"First Last"@Example.com>\nReply-To: <"first\n last"@example.com>'
+    expect(headerFieldsFromText(text).map((f) => f.norm)).toEqual([
+      '"first last"@example.com',
+      '"first last"@example.com'
     ])
   })
 })

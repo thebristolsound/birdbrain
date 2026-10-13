@@ -12,12 +12,12 @@
   /* Semantic text tokens */
   --color-text-primary: #09090b;
   --color-text-secondary: #3f3f46;
-  --color-text-muted: #71717a;
-  --color-text-faint: #a1a1aa;
+  --color-text-muted: #52525b;
+  --color-text-faint: #66666f;
 
   /* Accent tokens — light darkens the indigo vs dark's #6467f2 for WCAG AA on zinc-50 */
-  --color-accent: #5659f0;
-  --color-accent-hover: #4f52e0;
+  --color-accent: #4f52e0;
+  --color-accent-hover: #4346d1;
   --color-accent-subtle: rgba(100,103,242,0.10);
 
   /* Border tokens */
@@ -68,6 +68,13 @@
   --color-warning-line: rgba(245,158,11,0.20);
   --color-warning-fg: #92400e;
 
+  /* Categorical hue foregrounds: case type pills and the NEW badge. Light
+     uses the 700 step so the text clears 4.5:1 on its own 10% tint; dark
+     keeps the bright hue (see below). */
+  --color-hue-orange-fg: #c2410c;
+  --color-hue-sky-fg: #0369a1;
+  --color-hue-pink-fg: #be185d;
+
   --color-slate-100: #f1f5f9;
   --color-slate-200: #e2e8f0;
   --color-slate-300: #cbd5e1;
@@ -93,7 +100,7 @@
   --color-accent-foreground: #ffffff;
   --color-destructive: var(--color-red-500);
   --color-destructive-foreground: #ffffff;
-  --color-input: var(--color-border-strong);
+  --color-input: #8b8b93;
   --color-ring: var(--color-accent);
 
   /* Radius system — the scale is 2 / 4 / 6 and nothing else. xl and 2xl alias
@@ -137,6 +144,11 @@ html.dark {
   --color-success-fg: #34d399;
   --color-danger-fg: #f87171;
   --color-warning-fg: #fbbf24;
+  /* Crypto pill reads orange in both themes; sky and pink keep today's hues */
+  --color-hue-orange-fg: #f97316;
+  --color-hue-sky-fg: #0ea5e9;
+  --color-hue-pink-fg: #ec4899;
+  --color-input: var(--color-border-strong);
 }
 
 /* === Shadow tokens (not in @theme — Tailwind doesn't generate shadow utilities from it) === */

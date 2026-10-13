@@ -39,6 +39,7 @@ describe('reactCompilerBabel', () => {
     ]
     expect(name).toBe('babel-plugin-react-compiler')
     expect(sources(join(root, 'src/renderer/components/captures/ForensicsTab.tsx'))).toBe(false)
+    expect(sources(join(root, 'src/renderer/components/captures/WaybackPanel.tsx'))).toBe(false)
     expect(sources(join(root, 'src/renderer/components/notes/NoteEditor.tsx'))).toBe(true)
   })
 })

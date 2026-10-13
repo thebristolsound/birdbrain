@@ -84,7 +84,7 @@ export function StorageConfig({ settings, onUpdate }: StorageConfigProps) {
           )}
 
           {restartNeeded && (
-            <div className="rounded bg-warning-surface border border-warning-line px-3 py-2 text-sm text-text-secondary">
+            <div className="rounded bg-warning-surface border border-warning-line px-3 py-2 text-sm text-warning-fg">
               Restart required for storage location change to take effect.
             </div>
           )}

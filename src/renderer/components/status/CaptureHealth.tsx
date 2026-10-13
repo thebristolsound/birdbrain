@@ -93,9 +93,9 @@ function EventRow({ event }: { event: CaptureEvent }) {
             {event.error && <span className="text-danger-fg">{event.error}</span>}
             {event.skipReason && <span className="text-text-secondary">{event.skipReason}</span>}
             {event.screenshotWarning && (
-              <span className="text-text-secondary">{event.screenshotWarning}</span>
+              <span className="text-warning-fg">{event.screenshotWarning}</span>
             )}
-            {event.warning && <span className="text-text-secondary">{event.warning}</span>}
+            {event.warning && <span className="text-warning-fg">{event.warning}</span>}
           </div>
         </div>
       </div>

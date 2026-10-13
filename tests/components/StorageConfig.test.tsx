@@ -153,7 +153,9 @@ describe('StorageConfig failure surfacing', () => {
 
     fireEvent.click(screen.getByText('Browse...'))
 
-    expect(await screen.findByText(RESTART_NOTICE)).toBeTruthy()
+    const notice = await screen.findByText(RESTART_NOTICE)
+    // The notice has no icon, so its text carries the warning colour itself.
+    expect(notice.className).toContain('text-warning-fg')
     expect(screen.queryByText(FAILURE)).toBeNull()
   })
 })

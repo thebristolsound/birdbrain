@@ -122,7 +122,8 @@ describe('CaptureHealth', () => {
 
 describe('pipeline event colors', () => {
   // The light theme's raw palette text fell under 4.5:1, so each state draws from a
-  // theme token, and a skip reason reads as plain text with the amber left on its icon.
+  // theme token. A skip reason reads as plain text with the amber left on its icon; a
+  // stored event's warnings keep the warning token because its icon is the green check.
   it('draws each event state in its theme token', () => {
     const event = (type: CaptureEvent['type'], extra: Partial<CaptureEvent> = {}) => ({
       ...storedEvent,
@@ -133,6 +134,11 @@ describe('pipeline event colors', () => {
     useAppStore.setState({
       captureEvents: [
         event('stored'),
+        event('stored', {
+          url: 'https://example.org/login-wall',
+          warning: 'Page looks like a login wall',
+          screenshotWarning: 'Screenshot dropped'
+        }),
         event('failed', { error: 'server refused' }),
         event('skipped', { skipReason: 'ignored host' }),
         event('received')
@@ -153,6 +159,8 @@ describe('pipeline event colors', () => {
     expect(iconClass('received')).toContain('text-accent')
     expect(screen.getByText('server refused').className).toBe('text-danger-fg')
     expect(screen.getByText('ignored host').className).toBe('text-text-secondary')
+    expect(screen.getByText('Page looks like a login wall').className).toBe('text-warning-fg')
+    expect(screen.getByText('Screenshot dropped').className).toBe('text-warning-fg')
   })
 })
 

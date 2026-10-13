@@ -313,6 +313,17 @@ describe('MhtmlViewer', () => {
   // it is why this case is titled for what it asserts — no guest — rather than for a
   // report the component does not make. `LegacyHtmlViewer` has the emptyLabel this one
   // lacks.
+  it('shows a failed archive lookup in the danger token and mounts no guest', async () => {
+    fakeBridge({
+      captures: { getMhtmlUrl: vi.fn().mockRejectedValue(new Error('archive missing')) }
+    })
+    renderViewer()
+
+    const message = await screen.findByText('Error: archive missing')
+    expect(message.className).toContain('text-danger-fg')
+    expect(screen.queryByTestId('mhtml-viewer')).toBeNull()
+  })
+
   it('mounts no guest while the archive URL is unresolved', async () => {
     fakeBridge({ captures: { getMhtmlUrl: vi.fn().mockResolvedValue(null) } })
     renderViewer()

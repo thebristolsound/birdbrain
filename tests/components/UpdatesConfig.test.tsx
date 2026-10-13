@@ -50,6 +50,19 @@ describe('UpdatesConfig', () => {
     expect(screen.getByText('chrome://extensions')).toBeTruthy()
   })
 
+  it('reports a failed update check in the danger token', async () => {
+    renderWithStatus({
+      state: 'error',
+      currentVersion: '1.0.1-beta.20',
+      error: 'feed unreachable',
+      supportsAutoInstall: true,
+      installOnQuit: false
+    })
+
+    const message = await screen.findByText(/check for updates: feed unreachable/i)
+    expect(message.className).toContain('text-danger-fg')
+  })
+
   it('does not raise the reload reminder before an update is downloaded', async () => {
     renderWithStatus({
       state: 'up-to-date',

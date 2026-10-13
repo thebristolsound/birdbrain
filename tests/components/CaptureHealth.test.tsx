@@ -120,6 +120,42 @@ describe('CaptureHealth', () => {
   })
 })
 
+describe('pipeline event colors', () => {
+  // The light theme's raw palette text fell under 4.5:1, so each state draws from a
+  // theme token, and a skip reason reads as plain text with the amber left on its icon.
+  it('draws each event state in its theme token', () => {
+    const event = (type: CaptureEvent['type'], extra: Partial<CaptureEvent> = {}) => ({
+      ...storedEvent,
+      type,
+      url: `https://example.org/${type}`,
+      ...extra
+    })
+    useAppStore.setState({
+      captureEvents: [
+        event('stored'),
+        event('failed', { error: 'server refused' }),
+        event('skipped', { skipReason: 'ignored host' }),
+        event('received')
+      ]
+    })
+    renderHealth()
+    openPopover()
+
+    const iconClass = (type: string) =>
+      screen
+        .getByText(`https://example.org/${type}`)
+        .closest('.items-start')
+        ?.querySelector('svg')
+        ?.getAttribute('class')
+    expect(iconClass('stored')).toContain('text-success-fg')
+    expect(iconClass('failed')).toContain('text-danger-fg')
+    expect(iconClass('skipped')).toContain('text-warning-fg')
+    expect(iconClass('received')).toContain('text-accent')
+    expect(screen.getByText('server refused').className).toBe('text-danger-fg')
+    expect(screen.getByText('ignored host').className).toBe('text-text-secondary')
+  })
+})
+
 describe('pipeline event context menu', () => {
   const get = vi.fn()
   const enqueueCaptures = vi.fn()

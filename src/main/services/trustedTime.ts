@@ -99,22 +99,32 @@ function trustedTimeEntries(
   return [...manifest.entries, ...ranked.flat()]
 }
 
-// The Shared Case walk, or none when the other chains cannot be read: the Case
-// then resolves from the local chain alone, as before #1713, rather than the
-// error reaching the startup rebuild and stopping the app from opening.
+// Case directories whose last walk failed, so a failure that persists is
+// logged once rather than on every lookup; a walk that succeeds clears it.
+const failedWalks = new Set<string>()
+
+// The Shared Case walk, or none when reading or walking the other chains
+// throws: the Case then resolves from the local chain alone, as before #1713,
+// rather than the error reaching the startup rebuild and stopping the app from
+// opening.
 function sharedCaseVerification(
   caseDir: string,
   manifest: ManifestSnapshot
 ): SharedCaseSnapshot['verification'] {
   try {
-    return readSharedCaseSnapshot(caseDir, manifest).verification
+    const { verification } = readSharedCaseSnapshot(caseDir, manifest)
+    failedWalks.delete(caseDir)
+    return verification
   } catch (err) {
-    logger.error(
-      'trustedTime',
-      'trustedTime.shared_chains_unreadable',
-      { caseId: ident(basename(caseDir)) },
-      err
-    )
+    if (!failedWalks.has(caseDir)) {
+      failedWalks.add(caseDir)
+      logger.error(
+        'trustedTime',
+        'trustedTime.shared_case_walk_failed',
+        { caseId: ident(basename(caseDir)) },
+        err
+      )
+    }
     return undefined
   }
 }

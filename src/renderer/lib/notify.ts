@@ -181,8 +181,8 @@ const CODE_LABELS: Record<LogCode, string> = {
   'settings.schema_invalid': 'Saved settings were invalid — restored defaults',
   'thumbnails.generate_failed': "Couldn't generate a thumbnail",
   'timestampWorker.stamp_failed': "Couldn't get a trusted timestamp for this capture",
-  'trustedTime.shared_chains_unreadable':
-    "Couldn't read other members' records in a shared case, so its trusted timestamps come from this computer alone",
+  'trustedTime.shared_case_walk_failed':
+    "Couldn't check other members' records in a shared case, so its trusted timestamps come from this computer alone",
   'app.webview_attach_refused': "A page view was blocked by the app's security policy",
   'db.snapshot_created': 'Saved a database snapshot before upgrading',
   'db.snapshot_prune_failed': "Couldn't remove an old database snapshot",

@@ -17,7 +17,7 @@ import {
   reconcileAllMirrors
 } from '@main/services/trustedTime'
 import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
-import { createCase } from '@main/services/db/caseRepo'
+import { createCase, listCases } from '@main/services/db/caseRepo'
 import { listExhibits } from '@main/services/db/exhibitRepo'
 import { insertCapture, getCapture, setCaptureTrustedTime } from '@main/services/db/captureRepo'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
@@ -720,13 +720,18 @@ describe('trusted time in a Shared Case', () => {
 
   // The second pre-pass's other scenario: the launch's mirror rebuild meets a
   // directory at a member chain path (EISDIR). That Case resolves from its
-  // local chain alone, the rebuild carries on over the other Cases, and the
-  // failure is logged against the Case.
+  // local chain alone, the rebuild carries on to a Case listed after it, and
+  // the failure is logged against the Case once while it persists.
   it('keeps the launch rebuild going when a Case cannot read its member chains', () => {
     stampedPeerCase()
     mkdirSync(join(caseDir, memberChainPath('installation-broken-0001')))
     const remote = captureRow(DIGICERT_IMPRINT, 'pending')
+    // Older than the broken Case, so `listCases` (newest first) reaches it after.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2020-01-01T00:00:00.000Z'))
     const otherCaseId = createCase({ name: 'Unshared' }).id
+    vi.useRealTimers()
+    expect(listCases().map(({ id }) => id)).toEqual([caseId, otherCaseId])
     const otherDir = join(getStorageRoot(), otherCaseId)
     ensureCaseDir(otherCaseId)
     initManifest(otherDir)
@@ -750,12 +755,21 @@ describe('trusted time in a Shared Case', () => {
     expect(getCapture(remote)?.trustedTimeStatus).toBe(localOnly(DIGICERT_IMPRINT).trustedTime)
     expect(getCapture(other.id)?.trustedTimeStatus).toBe('rfc3161')
     expect(resolveTrustedTime(caseDir, DIGICERT_IMPRINT)).toEqual(localOnly(DIGICERT_IMPRINT))
+    expect(resolveTrustedTime(caseDir, DIGICERT_IMPRINT)).toEqual(localOnly(DIGICERT_IMPRINT))
+    expect(logged).toHaveBeenCalledOnce()
     expect(logged).toHaveBeenCalledWith(
       'trustedTime',
-      'trustedTime.shared_chains_unreadable',
+      'trustedTime.shared_case_walk_failed',
       { caseId },
       expect.objectContaining({ code: 'EISDIR' })
     )
+
+    // Readable again: the walk succeeds, and a later failure is logged afresh.
+    rmSync(join(caseDir, memberChainPath('installation-broken-0001')), { recursive: true })
+    expect(resolveTrustedTime(caseDir, DIGICERT_IMPRINT).trustedTime).toBe('rfc3161')
+    mkdirSync(join(caseDir, memberChainPath('installation-broken-0001')))
+    resolveTrustedTime(caseDir, DIGICERT_IMPRINT)
+    expect(logged).toHaveBeenCalledTimes(2)
     logged.mockRestore()
   })
 

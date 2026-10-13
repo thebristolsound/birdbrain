@@ -3,9 +3,10 @@ import tseslint from 'typescript-eslint'
 import prettierConfig from 'eslint-config-prettier'
 import reactHooks from 'eslint-plugin-react-hooks'
 
-// The plugin's React Compiler diagnostics, without its two classic hooks rules: those would
-// fail the build across code nobody is changing. Warnings, because each marks a component the
-// compiler skips (it does not miscompile it), and lint fails only on errors.
+// The plugin's React Compiler diagnostics, without its two classic hooks rules, which would
+// fail lint across code nobody is changing. Warnings, so the existing findings do not fail it
+// either. They are not a safety net: the compiler cannot see a mutable object read during
+// render (the Tiptap editor, for one), and a component it compiled can still warn.
 const reactCompilerRules = Object.fromEntries(
   Object.keys(reactHooks.configs['recommended-latest'].rules)
     .filter((name) => !['react-hooks/rules-of-hooks', 'react-hooks/exhaustive-deps'].includes(name))

@@ -3,9 +3,9 @@
 //
 // The compiler skips every file the evidence-affecting include list marks blocking: a
 // build-wide change would otherwise take on those files' review obligations (ADR-0004)
-// without anyone reviewing them. One of them opts in through a change that meets those
-// obligations. The list is read from its document, as the backstop reads it, so a file added
-// to it later is skipped without a second edit here.
+// without anyone reviewing them. Compiling one means changing its tier or this filter, in a
+// change that meets those obligations. The list is read from its document, as the backstop
+// reads it, so a file added to it later is skipped without a second edit here.
 import { relative, sep } from 'node:path'
 // @ts-expect-error - tooling script with no type declarations; the tsconfigs exclude scripts/
 import { loadIncludeList, matchEntry } from './jev-lens/backstop.mjs'

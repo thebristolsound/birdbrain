@@ -68,8 +68,8 @@ machine-account PRs. The 61 PRs he opened that merged on 2026-10-01 or later, re
    workflow also runs on `pull_request_target` when the maintainer applies that label, with
    that PR as the target. The pre-gate honours the label only when the maintainer applied it
    last. A requested PR must still be one he opened from this repository, outside the dispatch
-   slots. It skips the one-hour wait, the other-reviewer rule and the two-failure stop, and a
-   maintainer-applied `review:skipped` comes off. The post step removes the label on every
+   slots. It skips the one-hour wait, the other-reviewer rule, the two-failure stop and the
+   process-doc skip, and a maintainer-applied `review:skipped` comes off. The post step removes the label on every
    outcome. A PR already reviewed at its head loses the label without a new review. When the
    spend cap holds a request, the label stays and a later scheduled fire takes it.
 

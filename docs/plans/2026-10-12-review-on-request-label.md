@@ -22,9 +22,9 @@ every fire, the next scheduled fire takes a dropped request.
 | Open at least an hour | applies | skipped |
 | Nobody else reviewed it since the last verdict | applies | skipped |
 | `review:skipped` the maintainer applied | stays off it | comes off |
-| Process-docs-only diff | `review:skipped` | open question 1 |
+| Process-docs-only diff | `review:skipped` | reviewed |
 | Two failures stop retries | applies | skipped |
-| Already reviewed at its head | no review | label removed, no review (open question 2) |
+| Already reviewed at its head | no review | label removed, no review |
 | Spend cap, 4 a day and 1 per PR in 6 hours | applies | applies; the label waits |
 | Queue position | after requests | first, oldest request first |
 
@@ -41,8 +41,8 @@ read, which `label_history` in `pregate.sh` already makes.
 3. **Update `.github/scripts/pr-review/pregate.sh`.**
    - Read whether the PR carries `review:requested`, and whether the maintainer applied it last
      (`label_history`, last actor equal to `$MAINTAINER`).
-   - When it is a request, skip the `MIN_AGE` check, the `others` check and the two-failure
-     stop, and remove a `review:skipped` the maintainer applied.
+   - When it is a request, skip the `MIN_AGE` check, the `others` check, the `process_only`
+     check and the two-failure stop, and remove a `review:skipped` the maintainer applied.
    - When it is a request and the PR's verdict names the head, call `unlabel` for
      `review:requested` and continue.
    - Add a `requested` queue ahead of `first`, sorted oldest first like the rest.
@@ -91,11 +91,11 @@ The pr-review scripts have no unit tests, and the workflow does not run on a bra
 4. Run `gh workflow run pr-review.yml -f mode=report` with a request held by the per-PR cap, and
    confirm the summary names the hold and the label stays.
 
-## Open questions
+## Rulings
 
-1. A requested PR whose diff is only process docs (`.claude/`, `docs/`, root Markdown). The plan
-   currently reviews it, because the label is an explicit ask and the cap still bounds it. The
-   alternative keeps the ADR-0046 rule: the PR gets `review:skipped` and the request comes off.
-2. A request on a PR already reviewed at its head. The plan currently removes the label with no
-   new review, since the verdict comment is already on the PR. The alternative runs a second
-   review of the same commit, which spends a capped run.
+The maintainer ruled on 2026-10-12:
+
+1. A requested PR whose diff is only process docs (`.claude/`, `docs/`, root Markdown) is
+   reviewed. A request is an explicit ask, and the spend cap still bounds it.
+2. A request on a PR already reviewed at its head runs no second review. The pre-gate removes the
+   label, and the existing verdict comment answers the request.

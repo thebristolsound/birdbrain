@@ -24,6 +24,7 @@ import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { createTimestampWorker } from '@main/services/timestampWorker'
+import { logger } from '@main/services/logger'
 import { canonicalStringify } from '@shared/verify'
 import {
   resolveTrustedTimeFromEntries,
@@ -665,11 +666,57 @@ describe('trusted time in a Shared Case', () => {
     initManifest(caseDir)
     const own = hashOf('own-no-walk')
     appendCapture(caseDir, own)
-    // A directory where a member's chain file belongs: reading the chains throws.
+    // A directory where a member's chain file belongs: reading the chains fails,
+    // and the failure is logged.
     mkdirSync(join(caseDir, memberChainPath(PEER_ID)))
+    const logged = vi.spyOn(logger, 'error').mockImplementation(() => 'log-id')
 
     expect(resolveTrustedTime(caseDir, own)).toEqual({ trustedTime: 'pending' })
-    expect(() => resolveTrustedTime(caseDir, hashOf('not-own'))).toThrow()
+    expect(logged).not.toHaveBeenCalled()
+    resolveTrustedTime(caseDir, hashOf('not-own'))
+    expect(logged).toHaveBeenCalledOnce()
+    logged.mockRestore()
+  })
+
+  // The second pre-pass's other scenario: the launch's mirror rebuild meets a
+  // directory at a member chain path (EISDIR). That Case resolves from its
+  // local chain alone, the rebuild carries on over the other Cases, and the
+  // failure is logged against the Case.
+  it('keeps the launch rebuild going when a Case cannot read its member chains', () => {
+    stampedPeerCase()
+    mkdirSync(join(caseDir, memberChainPath('installation-broken-0001')))
+    const remote = captureRow(DIGICERT_IMPRINT, 'pending')
+    const otherCaseId = createCase({ name: 'Unshared' }).id
+    const otherDir = join(getStorageRoot(), otherCaseId)
+    ensureCaseDir(otherCaseId)
+    initManifest(otherDir)
+    const stamped = hashOf('other-case-stamped')
+    appendCapture(otherDir, stamped)
+    const token = buildSyntheticToken({ contentHash: stamped, genTime: new Date(TIME) })
+    appendTimestamp(otherDir, stamped, token.toString('base64'))
+    const other = insertCapture({
+      caseId: otherCaseId,
+      url: 'https://example.com/other',
+      title: 'Other case capture',
+      hash: stamped,
+      timestamp: TIME,
+      format: 'mhtml'
+    })
+    setCaptureTrustedTime(other.id, 'pending')
+    const logged = vi.spyOn(logger, 'error').mockImplementation(() => 'log-id')
+
+    expect(() => reconcileAllMirrors()).not.toThrow()
+
+    expect(getCapture(remote)?.trustedTimeStatus).toBe(localOnly(DIGICERT_IMPRINT).trustedTime)
+    expect(getCapture(other.id)?.trustedTimeStatus).toBe('rfc3161')
+    expect(resolveTrustedTime(caseDir, DIGICERT_IMPRINT)).toEqual(localOnly(DIGICERT_IMPRINT))
+    expect(logged).toHaveBeenCalledWith(
+      'trustedTime',
+      'trustedTime.shared_chains_unreadable',
+      { caseId },
+      expect.objectContaining({ code: 'EISDIR' })
+    )
+    logged.mockRestore()
   })
 
   // The issue's own scenario: this installation is a member, the Owner's chain

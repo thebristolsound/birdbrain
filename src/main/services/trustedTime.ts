@@ -1,4 +1,4 @@
-import { join } from 'path'
+import { basename, join } from 'path'
 import {
   resolveTrustedTimeFromEntries,
   buildTrustedTimeIndexFromEntries
@@ -7,7 +7,10 @@ import type { TrustedTimeResult } from '@shared/verify/trustedTime'
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
 import { readManifestSnapshot, readSharedCaseSnapshot } from '@main/services/manifest'
+import type { ManifestSnapshot, SharedCaseSnapshot } from '@main/services/manifest'
 import { getStorageRoot } from '@main/services/storage'
+import { logger } from '@main/services/logger'
+import { ident } from '@main/services/logSafe'
 
 export type { TrustedTimeResult }
 
@@ -43,7 +46,7 @@ function trustedTimeEntries(caseDir: string, contentHash?: string): Record<strin
   const manifest = readManifestSnapshot(caseDir)
   const own = recordedContentHashes(manifest.entries)
   if (contentHash !== undefined && own.has(contentHash)) return manifest.entries
-  const { verification } = readSharedCaseSnapshot(caseDir, manifest)
+  const verification = sharedCaseVerification(caseDir, manifest)
   if (!verification) return manifest.entries
   const authors: Record<string, unknown>[] = []
   const others: Record<string, unknown>[] = []
@@ -57,6 +60,26 @@ function trustedTimeEntries(caseDir: string, contentHash?: string): Record<strin
     }
   }
   return [...manifest.entries, ...authors, ...others]
+}
+
+// The Shared Case walk, or none when the other chains cannot be read: the Case
+// then resolves from the local chain alone, as before #1713, rather than the
+// error reaching the startup rebuild and stopping the app from opening.
+function sharedCaseVerification(
+  caseDir: string,
+  manifest: ManifestSnapshot
+): SharedCaseSnapshot['verification'] {
+  try {
+    return readSharedCaseSnapshot(caseDir, manifest).verification
+  } catch (err) {
+    logger.error(
+      'trustedTime',
+      'trustedTime.shared_chains_unreadable',
+      { caseId: ident(basename(caseDir)) },
+      err
+    )
+    return undefined
+  }
 }
 
 // Resolves the per-capture trusted-time axis from the Case's chains alone (so the DB mirror remains rebuildable).

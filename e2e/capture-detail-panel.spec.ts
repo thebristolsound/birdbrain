@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures/electronApp'
+import { seedCapture, serverToken } from './fixtures/seed'
 
 // Seeds a case + a single MHTML capture, then exercises the new
 // CaptureDetailsPanel: panel renders at 400px, favorite toggle persists,
@@ -26,39 +27,12 @@ test.describe('Capture detail panel', () => {
     const caseId = caseIdMatch![1]
 
     // Seed a capture by POSTing to the local Hono server.
-    const serverToken = await page.evaluate(async () => {
-      const r = await fetch('http://127.0.0.1:19845/api/status')
-      const data = await r.json()
-      return data.serverToken ?? ''
+    await seedCapture(page, caseId, await serverToken(page), {
+      slug: 'panel-e2e',
+      title: 'Panel E2E Page',
+      text: 'Panel E2E text',
+      mhtml: '<html><body>panel-e2e</body></html>'
     })
-
-    const upload = await page.evaluate(
-      async ({ caseId, token }) => {
-        const form = new FormData()
-        form.append('source', 'manual')
-        form.append('caseId', caseId)
-        form.append('url', 'https://example.com/panel-e2e')
-        form.append('title', 'Panel E2E Page')
-        form.append('timestamp', new Date().toISOString())
-        form.append('textContent', 'Panel E2E text')
-        form.append('extensionVersion', '0.1.0')
-        form.append('browserVersion', 'Chrome/120')
-        form.append('userAgent', 'Mozilla/5.0')
-        form.append(
-          'mhtml',
-          new Blob(['<html><body>panel-e2e</body></html>'], { type: 'multipart/related' }),
-          'capture.mhtml'
-        )
-        const r = await fetch('http://127.0.0.1:19845/api/captures', {
-          method: 'POST',
-          body: form,
-          headers: { 'X-Birdbrain-Token': token }
-        })
-        return r.json()
-      },
-      { caseId, token: serverToken }
-    )
-    expect(upload.status).toBe('ok')
 
     // Make sure the renderer is sized wide enough for the expanded panel.
     const win = electronApp.windows()[0]

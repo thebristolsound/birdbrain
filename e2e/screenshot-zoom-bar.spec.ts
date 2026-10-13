@@ -1,11 +1,5 @@
 import { test, expect } from './fixtures/electronApp'
-
-const SCREENSHOT_PNG_BASE64 =
-  'iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAIAAAD/gAIDAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAA4klEQVR4nO3QoQEA' +
-  'AAiAMP9/Wl+QvmUSs7zNP8WswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzA' +
-  'rMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCs' +
-  'wKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzA' +
-  'rMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKz9zzotw8GdFsEYhAAAAABJRU5ErkJggg=='
+import { SCREENSHOT_PNG_BASE64, seedCapture, serverToken } from './fixtures/seed'
 
 async function seedCaseAndCapture(page: import('@playwright/test').Page, caseName: string) {
   await page.evaluate(() => {
@@ -21,38 +15,12 @@ async function seedCaseAndCapture(page: import('@playwright/test').Page, caseNam
   if (!caseIdMatch) throw new Error('case id not in url')
   const caseId = caseIdMatch[1]
 
-  const captureId = await page.evaluate(
-    async ({ caseId, screenshotBase64 }) => {
-      const status = await fetch('http://127.0.0.1:19845/api/status').then((r) => r.json())
-      const token: string = status.serverToken ?? ''
-      const screenshotBytes = Uint8Array.from(atob(screenshotBase64), (c) => c.charCodeAt(0))
-      const form = new FormData()
-      form.append('source', 'manual')
-      form.append('caseId', caseId)
-      form.append('url', 'https://example.com/zoom-bar-e2e')
-      form.append('title', 'Zoom Bar E2E Page')
-      form.append('timestamp', new Date().toISOString())
-      form.append('textContent', 'Zoom bar e2e')
-      form.append('extensionVersion', '0.1.0')
-      form.append('browserVersion', 'Chrome/120')
-      form.append('userAgent', 'Mozilla/5.0')
-      form.append(
-        'mhtml',
-        new Blob(['<html><body>Zoom bar e2e</body></html>'], { type: 'multipart/related' }),
-        'capture.mhtml'
-      )
-      form.append('screenshot', new Blob([screenshotBytes], { type: 'image/png' }), 'shot.png')
-      const r = await fetch('http://127.0.0.1:19845/api/captures', {
-        method: 'POST',
-        body: form,
-        headers: { 'X-Birdbrain-Token': token }
-      })
-      const body = await r.json()
-      if (body.status !== 'ok') throw new Error('Upload failed: ' + JSON.stringify(body))
-      return body.captureId as string
-    },
-    { caseId, screenshotBase64: SCREENSHOT_PNG_BASE64 }
-  )
+  const captureId = await seedCapture(page, caseId, await serverToken(page), {
+    slug: 'zoom-bar-e2e',
+    title: 'Zoom Bar E2E Page',
+    text: 'Zoom bar e2e',
+    screenshot: SCREENSHOT_PNG_BASE64
+  })
 
   await page.evaluate(
     ({ caseId }) => {

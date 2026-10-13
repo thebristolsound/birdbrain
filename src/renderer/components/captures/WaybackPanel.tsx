@@ -23,7 +23,6 @@ import { notify } from '@renderer/lib/notify'
 import { EntityContextMenu } from '@renderer/components/contextmenu/EntityContextMenu'
 import { copyCaptureUrl } from '@renderer/components/captures/useCopyCaptureUrl'
 import { useAppStore } from '@renderer/stores/appStore'
-import { useTimeTick } from '@renderer/hooks/useTimeTick'
 import {
   buildWaybackList,
   calendarHint,
@@ -73,7 +72,6 @@ export function WaybackPanel({ capture, onClose }: Props) {
   const { pin, unpin } = useWaybackMutations(capture.id)
   const selection = useAppStore((s) => s.waybackSelection)
   const setSelection = useAppStore((s) => s.setWaybackSelection)
-  const now = useTimeTick(60_000)
 
   const [query, setQuery] = useState('')
   const [preset, setPreset] = useState<WaybackPresetId>('all')
@@ -423,7 +421,7 @@ export function WaybackPanel({ capture, onClose }: Props) {
             totalCount: list.totalCount,
             inRangeCount: list.inRangeCount,
             checkedAt: result?.checkedAt ?? null,
-            now
+            now: Date.now()
           })}
         </span>
         <div className="flex-1" />

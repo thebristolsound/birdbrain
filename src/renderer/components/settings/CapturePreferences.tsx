@@ -89,7 +89,7 @@ export function CapturePreferences({ settings, onUpdate }: CapturePreferencesPro
                   <span className="font-mono text-xs text-text-muted">{pattern}</span>
                   <button
                     onClick={() => removePattern(i)}
-                    className="text-xs text-text-muted hover:text-red-400"
+                    className="text-xs text-text-muted hover:text-danger-fg"
                   >
                     &times;
                   </button>

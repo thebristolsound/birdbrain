@@ -208,7 +208,7 @@ export function DbTables() {
                           </button>
                           <button
                             onClick={() => setDeleteConfirm({ open: true, pk: getPk(row) })}
-                            className="rounded p-1 text-text-muted hover:bg-elevated hover:text-red-400"
+                            className="rounded p-1 text-text-muted hover:bg-elevated hover:text-danger-fg"
                             title="Delete"
                             aria-label="Delete row"
                           >

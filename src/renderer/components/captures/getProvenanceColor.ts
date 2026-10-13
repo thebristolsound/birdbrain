@@ -11,42 +11,42 @@ interface ProvenanceColorTokens {
 
 /**
  * Maps a verification status to Tailwind color tokens for the shield, dot, and
- * background. Status palette is intentionally raw (red/amber/emerald) — these
- * convey forensic state and don't theme-swap per `theme.md`.
+ * background. The text takes the status tokens, which darken in the light theme
+ * to keep 4.5:1; the tint and dot stay raw red/amber/emerald.
  */
 export function getProvenanceColor(status: ProvenanceStatus): ProvenanceColorTokens {
   switch (status) {
     case 'verified':
       return {
-        text: 'text-emerald-400',
+        text: 'text-success-fg',
         bg: 'bg-emerald-500/10',
         dot: 'bg-emerald-400',
         label: 'Verified'
       }
     case 'tampered':
       return {
-        text: 'text-red-400',
+        text: 'text-danger-fg',
         bg: 'bg-red-500/10',
         dot: 'bg-red-400',
         label: 'Changed since capture'
       }
     case 'chain-broken':
       return {
-        text: 'text-red-400',
+        text: 'text-danger-fg',
         bg: 'bg-red-500/10',
         dot: 'bg-red-400',
         label: 'Chain broken'
       }
     case 'missing':
       return {
-        text: 'text-amber-400',
+        text: 'text-warning-fg',
         bg: 'bg-amber-500/10',
         dot: 'bg-amber-400',
         label: 'Missing'
       }
     case 'legacy':
       return {
-        text: 'text-amber-400',
+        text: 'text-warning-fg',
         bg: 'bg-amber-500/10',
         dot: 'bg-amber-400',
         label: 'Legacy HTML'

@@ -197,7 +197,7 @@ export function CreateSelectorCard({
                       {result.matches.slice(0, 3).map((m, mi) => (
                         <p key={mi} className="font-mono text-xs text-text-secondary">
                           ...{m.context.slice(0, m.index > 25 ? 25 : m.index)}
-                          <span className="rounded bg-indigo-500/30 px-0.5 text-indigo-200">
+                          <span className="rounded bg-indigo-500/30 px-0.5 text-text-primary">
                             {m.matchText}
                           </span>
                           {m.context.slice((m.index > 25 ? 25 : m.index) + m.matchText.length)}...

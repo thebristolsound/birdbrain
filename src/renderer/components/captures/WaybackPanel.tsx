@@ -52,9 +52,9 @@ interface Props {
 }
 
 const BAND_CLASS: Record<StatusBand, string> = {
-  ok: 'text-emerald-500',
-  redirect: 'text-amber-500',
-  error: 'text-red-400'
+  ok: 'text-success-fg',
+  redirect: 'text-warning-fg',
+  error: 'text-danger-fg'
 }
 
 /**

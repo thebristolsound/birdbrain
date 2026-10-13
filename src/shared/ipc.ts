@@ -668,6 +668,12 @@ export type BatchDeleteOutcome =
   | { captureId: string; status: 'not_attempted' }
   | { captureId: string; status: 'rejected'; reason: 'not_found' | 'duplicate' }
 
+// Exhibits a Case search field pass gave a build row, and those whose build failed.
+export interface FieldBuildSummary {
+  indexed: number
+  failed: number
+}
+
 export interface BatchDeleteResult {
   // Exactly one per requested id, in input order.
   outcomes: BatchDeleteOutcome[]

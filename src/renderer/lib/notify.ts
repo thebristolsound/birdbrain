@@ -215,7 +215,9 @@ const CODE_LABELS: Record<LogCode, string> = {
   'persona.orphan_partition_clear_failed':
     "Couldn't clear browser data left by a persona no longer on file",
   'persona.orphan_sweep_skipped':
-    'Skipped the persona browser data check because the data folders differ'
+    'Skipped the persona browser data check because the data folders differ',
+  'searchFields.build_failed': "Couldn't index a capture's links and headers for search",
+  'searchFields.ensure_failed': "Couldn't index this case's links and headers for search"
 }
 
 export function labelForCode(code: LogCode): string {

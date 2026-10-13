@@ -575,6 +575,7 @@ export const LOG_SOURCES = [
   'exhibits',
   'staging',
   'persona',
+  'searchFields',
   'renderer'
 ] as const
 export type LogSource = (typeof LOG_SOURCES)[number]
@@ -735,7 +736,13 @@ export const LOG_CODES = [
   // folders live in different places, where absence proves nothing.
   'persona.orphan_partitions_cleared',
   'persona.orphan_partition_clear_failed',
-  'persona.orphan_sweep_skipped'
+  'persona.orphan_sweep_skipped',
+  // A Case search field build (docs/plans/2026-10-09-case-retrieval-first-slice.md,
+  // D5) that threw. The build row says `failed` when it could be written; this line
+  // holds the error. A pass over a Case that could not start is logged on its own,
+  // since no build row records it.
+  'searchFields.build_failed',
+  'searchFields.ensure_failed'
 ] as const
 export type LogCode = (typeof LOG_CODES)[number]
 

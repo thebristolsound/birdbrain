@@ -292,7 +292,7 @@ independent of the Operator who holds it.
 | `src/renderer/components/captures/ProvenanceBadge.tsx` | blocking | Integrity + trusted-time status rendering |
 | `src/renderer/components/captures/getProvenanceColor.ts` | blocking | Status-to-meaning mapping |
 | `src/renderer/components/captures/MhtmlViewer.tsx` | blocking | Evidence rendering invariants (JS disabled, navigation blocked) |
-| `src/renderer/components/captures/WaybackTab.tsx` | blocking | Pins Wayback corroboration refs |
+| `src/renderer/components/captures/WaybackPanel.tsx` | blocking | Pins Wayback corroboration refs: builds each pin from the chosen snapshot and the lookup's `checkedAt`. Replaced the `WaybackTab.tsx` entry on 2026-10-12; #856 deleted that file, and the entry matched nothing from then on |
 | `src/renderer/components/captures/CaptureDownloadMenu.tsx` | blocking | Per-capture evidence export surface |
 | `src/renderer/components/overview/VerifyBar.tsx` | blocking | Case-level verification display |
 | `src/renderer/components/overview/overviewModel.ts` | blocking | The actual verified/tampered bucketing VerifyBar shows |

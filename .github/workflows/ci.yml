@@ -146,8 +146,12 @@ jobs:
           changed=$(git diff --name-only "origin/${BASE_REF}...HEAD")
           echo "Changed files:"; printf '%s\n' "$changed"
           # Anything outside this list is code. Note .github/workflows is NOT here —
-          # a change to CI itself must run CI.
-          if printf '%s\n' "$changed" | grep -qvE '^(docs/|website/|\.claude/|\.github/ISSUE_TEMPLATE/|CONTEXT\.md$|LICENSE$|[^/]*\.md$)'; then
+          # a change to CI itself must run CI. The evidence include list is the one
+          # document that is also code: the renderer build and the jsdom tests read it
+          # to decide what the React Compiler skips (scripts/react-compiler.ts).
+          include_list='docs/specs/2026-07-31-evidence-affecting-paths-assessment.md'
+          if printf '%s\n' "$changed" | grep -qvE '^(docs/|website/|\.claude/|\.github/ISSUE_TEMPLATE/|CONTEXT\.md$|LICENSE$|[^/]*\.md$)' \
+            || printf '%s\n' "$changed" | grep -qxF "$include_list"; then
             echo 'code=true' >> "$GITHUB_OUTPUT"
           else
             echo 'code=false' >> "$GITHUB_OUTPUT"

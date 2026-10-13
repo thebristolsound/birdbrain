@@ -6,6 +6,7 @@ import type { RecentActivityEvent } from '@shared/types'
 import { RECENT_ACTIVITY_LIMIT } from '@shared/constants'
 import { recentActivityQueryOptions } from '@renderer/lib/api/cases'
 import { formatRelativeTime } from '@renderer/lib/formatRelativeTime'
+import { useTimeTick } from '@renderer/hooks/useTimeTick'
 import { getProvenanceColor } from '@renderer/components/captures/getProvenanceColor'
 import { getCaseTypeStyle } from '@renderer/components/dashboard/caseTypeStyle'
 import { useAppStore } from '@renderer/stores/appStore'
@@ -21,10 +22,11 @@ function eventLabel(event: RecentActivityEvent): string {
 
 interface ActivityRowProps {
   event: RecentActivityEvent
+  now: number
   onOpen: (event: RecentActivityEvent) => void
 }
 
-function ActivityRow({ event, onOpen }: ActivityRowProps) {
+function ActivityRow({ event, now, onOpen }: ActivityRowProps) {
   const Icon = event.kind === 'note' ? StickyNote : Camera
   const { chipClass } = getCaseTypeStyle(event.caseType)
   // Note rows carry no integrity status, but keep the dot's 6px column so
@@ -51,7 +53,7 @@ function ActivityRow({ event, onOpen }: ActivityRowProps) {
         className={`h-1.5 w-1.5 shrink-0 rounded-full ${provenance ? provenance.dot : 'bg-transparent'}`}
       />
       <span className="w-16 shrink-0 text-right text-[10px] text-text-faint">
-        {formatRelativeTime(event.occurredAt)}
+        {formatRelativeTime(event.occurredAt, now)}
       </span>
     </button>
   )
@@ -72,6 +74,7 @@ export function RecentActivityFeed({ limit = RECENT_ACTIVITY_LIMIT }: RecentActi
   const setSelectedCaptureId = useAppStore((s) => s.setSelectedCaptureId)
   const setSelectedNoteId = useAppStore((s) => s.setSelectedNoteId)
   const { data: events = [], isPending } = useQuery(recentActivityQueryOptions(limit))
+  const now = useTimeTick(60_000)
 
   const handleOpen = useCallback(
     (event: RecentActivityEvent) => {
@@ -107,7 +110,7 @@ export function RecentActivityFeed({ limit = RECENT_ACTIVITY_LIMIT }: RecentActi
         ) : (
           <div className="overflow-hidden rounded-lg border border-border bg-card">
             {events.map((event) => (
-              <ActivityRow key={eventKey(event)} event={event} onOpen={handleOpen} />
+              <ActivityRow key={eventKey(event)} event={event} now={now} onOpen={handleOpen} />
             ))}
           </div>
         )}

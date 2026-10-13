@@ -59,6 +59,10 @@ read, which `label_history` in `pregate.sh` already makes.
      A `workflow_dispatch` the maintainer started.
      A `pull_request_target` event whose `label.name` is `review:requested` and whose
      `sender.login` and `triggering_actor` are both `thebristolsound`.
+   - Keep `triggering_actor` as the outer conjunct of the non-scheduled alternative, and
+     narrow it with the label test inside. `tests/spendGuardWorkflows.test.ts` requires a
+     scheduled paid job's condition to be the scheduled first attempt or the guard; it now also
+     accepts the guard narrowed by further conjuncts, and still rejects any other partner.
    - Set `MODE` to `review` and `TARGET_PR` to `github.event.pull_request.number` for the label event.
    - Pin `actions/checkout` to `ref: ${{ github.event.repository.default_branch }}`, as
      `merge-on-label.yml` does. The run then executes `main`'s scripts, never the PR's, whatever
@@ -70,8 +74,8 @@ read, which `label_history` in `pregate.sh` already makes.
 6. **Update `docs/agents/background-jobs.md`.** Next to the `review:skipped` sentence, add one
    sentence: apply `review:requested` to have a PR reviewed now.
 
-Seven files: the ADR (already amended in this commit), this plan, `lib.sh`, `pregate.sh`,
-`post.sh`, `pr-review.yml` and `background-jobs.md`. No dependency, no schema migration.
+Eight files: the ADR (already amended in this commit), this plan, `lib.sh`, `pregate.sh`,
+`post.sh`, `pr-review.yml`, `background-jobs.md` and `tests/spendGuardWorkflows.test.ts`. No dependency, no schema migration.
 
 ## Verification
 

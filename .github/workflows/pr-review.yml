@@ -70,12 +70,10 @@ jobs:
     # label he applies, `merge` included, would start a fire.
     if: >-
       (github.event_name == 'schedule' && github.run_attempt == '1')
-      || (github.event_name != 'pull_request_target'
-        && github.triggering_actor == 'thebristolsound')
-      || (github.event_name == 'pull_request_target'
-        && github.event.label.name == 'review:requested'
-        && github.event.sender.login == 'thebristolsound'
-        && github.triggering_actor == 'thebristolsound')
+      || (github.triggering_actor == 'thebristolsound'
+        && (github.event_name != 'pull_request_target'
+          || (github.event.label.name == 'review:requested'
+            && github.event.sender.login == 'thebristolsound')))
     environment: paid-runs
     runs-on: ubuntu-latest
     timeout-minutes: 120

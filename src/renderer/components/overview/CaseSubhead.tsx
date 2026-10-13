@@ -4,6 +4,7 @@ import type { LucideIcon } from 'lucide-react'
 import type { Case } from '@shared/types'
 import { useCasesMutations } from '@renderer/lib/queries'
 import { formatRelativeTime } from '@renderer/lib/formatRelativeTime'
+import { useTimeTick } from '@renderer/hooks/useTimeTick'
 
 // Type pill colours mirror CASE_ICONS in dashboard/CaseCard.tsx.
 const TYPE_STYLES: Record<string, { icon: LucideIcon; pill: string }> = {
@@ -20,6 +21,7 @@ interface CaseSubheadProps {
 
 export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
   const { update } = useCasesMutations()
+  const now = useTimeTick(60_000)
 
   const [editingName, setEditingName] = useState(false)
   const [nameValue, setNameValue] = useState('')
@@ -227,7 +229,7 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
       </div>
       <div className="flex shrink-0 flex-col items-end gap-2.5">
         <span className="text-[10px] tabular-nums text-text-faint">
-          Opened {formatRelativeTime(caseData.createdAt)}
+          Opened {formatRelativeTime(caseData.createdAt, now)}
         </span>
       </div>
     </div>

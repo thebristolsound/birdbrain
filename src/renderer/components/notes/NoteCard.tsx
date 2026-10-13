@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { StickyNote, Pencil, Trash2, ExternalLink, X, Check } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { captureThumbnailQueryOptions, useNotesMutations } from '@renderer/lib/queries'
@@ -12,9 +12,10 @@ import { NoteBody } from '@renderer/components/notes/NoteBody'
 import { NoteEditor } from '@renderer/components/notes/NoteEditor'
 import { useNoteEditor } from '@renderer/components/notes/useNoteEditor'
 import { useMentionResolver } from '@renderer/components/notes/mention/useMentionSources'
+import { useTimeTick } from '@renderer/hooks/useTimeTick'
 
-function formatRelative(ts: string): string {
-  const diff = Date.now() - new Date(ts).getTime()
+function formatRelative(ts: string, now: number): string {
+  const diff = now - new Date(ts).getTime()
   const mins = Math.floor(diff / 60000)
   if (mins < 1) return 'Just now'
   if (mins < 60) return `${mins} min ago`
@@ -45,20 +46,23 @@ interface NoteCardEditorProps {
  */
 function NoteCardEditor({ note, caseId, isPending, onSave, onCancel }: NoteCardEditorProps) {
   const [title, setTitle] = useState(note.title)
-  const [bodyDoc, setBodyDoc] = useState<string | null>(note.bodyDoc ?? null)
+  const readBody = useRef<(() => string) | null>(null)
   const editor = useNoteEditor({
     caseId,
     noteId: note.id,
     bodyDoc: note.bodyDoc,
     plainText: note.body,
-    onChange: setBodyDoc,
+    onChange: (read) => {
+      readBody.current = read
+    },
     testId: 'note-body-input'
   })
 
   function handleSubmit() {
-    // A legacy note the user opened but did not retype still has no bodyDoc in
-    // state; serialize what the editor lifted its plain text into.
-    const doc = bodyDoc ?? (editor ? JSON.stringify(editor.getJSON()) : null)
+    // A legacy note the user opened but did not retype has no bodyDoc;
+    // serialize what the editor lifted its plain text into.
+    const doc =
+      readBody.current?.() ?? note.bodyDoc ?? (editor ? JSON.stringify(editor.getJSON()) : null)
     if (doc === null) return
     onSave({ title, bodyDoc: doc })
   }
@@ -101,6 +105,7 @@ function NoteCardEditor({ note, caseId, isPending, onSave, onCancel }: NoteCardE
 export function NoteCard({ note, caseId, selected = false }: NoteCardProps) {
   const { update, remove } = useNotesMutations(caseId)
   const resolveMention = useMentionResolver(caseId)
+  const now = useTimeTick(60_000)
   const [isEditing, setIsEditing] = useState(false)
   const { data: thumbnail } = useQuery({
     ...captureThumbnailQueryOptions(note.captureId || ''),
@@ -227,7 +232,7 @@ export function NoteCard({ note, caseId, selected = false }: NoteCardProps) {
               </div>
 
               <div className="mt-0.5 flex items-center gap-2 text-[11px] text-text-muted">
-                <span>{formatRelative(note.createdAt)}</span>
+                <span>{formatRelative(note.createdAt, now)}</span>
                 {note.sourceUrl && (
                   <>
                     <span className="text-text-faint">·</span>

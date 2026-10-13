@@ -69,7 +69,7 @@ export function CaptureDetailsPanel({
   onOpenAddNote
 }: Props) {
   const reduce = useReduceMotion()
-  const tick = useTimeTick(60_000)
+  const now = useTimeTick(60_000)
   const { data: notes = [] } = useQuery(notesQueryOptions(caseId))
   const { create: createNote, update: updateNote } = useNotesMutations(caseId)
   const { favorites, toggleFavorite } = useFavorites(caseId)
@@ -152,22 +152,26 @@ export function CaptureDetailsPanel({
   const noteEditor = useNoteEditor({
     caseId,
     noteId: inline.boundNoteId ?? undefined,
-    onChange: inline.setValue,
+    onChange: inline.change,
     testId: 'inline-note-editor'
   })
 
   // Push the hook's document into the editor when it changes from outside —
-  // a different capture selected, or Esc reverting. The equality guard keeps
-  // the user's own keystrokes from bouncing back and resetting the cursor.
+  // the bound note changes, a newer server copy lands, or Esc reverts. Moving
+  // between two captures that both have no note binds no new note, so the
+  // draft carries over. Typing does not change `loaded`, so this does not run
+  // per keystroke. The equality guard keeps a reload of the same document from
+  // resetting the cursor.
+  const { loaded } = inline
   useEffect(() => {
     if (!noteEditor) return
-    if (JSON.stringify(noteEditor.getJSON()) === inline.value) return
+    if (JSON.stringify(noteEditor.getJSON()) === loaded.doc) return
     try {
-      noteEditor.commands.setContent(JSON.parse(inline.value), { emitUpdate: false })
+      noteEditor.commands.setContent(JSON.parse(loaded.doc), { emitUpdate: false })
     } catch {
       noteEditor.commands.clearContent()
     }
-  }, [noteEditor, inline.value])
+  }, [noteEditor, loaded])
 
   const isFavorite = favorites.has(capture.id)
   const provenance = getProvenanceColor(capture.lastVerifiedStatus)
@@ -187,11 +191,8 @@ export function CaptureDetailsPanel({
         transition: presets.fadeUp.transition
       }
 
-  // Saved-at re-renders with `tick` so "Saved 2m ago" stays fresh.
-  void tick
-
   async function handleAddNote() {
-    if (inline.isDirty) {
+    if (inline.isDirty()) {
       await inline.flush()
     }
     onOpenAddNote()
@@ -411,7 +412,7 @@ export function CaptureDetailsPanel({
           value={
             <span title={new Date(capture.timestamp).toLocaleString()}>
               {[
-                formatRelativeTime(capture.timestamp),
+                formatRelativeTime(capture.timestamp, now),
                 capture.format === 'mhtml' ? 'MHTML Archive' : 'HTML Page',
                 CAPTURE_METHOD_LABELS[capture.method] ?? ''
               ]
@@ -551,7 +552,7 @@ export function CaptureDetailsPanel({
         {inline.savedAt && (
           <p className="mt-1.5 flex items-center gap-1 text-[10px] text-text-faint">
             <StickyNote className="h-3 w-3" />
-            Saved {formatRelativeTime(inline.savedAt)}
+            Saved {formatRelativeTime(inline.savedAt, now)}
           </p>
         )}
       </section>

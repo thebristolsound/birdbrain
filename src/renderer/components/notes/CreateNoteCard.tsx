@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Plus, X } from 'lucide-react'
 import { useNotesMutations } from '@renderer/lib/queries'
 import { Button, Input } from '@renderer/components/ui'
 import { NoteEditor } from '@renderer/components/notes/NoteEditor'
-import { useNoteEditor } from '@renderer/components/notes/useNoteEditor'
+import { useNoteEditor, useNoteEditorState } from '@renderer/components/notes/useNoteEditor'
 import { EMPTY_NOTE_DOC } from '@shared/noteDoc'
 
 interface CreateNoteCardProps {
@@ -16,7 +16,7 @@ interface CreateNoteCardProps {
 export function CreateNoteCard({ caseId, isOpen, onToggle, onCreated }: CreateNoteCardProps) {
   const { create, update } = useNotesMutations(caseId)
   const [title, setTitle] = useState('')
-  const [bodyDoc, setBodyDoc] = useState<string | null>(null)
+  const readBody = useRef<(() => string) | null>(null)
   // Set once the draft has been written to the database ahead of the operator
   // pressing Save — which the Tag action forces, since a tag cannot attach to
   // a note that does not exist (#391, ruling R15). From then on this card is
@@ -25,13 +25,15 @@ export function CreateNoteCard({ caseId, isOpen, onToggle, onCreated }: CreateNo
   const editor = useNoteEditor({
     caseId,
     noteId: draftNoteId ?? undefined,
-    onChange: setBodyDoc,
+    onChange: (read) => {
+      readBody.current = read
+    },
     testId: 'create-note-body'
   })
-  const hasBody = editor ? !editor.isEmpty : false
+  const hasBody = useNoteEditorState(editor, (editor) => !editor.isEmpty, false)
 
   async function persistDraft(): Promise<string> {
-    const doc = bodyDoc ?? JSON.stringify(EMPTY_NOTE_DOC)
+    const doc = readBody.current?.() ?? JSON.stringify(EMPTY_NOTE_DOC)
     if (draftNoteId) {
       await update.mutateAsync({ id: draftNoteId, title: title.trim(), bodyDoc: doc })
       return draftNoteId
@@ -43,7 +45,7 @@ export function CreateNoteCard({ caseId, isOpen, onToggle, onCreated }: CreateNo
 
   function resetDraft() {
     setTitle('')
-    setBodyDoc(null)
+    readBody.current = null
     setDraftNoteId(null)
     editor?.commands.clearContent()
   }

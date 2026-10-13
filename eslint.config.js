@@ -1,6 +1,18 @@
 import js from '@eslint/js'
 import tseslint from 'typescript-eslint'
 import prettierConfig from 'eslint-config-prettier'
+import reactHooks from 'eslint-plugin-react-hooks'
+
+// The plugin's React Compiler diagnostics. Its two classic hooks rules are left out: they
+// check hook order and dependency arrays, not what the compiler can optimize, and would mix
+// unrelated warnings into this list. Warnings, so the existing findings do not fail lint.
+// They are not a safety net: the compiler cannot see a mutable object read during render
+// (the Tiptap editor, for one), and a component it compiled can still warn.
+const reactCompilerRules = Object.fromEntries(
+  Object.keys(reactHooks.configs['recommended-latest'].rules)
+    .filter((name) => !['react-hooks/rules-of-hooks', 'react-hooks/exhaustive-deps'].includes(name))
+    .map((name) => [name, 'warn'])
+)
 
 export default tseslint.config(
   js.configs.recommended,
@@ -47,6 +59,11 @@ export default tseslint.config(
         fetch: 'readonly'
       }
     }
+  },
+  {
+    files: ['src/renderer/**/*.{ts,tsx}'],
+    plugins: { 'react-hooks': reactHooks },
+    rules: reactCompilerRules
   },
   {
     files: ['e2e/**/*.ts'],

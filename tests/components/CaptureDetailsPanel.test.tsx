@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { Mock } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { act, render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { Capture } from '@shared/types'
@@ -226,5 +226,24 @@ describe('CaptureDetailsPanel provenance line', () => {
     )
 
     expect(await screen.findByText(/Duplicate/)).toBeTruthy()
+  })
+})
+
+describe('CaptureDetailsPanel relative times', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  // The compiled panel caches what it renders on its inputs, so the age has to
+  // come from the ticking clock rather than a Date.now() read during render.
+  it('ages "Captured" as the minute ticks over', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] })
+    vi.setSystemTime(new Date('2026-08-01T12:00:30.000Z'))
+    renderPanel()
+    expect(await screen.findByText(/just now/)).toBeTruthy()
+    act(() => {
+      vi.advanceTimersByTime(60_000)
+    })
+    expect(screen.getByText(/1 minute ago/)).toBeTruthy()
   })
 })

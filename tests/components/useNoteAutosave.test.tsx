@@ -26,7 +26,7 @@ describe('workspace autosave', () => {
       await vi.advanceTimersByTimeAsync(1000)
     })
     expect(save).not.toHaveBeenCalled()
-    act(() => result.current.change({ title: 'Edited' }))
+    act(() => result.current.changeTitle('Edited'))
     expect(result.current.state).toBe('unsaved')
     await act(async () => {
       await vi.advanceTimersByTimeAsync(700)
@@ -46,8 +46,8 @@ describe('workspace autosave', () => {
     vi.useFakeTimers()
     const save = vi.fn(async () => note)
     const { result } = renderHook(() => useNoteAutosave(note, save))
-    act(() => result.current.change({ title: 'Temporary edit' }))
-    act(() => result.current.change({ title: 'Original' }))
+    act(() => result.current.changeTitle('Temporary edit'))
+    act(() => result.current.changeTitle('Original'))
     expect(result.current.state).toBe('saved')
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1000)
@@ -67,14 +67,14 @@ describe('workspace autosave', () => {
       )
       .mockImplementation(async (draft) => ({ ...note, ...draft }))
     const { result } = renderHook(() => useNoteAutosave(note, save))
-    act(() => result.current.change({ title: 'First' }))
+    act(() => result.current.changeTitle('First'))
     let first!: Promise<boolean>
     act(() => {
       first = result.current.flush()
     })
     expect(result.current.state).toBe('saving')
     expect(result.current.flush()).toBe(first)
-    act(() => result.current.change({ title: 'Latest' }))
+    act(() => result.current.changeTitle('Latest'))
     await act(async () => {
       finish({ ...note, title: 'First' })
       await first
@@ -90,14 +90,14 @@ describe('workspace autosave', () => {
       .mockResolvedValueOnce(undefined)
       .mockResolvedValue(note)
     const { result } = renderHook(() => useNoteAutosave(note, save))
-    act(() => result.current.change({ title: 'Keep this' }))
+    act(() => result.current.changeTitle('Keep this'))
     let ok: boolean | undefined
     await act(async () => {
       ok = await result.current.flush()
     })
     expect(ok).toBe(false)
     expect(result.current.state).toBe('error')
-    expect(result.current.draft.title).toBe('Keep this')
+    expect(result.current.title).toBe('Keep this')
     await act(async () => {
       ok = await result.current.flush()
     })
@@ -106,6 +106,30 @@ describe('workspace autosave', () => {
       ok = await result.current.flush()
     })
     expect(ok).toBe(true)
+    expect(result.current.state).toBe('saved')
+  })
+  it('saves a body edit read once at the debounce, without re-rendering per keystroke', async () => {
+    vi.useFakeTimers()
+    const save = vi.fn(async (draft) => ({ ...note, ...draft }))
+    let renders = 0
+    const { result } = renderHook(() => {
+      renders++
+      return useNoteAutosave(note, save)
+    })
+    const body = JSON.stringify({ type: 'doc', content: [{ type: 'paragraph' }] })
+    const read = vi.fn(() => body)
+    act(() => result.current.changeBody(read))
+    expect(result.current.state).toBe('unsaved')
+    const afterFirst = renders
+    act(() => {
+      for (let i = 0; i < 20; i++) result.current.changeBody(read)
+    })
+    expect(renders).toBe(afterFirst)
+    expect(read).not.toHaveBeenCalled()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(700)
+    })
+    expect(save).toHaveBeenCalledWith({ id: 'n1', title: 'Original', bodyDoc: body })
     expect(result.current.state).toBe('saved')
   })
 })

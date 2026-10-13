@@ -16,8 +16,9 @@ import {
   reconcileCaptureTrustedTime,
   reconcileAllMirrors
 } from '@main/services/trustedTime'
-import { initDatabase, closeDatabase } from '@main/services/db/core'
+import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
+import { listExhibits } from '@main/services/db/exhibitRepo'
 import { insertCapture, getCapture, setCaptureTrustedTime } from '@main/services/db/captureRepo'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
 import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
@@ -609,11 +610,19 @@ describe('trusted time in a Shared Case', () => {
     expect(buildTrustedTimeIndex(caseDir).get(hash)).toBeUndefined()
   })
 
-  // The second pre-pass's scenario: the Owner observes member B's Capture, and
-  // member C, whose chain file sorts before B's, carries a forged stamp over it.
-  it("prefers the stamp of the chain that records the Capture over a third member's", () => {
-    const AUTHOR_ID = 'installation-zz-author'
-    const THIRD_ID = 'installation-aa-third'
+  // The Owner observes member B's Capture, and member C, whose chain file sorts
+  // before B's so the walk reads it first, carries a forged stamp over it. With
+  // `thirdRecords`, C's chain also carries its own Capture entry over B's hash.
+  const AUTHOR_ID = 'installation-zz-author'
+  const THIRD_ID = 'installation-aa-third'
+  const GENUINE = { trustedTime: 'rfc3161', tsaName: 'genuine.tsa', stampedAt: TIME }
+  const FORGED = {
+    trustedTime: 'rfc3161',
+    tsaName: 'not-a-tsa',
+    stampedAt: '2020-01-01T00:00:00.000Z'
+  }
+
+  function thirdMemberCase(thirdRecords: boolean): string {
     const AUTHOR_KEY = keyPair()
     const THIRD_KEY = keyPair()
     const hash = hashOf('authored-by-b')
@@ -625,10 +634,9 @@ describe('trusted time in a Shared Case', () => {
     const author = new Chain(signWith(AUTHOR_KEY.privateKey))
       .append({ ...captureEntry(hash), ...by(AUTHOR_ID) })
       .append({ ...stampEntry(hash, genuine), ...by(AUTHOR_ID) })
-    const third = new Chain(signWith(THIRD_KEY.privateKey)).append({
-      ...forgedStamp(hash),
-      ...by(THIRD_ID)
-    })
+    const third = new Chain(signWith(THIRD_KEY.privateKey))
+    if (thirdRecords) third.append({ ...captureEntry(hash), ...by(THIRD_ID) })
+    third.append({ ...forgedStamp(hash), ...by(THIRD_ID) })
     const head = (installationId: string, { lines, hashes }: Chain) => ({
       installationId,
       index: lines.length - 1,
@@ -650,16 +658,48 @@ describe('trusted time in a Shared Case', () => {
     writeFileSync(join(caseDir, 'manifest.jsonl'), owner.jsonl)
     writeFileSync(join(caseDir, memberChainPath(AUTHOR_ID)), author.jsonl)
     writeFileSync(join(caseDir, memberChainPath(THIRD_ID)), third.jsonl)
-    const walked = [...(sharedVerification()?.entries.keys() ?? [])]
+    const verification = sharedVerification()
+    expect(verification?.valid).toBe(true)
+    expect(verification?.findings).toEqual([])
+    const walked = [...(verification?.entries.keys() ?? [])]
     expect(walked.indexOf(THIRD_ID)).toBeLessThan(walked.indexOf(AUTHOR_ID))
+    return hash
+  }
 
-    const expected = {
-      trustedTime: 'rfc3161',
-      tsaName: 'genuine.tsa',
-      stampedAt: TIME
-    }
-    expect(resolveTrustedTime(caseDir, hash)).toEqual(expected)
-    expect(buildTrustedTimeIndex(caseDir).get(hash)).toEqual(expected)
+  it("prefers the stamp of the chain that records the Capture over a third member's", () => {
+    const hash = thirdMemberCase(false)
+
+    expect(resolveTrustedTime(caseDir, hash)).toEqual(GENUINE)
+    expect(buildTrustedTimeIndex(caseDir).get(hash)).toEqual(GENUINE)
+  })
+
+  // The third pre-pass's scenario: C also records B's hash, so only the row's
+  // recorded author tells the two chains apart.
+  it("prefers the recorded author's stamp when a third member also records the Capture", () => {
+    const hash = thirdMemberCase(true)
+    const id = captureRow(hash, 'none')
+    getDb()
+      .prepare('UPDATE exhibits SET author_installation_id = ? WHERE id = ?')
+      .run(AUTHOR_ID, id)
+
+    expect(resolveTrustedTime(caseDir, hash, AUTHOR_ID)).toEqual(GENUINE)
+    expect(buildTrustedTimeIndex(caseDir, listExhibits(caseId)).get(hash)).toEqual(GENUINE)
+    expect(reconcileCaptureTrustedTime({ id, caseId, hash })).toEqual(GENUINE)
+    // With no recorded author, walk order decides between the two chains that
+    // record the hash: the limit the fallback states.
+    expect(resolveTrustedTime(caseDir, hash)).toEqual(FORGED)
+    expect(buildTrustedTimeIndex(caseDir).get(hash)).toEqual(FORGED)
+  })
+
+  it('falls back to walk order for a hash whose rows name different authors', () => {
+    const hash = thirdMemberCase(true)
+    const rows = [
+      { contentHash: hash, authorInstallationId: AUTHOR_ID },
+      { contentHash: hash, authorInstallationId: THIRD_ID }
+    ]
+
+    expect(buildTrustedTimeIndex(caseDir, rows).get(hash)).toEqual(FORGED)
+    expect(buildTrustedTimeIndex(caseDir, rows.slice(0, 1)).get(hash)).toEqual(GENUINE)
   })
 
   it('reads no other chain to resolve a hash the local chain records as its own', () => {

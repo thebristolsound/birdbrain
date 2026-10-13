@@ -396,7 +396,11 @@ async function computeVerification(
   // the manifest but the worker hasn't refreshed the column yet.
   const tt = record
     ? reconcileCaptureTrustedTime(capture)
-    : resolveTrustedTime(store.caseDir(capture.caseId), capture.hash)
+    : resolveTrustedTime(
+        store.caseDir(capture.caseId),
+        capture.hash,
+        getExhibit(capture.id)?.authorInstallationId
+      )
   const trusted = { trustedTime: tt.trustedTime, tsaName: tt.tsaName, stampedAt: tt.stampedAt }
 
   const base = {

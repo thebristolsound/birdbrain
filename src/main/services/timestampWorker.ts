@@ -134,7 +134,10 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
       if (parsed.messageImprintHex !== exhibit.contentHash) {
         throw new Error('TSA token imprint does not match exhibit content hash')
       }
-      if (resolveTrustedTime(caseDir, exhibit.contentHash).trustedTime === 'rfc3161') {
+      const { contentHash, authorInstallationId } = exhibit
+      if (
+        resolveTrustedTime(caseDir, contentHash, authorInstallationId).trustedTime === 'rfc3161'
+      ) {
         return true
       }
       initManifest(caseDir)
@@ -174,7 +177,7 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
       )
       // Most Cases hold Captures only; no manifest read for those.
       if (candidates.length === 0) continue
-      const index = buildTrustedTimeIndex(join(getStorageRoot(), c.id))
+      const index = buildTrustedTimeIndex(join(getStorageRoot(), c.id), candidates)
       for (const exhibit of candidates) {
         if (index.get(exhibit.contentHash)?.trustedTime === 'rfc3161') continue
         pending.push(exhibit.id)

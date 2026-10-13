@@ -49,6 +49,7 @@ import { pathToFileURL } from 'url'
 import * as activityRepo from '@main/services/db/activityRepo'
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
+import * as exhibitRepo from '@main/services/db/exhibitRepo'
 import * as tagRepo from '@main/services/db/tagRepo'
 import * as personaRepo from '@main/services/db/personaRepo'
 import * as personaSessions from '@main/services/persona/personaSessions'
@@ -385,7 +386,11 @@ export function registerIpcHandlers(deps: {
       // and can disagree with the tokens actually retained (#509). resolveTrustedTime
       // rather than reconcileCaptureTrustedTime: an export is a read path and
       // must not write the mirror as a side effect.
-      const trustedTime = resolveTrustedTime(join(getStorageRoot(), capture.caseId), capture.hash)
+      const trustedTime = resolveTrustedTime(
+        join(getStorageRoot(), capture.caseId),
+        capture.hash,
+        exhibitRepo.getExhibit(capture.id)?.authorInstallationId
+      )
       const pdf = await renderCapturePdf(capture, artifact.abs, trustedTime)
       const { writeFileSync } = await import('fs')
       writeFileSync(filePath, pdf)

@@ -306,13 +306,6 @@ describe('MhtmlViewer', () => {
     })
   })
 
-  // The `captures:getMhtmlUrl` handler answers null for a capture whose file is gone,
-  // and this viewer has no state for that: the null lands on the
-  // same `!fileUrl` branch as a query still in flight, so a missing archive reads as a
-  // permanent "Loading MHTML...". That is pre-existing and out of scope for #465, and
-  // it is why this case is titled for what it asserts — no guest — rather than for a
-  // report the component does not make. `LegacyHtmlViewer` has the emptyLabel this one
-  // lacks.
   it('shows a failed archive lookup in the danger token and mounts no guest', async () => {
     fakeBridge({
       captures: { getMhtmlUrl: vi.fn().mockRejectedValue(new Error('archive missing')) }
@@ -324,6 +317,13 @@ describe('MhtmlViewer', () => {
     expect(screen.queryByTestId('mhtml-viewer')).toBeNull()
   })
 
+  // The `captures:getMhtmlUrl` handler answers null for a capture whose file is gone,
+  // and this viewer has no state for that: the null lands on the
+  // same `!fileUrl` branch as a query still in flight, so a missing archive reads as a
+  // permanent "Loading MHTML...". That is pre-existing and out of scope for #465, and
+  // it is why this case is titled for what it asserts — no guest — rather than for a
+  // report the component does not make. `LegacyHtmlViewer` has the emptyLabel this one
+  // lacks.
   it('mounts no guest while the archive URL is unresolved', async () => {
     fakeBridge({ captures: { getMhtmlUrl: vi.fn().mockResolvedValue(null) } })
     renderViewer()

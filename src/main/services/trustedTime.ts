@@ -15,8 +15,8 @@ export type { TrustedTimeResult }
 // lenient dialect); the resolution rule itself lives in verify-core
 // (`@shared/verify/trustedTime`).
 
-// The Content Hashes the local chain records as its own Capture or Exhibit.
-function ownContentHashes(entries: Record<string, unknown>[]): Set<string> {
+// The Content Hashes a chain records as its own Capture or Exhibit.
+function recordedContentHashes(entries: Record<string, unknown>[]): Set<string> {
   const own = new Set<string>()
   for (const { type, contentHash } of entries) {
     if ((type === 'capture' || type === 'exhibit') && typeof contentHash === 'string') {
@@ -35,18 +35,28 @@ function ownContentHashes(entries: Record<string, unknown>[]): Set<string> {
 // Content takes no stamp from another chain: in-app resolution checks a
 // token's structure, not its TSA signature, so another member's chain must not
 // stand in for this installation's own stamp or stop the worker requesting it.
-// `contentHash` narrows the read to one hash, skipping the walk for own Content.
+// For the same reason, after the local chain's stamps come those of the chain
+// that records the hash's Capture or Exhibit, so a third member's stamp cannot
+// displace its author's. `contentHash` narrows the read to one hash, skipping
+// the walk for own Content.
 function trustedTimeEntries(caseDir: string, contentHash?: string): Record<string, unknown>[] {
   const manifest = readManifestSnapshot(caseDir)
-  const own = ownContentHashes(manifest.entries)
+  const own = recordedContentHashes(manifest.entries)
   if (contentHash !== undefined && own.has(contentHash)) return manifest.entries
   const { verification } = readSharedCaseSnapshot(caseDir, manifest)
   if (!verification) return manifest.entries
-  const stamps = [...verification.entries]
-    .filter(([key]) => key !== verification.localInstallationId)
-    .flatMap(([, accepted]) => accepted)
-    .filter((entry) => entry.type === 'timestamp' && !own.has(entry.captureContentHash))
-  return [...manifest.entries, ...stamps]
+  const authors: Record<string, unknown>[] = []
+  const others: Record<string, unknown>[] = []
+  for (const [key, accepted] of verification.entries) {
+    if (key === verification.localInstallationId) continue
+    const recorded = recordedContentHashes(accepted)
+    for (const entry of accepted) {
+      if (entry.type !== 'timestamp' || own.has(entry.captureContentHash)) continue
+      if (recorded.has(entry.captureContentHash)) authors.push(entry)
+      else others.push(entry)
+    }
+  }
+  return [...manifest.entries, ...authors, ...others]
 }
 
 // Resolves the per-capture trusted-time axis from the Case's chains alone (so the DB mirror remains rebuildable).

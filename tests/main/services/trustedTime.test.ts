@@ -608,6 +608,59 @@ describe('trusted time in a Shared Case', () => {
     expect(buildTrustedTimeIndex(caseDir).get(hash)).toBeUndefined()
   })
 
+  // The second pre-pass's scenario: the Owner observes member B's Capture, and
+  // member C, whose chain file sorts before B's, carries a forged stamp over it.
+  it("prefers the stamp of the chain that records the Capture over a third member's", () => {
+    const AUTHOR_ID = 'installation-zz-author'
+    const THIRD_ID = 'installation-aa-third'
+    const AUTHOR_KEY = keyPair()
+    const THIRD_KEY = keyPair()
+    const hash = hashOf('authored-by-b')
+    const genuine = buildSyntheticToken({
+      contentHash: hash,
+      genTime: new Date(TIME),
+      tsaDnsName: 'genuine.tsa'
+    })
+    const author = new Chain(signWith(AUTHOR_KEY.privateKey))
+      .append({ ...captureEntry(hash), ...by(AUTHOR_ID) })
+      .append({ ...stampEntry(hash, genuine), ...by(AUTHOR_ID) })
+    const third = new Chain(signWith(THIRD_KEY.privateKey)).append({
+      ...forgedStamp(hash),
+      ...by(THIRD_ID)
+    })
+    const head = (installationId: string, { lines, hashes }: Chain) => ({
+      installationId,
+      index: lines.length - 1,
+      entryHash: hashes[lines.length - 1],
+      entriesReceived: lines.length
+    })
+    const owner = new Chain(signEntryHash)
+      .append(memberAdd(OWNER_ID, getPublicKeyPem(), 'CO', 'owner'))
+      .append(memberAdd(AUTHOR_ID, AUTHOR_KEY.publicKey, 'AB', 'member'))
+      .append(memberAdd(THIRD_ID, THIRD_KEY.publicKey, 'TC', 'member'))
+      .append({
+        type: 'merge',
+        caseId,
+        heads: [head(AUTHOR_ID, author), head(THIRD_ID, third)],
+        timestamp: TIME,
+        ...by(OWNER_ID),
+        schemaVersion: 4
+      })
+    writeFileSync(join(caseDir, 'manifest.jsonl'), owner.jsonl)
+    writeFileSync(join(caseDir, memberChainPath(AUTHOR_ID)), author.jsonl)
+    writeFileSync(join(caseDir, memberChainPath(THIRD_ID)), third.jsonl)
+    const walked = [...(sharedVerification()?.entries.keys() ?? [])]
+    expect(walked.indexOf(THIRD_ID)).toBeLessThan(walked.indexOf(AUTHOR_ID))
+
+    const expected = {
+      trustedTime: 'rfc3161',
+      tsaName: 'genuine.tsa',
+      stampedAt: TIME
+    }
+    expect(resolveTrustedTime(caseDir, hash)).toEqual(expected)
+    expect(buildTrustedTimeIndex(caseDir).get(hash)).toEqual(expected)
+  })
+
   it('reads no other chain to resolve a hash the local chain records as its own', () => {
     initManifest(caseDir)
     const own = hashOf('own-no-walk')

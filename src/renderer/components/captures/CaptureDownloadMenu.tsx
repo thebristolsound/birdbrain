@@ -84,7 +84,7 @@ export function CaptureDownloadMenu({ capture }: Props) {
         <div
           role="alert"
           data-testid="capture-download-error"
-          className="absolute right-0 top-full z-40 mt-1 max-w-64 break-words rounded border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-[11px] text-red-400"
+          className="absolute right-0 top-full z-40 mt-1 max-w-64 break-words rounded border border-danger-line bg-danger-surface px-2.5 py-1 text-[11px] text-danger-fg"
         >
           {error}
         </div>

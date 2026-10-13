@@ -110,7 +110,7 @@ export function CreateSelectorCard({
                       if (isRegex) validateRegex(e.target.value)
                     }}
                     placeholder={isRegex ? 'e.g. \\b\\d{3}-\\d{3}-\\d{4}\\b' : 'e.g. John Doe'}
-                    className="w-full rounded-xl border border-border-strong bg-canvas py-1.5 pl-8 pr-3 font-mono text-sm text-text-primary placeholder:text-text-faint focus:border-accent/40 focus:outline-none focus:ring-2 focus:ring-accent/25"
+                    className="w-full rounded-xl border border-input bg-canvas py-1.5 pl-8 pr-3 font-mono text-sm text-text-primary placeholder:text-text-faint focus:border-accent/40 focus:outline-none focus:ring-2 focus:ring-accent/25"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleCreate()
                     }}
@@ -132,7 +132,7 @@ export function CreateSelectorCard({
                   .*
                 </button>
               </div>
-              {regexError && <p className="mt-1 text-xs text-red-400">{regexError}</p>}
+              {regexError && <p className="mt-1 text-xs text-danger-fg">{regexError}</p>}
             </div>
 
             {/* Label input */}
@@ -143,7 +143,7 @@ export function CreateSelectorCard({
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
                 placeholder="e.g. Phone numbers"
-                className="w-full rounded-xl border border-border-strong bg-canvas px-3 py-1.5 text-sm text-text-primary placeholder:text-text-faint focus:border-accent/40 focus:outline-none focus:ring-2 focus:ring-accent/25"
+                className="w-full rounded-xl border border-input bg-canvas px-3 py-1.5 text-sm text-text-primary placeholder:text-text-faint focus:border-accent/40 focus:outline-none focus:ring-2 focus:ring-accent/25"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleCreate()
                 }}

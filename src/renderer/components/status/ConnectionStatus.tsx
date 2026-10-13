@@ -24,7 +24,7 @@ export function ConnectionStatus() {
         />
         {/* Below lg the native window controls leave the top bar too short for the word
             at the minimum window width (e2e/topbar-layout.spec.ts); the dot stays. */}
-        <span className="sr-only text-[11px] font-medium text-emerald-400 lg:not-sr-only">
+        <span className="sr-only text-[11px] font-medium text-success-fg lg:not-sr-only">
           Connected
         </span>
       </div>

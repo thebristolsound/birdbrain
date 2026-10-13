@@ -210,7 +210,7 @@ export function CaptureList({
   if (isError) {
     return (
       <aside className="flex h-full flex-1 flex-col items-center justify-center gap-2 bg-surface p-4 text-center min-w-0">
-        <div className="text-xs text-red-400">
+        <div className="text-xs text-danger-fg">
           Failed to load captures: {error instanceof Error ? error.message : 'Unknown error'}
         </div>
         <Button variant="outline" size="sm" onClick={() => refetch()}>
@@ -398,7 +398,7 @@ export function CaptureList({
                             clearNarrowing()
                             setShowFilterMenu(false)
                           }}
-                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-red-400 hover:bg-elevated"
+                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-danger-fg hover:bg-elevated"
                         >
                           <X className="h-3 w-3 shrink-0" />
                           {CLEAR_NARROWING_LABEL}

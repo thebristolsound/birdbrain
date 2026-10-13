@@ -31,7 +31,7 @@ export function ExtensionBanner({ connected }: ExtensionBannerProps) {
         <>
           <div className="flex items-center gap-5">
             <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center flex-shrink-0">
-              <CheckCircle className="h-6 w-6 text-emerald-500" />
+              <CheckCircle className="h-6 w-6 text-success-fg" />
             </div>
             <div>
               <h4 className="font-display font-bold text-sm text-text-primary">
@@ -65,7 +65,7 @@ export function ExtensionBanner({ connected }: ExtensionBannerProps) {
                 Setup Guide to load them in your browser.
               </p>
               {folderError && (
-                <p role="alert" className="mt-2 text-xs text-red-400">
+                <p role="alert" className="mt-2 text-xs text-danger-fg">
                   {folderError}
                 </p>
               )}

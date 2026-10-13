@@ -58,7 +58,7 @@ export function ExtractedTextTab({ text, highlight }: ExtractedTextTabProps) {
     <div className="py-3 pb-6" data-testid="extracted-text-tab">
       {lines.map((line, index) => (
         <div key={index} className="flex gap-3.5 px-4 leading-[1.75]">
-          <span className="w-[34px] shrink-0 text-right font-mono text-[11px] text-text-faint opacity-60">
+          <span className="w-[34px] shrink-0 text-right font-mono text-[11px] text-text-faint">
             {index + 1}
           </span>
           <span className="whitespace-pre-wrap break-words font-mono text-xs text-text-secondary">

@@ -199,7 +199,7 @@ export function WaybackPanel({ capture, onClose }: Props) {
       className="flex shrink-0 flex-col overflow-hidden border-l border-border bg-surface"
     >
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-3.5 py-3">
-        <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-500">
+        <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-warning-line bg-warning-surface px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-warning-fg">
           archive.org
         </span>
         <span
@@ -384,7 +384,7 @@ export function WaybackPanel({ capture, onClose }: Props) {
           </div>
         )}
         {lookup.isError && !lookup.isFetching && (
-          <div data-testid="wayback-error" className="p-7 text-center text-xs text-red-400">
+          <div data-testid="wayback-error" className="p-7 text-center text-xs text-danger-fg">
             Lookup failed:{' '}
             {lookup.error instanceof Error ? lookup.error.message : String(lookup.error)}
           </div>

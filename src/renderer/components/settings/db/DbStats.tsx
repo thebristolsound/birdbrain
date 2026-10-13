@@ -18,7 +18,7 @@ export function DbStats() {
   // data the user is already reading.
   if (error && !stats) {
     return (
-      <div className="rounded-lg bg-red-900/20 p-4 text-sm text-red-400">
+      <div className="rounded-lg bg-danger-surface p-4 text-sm text-danger-fg">
         {error instanceof Error ? error.message : 'Failed to load stats'}
       </div>
     )

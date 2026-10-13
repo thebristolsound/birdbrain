@@ -322,7 +322,7 @@ export function DbUtilities() {
             })
           }
           disabled={loading !== null}
-          className="rounded-lg border border-red-800 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/20 disabled:opacity-50"
+          className="rounded-lg border border-danger-line px-3 py-1.5 text-xs text-danger-fg hover:bg-danger-surface disabled:opacity-50"
         >
           Purge
         </button>
@@ -349,7 +349,7 @@ export function DbUtilities() {
                 })
               }
               disabled={loading !== null}
-              className="rounded-lg border border-red-800 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/20 disabled:opacity-50"
+              className="rounded-lg border border-danger-line px-3 py-1.5 text-xs text-danger-fg hover:bg-danger-surface disabled:opacity-50"
             >
               {loading === 'orphans-clean' ? 'Cleaning...' : 'Clean'}
             </button>
@@ -383,7 +383,7 @@ export function DbUtilities() {
             })
           }
           disabled={loading !== null}
-          className="rounded-lg border border-red-800 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/20 disabled:opacity-50"
+          className="rounded-lg border border-danger-line px-3 py-1.5 text-xs text-danger-fg hover:bg-danger-surface disabled:opacity-50"
         >
           Restore from File
         </button>
@@ -437,7 +437,7 @@ export function DbUtilities() {
                   })
                 }
                 disabled={loading !== null}
-                className="shrink-0 rounded-lg border border-red-800 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/20 disabled:opacity-50"
+                className="shrink-0 rounded-lg border border-danger-line px-3 py-1.5 text-xs text-danger-fg hover:bg-danger-surface disabled:opacity-50"
               >
                 {loading === `snapshots:${snapshot.fileName}` ? 'Restoring...' : 'Restore'}
               </button>

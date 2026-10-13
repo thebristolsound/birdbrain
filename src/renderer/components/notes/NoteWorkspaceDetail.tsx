@@ -136,7 +136,7 @@ export function NoteWorkspaceDetail({
                 onClick={async () => {
                   if (await flush()) await onDelete(note.id)
                 }}
-                className="text-red-400"
+                className="text-danger-fg"
               >
                 Confirm delete
               </button>

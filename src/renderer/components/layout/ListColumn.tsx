@@ -20,7 +20,7 @@ export function ListColumnSearch(props: InputHTMLAttributes<HTMLInputElement>) {
       <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-text-muted" />
       <input
         {...props}
-        className="w-full rounded border border-border-strong bg-canvas py-1.5 pl-7 pr-2.5 text-xs text-text-primary placeholder:text-text-faint"
+        className="w-full rounded border border-input bg-canvas py-1.5 pl-7 pr-2.5 text-xs text-text-primary placeholder:text-text-faint"
       />
     </div>
   )

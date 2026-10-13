@@ -24,7 +24,7 @@ export function CrashRecoveryPrompt() {
   return (
     <div className="fixed inset-x-0 bottom-0 z-40 flex items-center justify-center p-4">
       <div className="flex items-center gap-3 rounded-lg border border-border bg-elevated px-4 py-3 shadow-lg">
-        <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+        <AlertTriangle className="h-4 w-4 shrink-0 text-warning-fg" />
         <p className="text-sm text-text-primary">Birdbrain closed unexpectedly last time.</p>
         <div className="flex shrink-0 gap-2">
           {/* Dispatch, don't mount. __root.tsx owns the single

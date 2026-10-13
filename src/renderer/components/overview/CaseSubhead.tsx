@@ -8,9 +8,9 @@ import { useTimeTick } from '@renderer/hooks/useTimeTick'
 
 // Type pill colours mirror CASE_ICONS in dashboard/CaseCard.tsx.
 const TYPE_STYLES: Record<string, { icon: LucideIcon; pill: string }> = {
-  crypto: { icon: FolderOpen, pill: 'border-amber-500/20 bg-amber-500/10 text-amber-500' },
-  malware: { icon: ShieldAlert, pill: 'border-sky-500/20 bg-sky-500/10 text-sky-500' },
-  fraud: { icon: Users, pill: 'border-pink-500/20 bg-pink-500/10 text-pink-500' }
+  crypto: { icon: FolderOpen, pill: 'border-orange-500/20 bg-orange-500/10 text-hue-orange-fg' },
+  malware: { icon: ShieldAlert, pill: 'border-sky-500/20 bg-sky-500/10 text-hue-sky-fg' },
+  fraud: { icon: Users, pill: 'border-pink-500/20 bg-pink-500/10 text-hue-pink-fg' }
 }
 const DEFAULT_STYLE = { icon: FolderOpen, pill: 'border-accent/20 bg-accent-subtle text-accent' }
 

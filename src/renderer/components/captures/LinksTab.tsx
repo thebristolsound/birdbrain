@@ -46,7 +46,7 @@ function LinkRow({ link, inCase, index }: { link: CaptureLink; inCase: boolean; 
           <span
             data-testid="links-mismatch"
             title="The link text names a different host from the one the link goes to"
-            className="flex shrink-0 items-center gap-1 rounded border border-amber-500/30 bg-amber-500/10 px-1.5 text-[10px] text-amber-500"
+            className="flex shrink-0 items-center gap-1 rounded border border-warning-line bg-warning-surface px-1.5 text-[10px] text-warning-fg"
           >
             <AlertTriangle aria-hidden className="h-2.5 w-2.5" />
             Text names another host

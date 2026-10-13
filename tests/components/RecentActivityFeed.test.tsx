@@ -147,7 +147,7 @@ describe('RecentActivityFeed', () => {
     renderFeed([captureEvent, { ...noteEvent, caseType: undefined }])
 
     const rows = await screen.findAllByTestId('recent-activity-row')
-    expect(rows[0].innerHTML).toContain('text-pink-500')
+    expect(rows[0].innerHTML).toContain('text-hue-pink-fg')
     expect(rows[1].innerHTML).toContain('text-accent')
   })
 })

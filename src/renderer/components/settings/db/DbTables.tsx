@@ -149,11 +149,11 @@ export function DbTables() {
       </div>
 
       {readError && (
-        <div className="rounded-lg bg-red-900/20 p-3 text-sm text-red-400">{readError}</div>
+        <div className="rounded-lg bg-danger-surface p-3 text-sm text-danger-fg">{readError}</div>
       )}
 
       {writeError && (
-        <div className="rounded-lg bg-red-900/20 p-3 text-sm text-red-400">{writeError}</div>
+        <div className="rounded-lg bg-danger-surface p-3 text-sm text-danger-fg">{writeError}</div>
       )}
 
       {loading && !data && <div className="text-sm text-text-muted">Loading...</div>}

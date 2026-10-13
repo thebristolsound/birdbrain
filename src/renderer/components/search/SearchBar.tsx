@@ -65,7 +65,7 @@ export function SearchBar({ caseId }: SearchBarProps) {
 
   return (
     <div data-testid="global-search" className="@container/search relative w-full">
-      <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-2.5 py-1 focus-within:border-accent/40 focus-within:ring-2 focus-within:ring-accent/25">
+      <div className="flex items-center gap-2 rounded-lg border border-input bg-card px-2.5 py-1 focus-within:border-accent/40 focus-within:ring-2 focus-within:ring-accent/25">
         <Search className="h-3.5 w-3.5 shrink-0 text-text-muted" />
         <input
           ref={inputRef}

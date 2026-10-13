@@ -46,7 +46,7 @@ export function LegacyHtmlViewer({ captureId, emptyLabel = 'No HTML available' }
   }, [fileUrl])
 
   if (error) {
-    return <div className="p-4 text-sm text-red-400">{String(error)}</div>
+    return <div className="p-4 text-sm text-danger-fg">{String(error)}</div>
   }
   if (!fileUrl) {
     return <div className="p-4 text-text-muted">{emptyLabel}</div>

@@ -58,7 +58,7 @@ export function BulkImportDrawer({ caseId, existingSelectors, onClose }: BulkImp
         value={text}
         onChange={(event) => setText(event.target.value)}
         placeholder="One pattern per line — wrap in /…/ for regex."
-        className="box-border w-full resize-y rounded border border-border bg-canvas px-[10px] py-2 font-mono text-[11px] text-text-primary outline-none placeholder:text-text-faint"
+        className="box-border w-full resize-y rounded border border-input bg-canvas px-[10px] py-2 font-mono text-[11px] text-text-primary outline-none placeholder:text-text-faint"
       />
 
       <label className="mt-2 flex items-center gap-2 text-[10px] text-text-muted">

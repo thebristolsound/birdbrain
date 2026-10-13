@@ -5,7 +5,7 @@ const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLText
   ({ className, ...props }, ref) => (
     <textarea
       className={cn(
-        'w-full rounded-md border border-border-strong bg-canvas px-2.5 py-1.5 text-xs text-text-primary outline-none focus:border-accent placeholder:text-text-faint disabled:opacity-50',
+        'w-full rounded-md border border-input bg-canvas px-2.5 py-1.5 text-xs text-text-primary outline-none focus:border-accent placeholder:text-text-faint disabled:opacity-50',
         className
       )}
       ref={ref}

@@ -73,7 +73,7 @@ function RecentCaptureCard({
           />
         </span>
         {isNew ? (
-          <span className="absolute left-1.5 top-1.5 rounded-full border border-sky-400/40 bg-sky-400/15 px-1.5 py-px font-display text-[10px] font-bold tracking-wide text-sky-400">
+          <span className="absolute left-1.5 top-1.5 rounded-full border border-sky-400/40 bg-sky-400/15 px-1.5 py-px font-display text-[10px] font-bold tracking-wide text-hue-sky-fg">
             NEW
           </span>
         ) : null}

@@ -270,7 +270,7 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
               {isDemo && (
                 <div
                   data-testid="export-demo-notice"
-                  className="mb-4 rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400"
+                  className="mb-4 rounded border border-danger-line bg-danger-surface px-3 py-2 text-sm text-danger-fg"
                 >
                   Demonstration case — its captures are fixture data seeded by Birdbrain, not
                   collected evidence. The exported package states this.
@@ -494,7 +494,7 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
               )}
 
               {exportError && (
-                <div className="mb-4 rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+                <div className="mb-4 rounded border border-danger-line bg-danger-surface px-3 py-2 text-sm text-danger-fg">
                   {exportError}
                 </div>
               )}

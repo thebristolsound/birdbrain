@@ -191,7 +191,7 @@ export function ExportMenu({ caseId, caseName }: ExportMenuProps) {
         <div
           role="alert"
           aria-live="assertive"
-          className="absolute right-0 top-full z-40 mt-1 flex max-w-[260px] items-start gap-1.5 rounded border border-red-500/30 bg-red-500/10 py-1 pr-1 pl-2.5 text-xs text-red-400"
+          className="absolute right-0 top-full z-40 mt-1 flex max-w-[260px] items-start gap-1.5 rounded border border-danger-line bg-danger-surface py-1 pr-1 pl-2.5 text-xs text-danger-fg"
         >
           <span className="min-w-0 flex-1">{archiveError}</span>
           <button

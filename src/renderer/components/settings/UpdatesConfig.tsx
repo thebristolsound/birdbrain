@@ -41,7 +41,7 @@ function StatusLine({
   if (status.state === 'up-to-date') {
     return (
       <p className="flex items-center gap-1.5 text-xs text-text-muted">
-        <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+        <CheckCircle2 className="h-3.5 w-3.5 text-success-fg" />
         You&rsquo;re on the latest version ({currentVersion}).
       </p>
     )
@@ -95,7 +95,7 @@ function StatusLine({
     return (
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
         <span className="flex items-center gap-1.5 font-medium text-text-primary">
-          <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+          <CheckCircle2 className="h-3.5 w-3.5 text-success-fg" />
           Version {status.availableVersion} downloaded.
         </span>
         <Button size="sm" onClick={onInstall} className="gap-1.5">
@@ -117,7 +117,7 @@ function StatusLine({
 
   // error
   return (
-    <p className="flex items-center gap-1.5 text-xs text-red-500">
+    <p className="flex items-center gap-1.5 text-xs text-danger-fg">
       <AlertCircle className="h-3.5 w-3.5" />
       Couldn&rsquo;t check for updates{status.error ? `: ${status.error}` : '.'}
     </p>

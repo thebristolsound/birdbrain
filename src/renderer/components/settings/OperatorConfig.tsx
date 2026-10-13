@@ -85,7 +85,7 @@ export function OperatorConfig() {
         <div className="flex max-w-[560px] flex-col gap-4">
           <div>
             <Label htmlFor="operator-name" className="text-xs font-medium text-text-secondary">
-              Operator Name <span className="text-red-500">*</span>
+              Operator Name <span className="text-danger-fg">*</span>
             </Label>
             <Input
               id="operator-name"
@@ -102,7 +102,7 @@ export function OperatorConfig() {
               className={`border-border bg-surface${nameError ? ' border-red-500' : ''}`}
             />
             {nameError ? (
-              <p id="operator-name-error" role="alert" className="mt-1 text-[11px] text-red-500">
+              <p id="operator-name-error" role="alert" className="mt-1 text-[11px] text-danger-fg">
                 {nameError}
               </p>
             ) : (
@@ -209,7 +209,7 @@ export function OperatorConfig() {
               )}
             />
             {tsaError && (
-              <p id="operator-tsa-error" role="alert" className="mt-1 text-[11px] text-red-500">
+              <p id="operator-tsa-error" role="alert" className="mt-1 text-[11px] text-danger-fg">
                 {tsaError}
               </p>
             )}

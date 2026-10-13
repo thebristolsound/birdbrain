@@ -57,7 +57,7 @@ export function MetricRow({
               </span>
               <span className="sr-only">{values[key]}</span>
               {delta ? (
-                <span className="font-mono text-[11px] text-emerald-400">+{delta}</span>
+                <span className="font-mono text-[11px] text-success-fg">+{delta}</span>
               ) : null}
             </div>
           </div>

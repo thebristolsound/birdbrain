@@ -212,7 +212,7 @@ export function AutoCaptureCard({ caseId }: AutoCaptureCardProps) {
           </div>
 
           {error && (
-            <p className="mt-1.5 text-[10px] text-red-400" data-testid="exclusion-error">
+            <p className="mt-1.5 text-[10px] text-danger-fg" data-testid="exclusion-error">
               {error}
             </p>
           )}

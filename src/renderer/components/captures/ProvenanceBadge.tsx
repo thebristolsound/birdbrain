@@ -32,7 +32,7 @@ function TrustedTimeChip({
     return (
       <span
         title={detail || 'RFC 3161 trusted timestamp'}
-        className="flex items-center gap-1 rounded-lg bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-400"
+        className="flex items-center gap-1 rounded-lg bg-success-surface px-2 py-1 text-[11px] text-success-fg"
       >
         <Stamp className="h-3 w-3" />
         Timestamped
@@ -59,7 +59,7 @@ function TrustedTimeChip({
     return (
       <span
         title="No trusted timestamp token is recorded for this capture yet"
-        className="flex items-center gap-1 rounded-lg bg-amber-500/10 px-2 py-1 text-[11px] text-amber-400"
+        className="flex items-center gap-1 rounded-lg bg-warning-surface px-2 py-1 text-[11px] text-warning-fg"
       >
         <Clock className="h-3 w-3" />
         Timestamp pending
@@ -121,7 +121,7 @@ export function ProvenanceBadge({ capture }: Props) {
         onClick={() => verifyMutation.verify()}
         disabled={loading}
         title="Re-verify capture integrity"
-        className="flex items-center gap-1 rounded-lg bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-50"
+        className="flex items-center gap-1 rounded-lg bg-success-surface px-2 py-1 text-[11px] text-success-fg hover:bg-success-line disabled:opacity-50"
       >
         <ShieldCheck className="h-3 w-3" />
         {loading
@@ -134,7 +134,7 @@ export function ProvenanceBadge({ capture }: Props) {
       <button
         onClick={() => verifyMutation.verify()}
         disabled={loading}
-        className="flex items-center gap-1 rounded-lg bg-amber-500/10 px-2 py-1 text-[11px] text-amber-400 hover:bg-amber-500/20 disabled:opacity-50"
+        className="flex items-center gap-1 rounded-lg bg-warning-surface px-2 py-1 text-[11px] text-warning-fg hover:bg-warning-line disabled:opacity-50"
       >
         <Shield className="h-3 w-3" />
         Legacy HTML
@@ -163,7 +163,7 @@ export function ProvenanceBadge({ capture }: Props) {
         onClick={() => verifyMutation.verify()}
         disabled={loading}
         title={result.reason}
-        className="flex items-center gap-1 rounded-lg bg-red-500/10 px-2 py-1 text-[11px] text-red-400 hover:bg-red-500/20 disabled:opacity-50"
+        className="flex items-center gap-1 rounded-lg bg-danger-surface px-2 py-1 text-[11px] text-danger-fg hover:bg-danger-line disabled:opacity-50"
       >
         <ShieldAlert className="h-3 w-3" />
         {result.status === 'tampered' ? 'Changed since capture' : 'Chain broken'}

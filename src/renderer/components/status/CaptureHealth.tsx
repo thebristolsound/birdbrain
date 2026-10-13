@@ -21,13 +21,13 @@ import {
 function EventIcon({ type }: { type: CaptureEvent['type'] }) {
   switch (type) {
     case 'stored':
-      return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+      return <CheckCircle2 className="h-3.5 w-3.5 text-success-fg" />
     case 'failed':
-      return <XCircle className="h-3.5 w-3.5 text-red-400" />
+      return <XCircle className="h-3.5 w-3.5 text-danger-fg" />
     case 'skipped':
-      return <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
+      return <AlertTriangle className="h-3.5 w-3.5 text-warning-fg" />
     case 'received':
-      return <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />
+      return <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />
   }
 }
 
@@ -90,12 +90,12 @@ function EventRow({ event }: { event: CaptureEvent }) {
             <span>{event.source}</span>
             <span>{time}</span>
             {event.durationMs !== undefined && <span>{event.durationMs}ms</span>}
-            {event.error && <span className="text-red-400">{event.error}</span>}
-            {event.skipReason && <span className="text-amber-400">{event.skipReason}</span>}
+            {event.error && <span className="text-danger-fg">{event.error}</span>}
+            {event.skipReason && <span className="text-text-secondary">{event.skipReason}</span>}
             {event.screenshotWarning && (
-              <span className="text-amber-400">{event.screenshotWarning}</span>
+              <span className="text-text-secondary">{event.screenshotWarning}</span>
             )}
-            {event.warning && <span className="text-amber-400">{event.warning}</span>}
+            {event.warning && <span className="text-text-secondary">{event.warning}</span>}
           </div>
         </div>
       </div>
@@ -170,16 +170,16 @@ export function CaptureHealth() {
         onClick={() => setOpen(!open)}
         className={`flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-medium transition-colors ${
           hasFailures
-            ? 'border-red-500/20 bg-red-500/10 text-red-400'
+            ? 'border-danger-line bg-danger-surface text-danger-fg'
             : captureStats.successCount > 0
-              ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+              ? 'border-success-line bg-success-surface text-success-fg'
               : 'border-border-strong bg-elevated text-text-muted'
         }`}
         title="Capture pipeline health"
       >
         <Activity className="h-3.5 w-3.5" />
         {captureStats.successCount > 0 && <span>{captureStats.successCount}</span>}
-        {hasFailures && <span className="text-red-400">/{captureStats.failCount}!</span>}
+        {hasFailures && <span className="text-danger-fg">/{captureStats.failCount}!</span>}
       </button>
 
       <AnimatePresence>
@@ -223,7 +223,7 @@ export function CaptureHealth() {
 
             {captureStats.lastError && (
               <div className="border-b border-border px-3 py-2">
-                <div className="text-[10px] font-medium text-red-400">Last error</div>
+                <div className="text-[10px] font-medium text-danger-fg">Last error</div>
                 <div className="text-[11px] text-text-muted">{captureStats.lastError.message}</div>
                 <div className="text-[10px] text-text-faint">
                   {new Date(captureStats.lastError.timestamp).toLocaleTimeString()}

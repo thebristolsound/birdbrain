@@ -114,7 +114,7 @@ export function PinCommentPopover({
               onClick={onDelete}
               title="Delete pin"
               aria-label="Delete pin"
-              className="grid h-[22px] w-[22px] place-items-center rounded text-red-400 hover:bg-elevated"
+              className="grid h-[22px] w-[22px] place-items-center rounded text-danger-fg hover:bg-elevated"
             >
               <Trash2 className="h-3 w-3" strokeWidth={1.9} />
             </button>

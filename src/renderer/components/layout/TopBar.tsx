@@ -188,7 +188,7 @@ function RecIndicator() {
       className="flex items-center gap-1.5 rounded-full border border-red-500/20 bg-red-500/10 px-2 py-0.5"
     >
       <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" />
-      <span className="text-[10px] font-medium text-red-400">REC</span>
+      <span className="text-[10px] font-medium text-danger-fg">REC</span>
     </div>
   )
 }

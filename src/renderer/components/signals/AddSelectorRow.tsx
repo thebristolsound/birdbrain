@@ -177,7 +177,7 @@ export const AddSelectorRow = forwardRef<HTMLInputElement, AddSelectorRowProps>(
             id="add-selector-error"
             role="alert"
             data-testid="add-selector-error"
-            className="mt-1.5 text-[11px] text-red-400"
+            className="mt-1.5 text-[11px] text-danger-fg"
           >
             Not a valid regular expression: {regexError}
           </p>

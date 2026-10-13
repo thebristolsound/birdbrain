@@ -383,7 +383,7 @@ export function SignalRow({
             }}
             title={isSelector ? 'Delete selector' : 'Delete tag'}
             aria-label={`Delete ${signal.name}`}
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-text-faint opacity-0 transition-opacity hover:bg-red-500/10 hover:text-red-400 focus:opacity-100 group-hover:opacity-100"
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-text-faint opacity-0 transition-opacity hover:bg-danger-surface hover:text-danger-fg focus:opacity-100 group-hover:opacity-100"
           >
             <X className="h-3 w-3" strokeWidth={2} />
           </button>

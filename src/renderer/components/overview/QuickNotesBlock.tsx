@@ -42,7 +42,7 @@ export function QuickNotesBlock({ caseId, notes }: QuickNotesBlockProps) {
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Jot a quick note for this case…"
           aria-label="Jot a quick note for this case"
-          className="w-full rounded-md border border-border bg-canvas px-2.5 py-[7px] font-body text-xs text-text-primary outline-none placeholder:text-text-faint focus:border-accent"
+          className="w-full rounded-md border border-input bg-canvas px-2.5 py-[7px] font-body text-xs text-text-primary outline-none placeholder:text-text-faint focus:border-accent"
         />
       </form>
       {notes.length === 0 ? (

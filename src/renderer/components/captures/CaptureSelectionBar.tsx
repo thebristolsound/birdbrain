@@ -157,7 +157,7 @@ export function CaptureSelectionBar({
       <button
         onClick={() => onDeleteSelection(selectedIds)}
         title="Delete selection"
-        className={`${ICON_BTN} text-red-400`}
+        className={`${ICON_BTN} text-danger-fg`}
       >
         <Trash2 className="h-[13px] w-[13px]" strokeWidth={1.9} />
       </button>

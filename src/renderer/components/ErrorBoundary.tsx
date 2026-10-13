@@ -52,7 +52,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
     return (
       <div className="flex flex-col items-center justify-center gap-3 p-8 text-center">
-        <AlertTriangle className="h-6 w-6 text-amber-500" />
+        <AlertTriangle className="h-6 w-6 text-warning-fg" />
         <p className="text-sm font-medium text-text-primary">Something went wrong</p>
         <p className="max-w-sm text-sm text-text-muted">
           This part of Birdbrain failed to render. Your captures are unaffected.

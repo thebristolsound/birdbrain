@@ -24,7 +24,7 @@ export function ForensicsTab({ capture, caseId }: Props) {
     <div>
       {capture.format === 'html' && (
         <div
-          className="mx-5 mt-4 rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-500"
+          className="mx-5 mt-4 rounded-lg border border-warning-line bg-warning-surface p-3 text-xs text-text-secondary"
           data-testid="forensics-legacy-banner"
         >
           Legacy HTML capture — captured before forensic chain (v2). Hash present, chain metadata

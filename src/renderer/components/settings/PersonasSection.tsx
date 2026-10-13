@@ -89,7 +89,7 @@ export function PersonasSection() {
           className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-[11px] text-text-secondary"
         >
           <div className="flex items-start gap-2">
-            <AlertTriangle size={14} className="mt-0.5 shrink-0 text-amber-500" />
+            <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warning-fg" />
             <div className="space-y-2">
               <p>
                 Imported cookies sit on disk unencrypted, readable by anything that can read this
@@ -263,7 +263,7 @@ function PersonaRow({
       {importError && (
         <p
           role="alert"
-          className="mt-1 text-[11px] text-red-400"
+          className="mt-1 text-[11px] text-danger-fg"
           data-testid="persona-import-error"
         >
           {importError}

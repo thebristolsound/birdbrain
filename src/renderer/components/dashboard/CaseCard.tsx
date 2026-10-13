@@ -127,12 +127,12 @@ export const CaseCard = memo(function CaseCard({
         {isRecording ? (
           <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-500/10 border border-red-500/20">
             <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-            <span className="text-[9px] font-bold text-red-500">Recording</span>
+            <span className="text-[9px] font-bold text-danger-fg">Recording</span>
           </div>
         ) : isActive ? (
           <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            <span className="text-[9px] font-bold text-emerald-500">Active</span>
+            <span className="text-[9px] font-bold text-success-fg">Active</span>
           </div>
         ) : null}
       </div>
@@ -205,13 +205,13 @@ export const CaseCard = memo(function CaseCard({
           >
             {deletingId === caseData.id ? (
               <div className="px-2 py-1.5">
-                <p className="text-[11px] text-red-400 font-bold mb-2">Delete?</p>
+                <p className="text-[11px] text-danger-fg font-bold mb-2">Delete?</p>
                 <div className="flex gap-1.5">
                   <button
                     role="menuitem"
                     tabIndex={-1}
                     data-testid="case-card-delete-confirm-btn"
-                    className="flex-1 text-[10px] font-bold px-2 py-1 rounded bg-red-950/60 text-red-400 border border-red-800/40 hover:bg-red-900/60"
+                    className="flex-1 text-[10px] font-bold px-2 py-1 rounded bg-danger-surface text-danger-fg border border-danger-line hover:bg-danger-line"
                     onClick={(e) => {
                       e.stopPropagation()
                       onDelete(caseData.id)
@@ -253,7 +253,7 @@ export const CaseCard = memo(function CaseCard({
                   role="menuitem"
                   tabIndex={-1}
                   data-testid="case-card-delete-btn"
-                  className="w-full text-left px-3 py-1.5 text-[11px] text-red-400 hover:bg-elevated hover:text-red-300"
+                  className="w-full text-left px-3 py-1.5 text-[11px] text-danger-fg hover:bg-elevated"
                   onClick={(e) => {
                     e.stopPropagation()
                     setDeletingId(caseData.id)

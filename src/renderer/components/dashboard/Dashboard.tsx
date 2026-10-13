@@ -76,7 +76,7 @@ export function Dashboard() {
 
       {importError && (
         <div className="px-8 pb-4">
-          <div className="max-w-3xl mx-auto rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+          <div className="max-w-3xl mx-auto rounded border border-danger-line bg-danger-surface px-3 py-2 text-sm text-danger-fg">
             {importError}
           </div>
         </div>

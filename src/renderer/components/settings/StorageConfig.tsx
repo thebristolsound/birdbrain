@@ -77,14 +77,14 @@ export function StorageConfig({ settings, onUpdate }: StorageConfigProps) {
           {actionError && (
             <div
               role="alert"
-              className="rounded bg-red-500/10 border border-red-500/30 px-3 py-2 text-sm text-red-400"
+              className="rounded bg-danger-surface border border-danger-line px-3 py-2 text-sm text-danger-fg"
             >
               {actionError}
             </div>
           )}
 
           {restartNeeded && (
-            <div className="rounded bg-amber-500/10 border border-amber-500/30 px-3 py-2 text-sm text-amber-400">
+            <div className="rounded bg-warning-surface border border-warning-line px-3 py-2 text-sm text-text-secondary">
               Restart required for storage location change to take effect.
             </div>
           )}

@@ -42,7 +42,7 @@ export function CaptureDetailsRail({ capture, caseId, forced, onExpand, onOpenEx
       >
         <Star
           className={`h-3.5 w-3.5 ${
-            isFavorite ? 'fill-amber-400 text-amber-400' : 'text-text-muted'
+            isFavorite ? 'fill-amber-400 text-amber-600' : 'text-text-muted'
           }`}
         />
       </button>

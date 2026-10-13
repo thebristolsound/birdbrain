@@ -157,7 +157,7 @@ export function CaptureItem({
           {capture.title || hostname}
         </span>
         {isFavorite && (
-          <Star aria-hidden="true" className="h-2.5 w-2.5 shrink-0 fill-amber-400 text-amber-400" />
+          <Star aria-hidden="true" className="h-2.5 w-2.5 shrink-0 fill-amber-400 text-amber-600" />
         )}
         {capture.method === 'duplicate' && (
           <span
@@ -237,7 +237,7 @@ export function CaptureItem({
             >
               <Star
                 className={`h-[11px] w-[11px] ${
-                  isFavorite ? 'fill-amber-400 text-amber-400' : 'text-text-faint'
+                  isFavorite ? 'fill-amber-400 text-amber-600' : 'text-text-faint'
                 }`}
               />
             </button>

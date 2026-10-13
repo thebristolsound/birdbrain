@@ -284,7 +284,7 @@ export function NoteToolbar({ editor, workspace }: { editor: Editor; workspace: 
         </div>
       </div>
       {!linkOpen && error ? (
-        <p role="alert" className="px-3 py-1 text-xs text-red-400">
+        <p role="alert" className="px-3 py-1 text-xs text-danger-fg">
           {error}
         </p>
       ) : null}
@@ -307,7 +307,7 @@ export function NoteToolbar({ editor, workspace }: { editor: Editor; workspace: 
               onChange={(e) => setUrl(e.target.value)}
             />
             {error ? (
-              <p role="alert" className="text-xs text-red-400">
+              <p role="alert" className="text-xs text-danger-fg">
                 {error}
               </p>
             ) : null}

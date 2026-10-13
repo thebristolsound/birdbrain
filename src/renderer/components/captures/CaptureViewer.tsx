@@ -355,7 +355,7 @@ function ArchivedCopyBanner({ timestamp }: { timestamp: string }) {
       data-testid="archived-copy-banner"
       className="flex shrink-0 items-center gap-2.5 border-b border-border bg-surface px-3.5 py-1.5"
     >
-      <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-500">
+      <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-warning-line bg-warning-surface px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-warning-fg">
         <Archive className="h-2.5 w-2.5" strokeWidth={2.4} />
         Archived copy
       </span>

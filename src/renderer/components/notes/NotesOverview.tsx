@@ -187,7 +187,7 @@ function NotesWorkspace({ caseId }: { caseId: string }) {
   if (isError)
     return (
       <div className="space-y-2 p-6">
-        <p className="text-sm text-red-400">
+        <p className="text-sm text-danger-fg">
           Failed to load notes: {error instanceof Error ? error.message : 'Unknown error'}
         </p>
         <Button variant="outline" size="sm" onClick={() => void refetch()}>
@@ -333,7 +333,7 @@ function NotesWorkspace({ caseId }: { caseId: string }) {
         className="flex min-h-0 flex-1 flex-col gap-[var(--d-listgap)] overflow-y-auto px-2 py-[var(--d-listgap)]"
       >
         {debouncedQuery && search.isError ? (
-          <div className="p-4 text-xs text-red-400">
+          <div className="p-4 text-xs text-danger-fg">
             Failed to search notes.
             <button className="ml-2 underline" onClick={() => void search.refetch()}>
               Retry search

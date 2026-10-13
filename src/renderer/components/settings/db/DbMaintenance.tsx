@@ -62,7 +62,7 @@ export function DbMaintenance() {
       {result && (
         <div
           role="status"
-          className={result.ok ? 'text-xs text-text-muted' : 'text-xs text-red-500'}
+          className={result.ok ? 'text-xs text-text-muted' : 'text-xs text-danger-fg'}
         >
           <p>{result.message}</p>
           {result.issues && result.issues.length > 0 && (

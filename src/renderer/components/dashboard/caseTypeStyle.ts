@@ -19,19 +19,19 @@ const CASE_TYPE_STYLES: Record<string, CaseTypeStyle> = {
     icon: FolderOpen,
     bgClass: 'bg-amber-500/10 border border-amber-500/20',
     iconClass: 'text-amber-500',
-    chipClass: 'border-amber-500/25 bg-amber-500/10 text-amber-500'
+    chipClass: 'border-orange-500/25 bg-orange-500/10 text-hue-orange-fg'
   },
   malware: {
     icon: ShieldAlert,
     bgClass: 'bg-sky-500/10 border border-sky-500/20',
     iconClass: 'text-sky-500',
-    chipClass: 'border-sky-500/25 bg-sky-500/10 text-sky-500'
+    chipClass: 'border-sky-500/25 bg-sky-500/10 text-hue-sky-fg'
   },
   fraud: {
     icon: Users,
     bgClass: 'bg-pink-500/10 border border-pink-500/20',
     iconClass: 'text-pink-500',
-    chipClass: 'border-pink-500/25 bg-pink-500/10 text-pink-500'
+    chipClass: 'border-pink-500/25 bg-pink-500/10 text-hue-pink-fg'
   }
 }
 

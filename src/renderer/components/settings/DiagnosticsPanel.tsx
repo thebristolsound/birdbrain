@@ -173,7 +173,7 @@ function ManifestReconciliation({ report }: { report: UnreconciledDeletionReport
             {report.findings.map((finding) => (
               <li key={`${finding.caseId}-${finding.manifestIndex}`} className="text-xs">
                 <div className="flex items-baseline gap-2">
-                  <span className="shrink-0 font-mono tabular-nums text-amber-500">
+                  <span className="shrink-0 font-mono tabular-nums text-warning-fg">
                     #{finding.manifestIndex}
                   </span>
                   <span className="min-w-0 flex-1 truncate font-mono text-text-secondary">
@@ -209,7 +209,7 @@ function ManifestReconciliation({ report }: { report: UnreconciledDeletionReport
         <ul className="space-y-1">
           {report.unscanned.map((unscanned) => (
             <li key={unscanned.caseId} className="flex items-baseline gap-2 text-xs">
-              <span className="shrink-0 text-red-500">Not scanned</span>
+              <span className="shrink-0 text-danger-fg">Not scanned</span>
               <span className="min-w-0 shrink truncate text-text-secondary">
                 {unscanned.caseName}
               </span>
@@ -356,7 +356,7 @@ export function DiagnosticsPanel() {
               </Button>
               <Button variant="ghost" size="sm" onClick={handleCopy} className="gap-1.5">
                 {copied ? (
-                  <Check className="h-3.5 w-3.5 text-green-500" />
+                  <Check className="h-3.5 w-3.5 text-success-fg" />
                 ) : (
                   <Copy className="h-3.5 w-3.5" />
                 )}
@@ -435,7 +435,7 @@ export function DiagnosticsPanel() {
                   {snap.eventLoop.stalls.slice(0, 8).map((s, i) => (
                     <li key={`${s.at}-${i}`} className="flex justify-between text-xs">
                       <span className="text-text-muted">{formatTime(s.at)}</span>
-                      <span className="font-mono text-red-500">app frozen {formatMs(s.ms)}</span>
+                      <span className="font-mono text-danger-fg">app frozen {formatMs(s.ms)}</span>
                     </li>
                   ))}
                 </ul>

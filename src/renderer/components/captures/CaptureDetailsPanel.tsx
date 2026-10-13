@@ -283,7 +283,7 @@ export function CaptureDetailsPanel({
                   >
                     <Star
                       className={`h-3.5 w-3.5 shrink-0 ${
-                        isFavorite ? 'fill-amber-400 text-amber-400' : 'text-text-muted'
+                        isFavorite ? 'fill-amber-400 text-amber-600' : 'text-text-muted'
                       }`}
                     />
                     {isFavorite ? 'Unstar' : 'Star'}
@@ -362,7 +362,7 @@ export function CaptureDetailsPanel({
                       menuAnchorRef.current?.focus()
                       onDelete()
                     }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-red-400 hover:bg-elevated"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-danger-fg hover:bg-elevated"
                   >
                     <Trash2 className="h-3.5 w-3.5 shrink-0" />
                     Delete capture
@@ -384,7 +384,7 @@ export function CaptureDetailsPanel({
           <p
             data-testid="capture-details-recapture-error"
             title={recaptureError.message}
-            className="mt-2 text-[11px] text-red-500"
+            className="mt-2 text-[11px] text-danger-fg"
           >
             Recapture failed: {recaptureError.message}
           </p>

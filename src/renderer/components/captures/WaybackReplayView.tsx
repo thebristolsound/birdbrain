@@ -35,7 +35,7 @@ export function WaybackReplayView({ snapshotUrl }: Props) {
 
   if (!snapshotUrl.startsWith(WAYBACK_REPLAY_PREFIX)) {
     return (
-      <div data-testid="wayback-replay-refused" className="p-4 text-xs text-red-400">
+      <div data-testid="wayback-replay-refused" className="p-4 text-xs text-danger-fg">
         This snapshot URL is not an archive.org replay address and was not loaded.
       </div>
     )

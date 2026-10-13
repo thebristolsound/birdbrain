@@ -92,7 +92,7 @@ export function CaptureMenu({ caseId }: CaptureMenuProps) {
         <span
           data-testid="recapture-error"
           title={recaptureError}
-          className="shrink-0 text-[11px] text-red-500"
+          className="shrink-0 text-[11px] text-danger-fg"
         >
           Recapture failed
         </span>

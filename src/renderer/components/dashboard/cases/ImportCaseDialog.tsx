@@ -115,7 +115,7 @@ export function ImportCaseDialog({ report, onClose }: ImportCaseDialogProps) {
         {verification.overallValid ? (
           <div
             data-testid="archive-checks-passed"
-            className="mb-4 rounded border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-400"
+            className="mb-4 rounded border border-success-line bg-success-surface px-3 py-2 text-sm text-success-fg"
           >
             <div className="mb-2 flex items-center gap-2 font-medium">
               <ShieldCheck className="h-4 w-4 shrink-0" strokeWidth={1.8} />
@@ -145,7 +145,7 @@ export function ImportCaseDialog({ report, onClose }: ImportCaseDialogProps) {
             <p className="text-xs">Update Birdbrain to verify and import this archive.</p>
           </div>
         ) : (
-          <div className="mb-4 rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+          <div className="mb-4 rounded border border-danger-line bg-danger-surface px-3 py-2 text-sm text-danger-fg">
             <div className="mb-2 flex items-center gap-2 font-medium">
               <ShieldAlert className="h-4 w-4 shrink-0" strokeWidth={1.8} />
               Verification failed
@@ -178,7 +178,7 @@ export function ImportCaseDialog({ report, onClose }: ImportCaseDialogProps) {
         )}
 
         {importError && (
-          <div className="mb-4 rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+          <div className="mb-4 rounded border border-danger-line bg-danger-surface px-3 py-2 text-sm text-danger-fg">
             {importError}
           </div>
         )}

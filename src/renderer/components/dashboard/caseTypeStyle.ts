@@ -17,8 +17,8 @@ export interface CaseTypeStyle {
 const CASE_TYPE_STYLES: Record<string, CaseTypeStyle> = {
   crypto: {
     icon: FolderOpen,
-    bgClass: 'bg-amber-500/10 border border-amber-500/20',
-    iconClass: 'text-amber-500',
+    bgClass: 'bg-orange-500/10 border border-orange-500/20',
+    iconClass: 'text-orange-500',
     chipClass: 'border-orange-500/25 bg-orange-500/10 text-hue-orange-fg'
   },
   malware: {

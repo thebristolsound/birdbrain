@@ -6,7 +6,7 @@ import { useCasesMutations } from '@renderer/lib/queries'
 import { formatRelativeTime } from '@renderer/lib/formatRelativeTime'
 import { useTimeTick } from '@renderer/hooks/useTimeTick'
 
-// Type pill colours mirror CASE_ICONS in dashboard/CaseCard.tsx.
+// Type pill hues match the case chips in dashboard/caseTypeStyle.ts.
 const TYPE_STYLES: Record<string, { icon: LucideIcon; pill: string }> = {
   crypto: { icon: FolderOpen, pill: 'border-orange-500/20 bg-orange-500/10 text-hue-orange-fg' },
   malware: { icon: ShieldAlert, pill: 'border-sky-500/20 bg-sky-500/10 text-hue-sky-fg' },

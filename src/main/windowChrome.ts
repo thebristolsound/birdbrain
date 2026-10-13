@@ -22,7 +22,7 @@ export const TITLE_BAR_HEIGHT = 48
 // colour, not a token.
 const THEME_COLORS: Record<WindowTheme, { surface: string; canvas: string; symbol: string }> = {
   dark: { surface: '#0e0e11', canvas: '#090a0b', symbol: '#a1a1aa' },
-  light: { surface: '#f4f4f5', canvas: '#fafafa', symbol: '#71717a' }
+  light: { surface: '#f4f4f5', canvas: '#fafafa', symbol: '#52525b' }
 }
 
 export function windowBackgroundColor(theme: WindowTheme): string {

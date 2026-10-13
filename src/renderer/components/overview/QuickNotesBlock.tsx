@@ -3,6 +3,7 @@ import type { Note } from '@shared/types'
 import { EMPTY_NOTE_DOC } from '@shared/noteDoc'
 import { useNotesMutations } from '@renderer/lib/api/notes'
 import { formatRelativeTime } from '@renderer/lib/formatRelativeTime'
+import { useTimeTick } from '@renderer/hooks/useTimeTick'
 
 interface QuickNotesBlockProps {
   caseId: string
@@ -17,6 +18,7 @@ interface QuickNotesBlockProps {
  */
 export function QuickNotesBlock({ caseId, notes }: QuickNotesBlockProps) {
   const { create } = useNotesMutations(caseId)
+  const now = useTimeTick(60_000)
   const [title, setTitle] = useState('')
 
   async function handleSubmit(e: FormEvent) {
@@ -58,7 +60,7 @@ export function QuickNotesBlock({ caseId, notes }: QuickNotesBlockProps) {
                   {note.title || '(Untitled note)'}
                 </span>
                 <span className="shrink-0 font-mono text-[10px] text-text-faint">
-                  {formatRelativeTime(note.createdAt)}
+                  {formatRelativeTime(note.createdAt, now)}
                 </span>
               </div>
               {note.body ? (

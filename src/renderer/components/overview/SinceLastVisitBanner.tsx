@@ -1,6 +1,7 @@
 import { Sparkles, ChevronRight, Camera, Globe, Target, FileText } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { formatRelativeTime } from '@renderer/lib/formatRelativeTime'
+import { useTimeTick } from '@renderer/hooks/useTimeTick'
 
 interface SinceDeltas {
   captures: number
@@ -32,6 +33,7 @@ export function SinceLastVisitBanner({
   newCount,
   onReview
 }: SinceLastVisitBannerProps) {
+  const now = useTimeTick(60_000)
   return (
     <div
       data-testid="overview-since-last-visit"
@@ -43,7 +45,7 @@ export function SinceLastVisitBanner({
           Since your last visit
         </span>
         <span className="min-w-0 truncate font-mono text-[10px] text-text-faint">
-          · {formatRelativeTime(lastVisitAt)}
+          · {formatRelativeTime(lastVisitAt, now)}
         </span>
         <span className="flex-1" />
         <button

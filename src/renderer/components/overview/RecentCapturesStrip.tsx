@@ -2,6 +2,7 @@ import { ShieldCheck, ShieldAlert } from 'lucide-react'
 import type { Capture } from '@shared/types'
 import { useCaptureThumbnail } from '@renderer/hooks/useCaptureThumbnail'
 import { formatRelativeTime } from '@renderer/lib/formatRelativeTime'
+import { useTimeTick } from '@renderer/hooks/useTimeTick'
 
 interface RecentCapturesStripProps {
   captures: Capture[]
@@ -35,10 +36,12 @@ function shieldLabelFor(status?: Capture['lastVerifiedStatus']): string {
 function RecentCaptureCard({
   capture,
   isNew,
+  now,
   onOpen
 }: {
   capture: Capture
   isNew: boolean
+  now: number
   onOpen: (id: string) => void
 }) {
   const { thumbnail } = useCaptureThumbnail(capture.id)
@@ -92,7 +95,7 @@ function RecentCaptureCard({
             {hostOf(capture.url)}
           </span>
           <span className="shrink-0 font-body text-[10px] text-text-faint">
-            · {formatRelativeTime(capture.createdAt)}
+            · {formatRelativeTime(capture.createdAt, now)}
           </span>
         </div>
       </div>
@@ -101,6 +104,7 @@ function RecentCaptureCard({
 }
 
 export function RecentCapturesStrip({ captures, lastVisitAt, onOpen }: RecentCapturesStripProps) {
+  const now = useTimeTick(60_000)
   if (captures.length === 0) {
     return <p className="font-body text-xs text-text-faint">No captures yet.</p>
   }
@@ -114,6 +118,7 @@ export function RecentCapturesStrip({ captures, lastVisitAt, onOpen }: RecentCap
           key={cap.id}
           capture={cap}
           isNew={lastVisitAt != null && cap.createdAt > lastVisitAt}
+          now={now}
           onOpen={onOpen}
         />
       ))}

@@ -8,13 +8,14 @@ import { casesQueryOptions, captureCountsQueryOptions } from '@renderer/lib/quer
 import { presets } from '@renderer/lib/motion'
 import { trapTab, useModalFocus } from '@renderer/components/ui'
 import { startTour } from '@renderer/components/onboarding/startTour'
+import { useTimeTick } from '@renderer/hooks/useTimeTick'
 
 function pluralCaptures(n: number): string {
   return `${n} capture${n === 1 ? '' : 's'}`
 }
 
-function formatAge(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime()
+function formatAge(dateStr: string, now: number): string {
+  const diff = now - new Date(dateStr).getTime()
   const minutes = Math.floor(diff / 60_000)
   if (minutes < 60) return `${minutes}m`
   const hours = Math.floor(minutes / 60)
@@ -27,6 +28,7 @@ function formatAge(dateStr: string): string {
 export function CommandPalette() {
   const open = useAppStore((s) => s.commandPaletteOpen)
   const setOpen = useAppStore((s) => s.setCommandPaletteOpen)
+  const now = useTimeTick(60_000)
   const navigate = useNavigate()
   const params = useParams({ strict: false }) as Record<string, string | undefined>
   const activeCaseId = params.caseId
@@ -163,7 +165,7 @@ export function CommandPalette() {
                         <span>{pluralCaptures(count)}</span>
                         <span className="flex items-center gap-1">
                           <Clock className="h-3 w-3" />
-                          {formatAge(c.createdAt)}
+                          {formatAge(c.createdAt, now)}
                         </span>
                       </div>
                     </button>

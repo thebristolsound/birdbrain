@@ -4,7 +4,8 @@ name: Merge on label
 # the squash subject and body the way merge-pr does (ADR-0022) and enables GitHub auto-merge as
 # the machine account, so GitHub merges once every required check, merge-gate included, is
 # green. The machine account performs the merge so the push workflows on main run; a merge
-# made with this workflow's own token would not trigger them.
+# made with this workflow's own token would not trigger them. The job then re-runs every red
+# merge-gate run on the head, which would otherwise keep blocking the merge.
 #
 # pull_request_target, because the request needs the machine account's secret and Dependabot
 # PRs get none under pull_request. Neither job checks out or runs the PR's code: the checkout
@@ -118,6 +119,20 @@ jobs:
             --match-head-commit "$SHA" --subject "$(cat "$out/subject.txt")" --body-file "$out/body.txt" \
             || refuse "GitHub would not enable auto-merge; read the pull request's merge box"
           echo "auto-merge enabled at ${SHA:0:12} with subject: $(cat "$out/subject.txt")"
+
+          # Every event that ran merge-gate on this head left its own result, and a red one from
+          # before the sign-off keeps the PR blocked after later runs pass (#1844). Re-run each
+          # red run so it judges the PR as it stands now, as merge.sh does.
+          runs="$(GH_TOKEN="$AGENT_TOKEN" gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/check-runs?check_name=merge-gate&per_page=100" \
+            --jq '.check_runs[] | select(.status == "completed" and .conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral") | .details_url | capture("/actions/runs/(?<id>[0-9]+)").id' \
+            | sort -u)"
+          for run in $runs; do
+            if GH_TOKEN="$AGENT_TOKEN" gh run rerun "$run" --repo "$GITHUB_REPOSITORY" >/dev/null; then
+              echo "re-ran red merge-gate run $run"
+            else
+              echo "::warning::could not re-run red merge-gate run $run; re-run it by hand or the merge stays blocked"
+            fi
+          done
 
   reject:
     if: github.event_name == 'pull_request_target' && github.event.action == 'labeled' && github.event.label.name == 'merge' && github.event.sender.login != 'thebristolsound'

@@ -82,8 +82,10 @@ Evidence-Affecting Change is the maintainer's, whoever opened the pull request.
   merge by an account with write access remains possible once the checks are green, as it was
   for any account allowed the bypass before.
 - A pre-pass verdict is a commit status, which starts no workflow on the pull request, so
-  `merge-gate` can be stale after one. The `merge` label and every push run it again, and
-  `merge.sh` starts a re-run when the gate is its red check.
+  `merge-gate` can be stale after one. The `merge` label and every push run it again. Each
+  event leaves its own result on the head, and an older red one keeps blocking the merge after
+  later runs pass, so the `merge` label's request job and `merge.sh` both re-run every red
+  `merge-gate` run on the head.
 
 ## Alternatives rejected
 

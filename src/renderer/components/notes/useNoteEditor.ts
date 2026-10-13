@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { useEditor, type Editor } from '@tiptap/react'
+import { useEditor, useEditorState, type Editor } from '@tiptap/react'
 import { EMPTY_NOTE_DOC, plainTextToNoteDoc } from '@shared/noteDoc'
 import type { JSONContent } from '@tiptap/core'
 import type { Node as PMNode } from '@tiptap/pm/model'
@@ -49,6 +49,23 @@ export function initialNoteDoc(bodyDoc?: string | null, plainText?: string): JSO
   }
   if (plainText) return plainTextToNoteDoc(plainText)
   return EMPTY_NOTE_DOC
+}
+
+/**
+ * Subscribe to a value derived from the editor, re-rendering only when it changes. The
+ * selector reads the `editor` argument rather than the snapshot's: Tiptap hands the snapshot
+ * the editor the hook was first given until the next transaction, which on a host's first
+ * render is null, so a note that opens with content would read as empty.
+ */
+export function useNoteEditorState<T>(
+  editor: Editor | null,
+  select: (editor: Editor) => T,
+  withoutEditor: T
+): T {
+  return (
+    useEditorState({ editor, selector: () => (editor ? select(editor) : withoutEditor) }) ??
+    withoutEditor
+  )
 }
 
 /** What a Mention contributes to a leaf-aware plain-text walk. */

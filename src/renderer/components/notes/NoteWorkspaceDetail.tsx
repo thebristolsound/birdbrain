@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useState, type MutableRefObject } from 'react'
 import { useBlocker, useNavigate } from '@tanstack/react-router'
-import { useEditorState } from '@tiptap/react'
 import { Camera, PanelRight, Trash2 } from 'lucide-react'
 import type { Note } from '@shared/types'
 import type { MentionTargetType } from '@shared/noteDoc'
 import { useNotesMutations } from '@renderer/lib/api/notes'
 import { useAppStore } from '@renderer/stores/appStore'
 import { NoteEditor } from '@renderer/components/notes/NoteEditor'
-import { useNoteEditor } from '@renderer/components/notes/useNoteEditor'
+import { useNoteEditor, useNoteEditorState } from '@renderer/components/notes/useNoteEditor'
 import { useNoteAutosave } from '@renderer/components/notes/useNoteAutosave'
 import {
   editorMentions,
@@ -76,12 +75,11 @@ export function NoteWorkspaceDetail({
   }
   // From the editor rather than the saved draft so the rail follows typing; the
   // subscription re-renders only when the list of mentions changes.
-  const mentions =
-    useEditorState({
-      editor,
-      selector: ({ editor }) =>
-        editor ? editorMentions(editor.state.doc) : noteMentions(note.bodyDoc)
-    }) ?? []
+  const mentions = useNoteEditorState(
+    editor,
+    (editor) => editorMentions(editor.state.doc),
+    noteMentions(note.bodyDoc)
+  )
   const outgoing = [...new Map(mentions.map((m) => [`${m.targetType}:${m.targetId}`, m])).values()]
   // Parses every note in the case, so it must not rerun on each keystroke.
   const incoming = useMemo(

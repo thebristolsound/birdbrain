@@ -1,10 +1,9 @@
 import { useRef, useState } from 'react'
-import { useEditorState } from '@tiptap/react'
 import { Plus, X } from 'lucide-react'
 import { useNotesMutations } from '@renderer/lib/queries'
 import { Button, Input } from '@renderer/components/ui'
 import { NoteEditor } from '@renderer/components/notes/NoteEditor'
-import { useNoteEditor } from '@renderer/components/notes/useNoteEditor'
+import { useNoteEditor, useNoteEditorState } from '@renderer/components/notes/useNoteEditor'
 import { EMPTY_NOTE_DOC } from '@shared/noteDoc'
 
 interface CreateNoteCardProps {
@@ -31,8 +30,7 @@ export function CreateNoteCard({ caseId, isOpen, onToggle, onCreated }: CreateNo
     },
     testId: 'create-note-body'
   })
-  const hasBody =
-    useEditorState({ editor, selector: ({ editor }) => !!editor && !editor.isEmpty }) ?? false
+  const hasBody = useNoteEditorState(editor, (editor) => !editor.isEmpty, false)
 
   async function persistDraft(): Promise<string> {
     const doc = readBody.current?.() ?? JSON.stringify(EMPTY_NOTE_DOC)

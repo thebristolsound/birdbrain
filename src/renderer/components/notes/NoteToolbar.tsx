@@ -105,10 +105,11 @@ export function NoteToolbar({ editor, workspace }: { editor: Editor; workspace: 
   const fileRef = useRef<HTMLInputElement>(null)
   const selection = useRef({ from: 1, to: 1 })
   // Subscribed rather than read during render: the host does not re-render per
-  // transaction, so this is what keeps Bold lit when the cursor enters bold text.
+  // transaction, so this is what keeps Bold lit when the cursor enters bold text. The
+  // selector reads the prop, not the snapshot, for the reason given on useNoteEditorState.
   const { active, style, canUndo, canRedo } = useEditorState({
     editor,
-    selector: ({ editor }) => ({
+    selector: () => ({
       active: Object.fromEntries(
         groups.flat().map((action) => [action.label, action.active(editor)])
       ),

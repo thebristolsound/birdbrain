@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { useEditorState } from '@tiptap/react'
 import { X } from 'lucide-react'
 import { useNotesMutations } from '@renderer/lib/queries'
 import { NoteEditor } from '@renderer/components/notes/NoteEditor'
-import { useNoteEditor } from '@renderer/components/notes/useNoteEditor'
+import { useNoteEditor, useNoteEditorState } from '@renderer/components/notes/useNoteEditor'
 import { EMPTY_NOTE_DOC, plainTextToNoteDoc } from '@shared/noteDoc'
 import {
   Dialog,
@@ -50,8 +49,7 @@ export function AddNoteModal({
     },
     testId: 'add-note-body'
   })
-  const hasBody =
-    useEditorState({ editor, selector: ({ editor }) => !!editor && !editor.isEmpty }) ?? false
+  const hasBody = useNoteEditorState(editor, (editor) => !editor.isEmpty, false)
 
   useEffect(() => {
     if (!open || !editor) return

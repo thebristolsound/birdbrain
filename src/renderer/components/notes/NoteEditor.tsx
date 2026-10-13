@@ -1,5 +1,6 @@
 import { useRef } from 'react'
-import { EditorContent, useEditorState, type Editor } from '@tiptap/react'
+import { EditorContent, type Editor } from '@tiptap/react'
+import { useNoteEditorState } from '@renderer/components/notes/useNoteEditor'
 import { NoteToolbar } from '@renderer/components/notes/NoteToolbar'
 import { useNoteSelection } from '@renderer/components/notes/selection/useNoteSelection'
 import {
@@ -35,7 +36,7 @@ export function NoteEditor({
 }: NoteEditorProps) {
   const bodyRef = useRef<HTMLDivElement | null>(null)
   const { selection, onSelectionEnd, openConfirm, dismiss } = useNoteSelection(bodyRef)
-  const isEmpty = useEditorState({ editor, selector: ({ editor }) => editor?.isEmpty ?? true })
+  const isEmpty = useNoteEditorState(editor, (editor) => editor.isEmpty, true)
 
   if (!editor) {
     return <div className={`rounded-lg border border-border bg-canvas ${minHeightClass}`} />

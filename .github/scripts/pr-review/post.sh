@@ -6,6 +6,7 @@
 #
 # A verdict is usable when its first line is a verdict line, its Full report block
 # opens with the reviewed commit the pre-gate picked, and the comment linter passes.
+# Every outcome answers a `review:requested`, so the label comes off on each path.
 #
 # Env: GH_TOKEN (machine token), PR, SHA, RUN_OUTCOME (the review step's outcome).
 set -euo pipefail
@@ -23,6 +24,13 @@ file=.dispatch/verdict.md
 lint="$here/../../../.claude/skills/post-comment/scripts/check.sh"
 
 note() { echo "Post: $*" | tee -a "$summary"; }
+
+clear_request() {
+  if jq -e --arg l "$REVIEW_REQUESTED" 'index($l)' <<<"$labels" >/dev/null; then
+    gh api -X DELETE "repos/$R/issues/$PR/labels/${REVIEW_REQUESTED//:/%3A}" >/dev/null
+    note "#$PR: removed $REVIEW_REQUESTED"
+  fi
+}
 
 labels="$(gh api "repos/$R/issues/$PR/labels?per_page=100" --jq '[.[].name]')"
 
@@ -48,6 +56,7 @@ fi
 if [ -n "$why" ]; then
   set_review_label "$R" "$PR" "$REVIEW_FAILED" "$labels"
   note "#$PR labelled $REVIEW_FAILED: $why"
+  clear_request
   exit 0
 fi
 
@@ -62,3 +71,4 @@ if [ "$head" != "$SHA" ]; then
 fi
 set_review_label "$R" "$PR" "$want" "$labels"
 note "#$PR labelled $want"
+clear_request

@@ -77,7 +77,8 @@ anyway, because a pending status is not a claim.
 cap of 4 reviews a day (ADR-0046). The machine account posts the verdict as a comment and sets
 one `review:` state label: `passed`, `changes`, `stale` after a later push, `failed`, or
 `skipped`. It never pushes, merges, or writes a status the merge gate reads. Apply
-`review:skipped` to a PR to keep the job off it.
+`review:skipped` to a PR to keep the job off it. Apply `review:requested` to have a PR reviewed
+now, without the one-hour wait; the post step removes the label.
 
 ## Jev shadow lenses
 

@@ -82,6 +82,15 @@ function splitTop(expr: string, op: '&&' | '||'): string[] {
   return [...parts, expr.slice(start).trim()]
 }
 
+// The scheduled alternative's partner: the guard, or the guard narrowed by further conjuncts
+// (pr-review.yml admits only one label event).
+function guardsPartner(alt: string): boolean {
+  if (alt === GUARD) return true
+  if (!alt.startsWith('(') || splitTop(alt, '&&').length > 1) return false
+  const inner = alt.slice(1, -1)
+  return splitTop(inner, '||').length === 1 && splitTop(inner, '&&')[0] === GUARD
+}
+
 // The expression of a job's `if:`, on one line.
 const expression = (condition: string): string =>
   condition
@@ -143,7 +152,9 @@ describe('spend guard on jobs that read a stored secret', () => {
     const expr = expression(condition)
     const alternatives = splitTop(expr, '||')
     if (alternatives.length > 1) {
-      expect(alternatives).toEqual([SCHEDULED, GUARD])
+      expect(alternatives).toHaveLength(2)
+      expect(alternatives[0]).toBe(SCHEDULED)
+      expect(guardsPartner(alternatives[1])).toBe(true)
     } else {
       const conjuncts = splitTop(expr, '&&')
       expect(conjuncts.some((c) => c === GUARD || c === GUARD_OR_MACHINE)).toBe(true)
@@ -153,7 +164,10 @@ describe('spend guard on jobs that read a stored secret', () => {
   it.each(secretJobs.filter(([, , , scheduled]) => scheduled))(
     '%s job %s admits a scheduled run only on its first attempt',
     (_file, _job, condition) => {
-      expect(splitTop(expression(condition), '||')).toEqual([SCHEDULED, GUARD])
+      const alternatives = splitTop(expression(condition), '||')
+      expect(alternatives).toHaveLength(2)
+      expect(alternatives[0]).toBe(SCHEDULED)
+      expect(guardsPartner(alternatives[1])).toBe(true)
     }
   )
 })

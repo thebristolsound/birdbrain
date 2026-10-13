@@ -13,7 +13,10 @@
 #     `review:skipped` here, and loses it again if a later push adds code;
 #   - it has no state label (a first review), carries `review:failed` the
 #     pipeline applied only once (one retry), or carries `review:stale`.
-# First reviews go before retries, retries before stale ones, oldest first in each.
+# A `review:requested` the maintainer applied last overrides the age, other-reviewer,
+# process-doc and failure rules, and takes `review:skipped` off. A request on a PR
+# whose verdict names the head is answered by that verdict: the label comes off.
+# Requests go first, then first reviews, retries, and stale ones, oldest first in each.
 #
 # Free writes, before any decision: a `review:passed` or `review:changes` whose
 # verdict names a commit other than the head becomes `review:stale`. Report mode
@@ -124,6 +127,7 @@ if [ "$(jq length <<<"$mine")" -eq 0 ]; then
   decide false "no open PR the maintainer opened outside the dispatch slots"
 fi
 
+requested=()
 first=()
 retry=()
 stale=()
@@ -131,10 +135,34 @@ while IFS=$'\t' read -r n sha created labels; do
   state="$(jq -r --argjson s "$states" '[.[] | select(. as $l | $s | index($l))] | first // ""' \
     <<<"$labels")"
 
+  request=false
+  if jq -e --arg l "$REVIEW_REQUESTED" 'index($l)' <<<"$labels" >/dev/null; then
+    history="$(label_history "$n" "$REVIEW_REQUESTED")"
+    if [ "${history#*$'\t'}" = "$MAINTAINER" ]; then
+      request=true
+    else
+      say "#$n: $REVIEW_REQUESTED ignored, last applied by ${history#*$'\t'}"
+    fi
+  fi
+
+  verdict="$(last_verdict "$R" "$n" "$me")"
+  reviewed="$(jq -r '.sha // ""' <<<"$verdict")"
+  verdict_at="$(jq -r '.at // ""' <<<"$verdict")"
+
+  if [ "$request" = true ] && [ "$reviewed" = "$sha" ]; then
+    unlabel "$n" "$REVIEW_REQUESTED"
+    say "#$n: request answered by the verdict already on ${sha:0:8}"
+    continue
+  fi
+
   if [ "$state" = "$REVIEW_SKIPPED" ]; then
-    history="$(label_history "$n" "$REVIEW_SKIPPED")"
     po=true
-    if [ "${history#*$'\t'}" = "$me" ]; then po="$(process_only "$n")"; fi
+    if [ "$request" = true ]; then
+      po=false
+    else
+      history="$(label_history "$n" "$REVIEW_SKIPPED")"
+      if [ "${history#*$'\t'}" = "$me" ]; then po="$(process_only "$n")"; fi
+    fi
     if [ "$po" = false ]; then
       unlabel "$n" "$REVIEW_SKIPPED"
       state=""
@@ -144,10 +172,6 @@ while IFS=$'\t' read -r n sha created labels; do
     fi
   fi
 
-  verdict="$(last_verdict "$R" "$n" "$me")"
-  reviewed="$(jq -r '.sha // ""' <<<"$verdict")"
-  verdict_at="$(jq -r '.at // ""' <<<"$verdict")"
-
   if [ "$state" = "$REVIEW_PASSED" ] || [ "$state" = "$REVIEW_CHANGES" ]; then
     if [ "$reviewed" = "$sha" ]; then
       say "#$n: reviewed at head (${state})"
@@ -155,6 +179,11 @@ while IFS=$'\t' read -r n sha created labels; do
     fi
     relabel "$n" "$REVIEW_STALE"
     state="$REVIEW_STALE"
+  fi
+
+  if [ "$request" = true ]; then
+    requested+=("$n:$sha")
+    continue
   fi
 
   if [[ "$created" > "$oldest_allowed" ]]; then
@@ -192,7 +221,7 @@ while IFS=$'\t' read -r n sha created labels; do
   esac
 done < <(jq -r '.[] | [.n, .sha, .created, (.labels | tojson)] | @tsv' <<<"$mine")
 
-queue=("${first[@]}" "${retry[@]}" "${stale[@]}")
+queue=("${requested[@]}" "${first[@]}" "${retry[@]}" "${stale[@]}")
 [ "${#queue[@]}" -gt 0 ] || decide false "no PR is owed a review"
 
 cap_paid="$(paid_cycles)" \

@@ -13,10 +13,18 @@ name: PR review
 # reviews in 24 hours and 1 per PR in 6, counted from this workflow's runs and
 # separate from dispatch's. A fire with nothing owed ends before the toolchain
 # installs. Hourly at :13, half an hour from dispatch's :43.
+#
+# On request. The maintainer applying `review:requested` to a PR starts a fire for
+# that PR at once (ADR-0046, decision 6). pull_request_target, because its ref is
+# main, which the paid-runs environment admits. The label is the request and this
+# event only starts a fire early: the concurrency group keeps one pending run, so a
+# dropped one is picked up by the next scheduled fire, which reads the label too.
 
 on:
   schedule:
     - cron: '13 * * * *'
+  pull_request_target:
+    types: [labeled]
   workflow_dispatch:
     inputs:
       mode:
@@ -48,8 +56,8 @@ env:
   DROP_AZURE_MIRROR: >-
     sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g'
     /etc/apt/apt-mirrors.txt
-  MODE: ${{ github.event_name == 'schedule' && 'review' || inputs.mode }}
-  TARGET_PR: ${{ github.event_name == 'schedule' && '' || inputs.pr }}
+  MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'review' }}
+  TARGET_PR: ${{ github.event_name == 'workflow_dispatch' && inputs.pr || github.event.pull_request.number || '' }}
   DISPATCH_MODEL: claude-opus-5-5
   DISPATCH_EFFORT: high
   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -58,9 +66,14 @@ jobs:
   review:
     # The spend guard of dispatch.yml (#1310): paid credentials live in `paid-runs`, and
     # the job admits a scheduled first attempt or an attempt the maintainer started.
+    # A label event counts only for `review:requested` the maintainer applied, or every
+    # label he applies, `merge` included, would start a fire.
     if: >-
       (github.event_name == 'schedule' && github.run_attempt == '1')
-      || github.triggering_actor == 'thebristolsound'
+      || (github.triggering_actor == 'thebristolsound'
+        && (github.event_name != 'pull_request_target'
+          || (github.event.label.name == 'review:requested'
+            && github.event.sender.login == 'thebristolsound')))
     environment: paid-runs
     runs-on: ubuntu-latest
     timeout-minutes: 120
@@ -68,9 +81,11 @@ jobs:
       GH_TOKEN: ${{ secrets.BIRDBRAIN_AGENT_GH_TOKEN }}
     steps:
       # fetch-depth: 0 because the reviewer diffs against origin/main. The default
-      # token: this job pushes nothing.
+      # token: this job pushes nothing. The default branch whatever the event, so a
+      # label event runs main's scripts and never the PR's.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
 
       - name: Identity

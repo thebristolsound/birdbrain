@@ -88,7 +88,12 @@ describe('database maintenance', () => {
 
   it('keeps vacuum and search-index rebuilding wired to their existing operations', async () => {
     const vacuum = vi.fn().mockResolvedValue({ freedBytes: 1024 })
-    const rebuildFts = vi.fn().mockResolvedValue({ rowsIndexed: 5, textsHealed: 2 })
+    const rebuildFts = vi.fn().mockResolvedValue({
+      rowsIndexed: 5,
+      textsHealed: 2,
+      fieldExhibitsIndexed: 3,
+      fieldExhibitsFailed: 1
+    })
     fakeBridge({ db: { vacuum, rebuildFts } })
     mount(<DbMaintenance />)
     fireEvent.click(screen.getByRole('button', { name: 'Vacuum' }))
@@ -99,7 +104,8 @@ describe('database maintenance', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Rebuild FTS index' }))
     await waitFor(() =>
       expect(screen.getByRole('status').textContent).toBe(
-        'Rebuilt FTS indexes. 5 rows indexed, 2 text(s) healed from disk.'
+        'Rebuilt FTS indexes. 5 rows indexed, 2 text(s) healed from disk. ' +
+          'Link and header search: 3 capture(s) indexed, 1 failed.'
       )
     )
     expect(vacuum).toHaveBeenCalledOnce()

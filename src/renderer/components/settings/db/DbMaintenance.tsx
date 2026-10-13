@@ -19,10 +19,13 @@ export function DbMaintenance() {
           message: `Vacuum complete. Freed ${freedBytes.toLocaleString()} bytes.`
         })
       } else if (action === 'fts') {
-        const { rowsIndexed, textsHealed } = await rebuildFts.mutateAsync()
+        const { rowsIndexed, textsHealed, fieldExhibitsIndexed, fieldExhibitsFailed } =
+          await rebuildFts.mutateAsync()
         setResult({
           ok: true,
-          message: `Rebuilt FTS indexes. ${rowsIndexed} rows indexed, ${textsHealed} text(s) healed from disk.`
+          message:
+            `Rebuilt FTS indexes. ${rowsIndexed} rows indexed, ${textsHealed} text(s) healed from disk. ` +
+            `Link and header search: ${fieldExhibitsIndexed} capture(s) indexed, ${fieldExhibitsFailed} failed.`
         })
       } else {
         const check = await integrityCheck.mutateAsync()

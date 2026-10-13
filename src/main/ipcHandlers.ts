@@ -62,6 +62,7 @@ import * as annotations from '@main/services/annotations'
 import { applyTagToNote, NoteNotFoundError } from '@main/services/noteTags'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import { readCaptureLinks } from '@main/services/captureLinks'
+import { ensureCaseFields, rebuildAllFields } from '@main/services/search/fieldIndex'
 import { renderCapturePdf } from '@main/services/pdfExport'
 import { getThumbnail } from '@main/services/thumbnails'
 import { getCaseInventory, getManifestSnapshot, verifyExhibit } from '@main/services/exhibits'
@@ -245,6 +246,10 @@ export function registerIpcHandlers(deps: {
     return saved
   })
 
+  // The Case workspace calls this when it opens, so a Case's Captures get search
+  // field records without a change to the session service.
+  handle(IPC_CHANNELS.CASES_ENSURE_SEARCH_FIELDS, (_, caseId: string) => ensureCaseFields(caseId))
+
   handle(
     IPC_CHANNELS.CASES_EXPORT_ARCHIVE,
     async (event, caseId: string): Promise<ArchiveExportResult> => {
@@ -289,6 +294,11 @@ export function registerIpcHandlers(deps: {
             step,
             percent
           })
+      )
+      // Search field records never travel in a Case Archive (ADR-0044), so the
+      // import builds them, without holding the import open until it finishes.
+      ensureCaseFields(newCaseId).catch((err: unknown) =>
+        logger.error('ipc', 'searchFields.ensure_failed', { caseId: ident(newCaseId) }, err)
       )
       return { newCaseId }
     }
@@ -1268,7 +1278,13 @@ export function registerIpcHandlers(deps: {
     return dbAdmin.vacuumDb(dbPath)
   })
 
-  handle(IPC_CHANNELS.DB_REBUILD_FTS, () => dbAdmin.rebuildFts())
+  // rebuildFts is synchronous; the field rebuild yields between Captures, so it
+  // runs after it, and the result carries both counts.
+  handle(IPC_CHANNELS.DB_REBUILD_FTS, async () => {
+    const { rowsIndexed, textsHealed } = dbAdmin.rebuildFts()
+    const { indexed, failed } = await rebuildAllFields()
+    return { rowsIndexed, textsHealed, fieldExhibitsIndexed: indexed, fieldExhibitsFailed: failed }
+  })
 
   handle(IPC_CHANNELS.DB_INTEGRITY_CHECK, () => dbAdmin.checkIntegrity())
 

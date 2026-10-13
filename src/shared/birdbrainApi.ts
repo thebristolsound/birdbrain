@@ -96,7 +96,9 @@ import type {
   CaptureBatchPayload,
   BatchDeleteResult,
   BatchCountResult,
-  DuplicateCaptureResult
+  DuplicateCaptureResult,
+  FieldBuildSummary,
+  DbRebuildFtsResult
 } from '@shared/ipc'
 
 export interface BirdbrainAPI {
@@ -115,6 +117,9 @@ export interface BirdbrainAPI {
     recentActivity(limit?: number): Promise<RecentActivityEvent[]>
     getAutoCapturePolicy(caseId: string): Promise<CaseAutoCapturePolicy>
     setAutoCapturePolicy(params: SetAutoCapturePolicyParams): Promise<CaseAutoCapturePolicy>
+    // Builds link and header search records for the Case's Captures that lack them
+    // (docs/plans/2026-10-09-case-retrieval-first-slice.md, D5).
+    ensureSearchFields(caseId: string): Promise<FieldBuildSummary>
   }
   captures: {
     list(caseId: string): Promise<Capture[]>
@@ -283,7 +288,7 @@ export interface BirdbrainAPI {
     updateRow(params: DbUpdateRowParams): Promise<boolean>
     deleteRow(params: DbRowIdentifier): Promise<boolean>
     vacuum(): Promise<{ freedBytes: number }>
-    rebuildFts(): Promise<{ rowsIndexed: number; textsHealed: number }>
+    rebuildFts(): Promise<DbRebuildFtsResult>
     integrityCheck(): Promise<{ ok: boolean; issues: string[] }>
     purgeArchived(): Promise<{ casesDeleted: number; capturesDeleted: number }>
     findOrphans(): Promise<OrphanReport>

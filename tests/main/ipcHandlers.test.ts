@@ -161,6 +161,7 @@ import type { RestoreOutcome, RestoreRejection } from '@main/services/db/dbResto
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
 import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
+import * as searchFieldRepo from '@main/services/db/searchFieldRepo'
 import { createCase } from '@main/services/db/caseRepo'
 import { insertCapture } from '@main/services/db/captureRepo'
 import * as storage from '@main/services/storage'
@@ -2022,6 +2023,58 @@ describe('ipcHandlers — case archive', () => {
       percent: 5
     })
   })
+
+  // Search field records never travel in a Case Archive (ADR-0044); the import
+  // builds them once it has returned.
+  it('builds the imported Case search field records after the import returns', async () => {
+    importCaseArchive.mockResolvedValue({ newCaseId: caseId, report: {} })
+
+    expectOk(await invoke(IPC_CHANNELS.CASES_IMPORT_ARCHIVE, 'archive.birdbrain', false))
+
+    await vi.waitFor(() =>
+      expect(searchFieldRepo.getExhibitSearchBuild(captureId)?.outcome).toBe('built')
+    )
+  })
+
+  it('logs a field pass that could not start, and the import still succeeds', async () => {
+    initLogger(userDataPath, 'import-fields-test-session')
+    try {
+      importCaseArchive.mockResolvedValue({ newCaseId: caseId, report: {} })
+      vi.spyOn(searchFieldRepo, 'listExhibitsNeedingFields').mockImplementationOnce(() => {
+        throw new Error('database is locked')
+      })
+
+      const result = expectOk<{ newCaseId: string }>(
+        await invoke(IPC_CHANNELS.CASES_IMPORT_ARCHIVE, 'archive.birdbrain', false)
+      )
+
+      expect(result).toEqual({ newCaseId: caseId })
+      await vi.waitFor(() => {
+        flushLogger()
+        expect(
+          readRecentEntries(20).some(
+            (e) => e.source === 'ipc' && e.code === 'searchFields.ensure_failed'
+          )
+        ).toBe(true)
+      })
+    } finally {
+      disposeLogger()
+    }
+  })
+})
+
+describe('ipcHandlers — Case search fields', () => {
+  it('builds the Case search field records the Case lacks, once', async () => {
+    expect(expectOk(await invoke(IPC_CHANNELS.CASES_ENSURE_SEARCH_FIELDS, caseId))).toEqual({
+      indexed: 1,
+      failed: 0
+    })
+    expect(searchFieldRepo.getExhibitSearchBuild(captureId)?.outcome).toBe('built')
+    expect(expectOk(await invoke(IPC_CHANNELS.CASES_ENSURE_SEARCH_FIELDS, caseId))).toEqual({
+      indexed: 0,
+      failed: 0
+    })
+  })
 })
 
 describe('ipcHandlers — extracted data', () => {
@@ -2243,7 +2296,10 @@ describe('ipcHandlers — database admin', () => {
 
   it('runs maintenance: vacuum, rebuild-fts, purge, orphans and export', async () => {
     expectOk(await invoke(IPC_CHANNELS.DB_VACUUM))
-    expectOk(await invoke(IPC_CHANNELS.DB_REBUILD_FTS))
+    expect(expectOk(await invoke(IPC_CHANNELS.DB_REBUILD_FTS))).toMatchObject({
+      fieldExhibitsIndexed: 1,
+      fieldExhibitsFailed: 0
+    })
     expectOk(await invoke(IPC_CHANNELS.DB_PURGE_ARCHIVED))
 
     const orphans = expectOk<{ dbOrphans: unknown[]; fileOrphans: unknown[] }>(

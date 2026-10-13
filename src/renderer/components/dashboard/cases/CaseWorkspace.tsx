@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useParams, useSearch, Outlet, useMatchRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { casesQueryOptions } from '@renderer/lib/api/cases'
+import { casesQueryOptions, useEnsureCaseSearchFieldsMutation } from '@renderer/lib/api/cases'
 import { useSessionMutations } from '@renderer/lib/api/session'
 import { useSettingsMutations } from '@renderer/lib/api/settings'
 import { useSelectorFilters } from '@renderer/hooks/useSelectorFilters'
@@ -17,6 +17,7 @@ export function CaseWorkspace() {
   const { captureId } = useSearch({ strict: false })
   const { data: cases = [], isLoading } = useQuery(casesQueryOptions)
   const { activateCase } = useSessionMutations()
+  const ensureSearchFields = useEnsureCaseSearchFieldsMutation()
   const { update } = useSettingsMutations()
 
   useSelectorFilters(caseId)
@@ -45,6 +46,7 @@ export function CaseWorkspace() {
       activateCase.mutate(caseId)
       // Persist last active case for session restore
       update.mutate({ lastActiveCaseId: caseId })
+      ensureSearchFields.mutate(caseId)
     }
   }, [caseId])
 

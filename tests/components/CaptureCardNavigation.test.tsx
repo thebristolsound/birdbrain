@@ -26,7 +26,8 @@ it('retains capture selection after a real router case switch and the workspace 
           createdAt: '',
           updatedAt: ''
         }))
-      )
+      ),
+      ensureSearchFields: vi.fn(async () => ({ indexed: 0, failed: 0 }))
     },
     session: { activateCase: vi.fn(async () => ({ sessionActive: false, activeCaseId: null })) },
     settings: { update: vi.fn(async () => ({})) },

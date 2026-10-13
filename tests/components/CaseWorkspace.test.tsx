@@ -33,7 +33,10 @@ beforeEach(() => {
   store().clearTagFilters()
   store().clearSelectorFilters()
   fakeBridge({
-    cases: { list: vi.fn(async () => []) },
+    cases: {
+      list: vi.fn(async () => []),
+      ensureSearchFields: vi.fn(async () => ({ indexed: 0, failed: 0 }))
+    },
     session: { activateCase: vi.fn(async () => ({ sessionActive: false, activeCaseId: null })) },
     settings: { update: vi.fn(async () => ({})) },
     selectors: { matchingCaptures: vi.fn(async () => []) },
@@ -65,5 +68,21 @@ describe('CaseWorkspace per-case reset (#918)', () => {
     await waitFor(() => expect(store().activeTagFilters).toEqual([]))
     expect(store().tagFilteredCaptureIds).toBeNull()
     expect(store().activeSelectorFilters).toEqual([])
+  })
+})
+
+// Case search field records (docs/plans/2026-10-09-case-retrieval-first-slice.md, D5):
+// the workspace asks for them on open, so session activation stays as it was.
+describe('CaseWorkspace field records', () => {
+  it('builds the Case search field records when a Case opens, and again on a switch', async () => {
+    const ensureSearchFields = vi.mocked(window.birdbrain.cases.ensureSearchFields)
+    const { rerender } = renderWorkspace()
+    await waitFor(() => expect(ensureSearchFields).toHaveBeenCalledWith('case-1'))
+
+    currentCaseId = 'case-2'
+    rerender()
+
+    await waitFor(() => expect(ensureSearchFields).toHaveBeenCalledWith('case-2'))
+    expect(ensureSearchFields).toHaveBeenCalledTimes(2)
   })
 })

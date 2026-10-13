@@ -88,7 +88,9 @@ export function DbUtilities() {
       setResult('fts', {
         message:
           `Rebuilt FTS indexes. ${result.rowsIndexed} rows indexed, ` +
-          `${result.textsHealed} text(s) healed from disk.`,
+          `${result.textsHealed} text(s) healed from disk. ` +
+          `Link and header search: ${result.fieldExhibitsIndexed} capture(s) indexed, ` +
+          `${result.fieldExhibitsFailed} failed.`,
         type: 'success'
       })
     } catch (err) {

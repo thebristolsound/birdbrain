@@ -44,6 +44,8 @@ import {
 } from '@main/services/caseArchive'
 import { canonicalStringify } from '@shared/verify'
 import { verifyCapture } from '@main/services/captureLifecycle'
+import { ensureCaseFields } from '@main/services/search/fieldIndex'
+import { getExhibitSearchBuild } from '@main/services/db/searchFieldRepo'
 import { appendFutureEntry } from '../../helpers/futureManifestEntry'
 
 const artifactPath = (caseId: string, captureId: string, type: 'mhtml' | 'html' | 'png' | 'txt') =>
@@ -794,6 +796,41 @@ describe('caseArchive import', () => {
 
     // FTS works for imported content (from the staged .txt sidecar)
     expect(searchCaptures(distinctiveText).length).toBeGreaterThan(0)
+  })
+
+  // Case search field records are a cache outside the archive (ADR-0044): the export
+  // leaves them out, and the imported Case builds its own from the imported files.
+  it('leaves the search field records out of the archive, and the import builds them again', async () => {
+    writeFileSync(
+      artifactPath(caseId, legacyCaptureId, 'txt'),
+      'From: Odile Marsh <odile@marsh-post.example.org>\nMessage-ID: <z9@marsh>\n'
+    )
+    expect(await ensureCaseFields(caseId)).toEqual({ indexed: 2, failed: 0 })
+    const withFields = join(tempDir, 'with-fields.birdbrain')
+    await exportCaseArchive(caseId, withFields)
+
+    const data = readStoredZip(readFileSync(withFields)).get('data.json')!.toString('utf-8')
+    expect(data).not.toMatch(/exhibit_search|header\.from|header\.message-id/)
+
+    const { newCaseId } = await importCaseArchive(withFields)
+    const imported = listCaptures(newCaseId)
+    expect(imported.map((c) => getExhibitSearchBuild(c.id))).toEqual([undefined, undefined])
+
+    expect(await ensureCaseFields(newCaseId)).toEqual({ indexed: 2, failed: 0 })
+    const legacy = imported.find((c) => c.url === 'https://legacy.example.com')!
+    expect(getExhibitSearchBuild(legacy.id)).toMatchObject({
+      caseId: newCaseId,
+      contentHash: legacy.hash,
+      outcome: 'built'
+    })
+    expect(
+      getDb()
+        .prepare('SELECT field, norm FROM exhibit_search_fields WHERE exhibit_id = ? ORDER BY id')
+        .all(legacy.id)
+    ).toEqual([
+      { field: 'header.from', norm: 'odile@marsh-post.example.org' },
+      { field: 'header.message-id', norm: '<z9@marsh>' }
+    ])
   })
 
   it('keeps original ids when free (source rows absent)', async () => {

@@ -59,6 +59,16 @@ export function useCaseAutoCapturePolicyMutation(caseId: string) {
   })
 }
 
+// Builds link and header search records for the Case's Captures that have none, or
+// that an older extractor built (docs/plans/2026-10-09-case-retrieval-first-slice.md,
+// D5). Nothing reads them yet, so there is no cache to invalidate.
+export function useEnsureCaseSearchFieldsMutation() {
+  return useMutation({
+    mutationFn: (caseId: string) => window.birdbrain.cases.ensureSearchFields(caseId),
+    meta: { action: "index this case's links and headers for search" }
+  })
+}
+
 export function useCasesMutations() {
   const queryClient = useQueryClient()
 

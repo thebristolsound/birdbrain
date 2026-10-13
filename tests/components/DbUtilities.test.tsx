@@ -163,3 +163,26 @@ describe('DbUtilities — pre-migration snapshots', () => {
     expect(restoreButtonFor(snapshot.fileName).textContent).toBe('Restore')
   })
 })
+
+describe('DbUtilities — search index rebuild', () => {
+  it('reports the link and header search counts beside the text index counts', async () => {
+    const rebuildFts = vi.fn().mockResolvedValue({
+      rowsIndexed: 5,
+      textsHealed: 2,
+      fieldExhibitsIndexed: 3,
+      fieldExhibitsFailed: 0
+    })
+    fakeBridge({ db: { snapshots: vi.fn().mockResolvedValue([]), rebuildFts } })
+
+    renderUtilities()
+    fireEvent.click(screen.getByRole('button', { name: 'Rebuild' }))
+
+    expect(
+      await screen.findByText(
+        'Rebuilt FTS indexes. 5 rows indexed, 2 text(s) healed from disk. ' +
+          'Link and header search: 3 capture(s) indexed, 0 failed.'
+      )
+    ).toBeDefined()
+    expect(rebuildFts).toHaveBeenCalledOnce()
+  })
+})

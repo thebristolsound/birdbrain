@@ -79,6 +79,6 @@ export default defineConfig({
       // nothing measurable and the CSP stays as strict as it was.
       assetsInlineLimit: 0
     },
-    plugins: [react({ babel: reactCompilerBabel() }), tailwindcss(), strictProdCsp, noInlinedFonts]
+    plugins: [react({ babel: reactCompilerBabel(__dirname) }), tailwindcss(), strictProdCsp, noInlinedFonts]
   }
 })

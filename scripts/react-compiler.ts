@@ -24,7 +24,7 @@ export function compilesWithReactCompiler(file: string, entries: Entry[], root: 
   return (matchEntry(entries, path) as Entry | null)?.tier !== 'blocking'
 }
 
-export function reactCompilerBabel(root = process.cwd()) {
+export function reactCompilerBabel(root: string) {
   const entries = loadIncludeList(root) as Entry[]
   return {
     plugins: [

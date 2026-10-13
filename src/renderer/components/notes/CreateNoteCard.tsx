@@ -92,7 +92,7 @@ export function CreateNoteCard({ caseId, isOpen, onToggle, onCreated }: CreateNo
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         placeholder="Title (optional)"
-        className="mb-2 border-border bg-canvas font-semibold"
+        className="mb-2 bg-canvas font-semibold"
       />
       <div className="mb-3">
         <NoteEditor

@@ -147,7 +147,7 @@ export function PersonasSection() {
               data-testid="persona-new-label"
               onChange={(e) => setNewLabel(e.target.value)}
               placeholder="e.g. Research account"
-              className="border-border bg-surface"
+              className="bg-surface"
             />
           </div>
           <Button
@@ -236,7 +236,7 @@ function PersonaRow({
           data-testid="persona-label"
           onChange={(e) => setLabel(e.target.value)}
           onBlur={() => void commitRename()}
-          className="flex-1 border-border bg-surface"
+          className="flex-1 bg-surface"
         />
         <Button
           variant="outline"

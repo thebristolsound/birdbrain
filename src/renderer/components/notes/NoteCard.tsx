@@ -74,7 +74,7 @@ function NoteCardEditor({ note, caseId, isPending, onSave, onCancel }: NoteCardE
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         placeholder="Title"
-        className="border-border bg-canvas font-semibold"
+        className="bg-canvas font-semibold"
       />
       <NoteEditor
         editor={editor}

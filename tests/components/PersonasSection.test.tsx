@@ -81,6 +81,15 @@ describe('PersonasSection empty state', () => {
     await waitFor(() => expect(screen.queryByTestId('persona-new-label')).toBeNull())
     expect(list).toHaveBeenCalledTimes(2)
   })
+
+  // A call-site border class would win the merge in Input and drop the field under 3:1.
+  it('keeps the input border token on the label field', async () => {
+    renderSection()
+    fireEvent.click(await screen.findByTestId('persona-add'))
+    const { className } = screen.getByTestId('persona-new-label')
+    expect(className).toContain('border-input')
+    expect(className).not.toContain('border-border')
+  })
 })
 
 describe('PersonasSection rows', () => {

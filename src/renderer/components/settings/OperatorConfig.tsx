@@ -99,7 +99,7 @@ export function OperatorConfig() {
               placeholder="e.g. Alex Smith"
               aria-invalid={nameError ? true : undefined}
               aria-describedby={nameError ? 'operator-name-error' : undefined}
-              className={`border-border bg-surface${nameError ? ' border-red-500' : ''}`}
+              className={`bg-surface${nameError ? ' border-red-500' : ''}`}
             />
             {nameError ? (
               <p id="operator-name-error" role="alert" className="mt-1 text-[11px] text-danger-fg">
@@ -123,7 +123,7 @@ export function OperatorConfig() {
               onChange={(e) => setOperatorRole(e.target.value)}
               onBlur={save}
               placeholder="e.g. Researcher, Analyst"
-              className="border-border bg-surface"
+              className="bg-surface"
             />
             <p className="mt-1 text-[11px] text-text-muted">
               Optional. Included in the export report.
@@ -143,7 +143,7 @@ export function OperatorConfig() {
               onChange={(e) => setOperatorOrganization(e.target.value)}
               onBlur={save}
               placeholder="e.g. Independent Research Group"
-              className="border-border bg-surface"
+              className="bg-surface"
             />
             <p className="mt-1 text-[11px] text-text-muted">
               Optional. Included in the export report.
@@ -204,7 +204,7 @@ export function OperatorConfig() {
               aria-invalid={tsaError ? true : undefined}
               aria-describedby={tsaError ? 'operator-tsa-error' : undefined}
               className={cn(
-                'border-border bg-surface font-mono text-[11px]',
+                'bg-surface font-mono text-[11px]',
                 tsaError && 'border-red-500'
               )}
             />

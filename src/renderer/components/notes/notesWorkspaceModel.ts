@@ -1,4 +1,5 @@
 import type { JSONContent } from '@tiptap/core'
+import type { Node as PMNode } from '@tiptap/pm/model'
 import type { Note } from '@shared/types'
 import {
   extractNoteMentions,
@@ -18,6 +19,24 @@ export function noteMentions(bodyDoc?: string): NoteMention[] {
   } catch {
     return []
   }
+}
+
+/**
+ * The mentions in a live editor document, walked in place: the workspace's
+ * context rail reads this on every transaction, so it must not serialize.
+ */
+export function editorMentions(doc: PMNode): NoteMention[] {
+  const mentions: NoteMention[] = []
+  doc.descendants((node) => {
+    if (node.type.name !== 'mention') return true
+    mentions.push({
+      targetType: node.attrs.targetType as MentionTargetType,
+      targetId: node.attrs.targetId as string,
+      label: typeof node.attrs.label === 'string' ? node.attrs.label : ''
+    })
+    return false
+  })
+  return mentions
 }
 
 export function usedNoteTags(notes: Note[]): NoteMention[] {

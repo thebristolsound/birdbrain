@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { useEditor, type Editor } from '@tiptap/react'
+import { useEditor, useEditorState, type Editor } from '@tiptap/react'
 import { EMPTY_NOTE_DOC, plainTextToNoteDoc } from '@shared/noteDoc'
 import type { JSONContent } from '@tiptap/core'
 import type { Node as PMNode } from '@tiptap/pm/model'
@@ -19,7 +19,11 @@ export interface UseNoteEditorArgs {
   /** Plain text of a legacy note, wrapped into paragraphs when bodyDoc is absent. */
   plainText?: string
   editable?: boolean
-  onChange?: (bodyDoc: string) => void
+  /**
+   * Called on every edit with a reader for the serialized document, so a host
+   * that needs the document only when it saves does not serialize per keystroke.
+   */
+  onChange?: (readBodyDoc: () => string) => void
   /**
    * Lands on the contenteditable element itself, not a wrapper — Playwright's
    * fill() needs the element that actually accepts text.
@@ -45,6 +49,23 @@ export function initialNoteDoc(bodyDoc?: string | null, plainText?: string): JSO
   }
   if (plainText) return plainTextToNoteDoc(plainText)
   return EMPTY_NOTE_DOC
+}
+
+/**
+ * Subscribe to a value derived from the editor, re-rendering only when it changes. The
+ * selector reads the `editor` argument rather than the snapshot's: Tiptap hands the snapshot
+ * the editor the hook was first given until the next transaction, which on a host's first
+ * render is null, so a note that opens with content would read as empty.
+ */
+export function useNoteEditorState<T>(
+  editor: Editor | null,
+  select: (editor: Editor) => T,
+  withoutEditor: T
+): T {
+  return (
+    useEditorState({ editor, selector: () => (editor ? select(editor) : withoutEditor) }) ??
+    withoutEditor
+  )
 }
 
 /** What a Mention contributes to a leaf-aware plain-text walk. */
@@ -114,11 +135,10 @@ export function useNoteEditor({
       // React 19 StrictMode double-invokes effects; deferring the first render
       // keeps the editor from mounting twice into the same element.
       immediatelyRender: false,
-      // Off by default in v3, which leaves toolbar active states stale until the
-      // document changes — a cursor moved into bold text would not light Bold.
-      // Notes are short enough that re-rendering per transaction is free.
-      shouldRerenderOnTransaction: true,
-      onUpdate: ({ editor }) => onChange?.(JSON.stringify(editor.getJSON()))
+      // Re-rendering per transaction stays off (the v3 default): it re-rendered
+      // the whole host on every keystroke and cursor move. Anything that reads
+      // editor state during render subscribes through useEditorState instead.
+      onUpdate: ({ editor }) => onChange?.(() => JSON.stringify(editor.getJSON()))
     },
     // useEditor defaults to `[]`, which builds the editor once and then ignores
     // every later extension list. The chip's node view closes over the case, so

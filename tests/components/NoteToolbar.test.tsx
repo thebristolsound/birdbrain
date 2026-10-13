@@ -65,6 +65,30 @@ describe('note formatting controls', () => {
     expect(editor.getText()).toContain('@')
   })
 
+  it('follows the cursor and history without the host re-rendering it', () => {
+    // Built with the content rather than setContent, which would leave an undo step.
+    editor.destroy()
+    editor = new Editor({
+      extensions: noteExtensions(),
+      content: '<p><strong>Bold</strong> plain</p>'
+    })
+    show()
+    const bold = () => screen.getByRole('button', { name: 'Bold' }).getAttribute('aria-pressed')
+    act(() => {
+      editor.commands.setTextSelection(2)
+    })
+    expect(bold()).toBe('true')
+    act(() => {
+      editor.commands.setTextSelection(8)
+    })
+    expect(bold()).toBe('false')
+    expect(screen.getByRole('button', { name: 'Undo' })).toHaveProperty('disabled', true)
+    act(() => {
+      editor.commands.insertContent('more')
+    })
+    expect(screen.getByRole('button', { name: 'Undo' })).toHaveProperty('disabled', false)
+  })
+
   it('inserts a valid link at the saved selection and rejects unsafe schemes', async () => {
     show()
     act(() => editor.commands.setTextSelection({ from: 1, to: 12 }))

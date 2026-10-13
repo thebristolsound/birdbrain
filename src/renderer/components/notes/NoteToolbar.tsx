@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import type { Editor } from '@tiptap/react'
+import { useEditorState, type Editor } from '@tiptap/react'
 import {
   Bold,
   Italic,
@@ -88,6 +88,13 @@ const groups = [
     }
   ]
 ]
+function textStyle(editor: Editor): string {
+  if (editor.isActive('heading', { level: 1 })) return '1'
+  if (editor.isActive('heading', { level: 2 })) return '2'
+  if (editor.isActive('heading', { level: 3 })) return '3'
+  return 'paragraph'
+}
+
 const buttonClass =
   'flex h-7 min-w-7 items-center justify-center rounded px-1.5 text-text-muted hover:bg-elevated disabled:opacity-40'
 
@@ -97,6 +104,20 @@ export function NoteToolbar({ editor, workspace }: { editor: Editor; workspace: 
   const [error, setError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
   const selection = useRef({ from: 1, to: 1 })
+  // Subscribed rather than read during render: the host does not re-render per
+  // transaction, so this is what keeps Bold lit when the cursor enters bold text. The
+  // selector reads the prop, not the snapshot, for the reason given on useNoteEditorState.
+  const { active, style, canUndo, canRedo } = useEditorState({
+    editor,
+    selector: () => ({
+      active: Object.fromEntries(
+        groups.flat().map((action) => [action.label, action.active(editor)])
+      ),
+      style: textStyle(editor),
+      canUndo: editor.can().undo(),
+      canRedo: editor.can().redo()
+    })
+  })
 
   function insertLink() {
     if (!/^https?:\/\//i.test(url.trim())) {
@@ -151,15 +172,7 @@ export function NoteToolbar({ editor, workspace }: { editor: Editor; workspace: 
         <select
           aria-label="Text style"
           title="Text style"
-          value={
-            editor.isActive('heading', { level: 1 })
-              ? '1'
-              : editor.isActive('heading', { level: 2 })
-                ? '2'
-                : editor.isActive('heading', { level: 3 })
-                  ? '3'
-                  : 'paragraph'
-          }
+          value={style}
           onChange={(e) =>
             e.target.value === 'paragraph'
               ? editor.chain().focus().setParagraph().run()
@@ -183,10 +196,10 @@ export function NoteToolbar({ editor, workspace }: { editor: Editor; workspace: 
                 key={action.label}
                 title={action.label}
                 aria-label={action.label}
-                aria-pressed={action.active(editor)}
+                aria-pressed={active[action.label]}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => action.run(editor)}
-                className={`${buttonClass} ${action.active(editor) ? 'bg-elevated text-accent' : ''}`}
+                className={`${buttonClass} ${active[action.label] ? 'bg-elevated text-accent' : ''}`}
               >
                 <action.icon className="h-3.5 w-3.5" />
               </button>
@@ -251,7 +264,7 @@ export function NoteToolbar({ editor, workspace }: { editor: Editor; workspace: 
           <button
             title="Undo"
             aria-label="Undo"
-            disabled={!editor.can().undo()}
+            disabled={!canUndo}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => editor.chain().focus().undo().run()}
             className={buttonClass}
@@ -261,7 +274,7 @@ export function NoteToolbar({ editor, workspace }: { editor: Editor; workspace: 
           <button
             title="Redo"
             aria-label="Redo"
-            disabled={!editor.can().redo()}
+            disabled={!canRedo}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => editor.chain().focus().redo().run()}
             className={buttonClass}

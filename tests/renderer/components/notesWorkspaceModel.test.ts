@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { getSchema } from '@tiptap/core'
+import { noteExtensions } from '@shared/noteDoc'
 import {
+  editorMentions,
   filterNotes,
   noteAge,
   noteMentions,
@@ -81,5 +84,31 @@ describe('note list projection', () => {
     expect(noteAge('2026-09-23T11:30:00Z', now)).toBe('30m ago')
     expect(noteAge(notes[0].createdAt, now)).toBe('2h ago')
     expect(noteAge(notes[1].createdAt, now)).toBe('3d ago')
+  })
+})
+
+describe('editorMentions', () => {
+  it('reads the same mentions from a live document as noteMentions reads from its JSON', () => {
+    const json = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'See ' },
+            { type: 'mention', attrs: { targetType: 'capture', targetId: 'c1', label: 'Home' } },
+            { type: 'text', text: ' and ' },
+            { type: 'mention', attrs: { targetType: 'tag', targetId: 't1', label: 'Lead' } }
+          ]
+        },
+        { type: 'paragraph', content: [{ type: 'text', text: 'No mentions here' }] }
+      ]
+    }
+    const doc = getSchema(noteExtensions()).nodeFromJSON(json)
+    expect(editorMentions(doc)).toEqual([
+      { targetType: 'capture', targetId: 'c1', label: 'Home' },
+      { targetType: 'tag', targetId: 't1', label: 'Lead' }
+    ])
+    expect(editorMentions(doc)).toEqual(noteMentions(JSON.stringify(json)))
   })
 })

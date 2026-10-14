@@ -1246,12 +1246,19 @@ export function registerIpcHandlers(deps: {
   // Database Admin is a genuine fourth write path for notes.anchor_json
   // (#234) and notes.body_doc (#389), so a cross-case anchor or Mention
   // rejected here needs the same structured IpcFailure translation as
-  // notes:create/notes:update rather than a raw rejected promise.
+  // notes:create/notes:update rather than a raw rejected promise. A refused
+  // Shared Case row (#1512) gets one too, so the view shows its message.
+  function rethrowDbAdminWrite(err: unknown): never {
+    if (err instanceof dbAdmin.SharedCaseRowError) {
+      throw new IpcFailure(err.message, 'SHARED_CASE_ROW')
+    }
+    rethrowNoteCaseMismatch(err)
+  }
   handle(IPC_CHANNELS.DB_CREATE_ROW, (_, params: DbCreateRowParams) => {
     try {
       return dbAdmin.createRow(params.table, params.data)
     } catch (err) {
-      rethrowNoteCaseMismatch(err)
+      rethrowDbAdminWrite(err)
     }
   })
 
@@ -1259,13 +1266,17 @@ export function registerIpcHandlers(deps: {
     try {
       return dbAdmin.updateRow(params.table, params.pk, params.data)
     } catch (err) {
-      rethrowNoteCaseMismatch(err)
+      rethrowDbAdminWrite(err)
     }
   })
 
-  handle(IPC_CHANNELS.DB_DELETE_ROW, (_, params: DbRowIdentifier) =>
-    dbAdmin.deleteRow(params.table, params.pk)
-  )
+  handle(IPC_CHANNELS.DB_DELETE_ROW, (_, params: DbRowIdentifier) => {
+    try {
+      return dbAdmin.deleteRow(params.table, params.pk)
+    } catch (err) {
+      rethrowDbAdminWrite(err)
+    }
+  })
 
   handle(IPC_CHANNELS.DB_VACUUM, () => {
     const userDataPath = process.env.BIRDBRAIN_USER_DATA || app.getPath('userData')

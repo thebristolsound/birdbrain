@@ -4,6 +4,8 @@ import { createCase, updateCase, listCases } from '@main/services/db/caseRepo'
 import { insertCapture, getCaptureTextContent } from '@main/services/db/captureRepo'
 import { AnchorCaseMismatchError } from '@main/services/db/noteRepo'
 import { MentionCaseMismatchError } from '@main/services/db/noteReferenceRepo'
+import { createNote } from '@main/services/db/noteRepo'
+import { addTagToCapture, addTagToNote, createTag } from '@main/services/db/tagRepo'
 import {
   getDbStats,
   getTableRows,
@@ -17,7 +19,8 @@ import {
   rebuildFts,
   purgeArchived,
   findOrphans,
-  exportTableData
+  exportTableData,
+  SharedCaseRowError
 } from '@main/services/db/dbAdmin'
 
 describe('dbAdmin', () => {
@@ -724,6 +727,172 @@ describe('dbAdmin', () => {
       const parsed = JSON.parse(json)
       expect(parsed).toHaveLength(1)
       expect(parsed[0].name).toBe('Urgent')
+    })
+  })
+
+  // exhibit_tags has no declared primary key since migration 39 (#1512); its
+  // row is named by the unique index's columns, author included.
+  describe('exhibit_tags row key', () => {
+    let captureId: string
+    let tagId: string
+
+    beforeEach(() => {
+      const caseId = createCase({ name: 'Keyed', description: '' }).id
+      captureId = insertCapture({
+        caseId,
+        url: 'https://example.com',
+        title: 'T',
+        hash: 'h',
+        timestamp: '2026-01-01T00:00:00.000Z'
+      }).id
+      tagId = createTag({ name: 'Evidence' }).id
+      addTagToCapture({ captureId, tagId })
+      getDb()
+        .prepare(
+          'INSERT INTO exhibit_tags (exhibit_id, tag_id, author_installation_id) VALUES (?, ?, ?)'
+        )
+        .run(captureId, tagId, 'installation-remote')
+    })
+
+    it('reports the index columns as the key', () => {
+      expect(
+        getTableColumns('exhibit_tags')
+          .filter((c) => c.pk)
+          .map((c) => c.name)
+      ).toEqual(['exhibit_id', 'tag_id', 'author_installation_id'])
+    })
+
+    it('names this installation’s row with an empty author, and refuses a key without one', () => {
+      expect(() => deleteRow('exhibit_tags', { exhibit_id: captureId, tag_id: tagId })).toThrow(
+        /primary key/
+      )
+      expect(
+        deleteRow('exhibit_tags', {
+          exhibit_id: captureId,
+          tag_id: tagId,
+          author_installation_id: ''
+        })
+      ).toBe(true)
+      const left = getTableRows({ table: 'exhibit_tags', offset: 0, limit: 10 }).rows
+      expect(left.map((r) => r.author_installation_id)).toEqual(['installation-remote'])
+      expect(
+        updateRow(
+          'exhibit_tags',
+          { exhibit_id: captureId, tag_id: tagId, author_installation_id: 'installation-remote' },
+          { version: 2 }
+        )
+      ).toBe(true)
+      expect(getTableRows({ table: 'exhibit_tags', offset: 0, limit: 10 }).rows[0].version).toBe(2)
+    })
+  })
+
+  // Ruling 2 of 13 October 2026 on #1512: the hatch refuses a Shared Case's
+  // synced rows. A Case nobody shared keeps every write it had.
+  describe('Shared Case rows', () => {
+    let shared: { caseId: string; captureId: string; noteId: string }
+    let local: { caseId: string; captureId: string; noteId: string }
+    let tags: { onExhibit: string; onNoteOnly: string; local: string }
+
+    function seedCase(name: string) {
+      const caseId = createCase({ name, description: '' }).id
+      const captureId = insertCapture({
+        caseId,
+        url: `https://example.com/${name}`,
+        title: name,
+        hash: 'h',
+        timestamp: '2026-01-01T00:00:00.000Z'
+      }).id
+      const noteId = createNote({ caseId, title: name, body: '' }).id
+      return { caseId, captureId, noteId }
+    }
+
+    function noteRow(caseId: string, id: string) {
+      return {
+        id,
+        case_id: caseId,
+        title: 'T',
+        body: '',
+        created_at: '2026-10-13T00:00:00Z',
+        updated_at: '2026-10-13T00:00:00Z'
+      }
+    }
+
+    beforeEach(() => {
+      shared = seedCase('Shared')
+      local = seedCase('Local')
+      getDb()
+        .prepare("UPDATE cases SET shared_at = '2026-10-01T00:00:00.000Z' WHERE id = ?")
+        .run(shared.caseId)
+      tags = {
+        onExhibit: createTag({ name: 'On exhibit' }).id,
+        onNoteOnly: createTag({ name: 'On note' }).id,
+        local: createTag({ name: 'Local' }).id
+      }
+      addTagToCapture({ captureId: shared.captureId, tagId: tags.onExhibit })
+      addTagToNote({ noteId: shared.noteId, tagId: tags.onNoteOnly })
+      addTagToCapture({ captureId: local.captureId, tagId: tags.local })
+    })
+
+    const exhibitTagKey = (captureId: string, tagId: string) => ({
+      exhibit_id: captureId,
+      tag_id: tagId,
+      author_installation_id: ''
+    })
+
+    it('refuses to create a note or a tag application in a Shared Case', () => {
+      expect(() => createRow('notes', noteRow(shared.caseId, 'new-note'))).toThrow(
+        SharedCaseRowError
+      )
+      expect(() =>
+        createRow('exhibit_tags', { exhibit_id: shared.captureId, tag_id: tags.local })
+      ).toThrow(SharedCaseRowError)
+      expect(getTableRows({ table: 'notes', offset: 0, limit: 10 }).total).toBe(2)
+      expect(getTableRows({ table: 'exhibit_tags', offset: 0, limit: 10 }).total).toBe(2)
+    })
+
+    it('refuses to change or delete a Shared Case’s note, tags and tag applications', () => {
+      const refused: Array<() => unknown> = [
+        () => updateRow('notes', { id: shared.noteId }, { title: 'Edited' }),
+        () => deleteRow('notes', { id: shared.noteId }),
+        () => updateRow('tags', { id: tags.onExhibit }, { color: '#000' }),
+        () => deleteRow('tags', { id: tags.onExhibit }),
+        () => updateRow('tags', { id: tags.onNoteOnly }, { name: 'Renamed' }),
+        () => deleteRow('tags', { id: tags.onNoteOnly }),
+        () =>
+          updateRow('exhibit_tags', exhibitTagKey(shared.captureId, tags.onExhibit), {
+            version: 1
+          }),
+        () => deleteRow('exhibit_tags', exhibitTagKey(shared.captureId, tags.onExhibit))
+      ]
+      for (const write of refused) expect(write).toThrow(SharedCaseRowError)
+      expect(() => deleteRow('notes', { id: shared.noteId })).toThrow(
+        'This notes row belongs to a Shared Case. Settings > Database cannot create, change or delete rows of a Shared Case.'
+      )
+      expect(getTableRows({ table: 'tags', offset: 0, limit: 10 }).total).toBe(3)
+      expect(getTableRows({ table: 'exhibit_tags', offset: 0, limit: 10 }).total).toBe(2)
+    })
+
+    it('refuses to move a note into a Shared Case', () => {
+      expect(() => updateRow('notes', { id: local.noteId }, { case_id: shared.caseId })).toThrow(
+        SharedCaseRowError
+      )
+    })
+
+    it('leaves every write on a Case nobody shared as it was', () => {
+      expect(createRow('notes', noteRow(local.caseId, 'new-note'))).toMatchObject({
+        id: 'new-note'
+      })
+      expect(updateRow('notes', { id: 'new-note' }, { title: 'Edited' })).toBe(true)
+      expect(deleteRow('notes', { id: 'new-note' })).toBe(true)
+      expect(
+        createRow('exhibit_tags', { exhibit_id: local.captureId, tag_id: tags.onExhibit })
+      ).toMatchObject({ exhibit_id: local.captureId })
+      expect(deleteRow('exhibit_tags', exhibitTagKey(local.captureId, tags.onExhibit))).toBe(true)
+      expect(updateRow('tags', { id: tags.local }, { color: '#000' })).toBe(true)
+      expect(deleteRow('tags', { id: tags.local })).toBe(true)
+      expect(createRow('tags', { id: 'admin-tag', name: 'Admin' })).toMatchObject({
+        id: 'admin-tag'
+      })
     })
   })
 })

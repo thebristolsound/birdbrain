@@ -35,6 +35,87 @@ function assertAllowedTable(table: string): asserts table is AllowedTable {
   }
 }
 
+// `exhibit_tags` has no declared primary key since migration 39: a row is
+// identified by the unique index over (exhibit_id, tag_id,
+// COALESCE(author_installation_id, '')). Those columns are its key here, and
+// the author is matched through the same COALESCE, so the '' the Settings >
+// Database view sends for a NULL key value names this installation's row.
+const INDEX_KEYS: Partial<Record<AllowedTable, readonly string[]>> = {
+  exhibit_tags: ['exhibit_id', 'tag_id', 'author_installation_id']
+}
+
+function keyPredicate(pk: Record<string, string>): { where: string; values: string[] } {
+  const columns = Object.keys(pk)
+  return {
+    where: columns
+      .map((k) => (k === 'author_installation_id' ? `COALESCE("${k}", '') = ?` : `"${k}" = ?`))
+      .join(' AND '),
+    values: columns.map((k) => pk[k])
+  }
+}
+
+/**
+ * Thrown for a create, update or delete on a synced table whose row belongs
+ * to a Shared Case. Ruling 2 of 13 October 2026 on #1512: the escape hatch
+ * refuses these rows rather than re-signing whatever was typed.
+ */
+export class SharedCaseRowError extends Error {
+  constructor(table: string) {
+    super(
+      `This ${table} row belongs to a Shared Case. Settings > Database cannot create, ` +
+        'change or delete rows of a Shared Case.'
+    )
+    this.name = 'SharedCaseRowError'
+  }
+}
+
+// The working-layer tables a Shared Case syncs. `annotations`,
+// `annotation_pins` and `note_tags` are not in ALLOWED_TABLES, so every write
+// to them is refused already; the type below makes adding one of them to the
+// admin surface fail to compile until it has a membership test.
+type SyncedTable =
+  'notes' | 'annotations' | 'annotation_pins' | 'tags' | 'exhibit_tags' | 'note_tags'
+type SyncedAllowedTable = Extract<AllowedTable, SyncedTable>
+
+// Whether a row, as stored or as a write would leave it, belongs to a Shared
+// Case. A tag has no case of its own: it belongs to every Case that reaches
+// it through either relation, the rule `collectTagsForCase` exports by,
+// except that the Exhibit relation is read through `exhibits` rather than
+// `captures`, so a tag on a non-Capture Exhibit counts too.
+const IN_SHARED_CASE: Record<SyncedAllowedTable, string> = {
+  notes: `SELECT 1 FROM cases WHERE id = @case_id AND shared_at IS NOT NULL`,
+  exhibit_tags: `SELECT 1 FROM exhibits e JOIN cases c ON c.id = e.case_id
+                  WHERE e.id = @exhibit_id AND c.shared_at IS NOT NULL`,
+  tags: `SELECT 1 FROM exhibit_tags et
+           JOIN exhibits e ON e.id = et.exhibit_id
+           JOIN cases c ON c.id = e.case_id
+          WHERE et.tag_id = @id AND c.shared_at IS NOT NULL
+         UNION ALL
+         SELECT 1 FROM note_tags nt
+           JOIN notes n ON n.id = nt.note_id
+           JOIN cases c ON c.id = n.case_id
+          WHERE nt.tag_id = @id AND c.shared_at IS NOT NULL`
+}
+
+function isSyncedAllowedTable(table: AllowedTable): table is SyncedAllowedTable {
+  return table in IN_SHARED_CASE
+}
+
+function assertNotSharedCaseRow(table: AllowedTable, ...rows: Array<Record<string, unknown>>) {
+  if (!isSyncedAllowedTable(table)) return
+  const query = getDb().prepare(`${IN_SHARED_CASE[table]} LIMIT 1`)
+  // Each query reads only the named parameters it declares; better-sqlite3
+  // refuses an object missing one, so absent columns are passed as NULL.
+  const params = (row: Record<string, unknown>) => ({
+    id: row.id ?? null,
+    case_id: row.case_id ?? null,
+    exhibit_id: row.exhibit_id ?? null
+  })
+  for (const row of rows) {
+    if (query.get(params(row)) !== undefined) throw new SharedCaseRowError(table)
+  }
+}
+
 export interface ColumnInfo {
   name: string
   type: string
@@ -49,7 +130,12 @@ export function getTableColumns(table: string): ColumnInfo[] {
     type: string
     pk: number
   }>
-  return rows.map((r) => ({ name: r.name, type: r.type, pk: r.pk > 0 }))
+  const indexKey = INDEX_KEYS[table]
+  return rows.map((r) => ({
+    name: r.name,
+    type: r.type,
+    pk: r.pk > 0 || (indexKey?.includes(r.name) ?? false)
+  }))
 }
 
 function assertValidColumns(table: string, data: Record<string, unknown>): void {
@@ -247,6 +333,7 @@ export function createRow(table: string, data: Record<string, unknown>): Record<
   assertAllowedTable(table)
   assertValidColumns(table, data)
   const { row, mentions } = validatedRow(table, data)
+  assertNotSharedCaseRow(table, row)
 
   const db = getDb()
   const keys = Object.keys(row)
@@ -284,10 +371,13 @@ export function updateRow(
   assertPkIdentifiesUniqueRow(table, pk)
 
   const db = getDb()
-  const whereClauses = Object.keys(pk)
-    .map((k) => `"${k}" = ?`)
-    .join(' AND ')
-  const pkValues = Object.values(pk)
+  const { where: whereClauses, values: pkValues } = keyPredicate(pk)
+
+  // Refused against the row as stored and as the write would leave it, so a
+  // write can neither change a Shared Case's row nor move a row into one.
+  const stored = db.prepare(`SELECT * FROM "${table}" WHERE ${whereClauses}`).get(...pkValues) as
+    Record<string, unknown> | undefined
+  if (stored) assertNotSharedCaseRow(table, stored, { ...stored, ...data })
 
   // An anchor or document edit that doesn't also touch case_id needs the
   // row's CURRENT case to validate against — look it up before writing.
@@ -369,10 +459,10 @@ export function deleteRow(table: string, pk: Record<string, string>): boolean {
   assertPkIdentifiesUniqueRow(table, pk)
 
   const db = getDb()
-  const whereClauses = Object.keys(pk)
-    .map((k) => `"${k}" = ?`)
-    .join(' AND ')
-  const values = Object.values(pk)
+  const { where: whereClauses, values } = keyPredicate(pk)
+  const stored = db.prepare(`SELECT * FROM "${table}" WHERE ${whereClauses}`).get(...values) as
+    Record<string, unknown> | undefined
+  if (stored) assertNotSharedCaseRow(table, stored)
 
   const run = db.transaction(() => {
     return db.prepare(`DELETE FROM "${table}" WHERE ${whereClauses}`).run(...values)

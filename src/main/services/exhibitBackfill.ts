@@ -8,17 +8,20 @@ import { hasDerivation, insertDerivedFile } from '@main/services/db/derivedFileR
 import {
   appendManifestEntry,
   initManifest,
+  readCaseChains,
   readManifestSnapshot,
-  verifyManifestChain,
   withManifestEntry,
+  type AuthorChain,
   type CaptureChainEntry
 } from '@main/services/manifest'
+import { entryDescribesRow } from '@main/services/captureLifecycle'
 import { defaultCaptureStore, type CaptureStore } from '@main/services/captureStore'
 import { getSettings } from '@main/services/settings'
 import { getInstallationId } from '@main/services/installationId'
 import { renderThumbnail } from '@main/services/thumbnails'
 import { logger } from '@main/services/logger'
 import { ident } from '@main/services/logSafe'
+import { ManifestEntrySchema } from '@shared/schemas'
 import type { Exhibit } from '@shared/types'
 
 // The one-time data half of the Exhibit-model migration (#1147, X18/X34/X41).
@@ -202,8 +205,28 @@ function verifiedParent(
   return { screenshot: bytes, contentHash: chainEntry.contentHash }
 }
 
+// The id a `derivation` entry names the Capture by: the `captureId` of its own
+// verified `capture` entry when an import renamed the row (#1814). Both package
+// verifiers look a derivation's parent up among the ids active entries carry,
+// so an entry signed under the row's new id names a parent no entry anchors.
+// The rename is accepted only through `entryDescribesRow`, the custody records
+// and the id map the import anchored, never through an editable row column.
+// Any other row, a native Capture included, keeps its own id.
+function signedParentId(exhibit: Exhibit, own: AuthorChain, caseDir: string): string {
+  const { manifestSeq } = exhibit
+  if (manifestSeq === null || !own.chain.captureEntriesByIndex.has(manifestSeq)) return exhibit.id
+  const parsed = ManifestEntrySchema.safeParse(own.entries[manifestSeq])
+  if (!parsed.success || parsed.data.type !== 'capture') return exhibit.id
+  const { caseId, captureId } = parsed.data
+  if (captureId === exhibit.id) return exhibit.id
+  return entryDescribesRow({ caseId, rowId: captureId }, exhibit, own.imports, caseDir)
+    ? captureId
+    : exhibit.id
+}
+
 async function backfillThumbnail(
   exhibit: Exhibit,
+  parentId: string,
   store: CaptureStore,
   who: Operator,
   chainEntry: CaptureChainEntry | undefined,
@@ -276,7 +299,7 @@ async function backfillThumbnail(
     {
       type: 'derivation',
       caseId: exhibit.caseId,
-      parentExhibitId: exhibit.id,
+      parentExhibitId: parentId,
       parentContentHash: parent.contentHash,
       derivation: THUMBNAIL_DERIVATION,
       derivationToolVersion: who.toolVersion,
@@ -339,7 +362,7 @@ export async function backfillCase(
   // the entry this run wrote is part of what was verified. A broken chain
   // yields no entries, so nothing is anchored — which is the right outcome:
   // there is no signed screenshot hash to check a regeneration against.
-  const chain = verifyManifestChain(caseDir)
+  const own = readCaseChains(caseDir).own
   // Read after the renumber append too, so a `derivation` entry an earlier run
   // appended before its row landed is visible here rather than duplicated.
   const prior = priorDerivations(caseDir)
@@ -348,13 +371,18 @@ export async function backfillCase(
     const chainEntry =
       exhibit.manifestSeq === null
         ? undefined
-        : chain.captureEntriesByIndex.get(exhibit.manifestSeq)
+        : own.chain.captureEntriesByIndex.get(exhibit.manifestSeq)
+    const parentId = signedParentId(exhibit, own, caseDir)
+    // Under the signed id first, which is what this build appends, then under
+    // the row's own, which is what an earlier build appended for a renamed row.
     const outcome = await backfillThumbnail(
       exhibit,
+      parentId,
       store,
       who,
       chainEntry,
-      prior.get(derivationKey(exhibit.id, THUMBNAIL_DERIVATION))
+      prior.get(derivationKey(parentId, THUMBNAIL_DERIVATION)) ??
+        prior.get(derivationKey(exhibit.id, THUMBNAIL_DERIVATION))
     )
     if (outcome === 'anchored') result.thumbnailsAnchored += 1
     if (outcome === 'unanchored') result.thumbnailsUnanchored += 1

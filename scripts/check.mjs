@@ -6,7 +6,9 @@
 // Vale apply, and how to run each correctly. This reads the working tree
 // (staged, unstaged and untracked) against the merge base and maps it:
 //
-//   changed code files       eslint on those files; Vitest `related` on them
+//   changed code files       eslint on those files; Vitest `related` on them;
+//   or .prettierrc           pnpm format:check, the whole tree (about ten seconds, and
+//                            its globs live only in that script)
 //   eslint.config.js         pnpm lint, the whole repository
 //   any TS file, tsconfig,   every project in the `typecheck` script, in parallel
 //   package.json or lockfile (all six together take about as long as the slowest,
@@ -47,6 +49,7 @@ const TS_FILE = /\.(ts|tsx|mts|cts)$/
 const PROSE_FILE = /\.(md|mdx)$/
 const TSCONFIG = /(^|\/)tsconfig[^/]*\.json$/
 const LINT_CONFIG = /^eslint\.config\.[cm]?[jt]s$/
+const FORMAT_CONFIG = ['.prettierrc', 'package.json']
 const DEPENDENCY_METADATA = ['package.json', 'pnpm-lock.yaml']
 // tsconfig.boundaries.json is dependency-cruiser's alias map, and it extends tsconfig.json.
 const BOUNDARY_CONFIG = ['.dependency-cruiser.cjs', 'tsconfig.boundaries.json', 'tsconfig.json']
@@ -122,6 +125,10 @@ export const planChecks = (changes, { mergeBase, projects }) => {
       command: 'node',
       args: [ESLINT, '--no-warn-ignored', ...code]
     })
+  }
+
+  if (code.length > 0 || all.some((path) => FORMAT_CONFIG.includes(path))) {
+    checks.push({ name: 'format', scope: 'whole tree', command: 'pnpm', args: ['format:check'] })
   }
 
   if (

@@ -208,6 +208,8 @@ jobs:
 
       - run: pnpm lint
 
+      - run: pnpm format:check
+
       - run: pnpm lint:boundaries
 
       - run: pnpm lint:agents-md

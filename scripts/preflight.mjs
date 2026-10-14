@@ -17,6 +17,7 @@
 // run still produces a complete, honest block (success-only emission would
 // recreate the incentive to claim success):
 //   pnpm lint
+//   pnpm format:check        Prettier over the code folders; ESLint checks no formatting
 //   pnpm lint:boundaries
 //   pnpm lint:agents-md      advisory: reports drift between the two files, never fails
 //   pnpm lint:adr            no two ADRs share a number
@@ -244,6 +245,7 @@ const main = async () => {
   }
 
   await run('pnpm', ['lint'], 'pnpm lint')
+  await run('pnpm', ['format:check'], 'pnpm format:check')
   await run('pnpm', ['lint:boundaries'], 'pnpm lint:boundaries')
   await run('pnpm', ['lint:agents-md'], 'pnpm lint:agents-md', describeAgentsMd)
   await run('pnpm', ['lint:adr'], 'pnpm lint:adr')

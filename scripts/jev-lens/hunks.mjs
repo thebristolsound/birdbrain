@@ -157,11 +157,6 @@ export async function main(deps = {}) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().then(
-    (code) => process.exit(code),
-    (e) => {
-      console.error(e.message)
-      process.exit(1)
-    }
-  )
+  // prettier-ignore
+  main().then((code) => process.exit(code), (e) => { console.error(e.message); process.exit(1) })
 }

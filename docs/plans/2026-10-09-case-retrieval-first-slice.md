@@ -350,8 +350,9 @@ The maintainer approved this plan and accepted each recommendation it made.
   text. It still misses a host that appears only in a link target, and neither search path finds
   image alt text.
 - **2026-10-13, step 2 finished.** #1846 merged migration 38, the extractor, and the stored-page
-  reader it shares with the Links tab. Its review fix bounds the header scan and a legacy page by
-  the same budgets.
+  reader it shares with the Links tab. Its review fix holds a legacy page to the size budgets an
+  MHTML part has, and stops the header scan at the row ceiling. The `.txt` file has no byte budget,
+  and the scan reads a whole run of header lines before it counts any of them.
 - **Step 3.** The build service runs on ingest, on duplication, when the Case workspace opens
   (`cases:ensureSearchFields`), after a Case Archive import, on reprocess, and in the Settings
   rebuild. The import IPC handler starts the pass and does not wait for it, so `caseArchive.ts` is
@@ -359,6 +360,10 @@ The maintainer approved this plan and accepted each recommendation it made.
   build only the missing ones, so a `failed` build row stays until a reprocess, a rebuild, or a
   new extractor version. A duplicate builds its own records after it commits, since it skips the
   post-capture work.
+- **Step 3, second review.** A Capture whose stored page is not found, such as on a storage drive
+  that is not attached, gets a `no-source` build row and a log entry, and the next Case open tries
+  it again. A legacy page's size is checked before it is decoded. The Settings rebuild also
+  rebuilds the field index, so an index out of step with its table is repaired.
 - **Next.** Step 4, once step 3 merges. The Settings rebuild clears both tables before it builds,
   so a search during a rebuild sees only the Captures built so far. Step 4 should say so or
   rebuild without clearing first.

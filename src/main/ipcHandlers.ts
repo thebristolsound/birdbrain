@@ -255,8 +255,9 @@ export function registerIpcHandlers(deps: {
   handle(IPC_CHANNELS.CASES_SEARCH_FIELDS, (_, caseId: string, query: string) => {
     try {
       return searchFieldRepo.searchCaseFields(caseId, query)
-    } catch {
+    } catch (err) {
       // See NOTES_SEARCH: a failed search must not look like an empty one.
+      logger.error('ipc', 'searchFields.search_failed', { caseId: ident(caseId) }, err)
       throw new IpcFailure('Search could not run', 'SEARCH_FAILED')
     }
   })

@@ -2101,14 +2101,25 @@ describe('ipcHandlers — Case search fields', () => {
       { exhibitId: captureId, field: 'link.href' }
     ])
 
-    vi.spyOn(searchFieldRepo, 'searchCaseFields').mockImplementationOnce(() => {
-      throw new Error('database is locked')
-    })
-    const res = (await invoke(IPC_CHANNELS.CASES_SEARCH_FIELDS, caseId, 'ledger')) as {
-      ok: boolean
-      code?: string
+    initLogger(userDataPath, 'search-fields-test-session')
+    try {
+      vi.spyOn(searchFieldRepo, 'searchCaseFields').mockImplementationOnce(() => {
+        throw new Error('database is locked')
+      })
+      const res = (await invoke(IPC_CHANNELS.CASES_SEARCH_FIELDS, caseId, 'ledger')) as {
+        ok: boolean
+        code?: string
+      }
+      expect(res).toMatchObject({ ok: false, code: 'SEARCH_FAILED' })
+      flushLogger()
+      expect(
+        readRecentEntries(20).some(
+          (e) => e.source === 'ipc' && e.code === 'searchFields.search_failed'
+        )
+      ).toBe(true)
+    } finally {
+      disposeLogger()
     }
-    expect(res).toMatchObject({ ok: false, code: 'SEARCH_FAILED' })
   })
 })
 

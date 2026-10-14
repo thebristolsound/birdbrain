@@ -795,6 +795,9 @@ export const LOG_CODES = [
   // since no build row records it.
   'searchFields.build_failed',
   'searchFields.ensure_failed',
+  // A field search that threw: the search bar says the search could not run, and this
+  // line holds the error.
+  'searchFields.search_failed',
   'searchFields.source_missing'
 ] as const
 export type LogCode = (typeof LOG_CODES)[number]

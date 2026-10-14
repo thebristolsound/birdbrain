@@ -49,7 +49,7 @@ function RecentCaptureCard({
   const tampered = isTampered(capture.lastVerifiedStatus)
   const ShieldIcon = verified ? ShieldCheck : ShieldAlert
   const shieldLabel = shieldLabelFor(capture.lastVerifiedStatus)
-  const shieldColor = verified ? 'text-emerald-400' : tampered ? 'text-red-400' : 'text-amber-400'
+  const shieldColor = verified ? 'text-success-fg' : tampered ? 'text-danger-fg' : 'text-warning-fg'
 
   return (
     <button
@@ -63,7 +63,9 @@ function RecentCaptureCard({
         ) : (
           <div className="h-full w-full bg-gradient-to-br from-accent-subtle to-elevated" />
         )}
-        <span className="absolute right-1.5 top-1.5 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-black/40">
+        {/* A card chip, as PinLegend uses over a screenshot: the mock's black/40 scrim
+            over a white page left the red shield at 1.03:1. */}
+        <span className="absolute right-1.5 top-1.5 flex h-[18px] w-[18px] items-center justify-center rounded-full border border-border bg-card/95">
           <ShieldIcon
             size={11}
             strokeWidth={2}

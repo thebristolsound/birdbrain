@@ -364,6 +364,15 @@ The maintainer approved this plan and accepted each recommendation it made.
   that is not attached, gets a `no-source` build row and a log entry, and the next Case open tries
   it again. A legacy page's size is checked before it is decoded. The Settings rebuild also
   rebuilds the field index, so an index out of step with its table is repaired.
-- **Next.** Step 4, once step 3 merges. The Settings rebuild clears both tables before it builds,
-  so a search during a rebuild sees only the Captures built so far. Step 4 should say so or
-  rebuild without clearing first.
+- **Step 4.** The search bar lists link and header hits in a group per field, each naming its
+  Exhibit citation and the first 12 characters of its Content Hash, and Extracted Text hits name
+  theirs. The channel is `cases:searchFields`, not D6's `search:fields`: the bridge places a
+  channel at `window.birdbrain.<domain>.<action>`, and `search` there is already the Extracted
+  Text search function. A hit returns one record per Exhibit, field and search form, at its first
+  place, with a count of the rest, and the search stops at 200 hits. A header hit opens the Text
+  tab with its span marked, unless the text there no longer starts with what was indexed. A link
+  hit opens the Links tab and marks the rows with the same resolved address, or for alt text the
+  same row text, with the part and offsets. The Settings rebuild now replaces each Capture's
+  records in place and then rebuilds the index, so a search during it still finds the Captures
+  not reached yet.
+- **Next.** Step 5, the exact check, once step 4 merges.

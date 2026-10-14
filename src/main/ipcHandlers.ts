@@ -1282,8 +1282,14 @@ export function registerIpcHandlers(deps: {
   // runs after it, and the result carries both counts.
   handle(IPC_CHANNELS.DB_REBUILD_FTS, async () => {
     const { rowsIndexed, textsHealed } = dbAdmin.rebuildFts()
-    const { indexed, failed } = await rebuildAllFields()
-    return { rowsIndexed, textsHealed, fieldExhibitsIndexed: indexed, fieldExhibitsFailed: failed }
+    const { indexed, noSource, failed } = await rebuildAllFields()
+    return {
+      rowsIndexed,
+      textsHealed,
+      fieldExhibitsIndexed: indexed,
+      fieldExhibitsNoSource: noSource,
+      fieldExhibitsFailed: failed
+    }
   })
 
   handle(IPC_CHANNELS.DB_INTEGRITY_CHECK, () => dbAdmin.checkIntegrity())

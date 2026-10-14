@@ -20,7 +20,7 @@ it('gives Notes the full-height shell so its list and editor scroll independentl
   fakeBridge({
     cases: {
       list: vi.fn(async () => [{ id: 'case-1' }]),
-      ensureSearchFields: vi.fn(async () => ({ indexed: 0, failed: 0 }))
+      ensureSearchFields: vi.fn(async () => ({ indexed: 0, noSource: 0, failed: 0 }))
     },
     session: { activateCase: vi.fn(async () => ({ sessionActive: false, activeCaseId: null })) },
     settings: { update: vi.fn(async () => ({})) },

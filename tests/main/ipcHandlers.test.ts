@@ -2067,11 +2067,13 @@ describe('ipcHandlers — Case search fields', () => {
   it('builds the Case search field records the Case lacks, once', async () => {
     expect(expectOk(await invoke(IPC_CHANNELS.CASES_ENSURE_SEARCH_FIELDS, caseId))).toEqual({
       indexed: 1,
+      noSource: 0,
       failed: 0
     })
     expect(searchFieldRepo.getExhibitSearchBuild(captureId)?.outcome).toBe('built')
     expect(expectOk(await invoke(IPC_CHANNELS.CASES_ENSURE_SEARCH_FIELDS, caseId))).toEqual({
       indexed: 0,
+      noSource: 0,
       failed: 0
     })
   })
@@ -2298,6 +2300,7 @@ describe('ipcHandlers — database admin', () => {
     expectOk(await invoke(IPC_CHANNELS.DB_VACUUM))
     expect(expectOk(await invoke(IPC_CHANNELS.DB_REBUILD_FTS))).toMatchObject({
       fieldExhibitsIndexed: 1,
+      fieldExhibitsNoSource: 0,
       fieldExhibitsFailed: 0
     })
     expectOk(await invoke(IPC_CHANNELS.DB_PURGE_ARCHIVED))

@@ -669,9 +669,11 @@ export type BatchDeleteOutcome =
   | { captureId: string; status: 'not_attempted' }
   | { captureId: string; status: 'rejected'; reason: 'not_found' | 'duplicate' }
 
-// Exhibits a Case search field pass gave a build row, and those whose build failed.
+// What a Case search field pass did with each Exhibit: built fields from its stored
+// files, found no stored page or text to build from, or failed.
 export interface FieldBuildSummary {
   indexed: number
+  noSource: number
   failed: number
 }
 
@@ -681,6 +683,7 @@ export interface DbRebuildFtsResult {
   rowsIndexed: number
   textsHealed: number
   fieldExhibitsIndexed: number
+  fieldExhibitsNoSource: number
   fieldExhibitsFailed: number
 }
 

@@ -92,6 +92,7 @@ export function buildExhibitFields(
 
 async function buildEach(exhibitIds: string[], store: ArtifactReader): Promise<FieldBuildSummary> {
   let indexed = 0
+  let noSource = 0
   let failed = 0
   for (const exhibitId of exhibitIds) {
     // Yield between Captures, as reprocessCase does: each build runs on the main
@@ -100,6 +101,7 @@ async function buildEach(exhibitIds: string[], store: ArtifactReader): Promise<F
     try {
       const outcome = buildExhibitFields(exhibitId, store)
       if (outcome === 'failed') failed += 1
+      else if (outcome === 'no-source') noSource += 1
       else if (outcome !== null) indexed += 1
     } catch (err) {
       failed += 1
@@ -111,7 +113,7 @@ async function buildEach(exhibitIds: string[], store: ArtifactReader): Promise<F
       )
     }
   }
-  return { indexed, failed }
+  return { indexed, noSource, failed }
 }
 
 // One pass per Case at a time: a Case opened again, or opened while its import's

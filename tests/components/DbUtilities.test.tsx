@@ -170,6 +170,7 @@ describe('DbUtilities — search index rebuild', () => {
       rowsIndexed: 5,
       textsHealed: 2,
       fieldExhibitsIndexed: 3,
+      fieldExhibitsNoSource: 1,
       fieldExhibitsFailed: 0
     })
     fakeBridge({ db: { snapshots: vi.fn().mockResolvedValue([]), rebuildFts } })
@@ -180,7 +181,7 @@ describe('DbUtilities — search index rebuild', () => {
     expect(
       await screen.findByText(
         'Rebuilt FTS indexes. 5 rows indexed, 2 text(s) healed from disk. ' +
-          'Link and header search: 3 capture(s) indexed, 0 failed.'
+          'Link and header search: 3 capture(s) indexed, 1 with no stored page or text, 0 failed.'
       )
     ).toBeDefined()
     expect(rebuildFts).toHaveBeenCalledOnce()

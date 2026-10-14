@@ -92,6 +92,7 @@ describe('database maintenance', () => {
       rowsIndexed: 5,
       textsHealed: 2,
       fieldExhibitsIndexed: 3,
+      fieldExhibitsNoSource: 2,
       fieldExhibitsFailed: 1
     })
     fakeBridge({ db: { vacuum, rebuildFts } })
@@ -105,7 +106,7 @@ describe('database maintenance', () => {
     await waitFor(() =>
       expect(screen.getByRole('status').textContent).toBe(
         'Rebuilt FTS indexes. 5 rows indexed, 2 text(s) healed from disk. ' +
-          'Link and header search: 3 capture(s) indexed, 1 failed.'
+          'Link and header search: 3 capture(s) indexed, 2 with no stored page or text, 1 failed.'
       )
     )
     expect(vacuum).toHaveBeenCalledOnce()

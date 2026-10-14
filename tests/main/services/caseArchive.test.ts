@@ -805,7 +805,7 @@ describe('caseArchive import', () => {
       artifactPath(caseId, legacyCaptureId, 'txt'),
       'From: Odile Marsh <odile@marsh-post.example.org>\nMessage-ID: <z9@marsh>\n'
     )
-    expect(await ensureCaseFields(caseId)).toEqual({ indexed: 2, failed: 0 })
+    expect(await ensureCaseFields(caseId)).toEqual({ indexed: 2, noSource: 0, failed: 0 })
     const withFields = join(tempDir, 'with-fields.birdbrain')
     await exportCaseArchive(caseId, withFields)
 
@@ -816,7 +816,7 @@ describe('caseArchive import', () => {
     const imported = listCaptures(newCaseId)
     expect(imported.map((c) => getExhibitSearchBuild(c.id))).toEqual([undefined, undefined])
 
-    expect(await ensureCaseFields(newCaseId)).toEqual({ indexed: 2, failed: 0 })
+    expect(await ensureCaseFields(newCaseId)).toEqual({ indexed: 2, noSource: 0, failed: 0 })
     const legacy = imported.find((c) => c.url === 'https://legacy.example.com')!
     expect(getExhibitSearchBuild(legacy.id)).toMatchObject({
       caseId: newCaseId,

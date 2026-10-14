@@ -35,7 +35,7 @@ beforeEach(() => {
   fakeBridge({
     cases: {
       list: vi.fn(async () => []),
-      ensureSearchFields: vi.fn(async () => ({ indexed: 0, failed: 0 }))
+      ensureSearchFields: vi.fn(async () => ({ indexed: 0, noSource: 0, failed: 0 }))
     },
     session: { activateCase: vi.fn(async () => ({ sessionActive: false, activeCaseId: null })) },
     settings: { update: vi.fn(async () => ({})) },

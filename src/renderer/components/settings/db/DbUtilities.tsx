@@ -90,6 +90,7 @@ export function DbUtilities() {
           `Rebuilt FTS indexes. ${result.rowsIndexed} rows indexed, ` +
           `${result.textsHealed} text(s) healed from disk. ` +
           `Link and header search: ${result.fieldExhibitsIndexed} capture(s) indexed, ` +
+          `${result.fieldExhibitsNoSource} with no stored page or text, ` +
           `${result.fieldExhibitsFailed} failed.`,
         type: 'success'
       })

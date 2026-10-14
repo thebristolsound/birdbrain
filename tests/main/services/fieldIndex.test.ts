@@ -291,13 +291,13 @@ describe('ensureCaseFields', () => {
     const builtAt = getExhibitSearchBuild(current)?.builtAt
     const replace = vi.spyOn(searchFieldRepo, 'replaceExhibitFields')
 
-    expect(await ensureCaseFields(caseId, store)).toEqual({ indexed: 2, failed: 0 })
+    expect(await ensureCaseFields(caseId, store)).toEqual({ indexed: 0, noSource: 2, failed: 0 })
 
     expect(replace.mock.calls.map(([build]) => build.exhibitId)).toEqual([fresh, older])
     expect(getExhibitSearchBuild(older)?.extractor).toBe(FIELD_EXTRACTOR_VERSION)
     expect(getExhibitSearchBuild(current)?.builtAt).toBe(builtAt)
     expect(getExhibitSearchBuild(other)).toBeUndefined()
-    expect(await ensureCaseFields(caseId, store)).toEqual({ indexed: 0, failed: 0 })
+    expect(await ensureCaseFields(caseId, store)).toEqual({ indexed: 0, noSource: 0, failed: 0 })
   })
 
   it('does not retry a failed build on the next pass', async () => {
@@ -308,8 +308,12 @@ describe('ensureCaseFields', () => {
       }
     }
 
-    expect(await ensureCaseFields(caseId, failing)).toEqual({ indexed: 0, failed: 1 })
-    expect(await ensureCaseFields(caseId, storeOf(new Map()))).toEqual({ indexed: 0, failed: 0 })
+    expect(await ensureCaseFields(caseId, failing)).toEqual({ indexed: 0, noSource: 0, failed: 1 })
+    expect(await ensureCaseFields(caseId, storeOf(new Map()))).toEqual({
+      indexed: 0,
+      noSource: 0,
+      failed: 0
+    })
     expect(getExhibitSearchBuild(id)?.outcome).toBe('failed')
   })
 
@@ -321,10 +325,10 @@ describe('ensureCaseFields', () => {
     const second = ensureCaseFields(caseId, store)
 
     expect(second).toBe(first)
-    expect(await first).toEqual({ indexed: 1, failed: 0 })
+    expect(await first).toEqual({ indexed: 0, noSource: 1, failed: 0 })
     const third = ensureCaseFields(caseId, store)
     expect(third).not.toBe(first)
-    expect(await third).toEqual({ indexed: 0, failed: 0 })
+    expect(await third).toEqual({ indexed: 0, noSource: 0, failed: 0 })
   })
 
   it('counts and logs a Capture whose build the database refuses, and goes on', async () => {
@@ -336,7 +340,11 @@ describe('ensureCaseFields', () => {
       replace(build, fields)
     })
 
-    expect(await ensureCaseFields(caseId, storeOf(new Map()))).toEqual({ indexed: 1, failed: 1 })
+    expect(await ensureCaseFields(caseId, storeOf(new Map()))).toEqual({
+      indexed: 0,
+      noSource: 1,
+      failed: 1
+    })
 
     expect(getExhibitSearchBuild(refused)).toBeUndefined()
     expect(getExhibitSearchBuild(next)?.outcome).toBe('no-source')
@@ -349,7 +357,11 @@ describe('ensureCaseFields', () => {
     })
 
     await expect(ensureCaseFields(caseId, storeOf(new Map()))).rejects.toThrow('locked')
-    expect(await ensureCaseFields(caseId, storeOf(new Map()))).toEqual({ indexed: 0, failed: 0 })
+    expect(await ensureCaseFields(caseId, storeOf(new Map()))).toEqual({
+      indexed: 0,
+      noSource: 0,
+      failed: 0
+    })
   })
 })
 
@@ -382,7 +394,7 @@ describe('rebuildAllFields', () => {
       [`${b}.mhtml`, mhtml('<a href="https://fresh.example.org/">Fresh</a>')]
     ])
 
-    expect(await rebuildAllFields(storeOf(files))).toEqual({ indexed: 2, failed: 0 })
+    expect(await rebuildAllFields(storeOf(files))).toEqual({ indexed: 2, noSource: 0, failed: 0 })
 
     expect(getExhibitSearchBuild(a)?.outcome).toBe('built')
     expect(fieldRows(b).map((row) => row.norm)).toEqual(['https://fresh.example.org/'])

@@ -432,4 +432,18 @@ describe('rebuildAllFields', () => {
     expect(matches('"stale.example"')).toBe(0)
     expectIndexInStep()
   })
+
+  it('drops index entries that have no field row', async () => {
+    const id = capture(caseId)
+    getDb()
+      .prepare('INSERT INTO exhibit_search_fields_fts(rowid, norm) VALUES (9999, ?)')
+      .run('https://stray.example.org/')
+    expect(matches('"stray.example"')).toBe(1)
+
+    await rebuildAllFields(storeOf(new Map([[`${id}.mhtml`, PAGE]])))
+
+    expect(matches('"stray.example"')).toBe(0)
+    expect(matches('"tollgate-ledger.example"')).toBe(1)
+    expectIndexInStep()
+  })
 })

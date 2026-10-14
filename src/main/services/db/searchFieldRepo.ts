@@ -130,5 +130,8 @@ export function clearAllSearchFields(): void {
   d.transaction(() => {
     d.exec('DELETE FROM exhibit_search_fields')
     d.exec('DELETE FROM exhibit_search_builds')
+    // The delete trigger removes what the index holds for each row, so an index out of
+    // step with its table keeps stray entries. A rebuild over the empty table drops them.
+    d.exec("INSERT INTO exhibit_search_fields_fts(exhibit_search_fields_fts) VALUES ('rebuild')")
   })()
 }

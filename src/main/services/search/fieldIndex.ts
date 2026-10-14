@@ -17,7 +17,9 @@ import type { FieldBuildSummary } from '@shared/ipc'
 // Captures a Case lacks or an older extractor built, every Capture in a Case on
 // reprocess, and every Capture on a rebuild. A build that fails writes a `failed`
 // build row and a log entry, and is retried by a reprocess, a rebuild or a new
-// extractor version, not on the next Case open.
+// extractor version, not on the next Case open. A Capture whose stored page is not
+// found writes a `no-source` row and a log entry, and the next Case open tries it
+// again, since the file may be on a drive that is not attached.
 
 type ArtifactReader = Pick<CaptureStore, 'readArtifact'>
 
@@ -35,11 +37,12 @@ function extractFromStore(
   const mhtml = store.readArtifact(caseId, exhibitId, 'mhtml')
   // A legacy Capture from before MHTML has its page as `.html` instead.
   const html = mhtml ? null : store.readArtifact(caseId, exhibitId, 'html')
+  // Every Capture stores a page, so none means the file cannot be read now.
+  if (!mhtml && !html) {
+    return { fields: [], textHash: null, outcome: 'no-source', skippedJson: null }
+  }
   const text = store.readArtifact(caseId, exhibitId, 'txt')
   const textHash = text ? createHash('sha256').update(text).digest('hex') : null
-  if (!mhtml && !html && !text) {
-    return { fields: [], textHash, outcome: 'no-source', skippedJson: null }
-  }
   const { fields, skippedParts, mainDocumentSkipped, truncated } = extractFields({
     captureUrl: url,
     mhtml,
@@ -75,6 +78,9 @@ export function buildExhibitFields(
   } catch (err) {
     logger.error('searchFields', 'searchFields.build_failed', { exhibitId: ident(exhibitId) }, err)
     built = { fields: [], textHash: null, outcome: 'failed', skippedJson: null }
+  }
+  if (built.outcome === 'no-source') {
+    logger.warn('searchFields', 'searchFields.source_missing', { exhibitId: ident(exhibitId) })
   }
   const { fields, ...build } = built
   searchFieldRepo.replaceExhibitFields(
@@ -121,7 +127,10 @@ async function buildEach(exhibitIds: string[], store: ArtifactReader): Promise<F
 // pass is still running, joins the pass in progress.
 const ensuring = new Map<string, Promise<FieldBuildSummary>>()
 
-/** Builds each Capture in the Case with no build row, or one an older extractor wrote. */
+/**
+ * Builds each Capture in the Case with no build row, one an older extractor wrote, or one
+ * whose stored page was not found.
+ */
 export function ensureCaseFields(
   caseId: string,
   store: ArtifactReader = defaultCaptureStore

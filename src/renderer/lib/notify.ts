@@ -217,7 +217,9 @@ const CODE_LABELS: Record<LogCode, string> = {
   'persona.orphan_sweep_skipped':
     'Skipped the persona browser data check because the data folders differ',
   'searchFields.build_failed': "Couldn't index a capture's links and headers for search",
-  'searchFields.ensure_failed': "Couldn't index this case's links and headers for search"
+  'searchFields.ensure_failed': "Couldn't index this case's links and headers for search",
+  'searchFields.source_missing':
+    "Couldn't find a capture's stored page to index its links and headers for search"
 }
 
 export function labelForCode(code: LogCode): string {

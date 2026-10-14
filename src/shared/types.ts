@@ -742,7 +742,8 @@ export const LOG_CODES = [
   // holds the error. A pass over a Case that could not start is logged on its own,
   // since no build row records it.
   'searchFields.build_failed',
-  'searchFields.ensure_failed'
+  'searchFields.ensure_failed',
+  'searchFields.source_missing'
 ] as const
 export type LogCode = (typeof LOG_CODES)[number]
 

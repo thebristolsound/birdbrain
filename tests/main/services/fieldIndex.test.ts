@@ -197,13 +197,15 @@ describe('buildExhibitFields', () => {
     ])
   })
 
-  it('writes a build row with no fields when the Capture has no stored files', () => {
+  it('writes a no-source row and logs it when the stored page is not found', () => {
     const id = capture(caseId)
+    const files: Files = new Map([[`${id}.txt`, Buffer.from(TEXT, 'utf-8')]])
 
-    expect(buildExhibitFields(id, storeOf(new Map()))).toBe('no-source')
+    expect(buildExhibitFields(id, storeOf(files))).toBe('no-source')
 
     expect(getExhibitSearchBuild(id)).toMatchObject({ outcome: 'no-source', textHash: null })
     expect(fieldRows(id)).toEqual([])
+    expect(loggedCodes()).toContain('searchFields:searchFields.source_missing')
   })
 
   it('records what the budgets refused as a partial build', () => {
@@ -283,7 +285,7 @@ describe('ensureCaseFields', () => {
     const current = capture(caseId, '2026-10-02T00:00:00.000Z')
     const older = capture(caseId, '2026-10-01T00:00:00.000Z')
     const other = capture(createCase({ name: 'Other' }).id)
-    const store = storeOf(new Map())
+    const store = storeOf(new Map([fresh, current, older].map((id) => [`${id}.mhtml`, PAGE])))
     buildExhibitFields(current, store)
     buildExhibitFields(older, store)
     getDb()
@@ -292,7 +294,7 @@ describe('ensureCaseFields', () => {
     const builtAt = getExhibitSearchBuild(current)?.builtAt
     const replace = vi.spyOn(searchFieldRepo, 'replaceExhibitFields')
 
-    expect(await ensureCaseFields(caseId, store)).toEqual({ indexed: 0, noSource: 2, failed: 0 })
+    expect(await ensureCaseFields(caseId, store)).toEqual({ indexed: 2, noSource: 0, failed: 0 })
 
     expect(replace.mock.calls.map(([build]) => build.exhibitId)).toEqual([fresh, older])
     expect(getExhibitSearchBuild(older)?.extractor).toBe(FIELD_EXTRACTOR_VERSION)
@@ -318,15 +320,35 @@ describe('ensureCaseFields', () => {
     expect(getExhibitSearchBuild(id)?.outcome).toBe('failed')
   })
 
+  it('tries a Capture whose page was not found again, and builds it once the page is back', async () => {
+    const id = capture(caseId)
+    const files: Files = new Map()
+
+    expect(await ensureCaseFields(caseId, storeOf(files))).toEqual({
+      indexed: 0,
+      noSource: 1,
+      failed: 0
+    })
+    files.set(`${id}.mhtml`, PAGE)
+    expect(await ensureCaseFields(caseId, storeOf(files))).toEqual({
+      indexed: 1,
+      noSource: 0,
+      failed: 0
+    })
+
+    expect(getExhibitSearchBuild(id)?.outcome).toBe('built')
+    expect(matches('"tollgate-ledger.example"')).toBe(1)
+  })
+
   it('joins the pass already running for the Case', async () => {
-    capture(caseId)
-    const store = storeOf(new Map())
+    const id = capture(caseId)
+    const store = storeOf(new Map([[`${id}.mhtml`, PAGE]]))
 
     const first = ensureCaseFields(caseId, store)
     const second = ensureCaseFields(caseId, store)
 
     expect(second).toBe(first)
-    expect(await first).toEqual({ indexed: 0, noSource: 1, failed: 0 })
+    expect(await first).toEqual({ indexed: 1, noSource: 0, failed: 0 })
     const third = ensureCaseFields(caseId, store)
     expect(third).not.toBe(first)
     expect(await third).toEqual({ indexed: 0, noSource: 0, failed: 0 })
@@ -380,6 +402,7 @@ describe('rebuildCaseFields', () => {
     const replace = vi.spyOn(searchFieldRepo, 'replaceExhibitFields')
     const files: Files = new Map([
       [`${failed}.mhtml`, PAGE],
+      [`${built}.mhtml`, PAGE],
       [`${built}.txt`, Buffer.from(TEXT, 'utf8')]
     ])
 

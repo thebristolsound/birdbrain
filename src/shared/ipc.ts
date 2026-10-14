@@ -670,7 +670,7 @@ export type BatchDeleteOutcome =
   | { captureId: string; status: 'rejected'; reason: 'not_found' | 'duplicate' }
 
 // What a Case search field pass did with each Exhibit: built fields from its stored
-// files, found no stored page or text to build from, or failed.
+// files, did not find its stored page, or failed.
 export interface FieldBuildSummary {
   indexed: number
   noSource: number

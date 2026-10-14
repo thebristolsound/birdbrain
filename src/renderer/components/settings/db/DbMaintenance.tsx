@@ -31,7 +31,7 @@ export function DbMaintenance() {
           message:
             `Rebuilt FTS indexes. ${rowsIndexed} rows indexed, ${textsHealed} text(s) healed from disk. ` +
             `Link and header search: ${fieldExhibitsIndexed} capture(s) indexed, ` +
-            `${fieldExhibitsNoSource} with no stored page or text, ${fieldExhibitsFailed} failed.`
+            `${fieldExhibitsNoSource} whose stored page was not found, ${fieldExhibitsFailed} failed.`
         })
       } else {
         const check = await integrityCheck.mutateAsync()

@@ -5,6 +5,7 @@ import { getDb } from '@main/services/db/core'
 // first-slice.md, D1). A cache outside the Manifest (ADR-0044): nothing here writes a
 // Manifest Entry, and no Case Archive collector reads these tables.
 
+/** `no-source`: the Capture's stored page was not found, so nothing was built. */
 export type FieldBuildOutcome = 'built' | 'partial' | 'no-source' | 'failed'
 
 export interface ExhibitSearchBuild {
@@ -45,13 +46,17 @@ export function getFieldSource(exhibitId: string): FieldSource | undefined {
     .get(exhibitId) as FieldSource | undefined
 }
 
-/** The Case's Capture Exhibits with no build row, or one an older extractor wrote. */
+/**
+ * The Case's Capture Exhibits with no build row, one an older extractor wrote, or one
+ * whose stored page was not found.
+ */
 export function listExhibitsNeedingFields(caseId: string, extractor: string): string[] {
   const rows = getDb()
     .prepare(
       `${CAPTURE_EXHIBITS_SQL}
          LEFT JOIN exhibit_search_builds b ON b.exhibit_id = c.id
-        WHERE c.case_id = ? AND (b.exhibit_id IS NULL OR b.extractor <> ?)
+        WHERE c.case_id = ?
+          AND (b.exhibit_id IS NULL OR b.extractor <> ? OR b.outcome = 'no-source')
         ORDER BY c.timestamp DESC`
     )
     .all(caseId, extractor) as Array<{ id: string }>

@@ -1,7 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
+import { ensureCaseDir, initStorage } from '@main/services/storage'
+import { defaultCaptureStore } from '@main/services/captureStore'
 import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase, updateCase, listCases } from '@main/services/db/caseRepo'
-import { insertCapture, getCaptureTextContent } from '@main/services/db/captureRepo'
+import { insertCapture, getCapture, getCaptureTextContent } from '@main/services/db/captureRepo'
 import { AnchorCaseMismatchError } from '@main/services/db/noteRepo'
 import { MentionCaseMismatchError } from '@main/services/db/noteReferenceRepo'
 import { createNote } from '@main/services/db/noteRepo'
@@ -19,6 +24,7 @@ import {
   rebuildFts,
   purgeArchived,
   findOrphans,
+  cleanOrphans,
   exportTableData,
   SharedCaseRowError
 } from '@main/services/db/dbAdmin'
@@ -1024,6 +1030,68 @@ describe('dbAdmin', () => {
       expect(deleteRow('captures', { id: local.captureId })).toBe(true)
       expect(deleteRow('selectors', { id: 'local-selector' })).toBe(true)
       expect(deleteRow('cases', { id: local.caseId })).toBe(true)
+    })
+  })
+
+  // Maintainer ruling of 14 October 2026 on PR #1865: orphan cleanup leaves a
+  // Shared Case's Captures alone, in the scan the screen counts and in the
+  // cleanup it runs; a Case nobody shared is cleaned as before.
+  describe('orphan cleanup and Shared Cases', () => {
+    let tempDir: string
+    let sharedCapture: string
+    let localCapture: string
+
+    function orphanedCapture(caseId: string, name: string): string {
+      ensureCaseDir(caseId)
+      const id = insertCapture({
+        caseId,
+        url: `https://example.com/${name}`,
+        title: name,
+        hash: 'h',
+        timestamp: '2026-01-01T00:00:00.000Z',
+        mhtmlPath: `${caseId}/${name}.mhtml`
+      }).id
+      // The screenshot is on disk and the MHTML is not, so the row looks orphaned.
+      writeFileSync(defaultCaptureStore.artifactPaths(caseId, id, 'png').abs, 'png')
+      return id
+    }
+
+    beforeEach(() => {
+      tempDir = mkdtempSync(join(tmpdir(), 'bb-db-admin-orphans-'))
+      initStorage(tempDir)
+      const shared = createCase({ name: 'Shared', description: '' }).id
+      getDb()
+        .prepare("UPDATE cases SET shared_at = '2026-10-01T00:00:00.000Z' WHERE id = ?")
+        .run(shared)
+      sharedCapture = orphanedCapture(shared, 'shared')
+      localCapture = orphanedCapture(createCase({ name: 'Local', description: '' }).id, 'local')
+    })
+
+    afterEach(() => {
+      rmSync(tempDir, { recursive: true, force: true })
+    })
+
+    it('counts and cleans only the Case nobody shared', () => {
+      const report = findOrphans()
+      expect(report.dbOrphans.map((o) => o.id)).toEqual([localCapture])
+      // The Shared Case Capture's screenshot still has its row, so it is no file orphan.
+      expect(report.fileOrphans).toEqual([])
+
+      expect(cleanOrphans(report)).toEqual({ dbRecordsRemoved: 1, filesRemoved: 0 })
+      expect(getCapture(sharedCapture)).toBeDefined()
+      expect(getCapture(localCapture)).toBeUndefined()
+    })
+
+    it('skips a Shared Case Capture a stale or edited report names', () => {
+      const shared = getCapture(sharedCapture)!
+      const result = cleanOrphans({
+        dbOrphans: [
+          { table: 'captures', id: sharedCapture, caseId: shared.caseId, missingPaths: [] }
+        ],
+        fileOrphans: []
+      })
+      expect(result.dbRecordsRemoved).toBe(0)
+      expect(getCapture(sharedCapture)).toBeDefined()
     })
   })
 })

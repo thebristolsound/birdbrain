@@ -590,16 +590,25 @@ export function findOrphans(): OrphanReport {
   }
 
   const captures = db
-    .prepare('SELECT id, case_id, html_path, screenshot_path, mhtml_path FROM captures')
+    .prepare(
+      `SELECT p.id, p.case_id, p.html_path, p.screenshot_path, p.mhtml_path,
+              c.shared_at IS NOT NULL AS shared
+         FROM captures p LEFT JOIN cases c ON c.id = p.case_id`
+    )
     .all() as Array<{
     id: string
     case_id: string
     html_path: string | null
     screenshot_path: string | null
     mhtml_path: string | null
+    shared: number
   }>
 
   for (const cap of captures) {
+    // A Shared Case's Captures are never orphans (maintainer ruling of 14
+    // October 2026 on PR #1865). They stay in `captures` below, so their
+    // files are not reported either.
+    if (cap.shared) continue
     const missing: string[] = []
     if (cap.html_path && !existsSync(join(storageRoot, cap.html_path))) {
       missing.push(cap.html_path)
@@ -679,11 +688,17 @@ export function cleanOrphans(report: OrphanReport): {
   let dbRecordsRemoved = 0
   let filesRemoved = 0
   const allowedOrphanTables = new Set(['captures'])
+  // The report comes back from the renderer, so a Case shared since the scan,
+  // or an edited report, is checked here as well as in findOrphans.
+  const inSharedCase = db.prepare(`${IN_SHARED_CASE.captures} LIMIT 1`)
 
   for (const orphan of report.dbOrphans) {
     if (!allowedOrphanTables.has(orphan.table)) {
       continue
     }
+    const stored = db.prepare('SELECT case_id FROM captures WHERE id = ?').get(orphan.id) as
+      { case_id: string } | undefined
+    if (stored && inSharedCase.get({ case_id: stored.case_id }) !== undefined) continue
     const run = db.transaction(() => {
       // The Exhibit row goes with the Capture row: `exhibits` hangs off
       // `cases`, so nothing cascades to it, and a row left behind would keep a

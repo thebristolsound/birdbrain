@@ -82,6 +82,8 @@ export const renderBlock = (next, slug) =>
     `  if (version < ${next}) {`,
     '    db.transaction(() => {',
     `      // TODO(${slug}): describe what this migration changes and why, then add the DDL.`,
+    '      // Write each statement to run twice (CREATE ... IF NOT EXISTS): the restore test',
+    '      // marks a migrated database one version back, which runs this block again.',
     `      throw new Error('Migration ${next} is not implemented')`,
     '    })()',
     '  }'

@@ -569,7 +569,7 @@ describe('searchCaseFields', () => {
     expect(searchCaseFields(caseId, '  ').hits).toEqual([])
   })
 
-  it('returns records built from other bytes than the Exhibit holds as unavailable', () => {
+  it('returns records whose build row records another Content Hash as unavailable', () => {
     const id = capture(caseId)
     build(id)
     getDb()
@@ -580,6 +580,25 @@ describe('searchCaseFields', () => {
 
     expect(hits).toEqual([])
     expect(unavailable).toEqual([{ exhibitId: id, exhibitCitation: expect.any(String) }])
+  })
+
+  // The comparison reads two recorded hashes, not the stored files; the plan's D7 leaves
+  // hashing the file to the exact check.
+  it('returns hits for files that do not match the Content Hash the Exhibit row records', () => {
+    const id = capture(caseId)
+    build(id, mhtml('<a href="https://swapped.example.org/">Swapped</a>'))
+
+    const { hits, unavailable } = searchCaseFields(caseId, 'swapped.example')
+
+    expect(getExhibitSearchBuild(id)?.contentHash).toBe('c'.repeat(64))
+    expect(unavailable).toEqual([])
+    expect(hits.map(({ field, contentHash }) => ({ field, contentHash }))).toEqual([
+      { field: 'link.href', contentHash: 'c'.repeat(64) }
+    ])
+    // A header record comes from the Extracted Text file, which no hash here covers.
+    expect(searchCaseFields(caseId, 'wren@hollis').hits.map(({ field }) => field)).toEqual([
+      'header.from'
+    ])
   })
 
   it("searches one Case, not another Case's records", () => {

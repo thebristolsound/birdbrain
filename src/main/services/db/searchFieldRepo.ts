@@ -170,8 +170,9 @@ interface FieldHitRow {
 
 /**
  * The Case's field records whose search form holds the query, one for each Exhibit,
- * field and search form. Records built from other bytes than the Exhibit's current
- * Content Hash come back as unavailable, never as hits (ADR-0044).
+ * field and search form. Records whose build row records another Content Hash than the
+ * Exhibit row's current one come back as unavailable, never as hits (ADR-0044). The
+ * build copies that hash from the Exhibit row; it does not hash the files it reads.
  */
 export function searchCaseFields(caseId: string, query: string): FieldSearchResult {
   const trimmed = query.trim()

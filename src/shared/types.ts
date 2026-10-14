@@ -208,8 +208,9 @@ export interface FieldHit {
 export interface FieldSearchResult {
   hits: FieldHit[]
   /**
-   * Exhibits with matching records built from other bytes than their current Content
-   * Hash. Their records are not returned as hits (ADR-0044).
+   * Exhibits whose matching records are not returned as hits because their build row
+   * records another Content Hash. `searchCaseFields` states the rule and what it leaves
+   * unchecked.
    */
   unavailable: Array<{ exhibitId: string; exhibitCitation: string }>
   /** More hits matched than the result holds. */

@@ -1,8 +1,10 @@
 // The one preparation behind every throwaway Birdbrain profile: the e2e fixture
-// (e2e/fixtures/electronApp.ts), the exploratory harness (scripts/exploratory-harness.mjs) and
-// `pnpm dev:seed` (scripts/dev-seed.mjs). Each launches the app with nobody at the window, so
-// startup has to clear the #116 operator-name gate and the #414 signing-key acknowledgement gate
-// by itself.
+// (e2e/fixtures/electronApp.ts), the exploratory harness (scripts/exploratory-harness.mjs),
+// `pnpm dev:seed` (scripts/dev-seed.mjs), the package smoke test (scripts/package-smoke.mjs) and
+// the run-birdbrain driver (.claude/skills/run-birdbrain/driver.mjs);
+// tests/singleProfileSeed.test.ts fails when other code names the key file. Each launches the app
+// with nobody at the window, so startup has to clear the #116 operator-name gate and the #414
+// signing-key acknowledgement gate by itself.
 
 import { generateKeyPairSync } from 'node:crypto'
 import { writeFile } from 'node:fs/promises'

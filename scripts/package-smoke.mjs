@@ -34,16 +34,16 @@
 // It proves launch, nothing more beyond that: the rest of section 3 (capture, view,
 // export) stays with the human checklist and the Playwright suite.
 //
-// Two facts about the environment this leans on, both mirrored from
-// e2e/fixtures/electronApp.ts: BIRDBRAIN_USER_DATA relocates the app's data
-// directory, and a seeded plaintext signing key keeps initSigningKey on its
+// Two facts about the environment this leans on: BIRDBRAIN_USER_DATA relocates
+// the app's data directory, and a plaintext signing key, seeded by
+// scripts/dev-seed/profile.mjs, keeps initSigningKey on its
 // existing-key branch, so the #414 acknowledgement modal (which fires whenever
 // safeStorage is unavailable, as it is on a headless runner) never opens.
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { generateKeyPairSync } from 'node:crypto'
+import { prepareProfile } from './dev-seed/profile.mjs'
 
 // CAPTURE_SERVER_PORT in src/shared/constants.ts; this script cannot import TypeScript.
 const PORT = 19845
@@ -94,16 +94,9 @@ async function statusAnswers() {
   }
 }
 
-function seedUserData() {
+async function seedUserData() {
   const dir = scratchDir('birdbrain-smoke-')
-  writeFileSync(join(dir, 'settings.json'), JSON.stringify({ operatorName: 'Package smoke' }))
-  const { privateKey, publicKey } = generateKeyPairSync('rsa', {
-    modulusLength: 2048,
-    publicKeyEncoding: { type: 'spki', format: 'pem' },
-    privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
-  })
-  writeFileSync(join(dir, 'signing-key.pem'), privateKey, 'utf-8')
-  writeFileSync(join(dir, 'signing-public-key.pem'), publicKey, 'utf-8')
+  await prepareProfile(dir, { operatorName: 'Package smoke' })
   return dir
 }
 
@@ -262,7 +255,7 @@ async function main() {
   }
 
   const { command, args } = prepareLaunch()
-  const userData = seedUserData()
+  const userData = await seedUserData()
   // Linux only: TMPDIR is where --appimage-extract-and-run puts the app, so a
   // fresh one per launch is a fresh resources path (see the header).
   const appTmp = process.platform === 'linux' ? scratchDir('birdbrain-smoke-tmp-') : null

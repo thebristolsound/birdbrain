@@ -140,3 +140,6 @@ report-*.html
 
 # sharp built against the system libvips for the test runner (scripts/build-test-sharp.mjs)
 /.cache/test-sharp/
+
+# The bundled seed step for pnpm dev:seed and the seeded e2e fixture (scripts/dev-seed/launch.mjs)
+/.cache/dev-seed/

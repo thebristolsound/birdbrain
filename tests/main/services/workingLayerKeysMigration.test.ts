@@ -138,6 +138,36 @@ describe('migration v39 (per-author working-layer keys)', () => {
     expect(created_at > UNDATED_TAG_CREATED_AT).toBe(true)
   })
 
+  // The block checks the rebuilt tables before it sets the version, as v36
+  // does: a tag application whose note is gone fails the upgrade, and the
+  // transaction leaves the v38 tables and rows as they were.
+  it('stops on a broken link and leaves the v38 database as it was', async () => {
+    markV38(true)
+    const raw = new Database(dbPath)
+    raw.pragma('foreign_keys = OFF')
+    raw.prepare('INSERT INTO note_tags (note_id, tag_id) VALUES (?, ?)').run('gone', tagIds.upper)
+    const shape = (conn: Database.Database) =>
+      ['tags', 'annotations', 'annotation_pins', 'exhibit_tags', 'note_tags'].map((table) => ({
+        table,
+        columns: (conn.pragma(`table_info(${table})`) as Row[]).map((c) => [c.name, c.pk]),
+        rows: conn.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()
+      }))
+    const before = shape(raw)
+    raw.close()
+
+    await expect(initDatabase(dbPath)).rejects.toThrow(
+      'Migration 39 left 1 foreign key violation(s)'
+    )
+
+    const after = new Database(dbPath, { readonly: true })
+    try {
+      expect(after.pragma('user_version', { simple: true })).toBe(38)
+      expect(shape(after)).toEqual(before)
+    } finally {
+      after.close()
+    }
+  })
+
   it('keeps the cascades from Captures, notes and tags', () => {
     deleteTag(tagIds.upper)
     deleteTag(tagIds.lower)

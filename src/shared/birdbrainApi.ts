@@ -3,6 +3,7 @@ import type {
   CaseAutoCapturePolicy,
   Capture,
   CaptureLinks,
+  FieldSearchResult,
   Tag,
   BirdbrainSettings,
   ExportOptions,
@@ -120,6 +121,8 @@ export interface BirdbrainAPI {
     // Builds link and header search records for the Case's Captures that lack them
     // (docs/plans/2026-10-09-case-retrieval-first-slice.md, D5).
     ensureSearchFields(caseId: string): Promise<FieldBuildSummary>
+    // Searches the Case's link and header records (the same plan, D6).
+    searchFields(caseId: string, query: string): Promise<FieldSearchResult>
   }
   captures: {
     list(caseId: string): Promise<Capture[]>

@@ -31,6 +31,7 @@ import type {
   ExtractedDataItem,
   ExtractedDataSearchResult,
   ExtractedDataSubcategory,
+  FieldSearchResult,
   HashVerification,
   LogCode,
   LogContextKey,
@@ -72,6 +73,7 @@ export const IPC_CHANNELS = {
   CASES_GET_AUTO_CAPTURE_POLICY: 'cases:getAutoCapturePolicy',
   CASES_SET_AUTO_CAPTURE_POLICY: 'cases:setAutoCapturePolicy',
   CASES_ENSURE_SEARCH_FIELDS: 'cases:ensureSearchFields',
+  CASES_SEARCH_FIELDS: 'cases:searchFields',
 
   // Captures
   CAPTURES_LIST: 'captures:list',
@@ -800,6 +802,7 @@ export interface IpcInvokeContract {
     result: CaseAutoCapturePolicy
   }
   'cases:ensureSearchFields': { args: [caseId: string]; result: FieldBuildSummary }
+  'cases:searchFields': { args: [caseId: string, query: string]; result: FieldSearchResult }
 
   'captures:list': { args: [caseId: string]; result: Capture[] }
   'captures:get': { args: [id: string]; result: Capture | undefined }

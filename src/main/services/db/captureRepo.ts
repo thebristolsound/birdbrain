@@ -335,18 +335,22 @@ export function getCaptureCountsByCase(): Record<string, number> {
 // The captures_fts columns, so a column filter such as `url:` survives query preparation.
 const CAPTURES_FTS_COLUMNS = ['title', 'url', 'content']
 
+// Within one Case a row also carries its Exhibit citation, so a search result can name
+// the Exhibit (docs/plans/2026-10-09-case-retrieval-first-slice.md, D6).
 export function searchCaptures(query: string, caseId?: string): Capture[] {
   const match = toFtsMatchQuery(query, CAPTURES_FTS_COLUMNS)
   const rows = getDb()
     .prepare(
-      `SELECT c.* FROM captures c
+      `${CAPTURE_WITH_EXHIBIT_SQL}
        JOIN capture_texts t ON t.capture_id = c.id
        JOIN captures_fts fts ON fts.rowid = t.id
        WHERE captures_fts MATCH ?${caseId ? ' AND c.case_id = ?' : ''}
        ORDER BY rank`
     )
     .all(...(caseId ? [match, caseId] : [match])) as Array<Record<string, unknown>>
-  return rows.map(rowToCapture)
+  if (!caseId) return rows.map(rowToCapture)
+  const cite = exhibitCitationResolver(caseId, 'app')
+  return rows.map((row) => withCitation(rowToCapture(row), row, cite))
 }
 
 export function getCaptureTextContent(captureId: string): string | null {

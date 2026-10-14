@@ -1,5 +1,7 @@
 import type { ExtractedField } from '@main/services/search/fieldExtractor'
 import { getDb } from '@main/services/db/core'
+import { exhibitCitationResolver } from '@main/services/db/caseMemberRepo'
+import type { FieldHit, FieldSearchResult } from '@shared/types'
 
 // The Case search field records (migration 38; docs/plans/2026-10-09-case-retrieval-
 // first-slice.md, D1). A cache outside the Manifest (ADR-0044): nothing here writes a
@@ -137,4 +139,114 @@ export function rebuildFieldIndex(): void {
   getDb().exec(
     "INSERT INTO exhibit_search_fields_fts(exhibit_search_fields_fts) VALUES ('rebuild')"
   )
+}
+
+const FIELD_HIT_LIMIT = 200
+const PREVIEW_LENGTH = 200
+
+function escapeLike(term: string): string {
+  return term.replace(/[\\%_]/g, (ch) => `\\${ch}`)
+}
+
+interface FieldHitRow {
+  fieldId: number
+  exhibitId: string
+  field: string
+  preview: string
+  norm: string
+  source: 'html-part' | 'text'
+  part: number | null
+  startOffset: number
+  endOffset: number
+  occurrences: number
+  extractor: string
+  builtHash: string
+  contentHash: string
+  exhibitNumber: number
+  memberCode: string | null
+  authorInstallationId: string | null
+  title: string
+}
+
+/**
+ * The Case's field records whose search form holds the query, one for each Exhibit,
+ * field and search form. Records built from other bytes than the Exhibit's current
+ * Content Hash come back as unavailable, never as hits (ADR-0044).
+ */
+export function searchCaseFields(caseId: string, query: string): FieldSearchResult {
+  const trimmed = query.trim()
+  if (!trimmed) return { hits: [], unavailable: [], truncated: false }
+  // The query is one phrase, so punctuation is matched as typed. A trigram index
+  // cannot match under three characters, so a shorter query scans `norm`, as
+  // searchExtractedData does.
+  const [matched, term] =
+    trimmed.length >= 3
+      ? [
+          `SELECT f.id, f.exhibit_id, f.field, f.norm
+             FROM exhibit_search_fields_fts
+             JOIN exhibit_search_fields f ON f.id = exhibit_search_fields_fts.rowid
+            WHERE exhibit_search_fields_fts MATCH ? AND f.case_id = ?`,
+          `"${trimmed.replace(/"/g, '""')}"`
+        ]
+      : [
+          `SELECT id, exhibit_id, field, norm FROM exhibit_search_fields
+            WHERE norm LIKE ? ESCAPE '\\' AND case_id = ?`,
+          `%${escapeLike(trimmed)}%`
+        ]
+  const rows = getDb()
+    .prepare(
+      `WITH matched AS (${matched}),
+            firsts AS (
+              SELECT MIN(id) AS id, COUNT(*) AS occurrences
+                FROM matched GROUP BY exhibit_id, field, norm
+            )
+       SELECT f.id AS fieldId, f.exhibit_id AS exhibitId, f.field,
+              substr(f.value, 1, ?) AS preview, f.norm, f.source, f.part,
+              f.start_offset AS startOffset, f.end_offset AS endOffset, firsts.occurrences,
+              b.extractor, b.content_hash AS builtHash, e.content_hash AS contentHash,
+              e.exhibit_number AS exhibitNumber, e.member_code AS memberCode,
+              e.author_installation_id AS authorInstallationId, c.title
+         FROM firsts
+         JOIN exhibit_search_fields f ON f.id = firsts.id
+         JOIN exhibit_search_builds b ON b.exhibit_id = f.exhibit_id
+         JOIN exhibits e ON e.id = f.exhibit_id
+         JOIN captures c ON c.id = f.exhibit_id
+        ORDER BY c.timestamp DESC, f.id
+        LIMIT ?`
+    )
+    .all(term, caseId, PREVIEW_LENGTH, FIELD_HIT_LIMIT + 1) as FieldHitRow[]
+  const cite = exhibitCitationResolver(caseId, 'app')
+  const hits: FieldHit[] = []
+  const unavailable = new Map<string, string>()
+  for (const row of rows.slice(0, FIELD_HIT_LIMIT)) {
+    const exhibitCitation = cite(row)
+    if (row.builtHash !== row.contentHash) {
+      unavailable.set(row.exhibitId, exhibitCitation)
+      continue
+    }
+    const { fieldId, exhibitId, field, preview, norm, occurrences, contentHash, title } = row
+    const { source, part, startOffset, endOffset, extractor, exhibitNumber } = row
+    hits.push({
+      fieldId,
+      caseId,
+      exhibitId,
+      exhibitNumber,
+      exhibitCitation,
+      contentHash,
+      title,
+      field,
+      preview,
+      norm,
+      occurrences,
+      locator: { source, part, startOffset, endOffset, extractor }
+    })
+  }
+  return {
+    hits,
+    unavailable: [...unavailable].map(([exhibitId, exhibitCitation]) => ({
+      exhibitId,
+      exhibitCitation
+    })),
+    truncated: rows.length > FIELD_HIT_LIMIT
+  }
 }

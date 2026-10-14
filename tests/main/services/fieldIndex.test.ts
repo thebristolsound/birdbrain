@@ -7,7 +7,7 @@ import { closeDatabase, getDb, initDatabase } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
 import { insertCapture } from '@main/services/db/captureRepo'
 import * as searchFieldRepo from '@main/services/db/searchFieldRepo'
-import { getExhibitSearchBuild } from '@main/services/db/searchFieldRepo'
+import { getExhibitSearchBuild, searchCaseFields } from '@main/services/db/searchFieldRepo'
 import {
   buildExhibitFields,
   ensureCaseFields,
@@ -480,5 +480,125 @@ describe('rebuildAllFields', () => {
     expect(matches('"stray.example"')).toBe(0)
     expect(matches('"tollgate-ledger.example"')).toBe(1)
     expectIndexInStep()
+  })
+})
+
+describe('searchCaseFields', () => {
+  function build(id: string, page: Buffer = PAGE): void {
+    const files: Files = new Map([
+      [`${id}.mhtml`, page],
+      [`${id}.txt`, Buffer.from(TEXT, 'utf-8')]
+    ])
+    buildExhibitFields(id, storeOf(files))
+  }
+
+  it('finds an address through its search form, whatever its case and brackets', () => {
+    const id = capture(caseId)
+    build(id)
+
+    const { hits, unavailable, truncated } = searchCaseFields(
+      caseId,
+      'WREN@hollis-mail.EXAMPLE.org'
+    )
+
+    expect(unavailable).toEqual([])
+    expect(truncated).toBe(false)
+    expect(hits).toHaveLength(1)
+    const [hit] = hits
+    expect(hit).toMatchObject({
+      caseId,
+      exhibitId: id,
+      exhibitCitation: String(hit.exhibitNumber),
+      contentHash: 'c'.repeat(64),
+      title: 'Notice',
+      field: 'header.from',
+      preview: 'Wren Hollis <wren@Hollis-Mail.example.org>',
+      norm: 'wren@hollis-mail.example.org',
+      occurrences: 1,
+      locator: { source: 'text', part: null, extractor: FIELD_EXTRACTOR_VERSION }
+    })
+    expect(TEXT.slice(hit.locator.startOffset, hit.locator.endOffset)).toBe(hit.preview)
+  })
+
+  it('finds a part of a link target, with the span it came from in the decoded part', () => {
+    const id = capture(caseId)
+    build(id)
+
+    const { hits } = searchCaseFields(caseId, 'ledger.example.com/pa')
+
+    expect(hits.map((hit) => hit.field)).toEqual(['link.href'])
+    const { part, startOffset, endOffset } = hits[0].locator
+    const decoded = listHtmlPartsInMhtml(PAGE).parts[part ?? -1].decode()
+    expect(decoded.slice(startOffset, endOffset)).toBe(hits[0].preview)
+  })
+
+  it('returns a value repeated in one Capture once, at its first place, with the count', () => {
+    const id = capture(caseId)
+    const link = '<a href="https://tollgate-ledger.example.com/pay">Pay</a>'
+    build(id, mhtml(`<p>${link}</p><p>${link}</p><p>${link}</p>`))
+
+    const { hits } = searchCaseFields(caseId, 'tollgate')
+
+    expect(hits).toHaveLength(1)
+    expect(hits[0].occurrences).toBe(3)
+    const firstField = fieldRows(id).find((row) => row.field === 'link.href')
+    expect(hits[0].locator.startOffset).toBe(firstField?.startOffset)
+  })
+
+  it('matches a query under three characters as a plain substring', () => {
+    const id = capture(caseId)
+    build(id)
+
+    expect(searchCaseFields(caseId, 'Pa').hits.map((hit) => hit.norm)).toEqual([
+      'https://tollgate-ledger.example.com/pay',
+      'Pay here'
+    ])
+    expect(searchCaseFields(caseId, '%').hits).toEqual([])
+    expect(searchCaseFields(caseId, '_').hits).toEqual([])
+  })
+
+  it('reads punctuation and quotes in the query as text', () => {
+    const id = capture(caseId)
+    build(id)
+
+    expect(searchCaseFields(caseId, '<a1@x>').hits.map((hit) => hit.field)).toEqual([
+      'header.message-id'
+    ])
+    expect(searchCaseFields(caseId, '"tollgate').hits).toEqual([])
+    expect(searchCaseFields(caseId, 'tollgate OR wren').hits).toEqual([])
+    expect(searchCaseFields(caseId, '  ').hits).toEqual([])
+  })
+
+  it('returns records built from other bytes than the Exhibit holds as unavailable', () => {
+    const id = capture(caseId)
+    build(id)
+    getDb()
+      .prepare('UPDATE exhibit_search_builds SET content_hash = ? WHERE exhibit_id = ?')
+      .run('d'.repeat(64), id)
+
+    const { hits, unavailable } = searchCaseFields(caseId, 'tollgate')
+
+    expect(hits).toEqual([])
+    expect(unavailable).toEqual([{ exhibitId: id, exhibitCitation: expect.any(String) }])
+  })
+
+  it("searches one Case, not another Case's records", () => {
+    build(capture(createCase({ name: 'Other' }).id))
+
+    expect(searchCaseFields(caseId, 'tollgate').hits).toEqual([])
+  })
+
+  it('stops at its hit limit and says so', () => {
+    const id = capture(caseId)
+    const links = Array.from(
+      { length: 201 },
+      (_, i) => `<a href="https://many-${i}.example.org/">${i}</a>`
+    )
+    build(id, mhtml(links.join('')))
+
+    const { hits, truncated } = searchCaseFields(caseId, '.example.org/')
+
+    expect(hits).toHaveLength(200)
+    expect(truncated).toBe(true)
   })
 })

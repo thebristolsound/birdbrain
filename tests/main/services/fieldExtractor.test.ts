@@ -4,9 +4,9 @@ import { CAPTURE_LINK_BUDGETS } from '@main/services/htmlParts'
 import {
   extractFields,
   headerFieldsFromText,
-  HEADER_FIELDS,
   type ExtractedField
 } from '@main/services/search/fieldExtractor'
+import { fieldLabel, HEADER_FIELDS } from '@shared/searchFields'
 
 // Known answers for the Case search field extractor (docs/plans/2026-10-09-case-
 // retrieval-first-slice.md, D3 and D4). Every field's offsets must slice back to its
@@ -342,6 +342,20 @@ describe('headerFieldsFromText', () => {
       'NNTP-Posting-Host',
       'X-Originating-IP'
     ])
+  })
+
+  it('gives every field it records a search bar label', () => {
+    const header = HEADER_FIELDS.map((name) => `${name}: x@example.org`).join('\n')
+    const { fields } = extractFields({
+      captureUrl: CAPTURE_URL,
+      mhtml: null,
+      html: Buffer.from(page('<a href="/a"><img alt="Pay"></a>')),
+      text: header
+    })
+    const recorded = new Set(fields.map((f) => f.field))
+    expect(recorded.size).toBe(HEADER_FIELDS.length + 2)
+    expect([...recorded].filter((field) => fieldLabel(field) === field)).toEqual([])
+    expect(fieldLabel('header.message-id')).toBe('Message-ID header')
   })
 
   it('reads a block with folded lines, one field per address, with LF line ends', () => {

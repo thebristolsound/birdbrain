@@ -64,6 +64,7 @@ import { applyTagToNote, NoteNotFoundError } from '@main/services/noteTags'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import { readCaptureLinks } from '@main/services/captureLinks'
 import { ensureCaseFields, rebuildAllFields } from '@main/services/search/fieldIndex'
+import * as searchFieldRepo from '@main/services/db/searchFieldRepo'
 import { renderCapturePdf } from '@main/services/pdfExport'
 import { getThumbnail } from '@main/services/thumbnails'
 import { getCaseInventory, getManifestSnapshot, verifyExhibit } from '@main/services/exhibits'
@@ -250,6 +251,15 @@ export function registerIpcHandlers(deps: {
   // The Case workspace calls this when it opens, so a Case's Captures get search
   // field records without a change to the session service.
   handle(IPC_CHANNELS.CASES_ENSURE_SEARCH_FIELDS, (_, caseId: string) => ensureCaseFields(caseId))
+
+  handle(IPC_CHANNELS.CASES_SEARCH_FIELDS, (_, caseId: string, query: string) => {
+    try {
+      return searchFieldRepo.searchCaseFields(caseId, query)
+    } catch {
+      // See NOTES_SEARCH: a failed search must not look like an empty one.
+      throw new IpcFailure('Search could not run', 'SEARCH_FAILED')
+    }
+  })
 
   handle(
     IPC_CHANNELS.CASES_EXPORT_ARCHIVE,

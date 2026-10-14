@@ -1,5 +1,6 @@
 import * as cheerio from 'cheerio'
 import type { CaptureLinks } from '@shared/types'
+import { HEADER_FIELDS } from '@shared/searchFields'
 import {
   CAPTURE_LINK_BUDGETS,
   documentBase,
@@ -23,20 +24,6 @@ import {
 
 /** Stored on each build row. A change to what is extracted, or how, takes a new version. */
 export const FIELD_EXTRACTOR_VERSION = 'fields/1'
-
-/** The headers recorded from a header block, each as `header.<name in lower case>`. */
-export const HEADER_FIELDS = [
-  'From',
-  'Reply-To',
-  'Sender',
-  'Return-Path',
-  'Message-ID',
-  'In-Reply-To',
-  'Organization',
-  'Newsgroups',
-  'NNTP-Posting-Host',
-  'X-Originating-IP'
-] as const
 
 // A run of header lines is a header block only when one of these names is in it, so
 // a few `Label: value` lines in ordinary page text are not read as mail headers.

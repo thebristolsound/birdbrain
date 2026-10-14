@@ -141,6 +141,7 @@ import type {
   BugReportResult,
   Capture,
   Case,
+  FieldSearchResult,
   LogEntry,
   RecentActivityEvent,
   SessionRecord,
@@ -1660,6 +1661,14 @@ describe('ipcHandlers — search', () => {
       expect(found.map((c) => c.id)).toContain(id)
     }
   })
+  it('names each Capture it finds by its Exhibit citation', async () => {
+    const { id } = seedCapture({ textContent: 'kestrel moved overnight' })
+    const [found] = expectOk<Capture[]>(await invoke(IPC_CHANNELS.SEARCH, caseId, 'kestrel'))
+
+    expect(found.id).toBe(id)
+    expect(found.exhibitNumber).toEqual(expect.any(Number))
+    expect(found.exhibitCitation).toBe(String(found.exhibitNumber))
+  })
 })
 
 describe('ipcHandlers — settings', () => {
@@ -2076,6 +2085,30 @@ describe('ipcHandlers — Case search fields', () => {
       noSource: 0,
       failed: 0
     })
+  })
+
+  it('searches the records, and reports a search that cannot run as a failure', async () => {
+    writeFileSync(
+      defaultCaptureStore.artifactPaths(caseId, captureId, 'html').abs,
+      '<a href="https://ledger-tollgate.example.org/x">x</a>'
+    )
+    expectOk(await invoke(IPC_CHANNELS.CASES_ENSURE_SEARCH_FIELDS, caseId))
+
+    const found = expectOk<FieldSearchResult>(
+      await invoke(IPC_CHANNELS.CASES_SEARCH_FIELDS, caseId, 'Ledger-Tollgate')
+    )
+    expect(found.hits.map(({ exhibitId, field }) => ({ exhibitId, field }))).toEqual([
+      { exhibitId: captureId, field: 'link.href' }
+    ])
+
+    vi.spyOn(searchFieldRepo, 'searchCaseFields').mockImplementationOnce(() => {
+      throw new Error('database is locked')
+    })
+    const res = (await invoke(IPC_CHANNELS.CASES_SEARCH_FIELDS, caseId, 'ledger')) as {
+      ok: boolean
+      code?: string
+    }
+    expect(res).toMatchObject({ ok: false, code: 'SEARCH_FAILED' })
   })
 })
 

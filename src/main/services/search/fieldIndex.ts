@@ -152,10 +152,15 @@ export async function rebuildCaseFields(
   return buildEach(searchFieldRepo.listCaseCaptureExhibits(caseId), store)
 }
 
-/** Clears every Case's field records and builds them again from the stored files. */
+/**
+ * Builds every Case's field records again from the stored files, then the index over
+ * them. Each Capture's records are replaced in place, so a search during the rebuild
+ * still finds the Captures not reached yet.
+ */
 export async function rebuildAllFields(
   store: ArtifactReader = defaultCaptureStore
 ): Promise<FieldBuildSummary> {
-  searchFieldRepo.clearAllSearchFields()
-  return buildEach(searchFieldRepo.listAllCaptureExhibits(), store)
+  const summary = await buildEach(searchFieldRepo.listAllCaptureExhibits(), store)
+  searchFieldRepo.rebuildFieldIndex()
+  return summary
 }

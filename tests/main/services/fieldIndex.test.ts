@@ -420,7 +420,7 @@ describe('rebuildCaseFields', () => {
 })
 
 describe('rebuildAllFields', () => {
-  it('clears every Case and builds each Capture again, failed builds included', async () => {
+  it('builds each Capture in every Case again, failed builds included', async () => {
     const other = createCase({ name: 'Other' }).id
     const a = capture(caseId)
     const b = capture(other)
@@ -454,6 +454,18 @@ describe('rebuildAllFields', () => {
     expect(fieldRows(b).map((row) => row.norm)).toEqual(['https://fresh.example.org/'])
     expect(matches('"stale.example"')).toBe(0)
     expectIndexInStep()
+  })
+
+  it('leaves the records it has not reached yet searchable while it runs', async () => {
+    const id = capture(caseId)
+    const store = storeOf(new Map([[`${id}.mhtml`, PAGE]]))
+    buildExhibitFields(id, store)
+
+    const rebuilt = rebuildAllFields(store)
+    expect(matches('"tollgate-ledger"')).toBe(1)
+
+    expect(await rebuilt).toEqual({ indexed: 1, noSource: 0, failed: 0 })
+    expect(matches('"tollgate-ledger"')).toBe(1)
   })
 
   it('drops index entries that have no field row', async () => {

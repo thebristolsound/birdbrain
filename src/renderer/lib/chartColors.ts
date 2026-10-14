@@ -23,7 +23,3 @@ export const CHART_SERIES = [
   '#7B68EE',
   '#DB7093'
 ] as const
-
-// Chart axis lines / ticks (zinc-400) and grid lines (low-alpha zinc).
-export const CHART_AXIS = '#a1a1aa'
-export const CHART_GRID = 'rgba(161,161,170,0.2)'

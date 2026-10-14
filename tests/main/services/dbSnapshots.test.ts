@@ -31,8 +31,9 @@ import {
 // fixture, so every migration block from 25 onwards runs against it. Tables
 // carry only what those blocks need: `selectors` is here because v29 alters
 // it, not because anything below reads it, and `tags`/`capture_tags` plus the
-// four later `captures` columns are here because v34 rebuilds and reads them.
-// Every one of those exists in a real v24 database (v11, v23).
+// four later `captures` columns are here because v34 rebuilds and reads them,
+// and `annotation_pins` because v39 alters it. Every one of those exists in a
+// real v24 database (v11, v17, v23).
 function seedLegacyDb(dbPath: string): void {
   const raw = new Database(dbPath)
   raw.exec(`
@@ -52,6 +53,8 @@ function seedLegacyDb(dbPath: string): void {
     CREATE TABLE annotations (capture_id TEXT PRIMARY KEY, schema_version INTEGER NOT NULL,
       shapes_json TEXT NOT NULL, image_width INTEGER NOT NULL, image_height INTEGER NOT NULL,
       updated_at TEXT NOT NULL, updated_by TEXT);
+    CREATE TABLE annotation_pins (id TEXT PRIMARY KEY, capture_id TEXT NOT NULL REFERENCES captures(id) ON DELETE CASCADE,
+      number INTEGER NOT NULL, body TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE TABLE capture_tags (capture_id TEXT NOT NULL REFERENCES captures(id) ON DELETE CASCADE,
       tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE, PRIMARY KEY (capture_id, tag_id));
     CREATE VIRTUAL TABLE captures_fts USING fts5(title, url, content);

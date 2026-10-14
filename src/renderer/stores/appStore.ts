@@ -70,8 +70,9 @@ interface AppState {
   // archive.org states for it, held only for as long as the panel is open.
   waybackSelection: WaybackSelection | null
   // The search hit the viewer shows (docs/plans/2026-10-09-case-retrieval-first-slice.md,
-  // D7): the Text tab marks a header hit's span, and the Links tab a link hit's row.
-  // Keyed by its Exhibit, which is the Capture's id, so another Capture never shows it.
+  // D7): the Text tab marks a header hit's span, and the Links tab a link hit's rows.
+  // Keyed by its Exhibit, which is the Capture's id. Selecting another Capture, or none,
+  // drops it.
   viewerHit: FieldHit | null
 
   setSessionActive: (active: boolean) => void
@@ -106,6 +107,13 @@ interface AppState {
   setDisplayedCaptureIds: (ids: string[] | null) => void
   addCaptureEvent: (event: CaptureEvent) => void
   clearCaptureEvents: () => void
+}
+
+function selectedCaptureState(id: string | null) {
+  return ({ viewerHit }: AppState) => ({
+    selectedCaptureId: id,
+    viewerHit: viewerHit?.exhibitId === id ? viewerHit : null
+  })
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -144,12 +152,12 @@ export const useAppStore = create<AppState>((set) => ({
   setActiveViewerTab: (tab) => set({ activeViewerTab: tab }),
   setWaybackSelection: (selection) => set({ waybackSelection: selection }),
   setViewerHit: (hit) => set({ viewerHit: hit }),
-  setSelectedCaptureId: (id) => set({ selectedCaptureId: id }),
+  setSelectedCaptureId: (id) => set(selectedCaptureState(id)),
   setSelectedNoteId: (id) => set({ selectedNoteId: id }),
   setSelectedSignalId: (id) => set({ selectedSignalId: id }),
   setSearchQuery: (query) => set({ searchQuery: query }),
 
-  selectCapture: (id) => set({ selectedCaptureId: id }),
+  selectCapture: (id) => set(selectedCaptureState(id)),
 
   toggleCaptureSelection: (id) =>
     set((s) => {

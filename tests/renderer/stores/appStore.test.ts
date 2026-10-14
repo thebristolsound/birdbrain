@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
+import type { FieldHit } from '@shared/types'
 import { useAppStore } from '@renderer/stores/appStore'
 
 describe('appStore', () => {
@@ -35,6 +36,24 @@ describe('appStore', () => {
     it('sets selectedCaptureId', () => {
       useAppStore.getState().selectCapture('cap-1')
       expect(useAppStore.getState().selectedCaptureId).toBe('cap-1')
+    })
+
+    it('keeps an opened search hit only while its Capture stays selected', () => {
+      const hit = { exhibitId: 'cap-1', fieldId: 1 } as FieldHit
+      const { selectCapture, setSelectedCaptureId, setViewerHit } = useAppStore.getState()
+      selectCapture('cap-1')
+      setViewerHit(hit)
+
+      selectCapture('cap-1')
+      expect(useAppStore.getState().viewerHit).toBe(hit)
+      selectCapture('cap-2')
+      selectCapture('cap-1')
+      expect(useAppStore.getState().viewerHit).toBeNull()
+
+      setViewerHit(hit)
+      setSelectedCaptureId(null)
+      setSelectedCaptureId('cap-1')
+      expect(useAppStore.getState().viewerHit).toBeNull()
     })
   })
 

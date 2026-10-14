@@ -8,6 +8,7 @@ import { initStorage, ensureCaseDir } from '@main/services/storage'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
 import { getCapture, insertCapture, listCaptures } from '@main/services/db/captureRepo'
+import { getExhibitSearchBuild } from '@main/services/db/searchFieldRepo'
 import { initManifest, verifyManifestChain } from '@main/services/manifest'
 import { createCaptureStore } from '@main/services/captureStore'
 import type { CaptureStore } from '@main/services/captureStore'
@@ -540,6 +541,22 @@ describe('createCaptureLifecycle.duplicate (#827)', () => {
 
     const { getCaptureTextContent } = await import('@main/services/db/captureRepo')
     expect(getCaptureTextContent(result.capture.id)).toBe(TEXT)
+  })
+
+  // Case search field records (docs/plans/2026-10-09-case-retrieval-first-slice.md, D5).
+  it("builds the copy's own search field records on the next tick", async () => {
+    const result = await lifecycle.duplicate(source.id)
+    if (result.status !== 'duplicated') throw new Error('expected a duplicate')
+    expect(getExhibitSearchBuild(result.capture.id)).toBeUndefined()
+
+    await new Promise<void>((resolve) => setImmediate(resolve))
+
+    expect(getExhibitSearchBuild(result.capture.id)).toMatchObject({
+      caseId,
+      contentHash: source.hash,
+      textHash: createHash('sha256').update(Buffer.from(TEXT, 'utf-8')).digest('hex'),
+      outcome: 'built'
+    })
   })
 
   it('keeps the committed entry, row and files when the post-commit mirror write fails', async () => {

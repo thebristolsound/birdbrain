@@ -1373,6 +1373,9 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
               reconcileErr
             )
           }
+          // A copy is a new Exhibit with search field records of its own. Ingest builds
+          // them in runPostCaptureWork, which a duplicate does not run.
+          setImmediate(() => runFieldBuild(duplicateId, sourceEntry.url))
           return { status: 'duplicated', capture: captureRepo.getCapture(duplicateId) ?? capture }
         } catch (err) {
           // Pre-commit only: the manifest seam has already rolled its own entry

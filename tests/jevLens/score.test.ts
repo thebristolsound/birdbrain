@@ -33,10 +33,21 @@ describe('triageAgreement', () => {
 describe('hunkRows and render', () => {
   it('pairs each status with the label the PR ended with', () => {
     const rows = hunkRows([
-      { number: 9, labels: ['evidence-affecting'], status: '3 blocking hits; 2 read incidental (0.02, 0.07); export.ts 0.63' },
+      {
+        number: 9,
+        labels: ['evidence-affecting'],
+        status: '3 blocking hits; 2 read incidental (0.02, 0.07); export.ts 0.63'
+      },
       { number: 10, labels: [], status: null }
     ])
-    expect(rows).toEqual([{ pr: 9, evidenceLabel: true, incidental: '2', status: '3 blocking hits; 2 read incidental (0.02, 0.07); export.ts 0.63' }])
+    expect(rows).toEqual([
+      {
+        pr: 9,
+        evidenceLabel: true,
+        incidental: '2',
+        status: '3 blocking hits; 2 read incidental (0.02, 0.07); export.ts 0.63'
+      }
+    ])
     const text = render({ triage: triageAgreement(issues), hunks: rows })
     expect(text).toContain('Triage lens: 4 issues routed by both; agreement 75%')
     expect(text).toContain('disagreements: #2')
@@ -50,7 +61,8 @@ describe('main', () => {
     const logs: string[] = []
     const exec = (_: string, args: string[]) => {
       if (args[0] === 'api' && args[1] === '--paginate') return JSON.stringify(issues)
-      if (args[0] === 'pr') return JSON.stringify([{ number: 9, sha: 'abc', labels: ['agent-authored'] }])
+      if (args[0] === 'pr')
+        return JSON.stringify([{ number: 9, sha: 'abc', labels: ['agent-authored'] }])
       if (args[0] === 'api') return '1 blocking hit; 1 read incidental (0.03)\n'
       throw new Error(`unexpected ${args.join(' ')}`)
     }

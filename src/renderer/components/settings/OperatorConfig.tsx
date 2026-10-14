@@ -203,10 +203,7 @@ export function OperatorConfig() {
               placeholder={DEFAULT_TSA_URL}
               aria-invalid={tsaError ? true : undefined}
               aria-describedby={tsaError ? 'operator-tsa-error' : undefined}
-              className={cn(
-                'bg-surface font-mono text-[11px]',
-                tsaError && 'border-red-500'
-              )}
+              className={cn('bg-surface font-mono text-[11px]', tsaError && 'border-red-500')}
             />
             {tsaError && (
               <p id="operator-tsa-error" role="alert" className="mt-1 text-[11px] text-danger-fg">

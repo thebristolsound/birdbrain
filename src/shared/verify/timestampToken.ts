@@ -27,7 +27,11 @@ export interface ParsedTimestampToken {
 }
 
 export function derToPem(label: string, der: Buffer): string {
-  const body = der.toString('base64').match(/.{1,64}/g)?.join('\n') ?? ''
+  const body =
+    der
+      .toString('base64')
+      .match(/.{1,64}/g)
+      ?.join('\n') ?? ''
   return `-----BEGIN ${label}-----\n${body}\n-----END ${label}-----\n`
 }
 

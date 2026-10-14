@@ -200,10 +200,7 @@ describe('canonicalStringify export-entry golden vectors', () => {
       canonicalStringify({
         ...GOLDEN_EXPORT_BODY,
         scope: 'selection',
-        captureIds: [
-          '0196f7a2-aaaa-bbbb-cccc-000000000010',
-          '0196f7a2-aaaa-bbbb-cccc-000000000011'
-        ]
+        captureIds: ['0196f7a2-aaaa-bbbb-cccc-000000000010', '0196f7a2-aaaa-bbbb-cccc-000000000011']
       })
     ).toBe(GOLDEN_SCOPED_EXPORT_CANONICAL)
   })

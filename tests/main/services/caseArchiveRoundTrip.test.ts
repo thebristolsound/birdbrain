@@ -278,9 +278,7 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
     expect(collectCapturesForCase(NEW_CASE).sort(byId)).toEqual(expectedCaptures)
 
     // The intended transforms, asserted explicitly:
-    const imported2 = collectCapturesForCase(NEW_CASE).find(
-      (r) => r.id === mapId(cap2.id)
-    ) as Row
+    const imported2 = collectCapturesForCase(NEW_CASE).find((r) => r.id === mapId(cap2.id)) as Row
     expect(imported2.supersedes_capture_id).toBe(mapId(cap1.id)) // REMAPPED, not copied
     expect(imported2.method).toBe('background') // non-default survived
     expect(imported2.consent_suppression).toBe('filter-list')
@@ -302,9 +300,7 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
       src.captureTags.map((r) => ({ ...r, capture_id: mapId(r.capture_id as string) }))
     )
     expect(collectSelectorsForCase(NEW_CASE).sort(byId)).toEqual(
-      src.selectors
-        .map((r) => ({ ...r, id: mapId(r.id as string), case_id: NEW_CASE }))
-        .sort(byId)
+      src.selectors.map((r) => ({ ...r, id: mapId(r.id as string), case_id: NEW_CASE })).sort(byId)
     )
     expect(collectSelectorMatchesForCase(NEW_CASE)).toEqual(
       src.selectorMatches.map((r) => ({
@@ -328,10 +324,11 @@ describe('case archive round-trip fidelity (repo bulk ops)', () => {
     expect(collectNoteTagsForCase(NEW_CASE)).toEqual(
       src.noteTags.map((r) => ({ ...r, note_id: mapId(r.note_id as string) }))
     )
-    expect(getTagsForNote(mapId(note.id)).map((t) => t.name).sort()).toEqual([
-      'Analyst note',
-      'Evidence'
-    ])
+    expect(
+      getTagsForNote(mapId(note.id))
+        .map((t) => t.name)
+        .sort()
+    ).toEqual(['Analyst note', 'Evidence'])
     expect(collectCaptureFavoritesForCase(NEW_CASE)).toEqual(
       src.captureFavorites.map((r) => ({ ...r, capture_id: mapId(r.capture_id as string) }))
     )

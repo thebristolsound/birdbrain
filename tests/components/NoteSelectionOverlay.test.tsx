@@ -26,9 +26,7 @@ function wrap(children: ReactNode) {
   return render(<QueryClientProvider client={client}>{children}</QueryClientProvider>)
 }
 
-const confirmState = (
-  over: Partial<NoteSelectionState> = {}
-): NoteSelectionState => ({
+const confirmState = (over: Partial<NoteSelectionState> = {}): NoteSelectionState => ({
   text: 'meridian-trust.com',
   step: 'confirm',
   mode: 'selector',
@@ -85,9 +83,7 @@ describe('NoteSelectionConfirm', () => {
   it('shows the detected kind and the pattern that will be watched', () => {
     renderConfirm({ text: 'https://cracked-forum.example.net/threads/88213' })
     expect(screen.getByTestId('note-selection-kind').textContent).toBe('domain')
-    expect(screen.getByTestId('note-selection-value').textContent).toBe(
-      'cracked-forum.example.net'
-    )
+    expect(screen.getByTestId('note-selection-value').textContent).toBe('cracked-forum.example.net')
     expect(screen.getByText(/Path stripped/)).toBeTruthy()
   })
 
@@ -101,7 +97,9 @@ describe('NoteSelectionConfirm', () => {
     expect(backfill.checked).toBe(true)
     expect(backfill.disabled).toBe(true)
     expect(
-      screen.getByText(`Backfill — always runs, over the ${RETRO_MAX_CAPTURES} most recent captures`)
+      screen.getByText(
+        `Backfill — always runs, over the ${RETRO_MAX_CAPTURES} most recent captures`
+      )
     ).toBeTruthy()
   })
 
@@ -157,9 +155,9 @@ describe('NoteSelectionConfirm', () => {
 
   it('disables the confirm button while a write is in flight', () => {
     renderConfirm({ pending: true })
-    expect((screen.getByTestId('note-selection-confirm-submit') as HTMLButtonElement).disabled).toBe(
-      true
-    )
+    expect(
+      (screen.getByTestId('note-selection-confirm-submit') as HTMLButtonElement).disabled
+    ).toBe(true)
   })
 })
 
@@ -276,9 +274,7 @@ describe('NoteSelectionOverlay', () => {
     // A draft note has to exist before a tag can attach to it (R15).
     expect(order).toEqual(['resolve', 'apply'])
     expect(applyToNote).toHaveBeenCalledWith({ noteId: 'note1', name: 'meridian-trust' })
-    expect(notifySuccess).toHaveBeenCalledWith(
-      'Tag applied — meridian-trust, and to its capture'
-    )
+    expect(notifySuccess).toHaveBeenCalledWith('Tag applied — meridian-trust, and to its capture')
   })
 
   it('says so when the note was anchored to nothing', async () => {

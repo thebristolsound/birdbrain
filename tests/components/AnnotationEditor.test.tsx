@@ -216,7 +216,11 @@ describe('AnnotationEditor pin popover', () => {
     expect(screen.queryByText('canvas pin 1')).toBeNull()
     expect(screen.getByText('canvas pin 2')).toBeDefined()
     const legend = screen.getByTestId('pin-legend')
-    expect(within(legend).getAllByRole('button').map((r) => r.textContent)).toEqual(['2No note'])
+    expect(
+      within(legend)
+        .getAllByRole('button')
+        .map((r) => r.textContent)
+    ).toEqual(['2No note'])
   })
 
   it('still lets a saved note be corrected', async () => {

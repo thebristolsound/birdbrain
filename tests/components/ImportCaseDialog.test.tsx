@@ -14,7 +14,12 @@ vi.mock('@tanstack/react-router', () => ({
 
 vi.mock('@renderer/lib/queries', () => ({
   useCasesMutations: () => ({
-    importArchive: { mutateAsync: importMutateSpy, get isPending() { return importIsPending } }
+    importArchive: {
+      mutateAsync: importMutateSpy,
+      get isPending() {
+        return importIsPending
+      }
+    }
   })
 }))
 
@@ -131,7 +136,12 @@ describe('ImportCaseDialog', () => {
   })
 
   it('shows the archive refs count', () => {
-    render(<ImportCaseDialog report={makeReport({ counts: { ...makeReport().counts, archiveRefs: 4 } })} onClose={vi.fn()} />)
+    render(
+      <ImportCaseDialog
+        report={makeReport({ counts: { ...makeReport().counts, archiveRefs: 4 } })}
+        onClose={vi.fn()}
+      />
+    )
 
     expect(screen.getByText('Archive refs')).toBeDefined()
     expect(screen.getByText('4')).toBeDefined()

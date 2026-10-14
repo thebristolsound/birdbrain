@@ -131,7 +131,10 @@ describe('tag', () => {
 
 describe('sanitizeText', () => {
   it('strips windows paths', () => {
-    const out = sanitizeText(String.raw`open 'C:\Users\matt\cases\x.mhtml'`, String.raw`C:\Users\matt`)
+    const out = sanitizeText(
+      String.raw`open 'C:\Users\matt\cases\x.mhtml'`,
+      String.raw`C:\Users\matt`
+    )
     expect(out).not.toContain('matt')
     expect(out).toContain('‹path›')
   })
@@ -161,10 +164,7 @@ describe('sanitizeText', () => {
 
   it('strips a posix path whose homeDir contains a space, with no leftover username or case name', () => {
     const homeDir = '/home/john doe'
-    const out = sanitizeText(
-      'open /home/john doe/cases/OperationBlackbird/x.mhtml failed',
-      homeDir
-    )
+    const out = sanitizeText('open /home/john doe/cases/OperationBlackbird/x.mhtml failed', homeDir)
     expect(out).not.toContain('doe')
     expect(out).not.toContain('OperationBlackbird')
     expect(out).toContain('‹path›')
@@ -694,7 +694,9 @@ describe('stack frame validation rejects prose shaped like a location', () => {
 
   it('keeps windows frames', () => {
     const err = new Error('boom')
-    err.stack = ['Error: boom', String.raw`    at doThing (C:\app\src\main\index.js:10:5)`].join('\n')
+    err.stack = ['Error: boom', String.raw`    at doThing (C:\app\src\main\index.js:10:5)`].join(
+      '\n'
+    )
     const out = sanitizeError(err, String.raw`C:\app`, String.raw`C:\Users\tester`).stack ?? ''
     expect(out).toContain('index.js:10:5')
   })
@@ -719,9 +721,7 @@ describe('renderer-supplied context keys are closed vocabularies', () => {
     it(`records ${key}: '${value}' as invalid rather than passing it through`, () => {
       // Packaged-inert path: the value is replaced, the entry survives. In dev
       // this throws instead, which is the same guarantee stated more loudly.
-      expect(() => context({ [key]: value as unknown as LogValue })).toThrow(
-        /disallowed value/
-      )
+      expect(() => context({ [key]: value as unknown as LogValue })).toThrow(/disallowed value/)
     })
   }
 

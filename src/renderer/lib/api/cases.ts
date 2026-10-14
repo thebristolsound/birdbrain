@@ -1,9 +1,5 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
-import type {
-  CreateCaseParams,
-  SetAutoCapturePolicyParams,
-  UpdateCaseParams
-} from '@shared/ipc'
+import type { CreateCaseParams, SetAutoCapturePolicyParams, UpdateCaseParams } from '@shared/ipc'
 import type { ArchiveInspectReport } from '@shared/types'
 import { RECENT_ACTIVITY_LIMIT } from '@shared/constants'
 import { queryKeys } from '@renderer/lib/api/keys'

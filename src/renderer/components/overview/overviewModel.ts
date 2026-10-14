@@ -74,9 +74,7 @@ export function computeOverview(
     return { count, fresh: cutoffMs != null && dayStart + DAY_MS > cutoffMs }
   })
 
-  const recent = [...captures]
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .slice(0, 6)
+  const recent = [...captures].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 6)
 
   const cutoff = lastVisitAt
   const newCaptures = cutoff ? captures.filter((c) => c.createdAt > cutoff).length : 0

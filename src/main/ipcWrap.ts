@@ -23,8 +23,7 @@ export function sendEvent<C extends IpcEventChannel>(
 }
 
 export type IpcResult<T = unknown> =
-  | { ok: true; data: T }
-  | { ok: false; error: string; code?: string }
+  { ok: true; data: T } | { ok: false; error: string; code?: string }
 
 export function ipcResult<T>(data: T): IpcResult<T> {
   return { ok: true, data }

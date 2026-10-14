@@ -154,7 +154,9 @@ export const WEBVIEW_PARTITIONS: readonly string[] = [
 ]
 
 /** The policy for a partition, or null when the partition is not one of ours. */
-export function webviewPolicyFor(partition: string | null | undefined): WebviewPartitionPolicy | null {
+export function webviewPolicyFor(
+  partition: string | null | undefined
+): WebviewPartitionPolicy | null {
   if (typeof partition !== 'string' || partition.length === 0) return null
   return POLICIES[partition] ?? null
 }

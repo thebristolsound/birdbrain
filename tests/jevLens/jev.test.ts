@@ -13,7 +13,13 @@ import {
   // @ts-expect-error - tooling script with no type declarations; the tsconfigs exclude scripts/
 } from '../../scripts/jev-lens/lib/jev.mjs'
 
-type Res = { status: number; ok: boolean; headers: { get: (k: string) => string | null }; json: () => Promise<unknown>; text: () => Promise<string> }
+type Res = {
+  status: number
+  ok: boolean
+  headers: { get: (k: string) => string | null }
+  json: () => Promise<unknown>
+  text: () => Promise<string>
+}
 const response = (status: number, body: unknown, retryAfter?: string): Res => ({
   status,
   ok: status < 400,
@@ -21,7 +27,11 @@ const response = (status: number, body: unknown, retryAfter?: string): Res => ({
   json: async () => body,
   text: async () => JSON.stringify(body)
 })
-const answer = { model: 'jev-1.13.0', answers: { q: { type: 'noul', noul: 0.9 } }, usage: { input_tokens: 12, output_tokens: 1 } }
+const answer = {
+  model: 'jev-1.13.0',
+  answers: { q: { type: 'noul', noul: 0.9 } },
+  usage: { input_tokens: 12, output_tokens: 1 }
+}
 
 describe('createClient', () => {
   it('posts state, model and questions with the bearer key and counts usage', async () => {
@@ -35,7 +45,11 @@ describe('createClient', () => {
     expect(out).toEqual(answer)
     expect(calls[0].url).toBe(API)
     expect((calls[0].init.headers as Record<string, string>).Authorization).toBe('Bearer k')
-    expect(JSON.parse(calls[0].init.body as string)).toEqual({ state: { text: 'x' }, model: 'jev-test', questions: { q: { type: 'noul', instructions: 'is it?' } } })
+    expect(JSON.parse(calls[0].init.body as string)).toEqual({
+      state: { text: 'x' },
+      model: 'jev-test',
+      questions: { q: { type: 'noul', instructions: 'is it?' } }
+    })
     expect(client.usage).toEqual({ requests: 1, cached: 0, inputTokens: 12, model: 'jev-1.13.0' })
   })
 
@@ -49,23 +63,41 @@ describe('createClient', () => {
     const slept: number[] = []
     const client = createClient({
       apiKey: 'k',
-      fetchImpl: async () => response(statuses.shift() as number, statuses.length ? { error: 'busy' } : answer, '3'),
-      sleep: async (ms: number) => { slept.push(ms) }
+      fetchImpl: async () =>
+        response(statuses.shift() as number, statuses.length ? { error: 'busy' } : answer, '3'),
+      sleep: async (ms: number) => {
+        slept.push(ms)
+      }
     })
     expect(await client.ask('s', {})).toEqual(answer)
     expect(slept).toEqual([3000, 3000])
 
-    const bad = createClient({ apiKey: 'k', fetchImpl: async () => response(422, { error: 'malformed' }) })
+    const bad = createClient({
+      apiKey: 'k',
+      fetchImpl: async () => response(422, { error: 'malformed' })
+    })
     await expect(bad.ask('s', {})).rejects.toThrow('typesafe 422')
 
-    const exhausted = createClient({ apiKey: 'k', fetchImpl: async () => response(429, {}), sleep: async () => {}, maxAttempts: 2 })
+    const exhausted = createClient({
+      apiKey: 'k',
+      fetchImpl: async () => response(429, {}),
+      sleep: async () => {},
+      maxAttempts: 2
+    })
     await expect(exhausted.ask('s', {})).rejects.toThrow('typesafe 429')
   })
 
   it('serves a repeat request from the cache directory', async () => {
     const cacheDir = mkdtempSync(join(tmpdir(), 'jev-'))
     let calls = 0
-    const client = createClient({ apiKey: 'k', cacheDir, fetchImpl: async () => { calls++; return response(200, answer) } })
+    const client = createClient({
+      apiKey: 'k',
+      cacheDir,
+      fetchImpl: async () => {
+        calls++
+        return response(200, answer)
+      }
+    })
     await client.ask('s', { q: noul('a') })
     await client.ask('s', { q: noul('a') })
     await client.ask('s', { q: noul('b') })
@@ -78,9 +110,21 @@ describe('createClient', () => {
 describe('helpers', () => {
   it('build question objects and cap text', () => {
     expect(noul('q')).toEqual({ type: 'noul', instructions: 'q' })
-    expect(noul('q', { true: 't', false: 'f' })).toEqual({ type: 'noul', instructions: 'q', criteria: { true: 't', false: 'f' } })
-    expect(choice('q', { a: null })).toEqual({ type: 'choice', instructions: 'q', criteria: { a: null } })
-    expect(score('q', ['lo', 'hi'])).toEqual({ type: 'score', instructions: 'q', criteria: ['lo', 'hi'] })
+    expect(noul('q', { true: 't', false: 'f' })).toEqual({
+      type: 'noul',
+      instructions: 'q',
+      criteria: { true: 't', false: 'f' }
+    })
+    expect(choice('q', { a: null })).toEqual({
+      type: 'choice',
+      instructions: 'q',
+      criteria: { a: null }
+    })
+    expect(score('q', ['lo', 'hi'])).toEqual({
+      type: 'score',
+      instructions: 'q',
+      criteria: ['lo', 'hi']
+    })
     expect(cap('abcdef', 3)).toBe('abc\n…[truncated 3 chars]')
     expect(cap('abc', 3)).toBe('abc')
     expect(cap(undefined, 3)).toBe('')

@@ -6,7 +6,15 @@ import { HAS_JQ } from './helpers/jq'
 import { type GhStub, makeGhStub } from './helpers/ghStub'
 
 const SCRIPT = resolve(__dirname, '..', '.github', 'scripts', 'dispatch', 'friction.sh')
-const FIXTURES = resolve(__dirname, '..', '.claude', 'skills', 'post-comment', 'scripts', 'fixtures')
+const FIXTURES = resolve(
+  __dirname,
+  '..',
+  '.claude',
+  'skills',
+  'post-comment',
+  'scripts',
+  'fixtures'
+)
 const ISSUE = readFileSync(SCRIPT, 'utf8').match(/^FRICTION_ISSUE=(\d+)$/m)?.[1]
 const COMMENTS = `repos/o/r/issues/${ISSUE}/comments`
 const SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'

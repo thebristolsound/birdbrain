@@ -61,9 +61,7 @@ describe('ProvenanceBadge trusted-time chip (#1169)', () => {
     for (const enabled of [true, false]) {
       cleanup()
       mount(enabled)
-      const chip = await screen.findByText(
-        enabled ? 'Timestamp pending' : 'No trusted timestamp'
-      )
+      const chip = await screen.findByText(enabled ? 'Timestamp pending' : 'No trusted timestamp')
       // The manifest records tokens, not requests, so no title may assert one
       // was made — with timestamping declined none was.
       expect(chip.getAttribute('title')).not.toMatch(/awaiting|requested/i)

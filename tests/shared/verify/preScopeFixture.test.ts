@@ -24,10 +24,8 @@ import { EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION, ManifestEntrySchema } from '@shar
 
 const FIXTURE_DIR = join(__dirname, 'fixtures', 'pre-scope-package')
 
-const FROZEN_MANIFEST_SHA256 =
-  '395461f2bf42d5f9354df90f31f5412b58e94dfd9bc83390c022a1dcc2c2da5c'
-const FROZEN_PUBLIC_KEY_SHA256 =
-  'd7383d2314547ffa17e70517d42c5d8559e52c0a90fb5fbac1a98968069249b6'
+const FROZEN_MANIFEST_SHA256 = '395461f2bf42d5f9354df90f31f5412b58e94dfd9bc83390c022a1dcc2c2da5c'
+const FROZEN_PUBLIC_KEY_SHA256 = 'd7383d2314547ffa17e70517d42c5d8559e52c0a90fb5fbac1a98968069249b6'
 
 function sha256(buf: Buffer): string {
   return createHash('sha256').update(buf).digest('hex')

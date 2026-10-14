@@ -263,11 +263,7 @@ export function nextStepIndex(steps: TourStep[], index: number): number | null {
  * shown. Returns null when the destination is not ahead of the current step,
  * in which case the tour stays put.
  */
-export function jumpAheadIndex(
-  steps: TourStep[],
-  index: number,
-  route: TourRoute
-): number | null {
+export function jumpAheadIndex(steps: TourStep[], index: number, route: TourRoute): number | null {
   for (let i = index + 1; i < steps.length; i += 1) {
     if (steps[i].route === route) return i
   }

@@ -164,9 +164,7 @@ describe.skipIf(!HAS_JQ)('pregate.sh while main is red', () => {
     const result = pregate({ ...mainRoutes(redMain), ...slot([], []), ...frontier })
     expect(result.status).toBe(0)
     expect(result.run).toBe('false')
-    expect(result.reason).toBe(
-      'a slot is free and 1 queued issue(s) wait, but main is red (test)'
-    )
+    expect(result.reason).toBe('a slot is free and 1 queued issue(s) wait, but main is red (test)')
   })
 
   it('still runs to age out a stale claim', () => {

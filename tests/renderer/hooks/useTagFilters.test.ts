@@ -206,7 +206,10 @@ describe('useTagFilters (#918)', () => {
     store().setFilteredCaptureIds(['sel-cap'])
     store().addTagFilter('t1')
     fakeBridge({
-      tags: { capturesWithAnyTag: vi.fn(async () => ['c1']), list: vi.fn(async () => [{ id: 't1' }]) }
+      tags: {
+        capturesWithAnyTag: vi.fn(async () => ['c1']),
+        list: vi.fn(async () => [{ id: 't1' }])
+      }
     })
 
     renderHook(() => useTagFilters('case-1'), { wrapper: withClient(newClient()) })

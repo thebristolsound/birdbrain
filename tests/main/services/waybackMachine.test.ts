@@ -148,7 +148,10 @@ describe('isPersistableSnapshot', () => {
   it('rejects when the embedded timestamp does not match the snapshot timestamp', () => {
     expect(
       isPersistableSnapshot(
-        { ...valid, snapshotUrl: 'https://web.archive.org/web/20990101000000/https://example.com/' },
+        {
+          ...valid,
+          snapshotUrl: 'https://web.archive.org/web/20990101000000/https://example.com/'
+        },
         '2026-06-30T00:00:00.000Z'
       )
     ).toBe(false)
@@ -157,7 +160,10 @@ describe('isPersistableSnapshot', () => {
   it('rejects when the embedded original URL does not match originalUrl', () => {
     expect(
       isPersistableSnapshot(
-        { ...valid, snapshotUrl: 'https://web.archive.org/web/20200115120000/https://other.example/' },
+        {
+          ...valid,
+          snapshotUrl: 'https://web.archive.org/web/20200115120000/https://other.example/'
+        },
         '2026-06-30T00:00:00.000Z'
       )
     ).toBe(false)

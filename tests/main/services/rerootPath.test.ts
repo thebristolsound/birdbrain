@@ -16,9 +16,7 @@ describe('rerootPath', () => {
   })
 
   it('reads backslash separators from a Windows-exported archive', () => {
-    expect(rerootPath('oldCase\\oldId.png', 'newCase', 'oldId', 'newId')).toBe(
-      'newCase/newId.png'
-    )
+    expect(rerootPath('oldCase\\oldId.png', 'newCase', 'oldId', 'newId')).toBe('newCase/newId.png')
     expect(rerootPath('oldCase\\attachments\\oldId.zip', 'newCase', 'oldId', 'newId')).toBe(
       'newCase/attachments/newId.zip'
     )

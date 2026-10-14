@@ -49,9 +49,9 @@ describe('visibleCaptureColumns', () => {
 
   it('hides the list outright on the Wayback tab rather than falling back to the rail', () => {
     expect(visibleCaptureColumns({ ...base, waybackActive: true }).list).toBe('hidden')
-    expect(
-      visibleCaptureColumns({ ...base, waybackActive: true, listCollapsed: true }).list
-    ).toBe('hidden')
+    expect(visibleCaptureColumns({ ...base, waybackActive: true, listCollapsed: true }).list).toBe(
+      'hidden'
+    )
   })
 
   it('hides the expanded details panel on the Wayback tab but keeps a collapsed rail', () => {

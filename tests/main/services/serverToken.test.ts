@@ -82,7 +82,9 @@ describe('serverToken', () => {
     expect(getServerToken()).toMatch(/^[0-9a-f]{64}$/)
     flushLogger()
     const entries = readRecentEntries(10)
-    expect(entries.some((e) => e.source === 'serverToken' && e.code === 'serverToken.token_read_failed')).toBe(true)
+    expect(
+      entries.some((e) => e.source === 'serverToken' && e.code === 'serverToken.token_read_failed')
+    ).toBe(true)
   })
 
   it('keeps an in-memory token when persistence fails', () => {
@@ -97,7 +99,9 @@ describe('serverToken', () => {
     flushLogger()
     const entries = readRecentEntries(10)
     expect(
-      entries.some((e) => e.source === 'serverToken' && e.code === 'serverToken.token_persist_failed')
+      entries.some(
+        (e) => e.source === 'serverToken' && e.code === 'serverToken.token_persist_failed'
+      )
     ).toBe(true)
   })
 })

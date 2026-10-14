@@ -1,7 +1,10 @@
 // Scoring helpers. Labels are booleans (binary) or strings (multiclass).
 export function binary(rows, threshold = 0.5) {
   // rows: [{ p, label }]
-  let tp = 0, fp = 0, fn = 0, tn = 0
+  let tp = 0,
+    fp = 0,
+    fn = 0,
+    tn = 0
   for (const { p, label } of rows) {
     const pred = p >= threshold
     if (pred && label) tp++
@@ -12,7 +15,18 @@ export function binary(rows, threshold = 0.5) {
   const precision = tp + fp ? tp / (tp + fp) : 0
   const recall = tp + fn ? tp / (tp + fn) : 0
   const f1 = precision + recall ? (2 * precision * recall) / (precision + recall) : 0
-  return { n: rows.length, threshold, tp, fp, fn, tn, precision, recall, f1, accuracy: (tp + tn) / rows.length }
+  return {
+    n: rows.length,
+    threshold,
+    tp,
+    fp,
+    fn,
+    tn,
+    precision,
+    recall,
+    f1,
+    accuracy: (tp + tn) / rows.length
+  }
 }
 
 export function bestThreshold(rows) {
@@ -38,7 +52,8 @@ export function auc(rows) {
 export function calibration(rows, bins = 5) {
   const out = []
   for (let b = 0; b < bins; b++) {
-    const lo = b / bins, hi = (b + 1) / bins
+    const lo = b / bins,
+      hi = (b + 1) / bins
     const inBin = rows.filter((r) => r.p >= lo && (b === bins - 1 ? r.p <= hi : r.p < hi))
     if (!inBin.length) continue
     out.push({
@@ -54,7 +69,9 @@ export function calibration(rows, bins = 5) {
 export function confusion(rows) {
   // rows: [{ pred, gold }]
   const labels = [...new Set(rows.flatMap((r) => [r.pred, r.gold]))].sort()
-  const m = Object.fromEntries(labels.map((g) => [g, Object.fromEntries(labels.map((p) => [p, 0]))]))
+  const m = Object.fromEntries(
+    labels.map((g) => [g, Object.fromEntries(labels.map((p) => [p, 0]))])
+  )
   let correct = 0
   for (const { pred, gold } of rows) {
     m[gold][pred]++
@@ -71,5 +88,9 @@ export function table(rows) {
   const keys = Object.keys(rows[0])
   const w = keys.map((k) => Math.max(k.length, ...rows.map((r) => String(r[k] ?? '').length)))
   const line = (vals) => `| ${vals.map((v, i) => String(v ?? '').padEnd(w[i])).join(' | ')} |`
-  return [line(keys), `| ${w.map((n) => '-'.repeat(n)).join(' | ')} |`, ...rows.map((r) => line(keys.map((k) => r[k])))].join('\n')
+  return [
+    line(keys),
+    `| ${w.map((n) => '-'.repeat(n)).join(' | ')} |`,
+    ...rows.map((r) => line(keys.map((k) => r[k])))
+  ].join('\n')
 }

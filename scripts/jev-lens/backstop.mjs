@@ -30,7 +30,12 @@ export const globToRegExp = (glob) =>
   new RegExp(
     `^${glob
       .split('**')
-      .map((part) => part.split('*').map((s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('[^/]*'))
+      .map((part) =>
+        part
+          .split('*')
+          .map((s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
+          .join('[^/]*')
+      )
       .join('.*')}$`
   )
 
@@ -39,9 +44,15 @@ export function matchEntry(entries, filePath) {
   for (const entry of entries) {
     if (!globToRegExp(entry.path).test(filePath)) continue
     // Blocking wins over advisory when both match; a longer glob is the more specific claim.
-    if (!best || (entry.tier === 'blocking' && best.tier !== 'blocking') || (entry.tier === best.tier && entry.path.length > best.path.length)) best = entry
+    if (
+      !best ||
+      (entry.tier === 'blocking' && best.tier !== 'blocking') ||
+      (entry.tier === best.tier && entry.path.length > best.path.length)
+    )
+      best = entry
   }
   return best
 }
 
-export const loadIncludeList = (root = process.cwd()) => parseIncludeList(readFileSync(join(root, INCLUDE_LIST_DOC), 'utf8'))
+export const loadIncludeList = (root = process.cwd()) =>
+  parseIncludeList(readFileSync(join(root, INCLUDE_LIST_DOC), 'utf8'))

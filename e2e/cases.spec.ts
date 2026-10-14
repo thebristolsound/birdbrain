@@ -56,7 +56,9 @@ test.describe('Cases CRUD', () => {
     await page.press('[data-testid="case-subhead-name-input"]', 'Enter')
 
     // Verify the renamed case is visible in both the subhead and the TopBar.
-    await expect(page.locator('[data-testid="case-subhead-name-btn"]')).toContainText('Renamed Case')
+    await expect(page.locator('[data-testid="case-subhead-name-btn"]')).toContainText(
+      'Renamed Case'
+    )
     await expect(page.locator('[data-testid="topbar-case-name"]')).toContainText('Renamed Case')
     await expect(page.locator('[data-testid="case-subhead-name-btn"]')).not.toContainText(
       'Original Name'

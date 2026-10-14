@@ -40,7 +40,9 @@ function buildNonTstSignedData(opts: { withEContentType: boolean }): Buffer {
     signerInfos: new SignerInfos([])
   })
   return Buffer.from(
-    AsnConvert.serialize(new ContentInfo({ contentType: id_signedData, content: AsnConvert.serialize(sd) }))
+    AsnConvert.serialize(
+      new ContentInfo({ contentType: id_signedData, content: AsnConvert.serialize(sd) })
+    )
   )
 }
 

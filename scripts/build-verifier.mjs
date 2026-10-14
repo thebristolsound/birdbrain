@@ -98,7 +98,12 @@ function injectBlob() {
   }
 
   log('injecting SEA blob with postject…')
-  const postject = join(root, 'node_modules', '.bin', process.platform === 'win32' ? 'postject.cmd' : 'postject')
+  const postject = join(
+    root,
+    'node_modules',
+    '.bin',
+    process.platform === 'win32' ? 'postject.cmd' : 'postject'
+  )
   const args = [
     binaryPath,
     'NODE_SEA_BLOB',

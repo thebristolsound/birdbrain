@@ -65,7 +65,10 @@ describe('demo case seeding', () => {
   it('resolves the fixture beside the app resources when packaged', () => {
     isPackaged.value = true
     const originalResourcesPath = process.resourcesPath
-    Object.defineProperty(process, 'resourcesPath', { value: '/opt/app/resources', configurable: true })
+    Object.defineProperty(process, 'resourcesPath', {
+      value: '/opt/app/resources',
+      configurable: true
+    })
     try {
       expect(getDemoCaseArchivePath()).toBe(join('/opt/app/resources', DEMO_CASE_ARCHIVE_FILENAME))
     } finally {

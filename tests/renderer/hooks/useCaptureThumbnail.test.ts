@@ -97,10 +97,7 @@ describe('useCaptureThumbnail', () => {
 
   it('ignores a resolution that arrives after the captureId changed', async () => {
     const first = deferred<string | null>()
-    const getThumbnail = vi
-      .fn()
-      .mockReturnValueOnce(first.promise)
-      .mockResolvedValueOnce('SECOND')
+    const getThumbnail = vi.fn().mockReturnValueOnce(first.promise).mockResolvedValueOnce('SECOND')
     fakeBridge({ captures: { getThumbnail } })
 
     const { result, rerender } = renderHook(({ id }) => useCaptureThumbnail(id), {

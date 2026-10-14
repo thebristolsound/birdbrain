@@ -111,9 +111,7 @@ export function CaseSubhead({ caseData, glow = true }: CaseSubheadProps) {
 
   const style = (caseData.type && TYPE_STYLES[caseData.type]) || DEFAULT_STYLE
   const PillIcon = style.icon
-  const typeLabel = caseData.type
-    ? caseData.type[0].toUpperCase() + caseData.type.slice(1)
-    : 'Case'
+  const typeLabel = caseData.type ? caseData.type[0].toUpperCase() + caseData.type.slice(1) : 'Case'
 
   return (
     <div className="flex items-start gap-4">

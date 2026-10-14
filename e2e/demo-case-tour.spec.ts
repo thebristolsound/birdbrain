@@ -72,10 +72,7 @@ test.describe('The demonstration case and its tour', () => {
 
     // The mark on the final step is anchored, not the centred fallback: the
     // Export button it rings is on screen.
-    await expect(page.locator('[data-testid="tour-mark"]')).toHaveAttribute(
-      'data-anchored',
-      'true'
-    )
+    await expect(page.locator('[data-testid="tour-mark"]')).toHaveAttribute('data-anchored', 'true')
     await expect(page.locator('[data-testid="tour-delete-demo"]')).toBeVisible()
     await expect(page.locator('[data-testid="tour-next"]')).toHaveText('Keep exploring')
   })

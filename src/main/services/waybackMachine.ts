@@ -120,7 +120,9 @@ export function isPersistableSnapshot(snapshot: WaybackSnapshot, checkedAt: stri
   if (typeof snapshot.originalUrl !== 'string' || snapshot.originalUrl.length === 0) return false
   // snapshotUrl must be a well-formed web.archive.org replay URL whose embedded
   // 14-digit timestamp and original URL match the snapshot's own fields.
-  const match = /^https:\/\/web\.archive\.org\/web\/(\d{14})\/(.+)$/.exec(snapshot.snapshotUrl ?? '')
+  const match = /^https:\/\/web\.archive\.org\/web\/(\d{14})\/(.+)$/.exec(
+    snapshot.snapshotUrl ?? ''
+  )
   if (!match) return false
   const [, ts, original] = match
   if (original !== snapshot.originalUrl) return false

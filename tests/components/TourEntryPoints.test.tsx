@@ -65,20 +65,14 @@ describe('the command palette', () => {
     render(<CommandPalette />, { wrapper: Wrapper })
     const labels = ['Create new case', 'Replay walkthrough', 'Report a problem']
     const rendered = labels.map((l) => screen.getByText(l))
-    expect(rendered[0].compareDocumentPosition(rendered[1])).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING
-    )
-    expect(rendered[1].compareDocumentPosition(rendered[2])).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING
-    )
+    expect(rendered[0].compareDocumentPosition(rendered[1])).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(rendered[1].compareDocumentPosition(rendered[2])).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
   })
 
   it('closes itself before raising the intro chapter', () => {
     useAppStore.setState({ commandPaletteOpen: true })
     render(<CommandPalette />, { wrapper: Wrapper })
-    const chapters = chapterFrom(() =>
-      fireEvent.click(screen.getByTestId('palette-replay-tour'))
-    )
+    const chapters = chapterFrom(() => fireEvent.click(screen.getByTestId('palette-replay-tour')))
     expect(chapters).toEqual(['intro'])
     expect(useAppStore.getState().commandPaletteOpen).toBe(false)
   })

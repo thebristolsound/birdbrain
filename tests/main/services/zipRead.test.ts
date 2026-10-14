@@ -29,6 +29,8 @@ describe('readStoredZip', () => {
     expect(() => readStoredZip(createStoredZip([{ name: 'files/../evil', data: 'x' }]))).toThrow(
       /not a valid/i
     )
-    expect(() => readStoredZip(createStoredZip([{ name: '/abs', data: 'x' }]))).toThrow(/not a valid/i)
+    expect(() => readStoredZip(createStoredZip([{ name: '/abs', data: 'x' }]))).toThrow(
+      /not a valid/i
+    )
   })
 })

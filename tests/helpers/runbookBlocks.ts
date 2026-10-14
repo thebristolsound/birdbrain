@@ -161,7 +161,8 @@ export function runRunbookBlocks(
     status,
     stdout,
     stderr,
-    failedBlock: markers.length > 0 ? markers[markers.length - 1].slice(MARKER.length).trim() : null,
+    failedBlock:
+      markers.length > 0 ? markers[markers.length - 1].slice(MARKER.length).trim() : null,
     executed
   }
 }

@@ -10,10 +10,7 @@ import { updateCaptureHash } from '@main/services/db/captureRepo'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
 import { appendManifestEntry, initManifest } from '@main/services/manifest'
 import { ingestMhtmlCapture } from '@main/services/captureLifecycle'
-import {
-  createCaptureLifecycle,
-  type CaptureLifecycle
-} from '@main/services/captureLifecycle'
+import { createCaptureLifecycle, type CaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { generateReport } from '@main/services/export'
 import { initSettings, updateSettings } from '@main/services/settings'
@@ -131,7 +128,13 @@ describe('exported evidence bundle verifies under openssl ts -verify', () => {
       const outputPath = join(tempDir, 'evidence.zip')
       const options: ExportOptions = {
         format: 'zip',
-        include: { captures: true, screenshots: false, auditTrail: true, notes: false, annotations: 'none' },
+        include: {
+          captures: true,
+          screenshots: false,
+          auditTrail: true,
+          notes: false,
+          annotations: 'none'
+        },
         exportClass: 'evidence',
         outputPath
       }
@@ -168,11 +171,7 @@ describe('exported evidence bundle verifies under openssl ts -verify', () => {
           .replace(/\\\n/g, ' ')
           .split(/\s+/)
           .slice(1)
-          .map((arg) =>
-            arg
-              .replace('<contentHash>', imprint)
-              .replace('<token>', capture.id)
-          )
+          .map((arg) => arg.replace('<contentHash>', imprint).replace('<token>', capture.id))
         expect(argv).toContain('-token_in')
         expect(argv).toEqual(expect.arrayContaining(['-CAfile', 'tsa-root.pem']))
         expect(argv).toEqual(expect.arrayContaining(['-untrusted', 'tsa-intermediates.pem']))
@@ -186,7 +185,16 @@ describe('exported evidence bundle verifies under openssl ts -verify', () => {
         // The step-6a anchor check, also as documented.
         const fp = execFileSync(
           'openssl',
-          ['x509', '-in', 'tsa-root.pem', '-noout', '-subject', '-issuer', '-fingerprint', '-sha256'],
+          [
+            'x509',
+            '-in',
+            'tsa-root.pem',
+            '-noout',
+            '-subject',
+            '-issuer',
+            '-fingerprint',
+            '-sha256'
+          ],
           { cwd: dir, encoding: 'utf-8' }
         )
         const [subject, issuer, fingerprint] = fp.trim().split('\n')

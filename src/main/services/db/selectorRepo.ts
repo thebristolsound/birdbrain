@@ -14,8 +14,7 @@ export function listSelectors(caseId: string): Selector[] {
 
 export function getSelector(id: string): Selector | undefined {
   const row = getDb().prepare('SELECT * FROM selectors WHERE id = ?').get(id) as
-    | Record<string, unknown>
-    | undefined
+    Record<string, unknown> | undefined
   return row ? rowToSelector(row) : undefined
 }
 
@@ -250,10 +249,7 @@ export function getCapturesMatchingSelectors(caseId: string, selectorIds: string
  * captures or twenty thousand. Selectors with no match among those captures are
  * absent from the result; the caller reads a missing key as an empty row.
  */
-export function getSelectorCaptureMatrix(
-  caseId: string,
-  limit: number
-): Record<string, string[]> {
+export function getSelectorCaptureMatrix(caseId: string, limit: number): Record<string, string[]> {
   const rows = getDb()
     .prepare(
       `SELECT sm.selector_id, sm.capture_id

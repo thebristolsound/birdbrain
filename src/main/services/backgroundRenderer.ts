@@ -216,9 +216,7 @@ async function scrollToLoadLazyContent(wc: WebContents, timeoutMs: number): Prom
   if (timeoutMs <= 0) return
   const deadlineAt = Date.now() + timeoutMs
 
-  const priorOverflow = (await wc.executeJavaScript(SCROLL_UNLOCK_SCRIPT, true)) as
-    | string[]
-    | null
+  const priorOverflow = (await wc.executeJavaScript(SCROLL_UNLOCK_SCRIPT, true)) as string[] | null
 
   try {
     let stalls = 0
@@ -325,10 +323,7 @@ const TRIM_PADDING_PX = 8
 
 export async function trimTrailingBackground(png: Buffer): Promise<Buffer> {
   try {
-    const { data, info } = await sharp(png)
-      .greyscale()
-      .raw()
-      .toBuffer({ resolveWithObject: true })
+    const { data, info } = await sharp(png).greyscale().raw().toBuffer({ resolveWithObject: true })
     const w = info.width
     const h = info.height
     if (!w || !h) return png

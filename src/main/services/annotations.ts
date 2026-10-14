@@ -110,8 +110,7 @@ export function upsertPin(params: UpsertAnnotationPinParams): AnnotationPin {
   return db.transaction(() => {
     if (params.id) {
       const existing = db.prepare('SELECT * FROM annotation_pins WHERE id = ?').get(params.id) as
-        | PinRow
-        | undefined
+        PinRow | undefined
       if (existing) {
         db.prepare('UPDATE annotation_pins SET body = ?, updated_at = ? WHERE id = ?').run(
           params.body,

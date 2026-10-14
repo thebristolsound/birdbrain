@@ -46,13 +46,9 @@ export function createTheaterMachine(options: Omit<TheaterOptions, 'done' | 'act
     // Never go backwards
     highWaterProgress = Math.max(highWaterProgress, effectiveProgress)
 
-    const stageIndex = Math.min(
-      Math.floor(highWaterProgress * stages.length),
-      stages.length - 1
-    )
+    const stageIndex = Math.min(Math.floor(highWaterProgress * stages.length), stages.length - 1)
 
-    const isComplete =
-      doneSignaled && doneAt !== null && elapsed - doneAt >= minDuration
+    const isComplete = doneSignaled && doneAt !== null && elapsed - doneAt >= minDuration
 
     return {
       stage: stages[stageIndex],

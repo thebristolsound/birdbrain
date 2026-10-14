@@ -316,7 +316,7 @@ describe('LinksTab', () => {
     expect(getLinks).toHaveBeenCalledTimes(2)
   })
 
-  it('marks the rows a link target hit matches, with its part and offsets', async () => {
+  it('marks the rows a link target hit matches, and states its part and offsets once', async () => {
     const scrollIntoView = vi.fn()
     Element.prototype.scrollIntoView = scrollIntoView
     renderTab(
@@ -329,12 +329,16 @@ describe('LinksTab', () => {
     )
     const rows = await screen.findAllByTestId('links-row')
     expect(rows.map((row) => row.hasAttribute('data-link-hit'))).toEqual([false, true, true])
-    expect(within(rows[1]).getByTestId('links-hit').textContent).toBe(
-      'Search hit, Link target: part 1, characters 120 to 126'
-    )
-    expect(within(rows[0]).queryByTestId('links-hit')).toBeNull()
+    // The subframe row shares the address but not the place, so no row carries offsets.
+    expect(rows.map((row) => within(row).queryByTestId('links-hit')?.textContent)).toEqual([
+      undefined,
+      'Search hit, Link target',
+      'Search hit, Link target'
+    ])
     expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' })
-    expect(screen.queryByTestId('links-notice')).toBeNull()
+    expect(screen.getByTestId('links-notice').textContent).toBe(
+      'Search hit, Link target, first found at part 1, characters 120 to 126. Every row with the same address is marked.'
+    )
     delete (Element.prototype as Partial<Element>).scrollIntoView
   })
 
@@ -344,7 +348,10 @@ describe('LinksTab', () => {
     })
     const rows = await screen.findAllByTestId('links-row')
     expect(rows.map((row) => row.hasAttribute('data-link-hit'))).toEqual([false, true])
-    expect(within(rows[1]).getByTestId('links-hit').textContent).toContain('Image alt text')
+    expect(within(rows[1]).getByTestId('links-hit').textContent).toBe('Search hit, Image alt text')
+    expect(screen.getByTestId('links-notice').textContent).toContain(
+      'Every row with the same text is marked.'
+    )
   })
 
   it('says so when no listed link matches the hit', async () => {

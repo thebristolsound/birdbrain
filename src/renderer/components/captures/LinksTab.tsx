@@ -114,7 +114,7 @@ function LinkRow({
       </div>
       {hit && (
         <div data-testid="links-hit" className="text-[10px] text-warning-fg">
-          Search hit, {fieldLabel(hit.field)}: {hitPlace(hit)}
+          Search hit, {fieldLabel(hit.field)}
         </div>
       )}
     </li>
@@ -124,7 +124,7 @@ function LinkRow({
 /**
  * The Links tab (#1708): every link in the stored page, read from its MHTML in the
  * main process. The rows offer the same menu as a right-click in the Page tab. A search
- * hit opened here marks its row and scrolls to it.
+ * hit opened here marks its rows and scrolls to the first.
  */
 export function LinksTab({ capture, hit }: { capture: Capture; hit?: FieldHit }) {
   const isMhtml = capture.format === 'mhtml'
@@ -197,8 +197,14 @@ export function LinksTab({ capture, hit }: { capture: Capture; hit?: FieldHit })
   if (overTotalSize > 0) {
     notices.push(`Not listed: ${frames(overTotalSize)} past the total size this tab reads.`)
   }
-  if (hit && data.links.length > 0 && !data.links.some((link) => matchesHit(link, hit))) {
-    notices.push(`No listed link matches the search hit at ${hitPlace(hit)}.`)
+  if (hit && data.links.length > 0) {
+    // The offsets are the first record's, so they are stated once rather than on rows
+    // that may sit elsewhere in the page.
+    notices.push(
+      data.links.some((link) => matchesHit(link, hit))
+        ? `Search hit, ${fieldLabel(hit.field)}, first found at ${hitPlace(hit)}. Every row with the same ${hit.field === 'link.href' ? 'address' : 'text'} is marked.`
+        : `No listed link matches the search hit at ${hitPlace(hit)}.`
+    )
   }
   if (data.truncated) {
     notices.push(

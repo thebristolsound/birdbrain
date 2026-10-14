@@ -372,7 +372,7 @@ The maintainer approved this plan and accepted each recommendation it made.
   place, with a count of the rest, and the search stops at 200 hits. A header hit opens the Text
   tab with its span marked, unless the text there no longer starts with what was indexed. A link
   hit opens the Links tab and marks the rows with the same resolved address, or for alt text the
-  same row text, with the part and offsets. The Settings rebuild now replaces each Capture's
-  records in place and then rebuilds the index, so a search during it still finds the Captures
-  not reached yet.
+  same row text, and states once the part and offsets of the first record. The Settings rebuild
+  now replaces each Capture's records in place and then rebuilds the index, so a search during it
+  still finds the Captures not reached yet.
 - **Next.** Step 5, the exact check, once step 4 merges.

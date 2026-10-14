@@ -72,8 +72,9 @@ function RecentCaptureCard({
             role="img"
           />
         </span>
+        {/* Card-backed: a sky tint over a gray screenshot left NEW at 1.3 to 1. */}
         {isNew ? (
-          <span className="absolute left-1.5 top-1.5 rounded-full border border-sky-400/40 bg-sky-400/15 px-1.5 py-px font-display text-[10px] font-bold tracking-wide text-hue-sky-fg">
+          <span className="absolute left-1.5 top-1.5 rounded-full border border-border bg-card/95 px-1.5 py-px font-display text-[10px] font-bold tracking-wide text-hue-sky-fg">
             NEW
           </span>
         ) : null}

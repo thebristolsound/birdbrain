@@ -37,8 +37,9 @@ async function seedSigningKey(dir) {
 /**
  * Writes the signing keypair and, unless `settings` is omitted, a settings.json naming the
  * operator. Omit `settings` for a fresh-install launch: writing the file at all is what tells
- * initSettings the profile has been launched before. `completedOnboarding` records the onboarding
- * as done, so the app opens on the dashboard.
+ * initSettings the profile has been launched before. `completedOnboarding` writes the
+ * `hasCompletedOnboarding` flag the New Case wizard sets; no startup code reads it, so it does not
+ * change which screen opens (useSessionRestore.ts reopens the newest Case when there is one).
  *
  * @param {string} dir
  * @param {{ operatorName: string, completedOnboarding?: boolean }} [settings]

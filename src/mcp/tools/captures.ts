@@ -165,16 +165,9 @@ export function registerCaptureTools(server: McpServer): void {
       inputSchema: z.object({ caseId: z.string(), query: z.string().min(1) }),
       annotations: READ_ONLY
     },
-    // Matched by id against listCaptures, because the search row carries no
-    // Exhibit columns and the agent is told to cite exhibitCitation.
     ({ caseId, query }) => {
       const favorites = new Set(captureRepo.listFavorites(caseId))
-      const cited = new Map(captureRepo.listCaptures(caseId).map((c) => [c.id, c]))
-      return json(
-        captureRepo
-          .searchCaptures(query, caseId)
-          .map((c) => summary(cited.get(c.id) ?? c, favorites))
-      )
+      return json(captureRepo.searchCaptures(query, caseId).map((c) => summary(c, favorites)))
     }
   )
 }

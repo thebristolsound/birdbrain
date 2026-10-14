@@ -160,12 +160,18 @@ interface FieldHitRow {
   endOffset: number
   occurrences: number
   extractor: string
-  builtHash: string
   contentHash: string
   exhibitNumber: number
   memberCode: string | null
   authorInstallationId: string | null
   title: string
+}
+
+interface UnavailableRow {
+  exhibitId: string
+  exhibitNumber: number
+  memberCode: string | null
+  authorInstallationId: string | null
 }
 
 /**
@@ -194,7 +200,10 @@ export function searchCaseFields(caseId: string, query: string): FieldSearchResu
             WHERE norm LIKE ? ESCAPE '\\' AND case_id = ?`,
           `%${escapeLike(trimmed)}%`
         ]
-  const rows = getDb()
+  const d = getDb()
+  // Unavailable Exhibits are read apart from the hits, so they neither use up the hit
+  // limit nor go unreported past it.
+  const rows = d
     .prepare(
       `WITH matched AS (${matched}),
             firsts AS (
@@ -204,7 +213,7 @@ export function searchCaseFields(caseId: string, query: string): FieldSearchResu
        SELECT f.id AS fieldId, f.exhibit_id AS exhibitId, f.field,
               substr(f.value, 1, ?) AS preview, f.norm, f.source, f.part,
               f.start_offset AS startOffset, f.end_offset AS endOffset, firsts.occurrences,
-              b.extractor, b.content_hash AS builtHash, e.content_hash AS contentHash,
+              b.extractor, e.content_hash AS contentHash,
               e.exhibit_number AS exhibitNumber, e.member_code AS memberCode,
               e.author_installation_id AS authorInstallationId, c.title
          FROM firsts
@@ -212,27 +221,33 @@ export function searchCaseFields(caseId: string, query: string): FieldSearchResu
          JOIN exhibit_search_builds b ON b.exhibit_id = f.exhibit_id
          JOIN exhibits e ON e.id = f.exhibit_id
          JOIN captures c ON c.id = f.exhibit_id
+        WHERE b.content_hash = e.content_hash
         ORDER BY c.timestamp DESC, f.id
         LIMIT ?`
     )
     .all(term, caseId, PREVIEW_LENGTH, FIELD_HIT_LIMIT + 1) as FieldHitRow[]
+  const changed = d
+    .prepare(
+      `WITH matched AS (${matched})
+       SELECT e.id AS exhibitId, e.exhibit_number AS exhibitNumber,
+              e.member_code AS memberCode, e.author_installation_id AS authorInstallationId
+         FROM exhibits e
+         JOIN exhibit_search_builds b ON b.exhibit_id = e.id
+         JOIN captures c ON c.id = e.id
+        WHERE e.id IN (SELECT exhibit_id FROM matched) AND b.content_hash <> e.content_hash
+        ORDER BY c.timestamp DESC, e.id`
+    )
+    .all(term, caseId) as UnavailableRow[]
   const cite = exhibitCitationResolver(caseId, 'app')
-  const hits: FieldHit[] = []
-  const unavailable = new Map<string, string>()
-  for (const row of rows.slice(0, FIELD_HIT_LIMIT)) {
-    const exhibitCitation = cite(row)
-    if (row.builtHash !== row.contentHash) {
-      unavailable.set(row.exhibitId, exhibitCitation)
-      continue
-    }
+  const hits = rows.slice(0, FIELD_HIT_LIMIT).map((row): FieldHit => {
     const { fieldId, exhibitId, field, preview, norm, occurrences, contentHash, title } = row
     const { source, part, startOffset, endOffset, extractor, exhibitNumber } = row
-    hits.push({
+    return {
       fieldId,
       caseId,
       exhibitId,
       exhibitNumber,
-      exhibitCitation,
+      exhibitCitation: cite(row),
       contentHash,
       title,
       field,
@@ -240,13 +255,13 @@ export function searchCaseFields(caseId: string, query: string): FieldSearchResu
       norm,
       occurrences,
       locator: { source, part, startOffset, endOffset, extractor }
-    })
-  }
+    }
+  })
   return {
     hits,
-    unavailable: [...unavailable].map(([exhibitId, exhibitCitation]) => ({
+    unavailable: changed.map(({ exhibitId, ...exhibit }) => ({
       exhibitId,
-      exhibitCitation
+      exhibitCitation: cite(exhibit)
     })),
     truncated: rows.length > FIELD_HIT_LIMIT
   }

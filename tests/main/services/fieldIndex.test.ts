@@ -607,6 +607,26 @@ describe('searchCaseFields', () => {
     expect(searchCaseFields(caseId, 'tollgate').hits).toEqual([])
   })
 
+  it('reads unavailable Exhibits apart from the hit limit', () => {
+    const older = capture(caseId, '2026-09-01T00:00:00.000Z')
+    build(older)
+    const changed = capture(caseId)
+    const links = Array.from(
+      { length: 201 },
+      (_, i) => `<a href="https://tollgate-${i}.example.org/">${i}</a>`
+    )
+    build(changed, mhtml(links.join('')))
+    getDb()
+      .prepare('UPDATE exhibit_search_builds SET content_hash = ? WHERE exhibit_id = ?')
+      .run('d'.repeat(64), changed)
+
+    const { hits, unavailable, truncated } = searchCaseFields(caseId, 'tollgate')
+
+    expect(hits.map(({ exhibitId }) => exhibitId)).toEqual([older])
+    expect(unavailable.map(({ exhibitId }) => exhibitId)).toEqual([changed])
+    expect(truncated).toBe(false)
+  })
+
   it('stops at its hit limit and says so', () => {
     const id = capture(caseId)
     const links = Array.from(

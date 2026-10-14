@@ -50,7 +50,7 @@ function ContextMenuItem({
 }: ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Item> & { danger?: boolean }) {
   return (
     <ContextMenuPrimitive.Item
-      className={cn(ITEM_CLASS, danger ? 'text-red-400' : 'text-text-secondary', className)}
+      className={cn(ITEM_CLASS, danger ? 'text-danger-fg' : 'text-text-secondary', className)}
       {...props}
     />
   )

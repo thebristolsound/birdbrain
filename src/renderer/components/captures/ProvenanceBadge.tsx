@@ -174,7 +174,7 @@ export function ProvenanceBadge({ capture }: Props) {
       <button
         onClick={() => verifyMutation.verify()}
         disabled={loading}
-        className="flex items-center gap-1 rounded-lg bg-gray-500/10 px-2 py-1 text-[11px] text-gray-400 hover:bg-gray-500/20 disabled:opacity-50"
+        className="flex items-center gap-1 rounded-lg bg-gray-500/10 px-2 py-1 text-[11px] text-text-muted hover:bg-gray-500/20 disabled:opacity-50"
       >
         <ShieldOff className="h-3 w-3" />
         {result.status}

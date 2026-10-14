@@ -8,7 +8,8 @@ import type {
   MergeTagsParams,
   MergeTagsResult
 } from '@shared/ipc'
-import { getDb, type ImportCtx } from '@main/services/db/core'
+import { getDb, syncColumnValues, type ImportCtx } from '@main/services/db/core'
+import { UNDATED_TAG_CREATED_AT } from '@main/services/db/migrations'
 
 // The wire shape of a Tag is these three columns. `tags` also carries the
 // Shared Case sync columns since v36 (#1510), which are storage and never
@@ -26,8 +27,8 @@ export function getTag(id: string): Tag | undefined {
 export function createTag(params: CreateTagParams): Tag {
   const id = uuid()
   getDb()
-    .prepare('INSERT INTO tags (id, name, color) VALUES (?, ?, ?)')
-    .run(id, params.name, params.color ?? null)
+    .prepare('INSERT INTO tags (id, name, color, created_at) VALUES (?, ?, ?, ?)')
+    .run(id, params.name, params.color ?? null, new Date().toISOString())
   return { id, name: params.name, color: params.color }
 }
 
@@ -129,7 +130,7 @@ export function getTagCountsForCaptures(captureIds: string[]): Record<string, nu
  * Merge one tag into another (#828): re-point every exhibit_tags and note_tags
  * row from source to target, then delete the source, in one transaction.
  * INSERT OR IGNORE carries the re-point past rows whose capture or note
- * already holds the target — the join tables' primary keys make a plain UPDATE
+ * already holds the target — the join tables' unique keys make a plain UPDATE
  * fail on exactly those — and deleting the source afterwards lets ON DELETE
  * CASCADE clear the duplicate rows the IGNORE skipped. Never a
  * create-then-copy shape (#811): both tags must already exist, so the UNIQUE
@@ -182,9 +183,11 @@ export function removeTagFromCapture(params: CaptureTagParams): void {
 }
 
 /**
- * Create-or-reuse by name (#391, ruling R15). `tags.name` is NOT NULL UNIQUE
- * and `createTag` is a bare INSERT, so a caller that names an existing tag
- * gets a constraint failure rather than the tag it asked for (#811).
+ * Create-or-reuse by name (#391, ruling R15). `tags.name` is unique per author
+ * and `createTag` is a bare INSERT of a local tag, so a caller that names an
+ * existing local tag gets a constraint failure rather than the tag it asked
+ * for (#811). Both lookups read this installation's tags only, the ones
+ * `createTag` would collide with.
  *
  * The exact-name lookup runs before the case-insensitive one for the reason
  * PR #835's review gave for the extension path: `Evidence` and `evidence` can
@@ -363,11 +366,12 @@ export function collectCaptureTagsForCase(caseId: string): Record<string, unknow
   return getDb()
     .prepare(
       // Aliased back to `capture_id` on purpose: the .birdbrain payload's
-      // `captureTags` rows keep the wire shape they have always had, so an
-      // archive written by this build still imports into an older one and
-      // CASE_ARCHIVE_SCHEMA_VERSION does not move for a storage rename. The
-      // bump X30 reserves belongs with the `staged` flag and the new kinds.
-      `SELECT ct.exhibit_id AS capture_id, ct.tag_id FROM exhibit_tags ct
+      // `captureTags` rows keep the key they have always had, so the storage
+      // rename (v34) did not move CASE_ARCHIVE_SCHEMA_VERSION. The author and
+      // sync columns joined the row at archive schema 9.
+      `SELECT ct.exhibit_id AS capture_id, ct.tag_id, ct.author_installation_id, ct.version,
+              ct.deleted_at, ct.row_signature
+       FROM exhibit_tags ct
        JOIN captures c ON c.id = ct.exhibit_id
        WHERE c.case_id = ?`
     )
@@ -402,15 +406,28 @@ export function deleteUnusedTags(tagIds: string[]): number {
   return removed
 }
 
-export function findTagIdByNameExact(name: string): string | undefined {
-  const hit = getDb().prepare('SELECT id FROM tags WHERE name = ?').get(name) as
-    { id: string } | undefined
+// `author` is an installation id, or null for this installation. Each author's
+// names are unique on their own (migration 39), so a lookup reads one author's
+// tags; the predicate is the one `idx_tags_author_name` indexes.
+export function findTagIdByNameExact(
+  name: string,
+  author: string | null = null
+): string | undefined {
+  const hit = getDb()
+    .prepare("SELECT id FROM tags WHERE COALESCE(author_installation_id, '') = ? AND name = ?")
+    .get(author ?? '', name) as { id: string } | undefined
   return hit?.id
 }
 
-export function findTagIdByNameInsensitive(name: string): string | undefined {
-  const hit = getDb().prepare('SELECT id FROM tags WHERE lower(name) = lower(?)').get(name) as
-    { id: string } | undefined
+export function findTagIdByNameInsensitive(
+  name: string,
+  author: string | null = null
+): string | undefined {
+  const hit = getDb()
+    .prepare(
+      "SELECT id FROM tags WHERE COALESCE(author_installation_id, '') = ? AND lower(name) = lower(?)"
+    )
+    .get(author ?? '', name) as { id: string } | undefined
   return hit?.id
 }
 
@@ -419,10 +436,21 @@ export function tagIdExists(id: string): boolean {
 }
 
 // Rows arrive with their FINAL ids — merge-by-name policy is caseArchive's.
+// An archive written before Case Archive schema 9 has no `created_at`.
 export function importTagRows(rows: Record<string, unknown>[]): void {
-  const insert = getDb().prepare('INSERT INTO tags (id, name, color) VALUES (?, ?, ?)')
+  const insert = getDb().prepare(
+    `INSERT INTO tags (
+       id, name, color, author_installation_id, version, deleted_at, row_signature, created_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  )
   for (const tag of rows) {
-    insert.run(tag.id as string, tag.name ?? null, tag.color ?? null)
+    insert.run(
+      tag.id as string,
+      tag.name ?? null,
+      tag.color ?? null,
+      ...syncColumnValues(tag),
+      tag.created_at ?? UNDATED_TAG_CREATED_AT
+    )
   }
 }
 
@@ -432,18 +460,32 @@ export function importTagRows(rows: Record<string, unknown>[]): void {
 // `exhibits`, and the imported Capture's Exhibit row is written there.
 export function importCaptureTagRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
   const insert = getDb().prepare(
-    'INSERT OR IGNORE INTO exhibit_tags (exhibit_id, tag_id) VALUES (?, ?)'
+    `INSERT OR IGNORE INTO exhibit_tags (
+       exhibit_id, tag_id, author_installation_id, version, deleted_at, row_signature
+     ) VALUES (?, ?, ?, ?, ?, ?)`
   )
   for (const ct of rows) {
-    insert.run(ctx.mapId(ct.capture_id as string), ctx.mapTag(ct.tag_id as string))
+    insert.run(
+      ctx.mapId(ct.capture_id as string),
+      ctx.mapTag(ct.tag_id as string),
+      ...syncColumnValues(ct)
+    )
   }
 }
 
 // Must run AFTER importNoteRows: note_tags has a foreign key onto notes and
 // `foreign_keys = ON` is set for every connection.
 export function importNoteTagRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
-  const insert = getDb().prepare('INSERT OR IGNORE INTO note_tags (note_id, tag_id) VALUES (?, ?)')
+  const insert = getDb().prepare(
+    `INSERT OR IGNORE INTO note_tags (
+       note_id, tag_id, author_installation_id, version, deleted_at, row_signature
+     ) VALUES (?, ?, ?, ?, ?, ?)`
+  )
   for (const nt of rows) {
-    insert.run(ctx.mapId(nt.note_id as string), ctx.mapTag(nt.tag_id as string))
+    insert.run(
+      ctx.mapId(nt.note_id as string),
+      ctx.mapTag(nt.tag_id as string),
+      ...syncColumnValues(nt)
+    )
   }
 }

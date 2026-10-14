@@ -31,6 +31,8 @@ export default tseslint.config(
       '.codex/',
       // sharp built for the test runner by scripts/build-test-sharp.mjs.
       '.cache/test-sharp/',
+      // The bundled seed step written by scripts/dev-seed/launch.mjs.
+      '.cache/dev-seed/',
       'Python/',
       // Checked-in prototype artifacts, not app code — see docs/design-handoff/.
       'docs/**/*.js',

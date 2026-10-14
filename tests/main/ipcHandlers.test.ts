@@ -2199,6 +2199,51 @@ describe('ipcHandlers — database admin', () => {
     ).toBe(true)
   })
 
+  // #1512, ruling 2 of 13 October 2026: a Shared Case's rows are refused on
+  // all three write channels, with a code and the message the view shows.
+  it('reports a refused Shared Case row as a structured failure on every write', async () => {
+    getDb()
+      .prepare("UPDATE cases SET shared_at = '2026-10-01T00:00:00.000Z' WHERE id = ?")
+      .run(caseId)
+    const note = {
+      id: 'shared-note',
+      case_id: caseId,
+      title: 'T',
+      body: '',
+      created_at: '2026-10-13T00:00:00Z',
+      updated_at: '2026-10-13T00:00:00Z'
+    }
+    getDb()
+      .prepare(
+        'INSERT INTO notes (id, case_id, title, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+      )
+      .run(note.id, note.case_id, note.title, note.body, note.created_at, note.updated_at)
+
+    const results = [
+      await invoke<{ ok: boolean; error?: string; code?: string }>(IPC_CHANNELS.DB_CREATE_ROW, {
+        table: 'notes',
+        data: { ...note, id: 'shared-note-2' }
+      }),
+      await invoke<{ ok: boolean; error?: string; code?: string }>(IPC_CHANNELS.DB_UPDATE_ROW, {
+        table: 'notes',
+        pk: { id: note.id },
+        data: { title: 'Edited' }
+      }),
+      await invoke<{ ok: boolean; error?: string; code?: string }>(IPC_CHANNELS.DB_DELETE_ROW, {
+        table: 'notes',
+        pk: { id: note.id }
+      })
+    ]
+    for (const res of results) {
+      expect(res).toEqual({
+        ok: false,
+        code: 'SHARED_CASE_ROW',
+        error:
+          'This notes row belongs to a Shared Case. The Settings > Database table editor does not create, change or delete rows of a Shared Case.'
+      })
+    }
+  })
+
   // Database Admin lets an operator write any row into any table, so the
   // constraint errors it can provoke have to come back as `{ ok: false }` with
   // a code the renderer can branch on, not as a rejected invoke.

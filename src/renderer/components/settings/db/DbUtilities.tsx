@@ -276,7 +276,7 @@ export function DbUtilities() {
         {result && (
           <div
             className={`mt-2 text-xs ${
-              result.type === 'success' ? 'text-green-400' : 'text-red-400'
+              result.type === 'success' ? 'text-success-fg' : 'text-danger-fg'
             }`}
           >
             {result.message}

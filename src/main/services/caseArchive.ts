@@ -68,6 +68,12 @@ import type {
   CaseArchiveCounts
 } from '@shared/types'
 
+// 9 since per-author working-layer keys (#1512, schema v39): data.json's tag
+// applications and pins carry their author, tags their `created_at`, and the
+// import reads the author of every working-layer row. A Birdbrain from before
+// them drops those columns and merges two members' same-name tags into one,
+// and its import fails outright on two members' annotation layers on one
+// Capture, which its annotations key refuses. The gate refuses instead.
 // 8 since Shared Cases (#1511): the archive carries every other member's chain
 // as `manifest.<installationId>.jsonl` and every lineage chain under
 // `lineage/`, and data.json carries the `caseMembers` roster. A Birdbrain from
@@ -112,7 +118,7 @@ import type {
 // anchor_json, which a pre-v27 import would silently drop. Bump this whenever a
 // Case Archive gains data an older release would silently discard or reject
 // opaquely.
-export const CASE_ARCHIVE_SCHEMA_VERSION = 8
+export const CASE_ARCHIVE_SCHEMA_VERSION = 9
 
 export interface CaseArchiveData {
   case: Record<string, unknown>
@@ -796,9 +802,9 @@ export async function importCaseArchive(
 
 // Re-inserts all archived rows into the DB under `newCaseId` via the repo bulk
 // ops, remapping row ids via `mapId` and merging tags by case-insensitive name
-// (a policy of this module, not of the repos). Runs inside the caller's
-// transaction. The staged .txt sidecars reach captureRepo through ctx.getText —
-// repos never touch the filesystem.
+// within one author (a policy of this module, not of the repos). Runs inside
+// the caller's transaction. The staged .txt sidecars reach captureRepo through
+// ctx.getText — repos never touch the filesystem.
 function insertImportedRows(
   data: CaseArchiveData,
   newCaseId: string,
@@ -807,14 +813,17 @@ function insertImportedRows(
   // Tags: merge by case-insensitive name against BOTH the persisted tags and
   // names already seen earlier in this same archive batch (an archive can carry
   // Foo and foo — neither is persisted, so only pendingByName catches them).
+  // Only a tag of the same author merges, so two members' `Evidence` tags stay
+  // two rows, as they were in the source Case.
   const tagIdMap: Record<string, string> = {}
   const tagRowsToInsert: Record<string, unknown>[] = []
   const pendingByName = new Map<string, string>()
   for (const tag of data.tags) {
     const oldId = tag.id as string
     const name = tag.name as string
-    const normalized = name.toLowerCase()
-    const hit = tagRepo.findTagIdByNameInsensitive(name) ?? pendingByName.get(normalized)
+    const author = (tag.author_installation_id as string | null | undefined) ?? null
+    const normalized = JSON.stringify([author ?? '', name.toLowerCase()])
+    const hit = tagRepo.findTagIdByNameInsensitive(name, author) ?? pendingByName.get(normalized)
     if (hit) {
       tagIdMap[oldId] = hit
       continue

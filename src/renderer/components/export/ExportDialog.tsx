@@ -427,9 +427,12 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
               {workingCopy ? (
                 <div
                   data-testid="export-working-copy-notice"
-                  className="mb-4 flex gap-2 rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200"
+                  className="mb-4 flex gap-2 rounded border border-warning-line bg-warning-surface px-3 py-2 text-sm text-text-secondary"
                 >
-                  <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.8} />
+                  <TriangleAlert
+                    className="mt-0.5 h-4 w-4 shrink-0 text-warning-fg"
+                    strokeWidth={1.8}
+                  />
                   <span>
                     Non-evidentiary working copy: no Certification, no signed Manifest, no
                     verification materials. The export is recorded on the case audit trail and
@@ -485,7 +488,7 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
               </div>
 
               {preflight && preflight.unstampedCaptureCount > 0 && (
-                <div className="mb-4 rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+                <div className="mb-4 rounded border border-warning-line bg-warning-surface px-3 py-2 text-sm text-warning-fg">
                   {preflight.unstampedCaptureCount} capture
                   {preflight.unstampedCaptureCount === 1 ? '' : 's'} will export without RFC 3161
                   trusted time ({preflight.pendingCaptureCount} pending,{' '}

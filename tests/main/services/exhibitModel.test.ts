@@ -64,6 +64,7 @@ import type { InventoryExhibitRow, InventoryStagedRow } from '@shared/types'
 import type { ManifestSnapshotEntry } from '@shared/manifestSnapshot'
 import { ManifestEntrySchema } from '@shared/schemas'
 import type { ManifestEntry } from '@shared/schemas'
+import { windBackToV38 } from '../../helpers/windBackToV38'
 
 // Known-answer tests for the Exhibit model's tables, migrations and read paths
 // (#1147, ADR-0023 / ADR-0024). Four answers are frozen here:
@@ -325,10 +326,18 @@ describe('exhibit model', () => {
       addTagToCapture({ captureId: capture.id, tagId: tag.id })
 
       expect(getTagsForCapture(capture.id).map((t) => t.name)).toEqual(['relevant'])
-      // The archive payload keeps its `capture_id` key so a .birdbrain written
-      // by this build still imports into a build that predates the rename.
+      // The archive payload keeps its `capture_id` key, the key every
+      // .birdbrain since before the rename carries; the author and sync
+      // columns joined it at archive schema 9 (#1512).
       expect(collectCaptureTagsForCase(caseId)).toEqual([
-        { capture_id: capture.id, tag_id: tag.id }
+        {
+          capture_id: capture.id,
+          tag_id: tag.id,
+          author_installation_id: null,
+          version: 0,
+          deleted_at: null,
+          row_signature: null
+        }
       ])
     })
   })
@@ -342,6 +351,7 @@ describe('exhibit model', () => {
     function windBackToV33(dbPath: string): void {
       const raw = new Database(dbPath)
       raw.pragma('foreign_keys = OFF')
+      windBackToV38(raw)
       // v36 first (#1510): the roster table and the per-author columns, so
       // the v34 to v36 blocks all run again against a real v33 shape.
       raw.exec('DROP TABLE case_members')

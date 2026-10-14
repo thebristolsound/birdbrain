@@ -36,6 +36,7 @@ import {
   resetInstallationId
 } from '@main/services/installationId'
 import type { CaseMember, ExportOptions } from '@shared/types'
+import { windBackToV38 } from '../../helpers/windBackToV38'
 
 // Shared Cases, step 2 (#1510): the roster cache, the widened Exhibit Number
 // rule and the read-time citation. Three answers are frozen here:
@@ -124,6 +125,7 @@ describe('shared case members (#1510)', () => {
     function windBackToV35(dbPath: string): void {
       const raw = new Database(dbPath)
       raw.pragma('foreign_keys = OFF')
+      windBackToV38(raw)
       raw.exec('DROP TABLE case_members')
       for (const table of ['notes', 'annotations', 'tags', 'exhibit_tags', 'note_tags']) {
         for (const column of ['author_installation_id', 'version', 'deleted_at', 'row_signature']) {

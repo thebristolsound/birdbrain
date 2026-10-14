@@ -3,7 +3,7 @@ import { runMigrations } from '@main/services/db/migrations'
 import { createPreMigrationSnapshot } from '@main/services/db/dbSnapshots'
 
 let db: Database.Database | null = null
-export const LATEST_SCHEMA_VERSION = 38
+export const LATEST_SCHEMA_VERSION = 39
 
 /**
  * Snapshot the database if — and only if — migrations are about to change it.
@@ -130,6 +130,22 @@ export interface ImportCtx {
   mapId: (id: string) => string
   mapTag: (id: string) => string
   getText: (oldId: string, newId: string) => string
+}
+
+// The four columns v36 added to the working-layer tables (v39 for
+// annotation_pins), read off an archive row in this order: author, version,
+// tombstone, signature. A row from an archive written before Case Archive
+// schema 9 may lack them, and is then this installation's at version 0, as
+// every row was before v36.
+export function syncColumnValues(
+  row: Record<string, unknown>
+): [string | null, number, string | null, string | null] {
+  return [
+    (row.author_installation_id as string | null | undefined) ?? null,
+    (row.version as number | null | undefined) ?? 0,
+    (row.deleted_at as string | null | undefined) ?? null,
+    (row.row_signature as string | null | undefined) ?? null
+  ]
 }
 
 // The tables whose rows carry a stable `id` that the archive import may need to

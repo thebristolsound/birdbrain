@@ -2,9 +2,9 @@
 // ordinary Case with Captures, Notes, Tags and a Selector, and a two-member Shared Case, so the
 // captures workflow can be seen without Chrome, the extension or a live page.
 //
-// Three steps: prepareProfile (dev-seed/profile.mjs) writes what startup needs to reach the
-// dashboard, seedProfile (dev-seed/launch.mjs) fills the profile, and `electron-vite dev` starts
-// against it.
+// Three steps: prepareProfile (dev-seed/profile.mjs) writes what startup needs to clear its
+// operator-name and signing-key gates, seedProfile (dev-seed/launch.mjs) fills the profile, and
+// `electron-vite dev` starts against it, opening on the ordinary Case the seed writes last.
 //
 // The directory is left in place when the app exits, under the system temp directory. Like any
 // copy of the app, the dev app binds 127.0.0.1:19845, so quit a running Birdbrain first (#513).

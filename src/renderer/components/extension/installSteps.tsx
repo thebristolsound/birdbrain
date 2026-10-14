@@ -86,7 +86,7 @@ function LoadUnpackedVisual() {
 const PICKER_FILES = [
   {
     icon: FileJson,
-    iconColor: 'text-amber-500',
+    iconColor: 'text-warning-fg',
     name: 'manifest.json',
     tone: 'text-text-secondary'
   },

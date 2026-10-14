@@ -1,8 +1,10 @@
 // The one preparation behind every throwaway Birdbrain profile: the e2e fixture
-// (e2e/fixtures/electronApp.ts), the exploratory harness (scripts/exploratory-harness.mjs) and
-// `pnpm dev:seed` (scripts/dev-seed.mjs). Each launches the app with nobody at the window, so
-// startup has to clear the #116 operator-name gate and the #414 signing-key acknowledgement gate
-// by itself.
+// (e2e/fixtures/electronApp.ts), the exploratory harness (scripts/exploratory-harness.mjs),
+// `pnpm dev:seed` (scripts/dev-seed.mjs), the package smoke test (scripts/package-smoke.mjs) and
+// the run-birdbrain driver (.claude/skills/run-birdbrain/driver.mjs);
+// tests/singleProfileSeed.test.ts fails when other code names the key file. Each launches the app
+// with nobody at the window, so startup has to clear the #116 operator-name gate and the #414
+// signing-key acknowledgement gate by itself.
 
 import { generateKeyPairSync } from 'node:crypto'
 import { writeFile } from 'node:fs/promises'
@@ -37,8 +39,9 @@ async function seedSigningKey(dir) {
 /**
  * Writes the signing keypair and, unless `settings` is omitted, a settings.json naming the
  * operator. Omit `settings` for a fresh-install launch: writing the file at all is what tells
- * initSettings the profile has been launched before. `completedOnboarding` records the onboarding
- * as done, so the app opens on the dashboard.
+ * initSettings the profile has been launched before. `completedOnboarding` writes the
+ * `hasCompletedOnboarding` flag the New Case wizard sets; no startup code reads it, so it does not
+ * change which screen opens (useSessionRestore.ts reopens the newest Case when there is one).
  *
  * @param {string} dir
  * @param {{ operatorName: string, completedOnboarding?: boolean }} [settings]

@@ -53,3 +53,18 @@ it('gives the shield a text alternative that names each persisted outcome', () =
     'Not yet verified'
   ])
 })
+
+it('marks only the captures made since the last visit as new', () => {
+  render(
+    <RecentCapturesStrip
+      captures={[
+        { ...capture('before'), createdAt: '2026-08-01T00:00:00.000Z' },
+        { ...capture('after'), createdAt: '2026-08-03T00:00:00.000Z' }
+      ]}
+      lastVisitAt="2026-08-02T00:00:00.000Z"
+      onOpen={vi.fn()}
+    />
+  )
+  const cards = screen.getAllByTestId('overview-recent-item')
+  expect(cards.map((card) => card.textContent?.includes('NEW'))).toEqual([false, true])
+})

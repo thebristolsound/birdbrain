@@ -270,7 +270,7 @@ export function CaptureHealth() {
 
             {testResult && (
               <div
-                className={`px-3 py-2 text-[11px] ${testResult.success ? 'text-emerald-400' : 'text-red-400'}`}
+                className={`px-3 py-2 text-[11px] ${testResult.success ? 'text-success-fg' : 'text-danger-fg'}`}
               >
                 {testResult.success
                   ? `Pipeline OK — verified in ${testResult.durationMs}ms`

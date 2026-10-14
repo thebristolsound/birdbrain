@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto'
 // eslint-disable-next-line no-restricted-imports -- owns the annotations/annotation_pins aggregate's SQL; repo home resolved by 2026-07-11-capture-row-ownership plan
-import { getDb, type ImportCtx } from '@main/services/db/core'
+import { getDb, syncColumnValues, type ImportCtx } from '@main/services/db/core'
 import type {
   AnnotationsBundle,
   AnnotationPin,
@@ -53,9 +53,17 @@ function rowToPin(row: PinRow): AnnotationPin {
   }
 }
 
+// A Capture holds one annotation layer per author since migration 39. This
+// installation's layer is the one read, edited and burned into exports; when
+// it has none, the layer with the lowest author installation id is read, so
+// the choice does not depend on row order.
 export function getAnnotations(captureId: string): AnnotationsBundle {
   const annRow = getDb()
-    .prepare('SELECT * FROM annotations WHERE capture_id = ?')
+    .prepare(
+      `SELECT * FROM annotations WHERE capture_id = ?
+       ORDER BY COALESCE(author_installation_id, '')
+       LIMIT 1`
+    )
     .get(captureId) as AnnotationRow | undefined
   const pinRows = getDb()
     .prepare('SELECT * FROM annotation_pins WHERE capture_id = ? ORDER BY number ASC')
@@ -75,7 +83,7 @@ export function saveAnnotations(
     .prepare(
       `INSERT INTO annotations (capture_id, schema_version, shapes_json, image_width, image_height, updated_at, updated_by)
        VALUES (?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(capture_id) DO UPDATE SET
+       ON CONFLICT(capture_id, COALESCE(author_installation_id, '')) DO UPDATE SET
          schema_version = excluded.schema_version,
          shapes_json = excluded.shapes_json,
          image_width = excluded.image_width,
@@ -94,7 +102,9 @@ export function saveAnnotations(
     )
   return rowToAnnotations(
     getDb()
-      .prepare('SELECT * FROM annotations WHERE capture_id = ?')
+      .prepare(
+        "SELECT * FROM annotations WHERE capture_id = ? AND COALESCE(author_installation_id, '') = ''"
+      )
       .get(params.captureId) as AnnotationRow
   )
 }
@@ -167,8 +177,9 @@ export function collectAnnotationPinsForCase(caseId: string): Record<string, unk
 
 export function importAnnotationRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
   const insert = getDb().prepare(
-    `INSERT INTO annotations (capture_id, schema_version, shapes_json, image_width, image_height, updated_at, updated_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO annotations (capture_id, schema_version, shapes_json, image_width, image_height, updated_at, updated_by,
+       author_installation_id, version, deleted_at, row_signature)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
   for (const a of rows) {
     insert.run(
@@ -178,15 +189,17 @@ export function importAnnotationRows(rows: Record<string, unknown>[], ctx: Impor
       a.image_width ?? null,
       a.image_height ?? null,
       a.updated_at ?? null,
-      a.updated_by ?? null
+      a.updated_by ?? null,
+      ...syncColumnValues(a)
     )
   }
 }
 
 export function importAnnotationPinRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
   const insert = getDb().prepare(
-    `INSERT INTO annotation_pins (id, capture_id, number, body, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?)`
+    `INSERT INTO annotation_pins (id, capture_id, number, body, created_at, updated_at,
+       author_installation_id, version, deleted_at, row_signature)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
   for (const p of rows) {
     insert.run(
@@ -195,7 +208,8 @@ export function importAnnotationPinRows(rows: Record<string, unknown>[], ctx: Im
       p.number ?? null,
       p.body ?? null,
       p.created_at ?? null,
-      p.updated_at ?? null
+      p.updated_at ?? null,
+      ...syncColumnValues(p)
     )
   }
 }

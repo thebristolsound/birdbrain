@@ -2,12 +2,12 @@
 // usually inside tmux: one command per line on stdin, results on stdout.
 // Launch setup mirrors e2e/fixtures/electronApp.ts; see SKILL.md for why each step exists.
 import { _electron as electron } from '@playwright/test'
-import { generateKeyPairSync } from 'node:crypto'
 import * as fs from 'node:fs'
 import * as net from 'node:net'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import * as readline from 'node:readline'
+import { prepareProfile } from '../../../scripts/dev-seed/profile.mjs'
 
 const REPO = path.resolve(import.meta.dirname, '../../..')
 const SHOT_DIR = process.env.SCREENSHOT_DIR || '/tmp/birdbrain-shots'
@@ -18,24 +18,6 @@ let app = null
 let page = null
 let userData = null
 let caseId = null
-
-// Without a key on disk the app raises a native key-acknowledgement modal that Playwright
-// cannot see or dismiss, and launch hangs. Skipping settings.json is what makes a fresh install.
-function seedUserData(dir, fresh) {
-  if (!fresh) {
-    fs.writeFileSync(
-      path.join(dir, 'settings.json'),
-      JSON.stringify({ operatorName: 'Driver Operator' })
-    )
-  }
-  const { privateKey, publicKey } = generateKeyPairSync('rsa', {
-    modulusLength: 2048,
-    publicKeyEncoding: { type: 'spki', format: 'pem' },
-    privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
-  })
-  fs.writeFileSync(path.join(dir, 'signing-key.pem'), privateKey)
-  fs.writeFileSync(path.join(dir, 'signing-public-key.pem'), publicKey)
-}
 
 function portInUse(port) {
   return new Promise((resolve) => {
@@ -62,7 +44,8 @@ const COMMANDS = {
     }
     const fresh = arg === 'fresh'
     userData = fs.mkdtempSync(path.join(os.tmpdir(), 'birdbrain-driver-'))
-    seedUserData(userData, fresh)
+    // Skipping settings.json is what makes a fresh install.
+    await prepareProfile(userData, fresh ? undefined : { operatorName: 'Driver Operator' })
     const env = { ...process.env, BIRDBRAIN_USER_DATA: userData }
     // Inherited from an Electron-hosted agent shell, this makes the binary run as plain Node.
     delete env.ELECTRON_RUN_AS_NODE

@@ -111,8 +111,8 @@ function StatBlock({
       <div
         className={cn(
           'mt-1 truncate font-mono text-lg font-semibold tabular-nums text-text-primary',
-          tone === 'warning' && 'text-amber-500',
-          tone === 'danger' && 'text-red-500'
+          tone === 'warning' && 'text-warning-fg',
+          tone === 'danger' && 'text-danger-fg'
         )}
       >
         {value}
@@ -460,9 +460,9 @@ export function DiagnosticsPanel() {
                         className={cn(
                           'shrink-0 font-mono tabular-nums',
                           op.ms >= 1000
-                            ? 'text-red-500'
+                            ? 'text-danger-fg'
                             : op.ms >= 250
-                              ? 'text-amber-500'
+                              ? 'text-warning-fg'
                               : 'text-text-secondary'
                         )}
                       >

@@ -16,8 +16,8 @@ const LEVEL_ICON = {
 } as const
 
 const LEVEL_COLOR = {
-  error: 'text-red-500',
-  warn: 'text-amber-500',
+  error: 'text-danger-fg',
+  warn: 'text-warning-fg',
   info: 'text-text-muted'
 } as const
 

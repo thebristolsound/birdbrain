@@ -55,9 +55,18 @@ describe('note_tags schema (v32)', () => {
       'deleted_at',
       'row_signature'
     ])
-    // Composite primary key over both foreign keys, like capture_tags: no
-    // surrogate id, which is why the table stays out of ID_PROBE_TABLES.
-    expect(columns.filter((c) => c.pk > 0).map((c) => c.name)).toEqual(['note_id', 'tag_id'])
+    // No surrogate id, which is why the table stays out of ID_PROBE_TABLES.
+    // The v32 composite primary key became a unique index with the author in
+    // it at v39 (#1512).
+    expect(columns.filter((c) => c.pk > 0)).toEqual([])
+    const unique = getDb()
+      .prepare(
+        "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_note_tags_author'"
+      )
+      .get() as { sql: string }
+    expect(unique.sql.replace(/\s+/g, ' ')).toBe(
+      "CREATE UNIQUE INDEX idx_note_tags_author ON note_tags(note_id, tag_id, COALESCE(author_installation_id, ''))"
+    )
     const fks = getDb().pragma('foreign_key_list(note_tags)') as Array<{
       table: string
       on_delete: string

@@ -30,10 +30,12 @@ export function devLaunch(root, dir) {
 /**
  * Seeds a profile directory that prepareProfile has prepared. dev-seed/seed.ts is main-process
  * TypeScript, so it is bundled with esbuild and run by the Electron binary as Node
- * (ELECTRON_RUN_AS_NODE): better-sqlite3 is built against Electron's ABI.
+ * (ELECTRON_RUN_AS_NODE): better-sqlite3 is built against Electron's ABI. The bundle stays out of
+ * out/, which electron-builder packages whole and `pnpm build` does not clear, and inside the
+ * repository, so its external imports resolve from node_modules.
  */
 export async function seedProfile(root, dir) {
-  const bundle = join(root, 'out', 'dev-seed', 'run.cjs')
+  const bundle = join(root, '.cache', 'dev-seed', 'run.cjs')
   await build({
     entryPoints: [join(root, 'scripts', 'dev-seed', 'run.ts')],
     outfile: bundle,

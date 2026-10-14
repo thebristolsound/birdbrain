@@ -5,11 +5,9 @@
  * Launches the BUILT app (out/main/index.js — run `pnpm build` first) via Playwright
  * `_electron` in a throwaway userData dir. Never touches a real profile.
  *
- * Seeding matches e2e/fixtures/electronApp.ts on both counts that decide whether the app
- * starts: an operator name in settings.json, AND a plaintext signing keypair. Playwright's
- * Electron loader pins Chromium's os_crypt to basic_text, so safeStorage is unavailable and
- * initSigningKey would otherwise hit #414's acknowledgement gate — a native modal with no
- * window and nothing to click it, which hangs startup until firstWindow() times out.
+ * The profile is prepared by scripts/dev-seed/profile.mjs, the same code the e2e fixture and
+ * `pnpm dev:seed` use: an operator name in settings.json, AND a plaintext signing keypair, which
+ * that file explains are the two counts that decide whether the app starts under Playwright.
  *
  * The throwaway profile isolates the data, not the port: the app the harness launches binds
  * 127.0.0.1:19845 like any other copy, so a real Birdbrain left open holds it and the harness
@@ -55,10 +53,11 @@ import { mkdtemp, rm, access, writeFile, readFile, mkdir, readdir } from 'fs/pro
 import { join, resolve, dirname } from 'path'
 import { tmpdir } from 'os'
 import { fileURLToPath } from 'url'
-import { generateKeyPairSync, randomBytes, timingSafeEqual } from 'crypto'
+import { randomBytes, timingSafeEqual } from 'crypto'
 // Imported rather than taken from the global: eslint.config.js lints scripts/**/*.mjs against
 // a hand-maintained globals list (no parserOptions.project), and Buffer is not on it.
 import { Buffer } from 'buffer'
+import { prepareProfile, profileLaunch } from './dev-seed/profile.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const INFO_FILE = process.env.BIRDBRAIN_HARNESS_INFO ?? join(tmpdir(), 'birdbrain-harness.json')
@@ -142,21 +141,6 @@ async function sweepStaleProfiles() {
   )
 }
 
-// Mirrors seedSigningKey in e2e/fixtures/electronApp.ts — same filenames, encodings and
-// algorithm as initSigningKey in src/main/services/signingKey.ts, which reads signing-key.pem
-// back through unwrapPrivateKey and returns any value without the 'enc:' prefix unchanged.
-// Seeding it takes initSigningKey's existing-key branch, so the #414 acknowledgement gate
-// never fires. Generated per run and deleted with the temp profile; never committed.
-async function seedSigningKey(userDataDir) {
-  const { privateKey, publicKey } = generateKeyPairSync('rsa', {
-    modulusLength: 2048,
-    publicKeyEncoding: { type: 'spki', format: 'pem' },
-    privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
-  })
-  await writeFile(join(userDataDir, 'signing-key.pem'), privateKey, 'utf-8')
-  await writeFile(join(userDataDir, 'signing-public-key.pem'), publicKey, 'utf-8')
-}
-
 // Refuses a second serve against the same info file: the client picks its target from that
 // file alone, so two servers sharing one would silently hand an agent the wrong app, and
 // either shutdown would delete the other's connection details.
@@ -209,15 +193,10 @@ async function serve(args) {
   const shotsDir = join(tempDir, 'screenshots')
   await mkdir(shotsDir)
   await writeFile(join(tempDir, 'server.pid'), String(process.pid))
-  // Seed operator name so the #116 capture gate accepts test captures.
-  await writeFile(
-    join(tempDir, 'settings.json'),
-    JSON.stringify({
-      operatorName: 'Exploratory Tester',
-      ...(skipOnboarding ? { hasCompletedOnboarding: true } : {})
-    })
-  )
-  await seedSigningKey(tempDir)
+  await prepareProfile(tempDir, {
+    operatorName: 'Exploratory Tester',
+    completedOnboarding: skipOnboarding
+  })
 
   let app
   let page
@@ -229,12 +208,13 @@ async function serve(args) {
   // are known to throw today, because the last leak (a bad $BIRDBRAIN_HARNESS_INFO path) was
   // introduced by a later line landing outside a narrower guard.
   try {
+    const launch = profileLaunch(tempDir)
     app = await _electron.launch({
-      args: ['.', `--user-data-dir=${tempDir}`],
+      args: ['.', ...launch.args],
       cwd: ROOT,
       env: {
         ...process.env,
-        BIRDBRAIN_USER_DATA: tempDir,
+        ...launch.env,
         ...(windowSize ? { BIRDBRAIN_WINDOW_SIZE: windowSize } : {})
       }
     })

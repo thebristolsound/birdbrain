@@ -1,40 +1,11 @@
 import { test, expect } from './fixtures/electronApp'
+import { seedCapture, serverToken } from './fixtures/seed'
 
 type Page = import('@playwright/test').Page
 
 // The three-column Captures rework (#397): the tab set, the drag-resizable
 // columns and their bounds, the 40px rails, and the Wayback tab's own layout
 // (compare panes plus the archive.org slide-out, #401).
-
-async function seedCapture(page: Page, caseId: string, token: string, slug: string) {
-  const result = await page.evaluate(
-    async ({ caseId, token, slug }) => {
-      const form = new FormData()
-      form.append('source', 'manual')
-      form.append('caseId', caseId)
-      form.append('url', `https://example.com/${slug}`)
-      form.append('title', `Layout ${slug}`)
-      form.append('timestamp', new Date().toISOString())
-      form.append('textContent', `layout ${slug}`)
-      form.append('extensionVersion', '0.1.0')
-      form.append('browserVersion', 'Chrome/120')
-      form.append('userAgent', 'Mozilla/5.0')
-      form.append(
-        'mhtml',
-        new Blob([`<html><body>${slug}</body></html>`], { type: 'multipart/related' }),
-        'capture.mhtml'
-      )
-      const r = await fetch('http://127.0.0.1:19845/api/captures', {
-        method: 'POST',
-        body: form,
-        headers: { 'X-Birdbrain-Token': token }
-      })
-      return r.json()
-    },
-    { caseId, token, slug }
-  )
-  expect(result.status).toBe('ok')
-}
 
 async function widthOf(page: Page, testId: string): Promise<number> {
   const box = await page.getByTestId(testId).boundingBox()
@@ -66,12 +37,14 @@ test.describe('Captures three-column layout', () => {
     await page.waitForURL(/#\/cases\/.+\/overview/, { timeout: 10000 })
     const caseId = page.url().match(/cases\/([^/]+)/)![1]
 
-    const token = await page.evaluate(async () => {
-      const r = await fetch('http://127.0.0.1:19845/api/status')
-      return (await r.json()).serverToken ?? ''
-    })
+    const token = await serverToken(page)
     for (const slug of ['alpha', 'bravo']) {
-      await seedCapture(page, caseId, token, slug)
+      await seedCapture(page, caseId, token, {
+        slug,
+        title: `Layout ${slug}`,
+        text: `layout ${slug}`,
+        mhtml: `<html><body>${slug}</body></html>`
+      })
     }
 
     await electronApp.windows()[0].setViewportSize({ width: 1400, height: 900 })

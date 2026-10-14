@@ -13,6 +13,7 @@
   },
   "scripts": {
     "dev": "electron-vite dev",
+    "dev:seed": "node scripts/dev-seed.mjs",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "postinstall": "node scripts/ensure-electron.mjs && node scripts/rebuild-native.mjs",

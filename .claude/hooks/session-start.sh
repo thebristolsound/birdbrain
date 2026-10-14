@@ -157,6 +157,11 @@ if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   # did not run, the first failure is a posting check reporting a missing linter, so say it here.
   if [ ! -d "$PROJECT_DIR/node_modules" ]; then
     log "WARNING: node_modules is missing. Run scripts/setup-worktree.sh before lint, test or commit."
+  elif [ -f "$PROJECT_DIR/node_modules/.pnpm/lock.yaml" ] \
+    && ! cmp -s "$PROJECT_DIR/pnpm-lock.yaml" "$PROJECT_DIR/node_modules/.pnpm/lock.yaml"; then
+    # pnpm keeps a copy of the lockfile it installed there; a difference means main moved a
+    # dependency after this tree's last install, and tests fail on a missing package.
+    log "WARNING: pnpm-lock.yaml changed since the last install. Run pnpm install --frozen-lockfile."
   fi
   exit 0
 fi

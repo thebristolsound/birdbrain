@@ -1,41 +1,10 @@
 import { test, expect } from './fixtures/electronApp'
-
-type Page = import('@playwright/test').Page
+import { seedCapture, serverToken } from './fixtures/seed'
 
 // Select → act → clear round trip for the inline selection bar (#396). Seeds
 // three captures over the local capture server, drives the gestures the
 // handoff bundle specifies, runs one non-destructive batch action and one
 // destructive one, and asserts the bar leaves when the selection does.
-
-async function seedCapture(page: Page, caseId: string, token: string, slug: string) {
-  const result = await page.evaluate(
-    async ({ caseId, token, slug }) => {
-      const form = new FormData()
-      form.append('source', 'manual')
-      form.append('caseId', caseId)
-      form.append('url', `https://example.com/${slug}`)
-      form.append('title', `Multiselect ${slug}`)
-      form.append('timestamp', new Date().toISOString())
-      form.append('textContent', `multiselect ${slug}`)
-      form.append('extensionVersion', '0.1.0')
-      form.append('browserVersion', 'Chrome/120')
-      form.append('userAgent', 'Mozilla/5.0')
-      form.append(
-        'mhtml',
-        new Blob([`<html><body>${slug}</body></html>`], { type: 'multipart/related' }),
-        'capture.mhtml'
-      )
-      const r = await fetch('http://127.0.0.1:19845/api/captures', {
-        method: 'POST',
-        body: form,
-        headers: { 'X-Birdbrain-Token': token }
-      })
-      return r.json()
-    },
-    { caseId, token, slug }
-  )
-  expect(result.status).toBe('ok')
-}
 
 test.describe('Captures multiselect', () => {
   test('selects rows, runs batch actions and clears the bar', async ({ electronApp, page }) => {
@@ -50,13 +19,15 @@ test.describe('Captures multiselect', () => {
     await page.waitForURL(/#\/cases\/.+\/overview/, { timeout: 10000 })
     const caseId = page.url().match(/cases\/([^/]+)/)![1]
 
-    const token = await page.evaluate(async () => {
-      const r = await fetch('http://127.0.0.1:19845/api/status')
-      return (await r.json()).serverToken ?? ''
-    })
+    const token = await serverToken(page)
     // Seeded oldest-first so the newest-first list shows charlie, bravo, alpha.
     for (const slug of ['alpha', 'bravo', 'charlie']) {
-      await seedCapture(page, caseId, token, slug)
+      await seedCapture(page, caseId, token, {
+        slug,
+        title: `Multiselect ${slug}`,
+        text: `multiselect ${slug}`,
+        mhtml: `<html><body>${slug}</body></html>`
+      })
     }
 
     await electronApp.windows()[0].setViewportSize({ width: 1400, height: 900 })

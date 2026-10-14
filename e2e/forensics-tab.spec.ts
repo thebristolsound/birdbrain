@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures/electronApp'
+import { seedCapture, serverToken } from './fixtures/seed'
 
 test.describe('Forensics tab', () => {
   test('renders chain sections for mhtml and legacy banner for html', async ({
@@ -18,40 +19,13 @@ test.describe('Forensics tab', () => {
     expect(caseIdMatch).toBeTruthy()
     const caseId = caseIdMatch![1]
 
-    const serverToken = await page.evaluate(async () => {
-      const r = await fetch('http://127.0.0.1:19845/api/status')
-      const data = await r.json()
-      return data.serverToken ?? ''
-    })
-
     // Seed an MHTML capture with forensic fields.
-    const upload = await page.evaluate(
-      async ({ caseId, token }) => {
-        const form = new FormData()
-        form.append('source', 'manual')
-        form.append('caseId', caseId)
-        form.append('url', 'https://example.com/forensics-mhtml')
-        form.append('title', 'Forensics MHTML')
-        form.append('timestamp', new Date().toISOString())
-        form.append('textContent', 'mhtml body')
-        form.append('extensionVersion', '0.1.0')
-        form.append('browserVersion', 'Chrome/120')
-        form.append('userAgent', 'Mozilla/5.0')
-        form.append(
-          'mhtml',
-          new Blob(['<html><body>mhtml</body></html>'], { type: 'multipart/related' }),
-          'capture.mhtml'
-        )
-        const r = await fetch('http://127.0.0.1:19845/api/captures', {
-          method: 'POST',
-          body: form,
-          headers: { 'X-Birdbrain-Token': token }
-        })
-        return r.json()
-      },
-      { caseId, token: serverToken }
-    )
-    expect(upload.status).toBe('ok')
+    await seedCapture(page, caseId, await serverToken(page), {
+      slug: 'forensics-mhtml',
+      title: 'Forensics MHTML',
+      text: 'mhtml body',
+      mhtml: '<html><body>mhtml</body></html>'
+    })
 
     // Seed a legacy HTML capture directly. The Hono server only ingests MHTML,
     // so we insert a `format='html'` row via better-sqlite3 against the same

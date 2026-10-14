@@ -228,9 +228,9 @@ describe('caseArchive export', () => {
   // has no table or directory for.
   // 8 since Shared Cases (#1511): a pre-8 build would import the exporter's
   // chain alone and drop every other member's.
-  // 9 since per-author working-layer keys (#1512): a pre-9 build would import
-  // every tag, tag application, note, annotation and pin as its own and merge
-  // two members' same-name tags into one.
+  // 9 since per-author working-layer keys (#1512): a pre-9 build would drop
+  // the author columns, merge two members' same-name tags into one, and fail
+  // the import outright on two members' annotation layers on one Capture.
   it('keeps CASE_ARCHIVE_SCHEMA_VERSION at 9 since per-author working-layer keys', () => {
     expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(9)
   })

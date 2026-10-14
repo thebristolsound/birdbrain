@@ -71,8 +71,9 @@ import type {
 // 9 since per-author working-layer keys (#1512, schema v39): data.json's tag
 // applications and pins carry their author, tags their `created_at`, and the
 // import reads the author of every working-layer row. A Birdbrain from before
-// them imports each of those rows as its own and merges two members'
-// same-name tags into one, so the gate refuses.
+// them drops those columns and merges two members' same-name tags into one,
+// and its import fails outright on two members' annotation layers on one
+// Capture, which its annotations key refuses. The gate refuses instead.
 // 8 since Shared Cases (#1511): the archive carries every other member's chain
 // as `manifest.<installationId>.jsonl` and every lineage chain under
 // `lineage/`, and data.json carries the `caseMembers` roster. A Birdbrain from

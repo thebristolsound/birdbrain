@@ -10,7 +10,11 @@ vi.mock('@renderer/lib/notify', () => ({
   notify: { error: notifyError, warn: vi.fn(), success: notifySuccess, info: vi.fn() }
 }))
 
-import { CAPTURE_TAG_HINT, CaptureTextPanel } from '@renderer/components/captures/CaptureTextPanel'
+import {
+  CAPTURE_TAG_HINT,
+  CaptureTextPanel,
+  type TextHighlight
+} from '@renderer/components/captures/CaptureTextPanel'
 import { fakeBridge } from '../renderer/fakeBridge'
 
 const TEXT = 'the funds moved to meridian-trust.com overnight'
@@ -130,5 +134,63 @@ describe('CaptureTextPanel', () => {
       expect(notifyError).toHaveBeenCalledWith("Couldn't apply the tag", expect.anything())
     )
     expect(screen.getByTestId('note-selection-confirm')).toBeTruthy()
+  })
+})
+
+describe('CaptureTextPanel with a search hit', () => {
+  const PAGE =
+    'Show original\n\n\nReceived: from relay\nFrom: Wren Hollis <wren@hollis-mail.example.org>\n\nBody'
+
+  function renderWith(content: string, highlight: TextHighlight) {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    return render(
+      <QueryClientProvider client={client}>
+        <CaptureTextPanel
+          caseId="case1"
+          captureId="cap1"
+          heading="Evidence page"
+          content={content}
+          highlight={highlight}
+        />
+      </QueryClientProvider>
+    )
+  }
+
+  function spanOf(text: string): TextHighlight {
+    const start = PAGE.indexOf(text)
+    return { start, end: start + text.length, preview: text }
+  }
+
+  it('marks the span in its paragraph, keeping the paragraph text as it was', () => {
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    renderWith(PAGE, spanOf('Wren Hollis <wren@hollis-mail.example.org>'))
+
+    expect(screen.getByTestId('capture-text-hit').textContent).toBe(
+      'Wren Hollis <wren@hollis-mail.example.org>'
+    )
+    const paragraphs = [...screen.getByTestId('capture-text').querySelectorAll('p')]
+    expect(paragraphs.map((p) => p.textContent)).toEqual([
+      'Show original',
+      'Received: from relay\nFrom: Wren Hollis <wren@hollis-mail.example.org>',
+      'Body'
+    ])
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' })
+    expect(screen.queryByTestId('capture-text-hit-moved')).toBeNull()
+    delete (Element.prototype as Partial<Element>).scrollIntoView
+  })
+
+  it('marks nothing and says so when the text no longer holds the span there', () => {
+    renderWith(PAGE.replace('Wren', 'Ruth'), spanOf('Wren Hollis <wren@hollis-mail.example.org>'))
+
+    expect(screen.queryByTestId('capture-text-hit')).toBeNull()
+    expect(screen.getByTestId('capture-text-hit-moved')).toBeTruthy()
+  })
+
+  it('marks nothing for a span past the end of the text', () => {
+    renderWith('Body', { start: 2, end: 40, preview: 'dy' })
+
+    expect(screen.queryByTestId('capture-text-hit')).toBeNull()
+    expect(screen.getByTestId('capture-text-hit-moved')).toBeTruthy()
   })
 })

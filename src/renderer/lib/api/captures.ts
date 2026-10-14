@@ -75,6 +75,15 @@ export const searchQueryOptions = (caseId: string, query: string) =>
     enabled: !!caseId && query.trim().length > 0
   })
 
+// Link targets, image alt text and mail headers (docs/plans/2026-10-09-case-retrieval-
+// first-slice.md, D6).
+export const fieldSearchQueryOptions = (caseId: string, query: string) =>
+  queryOptions({
+    queryKey: queryKeys.fieldSearch(caseId, query),
+    queryFn: () => window.birdbrain.cases.searchFields(caseId, query),
+    enabled: !!caseId && query.trim().length > 0
+  })
+
 // Uncached counterparts to the two query factories above, for the foreground
 // match preview: it walks every candidate capture's text on demand and would
 // otherwise park a case's worth of capture bodies in the cache.

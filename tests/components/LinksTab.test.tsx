@@ -6,7 +6,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
-import type { Capture, CaptureLink, CaptureLinks } from '@shared/types'
+import type { Capture, CaptureLink, CaptureLinks, FieldHit } from '@shared/types'
 import { LinksTab } from '@renderer/components/captures/LinksTab'
 import { fakeBridge } from '../renderer/fakeBridge'
 
@@ -49,7 +49,11 @@ function result(links: CaptureLink[], overrides: Partial<CaptureLinks> = {}): Ca
 
 function renderTab(
   answer: CaptureLinks | null,
-  { tabCapture = capture, cases = [] as Partial<Capture>[] } = {}
+  {
+    tabCapture = capture,
+    cases = [] as Partial<Capture>[],
+    hit = undefined as FieldHit | undefined
+  } = {}
 ) {
   const getLinks = vi.fn(async () => answer)
   fakeBridge({ captures: { getLinks, list: vi.fn(async () => cases) } })
@@ -57,8 +61,32 @@ function renderTab(
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
   }
-  render(<LinksTab capture={tabCapture} />, { wrapper: Wrapper })
+  render(<LinksTab capture={tabCapture} hit={hit} />, { wrapper: Wrapper })
   return getLinks
+}
+
+function linkHit(overrides: Partial<FieldHit>): FieldHit {
+  return {
+    fieldId: 4,
+    caseId: 'case1',
+    exhibitId: 'cap1',
+    exhibitNumber: 2,
+    exhibitCitation: '2',
+    contentHash: 'h',
+    title: 'Story',
+    field: 'link.href',
+    preview: '/other',
+    norm: 'https://news.example/other',
+    occurrences: 1,
+    locator: {
+      source: 'html-part',
+      part: 1,
+      startOffset: 120,
+      endOffset: 126,
+      extractor: 'fields/1'
+    },
+    ...overrides
+  }
 }
 
 afterEach(() => {
@@ -286,6 +314,55 @@ describe('LinksTab', () => {
     expect(await screen.findByText('After')).toBeDefined()
     expect(screen.queryByText(firstText)).toBeNull()
     expect(getLinks).toHaveBeenCalledTimes(2)
+  })
+
+  it('marks the rows a link target hit matches, with its part and offsets', async () => {
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    renderTab(
+      result([
+        link({ text: 'Widget', href: 'https://widgets.example/w' }),
+        link({}),
+        link({ frame: 'subframe', documentUrl: 'https://frames.example/f' })
+      ]),
+      { hit: linkHit({}) }
+    )
+    const rows = await screen.findAllByTestId('links-row')
+    expect(rows.map((row) => row.hasAttribute('data-link-hit'))).toEqual([false, true, true])
+    expect(within(rows[1]).getByTestId('links-hit').textContent).toBe(
+      'Search hit, Link target: part 1, characters 120 to 126'
+    )
+    expect(within(rows[0]).queryByTestId('links-hit')).toBeNull()
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' })
+    expect(screen.queryByTestId('links-notice')).toBeNull()
+    delete (Element.prototype as Partial<Element>).scrollIntoView
+  })
+
+  it("matches an image alt text hit by the row's text", async () => {
+    renderTab(result([link({}), link({ href: 'https://pay.example/', text: 'Pay here' })]), {
+      hit: linkHit({ field: 'link.alt', preview: 'Pay  here', norm: 'Pay here' })
+    })
+    const rows = await screen.findAllByTestId('links-row')
+    expect(rows.map((row) => row.hasAttribute('data-link-hit'))).toEqual([false, true])
+    expect(within(rows[1]).getByTestId('links-hit').textContent).toContain('Image alt text')
+  })
+
+  it('says so when no listed link matches the hit', async () => {
+    renderTab(result([link({})]), { hit: linkHit({ norm: 'https://gone.example/' }) })
+    expect((await screen.findByTestId('links-notice')).textContent).toBe(
+      'No listed link matches the search hit at part 1, characters 120 to 126.'
+    )
+    expect(screen.queryByTestId('links-hit')).toBeNull()
+  })
+
+  it("gives a pre-MHTML capture's hit its place in the stored page", async () => {
+    renderTab(null, {
+      tabCapture: { ...capture, format: 'html' },
+      hit: linkHit({ locator: { ...linkHit({}).locator, part: 0, startOffset: 9, endOffset: 38 } })
+    })
+    expect((await screen.findByTestId('links-empty')).textContent).toContain(
+      'The search hit is at characters 9 to 38 of the stored page.'
+    )
   })
 
   it('reports a failed read', async () => {

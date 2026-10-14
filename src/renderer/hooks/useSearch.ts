@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { searchQueryOptions, notesSearchQueryOptions } from '@renderer/lib/queries'
+import { notesSearchQueryOptions } from '@renderer/lib/api/notes'
+import { fieldSearchQueryOptions, searchQueryOptions } from '@renderer/lib/api/captures'
 
 export function useSearch(caseId: string) {
   const [query, setQuery] = useState('')
@@ -10,6 +11,11 @@ export function useSearch(caseId: string) {
     isLoading: notesLoading,
     isError: notesError
   } = useQuery(notesSearchQueryOptions(caseId, query))
+  const {
+    data: fieldResults,
+    isLoading: fieldsLoading,
+    isError: fieldsError
+  } = useQuery(fieldSearchQueryOptions(caseId, query))
 
   const search = useCallback((q: string) => {
     setQuery(q.trim())
@@ -22,8 +28,9 @@ export function useSearch(caseId: string) {
   return {
     results,
     noteResults,
-    searching: isLoading || notesLoading,
-    failed: isError || notesError,
+    fieldResults,
+    searching: isLoading || notesLoading || fieldsLoading,
+    failed: isError || notesError || fieldsError,
     search,
     clear
   }

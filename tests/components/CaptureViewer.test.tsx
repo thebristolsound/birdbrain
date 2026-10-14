@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
-import type { Capture } from '@shared/types'
+import type { Capture, FieldHit } from '@shared/types'
 import { LEGACY_HTML_PARTITION } from '@shared/constants'
 
 vi.mock('@tanstack/react-router', () => ({
@@ -72,6 +72,7 @@ afterEach(() => {
   cleanup()
   useAppStore.getState().setSelectedCaptureId(null)
   useAppStore.getState().setActiveViewerTab('screenshot')
+  useAppStore.getState().setViewerHit(null)
 })
 
 describe('CaptureViewer provenance chrome (#827)', () => {
@@ -401,5 +402,33 @@ describe('CaptureViewer Text tab', () => {
     useAppStore.getState().setActiveViewerTab('text')
     renderViewer()
     expect(await screen.findByText('No text content available')).toBeDefined()
+  })
+
+  it.each([
+    ['marks the span of a header hit opened on this Capture', 'cap1', 'text', 1],
+    ["marks nothing for another Capture's hit", 'cap9', 'text', 0],
+    ['marks nothing for a link hit', 'cap1', 'html-part', 0]
+  ] as const)('%s', async (_name, exhibitId, source, marks) => {
+    getContent.mockResolvedValue('From: wren@hollis-mail.example.org')
+    const hit: FieldHit = {
+      fieldId: 1,
+      caseId: 'case1',
+      exhibitId,
+      exhibitNumber: 1,
+      exhibitCitation: '1',
+      contentHash: 'h',
+      title: 'Example evidence page',
+      field: 'header.from',
+      preview: 'wren@hollis-mail.example.org',
+      norm: 'wren@hollis-mail.example.org',
+      occurrences: 1,
+      locator: { source, part: null, startOffset: 6, endOffset: 34, extractor: 'fields/1' }
+    }
+    useAppStore.getState().setViewerHit(hit)
+    useAppStore.getState().setActiveViewerTab('text')
+    renderViewer()
+
+    await screen.findByTestId('capture-text')
+    expect(screen.queryAllByTestId('capture-text-hit')).toHaveLength(marks)
   })
 })

@@ -61,6 +61,7 @@ export function CaptureViewer() {
 
   const activeTab = useAppStore((s) => s.activeViewerTab)
   const setActiveTab = useAppStore((s) => s.setActiveViewerTab)
+  const viewerHit = useAppStore((s) => s.viewerHit)
   const capture = captures.find((item) => item.id === selectedCaptureId) ?? null
 
   // Determine content type based on active tab and capture format. Wayback
@@ -120,6 +121,10 @@ export function CaptureViewer() {
       </main>
     )
   }
+
+  // The search hit opened on this Capture, if any (docs/plans/2026-10-09-case-retrieval-
+  // first-slice.md, D7).
+  const hit = viewerHit?.exhibitId === capture.id ? viewerHit : null
 
   let hostname: string
   try {
@@ -317,7 +322,13 @@ export function CaptureViewer() {
               </div>
             </div>
           ) : null}
-          {activeTab === 'links' && <LinksTab key={capture.id} capture={capture} />}
+          {activeTab === 'links' && (
+            <LinksTab
+              key={capture.id}
+              capture={capture}
+              hit={hit?.locator.source === 'html-part' ? hit : undefined}
+            />
+          )}
           {activeTab === 'wayback' && <WaybackCompare capture={capture} />}
           {activeTab === 'text' &&
             (content ? (
@@ -327,6 +338,15 @@ export function CaptureViewer() {
                 captureId={capture.id}
                 heading={capture.title || hostname}
                 content={content}
+                highlight={
+                  hit?.locator.source === 'text'
+                    ? {
+                        start: hit.locator.startOffset,
+                        end: hit.locator.endOffset,
+                        preview: hit.preview
+                      }
+                    : undefined
+                }
               />
             ) : (
               <div className="p-4 text-text-muted">No text content available</div>

@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, Search } from 'lucide-react'
-import type { Capture, CaptureLink } from '@shared/types'
+import type { Capture, CaptureLink, FieldHit } from '@shared/types'
+import { fieldLabel } from '@shared/searchFields'
 import { canonicalizeUrl } from '@shared/urlCanonicalize'
 import { captureLinksQueryOptions, capturesQueryOptions } from '@renderer/lib/api/captures'
 import { EntityContextMenu } from '@renderer/components/contextmenu/EntityContextMenu'
@@ -30,13 +31,40 @@ function EmptyState({ title, detail }: { title: string; detail: string }) {
   )
 }
 
-function LinkRow({ link, inCase, index }: { link: CaptureLink; inCase: boolean; index: number }) {
+// A search hit's place in the stored page: the text/html part and the span in it, in
+// UTF-16 code units of the decoded part (docs/plans/2026-10-09-case-retrieval-first-
+// slice.md, D3 and D7).
+function hitPlace({ locator }: FieldHit): string {
+  return `part ${locator.part}, characters ${locator.startOffset} to ${locator.endOffset}`
+}
+
+// The Links tab collapses repeats and keeps no offsets, so a hit finds its row by value:
+// a link target by its resolved address, and alt text by the row's text, which is an
+// image's alt when the link has no text of its own.
+function matchesHit(link: CaptureLink, hit: FieldHit): boolean {
+  return hit.field === 'link.href' ? link.href === hit.norm : link.text === hit.norm
+}
+
+function LinkRow({
+  link,
+  inCase,
+  index,
+  hit
+}: {
+  link: CaptureLink
+  inCase: boolean
+  index: number
+  hit?: FieldHit
+}) {
   const { before, host, after } = splitAtHost(link.href)
   return (
     <li
       data-testid="links-row"
       data-link-index={index}
-      className="flex flex-col gap-1 border-b border-border px-4 py-2 hover:bg-elevated"
+      data-link-hit={hit ? '' : undefined}
+      className={`flex flex-col gap-1 border-b border-border px-4 py-2 ${
+        hit ? 'bg-warning-surface' : 'hover:bg-elevated'
+      }`}
     >
       <div className="flex min-w-0 items-center gap-2">
         <span className="min-w-0 flex-1 truncate text-xs font-medium text-text-primary">
@@ -84,15 +112,21 @@ function LinkRow({ link, inCase, index }: { link: CaptureLink; inCase: boolean; 
         ))}
         {link.occurrences > 1 && <span>×{link.occurrences}</span>}
       </div>
+      {hit && (
+        <div data-testid="links-hit" className="text-[10px] text-warning-fg">
+          Search hit, {fieldLabel(hit.field)}: {hitPlace(hit)}
+        </div>
+      )}
     </li>
   )
 }
 
 /**
  * The Links tab (#1708): every link in the stored page, read from its MHTML in the
- * main process. The rows offer the same menu as a right-click in the Page tab.
+ * main process. The rows offer the same menu as a right-click in the Page tab. A search
+ * hit opened here marks its row and scrolls to it.
  */
-export function LinksTab({ capture }: { capture: Capture }) {
+export function LinksTab({ capture, hit }: { capture: Capture; hit?: FieldHit }) {
   const isMhtml = capture.format === 'mhtml'
   const { data, error, isPending } = useQuery({
     ...captureLinksQueryOptions(capture.id),
@@ -102,7 +136,8 @@ export function LinksTab({ capture }: { capture: Capture }) {
   const linkTarget = useLinkMenuTarget(capture.caseId)
   const [query, setQuery] = useState('')
   const [externalOnly, setExternalOnly] = useState(false)
-  const [hit, setHit] = useState<LinkHit>(NO_HIT)
+  const [menuHit, setMenuHit] = useState<LinkHit>(NO_HIT)
+  const listRef = useRef<HTMLUListElement | null>(null)
   // One canonical-URL pass per link list and Case, not one scan of the Case per row on
   // every render. Same-page web links count too: the viewed Capture holds them.
   const inCaseHrefs = useMemo(() => {
@@ -114,11 +149,20 @@ export function LinksTab({ capture }: { capture: Capture }) {
     return hrefs
   }, [data, captures])
 
+  useEffect(() => {
+    // jsdom has no layout, so it has no scrollIntoView either.
+    listRef.current?.querySelector('[data-link-hit]')?.scrollIntoView?.({ block: 'center' })
+  }, [data, hit])
+
   if (!isMhtml) {
     return (
       <EmptyState
         title="No link list for this capture"
-        detail="It was stored as plain HTML, before captures were kept as MHTML archives. Links are listed from an MHTML archive only."
+        detail={`It was stored as plain HTML, before captures were kept as MHTML archives. Links are listed from an MHTML archive only.${
+          hit
+            ? ` The search hit is at characters ${hit.locator.startOffset} to ${hit.locator.endOffset} of the stored page.`
+            : ''
+        }`}
       />
     )
   }
@@ -152,6 +196,9 @@ export function LinksTab({ capture }: { capture: Capture }) {
   }
   if (overTotalSize > 0) {
     notices.push(`Not listed: ${frames(overTotalSize)} past the total size this tab reads.`)
+  }
+  if (hit && data.links.length > 0 && !data.links.some((link) => matchesHit(link, hit))) {
+    notices.push(`No listed link matches the search hit at ${hitPlace(hit)}.`)
   }
   if (data.truncated) {
     notices.push(
@@ -226,8 +273,9 @@ export function LinksTab({ capture }: { capture: Capture }) {
       {shown.length === 0 ? (
         <EmptyState title="No links match" detail="Change the search or turn off External only." />
       ) : (
-        <EntityContextMenu target={linkTarget(hit)} className="min-h-0 flex-1 overflow-y-auto">
+        <EntityContextMenu target={linkTarget(menuHit)} className="min-h-0 flex-1 overflow-y-auto">
           <ul
+            ref={listRef}
             onContextMenu={(e) => {
               // One menu serves every row: the row under the pointer becomes its target
               // in the same update that opens it. Off a row there is nothing to act on.
@@ -237,7 +285,12 @@ export function LinksTab({ capture }: { capture: Capture }) {
                 e.preventDefault()
                 return
               }
-              setHit({ linkUrl: link.href, linkText: link.text, imageUrl: '', selectionText: '' })
+              setMenuHit({
+                linkUrl: link.href,
+                linkText: link.text,
+                imageUrl: '',
+                selectionText: ''
+              })
             }}
           >
             {shown.map((link, index) => (
@@ -246,6 +299,7 @@ export function LinksTab({ capture }: { capture: Capture }) {
                 link={link}
                 index={index}
                 inCase={inCaseHrefs.has(link.href)}
+                hit={hit && matchesHit(link, hit) ? hit : undefined}
               />
             ))}
           </ul>

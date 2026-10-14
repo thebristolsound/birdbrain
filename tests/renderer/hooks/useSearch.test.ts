@@ -21,13 +21,23 @@ const CASE_ID = 'case-1'
 describe('useSearch', () => {
   let searchMock: ReturnType<typeof vi.fn>
   let notesSearchMock: ReturnType<typeof vi.fn>
+  let fieldsSearchMock: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
     searchMock = vi.fn(async (caseId: string, q: string) => [{ id: 'r1', caseId, query: q }])
     notesSearchMock = vi.fn(async (caseId: string, q: string) => [
       { id: 'n1', caseId, title: q, body: 'note body' }
     ])
-    fakeBridge({ search: searchMock, notes: { search: notesSearchMock } })
+    fieldsSearchMock = vi.fn(async () => ({
+      hits: [{ fieldId: 1, field: 'link.href' }],
+      unavailable: [],
+      truncated: false
+    }))
+    fakeBridge({
+      search: searchMock,
+      notes: { search: notesSearchMock },
+      cases: { searchFields: fieldsSearchMock }
+    })
   })
 
   afterEach(() => {
@@ -41,6 +51,7 @@ describe('useSearch', () => {
     expect(result.current.searching).toBe(false)
     expect(searchMock).not.toHaveBeenCalled()
     expect(notesSearchMock).not.toHaveBeenCalled()
+    expect(fieldsSearchMock).not.toHaveBeenCalled()
   })
 
   it('runs case-scoped capture and note queries after search()', async () => {
@@ -56,6 +67,24 @@ describe('useSearch', () => {
 
     await waitFor(() => expect(result.current.noteResults).toHaveLength(1))
     expect(notesSearchMock).toHaveBeenCalledWith(CASE_ID, 'hello')
+  })
+
+  it('runs the link and header search beside them, and counts its failure', async () => {
+    const { result } = renderHook(() => useSearch(CASE_ID), { wrapper: withClient(newClient()) })
+
+    act(() => {
+      result.current.search('tollgate')
+    })
+
+    await waitFor(() => expect(result.current.fieldResults?.hits).toHaveLength(1))
+    expect(fieldsSearchMock).toHaveBeenCalledWith(CASE_ID, 'tollgate')
+    expect(result.current.failed).toBe(false)
+
+    fieldsSearchMock.mockRejectedValueOnce(new Error('Search could not run'))
+    act(() => {
+      result.current.search('ledger')
+    })
+    await waitFor(() => expect(result.current.failed).toBe(true))
   })
 
   it('trims whitespace off the search term', async () => {

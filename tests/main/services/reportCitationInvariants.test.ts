@@ -470,9 +470,7 @@ describe('report citation invariants', () => {
       expect(report).toContain(
         'Corroboration only — archive.org references, not bound to the capture'
       )
-      expect(report).toContain(
-        'https://web.archive.org/web/20250101120000/https://example.com/p'
-      )
+      expect(report).toContain('https://web.archive.org/web/20250101120000/https://example.com/p')
       expect(report).toContain('2025-01-01T12:00:00Z')
       // The interval to the capture, stated in words rather than left signed.
       expect(report).toMatch(/\d+d( \d+h)? before capture/)
@@ -592,7 +590,9 @@ describe('report citation invariants', () => {
       const entries = await exportZip(FULL, 'wayback-lookalike')
       const report = entries.get('report.html')!.toString('utf-8')
 
-      expect(report).toContain('https://web.archive.org/web/20250101120000/https://example.com/screenshots/t.png')
+      expect(report).toContain(
+        'https://web.archive.org/web/20250101120000/https://example.com/screenshots/t.png'
+      )
       assertEveryCitationResolves('report.html', report, entries)
       // Anti-vacuity: the genuine packaged paths are still being detected.
       const cited = citedArtifacts(report)

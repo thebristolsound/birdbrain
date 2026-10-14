@@ -64,7 +64,9 @@ describe.skipIf(!HAS_JQ)('dispatch scrub.sh', () => {
 
   it('runs in dispatch.yml on every exit, before the artifact upload', () => {
     const lines = readFileSync(WORKFLOW, 'utf8').split('\n')
-    const scrubStep = lines.findIndex((line) => line.includes('run: bash .github/scripts/dispatch/scrub.sh'))
+    const scrubStep = lines.findIndex((line) =>
+      line.includes('run: bash .github/scripts/dispatch/scrub.sh')
+    )
     const upload = lines.findIndex((line) => line.includes('uses: actions/upload-artifact@'))
     expect(scrubStep).toBeGreaterThan(-1)
     expect(upload).toBeGreaterThan(scrubStep)

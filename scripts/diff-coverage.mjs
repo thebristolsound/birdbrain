@@ -153,7 +153,12 @@ const main = async () => {
   const coverage = JSON.parse(await readFile(coverageFinalPath, 'utf8'))
   const byRelPath = new Map()
   for (const [absPath, entry] of Object.entries(coverage)) {
-    byRelPath.set(relative(root, entry.path ?? absPath).split('\\').join('/'), entry)
+    byRelPath.set(
+      relative(root, entry.path ?? absPath)
+        .split('\\')
+        .join('/'),
+      entry
+    )
   }
 
   const mergeBase = resolveMergeBase(args.base)
@@ -210,7 +215,7 @@ const main = async () => {
         const mark = row.missed.length === 0 ? '✓' : '✗'
         console.log(`  ${mark} ${row.path}`)
         console.log(
-          `      ${(row.executable - row.missed.length)}/${row.executable} lines (${rowPct.toFixed(1)}%)` +
+          `      ${row.executable - row.missed.length}/${row.executable} lines (${rowPct.toFixed(1)}%)` +
             (row.missed.length ? `  uncovered: ${formatRanges(row.missed)}` : '')
         )
       }
@@ -220,7 +225,9 @@ const main = async () => {
 
     if (unscored.length > 0) {
       console.log('')
-      console.log(`  NOT SCORED — ${unscored.length} changed source file${unscored.length === 1 ? '' : 's'} vitest does not instrument:`)
+      console.log(
+        `  NOT SCORED — ${unscored.length} changed source file${unscored.length === 1 ? '' : 's'} vitest does not instrument:`
+      )
       for (const path of unscored) console.log(`      ${path}`)
       console.log('      These lines are not in the number above and cannot fail this gate.')
     }

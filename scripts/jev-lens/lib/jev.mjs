@@ -22,7 +22,8 @@ export function createClient({
 
   const ask = async (state, questions) => {
     const body = JSON.stringify({ state, model, questions })
-    const file = cacheDir && join(cacheDir, `${createHash('sha256').update(body).digest('hex')}.json`)
+    const file =
+      cacheDir && join(cacheDir, `${createHash('sha256').update(body).digest('hex')}.json`)
     if (file && existsSync(file)) {
       usage.cached++
       return JSON.parse(readFileSync(file, 'utf8'))
@@ -54,7 +55,11 @@ export function createClient({
   return { ask, usage }
 }
 
-export const noul = (instructions, criteria) => ({ type: 'noul', instructions, ...(criteria && { criteria }) })
+export const noul = (instructions, criteria) => ({
+  type: 'noul',
+  instructions,
+  ...(criteria && { criteria })
+})
 export const choice = (instructions, criteria) => ({ type: 'choice', instructions, criteria })
 export const score = (instructions, criteria) => ({ type: 'score', instructions, criteria })
 
@@ -72,4 +77,5 @@ export async function mapPool(items, n, fn) {
   return out
 }
 
-export const cap = (s, n) => (s && s.length > n ? `${s.slice(0, n)}\n…[truncated ${s.length - n} chars]` : s || '')
+export const cap = (s, n) =>
+  s && s.length > n ? `${s.slice(0, n)}\n…[truncated ${s.length - n} chars]` : s || ''

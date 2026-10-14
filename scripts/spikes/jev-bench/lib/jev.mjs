@@ -4,14 +4,16 @@ import { fileURLToPath } from 'node:url'
 import { createClient } from '../../../jev-lens/lib/jev.mjs'
 export { MODEL, cap, choice, mapPool, noul, score } from '../../../jev-lens/lib/jev.mjs'
 
-const client = createClient({ cacheDir: join(dirname(fileURLToPath(import.meta.url)), '..', '.cache') })
+const client = createClient({
+  cacheDir: join(dirname(fileURLToPath(import.meta.url)), '..', '.cache')
+})
 export const ask = client.ask
 export const usage = client.usage
 
 // Deterministic sample so reruns compare like with like.
 export function sample(arr, k, seed = 7) {
   let s = seed
-  const rnd = () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff)
+  const rnd = () => (s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff
   const copy = arr.slice()
   for (let i = copy.length - 1; i > 0; i--) {
     const j = Math.floor(rnd() * (i + 1))

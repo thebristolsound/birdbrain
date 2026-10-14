@@ -45,7 +45,9 @@ describe('parseIncludeList', () => {
 
   it('refuses a document without the sections or without rows', () => {
     expect(() => parseIncludeList('# nothing')).toThrow('include list section not found')
-    expect(() => parseIncludeList('\n## Include list\n\n## Notable exclusions\n')).toThrow('zero entries')
+    expect(() => parseIncludeList('\n## Include list\n\n## Notable exclusions\n')).toThrow(
+      'zero entries'
+    )
   })
 
   it('parses the real document', () => {
@@ -69,7 +71,9 @@ describe('globToRegExp', () => {
 describe('matchEntry', () => {
   const entries: Entry[] = parseIncludeList(doc)
   it('returns the entry a path falls under, blocking over advisory, longer glob over shorter', () => {
-    expect(matchEntry(entries, 'src/main/services/db/repos/x.ts')?.path).toBe('src/main/services/db/**')
+    expect(matchEntry(entries, 'src/main/services/db/repos/x.ts')?.path).toBe(
+      'src/main/services/db/**'
+    )
     expect(matchEntry(entries, 'src/main/services/settings.ts')?.tier).toBe('advisory')
     expect(matchEntry(entries, 'src/main/windowSize.ts')).toBeNull()
     const both: Entry[] = [

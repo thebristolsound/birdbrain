@@ -106,7 +106,6 @@ function validateUrl(raw: string): string | null {
   }
 }
 
-
 export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
   const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const queue: RecaptureJob[] = []

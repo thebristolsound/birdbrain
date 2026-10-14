@@ -13,6 +13,7 @@
   },
   "scripts": {
     "dev": "electron-vite dev",
+    "dev:seed": "node scripts/dev-seed.mjs",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "postinstall": "node scripts/ensure-electron.mjs && node scripts/rebuild-native.mjs",
@@ -42,7 +43,8 @@
     "lint:slop": "node scripts/slop-audit/cli.mjs",
     "audit:check": "node scripts/audit-check.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p extension/tsconfig.json && tsc --noEmit -p tsconfig.test.node.json && tsc --noEmit -p tsconfig.test.web.json && tsc --noEmit -p e2e/tsconfig.json",
-    "format": "prettier --write \"src/**/*.{ts,tsx}\" \"extension/**/*.{ts,tsx}\"",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\" \"tests/**/*.{ts,tsx}\" \"extension/**/*.{ts,tsx}\" \"e2e/**/*.{ts,tsx}\" \"scripts/**/*.{mjs,js,ts}\" \"*.{ts,mjs,js}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx}\" \"tests/**/*.{ts,tsx}\" \"extension/**/*.{ts,tsx}\" \"e2e/**/*.{ts,tsx}\" \"scripts/**/*.{mjs,js,ts}\" \"*.{ts,mjs,js}\"",
     "pretest:e2e": "pnpm build",
     "test:e2e": "npx playwright test",
     "test:e2e:debug": "npx playwright test --debug",

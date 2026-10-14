@@ -24,7 +24,8 @@ export const QUESTION = {
     },
     {
       true: 'A changed line alters capture content, hashing, manifest, signing, timestamping, verification, redaction, export or report output.',
-      false: 'The changed lines are cosmetic, UI wiring, comments, logging, tests, or a refactor that keeps evidence behaviour identical.'
+      false:
+        'The changed lines are cosmetic, UI wiring, comments, logging, tests, or a refactor that keeps evidence behaviour identical.'
     }
   )
 }
@@ -34,7 +35,10 @@ export const splitDiff = (text) =>
   (text || '')
     .split(/^diff --git /m)
     .slice(1)
-    .map((chunk) => ({ path: chunk.match(/^a\/(\S+) b\//)?.[1] || '?', text: `diff --git ${chunk}` }))
+    .map((chunk) => ({
+      path: chunk.match(/^a\/(\S+) b\//)?.[1] || '?',
+      text: `diff --git ${chunk}`
+    }))
 
 // Which files the lens asks about: blocking-tier hits, in diff order, up to the cap. Over the
 // cap the lens stops rather than samples, and says so.
@@ -43,16 +47,31 @@ export function planHits(diffText, entries, limits = LIMITS) {
   for (const file of splitDiff(diffText)) {
     const entry = matchEntry(entries, file.path)
     if (!entry || entry.tier !== 'blocking') continue
-    hits.push({ path: file.path, entry: entry.path, text: cap(file.text, limits.maxChars), truncated: file.text.length > limits.maxChars })
+    hits.push({
+      path: file.path,
+      entry: entry.path,
+      text: cap(file.text, limits.maxChars),
+      truncated: file.text.length > limits.maxChars
+    })
   }
-  return { hits: hits.slice(0, limits.maxHits), total: hits.length, over: hits.length > limits.maxHits }
+  return {
+    hits: hits.slice(0, limits.maxHits),
+    total: hits.length,
+    over: hits.length > limits.maxHits
+  }
 }
 
 export async function judge(hits, ask, limits = LIMITS) {
   return mapPool(hits, limits.concurrency, async (hit) => {
     const r = await ask({ path: hit.path, diff: hit.text }, QUESTION)
     const p = r.answers.touches_evidence.noul
-    return { path: hit.path, entry: hit.entry, truncated: hit.truncated, p, incidental: p < limits.threshold }
+    return {
+      path: hit.path,
+      entry: hit.entry,
+      truncated: hit.truncated,
+      p,
+      incidental: p < limits.threshold
+    }
   })
 }
 
@@ -79,11 +98,23 @@ export function describeStatus({ results, total, over }, limits = LIMITS) {
 }
 
 export function renderSummary({ results, total, over }, limits = LIMITS) {
-  const lines = [`## ${STATUS_CONTEXT}`, '', `Threshold ${limits.threshold}: under it a hit reads incidental. Shadow only; nothing here gates.`, '']
+  const lines = [
+    `## ${STATUS_CONTEXT}`,
+    '',
+    `Threshold ${limits.threshold}: under it a hit reads incidental. Shadow only; nothing here gates.`,
+    ''
+  ]
   if (!total) return [...lines, 'No blocking-tier file changed.', ''].join('\n')
-  if (over) lines.push(`${total} hits, ${results.length} judged (cap ${limits.maxHits}); the rest were not sent.`, '')
+  if (over)
+    lines.push(
+      `${total} hits, ${results.length} judged (cap ${limits.maxHits}); the rest were not sent.`,
+      ''
+    )
   lines.push('| File | Include-list entry | p(evidence) | Reads |', '| --- | --- | --- | --- |')
-  for (const r of results) lines.push(`| \`${r.path}\`${r.truncated ? ' (truncated)' : ''} | \`${r.entry}\` | ${r.p.toFixed(2)} | ${r.incidental ? 'incidental' : 'evidence'} |`)
+  for (const r of results)
+    lines.push(
+      `| \`${r.path}\`${r.truncated ? ' (truncated)' : ''} | \`${r.entry}\` | ${r.p.toFixed(2)} | ${r.incidental ? 'incidental' : 'evidence'} |`
+    )
   return [...lines, ''].join('\n')
 }
 
@@ -96,7 +127,8 @@ export async function run({ diffText, entries, ask, limits = LIMITS }) {
 // Env in: GITHUB_REPOSITORY, PR_NUMBER, HEAD_SHA, GH_TOKEN, TYPESAFE_API_KEY, GITHUB_STEP_SUMMARY.
 export async function main(deps = {}) {
   const env = deps.env || process.env
-  const exec = deps.exec || ((cmd, args) => execFileSync(cmd, args, { encoding: 'utf8', maxBuffer: 1 << 28 }))
+  const exec =
+    deps.exec || ((cmd, args) => execFileSync(cmd, args, { encoding: 'utf8', maxBuffer: 1 << 28 }))
   const log = deps.log || console.log
   if (!env.TYPESAFE_API_KEY) {
     log('TYPESAFE_API_KEY is not set; lens skipped')
@@ -108,7 +140,16 @@ export async function main(deps = {}) {
   const diffText = exec('gh', ['pr', 'diff', env.PR_NUMBER, '--repo', repo])
   const outcome = await run({ diffText, entries, ask })
   const description = describeStatus(outcome)
-  exec('gh', ['api', `repos/${repo}/statuses/${env.HEAD_SHA}`, '-f', 'state=success', '-f', `context=${STATUS_CONTEXT}`, '-f', `description=${description}`])
+  exec('gh', [
+    'api',
+    `repos/${repo}/statuses/${env.HEAD_SHA}`,
+    '-f',
+    'state=success',
+    '-f',
+    `context=${STATUS_CONTEXT}`,
+    '-f',
+    `description=${description}`
+  ])
   const summary = renderSummary(outcome)
   if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, summary)
   log(description)
@@ -116,5 +157,6 @@ export async function main(deps = {}) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  // prettier-ignore
   main().then((code) => process.exit(code), (e) => { console.error(e.message); process.exit(1) })
 }

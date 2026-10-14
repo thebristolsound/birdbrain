@@ -24,20 +24,14 @@ describe('markLayout', () => {
   })
 
   it('sits the tooltip below a target with room under it', () => {
-    const { tooltip, arrow } = markLayout(
-      { top: 100, left: 200, width: 120, height: 40 },
-      VIEWPORT
-    )
+    const { tooltip, arrow } = markLayout({ top: 100, left: 200, width: 120, height: 40 }, VIEWPORT)
     expect(tooltip.top).toBe(150)
     expect(tooltip.flipped).toBe(false)
     expect(arrow.below).toBe(true)
   })
 
   it('flips above a target too close to the bottom edge', () => {
-    const { tooltip, arrow } = markLayout(
-      { top: 600, left: 200, width: 120, height: 40 },
-      VIEWPORT
-    )
+    const { tooltip, arrow } = markLayout({ top: 600, left: 200, width: 120, height: 40 }, VIEWPORT)
     expect(tooltip.top).toBe(590)
     expect(tooltip.flipped).toBe(true)
     expect(arrow.below).toBe(false)

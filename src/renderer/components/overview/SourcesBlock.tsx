@@ -18,14 +18,18 @@ export function SourcesBlock({ sources }: SourcesBlockProps) {
       {sources.map((s) => (
         <div key={s.host} className="flex items-center gap-2.5">
           <span className="h-[7px] w-[7px] shrink-0 rounded-full" style={{ background: s.tone }} />
-          <span className="w-36 shrink-0 truncate font-mono text-xs text-text-secondary">{s.host}</span>
+          <span className="w-36 shrink-0 truncate font-mono text-xs text-text-secondary">
+            {s.host}
+          </span>
           <div className="h-1.5 flex-1 overflow-hidden rounded-sm bg-elevated">
             <div
               className="h-full rounded-sm"
               style={{ width: `${(s.count / max) * 100}%`, background: s.tone, opacity: 0.75 }}
             />
           </div>
-          <span className="w-5 shrink-0 text-right font-mono text-xs text-text-muted">{s.count}</span>
+          <span className="w-5 shrink-0 text-right font-mono text-xs text-text-muted">
+            {s.count}
+          </span>
         </div>
       ))}
     </div>

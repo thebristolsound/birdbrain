@@ -45,22 +45,54 @@ export function createLocalTsa(): LocalTsa {
   }
 
   openssl([
-    'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
-    '-keyout', path('root.key'), '-out', path('root.pem'), '-days', '3650',
-    '-subj', '/CN=Birdbrain Test TSA Root/O=Birdbrain Test',
-    '-addext', 'basicConstraints=critical,CA:TRUE',
-    '-addext', 'keyUsage=critical,keyCertSign,cRLSign'
+    'req',
+    '-x509',
+    '-newkey',
+    'rsa:2048',
+    '-nodes',
+    '-keyout',
+    path('root.key'),
+    '-out',
+    path('root.pem'),
+    '-days',
+    '3650',
+    '-subj',
+    '/CN=Birdbrain Test TSA Root/O=Birdbrain Test',
+    '-addext',
+    'basicConstraints=critical,CA:TRUE',
+    '-addext',
+    'keyUsage=critical,keyCertSign,cRLSign'
   ])
   openssl([
-    'req', '-new', '-newkey', 'rsa:2048', '-nodes',
-    '-keyout', path('tsa.key'), '-out', path('tsa.csr'),
-    '-subj', '/CN=Birdbrain Test Timestamp Responder/O=Birdbrain Test'
+    'req',
+    '-new',
+    '-newkey',
+    'rsa:2048',
+    '-nodes',
+    '-keyout',
+    path('tsa.key'),
+    '-out',
+    path('tsa.csr'),
+    '-subj',
+    '/CN=Birdbrain Test Timestamp Responder/O=Birdbrain Test'
   ])
   writeFileSync(path('leaf.ext'), `${LEAF_EXT}\n`)
   openssl([
-    'x509', '-req', '-in', path('tsa.csr'),
-    '-CA', path('root.pem'), '-CAkey', path('root.key'), '-CAcreateserial',
-    '-out', path('tsa.pem'), '-days', '3650', '-extfile', path('leaf.ext')
+    'x509',
+    '-req',
+    '-in',
+    path('tsa.csr'),
+    '-CA',
+    path('root.pem'),
+    '-CAkey',
+    path('root.key'),
+    '-CAcreateserial',
+    '-out',
+    path('tsa.pem'),
+    '-days',
+    '3650',
+    '-extfile',
+    path('leaf.ext')
   ])
 
   // Responder + root go into the token's embedded certificate set, mirroring
@@ -100,8 +132,16 @@ export function createLocalTsa(): LocalTsa {
     issueToken(imprintHex: string): Buffer {
       openssl(['ts', '-query', '-digest', imprintHex, '-sha256', '-cert', '-out', path('req.tsq')])
       openssl([
-        'ts', '-reply', '-config', path('tsa.cnf'), '-section', 'tsa_config',
-        '-queryfile', path('req.tsq'), '-out', path('resp.tsr')
+        'ts',
+        '-reply',
+        '-config',
+        path('tsa.cnf'),
+        '-section',
+        'tsa_config',
+        '-queryfile',
+        path('req.tsq'),
+        '-out',
+        path('resp.tsr')
       ])
       openssl(['ts', '-reply', '-in', path('resp.tsr'), '-token_out', '-out', path('token.der')])
       return readFileSync(path('token.der'))

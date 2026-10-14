@@ -569,6 +569,7 @@ export const LOG_SOURCES = [
   'selectorLifecycle',
   'consentBlocker',
   'timestampWorker',
+  'trustedTime',
   'db',
   'signingKey',
   'demoCase',
@@ -643,6 +644,11 @@ export const LOG_CODES = [
   'settings.schema_invalid',
   'thumbnails.generate_failed',
   'timestampWorker.stamp_failed',
+  // Reading or walking a Shared Case's other member or lineage chains threw
+  // (#1713 review). That Case's trusted time then resolves from the local
+  // chain alone, and the launch's mirror rebuild carries on over the other
+  // Cases. Logged once per Case until a walk of it succeeds again.
+  'trustedTime.shared_case_walk_failed',
   // A <webview> was refused at attach because its partition or its src fell
   // outside the policy (#401). Both guests the app mounts are inside it, so this
   // entry means a bug or an attempt, and either is worth having in the log.

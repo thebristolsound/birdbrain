@@ -140,6 +140,7 @@ describe('scaffold', () => {
     expect(result.migrationsSource).toContain('if (version < 34) {')
     expect(result.migrationsSource).toContain("throw new Error('Migration 34 is not implemented')")
     expect(result.migrationsSource).toContain('TODO(exhibit-tables)')
+    expect(result.migrationsSource).toContain('CREATE ... IF NOT EXISTS')
   })
 
   it('leaves the earlier blocks untouched and closes runMigrations after the new one', () => {

@@ -6,7 +6,9 @@
 // Vale apply, and how to run each correctly. This reads the working tree
 // (staged, unstaged and untracked) against the merge base and maps it:
 //
-//   changed code files       eslint on those files; Vitest `related` on them
+//   changed code files       eslint on those files; Vitest `related` on them;
+//   or .prettierrc           pnpm format:check, the whole tree (about ten seconds, and
+//                            its globs live only in that script)
 //   eslint.config.js         pnpm lint, the whole repository
 //   any TS file, tsconfig,   every project in the `typecheck` script, in parallel
 //   package.json or lockfile (all six together take about as long as the slowest,
@@ -24,7 +26,8 @@
 // from disk.
 //
 // Build, the extension build, coverage thresholds and diff coverage are left to
-// preflight; the summary says so rather than implying a full verify.
+// preflight; the summary says so rather than implying a full verify. The run ends
+// with a warning when the lockfile changed after node_modules was installed.
 //
 // Usage: node scripts/check.mjs [--base <ref>] [--dry-run]
 
@@ -42,11 +45,22 @@ import {
 
 export const DEFAULT_OUT = join('.preflight', 'check.md')
 
+// pnpm keeps a copy of the lockfile it installed at node_modules/.pnpm/lock.yaml. When the
+// two differ, main moved a dependency after this tree's last install, and tests fail on a
+// missing package with nothing pointing at the cause.
+export const staleInstallProblem = (lockfile, installed) => {
+  if (lockfile === null || installed === null || lockfile.equals(installed)) return null
+  return 'pnpm-lock.yaml changed since the last install; run pnpm install --frozen-lockfile'
+}
+
+const readIfPresent = (path) => (existsSync(path) ? readFileSync(path) : null)
+
 const CODE_FILE = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/
 const TS_FILE = /\.(ts|tsx|mts|cts)$/
 const PROSE_FILE = /\.(md|mdx)$/
 const TSCONFIG = /(^|\/)tsconfig[^/]*\.json$/
 const LINT_CONFIG = /^eslint\.config\.[cm]?[jt]s$/
+const FORMAT_CONFIG = ['.prettierrc', 'package.json']
 const DEPENDENCY_METADATA = ['package.json', 'pnpm-lock.yaml']
 // tsconfig.boundaries.json is dependency-cruiser's alias map, and it extends tsconfig.json.
 const BOUNDARY_CONFIG = ['.dependency-cruiser.cjs', 'tsconfig.boundaries.json', 'tsconfig.json']
@@ -122,6 +136,10 @@ export const planChecks = (changes, { mergeBase, projects }) => {
       command: 'node',
       args: [ESLINT, '--no-warn-ignored', ...code]
     })
+  }
+
+  if (code.length > 0 || all.some((path) => FORMAT_CONFIG.includes(path))) {
+    checks.push({ name: 'format', scope: 'whole tree', command: 'pnpm', args: ['format:check'] })
   }
 
   if (
@@ -360,6 +378,11 @@ const main = async () => {
   })
   for (const section of sections) console.log(`\n${section}`)
   console.log(`\n${summary}`)
+  const staleInstall = staleInstallProblem(
+    readIfPresent(join(cwd, 'pnpm-lock.yaml')),
+    readIfPresent(join(cwd, 'node_modules', '.pnpm', 'lock.yaml'))
+  )
+  if (staleInstall) console.log(`check: WARNING, ${staleInstall}`)
 
   mkdirSync(dirname(outPath), { recursive: true })
   writeFileSync(outPath, [summary, ...sections].join('\n'))

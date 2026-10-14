@@ -45,10 +45,7 @@ describe('buildCsv', () => {
   })
 
   it('escapes fields with special characters in both header and rows', () => {
-    const csv = buildCsv(
-      ['comma,col', 'quote"col'],
-      [['a,b', 'he said "hi"']]
-    )
+    const csv = buildCsv(['comma,col', 'quote"col'], [['a,b', 'he said "hi"']])
     expect(csv).toBe('"comma,col","quote""col"\r\n"a,b","he said ""hi"""\r\n')
   })
 

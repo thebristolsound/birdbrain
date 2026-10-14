@@ -19,7 +19,14 @@ beforeEach(() => {
 })
 
 function entry(level: string) {
-  return { id: 'a1', sessionId: 's1', timestamp: '', level, source: 'captureServer', code: 'capture.failed' }
+  return {
+    id: 'a1',
+    sessionId: 's1',
+    timestamp: '',
+    level,
+    source: 'captureServer',
+    code: 'capture.failed'
+  }
 }
 
 describe('mainLogBridge', () => {

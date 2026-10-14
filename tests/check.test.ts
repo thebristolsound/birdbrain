@@ -9,6 +9,7 @@ import {
   formatSummary,
   parseChanges,
   planChecks,
+  staleInstallProblem,
   systemSharpAddon,
   testEnv,
   typecheckProjects
@@ -83,6 +84,7 @@ describe('planChecks', () => {
     const checks = plan(changed('src/main/services/a.ts', 'tests/main/a.test.ts'))
     expect(names(checks)).toEqual([
       'lint',
+      'format',
       'typecheck tsconfig.node.json',
       'typecheck tsconfig.web.json',
       'test',
@@ -107,7 +109,13 @@ describe('planChecks', () => {
   })
 
   it('lints and tests a script without typechecking or the boundary check', () => {
-    expect(names(plan(changed('scripts/preflight.mjs')))).toEqual(['lint', 'test'])
+    expect(names(plan(changed('scripts/preflight.mjs')))).toEqual(['lint', 'format', 'test'])
+  })
+
+  it('checks formatting over the whole tree when the Prettier config changes', () => {
+    const format = find(plan(changed('.prettierrc')), 'format')
+    expect(format?.command).toBe('pnpm')
+    expect(format?.args).toEqual(['format:check'])
   })
 
   it('typechecks a tsconfig change without linting or testing', () => {
@@ -137,7 +145,7 @@ describe('planChecks', () => {
     const risky = ['src/a&whoami.ts', 'tests/b c.test.ts']
     const checks = plan(changed(...risky, 'CLAUDE.md', 'docs/adr/0099-x.md'))
     const pnpmChecks = checks.filter((check) => check.command === 'pnpm')
-    expect(names(pnpmChecks)).toEqual(['boundaries', 'adr numbers', 'agents-md'])
+    expect(names(pnpmChecks)).toEqual(['format', 'boundaries', 'adr numbers', 'agents-md'])
     // Windows runs pnpm through a shell, so its arguments must be the fixed script name alone.
     for (const check of pnpmChecks) expect(check.args).toHaveLength(1)
     expect(find(checks, 'lint')?.command).toBe('node')
@@ -380,6 +388,7 @@ if (failing.some((name) => args.includes(name))) {
     expect(calls).toEqual([
       'electron ./node_modules/vitest/vitest.mjs related --run --passWithNoTests src/a.ts',
       'eslint --no-warn-ignored src/a.ts',
+      'pnpm format:check',
       'pnpm lint:boundaries',
       'tsc --noEmit -p tsconfig.node.json'
     ])
@@ -418,5 +427,24 @@ if (failing.some((name) => args.includes(name))) {
     const result = run(['--fast'])
     expect(result.status).toBe(1)
     expect(result.stderr).toContain('Unknown argument "--fast"')
+  })
+})
+
+describe('staleInstallProblem', () => {
+  const lock = Buffer.from('lockfileVersion: 9.0\n')
+
+  it('says nothing when the installed copy matches the lockfile', () => {
+    expect(staleInstallProblem(lock, Buffer.from(lock))).toBeNull()
+  })
+
+  it('names the install when the lockfile moved after it', () => {
+    expect(staleInstallProblem(lock, Buffer.from('lockfileVersion: 6.0\n'))).toContain(
+      'pnpm install --frozen-lockfile'
+    )
+  })
+
+  it('leaves a missing file to the checks that need it', () => {
+    expect(staleInstallProblem(lock, null)).toBeNull()
+    expect(staleInstallProblem(null, lock)).toBeNull()
   })
 })

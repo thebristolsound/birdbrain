@@ -110,10 +110,7 @@ export function CaseOverview() {
     [captures, selectors, notes, lastVisitAt]
   )
 
-  const mapNotes = useMemo(
-    () => notes.map(({ id, title }) => ({ id, title })),
-    [notes]
-  )
+  const mapNotes = useMemo(() => notes.map(({ id, title }) => ({ id, title })), [notes])
 
   // Mention targets carry no label in the index — a Mention is identity, so the
   // display name is whatever the target is called now. Resolved here against

@@ -107,9 +107,7 @@ describe('OverviewTagsBlock', () => {
   ]
 
   it('ranks the tags this case actually uses and drops the ones it does not', () => {
-    render(
-      <OverviewTagsBlock tags={tags} usageCounts={{ t1: 2, t2: 5 }} onManage={vi.fn()} />
-    )
+    render(<OverviewTagsBlock tags={tags} usageCounts={{ t1: 2, t2: 5 }} onManage={vi.fn()} />)
     const chips = screen.getAllByTestId('overview-tag-chip').map((c) => c.textContent)
 
     expect(chips).toEqual(['lead5', 'evidence2'])
@@ -167,9 +165,7 @@ describe('OverviewSelectorsBlock', () => {
   it('reports the switch state and asks for the opposite one on click', () => {
     const onToggle = vi.fn()
     const off = selector({ id: 's2', enabled: false })
-    render(
-      <OverviewSelectorsBlock selectors={[off]} matchCounts={{}} onToggle={onToggle} />
-    )
+    render(<OverviewSelectorsBlock selectors={[off]} matchCounts={{}} onToggle={onToggle} />)
     const sw = screen.getByRole('switch')
 
     expect(sw.getAttribute('aria-checked')).toBe('false')

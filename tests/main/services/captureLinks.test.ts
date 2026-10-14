@@ -265,7 +265,10 @@ describe('linksFromMhtml', () => {
         mhtml(
           [
             { location: CAPTURE_URL, html: page('<a href="/a">a</a>') },
-            { location: frame, html: page('<a href="/b">b</a><a href="/c">c</a><a href="/b">b</a>') },
+            {
+              location: frame,
+              html: page('<a href="/b">b</a><a href="/c">c</a><a href="/b">b</a>')
+            },
             { location: frame, html: page('<a href="/b">b</a>') }
           ],
           CAPTURE_URL

@@ -15,11 +15,7 @@ const NOTES = [
   { id: 'n2', title: 'Second note' }
 ]
 
-const EDGES = [
-  edge('n1', 'capture', 'cap1'),
-  edge('n1', 'note', 'n2'),
-  edge('n2', 'tag', 'tag1')
-]
+const EDGES = [edge('n1', 'capture', 'cap1'), edge('n1', 'note', 'n2'), edge('n2', 'tag', 'tag1')]
 
 const LABELS = {
   capture: { cap1: 'Acme homepage' },

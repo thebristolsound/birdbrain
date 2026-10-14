@@ -983,15 +983,17 @@ describe('database', () => {
     // Newest first, matching listCaptures, so "the N most recent" means the
     // same thing to the query and to the strip that draws it.
     function seedCaptures(caseId: string, count: number): string[] {
-      return Array.from({ length: count }, (_, i) =>
-        insertCapture({
-          caseId,
-          url: `https://example.com/${i}`,
-          title: `Page ${i}`,
-          hash: `h${i}`,
-          // Ascending timestamps, so index 0 is the OLDEST.
-          timestamp: `2026-01-${String(i + 1).padStart(2, '0')}T00:00:00.000Z`
-        }).id
+      return Array.from(
+        { length: count },
+        (_, i) =>
+          insertCapture({
+            caseId,
+            url: `https://example.com/${i}`,
+            title: `Page ${i}`,
+            hash: `h${i}`,
+            // Ascending timestamps, so index 0 is the OLDEST.
+            timestamp: `2026-01-${String(i + 1).padStart(2, '0')}T00:00:00.000Z`
+          }).id
       )
     }
 
@@ -1664,7 +1666,9 @@ describe('database', () => {
     })
 
     it('returns undefined for a case that does not exist', () => {
-      expect(setAutoCapturePolicy('no-such-case', { exclusions: [], mode: 'stack' })).toBeUndefined()
+      expect(
+        setAutoCapturePolicy('no-such-case', { exclusions: [], mode: 'stack' })
+      ).toBeUndefined()
       expect(getAutoCapturePolicy('no-such-case')).toEqual({ exclusions: [], mode: 'stack' })
     })
 

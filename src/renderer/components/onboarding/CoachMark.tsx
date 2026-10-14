@@ -2,7 +2,11 @@ import { motion } from 'motion/react'
 import { ChevronDown } from 'lucide-react'
 import { presets } from '@renderer/lib/motion'
 import { INSTALL_STEPS } from '@renderer/components/extension/installSteps'
-import { markCountLabel, markNumber, type TourStep } from '@renderer/components/onboarding/tourSteps'
+import {
+  markCountLabel,
+  markNumber,
+  type TourStep
+} from '@renderer/components/onboarding/tourSteps'
 import {
   markLayout,
   TOOLTIP_WIDTH,

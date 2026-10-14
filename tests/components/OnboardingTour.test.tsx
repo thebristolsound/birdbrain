@@ -53,8 +53,13 @@ function anchor(name: string, rect: Partial<DOMRect> = {}) {
   el.setAttribute('data-testid', `anchor-${name}`)
   const box = { top: 100, left: 200, width: 120, height: 40, ...rect }
   el.getBoundingClientRect = () =>
-    ({ ...box, right: box.left + box.width, bottom: box.top + box.height, x: box.left, y: box.top })
-      .valueOf() as DOMRect
+    ({
+      ...box,
+      right: box.left + box.width,
+      bottom: box.top + box.height,
+      x: box.left,
+      y: box.top
+    }).valueOf() as DOMRect
   document.body.appendChild(el)
   return el
 }
@@ -251,9 +256,7 @@ describe('replay', () => {
   })
 
   it('replays the intro even once every chapter is complete', async () => {
-    install(
-      settingsFixture({ onboardingChapters: { intro: true, ext: true, case: true } })
-    )
+    install(settingsFixture({ onboardingChapters: { intro: true, ext: true, case: true } }))
     renderTour()
     act(() => startTour('intro'))
     expect(await screen.findByTestId('tour-welcome')).toBeTruthy()
@@ -334,7 +337,9 @@ describe('one chapter displacing another', () => {
 
     act(() => startTour('ext'))
 
-    await waitFor(() => expect(updated).toEqual([{ onboardingChapters: { intro: true, case: true } }]))
+    await waitFor(() =>
+      expect(updated).toEqual([{ onboardingChapters: { intro: true, case: true } }])
+    )
   })
 
   it('writes nothing when the displaced chapter was itself a replay', async () => {
@@ -468,8 +473,16 @@ describe('an anchor below the fold', () => {
     const target = anchor('newcase', { top: 1400 })
     const scrollIntoView = vi.fn(() => {
       target.getBoundingClientRect = () =>
-        ({ top: 380, left: 200, width: 120, height: 40, right: 320, bottom: 420, x: 200, y: 380 })
-          .valueOf() as DOMRect
+        ({
+          top: 380,
+          left: 200,
+          width: 120,
+          height: 40,
+          right: 320,
+          bottom: 420,
+          x: 200,
+          y: 380
+        }).valueOf() as DOMRect
     })
     target.scrollIntoView = scrollIntoView
 
@@ -511,8 +524,16 @@ describe('measurement', () => {
     expect(screen.getByTestId('tour-ring').style.top).toBe('96px')
 
     target.getBoundingClientRect = () =>
-      ({ top: 40, left: 200, width: 120, height: 40, right: 320, bottom: 80, x: 200, y: 40 })
-        .valueOf() as DOMRect
+      ({
+        top: 40,
+        left: 200,
+        width: 120,
+        height: 40,
+        right: 320,
+        bottom: 80,
+        x: 200,
+        y: 40
+      }).valueOf() as DOMRect
     await act(async () => {
       window.dispatchEvent(new Event('scroll'))
     })
@@ -619,7 +640,10 @@ describe('the seeded demo case', () => {
   })
 
   it('offers the delete ending only on a demo case', async () => {
-    installWithCases([demoCase], settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } }))
+    installWithCases(
+      [demoCase],
+      settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } })
+    )
     anchorWholeChapter()
     const { rerender } = renderTour()
     await reachFinalStep(() => rerender(<OnboardingTour />))
@@ -629,7 +653,10 @@ describe('the seeded demo case', () => {
   })
 
   it('withholds the delete ending on a case the operator made', async () => {
-    installWithCases([ownCase], settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } }))
+    installWithCases(
+      [ownCase],
+      settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } })
+    )
     anchorWholeChapter()
     const { rerender } = renderTour()
     await reachFinalStep(() => rerender(<OnboardingTour />))
@@ -641,7 +668,10 @@ describe('the seeded demo case', () => {
   })
 
   it('deletes the demo case, leaves the case, and closes the tour', async () => {
-    installWithCases([demoCase], settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } }))
+    installWithCases(
+      [demoCase],
+      settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } })
+    )
     anchorWholeChapter()
     const { rerender } = renderTour()
     await reachFinalStep(() => rerender(<OnboardingTour />))
@@ -663,7 +693,10 @@ describe('the seeded demo case', () => {
   })
 
   it('refreshes the tag caches the demo delete empties', async () => {
-    installWithCases([demoCase], settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } }))
+    installWithCases(
+      [demoCase],
+      settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } })
+    )
     anchorWholeChapter()
     const { rerender, client } = renderTour()
     const invalidate = vi.spyOn(client, 'invalidateQueries')
@@ -680,7 +713,10 @@ describe('the seeded demo case', () => {
   })
 
   it('does not leave the case when main refuses the delete', async () => {
-    installWithCases([demoCase], settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } }))
+    installWithCases(
+      [demoCase],
+      settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } })
+    )
     // main answers a refusal with `false` rather than an error, so nothing
     // downstream would notice it without the mutation raising it.
     deleteDemo.mockResolvedValue(false)
@@ -703,7 +739,10 @@ describe('the seeded demo case', () => {
   })
 
   it('leaves the demo case alone when the operator keeps exploring', async () => {
-    installWithCases([demoCase], settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } }))
+    installWithCases(
+      [demoCase],
+      settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } })
+    )
     anchorWholeChapter()
     const { rerender } = renderTour()
     await reachFinalStep(() => rerender(<OnboardingTour />))
@@ -719,7 +758,10 @@ describe('the seeded demo case', () => {
   })
 
   it('selects a capture so the viewer-tabs step has something to ring', async () => {
-    installWithCases([demoCase], settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } }))
+    installWithCases(
+      [demoCase],
+      settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } })
+    )
     anchorWholeChapter()
     const { rerender } = renderTour()
     await screen.findByTestId('tour-screen')
@@ -730,7 +772,10 @@ describe('the seeded demo case', () => {
   })
 
   it('does not clobber a capture the operator already had open', async () => {
-    installWithCases([demoCase], settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } }))
+    installWithCases(
+      [demoCase],
+      settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } })
+    )
     useAppStore.getState().setSelectedCaptureId('capture-2')
     anchorWholeChapter()
     const { rerender } = renderTour()
@@ -742,7 +787,10 @@ describe('the seeded demo case', () => {
   })
 
   it('asks the Notes screen to open its composer for the note-editor step', async () => {
-    installWithCases([demoCase], settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } }))
+    installWithCases(
+      [demoCase],
+      settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } })
+    )
     const opened = vi.fn()
     window.addEventListener(NOTE_COMPOSER_EVENT, opened)
     anchorWholeChapter()

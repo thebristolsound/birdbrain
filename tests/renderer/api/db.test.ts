@@ -2,7 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { QueryClient } from '@tanstack/react-query'
 import type { DbTableRowsResult } from '@shared/ipc'
 import { fakeBridge } from '../fakeBridge'
-import { dbStatsQueryOptions, dbTableRowsQueryOptions, dbAdminMutationOptions } from '@renderer/lib/api/db'
+import {
+  dbStatsQueryOptions,
+  dbTableRowsQueryOptions,
+  dbAdminMutationOptions
+} from '@renderer/lib/api/db'
 import { queryKeys } from '@renderer/lib/api/keys'
 
 function installDbBridge() {
@@ -72,11 +76,9 @@ describe('dbStatsQueryOptions / dbTableRowsQueryOptions', () => {
     // past the contract.
     const qc = new QueryClient()
     const previousQuery = (table: string) =>
-      qc
-        .getQueryCache()
-        .build<DbTableRowsResult, Error, DbTableRowsResult, DbTableRowsKey>(qc, {
-          queryKey: queryKeys.dbTableRows(table, 0, 50)
-        })
+      qc.getQueryCache().build<DbTableRowsResult, Error, DbTableRowsResult, DbTableRowsKey>(qc, {
+        queryKey: queryKeys.dbTableRows(table, 0, 50)
+      })
 
     expect(placeholderData(previous, previousQuery('cases'))).toEqual(previous)
     expect(placeholderData(previous, previousQuery('notes'))).toBeUndefined()

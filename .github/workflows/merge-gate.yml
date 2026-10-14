@@ -11,7 +11,8 @@ name: Merge gate
 #
 # A commit status (the agent/pre-pass verdict) triggers no PR event, so a verdict posted after
 # the last run leaves this check stale. The `merge` label, the next push, or a re-run of the
-# last attempt (merge.sh does this) runs it again.
+# last attempt runs it again. Each event leaves its own result on the head, so the `merge`
+# label's request job (merge-on-label.yml) and merge.sh both re-run every red one.
 #
 # The job definition, unlike the rule script, comes from the PR's branch, as for every
 # pull_request workflow, so a same-repository branch could replace it. The trusted controls are

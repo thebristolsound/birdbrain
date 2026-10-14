@@ -24,7 +24,8 @@ console.log(`Rebuilding better-sqlite3 for Electron ${electronVersion} at ${sqli
 const nodeGypBin = require.resolve('node-gyp/bin/node-gyp.js')
 
 const args = [
-  nodeGypBin, 'rebuild',
+  nodeGypBin,
+  'rebuild',
   `--runtime=electron`,
   `--target=${electronVersion}`,
   '--dist-url=https://electronjs.org/headers'

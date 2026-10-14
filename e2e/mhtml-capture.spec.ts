@@ -1,6 +1,7 @@
 import { test, expect } from './fixtures/electronApp'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
+import { postCapture, serverToken } from './fixtures/seed'
 
 // Smoke test that the MHTML capture + manifest path works end-to-end via the
 // Hono server (bypasses the extension — the extension is tested separately).
@@ -23,37 +24,12 @@ test.describe('MHTML forensic capture', () => {
     expect(caseIdMatch).toBeTruthy()
     const caseId = caseIdMatch![1]
 
-    // Fetch the server auth token (required for POST endpoints)
-    const serverToken = await page.evaluate(async () => {
-      const r = await fetch('http://127.0.0.1:19845/api/status')
-      const data = await r.json()
-      return data.serverToken ?? ''
-    })
-
     // POST an MHTML capture to the Hono server
-    const mhtmlContent = '<html><body>E2E MHTML test</body></html>'
-    const uploadResult = await page.evaluate(
-      async ({ caseId, content, token }) => {
-        const form = new FormData()
-        form.append('source', 'manual')
-        form.append('caseId', caseId)
-        form.append('url', 'https://example.com/e2e-mhtml')
-        form.append('title', 'E2E MHTML Page')
-        form.append('timestamp', new Date().toISOString())
-        form.append('textContent', 'E2E MHTML test')
-        form.append('extensionVersion', '0.1.0')
-        form.append('browserVersion', 'Chrome/120')
-        form.append('userAgent', 'Mozilla/5.0')
-        form.append('mhtml', new Blob([content], { type: 'multipart/related' }), 'capture.mhtml')
-        const r = await fetch('http://127.0.0.1:19845/api/captures', {
-          method: 'POST',
-          body: form,
-          headers: { 'X-Birdbrain-Token': token }
-        })
-        return r.json()
-      },
-      { caseId, content: mhtmlContent, token: serverToken }
-    )
+    const uploadResult = await postCapture(page, caseId, await serverToken(page), {
+      slug: 'e2e-mhtml',
+      title: 'E2E MHTML Page',
+      text: 'E2E MHTML test'
+    })
 
     expect(uploadResult.status).toBe('ok')
     expect(uploadResult.captureId).toBeDefined()

@@ -80,7 +80,8 @@ function findArtifact(pattern) {
   if (!existsSync(dist)) fail(`no ${dist}; run pnpm package:<os> first`)
   const names = readdirSync(dist)
   const hit = names.find((n) => pattern.test(n))
-  if (!hit) fail(`no artifact matching ${pattern} in dist/ (found: ${names.join(', ') || 'nothing'})`)
+  if (!hit)
+    fail(`no artifact matching ${pattern} in dist/ (found: ${names.join(', ') || 'nothing'})`)
   return join(dist, hit)
 }
 
@@ -199,7 +200,17 @@ async function launchOnce(command, args, userData, label, appTmp) {
         .map((n) => join(appTmp, n))
     : []
   await stop(child)
-  return { label, status, output, exited, elapsed, dbExists, extensionCopied, stampExists, extractedIn }
+  return {
+    label,
+    status,
+    output,
+    exited,
+    elapsed,
+    dbExists,
+    extensionCopied,
+    stampExists,
+    extractedIn
+  }
 }
 
 function assertLaunchPassed(run, userData) {
@@ -208,7 +219,9 @@ function assertLaunchPassed(run, userData) {
   console.error(`--- app output (${label} launch, tail) ---`)
   console.error(output.join('').split('\n').slice(-40).join('\n'))
   if (exited) {
-    fail(`${label} launch: app exited early (code ${exited.code}, signal ${exited.signal}) after ${elapsed}ms`)
+    fail(
+      `${label} launch: app exited early (code ${exited.code}, signal ${exited.signal}) after ${elapsed}ms`
+    )
   }
   if (!status) fail(`${label} launch: no answer from ${STATUS_URL} within ${BUDGET_MS}ms`)
   if (!dbExists) {
@@ -240,7 +253,8 @@ function assertRanFromDifferentDirectories(first, second) {
   const [firstDir] = first.extractedIn
   const [secondDir] = second.extractedIn
   if (firstDir === secondDir) fail(`both launches ran from ${firstDir}; the paths did not change`)
-  if (existsSync(firstDir)) fail(`${firstDir} still exists; the first launch's directory was not removed`)
+  if (existsSync(firstDir))
+    fail(`${firstDir} still exists; the first launch's directory was not removed`)
   console.log(`package-smoke: ran from ${firstDir}, then ${secondDir}`)
 }
 
@@ -285,4 +299,4 @@ async function main() {
   process.exit(0)
 }
 
-main().catch((err) => fail(err instanceof Error ? err.stack ?? err.message : String(err)))
+main().catch((err) => fail(err instanceof Error ? (err.stack ?? err.message) : String(err)))

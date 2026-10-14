@@ -254,7 +254,9 @@ function applyCap(nodes: WorkNode[], edges: WorkEdge[]): { nodes: WorkNode[]; ed
   const noteCount = nodes.filter((n) => n.isNote).length
   const ranked = nodes
     .filter((n) => !n.isNote)
-    .sort((a, b) => (degree.get(b.key) ?? 0) - (degree.get(a.key) ?? 0) || a.key.localeCompare(b.key))
+    .sort(
+      (a, b) => (degree.get(b.key) ?? 0) - (degree.get(a.key) ?? 0) || a.key.localeCompare(b.key)
+    )
   const dropped = new Set(ranked.slice(Math.max(0, NODE_CAP - noteCount)).map((n) => n.key))
   return {
     nodes: nodes.filter((n) => !dropped.has(n.key)),

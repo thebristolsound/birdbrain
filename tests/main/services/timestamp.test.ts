@@ -186,7 +186,17 @@ describe('openssl ts -verify over committed DigiCert fixtures', () => {
       try {
         combined = execFileSync(
           'openssl',
-          ['ts', '-verify', '-token_in', '-in', tamperedPath, '-queryfile', queryfile, '-CAfile', caFile],
+          [
+            'ts',
+            '-verify',
+            '-token_in',
+            '-in',
+            tamperedPath,
+            '-queryfile',
+            queryfile,
+            '-CAfile',
+            caFile
+          ],
           { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] }
         )
       } catch (err) {

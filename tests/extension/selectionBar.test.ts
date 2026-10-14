@@ -395,7 +395,7 @@ describe('capture suppression round trip (#386)', () => {
   })
 })
 
-describe('the bar is the page\'s guest, not its owner', () => {
+describe("the bar is the page's guest, not its owner", () => {
   it('never adopts or removes a page-owned element carrying the bar id', async () => {
     // An id is not ownership. Adopting the node would break the bar (no shadow
     // root to render into) and the strip that runs before every MHTML and

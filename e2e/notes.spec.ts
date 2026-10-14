@@ -294,13 +294,10 @@ test('two-pane workspace keeps one editor and saves a formatted image note', asy
   await page.getByTestId('note-body-input').blur()
   await expect
     .poll(async () =>
-      page.evaluate(
-        async ({ caseId, activeId }) => {
-          const bb = (window as unknown as { birdbrain: BirdbrainAPI }).birdbrain
-          return (await bb.notes.list(caseId)).find((n) => n.id === activeId)?.bodyDoc
-        },
-        ids
-      )
+      page.evaluate(async ({ caseId, activeId }) => {
+        const bb = (window as unknown as { birdbrain: BirdbrainAPI }).birdbrain
+        return (await bb.notes.list(caseId)).find((n) => n.id === activeId)?.bodyDoc
+      }, ids)
     )
     .toContain('data:image/png;base64,')
   await page.reload()

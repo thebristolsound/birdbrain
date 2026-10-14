@@ -366,8 +366,8 @@ export function getExportPreflight(caseId: string, captureIds?: string[]): Expor
   // contain (PR #842 review).
   const all = captureRepo.listCaptures(caseId)
   const captures = captureIds ? all.filter((c) => captureIds.includes(c.id)) : all
-  return resolveExportTrustedTime(captures, buildTrustedTimeIndex(join(getStorageRoot(), caseId)))
-    .preflight
+  const index = buildTrustedTimeIndex(join(getStorageRoot(), caseId), listExhibits(caseId))
+  return resolveExportTrustedTime(captures, index).preflight
 }
 
 /**

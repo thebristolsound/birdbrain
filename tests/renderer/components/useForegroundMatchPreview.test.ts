@@ -23,7 +23,11 @@ function deferred<T>() {
   return { promise, resolve, reject }
 }
 
-function candidate(id: string, title = `Title ${id}`, url = `https://example.com/${id}`): Candidate {
+function candidate(
+  id: string,
+  title = `Title ${id}`,
+  url = `https://example.com/${id}`
+): Candidate {
   return { id, title, url }
 }
 
@@ -92,10 +96,7 @@ describe('previewForegroundMatches', () => {
       getCaptureText: vi.fn(async () => 'needle needle needle needle needle')
     })
 
-    const results = await previewForegroundMatches(
-      { ...baseParams, maxMatchesPerCapture: 3 },
-      deps
-    )
+    const results = await previewForegroundMatches({ ...baseParams, maxMatchesPerCapture: 3 }, deps)
 
     expect(results[0].matches).toHaveLength(3)
   })
@@ -108,10 +109,7 @@ describe('previewForegroundMatches', () => {
       listMatchingCaptureIds
     })
 
-    const results = await previewForegroundMatches(
-      { ...baseParams, selectorId: 'sel-1' },
-      deps
-    )
+    const results = await previewForegroundMatches({ ...baseParams, selectorId: 'sel-1' }, deps)
 
     expect(listMatchingCaptureIds).toHaveBeenCalledWith('case-1', ['sel-1'])
     expect(results.map((r) => r.captureUrl)).toEqual([

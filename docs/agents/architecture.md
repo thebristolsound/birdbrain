@@ -57,7 +57,13 @@ All renderer↔main communication uses typed IPC channels defined in `src/shared
 
 **Domains** (read `IPC_CHANNELS` in `src/shared/ipc.ts` for the authoritative list): cases, captures, recapture, tags, search, settings, export, selectors, notes, wayback, extractedData, annotations, extension, shell, exhibits, manifest, staging, app, diagnostics, updates, db — plus the `event:` main→renderer channels.
 
-The preload script exposes these via `window.birdbrain` with typed invoke/on methods.
+The preload script exposes these via `window.birdbrain` with typed invoke/on methods. The path comes from the channel name: `domain:action` sits at `window.birdbrain.<domain>.<action>`, and `tests/preload/bridge.test.ts` fails any other placement. A top-level key needs an entry in that test's `ROOT_LEVEL_LEAVES`, a reviewed contract decision; `search` is one, so `window.birdbrain.search` is a function and holds no `search:*` channel besides `search:query`.
+
+A new invoke channel touches `src/shared/ipc.ts` (the `IPC_CHANNELS` constant and its `IpcInvokeContract` entry), `src/preload/index.ts`, `src/shared/birdbrainApi.ts`, and `src/main/ipcHandlers.ts`, plus `tests/renderer/fakeBridge.ts` when it adds a namespace or a top-level key.
+
+### Logging
+
+Main-process code logs through `logger` (`src/main/services/logger.ts`), whose sources, codes and context keys are closed lists in `src/shared/types.ts` (`LOG_SOURCES`, `LOG_CODES`, `LOG_CONTEXT_KEYS`). Every `error` and `warn` entry also raises a renderer toast, one per code (`src/renderer/lib/mainLogBridge.ts`), labelled from `CODE_LABELS` in `src/renderer/lib/notify.ts`, so a new code needs a label there. `logSafe.ts` checks each context value's format: `captureId`, `caseId` and `exhibitId` must be UUIDs, and a development build throws on one that is not.
 
 ### Routing
 

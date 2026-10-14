@@ -18,9 +18,7 @@ export interface DbDiagnostics {
 // -1 signals "unavailable" so the UI renders a dash instead of a lie.
 function count(table: string): number {
   try {
-    const row = getDb()
-      .prepare(`SELECT COUNT(*) AS n FROM ${table}`)
-      .get() as { n: number }
+    const row = getDb().prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }
     return row.n
   } catch {
     return -1

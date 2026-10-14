@@ -16,6 +16,12 @@ Read CLAUDE.md first for the codebase map. You review; you do not fix — never 
    For each hunk ask: what input or state makes this wrong? Trace evidence-relevant data flows
    end-to-end rather than trusting names. Check error paths, not just happy paths — treat any
    `try/catch` that hides an error instead of surfacing it as a finding.
+
+   **Bounded work.** Work over stored or uploaded bytes runs on the main process. A limit on
+   bytes, parts or rows stops the work when it is reached, rather than trimming a result built
+   in full, and every input path, legacy formats included, applies the same limits. PR #1846
+   shipped both shapes, a row ceiling applied after every header was built and a legacy page
+   that skipped two of the budgets, and an outside review caught them.
 2. **Conventions.** Style (no semicolons, single quotes, no trailing commas, strict TS, no
    unexplained `any`), IPC through typed channels in `src/shared/ipc.ts` + `handle()` wrapper,
    SQL only inside `src/main/services/db/` repo modules, migrations bump

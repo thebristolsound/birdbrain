@@ -88,7 +88,9 @@ describe('tourSteps', () => {
   // exists, and both were sent back to design rather than built (#707), so no
   // step may promise them.
   it('promises nothing the app does not provide', () => {
-    const copy = ALL_CHAPTERS.flatMap((c) => tourSteps(c).map((s) => `${s.title ?? ''} ${s.body ?? ''}`))
+    const copy = ALL_CHAPTERS.flatMap((c) =>
+      tourSteps(c).map((s) => `${s.title ?? ''} ${s.body ?? ''}`)
+    )
       .join(' ')
       .toLowerCase()
     expect(copy).not.toContain('demo case')

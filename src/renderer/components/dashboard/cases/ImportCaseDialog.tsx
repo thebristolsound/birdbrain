@@ -193,11 +193,7 @@ export function ImportCaseDialog({ report, onClose }: ImportCaseDialogProps) {
           >
             Cancel
           </Button>
-          <Button
-            size="sm"
-            onClick={handleImport}
-            disabled={!canImport || importArchive.isPending}
-          >
+          <Button size="sm" onClick={handleImport} disabled={!canImport || importArchive.isPending}>
             {importArchive.isPending ? 'Importing…' : 'Import case'}
           </Button>
         </div>

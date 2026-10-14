@@ -352,8 +352,13 @@ The maintainer approved this plan and accepted each recommendation it made.
 - **2026-10-13, step 2 finished.** #1846 merged migration 38, the extractor, and the stored-page
   reader it shares with the Links tab. Its review fix bounds the header scan and a legacy page by
   the same budgets.
-- **Step 3.** The build service runs on ingest, when the Case workspace opens
+- **Step 3.** The build service runs on ingest, on duplication, when the Case workspace opens
   (`cases:ensureSearchFields`), after a Case Archive import, on reprocess, and in the Settings
   rebuild. The import IPC handler starts the pass and does not wait for it, so `caseArchive.ts` is
-  unchanged. A `failed` build row stays until a rebuild or a new extractor version.
-- **Next.** Step 4, once step 3 merges.
+  unchanged. Reprocess builds every Capture in the Case again, unlike the D5 text, which has it
+  build only the missing ones, so a `failed` build row stays until a reprocess, a rebuild, or a
+  new extractor version. A duplicate builds its own records after it commits, since it skips the
+  post-capture work.
+- **Next.** Step 4, once step 3 merges. The Settings rebuild clears both tables before it builds,
+  so a search during a rebuild sees only the Captures built so far. Step 4 should say so or
+  rebuild without clearing first.

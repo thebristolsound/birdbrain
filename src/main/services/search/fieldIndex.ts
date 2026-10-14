@@ -13,10 +13,11 @@ import { ident } from '@main/services/logSafe'
 import type { FieldBuildSummary } from '@shared/ipc'
 
 // Builds the Case search field records from the stored files (docs/plans/2026-10-09-
-// case-retrieval-first-slice.md, D5): one Capture after ingest, the Captures a Case
-// lacks or an older extractor built, and every Capture on a rebuild. A build that
-// fails writes a `failed` build row and a log entry, and is retried by a rebuild or
-// a new extractor version, not on the next Case open.
+// case-retrieval-first-slice.md, D5): one Capture after ingest or duplication, the
+// Captures a Case lacks or an older extractor built, every Capture in a Case on
+// reprocess, and every Capture on a rebuild. A build that fails writes a `failed`
+// build row and a log entry, and is retried by a reprocess, a rebuild or a new
+// extractor version, not on the next Case open.
 
 type ArtifactReader = Pick<CaptureStore, 'readArtifact'>
 
@@ -132,6 +133,14 @@ export function ensureCaseFields(
   const tracked = pass.finally(() => ensuring.delete(caseId))
   ensuring.set(caseId, tracked)
   return tracked
+}
+
+/** Builds every Capture in the Case again, failed builds included, as reprocess asks. */
+export async function rebuildCaseFields(
+  caseId: string,
+  store: ArtifactReader = defaultCaptureStore
+): Promise<FieldBuildSummary> {
+  return buildEach(searchFieldRepo.listCaseCaptureExhibits(caseId), store)
 }
 
 /** Clears every Case's field records and builds them again from the stored files. */

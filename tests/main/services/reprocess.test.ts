@@ -193,7 +193,7 @@ describe('captureLifecycle.reprocessCase', () => {
     await captureLifecycle.reprocessCase(c.id)
 
     // reprocessCase awaits setImmediate once per capture, then the search field
-    // pass awaits it once per capture with no field records: 5 captures -> 10 calls.
+    // pass awaits it once per capture it rebuilds: 5 captures -> 10 calls.
     expect(spy).toHaveBeenCalledTimes(10)
     spy.mockRestore()
   })

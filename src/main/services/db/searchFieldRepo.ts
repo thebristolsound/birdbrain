@@ -58,6 +58,13 @@ export function listExhibitsNeedingFields(caseId: string, extractor: string): st
   return rows.map((row) => row.id)
 }
 
+export function listCaseCaptureExhibits(caseId: string): string[] {
+  const rows = getDb()
+    .prepare(`${CAPTURE_EXHIBITS_SQL} WHERE c.case_id = ? ORDER BY c.timestamp DESC`)
+    .all(caseId) as Array<{ id: string }>
+  return rows.map((row) => row.id)
+}
+
 export function listAllCaptureExhibits(): string[] {
   const rows = getDb()
     .prepare(`${CAPTURE_EXHIBITS_SQL} ORDER BY c.case_id, c.timestamp DESC`)

@@ -10,7 +10,7 @@ import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
 import { extractData } from '@main/services/dataExtractor'
 import { recordSlowOp } from '@main/services/diagnostics'
 import { readExtractionHtml } from '@main/services/extraction/extractionSource'
-import { buildExhibitFields, ensureCaseFields } from '@main/services/search/fieldIndex'
+import { buildExhibitFields, rebuildCaseFields } from '@main/services/search/fieldIndex'
 import { getInstallationId } from '@main/services/installationId'
 import {
   authorChainOf,
@@ -1427,7 +1427,19 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
           )
         }
       }
-      await ensureCaseFields(caseId, store)
+      // Reprocess redoes the search field records too, so a failed build gets its
+      // retry here. A pass that cannot start is logged rather than thrown, since the
+      // extraction above has finished and the caller should not see reprocess fail.
+      try {
+        await rebuildCaseFields(caseId, store)
+      } catch (err) {
+        logger.error(
+          'captureLifecycle',
+          'searchFields.ensure_failed',
+          { caseId: ident(caseId) },
+          err
+        )
+      }
       return { processed: captures.length }
     }
   }

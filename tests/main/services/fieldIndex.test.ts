@@ -11,7 +11,8 @@ import { getExhibitSearchBuild } from '@main/services/db/searchFieldRepo'
 import {
   buildExhibitFields,
   ensureCaseFields,
-  rebuildAllFields
+  rebuildAllFields,
+  rebuildCaseFields
 } from '@main/services/search/fieldIndex'
 import { FIELD_EXTRACTOR_VERSION } from '@main/services/search/fieldExtractor'
 import { listHtmlPartsInMhtml } from '@main/services/mhtmlDecoder'
@@ -362,6 +363,36 @@ describe('ensureCaseFields', () => {
       noSource: 0,
       failed: 0
     })
+  })
+})
+
+describe('rebuildCaseFields', () => {
+  it("builds every Capture in the Case again, failed builds included, and no other Case's", async () => {
+    const failed = capture(caseId, '2026-10-02T00:00:00.000Z')
+    const built = capture(caseId, '2026-10-01T00:00:00.000Z')
+    const other = capture(createCase({ name: 'Other' }).id)
+    buildExhibitFields(failed, {
+      readArtifact: () => {
+        throw new Error('disk gone')
+      }
+    })
+    buildExhibitFields(built, storeOf(new Map()))
+    const replace = vi.spyOn(searchFieldRepo, 'replaceExhibitFields')
+    const files: Files = new Map([
+      [`${failed}.mhtml`, PAGE],
+      [`${built}.txt`, Buffer.from(TEXT, 'utf8')]
+    ])
+
+    expect(await rebuildCaseFields(caseId, storeOf(files))).toEqual({
+      indexed: 2,
+      noSource: 0,
+      failed: 0
+    })
+
+    expect(replace.mock.calls.map(([build]) => build.exhibitId)).toEqual([failed, built])
+    expect(getExhibitSearchBuild(failed)?.outcome).toBe('built')
+    expect(getExhibitSearchBuild(built)?.outcome).toBe('built')
+    expect(getExhibitSearchBuild(other)).toBeUndefined()
   })
 })
 

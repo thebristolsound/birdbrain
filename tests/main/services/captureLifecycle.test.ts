@@ -508,6 +508,37 @@ describe('createCaptureLifecycle.ingest', () => {
     expect(getExhibitSearchBuild(capture.id)?.outcome).toBe('built')
   })
 
+  it('reprocessing a Case retries a field build that failed', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('mhtml-body')))
+    await flushImmediate()
+    getDb()
+      .prepare("UPDATE exhibit_search_builds SET outcome = 'failed' WHERE exhibit_id = ?")
+      .run(capture.id)
+
+    await lifecycle.reprocessCase(caseId)
+
+    expect(getExhibitSearchBuild(capture.id)?.outcome).toBe('built')
+  })
+
+  it('logs a field pass reprocess cannot start, and reprocess still reports its Captures', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('mhtml-body')))
+    await flushImmediate()
+    vi.spyOn(searchFieldRepo, 'listCaseCaptureExhibits').mockImplementationOnce(() => {
+      throw new Error('database is locked')
+    })
+
+    expect(await lifecycle.reprocessCase(caseId)).toEqual({ processed: 1 })
+
+    flushLogger()
+    expect(
+      readRecentEntries(10).some(
+        (e) => e.source === 'captureLifecycle' && e.code === 'searchFields.ensure_failed'
+      )
+    ).toBe(true)
+  })
+
   it('rejects and leaves no DB row, manifest entry, or file on disk when the upload stream errors mid-read', async () => {
     const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
 

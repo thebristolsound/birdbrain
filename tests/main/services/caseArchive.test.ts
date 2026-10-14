@@ -37,11 +37,13 @@ import { initSigningKey, resetSigningKey } from '@main/services/signingKey'
 import { readStoredZip } from '@main/services/zipRead'
 import { createStoredZip } from '@main/services/zip'
 import {
+  collectCaseData,
   exportCaseArchive,
   inspectCaseArchive,
   importCaseArchive,
   CASE_ARCHIVE_SCHEMA_VERSION
 } from '@main/services/caseArchive'
+import { UNDATED_TAG_CREATED_AT } from '@main/services/db/migrations'
 import { canonicalStringify } from '@shared/verify'
 import { verifyCapture } from '@main/services/captureLifecycle'
 import { appendFutureEntry } from '../../helpers/futureManifestEntry'
@@ -226,8 +228,11 @@ describe('caseArchive export', () => {
   // has no table or directory for.
   // 8 since Shared Cases (#1511): a pre-8 build would import the exporter's
   // chain alone and drop every other member's.
-  it('keeps CASE_ARCHIVE_SCHEMA_VERSION at 8 since Shared Cases', () => {
-    expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(8)
+  // 9 since per-author working-layer keys (#1512): a pre-9 build would import
+  // every tag, tag application, note, annotation and pin as its own and merge
+  // two members' same-name tags into one.
+  it('keeps CASE_ARCHIVE_SCHEMA_VERSION at 9 since per-author working-layer keys', () => {
+    expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(9)
   })
 
   it('exports a .birdbrain archive with header, data, manifest, and files', async () => {
@@ -832,7 +837,7 @@ describe('caseArchive import', () => {
   // must name that file. Left verbatim, it named the source case's file: on
   // this same install verify hashed the source's bytes, and elsewhere it found
   // nothing.
-  it('re-import points each capture at its own file, not the source case\'s', async () => {
+  it("re-import points each capture at its own file, not the source case's", async () => {
     const { newCaseId } = await importCaseArchive(archivePath)
     const imported = listCaptures(newCaseId).find((c) => c.url === taggedCaptureUrl)!
     expect(imported.id).not.toBe(mhtmlCaptureId)
@@ -910,7 +915,9 @@ describe('caseArchive import', () => {
   // collides and both tags merge by name. The imported note must carry the
   // same two tags, resolved to the LOCAL merged tag rows.
   it('carries note tags through import with note ids remapped and tags merged by name', async () => {
-    const before = getTagsForNote(plainNoteId).map((t) => t.name).sort()
+    const before = getTagsForNote(plainNoteId)
+      .map((t) => t.name)
+      .sort()
     expect(before).toEqual(['Analyst note', 'Evidence'])
 
     const { newCaseId } = await importCaseArchive(archivePath)
@@ -1122,5 +1129,173 @@ describe('caseArchive import', () => {
     const rebuilt = [...entries.entries()].map(([name, data]) => ({ name, data }))
     writeFileSync(archivePath, createStoredZip(rebuilt))
     await expect(importCaseArchive(archivePath)).rejects.toThrow(/not a valid Birdbrain archive/i)
+  })
+
+  // #1512: per-author working-layer rows. A teammate (REMOTE) tagged the same
+  // Capture with their own `Evidence`, annotated it, pinned it and wrote a
+  // note carrying that tag, each row at its own version. The archive is
+  // imported into a fresh database, where every id is free, so each row must
+  // come back column for column apart from the Case id.
+  describe('per-author working-layer rows (#1512)', () => {
+    const REMOTE = 'installation-remote-0001'
+    let remoteNoteId: string
+
+    beforeEach(async () => {
+      const db = getDb()
+      db.prepare(
+        `INSERT INTO tags (id, name, color, author_installation_id, version, created_at)
+         VALUES ('remote-evidence', 'Evidence', '#0000ff', ?, 4, '2026-10-01T09:00:00.000Z')`
+      ).run(REMOTE)
+      db.prepare(
+        `INSERT INTO exhibit_tags (exhibit_id, tag_id, author_installation_id, version, row_signature)
+         VALUES (?, 'remote-evidence', ?, 5, 'sig-exhibit-tag')`
+      ).run(mhtmlCaptureId, REMOTE)
+      db.prepare(
+        `INSERT INTO annotations (
+           capture_id, schema_version, shapes_json, image_width, image_height, updated_at,
+           updated_by, author_installation_id, version
+         ) VALUES (?, 1, '[]', 640, 480, '2026-10-01T09:00:00.000Z', 'Marcus B', ?, 6)`
+      ).run(mhtmlCaptureId, REMOTE)
+      db.prepare(
+        `INSERT INTO annotation_pins (
+           id, capture_id, number, body, created_at, updated_at, author_installation_id,
+           version, deleted_at
+         ) VALUES ('remote-pin', ?, 2, 'Remote pin', '2026-10-01T09:00:00.000Z',
+                   '2026-10-01T09:00:00.000Z', ?, 7, '2026-10-02T00:00:00.000Z')`
+      ).run(mhtmlCaptureId, REMOTE)
+      remoteNoteId = createNote({ caseId, title: 'Remote note', body: 'theirs' }).id
+      db.prepare('UPDATE notes SET author_installation_id = ?, version = 8 WHERE id = ?').run(
+        REMOTE,
+        remoteNoteId
+      )
+      db.prepare(
+        `INSERT INTO note_tags (note_id, tag_id, author_installation_id, version)
+         VALUES (?, 'remote-evidence', ?, 9)`
+      ).run(remoteNoteId, REMOTE)
+      await exportCaseArchive(caseId, archivePath)
+    })
+
+    const sorted = (rows: Record<string, unknown>[] = []) =>
+      [...rows].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
+    const syncColumns = (rows: Record<string, unknown>[]) =>
+      sorted(
+        rows.map(({ id, author_installation_id, version, deleted_at, row_signature }) => ({
+          id,
+          author_installation_id,
+          version,
+          deleted_at,
+          row_signature
+        }))
+      )
+
+    it('keeps both same-name tags, every author and the new columns', async () => {
+      const source = collectCaseData(caseId)
+      expect(source.tags.filter((t) => t.name === 'Evidence')).toHaveLength(2)
+      closeDatabase()
+      await initDatabase(':memory:')
+
+      const { newCaseId, report } = await importCaseArchive(archivePath)
+      expect(report.verification.overallValid).toBe(true)
+      const imported = collectCaseData(newCaseId)
+
+      expect(sorted(imported.tags)).toEqual(sorted(source.tags))
+      expect(
+        sorted(imported.tags.filter((t) => t.name === 'Evidence')).map((t) => [
+          t.author_installation_id,
+          t.color,
+          t.created_at
+        ])
+      ).toEqual(
+        sorted(source.tags.filter((t) => t.name === 'Evidence')).map((t) => [
+          t.author_installation_id,
+          t.color,
+          t.created_at
+        ])
+      )
+      expect(
+        getTagsForCapture(mhtmlCaptureId)
+          .map((t) => t.id)
+          .sort()
+      ).toEqual(
+        [
+          'remote-evidence',
+          source.tags.find((t) => t.name === 'Evidence' && !t.author_installation_id)!.id
+        ].sort()
+      )
+      expect(sorted(imported.captureTags)).toEqual(sorted(source.captureTags))
+      expect(sorted(imported.noteTags)).toEqual(sorted(source.noteTags))
+      expect(sorted(imported.annotations)).toEqual(sorted(source.annotations))
+      expect(sorted(imported.annotationPins)).toEqual(sorted(source.annotationPins))
+      expect(syncColumns(imported.notes)).toEqual(syncColumns(source.notes))
+      expect(imported.annotations.map((a) => a.author_installation_id).sort()).toEqual([
+        REMOTE,
+        null
+      ])
+    })
+
+    it('merges each tag only into a same-author tag already in the database', async () => {
+      const { newCaseId } = await importCaseArchive(archivePath)
+      const evidence = getDb()
+        .prepare("SELECT id, author_installation_id FROM tags WHERE lower(name) = 'evidence'")
+        .all() as Array<{ id: string; author_installation_id: string | null }>
+      // Still one tag per author: the import reused each, rather than adding
+      // a third or folding the teammate's into the local one.
+      expect(evidence.map((t) => t.author_installation_id).sort()).toEqual([REMOTE, null])
+      const importedCapture = listCaptures(newCaseId).find((c) => c.url === taggedCaptureUrl)!
+      expect(
+        getTagsForCapture(importedCapture.id)
+          .map((t) => t.id)
+          .sort()
+      ).toEqual(evidence.map((t) => t.id).sort())
+    })
+
+    // What a Birdbrain at Case Archive schema 8 wrote: no `created_at` on tags,
+    // tag applications reduced to their two ids, pins without the sync columns.
+    // The columns it lacks are filled as migration 39 fills them.
+    it('still imports a version-8 archive, filling the columns it lacks', async () => {
+      const without = (rows: unknown, keys: string[]) =>
+        (rows as Record<string, unknown>[]).map((row) =>
+          Object.fromEntries(Object.entries(row).filter(([key]) => !keys.includes(key)))
+        )
+      rewriteDataJson(archivePath, (d) => ({
+        ...d,
+        tags: without(d.tags, ['created_at']),
+        captureTags: without(d.captureTags, [
+          'author_installation_id',
+          'version',
+          'deleted_at',
+          'row_signature'
+        ]),
+        annotationPins: without(d.annotationPins, [
+          'author_installation_id',
+          'version',
+          'deleted_at',
+          'row_signature'
+        ])
+      }))
+      rewritePackageJson(archivePath, (h) => ({ ...h, schemaVersion: 8 }))
+      closeDatabase()
+      await initDatabase(':memory:')
+
+      const { newCaseId, report } = await importCaseArchive(archivePath)
+      expect(report.schemaVersion).toBe(8)
+      expect(report.verification.overallValid).toBe(true)
+      const imported = collectCaseData(newCaseId)
+      expect(imported.tags.map((t) => t.created_at)).toEqual(
+        imported.tags.map(() => UNDATED_TAG_CREATED_AT)
+      )
+      expect(
+        sorted(imported.captureTags).map((r) => [r.author_installation_id, r.version])
+      ).toEqual([
+        [null, 0],
+        [null, 0]
+      ])
+      expect(
+        imported.annotationPins.map((p) => [p.author_installation_id, p.version, p.deleted_at])
+      ).toEqual([
+        [null, 0, null],
+        [null, 0, null]
+      ])
+    })
   })
 })

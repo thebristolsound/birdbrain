@@ -1,5 +1,10 @@
 import type Database from 'better-sqlite3'
 
+// `tags.created_at` for a tag that predates the column (migration 39) or that
+// arrives in a Case Archive written before it. A fixed value, so running the
+// backfill twice, or importing one archive twice, writes the same rows.
+export const UNDATED_TAG_CREATED_AT = '1970-01-01T00:00:00.000Z'
+
 export function runMigrations(db: Database.Database): void {
   const version = db.pragma('user_version', { simple: true }) as number
 
@@ -1142,5 +1147,150 @@ export function runMigrations(db: Database.Database): void {
       `)
       db.pragma('user_version = 38')
     })()
+  }
+
+  if (version < 39) {
+    // Four of the tables below are rebuilt, and `tags` is the parent of two of
+    // them, so the keys are switched off around the transaction for the reason
+    // v36 gives and the result is checked before they come back on.
+    db.pragma('foreign_keys = OFF')
+    try {
+      db.transaction(() => {
+        // Working-layer keys per author (#1512, the five findings PR #1571 left
+        // for the sync step). v36 gave these tables an author column but kept
+        // keys that allow one row per Capture, per tag name and per tag
+        // application across all authors, so a teammate's row sharing a local
+        // row's key would be refused. Each rule becomes a unique index over
+        // COALESCE(author_installation_id, ''), as v36 did for Exhibit Numbers,
+        // so two local rows (author NULL) still collide exactly as before.
+        //
+        // A restored copy marked one version back runs this block again over
+        // its own tables. The block is one transaction, so `tags.created_at`
+        // existing means every step below has already run.
+        const tagColumns = db.pragma('table_info(tags)') as Array<{ name: string }>
+        if (!tagColumns.some(({ name }) => name === 'created_at')) {
+          // `name` was UNIQUE across the table; now it is unique per author,
+          // with the same BINARY comparison, so `Evidence` and `evidence` may
+          // still both exist for one author. `created_at` is what the merged
+          // tag colour rule orders by (docs/specs/2026-09-19-collaborative-
+          // cases-design.md, "Working-layer rows"). No row recorded when it
+          // was made, so every existing row gets UNDATED_TAG_CREATED_AT, which
+          // sorts before every tag created after this migration.
+          db.exec(`
+            CREATE TABLE tags_new (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              color TEXT,
+              author_installation_id TEXT,
+              version INTEGER NOT NULL DEFAULT 0,
+              deleted_at TEXT,
+              row_signature TEXT,
+              created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+            );
+            INSERT INTO tags_new (
+              id, name, color, author_installation_id, version, deleted_at, row_signature,
+              created_at
+            )
+              SELECT id, name, color, author_installation_id, version, deleted_at, row_signature,
+                     '${UNDATED_TAG_CREATED_AT}'
+                FROM tags;
+            DROP TABLE tags;
+            ALTER TABLE tags_new RENAME TO tags;
+            CREATE UNIQUE INDEX idx_tags_author_name
+              ON tags(COALESCE(author_installation_id, ''), name);
+          `)
+
+          // One annotation layer per Capture per author, where the primary
+          // key allowed one per Capture.
+          db.exec(`
+            CREATE TABLE annotations_new (
+              capture_id TEXT NOT NULL,
+              schema_version INTEGER NOT NULL,
+              shapes_json TEXT NOT NULL,
+              image_width INTEGER NOT NULL,
+              image_height INTEGER NOT NULL,
+              updated_at TEXT NOT NULL,
+              updated_by TEXT,
+              author_installation_id TEXT,
+              version INTEGER NOT NULL DEFAULT 0,
+              deleted_at TEXT,
+              row_signature TEXT,
+              FOREIGN KEY (capture_id) REFERENCES captures(id) ON DELETE CASCADE
+            );
+            INSERT INTO annotations_new
+              SELECT capture_id, schema_version, shapes_json, image_width, image_height,
+                     updated_at, updated_by, author_installation_id, version, deleted_at,
+                     row_signature
+                FROM annotations;
+            DROP TABLE annotations;
+            ALTER TABLE annotations_new RENAME TO annotations;
+            CREATE UNIQUE INDEX idx_annotations_capture_author
+              ON annotations(capture_id, COALESCE(author_installation_id, ''));
+          `)
+
+          // Pins are keyed by their own id already; they lacked only the
+          // columns v36 gave the other working-layer tables.
+          db.exec(`
+            ALTER TABLE annotation_pins ADD COLUMN author_installation_id TEXT;
+            ALTER TABLE annotation_pins ADD COLUMN version INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE annotation_pins ADD COLUMN deleted_at TEXT;
+            ALTER TABLE annotation_pins ADD COLUMN row_signature TEXT;
+          `)
+
+          // The tag relations lose their composite primary keys: a primary key
+          // column may not be an expression, and a nullable author column in
+          // one would let two local rows repeat a pair. The tag_id indexes
+          // are the ones v32 and v34 created.
+          db.exec(`
+            CREATE TABLE exhibit_tags_new (
+              exhibit_id TEXT NOT NULL,
+              tag_id TEXT NOT NULL,
+              author_installation_id TEXT,
+              version INTEGER NOT NULL DEFAULT 0,
+              deleted_at TEXT,
+              row_signature TEXT,
+              FOREIGN KEY (exhibit_id) REFERENCES exhibits(id) ON DELETE CASCADE,
+              FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+            );
+            INSERT INTO exhibit_tags_new
+              SELECT exhibit_id, tag_id, author_installation_id, version, deleted_at,
+                     row_signature
+                FROM exhibit_tags;
+            DROP TABLE exhibit_tags;
+            ALTER TABLE exhibit_tags_new RENAME TO exhibit_tags;
+            CREATE UNIQUE INDEX idx_exhibit_tags_author
+              ON exhibit_tags(exhibit_id, tag_id, COALESCE(author_installation_id, ''));
+            CREATE INDEX idx_exhibit_tags_tag_id ON exhibit_tags(tag_id);
+
+            CREATE TABLE note_tags_new (
+              note_id TEXT NOT NULL,
+              tag_id TEXT NOT NULL,
+              author_installation_id TEXT,
+              version INTEGER NOT NULL DEFAULT 0,
+              deleted_at TEXT,
+              row_signature TEXT,
+              FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE CASCADE,
+              FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+            );
+            INSERT INTO note_tags_new
+              SELECT note_id, tag_id, author_installation_id, version, deleted_at, row_signature
+                FROM note_tags;
+            DROP TABLE note_tags;
+            ALTER TABLE note_tags_new RENAME TO note_tags;
+            CREATE UNIQUE INDEX idx_note_tags_author
+              ON note_tags(note_id, tag_id, COALESCE(author_installation_id, ''));
+            CREATE INDEX idx_note_tags_tag_id ON note_tags(tag_id);
+          `)
+        }
+
+        const violations = db.pragma('foreign_key_check') as unknown[]
+        if (violations.length > 0) {
+          throw new Error(`Migration 39 left ${violations.length} foreign key violation(s)`)
+        }
+        db.pragma('user_version = 39')
+      })()
+    } finally {
+      db.pragma('foreign_keys = ON')
+    }
   }
 }

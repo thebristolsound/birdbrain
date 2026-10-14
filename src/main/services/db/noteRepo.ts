@@ -1,7 +1,7 @@
 import { v4 as uuid } from 'uuid'
 import type { Note } from '@shared/types'
 import type { CreateNoteParams, UpdateNoteParams } from '@shared/ipc'
-import { getDb, withTransaction, type ImportCtx } from '@main/services/db/core'
+import { getDb, syncColumnValues, withTransaction, type ImportCtx } from '@main/services/db/core'
 import { toFtsMatchQuery } from '@main/services/db/ftsQuery'
 import {
   extractNoteMentions,
@@ -286,8 +286,9 @@ export function collectNotesForCase(caseId: string): Record<string, unknown>[] {
 
 export function importNoteRows(rows: Record<string, unknown>[], ctx: ImportCtx): void {
   const insert = getDb().prepare(
-    `INSERT INTO notes (id, case_id, capture_id, title, body, body_doc, anchor_kind, anchor_json, source_url, screenshot_path, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO notes (id, case_id, capture_id, title, body, body_doc, anchor_kind, anchor_json, source_url, screenshot_path, created_at, updated_at,
+       author_installation_id, version, deleted_at, row_signature)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
   for (const n of rows) {
     // Mention target ids are remapped BEFORE the document is parsed and
@@ -355,7 +356,8 @@ export function importNoteRows(rows: Record<string, unknown>[], ctx: ImportCtx):
       n.source_url ?? null,
       n.screenshot_path ?? null,
       n.created_at ?? null,
-      n.updated_at ?? null
+      n.updated_at ?? null,
+      ...syncColumnValues(n)
     )
     rewriteReferencesForNote(newId, mentions)
   }

@@ -55,35 +55,43 @@ function keyPredicate(pk: Record<string, string>): { where: string; values: stri
 }
 
 /**
- * Thrown for a create, update or delete on a synced table whose row belongs
- * to a Shared Case. Ruling 2 of 13 October 2026 on #1512: the escape hatch
- * refuses these rows rather than re-signing whatever was typed.
+ * Thrown for a create, update or delete on a row that belongs to a Shared
+ * Case. Ruling 2 of 13 October 2026 on #1512: the escape hatch refuses these
+ * rows rather than re-signing whatever was typed.
  */
 export class SharedCaseRowError extends Error {
   constructor(table: string) {
     super(
-      `This ${table} row belongs to a Shared Case. Settings > Database cannot create, ` +
-        'change or delete rows of a Shared Case.'
+      `This ${table} row belongs to a Shared Case. The Settings > Database table editor ` +
+        'does not create, change or delete rows of a Shared Case.'
     )
     this.name = 'SharedCaseRowError'
   }
 }
 
-// The working-layer tables a Shared Case syncs. `annotations`,
-// `annotation_pins` and `note_tags` are not in ALLOWED_TABLES, so every write
-// to them is refused already; the type below makes adding one of them to the
-// admin surface fail to compile until it has a membership test.
-type SyncedTable =
-  'notes' | 'annotations' | 'annotation_pins' | 'tags' | 'exhibit_tags' | 'note_tags'
-type SyncedAllowedTable = Extract<AllowedTable, SyncedTable>
-
 // Whether a row, as stored or as a write would leave it, belongs to a Shared
-// Case. A tag has no case of its own: it belongs to every Case that reaches
-// it through either relation, the rule `collectTagsForCase` exports by,
-// except that the Exhibit relation is read through `exhibits` rather than
-// `captures`, so a tag on a non-Capture Exhibit counts too.
-const IN_SHARED_CASE: Record<SyncedAllowedTable, string> = {
-  notes: `SELECT 1 FROM cases WHERE id = @case_id AND shared_at IS NOT NULL`,
+// Case. Every ALLOWED_TABLES entry needs one, so a table added to the editor
+// fails to compile until it has a rule; `annotations`, `annotation_pins` and
+// `note_tags` are not in ALLOWED_TABLES, so the editor reaches none of their
+// rows. The `cases` rule reads the row itself, so a write that sets or clears
+// `shared_at` is refused too. A tag has no case of its own: it belongs to
+// every Case that reaches it through either relation, the rule
+// `collectTagsForCase` exports by, except that the Exhibit relation is read
+// through `exhibits` rather than `captures`, so a tag on a non-Capture Exhibit
+// counts too.
+const SHARED_CASE_BY_ID = 'SELECT 1 FROM cases WHERE id = @case_id AND shared_at IS NOT NULL'
+const SHARED_CAPTURE = `SELECT 1 FROM captures p JOIN cases c ON c.id = p.case_id
+                         WHERE p.id = @capture_id AND c.shared_at IS NOT NULL`
+const IN_SHARED_CASE: Record<AllowedTable, string> = {
+  cases: 'SELECT 1 WHERE @shared_at IS NOT NULL',
+  captures: SHARED_CASE_BY_ID,
+  notes: SHARED_CASE_BY_ID,
+  selectors: SHARED_CASE_BY_ID,
+  capture_favorites: SHARED_CAPTURE,
+  selector_matches: `${SHARED_CAPTURE}
+                     UNION ALL
+                     SELECT 1 FROM selectors s JOIN cases c ON c.id = s.case_id
+                      WHERE s.id = @selector_id AND c.shared_at IS NOT NULL`,
   exhibit_tags: `SELECT 1 FROM exhibits e JOIN cases c ON c.id = e.case_id
                   WHERE e.id = @exhibit_id AND c.shared_at IS NOT NULL`,
   tags: `SELECT 1 FROM exhibit_tags et
@@ -97,19 +105,17 @@ const IN_SHARED_CASE: Record<SyncedAllowedTable, string> = {
           WHERE nt.tag_id = @id AND c.shared_at IS NOT NULL`
 }
 
-function isSyncedAllowedTable(table: AllowedTable): table is SyncedAllowedTable {
-  return table in IN_SHARED_CASE
-}
-
 function assertNotSharedCaseRow(table: AllowedTable, ...rows: Array<Record<string, unknown>>) {
-  if (!isSyncedAllowedTable(table)) return
   const query = getDb().prepare(`${IN_SHARED_CASE[table]} LIMIT 1`)
   // Each query reads only the named parameters it declares; better-sqlite3
   // refuses an object missing one, so absent columns are passed as NULL.
   const params = (row: Record<string, unknown>) => ({
     id: row.id ?? null,
     case_id: row.case_id ?? null,
-    exhibit_id: row.exhibit_id ?? null
+    capture_id: row.capture_id ?? null,
+    exhibit_id: row.exhibit_id ?? null,
+    selector_id: row.selector_id ?? null,
+    shared_at: row.shared_at ?? null
   })
   for (const row of rows) {
     if (query.get(params(row)) !== undefined) throw new SharedCaseRowError(table)

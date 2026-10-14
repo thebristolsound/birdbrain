@@ -866,10 +866,116 @@ describe('dbAdmin', () => {
       ]
       for (const write of refused) expect(write).toThrow(SharedCaseRowError)
       expect(() => deleteRow('notes', { id: shared.noteId })).toThrow(
-        'This notes row belongs to a Shared Case. Settings > Database cannot create, change or delete rows of a Shared Case.'
+        'This notes row belongs to a Shared Case. The Settings > Database table editor does not create, change or delete rows of a Shared Case.'
       )
       expect(getTableRows({ table: 'tags', offset: 0, limit: 10 }).total).toBe(3)
       expect(getTableRows({ table: 'exhibit_tags', offset: 0, limit: 10 }).total).toBe(2)
+    })
+
+    // The Case row and every other table whose rows belong to a Case: the
+    // pre-pass on PR #1865 cleared `shared_at` to lift the refusal, and
+    // deleted a Shared Case's capture and Case rows to cascade away its notes,
+    // annotations and pins.
+    it('refuses to clear shared_at, or change or delete a Shared Case’s row', () => {
+      const refused: Array<() => unknown> = [
+        () => updateRow('cases', { id: shared.caseId }, { shared_at: null }),
+        () => updateRow('cases', { id: shared.caseId }, { name: 'Renamed' }),
+        () => deleteRow('cases', { id: shared.caseId }),
+        () =>
+          createRow('cases', {
+            id: 'new-shared',
+            name: 'New',
+            created_at: '2026-10-13T00:00:00Z',
+            updated_at: '2026-10-13T00:00:00Z',
+            shared_at: '2026-10-13T00:00:00Z'
+          }),
+        () => updateRow('cases', { id: local.caseId }, { shared_at: '2026-10-13T00:00:00Z' })
+      ]
+      for (const write of refused) expect(write).toThrow(SharedCaseRowError)
+      expect(() => updateRow('notes', { id: shared.noteId }, { title: 'Edited' })).toThrow(
+        SharedCaseRowError
+      )
+      expect(
+        listCases()
+          .map((c) => c.name)
+          .sort()
+      ).toEqual(['Local', 'Shared'])
+    })
+
+    it('refuses to change or delete a Shared Case’s capture, keeping its annotations and pins', () => {
+      const db = getDb()
+      const layer = db.prepare(
+        `INSERT INTO annotations (capture_id, schema_version, shapes_json, image_width,
+           image_height, updated_at, author_installation_id)
+         VALUES (?, 1, '[]', 1, 1, '2026-10-13T00:00:00Z', ?)`
+      )
+      layer.run(shared.captureId, null)
+      layer.run(shared.captureId, 'installation-remote')
+      db.prepare(
+        `INSERT INTO annotation_pins (id, capture_id, number, body, created_at, updated_at)
+         VALUES ('pin-1', ?, 1, 'pin', '2026-10-13T00:00:00Z', '2026-10-13T00:00:00Z')`
+      ).run(shared.captureId)
+
+      const refused: Array<() => unknown> = [
+        () => deleteRow('captures', { id: shared.captureId }),
+        () => updateRow('captures', { id: shared.captureId }, { title: 'Edited' }),
+        () => updateRow('captures', { id: shared.captureId }, { case_id: local.caseId }),
+        () => updateRow('captures', { id: local.captureId }, { case_id: shared.caseId }),
+        () =>
+          createRow('captures', {
+            id: 'new-capture',
+            case_id: shared.caseId,
+            url: 'https://example.com/new',
+            hash: 'h',
+            timestamp: '2026-10-13T00:00:00Z',
+            created_at: '2026-10-13T00:00:00Z'
+          })
+      ]
+      for (const write of refused) expect(write).toThrow(SharedCaseRowError)
+      const count = (table: string) =>
+        (db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n
+      expect([count('annotations'), count('annotation_pins'), count('captures')]).toEqual([2, 1, 2])
+    })
+
+    it('refuses a Shared Case’s selectors, selector matches and favorites', () => {
+      const db = getDb()
+      const selector = db.prepare(
+        `INSERT INTO selectors (id, case_id, pattern, created_at)
+         VALUES (?, ?, 'p', '2026-10-13T00:00:00Z')`
+      )
+      selector.run('shared-selector', shared.caseId)
+      selector.run('local-selector', local.caseId)
+      db.prepare('INSERT INTO selector_matches (selector_id, capture_id) VALUES (?, ?)').run(
+        'shared-selector',
+        shared.captureId
+      )
+      db.prepare(
+        "INSERT INTO capture_favorites (capture_id, created_at) VALUES (?, '2026-10-13T00:00:00Z')"
+      ).run(shared.captureId)
+
+      const refused: Array<() => unknown> = [
+        () => updateRow('selectors', { id: 'shared-selector' }, { pattern: 'q' }),
+        () => deleteRow('selectors', { id: 'shared-selector' }),
+        () => updateRow('selectors', { id: 'local-selector' }, { case_id: shared.caseId }),
+        () =>
+          deleteRow('selector_matches', {
+            selector_id: 'shared-selector',
+            capture_id: shared.captureId
+          }),
+        () =>
+          createRow('selector_matches', {
+            selector_id: 'local-selector',
+            capture_id: shared.captureId
+          }),
+        () => deleteRow('capture_favorites', { capture_id: shared.captureId }),
+        () =>
+          updateRow(
+            'capture_favorites',
+            { capture_id: shared.captureId },
+            { created_at: '2026-10-14T00:00:00Z' }
+          )
+      ]
+      for (const write of refused) expect(write).toThrow(SharedCaseRowError)
     })
 
     it('refuses to move a note into a Shared Case', () => {
@@ -893,6 +999,31 @@ describe('dbAdmin', () => {
       expect(createRow('tags', { id: 'admin-tag', name: 'Admin' })).toMatchObject({
         id: 'admin-tag'
       })
+      expect(
+        createRow('selectors', {
+          id: 'local-selector',
+          case_id: local.caseId,
+          pattern: 'p',
+          created_at: '2026-10-13T00:00:00Z'
+        })
+      ).toMatchObject({ id: 'local-selector' })
+      expect(
+        createRow('selector_matches', {
+          selector_id: 'local-selector',
+          capture_id: local.captureId
+        })
+      ).toMatchObject({ selector_id: 'local-selector' })
+      expect(
+        createRow('capture_favorites', {
+          capture_id: local.captureId,
+          created_at: '2026-10-13T00:00:00Z'
+        })
+      ).toMatchObject({ capture_id: local.captureId })
+      expect(updateRow('captures', { id: local.captureId }, { title: 'Edited' })).toBe(true)
+      expect(updateRow('cases', { id: local.caseId }, { name: 'Renamed' })).toBe(true)
+      expect(deleteRow('captures', { id: local.captureId })).toBe(true)
+      expect(deleteRow('selectors', { id: 'local-selector' })).toBe(true)
+      expect(deleteRow('cases', { id: local.caseId })).toBe(true)
     })
   })
 })

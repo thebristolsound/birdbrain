@@ -2151,7 +2151,7 @@ describe('ipcHandlers — database admin', () => {
         ok: false,
         code: 'SHARED_CASE_ROW',
         error:
-          'This notes row belongs to a Shared Case. Settings > Database cannot create, change or delete rows of a Shared Case.'
+          'This notes row belongs to a Shared Case. The Settings > Database table editor does not create, change or delete rows of a Shared Case.'
       })
     }
   })

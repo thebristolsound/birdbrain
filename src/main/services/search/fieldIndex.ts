@@ -46,7 +46,7 @@ function extractFromStore(
   const { fields, skippedParts, mainDocumentSkipped, truncated } = extractFields({
     captureUrl: url,
     mhtml,
-    html: html ? html.toString('utf8') : null,
+    html,
     text: text ? text.toString('utf-8') : null
   })
   const { tooLarge, overPartCount, overTotalSize } = skippedParts

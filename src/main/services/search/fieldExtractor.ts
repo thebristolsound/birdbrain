@@ -60,7 +60,7 @@ export interface FieldSources {
   /** The stored MHTML, or null when the Capture has none. */
   mhtml: Buffer | null
   /** A legacy `.html` Capture's one document, read only when there is no MHTML. */
-  html: string | null
+  html: Buffer | null
   /** The Extracted Text file, read as UTF-8. */
   text: string | null
 }
@@ -106,12 +106,13 @@ function htmlInputs(
   if (mhtml) return readHtmlParts(mhtml, captureUrl, budgets)
   const skippedParts = { tooLarge: 0, overPartCount: 0, overTotalSize: 0 }
   if (html === null) return { parts: [], skippedParts, mainDocumentSkipped: false }
-  const size = Buffer.byteLength(html, 'utf8')
+  // Checked before decoding, as an MHTML part's encoded size is.
+  const size = html.byteLength
   if (budgets.maxParts < 1 || size > budgets.maxPartBytes || size > budgets.maxTotalBytes) {
     return { parts: [], skippedParts, mainDocumentSkipped: true }
   }
   return {
-    parts: [{ html, documentUrl: captureUrl, frame: 'main', part: 0 }],
+    parts: [{ html: html.toString('utf8'), documentUrl: captureUrl, frame: 'main', part: 0 }],
     skippedParts,
     mainDocumentSkipped: false
   }

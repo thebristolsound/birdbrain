@@ -115,7 +115,12 @@ describe('extractFields: links', () => {
 
   it("records an href written with no value as an empty span at the attribute's end", () => {
     const html = page('<a href>x</a>')
-    const { fields } = extractFields({ captureUrl: CAPTURE_URL, mhtml: null, html, text: null })
+    const { fields } = extractFields({
+      captureUrl: CAPTURE_URL,
+      mhtml: null,
+      html: Buffer.from(html),
+      text: null
+    })
     const end = html.indexOf('href') + 'href'.length
     expect(fields).toMatchObject([
       { value: '', norm: CAPTURE_URL, startOffset: end, endOffset: end }
@@ -212,7 +217,12 @@ describe('extractFields: links', () => {
 
   it('reads a legacy HTML Capture as part 0', () => {
     const html = page('<a href="/old">o</a>')
-    const { fields } = extractFields({ captureUrl: CAPTURE_URL, mhtml: null, html, text: null })
+    const { fields } = extractFields({
+      captureUrl: CAPTURE_URL,
+      mhtml: null,
+      html: Buffer.from(html),
+      text: null
+    })
     expect(fields).toEqual([
       {
         field: 'link.href',
@@ -248,14 +258,17 @@ describe('extractFields: links', () => {
     expect(
       extractFields({ captureUrl: CAPTURE_URL, mhtml: main, html: null, text: null }, budgets)
     ).toMatchObject({ fields: [], mainDocumentSkipped: true })
+    const legacy = Buffer.from(big)
+    const decode = vi.spyOn(legacy, 'toString')
     expect(
-      extractFields({ captureUrl: CAPTURE_URL, mhtml: null, html: big, text: null }, budgets)
+      extractFields({ captureUrl: CAPTURE_URL, mhtml: null, html: legacy, text: null }, budgets)
     ).toMatchObject({ fields: [], mainDocumentSkipped: true })
+    expect(decode).not.toHaveBeenCalled()
   })
 
   it('applies the part count and total size budgets to a legacy HTML Capture', () => {
     const html = page('<a href="/main">m</a>')
-    const sources = { captureUrl: CAPTURE_URL, mhtml: null, html, text: null }
+    const sources = { captureUrl: CAPTURE_URL, mhtml: null, html: Buffer.from(html), text: null }
     for (const budgets of [
       { ...CAPTURE_LINK_BUDGETS, maxParts: 0 },
       { ...CAPTURE_LINK_BUDGETS, maxTotalBytes: 10 }

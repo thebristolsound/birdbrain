@@ -9,6 +9,7 @@ import {
   formatSummary,
   parseChanges,
   planChecks,
+  staleInstallProblem,
   systemSharpAddon,
   testEnv,
   typecheckProjects
@@ -418,5 +419,24 @@ if (failing.some((name) => args.includes(name))) {
     const result = run(['--fast'])
     expect(result.status).toBe(1)
     expect(result.stderr).toContain('Unknown argument "--fast"')
+  })
+})
+
+describe('staleInstallProblem', () => {
+  const lock = Buffer.from('lockfileVersion: 9.0\n')
+
+  it('says nothing when the installed copy matches the lockfile', () => {
+    expect(staleInstallProblem(lock, Buffer.from(lock))).toBeNull()
+  })
+
+  it('names the install when the lockfile moved after it', () => {
+    expect(staleInstallProblem(lock, Buffer.from('lockfileVersion: 6.0\n'))).toContain(
+      'pnpm install --frozen-lockfile'
+    )
+  })
+
+  it('leaves a missing file to the checks that need it', () => {
+    expect(staleInstallProblem(lock, null)).toBeNull()
+    expect(staleInstallProblem(null, lock)).toBeNull()
   })
 })

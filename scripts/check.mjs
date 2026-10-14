@@ -24,7 +24,8 @@
 // from disk.
 //
 // Build, the extension build, coverage thresholds and diff coverage are left to
-// preflight; the summary says so rather than implying a full verify.
+// preflight; the summary says so rather than implying a full verify. The run ends
+// with a warning when the lockfile changed after node_modules was installed.
 //
 // Usage: node scripts/check.mjs [--base <ref>] [--dry-run]
 
@@ -41,6 +42,16 @@ import {
 } from './preflight.mjs'
 
 export const DEFAULT_OUT = join('.preflight', 'check.md')
+
+// pnpm keeps a copy of the lockfile it installed at node_modules/.pnpm/lock.yaml. When the
+// two differ, main moved a dependency after this tree's last install, and tests fail on a
+// missing package with nothing pointing at the cause.
+export const staleInstallProblem = (lockfile, installed) => {
+  if (lockfile === null || installed === null || lockfile.equals(installed)) return null
+  return 'pnpm-lock.yaml changed since the last install; run pnpm install --frozen-lockfile'
+}
+
+const readIfPresent = (path) => (existsSync(path) ? readFileSync(path) : null)
 
 const CODE_FILE = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/
 const TS_FILE = /\.(ts|tsx|mts|cts)$/
@@ -360,6 +371,11 @@ const main = async () => {
   })
   for (const section of sections) console.log(`\n${section}`)
   console.log(`\n${summary}`)
+  const staleInstall = staleInstallProblem(
+    readIfPresent(join(cwd, 'pnpm-lock.yaml')),
+    readIfPresent(join(cwd, 'node_modules', '.pnpm', 'lock.yaml'))
+  )
+  if (staleInstall) console.log(`check: WARNING, ${staleInstall}`)
 
   mkdirSync(dirname(outPath), { recursive: true })
   writeFileSync(outPath, [summary, ...sections].join('\n'))

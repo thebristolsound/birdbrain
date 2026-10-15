@@ -82,6 +82,37 @@ describe('sync messages', () => {
     expect(await reader.next()).toBeNull()
   })
 
+  // Scheduled review finding 7: the reader joins what it buffered once per
+  // frame. Frames written in one piece, a header split from its payload, and
+  // several frames in one write all come out as the messages written.
+  it('reassembles frames however the writes fall: joined, split at the header, byte by byte', async () => {
+    const encoded = SAMPLES.map((message) => {
+      const payload = encodeMessage(message)
+      const frame = new Uint8Array(4 + payload.length)
+      new DataView(frame.buffer).setUint32(0, payload.length)
+      frame.set(payload, 4)
+      return frame
+    })
+    const all = new Uint8Array(encoded.reduce((n, f) => n + f.length, 0))
+    let at = 0
+    for (const frame of encoded) {
+      all.set(frame, at)
+      at += frame.length
+    }
+    const [near, far] = await pair()
+    const reader = new MessageReader(far)
+    // All frames in one write, then one frame split after two header bytes,
+    // then one frame a byte at a time.
+    await near.write(all)
+    await near.write(encoded[0].subarray(0, 2))
+    await near.write(encoded[0].subarray(2))
+    for (const byte of encoded[1]) await near.write(new Uint8Array([byte]))
+    near.close()
+    const received: SyncMessage[] = []
+    for (let m = await reader.next(); m !== null; m = await reader.next()) received.push(m)
+    expect(received).toEqual([...SAMPLES, SAMPLES[0], SAMPLES[1]])
+  })
+
   it('rejects frames that are not CBOR, not a message, or of an unknown type', () => {
     expect(() => decodeMessage(new Uint8Array([0xff, 0xff]))).toThrow(ProtocolError)
     expect(() => decodeMessage(encode('a string'))).toThrow('Malformed unknown message')

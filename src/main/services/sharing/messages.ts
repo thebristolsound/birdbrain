@@ -183,9 +183,14 @@ export async function writeMessage(stream: ByteStream, message: SyncMessage): Pr
   await stream.write(frame)
 }
 
-// Reassembles frames from a stream that may split or join writes.
+// Reassembles frames from a stream that may split or join writes. The chunks
+// read are kept as a list and joined once per frame, so a frame of n bytes
+// that arrives in k chunks costs O(n) to assemble, not O(n * k): a page
+// archive near the frame cap arrives in many thousands of chunks over a
+// real transport.
 export class MessageReader {
-  private buffered: Uint8Array = new Uint8Array(0)
+  private chunks: Uint8Array[] = []
+  private buffered = 0
   private ended = false
 
   constructor(private readonly stream: ByteStream) {}
@@ -193,42 +198,52 @@ export class MessageReader {
   // The next message, or null when the stream ended between frames. A stream
   // that ends inside a frame is a ProtocolError: the peer went away mid-message.
   async next(): Promise<SyncMessage | null> {
-    const header = await this.fill(FRAME_HEADER_BYTES)
-    if (!header) {
-      if (this.buffered.length === 0) return null
+    if (!(await this.fill(FRAME_HEADER_BYTES))) {
+      if (this.buffered === 0) return null
       throw new ProtocolError('Stream ended inside a frame header')
     }
-    const length = new DataView(
-      this.buffered.buffer,
-      this.buffered.byteOffset,
-      FRAME_HEADER_BYTES
-    ).getUint32(0)
+    const header = this.joined()
+    const length = new DataView(header.buffer, header.byteOffset, FRAME_HEADER_BYTES).getUint32(0)
     if (length > MAX_FRAME_BYTES) {
       throw new ProtocolError(`Frame of ${length} bytes exceeds ${MAX_FRAME_BYTES}`)
     }
     const total = FRAME_HEADER_BYTES + length
     if (!(await this.fill(total))) throw new ProtocolError('Stream ended inside a frame')
-    const payload = this.buffered.subarray(FRAME_HEADER_BYTES, total)
-    const message = decodeMessage(payload)
-    this.buffered = this.buffered.slice(total)
+    const frame = this.joined()
+    const message = decodeMessage(frame.subarray(FRAME_HEADER_BYTES, total))
+    const rest = frame.subarray(total)
+    this.chunks = rest.length > 0 ? [rest] : []
+    this.buffered = rest.length
     return message
   }
 
   // Reads until `bytes` are buffered. False when the stream ended first.
   private async fill(bytes: number): Promise<boolean> {
-    while (this.buffered.length < bytes) {
+    while (this.buffered < bytes) {
       if (this.ended) return false
       const chunk = await this.stream.read()
       if (chunk === null) {
         this.ended = true
         return false
       }
-      const joined = new Uint8Array(this.buffered.length + chunk.length)
-      joined.set(this.buffered)
-      joined.set(chunk, this.buffered.length)
-      this.buffered = joined
+      this.chunks.push(chunk)
+      this.buffered += chunk.length
     }
     return true
+  }
+
+  // Everything buffered as one array, joined now if it is in pieces.
+  private joined(): Uint8Array {
+    if (this.chunks.length !== 1) {
+      const all = new Uint8Array(this.buffered)
+      let at = 0
+      for (const chunk of this.chunks) {
+        all.set(chunk, at)
+        at += chunk.length
+      }
+      this.chunks = [all]
+    }
+    return this.chunks[0]
   }
 }
 

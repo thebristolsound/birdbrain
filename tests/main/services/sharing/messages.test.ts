@@ -30,7 +30,7 @@ async function pair(chunkSize?: number): Promise<[ByteStream, ByteStream]> {
   return [near, await far]
 }
 
-const challenge = (): Uint8Array => new Uint8Array(CHALLENGE_BYTES).fill(7)
+const challenge = () => new Uint8Array(CHALLENGE_BYTES).fill(7)
 
 const SAMPLES: SyncMessage[] = [
   { t: 'hello', caseId: 'case-1', installationId: 'inst-a', challenge: challenge(), proof: null },

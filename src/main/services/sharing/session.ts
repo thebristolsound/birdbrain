@@ -1,17 +1,23 @@
 import { createHash, randomBytes } from 'crypto'
 import { join } from 'path'
+import { ManifestEntrySchema } from '@shared/schemas'
 import type { CaseMember, SyncErrorKind } from '@shared/types'
 import { canonicalStringify, verifyEntrySignature } from '@shared/verify'
-import { listCaseMembers } from '@main/services/db/caseMemberRepo'
+import { listCaseMembers, upsertCaseMember } from '@main/services/db/caseMemberRepo'
 import { getInstallationId } from '@main/services/installationId'
 import { signEntryHash } from '@main/services/signingKey'
 import {
+  appendManifestEntry,
   head,
   readChainFileSnapshots,
   readEntries,
-  readManifestSnapshot
+  readManifestSnapshot,
+  readMemberChainText
 } from '@main/services/manifest'
+import { getSettings } from '@main/services/settings'
 import { getStorageRoot } from '@main/services/storage'
+import { resolveToolVersion } from '@main/services/toolVersion'
+import { acceptEntrySegment, nonEmptyLines } from '@main/services/sharing/entryAcceptance'
 import {
   CHALLENGE_BYTES,
   MessageReader,
@@ -44,6 +50,9 @@ export interface SyncSource {
   caseId: string
   roster(): CaseMember[]
   heads(): ChainHead[]
+  // The raw lines of a chain this peer holds from `fromIndex` on; [] for a
+  // chain it does not hold.
+  chainLines(installationId: string, fromIndex: number): string[]
   sign(hex: string): string
 }
 
@@ -135,8 +144,52 @@ export function liveSyncSource(caseId: string): SyncSource | null {
     caseId,
     roster: () => listCaseMembers(caseId),
     heads: () => caseChainHeads(caseDir, installationId),
+    chainLines: (member, fromIndex) => {
+      const text =
+        member === installationId
+          ? readManifestSnapshot(caseDir).jsonl.toString('utf-8')
+          : readMemberChainText(caseDir, member)
+      return nonEmptyLines(text).slice(fromIndex)
+    },
     sign: signEntryHash
   }
+}
+
+// Membership is the Owner's to write (sharedCase.ts). Entries newly accepted
+// from the Owner's chain update the roster cache, which is how a member learns
+// who joined or was revoked after it did. The lines verified under the
+// Owner's key before they reached here. Returns what could not be applied.
+function refreshRosterFromOwnerChain(caseId: string, lines: string[]): string[] {
+  const refused: string[] = []
+  for (const line of lines) {
+    const parsed = ManifestEntrySchema.safeParse(JSON.parse(line))
+    if (!parsed.success) continue
+    const entry = parsed.data
+    if (entry.type !== 'member-add' && entry.type !== 'member-revoke') continue
+    const existing = listCaseMembers(caseId).find(
+      (m) => m.installationId === entry.memberInstallationId
+    )
+    try {
+      if (entry.type === 'member-add' && !existing) {
+        upsertCaseMember({
+          caseId,
+          installationId: entry.memberInstallationId,
+          publicKeyPem: entry.memberPublicKeyPem,
+          memberCode: entry.memberCode,
+          operatorName: entry.memberOperatorName,
+          nodeId: entry.nodeId,
+          role: entry.role,
+          addedAtIndex: entry.index,
+          revokedAtIndex: null
+        })
+      } else if (entry.type === 'member-revoke' && existing && existing.revokedAtIndex === null) {
+        upsertCaseMember({ ...existing, revokedAtIndex: entry.index })
+      }
+    } catch (err) {
+      refused.push(`${entry.type} at index ${entry.index}: ${(err as Error).message}`)
+    }
+  }
+  return refused
 }
 
 async function sayBye(stream: ByteStream, reason: string): Promise<void> {
@@ -188,6 +241,12 @@ export async function serveSyncSession(
         case 'heads':
           await writeMessage(stream, { t: 'heads', heads: source.heads() })
           break
+        case 'entries-request': {
+          const { installationId, fromIndex } = message
+          const lines = source.chainLines(installationId, fromIndex)
+          await writeMessage(stream, { t: 'entries', installationId, fromIndex, lines })
+          break
+        }
         default:
           return await sayBye(stream, BYE_REASONS.protocol)
       }
@@ -207,7 +266,7 @@ export async function pullFromPeer(
   stream: ByteStream,
   options: SyncSessionOptions = {}
 ): Promise<SyncSessionResult> {
-  const roster = listCaseMembers(caseId)
+  let roster = listCaseMembers(caseId)
   if (roster.length === 0) throw new Error(`Case ${caseId} is not a Shared Case`)
   const self = getInstallationId()
   const caseDir = join(getStorageRoot(), caseId)
@@ -261,7 +320,93 @@ export async function pullFromPeer(
 
     options.onPhase?.('heads')
     await writeMessage(stream, { t: 'heads', heads: caseChainHeads(caseDir, self) })
-    await expectMessage(reader, 'heads')
+    const { heads } = await expectMessage(reader, 'heads')
+
+    // 3. Entries: every chain the peer holds past what this replica stores,
+    // one request per member, accepted segment by segment. A chain of an
+    // installation the roster does not name has no key to verify it under
+    // and is not asked for; the verify walk reports it as unknown-member.
+    options.onPhase?.('entries')
+    const ownerId = roster.find((m) => m.role === 'owner')?.installationId
+    const advanced: Array<{
+      installationId: string
+      index: number
+      entryHash: string
+      entriesReceived: number
+    }> = []
+    for (const remote of heads) {
+      const member = roster.find((m) => m.installationId === remote.installationId)
+      if (!member || member.installationId === self) continue
+      const storedCount = nonEmptyLines(readMemberChainText(caseDir, member.installationId)).length
+      if (remote.index < storedCount) continue
+      await writeMessage(stream, {
+        t: 'entries-request',
+        installationId: member.installationId,
+        fromIndex: storedCount
+      })
+      const entries = await expectMessage(reader, 'entries')
+      if (entries.installationId !== member.installationId || entries.fromIndex !== storedCount) {
+        throw new ProtocolError(
+          `entries answered for ${entries.installationId}@${entries.fromIndex}`
+        )
+      }
+      const acceptance = acceptEntrySegment({
+        caseDir,
+        caseId,
+        member,
+        fromIndex: storedCount,
+        lines: entries.lines
+      })
+      const { installationId } = member
+      if (acceptance.outcome === 'rejected') {
+        result.errors.push({
+          kind: 'rejected-entry',
+          detail: `entry ${acceptance.index} of ${installationId} refused: ${acceptance.reason}`,
+          installationId,
+          index: acceptance.index
+        })
+        continue
+      }
+      if (acceptance.outcome === 'not-contiguous') {
+        fail('peer', `chain of ${installationId} did not continue the stored head`)
+        continue
+      }
+      if (acceptance.outcome === 'newer-version') {
+        result.errors.push({
+          kind: 'newer-version',
+          detail: `entry ${acceptance.index} of ${installationId}: ${acceptance.reason}`,
+          installationId,
+          index: acceptance.index
+        })
+      }
+      if (acceptance.appended === 0 || acceptance.head === null) continue
+      result.entriesReceived += acceptance.appended
+      advanced.push({ installationId, ...acceptance.head, entriesReceived: acceptance.appended })
+      if (installationId === ownerId) {
+        const accepted = entries.lines.slice(0, acceptance.appended)
+        for (const detail of refreshRosterFromOwnerChain(caseId, accepted)) {
+          result.errors.push({ kind: 'rejected-entry', detail, installationId })
+        }
+        roster = listCaseMembers(caseId)
+      }
+    }
+
+    // 6. One `merge` per session that brought at least one new entry
+    // (decision 14), naming the head now held for each chain that advanced.
+    if (advanced.length > 0) {
+      options.onPhase?.('merge')
+      const { operatorName } = getSettings()
+      const merge = appendManifestEntry(caseDir, {
+        type: 'merge',
+        caseId,
+        heads: advanced,
+        timestamp: new Date().toISOString(),
+        operatorId: self,
+        operatorName,
+        toolVersion: resolveToolVersion()
+      })
+      result.mergeIndex = merge.index
+    }
 
     await sayBye(stream, BYE_REASONS.done)
   } catch (err) {

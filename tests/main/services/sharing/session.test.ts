@@ -22,7 +22,7 @@ import {
   MessageReader,
   expectMessage,
   writeMessage,
-  type SyncMessage
+  type SyncMessageOf
 } from '@main/services/sharing/messages'
 import {
   BYE_REASONS,
@@ -111,6 +111,7 @@ describe('sync session handshake (#1512)', () => {
       caseId,
       roster: () => serverRoster,
       heads: () => [],
+      chainLines: () => [],
       sign: signWith(PEER_KEY),
       ...overrides
     }
@@ -235,7 +236,7 @@ describe('sync session handshake (#1512)', () => {
   })
 
   it('refuses a proof that does not verify, a message before hello, and an unknown request', async () => {
-    const hello = (): SyncMessage => ({
+    const hello = (): SyncMessageOf<'hello'> => ({
       t: 'hello',
       caseId,
       installationId: localId,

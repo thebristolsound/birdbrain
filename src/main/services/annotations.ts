@@ -1,7 +1,6 @@
 import { randomUUID } from 'crypto'
 // eslint-disable-next-line no-restricted-imports -- owns the annotations/annotation_pins aggregate's SQL; repo home resolved by 2026-07-11-capture-row-ownership plan
 import { getDb, syncColumnValues, withTransaction, type ImportCtx } from '@main/services/db/core'
-import { isLiveLocalRow } from '@main/services/db/workingRowRepo'
 import { deleteLocalRow, signLocalRow } from '@main/services/sharing/workingRows'
 import type {
   AnnotationsBundle,
@@ -135,16 +134,26 @@ export function upsertPin(params: UpsertAnnotationPinParams): AnnotationPin {
   const now = new Date().toISOString()
 
   return withTransaction(() => {
-    if (params.id && isLiveLocalRow('annotation_pins', { id: params.id })) {
-      db.prepare('UPDATE annotation_pins SET body = ?, updated_at = ? WHERE id = ?').run(
-        params.body,
-        now,
-        params.id
-      )
-      signLocalRow('annotation_pins', { id: params.id })
-      return rowToPin(
-        db.prepare('SELECT * FROM annotation_pins WHERE id = ?').get(params.id) as PinRow
-      )
+    if (params.id) {
+      const held = db
+        .prepare('SELECT author_installation_id FROM annotation_pins WHERE id = ?')
+        .get(params.id) as { author_installation_id: string | null } | undefined
+      // Another member's pin is theirs to edit; this installation's own pin
+      // is updated, and restored when it had been deleted.
+      if (held && held.author_installation_id !== null) {
+        throw new Error(`Pin ${params.id} belongs to another member`)
+      }
+      if (held) {
+        db.prepare('UPDATE annotation_pins SET body = ?, updated_at = ? WHERE id = ?').run(
+          params.body,
+          now,
+          params.id
+        )
+        signLocalRow('annotation_pins', { id: params.id }, { deletedAt: null })
+        return rowToPin(
+          db.prepare('SELECT * FROM annotation_pins WHERE id = ?').get(params.id) as PinRow
+        )
+      }
     }
 
     const id = params.id ?? randomUUID()

@@ -325,6 +325,16 @@ describe('working-layer rows (#1512)', () => {
     deleteAnnotations(cap)
     saveAnnotations({ captureId: cap, shapes: [], imageWidth: 2, imageHeight: 2 })
     expect(getAnnotations(cap).annotations?.imageWidth).toBe(2)
+
+    // A pin this installation deleted comes back under its id when it is
+    // written again, keeping its number.
+    const pin = upsertPin({ captureId: cap, body: 'first' })
+    deletePin(pin.id)
+    expect(getAnnotations(cap).pins).toEqual([])
+    const restored = upsertPin({ id: pin.id, captureId: cap, body: 'again' })
+    expect(restored).toMatchObject({ id: pin.id, number: pin.number, body: 'again' })
+    expect(getAnnotations(cap).pins.map((p) => p.body)).toEqual(['again'])
+    expect(raw('annotation_pins', 'id = ?', pin.id)!.deleted_at).toBeNull()
   })
 
   it('leaves another member rows to their author: readable, never edited or deleted here', () => {
@@ -386,7 +396,9 @@ describe('working-layer rows (#1512)', () => {
     expect(raw('annotations', 'capture_id = ?', cap)!.deleted_at).toBeNull()
     deletePin('remote-pin')
     expect(raw('annotation_pins', "id = 'remote-pin'")!.deleted_at).toBeNull()
-    expect(() => upsertPin({ id: 'remote-pin', captureId: cap, body: 'mine' })).toThrow()
+    expect(() => upsertPin({ id: 'remote-pin', captureId: cap, body: 'mine' })).toThrow(
+      'belongs to another member'
+    )
     expect(getNote('remote-note')?.title).toBe('Theirs')
 
     // Their layer is shown while this installation has none, with their pins

@@ -25,9 +25,12 @@ import { LINEAGE_DIRECTORY, parseChainPath } from '../../../packages/evidence-pa
 // Acceptance of another member's Exhibit bytes (docs/specs/2026-09-19-
 // collaborative-cases-design.md, "Case directory"): a received file is written
 // to a temporary name beside its destination, hashed from disk, and renamed
-// into place only when the hash is the one a verified entry anchors. A
-// mismatch is unlinked and never becomes visible under the path, so a file
-// at an anchored path is a file whose hash matched when it arrived.
+// into place only when the hash is the one the entry it was fetched for
+// anchors. A mismatch is unlinked and never becomes visible under the path,
+// so a file this module wrote is one whose hash matched that entry when it
+// arrived. A path two entries anchor with different hashes is fetched for
+// the first of them (missingAnchoredFiles), and the other entry's hash is not
+// compared here; verification of the file against that entry reports it.
 //
 // The path is the entry's, which a member signed, and a member's signature is
 // not permission to write anywhere: a path is accepted only inside the Case's
@@ -165,9 +168,10 @@ export function anchoredFiles(
   return files
 }
 
-// The anchored files not yet on disk, each once. A file present under its
-// path arrived through `acceptBlob` or was committed here, so its hash was
-// checked when it landed.
+// The anchored files not yet on disk, one per path: when several entries
+// anchor one path, the first in the order given is the one fetched and
+// checked against, and the hash of any other is not compared. A file present
+// under its path is not asked for, whichever entry anchored it.
 export function missingAnchoredFiles(files: AnchoredFile[], storageRoot: string): AnchoredFile[] {
   const seen = new Set<string>()
   return files.filter(({ path }) => {

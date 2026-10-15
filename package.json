@@ -159,6 +159,7 @@
     "@tiptap/static-renderer": "3.31.4",
     "@tiptap/suggestion": "3.31.4",
     "better-sqlite3": "^13.0.3",
+    "cborg": "6.1.3",
     "cheerio": "^1.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

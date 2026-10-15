@@ -34,7 +34,9 @@ const strictProdCsp = {
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    // `cborg` publishes an `import` condition only, so the CommonJS main bundle
+    // cannot `require` it from node_modules; it is bundled in instead.
+    plugins: [externalizeDepsPlugin({ exclude: ['cborg'] })],
     resolve: {
       alias: {
         '@main': resolve('src/main'),

@@ -484,77 +484,93 @@ export async function pullFromPeer(
       // One request per page, from the stored head, until the peer's head or
       // the bound is reached. A page that is refused, or that stops the
       // chain, ends this member's loop; the next session asks again.
-      while (storedCount <= remote.index && (bound === undefined || storedCount <= bound)) {
-        await writeMessage(stream, { t: 'entries-request', installationId, fromIndex: storedCount })
-        const entries = await expectMessage(reader, 'entries')
-        if (entries.installationId !== installationId || entries.fromIndex !== storedCount) {
-          throw new ProtocolError(
-            `entries answered for ${entries.installationId}@${entries.fromIndex}`
-          )
-        }
-        if (entries.lines.length === 0) break
-        const acceptance = acceptEntrySegment({
-          caseDir,
-          member,
-          fromIndex: storedCount,
-          lines:
-            bound === undefined ? entries.lines : entries.lines.slice(0, bound - storedCount + 1)
-        })
-        if (acceptance.outcome === 'rejected') {
-          result.errors.push({
-            kind: 'rejected-entry',
-            detail: `entry ${acceptance.index} of ${installationId} refused: ${acceptance.reason}`,
+      try {
+        while (storedCount <= remote.index && (bound === undefined || storedCount <= bound)) {
+          await writeMessage(stream, {
+            t: 'entries-request',
             installationId,
-            index: acceptance.index
+            fromIndex: storedCount
           })
-          break
-        }
-        if (acceptance.outcome === 'not-contiguous') {
-          fail('peer', `chain of ${installationId} did not continue the stored head`)
-          break
-        }
-        if (acceptance.outcome === 'newer-version') {
-          result.errors.push({
-            kind: 'newer-version',
-            detail: `entry ${acceptance.index} of ${installationId}: ${acceptance.reason}`,
-            installationId,
-            index: acceptance.index
+          const entries = await expectMessage(reader, 'entries')
+          if (entries.installationId !== installationId || entries.fromIndex !== storedCount) {
+            throw new ProtocolError(
+              `entries answered for ${entries.installationId}@${entries.fromIndex}`
+            )
+          }
+          if (entries.lines.length === 0) break
+          const acceptance = acceptEntrySegment({
+            caseDir,
+            member,
+            fromIndex: storedCount,
+            lines:
+              bound === undefined ? entries.lines : entries.lines.slice(0, bound - storedCount + 1)
           })
-        }
-        if (acceptance.appended > 0 && acceptance.head !== null) {
-          received += acceptance.appended
-          head = acceptance.head
-          storedCount += acceptance.appended
-          if (installationId === ownerId) {
-            const accepted = entries.lines.slice(0, acceptance.appended)
-            for (const detail of refreshRosterFromOwnerChain(caseId, accepted)) {
-              result.errors.push({ kind: 'rejected-entry', detail, installationId })
+          if (acceptance.outcome === 'rejected') {
+            result.errors.push({
+              kind: 'rejected-entry',
+              detail: `entry ${acceptance.index} of ${installationId} refused: ${acceptance.reason}`,
+              installationId,
+              index: acceptance.index
+            })
+            break
+          }
+          if (acceptance.outcome === 'not-contiguous') {
+            fail('peer', `chain of ${installationId} did not continue the stored head`)
+            break
+          }
+          if (acceptance.outcome === 'newer-version') {
+            result.errors.push({
+              kind: 'newer-version',
+              detail: `entry ${acceptance.index} of ${installationId}: ${acceptance.reason}`,
+              installationId,
+              index: acceptance.index
+            })
+          }
+          if (acceptance.appended > 0 && acceptance.head !== null) {
+            received += acceptance.appended
+            head = acceptance.head
+            storedCount += acceptance.appended
+            if (installationId === ownerId) {
+              const accepted = entries.lines.slice(0, acceptance.appended)
+              for (const detail of refreshRosterFromOwnerChain(caseId, accepted)) {
+                result.errors.push({ kind: 'rejected-entry', detail, installationId })
+              }
+              roster = listCaseMembers(caseId)
             }
-            roster = listCaseMembers(caseId)
+          }
+          if (acceptance.outcome === 'newer-version' || acceptance.appended === 0) break
+        }
+      } finally {
+        // A chain names its Case in the entries after its last `import`; the
+        // ones before are a source Case's history (sharedCase.ts). That is
+        // judged over the chain as stored on every way out of the loop, the
+        // exceptional ones included, because the `import` may arrive on a
+        // later page and a session may end before it: a chain that names
+        // another Case is cut back to what this session found and is never
+        // counted as advanced. When what was stored before is itself foreign
+        // (an older build, or a session killed between a page and this
+        // check), the chain is removed whole.
+        if (received > 0) {
+          const stored = (): ManifestEntry[] =>
+            storedEntries(Buffer.from(readMemberChainText(caseDir, installationId)))
+          const foreign = foreignCaseEntry(stored(), caseId)
+          if (foreign) {
+            truncateMemberChainLines(caseDir, installationId, storedBefore)
+            if (foreignCaseEntry(stored(), caseId)) {
+              truncateMemberChainLines(caseDir, installationId, 0)
+            }
+            result.errors.push({
+              kind: 'rejected-entry',
+              detail: `entry ${foreign.index} of ${installationId} names Case ${foreign.caseId}, this Case is ${caseId}`,
+              installationId,
+              index: foreign.index
+            })
+            received = 0
+            head = null
           }
         }
-        if (acceptance.outcome === 'newer-version' || acceptance.appended === 0) break
       }
       if (received === 0 || head === null) continue
-      // A chain names its Case in the entries after its last `import`; the
-      // ones before are a source Case's history (sharedCase.ts). That is
-      // judged over the whole chain once the peer's head is reached, since
-      // the `import` may have arrived on a later page: a chain that names
-      // another Case is cut back to what this session found.
-      if (storedCount > remote.index) {
-        const whole = storedEntries(Buffer.from(readMemberChainText(caseDir, installationId)))
-        const foreign = foreignCaseEntry(whole, caseId)
-        if (foreign) {
-          truncateMemberChainLines(caseDir, installationId, storedBefore)
-          result.errors.push({
-            kind: 'rejected-entry',
-            detail: `entry ${foreign.index} of ${installationId} names Case ${foreign.caseId}, this Case is ${caseId}`,
-            installationId,
-            index: foreign.index
-          })
-          continue
-        }
-      }
       result.entriesReceived += received
       advanced.push({ installationId, ...head, entriesReceived: received })
     }

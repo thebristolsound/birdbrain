@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { createHash, createSign } from 'crypto'
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs'
 import { basename, join } from 'path'
 import { tmpdir } from 'os'
 import { closeDatabase, getDb } from '@main/services/db/core'
@@ -1053,5 +1053,149 @@ describe('sync session between peers (#1512)', () => {
     const second = await pull(CASE_ID, source, {}, { pageBytes: 600 })
     expect(second.errors).toEqual([])
     expect(second.rowsApplied).toBe(0)
+  })
+
+  // Review finding 1 on this PR, round three: which Case a chain names was
+  // judged only once the peer's head was reached, so a chain naming another
+  // Case whose tail never arrived kept its lines on disk, was named by a
+  // merge, and was never cut back by a later session. It is judged on every
+  // way out of the member's loop, the exceptional ones included.
+  describe('a chain naming another Case whose head is never reached', () => {
+    const OTHER = '0196f7a2-aaaa-bbbb-cccc-000000000556'
+    const foreignExhibit = (peer: Peer, n: number) => ({
+      type: 'exhibit' as const,
+      exhibitId: `elsewhere-${n}`,
+      caseId: OTHER,
+      kind: 'document' as const,
+      origin: 'manual-upload' as const,
+      name: `elsewhere-${n}.pdf`,
+      exhibitNumber: n,
+      path: `${OTHER}/documents/elsewhere-${n}.pdf`,
+      contentHash: 'f'.repeat(64),
+      sizeBytes: 1,
+      timestamp: TIME,
+      operatorId: peer.installationId,
+      operatorName: peer.operatorName,
+      toolVersion: '0.0.0'
+    })
+    const foreignError = (peer: Peer, index: number) => ({
+      kind: 'rejected-entry',
+      detail: `entry ${index} of ${peer.installationId} names Case ${OTHER}, this Case is ${CASE_ID}`,
+      installationId: peer.installationId,
+      index
+    })
+    const nothingOfCarolStored = (): void => {
+      expect(memberChainText(CASE_ID, C)).toBe('')
+      expect(mergeEntries(CASE_ID)).toEqual([])
+    }
+
+    it('is cut back when a later page is refused', async () => {
+      await activate(C)
+      initManifest(caseDirOf(CASE_ID))
+      appendManifestEntry(caseDirOf(CASE_ID), foreignExhibit(C, 1))
+      const source = recordSource(CASE_ID, C)
+      // The peer's head is one line past what verifies under Carol's key.
+      const lines = source.chains.get(C.installationId)!
+      const last = JSON.parse(lines.at(-1)!) as { index: number; entryHash: string }
+      const body = {
+        ...foreignExhibit(C, 2),
+        schemaVersion: 3,
+        index: last.index + 1,
+        prevHash: last.entryHash
+      }
+      const entryHash = createHash('sha256').update(canonicalStringify(body)).digest('hex')
+      const signature = createSign('sha256').update(entryHash).sign(A.privateKeyPem, 'base64')
+      lines.push(JSON.stringify({ ...body, entryHash, signature }))
+
+      await activate(B)
+      const result = await pull(CASE_ID, source, {}, { pageBytes: 1 })
+      expect(result.errors).toEqual([
+        {
+          kind: 'rejected-entry',
+          detail: `entry 1 of ${C.installationId} refused: Invalid signature`,
+          installationId: C.installationId,
+          index: 1
+        },
+        foreignError(C, 0)
+      ])
+      expect(result.entriesReceived).toBe(0)
+      nothingOfCarolStored()
+    })
+
+    it('is cut back when the peer sends an empty page before its head', async () => {
+      await activate(C)
+      initManifest(caseDirOf(CASE_ID))
+      appendManifestEntry(caseDirOf(CASE_ID), foreignExhibit(C, 1))
+      const source = recordSource(CASE_ID, C)
+      const short: SyncSource = {
+        ...source,
+        heads: () =>
+          source
+            .heads()
+            .map((h) => (h.installationId === C.installationId ? { ...h, index: h.index + 1 } : h))
+      }
+      await activate(B)
+      const result = await pull(CASE_ID, short, {}, { pageBytes: 1 })
+      expect(result.errors).toEqual([foreignError(C, 0)])
+      expect(result.entriesReceived).toBe(0)
+      nothingOfCarolStored()
+    })
+
+    it('is cut back when the session fails mid-chain', async () => {
+      await activate(C)
+      initManifest(caseDirOf(CASE_ID))
+      appendManifestEntry(caseDirOf(CASE_ID), foreignExhibit(C, 1))
+      appendManifestEntry(caseDirOf(CASE_ID), foreignExhibit(C, 2))
+      const source = recordSource(CASE_ID, C)
+      let pages = 0
+      const dying: SyncSource = {
+        ...source,
+        chainLines: (id, from, max) => {
+          pages += 1
+          if (pages > 1) throw new Error('listener died')
+          return source.chainLines(id, from, max)
+        }
+      }
+      await activate(B)
+      const outcome = await pull(CASE_ID, dying, {}, { pageBytes: 1 }).catch(
+        (err: Error) => err.message
+      )
+      expect(outcome).toBe('listener died')
+      expect(getSyncState(CASE_ID).lastError?.kind).toBe('rejected-entry')
+      nothingOfCarolStored()
+    })
+
+    it('is cut back to what the session found', async () => {
+      await activate(C)
+      initManifest(caseDirOf(CASE_ID))
+      addDocument(CASE_ID, C, 1)
+      const early = recordSource(CASE_ID, C)
+      await activate(B)
+      expect((await pull(CASE_ID, early)).errors).toEqual([])
+      const kept = memberChainText(CASE_ID, C)
+      await activate(C)
+      appendManifestEntry(caseDirOf(CASE_ID), foreignExhibit(C, 2))
+      const later = recordSource(CASE_ID, C)
+      await activate(B)
+      const result = await pull(CASE_ID, later, {}, { pageBytes: 1 })
+      expect(result.errors).toEqual([foreignError(C, 1)])
+      expect(result.entriesReceived).toBe(0)
+      expect(memberChainText(CASE_ID, C)).toBe(kept)
+      expect(mergeEntries(CASE_ID)).toHaveLength(1)
+    })
+
+    it('removes a chain whole when what an older build stored of it is already foreign', async () => {
+      await activate(C)
+      initManifest(caseDirOf(CASE_ID))
+      appendManifestEntry(caseDirOf(CASE_ID), foreignExhibit(C, 1))
+      const [first] = recordSource(CASE_ID, C).chains.get(C.installationId)!
+      appendManifestEntry(caseDirOf(CASE_ID), foreignExhibit(C, 2))
+      const source = recordSource(CASE_ID, C)
+      await activate(B)
+      writeFileSync(join(caseDirOf(CASE_ID), memberChainPath(C.installationId)), first + '\n')
+      const result = await pull(CASE_ID, source, {}, { pageBytes: 1 })
+      expect(result.errors).toEqual([foreignError(C, 0)])
+      nothingOfCarolStored()
+    })
   })
 })

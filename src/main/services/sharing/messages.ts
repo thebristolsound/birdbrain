@@ -57,6 +57,7 @@ export const WireRowSchema = z
     table: z.string().min(1),
     author: installationIdField,
     version: z.number().int().positive(),
+    caseId: z.string().min(1).nullable(),
     deletedAt: z.string().nullable(),
     fields: z.record(z.string(), z.union([z.string(), z.number(), z.null()])),
     signature: z.string().min(1)

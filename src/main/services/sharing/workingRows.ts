@@ -7,6 +7,7 @@ import { signEntryHash } from '@main/services/signingKey'
 import {
   CURSOR_FREE_TABLES,
   applyRows,
+  caseOfRow,
   hardDeleteLocalRow,
   isInSharedCase,
   isSyncedTable,
@@ -28,10 +29,15 @@ import { localVersionHighWater, recordLocalVersion } from '@main/services/sharin
 // collaborative-cases-design.md, "Working-layer rows"). This installation
 // signs each of its rows on every write: the signature is RSA-SHA256 by the
 // installation key over the SHA-256 of the canonical JSON of the row's
-// envelope (table, author, version, tombstone, content columns), the same
-// key and primitive a manifest entry uses. A remote row is applied only when
-// that envelope verifies under the key the roster holds for its author, and
-// only above the version already stored for it.
+// envelope (table, author, version, the Case the row belongs to, tombstone,
+// content columns), the same key and primitive a manifest entry uses. A
+// remote row is applied only when that envelope verifies under the key the
+// roster holds for its author, only when the Case it names is the one being
+// synced and the row it references is of that Case, and only above the
+// version already stored for it. The Case is in the envelope because a
+// roster member of one Case must not be able to write into another Case the
+// receiver holds: the row's own columns name the Case directly or through
+// an Exhibit or Capture, and the author signs which one it meant.
 //
 // Versions are one sequence per installation across every table and Case:
 // each write takes the next one, so a peer's "rows above version n" request
@@ -44,6 +50,9 @@ export interface RowEnvelope {
   table: SyncedTable
   author: string
   version: number
+  // The Case the row belongs to (caseOfRow); null for a tag, which belongs
+  // to Cases through its applications.
+  caseId: string | null
   deletedAt: string | null
   fields: RowFields
 }
@@ -87,6 +96,7 @@ export function signLocalRow(
       table,
       author: getInstallationId(),
       version,
+      caseId: caseOfRow(table, row.fields) ?? null,
       deletedAt,
       fields: row.fields
     })
@@ -189,19 +199,34 @@ export function offerPage(byTable: Map<string, TableOffer<WireRow>>, maxBytes: n
 // cursor-bound rows, or `since` when it carried none. A cursor-free row
 // travels on every page whatever its version and must move nothing, or the
 // cursor-bound rows between would never be asked for.
-export function cursorAfter(rows: WireRow[], since: number): number {
+export function cursorAfter(
+  rows: ReadonlyArray<{ table: string; version: number }>,
+  since: number
+): number {
   return rows.reduce(
     (max, row) => (CURSOR_FREE_TABLES.has(row.table) ? max : Math.max(max, row.version)),
     since
   )
 }
 
-// Rows as they travel: this installation's carry its id in place of NULL.
+// Rows as they travel: this installation's carry its id in place of NULL,
+// and each names its Case as this database reads it, which for a row that
+// was received is the Case its author signed (caseRefusal).
 export function toWireRows(rows: StoredRow[], localInstallationId: string): WireRow[] {
   return rows.flatMap(({ table, author, version, deletedAt, signature, fields }) =>
     signature === null
       ? []
-      : [{ table, author: author ?? localInstallationId, version, deletedAt, fields, signature }]
+      : [
+          {
+            table,
+            author: author ?? localInstallationId,
+            version,
+            caseId: caseOfRow(table, fields) ?? null,
+            deletedAt,
+            fields,
+            signature
+          }
+        ]
   )
 }
 
@@ -216,10 +241,24 @@ export function verifyWireRow(row: WireRow, publicKeyPem: string): boolean {
     table: row.table,
     author: row.author,
     version: row.version,
+    caseId: row.caseId,
     deletedAt: row.deletedAt,
     fields: row.fields
   })
   return verifyEntrySignature(digest, row.signature, publicKeyPem)
+}
+
+// Why a verified row is not this Case's, or null. Its signed envelope must
+// name the Case being synced (a tag names none), and the Case this replica
+// reads for it, from its own column or from the Exhibit, Note or Capture it
+// references, must be that Case whenever the referenced row is held here; a
+// row referencing one not held fails its foreign key at commit (applyRows).
+function caseRefusal(row: WireRow, caseId: string): string | null {
+  const held = caseOfRow(row.table as SyncedTable, row.fields)
+  if (held === null) return row.caseId === null ? null : 'a tag names no Case'
+  if (row.caseId !== caseId) return `names Case ${row.caseId}, this session syncs ${caseId}`
+  if (held !== undefined && held !== caseId) return `references a row of Case ${held}`
+  return null
 }
 
 export interface RowRefusal {
@@ -241,13 +280,15 @@ export interface VerifiedRows {
 
 // Checks received rows before any is applied. A row is refused when it names
 // an author this replica did not ask for, one the roster does not hold a key
-// for, a table that does not sync, or when its signature does not verify.
+// for, a table that does not sync, when its signature does not verify, or
+// when it is not a row of `caseId`, the Case being synced (caseRefusal).
 // What a page moves the cursor to is read from the accepted rows alone, so a
 // peer answering with rows that do not verify moves nothing.
 export function verifyRemoteRows(
   rows: WireRow[],
   roster: CaseMember[],
-  requested: ReadonlySet<string>
+  requested: ReadonlySet<string>,
+  caseId: string
 ): VerifiedRows {
   const accepted: RemoteRow[] = []
   const refused: RowRefusal[] = []
@@ -257,17 +298,29 @@ export function verifyRemoteRows(
   for (const row of rows) {
     const { author, table, version } = row
     const member = roster.find((m) => m.installationId === author)
+    const name = `${table} row of ${author} at version ${version}`
     if (!requested.has(author)) {
-      refuse(author, `${table} row of ${author} at version ${version}: author not requested`)
-    } else if (!member) {
-      refuse(author, `${table} row of ${author} at version ${version}: author not on the roster`)
-    } else if (!isSyncedTable(table)) {
-      refuse(author, `${table} row of ${author} at version ${version}: table does not sync`)
-    } else if (!verifyWireRow(row, member.publicKeyPem)) {
-      refuse(author, `${table} row of ${author} at version ${version}: invalid signature`)
-    } else {
-      accepted.push({ ...row, table })
+      refuse(author, `${name}: author not requested`)
+      continue
     }
+    if (!member) {
+      refuse(author, `${name}: author not on the roster`)
+      continue
+    }
+    if (!isSyncedTable(table)) {
+      refuse(author, `${name}: table does not sync`)
+      continue
+    }
+    if (!verifyWireRow(row, member.publicKeyPem)) {
+      refuse(author, `${name}: invalid signature`)
+      continue
+    }
+    const elsewhere = caseRefusal(row, caseId)
+    if (elsewhere !== null) {
+      refuse(author, `${name}: ${elsewhere}`)
+      continue
+    }
+    accepted.push({ ...row, table })
   }
   return { accepted, refused }
 }
@@ -279,9 +332,10 @@ export function verifyRemoteRows(
 export function applyRemoteRows(
   rows: WireRow[],
   roster: CaseMember[],
-  requested: ReadonlySet<string>
+  requested: ReadonlySet<string>,
+  caseId: string
 ): RemoteApplyOutcome {
-  const { accepted, refused } = verifyRemoteRows(rows, roster, requested)
+  const { accepted, refused } = verifyRemoteRows(rows, roster, requested, caseId)
   const outcome: RemoteApplyOutcome = { applied: 0, skipped: 0, refused }
   if (accepted.length === 0) return outcome
   try {

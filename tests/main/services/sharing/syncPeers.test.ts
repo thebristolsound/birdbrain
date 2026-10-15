@@ -736,6 +736,7 @@ describe('sync session between peers (#1512)', () => {
           table: 'notes',
           author,
           version: since + 1,
+          caseId: CASE_ID,
           deletedAt: null,
           fields: { id: `forged-${since}` },
           signature: 'forged'
@@ -783,6 +784,7 @@ describe('sync session between peers (#1512)', () => {
           table: 'notes',
           author,
           version: since + 1,
+          caseId: CASE_ID,
           deletedAt: null,
           fields: {
             id: `endless-${since + 1}`,
@@ -807,6 +809,78 @@ describe('sync session between peers (#1512)', () => {
     expect(calls).toBe(MAX_ROW_PAGES + 1)
     expect(bounded.errors).toEqual([])
     expect(bounded.rowsApplied).toBe(MAX_ROW_PAGES)
+  })
+
+  // Scheduled review finding 2: a member of one Shared Case could plant
+  // notes, tag applications and annotations into any other Case the dialer
+  // holds, because no received row was checked against the Case being
+  // synced. The author signs the row's Case; a row of another Case, however
+  // it is signed, is refused and nothing of it lands.
+  it('refuses rows of a Case other than the one being synced', async () => {
+    const PRIV = '0196f7a2-aaaa-bbbb-cccc-000000000777'
+    const holdPrivateCase = (): void => {
+      getDb()
+        .prepare(
+          `INSERT INTO cases (id, name, description, type, created_at, updated_at)
+           VALUES (?, 'Private', NULL, 'custom', ?, ?)`
+        )
+        .run(PRIV, TIME, TIME)
+    }
+    await activate(B)
+    holdPrivateCase()
+    const bobsCapture = insertCapture({
+      caseId: PRIV,
+      url: 'https://example.com/private',
+      title: 'Private',
+      hash: 'p'.repeat(64),
+      timestamp: TIME
+    }).id
+
+    await activate(C)
+    holdPrivateCase()
+    const planted = createNote({ caseId: PRIV, title: 'planted by Carol', body: '' })
+    const [honestlySigned] = toWireRows(
+      [readRow('notes', { id: planted.id }, null)!],
+      C.installationId
+    )
+    expect(honestlySigned.caseId).toBe(PRIV)
+    const sign = (hex: string): string =>
+      createSign('sha256').update(hex).sign(C.privateKeyPem, 'base64')
+    const forged = (envelope: RowEnvelope): WireRow => ({
+      ...envelope,
+      signature: sign(rowDigest(envelope))
+    })
+    const source = recordSource(CASE_ID, C)
+    source.rows.set(C.installationId, [
+      honestlySigned,
+      forged({
+        table: 'notes',
+        author: C.installationId,
+        version: 7,
+        caseId: CASE_ID,
+        deletedAt: null,
+        fields: honestlySigned.fields
+      }),
+      forged({
+        table: 'exhibit_tags',
+        author: C.installationId,
+        version: 8,
+        caseId: CASE_ID,
+        deletedAt: null,
+        fields: { exhibit_id: bobsCapture, tag_id: 'planted-tag' }
+      })
+    ])
+
+    await activate(B)
+    const result = await pull(CASE_ID, source)
+    expect(result.rowsApplied).toBe(0)
+    expect(result.errors.map((e) => e.detail)).toEqual([
+      `notes row of ${C.installationId} at version ${honestlySigned.version}: names Case ${PRIV}, this session syncs ${CASE_ID}`,
+      `notes row of ${C.installationId} at version 7: references a row of Case ${PRIV}`,
+      `exhibit_tags row of ${C.installationId} at version 8: references a row of Case ${PRIV}`
+    ])
+    expect(listNotes(PRIV)).toEqual([])
+    expect(getTagsForCapture(bobsCapture)).toEqual([])
   })
 
   it('leaves the session in sync-state.json and the roster in members.json', async () => {

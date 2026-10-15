@@ -53,6 +53,10 @@ interface TableSpec {
   caseIds: string
   // The rows of a Case: a join and predicate over alias `t` and `@case_id`.
   inCase: string
+  // Where the one Case a row belongs to is read from: a column of the row,
+  // the `case_id` of the row a column references, or nowhere (a tag belongs
+  // to Cases through its applications).
+  caseOf: { column: string } | { via: 'exhibits' | 'notes' | 'captures'; column: string } | null
 }
 
 const SPECS: Record<SyncedTable, TableSpec> = {
@@ -73,7 +77,8 @@ const SPECS: Record<SyncedTable, TableSpec> = {
       'updated_at'
     ],
     caseIds: 'SELECT case_id FROM notes WHERE id = @id',
-    inCase: 't.case_id = @case_id'
+    inCase: 't.case_id = @case_id',
+    caseOf: { column: 'case_id' }
   },
   tags: {
     key: ['id'],
@@ -86,19 +91,22 @@ const SPECS: Record<SyncedTable, TableSpec> = {
     inCase: `EXISTS (SELECT 1 FROM exhibit_tags et JOIN exhibits e ON e.id = et.exhibit_id
                       WHERE et.tag_id = t.id AND e.case_id = @case_id)
              OR EXISTS (SELECT 1 FROM note_tags nt JOIN notes n ON n.id = nt.note_id
-                         WHERE nt.tag_id = t.id AND n.case_id = @case_id)`
+                         WHERE nt.tag_id = t.id AND n.case_id = @case_id)`,
+    caseOf: null
   },
   exhibit_tags: {
     key: ['exhibit_id', 'tag_id'],
     columns: ['exhibit_id', 'tag_id'],
     caseIds: 'SELECT case_id FROM exhibits WHERE id = @exhibit_id',
-    inCase: 'EXISTS (SELECT 1 FROM exhibits e WHERE e.id = t.exhibit_id AND e.case_id = @case_id)'
+    inCase: 'EXISTS (SELECT 1 FROM exhibits e WHERE e.id = t.exhibit_id AND e.case_id = @case_id)',
+    caseOf: { via: 'exhibits', column: 'exhibit_id' }
   },
   note_tags: {
     key: ['note_id', 'tag_id'],
     columns: ['note_id', 'tag_id'],
     caseIds: 'SELECT case_id FROM notes WHERE id = @note_id',
-    inCase: 'EXISTS (SELECT 1 FROM notes n WHERE n.id = t.note_id AND n.case_id = @case_id)'
+    inCase: 'EXISTS (SELECT 1 FROM notes n WHERE n.id = t.note_id AND n.case_id = @case_id)',
+    caseOf: { via: 'notes', column: 'note_id' }
   },
   annotations: {
     key: ['capture_id'],
@@ -112,19 +120,34 @@ const SPECS: Record<SyncedTable, TableSpec> = {
       'updated_by'
     ],
     caseIds: 'SELECT case_id FROM captures WHERE id = @capture_id',
-    inCase: 'EXISTS (SELECT 1 FROM captures c WHERE c.id = t.capture_id AND c.case_id = @case_id)'
+    inCase: 'EXISTS (SELECT 1 FROM captures c WHERE c.id = t.capture_id AND c.case_id = @case_id)',
+    caseOf: { via: 'captures', column: 'capture_id' }
   },
   annotation_pins: {
     key: ['id'],
     columns: ['id', 'capture_id', 'number', 'body', 'created_at', 'updated_at'],
     caseIds: `SELECT c.case_id FROM annotation_pins p JOIN captures c ON c.id = p.capture_id
                WHERE p.id = @id`,
-    inCase: 'EXISTS (SELECT 1 FROM captures c WHERE c.id = t.capture_id AND c.case_id = @case_id)'
+    inCase: 'EXISTS (SELECT 1 FROM captures c WHERE c.id = t.capture_id AND c.case_id = @case_id)',
+    caseOf: { via: 'captures', column: 'capture_id' }
   }
 }
 
 export function signedColumns(table: SyncedTable): readonly string[] {
   return SPECS[table].columns
+}
+
+// The Case a row with these content columns belongs to, as this database
+// reads it: null for a table whose rows belong to no one Case, undefined
+// when the row the columns reference is not held here.
+export function caseOfRow(table: SyncedTable, fields: RowFields): string | null | undefined {
+  const { caseOf } = SPECS[table]
+  if (caseOf === null) return null
+  if (!('via' in caseOf)) return String(fields[caseOf.column])
+  const row = getDb()
+    .prepare(`SELECT case_id FROM ${caseOf.via} WHERE id = ?`)
+    .get(fields[caseOf.column]) as { case_id: string } | undefined
+  return row?.case_id
 }
 
 // `author` NULL matches this installation's rows. The predicate the per-author

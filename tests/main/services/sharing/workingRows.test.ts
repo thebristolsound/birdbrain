@@ -173,17 +173,17 @@ describe('working-layer rows (#1512)', () => {
   }
 
   // A row of the remote member, signed with its key, as the session would
-  // hand it to applyRemoteRows.
+  // hand it to applyRemoteRows; its envelope names this Case unless told
+  // otherwise, and no Case for a tag.
   function remoteRow(
     table: SyncedTable,
     fields: RowFields,
     version: number,
-    deletedAt: string | null = null
+    deletedAt: string | null = null,
+    rowCase: string | null = table === 'tags' ? null : caseId
   ): WireRow {
-    const signature = signRemote(
-      rowDigest({ table, author: REMOTE_ID, version, deletedAt, fields })
-    )
-    return { table, author: REMOTE_ID, version, deletedAt, fields, signature }
+    const envelope = { table, author: REMOTE_ID, version, caseId: rowCase, deletedAt, fields }
+    return { ...envelope, signature: signRemote(rowDigest(envelope)) }
   }
 
   const noteFields = (
@@ -379,7 +379,8 @@ describe('working-layer rows (#1512)', () => {
         )
       ],
       roster(),
-      new Set([REMOTE_ID])
+      new Set([REMOTE_ID]),
+      caseId
     )
     expect(outcome).toEqual({ applied: 5, skipped: 0, refused: [] })
     expect(listNotes(caseId).map((n) => n.title)).toEqual(['Theirs'])
@@ -429,7 +430,8 @@ describe('working-layer rows (#1512)', () => {
     applyRemoteRows(
       [remoteRow('exhibit_tags', { exhibit_id: other, tag_id: source.id }, 1)],
       roster(),
-      new Set([REMOTE_ID])
+      new Set([REMOTE_ID]),
+      caseId
     )
 
     expect(mergeTags({ sourceId: source.id, targetId: target.id })).toEqual({
@@ -463,13 +465,13 @@ describe('working-layer rows (#1512)', () => {
     share()
     const first = remoteRow('notes', noteFields('rn', 'v1'), 1)
     const second = remoteRow('notes', noteFields('rn', 'v2'), 2)
-    expect(applyRemoteRows([second, first], roster(), new Set([REMOTE_ID]))).toEqual({
+    expect(applyRemoteRows([second, first], roster(), new Set([REMOTE_ID]), caseId)).toEqual({
       applied: 2,
       skipped: 0,
       refused: []
     })
     expect(getNote('rn')?.title).toBe('v2')
-    expect(applyRemoteRows([first, second], roster(), new Set([REMOTE_ID]))).toEqual({
+    expect(applyRemoteRows([first, second], roster(), new Set([REMOTE_ID]), caseId)).toEqual({
       applied: 0,
       skipped: 2,
       refused: []
@@ -494,7 +496,8 @@ describe('working-layer rows (#1512)', () => {
         remoteRow('selectors' as SyncedTable, { id: 'x' }, 6)
       ],
       roster(),
-      new Set([REMOTE_ID, 'installation-nobody'])
+      new Set([REMOTE_ID, 'installation-nobody']),
+      caseId
     )
     expect(refused.applied).toBe(0)
     expect(refused.refused.map((r) => [r.kind, r.detail])).toEqual([
@@ -504,7 +507,7 @@ describe('working-layer rows (#1512)', () => {
       ['rejected-entry', `selectors row of ${REMOTE_ID} at version 6: table does not sync`]
     ])
     expect(getNote('rn')?.title).toBe('v2')
-    const unasked = applyRemoteRows([first], roster(), new Set())
+    const unasked = applyRemoteRows([first], roster(), new Set(), caseId)
     expect(unasked.refused[0]?.detail).toBe(
       `notes row of ${REMOTE_ID} at version 1: author not requested`
     )
@@ -516,7 +519,8 @@ describe('working-layer rows (#1512)', () => {
     const collision = applyRemoteRows(
       [remoteRow('notes', noteFields(mine.id, 'Taken over'), 1)],
       roster(),
-      new Set([REMOTE_ID])
+      new Set([REMOTE_ID]),
+      caseId
     )
     expect(collision.applied).toBe(0)
     expect(collision.refused[0]?.kind).toBe('peer')
@@ -529,7 +533,8 @@ describe('working-layer rows (#1512)', () => {
         remoteRow('note_tags', { note_id: 'rn', tag_id: 'no-such-tag' }, 3)
       ],
       roster(),
-      new Set([REMOTE_ID])
+      new Set([REMOTE_ID]),
+      caseId
     )
     expect(dangling.applied).toBe(0)
     expect(dangling.refused[0]?.kind).toBe('peer')
@@ -548,10 +553,73 @@ describe('working-layer rows (#1512)', () => {
         remoteRow('notes', noteFields('rn', 'Fine'), 4)
       ],
       roster(),
-      new Set([REMOTE_ID])
+      new Set([REMOTE_ID]),
+      caseId
     )
     expect(ordered).toEqual({ applied: 3, skipped: 0, refused: [] })
     expect(getTagsForNote('rn').map((t) => t.name)).toEqual(['remote'])
+  })
+
+  // Scheduled review finding 2: a received row was never checked against
+  // the Case being synced, so a roster member could write into any Case the
+  // receiver holds. The author signs the row's Case in its envelope, and the
+  // Case this replica reads for the row must be the same.
+  it('refuses a row of another Case, whichever Case its author signed', () => {
+    share()
+    const elsewhere = createCase({ name: 'Elsewhere' }).id
+    const otherCapture = insertCapture({
+      caseId: elsewhere,
+      url: 'https://example.com/elsewhere',
+      title: 'Elsewhere',
+      hash: 'e'.repeat(64),
+      timestamp: '2026-10-01T00:00:00.000Z'
+    }).id
+    const planted = [
+      // Signed as a row of the other Case.
+      remoteRow('notes', noteFields('p1', 'Planted', { case_id: elsewhere }), 1, null, elsewhere),
+      // Signed as this Case's, naming the other Case in its own column.
+      remoteRow('notes', noteFields('p2', 'Planted', { case_id: elsewhere }), 2),
+      // Signed as this Case's, applied to the other Case's Capture.
+      remoteRow('exhibit_tags', { exhibit_id: otherCapture, tag_id: 'rt' }, 3),
+      remoteRow(
+        'annotations',
+        {
+          capture_id: otherCapture,
+          schema_version: 1,
+          shapes_json: '[]',
+          image_width: 1,
+          image_height: 1,
+          updated_at: '2026-10-01T00:00:00.000Z',
+          updated_by: 'x'
+        },
+        4
+      ),
+      remoteRow('tags', { id: 'rt', name: 'r', color: null, created_at: 'x' }, 5, null, caseId)
+    ]
+    const outcome = applyRemoteRows(planted, roster(), new Set([REMOTE_ID]), caseId)
+    expect(outcome.applied).toBe(0)
+    expect(outcome.refused.map((r) => r.detail)).toEqual([
+      `notes row of ${REMOTE_ID} at version 1: names Case ${elsewhere}, this session syncs ${caseId}`,
+      `notes row of ${REMOTE_ID} at version 2: references a row of Case ${elsewhere}`,
+      `exhibit_tags row of ${REMOTE_ID} at version 3: references a row of Case ${elsewhere}`,
+      `annotations row of ${REMOTE_ID} at version 4: references a row of Case ${elsewhere}`,
+      `tags row of ${REMOTE_ID} at version 5: a tag names no Case`
+    ])
+    expect(listNotes(elsewhere)).toEqual([])
+    expect(getTagsForCapture(otherCapture)).toEqual([])
+    // The same rows signed for this Case, on this Case's Capture, land.
+    const cap = capture()
+    const fine = applyRemoteRows(
+      [
+        remoteRow('tags', { id: 'rt', name: 'r', color: null, created_at: 'x' }, 6),
+        remoteRow('notes', noteFields('p3', 'Mine'), 7),
+        remoteRow('exhibit_tags', { exhibit_id: cap, tag_id: 'rt' }, 8)
+      ],
+      roster(),
+      new Set([REMOTE_ID]),
+      caseId
+    )
+    expect(fine).toEqual({ applied: 3, skipped: 0, refused: [] })
   })
 
   it('indexes the Mentions of a received note and clears them on its tombstone', () => {
@@ -572,7 +640,8 @@ describe('working-layer rows (#1512)', () => {
     applyRemoteRows(
       [remoteRow('notes', noteFields('rn', 'Citing', { body_doc: doc }), 1)],
       roster(),
-      new Set([REMOTE_ID])
+      new Set([REMOTE_ID]),
+      caseId
     )
     expect(referencesForNote('rn').map((r) => r.targetId)).toEqual([target.id])
     applyRemoteRows(
@@ -585,13 +654,15 @@ describe('working-layer rows (#1512)', () => {
         )
       ],
       roster(),
-      new Set([REMOTE_ID])
+      new Set([REMOTE_ID]),
+      caseId
     )
     expect(referencesForNote('rn')).toEqual([])
     applyRemoteRows(
       [remoteRow('notes', noteFields('rn', 'Citing', { body_doc: '{"type":"not-a-doc"}' }), 3)],
       roster(),
-      new Set([REMOTE_ID])
+      new Set([REMOTE_ID]),
+      caseId
     )
     expect(referencesForNote('rn')).toEqual([])
   })
@@ -610,7 +681,8 @@ describe('working-layer rows (#1512)', () => {
         remoteRow('exhibit_tags', { exhibit_id: cap, tag_id: 'rt' }, 3)
       ],
       roster(),
-      new Set([REMOTE_ID])
+      new Set([REMOTE_ID]),
+      caseId
     )
     expect(rowsOfAuthorSince(caseId, REMOTE_ID, 0).map((r) => [r.table, r.version])).toEqual([
       ['tags', 1],
@@ -643,7 +715,8 @@ describe('working-layer rows (#1512)', () => {
         remoteRow('exhibit_tags', { exhibit_id: otherCapture, tag_id: 'rt2' }, 5)
       ],
       roster(),
-      new Set([REMOTE_ID])
+      new Set([REMOTE_ID]),
+      caseId
     )
     expect(rowsOfAuthorSince(caseId, REMOTE_ID, 3).map((r) => r.table)).toEqual(['tags'])
   })
@@ -658,6 +731,7 @@ describe('working-layer rows (#1512)', () => {
       table,
       author: REMOTE_ID,
       version,
+      caseId: 'c',
       deletedAt: null,
       fields: { id },
       signature: 's'
@@ -785,7 +859,8 @@ describe('working-layer rows (#1512)', () => {
         ...caps.map((cap) => remoteRow('exhibit_tags', { exhibit_id: cap, tag_id: 'rt' }, 5))
       ],
       roster(),
-      new Set([REMOTE_ID])
+      new Set([REMOTE_ID]),
+      caseId
     )
     const versions = (offer: TableOffer | undefined): number[] =>
       offer === undefined ? [] : offer.rows.map((r) => r.version)
@@ -844,7 +919,8 @@ describe('working-layer rows (#1512)', () => {
         remoteRow('exhibit_tags', { exhibit_id: caps[0], tag_id: 'rt9' }, 6)
       ],
       roster(),
-      new Set([REMOTE_ID])
+      new Set([REMOTE_ID]),
+      caseId
     )
     expect(maxAuthorVersionInCase(caseId, REMOTE_ID)).toBe(6)
   })

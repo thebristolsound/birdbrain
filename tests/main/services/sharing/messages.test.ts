@@ -55,6 +55,7 @@ const SAMPLES: SyncMessage[] = [
         author: 'inst-a',
         version: 4,
         deletedAt: null,
+        caseId: 'case-1',
         fields: { id: 'n1', title: 'T', image_width: 12, body_doc: null },
         signature: 'sig'
       }
@@ -111,6 +112,7 @@ describe('sync messages', () => {
               table: 'notes',
               author: 'a',
               version: 0,
+              caseId: 'c',
               deletedAt: null,
               fields: {},
               signature: 's'
@@ -131,6 +133,7 @@ describe('sync messages', () => {
               table: 'notes',
               author: 'a',
               version: 1,
+              caseId: 'c',
               deletedAt: null,
               fields: { nested: { a: 1 } },
               signature: 's'

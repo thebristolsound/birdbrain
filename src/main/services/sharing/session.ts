@@ -661,7 +661,12 @@ export async function pullFromPeer(
         if (page.installationId !== installationId || page.sinceVersion !== since) {
           throw new ProtocolError(`rows answered for ${page.installationId}@${page.sinceVersion}`)
         }
-        const { accepted, refused } = verifyRemoteRows(page.rows, roster, new Set([installationId]))
+        const { accepted, refused } = verifyRemoteRows(
+          page.rows,
+          roster,
+          new Set([installationId]),
+          caseId
+        )
         result.errors.push(...refused)
         received.push(...accepted)
         const top = cursorAfter(accepted, since)

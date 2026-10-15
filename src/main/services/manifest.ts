@@ -7,6 +7,7 @@ import {
   statSync,
   readFileSync,
   readSync,
+  renameSync,
   rmSync,
   writeSync,
   fsyncSync,
@@ -278,7 +279,10 @@ export function appendMemberChainLines(
 
 // Cuts another member's chain file back to its first `keepLines` lines, and
 // removes it when none are kept: the session's rollback when a chain it
-// received page by page turns out, once whole, to name another Case.
+// received page by page turns out to name another Case. The kept lines are
+// written whole to a temporary name, fsynced and renamed over the chain, so
+// the file on disk is the old chain or the cut one and never a part of
+// either.
 export function truncateMemberChainLines(
   caseDir: string,
   installationId: string,
@@ -294,13 +298,15 @@ export function truncateMemberChainLines(
     rmSync(path)
     return
   }
-  const fd = openSync(path, 'w')
+  const partial = `${path}.partial`
+  const fd = openSync(partial, 'w')
   try {
     writeSync(fd, kept.map((line) => line + '\n').join(''))
     fsyncSync(fd)
   } finally {
     closeSync(fd)
   }
+  renameSync(partial, path)
 }
 
 // The chain snapshots in the shape the Shared Case walk takes them.

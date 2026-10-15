@@ -1165,7 +1165,7 @@ describe('sync session between peers (#1512)', () => {
       nothingOfCarolStored()
     })
 
-    it('is cut back to what the session found', async () => {
+    it('is cut back to what the session found, leaving no partial file', async () => {
       await activate(C)
       initManifest(caseDirOf(CASE_ID))
       addDocument(CASE_ID, C, 1)
@@ -1181,6 +1181,7 @@ describe('sync session between peers (#1512)', () => {
       expect(result.errors).toEqual([foreignError(C, 1)])
       expect(result.entriesReceived).toBe(0)
       expect(memberChainText(CASE_ID, C)).toBe(kept)
+      expect(readdirSync(caseDirOf(CASE_ID)).filter((f) => f.endsWith('.partial'))).toEqual([])
       expect(mergeEntries(CASE_ID)).toHaveLength(1)
     })
 

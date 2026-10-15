@@ -23,6 +23,7 @@ import { logger } from '@main/services/logger'
 import { ident } from '@main/services/logSafe'
 import { ManifestEntrySchema } from '@shared/schemas'
 import type { Exhibit } from '@shared/types'
+import { inCasePath } from '../../packages/evidence-package-layout/index'
 
 // The one-time data half of the Exhibit-model migration (#1147, X18/X34/X41).
 //
@@ -134,12 +135,15 @@ interface PriorDerivation {
   outputHash: string
 }
 
-function derivationKey(exhibitId: string, derivation: string): string {
-  return `${exhibitId}\u0000${derivation}`
+// The output path is part of the key because a parent id alone does not name
+// one file: a renamed import inherits the source's entry under the same parent
+// id, and that entry describes the source's file, not the row's (#1814).
+function derivationKey(exhibitId: string, derivation: string, outputPath: string): string {
+  return `${exhibitId}\u0000${derivation}\u0000${inCasePath(outputPath)}`
 }
 
 // The `derivation` entries this Case's chain already carries, keyed by parent
-// Exhibit and derivation name.
+// Exhibit, derivation name and in-Case output path.
 //
 // Read leniently, for the same reason `hasRenumberEntry` is: the question is
 // "was one already appended", and the answer has to be yes even on a chain that
@@ -151,16 +155,17 @@ function priorDerivations(caseDir: string): Map<string, PriorDerivation> {
   const found = new Map<string, PriorDerivation>()
   for (const line of readManifestSnapshot(caseDir).entries) {
     if (line.type !== 'derivation') continue
-    const { parentExhibitId, derivation, outputHash, index } = line
+    const { parentExhibitId, derivation, outputPath, outputHash, index } = line
     if (
       typeof parentExhibitId !== 'string' ||
       typeof derivation !== 'string' ||
+      typeof outputPath !== 'string' ||
       typeof outputHash !== 'string' ||
       typeof index !== 'number'
     ) {
       continue
     }
-    found.set(derivationKey(parentExhibitId, derivation), { index, outputHash })
+    found.set(derivationKey(parentExhibitId, derivation, outputPath), { index, outputHash })
   }
   return found
 }
@@ -237,7 +242,8 @@ async function backfillThumbnail(
   const paths = store.thumbnailPaths(exhibit.caseId, exhibit.id)
 
   if (prior !== undefined) {
-    // A previous run appended the entry and was killed before its row landed.
+    // The chain already carries an entry for this file and parent, whoever
+    // signed it: a previous run killed before its row landed is one source.
     // Re-record the row against the entry that is already signed rather than
     // signing a second one for the same Derived File, and do not regenerate:
     // the bytes the entry names are the ones on disk or they are not, and
@@ -373,16 +379,17 @@ export async function backfillCase(
         ? undefined
         : own.chain.captureEntriesByIndex.get(exhibit.manifestSeq)
     const parentId = signedParentId(exhibit, own, caseDir)
-    // Under the signed id first, which is what this build appends, then under
-    // the row's own, which is what an earlier build appended for a renamed row.
+    const { rel } = store.thumbnailPaths(exhibit.caseId, exhibit.id)
+    // An entry for the row's own file, under either id: the signed one is what
+    // this build writes, the row's own is what a build before #1814 wrote.
     const outcome = await backfillThumbnail(
       exhibit,
       parentId,
       store,
       who,
       chainEntry,
-      prior.get(derivationKey(parentId, THUMBNAIL_DERIVATION)) ??
-        prior.get(derivationKey(exhibit.id, THUMBNAIL_DERIVATION))
+      prior.get(derivationKey(parentId, THUMBNAIL_DERIVATION, rel)) ??
+        prior.get(derivationKey(exhibit.id, THUMBNAIL_DERIVATION, rel))
     )
     if (outcome === 'anchored') result.thumbnailsAnchored += 1
     if (outcome === 'unanchored') result.thumbnailsUnanchored += 1

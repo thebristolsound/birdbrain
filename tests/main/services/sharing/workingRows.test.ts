@@ -671,6 +671,62 @@ describe('working-layer rows (#1512)', () => {
     expect(fine).toEqual({ applied: 3, skipped: 0, refused: [] })
   })
 
+  // Fourth pre-pass, finding 2: a received note was checked on its own
+  // case column only, so its Capture column or anchor could name a Capture
+  // the receiver holds in another Case, which a local write refuses.
+  it('refuses a received note whose Capture or anchor is of another Case', () => {
+    share()
+    const elsewhere = createCase({ name: 'Elsewhere' }).id
+    const otherCapture = insertCapture({
+      caseId: elsewhere,
+      url: 'https://example.com/elsewhere',
+      title: 'Elsewhere',
+      hash: 'e'.repeat(64),
+      timestamp: '2026-10-01T00:00:00.000Z'
+    }).id
+    const anchor = (captureId: string): string => JSON.stringify({ kind: 'capture', captureId })
+    const outcome = applyRemoteRows(
+      [
+        remoteRow('notes', noteFields('a1', 'Column', { capture_id: otherCapture }), 1),
+        remoteRow(
+          'notes',
+          noteFields('a2', 'Anchor', { anchor_kind: 'capture', anchor_json: anchor(otherCapture) }),
+          2
+        ),
+        remoteRow('notes', noteFields('a3', 'Broken', { anchor_json: '{' }), 3)
+      ],
+      roster(),
+      new Set([REMOTE_ID]),
+      caseId
+    )
+    expect(outcome.applied).toBe(0)
+    expect(outcome.refused.map((r) => r.detail)).toEqual([
+      `notes row of ${REMOTE_ID} at version 1: references a row of Case ${elsewhere}`,
+      `notes row of ${REMOTE_ID} at version 2: references a row of Case ${elsewhere}`,
+      `notes row of ${REMOTE_ID} at version 3: anchor refused: Note anchor is not valid JSON`
+    ])
+    // This Case's Capture, in the column and the anchor, lands.
+    const cap = capture()
+    expect(
+      applyRemoteRows(
+        [
+          remoteRow(
+            'notes',
+            noteFields('a4', 'Here', {
+              capture_id: cap,
+              anchor_kind: 'capture',
+              anchor_json: anchor(cap)
+            }),
+            4
+          )
+        ],
+        roster(),
+        new Set([REMOTE_ID]),
+        caseId
+      )
+    ).toEqual({ applied: 1, skipped: 0, refused: [] })
+  })
+
   it('indexes the Mentions of a received note and clears them on its tombstone', () => {
     share()
     const target = createNote({ caseId, title: 'Target', body: '' })

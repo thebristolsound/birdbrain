@@ -1,6 +1,7 @@
 import { getDb, withTransaction } from '@main/services/db/core'
 import { rewriteReferencesForNote } from '@main/services/db/noteReferenceRepo'
 import { extractNoteMentions, type NoteMention } from '@shared/noteDoc'
+import { parseNoteAnchor } from '@shared/noteAnchor'
 
 // The SQL of the working layer as sync sees it (#1512, docs/specs/2026-09-19-
 // collaborative-cases-design.md "Working-layer rows"): six tables whose rows
@@ -135,6 +136,30 @@ const SPECS: Record<SyncedTable, TableSpec> = {
 
 export function signedColumns(table: SyncedTable): readonly string[] {
   return SPECS[table].columns
+}
+
+// The Cases of the rows a note's content columns reference and this database
+// holds: its Capture column, and the Capture and selector its anchor names.
+// The receiving side of `assertAnchorInCase` (noteRepo.ts), which refuses a
+// local note whose anchor names a row of another Case. Throws when the
+// anchor does not parse, as a local write does.
+export function noteReferencedCases(fields: RowFields): string[] {
+  const refs: Array<{ table: 'captures' | 'selectors'; id: string | number | null }> = [
+    { table: 'captures', id: fields.capture_id }
+  ]
+  if (fields.anchor_json !== null) {
+    const anchor = parseNoteAnchor(String(fields.anchor_json))
+    refs.push({ table: 'captures', id: anchor.captureId })
+    if (anchor.kind === 'finding' && anchor.finding === 'selectorMatch') {
+      refs.push({ table: 'selectors', id: anchor.selectorId })
+    }
+  }
+  return refs.flatMap(({ table, id }) => {
+    if (id === null) return []
+    const row = getDb().prepare(`SELECT case_id FROM ${table} WHERE id = ?`).get(id) as
+      { case_id: string } | undefined
+    return row ? [row.case_id] : []
+  })
 }
 
 // The Case a row with these content columns belongs to, as this database

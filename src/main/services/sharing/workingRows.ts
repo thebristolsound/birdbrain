@@ -12,6 +12,7 @@ import {
   isInSharedCase,
   isSyncedTable,
   maxLocalVersion,
+  noteReferencedCases,
   readRow,
   signedColumns,
   writeRowSync,
@@ -253,11 +254,24 @@ export function verifyWireRow(row: WireRow, publicKeyPem: string): boolean {
 // reads for it, from its own column or from the Exhibit, Note or Capture it
 // references, must be that Case whenever the referenced row is held here; a
 // row referencing one not held fails its foreign key at commit (applyRows).
+// A note's Capture column and anchor are held to the same rule a local write
+// is (noteReferencedCases): an anchor naming a row not held here is kept, as
+// locally, and one naming a row of another Case is refused.
 function caseRefusal(row: WireRow, caseId: string): string | null {
   const held = caseOfRow(row.table as SyncedTable, row.fields)
   if (held === null) return row.caseId === null ? null : 'a tag names no Case'
   if (row.caseId !== caseId) return `names Case ${row.caseId}, this session syncs ${caseId}`
   if (held !== undefined && held !== caseId) return `references a row of Case ${held}`
+  if (row.table === 'notes') {
+    let referenced: string[]
+    try {
+      referenced = noteReferencedCases(row.fields)
+    } catch (err) {
+      return `anchor refused: ${(err as Error).message}`
+    }
+    const other = referenced.find((id) => id !== caseId)
+    if (other !== undefined) return `references a row of Case ${other}`
+  }
   return null
 }
 

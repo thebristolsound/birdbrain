@@ -7,7 +7,12 @@ import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
 import { canonicalStringify } from '@shared/verify'
 import { MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import type { CaseMember } from '@shared/types'
-import { acceptEntrySegment, nonEmptyLines } from '@main/services/sharing/entryAcceptance'
+import { ManifestEntrySchema } from '@shared/schemas'
+import {
+  acceptEntrySegment,
+  foreignCaseEntry,
+  nonEmptyLines
+} from '@main/services/sharing/entryAcceptance'
 import { appendFutureEntry } from '../../../helpers/futureManifestEntry'
 import { memberChainPath } from '../../../../src/packages/evidence-package-layout/index'
 
@@ -94,7 +99,7 @@ describe('acceptEntrySegment', () => {
 
   const stored = (): string => readFileSync(join(caseDir, memberChainPath(MEMBER_ID)), 'utf-8')
   const accept = (fromIndex: number, segment: string[]) =>
-    acceptEntrySegment({ caseDir, caseId: CASE_ID, member, fromIndex, lines: segment })
+    acceptEntrySegment({ caseDir, member, fromIndex, lines: segment })
 
   it('appends a verified first segment byte for byte and reports its head', () => {
     const segment = lines([exhibitBody(1), exhibitBody(2)])
@@ -155,14 +160,21 @@ describe('acceptEntrySegment', () => {
     expect(nonEmptyLines(stored())).toEqual(first)
   })
 
-  it('refuses a verified entry that names another Case', () => {
+  // Which Case a chain names is judged over the whole chain by the session
+  // (review finding 4, round two): the `import` that makes a source Case's
+  // history legitimate may arrive on a later page, so a page is never
+  // refused for it here.
+  it('stores a verified entry that names another Case, and names the one the chain is for', () => {
     const segment = lines([exhibitBody(1), exhibitBody(2, 'another-case')])
     expect(accept(0, segment)).toEqual({
-      outcome: 'rejected',
-      index: 1,
-      reason: `entry 1 names Case another-case, this Case is ${CASE_ID}`
+      outcome: 'accepted',
+      appended: 2,
+      head: headOf(segment[1])
     })
-    expect(existsSync(join(caseDir, memberChainPath(MEMBER_ID)))).toBe(false)
+    const stored = nonEmptyLines(readFileSync(join(caseDir, memberChainPath(MEMBER_ID)), 'utf-8'))
+    const entries = stored.map((line) => ManifestEntrySchema.parse(JSON.parse(line)))
+    expect(foreignCaseEntry(entries, CASE_ID)?.index).toBe(1)
+    expect(foreignCaseEntry(entries, 'another-case')?.index).toBe(0)
   })
 
   it('stops before an entry from a newer schema, keeps what verified, and resumes later', () => {

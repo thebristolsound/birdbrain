@@ -1,4 +1,3 @@
-import { ManifestEntrySchema } from '@shared/schemas'
 import type { ManifestEntry } from '@shared/schemas'
 import { verifyManifestChainText } from '@shared/verify'
 import type { CaseMember } from '@shared/types'
@@ -44,7 +43,6 @@ export type EntryAcceptance =
 
 export interface AcceptEntrySegmentParams {
   caseDir: string
-  caseId: string
   member: CaseMember
   fromIndex: number
   lines: string[]
@@ -76,27 +74,23 @@ function headOf(lines: string[]): ChainHeadRef | null {
   return { index, entryHash }
 }
 
-// Parses lines a verify walk has already accepted. Every one of them parsed
-// under the strict schema during that walk, so a miss here is a guard, not a
-// verdict.
-function parseAccepted(lines: string[]): ManifestEntry[] {
-  return lines.map((line, at) => {
-    const parsed = ManifestEntrySchema.safeParse(JSON.parse(line))
-    if (!parsed.success) throw new Error(`verified line ${at} failed to parse`)
-    return parsed.data
-  })
-}
-
 // The first entry of the chain's current segment that names another Case:
 // the same rule the Shared Case walk applies (sharedCase.ts). Entries before
 // the last `import` are a source Case's history and carry its id by design.
-function foreignCaseEntry(entries: ManifestEntry[], caseId: string): ManifestEntry | undefined {
+// Judged over a chain held whole (session.ts), never over one page: the
+// `import` that makes a source Case's history legitimate may arrive on a
+// later page, and a page judged alone would refuse that history at its
+// first line.
+export function foreignCaseEntry(
+  entries: ManifestEntry[],
+  caseId: string
+): ManifestEntry | undefined {
   const lastImport = entries.reduce((at, e) => (e.type === 'import' ? e.index : at), 0)
   return entries.find((e) => e.index >= lastImport && e.caseId !== caseId)
 }
 
 export function acceptEntrySegment(params: AcceptEntrySegmentParams): EntryAcceptance {
-  const { caseDir, caseId, member, fromIndex, lines } = params
+  const { caseDir, member, fromIndex, lines } = params
   const stored = nonEmptyLines(readMemberChainText(caseDir, member.installationId))
   if (fromIndex !== stored.length) return { outcome: 'not-contiguous', storedCount: stored.length }
   const segment = lines.filter((line) => line.trim().length > 0)
@@ -123,15 +117,6 @@ export function acceptEntrySegment(params: AcceptEntrySegmentParams): EntryAccep
   }
 
   const verified = candidate.slice(0, verifiedCount)
-  const foreign = foreignCaseEntry(parseAccepted(verified), caseId)
-  if (foreign) {
-    return {
-      outcome: 'rejected',
-      index: foreign.index,
-      reason: `entry ${foreign.index} names Case ${foreign.caseId}, this Case is ${caseId}`
-    }
-  }
-
   const toAppend = verified.slice(stored.length)
   appendMemberChainLines(caseDir, member.installationId, toAppend)
   const head = headOf(verified)

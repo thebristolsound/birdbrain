@@ -25,7 +25,12 @@ import {
 } from '@main/services/sharing/workingRows'
 import { resetInstallationId } from '@main/services/installationId'
 import { resetSigningKey } from '@main/services/signingKey'
-import { readManifestSnapshot, readSharedCaseSnapshot } from '@main/services/manifest'
+import {
+  appendManifestEntry,
+  initManifest,
+  readManifestSnapshot,
+  readSharedCaseSnapshot
+} from '@main/services/manifest'
 import { getStorageRoot } from '@main/services/storage'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import { canonicalStringify } from '@shared/verify'
@@ -928,6 +933,97 @@ describe('sync session between peers (#1512)', () => {
     expect(quiet.rowsApplied).toBe(0)
     expect(calls.chains - before.chains).toBe(0)
     expect(calls.rows - before.rows).toBe(2)
+  })
+
+  // Review finding 4 on this PR, round two: which Case a chain names was
+  // judged page by page, so a chain opening with history imported from
+  // another Case was refused at its first line whenever that history did
+  // not fit one page.
+  it('accepts a chain whose imported history spans several pages, and refuses one naming another Case once whole', async () => {
+    const OTHER = '0196f7a2-aaaa-bbbb-cccc-000000000555'
+    await activate(C)
+    const caseDir = caseDirOf(CASE_ID)
+    initManifest(caseDir)
+    const by = { operatorId: C.installationId, operatorName: C.operatorName, toolVersion: '0.0.0' }
+    for (const n of [1, 2]) {
+      appendManifestEntry(caseDir, {
+        type: 'exhibit',
+        exhibitId: `src-${n}`,
+        caseId: OTHER,
+        kind: 'document',
+        origin: 'manual-upload',
+        name: `src-${n}.pdf`,
+        exhibitNumber: n,
+        path: `${OTHER}/documents/src-${n}.pdf`,
+        contentHash: 'c'.repeat(64),
+        sizeBytes: 1,
+        timestamp: TIME,
+        ...by
+      })
+    }
+    appendManifestEntry(caseDir, {
+      type: 'import',
+      caseId: CASE_ID,
+      sourceCaseId: OTHER,
+      sourceInstallationId: C.installationId,
+      sourcePublicKeyPem: C.publicKeyPem,
+      packageHash: 'd'.repeat(64),
+      idMapSha256: 'e'.repeat(64),
+      verificationResult: {
+        overallValid: true,
+        chainValid: true,
+        artifactCount: 0,
+        artifactFailureCount: 0,
+        captureCount: 0,
+        captureHashFailureCount: 0
+      },
+      timestamp: TIME,
+      ...by
+    })
+    addDocument(CASE_ID, C, 1)
+    const carolChain = ownChainText(CASE_ID)
+    const fromCarol = recordSource(CASE_ID, C)
+
+    await activate(B)
+    const paged = await pull(CASE_ID, fromCarol, {}, { pageBytes: 1 })
+    expect(paged.errors).toEqual([])
+    expect(paged.entriesReceived).toBe(4)
+    expect(memberChainText(CASE_ID, C)).toBe(carolChain)
+    expect(mergeEntries(CASE_ID)[0].heads.map((h) => h.installationId)).toEqual([C.installationId])
+
+    // Alice's chain names another Case in its current segment, with no
+    // import to make it history: refused once whole, and nothing of it stays.
+    await activate(A)
+    appendManifestEntry(caseDirOf(CASE_ID), {
+      type: 'exhibit',
+      exhibitId: 'elsewhere',
+      caseId: OTHER,
+      kind: 'document',
+      origin: 'manual-upload',
+      name: 'elsewhere.pdf',
+      exhibitNumber: 1,
+      path: `${OTHER}/documents/elsewhere.pdf`,
+      contentHash: 'f'.repeat(64),
+      sizeBytes: 1,
+      timestamp: TIME,
+      operatorId: A.installationId,
+      operatorName: A.operatorName,
+      toolVersion: '0.0.0'
+    })
+    const fromAlice = recordSource(CASE_ID, A)
+    await activate(B)
+    const refused = await pull(CASE_ID, fromAlice, {}, { pageBytes: 1 })
+    expect(refused.errors).toEqual([
+      {
+        kind: 'rejected-entry',
+        detail: `entry 3 of ${A.installationId} names Case ${OTHER}, this Case is ${CASE_ID}`,
+        installationId: A.installationId,
+        index: 3
+      }
+    ])
+    expect(refused.entriesReceived).toBe(0)
+    expect(memberChainText(CASE_ID, A)).toBe('')
+    expect(mergeEntries(CASE_ID)).toHaveLength(1)
   })
 
   // Review finding 1 on this PR, round two: a tag travels on every page

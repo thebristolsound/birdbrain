@@ -7,6 +7,7 @@ import {
   statSync,
   readFileSync,
   readSync,
+  rmSync,
   writeSync,
   fsyncSync,
   truncateSync
@@ -269,6 +270,33 @@ export function appendMemberChainLines(
   )
   try {
     writeSync(fd, lines.map((line) => line + '\n').join(''))
+    fsyncSync(fd)
+  } finally {
+    closeSync(fd)
+  }
+}
+
+// Cuts another member's chain file back to its first `keepLines` lines, and
+// removes it when none are kept: the session's rollback when a chain it
+// received page by page turns out, once whole, to name another Case.
+export function truncateMemberChainLines(
+  caseDir: string,
+  installationId: string,
+  keepLines: number
+): void {
+  const path = join(caseDir, memberChainPath(assertChainInstallationId(installationId)))
+  if (!existsSync(path)) return
+  const kept = readFileSync(path, 'utf-8')
+    .split('\n')
+    .filter((line) => line.trim().length > 0)
+    .slice(0, keepLines)
+  if (kept.length === 0) {
+    rmSync(path)
+    return
+  }
+  const fd = openSync(path, 'w')
+  try {
+    writeSync(fd, kept.map((line) => line + '\n').join(''))
     fsyncSync(fd)
   } finally {
     closeSync(fd)

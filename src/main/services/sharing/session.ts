@@ -13,7 +13,8 @@ import {
   readChainFileSnapshots,
   readEntries,
   readManifestSnapshot,
-  readMemberChainText
+  readMemberChainText,
+  truncateMemberChainLines
 } from '@main/services/manifest'
 import { getSettings } from '@main/services/settings'
 import { getStorageRoot } from '@main/services/storage'
@@ -21,6 +22,7 @@ import { resolveToolVersion } from '@main/services/toolVersion'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import {
   acceptEntrySegment,
+  foreignCaseEntry,
   linesWithinBytes,
   nonEmptyLines,
   type ChainHeadRef
@@ -476,6 +478,7 @@ export async function pullFromPeer(
       }
       const { installationId } = member
       let storedCount = nonEmptyLines(readMemberChainText(caseDir, installationId)).length
+      const storedBefore = storedCount
       let received = 0
       let head: ChainHeadRef | null = null
       // One request per page, from the stored head, until the peer's head or
@@ -492,7 +495,6 @@ export async function pullFromPeer(
         if (entries.lines.length === 0) break
         const acceptance = acceptEntrySegment({
           caseDir,
-          caseId,
           member,
           fromIndex: storedCount,
           lines:
@@ -534,6 +536,25 @@ export async function pullFromPeer(
         if (acceptance.outcome === 'newer-version' || acceptance.appended === 0) break
       }
       if (received === 0 || head === null) continue
+      // A chain names its Case in the entries after its last `import`; the
+      // ones before are a source Case's history (sharedCase.ts). That is
+      // judged over the whole chain once the peer's head is reached, since
+      // the `import` may have arrived on a later page: a chain that names
+      // another Case is cut back to what this session found.
+      if (storedCount > remote.index) {
+        const whole = storedEntries(Buffer.from(readMemberChainText(caseDir, installationId)))
+        const foreign = foreignCaseEntry(whole, caseId)
+        if (foreign) {
+          truncateMemberChainLines(caseDir, installationId, storedBefore)
+          result.errors.push({
+            kind: 'rejected-entry',
+            detail: `entry ${foreign.index} of ${installationId} names Case ${foreign.caseId}, this Case is ${caseId}`,
+            installationId,
+            index: foreign.index
+          })
+          continue
+        }
+      }
       result.entriesReceived += received
       advanced.push({ installationId, ...head, entriesReceived: received })
     }

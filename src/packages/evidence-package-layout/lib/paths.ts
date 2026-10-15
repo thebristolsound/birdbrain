@@ -157,6 +157,16 @@ function isSegment(id: string): boolean {
 }
 
 /**
+ * Whether an installation id can name a chain file: one path segment, so
+ * `memberChainPath(id)` stays inside the directory it is joined onto. The
+ * sync session checks every id it reads off the wire or off a `member-add`
+ * entry against this before it builds a file name from it.
+ */
+export function isChainInstallationId(installationId: string): boolean {
+  return isSegment(installationId)
+}
+
+/**
  * The member or lineage chain a path names, or null when it names neither.
  * The reverse of `memberChainPath` and `lineageChainPath`, and the only
  * reader of those names, so a writer and a reader cannot disagree.

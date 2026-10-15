@@ -33,6 +33,7 @@ import type {
 } from '@shared/verify'
 import {
   LINEAGE_DIRECTORY,
+  isChainInstallationId,
   memberChainPath,
   parseChainPath
 } from '../../packages/evidence-package-layout/index'
@@ -237,8 +238,19 @@ export function readChainFileSnapshots(caseDir: string): ChainFileSnapshot[] {
 // Another member's chain as this replica holds it: the text of
 // `manifest.<installationId>.jsonl`, or '' before any of it arrived.
 export function readMemberChainText(caseDir: string, installationId: string): string {
-  const path = join(caseDir, memberChainPath(installationId))
+  const path = join(caseDir, memberChainPath(assertChainInstallationId(installationId)))
   return existsSync(path) ? readFileSync(path, 'utf-8') : ''
+}
+
+// An installation id reaches here from the wire or from a `member-add`
+// entry, and a chain file is named after it: one that is not a single path
+// segment would name a file outside the Case directory, so it is refused
+// before any name is built from it.
+function assertChainInstallationId(installationId: string): string {
+  if (!isChainInstallationId(installationId)) {
+    throw new Error(`Installation id ${JSON.stringify(installationId)} cannot name a chain file`)
+  }
+  return installationId
 }
 
 // Appends received lines to another member's chain file, byte-for-byte as
@@ -251,7 +263,10 @@ export function appendMemberChainLines(
   lines: string[]
 ): void {
   if (lines.length === 0) return
-  const fd = openSync(join(caseDir, memberChainPath(installationId)), 'a')
+  const fd = openSync(
+    join(caseDir, memberChainPath(assertChainInstallationId(installationId))),
+    'a'
+  )
   try {
     writeSync(fd, lines.map((line) => line + '\n').join(''))
     fsyncSync(fd)

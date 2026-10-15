@@ -82,6 +82,12 @@ describe('sync messages', () => {
     expect(() => decodeMessage(new Uint8Array([0xff, 0xff]))).toThrow(ProtocolError)
     expect(() => decodeMessage(encode('a string'))).toThrow('Malformed unknown message')
     expect(() => decodeMessage(encode({ t: 'launch' }))).toThrow('Malformed launch message')
+    // An installation id names a chain file on the listener (review finding 1).
+    for (const installationId of ['./../../other/manifest', 'a/b', 'a\\b', '..', '.']) {
+      expect(() =>
+        decodeMessage(encode({ t: 'entries-request', installationId, fromIndex: 0 }))
+      ).toThrow('Malformed entries-request message')
+    }
     expect(() => decodeMessage(encode({ t: 'proof', signature: 'sig', extra: 1 }))).toThrow(
       'Malformed proof message'
     )

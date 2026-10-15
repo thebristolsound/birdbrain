@@ -14,7 +14,12 @@ import {
   resetInstallationId
 } from '@main/services/installationId'
 import { getPublicKeyPem } from '@main/services/signingKey'
-import { appendManifestEntry, initManifest } from '@main/services/manifest'
+import {
+  appendManifestEntry,
+  appendMemberChainLines,
+  initManifest,
+  readMemberChainText
+} from '@main/services/manifest'
 import { verifyEntrySignature } from '@shared/verify'
 import { MemoryHub, type ByteStream } from '@main/services/sharing/transport'
 import {
@@ -329,5 +334,51 @@ describe('sync session handshake (#1512)', () => {
     ])
     const digest = helloDigest(caseId, randomBytes(CHALLENGE_BYTES), localId)
     expect(verifyEntrySignature(digest, source.sign(digest), getPublicKeyPem())).toBe(true)
+  })
+
+  // Review finding 1 on this PR: the id a peer sends names a chain file on
+  // the listener, so an id that is not one path segment reached another
+  // Case's chain. Checked at the codec, in the live source, and at the file.
+  it('serves no chain for an installation id that is not one path segment, nor for a stranger', async () => {
+    const other = createCase({ name: 'Other' }).id
+    mkdirSync(join(getStorageRoot(), other), { recursive: true })
+    writeFileSync(join(getStorageRoot(), other, 'manifest.jsonl'), '{"other":"case chain"}\n')
+    const traversal = `./../../${other}/manifest`
+    const caseDir = join(getStorageRoot(), caseId)
+    initManifest(caseDir)
+    const live = liveSyncSource(caseId)!
+    expect(live.chainLines(traversal, 0)).toEqual([])
+    expect(live.chainLines('installation-not-on-roster', 0)).toEqual([])
+    expect(live.chainLines(PEER_ID, 0)).toEqual([])
+    expect(() => readMemberChainText(caseDir, traversal)).toThrow('cannot name a chain file')
+    expect(() => appendMemberChainLines(caseDir, traversal, ['{}'])).toThrow(
+      'cannot name a chain file'
+    )
+    expect(() => appendMemberChainLines(caseDir, 'a\\b', ['{}'])).toThrow(
+      'cannot name a chain file'
+    )
+
+    // The live listener, dialed by the peer under its own key: the request
+    // is refused at the codec and the session ends with bye.
+    const { stream, reader, served } = await rawDialer(live)
+    const opening: SyncMessageOf<'hello'> = {
+      t: 'hello',
+      caseId,
+      installationId: PEER_ID,
+      challenge: randomBytes(CHALLENGE_BYTES),
+      proof: null
+    }
+    await writeMessage(stream, opening)
+    const answer = await expectMessage(reader, 'hello')
+    expect(answer.installationId).toBe(localId)
+    await writeMessage(stream, {
+      t: 'proof',
+      signature: signWith(PEER_KEY)(helloDigest(caseId, answer.challenge, PEER_ID))
+    })
+    await writeMessage(stream, { t: 'heads', heads: [] })
+    expect((await expectMessage(reader, 'heads')).heads).toEqual([])
+    await writeMessage(stream, { t: 'entries-request', installationId: traversal, fromIndex: 0 })
+    expect(await reader.next()).toEqual({ t: 'bye', reason: BYE_REASONS.protocol })
+    await served
   })
 })

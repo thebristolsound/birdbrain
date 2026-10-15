@@ -251,6 +251,37 @@ describe('sync session between peers (#1512)', () => {
     expect(result.blobsReceived).toBe(2)
   })
 
+  // Review finding 1 on this PR, the write side: a member-add whose id is
+  // not one path segment would name a chain file outside the Case directory
+  // on every replica, so the roster refresh refuses it.
+  it('refuses a member-add whose installation id cannot name a chain file', async () => {
+    await activate(A)
+    const escape = `../../${CASE_ID}-escape`
+    appendOwnChainLine(CASE_ID, {
+      ...memberAddBody(CASE_ID, C, 'member', A),
+      memberInstallationId: escape,
+      memberCode: 'ES',
+      nodeId: 'node-escape'
+    })
+    const source = recordSource(CASE_ID, A)
+    await activate(B)
+    const result = await pull(CASE_ID, source)
+    expect(result.errors).toEqual([
+      {
+        kind: 'rejected-entry',
+        detail: `member-add at index 3: installation id ${JSON.stringify(escape)} cannot name a chain file`,
+        installationId: A.installationId
+      }
+    ])
+    expect(result.entriesReceived).toBe(4)
+    expect(listCaseMembers(CASE_ID).map((m) => m.installationId)).toEqual([
+      A.installationId,
+      B.installationId,
+      C.installationId
+    ])
+    expect(existsSync(join(getStorageRoot(), `${CASE_ID}-escape`))).toBe(false)
+  })
+
   it('learns who the Owner added or revoked from the Owner chain', async () => {
     await activate(B)
     getDb().prepare('DELETE FROM case_members WHERE installation_id = ?').run(C.installationId)

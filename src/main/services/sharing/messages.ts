@@ -2,6 +2,7 @@ import { decode, encode } from 'cborg'
 import { z } from 'zod'
 import { MAX_MHTML_SIZE } from '@shared/constants'
 import type { ByteStream } from '@main/services/sharing/transport'
+import { isChainInstallationId } from '../../../packages/evidence-package-layout/index'
 
 // The wire format of a sync session (docs/specs/2026-09-19-collaborative-
 // cases-design.md, "Sync session"): CBOR through cborg 6.1.3 (ruling 1 of
@@ -25,7 +26,12 @@ export class ProtocolError extends Error {
   }
 }
 
-const installationIdField = z.string().min(1)
+// An installation id names a chain file on the listener, so one that is not
+// a single path segment is refused at the codec, before any handler reads it.
+const installationIdField = z
+  .string()
+  .min(1)
+  .refine(isChainInstallationId, { message: 'installation id must be one path segment' })
 const indexField = z.number().int().nonnegative()
 // A byte string. `z.custom` rather than `z.instanceof`, so the inferred type is
 // the plain `Uint8Array` every producer (a file read, a Buffer) satisfies.

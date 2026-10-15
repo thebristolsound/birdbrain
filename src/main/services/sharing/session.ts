@@ -28,6 +28,7 @@ import {
 } from '@main/services/sharing/blobAcceptance'
 import { applyRemoteRows, toWireRows } from '@main/services/sharing/workingRows'
 import { beginSession, finishSession, writeMembersFile } from '@main/services/sharing/syncState'
+import { isChainInstallationId } from '../../../packages/evidence-package-layout/index'
 import { maxAuthorVersionInCase, rowsOfAuthorSince } from '@main/services/db/workingRowRepo'
 import {
   CHALLENGE_BYTES,
@@ -164,11 +165,15 @@ export function liveSyncSource(caseId: string): SyncSource | null {
     roster: () => listCaseMembers(caseId),
     heads: () => caseChainHeads(caseDir, installationId),
     chainLines: (member, fromIndex) => {
-      const text =
-        member === installationId
-          ? readManifestSnapshot(caseDir).jsonl.toString('utf-8')
-          : readMemberChainText(caseDir, member)
-      return nonEmptyLines(text).slice(fromIndex)
+      if (member === installationId) {
+        return nonEmptyLines(readManifestSnapshot(caseDir).jsonl.toString('utf-8')).slice(fromIndex)
+      }
+      // Only a roster member's chain is served, and only when its id can
+      // name a chain file: the id arrived on the wire, and a file name built
+      // from an unchecked one reaches outside the Case directory.
+      const held = listCaseMembers(caseId).some((m) => m.installationId === member)
+      if (!held || !isChainInstallationId(member)) return []
+      return nonEmptyLines(readMemberChainText(caseDir, member)).slice(fromIndex)
     },
     blob: (path) => {
       const abs = safeCasePath(getStorageRoot(), caseId, path)
@@ -204,6 +209,14 @@ function refreshRosterFromOwnerChain(caseId: string, lines: string[]): string[] 
     if (!parsed.success) continue
     const entry = parsed.data
     if (entry.type !== 'member-add' && entry.type !== 'member-revoke') continue
+    // The id names that member's chain file on every replica; one that is
+    // not a single path segment is refused here rather than written to.
+    if (!isChainInstallationId(entry.memberInstallationId)) {
+      refused.push(
+        `${entry.type} at index ${entry.index}: installation id ${JSON.stringify(entry.memberInstallationId)} cannot name a chain file`
+      )
+      continue
+    }
     const existing = listCaseMembers(caseId).find(
       (m) => m.installationId === entry.memberInstallationId
     )
@@ -388,6 +401,14 @@ export async function pullFromPeer(
     for (const remote of heads) {
       const member = roster.find((m) => m.installationId === remote.installationId)
       if (!member || member.installationId === self) continue
+      if (!isChainInstallationId(member.installationId)) {
+        result.errors.push({
+          kind: 'rejected-entry',
+          detail: `installation id ${JSON.stringify(member.installationId)} cannot name a chain file`,
+          installationId: member.installationId
+        })
+        continue
+      }
       const storedCount = nonEmptyLines(readMemberChainText(caseDir, member.installationId)).length
       if (remote.index < storedCount) continue
       await writeMessage(stream, {

@@ -17,6 +17,7 @@ import {
   getManifestHead,
   readCaptureEntryAt,
   readCaseChains,
+  readManifestSnapshot,
   withCaptureEntry,
   withDeletionEntry,
   ManifestRollback
@@ -37,6 +38,7 @@ import type {
   HashVerification
 } from '@shared/types'
 import type { BatchDeleteOutcome, BatchDeleteResult, DuplicateCaptureResult } from '@shared/ipc'
+import { ManifestEntrySchema } from '@shared/schemas'
 import type { CaptureUploadSource, ScreenshotStatus } from '@shared/schemas'
 import {
   IMPORT_ID_MAP_FILENAME,
@@ -660,6 +662,28 @@ export function entryDescribesRow(
   return readAnchoredIdMap(caseDir, row.caseId, imports)?.[entry.rowId] === row.id
 }
 
+// The id a `deletion` entry names a Capture by (#1815): the `captureId` its
+// own `capture` entry carries when an import renamed the row, since both
+// package verifiers count an entry deleted only by that id. The rename is
+// accepted only through `entryDescribesRow`; any other row keeps its own id.
+// `entries` and `imports` must come from one verified read of the chain.
+export function signedCaptureId(
+  row: { id: string; caseId: string; manifestIndex?: number },
+  entries: Record<string, unknown>[],
+  imports: ManifestImportEntry[],
+  caseDir: string
+): string {
+  const { id, manifestIndex } = row
+  if (typeof manifestIndex !== 'number') return id
+  const parsed = ManifestEntrySchema.safeParse(entries[manifestIndex])
+  if (!parsed.success || parsed.data.type !== 'capture' || parsed.data.index !== manifestIndex) {
+    return id
+  }
+  const { caseId, captureId } = parsed.data
+  if (captureId === id) return id
+  return entryDescribesRow({ caseId, rowId: captureId }, row, imports, caseDir) ? captureId : id
+}
+
 // The id-collision remap archive import wrote into this case directory, read
 // back ONLY when its digest matches the `idMapSha256` the import's signed entry
 // anchors — an unanchored file in the case directory must not be able to point
@@ -836,7 +860,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
         await withDeletionEntry(
           caseDir,
           {
-            captureId,
+            captureId: deletionCaptureId(capture, caseDir),
             caseId: capture.caseId,
             contentHash: capture.hash,
             operatorId: getInstallationId(),
@@ -893,6 +917,16 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
     }
     purgeAfterCommit(capture)
     return { outcome: { captureId, status: 'deleted_unmanifested' } }
+  }
+
+  // The chain is verified only when the entry at the row's index names another
+  // id, so a Capture no import renamed is deleted under its own id, as before.
+  function deletionCaptureId(capture: Capture, caseDir: string): string {
+    const { id, manifestIndex } = capture
+    if (typeof manifestIndex !== 'number') return id
+    if (readManifestSnapshot(caseDir).entries[manifestIndex]?.captureId === id) return id
+    const { own } = readCaseChains(caseDir)
+    return own.chain.valid ? signedCaptureId(capture, own.entries, own.imports, caseDir) : id
   }
 
   // The commit step of a staged delete. A failed or refused row delete puts

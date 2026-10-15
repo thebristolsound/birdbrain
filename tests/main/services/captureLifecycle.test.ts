@@ -40,7 +40,8 @@ import { createSessionService } from '@main/services/session'
 import type { SessionService } from '@main/services/session'
 import { setAutoCapturePolicy, updateCase } from '@main/services/db/caseRepo'
 import type { CaptureEvent } from '@shared/types'
-import { MAX_SCREENSHOT_SIZE } from '@shared/constants'
+import { IMPORT_ID_MAP_FILENAME, MAX_SCREENSHOT_SIZE } from '@shared/constants'
+import { exportCaseArchive, importCaseArchive } from '@main/services/caseArchive'
 import { scanUnreconciledDeletions } from '@main/services/deletionReconciliation'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
@@ -68,6 +69,24 @@ vi.mock('@main/services/tlsCertChain', async (importOriginal) => {
 function flushImmediate(): Promise<void> {
   return new Promise<void>((resolve) => setImmediate(resolve))
 }
+
+// Every key a `deletion` entry from the lifecycle carries, reason included.
+const DELETION_ENTRY_KEYS = [
+  'captureId',
+  'caseId',
+  'contentHash',
+  'entryHash',
+  'index',
+  'operatorId',
+  'operatorName',
+  'prevHash',
+  'reason',
+  'schemaVersion',
+  'signature',
+  'timestamp',
+  'toolVersion',
+  'type'
+]
 
 function buildIngestParams(
   caseId: string,
@@ -1047,6 +1066,92 @@ describe('createCaptureLifecycle.delete', () => {
     expect(getCapture(capture.id)).toBeUndefined()
     expect(existsSync(join(getStorageRoot(), capture.mhtmlPath!))).toBe(false)
     expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+  })
+
+  function lastEntry(): Record<string, unknown> {
+    const lines = readFileSync(join(tempDir, 'captures', caseId, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter(Boolean)
+    return JSON.parse(lines.at(-1)!)
+  }
+
+  // #1815 resolves a renamed import's Capture to its signed id. A Capture no
+  // import renamed keeps the entry it was always given: these keys, these values.
+  it('signs a Capture no import renamed under its own id, with the same fields', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('mhtml-body')))
+
+    expect(await lifecycle.delete(capture.id, 'operator cleanup')).toBe(true)
+
+    const entry = lastEntry()
+    expect(Object.keys(entry).sort()).toEqual(DELETION_ENTRY_KEYS)
+    expect(entry).toMatchObject({
+      type: 'deletion',
+      captureId: capture.id,
+      caseId,
+      contentHash: capture.hash,
+      operatorName: 'Test Operator',
+      reason: 'operator cleanup'
+    })
+  })
+
+  // The stored index is editable; only an import's anchored id map may name
+  // the row by another entry's id, and a native Case has none.
+  it('signs under the row id when an edited index lands on another Capture entry', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture: a } = await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('a')))
+    const { capture: b } = await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('b')))
+    getDb()
+      .prepare('UPDATE captures SET manifest_index = ? WHERE id = ?')
+      .run(a.manifestIndex, b.id)
+
+    expect(await lifecycle.delete(b.id)).toBe(true)
+
+    expect(lastEntry()).toMatchObject({ type: 'deletion', captureId: b.id })
+  })
+
+  // Exported and imported on this installation while the source is still
+  // here, so the import gives the Capture row a new id.
+  async function renamedImport(lifecycle: ReturnType<typeof createCaptureLifecycle>) {
+    const { capture: signed } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('renamed'))
+    )
+    const archive = join(tempDir, 'renamed.birdbrain')
+    await exportCaseArchive(caseId, archive)
+    const { newCaseId } = await importCaseArchive(archive)
+    const [row] = listCaptures(newCaseId)
+    expect(row.id).not.toBe(signed.id)
+    return { signed, row, caseDir: join(tempDir, 'captures', newCaseId) }
+  }
+
+  it('signs a renamed import under the id its capture entry carries (#1815)', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { signed, row, caseDir } = await renamedImport(lifecycle)
+
+    expect(await lifecycle.delete(row.id)).toBe(true)
+
+    const lines = readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8').split('\n')
+    const entry = JSON.parse(lines.filter(Boolean).at(-1)!)
+    expect(Object.keys(entry).sort()).toEqual(DELETION_ENTRY_KEYS.filter((k) => k !== 'reason'))
+    expect(entry).toMatchObject({
+      type: 'deletion',
+      captureId: signed.id,
+      caseId: row.caseId,
+      contentHash: row.hash
+    })
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+  })
+
+  it('signs a renamed import under the row id when its id map fails its anchor', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { row, caseDir } = await renamedImport(lifecycle)
+    const mapPath = join(caseDir, IMPORT_ID_MAP_FILENAME)
+    writeFileSync(mapPath, readFileSync(mapPath, 'utf-8').replace('{', '{"edited":true,'))
+
+    expect(await lifecycle.delete(row.id)).toBe(true)
+
+    const lines = readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8').split('\n')
+    expect(JSON.parse(lines.filter(Boolean).at(-1)!)).toMatchObject({ captureId: row.id })
   })
 })
 

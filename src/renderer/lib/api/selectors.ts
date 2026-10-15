@@ -39,7 +39,7 @@ export const selectorCaptureMatrixQueryOptions = (caseId: string) =>
   })
 
 // Plain wrappers alongside the mutation hooks below, deliberately. Their call
-// sites (SelectorTable, NewCaseWizard) drive their own
+// sites (SignalsOverview, NewCaseWizard) drive their own
 // pending state and refresh explicitly, so routing them through
 // useSelectorsMutations would add invalidation they do not do today —
 // a behaviour change the design keeps out of the mechanical move. Converging

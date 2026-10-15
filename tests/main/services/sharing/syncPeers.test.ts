@@ -24,7 +24,12 @@ import { readManifestSnapshot, readSharedCaseSnapshot } from '@main/services/man
 import { getStorageRoot } from '@main/services/storage'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import { canonicalStringify } from '@shared/verify'
-import { BYE_REASONS, liveSyncSource } from '@main/services/sharing/session'
+import {
+  BYE_REASONS,
+  PAGE_BYTES,
+  liveSyncSource,
+  type SyncSource
+} from '@main/services/sharing/session'
 import {
   MEMBERS_FILENAME,
   getSyncState,
@@ -711,7 +716,7 @@ describe('sync session between peers (#1512)', () => {
     await activate(A)
     addTagToNote({ noteId: note.id, tagId: tag.id })
     // The live source offers the tag above any cursor, with the application.
-    const offered = liveSyncSource(CASE_ID)!.rowsSince(A.installationId, 2)
+    const offered = liveSyncSource(CASE_ID)!.rowsSince(A.installationId, 2, PAGE_BYTES).rows
     expect(offered.map((r) => [r.table, r.version])).toEqual([
       ['tags', 1],
       ['note_tags', 3]
@@ -728,5 +733,68 @@ describe('sync session between peers (#1512)', () => {
     const r3 = await pull(CASE_ID, second)
     expect(r3.errors).toEqual([])
     expect(r3.rowsApplied).toBe(0)
+  })
+
+  // Review finding 5 on this PR: a chain segment and an author's rows each
+  // travelled as one frame, built in full and refused past the frame cap,
+  // after which that member could never sync. Both are now served in pages
+  // under a budget, with the dialer asking again until nothing remains.
+  it('serves entries and rows in pages under the frame budget and still lands all of them', async () => {
+    await activate(A)
+    const docs = Array.from({ length: 6 }, (_, n) => addDocument(CASE_ID, A, n + 1))
+    const titles = Array.from(
+      { length: 8 },
+      (_, n) => createNote({ caseId: CASE_ID, title: `Note ${n}`, body: 'x'.repeat(120) }).title
+    )
+    const ownerChain = ownChainText(CASE_ID)
+    const source = recordSource(CASE_ID, A)
+    const calls = { chains: 0, rows: 0 }
+    const counted: SyncSource = {
+      ...source,
+      chainLines: (id, from, max) => {
+        calls.chains += 1
+        return source.chainLines(id, from, max)
+      },
+      rowsSince: (author, since, max) => {
+        calls.rows += 1
+        return source.rowsSince(author, since, max)
+      }
+    }
+
+    await activate(B)
+    const result = await pull(CASE_ID, counted, {}, { pageBytes: 1500 })
+    expect(result.errors).toEqual([])
+    expect(memberChainText(CASE_ID, A)).toBe(ownerChain)
+    const entries = parsedChain(ownerChain).length
+    expect(entries).toBe(3 + docs.length)
+    expect(result.entriesReceived).toBe(entries)
+    expect(calls.chains).toBeGreaterThanOrEqual(entries)
+    expect(mergeEntries(CASE_ID)).toHaveLength(1)
+    expect(mergeEntries(CASE_ID)[0].heads).toEqual([
+      {
+        installationId: A.installationId,
+        index: entries - 1,
+        entryHash: parsedChain(ownerChain).at(-1)!.entryHash,
+        entriesReceived: entries
+      }
+    ])
+    for (const doc of docs) expect(sha(onDisk(doc.path))).toBe(doc.contentHash)
+    expect(
+      listNotes(CASE_ID)
+        .map((n) => n.title)
+        .sort()
+    ).toEqual([...titles].sort())
+    expect(result.rowsApplied).toBe(titles.length)
+    expect(calls.rows).toBeGreaterThan(2)
+
+    // A session with nothing new asks for no chain already at the peer's
+    // head, and once per author for rows.
+    const before = { ...calls }
+    const quiet = await pull(CASE_ID, counted, {}, { pageBytes: 1500 })
+    expect(quiet.errors).toEqual([])
+    expect(quiet.entriesReceived).toBe(0)
+    expect(quiet.rowsApplied).toBe(0)
+    expect(calls.chains - before.chains).toBe(0)
+    expect(calls.rows - before.rows).toBe(2)
   })
 })

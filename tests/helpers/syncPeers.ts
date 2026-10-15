@@ -7,7 +7,9 @@ import { ManifestEntrySchema, type ManifestEntry } from '@shared/schemas'
 import { canonicalStringify } from '@shared/verify'
 import { closeDatabase, getDb, initDatabase } from '@main/services/db/core'
 import { upsertCaseMember } from '@main/services/db/caseMemberRepo'
-import { CURSOR_FREE_TABLES } from '@main/services/db/workingRowRepo'
+import { CURSOR_FREE_TABLES, ROWS_PAGE_LIMIT } from '@main/services/db/workingRowRepo'
+import { linesWithinBytes } from '@main/services/sharing/entryAcceptance'
+import { offerPage } from '@main/services/sharing/workingRows'
 import { getStorageRoot, initStorage } from '@main/services/storage'
 import { initSettings, updateSettings } from '@main/services/settings'
 import {
@@ -33,6 +35,7 @@ import {
   liveSyncSource,
   pullFromPeer,
   serveSyncSession,
+  type ServeOptions,
   type SyncSessionOptions,
   type SyncSessionResult,
   type SyncSource
@@ -329,7 +332,7 @@ export function recordSource(caseId: string, peer: Peer): RecordedSource {
   if (!live) throw new Error(`Case ${caseId} is not shared on ${peer.name}`)
   const chains = new Map<string, string[]>()
   for (const { installationId } of live.heads()) {
-    chains.set(installationId, live.chainLines(installationId, 0))
+    chains.set(installationId, live.chainLines(installationId, 0, Number.POSITIVE_INFINITY))
   }
   const onDisk = new Map<string, string>()
   walk(caseDirOf(caseId), getStorageRoot(), onDisk)
@@ -338,9 +341,26 @@ export function recordSource(caseId: string, peer: Peer): RecordedSource {
     const bytes = live.blob(path)
     if (bytes !== null) files.set(path, bytes)
   }
+  // Every row the live source offers, read page by page as a dialer would,
+  // with the cursor-free rows each page repeats kept once.
   const rows = new Map<string, WireRow[]>()
   for (const { installationId } of live.roster()) {
-    rows.set(installationId, live.rowsSince(installationId, 0))
+    const all: WireRow[] = []
+    const seen = new Set<string>()
+    let since = 0
+    for (;;) {
+      const page = live.rowsSince(installationId, since, Number.POSITIVE_INFINITY)
+      for (const row of page.rows) {
+        const key = `${row.table}:${row.version}:${JSON.stringify(row.fields)}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        all.push(row)
+      }
+      const top = page.rows.reduce((max, row) => Math.max(max, row.version), since)
+      if (!page.more || top <= since) break
+      since = top
+    }
+    rows.set(installationId, all)
   }
   const source: RecordedSource = {
     installationId: live.installationId,
@@ -357,13 +377,24 @@ export function recordSource(caseId: string, peer: Peer): RecordedSource {
         const { index, entryHash } = JSON.parse(last) as { index: number; entryHash: string }
         return [{ installationId, index, entryHash }]
       }),
-    chainLines: (installationId, fromIndex) =>
-      (source.chains.get(installationId) ?? []).slice(fromIndex),
+    chainLines: (installationId, fromIndex, maxBytes) =>
+      linesWithinBytes((source.chains.get(installationId) ?? []).slice(fromIndex), maxBytes),
     blob: (path) => source.files.get(path) ?? null,
-    rowsSince: (author, sinceVersion) =>
-      (source.rows.get(author) ?? []).filter(
-        (row) => CURSOR_FREE_TABLES.has(row.table) || row.version > sinceVersion
-      ),
+    // The same page rule the live source applies, over the recorded rows:
+    // every cursor-free row, the first ROWS_PAGE_LIMIT rows above the cursor
+    // of each other table, then the page cut.
+    rowsSince: (author, sinceVersion, maxBytes) => {
+      const byTable = new Map<string, WireRow[]>()
+      for (const row of source.rows.get(author) ?? []) {
+        if (!CURSOR_FREE_TABLES.has(row.table) && row.version <= sinceVersion) continue
+        byTable.set(row.table, [...(byTable.get(row.table) ?? []), row])
+      }
+      for (const [table, list] of byTable) {
+        list.sort((a, b) => a.version - b.version)
+        if (!CURSOR_FREE_TABLES.has(table)) byTable.set(table, list.slice(0, ROWS_PAGE_LIMIT))
+      }
+      return offerPage(byTable, ROWS_PAGE_LIMIT, maxBytes)
+    },
     sign: (hex) => createSign('sha256').update(hex).sign(peer.privateKeyPem, 'base64')
   }
   return source
@@ -373,14 +404,18 @@ export function recordSource(caseId: string, peer: Peer): RecordedSource {
 export async function pull(
   caseId: string,
   source: SyncSource,
-  options: SyncSessionOptions = {}
+  options: SyncSessionOptions = {},
+  serve: ServeOptions = {}
 ): Promise<SyncSessionResult> {
   const hub = new MemoryHub({ chunkSize: 4096 })
   const dialer = hub.createTransport('dialer')
   const listener = hub.createTransport('listener')
   const served = new Promise<void>((resolve, reject) => {
     void listener.listen((stream) => {
-      serveSyncSession(stream, (id) => (id === source.caseId ? source : null)).then(resolve, reject)
+      serveSyncSession(stream, (id) => (id === source.caseId ? source : null), serve).then(
+        resolve,
+        reject
+      )
     })
   })
   const stream = await dialer.openStream(await dialer.dial(listener.ticket))

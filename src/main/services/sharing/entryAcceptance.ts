@@ -54,6 +54,21 @@ export function nonEmptyLines(text: string): string[] {
   return text.split('\n').filter((line) => line.trim().length > 0)
 }
 
+// One page of chain lines under `maxBytes`: lines are taken in order until
+// the next would cross the budget, and the first line always, so a page
+// always carries something and a chain of any length is served in pages.
+export function linesWithinBytes(lines: string[], maxBytes: number): string[] {
+  const page: string[] = []
+  let bytes = 0
+  for (const line of lines) {
+    const size = Buffer.byteLength(line, 'utf-8') + 1
+    if (page.length > 0 && bytes + size > maxBytes) break
+    page.push(line)
+    bytes += size
+  }
+  return page
+}
+
 function headOf(lines: string[]): ChainHeadRef | null {
   const last = lines.at(-1)
   if (last === undefined) return null

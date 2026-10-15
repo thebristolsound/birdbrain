@@ -5,6 +5,7 @@ import { withTransaction } from '@main/services/db/core'
 import { getInstallationId } from '@main/services/installationId'
 import { signEntryHash } from '@main/services/signingKey'
 import {
+  CURSOR_FREE_TABLES,
   applyAuthorRows,
   hardDeleteLocalRow,
   isInSharedCase,
@@ -131,6 +132,59 @@ export function ensureLocalRow(
     signLocalRow(table, key, { version })
     return 'inserted'
   })
+}
+
+export interface RowPage {
+  rows: WireRow[]
+  more: boolean
+}
+
+// One page of an author's rows from what the tables offer (rowsOfAuthorByTable):
+// every cursor-free row, then the cursor-bound rows in version order up to
+// the highest version every table is complete to. A table that returned
+// `limit` rows may hold more above its last one, so nothing above that
+// version is known to be complete and is left for the next page. The page is
+// cut again at a version boundary once `maxBytes` is reached, measured on the
+// rows' JSON, which is close to their CBOR; the first version group always
+// travels, so a page always makes progress. `more` says rows above the page
+// remain, so the dialer asks again from the page's highest version.
+export function offerPage(
+  byTable: Map<string, WireRow[]>,
+  limit: number,
+  maxBytes: number
+): RowPage {
+  const byVersion = (a: WireRow, b: WireRow): number => a.version - b.version
+  const free: WireRow[] = []
+  const bound: WireRow[] = []
+  let ceiling = Number.POSITIVE_INFINITY
+  let more = false
+  for (const [table, rows] of byTable) {
+    if (CURSOR_FREE_TABLES.has(table)) {
+      free.push(...rows)
+      continue
+    }
+    bound.push(...rows)
+    if (rows.length >= limit && rows.length > 0) {
+      ceiling = Math.min(ceiling, rows[rows.length - 1].version)
+      more = true
+    }
+  }
+  free.sort(byVersion)
+  const complete = bound.filter((row) => row.version <= ceiling).sort(byVersion)
+  const size = (row: WireRow): number => JSON.stringify(row).length
+  let bytes = free.reduce((total, row) => total + size(row), 0)
+  const page: WireRow[] = []
+  for (let i = 0; i < complete.length; i++) {
+    const row = complete[i]
+    const startsGroup = i === 0 || row.version !== complete[i - 1].version
+    if (startsGroup && page.length > 0 && bytes + size(row) > maxBytes) {
+      more = true
+      break
+    }
+    page.push(row)
+    bytes += size(row)
+  }
+  return { rows: [...free, ...page], more }
 }
 
 // Rows as they travel: this installation's carry its id in place of NULL.

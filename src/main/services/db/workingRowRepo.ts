@@ -243,27 +243,50 @@ export function maxAuthorVersionInCase(caseId: string, author: string): number {
 // Tags are few and the receiver skips the ones it holds at that version.
 export const CURSOR_FREE_TABLES: ReadonlySet<string> = new Set<SyncedTable>(['tags'])
 
-// Every signed row of `author` in a Case above `sinceVersion`, oldest version
-// first, plus every row of the cursor-free tables. `author` NULL is this
-// installation's rows.
-export function rowsOfAuthorSince(
+// The most rows of one cursor-bound table a page reads. The query stops at
+// it, so the work of answering a page is bounded whatever the backlog; the
+// page is then cut from what the tables offer (`offerPage`, workingRows.ts).
+export const ROWS_PAGE_LIMIT = 500
+
+// What one page of `author`'s rows in a Case may draw on, by table: every
+// signed row of a cursor-free table that the Case reaches, and the `limit`
+// lowest versions above `sinceVersion` of each other table. `author` NULL is
+// this installation's rows.
+export function rowsOfAuthorByTable(
   caseId: string,
   author: string | null,
-  sinceVersion: number
-): StoredRow[] {
-  const rows: StoredRow[] = []
+  sinceVersion: number,
+  limit = ROWS_PAGE_LIMIT
+): Map<SyncedTable, StoredRow[]> {
+  const byTable = new Map<SyncedTable, StoredRow[]>()
   for (const table of SYNCED_TABLES) {
-    const aboveCursor = CURSOR_FREE_TABLES.has(table) ? '' : 'AND t.version > @since'
+    const cursorFree = CURSOR_FREE_TABLES.has(table)
     const raw = getDb()
       .prepare(
         `SELECT t.* FROM ${table} t
-          WHERE ${AUTHOR_MATCH} ${aboveCursor} AND t.row_signature IS NOT NULL
-            AND (${SPECS[table].inCase})`
+          WHERE ${AUTHOR_MATCH} ${cursorFree ? '' : 'AND t.version > @since'}
+            AND t.row_signature IS NOT NULL AND (${SPECS[table].inCase})
+          ORDER BY t.version ${cursorFree ? '' : 'LIMIT @limit'}`
       )
-      .all({ case_id: caseId, author, since: sinceVersion }) as Record<string, unknown>[]
-    rows.push(...raw.map((r) => toStoredRow(table, r)))
+      .all({ case_id: caseId, author, since: sinceVersion, limit }) as Record<string, unknown>[]
+    byTable.set(
+      table,
+      raw.map((r) => toStoredRow(table, r))
+    )
   }
-  return rows.sort((a, b) => a.version - b.version)
+  return byTable
+}
+
+// The same rows flattened, oldest version first.
+export function rowsOfAuthorSince(
+  caseId: string,
+  author: string | null,
+  sinceVersion: number,
+  limit = ROWS_PAGE_LIMIT
+): StoredRow[] {
+  return [...rowsOfAuthorByTable(caseId, author, sinceVersion, limit).values()]
+    .flat()
+    .sort((a, b) => a.version - b.version)
 }
 
 export interface ApplyOutcome {

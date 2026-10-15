@@ -19,17 +19,31 @@ import { getSettings } from '@main/services/settings'
 import { getStorageRoot } from '@main/services/storage'
 import { resolveToolVersion } from '@main/services/toolVersion'
 import { defaultCaptureStore } from '@main/services/captureStore'
-import { acceptEntrySegment, nonEmptyLines } from '@main/services/sharing/entryAcceptance'
+import {
+  acceptEntrySegment,
+  linesWithinBytes,
+  nonEmptyLines,
+  type ChainHeadRef
+} from '@main/services/sharing/entryAcceptance'
 import {
   acceptBlob,
   anchoredFiles,
   missingAnchoredFiles,
   safeCasePath
 } from '@main/services/sharing/blobAcceptance'
-import { applyRemoteRows, toWireRows } from '@main/services/sharing/workingRows'
+import {
+  applyRemoteRows,
+  offerPage,
+  toWireRows,
+  type RowPage
+} from '@main/services/sharing/workingRows'
 import { beginSession, finishSession, writeMembersFile } from '@main/services/sharing/syncState'
 import { isChainInstallationId } from '../../../packages/evidence-package-layout/index'
-import { maxAuthorVersionInCase, rowsOfAuthorSince } from '@main/services/db/workingRowRepo'
+import {
+  ROWS_PAGE_LIMIT,
+  maxAuthorVersionInCase,
+  rowsOfAuthorByTable
+} from '@main/services/db/workingRowRepo'
 import {
   CHALLENGE_BYTES,
   MessageReader,
@@ -63,17 +77,28 @@ export interface SyncSource {
   caseId: string
   roster(): CaseMember[]
   heads(): ChainHead[]
-  // The raw lines of a chain this peer holds from `fromIndex` on; [] for a
-  // chain it does not hold.
-  chainLines(installationId: string, fromIndex: number): string[]
+  // One page of the raw lines of a chain this peer holds, from `fromIndex`
+  // on and under `maxBytes` (linesWithinBytes); [] for a chain it does not
+  // hold.
+  chainLines(installationId: string, fromIndex: number, maxBytes: number): string[]
   // The bytes at a storage-root-relative path inside the Case directory, or
   // null when this peer does not hold the file or the path is not one it
   // serves.
   blob(path: string): Uint8Array | null
-  // Every signed working-layer row of `author` in the Case above
-  // `sinceVersion`, this peer's own rows included under its own id.
-  rowsSince(author: string, sinceVersion: number): WireRow[]
+  // One page of the signed working-layer rows of `author` in the Case above
+  // `sinceVersion` (offerPage), this peer's own rows included under its own
+  // id.
+  rowsSince(author: string, sinceVersion: number, maxBytes: number): RowPage
   sign(hex: string): string
+}
+
+// The budget one answer is cut to. Well under MAX_FRAME_BYTES, so a page and
+// its envelope always fit one frame; a member with more than this to send
+// is answered in as many pages as it takes.
+export const PAGE_BYTES = 4 * 1024 * 1024
+
+export interface ServeOptions {
+  pageBytes?: number
 }
 
 export type SyncPhase = 'hello' | 'heads' | 'entries' | 'blobs' | 'rows' | 'merge'
@@ -164,26 +189,33 @@ export function liveSyncSource(caseId: string): SyncSource | null {
     caseId,
     roster: () => listCaseMembers(caseId),
     heads: () => caseChainHeads(caseDir, installationId),
-    chainLines: (member, fromIndex) => {
+    chainLines: (member, fromIndex, maxBytes) => {
       if (member === installationId) {
-        return nonEmptyLines(readManifestSnapshot(caseDir).jsonl.toString('utf-8')).slice(fromIndex)
+        const own = nonEmptyLines(readManifestSnapshot(caseDir).jsonl.toString('utf-8'))
+        return linesWithinBytes(own.slice(fromIndex), maxBytes)
       }
       // Only a roster member's chain is served, and only when its id can
       // name a chain file: the id arrived on the wire, and a file name built
       // from an unchecked one reaches outside the Case directory.
       const held = listCaseMembers(caseId).some((m) => m.installationId === member)
       if (!held || !isChainInstallationId(member)) return []
-      return nonEmptyLines(readMemberChainText(caseDir, member)).slice(fromIndex)
+      const lines = nonEmptyLines(readMemberChainText(caseDir, member))
+      return linesWithinBytes(lines.slice(fromIndex), maxBytes)
     },
     blob: (path) => {
       const abs = safeCasePath(getStorageRoot(), caseId, path)
       return abs !== null && existsSync(abs) ? Uint8Array.from(readFileSync(abs)) : null
     },
-    rowsSince: (author, sinceVersion) =>
-      toWireRows(
-        rowsOfAuthorSince(caseId, author === installationId ? null : author, sinceVersion),
-        installationId
-      ),
+    rowsSince: (author, sinceVersion, maxBytes) => {
+      const byTable = new Map<string, WireRow[]>()
+      const offered = rowsOfAuthorByTable(
+        caseId,
+        author === installationId ? null : author,
+        sinceVersion
+      )
+      for (const [table, rows] of offered) byTable.set(table, toWireRows(rows, installationId))
+      return offerPage(byTable, ROWS_PAGE_LIMIT, maxBytes)
+    },
     sign: signEntryHash
   }
 }
@@ -255,8 +287,10 @@ async function sayBye(stream: ByteStream, reason: string): Promise<void> {
 // when this installation does not share it.
 export async function serveSyncSession(
   stream: ByteStream,
-  sourceFor: (caseId: string) => SyncSource | null
+  sourceFor: (caseId: string) => SyncSource | null,
+  serveOptions: ServeOptions = {}
 ): Promise<void> {
+  const pageBytes = serveOptions.pageBytes ?? PAGE_BYTES
   const reader = new MessageReader(stream)
   try {
     const hello = await expectMessage(reader, 'hello')
@@ -294,7 +328,7 @@ export async function serveSyncSession(
           break
         case 'entries-request': {
           const { installationId, fromIndex } = message
-          const lines = source.chainLines(installationId, fromIndex)
+          const lines = source.chainLines(installationId, fromIndex, pageBytes)
           await writeMessage(stream, { t: 'entries', installationId, fromIndex, lines })
           break
         }
@@ -304,10 +338,9 @@ export async function serveSyncSession(
           }
           break
         case 'rows-request': {
-          const rows = message.authors.flatMap(({ installationId, sinceVersion }) =>
-            source.rowsSince(installationId, sinceVersion)
-          )
-          await writeMessage(stream, { t: 'rows', rows })
+          const { installationId, sinceVersion } = message
+          const { rows, more } = source.rowsSince(installationId, sinceVersion, pageBytes)
+          await writeMessage(stream, { t: 'rows', installationId, sinceVersion, rows, more })
           break
         }
         default:
@@ -431,58 +464,68 @@ export async function pullFromPeer(
         })
         continue
       }
-      const storedCount = nonEmptyLines(readMemberChainText(caseDir, member.installationId)).length
-      if (remote.index < storedCount || (bound !== undefined && bound < storedCount)) continue
-      await writeMessage(stream, {
-        t: 'entries-request',
-        installationId: member.installationId,
-        fromIndex: storedCount
-      })
-      const entries = await expectMessage(reader, 'entries')
-      if (entries.installationId !== member.installationId || entries.fromIndex !== storedCount) {
-        throw new ProtocolError(
-          `entries answered for ${entries.installationId}@${entries.fromIndex}`
-        )
-      }
-      const acceptance = acceptEntrySegment({
-        caseDir,
-        caseId,
-        member,
-        fromIndex: storedCount,
-        lines: bound === undefined ? entries.lines : entries.lines.slice(0, bound - storedCount + 1)
-      })
       const { installationId } = member
-      if (acceptance.outcome === 'rejected') {
-        result.errors.push({
-          kind: 'rejected-entry',
-          detail: `entry ${acceptance.index} of ${installationId} refused: ${acceptance.reason}`,
-          installationId,
-          index: acceptance.index
-        })
-        continue
-      }
-      if (acceptance.outcome === 'not-contiguous') {
-        fail('peer', `chain of ${installationId} did not continue the stored head`)
-        continue
-      }
-      if (acceptance.outcome === 'newer-version') {
-        result.errors.push({
-          kind: 'newer-version',
-          detail: `entry ${acceptance.index} of ${installationId}: ${acceptance.reason}`,
-          installationId,
-          index: acceptance.index
-        })
-      }
-      if (acceptance.appended === 0 || acceptance.head === null) continue
-      result.entriesReceived += acceptance.appended
-      advanced.push({ installationId, ...acceptance.head, entriesReceived: acceptance.appended })
-      if (installationId === ownerId) {
-        const accepted = entries.lines.slice(0, acceptance.appended)
-        for (const detail of refreshRosterFromOwnerChain(caseId, accepted)) {
-          result.errors.push({ kind: 'rejected-entry', detail, installationId })
+      let storedCount = nonEmptyLines(readMemberChainText(caseDir, installationId)).length
+      let received = 0
+      let head: ChainHeadRef | null = null
+      // One request per page, from the stored head, until the peer's head or
+      // the bound is reached. A page that is refused, or that stops the
+      // chain, ends this member's loop; the next session asks again.
+      while (storedCount <= remote.index && (bound === undefined || storedCount <= bound)) {
+        await writeMessage(stream, { t: 'entries-request', installationId, fromIndex: storedCount })
+        const entries = await expectMessage(reader, 'entries')
+        if (entries.installationId !== installationId || entries.fromIndex !== storedCount) {
+          throw new ProtocolError(
+            `entries answered for ${entries.installationId}@${entries.fromIndex}`
+          )
         }
-        roster = listCaseMembers(caseId)
+        if (entries.lines.length === 0) break
+        const acceptance = acceptEntrySegment({
+          caseDir,
+          caseId,
+          member,
+          fromIndex: storedCount,
+          lines:
+            bound === undefined ? entries.lines : entries.lines.slice(0, bound - storedCount + 1)
+        })
+        if (acceptance.outcome === 'rejected') {
+          result.errors.push({
+            kind: 'rejected-entry',
+            detail: `entry ${acceptance.index} of ${installationId} refused: ${acceptance.reason}`,
+            installationId,
+            index: acceptance.index
+          })
+          break
+        }
+        if (acceptance.outcome === 'not-contiguous') {
+          fail('peer', `chain of ${installationId} did not continue the stored head`)
+          break
+        }
+        if (acceptance.outcome === 'newer-version') {
+          result.errors.push({
+            kind: 'newer-version',
+            detail: `entry ${acceptance.index} of ${installationId}: ${acceptance.reason}`,
+            installationId,
+            index: acceptance.index
+          })
+        }
+        if (acceptance.appended > 0 && acceptance.head !== null) {
+          received += acceptance.appended
+          head = acceptance.head
+          storedCount += acceptance.appended
+          if (installationId === ownerId) {
+            const accepted = entries.lines.slice(0, acceptance.appended)
+            for (const detail of refreshRosterFromOwnerChain(caseId, accepted)) {
+              result.errors.push({ kind: 'rejected-entry', detail, installationId })
+            }
+            roster = listCaseMembers(caseId)
+          }
+        }
+        if (acceptance.outcome === 'newer-version' || acceptance.appended === 0) break
       }
+      if (received === 0 || head === null) continue
+      result.entriesReceived += received
+      advanced.push({ installationId, ...head, entriesReceived: received })
     }
 
     // 6. One `merge` per session that brought at least one new entry
@@ -545,18 +588,26 @@ export async function pullFromPeer(
     // revoked member's rows are not asked for: peers stop syncing with the
     // member (decision 11), and a row has no index to bound it by.
     options.onPhase?.('rows')
-    const authors = roster
-      .filter((m) => m.installationId !== self && m.revokedAtIndex === null)
-      .map((m) => ({
-        installationId: m.installationId,
-        sinceVersion: maxAuthorVersionInCase(caseId, m.installationId)
-      }))
-    if (authors.length > 0) {
-      await writeMessage(stream, { t: 'rows-request', authors })
-      const { rows } = await expectMessage(reader, 'rows')
-      const outcome = applyRemoteRows(rows, roster, new Set(authors.map((a) => a.installationId)))
-      result.rowsApplied += outcome.applied
-      result.errors.push(...outcome.refused)
+    for (const member of roster) {
+      if (member.installationId === self || member.revokedAtIndex !== null) continue
+      const { installationId } = member
+      let since = maxAuthorVersionInCase(caseId, installationId)
+      // One request per page until the peer says nothing above the page
+      // remains, each page applied as it lands. A page whose batch is refused
+      // ends this author's loop; the next session asks from the same cursor.
+      for (;;) {
+        await writeMessage(stream, { t: 'rows-request', installationId, sinceVersion: since })
+        const page = await expectMessage(reader, 'rows')
+        if (page.installationId !== installationId || page.sinceVersion !== since) {
+          throw new ProtocolError(`rows answered for ${page.installationId}@${page.sinceVersion}`)
+        }
+        const outcome = applyRemoteRows(page.rows, roster, new Set([installationId]))
+        result.rowsApplied += outcome.applied
+        result.errors.push(...outcome.refused)
+        const top = page.rows.reduce((max, row) => Math.max(max, row.version), since)
+        if (!page.more || top <= since || outcome.refused.some((r) => r.kind === 'peer')) break
+        since = top
+      }
     }
 
     await sayBye(stream, BYE_REASONS.done)

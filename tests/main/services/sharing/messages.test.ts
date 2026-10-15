@@ -43,9 +43,12 @@ const SAMPLES: SyncMessage[] = [
   { t: 'blobs-request', paths: ['case-1/x.mhtml'] },
   { t: 'blobs', path: 'case-1/x.mhtml', bytes: new Uint8Array([1, 2, 3]) },
   { t: 'blobs', path: 'case-1/missing.png', bytes: null },
-  { t: 'rows-request', authors: [{ installationId: 'inst-a', sinceVersion: 0 }] },
+  { t: 'rows-request', installationId: 'inst-a', sinceVersion: 0 },
   {
     t: 'rows',
+    installationId: 'inst-a',
+    sinceVersion: 0,
+    more: true,
     rows: [
       {
         table: 'notes',
@@ -100,6 +103,9 @@ describe('sync messages', () => {
       decodeMessage(
         encode({
           t: 'rows',
+          installationId: 'a',
+          sinceVersion: 0,
+          more: false,
           rows: [
             {
               table: 'notes',
@@ -117,6 +123,9 @@ describe('sync messages', () => {
       decodeMessage(
         encode({
           t: 'rows',
+          installationId: 'a',
+          sinceVersion: 0,
+          more: false,
           rows: [
             {
               table: 'notes',

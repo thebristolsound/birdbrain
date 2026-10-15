@@ -31,6 +31,7 @@ import {
 } from '@main/services/sharing/messages'
 import {
   BYE_REASONS,
+  PAGE_BYTES,
   helloDigest,
   liveSyncSource,
   pullFromPeer,
@@ -118,7 +119,7 @@ describe('sync session handshake (#1512)', () => {
       heads: () => [],
       chainLines: () => [],
       blob: () => null,
-      rowsSince: () => [],
+      rowsSince: () => ({ rows: [], more: false }),
       sign: signWith(PEER_KEY),
       ...overrides
     }
@@ -347,9 +348,9 @@ describe('sync session handshake (#1512)', () => {
     const caseDir = join(getStorageRoot(), caseId)
     initManifest(caseDir)
     const live = liveSyncSource(caseId)!
-    expect(live.chainLines(traversal, 0)).toEqual([])
-    expect(live.chainLines('installation-not-on-roster', 0)).toEqual([])
-    expect(live.chainLines(PEER_ID, 0)).toEqual([])
+    expect(live.chainLines(traversal, 0, PAGE_BYTES)).toEqual([])
+    expect(live.chainLines('installation-not-on-roster', 0, PAGE_BYTES)).toEqual([])
+    expect(live.chainLines(PEER_ID, 0, PAGE_BYTES)).toEqual([])
     expect(() => readMemberChainText(caseDir, traversal)).toThrow('cannot name a chain file')
     expect(() => appendMemberChainLines(caseDir, traversal, ['{}'])).toThrow(
       'cannot name a chain file'

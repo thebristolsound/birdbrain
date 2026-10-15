@@ -112,16 +112,26 @@ const BlobsSchema = z
   .object({ t: z.literal('blobs'), path: z.string().min(1), bytes: bytesField.nullable() })
   .strict()
 
+// One author's rows above a version, one page at a time: the answer carries
+// a page the listener cut under its frame budget, and `more` says rows above
+// the page's highest version remain, so the dialer asks again from there.
 const RowsRequestSchema = z
   .object({
     t: z.literal('rows-request'),
-    authors: z
-      .array(z.object({ installationId: installationIdField, sinceVersion: indexField }).strict())
-      .min(1)
+    installationId: installationIdField,
+    sinceVersion: indexField
   })
   .strict()
 
-const RowsSchema = z.object({ t: z.literal('rows'), rows: z.array(WireRowSchema) }).strict()
+const RowsSchema = z
+  .object({
+    t: z.literal('rows'),
+    installationId: installationIdField,
+    sinceVersion: indexField,
+    rows: z.array(WireRowSchema),
+    more: z.boolean()
+  })
+  .strict()
 
 const ByeSchema = z.object({ t: z.literal('bye'), reason: z.string() }).strict()
 

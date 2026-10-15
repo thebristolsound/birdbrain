@@ -42,6 +42,8 @@ import { referencesForNote } from '@main/services/db/noteReferenceRepo'
 import {
   maxAuthorVersionInCase,
   maxLocalVersion,
+  ROWS_PAGE_LIMIT,
+  rowsOfAuthorByTable,
   readRow,
   rowsOfAuthorSince,
   type RowFields,
@@ -50,6 +52,7 @@ import {
 import {
   allocateLocalVersion,
   applyRemoteRows,
+  offerPage,
   rowDigest,
   toWireRows,
   verifyWireRow
@@ -628,5 +631,116 @@ describe('working-layer rows (#1512)', () => {
       new Set([REMOTE_ID])
     )
     expect(rowsOfAuthorSince(caseId, REMOTE_ID, 3).map((r) => r.table)).toEqual(['tags'])
+  })
+
+  // Review finding 5 on this PR: a page is cut from what the tables offer,
+  // complete up to the version every full table reached, under a byte budget
+  // at a version boundary, and never empty of progress.
+  describe('offerPage', () => {
+    const row = (table: string, version: number, id = `${table}-${version}`): WireRow => ({
+      table,
+      author: REMOTE_ID,
+      version,
+      deletedAt: null,
+      fields: { id },
+      signature: 's'
+    })
+    const versions = (page: WireRow[]): Array<[string, number]> =>
+      page.map((r) => [r.table, r.version])
+
+    it('stops at the version every full table is complete to', () => {
+      const byTable = new Map<string, WireRow[]>([
+        ['notes', [row('notes', 1), row('notes', 4), row('notes', 9)]],
+        ['annotation_pins', [row('annotation_pins', 2), row('annotation_pins', 7)]],
+        ['tags', [row('tags', 3)]]
+      ])
+      // notes returned a full page (limit 3) up to version 9; pins did not.
+      const page = offerPage(byTable, 3, Number.POSITIVE_INFINITY)
+      expect(versions(page.rows)).toEqual([
+        ['tags', 3],
+        ['notes', 1],
+        ['annotation_pins', 2],
+        ['notes', 4],
+        ['annotation_pins', 7],
+        ['notes', 9]
+      ])
+      expect(page.more).toBe(true)
+      // With pins full at 7 and notes full at 9, nothing above 7 is complete.
+      const both = offerPage(
+        new Map([
+          ['notes', [row('notes', 1), row('notes', 4), row('notes', 9)]],
+          ['annotation_pins', [row('annotation_pins', 2), row('annotation_pins', 7)]]
+        ]),
+        2,
+        Number.POSITIVE_INFINITY
+      )
+      expect(versions(both.rows)).toEqual([
+        ['notes', 1],
+        ['annotation_pins', 2],
+        ['notes', 4],
+        ['annotation_pins', 7]
+      ])
+      expect(both.more).toBe(true)
+      const complete = offerPage(byTable, 10, Number.POSITIVE_INFINITY)
+      expect(complete.rows).toHaveLength(6)
+      expect(complete.more).toBe(false)
+    })
+
+    it('cuts at a version boundary under the byte budget, always carrying the first group', () => {
+      const byTable = new Map<string, WireRow[]>([
+        ['notes', [row('notes', 1, 'a'), row('notes', 1, 'b'), row('notes', 2), row('notes', 3)]],
+        ['tags', [row('tags', 1)]]
+      ])
+      const size = JSON.stringify(row('notes', 1, 'a')).length
+      const tight = offerPage(byTable, 100, 1)
+      expect(versions(tight.rows)).toEqual([
+        ['tags', 1],
+        ['notes', 1],
+        ['notes', 1]
+      ])
+      expect(tight.more).toBe(true)
+      const three = offerPage(byTable, 100, size * 4 + 10)
+      expect(versions(three.rows)).toEqual([
+        ['tags', 1],
+        ['notes', 1],
+        ['notes', 1],
+        ['notes', 2]
+      ])
+      expect(three.more).toBe(true)
+      const all = offerPage(byTable, 100, size * 10)
+      expect(all.rows).toHaveLength(5)
+      expect(all.more).toBe(false)
+      expect(offerPage(new Map(), 100, 1)).toEqual({ rows: [], more: false })
+    })
+  })
+
+  it('reads at most the page limit of each cursor-bound table, and every tag', () => {
+    share()
+    const cap = capture()
+    applyRemoteRows(
+      [
+        remoteRow(
+          'tags',
+          { id: 'rt', name: 'remote', color: null, created_at: '2026-10-01T00:00:00.000Z' },
+          1
+        ),
+        remoteRow('exhibit_tags', { exhibit_id: cap, tag_id: 'rt' }, 2),
+        remoteRow('notes', noteFields('rn1', 'one'), 3),
+        remoteRow('notes', noteFields('rn2', 'two'), 4),
+        remoteRow('notes', noteFields('rn3', 'three'), 5)
+      ],
+      roster(),
+      new Set([REMOTE_ID])
+    )
+    const byTable = rowsOfAuthorByTable(caseId, REMOTE_ID, 0, 2)
+    expect(byTable.get('notes')!.map((r) => r.version)).toEqual([3, 4])
+    expect(byTable.get('tags')!.map((r) => r.version)).toEqual([1])
+    expect(byTable.get('exhibit_tags')!.map((r) => r.version)).toEqual([2])
+    expect(
+      rowsOfAuthorByTable(caseId, REMOTE_ID, 4, 2)
+        .get('notes')!
+        .map((r) => r.version)
+    ).toEqual([5])
+    expect(ROWS_PAGE_LIMIT).toBeGreaterThan(0)
   })
 })

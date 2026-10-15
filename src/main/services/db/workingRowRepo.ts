@@ -363,8 +363,9 @@ function conflictTarget(table: SyncedTable): string {
 // one transaction with foreign keys deferred to its commit (the design's
 // "Working-layer rows" rule, ruling of 2026-10-15): a row may arrive before
 // the row it references, from a later page or another author, and the keys
-// are checked once, at commit. Each row lands only above the version already
-// stored for it, in version order within its author. A row keyed by id that
+// are checked once, at commit. The rows are sorted by version across every
+// author, those at one version keeping the order they arrived in, and each
+// lands only above the version already stored for it. A row keyed by id that
 // another author already holds is refused, so a peer cannot overwrite this
 // installation's note by sending one with its id. A batch whose references
 // are not satisfied at commit throws, and nothing of it lands; the next

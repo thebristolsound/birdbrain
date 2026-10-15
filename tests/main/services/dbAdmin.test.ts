@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { ensureCaseDir, initStorage } from '@main/services/storage'
@@ -1092,6 +1092,33 @@ describe('dbAdmin', () => {
       })
       expect(result.dbRecordsRemoved).toBe(0)
       expect(getCapture(sharedCapture)).toBeDefined()
+    })
+
+    // A teammate's files arrive through the sync session (#1512) before any
+    // row describes them (#1811), so nothing under a Shared Case's directory
+    // is an orphan: not in the scan, and not when a report names it.
+    it('never reports or deletes a file under a Shared Case directory', () => {
+      const shared = getCapture(sharedCapture)!.caseId
+      const local = getCapture(localCapture)!.caseId
+      const remoteCapture = join(shared, 'remote-capture.mhtml')
+      const remoteDocument = join(shared, 'documents', 'remote.pdf')
+      const strayLocal = join(local, 'stray.mhtml')
+      for (const rel of [remoteCapture, remoteDocument, strayLocal]) {
+        mkdirSync(join(tempDir, rel, '..'), { recursive: true })
+        writeFileSync(join(tempDir, rel), 'bytes')
+      }
+
+      const report = findOrphans()
+      expect(report.fileOrphans).toEqual([strayLocal])
+
+      const result = cleanOrphans({
+        dbOrphans: [],
+        fileOrphans: [remoteCapture, remoteDocument, strayLocal]
+      })
+      expect(result.filesRemoved).toBe(1)
+      expect(existsSync(join(tempDir, remoteCapture))).toBe(true)
+      expect(existsSync(join(tempDir, remoteDocument))).toBe(true)
+      expect(existsSync(join(tempDir, strayLocal))).toBe(false)
     })
   })
 })

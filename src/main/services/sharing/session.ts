@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'crypto'
+import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
-import { ManifestEntrySchema } from '@shared/schemas'
+import { ManifestEntrySchema, type ManifestEntry } from '@shared/schemas'
 import type { CaseMember, SyncErrorKind } from '@shared/types'
 import { canonicalStringify, verifyEntrySignature } from '@shared/verify'
 import { listCaseMembers, upsertCaseMember } from '@main/services/db/caseMemberRepo'
@@ -17,7 +18,14 @@ import {
 import { getSettings } from '@main/services/settings'
 import { getStorageRoot } from '@main/services/storage'
 import { resolveToolVersion } from '@main/services/toolVersion'
+import { defaultCaptureStore } from '@main/services/captureStore'
 import { acceptEntrySegment, nonEmptyLines } from '@main/services/sharing/entryAcceptance'
+import {
+  acceptBlob,
+  anchoredFiles,
+  missingAnchoredFiles,
+  safeCasePath
+} from '@main/services/sharing/blobAcceptance'
 import {
   CHALLENGE_BYTES,
   MessageReader,
@@ -53,6 +61,10 @@ export interface SyncSource {
   // The raw lines of a chain this peer holds from `fromIndex` on; [] for a
   // chain it does not hold.
   chainLines(installationId: string, fromIndex: number): string[]
+  // The bytes at a storage-root-relative path inside the Case directory, or
+  // null when this peer does not hold the file or the path is not one it
+  // serves.
+  blob(path: string): Uint8Array | null
   sign(hex: string): string
 }
 
@@ -151,8 +163,22 @@ export function liveSyncSource(caseId: string): SyncSource | null {
           : readMemberChainText(caseDir, member)
       return nonEmptyLines(text).slice(fromIndex)
     },
+    blob: (path) => {
+      const abs = safeCasePath(getStorageRoot(), caseId, path)
+      return abs !== null && existsSync(abs) ? Uint8Array.from(readFileSync(abs)) : null
+    },
     sign: signEntryHash
   }
+}
+
+// The entries a stored member chain holds. Every line was verified under the
+// member's key before it was stored, so every line parses; one that does not
+// is skipped rather than trusted.
+function storedEntries(jsonl: Buffer): ManifestEntry[] {
+  return readEntries(jsonl.toString('utf-8')).flatMap((raw) => {
+    const parsed = ManifestEntrySchema.safeParse(raw)
+    return parsed.success ? [parsed.data] : []
+  })
 }
 
 // Membership is the Owner's to write (sharedCase.ts). Entries newly accepted
@@ -247,6 +273,11 @@ export async function serveSyncSession(
           await writeMessage(stream, { t: 'entries', installationId, fromIndex, lines })
           break
         }
+        case 'blobs-request':
+          for (const path of message.paths) {
+            await writeMessage(stream, { t: 'blobs', path, bytes: source.blob(path) })
+          }
+          break
         default:
           return await sayBye(stream, BYE_REASONS.protocol)
       }
@@ -406,6 +437,42 @@ export async function pullFromPeer(
         toolVersion: resolveToolVersion()
       })
       result.mergeIndex = merge.index
+    }
+
+    // 4. Blobs: every file the stored chains of the other members anchor and
+    // this replica lacks, one request per file, hash-checked on arrival. A
+    // file the peer does not hold is left for a peer that does.
+    options.onPhase?.('blobs')
+    const storageRoot = getStorageRoot()
+    const wanted = missingAnchoredFiles(
+      readChainFileSnapshots(caseDir)
+        .filter((chain) => chain.sourceCaseId === undefined)
+        .flatMap((chain) => anchoredFiles(storedEntries(chain.jsonl), caseId, defaultCaptureStore)),
+      storageRoot
+    )
+    for (const { path, hash } of wanted) {
+      await writeMessage(stream, { t: 'blobs-request', paths: [path] })
+      const blob = await expectMessage(reader, 'blobs')
+      if (blob.path !== path) throw new ProtocolError(`blob answered for ${blob.path}`)
+      if (blob.bytes === null) continue
+      const acceptance = acceptBlob({
+        storageRoot,
+        caseId,
+        path,
+        expectedHash: hash,
+        bytes: blob.bytes
+      })
+      if (acceptance.outcome === 'accepted') {
+        result.blobsReceived += 1
+        result.bytesReceived += acceptance.bytes
+      } else if (acceptance.outcome === 'hash-mismatch') {
+        fail(
+          'hash-mismatch',
+          `${path}: expected ${acceptance.expected}, received ${acceptance.actual}`
+        )
+      } else {
+        fail('rejected-entry', `${path}: not a path inside this Case directory`)
+      }
     }
 
     await sayBye(stream, BYE_REASONS.done)

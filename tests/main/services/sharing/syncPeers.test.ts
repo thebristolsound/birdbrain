@@ -1,18 +1,21 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { createHash, createSign } from 'crypto'
-import { existsSync, mkdtempSync, rmSync } from 'fs'
-import { join } from 'path'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'fs'
+import { basename, join } from 'path'
 import { tmpdir } from 'os'
 import { closeDatabase, getDb } from '@main/services/db/core'
 import { listCaseMembers } from '@main/services/db/caseMemberRepo'
 import { resetInstallationId } from '@main/services/installationId'
 import { resetSigningKey } from '@main/services/signingKey'
 import { readManifestSnapshot, readSharedCaseSnapshot } from '@main/services/manifest'
+import { getStorageRoot } from '@main/services/storage'
+import { defaultCaptureStore } from '@main/services/captureStore'
 import { canonicalStringify } from '@shared/verify'
 import { BYE_REASONS } from '@main/services/sharing/session'
 import { memberChainPath } from '../../../../src/packages/evidence-package-layout/index'
 import {
   activate,
+  addCapture,
   addDocument,
   appendOwnChainLine,
   caseDirOf,
@@ -35,6 +38,8 @@ import {
 // the dialing peer's disk and in its database.
 
 const CASE_ID = '0196f7a2-aaaa-bbbb-cccc-000000000010'
+const sha = (bytes: Buffer | string): string => createHash('sha256').update(bytes).digest('hex')
+const onDisk = (path: string): Buffer => readFileSync(join(getStorageRoot(), path))
 
 describe('sync session between peers (#1512)', () => {
   let root: string
@@ -190,13 +195,13 @@ describe('sync session between peers (#1512)', () => {
 
   it('three peers: Carol receives Alice entries through Bob, and her replica verifies', async () => {
     await activate(A)
-    addDocument(CASE_ID, A, 1)
+    const aliceDoc = addDocument(CASE_ID, A, 1)
     const ownerChain = ownChainText(CASE_ID)
     const fromAlice = recordSource(CASE_ID, A)
 
     await activate(B)
     await pull(CASE_ID, fromAlice)
-    addDocument(CASE_ID, B, 1)
+    const bobDoc = addDocument(CASE_ID, B, 1)
     const bobChain = ownChainText(CASE_ID)
     const fromBob = recordSource(CASE_ID, B)
 
@@ -217,6 +222,10 @@ describe('sync session between peers (#1512)', () => {
     expect([...verification!.entries.keys()].sort()).toEqual(
       [A.installationId, B.installationId, C.installationId].sort()
     )
+    // Alice's bytes reached Carol through Bob's replica, hash-checked twice.
+    expect(sha(onDisk(aliceDoc.path))).toBe(aliceDoc.contentHash)
+    expect(sha(onDisk(bobDoc.path))).toBe(bobDoc.contentHash)
+    expect(result.blobsReceived).toBe(2)
   })
 
   it('learns who the Owner added or revoked from the Owner chain', async () => {
@@ -287,5 +296,64 @@ describe('sync session between peers (#1512)', () => {
     ])
     expect(existsSync(join(caseDirOf(CASE_ID), memberChainPath(A.installationId)))).toBe(false)
     expect(existsSync(join(caseDirOf(CASE_ID), 'manifest.jsonl'))).toBe(false)
+  })
+
+  it('fetches every file the received entries anchor, each visible only once its hash matches', async () => {
+    await activate(A)
+    const doc = addDocument(CASE_ID, A, 1)
+    const tampered = addDocument(CASE_ID, A, 2)
+    const capture = await addCapture(CASE_ID, A, 1)
+    const source = recordSource(CASE_ID, A)
+    const genuine = source.files.get(tampered.path)!
+    source.files.set(tampered.path, Uint8Array.from(Buffer.from('tampered in transit')))
+
+    await activate(B)
+    const result = await pull(CASE_ID, source)
+    const artifact = (type: 'mhtml' | 'png' | 'txt') =>
+      defaultCaptureStore.artifactPaths(CASE_ID, capture.captureId, type)
+    expect(sha(onDisk(doc.path))).toBe(doc.contentHash)
+    expect(sha(readFileSync(artifact('mhtml').abs))).toBe(capture.contentHash)
+    expect(sha(readFileSync(artifact('png').abs))).toBe(capture.screenshotHash)
+    expect(sha(readFileSync(artifact('txt').abs))).toBe(capture.textHash)
+    expect(existsSync(join(getStorageRoot(), tampered.path))).toBe(false)
+    expect(readdirSync(join(caseDirOf(CASE_ID), 'documents'))).toEqual([basename(doc.path)])
+    expect(result.blobsReceived).toBe(4)
+    expect(result.bytesReceived).toBe(
+      [doc.path, artifact('mhtml').rel, artifact('png').rel, artifact('txt').rel]
+        .map((path) => onDisk(path).length)
+        .reduce((a, b) => a + b, 0)
+    )
+    expect(result.errors).toEqual([
+      {
+        kind: 'hash-mismatch',
+        detail: `${tampered.path}: expected ${tampered.contentHash}, received ${sha('tampered in transit')}`
+      }
+    ])
+
+    // The next session asks for the file again and gets the genuine bytes.
+    source.files.set(tampered.path, genuine)
+    const again = await pull(CASE_ID, source)
+    expect(again.errors).toEqual([])
+    expect(again.blobsReceived).toBe(1)
+    expect(sha(onDisk(tampered.path))).toBe(tampered.contentHash)
+  })
+
+  it('leaves a file the peer does not hold for a later session, without an error', async () => {
+    await activate(A)
+    const doc = addDocument(CASE_ID, A, 1)
+    const source = recordSource(CASE_ID, A)
+    const bytes = source.files.get(doc.path)!
+    source.files.delete(doc.path)
+
+    await activate(B)
+    const result = await pull(CASE_ID, source)
+    expect(result.errors).toEqual([])
+    expect(result.blobsReceived).toBe(0)
+    expect(existsSync(join(getStorageRoot(), doc.path))).toBe(false)
+
+    source.files.set(doc.path, bytes)
+    const again = await pull(CASE_ID, source)
+    expect(again.blobsReceived).toBe(1)
+    expect(sha(onDisk(doc.path))).toBe(doc.contentHash)
   })
 })

@@ -25,10 +25,15 @@ export type {
   DerDeviationKind,
   DerStrictnessReport
 } from '@shared/verify/derStrictness'
-export { verifyManifestChainText, describeUnsupportedEntry } from '@shared/verify/manifestChain'
+export {
+  verifyManifestChainText,
+  describeUnsupportedEntry,
+  CAPTURE_ENTRY_HASH_FIELDS
+} from '@shared/verify/manifestChain'
 export type {
   ChainVerifyResult,
   CaptureChainEntry,
+  CaptureEntryHashField,
   UnsupportedEntry
 } from '@shared/verify/manifestChain'
 export {

@@ -1,6 +1,7 @@
 import { createHash, createSign } from 'crypto'
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
-import { dirname, join } from 'path'
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs'
+import { dirname, join, relative, sep } from 'path'
+import { Readable } from 'stream'
 import { MANIFEST_FILENAME } from '@shared/constants'
 import { ManifestEntrySchema, type ManifestEntry } from '@shared/schemas'
 import { canonicalStringify } from '@shared/verify'
@@ -25,6 +26,7 @@ import {
   initManifest,
   readMemberChainText
 } from '@main/services/manifest'
+import { ingestMhtmlCapture } from '@main/services/captureLifecycle'
 import { MemoryHub } from '@main/services/sharing/transport'
 import {
   liveSyncSource,
@@ -232,6 +234,46 @@ export function addDocument(caseId: string, peer: Peer, n: number, content?: str
 }
 
 // '' before the peer wrote its first entry.
+export interface IngestedCapture {
+  captureId: string
+  contentHash: string
+  screenshotHash: string
+  textHash: string
+}
+
+// One Capture ingested by the active peer through the app's own ingest: the
+// page archive, the screenshot and the extracted text on disk, the signed
+// `capture` entry on its chain, and its rows.
+export async function addCapture(caseId: string, peer: Peer, n: number): Promise<IngestedCapture> {
+  const page = `<html><body>Page ${n} captured by ${peer.name}</body></html>`
+  const screenshot = Buffer.from(`PNG screenshot ${n} by ${peer.name}`)
+  const text = `Page ${n} captured by ${peer.name}`
+  const result = await ingestMhtmlCapture(
+    {
+      caseId,
+      url: `https://example.com/${peer.name}/${n}`,
+      title: `Page ${n}`,
+      timestamp: TIME,
+      stream: Readable.from([Buffer.from(page)]) as unknown as ReadableStream<Uint8Array>,
+      textContent: text,
+      headers: {},
+      browserVersion: '',
+      userAgent: '',
+      httpStatus: 200,
+      screenshot,
+      ...by(peer)
+    },
+    async () => null
+  )
+  const sha = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex')
+  return {
+    captureId: result.capture.id,
+    contentHash: result.contentHash,
+    screenshotHash: sha(screenshot),
+    textHash: sha(Buffer.from(text, 'utf-8'))
+  }
+}
+
 export const ownChainText = (caseId: string): string => {
   const path = join(caseDirOf(caseId), MANIFEST_FILENAME)
   return existsSync(path) ? readFileSync(path, 'utf-8') : ''
@@ -258,6 +300,17 @@ export const mergeEntries = (caseId: string): Array<Extract<ManifestEntry, { typ
 export interface RecordedSource extends SyncSource {
   members: CaseMember[]
   chains: Map<string, string[]>
+  // Every file under the Case directory the live source serves, by
+  // storage-root-relative path. A test tampers with or removes one here.
+  files: Map<string, Uint8Array>
+}
+
+function walk(dir: string, root: string, into: Map<string, string>): void {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const abs = join(dir, entry.name)
+    if (entry.isDirectory()) walk(abs, root, into)
+    else into.set(relative(root, abs).split(sep).join('/'), abs)
+  }
 }
 
 export function recordSource(caseId: string, peer: Peer): RecordedSource {
@@ -267,11 +320,19 @@ export function recordSource(caseId: string, peer: Peer): RecordedSource {
   for (const { installationId } of live.heads()) {
     chains.set(installationId, live.chainLines(installationId, 0))
   }
+  const onDisk = new Map<string, string>()
+  walk(caseDirOf(caseId), getStorageRoot(), onDisk)
+  const files = new Map<string, Uint8Array>()
+  for (const path of onDisk.keys()) {
+    const bytes = live.blob(path)
+    if (bytes !== null) files.set(path, bytes)
+  }
   const source: RecordedSource = {
     installationId: live.installationId,
     caseId,
     members: live.roster(),
     chains,
+    files,
     roster: () => source.members,
     heads: (): ChainHead[] =>
       [...source.chains].flatMap(([installationId, lines]) => {
@@ -282,6 +343,7 @@ export function recordSource(caseId: string, peer: Peer): RecordedSource {
       }),
     chainLines: (installationId, fromIndex) =>
       (source.chains.get(installationId) ?? []).slice(fromIndex),
+    blob: (path) => source.files.get(path) ?? null,
     sign: (hex) => createSign('sha256').update(hex).sign(peer.privateKeyPem, 'base64')
   }
   return source

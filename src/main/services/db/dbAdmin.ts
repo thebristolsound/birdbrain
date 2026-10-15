@@ -8,6 +8,7 @@ import {
   parseArtifactFilename,
   type CaptureStore
 } from '@main/services/captureStore'
+import { listSharedCaseIds } from '@main/services/db/caseRepo'
 import { deleteExhibit } from '@main/services/db/exhibitRepo'
 import { buildCsv } from '@main/services/csvEscape'
 import { parseNoteAnchor } from '@shared/noteAnchor'
@@ -631,6 +632,11 @@ export function findOrphans(): OrphanReport {
 
   if (existsSync(storageRoot)) {
     const captureIds = new Set(captures.map((c) => c.id))
+    // A Shared Case's directory also holds other members' files, which the
+    // sync session hash-checked against their entries on arrival (#1512) and
+    // which no local row describes until #1811 writes one. Nothing in it is
+    // an orphan, so the directory is not scanned.
+    const sharedCaseIds = listSharedCaseIds()
     // Every storage-root-relative path the database claims for a non-Capture
     // Exhibit, a Derived File or a pooled file. The Capture directory is
     // matched by filename (`parseArtifactFilename`) because a Capture's
@@ -652,6 +658,7 @@ export function findOrphans(): OrphanReport {
       .map((d) => d.name)
 
     for (const caseDir of caseDirs) {
+      if (sharedCaseIds.has(caseDir)) continue
       const casePath = join(storageRoot, caseDir)
       for (const entry of readdirSync(casePath, { withFileTypes: true })) {
         if (entry.isDirectory()) {
@@ -689,8 +696,10 @@ export function cleanOrphans(report: OrphanReport): {
   let filesRemoved = 0
   const allowedOrphanTables = new Set(['captures'])
   // The report comes back from the renderer, so a Case shared since the scan,
-  // or an edited report, is checked here as well as in findOrphans.
+  // or an edited report, is checked here as well as in findOrphans: a Shared
+  // Case's Capture rows and every file under its directory are left alone.
   const inSharedCase = db.prepare(`${IN_SHARED_CASE.captures} LIMIT 1`)
+  const sharedCaseIds = listSharedCaseIds()
 
   for (const orphan of report.dbOrphans) {
     if (!allowedOrphanTables.has(orphan.table)) {
@@ -724,6 +733,7 @@ export function cleanOrphans(report: OrphanReport): {
   for (const relPath of report.fileOrphans) {
     const absPath = resolve(defaultCaptureStore.resolveAbsolute(relPath))
     if (!absPath.startsWith(resolvedRoot)) continue
+    if (sharedCaseIds.has(absPath.slice(resolvedRoot.length).split(sep)[0])) continue
     if (existsSync(absPath)) {
       unlinkSync(absPath)
       filesRemoved++

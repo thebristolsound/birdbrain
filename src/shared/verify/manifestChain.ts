@@ -26,6 +26,15 @@ export interface CaptureChainEntry {
   tlsSkipped?: TlsRefetchSkip
 }
 
+// The hash fields a `capture` entry anchors, one file each: the page archive,
+// the screenshot and the extracted text. The sync session (#1512) builds the
+// list of files it fetches for a received Capture from this, one per field
+// the entry carries; the Transaction Record and PDF hashes join it with CE-P
+// step 1. A capture entry always carries `contentHash`; the other two are
+// present only when the sidecar was captured.
+export const CAPTURE_ENTRY_HASH_FIELDS = ['contentHash', 'screenshotHash', 'textHash'] as const
+export type CaptureEntryHashField = (typeof CAPTURE_ENTRY_HASH_FIELDS)[number]
+
 // An entry this build cannot read because it comes from a newer schema: its
 // `type` is one this build has never heard of, or its `schemaVersion` is above
 // the highest this build supports (X25).

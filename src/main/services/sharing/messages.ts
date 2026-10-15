@@ -27,7 +27,9 @@ export class ProtocolError extends Error {
 
 const installationIdField = z.string().min(1)
 const indexField = z.number().int().nonnegative()
-const bytesField = z.instanceof(Uint8Array)
+// A byte string. `z.custom` rather than `z.instanceof`, so the inferred type is
+// the plain `Uint8Array` every producer (a file read, a Buffer) satisfies.
+const bytesField = z.custom<Uint8Array>((value) => value instanceof Uint8Array, 'expected bytes')
 
 export const ChainHeadSchema = z
   .object({

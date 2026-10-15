@@ -57,6 +57,15 @@ exclusion rather than inclusion: window geometry enters no capture, content hash
 entry, canonical JSON field or signature, which #478's Evidence impact section argued and its
 round-2 pre-pass verified. `src/main/index.ts` stays included at blocking tier for the
 invariants it does still hold.
+The Shared Case sync modules under `src/main/services/sharing/` were added on 2026-10-14 with
+#1512, the first code that writes another installation's entries, files and rows into a Case.
+The four that decide what is stored (`session.ts`, `entryAcceptance.ts`, `blobAcceptance.ts`,
+`workingRows.ts`) are blocking; `messages.ts` and `syncState.ts` are advisory; and the transport
+interface with its in-process form, `transport.ts`, is an exclusion by the #227 and #515
+reasoning: it carries bytes between installations, reads no message, and decides nothing about
+what the session accepts. `IrohTransport`, when #1810 lands it, is the same kind of file and
+joins that entry. The repo module the rows step writes through,
+`src/main/services/db/workingRowRepo.ts`, is already swept in by `src/main/services/db/**`.
 
 ### Known gap: carve-outs are caught by review, not by a check
 
@@ -304,6 +313,21 @@ independent of the Operator who holds it.
 | `src/renderer/components/settings/db/**` | blocking | The DB administration views behind it (browse, row edit, utilities) |
 | `src/renderer/components/settings/OperatorConfig.tsx` | blocking | Operator identity embedded verbatim in export certification |
 
+### Shared Case sync
+
+The sync session (#1512) is the one path by which another installation's chain entries, Exhibit
+bytes and working-layer rows enter a Case directory and database. What it accepts is decided in
+four modules; the rest of the directory moves bytes or records state.
+
+| Path | Tier | Why |
+|---|---|---|
+| `src/main/services/sharing/session.ts` | blocking | Runs the pull: proves the peer's key against the roster, asks for entries, files and rows, and writes the `merge` entry that names the heads received. A defect here stores something the acceptance modules never saw, or signs a `merge` for a head this replica does not hold |
+| `src/main/services/sharing/entryAcceptance.ts` | blocking | Appends a received chain segment only when the stored chain plus the segment verifies under the member's key and continues the stored head; stops before an entry from a newer schema. Decides which remote entries exist on this replica |
+| `src/main/services/sharing/blobAcceptance.ts` | blocking | Writes a received file beside its path, hashes it from disk and renames it in only when the hash is the one a verified entry anchors; refuses paths outside the Case directory. Decides which remote bytes become visible |
+| `src/main/services/sharing/workingRows.ts` | blocking | Signs this installation's rows on every write, tombstones instead of deleting in a Shared Case, and applies a received row only under its author's roster key and above the stored version. Decides what another member's notes, tags and annotations say here |
+| `src/main/services/sharing/messages.ts` | advisory | The CBOR codec and frame reader: parses every frame against a strict schema at the trust boundary and passes it on. It admits nothing by itself, since each message is checked by the module above that consumes it |
+| `src/main/services/sharing/syncState.ts` | advisory | `sync-state.json` and `members.json`, neither of them evidence, and the version high-water mark the row signing reads. A defect here can make a peer ignore a row as old, never accept one it should not |
+
 ### Cross-process contracts and configuration
 
 | Path | Tier | Why |
@@ -348,6 +372,7 @@ It is *notable* exclusions, not an exhaustive complement of the include list.
 | `src/main/services/deepLink.ts` | Navigation plumbing |
 | `src/main/services/extensionPath.ts` | Extension setup plumbing |
 | `src/main/windowSize.ts` | Main-window geometry, and the `BIRDBRAIN_WINDOW_SIZE` override read only in an unpackaged build. It holds none of the invariants `src/main/index.ts` is listed for: no capture, content hash, manifest entry, canonical JSON field or signature depends on the size of the window the evidence is later viewed in. Split out of the included `src/main/index.ts` by #478, and left off both lists until #515 |
+| `src/main/services/sharing/transport.ts` | The transport interface and its in-process form, `MemoryTransport` (#1512). A transport carries bytes between installations: it reads no message and decides nothing about what the session accepts, which the four blocking modules above do. The same reasoning as `src/main/services/exclusionPolicy.ts`'s inclusion in reverse (#227) and as `src/main/windowSize.ts` (#515): the evidentiary decision lives elsewhere. `IrohTransport` joins this entry when #1810 adds it |
 | `src/renderer/lib/api/**` | High-churn typed passthrough; evidence parameters originate in included dialogs and are enforced in main (but see judgment call 2) |
 | `src/renderer/lib/queries.ts` | Same rationale — the re-export barrel left behind by the split, deleted by the last PR of #229 |
 | `src/renderer/components/captures/AddUrlsBox.tsx` | Removed by the challenge pass as inconsistent with the standard applied to `src/renderer/lib/queries.ts` and `src/renderer/components/settings/CapturePreferences.tsx` — UI-side plumbing whose values are enforced in main |

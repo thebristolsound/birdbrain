@@ -331,6 +331,32 @@ describe('sync session between peers (#1512)', () => {
     ).toBe(revoke.index)
   })
 
+  // Scheduled review finding 1: the roster was read from the peer's wire
+  // lines by a count taken over chain lines, so a blank line in a relayed
+  // Owner history threw after the lines were stored, and the revocation in
+  // them never reached the roster, in that session or any later one.
+  it('records a revocation relayed with blank and joined lines in the Owner history', async () => {
+    await activate(A)
+    const revoke = appendOwnChainLine(CASE_ID, memberRevokeBody(CASE_ID, C, A))
+    const ownerChain = ownChainText(CASE_ID)
+    const fromAlice = recordSource(CASE_ID, A)
+    await activate(C)
+    expect((await pull(CASE_ID, fromAlice)).errors).toEqual([])
+    const relayed = recordSource(CASE_ID, C)
+    const [l0, l1, l2, l3] = relayed.chains.get(A.installationId)!
+    relayed.chains.set(A.installationId, [' ', l0, '', `${l1}\n${l2}`, l3])
+
+    await activate(B)
+    const result = await pull(CASE_ID, relayed)
+    expect(result.errors).toEqual([])
+    expect(result.entriesReceived).toBe(4)
+    expect(memberChainText(CASE_ID, A)).toBe(ownerChain)
+    expect(
+      listCaseMembers(CASE_ID).find((m) => m.installationId === C.installationId)?.revokedAtIndex
+    ).toBe(revoke.index)
+    expect(readSyncStateFile(caseDirOf(CASE_ID)).lastError).toBeNull()
+  })
+
   // Review finding 3 on this PR: a revoked member's entries past the head
   // the Owner merged before the revocation arrived through a third peer,
   // with the files and rows behind them, and the Owner's own walk then
@@ -1183,6 +1209,23 @@ describe('sync session between peers (#1512)', () => {
       expect(memberChainText(CASE_ID, C)).toBe(kept)
       expect(readdirSync(caseDirOf(CASE_ID)).filter((f) => f.endsWith('.partial'))).toEqual([])
       expect(mergeEntries(CASE_ID)).toHaveLength(1)
+    })
+
+    // The roster is read from the Owner's lines only once the chain is
+    // judged: a member-revoke on a chain that is cut back changes nothing.
+    it('changes no membership from an Owner chain that is cut back', async () => {
+      await activate(A)
+      appendManifestEntry(caseDirOf(CASE_ID), foreignExhibit(A, 1))
+      appendOwnChainLine(CASE_ID, memberRevokeBody(CASE_ID, C, A))
+      const source = recordSource(CASE_ID, A)
+      await activate(B)
+      const result = await pull(CASE_ID, source, {}, { pageBytes: 1 })
+      expect(result.errors).toEqual([foreignError(A, 3)])
+      expect(memberChainText(CASE_ID, A)).toBe('')
+      expect(mergeEntries(CASE_ID)).toEqual([])
+      expect(
+        listCaseMembers(CASE_ID).find((m) => m.installationId === C.installationId)?.revokedAtIndex
+      ).toBeNull()
     })
 
     it('removes a chain whole when what an older build stored of it is already foreign', async () => {

@@ -244,8 +244,9 @@ function storedEntries(jsonl: Buffer): ManifestEntry[] {
 
 // Membership is the Owner's to write (sharedCase.ts). Entries newly accepted
 // from the Owner's chain update the roster cache, which is how a member learns
-// who joined or was revoked after it did. The lines verified under the
-// Owner's key before they reached here. Returns what could not be applied.
+// who joined or was revoked after it did. Every line here is one the
+// acceptance stored, verified under the Owner's key, so each parses as an
+// entry. Returns what could not be applied.
 function refreshRosterFromOwnerChain(caseId: string, lines: string[]): string[] {
   const refused: string[] = []
   for (const line of lines) {
@@ -481,6 +482,9 @@ export async function pullFromPeer(
       const storedBefore = storedCount
       let received = 0
       let head: ChainHeadRef | null = null
+      // The Owner's lines accepted this session, read for the roster once
+      // the chain is judged (below), never before.
+      const ownerLines: string[] = []
       // One request per page, from the stored head, until the peer's head or
       // the bound is reached. A page that is refused, or that stops the
       // chain, ends this member's loop; the next session asks again.
@@ -497,13 +501,15 @@ export async function pullFromPeer(
               `entries answered for ${entries.installationId}@${entries.fromIndex}`
             )
           }
-          if (entries.lines.length === 0) break
+          // Chain lines, one entry each, whatever the peer packed into a wire
+          // line: the bound and every count below are in entries.
+          const offered = entries.lines.flatMap((line) => nonEmptyLines(line))
+          if (offered.length === 0) break
           const acceptance = acceptEntrySegment({
             caseDir,
             member,
             fromIndex: storedCount,
-            lines:
-              bound === undefined ? entries.lines : entries.lines.slice(0, bound - storedCount + 1)
+            lines: bound === undefined ? offered : offered.slice(0, bound - storedCount + 1)
           })
           if (acceptance.outcome === 'rejected') {
             result.errors.push({
@@ -530,13 +536,7 @@ export async function pullFromPeer(
             received += acceptance.appended
             head = acceptance.head
             storedCount += acceptance.appended
-            if (installationId === ownerId) {
-              const accepted = entries.lines.slice(0, acceptance.appended)
-              for (const detail of refreshRosterFromOwnerChain(caseId, accepted)) {
-                result.errors.push({ kind: 'rejected-entry', detail, installationId })
-              }
-              roster = listCaseMembers(caseId)
-            }
+            if (installationId === ownerId) ownerLines.push(...acceptance.lines)
           }
           if (acceptance.outcome === 'newer-version' || acceptance.appended === 0) break
         }
@@ -568,6 +568,16 @@ export async function pullFromPeer(
             received = 0
             head = null
           }
+        }
+        // The roster follows the Owner's lines that survived the judgement,
+        // on every way out: a chain cut back changes no membership, and one
+        // kept records its member-add and member-revoke entries now, since
+        // no later session reads a stored line again.
+        if (received > 0 && installationId === ownerId && ownerLines.length > 0) {
+          for (const detail of refreshRosterFromOwnerChain(caseId, ownerLines)) {
+            result.errors.push({ kind: 'rejected-entry', detail, installationId })
+          }
+          roster = listCaseMembers(caseId)
         }
       }
       if (received === 0 || head === null) continue

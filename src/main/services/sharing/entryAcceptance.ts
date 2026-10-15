@@ -24,7 +24,9 @@ export interface ChainHeadRef {
 }
 
 export type EntryAcceptance =
-  | { outcome: 'accepted'; appended: number; head: ChainHeadRef | null }
+  // `lines` are the chain lines appended, one entry each, verified under the
+  // member's key: what the caller may read entries from.
+  | { outcome: 'accepted'; appended: number; head: ChainHeadRef | null; lines: string[] }
   // The segment did not start at the stored head. Nothing is appended; the
   // peer and this replica disagree about the chain, which is a peer fault.
   | { outcome: 'not-contiguous'; storedCount: number }
@@ -39,6 +41,7 @@ export type EntryAcceptance =
       index: number
       reason: string
       head: ChainHeadRef | null
+      lines: string[]
     }
 
 export interface AcceptEntrySegmentParams {
@@ -93,8 +96,14 @@ export function acceptEntrySegment(params: AcceptEntrySegmentParams): EntryAccep
   const { caseDir, member, fromIndex, lines } = params
   const stored = nonEmptyLines(readMemberChainText(caseDir, member.installationId))
   if (fromIndex !== stored.length) return { outcome: 'not-contiguous', storedCount: stored.length }
-  const segment = lines.filter((line) => line.trim().length > 0)
-  if (segment.length === 0) return { outcome: 'accepted', appended: 0, head: headOf(stored) }
+  // What the peer sent is split into chain lines first: the verifier reads
+  // the segment by newline, so a wire line holding two entries or a blank
+  // would otherwise be counted as one entry, and every count here and in
+  // the session would drift from the file.
+  const segment = lines.flatMap((line) => nonEmptyLines(line))
+  if (segment.length === 0) {
+    return { outcome: 'accepted', appended: 0, head: headOf(stored), lines: [] }
+  }
 
   const candidate = [...stored, ...segment]
   const result = verifyManifestChainText(candidate.join('\n') + '\n', {
@@ -126,8 +135,9 @@ export function acceptEntrySegment(params: AcceptEntrySegmentParams): EntryAccep
       appended: toAppend.length,
       index: result.unsupported.index,
       reason: result.reason ?? 'entry from a newer schema',
-      head
+      head,
+      lines: toAppend
     }
   }
-  return { outcome: 'accepted', appended: toAppend.length, head }
+  return { outcome: 'accepted', appended: toAppend.length, head, lines: toAppend }
 }

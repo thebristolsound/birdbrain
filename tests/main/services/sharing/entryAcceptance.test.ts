@@ -104,17 +104,47 @@ describe('acceptEntrySegment', () => {
   it('appends a verified first segment byte for byte and reports its head', () => {
     const segment = lines([exhibitBody(1), exhibitBody(2)])
     const result = accept(0, segment)
-    expect(result).toEqual({ outcome: 'accepted', appended: 2, head: headOf(segment[1]) })
+    expect(result).toEqual({
+      outcome: 'accepted',
+      appended: 2,
+      head: headOf(segment[1]),
+      lines: segment
+    })
     expect(stored()).toBe(segment.join('\n') + '\n')
   })
 
   it('appends a segment that continues the stored head, and nothing for an empty one', () => {
     const first = lines([exhibitBody(1)])
     accept(0, first)
-    expect(accept(1, [])).toEqual({ outcome: 'accepted', appended: 0, head: headOf(first[0]) })
+    expect(accept(1, [])).toEqual({
+      outcome: 'accepted',
+      appended: 0,
+      head: headOf(first[0]),
+      lines: []
+    })
     const second = lines([exhibitBody(2)], headOf(first[0]))
-    expect(accept(1, second)).toEqual({ outcome: 'accepted', appended: 1, head: headOf(second[0]) })
+    expect(accept(1, second)).toEqual({
+      outcome: 'accepted',
+      appended: 1,
+      head: headOf(second[0]),
+      lines: second
+    })
     expect(nonEmptyLines(stored())).toEqual([...first, ...second])
+  })
+
+  // Scheduled review finding 1: a wire line is not a chain line. A blank
+  // one, or one holding two entries, is split into entries before anything
+  // is counted, so what is appended, reported and read back agree.
+  it('counts entries, not wire lines, when a peer packs blanks or two entries into one', () => {
+    const segment = lines([exhibitBody(1), exhibitBody(2), exhibitBody(3)])
+    const result = accept(0, [' ', segment[0], '', `${segment[1]}\n${segment[2]}`])
+    expect(result).toEqual({
+      outcome: 'accepted',
+      appended: 3,
+      head: headOf(segment[2]),
+      lines: segment
+    })
+    expect(stored()).toBe(segment.join('\n') + '\n')
   })
 
   it('refuses a segment that does not start at the stored head', () => {
@@ -169,7 +199,8 @@ describe('acceptEntrySegment', () => {
     expect(accept(0, segment)).toEqual({
       outcome: 'accepted',
       appended: 2,
-      head: headOf(segment[1])
+      head: headOf(segment[1]),
+      lines: segment
     })
     const stored = nonEmptyLines(readFileSync(join(caseDir, memberChainPath(MEMBER_ID)), 'utf-8'))
     const entries = stored.map((line) => ManifestEntrySchema.parse(JSON.parse(line)))

@@ -23,6 +23,7 @@ import {
   timestampTokenPath
 } from '../../packages/evidence-package-layout/index'
 import {
+  MEMBER_CHAINS_STEP,
   VERIFY_RECIPES,
   sentenceStart,
   stepRange,
@@ -57,7 +58,8 @@ It prints its verdict, then a line per check, then the verdict in full, and exit
 non-zero naming the step that failed — 2 if
 a tool it needs is missing, and 3 (\`INCOMPLETE\`) if a check could not be run at
 all, which this package can cause by enclosing no root for a non-default
-timestamp authority. A skipped check is never folded into its \`PASS\`. It is
+timestamp authority, or, in a Shared Case package, by carrying a member chain
+with an entry from a newer schema than the script reads. A skipped check is never folded into its \`PASS\`. It is
 a convenience, not the authority: what makes this package checkable is that every
 step below can be run by hand, which is what the rest of this document is for.
 
@@ -412,6 +414,20 @@ the member who exported the package, signed by \`${ROOT.signingPublicKey}\`. Eve
 member's chain sits beside it as \`${memberChainPath('{installationId}')}\`. A package
 of a Case nobody shared has none of these files, and the blocks below print
 nothing for it.
+
+\`${ROOT.verifyScript}\` runs this section as ${stepRef(MEMBER_CHAINS_STEP.id)}, *${MEMBER_CHAINS_STEP.scriptTitle}*,
+between ${stepRef(4)} and ${stepRef(5)}, and prints it only for a package that carries a member
+chain, a lineage chain or a Shared Case entry. For each member chain it prints
+the member's code and installation id, how many entries verified, and the key
+they verified under, named as "the key the Owner's member-add for it carries"
+with the SHA-256 of that key's PEM text, as ${stepRef(2)} prints for the enclosed
+key. It checks every \`merge\` head and every citation, and that every
+\`exclude\` names an Exhibit its author's chain holds.
+A member chain holding an entry from a newer schema than the script reads is
+reported as \`INCOMPLETE\`, never as a pass: the entries before that entry are
+checked and nothing after it is read. ${sentenceStart(stepRef(5))} then binds each other
+member's Exhibits to the chain their author signed, as it binds this package's
+own.
 
 The Owner's chain is the one whose \`member-add\` entries name the members; the
 first names the Owner itself with role \`owner\`. Each \`member-add\` carries that

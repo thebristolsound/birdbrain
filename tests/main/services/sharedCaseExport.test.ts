@@ -920,4 +920,251 @@ describe('Shared Case export, import and fork (#1511)', () => {
         `import entry ${last + 1} carries (SHA-256 ${fingerprint})`
     )
   })
+
+  // #1864: verify.sh checks every member chain a Shared Case package carries,
+  // and reaches the verdict the package verifier above reaches.
+  describe.skipIf(!HAS_OPENSSL || !HAS_JQ)('verify.sh over the member chains (#1864)', () => {
+    const peerFingerprint = createHash('sha256').update(PEER_KEY.publicKey).digest('hex')
+    const peerChain = memberChainPath(PEER_ID)
+
+    // Restates one file's hash in the unsigned index, so that only a check
+    // against a signed chain can catch the edit.
+    function reindex(dir: string, path: string): void {
+      const indexPath = join(dir, 'evidence.json')
+      const index = JSON.parse(readFileSync(indexPath, 'utf-8'))
+      const sha256 = createHash('sha256')
+        .update(readFileSync(join(dir, path)))
+        .digest('hex')
+      index.artifacts = index.artifacts.map((a: { path: string }) =>
+        a.path === path ? { ...a, sha256 } : a
+      )
+      writeFileSync(indexPath, JSON.stringify(index))
+    }
+
+    const findings = (output: string, kind: 'FAIL' | 'INCOMPLETE'): string[] =>
+      output
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.startsWith(`${kind} [`))
+
+    it('passes the two-member package, naming each member chain and its key', async () => {
+      const { peerDoc } = ownerReplica()
+      const { dir } = await exportPackage()
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(0)
+      expect(run.output).toContain('\n== Step 4a - member chains of a Shared Case\n')
+      expect(run.output).toContain(`Case ${caseId}: 2 member(s): CO=${localId}, RP=${PEER_ID}`)
+      expect(run.output).toContain(
+        `${peerChain}: member RP (${PEER_ID}), 1 entr(ies) verified under the key the ` +
+          `Owner's member-add for it carries (SHA-256 ${peerFingerprint})`
+      )
+      expect(run.output).toContain(
+        '1 merge head(s) each name an entry of the chain they name, at that index and with ' +
+          'that entryHash'
+      )
+      // The member's Exhibit is bound in step 5 under its citation.
+      expect(run.output).toContain('2 exhibit(s) of other kinds bound to the signed chain')
+      expect(verifyEvidencePackage(dir).pass).toBe(true)
+
+      const [row] = listExhibits(caseId).filter((e) => e.id === peerDoc)
+      const enclosed = row.path!.slice(caseId.length + 1)
+      writeFileSync(join(dir, enclosed), 'edited')
+      reindex(dir, enclosed)
+      const edited = runVerifyScript(dir)
+      expect(edited.status).toBe(1)
+      expect(findings(edited.output, 'FAIL')).toEqual([
+        `FAIL [step 5] Exhibit RP-1: ${enclosed} does not match the contentHash in its signed entry`
+      ])
+      expect(verifyEvidencePackage(dir).pass).toBe(false)
+    })
+
+    it('fails a forged entry in the member chain, naming the chain and the entry', async () => {
+      const { peer } = ownerReplica()
+      const { dir } = await exportPackage()
+      const forger = new Chain(signWith(keyPair()))
+      forger.lines = [...peer.lines]
+      forger.hashes = [...peer.hashes]
+      forger.append({
+        type: 'deletion',
+        caseId,
+        captureId: `${PEER_ID}-doc-1`,
+        timestamp: TIME,
+        ...PEER,
+        schemaVersion: 3
+      })
+      writeFileSync(join(dir, peerChain), forger.jsonl)
+      reindex(dir, peerChain)
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      // The Owner's merge names the member chain, and it no longer verifies.
+      expect(findings(run.output, 'FAIL')).toEqual([
+        `FAIL [step 4a] ${peerChain} (member RP): entry 1: Invalid signature`,
+        `FAIL [step 4a] merge entry 3 of ${localId} names installation ${PEER_ID}, whose chain ` +
+          'is not present or did not verify'
+      ])
+      expect(verifyEvidencePackage(dir).pass).toBe(false)
+    })
+
+    it('fails a merge head the member chain does not reach', async () => {
+      ownerReplica(undefined, (peer) => {
+        document(peer, PEER, { installationId: PEER_ID, memberCode: 'RP' }, 2)
+      })
+      const { dir } = await exportPackage()
+      // The member chain the Owner merged up to index 1, cut back to index 0:
+      // still a chain the member signed, but not the one the merge names.
+      const [first] = readFileSync(join(dir, peerChain), 'utf-8').split('\n')
+      writeFileSync(join(dir, peerChain), `${first}\n`)
+      reindex(dir, peerChain)
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      expect(findings(run.output, 'FAIL')).toEqual([
+        `FAIL [step 4a] merge entry 3 of ${localId} names index 1 of ${PEER_ID}, which has 1 entries`
+      ])
+      expect(verifyEvidencePackage(dir).pass).toBe(false)
+    })
+
+    it('reports a member chain it cannot read to the end as INCOMPLETE, never PASS', async () => {
+      const { peer } = ownerReplica()
+      const { dir } = await exportPackage()
+      // A genuine entry the member's newer build wrote, signed by its key.
+      peer.append({
+        type: 'exhibit-review',
+        caseId,
+        timestamp: TIME,
+        ...PEER,
+        schemaVersion: 6
+      })
+      writeFileSync(join(dir, peerChain), peer.jsonl)
+      reindex(dir, peerChain)
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(3)
+      expect(findings(run.output, 'FAIL')).toEqual([])
+      expect(findings(run.output, 'INCOMPLETE')).toEqual([
+        `INCOMPLETE [step 4a] ${peerChain} (member RP): entry 1 is from a newer schema than ` +
+          'this script reads (type exhibit-review, schema version 6; it reads up to schema ' +
+          'version 5), so the chain was checked only up to that entry',
+        'INCOMPLETE [step 4a] merge heads, citations and exclusions were not checked: a member ' +
+          'chain holds an entry this script cannot read'
+      ])
+      expect(run.output).not.toContain('PASS')
+      const result = verifyEvidencePackage(dir)
+      expect([result.pass, result.unsupported !== undefined]).toEqual([false, true])
+    })
+
+    it("fails an Exhibit entry that claims another member's Member Code", async () => {
+      ownerReplica(undefined, (peer) => {
+        peer.append({
+          type: 'exhibit',
+          exhibitId: `${PEER_ID}-claimed`,
+          caseId,
+          kind: 'document',
+          origin: 'manual-upload',
+          name: 'claimed.pdf',
+          exhibitNumber: 5,
+          memberCode: 'CO',
+          path: `${caseId}/documents/${PEER_ID}-claimed.pdf`,
+          contentHash: 'e'.repeat(64),
+          sizeBytes: 1,
+          timestamp: TIME,
+          ...PEER,
+          schemaVersion: 4
+        })
+      })
+      const { dir } = await exportPackage()
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      // The entry names bytes the fixture never wrote, so step 5 finds them absent too.
+      expect(findings(run.output, 'FAIL')).toEqual([
+        `FAIL [step 4a] exhibit entry 1 of ${PEER_ID} claims Member Code CO, its writer's is RP`,
+        `FAIL [step 5] Exhibit 5: documents/${PEER_ID}-claimed.pdf is missing and nothing ` +
+          'signed accounts for its absence'
+      ])
+      expect(verifyEvidencePackage(dir).pass).toBe(false)
+    })
+
+    it("fails an exclude naming an Exhibit its author's chain does not hold", async () => {
+      ownerReplica((owner) => {
+        owner.append({
+          type: 'exclude',
+          caseId,
+          exhibitId: 'never-written',
+          authorInstallationId: PEER_ID,
+          timestamp: TIME,
+          ...LOCAL(),
+          schemaVersion: 4
+        })
+      })
+      const { dir } = await exportPackage()
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      expect(findings(run.output, 'FAIL')).toEqual([
+        `FAIL [step 4a] exclude at index 4 names Exhibit never-written, which the chain of ` +
+          `${PEER_ID} does not hold`
+      ])
+      expect(verifyEvidencePackage(dir).pass).toBe(false)
+    })
+
+    it('fails a member chain no member-add names', async () => {
+      ownerReplica()
+      const { dir } = await exportPackage()
+      const stray = new Chain(signWith(keyPair()))
+      document(stray, operator('installation-stray-0001', 'Sam Stray'), null, 7)
+      const strayChain = memberChainPath('installation-stray-0001')
+      writeFileSync(join(dir, strayChain), stray.jsonl)
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      expect(findings(run.output, 'FAIL')).toEqual([
+        `FAIL [step 4a] ${strayChain}: no member-add names installation installation-stray-0001`
+      ])
+      expect(verifyEvidencePackage(dir).pass).toBe(false)
+    })
+
+    it("passes a package a member exported, anchoring the Owner's key in its merge", async () => {
+      const { owner } = memberReplica()
+      const { dir } = await exportPackage()
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(0)
+      expect(run.output).toContain(
+        `${peerChain}: the Owner's chain (${PEER_ID}), ${owner.lines.length} entr(ies) verified ` +
+          `under the key its own member-add carries (SHA-256 ${peerFingerprint}), which a merge ` +
+          `in manifest.jsonl anchors at index ${owner.lines.length - 1}`
+      )
+      const localFingerprint = createHash('sha256').update(getPublicKeyPem()).digest('hex')
+      expect(run.output).toContain(
+        `manifest.jsonl: member RP (${localId}), 2 entr(ies) verified under the key the ` +
+          `Owner's member-add for it carries (SHA-256 ${localFingerprint})`
+      )
+      expect(verifyEvidencePackage(dir).pass).toBe(true)
+    })
+
+    it("fails a package a member exported when no merge anchors the Owner's key", async () => {
+      // memberReplica without the merge: nothing this installation signed
+      // names the Owner's chain, so the key that chain claims is not trusted.
+      const owner = new Chain(signWith(PEER_KEY))
+      owner.append(memberAdd(PEER_ID, PEER_KEY.publicKey, 'CO', 'Robin', 'owner', PEER))
+      owner.append(memberAdd(localId, getPublicKeyPem(), 'RP', 'Casey', 'member', PEER))
+      const local = new Chain(signEntryHash)
+      document(local, LOCAL(), null, 1)
+      writeFileSync(join(caseDir(), 'manifest.jsonl'), local.jsonl)
+      writeFileSync(join(caseDir(), peerChain), owner.jsonl)
+      roster(PEER_ID, PEER_KEY.publicKey, localId, getPublicKeyPem())
+      const { dir } = await exportPackage()
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      expect(findings(run.output, 'FAIL')).toEqual([
+        `FAIL [step 4a] no merge in manifest.jsonl names the Owner's chain (${PEER_ID}), so its ` +
+          'key cannot be anchored'
+      ])
+      expect(verifyEvidencePackage(dir).pass).toBe(false)
+    })
+  })
 })

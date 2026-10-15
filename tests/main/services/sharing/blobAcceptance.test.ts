@@ -53,14 +53,17 @@ describe('blob acceptance', () => {
       )
     })
 
-    it('refuses paths that leave the Case directory or name another Case', () => {
+    it('refuses paths that leave the Case directory, name another Case, or climb as written', () => {
       expect(safe('other-case/x.mhtml')).toBeNull()
       expect(safe(`${CASE_ID}/../other-case/x.mhtml`)).toBeNull()
+      expect(safe(`${CASE_ID}/documents/../../other-case/x.mhtml`)).toBeNull()
+      expect(safe(`${CASE_ID}/./x.mhtml`)).toBeNull()
       expect(safe(`${CASE_ID}`)).toBeNull()
       expect(safe(`${CASE_ID}-2/x.mhtml`)).toBeNull()
       expect(safe('/etc/passwd')).toBeNull()
-      // A doubled separator normalizes away and stays inside.
-      expect(safe(`${CASE_ID}//x.mhtml`)).toBe(join(storageRoot, CASE_ID, 'x.mhtml'))
+      // An empty segment is refused as written, not normalized away.
+      expect(safe(`${CASE_ID}//x.mhtml`)).toBeNull()
+      expect(safe(`${CASE_ID}/x.mhtml/`)).toBeNull()
     })
 
     it('refuses the names the replica itself owns and the directories that never sync', () => {
@@ -73,6 +76,25 @@ describe('blob acceptance', () => {
       expect(safe(`${CASE_ID}/x.mhtml${BLOB_PARTIAL_SUFFIX}`)).toBeNull()
       // A chain-like name below the top level is an ordinary file.
       expect(safe(`${CASE_ID}/documents/manifest.jsonl`)).not.toBeNull()
+    })
+
+    // Review finding 4 on this PR: a lineage chain path was admitted, and the
+    // chain reader walks the lineage directory into the Shared Case walk.
+    it('refuses lineage chains and everything else under the lineage directory', () => {
+      expect(safe(`${CASE_ID}/lineage/0196-src-case/manifest.x.jsonl`)).toBeNull()
+      expect(safe(`${CASE_ID}/lineage/0196-src-case/anything.pdf`)).toBeNull()
+      expect(safe(`${CASE_ID}/lineage/manifest.x.jsonl`)).toBeNull()
+    })
+
+    // A case-insensitive filesystem would hand a reserved name or a chain
+    // file to a peer under another spelling.
+    it('refuses reserved names, chain files and unsynced directories whatever their case', () => {
+      expect(safe(`${CASE_ID}/MEMBERS.JSON`)).toBeNull()
+      expect(safe(`${CASE_ID}/Sync-State.json`)).toBeNull()
+      expect(safe(`${CASE_ID}/Manifest.installation-x.JSONL`)).toBeNull()
+      expect(safe(`${CASE_ID}/Lineage/src/Manifest.x.jsonl`)).toBeNull()
+      expect(safe(`${CASE_ID}/STAGING/pooled.bin`)).toBeNull()
+      expect(safe(`${CASE_ID}/x.mhtml${BLOB_PARTIAL_SUFFIX.toUpperCase()}`)).toBeNull()
     })
   })
 

@@ -10,7 +10,7 @@ import {
   rmSync,
   writeSync
 } from 'fs'
-import { basename, dirname, join, resolve, sep } from 'path'
+import { dirname, join } from 'path'
 import { MANIFEST_FILENAME } from '@shared/constants'
 import type { ManifestEntry } from '@shared/schemas'
 import { CAPTURE_ENTRY_HASH_FIELDS, type CaptureEntryHashField } from '@shared/verify'
@@ -20,7 +20,7 @@ import {
   type CaptureArtifactType,
   type CaptureStore
 } from '@main/services/captureStore'
-import { parseChainPath } from '../../../packages/evidence-package-layout/index'
+import { LINEAGE_DIRECTORY, parseChainPath } from '../../../packages/evidence-package-layout/index'
 
 // Acceptance of another member's Exhibit bytes (docs/specs/2026-09-19-
 // collaborative-cases-design.md, "Case directory"): a received file is written
@@ -43,11 +43,13 @@ export const RESERVED_CASE_FILES: ReadonlySet<string> = new Set([
 ])
 
 // Directories under a Case whose contents never sync: the Staging Pool is
-// local-only (decision 17) and the pending-delete directory holds files on
-// their way out.
+// local-only (decision 17), the pending-delete directory holds files on
+// their way out, and the lineage directory holds the chains of the Cases
+// this one was forked from, which the archive import writes.
 const UNSYNCED_SUBDIRECTORIES: ReadonlySet<string> = new Set([
   STAGING_SUBDIRECTORY,
-  PENDING_DELETE_DIRECTORY
+  PENDING_DELETE_DIRECTORY,
+  LINEAGE_DIRECTORY
 ])
 
 export interface AnchoredFile {
@@ -66,19 +68,25 @@ export type BlobAcceptance =
 // otherwise. Shared by the dialer, which writes there, and the listener,
 // which reads there.
 export function safeCasePath(storageRoot: string, caseId: string, path: string): string | null {
-  const normalized = path.replace(/\\/g, '/')
-  const caseDir = resolve(storageRoot, caseId)
-  const abs = resolve(storageRoot, normalized)
-  if (!abs.startsWith(caseDir + sep)) return null
-  const inside = abs.slice(caseDir.length + 1).split(sep)
-  if (inside.some((segment) => segment.length === 0 || segment === '.' || segment === '..')) {
-    return null
-  }
-  const name = basename(abs)
-  if (inside.length === 1 && (RESERVED_CASE_FILES.has(name) || parseChainPath(name))) return null
-  if (UNSYNCED_SUBDIRECTORIES.has(inside[0])) return null
+  // Judged on the segments as written, before any normalization: a segment
+  // that climbs, names the directory itself or is empty is refused, never
+  // resolved away. Containment then holds by construction: the first segment
+  // is this Case and nothing below it climbs.
+  const segments = path.replace(/\\/g, '/').split('/')
+  if (segments.length < 2 || segments[0] !== caseId) return null
+  const inside = segments.slice(1)
+  if (inside.some((segment) => segment === '' || segment === '.' || segment === '..')) return null
+  // Compared lower-cased as well, so a case-insensitive filesystem cannot be
+  // handed a reserved name or a chain file under another spelling.
+  const relative = inside.join('/').toLowerCase()
+  const name = inside[inside.length - 1].toLowerCase()
+  if (inside.length === 1 && RESERVED_CASE_FILES.has(name)) return null
+  // A member chain at the top level, or a lineage chain below it: the chain
+  // reader walks both, so neither is ever a peer's bytes.
+  if (parseChainPath(relative) !== null) return null
+  if (UNSYNCED_SUBDIRECTORIES.has(inside[0].toLowerCase())) return null
   if (name.endsWith(BLOB_PARTIAL_SUFFIX)) return null
-  return abs
+  return join(storageRoot, caseId, ...inside)
 }
 
 export interface AcceptBlobParams {

@@ -215,11 +215,25 @@ export function maxLocalVersion(): number {
   return row.v
 }
 
-// The highest version of `author`'s rows this replica holds in a Case, or 0:
-// the cursor a `rows` request carries. Read from the rows themselves, so a
-// database restore moves it back with them.
+// The tables a `rows` answer offers whatever the peer's cursor says. A tag
+// belongs to a Case through its applications, which any member writes at
+// any time, so the version the tag's author gave it says nothing about
+// whether a peer has seen it in this Case: a tag created at version 1 and
+// applied here after a peer's cursor passed 1 would never be offered, and
+// every application of it would fail its foreign key on that peer for good.
+// Tags are few and the receiver skips the ones it holds at that version.
+// For the same reason a tag's version never moves a cursor: the cursor is
+// read from the cursor-bound tables alone, here and in `cursorAfter`
+// (workingRows.ts).
+export const CURSOR_FREE_TABLES: ReadonlySet<string> = new Set<SyncedTable>(['tags'])
+
+const CURSOR_BOUND_TABLES = SYNCED_TABLES.filter((table) => !CURSOR_FREE_TABLES.has(table))
+
+// The highest version of `author`'s cursor-bound rows this replica holds in
+// a Case, or 0: the cursor a `rows` request carries. Read from the rows
+// themselves, so a database restore moves it back with them.
 export function maxAuthorVersionInCase(caseId: string, author: string): number {
-  const union = SYNCED_TABLES.map(
+  const union = CURSOR_BOUND_TABLES.map(
     (table) =>
       `SELECT MAX(t.version) AS v FROM ${table} t
         WHERE t.author_installation_id = @author AND (${SPECS[table].inCase})`
@@ -230,44 +244,82 @@ export function maxAuthorVersionInCase(caseId: string, author: string): number {
   return row.v
 }
 
-// The tables a `rows` answer offers whatever the peer's cursor says. A tag
-// belongs to a Case through its applications, which any member writes at
-// any time, so the version the tag's author gave it says nothing about
-// whether a peer has seen it in this Case: a tag created at version 1 and
-// applied here after a peer's cursor passed 1 would never be offered, and
-// every application of it would fail its foreign key on that peer for good.
-// Tags are few and the receiver skips the ones it holds at that version.
-export const CURSOR_FREE_TABLES: ReadonlySet<string> = new Set<SyncedTable>(['tags'])
-
 // The most rows of one cursor-bound table a page reads. The query stops at
 // it, so the work of answering a page is bounded whatever the backlog; the
 // page is then cut from what the tables offer (`offerPage`, workingRows.ts).
 export const ROWS_PAGE_LIMIT = 500
 
+// What one table offers a page: rows in version order, and whether every row
+// of the table above the cursor is among them. When not, the table holds
+// more above the last version here, and that version is complete.
+export interface TableOffer<T = StoredRow> {
+  rows: T[]
+  complete: boolean
+}
+
+// Cuts what one bounded query fetched (`limit` + 1 rows in version order) to
+// whole version groups. A page must end on a version boundary, because the
+// cursor it moves to names everything at or below it as seen: a group the
+// fetch split would leave its remainder behind for good. A trailing group
+// the fetch may have split is dropped; when the fetch holds one group only,
+// the whole group is read instead, however long, so a batch written in one
+// action (`addTagToCaptures`, `mergeTags`) travels whole.
+export function completeOffer<T extends { version: number }>(
+  fetched: T[],
+  limit: number,
+  wholeGroup: (version: number) => T[]
+): TableOffer<T> {
+  if (fetched.length <= limit) return { rows: fetched, complete: true }
+  const beyond = fetched[limit].version
+  const whole = fetched.filter((row) => row.version < beyond)
+  return { rows: whole.length > 0 ? whole : wholeGroup(beyond), complete: false }
+}
+
 // What one page of `author`'s rows in a Case may draw on, by table: every
-// signed row of a cursor-free table that the Case reaches, and the `limit`
-// lowest versions above `sinceVersion` of each other table. `author` NULL is
-// this installation's rows.
+// signed row of a cursor-free table that the Case reaches, and the lowest
+// whole version groups above `sinceVersion` of each other table, at most
+// `limit` rows unless one group is longer. `author` NULL is this
+// installation's rows.
 export function rowsOfAuthorByTable(
   caseId: string,
   author: string | null,
   sinceVersion: number,
   limit = ROWS_PAGE_LIMIT
-): Map<SyncedTable, StoredRow[]> {
-  const byTable = new Map<SyncedTable, StoredRow[]>()
+): Map<SyncedTable, TableOffer> {
+  const byTable = new Map<SyncedTable, TableOffer>()
   for (const table of SYNCED_TABLES) {
-    const cursorFree = CURSOR_FREE_TABLES.has(table)
-    const raw = getDb()
-      .prepare(
-        `SELECT t.* FROM ${table} t
-          WHERE ${AUTHOR_MATCH} ${cursorFree ? '' : 'AND t.version > @since'}
-            AND t.row_signature IS NOT NULL AND (${SPECS[table].inCase})
-          ORDER BY t.version ${cursorFree ? '' : 'LIMIT @limit'}`
-      )
-      .all({ case_id: caseId, author, since: sinceVersion, limit }) as Record<string, unknown>[]
+    const select = (predicate: string, tail: string): StoredRow[] =>
+      (
+        getDb()
+          .prepare(
+            `SELECT t.* FROM ${table} t
+              WHERE ${AUTHOR_MATCH} AND t.row_signature IS NOT NULL
+                AND (${SPECS[table].inCase}) ${predicate}
+              ORDER BY t.version ${tail}`
+          )
+          .all({ case_id: caseId, author, since: sinceVersion, fetch: limit + 1 }) as Record<
+          string,
+          unknown
+        >[]
+      ).map((r) => toStoredRow(table, r))
+    if (CURSOR_FREE_TABLES.has(table)) {
+      byTable.set(table, { rows: select('', ''), complete: true })
+      continue
+    }
+    const fetched = select('AND t.version > @since', 'LIMIT @fetch')
     byTable.set(
       table,
-      raw.map((r) => toStoredRow(table, r))
+      completeOffer(fetched, limit, (version) =>
+        (
+          getDb()
+            .prepare(
+              `SELECT t.* FROM ${table} t
+                WHERE ${AUTHOR_MATCH} AND t.row_signature IS NOT NULL
+                  AND (${SPECS[table].inCase}) AND t.version = @version`
+            )
+            .all({ case_id: caseId, author, version }) as Record<string, unknown>[]
+        ).map((r) => toStoredRow(table, r))
+      )
     )
   }
   return byTable
@@ -281,7 +333,7 @@ export function rowsOfAuthorSince(
   limit = ROWS_PAGE_LIMIT
 ): StoredRow[] {
   return [...rowsOfAuthorByTable(caseId, author, sinceVersion, limit).values()]
-    .flat()
+    .flatMap((offer) => offer.rows)
     .sort((a, b) => a.version - b.version)
 }
 

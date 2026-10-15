@@ -7,9 +7,14 @@ import { ManifestEntrySchema, type ManifestEntry } from '@shared/schemas'
 import { canonicalStringify } from '@shared/verify'
 import { closeDatabase, getDb, initDatabase } from '@main/services/db/core'
 import { upsertCaseMember } from '@main/services/db/caseMemberRepo'
-import { CURSOR_FREE_TABLES, ROWS_PAGE_LIMIT } from '@main/services/db/workingRowRepo'
+import {
+  CURSOR_FREE_TABLES,
+  ROWS_PAGE_LIMIT,
+  completeOffer,
+  type TableOffer
+} from '@main/services/db/workingRowRepo'
 import { linesWithinBytes } from '@main/services/sharing/entryAcceptance'
-import { offerPage } from '@main/services/sharing/workingRows'
+import { cursorAfter, offerPage } from '@main/services/sharing/workingRows'
 import { getStorageRoot, initStorage } from '@main/services/storage'
 import { initSettings, updateSettings } from '@main/services/settings'
 import {
@@ -356,7 +361,7 @@ export function recordSource(caseId: string, peer: Peer): RecordedSource {
         seen.add(key)
         all.push(row)
       }
-      const top = page.rows.reduce((max, row) => Math.max(max, row.version), since)
+      const top = cursorAfter(page.rows, since)
       if (!page.more || top <= since) break
       since = top
     }
@@ -384,16 +389,26 @@ export function recordSource(caseId: string, peer: Peer): RecordedSource {
     // every cursor-free row, the first ROWS_PAGE_LIMIT rows above the cursor
     // of each other table, then the page cut.
     rowsSince: (author, sinceVersion, maxBytes) => {
-      const byTable = new Map<string, WireRow[]>()
+      const grouped = new Map<string, WireRow[]>()
       for (const row of source.rows.get(author) ?? []) {
-        if (!CURSOR_FREE_TABLES.has(row.table) && row.version <= sinceVersion) continue
-        byTable.set(row.table, [...(byTable.get(row.table) ?? []), row])
+        grouped.set(row.table, [...(grouped.get(row.table) ?? []), row])
       }
-      for (const [table, list] of byTable) {
+      const byTable = new Map<string, TableOffer<WireRow>>()
+      for (const [table, list] of grouped) {
         list.sort((a, b) => a.version - b.version)
-        if (!CURSOR_FREE_TABLES.has(table)) byTable.set(table, list.slice(0, ROWS_PAGE_LIMIT))
+        if (CURSOR_FREE_TABLES.has(table)) {
+          byTable.set(table, { rows: list, complete: true })
+          continue
+        }
+        const above = list.filter((row) => row.version > sinceVersion)
+        byTable.set(
+          table,
+          completeOffer(above.slice(0, ROWS_PAGE_LIMIT + 1), ROWS_PAGE_LIMIT, (version) =>
+            above.filter((row) => row.version === version)
+          )
+        )
       }
-      return offerPage(byTable, ROWS_PAGE_LIMIT, maxBytes)
+      return offerPage(byTable, maxBytes)
     },
     sign: (hex) => createSign('sha256').update(hex).sign(peer.privateKeyPem, 'base64')
   }

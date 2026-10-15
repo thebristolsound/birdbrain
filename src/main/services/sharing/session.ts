@@ -33,6 +33,7 @@ import {
 } from '@main/services/sharing/blobAcceptance'
 import {
   applyRemoteRows,
+  cursorAfter,
   offerPage,
   toWireRows,
   type RowPage
@@ -40,9 +41,9 @@ import {
 import { beginSession, finishSession, writeMembersFile } from '@main/services/sharing/syncState'
 import { isChainInstallationId } from '../../../packages/evidence-package-layout/index'
 import {
-  ROWS_PAGE_LIMIT,
   maxAuthorVersionInCase,
-  rowsOfAuthorByTable
+  rowsOfAuthorByTable,
+  type TableOffer
 } from '@main/services/db/workingRowRepo'
 import {
   CHALLENGE_BYTES,
@@ -207,14 +208,16 @@ export function liveSyncSource(caseId: string): SyncSource | null {
       return abs !== null && existsSync(abs) ? Uint8Array.from(readFileSync(abs)) : null
     },
     rowsSince: (author, sinceVersion, maxBytes) => {
-      const byTable = new Map<string, WireRow[]>()
+      const byTable = new Map<string, TableOffer<WireRow>>()
       const offered = rowsOfAuthorByTable(
         caseId,
         author === installationId ? null : author,
         sinceVersion
       )
-      for (const [table, rows] of offered) byTable.set(table, toWireRows(rows, installationId))
-      return offerPage(byTable, ROWS_PAGE_LIMIT, maxBytes)
+      for (const [table, { rows, complete }] of offered) {
+        byTable.set(table, { rows: toWireRows(rows, installationId), complete })
+      }
+      return offerPage(byTable, maxBytes)
     },
     sign: signEntryHash
   }
@@ -604,7 +607,7 @@ export async function pullFromPeer(
         const outcome = applyRemoteRows(page.rows, roster, new Set([installationId]))
         result.rowsApplied += outcome.applied
         result.errors.push(...outcome.refused)
-        const top = page.rows.reduce((max, row) => Math.max(max, row.version), since)
+        const top = cursorAfter(page.rows, since)
         if (!page.more || top <= since || outcome.refused.some((r) => r.kind === 'peer')) break
         since = top
       }

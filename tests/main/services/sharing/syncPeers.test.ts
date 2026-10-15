@@ -16,7 +16,7 @@ import {
   listTags
 } from '@main/services/db/tagRepo'
 import { getAnnotations, saveAnnotations, upsertPin } from '@main/services/annotations'
-import { readRow } from '@main/services/db/workingRowRepo'
+import { maxAuthorVersionInCase, readRow } from '@main/services/db/workingRowRepo'
 import { toWireRows, verifyWireRow } from '@main/services/sharing/workingRows'
 import { resetInstallationId } from '@main/services/installationId'
 import { resetSigningKey } from '@main/services/signingKey'
@@ -796,5 +796,34 @@ describe('sync session between peers (#1512)', () => {
     expect(quiet.rowsApplied).toBe(0)
     expect(calls.chains - before.chains).toBe(0)
     expect(calls.rows - before.rows).toBe(2)
+  })
+
+  // Review finding 1 on this PR, round two: a tag travels on every page
+  // whatever the cursor, and the cursor read its version, so a tag above a
+  // page's ceiling moved the cursor past the rows between, which were then
+  // never asked for.
+  it('pages past a tag above the ceiling without skipping the rows between', async () => {
+    await activate(A)
+    const body = 'x'.repeat(400)
+    const n1 = createNote({ caseId: CASE_ID, title: 'n1', body })
+    createNote({ caseId: CASE_ID, title: 'n2', body })
+    createNote({ caseId: CASE_ID, title: 'n3', body })
+    const tag = createTag({ name: 'late-tag', color: '#0b0b0b' })
+    addTagToNote({ noteId: n1.id, tagId: tag.id })
+    const source = recordSource(CASE_ID, A)
+
+    await activate(B)
+    const first = await pull(CASE_ID, source, {}, { pageBytes: 600 })
+    expect(first.errors).toEqual([])
+    expect(
+      listNotes(CASE_ID)
+        .map((n) => n.title)
+        .sort()
+    ).toEqual(['n1', 'n2', 'n3'])
+    expect(getTagsForNote(n1.id)).toEqual([tag])
+    expect(maxAuthorVersionInCase(CASE_ID, A.installationId)).toBe(5)
+    const second = await pull(CASE_ID, source, {}, { pageBytes: 600 })
+    expect(second.errors).toEqual([])
+    expect(second.rowsApplied).toBe(0)
   })
 })

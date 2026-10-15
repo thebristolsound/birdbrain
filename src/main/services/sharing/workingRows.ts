@@ -18,7 +18,8 @@ import {
   type RowFields,
   type RowKey,
   type StoredRow,
-  type SyncedTable
+  type SyncedTable,
+  type TableOffer
 } from '@main/services/db/workingRowRepo'
 import type { WireRow } from '@main/services/sharing/messages'
 import { localVersionHighWater, recordLocalVersion } from '@main/services/sharing/syncState'
@@ -141,32 +142,29 @@ export interface RowPage {
 
 // One page of an author's rows from what the tables offer (rowsOfAuthorByTable):
 // every cursor-free row, then the cursor-bound rows in version order up to
-// the highest version every table is complete to. A table that returned
-// `limit` rows may hold more above its last one, so nothing above that
+// the highest version every table is complete to. A table whose offer is
+// not complete holds more above its last version, so nothing above that
 // version is known to be complete and is left for the next page. The page is
 // cut again at a version boundary once `maxBytes` is reached, measured on the
 // rows' JSON, which is close to their CBOR; the first version group always
-// travels, so a page always makes progress. `more` says rows above the page
-// remain, so the dialer asks again from the page's highest version.
-export function offerPage(
-  byTable: Map<string, WireRow[]>,
-  limit: number,
-  maxBytes: number
-): RowPage {
+// travels whole, so a page always makes progress and never splits a group.
+// `more` says rows above the page remain, so the dialer asks again from the
+// page's cursor (`cursorAfter`).
+export function offerPage(byTable: Map<string, TableOffer<WireRow>>, maxBytes: number): RowPage {
   const byVersion = (a: WireRow, b: WireRow): number => a.version - b.version
   const free: WireRow[] = []
   const bound: WireRow[] = []
   let ceiling = Number.POSITIVE_INFINITY
   let more = false
-  for (const [table, rows] of byTable) {
+  for (const [table, { rows, complete }] of byTable) {
     if (CURSOR_FREE_TABLES.has(table)) {
       free.push(...rows)
       continue
     }
     bound.push(...rows)
-    if (rows.length >= limit && rows.length > 0) {
-      ceiling = Math.min(ceiling, rows[rows.length - 1].version)
+    if (!complete) {
       more = true
+      if (rows.length > 0) ceiling = Math.min(ceiling, rows[rows.length - 1].version)
     }
   }
   free.sort(byVersion)
@@ -185,6 +183,17 @@ export function offerPage(
     bytes += size(row)
   }
   return { rows: [...free, ...page], more }
+}
+
+// The cursor a page moves the dialer to: the highest version among its
+// cursor-bound rows, or `since` when it carried none. A cursor-free row
+// travels on every page whatever its version and must move nothing, or the
+// cursor-bound rows between would never be asked for.
+export function cursorAfter(rows: WireRow[], since: number): number {
+  return rows.reduce(
+    (max, row) => (CURSOR_FREE_TABLES.has(row.table) ? max : Math.max(max, row.version)),
+    since
+  )
 }
 
 // Rows as they travel: this installation's carry its id in place of NULL.

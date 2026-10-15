@@ -43,7 +43,9 @@ import {
   maxAuthorVersionInCase,
   maxLocalVersion,
   ROWS_PAGE_LIMIT,
+  completeOffer,
   rowsOfAuthorByTable,
+  type TableOffer,
   readRow,
   rowsOfAuthorSince,
   type RowFields,
@@ -52,6 +54,7 @@ import {
 import {
   allocateLocalVersion,
   applyRemoteRows,
+  cursorAfter,
   offerPage,
   rowDigest,
   toWireRows,
@@ -645,9 +648,11 @@ describe('working-layer rows (#1512)', () => {
     expect(rowsOfAuthorSince(caseId, REMOTE_ID, 3).map((r) => r.table)).toEqual(['tags'])
   })
 
-  // Review finding 5 on this PR: a page is cut from what the tables offer,
-  // complete up to the version every full table reached, under a byte budget
-  // at a version boundary, and never empty of progress.
+  // Review finding 5 on this PR, round one: a page is cut from what the
+  // tables offer, complete up to the version every incomplete table reached,
+  // under a byte budget at a version boundary, and never empty of progress.
+  // Round two, findings 1 and 2: a group of rows sharing one version is never
+  // split, and no cursor ever moves on a tag.
   describe('offerPage', () => {
     const row = (table: string, version: number, id = `${table}-${version}`): WireRow => ({
       table,
@@ -659,15 +664,16 @@ describe('working-layer rows (#1512)', () => {
     })
     const versions = (page: WireRow[]): Array<[string, number]> =>
       page.map((r) => [r.table, r.version])
+    const offer = (rows: WireRow[], complete = true): TableOffer<WireRow> => ({ rows, complete })
 
-    it('stops at the version every full table is complete to', () => {
-      const byTable = new Map<string, WireRow[]>([
-        ['notes', [row('notes', 1), row('notes', 4), row('notes', 9)]],
-        ['annotation_pins', [row('annotation_pins', 2), row('annotation_pins', 7)]],
-        ['tags', [row('tags', 3)]]
+    it('stops at the version every incomplete table is complete to', () => {
+      const byTable = new Map<string, TableOffer<WireRow>>([
+        ['notes', offer([row('notes', 1), row('notes', 4), row('notes', 9)], false)],
+        ['annotation_pins', offer([row('annotation_pins', 2), row('annotation_pins', 7)])],
+        ['tags', offer([row('tags', 3)])]
       ])
-      // notes returned a full page (limit 3) up to version 9; pins did not.
-      const page = offerPage(byTable, 3, Number.POSITIVE_INFINITY)
+      // notes holds more above 9; pins is complete.
+      const page = offerPage(byTable, Number.POSITIVE_INFINITY)
       expect(versions(page.rows)).toEqual([
         ['tags', 3],
         ['notes', 1],
@@ -677,13 +683,12 @@ describe('working-layer rows (#1512)', () => {
         ['notes', 9]
       ])
       expect(page.more).toBe(true)
-      // With pins full at 7 and notes full at 9, nothing above 7 is complete.
+      // With pins incomplete at 7 and notes at 9, nothing above 7 is complete.
       const both = offerPage(
         new Map([
-          ['notes', [row('notes', 1), row('notes', 4), row('notes', 9)]],
-          ['annotation_pins', [row('annotation_pins', 2), row('annotation_pins', 7)]]
+          ['notes', offer([row('notes', 1), row('notes', 4), row('notes', 9)], false)],
+          ['annotation_pins', offer([row('annotation_pins', 2), row('annotation_pins', 7)], false)]
         ]),
-        2,
         Number.POSITIVE_INFINITY
       )
       expect(versions(both.rows)).toEqual([
@@ -693,25 +698,31 @@ describe('working-layer rows (#1512)', () => {
         ['annotation_pins', 7]
       ])
       expect(both.more).toBe(true)
-      const complete = offerPage(byTable, 10, Number.POSITIVE_INFINITY)
+      const complete = offerPage(
+        new Map([...byTable].map(([table, o]) => [table, offer(o.rows)])),
+        Number.POSITIVE_INFINITY
+      )
       expect(complete.rows).toHaveLength(6)
       expect(complete.more).toBe(false)
     })
 
     it('cuts at a version boundary under the byte budget, always carrying the first group', () => {
-      const byTable = new Map<string, WireRow[]>([
-        ['notes', [row('notes', 1, 'a'), row('notes', 1, 'b'), row('notes', 2), row('notes', 3)]],
-        ['tags', [row('tags', 1)]]
+      const byTable = new Map<string, TableOffer<WireRow>>([
+        [
+          'notes',
+          offer([row('notes', 1, 'a'), row('notes', 1, 'b'), row('notes', 2), row('notes', 3)])
+        ],
+        ['tags', offer([row('tags', 1)])]
       ])
       const size = JSON.stringify(row('notes', 1, 'a')).length
-      const tight = offerPage(byTable, 100, 1)
+      const tight = offerPage(byTable, 1)
       expect(versions(tight.rows)).toEqual([
         ['tags', 1],
         ['notes', 1],
         ['notes', 1]
       ])
       expect(tight.more).toBe(true)
-      const three = offerPage(byTable, 100, size * 4 + 10)
+      const three = offerPage(byTable, size * 4 + 10)
       expect(versions(three.rows)).toEqual([
         ['tags', 1],
         ['notes', 1],
@@ -719,16 +730,47 @@ describe('working-layer rows (#1512)', () => {
         ['notes', 2]
       ])
       expect(three.more).toBe(true)
-      const all = offerPage(byTable, 100, size * 10)
+      const all = offerPage(byTable, size * 10)
       expect(all.rows).toHaveLength(5)
       expect(all.more).toBe(false)
-      expect(offerPage(new Map(), 100, 1)).toEqual({ rows: [], more: false })
+      expect(offerPage(new Map(), 1)).toEqual({ rows: [], more: false })
+    })
+
+    it('moves the cursor on cursor-bound rows only', () => {
+      expect(cursorAfter([row('tags', 9), row('notes', 2), row('notes', 1)], 0)).toBe(2)
+      expect(cursorAfter([row('tags', 9)], 3)).toBe(3)
+      expect(cursorAfter([], 5)).toBe(5)
     })
   })
 
-  it('reads at most the page limit of each cursor-bound table, and every tag', () => {
+  describe('completeOffer', () => {
+    const v = (...versions: number[]): Array<{ version: number }> =>
+      versions.map((version) => ({ version }))
+
+    it('keeps a fetch within the limit whole', () => {
+      expect(completeOffer(v(1, 2, 3), 3, () => [])).toEqual({ rows: v(1, 2, 3), complete: true })
+      expect(completeOffer([], 3, () => [])).toEqual({ rows: [], complete: true })
+    })
+
+    it('drops a trailing group the fetch may have split', () => {
+      expect(completeOffer(v(1, 2, 3, 3), 3, () => [])).toEqual({ rows: v(1, 2), complete: false })
+      expect(completeOffer(v(1, 2, 3, 4), 3, () => [])).toEqual({
+        rows: v(1, 2, 3),
+        complete: false
+      })
+    })
+
+    it('reads a group longer than the limit whole', () => {
+      // Three applications written in one action share one version.
+      expect(
+        completeOffer(v(5, 5, 5), 2, (version) => v(version, version, version, version))
+      ).toEqual({ rows: v(5, 5, 5, 5), complete: false })
+    })
+  })
+
+  it('reads whole version groups of each cursor-bound table, and every tag', () => {
     share()
-    const cap = capture()
+    const caps = [1, 2, 3].map((n) => capture(`https://example.com/${n}`))
     applyRemoteRows(
       [
         remoteRow(
@@ -736,23 +778,74 @@ describe('working-layer rows (#1512)', () => {
           { id: 'rt', name: 'remote', color: null, created_at: '2026-10-01T00:00:00.000Z' },
           1
         ),
-        remoteRow('exhibit_tags', { exhibit_id: cap, tag_id: 'rt' }, 2),
-        remoteRow('notes', noteFields('rn1', 'one'), 3),
-        remoteRow('notes', noteFields('rn2', 'two'), 4),
-        remoteRow('notes', noteFields('rn3', 'three'), 5)
+        remoteRow('notes', noteFields('rn1', 'one'), 2),
+        remoteRow('notes', noteFields('rn2', 'two'), 3),
+        remoteRow('notes', noteFields('rn3', 'three'), 4),
+        // One batch of applications sharing one version, longer than the limit below.
+        ...caps.map((cap) => remoteRow('exhibit_tags', { exhibit_id: cap, tag_id: 'rt' }, 5))
       ],
       roster(),
       new Set([REMOTE_ID])
     )
-    const byTable = rowsOfAuthorByTable(caseId, REMOTE_ID, 0, 2)
-    expect(byTable.get('notes')!.map((r) => r.version)).toEqual([3, 4])
-    expect(byTable.get('tags')!.map((r) => r.version)).toEqual([1])
-    expect(byTable.get('exhibit_tags')!.map((r) => r.version)).toEqual([2])
-    expect(
-      rowsOfAuthorByTable(caseId, REMOTE_ID, 4, 2)
-        .get('notes')!
-        .map((r) => r.version)
-    ).toEqual([5])
+    const versions = (offer: TableOffer | undefined): number[] =>
+      offer === undefined ? [] : offer.rows.map((r) => r.version)
+    const first = rowsOfAuthorByTable(caseId, REMOTE_ID, 0, 2)
+    expect(versions(first.get('notes'))).toEqual([2, 3])
+    expect(first.get('notes')?.complete).toBe(false)
+    expect(first.get('tags')).toMatchObject({ complete: true })
+    expect(versions(first.get('tags'))).toEqual([1])
+    expect(versions(first.get('exhibit_tags'))).toEqual([5, 5, 5])
+    expect(first.get('exhibit_tags')?.complete).toBe(false)
+    const second = rowsOfAuthorByTable(caseId, REMOTE_ID, 3, 2)
+    expect(second.get('notes')).toMatchObject({ complete: true })
+    expect(versions(second.get('notes'))).toEqual([4])
+    expect(rowsOfAuthorByTable(caseId, REMOTE_ID, 5, 2).get('exhibit_tags')).toEqual({
+      rows: [],
+      complete: true
+    })
     expect(ROWS_PAGE_LIMIT).toBeGreaterThan(0)
+
+    // Paged as the session pages: every application lands, none twice.
+    const wire = (since: number): Map<string, TableOffer<WireRow>> =>
+      new Map(
+        [...rowsOfAuthorByTable(caseId, REMOTE_ID, since, 2)].map(([table, offer]) => [
+          table,
+          { rows: toWireRows(offer.rows, REMOTE_ID), complete: offer.complete }
+        ])
+      )
+    const seen: Array<[string, number]> = []
+    let since = 0
+    for (let pages = 0; pages < 10; pages++) {
+      const page = offerPage(wire(since), Number.POSITIVE_INFINITY)
+      for (const r of page.rows) if (r.table !== 'tags') seen.push([r.table, r.version])
+      const top = cursorAfter(page.rows, since)
+      if (!page.more || top <= since) break
+      since = top
+    }
+    expect(seen).toEqual([
+      ['notes', 2],
+      ['notes', 3],
+      ['notes', 4],
+      ['exhibit_tags', 5],
+      ['exhibit_tags', 5],
+      ['exhibit_tags', 5]
+    ])
+
+    // The persistent cursor reads the cursor-bound tables only: a tag at a
+    // higher version than any other row must not move it.
+    expect(maxAuthorVersionInCase(caseId, REMOTE_ID)).toBe(5)
+    applyRemoteRows(
+      [
+        remoteRow(
+          'tags',
+          { id: 'rt9', name: 'later', color: null, created_at: '2026-10-01T00:00:00.000Z' },
+          9
+        ),
+        remoteRow('exhibit_tags', { exhibit_id: caps[0], tag_id: 'rt9' }, 6)
+      ],
+      roster(),
+      new Set([REMOTE_ID])
+    )
+    expect(maxAuthorVersionInCase(caseId, REMOTE_ID)).toBe(6)
   })
 })

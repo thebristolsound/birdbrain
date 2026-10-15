@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { ManifestEntrySchema, type ManifestEntry } from '@shared/schemas'
 import type { CaseMember, SyncErrorKind } from '@shared/types'
-import { canonicalStringify, verifyEntrySignature } from '@shared/verify'
+import { acceptedHeadBefore, canonicalStringify, verifyEntrySignature } from '@shared/verify'
 import { listCaseMembers, upsertCaseMember } from '@main/services/db/caseMemberRepo'
 import { getInstallationId } from '@main/services/installationId'
 import { signEntryHash } from '@main/services/signingKey'
@@ -398,9 +398,31 @@ export async function pullFromPeer(
       entryHash: string
       entriesReceived: number
     }> = []
-    for (const remote of heads) {
+    // The Owner's chain as this replica holds it: the roster and every
+    // revocation bound are read from it, so it is accepted before any other.
+    const ownerEntries = (): ManifestEntry[] =>
+      ownerId === undefined
+        ? []
+        : storedEntries(
+            ownerId === self
+              ? readManifestSnapshot(caseDir).jsonl
+              : Buffer.from(readMemberChainText(caseDir, ownerId))
+          )
+    const ownerFirst = [...heads].sort(
+      (a, b) => Number(b.installationId === ownerId) - Number(a.installationId === ownerId)
+    )
+    for (const remote of ownerFirst) {
       const member = roster.find((m) => m.installationId === remote.installationId)
       if (!member || member.installationId === self) continue
+      // A revoked member's chain is accepted only to the head the Owner
+      // merged before revoking it, the bound the Shared Case walk accepts to
+      // (sharedCase.ts); its later entries are reported by verification, not
+      // stored (decision 11). A member the Owner never merged has no bound.
+      let bound: number | undefined
+      if (member.revokedAtIndex !== null) {
+        bound = acceptedHeadBefore(ownerEntries(), member.revokedAtIndex, member.installationId)
+        if (bound === undefined) continue
+      }
       if (!isChainInstallationId(member.installationId)) {
         result.errors.push({
           kind: 'rejected-entry',
@@ -410,7 +432,7 @@ export async function pullFromPeer(
         continue
       }
       const storedCount = nonEmptyLines(readMemberChainText(caseDir, member.installationId)).length
-      if (remote.index < storedCount) continue
+      if (remote.index < storedCount || (bound !== undefined && bound < storedCount)) continue
       await writeMessage(stream, {
         t: 'entries-request',
         installationId: member.installationId,
@@ -427,7 +449,7 @@ export async function pullFromPeer(
         caseId,
         member,
         fromIndex: storedCount,
-        lines: entries.lines
+        lines: bound === undefined ? entries.lines : entries.lines.slice(0, bound - storedCount + 1)
       })
       const { installationId } = member
       if (acceptance.outcome === 'rejected') {
@@ -519,10 +541,12 @@ export async function pullFromPeer(
     // 5. Rows: every other member's working-layer rows above the version this
     // replica holds for them, applied only under that member's signature and
     // only above the stored version (workingRows.ts). The cursor is read from
-    // the rows themselves, so a database restore moves it back with them.
+    // the rows themselves, so a database restore moves it back with them. A
+    // revoked member's rows are not asked for: peers stop syncing with the
+    // member (decision 11), and a row has no index to bound it by.
     options.onPhase?.('rows')
     const authors = roster
-      .filter((m) => m.installationId !== self)
+      .filter((m) => m.installationId !== self && m.revokedAtIndex === null)
       .map((m) => ({
         installationId: m.installationId,
         sinceVersion: maxAuthorVersionInCase(caseId, m.installationId)

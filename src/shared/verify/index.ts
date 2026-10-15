@@ -50,6 +50,7 @@ export type {
   DerivedFileFacts
 } from '@shared/verify/exhibitBinding'
 export {
+  acceptedHeadBefore,
   verifySharedCase,
   verifySharedCaseReplica,
   SHARED_CASE_ENTRY_TYPES,

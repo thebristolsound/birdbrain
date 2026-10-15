@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'fs'
 import { basename, join } from 'path'
 import { tmpdir } from 'os'
 import { closeDatabase, getDb } from '@main/services/db/core'
-import { listCaseMembers } from '@main/services/db/caseMemberRepo'
+import { listCaseMembers, upsertCaseMember } from '@main/services/db/caseMemberRepo'
 import { insertCapture } from '@main/services/db/captureRepo'
 import { createNote, deleteNote, getNote, listNotes, updateNote } from '@main/services/db/noteRepo'
 import {
@@ -312,6 +312,103 @@ describe('sync session between peers (#1512)', () => {
     expect(
       listCaseMembers(CASE_ID).find((m) => m.installationId === C.installationId)?.revokedAtIndex
     ).toBe(revoke.index)
+  })
+
+  // Review finding 3 on this PR: a revoked member's entries past the head
+  // the Owner merged before the revocation arrived through a third peer,
+  // with the files and rows behind them, and the Owner's own walk then
+  // reported them.
+  it('accepts a revoked member chain only to the head the Owner merged before revoking', async () => {
+    await activate(C)
+    addDocument(CASE_ID, C, 1)
+    createNote({ caseId: CASE_ID, title: 'Carol note', body: '' })
+    const fromCarolEarly = recordSource(CASE_ID, C)
+
+    await activate(A)
+    expect((await pull(CASE_ID, fromCarolEarly)).errors).toEqual([])
+    expect(mergeEntries(CASE_ID)).toHaveLength(1)
+
+    await activate(C)
+    const later = addDocument(CASE_ID, C, 2)
+    createNote({ caseId: CASE_ID, title: 'Carol later note', body: '' })
+    const fromCarolLater = recordSource(CASE_ID, C)
+
+    // Bob writes an entry of his own, then holds Carol's later entry before
+    // anyone revoked her.
+    await activate(B)
+    addDocument(CASE_ID, B, 1)
+    expect((await pull(CASE_ID, fromCarolLater)).errors).toEqual([])
+
+    await activate(A)
+    const revoke = appendOwnChainLine(CASE_ID, memberRevokeBody(CASE_ID, C, A))
+    const carol = listCaseMembers(CASE_ID).find((m) => m.installationId === C.installationId)!
+    upsertCaseMember({ ...carol, revokedAtIndex: revoke.index })
+
+    await activate(B)
+    const fromBob = recordSource(CASE_ID, B)
+    // Bob as he stood before writing his merge for Carol's later entry: a
+    // replica that holds the entry while nothing in its own chain names it.
+    const bobChain = fromBob.chains.get(B.installationId)!
+    fromBob.chains.set(
+      B.installationId,
+      bobChain.filter((line) => (JSON.parse(line) as { type: string }).type !== 'merge')
+    )
+
+    await activate(A)
+    const held = memberChainText(CASE_ID, C)
+    const result = await pull(CASE_ID, fromBob)
+    expect(result.errors).toEqual([])
+    expect(memberChainText(CASE_ID, C)).toBe(held)
+    expect(parsedChain(held).map((e) => e.index)).toEqual([0])
+    expect(
+      mergeEntries(CASE_ID)
+        .flatMap((m) => m.heads)
+        .filter((h) => h.installationId === C.installationId)
+    ).toHaveLength(1)
+    expect(listNotes(CASE_ID).map((n) => n.title)).toEqual(['Carol note'])
+    expect(existsSync(join(getStorageRoot(), later.path))).toBe(false)
+    const caseDir = caseDirOf(CASE_ID)
+    const walk = readSharedCaseSnapshot(caseDir, readManifestSnapshot(caseDir)).verification
+    expect(walk?.findings).toEqual([])
+    expect(walk?.outcome).toBe('pass')
+
+    // Bob as he stands, with his merge naming Carol's later entry: Alice
+    // still stores nothing of Carol past the bound; the walk then reports
+    // Bob's merge as naming a head the Owner never accepted, which is the
+    // walk's own rule (sharedCase.ts, merge heads), never entry-after-revocation.
+    fromBob.chains.set(B.installationId, bobChain)
+    const again = await pull(CASE_ID, fromBob)
+    expect(again.errors).toEqual([])
+    expect(memberChainText(CASE_ID, C)).toBe(held)
+    expect(listNotes(CASE_ID).map((n) => n.title)).toEqual(['Carol note'])
+    const walkAgain = readSharedCaseSnapshot(caseDir, readManifestSnapshot(caseDir)).verification
+    expect(walkAgain?.findings.map((f) => [f.outcome, f.installationId])).toEqual([
+      ['merge-head-mismatch', B.installationId]
+    ])
+  })
+
+  it('accepts nothing of a revoked member the Owner never merged', async () => {
+    await activate(C)
+    addDocument(CASE_ID, C, 1)
+    createNote({ caseId: CASE_ID, title: 'Carol note', body: '' })
+    const fromCarol = recordSource(CASE_ID, C)
+    await activate(B)
+    expect((await pull(CASE_ID, fromCarol)).errors).toEqual([])
+    const fromBob = recordSource(CASE_ID, B)
+
+    await activate(A)
+    const revoke = appendOwnChainLine(CASE_ID, memberRevokeBody(CASE_ID, C, A))
+    const carol = listCaseMembers(CASE_ID).find((m) => m.installationId === C.installationId)!
+    upsertCaseMember({ ...carol, revokedAtIndex: revoke.index })
+    const result = await pull(CASE_ID, fromBob)
+    expect(result.errors).toEqual([])
+    expect(memberChainText(CASE_ID, C)).toBe('')
+    expect(listNotes(CASE_ID)).toEqual([])
+    expect(
+      mergeEntries(CASE_ID)
+        .flatMap((m) => m.heads)
+        .map((h) => h.installationId)
+    ).toEqual([B.installationId])
   })
 
   it('gives a member revoked mid-session bye before any entry reaches it', async () => {

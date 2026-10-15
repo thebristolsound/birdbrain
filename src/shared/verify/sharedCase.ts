@@ -373,7 +373,9 @@ function foreignCaseEntry(entries: ManifestEntry[], caseId: string): ManifestEnt
 
 // The highest head index the Owner's `merge` entries before `before` name for
 // `installationId`: the accepted history of a member about to be revoked.
-function acceptedHeadBefore(
+// Exported for the sync session, which stops a revoked member's chain at the
+// same head (#1512), so what a replica stores is what this walk accepts.
+export function acceptedHeadBefore(
   entries: ManifestEntry[],
   before: number,
   installationId: string

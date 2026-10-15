@@ -127,10 +127,6 @@ export function signedColumns(table: SyncedTable): readonly string[] {
   return SPECS[table].columns
 }
 
-export function keyColumns(table: SyncedTable): readonly string[] {
-  return SPECS[table].key
-}
-
 // `author` NULL matches this installation's rows. The predicate the per-author
 // unique indexes are built on.
 const AUTHOR_MATCH = "COALESCE(t.author_installation_id, '') = COALESCE(@author, '')"

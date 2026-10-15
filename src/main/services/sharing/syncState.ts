@@ -1,4 +1,13 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs'
+import {
+  closeSync,
+  existsSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  writeSync
+} from 'fs'
 import { join } from 'path'
 import { z } from 'zod'
 import { SYNC_ERROR_KINDS, type SyncState } from '@shared/types'
@@ -84,14 +93,27 @@ export function readSyncStateFile(caseDir: string): SyncStateFile {
   return parsed.data
 }
 
-// Written whole to a temporary name and renamed into place, so a reader never
-// sees a partial file.
+// Written whole to a temporary name, fsynced and renamed into place, so the
+// file under the name is always a complete one: a reader never sees a
+// partial file, and a crash after the rename cannot leave an empty one. A
+// sync state file that does not parse throws from version allocation, which
+// blocks every working-layer write in every Case until the file is repaired
+// or removed, so the write is made durable before it takes the name.
+function writeWhole(path: string, text: string): void {
+  const partial = `${path}.partial`
+  const fd = openSync(partial, 'w')
+  try {
+    writeSync(fd, text)
+    fsyncSync(fd)
+  } finally {
+    closeSync(fd)
+  }
+  renameSync(partial, path)
+}
+
 export function writeSyncStateFile(caseDir: string, state: SyncStateFile): void {
   mkdirSync(caseDir, { recursive: true })
-  const path = join(caseDir, SYNC_STATE_FILENAME)
-  const partial = `${path}.partial`
-  writeFileSync(partial, JSON.stringify(state, null, 2) + '\n', 'utf-8')
-  renameSync(partial, path)
+  writeWhole(join(caseDir, SYNC_STATE_FILENAME), JSON.stringify(state, null, 2) + '\n')
 }
 
 function sharedCaseDirs(): string[] {
@@ -221,14 +243,10 @@ export function writeMembersFile(caseId: string): void {
       revokedAtIndex
     })
   )
-  const path = join(caseDir, MEMBERS_FILENAME)
-  const partial = `${path}.partial`
-  writeFileSync(
-    partial,
-    JSON.stringify({ caseId, writtenAt: new Date().toISOString(), members }, null, 2) + '\n',
-    'utf-8'
+  writeWhole(
+    join(caseDir, MEMBERS_FILENAME),
+    JSON.stringify({ caseId, writtenAt: new Date().toISOString(), members }, null, 2) + '\n'
   )
-  renameSync(partial, path)
 }
 
 // For tests: forgets the sessions and peers this process has seen.

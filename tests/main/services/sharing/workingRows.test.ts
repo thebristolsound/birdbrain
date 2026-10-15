@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { createSign, generateKeyPairSync } from 'crypto'
+import { createSign, createVerify, generateKeyPairSync } from 'crypto'
 import { mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -58,16 +58,18 @@ import {
   offerPage,
   rowDigest,
   toWireRows,
-  verifyWireRow
+  verifyWireRow,
+  type RowEnvelope
 } from '@main/services/sharing/workingRows'
 import type { WireRow } from '@main/services/sharing/messages'
+import { canonicalStringify } from '@shared/verify'
 import { initStorage } from '@main/services/storage'
 import {
   getInstallationId,
   initInstallationId,
   resetInstallationId
 } from '@main/services/installationId'
-import { getPublicKeyPem } from '@main/services/signingKey'
+import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
 import type { CaseMember } from '@shared/types'
 
 // Working-layer rows as evidence of who wrote what (#1512). Frozen here: every
@@ -204,6 +206,53 @@ describe('working-layer rows (#1512)', () => {
     created_at: '2026-10-01T00:00:00.000Z',
     updated_at: '2026-10-01T00:00:00.000Z',
     ...overrides
+  })
+
+  // Scheduled review finding 4: the row signature is a recipe peers on
+  // different builds must agree on byte for byte, and a round trip through
+  // one build's own digest cannot show that. The envelope below is fixed,
+  // its canonical text and SHA-256 were computed outside this module, and the
+  // signature is checked with the platform's verifier, not the module's: a
+  // change to the envelope's keys, their order or the digest fails here.
+  it('signs the fixed envelope to the fixed canonical text and digest, RSA-SHA256 over its hex', () => {
+    const envelope: RowEnvelope = {
+      table: 'notes',
+      author: 'installation-fixed-0001',
+      version: 3,
+      caseId: 'case-fixed-0001',
+      deletedAt: null,
+      fields: {
+        id: 'note-1',
+        case_id: 'case-fixed-0001',
+        capture_id: null,
+        title: 'Fixed',
+        body: 'Fixed body',
+        body_doc: null,
+        anchor_kind: null,
+        anchor_json: null,
+        source_url: null,
+        screenshot_path: null,
+        created_at: '2026-10-01T00:00:00.000Z',
+        updated_at: '2026-10-01T00:00:00.000Z'
+      }
+    }
+    const canonical =
+      '{"author":"installation-fixed-0001","caseId":"case-fixed-0001","deletedAt":null,' +
+      '"fields":{"anchor_json":null,"anchor_kind":null,"body":"Fixed body","body_doc":null,' +
+      '"capture_id":null,"case_id":"case-fixed-0001","created_at":"2026-10-01T00:00:00.000Z",' +
+      '"id":"note-1","screenshot_path":null,"source_url":null,"title":"Fixed",' +
+      '"updated_at":"2026-10-01T00:00:00.000Z"},"table":"notes","version":3}'
+    const digest = '567176c22b97359cdbf4b246585c02ecaa9bcc9a8611bf9a2065a38ddc3d6877'
+    expect(canonicalStringify(envelope)).toBe(canonical)
+    expect(rowDigest(envelope)).toBe(digest)
+    const signature = signEntryHash(rowDigest(envelope))
+    expect(
+      createVerify('sha256').update(digest).verify(getPublicKeyPem(), signature, 'base64')
+    ).toBe(true)
+    expect(verifyWireRow({ ...envelope, signature }, getPublicKeyPem())).toBe(true)
+    // The key order of the envelope as written does not enter the digest.
+    expect(rowDigest({ ...envelope, fields: { ...envelope.fields }, version: 3 })).toBe(digest)
+    expect(rowDigest({ ...envelope, caseId: null })).not.toBe(digest)
   })
 
   it('signs every local write over its canonical envelope, with climbing versions', () => {

@@ -14,7 +14,7 @@ import {
   type AuthorChain,
   type CaptureChainEntry
 } from '@main/services/manifest'
-import { entryDescribesRow } from '@main/services/captureLifecycle'
+import { rowDescriber } from '@main/services/captureLifecycle'
 import { defaultCaptureStore, type CaptureStore } from '@main/services/captureStore'
 import { getSettings } from '@main/services/settings'
 import { getInstallationId } from '@main/services/installationId'
@@ -214,19 +214,21 @@ function verifiedParent(
 // verified `capture` entry when an import renamed the row (#1814). Both package
 // verifiers look a derivation's parent up among the ids active entries carry,
 // so an entry signed under the row's new id names a parent no entry anchors.
-// The rename is accepted only through `entryDescribesRow`, the custody records
-// and the id map the import anchored, never through an editable row column.
-// Any other row, a native Capture included, keeps its own id.
-function signedParentId(exhibit: Exhibit, own: AuthorChain, caseDir: string): string {
+// The rename is accepted only through `entryDescribesRow`'s rule, the custody
+// records and the id map the import anchored, never through an editable row
+// column. Any other row, a native Capture included, keeps its own id.
+function signedParentId(
+  exhibit: Exhibit,
+  own: AuthorChain,
+  describes: ReturnType<typeof rowDescriber>
+): string {
   const { manifestSeq } = exhibit
   if (manifestSeq === null || !own.chain.captureEntriesByIndex.has(manifestSeq)) return exhibit.id
   const parsed = ManifestEntrySchema.safeParse(own.entries[manifestSeq])
   if (!parsed.success || parsed.data.type !== 'capture') return exhibit.id
   const { caseId, captureId } = parsed.data
   if (captureId === exhibit.id) return exhibit.id
-  return entryDescribesRow({ caseId, rowId: captureId }, exhibit, own.imports, caseDir)
-    ? captureId
-    : exhibit.id
+  return describes({ caseId, rowId: captureId }, exhibit) ? captureId : exhibit.id
 }
 
 async function backfillThumbnail(
@@ -237,8 +239,6 @@ async function backfillThumbnail(
   chainEntry: CaptureChainEntry | undefined,
   prior: PriorDerivation | undefined
 ): Promise<'anchored' | 'unanchored' | 'skipped'> {
-  if (hasDerivation(exhibit.id, THUMBNAIL_DERIVATION)) return 'skipped'
-
   const paths = store.thumbnailPaths(exhibit.caseId, exhibit.id)
 
   if (prior !== undefined) {
@@ -372,13 +372,17 @@ export async function backfillCase(
   // Read after the renumber append too, so a `derivation` entry an earlier run
   // appended before its row landed is visible here rather than duplicated.
   const prior = priorDerivations(caseDir)
+  const describes = rowDescriber(caseDir, own.imports)
   for (const exhibit of exhibits) {
     if (exhibit.kind !== 'capture') continue
+    // Checked before the signed id is resolved, so a launch spends nothing on
+    // a row that is already recorded.
+    if (hasDerivation(exhibit.id, THUMBNAIL_DERIVATION)) continue
     const chainEntry =
       exhibit.manifestSeq === null
         ? undefined
         : own.chain.captureEntriesByIndex.get(exhibit.manifestSeq)
-    const parentId = signedParentId(exhibit, own, caseDir)
+    const parentId = signedParentId(exhibit, own, describes)
     const { rel } = store.thumbnailPaths(exhibit.caseId, exhibit.id)
     // An entry for the row's own file, under either id: the signed one is what
     // this build writes, the row's own is what a build before #1814 wrote.

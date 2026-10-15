@@ -647,6 +647,33 @@ export function entryDescribesRow(
   imports: ManifestImportEntry[],
   caseDir: string
 ): boolean {
+  return describesRow(entry, row, imports, () => readAnchoredIdMap(caseDir, row.caseId, imports))
+}
+
+// `entryDescribesRow` for a caller binding many rows of one case directory in
+// one pass: the anchored id map is read and hashed at most once per row case
+// id instead of once per call, which made a pass over a renamed import cost
+// the square of its renamed rows.
+export function rowDescriber(
+  caseDir: string,
+  imports: ManifestImportEntry[]
+): (entry: { caseId: string; rowId: string }, row: { id: string; caseId: string }) => boolean {
+  const maps = new Map<string, Record<string, unknown> | undefined>()
+  return (entry, row) =>
+    describesRow(entry, row, imports, () => {
+      if (!maps.has(row.caseId)) {
+        maps.set(row.caseId, readAnchoredIdMap(caseDir, row.caseId, imports))
+      }
+      return maps.get(row.caseId)
+    })
+}
+
+function describesRow(
+  entry: { caseId: string; rowId: string },
+  row: { id: string; caseId: string },
+  imports: ManifestImportEntry[],
+  idMap: () => Record<string, unknown> | undefined
+): boolean {
   const custodyCaseIds = new Set<string>([row.caseId])
   for (const imported of imports) {
     custodyCaseIds.add(imported.caseId)
@@ -656,7 +683,7 @@ export function entryDescribesRow(
   if (entry.rowId === row.id) return true
   // Only an id-collision remap can leave the entry naming a different row,
   // and only the map this case's own import entry anchors may say so.
-  return readAnchoredIdMap(caseDir, row.caseId, imports)?.[entry.rowId] === row.id
+  return idMap()?.[entry.rowId] === row.id
 }
 
 // The id-collision remap archive import wrote into this case directory, read

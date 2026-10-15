@@ -726,6 +726,45 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
     }
   })
 
+  // The usual shape, a source that was backfilled before its archive was
+  // exported, still fails both verifiers: the archive carries no thumbnails,
+  // so the source's anchored one is missing (#1813). The row's own thumbnail
+  // binds; only the source's is reported.
+  it.skipIf(!RUNS)(
+    'fails only on the source thumbnail when the source was backfilled',
+    async () => {
+      const screenshot = await sharp({
+        create: { width: 32, height: 24, channels: 3, background: { r: 200, g: 120, b: 10 } }
+      })
+        .png()
+        .toBuffer()
+      const original = await nativeCase('Backfilled', screenshot)
+      await backfillCase(original.caseId, { toolVersion: '0.1.0' })
+      const archive = join(tempDir, 'backfilled.birdbrain')
+      await exportCaseArchive(original.caseId, archive)
+      const { newCaseId } = await importCaseArchive(archive)
+      const backfill = await backfillCase(newCaseId, { toolVersion: '0.1.0' })
+      expect(backfill.thumbnailsAnchored).toBe(1)
+      const dir = await exportPackage(newCaseId, 'backfilled')
+
+      const source = `${CAPTURE_PACKAGE_DIRECTORY}/${original.captureId}_thumb.jpg`
+      const failures = verifyEvidencePackage(dir)
+        .checks.filter((check) => check.status === 'fail')
+        .map((check) => check.reason)
+      expect(failures).toEqual([
+        expect.stringContaining(`${source} is missing from the package`),
+        expect.stringContaining(`omits derived file \`thumbnail\` of exhibit ${original.captureId}`)
+      ])
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      expect(run.output).toContain(
+        `FAIL [step 5] Exhibit 1, derivation thumbnail: ${source} is missing`
+      )
+      expect(run.output).toContain('1 derived file(s) bound to the signed chain')
+      expect(run.output).toContain('verify.sh: FAIL - 1 check(s) failed, in step(s): 5')
+    }
+  )
+
   it.skipIf(!RUNS)('passes both shipped verifiers on a selection from a renamed Case', async () => {
     const remapped = await remappedCase()
     const dir = await exportPackage(remapped.caseId, 'remapped-selection', {

@@ -38,6 +38,8 @@ import {
 } from '@main/services/sharing/session'
 import type { ChainHead, WireRow } from '@main/services/sharing/messages'
 import type { CaseMember } from '@shared/types'
+// @ts-expect-error - build script with no type declarations; the tsconfigs exclude scripts/
+import { prepareProfile } from '../../scripts/dev-seed/profile.mjs'
 
 // n installations in one process (#1512). The main-process services are
 // module singletons (database, storage root, installation id, signing key,
@@ -92,11 +94,17 @@ export async function createPeer(
     publicKeyPem: '',
     privateKeyPem: ''
   }
+  // The one preparation behind every throwaway profile writes the keypair
+  // initSigningKey loads, and hands it back so a recorded source can sign as
+  // this peer while another one is active.
+  const { privateKey } = (await prepareProfile(dir, { operatorName })) as {
+    privateKey: string
+    publicKey: string
+  }
   await activate(peer)
   peer.installationId = getInstallationId()
   peer.publicKeyPem = getPublicKeyPem()
-  // Plaintext under the test runner: there is no OS credential store to wrap it.
-  peer.privateKeyPem = readFileSync(join(dir, 'signing-key.pem'), 'utf-8')
+  peer.privateKeyPem = privateKey
   return peer
 }
 

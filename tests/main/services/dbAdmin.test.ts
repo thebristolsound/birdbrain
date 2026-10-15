@@ -823,7 +823,13 @@ describe('dbAdmin', () => {
       }
     }
 
+    let storageDir: string
+
     beforeEach(() => {
+      // A write in a Shared Case records its version in the Case directory
+      // (#1512), so the storage root has to exist.
+      storageDir = mkdtempSync(join(tmpdir(), 'bb-db-admin-shared-'))
+      initStorage(storageDir)
       shared = seedCase('Shared')
       local = seedCase('Local')
       getDb()
@@ -837,6 +843,10 @@ describe('dbAdmin', () => {
       addTagToCapture({ captureId: shared.captureId, tagId: tags.onExhibit })
       addTagToNote({ noteId: shared.noteId, tagId: tags.onNoteOnly })
       addTagToCapture({ captureId: local.captureId, tagId: tags.local })
+    })
+
+    afterEach(() => {
+      rmSync(storageDir, { recursive: true, force: true })
     })
 
     const exhibitTagKey = (captureId: string, tagId: string) => ({

@@ -5,6 +5,19 @@ import { basename, join } from 'path'
 import { tmpdir } from 'os'
 import { closeDatabase, getDb } from '@main/services/db/core'
 import { listCaseMembers } from '@main/services/db/caseMemberRepo'
+import { insertCapture } from '@main/services/db/captureRepo'
+import { createNote, deleteNote, getNote, listNotes, updateNote } from '@main/services/db/noteRepo'
+import {
+  addTagToCapture,
+  addTagToNote,
+  createTag,
+  getTagsForCapture,
+  getTagsForNote,
+  listTags
+} from '@main/services/db/tagRepo'
+import { getAnnotations, saveAnnotations, upsertPin } from '@main/services/annotations'
+import { readRow } from '@main/services/db/workingRowRepo'
+import { toWireRows, verifyWireRow } from '@main/services/sharing/workingRows'
 import { resetInstallationId } from '@main/services/installationId'
 import { resetSigningKey } from '@main/services/signingKey'
 import { readManifestSnapshot, readSharedCaseSnapshot } from '@main/services/manifest'
@@ -29,6 +42,8 @@ import {
   pull,
   recordSource,
   seedSharedCase,
+  TIME,
+  type IngestedCapture,
   type Peer
 } from '../../../helpers/syncPeers'
 
@@ -355,5 +370,138 @@ describe('sync session between peers (#1512)', () => {
     const again = await pull(CASE_ID, source)
     expect(again.blobsReceived).toBe(1)
     expect(sha(onDisk(doc.path))).toBe(doc.contentHash)
+  })
+
+  // Rows on a teammate's Capture reference its `captures` row, which #1811
+  // writes; until then the test writes the row itself where a scenario needs it.
+  function standInCaptureRow(capture: IngestedCapture, by: Peer): void {
+    insertCapture({
+      id: capture.captureId,
+      caseId: CASE_ID,
+      url: `https://example.com/${by.name}`,
+      title: 'Stand-in',
+      hash: capture.contentHash,
+      timestamp: TIME
+    })
+  }
+
+  it('brings every working-layer row across signed, and a tombstone removes it again', async () => {
+    await activate(A)
+    const capture = await addCapture(CASE_ID, A, 1)
+    const note = createNote({ caseId: CASE_ID, title: 'Alice note', body: 'from alice' })
+    const tag = createTag({ name: 'alice-tag', color: '#123456' })
+    addTagToCapture({ captureId: capture.captureId, tagId: tag.id })
+    addTagToNote({ noteId: note.id, tagId: tag.id })
+    saveAnnotations({ captureId: capture.captureId, shapes: [], imageWidth: 3, imageHeight: 4 })
+    const pin = upsertPin({ captureId: capture.captureId, body: 'alice pin' })
+    const source = recordSource(CASE_ID, A)
+
+    await activate(B)
+    standInCaptureRow(capture, A)
+    const result = await pull(CASE_ID, source)
+    expect(result.errors).toEqual([])
+    expect(result.rowsApplied).toBe(6)
+    expect(listNotes(CASE_ID).map((n) => n.title)).toEqual(['Alice note'])
+    expect(listTags()).toEqual([tag])
+    expect(getTagsForCapture(capture.captureId)).toEqual([tag])
+    expect(getTagsForNote(note.id)).toEqual([tag])
+    expect(getAnnotations(capture.captureId).annotations?.imageHeight).toBe(4)
+    expect(getAnnotations(capture.captureId).pins.map((p) => p.id)).toEqual([pin.id])
+    const stored = readRow('notes', { id: note.id }, A.installationId)!
+    expect(stored.author).toBe(A.installationId)
+    expect(verifyWireRow(toWireRows([stored], B.installationId)[0], A.publicKeyPem)).toBe(true)
+    // Bob cannot edit what Alice wrote.
+    expect(updateNote({ id: note.id, title: 'Bob edit' })).toBeUndefined()
+    expect(deleteNote(note.id)).toBe(false)
+
+    // A session with nothing new applies nothing.
+    const quiet = await pull(CASE_ID, source)
+    expect(quiet.rowsApplied).toBe(0)
+
+    await activate(A)
+    expect(deleteNote(note.id)).toBe(true)
+    const tombstoned = recordSource(CASE_ID, A)
+    await activate(B)
+    const removal = await pull(CASE_ID, tombstoned)
+    expect(removal.errors).toEqual([])
+    expect(removal.rowsApplied).toBe(1)
+    expect(listNotes(CASE_ID)).toEqual([])
+    expect(readRow('notes', { id: note.id }, A.installationId)?.deletedAt).not.toBeNull()
+  })
+
+  it('refuses a forged row without losing the genuine ones beside it', async () => {
+    await activate(A)
+    const tampered = createNote({ caseId: CASE_ID, title: 'Tampered in transit', body: '' })
+    const genuine = createNote({ caseId: CASE_ID, title: 'Genuine', body: '' })
+    // A tag syncs through the Case it is applied in (collectTagsForCase);
+    // one applied nowhere stays with its author.
+    const applied = createTag({ name: 'applied', color: '#010101' })
+    addTagToNote({ noteId: genuine.id, tagId: applied.id })
+    createTag({ name: 'unapplied' })
+    const source = recordSource(CASE_ID, A)
+    const rows = source.rows.get(A.installationId)!
+    expect(rows.map((r) => r.table).sort()).toEqual(['note_tags', 'notes', 'notes', 'tags'])
+    const forged = rows.find((r) => r.table === 'notes' && r.fields.id === tampered.id)!
+    forged.fields = { ...forged.fields, title: 'Forged' }
+
+    await activate(B)
+    const result = await pull(CASE_ID, source)
+    expect(result.errors).toEqual([
+      {
+        kind: 'rejected-entry',
+        detail: `notes row of ${A.installationId} at version ${forged.version}: invalid signature`,
+        installationId: A.installationId
+      }
+    ])
+    expect(result.rowsApplied).toBe(3)
+    expect(getNote(tampered.id)).toBeUndefined()
+    expect(getNote(genuine.id)?.title).toBe('Genuine')
+    expect(listTags()).toEqual([applied])
+    expect(getTagsForNote(genuine.id)).toEqual([applied])
+  })
+
+  it('three peers: Carol receives Alice rows through Bob, still under Alice signature', async () => {
+    await activate(A)
+    const note = createNote({ caseId: CASE_ID, title: 'Via Bob', body: '' })
+    const fromAlice = recordSource(CASE_ID, A)
+    await activate(B)
+    await pull(CASE_ID, fromAlice)
+    createNote({ caseId: CASE_ID, title: 'Bob note', body: '' })
+    const fromBob = recordSource(CASE_ID, B)
+
+    await activate(C)
+    const result = await pull(CASE_ID, fromBob)
+    expect(result.errors).toEqual([])
+    expect(result.rowsApplied).toBe(2)
+    expect(
+      listNotes(CASE_ID)
+        .map((n) => n.title)
+        .sort()
+    ).toEqual(['Bob note', 'Via Bob'])
+    const stored = readRow('notes', { id: note.id }, A.installationId)!
+    expect(verifyWireRow(toWireRows([stored], C.installationId)[0], A.publicKeyPem)).toBe(true)
+  })
+
+  it('holds back an author batch whose Capture row is missing, and lands it once it exists', async () => {
+    await activate(A)
+    const capture = await addCapture(CASE_ID, A, 1)
+    saveAnnotations({ captureId: capture.captureId, shapes: [], imageWidth: 1, imageHeight: 1 })
+    createNote({ caseId: CASE_ID, title: 'Alice note', body: '' })
+    const source = recordSource(CASE_ID, A)
+
+    await activate(B)
+    const held = await pull(CASE_ID, source)
+    expect(held.rowsApplied).toBe(0)
+    expect(held.errors).toHaveLength(1)
+    expect(held.errors[0]).toMatchObject({ kind: 'peer', installationId: A.installationId })
+    expect(held.errors[0].detail).toContain('could not be applied')
+    expect(listNotes(CASE_ID)).toEqual([])
+
+    standInCaptureRow(capture, A)
+    const landed = await pull(CASE_ID, source)
+    expect(landed.errors).toEqual([])
+    expect(landed.rowsApplied).toBe(2)
+    expect(listNotes(CASE_ID).map((n) => n.title)).toEqual(['Alice note'])
+    expect(getAnnotations(capture.captureId).annotations).not.toBeNull()
   })
 })

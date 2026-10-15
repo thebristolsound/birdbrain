@@ -26,6 +26,8 @@ import {
   missingAnchoredFiles,
   safeCasePath
 } from '@main/services/sharing/blobAcceptance'
+import { applyRemoteRows, toWireRows } from '@main/services/sharing/workingRows'
+import { maxAuthorVersionInCase, rowsOfAuthorSince } from '@main/services/db/workingRowRepo'
 import {
   CHALLENGE_BYTES,
   MessageReader,
@@ -33,7 +35,8 @@ import {
   ProtocolError,
   expectMessage,
   writeMessage,
-  type ChainHead
+  type ChainHead,
+  type WireRow
 } from '@main/services/sharing/messages'
 import type { ByteStream } from '@main/services/sharing/transport'
 
@@ -65,6 +68,9 @@ export interface SyncSource {
   // null when this peer does not hold the file or the path is not one it
   // serves.
   blob(path: string): Uint8Array | null
+  // Every signed working-layer row of `author` in the Case above
+  // `sinceVersion`, this peer's own rows included under its own id.
+  rowsSince(author: string, sinceVersion: number): WireRow[]
   sign(hex: string): string
 }
 
@@ -167,6 +173,11 @@ export function liveSyncSource(caseId: string): SyncSource | null {
       const abs = safeCasePath(getStorageRoot(), caseId, path)
       return abs !== null && existsSync(abs) ? Uint8Array.from(readFileSync(abs)) : null
     },
+    rowsSince: (author, sinceVersion) =>
+      toWireRows(
+        rowsOfAuthorSince(caseId, author === installationId ? null : author, sinceVersion),
+        installationId
+      ),
     sign: signEntryHash
   }
 }
@@ -278,6 +289,13 @@ export async function serveSyncSession(
             await writeMessage(stream, { t: 'blobs', path, bytes: source.blob(path) })
           }
           break
+        case 'rows-request': {
+          const rows = message.authors.flatMap(({ installationId, sinceVersion }) =>
+            source.rowsSince(installationId, sinceVersion)
+          )
+          await writeMessage(stream, { t: 'rows', rows })
+          break
+        }
         default:
           return await sayBye(stream, BYE_REASONS.protocol)
       }
@@ -473,6 +491,25 @@ export async function pullFromPeer(
       } else {
         fail('rejected-entry', `${path}: not a path inside this Case directory`)
       }
+    }
+
+    // 5. Rows: every other member's working-layer rows above the version this
+    // replica holds for them, applied only under that member's signature and
+    // only above the stored version (workingRows.ts). The cursor is read from
+    // the rows themselves, so a database restore moves it back with them.
+    options.onPhase?.('rows')
+    const authors = roster
+      .filter((m) => m.installationId !== self)
+      .map((m) => ({
+        installationId: m.installationId,
+        sinceVersion: maxAuthorVersionInCase(caseId, m.installationId)
+      }))
+    if (authors.length > 0) {
+      await writeMessage(stream, { t: 'rows-request', authors })
+      const { rows } = await expectMessage(reader, 'rows')
+      const outcome = applyRemoteRows(rows, roster, new Set(authors.map((a) => a.installationId)))
+      result.rowsApplied += outcome.applied
+      result.errors.push(...outcome.refused)
     }
 
     await sayBye(stream, BYE_REASONS.done)

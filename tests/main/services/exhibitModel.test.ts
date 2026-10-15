@@ -329,16 +329,18 @@ describe('exhibit model', () => {
       // The archive payload keeps its `capture_id` key, the key every
       // .birdbrain since before the rename carries; the author and sync
       // columns joined it at archive schema 9 (#1512).
-      expect(collectCaptureTagsForCase(caseId)).toEqual([
-        {
-          capture_id: capture.id,
-          tag_id: tag.id,
-          author_installation_id: null,
-          version: 0,
-          deleted_at: null,
-          row_signature: null
-        }
-      ])
+      // The application was written through the repo, which signs every
+      // local write with a fresh version (#1512).
+      const [application] = collectCaptureTagsForCase(caseId)
+      expect(application).toMatchObject({
+        capture_id: capture.id,
+        tag_id: tag.id,
+        author_installation_id: null,
+        deleted_at: null
+      })
+      expect(application.version).toBeGreaterThan(0)
+      expect(typeof application.row_signature).toBe('string')
+      expect(collectCaptureTagsForCase(caseId)).toHaveLength(1)
     })
   })
 

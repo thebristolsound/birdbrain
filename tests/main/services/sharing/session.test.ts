@@ -113,6 +113,7 @@ describe('sync session handshake (#1512)', () => {
       heads: () => [],
       chainLines: () => [],
       blob: () => null,
+      rowsSince: () => [],
       sign: signWith(PEER_KEY),
       ...overrides
     }

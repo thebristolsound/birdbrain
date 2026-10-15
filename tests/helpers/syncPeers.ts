@@ -36,7 +36,7 @@ import {
   type SyncSessionResult,
   type SyncSource
 } from '@main/services/sharing/session'
-import type { ChainHead } from '@main/services/sharing/messages'
+import type { ChainHead, WireRow } from '@main/services/sharing/messages'
 import type { CaseMember } from '@shared/types'
 
 // n installations in one process (#1512). The main-process services are
@@ -303,6 +303,8 @@ export interface RecordedSource extends SyncSource {
   // Every file under the Case directory the live source serves, by
   // storage-root-relative path. A test tampers with or removes one here.
   files: Map<string, Uint8Array>
+  // Every signed row the live source serves, by author.
+  rows: Map<string, WireRow[]>
 }
 
 function walk(dir: string, root: string, into: Map<string, string>): void {
@@ -327,12 +329,17 @@ export function recordSource(caseId: string, peer: Peer): RecordedSource {
     const bytes = live.blob(path)
     if (bytes !== null) files.set(path, bytes)
   }
+  const rows = new Map<string, WireRow[]>()
+  for (const { installationId } of live.roster()) {
+    rows.set(installationId, live.rowsSince(installationId, 0))
+  }
   const source: RecordedSource = {
     installationId: live.installationId,
     caseId,
     members: live.roster(),
     chains,
     files,
+    rows,
     roster: () => source.members,
     heads: (): ChainHead[] =>
       [...source.chains].flatMap(([installationId, lines]) => {
@@ -344,6 +351,8 @@ export function recordSource(caseId: string, peer: Peer): RecordedSource {
     chainLines: (installationId, fromIndex) =>
       (source.chains.get(installationId) ?? []).slice(fromIndex),
     blob: (path) => source.files.get(path) ?? null,
+    rowsSince: (author, sinceVersion) =>
+      (source.rows.get(author) ?? []).filter((row) => row.version > sinceVersion),
     sign: (hex) => createSign('sha256').update(hex).sign(peer.privateKeyPem, 'base64')
   }
   return source

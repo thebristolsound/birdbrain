@@ -59,7 +59,7 @@ const RECENT_ACTIVITY_SQL = `
       NULL AS last_verified_status
     FROM notes n
     JOIN cases cs ON cs.id = n.case_id
-    WHERE cs.archived = 0
+    WHERE cs.archived = 0 AND n.deleted_at IS NULL
     ORDER BY n.updated_at DESC, n.id DESC
     LIMIT :limit
   )

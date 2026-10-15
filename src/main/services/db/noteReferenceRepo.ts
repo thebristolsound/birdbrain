@@ -92,14 +92,18 @@ export function referencesForNote(noteId: string): NoteReference[] {
                 WHEN 'selector' THEN
                   (SELECT COALESCE(NULLIF(s.label, ''), s.pattern) FROM selectors s
                    WHERE s.id = r.target_id)
-                WHEN 'tag' THEN (SELECT t.name FROM tags t WHERE t.id = r.target_id)
-                WHEN 'note' THEN (SELECT n.title FROM notes n WHERE n.id = r.target_id)
+                WHEN 'tag' THEN
+                  (SELECT t.name FROM tags t WHERE t.id = r.target_id AND t.deleted_at IS NULL)
+                WHEN 'note' THEN
+                  (SELECT n.title FROM notes n WHERE n.id = r.target_id AND n.deleted_at IS NULL)
               END AS label,
               CASE r.target_type
                 WHEN 'capture' THEN EXISTS (SELECT 1 FROM captures c WHERE c.id = r.target_id)
                 WHEN 'selector' THEN EXISTS (SELECT 1 FROM selectors s WHERE s.id = r.target_id)
-                WHEN 'tag' THEN EXISTS (SELECT 1 FROM tags t WHERE t.id = r.target_id)
-                WHEN 'note' THEN EXISTS (SELECT 1 FROM notes n WHERE n.id = r.target_id)
+                WHEN 'tag' THEN
+                  EXISTS (SELECT 1 FROM tags t WHERE t.id = r.target_id AND t.deleted_at IS NULL)
+                WHEN 'note' THEN
+                  EXISTS (SELECT 1 FROM notes n WHERE n.id = r.target_id AND n.deleted_at IS NULL)
               END AS resolved
        FROM note_references r
        WHERE r.note_id = ?
@@ -132,7 +136,7 @@ export function backlinksForTarget(params: {
               substr(n.body, 1, 240) AS snippet, n.updated_at AS updatedAt
        FROM note_references r
        JOIN notes n ON n.id = r.note_id
-       WHERE n.case_id = ? AND r.target_type = ? AND r.target_id = ?
+       WHERE n.case_id = ? AND n.deleted_at IS NULL AND r.target_type = ? AND r.target_id = ?
        GROUP BY r.note_id
        ORDER BY n.updated_at DESC`
     )
@@ -151,7 +155,7 @@ export function backlinkCountsForCase(caseId: string): NoteBacklinkCount[] {
               COUNT(DISTINCT r.note_id) AS noteCount, COUNT(*) AS mentionCount
        FROM note_references r
        JOIN notes n ON n.id = r.note_id
-       WHERE n.case_id = ?
+       WHERE n.case_id = ? AND n.deleted_at IS NULL
        GROUP BY r.target_type, r.target_id`
     )
     .all(caseId) as NoteBacklinkCount[]
@@ -177,7 +181,7 @@ export function referenceEdgesForCase(caseId: string): NoteReferenceEdge[] {
               r.target_id AS targetId, COUNT(*) AS mentionCount
        FROM note_references r
        JOIN notes n ON n.id = r.note_id
-       WHERE n.case_id = ?
+       WHERE n.case_id = ? AND n.deleted_at IS NULL
        GROUP BY r.note_id, r.target_type, r.target_id
        ORDER BY r.note_id, r.target_type, r.target_id`
     )

@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'crypto'
-import { existsSync, readFileSync } from 'fs'
+import { existsSync, readFileSync, statSync } from 'fs'
 import { join } from 'path'
 import { ManifestEntrySchema, type ManifestEntry } from '@shared/schemas'
 import type { CaseMember, SyncErrorKind } from '@shared/types'
@@ -51,6 +51,7 @@ import {
 } from '@main/services/db/workingRowRepo'
 import {
   CHALLENGE_BYTES,
+  MAX_BLOB_BYTES,
   MessageReader,
   PeerByeError,
   ProtocolError,
@@ -87,8 +88,8 @@ export interface SyncSource {
   // hold.
   chainLines(installationId: string, fromIndex: number, maxBytes: number): string[]
   // The bytes at a storage-root-relative path inside the Case directory, or
-  // null when this peer does not hold the file or the path is not one it
-  // serves.
+  // null when this peer does not hold the file, the path is not one it
+  // serves, or the file is larger than a frame carries (MAX_BLOB_BYTES).
   blob(path: string): Uint8Array | null
   // One page of the signed working-layer rows of `author` in the Case above
   // `sinceVersion` (offerPage), this peer's own rows included under its own
@@ -214,7 +215,11 @@ export function liveSyncSource(caseId: string): SyncSource | null {
     },
     blob: (path) => {
       const abs = safeCasePath(getStorageRoot(), caseId, path)
-      return abs !== null && existsSync(abs) ? Uint8Array.from(readFileSync(abs)) : null
+      if (abs === null || !existsSync(abs)) return null
+      // Sized before it is read: a file no frame can carry is not held as
+      // far as a peer is concerned, and costs this side no read.
+      if (statSync(abs).size > MAX_BLOB_BYTES) return null
+      return Uint8Array.from(readFileSync(abs))
     },
     rowsSince: (author, sinceVersion, maxBytes) => {
       const byTable = new Map<string, TableOffer<WireRow>>()

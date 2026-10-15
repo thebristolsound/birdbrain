@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createSign, generateKeyPairSync, randomBytes } from 'crypto'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, mkdtempSync, rmSync, truncateSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { closeDatabase, getDb, initDatabase } from '@main/services/db/core'
@@ -24,6 +24,7 @@ import { verifyEntrySignature } from '@shared/verify'
 import { MemoryHub, type ByteStream } from '@main/services/sharing/transport'
 import {
   CHALLENGE_BYTES,
+  MAX_BLOB_BYTES,
   MessageReader,
   expectMessage,
   writeMessage,
@@ -340,6 +341,21 @@ describe('sync session handshake (#1512)', () => {
   // Review finding 1 on this PR: the id a peer sends names a chain file on
   // the listener, so an id that is not one path segment reached another
   // Case's chain. Checked at the codec, in the live source, and at the file.
+  // Scheduled review finding 7: a file is sized before it is read, and one
+  // no frame could carry is answered as not held without a read.
+  it('serves a file under the Case directory, and none above the frame cap', () => {
+    const documents = join(getStorageRoot(), caseId, 'documents')
+    mkdirSync(documents, { recursive: true })
+    writeFileSync(join(documents, 'small.pdf'), 'small')
+    // A sparse file: the size is what the check reads, and nothing is read.
+    writeFileSync(join(documents, 'big.pdf'), '')
+    truncateSync(join(documents, 'big.pdf'), MAX_BLOB_BYTES + 1)
+    const live = liveSyncSource(caseId)!
+    expect(Buffer.from(live.blob(`${caseId}/documents/small.pdf`)!).toString()).toBe('small')
+    expect(live.blob(`${caseId}/documents/big.pdf`)).toBeNull()
+    expect(live.blob(`${caseId}/documents/absent.pdf`)).toBeNull()
+  })
+
   it('serves no chain for an installation id that is not one path segment, nor for a stranger', async () => {
     const other = createCase({ name: 'Other' }).id
     mkdirSync(join(getStorageRoot(), other), { recursive: true })

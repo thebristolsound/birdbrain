@@ -14,8 +14,11 @@ import { isChainInstallationId } from '../../../packages/evidence-package-layout
 // rows are checked by their own modules after they are decoded.
 
 // A frame carries at most one Exhibit file, and a Capture's page archive is
-// the largest file the app stores.
-export const MAX_FRAME_BYTES = MAX_MHTML_SIZE + 1024 * 1024
+// the largest file the app stores; the margin is for the message around it.
+// A listener answers a file above MAX_BLOB_BYTES as not held, after a size
+// check and without reading it, since no frame could carry it.
+export const MAX_BLOB_BYTES = MAX_MHTML_SIZE
+export const MAX_FRAME_BYTES = MAX_BLOB_BYTES + 1024 * 1024
 const FRAME_HEADER_BYTES = 4
 export const CHALLENGE_BYTES = 32
 

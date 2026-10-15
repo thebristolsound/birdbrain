@@ -412,6 +412,22 @@ export async function pullFromPeer(
   }
   beginSession(caseId)
   try {
+    // Every stored member chain is judged before anything reads it, whether
+    // or not this session will append to it: one stored whole by an older
+    // build, or by a session killed before its judgement, that names another
+    // Case is removed whole (foreignCaseEntry).
+    for (const chain of readChainFileSnapshots(caseDir)) {
+      if (chain.sourceCaseId !== undefined) continue
+      const foreign = foreignCaseEntry(storedEntries(chain.jsonl), caseId)
+      if (!foreign) continue
+      truncateMemberChainLines(caseDir, chain.installationId, 0)
+      result.errors.push({
+        kind: 'rejected-entry',
+        detail: `entry ${foreign.index} of ${chain.installationId} names Case ${foreign.caseId}, this Case is ${caseId}`,
+        installationId: chain.installationId,
+        index: foreign.index
+      })
+    }
     // Before hello, so a revocation an earlier session stored but could not
     // record refuses the revoked member in this one.
     rebuildRoster()

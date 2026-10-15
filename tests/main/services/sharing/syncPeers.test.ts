@@ -1388,6 +1388,27 @@ describe('sync session between peers (#1512)', () => {
       ).toBeNull()
     })
 
+    // Fourth pre-pass, finding 5: the judgement ran only in a session that
+    // appended to the chain, so stored foreign lines the peer had nothing
+    // new for stayed. Every stored chain is judged at the start of a session.
+    it('removes a stored foreign chain in a session that receives none of it', async () => {
+      await activate(C)
+      initManifest(caseDirOf(CASE_ID))
+      appendManifestEntry(caseDirOf(CASE_ID), foreignExhibit(C, 1))
+      const carolChain = ownChainText(CASE_ID)
+      await activate(A)
+      const fromAlice = recordSource(CASE_ID, A)
+      expect(fromAlice.chains.has(C.installationId)).toBe(false)
+      await activate(B)
+      writeFileSync(join(caseDirOf(CASE_ID), memberChainPath(C.installationId)), carolChain)
+      const result = await pull(CASE_ID, fromAlice)
+      expect(result.errors).toEqual([foreignError(C, 0)])
+      expect(memberChainText(CASE_ID, C)).toBe('')
+      expect(mergeEntries(CASE_ID).flatMap((m) => m.heads.map((h) => h.installationId))).toEqual([
+        A.installationId
+      ])
+    })
+
     it('removes a chain whole when what an older build stored of it is already foreign', async () => {
       await activate(C)
       initManifest(caseDirOf(CASE_ID))
@@ -1398,7 +1419,9 @@ describe('sync session between peers (#1512)', () => {
       await activate(B)
       writeFileSync(join(caseDirOf(CASE_ID), memberChainPath(C.installationId)), first + '\n')
       const result = await pull(CASE_ID, source, {}, { pageBytes: 1 })
-      expect(result.errors).toEqual([foreignError(C, 0)])
+      // Once when the session starts and judges what is stored, and once for
+      // the same chain fetched again from its start and cut back.
+      expect(result.errors).toEqual([foreignError(C, 0), foreignError(C, 0)])
       nothingOfCarolStored()
     })
   })

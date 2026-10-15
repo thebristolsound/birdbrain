@@ -54,7 +54,8 @@ import type {
   WaybackSnapshot,
   Persona,
   PersonaImportResult,
-  PersonaStorageState
+  PersonaStorageState,
+  SyncState
 } from '@shared/types'
 import type { CaseManifestSnapshot } from '@shared/manifestSnapshot'
 
@@ -218,6 +219,11 @@ export const IPC_CHANNELS = {
 
   // Manifest
   MANIFEST_SNAPSHOT: 'manifest:snapshot',
+
+  // Shared Case sync (#1512). The session itself runs without a channel
+  // until the scheduler and Sync now land (#1810); this reads what the last
+  // sessions left in the Case's sync state.
+  SHARING_GET_SYNC_STATE: 'sharing:getSyncState',
 
   // Staging Pool (ADR-0024). Upload lands bytes outside the chain; commit is
   // the only route by which a pooled file becomes an Exhibit.
@@ -996,6 +1002,8 @@ export interface IpcInvokeContract {
   'exhibits:verify': { args: [caseId: string, exhibitId: string]; result: ExhibitVerification }
 
   'manifest:snapshot': { args: [caseId: string]; result: CaseManifestSnapshot }
+
+  'sharing:getSyncState': { args: [caseId: string]; result: SyncState }
 
   // The open-file dialog lives in the handler; an empty list is a cancel.
   'staging:upload': { args: [caseId: string]; result: StagingFile[] }

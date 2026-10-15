@@ -27,6 +27,7 @@ import {
   safeCasePath
 } from '@main/services/sharing/blobAcceptance'
 import { applyRemoteRows, toWireRows } from '@main/services/sharing/workingRows'
+import { beginSession, finishSession, writeMembersFile } from '@main/services/sharing/syncState'
 import { maxAuthorVersionInCase, rowsOfAuthorSince } from '@main/services/db/workingRowRepo'
 import {
   CHALLENGE_BYTES,
@@ -332,6 +333,7 @@ export async function pullFromPeer(
   const fail = (kind: SyncErrorKind, detail: string): void => {
     result.errors.push({ kind, detail })
   }
+  beginSession(caseId)
   try {
     options.onPhase?.('hello')
     const challenge = randomBytes(CHALLENGE_BYTES)
@@ -524,6 +526,25 @@ export async function pullFromPeer(
     }
   } finally {
     stream.close()
+    // What the session leaves in sync-state.json: its transfer, its first
+    // error, the heads now held, and the peer's last session. members.json
+    // follows the roster, which the entries step may have changed.
+    const [first] = result.errors
+    const heads: Record<string, { index: number; entryHash: string }> = {}
+    for (const { installationId, index, entryHash } of caseChainHeads(caseDir, self)) {
+      heads[installationId] = { index, entryHash }
+    }
+    finishSession(caseId, {
+      peerInstallationId: result.peerInstallationId,
+      transfer: {
+        entries: result.entriesReceived,
+        blobs: result.blobsReceived,
+        bytes: result.bytesReceived
+      },
+      error: first ? { kind: first.kind, detail: first.detail } : null,
+      heads
+    })
+    writeMembersFile(caseId)
   }
   return result
 }

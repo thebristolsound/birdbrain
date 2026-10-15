@@ -25,6 +25,12 @@ import { getStorageRoot } from '@main/services/storage'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import { canonicalStringify } from '@shared/verify'
 import { BYE_REASONS } from '@main/services/sharing/session'
+import {
+  MEMBERS_FILENAME,
+  getSyncState,
+  readSyncStateFile,
+  resetSyncStateMemory
+} from '@main/services/sharing/syncState'
 import { memberChainPath } from '../../../../src/packages/evidence-package-layout/index'
 import {
   activate,
@@ -55,6 +61,7 @@ import {
 const CASE_ID = '0196f7a2-aaaa-bbbb-cccc-000000000010'
 const sha = (bytes: Buffer | string): string => createHash('sha256').update(bytes).digest('hex')
 const onDisk = (path: string): Buffer => readFileSync(join(getStorageRoot(), path))
+const onDiskOf = (peer: Peer, path: string): Buffer => readFileSync(join(peer.storageRoot, path))
 
 describe('sync session between peers (#1512)', () => {
   let root: string
@@ -83,6 +90,7 @@ describe('sync session between peers (#1512)', () => {
     closeDatabase()
     resetInstallationId()
     resetSigningKey()
+    resetSyncStateMemory()
     rmSync(root, { recursive: true, force: true })
   })
 
@@ -503,5 +511,55 @@ describe('sync session between peers (#1512)', () => {
     expect(landed.rowsApplied).toBe(2)
     expect(listNotes(CASE_ID).map((n) => n.title)).toEqual(['Alice note'])
     expect(getAnnotations(capture.captureId).annotations).not.toBeNull()
+  })
+
+  it('leaves the session in sync-state.json and the roster in members.json', async () => {
+    await activate(A)
+    const doc = addDocument(CASE_ID, A, 1)
+    const source = recordSource(CASE_ID, A)
+    source.files.set(doc.path, Uint8Array.from(Buffer.from('tampered')))
+
+    await activate(B)
+    expect(getSyncState(CASE_ID)).toEqual({
+      phase: 'idle',
+      peersReachable: 0,
+      peersTotal: 2,
+      transfer: null,
+      lastError: null
+    })
+    const result = await pull(CASE_ID, source, {
+      onPhase: (phase) => {
+        if (phase === 'entries') expect(getSyncState(CASE_ID).phase).toBe('syncing')
+      }
+    })
+    expect(result.errors[0]?.kind).toBe('hash-mismatch')
+    const failed = getSyncState(CASE_ID)
+    expect(failed.phase).toBe('error')
+    expect(failed.peersReachable).toBe(1)
+    expect(failed.transfer).toEqual({ entries: 4, blobs: 0, bytes: 0 })
+    expect(failed.lastError?.kind).toBe('hash-mismatch')
+    const file = readSyncStateFile(caseDirOf(CASE_ID))
+    expect(file.peers[A.installationId]).toMatchObject({
+      ok: false,
+      heads: {
+        [A.installationId]: { index: doc.index },
+        [B.installationId]: { index: 0 }
+      }
+    })
+    expect(file.localVersionHighWater).toBe(0)
+    const members = JSON.parse(
+      readFileSync(join(caseDirOf(CASE_ID), MEMBERS_FILENAME), 'utf-8')
+    ) as { members: Array<{ installationId: string }> }
+    expect(members.members.map((m) => m.installationId)).toEqual([
+      A.installationId,
+      B.installationId,
+      C.installationId
+    ])
+
+    source.files.set(doc.path, Uint8Array.from(onDiskOf(A, doc.path)))
+    const ok = await pull(CASE_ID, source)
+    expect(ok.errors).toEqual([])
+    expect(getSyncState(CASE_ID)).toMatchObject({ phase: 'idle', peersReachable: 1 })
+    expect(readSyncStateFile(caseDirOf(CASE_ID)).peers[A.installationId]?.ok).toBe(true)
   })
 })

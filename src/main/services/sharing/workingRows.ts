@@ -20,6 +20,7 @@ import {
   type SyncedTable
 } from '@main/services/db/workingRowRepo'
 import type { WireRow } from '@main/services/sharing/messages'
+import { localVersionHighWater, recordLocalVersion } from '@main/services/sharing/syncState'
 
 // Working-layer rows as evidence of who wrote what (docs/specs/2026-09-19-
 // collaborative-cases-design.md, "Working-layer rows"). This installation
@@ -50,9 +51,15 @@ export function rowDigest(envelope: RowEnvelope): string {
 }
 
 // The next version for a local write: above every version this installation
-// has given a row.
+// has given a row, as the rows say and as the high-water mark in every
+// Shared Case's sync state says. The mark survives a database restore, which
+// the rows do not, so a restored installation never reissues a version a
+// peer already holds. The mark is raised before the row is written: a mark
+// above the rows loses nothing, a mark below them would.
 export function allocateLocalVersion(): number {
-  return maxLocalVersion() + 1
+  const version = Math.max(maxLocalVersion(), localVersionHighWater()) + 1
+  recordLocalVersion(version)
+  return version
 }
 
 export interface SignOptions {

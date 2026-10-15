@@ -44,7 +44,8 @@ import type {
   StagingFile,
   Persona,
   PersonaImportResult,
-  PersonaStorageState
+  PersonaStorageState,
+  SyncState
 } from '@shared/types'
 import type { CaseManifestSnapshot } from '@shared/manifestSnapshot'
 import type {
@@ -258,6 +259,9 @@ export interface BirdbrainAPI {
   }
   manifest: {
     snapshot(caseId: string): Promise<CaseManifestSnapshot>
+  }
+  sharing: {
+    getSyncState(caseId: string): Promise<SyncState>
   }
   staging: {
     upload(caseId: string): Promise<StagingFile[]>

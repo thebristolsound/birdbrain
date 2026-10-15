@@ -68,6 +68,7 @@ import * as searchFieldRepo from '@main/services/db/searchFieldRepo'
 import { renderCapturePdf } from '@main/services/pdfExport'
 import { getThumbnail } from '@main/services/thumbnails'
 import { getCaseInventory, getManifestSnapshot, verifyExhibit } from '@main/services/exhibits'
+import { getSyncState } from '@main/services/sharing/syncState'
 import { commitStagedFiles, discardStagedFiles, uploadToStaging } from '@main/services/staging'
 import * as settings from '@main/services/settings'
 import { generateReport, getExportPreflight } from '@main/services/export'
@@ -1100,6 +1101,9 @@ export function registerIpcHandlers(deps: {
     verifyExhibit(caseId, exhibitId)
   )
   handle(IPC_CHANNELS.MANIFEST_SNAPSHOT, (_, caseId: string) => getManifestSnapshot(caseId))
+
+  // Shared Case sync (#1512): what the sync pill reads.
+  handle(IPC_CHANNELS.SHARING_GET_SYNC_STATE, (_, caseId: string) => getSyncState(caseId))
 
   // Staging Pool (ADR-0024, #1148). The file dialog lives here, as the archive
   // import's does; a cancel is an empty list, not an error.

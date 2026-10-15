@@ -207,6 +207,10 @@ const birdbrain = {
     snapshot: bridge(IPC_CHANNELS.MANIFEST_SNAPSHOT)
   },
 
+  sharing: {
+    getSyncState: bridge(IPC_CHANNELS.SHARING_GET_SYNC_STATE)
+  },
+
   staging: {
     upload: bridge(IPC_CHANNELS.STAGING_UPLOAD),
     commit: bridge(IPC_CHANNELS.STAGING_COMMIT),

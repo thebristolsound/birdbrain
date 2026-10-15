@@ -724,6 +724,21 @@ describe('ipcHandlers — captures', () => {
     expect(verified.status).toBeDefined()
   })
 
+  // The sync pill's read (#1512): a Case nobody shared has no peers and
+  // nothing to report.
+  it('answers the sync state of a Case', async () => {
+    const state = expectOk<{ phase: string; peersTotal: number; lastError: unknown }>(
+      await invoke(IPC_CHANNELS.SHARING_GET_SYNC_STATE, caseId)
+    )
+    expect(state).toEqual({
+      phase: 'idle',
+      peersReachable: 0,
+      peersTotal: 0,
+      transfer: null,
+      lastError: null
+    })
+  })
+
   // The Staging Pool channels (#1148). The dialog lives in the upload
   // handler, so a cancel is an empty list; commit and discard take an id list
   // that is shape-checked before anything reaches the pool.

@@ -6,7 +6,7 @@ import { getInstallationId } from '@main/services/installationId'
 import { signEntryHash } from '@main/services/signingKey'
 import {
   CURSOR_FREE_TABLES,
-  applyAuthorRows,
+  applyRows,
   hardDeleteLocalRow,
   isInSharedCase,
   isSyncedTable,
@@ -234,20 +234,25 @@ export interface RemoteApplyOutcome {
   refused: RowRefusal[]
 }
 
-// Applies received rows author by author, in roster order, each author's
-// batch in one transaction. A row is refused when it names an author this
-// replica did not ask for, one the roster does not hold a key for, a table
-// that does not sync, or when its signature does not verify; a batch whose
-// references are not satisfied is refused whole and retried next session.
-export function applyRemoteRows(
+export interface VerifiedRows {
+  accepted: RemoteRow[]
+  refused: RowRefusal[]
+}
+
+// Checks received rows before any is applied. A row is refused when it names
+// an author this replica did not ask for, one the roster does not hold a key
+// for, a table that does not sync, or when its signature does not verify.
+// What a page moves the cursor to is read from the accepted rows alone, so a
+// peer answering with rows that do not verify moves nothing.
+export function verifyRemoteRows(
   rows: WireRow[],
   roster: CaseMember[],
   requested: ReadonlySet<string>
-): RemoteApplyOutcome {
-  const outcome: RemoteApplyOutcome = { applied: 0, skipped: 0, refused: [] }
-  const byAuthor = new Map<string, RemoteRow[]>()
+): VerifiedRows {
+  const accepted: RemoteRow[] = []
+  const refused: RowRefusal[] = []
   const refuse = (installationId: string, detail: string): void => {
-    outcome.refused.push({ kind: 'rejected-entry', detail, installationId })
+    refused.push({ kind: 'rejected-entry', detail, installationId })
   }
   for (const row of rows) {
     const { author, table, version } = row
@@ -261,25 +266,34 @@ export function applyRemoteRows(
     } else if (!verifyWireRow(row, member.publicKeyPem)) {
       refuse(author, `${table} row of ${author} at version ${version}: invalid signature`)
     } else {
-      const batch = byAuthor.get(author) ?? []
-      batch.push({ ...row, table })
-      byAuthor.set(author, batch)
+      accepted.push({ ...row, table })
     }
   }
-  for (const member of roster) {
-    const batch = byAuthor.get(member.installationId)
-    if (!batch) continue
-    try {
-      const { applied, skipped } = applyAuthorRows(batch)
-      outcome.applied += applied
-      outcome.skipped += skipped
-    } catch (err) {
-      outcome.refused.push({
-        kind: 'peer',
-        detail: `rows of ${member.installationId} could not be applied: ${(err as Error).message}`,
-        installationId: member.installationId
-      })
-    }
+  return { accepted, refused }
+}
+
+// Verifies received rows and applies the accepted ones in one transaction
+// (applyRows); a batch whose references are not satisfied is refused whole.
+// The session verifies page by page and applies once at its end; this is
+// the one-batch form.
+export function applyRemoteRows(
+  rows: WireRow[],
+  roster: CaseMember[],
+  requested: ReadonlySet<string>
+): RemoteApplyOutcome {
+  const { accepted, refused } = verifyRemoteRows(rows, roster, requested)
+  const outcome: RemoteApplyOutcome = { applied: 0, skipped: 0, refused }
+  if (accepted.length === 0) return outcome
+  try {
+    const { applied, skipped } = applyRows(accepted)
+    outcome.applied = applied
+    outcome.skipped = skipped
+  } catch (err) {
+    outcome.refused.push({
+      kind: 'peer',
+      detail: `rows received could not be applied: ${(err as Error).message}`,
+      installationId: [...new Set(accepted.map((row) => row.author))].join(',')
+    })
   }
   return outcome
 }

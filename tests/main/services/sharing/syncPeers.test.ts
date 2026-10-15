@@ -17,7 +17,12 @@ import {
 } from '@main/services/db/tagRepo'
 import { getAnnotations, saveAnnotations, upsertPin } from '@main/services/annotations'
 import { maxAuthorVersionInCase, readRow } from '@main/services/db/workingRowRepo'
-import { toWireRows, verifyWireRow } from '@main/services/sharing/workingRows'
+import {
+  rowDigest,
+  toWireRows,
+  verifyWireRow,
+  type RowEnvelope
+} from '@main/services/sharing/workingRows'
 import { resetInstallationId } from '@main/services/installationId'
 import { resetSigningKey } from '@main/services/signingKey'
 import { readManifestSnapshot, readSharedCaseSnapshot } from '@main/services/manifest'
@@ -26,10 +31,12 @@ import { defaultCaptureStore } from '@main/services/captureStore'
 import { canonicalStringify } from '@shared/verify'
 import {
   BYE_REASONS,
+  MAX_ROW_PAGES,
   PAGE_BYTES,
   liveSyncSource,
   type SyncSource
 } from '@main/services/sharing/session'
+import type { WireRow } from '@main/services/sharing/messages'
 import {
   MEMBERS_FILENAME,
   getSyncState,
@@ -623,8 +630,17 @@ describe('sync session between peers (#1512)', () => {
     expect(verifyWireRow(toWireRows([stored], C.installationId)[0], A.publicKeyPem)).toBe(true)
   })
 
-  it('holds back an author batch whose Capture row is missing, and lands it once it exists', async () => {
+  // Maintainer ruling of 2026-10-15: every row a session receives lands in
+  // one transaction with foreign keys deferred, as the design's working-layer
+  // rule states. Until #1811 writes Capture rows for other members' Captures,
+  // one row referencing a Capture this replica lacks rolls back the whole
+  // session's rows, another member's included; they land once the row exists.
+  it('rolls back every row of a session whose reference is missing, and lands them once it exists', async () => {
+    await activate(C)
+    createNote({ caseId: CASE_ID, title: 'Carol note', body: '' })
+    const fromCarol = recordSource(CASE_ID, C)
     await activate(A)
+    expect((await pull(CASE_ID, fromCarol)).rowsApplied).toBe(1)
     const capture = await addCapture(CASE_ID, A, 1)
     saveAnnotations({ captureId: capture.captureId, shapes: [], imageWidth: 1, imageHeight: 1 })
     createNote({ caseId: CASE_ID, title: 'Alice note', body: '' })
@@ -633,17 +649,133 @@ describe('sync session between peers (#1512)', () => {
     await activate(B)
     const held = await pull(CASE_ID, source)
     expect(held.rowsApplied).toBe(0)
-    expect(held.errors).toHaveLength(1)
-    expect(held.errors[0]).toMatchObject({ kind: 'peer', installationId: A.installationId })
-    expect(held.errors[0].detail).toContain('could not be applied')
+    expect(held.errors).toEqual([
+      {
+        kind: 'peer',
+        detail: expect.stringContaining(
+          'rows received this session could not be applied: FOREIGN KEY'
+        )
+      }
+    ])
     expect(listNotes(CASE_ID)).toEqual([])
 
     standInCaptureRow(capture, A)
     const landed = await pull(CASE_ID, source)
     expect(landed.errors).toEqual([])
-    expect(landed.rowsApplied).toBe(2)
-    expect(listNotes(CASE_ID).map((n) => n.title)).toEqual(['Alice note'])
+    expect(landed.rowsApplied).toBe(3)
+    expect(
+      listNotes(CASE_ID)
+        .map((n) => n.title)
+        .sort()
+    ).toEqual(['Alice note', 'Carol note'])
     expect(getAnnotations(capture.captureId).annotations).not.toBeNull()
+  })
+
+  // Review finding 3 on this PR, round two: a note edited after it was tagged
+  // sits above its application, so the application reached an earlier page;
+  // applied per page, that page failed its foreign key every session.
+  it('applies a reference from a later page in the one transaction of the session', async () => {
+    await activate(A)
+    const note = createNote({ caseId: CASE_ID, title: 'N', body: 'x'.repeat(400) })
+    const tag = createTag({ name: 't', color: '#0c0c0c' })
+    addTagToNote({ noteId: note.id, tagId: tag.id })
+    updateNote({ id: note.id, title: 'N edited' })
+    const source = recordSource(CASE_ID, A)
+
+    await activate(B)
+    const result = await pull(CASE_ID, source, {}, { pageBytes: 300 })
+    expect(result.errors).toEqual([])
+    expect(result.rowsApplied).toBe(3)
+    expect(getNote(note.id)?.title).toBe('N edited')
+    expect(getTagsForNote(note.id)).toEqual([tag])
+  })
+
+  // Review finding 5 on this PR, round two: a listener answering `more` with
+  // rows that do not verify held the dialer forever, and moved its cursor.
+  it('stops asking a listener whose rows do not verify, and caps the pages of one that do', async () => {
+    await activate(A)
+    const genuine = createNote({ caseId: CASE_ID, title: 'Genuine', body: '' })
+    const source = recordSource(CASE_ID, A)
+    let calls = 0
+    const forging: SyncSource = {
+      ...source,
+      rowsSince: (author, since) => {
+        calls += 1
+        const row: WireRow = {
+          table: 'notes',
+          author,
+          version: since + 1,
+          deletedAt: null,
+          fields: { id: `forged-${since}` },
+          signature: 'forged'
+        }
+        return { rows: [row], more: true }
+      }
+    }
+    await activate(B)
+    const refused = await pull(CASE_ID, forging)
+    expect(calls).toBe(2)
+    expect(refused.rowsApplied).toBe(0)
+    expect(refused.errors.map((e) => e.kind)).toEqual(['rejected-entry', 'rejected-entry'])
+    expect(listNotes(CASE_ID)).toEqual([])
+    expect(maxAuthorVersionInCase(CASE_ID, A.installationId)).toBe(0)
+
+    // A listener that says `more` but sends nothing new moves no cursor, so
+    // it is asked once more and then left; the other roster member costs the
+    // one request every author gets.
+    calls = 0
+    const genuineRow = source.rows.get(A.installationId)!.find((r) => r.fields.id === genuine.id)!
+    const stalled: SyncSource = {
+      ...source,
+      rowsSince: (author, since) => {
+        calls += 1
+        if (author !== A.installationId) return { rows: [], more: false }
+        return { rows: since === 0 ? [genuineRow] : [], more: true }
+      }
+    }
+    const stopped = await pull(CASE_ID, stalled)
+    expect(calls).toBe(3)
+    expect(stopped.rowsApplied).toBe(1)
+    expect(stopped.errors).toEqual([])
+
+    // A listener whose rows verify but never end is bounded by the page cap:
+    // every page carries a fresh note signed with Alice's key.
+    const sign = (hex: string): string =>
+      createSign('sha256').update(hex).sign(A.privateKeyPem, 'base64')
+    calls = 0
+    const endless: SyncSource = {
+      ...source,
+      rowsSince: (author, since) => {
+        calls += 1
+        if (author !== A.installationId) return { rows: [], more: false }
+        const envelope: RowEnvelope = {
+          table: 'notes',
+          author,
+          version: since + 1,
+          deletedAt: null,
+          fields: {
+            id: `endless-${since + 1}`,
+            case_id: CASE_ID,
+            capture_id: null,
+            title: `endless ${since + 1}`,
+            body: '',
+            body_doc: null,
+            anchor_kind: null,
+            anchor_json: null,
+            source_url: null,
+            screenshot_path: null,
+            created_at: TIME,
+            updated_at: TIME
+          }
+        }
+        return { rows: [{ ...envelope, signature: sign(rowDigest(envelope)) }], more: true }
+      }
+    }
+    await activate(C)
+    const bounded = await pull(CASE_ID, endless)
+    expect(calls).toBe(MAX_ROW_PAGES + 1)
+    expect(bounded.errors).toEqual([])
+    expect(bounded.rowsApplied).toBe(MAX_ROW_PAGES)
   })
 
   it('leaves the session in sync-state.json and the roster in members.json', async () => {

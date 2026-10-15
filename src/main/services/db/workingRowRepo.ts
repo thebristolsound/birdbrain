@@ -359,14 +359,17 @@ function conflictTarget(table: SyncedTable): string {
     : `${key.join(', ')}, COALESCE(author_installation_id, '')`
 }
 
-// Applies one author's rows in one transaction with foreign keys deferred to
-// its commit, so a row can arrive before the row it references within the
-// same batch. Each row lands only above the version already stored for it. A
-// row keyed by id that another author already holds is refused, so a peer
-// cannot overwrite this installation's note by sending one with its id. A
-// batch whose references are not satisfied at commit throws, and nothing of
-// it lands; the next session retries it.
-export function applyAuthorRows(rows: RemoteRow[]): ApplyOutcome {
+// Applies every row a session received, every author's and every page's, in
+// one transaction with foreign keys deferred to its commit (the design's
+// "Working-layer rows" rule, ruling of 2026-10-15): a row may arrive before
+// the row it references, from a later page or another author, and the keys
+// are checked once, at commit. Each row lands only above the version already
+// stored for it, in version order within its author. A row keyed by id that
+// another author already holds is refused, so a peer cannot overwrite this
+// installation's note by sending one with its id. A batch whose references
+// are not satisfied at commit throws, and nothing of it lands; the next
+// session asks from the same cursors.
+export function applyRows(rows: RemoteRow[]): ApplyOutcome {
   return withTransaction(() => {
     getDb().pragma('defer_foreign_keys = ON')
     let applied = 0

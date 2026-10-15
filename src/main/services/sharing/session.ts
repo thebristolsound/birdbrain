@@ -32,17 +32,19 @@ import {
   safeCasePath
 } from '@main/services/sharing/blobAcceptance'
 import {
-  applyRemoteRows,
   cursorAfter,
   offerPage,
   toWireRows,
+  verifyRemoteRows,
   type RowPage
 } from '@main/services/sharing/workingRows'
 import { beginSession, finishSession, writeMembersFile } from '@main/services/sharing/syncState'
 import { isChainInstallationId } from '../../../packages/evidence-package-layout/index'
 import {
+  applyRows,
   maxAuthorVersionInCase,
   rowsOfAuthorByTable,
+  type RemoteRow,
   type TableOffer
 } from '@main/services/db/workingRowRepo'
 import {
@@ -97,6 +99,11 @@ export interface SyncSource {
 // its envelope always fit one frame; a member with more than this to send
 // is answered in as many pages as it takes.
 export const PAGE_BYTES = 4 * 1024 * 1024
+
+// The most pages of one author's rows a session asks for. A listener that
+// keeps answering `more` with rows that verify is bounded here; one whose
+// rows do not verify moves no cursor and is stopped by the progress check.
+export const MAX_ROW_PAGES = 1000
 
 export interface ServeOptions {
   pageBytes?: number
@@ -591,25 +598,41 @@ export async function pullFromPeer(
     // revoked member's rows are not asked for: peers stop syncing with the
     // member (decision 11), and a row has no index to bound it by.
     options.onPhase?.('rows')
+    const received: RemoteRow[] = []
     for (const member of roster) {
       if (member.installationId === self || member.revokedAtIndex !== null) continue
       const { installationId } = member
       let since = maxAuthorVersionInCase(caseId, installationId)
       // One request per page until the peer says nothing above the page
-      // remains, each page applied as it lands. A page whose batch is refused
-      // ends this author's loop; the next session asks from the same cursor.
-      for (;;) {
+      // remains, at most MAX_ROW_PAGES. Each page is verified as it lands and
+      // kept for the one apply below; the cursor moves on the verified rows
+      // alone, so a peer answering with rows that do not verify moves
+      // nothing and the loop ends.
+      for (let pages = 0; pages < MAX_ROW_PAGES; pages++) {
         await writeMessage(stream, { t: 'rows-request', installationId, sinceVersion: since })
         const page = await expectMessage(reader, 'rows')
         if (page.installationId !== installationId || page.sinceVersion !== since) {
           throw new ProtocolError(`rows answered for ${page.installationId}@${page.sinceVersion}`)
         }
-        const outcome = applyRemoteRows(page.rows, roster, new Set([installationId]))
-        result.rowsApplied += outcome.applied
-        result.errors.push(...outcome.refused)
-        const top = cursorAfter(page.rows, since)
-        if (!page.more || top <= since || outcome.refused.some((r) => r.kind === 'peer')) break
+        const { accepted, refused } = verifyRemoteRows(page.rows, roster, new Set([installationId]))
+        result.errors.push(...refused)
+        received.push(...accepted)
+        const top = cursorAfter(accepted, since)
+        if (!page.more || top <= since) break
         since = top
+      }
+    }
+    // Every row this session received lands in one transaction with foreign
+    // keys deferred to its commit (the design's "Working-layer rows" rule,
+    // ruling of 2026-10-15): a row may reference one from a later page or
+    // another author. Until #1811 writes Capture rows for other members'
+    // Captures, a row that references one this replica lacks rolls back the
+    // session's rows as a whole; the next session asks from the same cursors.
+    if (received.length > 0) {
+      try {
+        result.rowsApplied += applyRows(received).applied
+      } catch (err) {
+        fail('peer', `rows received this session could not be applied: ${(err as Error).message}`)
       }
     }
 

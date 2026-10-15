@@ -247,17 +247,19 @@ function storedEntries(jsonl: Buffer): ManifestEntry[] {
   })
 }
 
-// Membership is the Owner's to write (sharedCase.ts). Entries newly accepted
-// from the Owner's chain update the roster cache, which is how a member learns
-// who joined or was revoked after it did. Every line here is one the
-// acceptance stored, verified under the Owner's key, so each parses as an
-// entry. Returns what could not be applied.
-function refreshRosterFromOwnerChain(caseId: string, lines: string[]): string[] {
+// Membership is the Owner's to write (sharedCase.ts), and `case_members` is
+// the cache of what the Owner's chain states: derived, never authoritative,
+// rebuilt from the chain (the design's "Case directory"). This rebuilds it
+// from the Owner's chain as stored, which is how a member learns who joined
+// or was revoked after it did. Idempotent: a member already held is not
+// added again and a revocation already held is kept, so it runs over the
+// whole stored chain every session, and a stored line an earlier session
+// left unapplied is applied by the next. A member-add whose id cannot name a
+// chain file is refused and returned; a write that fails throws, so the
+// session fails and the next one retries from the file.
+function rebuildRosterFromOwnerChain(caseId: string, entries: ManifestEntry[]): string[] {
   const refused: string[] = []
-  for (const line of lines) {
-    const parsed = ManifestEntrySchema.safeParse(JSON.parse(line))
-    if (!parsed.success) continue
-    const entry = parsed.data
+  for (const entry of entries) {
     if (entry.type !== 'member-add' && entry.type !== 'member-revoke') continue
     // The id names that member's chain file on every replica; one that is
     // not a single path segment is refused here rather than written to.
@@ -270,24 +272,20 @@ function refreshRosterFromOwnerChain(caseId: string, lines: string[]): string[] 
     const existing = listCaseMembers(caseId).find(
       (m) => m.installationId === entry.memberInstallationId
     )
-    try {
-      if (entry.type === 'member-add' && !existing) {
-        upsertCaseMember({
-          caseId,
-          installationId: entry.memberInstallationId,
-          publicKeyPem: entry.memberPublicKeyPem,
-          memberCode: entry.memberCode,
-          operatorName: entry.memberOperatorName,
-          nodeId: entry.nodeId,
-          role: entry.role,
-          addedAtIndex: entry.index,
-          revokedAtIndex: null
-        })
-      } else if (entry.type === 'member-revoke' && existing && existing.revokedAtIndex === null) {
-        upsertCaseMember({ ...existing, revokedAtIndex: entry.index })
-      }
-    } catch (err) {
-      refused.push(`${entry.type} at index ${entry.index}: ${(err as Error).message}`)
+    if (entry.type === 'member-add' && !existing) {
+      upsertCaseMember({
+        caseId,
+        installationId: entry.memberInstallationId,
+        publicKeyPem: entry.memberPublicKeyPem,
+        memberCode: entry.memberCode,
+        operatorName: entry.memberOperatorName,
+        nodeId: entry.nodeId,
+        role: entry.role,
+        addedAtIndex: entry.index,
+        revokedAtIndex: null
+      })
+    } else if (entry.type === 'member-revoke' && existing && existing.revokedAtIndex === null) {
+      upsertCaseMember({ ...existing, revokedAtIndex: entry.index })
     }
   }
   return refused
@@ -397,8 +395,26 @@ export async function pullFromPeer(
   const fail = (kind: SyncErrorKind, detail: string): void => {
     result.errors.push({ kind, detail })
   }
+  const ownerId = roster.find((m) => m.role === 'owner')?.installationId
+  const refusedMembers = new Set<string>()
+  // The roster rebuilt from the Owner's chain as this replica stores it
+  // (rebuildRosterFromOwnerChain); on the Owner's own replica the roster is
+  // the one its own membership writes keep.
+  const rebuildRoster = (): void => {
+    if (ownerId === undefined || ownerId === self) return
+    const stored = storedEntries(Buffer.from(readMemberChainText(caseDir, ownerId)))
+    for (const detail of rebuildRosterFromOwnerChain(caseId, stored)) {
+      if (refusedMembers.has(detail)) continue
+      refusedMembers.add(detail)
+      result.errors.push({ kind: 'rejected-entry', detail, installationId: ownerId })
+    }
+    roster = listCaseMembers(caseId)
+  }
   beginSession(caseId)
   try {
+    // Before hello, so a revocation an earlier session stored but could not
+    // record refuses the revoked member in this one.
+    rebuildRoster()
     options.onPhase?.('hello')
     const challenge = randomBytes(CHALLENGE_BYTES)
     await writeMessage(stream, {
@@ -442,7 +458,6 @@ export async function pullFromPeer(
     // installation the roster does not name has no key to verify it under
     // and is not asked for; the verify walk reports it as unknown-member.
     options.onPhase?.('entries')
-    const ownerId = roster.find((m) => m.role === 'owner')?.installationId
     const advanced: Array<{
       installationId: string
       index: number
@@ -487,9 +502,6 @@ export async function pullFromPeer(
       const storedBefore = storedCount
       let received = 0
       let head: ChainHeadRef | null = null
-      // The Owner's lines accepted this session, read for the roster once
-      // the chain is judged (below), never before.
-      const ownerLines: string[] = []
       // One request per page, from the stored head, until the peer's head or
       // the bound is reached. A page that is refused, or that stops the
       // chain, ends this member's loop; the next session asks again.
@@ -541,7 +553,6 @@ export async function pullFromPeer(
             received += acceptance.appended
             head = acceptance.head
             storedCount += acceptance.appended
-            if (installationId === ownerId) ownerLines.push(...acceptance.lines)
           }
           if (acceptance.outcome === 'newer-version' || acceptance.appended === 0) break
         }
@@ -574,16 +585,9 @@ export async function pullFromPeer(
             head = null
           }
         }
-        // The roster follows the Owner's lines that survived the judgement,
-        // on every way out: a chain cut back changes no membership, and one
-        // kept records its member-add and member-revoke entries now, since
-        // no later session reads a stored line again.
-        if (received > 0 && installationId === ownerId && ownerLines.length > 0) {
-          for (const detail of refreshRosterFromOwnerChain(caseId, ownerLines)) {
-            result.errors.push({ kind: 'rejected-entry', detail, installationId })
-          }
-          roster = listCaseMembers(caseId)
-        }
+        // The roster follows the Owner's chain as stored once it is judged,
+        // on every way out: a chain cut back changes no membership.
+        if (installationId === ownerId) rebuildRoster()
       }
       if (received === 0 || head === null) continue
       result.entriesReceived += received

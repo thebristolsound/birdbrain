@@ -335,6 +335,51 @@ describe('sync session between peers (#1512)', () => {
   // lines by a count taken over chain lines, so a blank line in a relayed
   // Owner history threw after the lines were stored, and the revocation in
   // them never reached the roster, in that session or any later one.
+  // Fourth pre-pass, finding 1: the roster was refreshed only from the lines
+  // a session accepted, and a membership write that threw became an error
+  // string, so a revocation stored on disk was never recorded. The roster is
+  // rebuilt from the stored Owner chain every session; a failed write fails
+  // the session, and the next one records the revocation from the file.
+  it('records a revocation whose roster write failed once, in the next session', async () => {
+    await activate(A)
+    const revoke = appendOwnChainLine(CASE_ID, memberRevokeBody(CASE_ID, C, A))
+    const ownerChain = ownChainText(CASE_ID)
+    const source = recordSource(CASE_ID, A)
+
+    await activate(B)
+    getDb().exec(`CREATE TRIGGER roster_busy BEFORE UPDATE OF revoked_at_index ON case_members
+      BEGIN SELECT RAISE(ABORT, 'database is busy'); END`)
+    const failed = await pull(CASE_ID, source).catch((err: Error) => err.message)
+    expect(failed).toBe('database is busy')
+    expect(memberChainText(CASE_ID, A)).toBe(ownerChain)
+    expect(readSyncStateFile(caseDirOf(CASE_ID)).lastError?.kind).toBe('local')
+    getDb().exec('DROP TRIGGER roster_busy')
+
+    const second = await pull(CASE_ID, source)
+    expect(second.errors).toEqual([])
+    expect(second.entriesReceived).toBe(0)
+    expect(
+      listCaseMembers(CASE_ID).find((m) => m.installationId === C.installationId)?.revokedAtIndex
+    ).toBe(revoke.index)
+  })
+
+  it('records a stored revocation no session applied, in a session that receives nothing', async () => {
+    await activate(A)
+    const revoke = appendOwnChainLine(CASE_ID, memberRevokeBody(CASE_ID, C, A))
+    const ownerChain = ownChainText(CASE_ID)
+    const source = recordSource(CASE_ID, A)
+    await activate(B)
+    // The chain on disk as a build or a session that never refreshed the
+    // roster left it.
+    writeFileSync(join(caseDirOf(CASE_ID), memberChainPath(A.installationId)), ownerChain)
+    const result = await pull(CASE_ID, source)
+    expect(result.errors).toEqual([])
+    expect(result.entriesReceived).toBe(0)
+    expect(
+      listCaseMembers(CASE_ID).find((m) => m.installationId === C.installationId)?.revokedAtIndex
+    ).toBe(revoke.index)
+  })
+
   it('records a revocation relayed with blank and joined lines in the Owner history', async () => {
     await activate(A)
     const revoke = appendOwnChainLine(CASE_ID, memberRevokeBody(CASE_ID, C, A))

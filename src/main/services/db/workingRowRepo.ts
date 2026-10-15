@@ -234,8 +234,18 @@ export function maxAuthorVersionInCase(caseId: string, author: string): number {
   return row.v
 }
 
+// The tables a `rows` answer offers whatever the peer's cursor says. A tag
+// belongs to a Case through its applications, which any member writes at
+// any time, so the version the tag's author gave it says nothing about
+// whether a peer has seen it in this Case: a tag created at version 1 and
+// applied here after a peer's cursor passed 1 would never be offered, and
+// every application of it would fail its foreign key on that peer for good.
+// Tags are few and the receiver skips the ones it holds at that version.
+export const CURSOR_FREE_TABLES: ReadonlySet<string> = new Set<SyncedTable>(['tags'])
+
 // Every signed row of `author` in a Case above `sinceVersion`, oldest version
-// first. `author` NULL is this installation's rows.
+// first, plus every row of the cursor-free tables. `author` NULL is this
+// installation's rows.
 export function rowsOfAuthorSince(
   caseId: string,
   author: string | null,
@@ -243,10 +253,11 @@ export function rowsOfAuthorSince(
 ): StoredRow[] {
   const rows: StoredRow[] = []
   for (const table of SYNCED_TABLES) {
+    const aboveCursor = CURSOR_FREE_TABLES.has(table) ? '' : 'AND t.version > @since'
     const raw = getDb()
       .prepare(
         `SELECT t.* FROM ${table} t
-          WHERE ${AUTHOR_MATCH} AND t.version > @since AND t.row_signature IS NOT NULL
+          WHERE ${AUTHOR_MATCH} ${aboveCursor} AND t.row_signature IS NOT NULL
             AND (${SPECS[table].inCase})`
       )
       .all({ case_id: caseId, author, since: sinceVersion }) as Record<string, unknown>[]

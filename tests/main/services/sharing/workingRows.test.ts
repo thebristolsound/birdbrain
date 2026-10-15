@@ -577,4 +577,56 @@ describe('working-layer rows (#1512)', () => {
     )
     expect(referencesForNote('rn')).toEqual([])
   })
+
+  it('offers every reachable tag whatever the cursor, and the other tables above it only', () => {
+    share()
+    const cap = capture()
+    applyRemoteRows(
+      [
+        remoteRow(
+          'tags',
+          { id: 'rt', name: 'remote', color: null, created_at: '2026-10-01T00:00:00.000Z' },
+          1
+        ),
+        remoteRow('notes', noteFields('rn', 'Remote'), 2),
+        remoteRow('exhibit_tags', { exhibit_id: cap, tag_id: 'rt' }, 3)
+      ],
+      roster(),
+      new Set([REMOTE_ID])
+    )
+    expect(rowsOfAuthorSince(caseId, REMOTE_ID, 0).map((r) => [r.table, r.version])).toEqual([
+      ['tags', 1],
+      ['notes', 2],
+      ['exhibit_tags', 3]
+    ])
+    expect(rowsOfAuthorSince(caseId, REMOTE_ID, 2).map((r) => [r.table, r.version])).toEqual([
+      ['tags', 1],
+      ['exhibit_tags', 3]
+    ])
+    expect(rowsOfAuthorSince(caseId, REMOTE_ID, 3).map((r) => [r.table, r.version])).toEqual([
+      ['tags', 1]
+    ])
+    // A tag applied in another Case only is not this Case's to offer.
+    const elsewhere = createCase({ name: 'Elsewhere' }).id
+    const otherCapture = insertCapture({
+      caseId: elsewhere,
+      url: 'https://example.com/elsewhere',
+      title: 'Elsewhere',
+      hash: 'e'.repeat(64),
+      timestamp: '2026-10-01T00:00:00.000Z'
+    }).id
+    applyRemoteRows(
+      [
+        remoteRow(
+          'tags',
+          { id: 'rt2', name: 'elsewhere', color: null, created_at: '2026-10-01T00:00:00.000Z' },
+          4
+        ),
+        remoteRow('exhibit_tags', { exhibit_id: otherCapture, tag_id: 'rt2' }, 5)
+      ],
+      roster(),
+      new Set([REMOTE_ID])
+    )
+    expect(rowsOfAuthorSince(caseId, REMOTE_ID, 3).map((r) => r.table)).toEqual(['tags'])
+  })
 })

@@ -24,7 +24,7 @@ import { readManifestSnapshot, readSharedCaseSnapshot } from '@main/services/man
 import { getStorageRoot } from '@main/services/storage'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import { canonicalStringify } from '@shared/verify'
-import { BYE_REASONS } from '@main/services/sharing/session'
+import { BYE_REASONS, liveSyncSource } from '@main/services/sharing/session'
 import {
   MEMBERS_FILENAME,
   getSyncState,
@@ -592,5 +592,44 @@ describe('sync session between peers (#1512)', () => {
     expect(ok.errors).toEqual([])
     expect(getSyncState(CASE_ID)).toMatchObject({ phase: 'idle', peersReachable: 1 })
     expect(readSyncStateFile(caseDirOf(CASE_ID)).peers[A.installationId]?.ok).toBe(true)
+  })
+
+  // Review finding 2 on this PR: a tag keeps the version it took at creation
+  // and enters the Case only when applied, so once a peer's cursor had
+  // passed that version the tag was never offered again and every
+  // application of it failed its foreign key on that peer for good.
+  it('offers a tag created before the peer cursor once it is applied in the Case', async () => {
+    await activate(A)
+    const tag = createTag({ name: 'old-tag', color: '#0a0a0a' })
+    const note = createNote({ caseId: CASE_ID, title: 'N', body: '' })
+    const first = recordSource(CASE_ID, A)
+    expect(first.rows.get(A.installationId)!.map((r) => r.table)).toEqual(['notes'])
+
+    await activate(B)
+    const r1 = await pull(CASE_ID, first)
+    expect(r1.errors).toEqual([])
+    expect(r1.rowsApplied).toBe(1)
+    expect(listTags()).toEqual([])
+
+    await activate(A)
+    addTagToNote({ noteId: note.id, tagId: tag.id })
+    // The live source offers the tag above any cursor, with the application.
+    const offered = liveSyncSource(CASE_ID)!.rowsSince(A.installationId, 2)
+    expect(offered.map((r) => [r.table, r.version])).toEqual([
+      ['tags', 1],
+      ['note_tags', 3]
+    ])
+    const second = recordSource(CASE_ID, A)
+
+    await activate(B)
+    const r2 = await pull(CASE_ID, second)
+    expect(r2.errors).toEqual([])
+    expect(r2.rowsApplied).toBe(2)
+    expect(listTags()).toEqual([tag])
+    expect(getTagsForNote(note.id)).toEqual([tag])
+    // A later session offers the tag again and the receiver skips it.
+    const r3 = await pull(CASE_ID, second)
+    expect(r3.errors).toEqual([])
+    expect(r3.rowsApplied).toBe(0)
   })
 })

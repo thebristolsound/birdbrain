@@ -7,6 +7,7 @@ import { ManifestEntrySchema, type ManifestEntry } from '@shared/schemas'
 import { canonicalStringify } from '@shared/verify'
 import { closeDatabase, getDb, initDatabase } from '@main/services/db/core'
 import { upsertCaseMember } from '@main/services/db/caseMemberRepo'
+import { CURSOR_FREE_TABLES } from '@main/services/db/workingRowRepo'
 import { getStorageRoot, initStorage } from '@main/services/storage'
 import { initSettings, updateSettings } from '@main/services/settings'
 import {
@@ -360,7 +361,9 @@ export function recordSource(caseId: string, peer: Peer): RecordedSource {
       (source.chains.get(installationId) ?? []).slice(fromIndex),
     blob: (path) => source.files.get(path) ?? null,
     rowsSince: (author, sinceVersion) =>
-      (source.rows.get(author) ?? []).filter((row) => row.version > sinceVersion),
+      (source.rows.get(author) ?? []).filter(
+        (row) => CURSOR_FREE_TABLES.has(row.table) || row.version > sinceVersion
+      ),
     sign: (hex) => createSign('sha256').update(hex).sign(peer.privateKeyPem, 'base64')
   }
   return source

@@ -712,10 +712,12 @@ export async function pullFromPeer(
     }
   } finally {
     stream.close()
-    // What the session leaves in sync-state.json: its transfer, its first
-    // error, the heads now held, and the peer's last session. members.json
-    // follows the roster, which the entries step may have changed.
-    const [first] = result.errors
+    // What the session leaves in sync-state.json: its transfer, its error
+    // (a failure on this replica when there is one, since the session ended
+    // on it, otherwise the first), the heads now held, and the peer's last
+    // session. members.json follows the roster, which the entries step may
+    // have changed.
+    const first = result.errors.find((e) => e.kind === 'local') ?? result.errors[0]
     const heads: Record<string, { index: number; entryHash: string }> = {}
     for (const { installationId, index, entryHash } of caseChainHeads(caseDir, self)) {
       heads[installationId] = { index, entryHash }

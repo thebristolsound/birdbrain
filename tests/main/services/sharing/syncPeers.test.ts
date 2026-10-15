@@ -949,6 +949,24 @@ describe('sync session between peers (#1512)', () => {
     expect(file.lastSuccessAt).toBeNull()
     expect(file.lastError?.detail).toBe('session failed: disk full')
     expect(file.peers[A.installationId]?.ok).toBe(false)
+
+    // Fourth pre-pass, finding 4: a throw after an earlier refusal in the
+    // same session is still recorded as this replica's failure.
+    await activate(A)
+    const doc = addDocument(CASE_ID, A, 2)
+    const tampered = recordSource(CASE_ID, A)
+    tampered.files.set(doc.path, Uint8Array.from(Buffer.from('tampered')))
+    await activate(B)
+    const again = await pull(CASE_ID, tampered, {
+      onPhase: (phase) => {
+        if (phase === 'rows') throw new Error('disk full again')
+      }
+    }).catch((err: Error) => err.message)
+    expect(again).toBe('disk full again')
+    expect(getSyncState(CASE_ID).lastError?.kind).toBe('local')
+    expect(readSyncStateFile(caseDirOf(CASE_ID)).lastError?.detail).toBe(
+      'session failed: disk full again'
+    )
   })
 
   it('leaves the session in sync-state.json and the roster in members.json', async () => {

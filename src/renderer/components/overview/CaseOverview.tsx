@@ -206,7 +206,7 @@ export function CaseOverview() {
             />
           ) : null}
           <SectionCard icon={Tags} title="Tags" action="Manage" onAction={goToSignals}>
-            <OverviewTagsBlock tags={tags} usageCounts={tagUsage} onManage={goToSignals} />
+            <OverviewTagsBlock caseId={caseId} tags={tags} usageCounts={tagUsage} />
           </SectionCard>
           <SectionCard
             icon={Crosshair}
@@ -220,6 +220,7 @@ export function CaseOverview() {
             }
           >
             <OverviewSelectorsBlock
+              caseId={caseId}
               selectors={selectors}
               matchCounts={matchCounts}
               onToggle={toggleSelector}

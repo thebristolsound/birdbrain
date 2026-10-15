@@ -696,6 +696,9 @@ export async function pullFromPeer(
       fail('peer', err.message)
       await sayBye(stream, BYE_REASONS.protocol)
     } else {
+      // This replica's failure, not the peer's: recorded before it
+      // propagates, or the state file would read the session as a success.
+      fail('local', `session failed: ${err instanceof Error ? err.message : String(err)}`)
       throw err
     }
   } finally {

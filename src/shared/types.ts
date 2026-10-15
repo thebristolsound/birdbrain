@@ -1502,13 +1502,16 @@ export interface StagingDiscardResult {
 // kinds of item 21 in docs/specs/2026-09-19-shared-case-members-feasibility-
 // assessment.md, widened by `newer-version` (ruling 3 of 2026-10-10): a
 // teammate's entry from a newer app version, which pauses that member's chain
-// at that entry and is not a forged-entry verdict.
+// at that entry and is not a forged-entry verdict; and by `local`: the
+// session failed on this installation (a thrown error), which is neither the
+// peer's doing nor a success.
 export const SYNC_ERROR_KINDS = [
   'relay',
   'peer',
   'rejected-entry',
   'hash-mismatch',
-  'newer-version'
+  'newer-version',
+  'local'
 ] as const
 export type SyncErrorKind = (typeof SYNC_ERROR_KINDS)[number]
 

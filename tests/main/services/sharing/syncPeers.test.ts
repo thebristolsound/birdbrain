@@ -883,6 +883,29 @@ describe('sync session between peers (#1512)', () => {
     expect(getTagsForCapture(bobsCapture)).toEqual([])
   })
 
+  // Scheduled review finding 6: a session ending in a thrown error recorded
+  // no error, so the state file took a fresh last-success time and the pill
+  // read the crash as a success.
+  it('records a session that threw as failed, under its own kind', async () => {
+    await activate(A)
+    addDocument(CASE_ID, A, 1)
+    const source = recordSource(CASE_ID, A)
+    await activate(B)
+    const outcome = await pull(CASE_ID, source, {
+      onPhase: (phase) => {
+        if (phase === 'blobs') throw new Error('disk full')
+      }
+    }).catch((err: Error) => err.message)
+    expect(outcome).toBe('disk full')
+    const state = getSyncState(CASE_ID)
+    expect(state.phase).toBe('error')
+    expect(state.lastError?.kind).toBe('local')
+    const file = readSyncStateFile(caseDirOf(CASE_ID))
+    expect(file.lastSuccessAt).toBeNull()
+    expect(file.lastError?.detail).toBe('session failed: disk full')
+    expect(file.peers[A.installationId]?.ok).toBe(false)
+  })
+
   it('leaves the session in sync-state.json and the roster in members.json', async () => {
     await activate(A)
     const doc = addDocument(CASE_ID, A, 1)

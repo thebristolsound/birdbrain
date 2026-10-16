@@ -66,7 +66,6 @@ import {
   recordSource,
   seedSharedCase,
   TIME,
-  type IngestedCapture,
   type Peer
 } from '../../../helpers/syncPeers'
 

@@ -2,8 +2,8 @@
 
 **Status:** active
 
-Plan only. Nothing here is built, and the maintainer has not approved it; section 9 holds the
-questions that approval answers. Issue #1811 is SC-2b in
+Plan only. Nothing here is built. The maintainer approved the plan on 2026-10-15 and took the
+recommended answer to every question in section 9. Issue #1811 is SC-2b in
 `docs/plans/2026-10-10-three-programme-agent-briefs.md:233`. This plan was written against
 PR #1873 (issue #1512) at 33b3235b, and every `file:line` citation refers to that commit.
 `origin/main` was at 3bd1287f when this was written.
@@ -638,7 +638,15 @@ Squash commits on `main` name the PR, not the issue. Issues map to PRs through e
 - **sharp can crash the tests.** Task 7's tests use sharp, which crashes under Electron on some
   Linux machines. Run them with `BIRDBRAIN_TEST_SYSTEM_SHARP=1` there (`docs/agents/testing.md:18-30`).
 
-## 9. Open questions for the maintainer
+## 9. Questions the maintainer answered
+
+The maintainer took the recommended answer to all nine on 2026-10-15: a separate evidence
+transaction before the working-layer rows; a row only once every anchored file has arrived and
+matched; an in-memory thumbnail with nothing recorded when the author's chain anchors none;
+Trusted Time stays `none`; the delete guard ships in this PR; received deletions cascade as local
+ones do, with one follow-up issue for both; a received `deletion` of a non-Capture Exhibit is
+skipped; Captures before the author's last `import` get no row; and #1811 is built now, merging
+after #1815 and CE-3 if they are ready and ahead of them otherwise.
 
 1. **Transaction.** Should received Capture and Exhibit rows commit in their own transaction after
    the file step and before the working-layer rows, as this plan recommends? The alternative is to

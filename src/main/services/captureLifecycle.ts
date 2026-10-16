@@ -1,4 +1,4 @@
-import { createReadStream, readFileSync } from 'fs'
+import { createReadStream, existsSync, readFileSync } from 'fs'
 import { createHash, randomUUID } from 'crypto'
 import { join } from 'path'
 import { defaultCaptureStore, StagedRestoreError } from '@main/services/captureStore'
@@ -17,12 +17,11 @@ import {
   getManifestHead,
   readCaptureEntryAt,
   readCaseChains,
-  readManifestSnapshot,
   withCaptureEntry,
   withDeletionEntry,
   ManifestRollback
 } from '@main/services/manifest'
-import type { CaptureChainEntry, ManifestImportEntry } from '@main/services/manifest'
+import type { AuthorChain, CaptureChainEntry, ManifestImportEntry } from '@main/services/manifest'
 import { reconcileCaptureTrustedTime, resolveTrustedTime } from '@main/services/trustedTime'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { getSettings } from '@main/services/settings'
@@ -219,6 +218,8 @@ interface DeleteOneResult {
   outcome: BatchDeleteOutcome
   cause?: unknown
 }
+
+type DeletionIdResolver = (capture: Capture) => string
 
 // `rolled_back.error` crosses the preload bridge, so it carries the error's
 // name and errno code only — an fs message would otherwise hand the renderer
@@ -850,7 +851,11 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
   // `rolled_back` outcome. Staging renames them aside, the row delete commits,
   // and only then are they purged. Every fault before the commit moves them
   // back, which is what `rolled_back` claims.
-  async function deleteOne(capture: Capture, reason?: string): Promise<DeleteOneResult> {
+  async function deleteOne(
+    capture: Capture,
+    deletionId: DeletionIdResolver,
+    reason?: string
+  ): Promise<DeleteOneResult> {
     const captureId = capture.id
     if (capture.format === 'mhtml') {
       const caseDir = store.caseDir(capture.caseId)
@@ -860,7 +865,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
         await withDeletionEntry(
           caseDir,
           {
-            captureId: deletionCaptureId(capture, caseDir),
+            captureId: deletionId(capture),
             caseId: capture.caseId,
             contentHash: capture.hash,
             operatorId: getInstallationId(),
@@ -919,14 +924,20 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
     return { outcome: { captureId, status: 'deleted_unmanifested' } }
   }
 
-  // The chain is verified only when the entry at the row's index names another
-  // id, so a Capture no import renamed is deleted under its own id, as before.
-  function deletionCaptureId(capture: Capture, caseDir: string): string {
-    const { id, manifestIndex } = capture
-    if (typeof manifestIndex !== 'number') return id
-    if (readManifestSnapshot(caseDir).entries[manifestIndex]?.captureId === id) return id
-    const { own } = readCaseChains(caseDir)
-    return own.chain.valid ? signedCaptureId(capture, own.entries, own.imports, caseDir) : id
+  // The id each `deletion` entry names its Capture by, for one delete or one
+  // batch under the case slot. A batch appends only `deletion` entries, so the
+  // existing entries and imports `signedCaptureId` reads stay fixed across it,
+  // and one verified read, taken for the first MHTML row, serves every row.
+  // A rename needs the anchored id map (`readAnchoredIdMap`), so without that
+  // file every row keeps its own id and no chain is read.
+  function deletionIdResolver(caseDir: string): DeletionIdResolver {
+    if (!existsSync(join(caseDir, IMPORT_ID_MAP_FILENAME))) return ({ id }) => id
+    let own: AuthorChain | undefined
+    return (capture) => {
+      own ??= readCaseChains(caseDir).own
+      const { chain, entries, imports } = own
+      return chain.valid ? signedCaptureId(capture, entries, imports, caseDir) : capture.id
+    }
   }
 
   // The commit step of a staged delete. A failed or refused row delete puts
@@ -1143,7 +1154,8 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
         // removed it while we waited.
         const capture = captureRepo.getCapture(captureId)
         if (!capture) return false
-        const { outcome, cause } = await deleteOne(capture, reason)
+        const deletionId = deletionIdResolver(store.caseDir(capture.caseId))
+        const { outcome, cause } = await deleteOne(capture, deletionId, reason)
         if (cause !== undefined && !(cause instanceof ManifestRollback)) throw cause
         return outcome.status === 'deleted' || outcome.status === 'deleted_unmanifested'
       })
@@ -1165,6 +1177,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
 
         const caseDir = store.caseDir(caseId)
         const baseIndex = getManifestHead(caseDir).nextIndex
+        const deletionId = deletionIdResolver(caseDir)
         const outcomes: BatchDeleteOutcome[] = []
         const seen = new Set<string>()
         let haltedAt: string | undefined
@@ -1184,7 +1197,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
             outcomes.push({ captureId: id, status: 'not_attempted' })
             continue
           }
-          const { outcome } = await deleteOne(capture)
+          const { outcome } = await deleteOne(capture, deletionId)
           outcomes.push(outcome)
           if (outcome.status === 'rolled_back') haltedAt = id
         }

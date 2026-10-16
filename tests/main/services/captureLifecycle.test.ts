@@ -24,6 +24,7 @@ import {
   appendManifestEntry,
   getManifestHead
 } from '@main/services/manifest'
+import * as manifestModule from '@main/services/manifest'
 import { createCaptureStore, StagedRestoreError } from '@main/services/captureStore'
 import type { CaptureStore } from '@main/services/captureStore'
 import type { BatchDeleteOutcome } from '@shared/ipc'
@@ -1153,6 +1154,28 @@ describe('createCaptureLifecycle.delete', () => {
     const lines = readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8').split('\n')
     expect(JSON.parse(lines.filter(Boolean).at(-1)!)).toMatchObject({ captureId: row.id })
   })
+
+  function manifestLines(caseDir: string): Record<string, unknown>[] {
+    return readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+  }
+
+  it('verifies the chain once for a renamed delete', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { signed, row } = await renamedImport(lifecycle)
+    const chainReads = vi.spyOn(manifestModule, 'readCaseChains')
+
+    expect(await lifecycle.delete(row.id)).toBe(true)
+
+    expect(chainReads).toHaveBeenCalledTimes(1)
+    expect(lastEntryOf(row.caseId)).toMatchObject({ captureId: signed.id })
+  })
+
+  function lastEntryOf(id: string): Record<string, unknown> | undefined {
+    return manifestLines(join(tempDir, 'captures', id)).at(-1)
+  }
 })
 
 describe('createCaptureLifecycle.deleteMany (#394)', () => {
@@ -1263,6 +1286,51 @@ describe('createCaptureLifecycle.deleteMany (#394)', () => {
       expect(getCapture(c.id)).toBeUndefined()
       expect(mhtmlExists(c)).toBe(false)
     }
+  })
+
+  // #1815: the id each `deletion` entry names comes from one verified read
+  // per batch, and a Case with no import id map reads no chain at all.
+  it('reads no chain for a native batch', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const captures = await ingestN(lifecycle, 3)
+    const chainReads = vi.spyOn(manifestModule, 'readCaseChains')
+    const wholeReads = vi.spyOn(manifestModule, 'readManifestSnapshot')
+
+    const { deletedIds } = await lifecycle.deleteMany(
+      caseId,
+      captures.map(({ id }) => id)
+    )
+
+    expect(deletedIds).toEqual(captures.map(({ id }) => id))
+    expect(chainReads).not.toHaveBeenCalled()
+    expect(wholeReads).not.toHaveBeenCalled()
+  })
+
+  it('verifies the chain once for a batch of renamed Captures', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const signed = await ingestN(lifecycle, 3)
+    const archive = join(tempDir, 'renamed.birdbrain')
+    await exportCaseArchive(caseId, archive)
+    const { newCaseId } = await importCaseArchive(archive)
+    const rows = listCaptures(newCaseId)
+    const signedIdOf = new Map(signed.map(({ id, hash }) => [hash, id]))
+    const expected = rows.map(({ hash }) => signedIdOf.get(hash))
+    expect(rows.some(({ id }, i) => id === expected[i])).toBe(false)
+    const chainReads = vi.spyOn(manifestModule, 'readCaseChains')
+
+    const { deletedIds } = await lifecycle.deleteMany(
+      newCaseId,
+      rows.map(({ id }) => id)
+    )
+
+    expect(deletedIds).toHaveLength(3)
+    expect(chainReads).toHaveBeenCalledTimes(1)
+    const deletions = readFileSync(join(tempDir, 'captures', newCaseId, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+      .filter((entry) => entry.type === 'deletion')
+    expect(deletions.map((entry) => entry.captureId)).toEqual(expected)
   })
 
   it('returns an empty result for an empty id list without touching the manifest', async () => {

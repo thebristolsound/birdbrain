@@ -1,7 +1,7 @@
-import type { ManifestEntry } from '@shared/schemas'
+import { ManifestEntrySchema, type ManifestEntry } from '@shared/schemas'
 import { verifyManifestChainText } from '@shared/verify'
 import type { CaseMember } from '@shared/types'
-import { appendMemberChainLines, readMemberChainText } from '@main/services/manifest'
+import { appendMemberChainLines, readEntries, readMemberChainText } from '@main/services/manifest'
 
 // Acceptance of another member's chain entries (docs/specs/2026-09-19-
 // collaborative-cases-design.md, "Sync session" step 3). A received segment
@@ -53,6 +53,16 @@ export interface AcceptEntrySegmentParams {
 
 export function nonEmptyLines(text: string): string[] {
   return text.split('\n').filter((line) => line.trim().length > 0)
+}
+
+// The entries a stored member chain holds. Every line was verified under the
+// member's key before it was stored, so every line parses; one that does not
+// is skipped rather than trusted.
+export function storedEntries(jsonl: Buffer): ManifestEntry[] {
+  return readEntries(jsonl.toString('utf-8')).flatMap((raw) => {
+    const parsed = ManifestEntrySchema.safeParse(raw)
+    return parsed.success ? [parsed.data] : []
+  })
 }
 
 // One page of chain lines under `maxBytes`: lines are taken in order until

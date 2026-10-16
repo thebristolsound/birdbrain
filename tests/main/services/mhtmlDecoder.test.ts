@@ -5,7 +5,8 @@ import { createHash } from 'crypto'
 import {
   extractHtmlFromMhtml,
   extractHtmlPartsFromMhtml,
-  listHtmlPartsInMhtml
+  listHtmlPartsInMhtml,
+  readMhtmlTitle
 } from '@main/services/mhtmlDecoder'
 
 function mhtml(lines: string[]): Buffer {
@@ -236,5 +237,49 @@ describe('listHtmlPartsInMhtml and extractHtmlPartsFromMhtml', () => {
   it('answers no parts and no snapshot for something that is not an MHTML', () => {
     expect(listHtmlPartsInMhtml(Buffer.alloc(0))).toEqual({ snapshotLocation: null, parts: [] })
     expect(listHtmlPartsInMhtml(mhtml(['Content-Type: text/html', '', 'x'])).parts).toEqual([])
+  })
+})
+
+describe('readMhtmlTitle', () => {
+  const page = (title: string): string[] => [
+    '--B',
+    'Content-Type: text/html; charset=utf-8',
+    '',
+    `<html><head><title>${title}</title></head><body>x</body></html>`,
+    '--B--'
+  ]
+  const top = 'Content-Type: multipart/related; boundary=B'
+
+  it('reads a plain Subject header', () => {
+    const buf = mhtml(['Subject: Harbour Street ledger', top, '', ...page('Other')])
+    expect(readMhtmlTitle(buf)).toBe('Harbour Street ledger')
+  })
+
+  it('decodes a UTF-8 Q word folded across two lines', () => {
+    const buf = mhtml([
+      'Subject: =?utf-8?Q?Caf=C3=A9_on_the?=',
+      ' =?utf-8?Q?_quay?=',
+      top,
+      '',
+      ...page('Other')
+    ])
+    expect(readMhtmlTitle(buf)).toBe('Café on the quay')
+  })
+
+  it('decodes a B word', () => {
+    const b64 = Buffer.from('Ledger – März', 'utf-8').toString('base64')
+    const buf = mhtml([`Subject: =?UTF-8?B?${b64}?=`, top, '', ...page('Other')])
+    expect(readMhtmlTitle(buf)).toBe('Ledger – März')
+  })
+
+  it('falls back to the first page title, decoding its entities', () => {
+    const buf = mhtml([top, '', ...page('  Bread &amp; salt\n &#8211; &#x41;  ')])
+    expect(readMhtmlTitle(buf)).toBe('Bread & salt – A')
+  })
+
+  it('returns null when neither a Subject nor a title exists', () => {
+    const buf = mhtml([top, '', '--B', 'Content-Type: text/html', '', '<p>x</p>', '--B--'])
+    expect(readMhtmlTitle(buf)).toBeNull()
+    expect(readMhtmlTitle(Buffer.alloc(0))).toBeNull()
   })
 })

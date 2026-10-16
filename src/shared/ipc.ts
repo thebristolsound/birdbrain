@@ -675,7 +675,7 @@ export type BatchDeleteOutcome =
   | { captureId: string; status: 'deleted_unmanifested' }
   | { captureId: string; status: 'rolled_back'; stage: 'artifacts' | 'db'; error: string }
   | { captureId: string; status: 'not_attempted' }
-  | { captureId: string; status: 'rejected'; reason: 'not_found' | 'duplicate' }
+  | { captureId: string; status: 'rejected'; reason: 'not_found' | 'duplicate' | 'not_author' }
 
 // What a Case search field pass did with each Exhibit: built fields from its stored
 // files, did not find its stored page, or failed.

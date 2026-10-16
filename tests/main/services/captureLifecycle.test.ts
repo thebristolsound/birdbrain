@@ -1162,6 +1162,34 @@ describe('createCaptureLifecycle.delete', () => {
       .map((line) => JSON.parse(line))
   }
 
+  it('signs under the row id when the entry at its index is not a capture entry', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { row, caseDir } = await renamedImport(lifecycle)
+    const importEntry = manifestLines(caseDir).find((entry) => entry.type === 'import')!
+    getDb()
+      .prepare('UPDATE captures SET manifest_index = ? WHERE id = ?')
+      .run(importEntry.index, row.id)
+
+    expect(await lifecycle.delete(row.id)).toBe(true)
+
+    expect(manifestLines(caseDir).at(-1)).toMatchObject({ type: 'deletion', captureId: row.id })
+  })
+
+  it('signs a renamed import under the row id when its chain does not verify', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { row, caseDir } = await renamedImport(lifecycle)
+    const path = join(caseDir, 'manifest.jsonl')
+    const tampered = manifestLines(caseDir).map((entry) =>
+      entry.type === 'capture' ? { ...entry, url: 'https://tampered.example' } : entry
+    )
+    writeFileSync(path, tampered.map((entry) => JSON.stringify(entry)).join('\n') + '\n')
+    expect(verifyManifestChain(caseDir).valid).toBe(false)
+
+    expect(await lifecycle.delete(row.id)).toBe(true)
+
+    expect(manifestLines(caseDir).at(-1)).toMatchObject({ type: 'deletion', captureId: row.id })
+  })
+
   it('verifies the chain once for a renamed delete', async () => {
     const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
     const { signed, row } = await renamedImport(lifecycle)

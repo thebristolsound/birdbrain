@@ -1,6 +1,7 @@
 // The Case investigation engine's contract (docs/plans/2026-10-10-case-investigation-engine.md,
 // E10): what the view reads, and the arguments and results of every `investigation:` channel.
-// `sortInvestigationView` sorts each array by a canonical key that uses no run id and no time, so
+// `sortInvestigationView` sorts every array whose order carries no meaning by a canonical key that
+// uses no run id and no time, and leaves the four whose order does carry meaning as they are, so
 // two runs on one state serialize identically once ids and times are removed.
 
 import type { ExhibitVerification, WaybackRef } from '@shared/types'
@@ -16,7 +17,9 @@ export type Reading = 'supports' | 'conflicts' | 'unclear'
 export type RuleId = 'same-field' | 'shared-identifier' | 'shared-passage' | 'reply-or-citation'
 
 export type Producer =
-  { kind: 'rule'; rule: RuleId; version: string } | { kind: 'operator'; noteId: string | null } // a Note claim, or a same-name choice
+  | { kind: 'rule'; rule: RuleId; version: string }
+  // An Operator producer is a Note claim, or a same-name choice with a null Note.
+  | { kind: 'operator'; noteId: string | null }
 
 export interface SpanLocator {
   representation: 'html-part' | 'text' | 'capture-url'
@@ -77,7 +80,8 @@ export interface SpanView {
   side: 'a' | 'b' | null
   reading: Reading
   review: 'unreviewed' | 'support' | 'conflict' | 'dismissed'
-  // 'no-longer-counted': the Exhibit's Source Class, or either of two conflicting ones, is AI-origin.
+  // 'no-longer-counted': the Exhibit's Source Class, or either of two conflicting ones, is
+  // AI-origin.
   availability: 'available' | 'withheld' | 'unavailable' | 'no-longer-counted'
   check: ClaimCheck | null // null until CI-11
   holders: { count: number; of: number } | null // "in 3 of 994 Exhibits"
@@ -215,7 +219,8 @@ export interface JointView {
   dismissed: SpanView[]
   strength: StrengthSummary | null // null until CI-12
   weak: boolean
-  lostSide: 'a' | 'b' | null // an accepted Joint between two Subjects with no available support on one side
+  // The side of an accepted Joint between two Subjects that has no available support left.
+  lostSide: 'a' | 'b' | null
 }
 
 export interface PathView {
@@ -550,9 +555,19 @@ function sortJoint(joint: JointView): JointView {
   }
 }
 
+const sortCandidates = (span: WaitingSpanView): WaitingSpanView => ({
+  ...span,
+  candidateSubjectIds: [...span.candidateSubjectIds].sort(text)
+})
+
+const sortGapSubjects = (target: GapTarget): GapTarget =>
+  target.kind === 'subjects' ? { ...target, subjectIds: [...target.subjectIds].sort(text) } : target
+
 /**
- * Sorts every array of a view by its canonical key. Arrays whose order carries meaning (a
- * Joint's two Subjects, a path's Joints and Subjects, the changes since a run) keep their order.
+ * Sorts every array of a view by its canonical key. Four keep their order, which carries
+ * meaning: a Joint's Subjects in side order, a path's Joints and its Subjects in path order, and
+ * the changes since a run in the order they happened. Lists of Subject ids with no order of their own
+ * (a same-name span's candidates, a gap entry's Subjects) sort by id.
  */
 export function sortInvestigationView(view: InvestigationView): InvestigationView {
   const identity = new Map(view.joints.map((j) => [j.id, j.identityHash]))
@@ -572,8 +587,8 @@ export function sortInvestigationView(view: InvestigationView): InvestigationVie
     run,
     subjects: sorted(view.subjects, compareSubjects).map((s) => ({
       ...s,
-      waiting: sorted(s.waiting, compareWaitingSpans),
-      placed: sorted(s.placed, compareWaitingSpans)
+      waiting: sorted(s.waiting.map(sortCandidates), compareWaitingSpans),
+      placed: sorted(s.placed.map(sortCandidates), compareWaitingSpans)
     })),
     joints: sorted(view.joints, compareJoints).map(sortJoint),
     passageGroups: sorted(view.passageGroups, (a, b) => text(a.passageHash, b.passageHash)).map(
@@ -581,7 +596,7 @@ export function sortInvestigationView(view: InvestigationView): InvestigationVie
     ),
     paths: sorted(view.paths, (a, b) => text(pathKey(a), pathKey(b))),
     gaps: sorted(view.gaps, (a, b) => GAP_KINDS.indexOf(a.kind) - GAP_KINDS.indexOf(b.kind)).map(
-      (g) => ({ ...g, entries: sorted(g.entries, compareGapTargets) })
+      (g) => ({ ...g, entries: sorted(g.entries.map(sortGapSubjects), compareGapTargets) })
     ),
     withheld: sorted(view.withheld, compareExhibitRefs).map((w) => ({
       ...w,

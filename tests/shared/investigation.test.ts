@@ -15,7 +15,8 @@ import {
   type MemberRef,
   type OwnIdentifierEntry,
   type SourceClassHead,
-  type SpanView
+  type SpanView,
+  type WaitingSpanView
 } from '@shared/investigation'
 import { FIXTURE_BEFORE_RUN_VIEW, FIXTURE_POPULATED_VIEW } from '@shared/investigationFixture'
 
@@ -26,6 +27,12 @@ const rotate = <T>(items: T[]): T[] => (items.length < 2 ? items : [...items.sli
 function scramble(view: InvestigationView, order: <T>(items: T[]) => T[]): InvestigationView {
   const spans = (list: SpanView[]): SpanView[] =>
     order(list.map((s) => ({ ...s, dates: order(s.dates) })))
+  const candidates = (w: WaitingSpanView): WaitingSpanView => ({
+    ...w,
+    candidateSubjectIds: order(w.candidateSubjectIds)
+  })
+  const gapSubjects = (t: GapTarget): GapTarget =>
+    t.kind === 'subjects' ? { ...t, subjectIds: order(t.subjectIds) } : t
   const joint = (j: JointView): JointView => ({
     ...j,
     decisions: order(j.decisions),
@@ -45,12 +52,16 @@ function scramble(view: InvestigationView, order: <T>(items: T[]) => T[]): Inves
       counts: { ...view.run.counts, notRead: order(view.run.counts.notRead) }
     },
     subjects: order(
-      view.subjects.map((s) => ({ ...s, waiting: order(s.waiting), placed: order(s.placed) }))
+      view.subjects.map((s) => ({
+        ...s,
+        waiting: order(s.waiting.map(candidates)),
+        placed: order(s.placed.map(candidates))
+      }))
     ),
     joints: order(view.joints.map(joint)),
     passageGroups: order(view.passageGroups.map((g) => ({ ...g, holders: order(g.holders) }))),
     paths: order(view.paths),
-    gaps: order(view.gaps.map((g) => ({ ...g, entries: order(g.entries) }))),
+    gaps: order(view.gaps.map((g) => ({ ...g, entries: order(g.entries.map(gapSubjects)) }))),
     withheld: order(view.withheld.map((w) => ({ ...w, holders: order(w.holders) })))
   }
 }
@@ -68,6 +79,44 @@ describe('the canonical order', () => {
     expect(sortInvestigationView(FIXTURE_POPULATED_VIEW)).toEqual(FIXTURE_POPULATED_VIEW)
     expect(sortInvestigationView(FIXTURE_BEFORE_RUN_VIEW)).toEqual(FIXTURE_BEFORE_RUN_VIEW)
     expect(FIXTURE_POPULATED_VIEW.gaps.map((g) => g.kind)).toEqual([...GAP_KINDS])
+  })
+
+  it('sorts the two lists of Subject ids by id', () => {
+    const waiting = FIXTURE_POPULATED_VIEW.subjects.flatMap((s) => s.waiting)
+    const named = FIXTURE_POPULATED_VIEW.gaps.flatMap((g) =>
+      g.entries.flatMap((t) => (t.kind === 'subjects' ? [t.subjectIds] : []))
+    )
+    const lists = [...waiting.map((w) => w.candidateSubjectIds), ...named]
+    expect(lists.some((ids) => ids.length > 1)).toBe(true)
+    for (const ids of lists) expect(ids).toEqual([...ids].sort())
+  })
+
+  it('orders passage groups by passage hash, and same-name spans by place, then group', () => {
+    const view = FIXTURE_POPULATED_VIEW
+    const [group] = view.passageGroups
+    const earlierGroup = { ...group, id: 'earlier-group', passageHash: '0'.repeat(64) }
+    const pike = view.subjects.find((s) => s.waiting.length > 0)
+    if (!pike) throw new Error('the populated view has a same-name span')
+    const [row] = pike.waiting
+    const earlierPlace = {
+      ...row,
+      id: 'earlier-place',
+      locator: { ...row.locator, start: row.locator.start - 1 }
+    }
+    const laterGroup = { ...row, id: 'later-group', groupKey: 'z'.repeat(64) }
+    const sortedView = sortInvestigationView({
+      ...view,
+      passageGroups: [group, earlierGroup],
+      subjects: view.subjects.map((s) =>
+        s.id === pike.id ? { ...s, waiting: [laterGroup, row, earlierPlace] } : s
+      )
+    })
+    expect(sortedView.passageGroups.map((g) => g.id)).toEqual(['earlier-group', group.id])
+    expect(sortedView.subjects.find((s) => s.id === pike.id)?.waiting.map((w) => w.id)).toEqual([
+      'earlier-place',
+      row.id,
+      'later-group'
+    ])
   })
 
   it('keeps arrays whose order carries meaning', () => {

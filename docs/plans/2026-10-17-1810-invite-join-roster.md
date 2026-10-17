@@ -1,8 +1,9 @@
 # Plan: invite, join and roster writers (#1810)
 
-**Status:** active
+**Status:** approved 2026-10-17
 
-Plan only. Nothing here is built, and the maintainer has not approved it. Issue #1810 is SC-6 in
+The maintainer approved this plan on 2026-10-17 and took the recommended answer to every question
+in section 11; the PR that closes #1810 builds it. Issue #1810 is SC-6 in
 `docs/plans/2026-10-10-three-programme-agent-briefs.md:309`. This plan was written against
 `origin/main` at 58997988 (PR #1872 merged), and every `file:line` citation refers to that
 commit. Each citation also names its symbol, which survives later edits. This plan cites two
@@ -698,7 +699,10 @@ review and does not auto-merge.
 - **Rows written before #1873 never sync** (question 7).
 - **An Exhibit only in a failing chain cannot be excluded** (step 5).
 
-## 11. Questions for the maintainer
+## 11. Questions the maintainer answered
+
+The maintainer answered each question on 2026-10-17 with the recommendation; the answer follows
+each question.
 
 1. **The new member's empty chain.** Straight after the Owner approves a joiner, the Owner's
    verification reports the Case as failing (`member-chain-missing`), because the joiner has
@@ -708,17 +712,21 @@ review and does not auto-merge.
    and drop "after every roster write" from the acceptance criterion, or to change the verifier
    to report a missing chain only when some `merge` names that member. The verifier change is on
    the blocking tier, and the 1.0.1-beta.22 and beta.23 verifiers would still report it.
+   **Answer:** every replica keeps an empty chain file for each member until that member's
+   entries arrive, so the Owner's walk passes straight after an approval.
 2. **Who draws the QR code.** Should SC-8 draw it in the renderer with `qrcode-generator` 2.0.4
    (recommended), or SC-6 in the main process? SC-6 has no screen, so a main-process drawing has
    to cross IPC as an image. SC-8 can draw it in light and dark, which its done-when requires.
    SC-6 has no QR decoder to test one against, and taking the dependency here trips ADR-0016's
    criterion 1. The mock already makes the copyable string primary and the QR code secondary.
+   **Answer:** SC-8 (#1514) draws the QR code in the renderer. SC-6 adds no QR dependency.
 3. **Member Code on new `exhibit` entries.** Should new `exhibit` entries in a Shared Case leave
    `memberCode` out and take the code from the writer's `member-add` (recommended), or carry it?
    Leaving it out matches Captures, whose entries have no such field, keeps the Staging Pool
    commit unchanged at stamp 3, and avoids a code that disagrees with the roster, which the walk
    reports as a citation collision. Carrying it would let one chain state its citations without
    the Owner's chain, which the walk needs anyway for the keys.
+   **Answer:** new `exhibit` entries do not carry `memberCode`; a test pins that.
 4. **How Sync now finds a member.** The roster stores a member's node id, and the transport dials
    a ticket. Should SC-6 keep each member's last-known ticket, learned when the member joins and
    passed on in the `welcome`, in the Case's `sync-state.json` (recommended)? The alternative is a
@@ -726,33 +734,45 @@ review and does not auto-merge.
    which publishes the relay URL to n0's DNS service from the Operator's own address. Under the
    recommendation, a member whose relay changes cannot be dialed until something refreshes its
    ticket, which SC-9 can add to the sessions it schedules.
+   **Answer:** each member's last-known ticket is kept in the Case's `sync-state.json`, learned
+   on join and passed on in `welcome`.
 5. **Open invites across a restart.** Should an open invite end when the Owner's app quits
    (recommended for SC-6), or survive in a local file that stores only the hash of each secret?
    The design requires the Owner online when the joiner pastes (decision 5), and the members brief
    only promises the invite survives leaving the screen. Persisting adds a file whose loss or
    copy matters; it can follow if testers hit restarts.
+   **Answer:** an open invite ends when the Owner's app quits, and a later join fails with a
+   named error.
 6. **Showing the Owner's name before joining.** The joiner's wizard shows the Operator name the
    invite carries before the joiner commits (members brief, "Join flow" step 2; feasibility item
    23), and none of the nine channels decodes an invite without joining. Should SC-6 add a tenth
    channel, `sharing:readInvite`, that decodes and returns the Case id, the Owner's name, and the
    expiry (recommended)? The alternatives are moving the decoder to `src/shared/` for the renderer,
    which puts `cborg` in the renderer bundle, or leaving it to SC-8.
+   **Answer:** SC-6 adds a tenth channel, `sharing:readInvite`, that shows the Owner's name
+   before the joiner commits.
 7. **Notes and tags written before #1873.** A row written before #1873 has no signature and is
    never offered to peers (`rowsOfAuthorByTable`,
    `src/main/services/db/workingRowRepo.ts:344`), so sharing an older Case leaves its older notes,
    tags, and annotations on the Owner's machine. Should SC-6 sign them when the Case becomes shared,
    or should the SC-6 PR file a follow-up issue (recommended)? Signing touches every synced table
    and `workingRows.ts`, and it is separable from the invite flow.
+   **Answer:** SC-6 does not sign them; the SC-6 PR files a follow-up issue and cites its number
+   (ADR-0028: file first, then cite).
 8. **The roster rebuild on a re-shared fork.** Should SC-6 move the session's roster rebuild into
    `rosterCache.ts` and make it read the Owner's chain from its last `import`, as the verifier does
    (recommended)? Without it, a fork shared again picks up the source Case's members, and a
    clashing Member Code fails every session (gap 2). SC-6 needs the same rebuild on the Owner, so
    the move costs one function.
+   **Answer:** the roster rebuild moves out of `session.ts` into `rosterCache.ts` and reads only
+   from the Owner chain's last `import`, as the verifier does.
 9. **Merge order.** Should SC-6 start from `main` now, rebase once onto #1811, and merge after SC-V
    and #1811 (recommended)? The alternative is to wait for #1811 to merge before starting. SC-6
    cannot merge before SC-V either way, and the #1811 overlap is small. In `manifest.ts`, should
    SC-6 also merge ahead of CE-P step 1 (recommended), which is not filed yet? The rebase cost then
    falls on CE-P step 1, in `MIN_READER_SCHEMA_VERSION` and `fieldMinReaderSchemaVersion`.
+   **Answer:** SC-6 builds from `main` now and merges after #1880 (SC-V) and #1879 (#1811); the
+   orchestrator handles that rebase. In `manifest.ts` it merges ahead of CE-P step 1.
 
 ## 12. Verification
 

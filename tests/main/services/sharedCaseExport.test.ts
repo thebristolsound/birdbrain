@@ -51,6 +51,7 @@ import { HAS_JQ } from '../../helpers/jq'
 import { HAS_OPENSSL } from '../../helpers/openssl'
 import { extractRunbookBlocks, runRunbookBlocks } from '../../helpers/runbookBlocks'
 import { runVerifyScript } from '../../helpers/verifyScript'
+import { checkConformance } from '../../helpers/verifyConformance'
 
 // Shared Cases, step 3 (#1511): the writers. The three acceptance criteria are
 // frozen here, each end to end through the app's own export and import and
@@ -1198,6 +1199,10 @@ describe('Shared Case export, import and fork (#1511)', () => {
         'roster-invalid: exclude at index 4 names Exhibit never-written, which the chain of ' +
           `${PEER_ID} does not hold`
       ])
+      // The package fails nothing else, so the whole verdicts compare too.
+      const conformance = checkConformance(dir)
+      expect(conformance).toMatchObject({ binary: 'fail', script: 'fail', scriptSteps: ['4a'] })
+      expect(conformance.binaryFailures.map((check) => check.name)).toEqual(['shared case'])
     })
 
     it('fails a member chain no member-add names', async () => {

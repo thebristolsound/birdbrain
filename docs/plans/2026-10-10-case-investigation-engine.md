@@ -1827,6 +1827,16 @@ implements it amends ADR-0042 in the same PR, so no code ships against an unamen
   reprocess, an import and its field build is larger than the difference between the medians with
   and without the triggers, and the change-log rows each writes are counted exactly. Whether imported runs read as out of date
   moves to CI-9b, whose archive first carries them.
+- **2026-10-17, CI-9b (#1909).** Four repositories under `db/` store and list the fourteen record
+  tables through one shared row store, `withheldExhibitIds()` reads the eligibility view, and Case
+  Archive version 10 carries every record table. The import remaps every id, `replaces`
+  included, writes `persona_id` as null, and stamps an author-less row with
+  `header.source.installationId`, the exporter, which for a fork is the installation
+  `attributeForkedExhibits()` stamps and not the Owner `plan.sourceInstallationId` names.
+  ADR-0042 says the change log and the Case revision do not travel. Departures: the
+  repositories add `withheldExhibitIds()`, which E5 does not list, for #1827 and CI-14; Notes and
+  the other working-layer rows still import with no author, since ruling 62 covers only the
+  investigation records.
 - **Next.** The maintainer reads this plan and approves it on PR #1805; the gates still open are in
   "Gates this plan waits on". Each brief is then filed against the ready-for-agent bar in
   `docs/agents/triage-labels.md`.

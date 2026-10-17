@@ -77,7 +77,10 @@ below are **Case data**: rows in the app's SQLite database, keyed to the Case, l
   those digests alone. The header is unsigned, so a deliberate edit that also rewrites the
   digests passes that check, and the chain verification that runs on import cannot catch it,
   because no Manifest Entry names these rows. Run records travel too, including the list of
-  text a run sent to a hosted provider, so the archive discloses what was sent.
+  text a run sent to a hosted provider, so the archive discloses what was sent. **Amended
+  2026-10-17:** the change log and the Case revision do not travel. The archive carries
+  neither, and the import's own triggers start the new Case a fresh log as its rows arrive, as
+  the maintainer ruled on 2026-10-10 on the engine plan's open question 2.
 - **Export** follows the engine spec: Joints and their decisions travel where an export preset
   includes Notes and stay out where it omits them (the Court exhibit preset), always as the
   Operator's working material, never as evidence

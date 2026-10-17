@@ -1331,6 +1331,21 @@ describe('Shared Case export, import and fork (#1511)', () => {
       expect(verifyEvidencePackage(dir).pass).toBe(true)
     })
 
+    // The Owner's chain begins with an entry an earlier installation signed,
+    // which verifies under the key the Owner's import entry carries.
+    it("passes a member's package whose Owner chain continues an earlier import", async () => {
+      memberReplicaAfterImport()
+      const { dir } = await exportPackage()
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(0)
+      expect(run.output).toContain(
+        `${peerChain}: the Owner's chain (${PEER_ID}), 5 entr(ies) verified under the key its ` +
+          `own member-add carries (SHA-256 ${peerFingerprint})`
+      )
+      expect(verifyEvidencePackage(dir).pass).toBe(true)
+    })
+
     it("fails a package a member exported when no merge anchors the Owner's key", async () => {
       // memberReplica without the merge: nothing this installation signed
       // names the Owner's chain, so the key that chain claims is not trusted.

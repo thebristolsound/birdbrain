@@ -785,10 +785,13 @@ export const VERIFY_SCRIPT = `#!/bin/sh
 # entryHash, and for every capture this package's
 # signed chain still calls active and in scope, its page, screenshot and RFC
 # 3161 token are enclosed and match that signed entry. In a Shared Case package
-# it also means every other member's chain verifies under the key the Owner's
-# member-add for it carries, every merge entry names an entry of the chain it
-# names with that entry's entryHash, and each member's active exhibits match the
-# chain their author signed. A signed token whose
+# it also means that every other member's chain the package carries verifies,
+# to its last line and by that same rule, under the key the member-add for that
+# member in its Case Owner's chain carries; that every merge entry names an
+# entry of the chain it names with that entry's entryHash; and that each
+# member's exhibits that are active and in scope match the chain their author
+# signed. A member chain holding an entry from a newer schema than this script
+# reads, or one whose file it cannot open, is INCOMPLETE. A signed token whose
 # capture is active and in scope but whose bytes the package does not enclose
 # is a FAILURE, not a silence; a deleted or out-of-selection capture's token is
 # expected absent, exactly like its page and screenshot. What exit 0 does NOT

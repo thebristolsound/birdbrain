@@ -307,6 +307,15 @@ foreign_case_filter='${JQ_FOREIGN_CASE}'
 merge_heads_filter='${JQ_MERGE_HEADS}'
 citations_filter='${JQ_CITATIONS}'
 exclusions_filter='${JQ_EXCLUSIONS}'
+blank_filter='${JQ_TEXT} nonblank | not'
+
+# Whether line $1 holds only what String.prototype.trim removes, the lines the
+# Birdbrain verifier skips. jq decides, not the shell's [:space:], which varies
+# with the locale and differs from trim either way.
+blank_line() {
+  case "$1" in *'{'*) return 1 ;; esac
+  [ "$(printf '%s\\n' "$1" | jq -R "$blank_filter")" = true ]
+}
 
 # The keyless checks on one entry at position $2 whose predecessor's entryHash
 # is $3. Prints the verifier's reason for the first that fails, or nothing.
@@ -341,12 +350,18 @@ cc_key_for() {
 # after it is read, and the result is INCOMPLETE, as it is for a file this
 # script cannot open. Returns 0 when the chain verifies, 1 after one FAIL, 3
 # after one INCOMPLETE; cc_count counts the entries verified. Its loops read a
-# last line no newline ends, as ${stepRef(2)} explains.
+# last line no newline ends, as ${stepRef(2)} explains, and skip the lines
+# blank_line calls blank. On 0, file $4 holds the lines it verified, one per
+# line, and every later read of the chain reads that file: jq stops at a line
+# such as a lone form feed, which this check skips, and would drop every
+# entry after it unread.
 check_chain() {
   cc_file=$1
   cc_key=$2
   cc_name=$3
+  cc_out=$4
   cc_count=0
+  : >"$cc_out"
   # A loop over a file it cannot open runs no iteration, which would read as a
   # chain of no entries that verified.
   if [ ! -r "$cc_file" ]; then
@@ -358,7 +373,7 @@ check_chain() {
   : >"$tmp/cc-bounds.txt"
   cc_at=0
   while IFS= read -r cc_line || [ -n "$cc_line" ]; do
-    case "$cc_line" in *[![:space:]]*) ;; *) continue ;; esac
+    blank_line "$cc_line" && continue
     if ! printf '%s' "$cc_line" | jq empty >/dev/null 2>&1; then
       fail "$cc_name: entry $cc_at: Invalid JSON"
       return 1
@@ -383,7 +398,7 @@ check_chain() {
   cc_signed=0
   cc_at=0
   while IFS= read -r cc_line || [ -n "$cc_line" ]; do
-    case "$cc_line" in *[![:space:]]*) ;; *) continue ;; esac
+    blank_line "$cc_line" && continue
     [ -n "$cc_stop" ] && [ "$cc_at" -ge "$cc_stop" ] && break
     cc_reason=$(chain_entry_fault "$cc_line" "$cc_at" "$cc_prev")
     if [ -n "$cc_reason" ]; then
@@ -401,6 +416,7 @@ check_chain() {
       return 1
     fi
     cc_prev=$(field "$cc_line" '.entryHash')
+    printf '%s\\n' "$cc_line" >>"$cc_out"
     cc_at=$((cc_at + 1))
   done <"$cc_file"
   if [ -z "$cc_stop" ]; then
@@ -424,7 +440,7 @@ check_chain() {
   fi
   cc_at=0
   while IFS= read -r cc_line || [ -n "$cc_line" ]; do
-    case "$cc_line" in *[![:space:]]*) ;; *) continue ;; esac
+    blank_line "$cc_line" && continue
     [ "$cc_at" -ge "$cc_stop" ] && break
     if [ "$(field "$cc_line" '(.schemaVersion // 0) >= 2')" = true ] &&
       ! verify_line_signature "$cc_line" "$(cc_key_for "$cc_at")"; then
@@ -503,7 +519,8 @@ walk_case() {
     wk_code=$(jq -r --argjson n "$wk_n" '.members[$n].memberCode' "$wk_roster")
     wk_revoked=$(jq -r --argjson n "$wk_n" '.members[$n].revokedAt // empty' "$wk_roster")
     wk_accepted=$(jq -r --argjson n "$wk_n" '.members[$n].acceptedHead // empty' "$wk_roster")
-    check_chain "$wk_path" "$wk_key" "\${wk_prefix}$wk_path (member $wk_code)"
+    wk_lines="$tmp/member-lines-$wk_level-$wk_n.jsonl"
+    check_chain "$wk_path" "$wk_key" "\${wk_prefix}$wk_path (member $wk_code)" "$wk_lines"
     case $? in
     1) continue ;;
     3)
@@ -513,7 +530,7 @@ walk_case() {
     esac
     note "\${wk_prefix}$wk_path: member $wk_code ($wk_id), $cc_count entr(ies) verified under the key the Owner's member-add for it carries (SHA-256 $(sha256_of "$wk_key"))"
     if [ -n "$wk_case_id" ]; then
-      wk_foreign=$(jq -rs --arg caseId "$wk_case_id" "$foreign_case_filter" "$wk_path")
+      wk_foreign=$(jq -rs --arg caseId "$wk_case_id" "$foreign_case_filter" "$wk_lines")
       if [ -n "$wk_foreign" ]; then
         fail "\${wk_prefix}entry \${wk_foreign%% *} of $wk_id ($wk_code) names Case \${wk_foreign#* }, the Shared Case is $wk_case_id"
         continue
@@ -524,16 +541,16 @@ walk_case() {
     jq -cn --arg c "$wk_id" '{chain: $c}' >>"$wk_records"
     if [ -n "$wk_revoked" ]; then
       jq -c --arg c "$wk_id" --argjson head "\${wk_accepted:--1}" \\
-        'select(.index <= $head) | {chain: $c, e: .}' "$wk_path" >>"$wk_records"
+        'select(.index <= $head) | {chain: $c, e: .}' "$wk_lines" >>"$wk_records"
     else
-      jq -c --arg c "$wk_id" '{chain: $c, e: .}' "$wk_path" >>"$wk_records"
+      jq -c --arg c "$wk_id" '{chain: $c, e: .}' "$wk_lines" >>"$wk_records"
     fi
-    wk_membership=$(jq -rn '${JQ_MEMBERSHIP_ENTRY}' "$wk_path")
+    wk_membership=$(jq -rn '${JQ_MEMBERSHIP_ENTRY}' "$wk_lines")
     [ -z "$wk_membership" ] ||
       fail "\${wk_prefix}$wk_path: entry \${wk_membership%% *}: \${wk_membership#* } entry written outside the Owner's chain"
     if [ -n "$wk_revoked" ]; then
       wk_late=$(jq -rn --argjson head "\${wk_accepted:--1}" \\
-        'first(inputs | select(.index > $head)) | .index' "$wk_path")
+        'first(inputs | select(.index > $head)) | .index' "$wk_lines")
       if [ -n "$wk_late" ]; then
         if [ -n "$wk_accepted" ]; then
           wk_why="the Owner merged up to index $wk_accepted before revoking it"
@@ -642,11 +659,11 @@ member_chains() {
       fail "no member-add in the Owner's chain carries the key in $SIGNING_KEY_FILE"
       return
     fi
-    check_chain "$mc_claim_path" "$tmp/owner-key.pem" "$mc_claim_path (the Owner)" || return
+    check_chain "$mc_claim_path" "$tmp/owner-key.pem" "$mc_claim_path (the Owner)" \\
+      "$tmp/owner-0.jsonl" || return
     note "$mc_claim_path: the Owner's chain ($mc_claim_id), $cc_count entr(ies) verified under the key its own member-add carries (SHA-256 $(sha256_of "$tmp/owner-key.pem")), which a merge in $MANIFEST_FILE anchors at index $mc_anchor"
     mc_owner_key="$tmp/owner-key.pem"
     mc_owner_name=$mc_claim_path
-    jq -c . "$mc_claim_path" >"$tmp/owner-0.jsonl"
     printf '%s/%s\\n' "$mc_local" "$MANIFEST_FILE" >"$tmp/members-0.txt"
     while IFS= read -r mc_member; do
       [ "\${mc_member%%/*}" = "$mc_claim_id" ] || printf '%s\\n' "$mc_member" >>"$tmp/members-0.txt"
@@ -790,8 +807,9 @@ export const VERIFY_SCRIPT = `#!/bin/sh
 # member in its Case Owner's chain carries; that every merge entry names an
 # entry of the chain it names with that entry's entryHash; and that each
 # member's exhibits that are active and in scope match the chain their author
-# signed. A member chain holding an entry from a newer schema than this script
-# reads, or one whose file it cannot open, is INCOMPLETE. A signed token whose
+# signed. Every read of a member chain after its check takes the lines that
+# check verified. A member chain holding an entry from a newer schema than this
+# script reads, or one whose file it cannot open, is INCOMPLETE. A signed token whose
 # capture is active and in scope but whose bytes the package does not enclose
 # is a FAILURE, not a silence; a deleted or out-of-selection capture's token is
 # expected absent, exactly like its page and screenshot. What exit 0 does NOT
@@ -995,7 +1013,9 @@ ${openStep(2)}
 # Every loop over a chain file reads its last line even with no newline after
 # it, the "|| [ -n ... ]" in its condition: jq, which later steps read the
 # chain with, reads that line, so a loop that skipped it would leave a line
-# those steps act on that no check here verified.
+# those steps act on that no check here verified. ${sentenceStart(stepRef(MEMBER_CHAINS_STEP.id))}
+# guards the other direction too, a line its loop skips that jq stops at, by
+# reading each member chain afterwards from the lines its check verified.
 : >"$tmp/boundaries.txt"
 position=0
 while IFS= read -r line || [ -n "$line" ]; do

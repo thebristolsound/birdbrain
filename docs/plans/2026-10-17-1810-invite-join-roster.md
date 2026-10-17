@@ -8,7 +8,7 @@ Plan only. Nothing here is built, and the maintainer has not approved it. Issue 
 commit. Each citation also names its symbol, which survives later edits. This plan cites two
 unmerged branches by commit. #1811's draft PR #1879 is `feat/1811-received-entries` at 36ecaf34,
 which carries the same changes as `feat/1811-apply-received-entries`, cut from an older base.
-SC-V's branch is `feat/1864-verify-member-chains` at 713099a2, which has no pull request yet.
+SC-V is draft PR #1880 on `feat/1864-member-chains` at 713099a2.
 
 ## 1. Summary
 
@@ -635,7 +635,7 @@ API on 2026-10-16.
 | Item | Rule | State | Effect on SC-6 |
 |---|---|---|---|
 | SC-2 (#1512) | SC-6 waits for it | Merged as PR #1873 (03b3eded) | Free |
-| SC-V (#1864) | SC-6 merges after it | Built on `feat/1864-verify-member-chains` (713099a2), no pull request | SC-6 cannot merge first |
+| SC-V (#1864) | SC-6 merges after it | Draft PR #1880 on `feat/1864-member-chains` (713099a2) | SC-6 cannot merge first |
 | SC-1 (#1713), `manifest.ts` | Before SC-6 | Merged as PR #1844 | Free |
 | #1815, `manifest.ts` if it changes `withDeletionEntry` | Before SC-6 | PR #1876 open; it does not touch `manifest.ts` | Free |
 | CE-P step 1, `manifest.ts` | Before SC-6 | Not filed | Question 9 |

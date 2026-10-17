@@ -38,6 +38,7 @@ import {
   serveSyncSession,
   type SyncSource
 } from '@main/services/sharing/session'
+import type { ReceivedCaptures } from '@main/services/sharing/receivedEvidence'
 import { memberTickets, rememberMemberTickets } from '@main/services/sharing/syncState'
 import {
   PeerUnreachableError,
@@ -64,6 +65,9 @@ export interface SharingServiceDeps {
   emitJoinProgress?: (payload: SharingJoinProgressEvent) => void
   // What a listening node serves a Case from; the live source by default.
   sourceFor?: (caseId: string) => SyncSource | null
+  // What every pull hands the apply step (receivedEvidence.ts). Required, as on
+  // the session, so no session this service runs skips an author's deletion.
+  receivedCaptures: ReceivedCaptures
 }
 
 export interface StreamHandlers {
@@ -139,7 +143,7 @@ export class SharingService {
   private readonly syncing = new Map<string, Promise<SharingSyncOutcome[]>>()
   private readonly sourceFor: (caseId: string) => SyncSource | null
 
-  constructor(private readonly deps: SharingServiceDeps = {}) {
+  constructor(private readonly deps: SharingServiceDeps) {
     this.sourceFor = deps.sourceFor ?? liveSyncSource
   }
 
@@ -247,7 +251,9 @@ export class SharingService {
       this.changed(caseId)
       step('syncing')
       try {
-        await pullFromPeer(caseId, await transport.openStream(connection))
+        await pullFromPeer(caseId, await transport.openStream(connection), {
+          receivedCaptures: this.deps.receivedCaptures
+        })
       } catch (err) {
         logger.warn('sharing', 'sharing.first_session_failed', undefined, err)
       }
@@ -323,7 +329,9 @@ export class SharingService {
         throw err
       }
       try {
-        const result = await pullFromPeer(caseId, await transport.openStream(connection))
+        const result = await pullFromPeer(caseId, await transport.openStream(connection), {
+          receivedCaptures: this.deps.receivedCaptures
+        })
         outcomes.push({
           installationId,
           outcome: 'synced',

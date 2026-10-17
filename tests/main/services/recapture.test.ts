@@ -1,5 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { createReadStream, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import {
+  createReadStream,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { once } from 'events'
@@ -19,6 +27,7 @@ import {
   type RenderedPage,
   type RenderPage
 } from '@main/services/recapture'
+import { RefusedAddressError } from '@main/services/localAddressPolicy'
 import type { CaptureEvent, Capture } from '@shared/types'
 
 vi.mock('@main/services/tlsCertChain', async (importOriginal) => {
@@ -272,6 +281,82 @@ describe('recapture service', () => {
     expect(mhtmlStream.destroyed).toBe(true)
     if (!mhtmlStream.closed) await once(mhtmlStream, 'close')
     expect(mhtmlStream.closed).toBe(true)
+  })
+
+  // Unit tests run with no Electron app, as a packaged build reads it: the e2e loopback
+  // switch is off, so 127.0.0.1 is refused here as it is in production (#1726).
+  it('refuses a link to a loopback or private address at enqueue, naming the class', async () => {
+    let rendered = 0
+    const svc = makeService(async (url, opts) => {
+      rendered++
+      return fakeRender()(url, opts)
+    })
+    const res = svc.enqueue([
+      { url: 'http://127.0.0.1:8080/', caseId },
+      { url: 'http://localhost/admin', caseId },
+      { url: 'http://192.168.1.1/', caseId },
+      { url: 'http://[::ffff:10.0.0.1]/', caseId }
+    ])
+    await svc.idle()
+
+    expect(res.accepted).toBe(0)
+    expect(res.rejected.map((r) => r.reason)).toEqual([
+      'Points at a loopback address',
+      'Points at this computer',
+      'Points at a private address',
+      'Points at a private address'
+    ])
+    expect(rendered).toBe(0)
+    expect(newCaptures).toHaveLength(0)
+  })
+
+  function caseDirFiles(): string[] {
+    return readdirSync(join(getStorageRoot(), caseId), { recursive: true }) as string[]
+  }
+
+  it.each([
+    ['a loopback address', 'Redirects to a loopback address'],
+    ['a private address', 'Redirects to a private address']
+  ])('ends a job the renderer refused at a hop to %s, writing nothing', async (cls, reason) => {
+    const before = caseDirFiles()
+    const render: RenderPage = async () => {
+      throw new RefusedAddressError(cls)
+    }
+    const svc = makeService(render)
+    expect(svc.enqueue([{ url: 'https://public.example/r', caseId }]).accepted).toBe(1)
+    await svc.idle()
+
+    expect(events.filter((e) => e.type !== 'received')).toEqual([
+      expect.objectContaining({
+        type: 'skipped',
+        source: 'recapture',
+        url: 'https://public.example/r',
+        skipReason: reason
+      })
+    ])
+    expect(newCaptures).toHaveLength(0)
+    expect(existsSync(join(getStorageRoot(), caseId, MANIFEST_FILENAME))).toBe(false)
+    expect(caseDirFiles()).toEqual(before)
+  })
+
+  it('refuses a render whose final URL is a private address, before it is ingested', async () => {
+    const before = caseDirFiles()
+    const tmpFile = join(tempDir, 'rendered.mhtml')
+    writeFileSync(tmpFile, 'mhtml-bytes')
+    const mhtmlStream = createReadStream(tmpFile)
+    await once(mhtmlStream, 'ready')
+    const svc = makeService(fakeRender({ finalUrl: 'http://192.168.0.10/router', mhtmlStream }))
+    svc.enqueue([{ url: 'https://public.example/r', caseId }])
+    await svc.idle()
+
+    expect(newCaptures).toHaveLength(0)
+    const skipped = events.find((e) => e.type === 'skipped')
+    expect(skipped?.url).toBe('https://public.example/r')
+    expect(skipped?.skipReason).toBe('Redirects to a private address')
+    expect(events.find((e) => e.type === 'stored' || e.type === 'failed')).toBeUndefined()
+    expect(existsSync(join(getStorageRoot(), caseId, MANIFEST_FILENAME))).toBe(false)
+    expect(caseDirFiles()).toEqual(before)
+    expect(mhtmlStream.destroyed).toBe(true)
   })
 
   it('emits a failed event (and no capture) when rendering throws', async () => {

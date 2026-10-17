@@ -22,6 +22,14 @@ a running build stores a Persona's cookie values unencrypted, because Electron's
 `EnableCookieEncryption` fuse is off in the build Birdbrain ships. "No secrets beyond the browser
 session" now says so and no longer credits the OS key. Turning the fuse on is #88.
 
+**Amended 2026-10-17 by
+[ADR-0052](0052-import-persona-cookies-from-installed-browsers.md):** a Persona's cookie import
+reads a cookie file or a browser installed on the Operator's machine. A browser import takes the
+sites the Operator picks, or every site when the Operator states that the source browser profile
+serves this Persona alone. "Three mechanisms, one attribute" names both sources. "No secrets
+beyond the browser session" now covers the temporary copy of the source browser's cookie
+database that a browser import reads.
+
 Resolves #542 and #544 under map #541. Grilled and confirmed by the maintainer on 2026-09-19;
 the working plan is `docs/plans/2026-09-19-persona-cookie-import.md`.
 
@@ -51,8 +59,9 @@ pickers; the row stays so historic Exhibits keep their label. Clearing the cooki
 security action and is always available.
 
 **Three mechanisms, one attribute.** A background Recapture or add-URL render may run through a
-persistent Electron session seeded for the Persona by cookie-file import or by a sign-in window
-the user completes by hand. The same window is a persona browser: the user navigates with the
+persistent Electron session seeded for the Persona by a cookie import, which reads a cookie file
+or a browser installed on the Operator's machine (ADR-0052), or by a sign-in window the user
+completes by hand. The same window is a persona browser: the user navigates with the
 session and captures the page in front of them, an operator-witnessed Capture with the method
 `persona-window`. An extension Capture can only declare the Persona the operator says the tab
 was signed in as. The Manifest wording differs: "persona session used" for the unattended
@@ -66,8 +75,12 @@ tester guide carries the disclosure. Fingerprint or user-agent spoofing stays ex
 evasion, and the research also shows it breaks Cloudflare challenges.
 
 **No secrets beyond the browser session.** Cookie files are read, loaded into the session, and
-discarded; their bytes are never copied under the install. Passwords are never stored. The
-only copy of a cookie value is Chromium's own store for that session, the partition's `Cookies`
+discarded; their bytes are never copied under the install. In a browser import (ADR-0052),
+Birdbrain reads a temporary copy of the closed source browser's cookie database, loads the
+cookies of the sites the Operator picked into the session, and deletes the copy afterwards.
+Until then the copy holds the cookie values of every site in the source profile, as plaintext
+for a Firefox source. Passwords are never stored. Apart from that temporary copy, the only copy
+of a cookie value is Chromium's own store for that session, the partition's `Cookies`
 database under the user-data folder, and it holds the values unencrypted: Electron's
 `EnableCookieEncryption` fuse is off in the build Birdbrain ships, so neither the operating
 system key nor `safeStorage` protects them. Turning the fuse on is #88. Settings shows the #414

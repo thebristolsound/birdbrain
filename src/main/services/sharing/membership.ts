@@ -24,7 +24,7 @@ import {
   rebuildRosterCache,
   writeRosterFiles
 } from '@main/services/sharing/rosterCache'
-import { storedEntries } from '@main/services/sharing/session'
+import { storedEntries } from '@main/services/sharing/entryAcceptance'
 import { isChainInstallationId } from '../../../packages/evidence-package-layout/index'
 
 // The roster writers (#1810): the entries only the Owner writes, through the

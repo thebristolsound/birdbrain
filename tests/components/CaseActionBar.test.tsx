@@ -1,28 +1,30 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, within } from '@testing-library/react'
-import type { Case } from '@shared/types'
+import { useAppStore } from '@renderer/stores/appStore'
 
 vi.mock('@renderer/components/status/SessionControls', () => ({
   SessionControls: () => <div data-testid="session-controls" />
-}))
-vi.mock('@renderer/components/export/ExportMenu', () => ({
-  ExportMenu: ({ caseId, caseName }: { caseId: string; caseName: string }) => (
-    <div data-testid="export-menu">{`${caseId}:${caseName}`}</div>
-  )
 }))
 
 import { CaseActionBar } from '@renderer/components/layout/CaseActionBar'
 
 afterEach(() => {
   cleanup()
+  useAppStore.setState({ connectedToExtension: false })
 })
 
 describe('CaseActionBar', () => {
-  it('carries the session switch and the Export menu for the open case', () => {
-    render(<CaseActionBar caseData={{ id: 'case1', name: 'Operation Kestrel' } as Case} />)
+  it('carries the session switch while the extension is connected', () => {
+    useAppStore.setState({ connectedToExtension: true })
+    render(<CaseActionBar />)
     const bar = screen.getByTestId('case-action-bar')
     expect(within(bar).getByTestId('session-controls')).toBeTruthy()
-    expect(within(bar).getByTestId('export-menu').textContent).toBe('case1:Operation Kestrel')
+  })
+
+  it('leaves no empty strip without the extension', () => {
+    useAppStore.setState({ connectedToExtension: false })
+    render(<CaseActionBar />)
+    expect(screen.queryByTestId('case-action-bar')).toBeNull()
   })
 })

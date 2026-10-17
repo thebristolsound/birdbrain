@@ -3,10 +3,13 @@ import { createSign, generateKeyPairSync } from 'crypto'
 import { mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { closeDatabase } from '@main/services/db/core'
 import { listCaseMembers, upsertCaseMember } from '@main/services/db/caseMemberRepo'
 import { createCase, getCase } from '@main/services/db/caseRepo'
+import { getExhibit } from '@main/services/db/exhibitRepo'
 import { resetInstallationId } from '@main/services/installationId'
+import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { resetSigningKey } from '@main/services/signingKey'
 import { updateSettings } from '@main/services/settings'
 import { SharingError } from '@main/services/sharing/errors'
@@ -20,7 +23,11 @@ import {
   writeMessage
 } from '@main/services/sharing/messages'
 import { serveSyncSession } from '@main/services/sharing/session'
-import { SharingService, routeIncomingStream } from '@main/services/sharing/sharingService'
+import {
+  SharingService,
+  routeIncomingStream,
+  type SharingServiceDeps
+} from '@main/services/sharing/sharingService'
 import {
   memberTickets,
   rememberMemberTickets,
@@ -71,6 +78,15 @@ async function settleAsync(until: () => Promise<boolean>): Promise<void> {
     await new Promise<void>((resolve) => setImmediate(resolve))
   }
   throw new Error('condition never held')
+}
+
+// A service whose sessions apply received evidence through a Capture Lifecycle
+// of its own, as the app's does.
+function newService(deps: Partial<SharingServiceDeps> = {}): SharingService {
+  const receivedCaptures = createCaptureLifecycle({
+    selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} })
+  })
+  return new SharingService({ receivedCaptures, ...deps })
 }
 
 const signer = (peer: Peer) => (hex: string) =>
@@ -147,7 +163,7 @@ describe('sharing service (#1810)', () => {
       // A session through the router lands Alice's chain on Bob.
       await activate(B)
       seedSharedCase(caseId, A, [B])
-      const service = new SharingService()
+      const service = newService()
       service.setTransportProvider(async () => hub.createTransport('bob-node'))
       rememberMemberTickets(caseId, { [A.installationId]: node.ticket })
       const [outcome] = await service.syncNow(caseId)
@@ -205,7 +221,7 @@ describe('sharing service (#1810)', () => {
 
   describe('with the default provider', () => {
     it('refuses createInvite, joinCase and syncNow with sharing-unavailable and writes nothing', async () => {
-      const service = new SharingService()
+      const service = newService()
       expect(await refused(() => service.createInvite(caseId))).toBe('sharing-unavailable')
       expect(getCase(caseId)?.sharedAt).toBeUndefined()
       expect(ownChainText(caseId)).toBe('')
@@ -232,7 +248,7 @@ describe('sharing service (#1810)', () => {
     })
 
     it('refuses a join to a Case this installation holds before dialing, and a read of a bad invite', async () => {
-      const service = new SharingService()
+      const service = newService()
       const invite = encodeInvite({
         ticket: 'mem:nowhere',
         caseId,
@@ -259,7 +275,7 @@ describe('sharing service (#1810)', () => {
 
     beforeEach(() => {
       changed = []
-      service = new SharingService({ emitChanged: ({ caseId: id }) => changed.push(id) })
+      service = newService({ emitChanged: ({ caseId: id }) => changed.push(id) })
       service.setTransportProvider(async () => {
         ownerNode = hub.createTransport('alice-node')
         return ownerNode
@@ -302,7 +318,7 @@ describe('sharing service (#1810)', () => {
       void fromAlice
       await activate(B)
       seedSharedCase(caseId, A, [B])
-      const bobService = new SharingService()
+      const bobService = newService()
       bobService.setTransportProvider(async () => hub.createTransport('bob-node'))
       expect(await refused(() => bobService.createInvite(caseId))).toBe('not-owner')
       expect(ownChainText(caseId)).toBe('')
@@ -395,7 +411,7 @@ describe('sharing service (#1810)', () => {
       // Bob holds the Case and a document; his node answers from a recording.
       await activate(B)
       seedSharedCase(caseId, A, [B, C])
-      addDocument(caseId, B, 1)
+      const bobDoc = addDocument(caseId, B, 1)
       const fromBob = recordSource(caseId, B)
       await activate(A)
       const { node: bobNode } = await listening('bob-node', {
@@ -426,6 +442,8 @@ describe('sharing service (#1810)', () => {
         }
       ])
       expect(mergeEntries(caseId)).toHaveLength(1)
+      // Sync now runs the apply step: Bob's document is listed on Alice (#1811).
+      expect(getExhibit(bobDoc.exhibitId)).toMatchObject({ authorInstallationId: B.installationId })
 
       // A second call while one runs shares its result.
       const [x, y] = await Promise.all([service.syncNow(caseId), service.syncNow(caseId)])
@@ -466,7 +484,7 @@ describe('sharing service (#1810)', () => {
         nodeId: 'bob-node',
         memberCode: 'BM'
       })
-      addDocument(caseId, A, 1)
+      const aliceDoc = addDocument(caseId, A, 1)
       const fromAlice: RecordedSource = recordSource(caseId, A)
       // The stub's roster is Alice's before the approval and gains Bob on
       // it, as the real writer's would.
@@ -507,7 +525,7 @@ describe('sharing service (#1810)', () => {
       await activate(B)
       const steps: SharingJoinProgressEvent[] = []
       const changed: string[] = []
-      const service = new SharingService({
+      const service = newService({
         emitJoinProgress: (event) => steps.push(event),
         emitChanged: ({ caseId: id }) => changed.push(id)
       })
@@ -528,8 +546,12 @@ describe('sharing service (#1810)', () => {
       expect(steps.map((s) => s.step)).toEqual(['connecting', 'waiting', 'adopting', 'syncing'])
       expect(steps[0]).toMatchObject({ caseId, ownerName: 'Alice Owner' })
       expect(changed).toEqual([caseId, caseId])
-      // The first session brought Alice's chain and wrote the merge.
+      // The first session brought Alice's chain and wrote the merge, and its
+      // apply step listed her document here (#1811).
       expect(mergeEntries(caseId)).toHaveLength(1)
+      expect(getExhibit(aliceDoc.exhibitId)).toMatchObject({
+        authorInstallationId: A.installationId
+      })
       expect(memberTickets(caseId)).toEqual({ [A.installationId]: ownerNode.ticket })
       expect((await service.getMembers(caseId)).isOwner).toBe(false)
       // The same invite again: the Case exists here now.

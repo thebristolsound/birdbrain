@@ -5,7 +5,8 @@ import { createHash } from 'crypto'
 import {
   extractHtmlFromMhtml,
   extractHtmlPartsFromMhtml,
-  listHtmlPartsInMhtml
+  listHtmlPartsInMhtml,
+  readMhtmlTitle
 } from '@main/services/mhtmlDecoder'
 
 function mhtml(lines: string[]): Buffer {
@@ -236,5 +237,94 @@ describe('listHtmlPartsInMhtml and extractHtmlPartsFromMhtml', () => {
   it('answers no parts and no snapshot for something that is not an MHTML', () => {
     expect(listHtmlPartsInMhtml(Buffer.alloc(0))).toEqual({ snapshotLocation: null, parts: [] })
     expect(listHtmlPartsInMhtml(mhtml(['Content-Type: text/html', '', 'x'])).parts).toEqual([])
+  })
+})
+
+describe('readMhtmlTitle', () => {
+  const page = (title: string): string[] => [
+    '--B',
+    'Content-Type: text/html; charset=utf-8',
+    '',
+    `<html><head><title>${title}</title></head><body>x</body></html>`,
+    '--B--'
+  ]
+  const top = 'Content-Type: multipart/related; boundary=B'
+
+  it('reads a plain Subject header', () => {
+    const buf = mhtml(['Subject: Harbour Street ledger', top, '', ...page('Other')])
+    expect(readMhtmlTitle(buf)).toBe('Harbour Street ledger')
+  })
+
+  it('decodes a UTF-8 Q word folded across two lines', () => {
+    const buf = mhtml([
+      'Subject: =?utf-8?Q?Caf=C3=A9_on_the?=',
+      ' =?utf-8?Q?_quay?=',
+      top,
+      '',
+      ...page('Other')
+    ])
+    expect(readMhtmlTitle(buf)).toBe('Café on the quay')
+  })
+
+  it('decodes a B word', () => {
+    const b64 = Buffer.from('Ledger – März', 'utf-8').toString('base64')
+    const buf = mhtml([`Subject: =?UTF-8?B?${b64}?=`, top, '', ...page('Other')])
+    expect(readMhtmlTitle(buf)).toBe('Ledger – März')
+  })
+
+  it('falls back to the first page title, decoding its entities', () => {
+    const buf = mhtml([top, '', ...page('  Bread &amp; salt\n &#8211; &#x41;  ')])
+    expect(readMhtmlTitle(buf)).toBe('Bread & salt – A')
+  })
+
+  it('returns null when neither a Subject nor a title exists', () => {
+    const buf = mhtml([top, '', '--B', 'Content-Type: text/html', '', '<p>x</p>', '--B--'])
+    expect(readMhtmlTitle(buf)).toBeNull()
+    expect(readMhtmlTitle(Buffer.alloc(0))).toBeNull()
+  })
+
+  // Review finding 3 on this PR: an empty Subject read the next header line as the title.
+  it.each(['Subject: ', 'Subject:', 'Subject:\t'])(
+    'falls back to the page title when the Subject is blank (%j)',
+    (blank) => {
+      const fixture = join(__dirname, 'extraction/fixtures/cnn-iran-synthetic.mhtml')
+      const raw = readFileSync(fixture, 'latin1')
+      const emptied = raw.replace(/^Subject: [^\r\n]*/m, blank)
+      expect(emptied).not.toBe(raw)
+      expect(readMhtmlTitle(Buffer.from(raw, 'latin1'))).toBe(
+        'Iran-Linked Threat Actor Targets Nuclear Negotiators'
+      )
+      expect(readMhtmlTitle(Buffer.from(emptied, 'latin1'))).toBe(
+        'Iran Nuclear Talks and Network Intrusions - Synthetic News'
+      )
+    }
+  )
+
+  it('reads a Subject whose value starts on a folded line', () => {
+    const buf = mhtml(['Subject:', '  Harbour Street ledger', top, '', ...page('Other')])
+    expect(readMhtmlTitle(buf)).toBe('Harbour Street ledger')
+  })
+
+  // Review finding 4 on this PR: the search for the first `<title>` was quadratic in the number
+  // of `<title` tags never closed, and took 12.7 s on a 320 KB page in the review.
+  it.each([
+    ['opening tags with no closing tag', '<title>x'],
+    ['opening tags that never end', '<title x']
+  ])('reads a 4 MB page of %s in linear time', (_, token) => {
+    const html = `<html><head></head><body><script>var s="${token.repeat(500_000)}"</script></body></html>`
+    const buf = mhtml([
+      'From: <Saved by Blink>',
+      top,
+      '',
+      '--B',
+      'Content-Type: text/html; charset=utf-8',
+      '',
+      html,
+      '--B--'
+    ])
+    expect(buf.length).toBeGreaterThan(4_000_000)
+    const started = performance.now()
+    expect(readMhtmlTitle(buf)).toBeNull()
+    expect(performance.now() - started).toBeLessThan(2_000)
   })
 })

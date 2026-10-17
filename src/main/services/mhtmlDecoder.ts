@@ -100,6 +100,89 @@ export function listHtmlPartsInMhtml(buffer: Buffer): MhtmlHtmlPartList {
   return { snapshotLocation, parts }
 }
 
+/**
+ * The page title an MHTML records: its top-level `Subject` header, else the first `<title>` of
+ * its first text/html part. Null when neither holds one.
+ */
+export function readMhtmlTitle(buffer: Buffer): string | null {
+  const topHeaderEnd = findHeaderEndBuf(buffer, 0)
+  if (topHeaderEnd === -1) return null
+  const subject = headerOnItsLine(buffer.slice(0, topHeaderEnd).toString('latin1'), 'subject')
+  const decoded = subject ? collapseWhitespace(decodeEncodedWords(subject)) : ''
+  if (decoded) return decoded
+
+  const [first] = listHtmlPartsInMhtml(buffer).parts
+  if (!first) return null
+  const content = firstTitleContent(first.decode())
+  const title = content === null ? '' : collapseWhitespace(decodeXmlEntities(content))
+  return title ? title : null
+}
+
+// A header's value, read from its own line only, so a header written with no value is absent.
+// parseHeader's `\s*` crosses the line break and returns the next header line instead.
+function headerOnItsLine(headers: string, name: string): string | null {
+  const m = unfoldHeaders(headers).match(new RegExp('^' + name + ':[ \\t]*([^\\r\\n]*)', 'im'))
+  const value = m ? m[1].trim() : ''
+  return value ? value : null
+}
+
+// The text of the first `<title>` element: the first `<title` tag, the `>` that ends it, then
+// the first closing tag after that, each found by one forward search. A regex with a lazy body
+// rescans the rest of the page from every `<title` that is never closed, which is quadratic.
+function firstTitleContent(html: string): string | null {
+  const open = html.search(/<title\b/i)
+  if (open === -1) return null
+  const end = html.indexOf('>', open)
+  if (end === -1) return null
+  const close = /<\/title\s*>/gi
+  close.lastIndex = end + 1
+  const match = close.exec(html)
+  return match ? html.slice(end + 1, match.index) : null
+}
+
+function collapseWhitespace(value: string): string {
+  return value.replace(/\s+/g, ' ').trim()
+}
+
+const ENCODED_WORD = /=\?([^?\s]+)\?([QqBb])\?([^?\s]*)\?=/g
+
+// RFC 2047: whitespace between two adjacent encoded words is not part of the text. Text outside
+// encoded words is header bytes read as latin1, so it is re-read as UTF-8.
+function decodeEncodedWords(header: string): string {
+  const joined = header.replace(/(\?=)\s+(?==\?)/g, '$1')
+  let out = ''
+  let last = 0
+  for (const match of joined.matchAll(ENCODED_WORD)) {
+    const [word, charset, encoding, text] = match
+    const at = match.index ?? 0
+    out += Buffer.from(joined.slice(last, at), 'latin1').toString('utf8')
+    const bytes =
+      encoding.toUpperCase() === 'B'
+        ? Buffer.from(text, 'base64')
+        : Buffer.from(decodeQuotedPrintable(text.replace(/_/g, ' ')), 'latin1')
+    out += bytes.toString(toNodeEncoding(charset.toLowerCase()))
+    last = at + word.length
+  }
+  return out + Buffer.from(joined.slice(last), 'latin1').toString('utf8')
+}
+
+const XML_ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'"
+}
+
+function decodeXmlEntities(value: string): string {
+  return value.replace(/&(#[xX][0-9a-fA-F]+|#[0-9]+|[a-zA-Z]+);/g, (whole, name: string) => {
+    if (name[0] !== '#') return XML_ENTITIES[name] ?? whole
+    const code =
+      name[1] === 'x' || name[1] === 'X' ? parseInt(name.slice(2), 16) : Number(name.slice(1))
+    return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole
+  })
+}
+
 function parseLocation(headers: string, name: string): string | null {
   const value = parseHeader(headers, name)?.replace(/\s+/g, '')
   return value ? value : null

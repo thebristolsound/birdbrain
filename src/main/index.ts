@@ -642,6 +642,7 @@ if (!gotSingleInstanceLock) {
       // default until IrohTransport is wired in (#1809), so every network
       // call refuses `sharing-unavailable` and nothing listens.
       sharingService = new SharingService({
+        receivedCaptures: captureLifecycle,
         emitChanged: (payload) => {
           if (mainWindow && !mainWindow.isDestroyed()) {
             sendEvent(mainWindow.webContents, IPC_CHANNELS.SHARING_CHANGED, payload)

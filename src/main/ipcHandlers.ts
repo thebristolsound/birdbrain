@@ -907,7 +907,10 @@ export function registerIpcHandlers(deps: {
     try {
       const capture = captureRepo.getCapture(captureId)
       if (!capture) return null
-      const buffer = await getThumbnail(capture.caseId, captureId)
+      const received = typeof exhibitRepo.getExhibit(captureId)?.authorInstallationId === 'string'
+      const buffer = await getThumbnail(capture.caseId, captureId, defaultCaptureStore, {
+        persist: !received
+      })
       if (!buffer) return null
       return buffer.toString('base64')
     } catch (err) {

@@ -6,6 +6,13 @@
 decisions D1 to D17 and D19 to D23 on 2026-10-10 (see
 [Decisions and rulings](#decisions-and-rulings)); D18 stays open.
 
+**Amended 2026-10-17 by
+[ADR-0052](../adr/0052-import-persona-cookies-from-installed-browsers.md):** S3 and
+[Cookie seeding from the Persona import](#cookie-seeding-from-the-persona-import), which have
+stated the browser cookie import ruling since 2026-10-10, link the ADR that records it. The
+seeding section also records that the at-rest assessment of 2026-10-11 made the partition's
+at-rest wording true.
+
 **Decisions this rests on:**
 [ADR-0034](../adr/0034-the-app-acquires-and-the-extension-is-a-companion.md) (the app acquires,
 the extension is a Companion; this stage is the second step of its order of work),
@@ -179,11 +186,12 @@ And four security requirements:
 - **S2.** A Persona's cookie values stay in its browser profile's own store. The engine never
   asks the launched browser for them and replaces them in the events that carry them.
 - **S3.** Browser profiles are isolated from each other and from the Operator's everyday browser,
-  with one exception the maintainer ruled on 2026-10-10: a browser import copies into a Persona's
-  stores the cookies of the sites the Operator picks in an installed browser, or all of its
-  cookies when the Operator states that the source browser profile serves this Persona alone (see
-  [Cookie seeding](#cookie-seeding-from-the-persona-import)). Nothing else from that browser
-  enters a browser profile.
+  with one exception the maintainer ruled on 2026-10-10 and
+  [ADR-0052](../adr/0052-import-persona-cookies-from-installed-browsers.md) records: a browser
+  import copies into a Persona's stores the cookies of the sites the Operator picks in an
+  installed browser, or all of its cookies when the Operator states that the source browser
+  profile serves this Persona alone (see [Cookie seeding](#cookie-seeding-from-the-persona-import)).
+  Nothing else from that browser enters a browser profile.
 - **S4.** The launched browser keeps Chrome's sandbox and security defaults: the engine passes no
   switch on Chrome's unsupported-flag list (`kBadFlags`,
   `chrome/browser/ui/startup/bad_flags_prompt.cc:78`).
@@ -751,7 +759,8 @@ browser profile that is in use.
 **An installed browser as a second source.** With D7 the maintainer asked that Birdbrain detect the
 browsers installed on the machine and import cookies from them, as t3code does. The
 [browser cookie import research](2026-10-10-browser-cookie-import-research.md) compared three
-options, and on 2026-10-10 the maintainer adopted its second:
+options, and on 2026-10-10 the maintainer adopted its second, which
+[ADR-0052](../adr/0052-import-persona-cookies-from-installed-browsers.md) records:
 
 - Birdbrain detects installed browsers and offers each as a source for the one import of option
   (a). Cookie files stay as the fallback.
@@ -777,15 +786,19 @@ importer reads the source database. This design takes both answers from the rese
 - Option 2, as the research describes it, reads a temporary copy of the closed source database,
   which t3code makes with `VACUUM INTO`. Until Birdbrain deletes the copy, it holds the cookie
   values of every site in the source profile on disk, as plaintext for a Firefox source. ADR-0030
-  says the "only copy of a cookie value is Chromium's own store" (:62-65), and the ADR the ruling
-  asks for amends that sentence to cover the copy.
+  says the "only copy of a cookie value is Chromium's own store" (:62-65), and ADR-0052 amends
+  that sentence to cover the copy.
 
 A browser import reads cookie values out of the source browser's store, which is none of the
-Persona's stores, so S2 still holds and S3 states the exception. The ruling needs an ADR amending
-ADR-0030 (:47-54, :62-65), the persona plan (:85-87, :187-189, :197-200), and ADR-0034 (:75-77);
-a new ticket under #541, grilled before it is `ready-for-agent`; and updates to #546, #543, and
-#1498. No browser import ships before the partition's at-rest wording is true (see
-[Browser profiles per Persona](#browser-profiles-per-persona)).
+Persona's stores, so S2 still holds and S3 states the exception. ADR-0052 records the ruling and
+amends ADR-0030 (:47-54, :62-65), the persona plan (:85-87, :187-189, :197-200), and ADR-0034
+(:75-77). A new ticket under #541 builds the browser import and is grilled with the maintainer
+before it is `ready-for-agent`, and #546, #543, and #1498 take the questions ADR-0052 raises. No
+browser import ships before the partition's at-rest wording is true (see
+[Browser profiles per Persona](#browser-profiles-per-persona)). The
+[Persona cookies at-rest assessment](2026-10-11-persona-cookies-at-rest-assessment.md) made it
+true on 2026-10-11: it found the partition's cookie values stored as plain text and corrected
+ADR-0030 and the persona plan's decision 8 to say so.
 
 The engine maps `hostOnly` for CDP, which reads `domain` differently from Electron. Electron turns
 any `domain` into a subdomain cookie, so `importCookies` passes no `domain` for a host-only cookie

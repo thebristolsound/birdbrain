@@ -1207,6 +1207,26 @@ describe('Shared Case export, import and fork (#1511)', () => {
       expect(verifyEvidencePackage(dir).pass).toBe(false)
     })
 
+    // A shell glob's `*` skips a leading dot, so the script lists lineage
+    // directories under three patterns; the package verifier lists them all.
+    it('fails a lineage directory no import names, whatever its name starts with', async () => {
+      ownerReplica()
+      const { dir } = await exportPackage()
+      const names = ['x', '.x', '..x']
+      for (const name of names) mkdirSync(join(dir, 'lineage', name), { recursive: true })
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      const reason = (name: string): string =>
+        `lineage chains supplied for Case ${name}, which no import in the Owner's chain names`
+      expect(findings(run.output, 'FAIL').sort()).toEqual(
+        names.map((name) => `FAIL [step 4a] ${reason(name)}`).sort()
+      )
+      expect(sharedCaseFailures(dir).sort()).toEqual(
+        names.map((name) => `roster-invalid: ${reason(name)}`).sort()
+      )
+    })
+
     // A loop over a file the shell cannot open reads nothing, which once
     // printed "0 entr(ies) verified". The chain's row comes out of
     // evidence.json, or step 1, which cannot open it either, fails the

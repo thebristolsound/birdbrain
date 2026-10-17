@@ -277,7 +277,9 @@ chain_files() {
 
 chain_files '' >"$tmp/member-files.txt"
 : >"$tmp/lineage-cases.txt"
-for lineage_path in ${LINEAGE_DIRECTORY}/*/ ${LINEAGE_DIRECTORY}/.[!.]*/; do
+# Every name but . and .., as the Birdbrain verifier lists them: * skips a
+# leading dot, .[!.]* takes one dot, ..?* two.
+for lineage_path in ${LINEAGE_DIRECTORY}/*/ ${LINEAGE_DIRECTORY}/.[!.]*/ ${LINEAGE_DIRECTORY}/..?*/; do
   [ -d "$lineage_path" ] || continue
   lineage_case=\${lineage_path#${LINEAGE_DIRECTORY}/}
   printf '%s\\n' "\${lineage_case%/}" >>"$tmp/lineage-cases.txt"

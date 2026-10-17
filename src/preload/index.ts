@@ -208,7 +208,17 @@ const birdbrain = {
   },
 
   sharing: {
-    getSyncState: bridge(IPC_CHANNELS.SHARING_GET_SYNC_STATE)
+    getSyncState: bridge(IPC_CHANNELS.SHARING_GET_SYNC_STATE),
+    createInvite: bridge(IPC_CHANNELS.SHARING_CREATE_INVITE),
+    cancelInvite: bridge(IPC_CHANNELS.SHARING_CANCEL_INVITE),
+    readInvite: bridge(IPC_CHANNELS.SHARING_READ_INVITE),
+    join: bridge(IPC_CHANNELS.SHARING_JOIN),
+    approveJoin: bridge(IPC_CHANNELS.SHARING_APPROVE_JOIN),
+    declineJoin: bridge(IPC_CHANNELS.SHARING_DECLINE_JOIN),
+    revoke: bridge(IPC_CHANNELS.SHARING_REVOKE),
+    excludeExhibit: bridge(IPC_CHANNELS.SHARING_EXCLUDE_EXHIBIT),
+    syncNow: bridge(IPC_CHANNELS.SHARING_SYNC_NOW),
+    getMembers: bridge(IPC_CHANNELS.SHARING_GET_MEMBERS)
   },
 
   investigation: {
@@ -306,6 +316,10 @@ const birdbrain = {
   onGuestFrameReplaced: subscribe(IPC_CHANNELS.GUEST_FRAME_REPLACED),
 
   onGuestMouseDown: subscribe(IPC_CHANNELS.GUEST_MOUSE_DOWN),
+
+  onSharingChanged: subscribe(IPC_CHANNELS.SHARING_CHANGED),
+
+  onSharingJoinProgress: subscribe(IPC_CHANNELS.SHARING_JOIN_PROGRESS),
 
   onInvestigationProgress: subscribe(IPC_CHANNELS.INVESTIGATION_PROGRESS),
 

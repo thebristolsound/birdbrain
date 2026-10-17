@@ -118,6 +118,8 @@ const ROOT_LEVEL_LEAVES = new Set([
   'onUpdateStatus',
   'onGuestFrameReplaced',
   'onGuestMouseDown',
+  'onSharingChanged',
+  'onSharingJoinProgress',
   'onInvestigationProgress'
 ])
 

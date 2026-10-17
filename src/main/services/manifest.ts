@@ -277,6 +277,20 @@ export function appendMemberChainLines(
   }
 }
 
+// Creates another member's chain file, empty, when none exists (#1810). A
+// replica that holds the Owner's chain keeps a file for every member the
+// roster names, from the moment it learns of the member: the verify walk
+// reports a member with no chain file as `member-chain-missing`, and a new
+// member has written nothing for the Owner to hold. An empty chain verifies
+// with no entries, states no head, and is served as no lines until the
+// member's first entries arrive. `appendMemberChainLines` cannot create one,
+// since it returns before opening the file on zero lines.
+export function ensureMemberChainFile(caseDir: string, installationId: string): void {
+  const path = join(caseDir, memberChainPath(assertChainInstallationId(installationId)))
+  if (existsSync(path)) return
+  closeSync(openSync(path, 'a'))
+}
+
 // Cuts another member's chain file back to its first `keepLines` lines, and
 // removes it when none are kept: the session's rollback when a chain it
 // received page by page turns out to name another Case. The kept lines are
@@ -734,6 +748,12 @@ export type ManifestEntryInput =
       path: string
       contentHash: string
       sizeBytes: number
+      // The writer's Member Code in a Shared Case (schema 4). OMITTED by every
+      // writer in this build (#1810): a citation takes the code from the
+      // writer's `member-add`, and a code that disagreed with the roster
+      // would be a citation collision. An entry carrying one is stamped 4
+      // (EXHIBIT_MEMBER_CODE_MIN_READER).
+      memberCode?: string
       timestamp: string
       operatorId: string
       operatorName: string
@@ -795,6 +815,48 @@ export type ManifestEntryInput =
       operatorName: string
       toolVersion: string
     }
+  | {
+      // One member joining the Case (#1810), written only by the Owner: the
+      // first names the Owner itself when the Case becomes shared, the rest
+      // are written on approval of a join. The roster every replica caches
+      // and the verifier walks is read from these.
+      type: 'member-add'
+      caseId: string
+      memberInstallationId: string
+      memberPublicKeyPem: string
+      memberCode: string
+      memberOperatorName: string
+      nodeId: string
+      role: 'owner' | 'member'
+      timestamp: string
+      operatorId: string
+      operatorName: string
+      toolVersion: string
+    }
+  | {
+      // The Owner ending a member's participation (#1810).
+      type: 'member-revoke'
+      caseId: string
+      memberInstallationId: string
+      timestamp: string
+      operatorId: string
+      operatorName: string
+      toolVersion: string
+    }
+  | {
+      // The Owner marking another member's Exhibit excluded (#1810). The
+      // Exhibit's own entry stays in its author's chain, and exports still
+      // enclose the Exhibit and list the exclusion.
+      type: 'exclude'
+      caseId: string
+      exhibitId: string
+      authorInstallationId: string
+      reason?: string
+      timestamp: string
+      operatorId: string
+      operatorName: string
+      toolVersion: string
+    }
 
 export interface ExportVerificationResult {
   overallValid: boolean
@@ -848,8 +910,12 @@ export const MIN_READER_SCHEMA_VERSION: Record<ManifestEntryInput['type'], numbe
   derivation: 3,
   renumber: 3,
   // The Shared Case types are schema 4 (#1509); `merge` is the one the sync
-  // session writes (#1512).
-  merge: 4
+  // session writes (#1512), the other three the Owner's roster writers
+  // (#1810). A 4 is what the 1.0.1-beta.22 verifier reads.
+  merge: 4,
+  'member-add': 4,
+  'member-revoke': 4,
+  exclude: 4
 }
 
 // Per-entry overrides for the two generalized types (#1180). A `timestamp` or
@@ -871,7 +937,15 @@ const CAPTURE_EXHIBIT_NUMBER_MIN_READER = 3
 // verifier reads an entry carrying one as "verifier too old" only under a 5.
 const CAPTURE_EGRESS_MIN_READER = 5
 
+// `memberCode` on an `exhibit` entry is schema 4 (#1509): the schema refuses
+// the field on an entry stamped lower, so an entry carrying it stamps 4 and
+// one without it keeps the type's 3.
+const EXHIBIT_MEMBER_CODE_MIN_READER = 4
+
 function fieldMinReaderSchemaVersion(entry: ManifestEntryInput): number {
+  if (entry.type === 'exhibit') {
+    return entry.memberCode !== undefined ? EXHIBIT_MEMBER_CODE_MIN_READER : 0
+  }
   if (entry.type !== 'capture') return 0
   const { egressKind, egressLabel, userAgent, tlsSkipped, exhibitNumber } = entry
   if ([egressKind, egressLabel, userAgent, tlsSkipped].some((field) => field !== undefined)) {

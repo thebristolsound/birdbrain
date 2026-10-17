@@ -47,6 +47,7 @@ import { initInstallationId, getInstallationId } from '@main/services/installati
 import { initSigningKey, SigningKeyUnacknowledgedError } from '@main/services/signingKey'
 import { initServerToken } from '@main/services/serverToken'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
+import { SharingService } from '@main/services/sharing/sharingService'
 import { createTimestampWorker } from '@main/services/timestampWorker'
 import { runExhibitBackfill } from '@main/services/exhibitBackfill'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
@@ -77,6 +78,9 @@ let windowThemeWatcher: (() => void) | null = null
 let pendingNavigate: DeepLinkTarget | null = null
 // Update-delivery service; disposed on quit.
 let updaterService: UpdaterService | null = null
+// The sharing service, closed on quit so a listening transport does not
+// outlive the window.
+let sharingService: SharingService | null = null
 
 // Registered before whenReady so a failure during startup is still captured.
 // logger.* is a no-op until initLogger runs, which is safe by construction.
@@ -634,6 +638,23 @@ if (!gotSingleInstanceLock) {
         isAutoCheckEnabled: () => getSettings().autoCheckForUpdates
       })
 
+      // Shared Cases (#1810). The transport provider stays at its null
+      // default until IrohTransport is wired in (#1809), so every network
+      // call refuses `sharing-unavailable` and nothing listens.
+      sharingService = new SharingService({
+        receivedCaptures: captureLifecycle,
+        emitChanged: (payload) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            sendEvent(mainWindow.webContents, IPC_CHANNELS.SHARING_CHANGED, payload)
+          }
+        },
+        emitJoinProgress: (payload) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            sendEvent(mainWindow.webContents, IPC_CHANNELS.SHARING_JOIN_PROGRESS, payload)
+          }
+        }
+      })
+
       // Register IPC handlers
       registerIpcHandlers({
         selectorLifecycle,
@@ -641,6 +662,7 @@ if (!gotSingleInstanceLock) {
         recaptureService,
         updaterService,
         sessionService,
+        sharingService,
         enqueueExhibitTimestamp: (exhibitId) => timestampWorker.enqueueExhibit(exhibitId)
       })
 
@@ -749,6 +771,7 @@ if (!gotSingleInstanceLock) {
 
     stopExtensionConnectionCheck()
     updaterService?.dispose()
+    await sharingService?.close()
     await stopCaptureServer()
     closeDatabase()
   })

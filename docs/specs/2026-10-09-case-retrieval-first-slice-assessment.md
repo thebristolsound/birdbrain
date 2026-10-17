@@ -1,6 +1,7 @@
 # Case retrieval first slice: evaluation
 
-**Status:** Baseline recorded. Step 6 adds the slice's own search.
+**Status:** Finished. The baseline and the second run, which adds the slice's own search, are
+recorded.
 **Date:** 2026-10-09
 **Audience:** Maintainer and implementers of the retrieval first slice.
 
@@ -41,12 +42,15 @@ matches the pages on one topic. One file goes to the Staging Pool and never to t
 
 ### What is measured
 
-Two of today's search paths answer each query:
+Two of today's search paths answer each query in the baseline, and the second run adds a third:
 
 - **Case search** is the search bar's Capture results (`searchCaptures`, over `captures_fts`).
 - **Data search** is the Data screen's search over extracted values (`searchExtractedData`). It
   answers with values and the URLs they came from, in value order, so its rank is the order of
   first appearance.
+- **Field search** is the slice's search over link and header records (`searchCaseFields`). It
+  answers newest Capture first, not by relevance, and stops at 200 results, so its rank is the
+  target's place in capture order.
 
 For each query and path, the run records the rank of the first expected target among all the
 path's results, whether it is in the top 5 and the top 20, whether every expected target came
@@ -55,8 +59,16 @@ reports latency per query, so a query that starts answering after the slice does
 figures of the others. After a timed rebuild of `captures_fts`, the run records index bytes per
 Capture from SQLite's `dbstat` table, the median time to re-index one Capture's text over 20
 Captures spread across the Case, and how many committed Captures no live Note names and no
-Persisted Match covers. The plan's locator checks and the unreviewed view's
-groups have nothing to measure until steps 5 and 6.
+Persisted Match covers.
+
+The second run also builds each Capture's link and header records after its extraction, as the
+app does after an ingest. It times a full rebuild of those records and their index, and the median
+time to build one Capture's records over the same 20 Captures. It runs the exact check of step 5 on
+every Field search result of every query, and counts as false locators the results the check finds
+absent or cannot check. It counts the unreviewed Captures through the read the unreviewed view
+calls, at the view's opening limit of 2, and records each group's rows and Captures and whether the
+planted pages sit where the plan's table expects. A second measure pass over the same built Case
+repeats the timings.
 
 The queries differ from the indexed wording:
 
@@ -118,6 +130,89 @@ latency change as the slice's.
 - **The unreviewed set is large.** 631 of 1,000 Captures have no Note and no Persisted Match. The
   unreviewed view's groups have to shrink that list to something an Operator can read; step 6
   measures how far they do.
+
+## Second run, 2026-10-17
+
+The second run used the code at commit `32b86aeb`, which adds step 5's exact check and step 6's
+unreviewed view to steps 2 to 4, on a Case of 1,000 Captures. A second measure pass then ran on the
+same built Case. Both passes gave the same search answers, check outcomes and view counts; only
+their times differ. Both ran under the shared lock that keeps the other sessions' pre-merge checks
+and timing runs from overlapping them, and `uptime` gave load averages of 18.8, 18.7 and 25.8 over 1, 5 and 15 minutes on 18
+cores as the first pass started, and 6.6, 14.9 and 23.9 as the second ended. Rendering and
+ingesting the pages took 27.8 s with the field build included, where the baseline took 24.2 s
+without it.
+
+- **Case search and Data search** gave the baseline's answers to all eight queries, with the same
+  ranks and the same number of results.
+- **Field search** ranked `image-link` first, its only result, for `image-link-host`, the host
+  that appears only in an image link's target and that Case search does not find. It returned
+  nothing for `image-link-alt`: the query holds the alt text's words in another order, and field
+  search matches the query as one phrase. It returned nothing for the four address queries, whose
+  addresses are in page text and in no link or mail header. For `plain-word` it stopped at its
+  limit of 200 results, and `annotated-shop` was not among them: the target pages are the oldest
+  Captures, and field search lists the newest first. A query on the run's database found those 200
+  to be link targets on 113 filler pages. It returned nothing for the pooled file's words.
+- **The exact check** found all 201 Field search results present at their recorded place, so the
+  run had no false locators. These are unaltered stored files; the check's own tests cover the
+  altered ones. Six of the seven queries that expect a target are Field search misses:
+  `image-link-alt`, the four address queries and `plain-word`.
+- **The unreviewed view** listed 631 of the 1,000 Captures, the count the baseline's own query
+  gave, and every one of them was under at least one row. None lacked current link and header
+  records, and none had a partial build. The `From` and `Reply-To` groups each held one row, the mail
+  header page under its `From` and its `Reply-To` address. The rare identifiers at the limit of 2
+  were 7 rows over 3 Captures: `rare-address`, `address-variant` and the mail header page. One of
+  the mail header page's rows is its `Message-ID`, which the indicator extractor reads as an email
+  address. The link host group held 12 rows over 628 Captures. Its first row, since rows run from
+  the fewest Captures, is `northgate-ledger.example.com` with the `image-link` page alone. A query
+  on the run's database gave the other 11 hosts between 433 and 461 Captures each.
+
+| Measure                                                     | First pass      | Second pass     | Baseline        |
+| ----------------------------------------------------------- | --------------- | --------------- | --------------- |
+| Case search latency, median, for each of the 8 queries      | 0.21 to 0.53 ms | 0.15 to 0.50 ms | 0.09 to 0.37 ms |
+| Case search latency, ninety-fifth percentile, for each one  | 0.24 to 0.59 ms | 0.18 to 0.62 ms | 0.11 to 0.59 ms |
+| Data search latency, median, for each of the 8 queries      | 0.08 to 2.21 ms | 0.05 to 1.81 ms | 0.07 to 2.06 ms |
+| Data search latency, ninety-fifth percentile, for each one  | 0.12 to 2.37 ms | 0.07 to 2.04 ms | 0.12 to 2.40 ms |
+| Field search latency, median, for each of the 8 queries     | 0.41 to 6.71 ms | 0.30 to 5.38 ms | -               |
+| Field search latency, ninety-fifth percentile, for each one | 0.43 to 7.04 ms | 0.31 to 5.85 ms | -               |
+| New tables and their indexes, bytes per Capture             | 9,228           | 9,245           | -               |
+| Of which the trigram index's tables                         | 2,429           | 2,429           | -               |
+| Of which the B-tree indexes on the new tables               | 2,998           | 3,015           | -               |
+| Full rebuild of the field records and their index           | 3,450 ms        | 3,329 ms        | -               |
+| Building one Capture's field records, median                | 2.26 ms         | 2.08 ms         | -               |
+| Full rebuild of `captures_fts`                              | 14.29 ms        | 25.54 ms        | 12.59 ms        |
+| Re-indexing one Capture's text, median                      | 0.13 ms         | 0.06 ms         | 0.07 ms         |
+| The unreviewed view's read, median of 20                    | 53.6 ms         | 58.2 ms         | -               |
+
+The new tables' bytes count `exhibit_search_builds`, `exhibit_search_fields`, the four
+`exhibit_search_fields_fts` tables, and the four B-tree indexes on the two tables. All 1,000
+build rows read `built`. For comparison, the `captures_fts` tables took 631 bytes per Capture and
+`extracted_data` with its FTS5 tables took 4,952, as in the baseline; neither figure includes its
+table's B-tree indexes. The slowest Field search query in both passes was `plain-word`, the one
+that reached the 200-result limit.
+
+### What the second run means for the plan
+
+- **Field search finds the link-only host, with a position.** It is the one query where the slice
+  adds discovery to the search bar: Case search misses the host, and Data search finds it without
+  a position.
+- **No path finds the alt text with this query's wording.** The slice records the alt text, but a query
+  whose words come in another order does not match it, so the baseline's finding that no path
+  finds `image-link-alt` still holds.
+- **Field search's order is not a ranking.** Newest-first order put the seller's own page outside
+  the first 200 results for a common word. Its first rank is not comparable with Case search's.
+- **The check confirmed every result on an unaltered Case.** The 201 records it read slice back to
+  the stored bytes. That shows nothing about a changed file or record.
+- **The header and rare-identifier groups shrink the list; the link host group does not.** They
+  point at 3 of the 631 unreviewed Captures, and those are the three unannotated planted pages
+  that hold an address. The link host group lists 628 Captures, because every filler page links
+  out, and sorts the one rare host first, where the fourth unannotated page, `image-link`, sits.
+- **The new records cost about 9.2 KB per Capture.** That is close to twice what `extracted_data`
+  and its FTS5 tables take. The trigram index is about a quarter of it; the field and build rows
+  and their B-tree indexes take the rest. A Capture's records take about 2 ms to build, and the view reads
+  1,000 Captures in under 60 ms at the median.
+- **Search times sit near the baseline's.** The median ranges of Case search and Data search,
+  whose code did not change, differ from the baseline's by at most 0.25 ms at either end. The
+  baseline already called the times of one run rough.
 
 ## Smoke runs, 2026-10-10
 

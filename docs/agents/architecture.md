@@ -164,7 +164,7 @@ Organized by feature under `src/renderer/components/`:
 - **notes/** - AddNoteModal, CreateNoteCard, NoteCard, NoteBody, NoteEditor, NotesOverview, useNoteEditor.ts
 - **overview/** - CaseOverview, CaseSubhead, ActivityTimeline, MetricRow, RecentCapturesStrip, SelectorCoverageBlock, SinceLastVisitBanner, SourcesBlock, VerifyBar, overviewModel.ts
 - **search/** - SearchBar
-- **selectors/** - CreateSelectorCard, CreateSelectorPopover, selectorOrigin.ts, selectorUtils.ts, useForegroundMatchPreview.ts (the Selectors screen itself moved to `signals/`)
+- **selectors/** - CreateSelectorPopover, selectorOrigin.ts, selectorUtils.ts, useForegroundMatchPreview.ts (the Selectors screen itself moved to `signals/`)
 - **settings/** - SettingsView, AppearanceConfig, CapturePreferences, DatabaseAdmin, DiagnosticsPanel, OperatorConfig, StorageConfig, UpdatesConfig, About, plus database utility views under `settings/db/`
 - **signals/** - SignalsOverview (the consolidated Signals screen), AutoCaptureCard, AddSelectorRow, AddTagRow, BulkImportDrawer, SignalRow, CoverageStrip, SignalDetailRail, signalsModel.ts
 - **status/** - CaptureHealth, ConnectionStatus, SessionControls

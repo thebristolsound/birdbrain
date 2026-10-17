@@ -9,7 +9,7 @@ was written against `origin/main` at 58997988 (PR #1872 merged), and every `file
 refers to that commit. It records a reading pinned to that commit, the exception `docs/README.md`
 makes for line citations. Two unmerged branches were read for section 8 only: #1811's
 `feat/1811-received-entries` at 36ecaf34 (draft PR #1879) and #1864's `feat/1864-member-chains`
-at 713099a2 (no PR yet).
+at 713099a2 (draft PR #1880).
 
 ## 1. Summary
 
@@ -67,7 +67,7 @@ A receipt stamp in a chain today would pass through every reader unreported.
 that brought new entries (`src/main/services/sharing/session.ts:613-628`) and returns its index as
 `SyncSessionResult.mergeIndex` (`:131-133`). `SyncSessionOptions` holds only `onPhase`
 (`:137-139`). No production code calls `pullFromPeer`: a search of `src/` finds it only in
-`session.ts`. The scheduler that will call it belongs to #1810.
+`session.ts`. The scheduler that will call it belongs to the sync service issue (#1881).
 
 **Two places would misread a receipt stamp once one exists.**
 
@@ -215,7 +215,7 @@ Files: `src/main/services/sharing/session.ts`, `tests/main/services/sharing/sync
 - Straight after `result.mergeIndex = merge.index` (`:627`), call
   `options.enqueueReceiptStamp?.(caseId, merge.index)`. A session writes at most one `merge`
   (`:613-615`), so it hands over at most one.
-- No production caller exists to wire. #1810's scheduler passes the app's worker when it calls
+- No production caller exists to wire. #1881's sync service passes the app's worker when it calls
   `pullFromPeer`, and the PR body says so.
 
 Two-peer tests in `syncPeers.test.ts`. Bob's worker uses a recording `requestToken` that returns
@@ -423,7 +423,7 @@ File: `src/renderer/components/data/ledgerModel.ts`. Test in
 
 - One line each for the four verifiers, from section 4.
 - The section 6 statement on schemas and versions, and the section 7 evidence impact.
-- In the findings list: the session's hand-off has no production caller until #1810, and the
+- In the findings list: the session's hand-off has no production caller until #1881, and the
   `merge` rate between two connected members (question 3).
 - The checks preflight does not run, run by hand: `pnpm build:verifier` and the binary tests.
 - This plan's status line moves to `done` with the PR number.
@@ -529,7 +529,7 @@ The briefs order `trustedTime.ts` and `timestampWorker.ts` as SC-1, then SC-2b a
 | `timestampWorker.ts` | SC-2b (#1811) | Draft PR #1879, `feat/1811-received-entries` at 36ecaf34, based on 58997988 | #1811 edits `stampCapture` after `:79`, `stampExhibit` after `:125`, and `listPendingExhibits` (`:170-184`). Task 4 edits the interface, adds functions after `enqueueExhibit`, and edits `processPending` below `:204`. No hunk overlaps. |
 | `trustedTime.ts` | SC-2b (#1811) | Same PR | #1811 replaces `reconcileAllMirrors` with `reconcileCaseMirrors` at the end of the file (`:195-208`). Task 3 adds after `:173`. No overlap. |
 | `session.ts` | SC-2b (#1811) | Same PR | #1811 adds a required `receivedCaptures` to `SyncSessionOptions` (`:137-139`) and drops the options default (`:379`). Task 5 adds one optional member there, a one-line manual merge. Its hand-off at `:627` is clear of #1811's apply step after `:664`. |
-| `verifyScript.ts`, `verifyRunbook.ts`, `verifyProcedure.ts` | SC-V (#1864) | `feat/1864-member-chains` at 713099a2, based on 58997988, no PR | SC-V adds step 4a, adds `'4a'` to `VerifySubStep`, and switches step 6's token reads from `$MANIFEST_FILE` to `$case_entries`. Task 8's receipt walk sits beside those reads and moves to `$case_entries` on rebase. Task 8 adds no sub-step, so the `VerifySubStep` edit does not collide. Moderate. |
+| `verifyScript.ts`, `verifyRunbook.ts`, `verifyProcedure.ts` | SC-V (#1864) | `feat/1864-member-chains` at 713099a2, based on 58997988, draft PR #1880 | SC-V adds step 4a, adds `'4a'` to `VerifySubStep`, and switches step 6's token reads from `$MANIFEST_FILE` to `$case_entries`. Task 8's receipt walk sits beside those reads and moves to `$case_entries` on rebase. Task 8 adds no sub-step, so the `VerifySubStep` edit does not collide. Moderate. |
 | `sharedCaseExport.test.ts` | SC-V (#1864) | Same branch, 247 lines added | Task 8 appends tests and adds one mock at the top. Small. |
 | `export.ts` | #1814, #1815, then SC-4 if packages carry receipt stamps | Not changed under the recommended answer to question 1 | None. #1515 leaves the `export.ts` order. |
 | `manifest.ts` | Not listed for SC-4 | Task 1 edits the `timestamp` input and `fieldMinReaderSchemaVersion` | #1815's PR #1876 does not touch `manifest.ts`. CE-P step 1 and SC-6 come later. Small. |
@@ -567,7 +567,7 @@ reversible with git. Task 6's one request to DigiCert publishes nothing. #1515 c
 - **The new DigiCert token may not chain to the committed root.** Task 6 stops and asks.
 - **An older `merge` stamped only through a later one gets no row of its own** under question 2's
   recommended answer. The PR says why.
-- **Nothing in production writes a `merge` until #1810.** Until then this change writes no receipt
+- **Nothing in production writes a `merge` until #1881.** Until then this change writes no receipt
   stamp in a user's chain.
 - **SC-V's rebase moves the receipt walk** onto `$case_entries`, and Task 8's tests in
   `sharedCaseExport.test.ts` move with it.
@@ -662,7 +662,7 @@ pnpm preflight
    entries?
 
    Recommended: **stamp every `merge`** as the criterion says, and put the rate in the PR's
-   findings for the scheduler issue (#1810). The scheduler sets the timer, and it is where the
+   findings for the sync service issue (#1881). The scheduler sets the timer, and it is where the
    design's one-`merge`-per-session rule (decision 14) would change if sessions that bring only
    other members' `merge` entries should write none. Skipping stamps here would still leave the
    chain growing by one `merge` a minute per peer.

@@ -657,6 +657,12 @@ export type ManifestEntryInput =
       type: 'timestamp'
       caseId: string
       captureContentHash: string
+      // A receipt stamp (#1515, design decision 15): `captureContentHash` is
+      // then a `merge` entry's Entry Hash, and the entry is stamped 4
+      // (TIMESTAMP_SUBJECT_MIN_READER). Only `entry` is writable: the schema
+      // omits `content` and nothing ever writes it, so every content stamp
+      // keeps its canonical body.
+      subject?: 'entry'
       timestamp: string
       tsaToken?: string
       operatorId: string
@@ -871,7 +877,15 @@ const CAPTURE_EXHIBIT_NUMBER_MIN_READER = 3
 // verifier reads an entry carrying one as "verifier too old" only under a 5.
 const CAPTURE_EGRESS_MIN_READER = 5
 
+// A `timestamp` entry's `subject` is a schema-4 field (#1518): the schema
+// itself refuses one stamped lower, and a schema-3 verifier would read it as a
+// broken chain rather than "verifier too old".
+const TIMESTAMP_SUBJECT_MIN_READER = 4
+
 function fieldMinReaderSchemaVersion(entry: ManifestEntryInput): number {
+  if (entry.type === 'timestamp') {
+    return entry.subject !== undefined ? TIMESTAMP_SUBJECT_MIN_READER : 0
+  }
   if (entry.type !== 'capture') return 0
   const { egressKind, egressLabel, userAgent, tlsSkipped, exhibitNumber } = entry
   if ([egressKind, egressLabel, userAgent, tlsSkipped].some((field) => field !== undefined)) {

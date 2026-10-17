@@ -11,6 +11,7 @@ import {
 } from '@shared/schemas'
 import type { ManifestEntry } from '@shared/schemas'
 import { parseTimestampToken } from '@shared/verify/timestampToken'
+import { receiptStampsFromEntries } from '@shared/verify/trustedTime'
 import type { TrustedTimeResult } from '@shared/verify/trustedTime'
 import {
   describeUnsupportedEntry,
@@ -1041,6 +1042,49 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
         `exhibit number ${repeat.exhibitNumber}${where}`,
         'exception',
         describeRepeatedExhibitNumber(repeat)
+      )
+    }
+  }
+
+  // §7.3d receipt stamps (#1515, design decision 15). A `timestamp` with
+  // `subject: 'entry'` binds a `merge` entry's Entry Hash and vouches for no
+  // Exhibit's bytes, so it gets a row of its own over the same chains the
+  // Exhibit Number rows walk, each chain on its own: a receipt stamp sits in
+  // the chain of the installation that wrote the `merge`. STRUCTURAL only,
+  // like the content rows: the token's imprint against the `merge` entry's
+  // hash, with `openssl ts -verify` in VERIFY.md as the authenticity check. A
+  // `merge` with no receipt stamp gets no row, so a package written before
+  // receipt stamps existed reports exactly as it did. A receipt stamp naming
+  // no `merge` in its chain is reported and does not fail the package: its
+  // line's signature held, so it is its writer's statement about nothing.
+  for (const { key, entries: chainEntries } of numberedChains) {
+    const where = key === undefined ? '' : ` in the chain of ${key}`
+    const { merges, unbound } = receiptStampsFromEntries(chainEntries)
+    for (const { mergeIndex, stamp } of merges) {
+      if (!stamp) continue
+      add(
+        `merge ${mergeIndex} receipt timestamp${where}`,
+        'pass',
+        `rfc3161 per ${stamp.tsaName} at ${stamp.stampedAt} — the token at index ${stamp.index} ` +
+          `anchors the Entry Hash of merge entry ${mergeIndex} and no Exhibit's content; ` +
+          'structural (imprint only); run `openssl ts -verify` for TSA authenticity'
+      )
+    }
+    for (const { index, mergeIndex, entryHash } of unbound) {
+      if (mergeIndex === undefined) {
+        add(
+          `receipt timestamp ${index}${where}`,
+          'skip',
+          `names no merge entry in its chain (hash ${entryHash.slice(0, 12)}): reported, ` +
+            'not counted'
+        )
+        continue
+      }
+      add(
+        `merge ${mergeIndex} receipt timestamp${where}`,
+        'fail',
+        `the receipt token at index ${index} names merge entry ${mergeIndex} but does not ` +
+          'parse or attests another hash'
       )
     }
   }

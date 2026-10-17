@@ -63,9 +63,15 @@ export function stampFor(entry: EntryRecord, contentHash: string): TrustedTimeRe
   ) {
     return undefined
   }
+  return tokenAttesting(entry.tsaToken, contentHash)
+}
+
+// The rfc3161 result a base64 token gives for `hash`, or undefined when the
+// token does not parse or its imprint attests another digest.
+function tokenAttesting(tsaToken: string, hash: string): TrustedTimeResult | undefined {
   try {
-    const parsed = parseTimestampToken(Buffer.from(entry.tsaToken, 'base64'))
-    if (parsed.messageImprintHex === contentHash) {
+    const parsed = parseTimestampToken(Buffer.from(tsaToken, 'base64'))
+    if (parsed.messageImprintHex === hash) {
       return {
         trustedTime: 'rfc3161',
         tsaName: parsed.tsaName,
@@ -76,6 +82,102 @@ export function stampFor(entry: EntryRecord, contentHash: string): TrustedTimeRe
     // Malformed token — ignore; the worker will re-stamp.
   }
   return undefined
+}
+
+// The receipt rule (#1515, design decision 15), the counterpart of `stampFor`
+// for a Manifest Entry's hash: a `timestamp` with `subject: 'entry'` whose
+// `captureContentHash` names `entryHash` and whose token's imprint equals it.
+// Such a stamp bounds the time by which the receiver held the `merge` entry,
+// and through it every entry the `merge` links, and vouches for no Exhibit's
+// bytes: `stampFor` never accepts one.
+export function receiptStampFor(
+  entry: EntryRecord,
+  entryHash: string
+): TrustedTimeResult | undefined {
+  if (
+    entry.type !== 'timestamp' ||
+    entry.subject !== 'entry' ||
+    entry.captureContentHash !== entryHash ||
+    typeof entry.tsaToken !== 'string'
+  ) {
+    return undefined
+  }
+  return tokenAttesting(entry.tsaToken, entryHash)
+}
+
+// One `merge` entry of a chain and the receipt stamp that binds it, if any.
+export interface MergeReceipt {
+  mergeIndex: number
+  entryHash: string
+  // The first receipt stamp whose token attests the `merge` entry's hash, with
+  // that stamp's own index.
+  stamp?: TrustedTimeResult & { index: number }
+}
+
+// A receipt stamp that binds nothing: it names a `merge` whose hash its token
+// does not attest (`mergeIndex` set), or a hash no `merge` in the chain has.
+export interface UnboundReceiptStamp {
+  index: number
+  entryHash: string
+  mergeIndex?: number
+}
+
+export interface ReceiptStampReport {
+  merges: MergeReceipt[]
+  unbound: UnboundReceiptStamp[]
+}
+
+// What a `timestamp` record with `subject: 'entry'` names, when it has the
+// fields the rule reads; everything else is left to the chain walk.
+function receiptRecord(entry: EntryRecord): { entryHash: string } | undefined {
+  return entry.type === 'timestamp' &&
+    entry.subject === 'entry' &&
+    typeof entry.captureContentHash === 'string'
+    ? { entryHash: entry.captureContentHash }
+    : undefined
+}
+
+// Index of a record: the one it carries, or its position for a lenient line
+// that carries none.
+function indexOf(entry: EntryRecord, position: number): number {
+  return typeof entry.index === 'number' ? entry.index : position
+}
+
+/**
+ * Applies the receipt rule over one chain's entries. A receipt stamp binds a
+ * `merge` of its own chain only, the one chain the worker writes it to.
+ *
+ * @returns Every `merge` in order with the first receipt stamp that binds it,
+ *   and every receipt stamp that binds none.
+ */
+export function receiptStampsFromEntries(entries: ReadonlyArray<EntryRecord>): ReceiptStampReport {
+  const merges: MergeReceipt[] = []
+  const byHash = new Map<string, MergeReceipt>()
+  entries.forEach((entry, position) => {
+    if (entry.type !== 'merge' || typeof entry.entryHash !== 'string') return
+    const merge: MergeReceipt = { mergeIndex: indexOf(entry, position), entryHash: entry.entryHash }
+    merges.push(merge)
+    byHash.set(merge.entryHash, merge)
+  })
+
+  const unbound: UnboundReceiptStamp[] = []
+  entries.forEach((entry, position) => {
+    const receipt = receiptRecord(entry)
+    if (!receipt) return
+    const index = indexOf(entry, position)
+    const merge = byHash.get(receipt.entryHash)
+    if (!merge) {
+      unbound.push({ index, entryHash: receipt.entryHash })
+      return
+    }
+    const stamp = receiptStampFor(entry, merge.entryHash)
+    if (!stamp) {
+      unbound.push({ index, entryHash: receipt.entryHash, mergeIndex: merge.mergeIndex })
+      return
+    }
+    if (!merge.stamp) merge.stamp = { ...stamp, index }
+  })
+  return { merges, unbound }
 }
 
 /**

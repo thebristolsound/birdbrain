@@ -275,6 +275,26 @@ describe('toLedgerRows — schema 4 (#1509)', () => {
     ).toBe('2 heads')
   })
 
+  // A receipt stamp (#1515): a `timestamp` with `subject: 'entry'` over a
+  // `merge` entry's Entry Hash. It is labelled as a receipt, and an Entry Hash
+  // names no Exhibit, so a row whose Content Hash happens to equal it is not
+  // its target. The content row keeps its label and target.
+  it('labels a receipt stamp as a receipt for an entry, with no Exhibit target', () => {
+    const RECEIPT: ManifestEntry = { ...TIMESTAMP, index: 8, subject: 'entry', schemaVersion: 4 }
+    const rows = [{ id: 'cap-a', contentHash: 'a'.repeat(64), entity: 'capture' }]
+    expect(toLedgerRows([line(TIMESTAMP), line(RECEIPT)], UNSHARED).map((r) => r.target)).toEqual([
+      'hash aaaaaaaaaaaa',
+      'receipt for entry aaaaaaaaaaaa'
+    ])
+    expect(toLedgerRows([line({ ...RECEIPT, tsaToken: undefined })], UNSHARED)[0].target).toBe(
+      'receipt for entry aaaaaaaaaaaa · no token'
+    )
+    expect(targetExhibitId(line(TIMESTAMP), rows)).toBe('cap-a')
+    expect(targetExhibitId(line(RECEIPT), rows)).toBeNull()
+    expect(entryNames(TIMESTAMP, rows[0])).toBe(true)
+    expect(entryNames(RECEIPT, rows[0])).toBe(false)
+  })
+
   it('names an Exhibit by id on an exclude, and nothing on the membership entries', () => {
     const att = { id: 'att-1', contentHash: 'b'.repeat(64) }
     expect(entryNames(EXCLUDE, att)).toBe(true)

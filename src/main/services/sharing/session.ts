@@ -136,6 +136,12 @@ export interface SyncSessionResult {
 
 export interface SyncSessionOptions {
   onPhase?: (phase: SyncPhase) => void
+  // The timestamp worker's hand-off for the `merge` this session writes
+  // (#1515, design decision 15): a receipt stamp over its Entry Hash. Optional,
+  // as the Capture Lifecycle's `enqueueTimestamp` is: a caller that leaves it
+  // out still gets the stamp from the worker's retry loop within one
+  // interval.
+  enqueueReceiptStamp?: (caseId: string, mergeIndex: number) => void
 }
 
 // Why a listener ends a session before serving it; sent in `bye`.
@@ -625,6 +631,7 @@ export async function pullFromPeer(
         toolVersion: resolveToolVersion()
       })
       result.mergeIndex = merge.index
+      options.enqueueReceiptStamp?.(caseId, merge.index)
     }
 
     // 4. Blobs: every file the stored chains of the other members anchor and

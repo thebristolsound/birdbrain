@@ -123,6 +123,10 @@ function loggedCodes(): string[] {
   return readRecentEntries(50).map((entry) => `${entry.source}:${entry.code}`)
 }
 
+function missingPageWarnings(): number {
+  return loggedCodes().filter((code) => code === 'searchFields:searchFields.source_missing').length
+}
+
 let tempDir: string
 let caseId: string
 
@@ -207,6 +211,35 @@ describe('buildExhibitFields', () => {
     expect(getExhibitSearchBuild(id)).toMatchObject({ outcome: 'no-source', textHash: null })
     expect(fieldRows(id)).toEqual([])
     expect(loggedCodes()).toContain('searchFields:searchFields.source_missing')
+  })
+
+  it('warns once while a page stays missing, and again after a build has found it', () => {
+    const id = capture(caseId)
+    const files: Files = new Map()
+
+    expect(buildExhibitFields(id, storeOf(files))).toBe('no-source')
+    expect(buildExhibitFields(id, storeOf(files))).toBe('no-source')
+    expect(getExhibitSearchBuild(id)?.outcome).toBe('no-source')
+    expect(missingPageWarnings()).toBe(1)
+
+    files.set(`${id}.mhtml`, PAGE)
+    expect(buildExhibitFields(id, storeOf(files))).toBe('built')
+    files.delete(`${id}.mhtml`)
+    expect(buildExhibitFields(id, storeOf(files))).toBe('no-source')
+    expect(missingPageWarnings()).toBe(2)
+  })
+
+  it('warns for a missing page after a build that failed', () => {
+    const id = capture(caseId)
+    const throwing = {
+      readArtifact: () => {
+        throw new Error('disk gone')
+      }
+    }
+
+    expect(buildExhibitFields(id, throwing)).toBe('failed')
+    expect(buildExhibitFields(id, storeOf(new Map()))).toBe('no-source')
+    expect(missingPageWarnings()).toBe(1)
   })
 
   it('records what the budgets refused as a partial build', () => {
@@ -349,6 +382,16 @@ describe('ensureCaseFields', () => {
 
     expect(getExhibitSearchBuild(id)?.outcome).toBe('built')
     expect(matches('"tollgate-ledger.example"')).toBe(1)
+  })
+
+  it('counts a missing page on every Case open and warns on the first', async () => {
+    capture(caseId)
+    const store = storeOf(new Map())
+    const missing = { indexed: 0, noSource: 1, failed: 0 }
+
+    expect(await ensureCaseFields(caseId, store)).toEqual(missing)
+    expect(await ensureCaseFields(caseId, store)).toEqual(missing)
+    expect(missingPageWarnings()).toBe(1)
   })
 
   it('joins the pass already running for the Case', async () => {

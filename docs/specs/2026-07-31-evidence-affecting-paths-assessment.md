@@ -206,11 +206,13 @@ that caused it was to record the carved-out file as an exclusion (#515), which i
 | `src/main/services/captureServer.ts` | blocking | Ingest endpoint: upload validation, case routing, ingest-time selector matching |
 | `src/shared/urlPatterns.ts` | blocking | The ignored-URL matcher both sides run: it decides what never enters a case at all, and names the rule recorded as the reason for the absence |
 | `src/shared/urlCanonicalize.ts` | blocking | Canonical URL identity for the extension attach routes: decides which Capture a Tag or Note binds to, and whether an attach request ingests its payload or binds to an existing Capture |
+| `src/shared/localAddress.ts` | blocking | The address classification the viewer's Capture link and the background capture both run: it decides which links and redirects a background capture refuses to render and store (#1726). Added 2026-10-16 |
 | `src/main/services/exclusionPolicy.ts` | blocking | Resolves the per-case exclusion list into the answer the acquisition routes check before ingest, so it decides what those routes refuse. Not every route asks: the pipeline self-test (`POST /api/captures/test`) is a documented exception, so read the call sites rather than assuming coverage is total |
 | `src/main/services/serverToken.ts` | blocking | Authenticates ingest; weakening admits spoofed captures into the evidence chain |
 | `src/main/services/session.ts` | blocking | Active-case state deciding which case a capture is filed under |
 | `src/main/services/recapture.ts` | blocking | Recapture queue re-acquiring URLs as new evidence |
 | `src/main/services/backgroundRenderer.ts` | blocking | Headless render producing the artifacts that get hashed |
+| `src/main/services/localAddressPolicy.ts` | blocking | Applies that classification to recapture links and each redirect hop, and holds the test-only loopback switch a packaged build ignores (#1726). Added 2026-10-16 |
 | `src/main/services/consentBlocker.ts` | blocking | Suppresses consent overlays during recapture — alters acquired page content |
 
 ### Integrity core (hash, manifest, signing, trusted time, verification)

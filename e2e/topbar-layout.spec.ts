@@ -46,11 +46,12 @@ test.describe('Top bar layout', () => {
       }, caseId)
       await expect(page.getByTestId('topbar-rec')).toBeVisible({ timeout: 10000 })
 
-      // The session switch and Export sit in the case action bar, so the top bar's
-      // right side does not grow toward the native window controls while recording.
+      // The session switch sits in the case action bar, so the top bar's right side does
+      // not grow toward the native window controls while recording. Export stays in the
+      // top bar and folds to its icon on narrow windows.
       const actionBar = page.getByTestId('case-action-bar')
       await expect(actionBar.getByRole('switch', { name: 'Capture Session' })).toBeVisible()
-      await expect(actionBar.getByRole('button', { name: /Export/ })).toBeVisible()
+      await expect(controls.getByRole('button', { name: /Export/ })).toBeVisible()
       await expect(controls.getByRole('switch', { name: 'Capture Session' })).toHaveCount(0)
 
       for (const width of [1400, 1100, 1000, 900]) {
@@ -133,7 +134,7 @@ test.describe('Top bar layout', () => {
     await expect(overlay).toBeVisible()
 
     await page
-      .getByTestId('case-action-bar')
+      .getByTestId('topbar-controls')
       .getByRole('button', { name: /Export/ })
       .click()
     await page.getByRole('menuitem', { name: 'Export evidence report' }).click()

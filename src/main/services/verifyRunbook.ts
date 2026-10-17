@@ -10,7 +10,7 @@
 
 import { DIGICERT_TRUSTED_ROOT_G4_SHA256 } from '@main/services/tsaTrust'
 import { EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION } from '@shared/schemas'
-import { SHARED_CASE_SCHEMA_VERSION } from '@shared/verify'
+import { SHARED_CASE_ENTRY_TYPES, SHARED_CASE_SCHEMA_VERSION } from '@shared/verify'
 import {
   CAPTURE_PACKAGE_DIRECTORY,
   LINEAGE_DIRECTORY,
@@ -35,6 +35,9 @@ import {
 // Every member of the package this runbook names, read from the Package
 // Layout so the prose, the commands and the files the exporter writes agree.
 const ROOT = PACKAGE_ROOT_FILES
+
+// The entry types only a Shared Case writes, as code spans.
+const SHARED_CASE_TYPES = [...SHARED_CASE_ENTRY_TYPES].map((type) => `\`${type}\``).join(', ')
 
 function runbookHeading(number: VerifyStepNumber): string {
   return `## Step ${number} — ${verifyStep(number).runbookTitle}`
@@ -417,7 +420,8 @@ nothing for it.
 
 \`${ROOT.verifyScript}\` runs this section as ${stepRef(MEMBER_CHAINS_STEP.id)}, *${MEMBER_CHAINS_STEP.scriptTitle}*,
 between ${stepRef(4)} and ${stepRef(5)}, and prints it only for a package that carries a member
-chain, a lineage chain or a Shared Case entry. For each member chain it prints
+chain, a lineage chain, an entry of a type only a Shared Case writes (${SHARED_CASE_TYPES}),
+or an \`exhibit\` entry with a \`memberCode\`. For each member chain it prints
 the member's code and installation id, how many entries verified, and the key
 they verified under, named as "the key the Owner's member-add for it carries"
 with the SHA-256 of that key's PEM text, as ${stepRef(2)} prints for the enclosed

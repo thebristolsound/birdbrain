@@ -1223,6 +1223,42 @@ describe('Shared Case export, import and fork (#1511)', () => {
       ])
     })
 
+    // No member chain and no membership entry: the Member Code on the
+    // exporter's own Exhibit entry is the only Shared Case signal.
+    it('opens step 4a for an Exhibit entry that carries a Member Code', async () => {
+      const owner = new Chain(signEntryHash)
+      owner.append({
+        type: 'exhibit',
+        exhibitId: `${localId}-claimed`,
+        caseId,
+        kind: 'document',
+        origin: 'manual-upload',
+        name: 'claimed.pdf',
+        exhibitNumber: 1,
+        memberCode: 'CO',
+        path: `${caseId}/documents/${localId}-claimed.pdf`,
+        contentHash: 'e'.repeat(64),
+        sizeBytes: 1,
+        timestamp: TIME,
+        ...LOCAL(),
+        schemaVersion: 4
+      })
+      writeFileSync(join(caseDir(), 'manifest.jsonl'), owner.jsonl)
+      const { dir } = await exportPackage()
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      expect(run.output).toContain('\n== Step 4a - member chains of a Shared Case\n')
+      const claim = 'exhibit entry 0 claims Member Code CO in a Case with no roster'
+      // The entry names bytes the fixture never wrote, so step 5 finds them absent too.
+      expect(findings(run.output, 'FAIL')).toEqual([
+        `FAIL [step 4a] ${claim}`,
+        `FAIL [step 5] Exhibit 1: documents/${localId}-claimed.pdf is missing and nothing ` +
+          'signed accounts for its absence'
+      ])
+      expect(sharedCaseFailures(dir)).toEqual([`citation-collision: ${claim}`])
+    })
+
     // A shell glob's `*` skips a leading dot, so the script lists lineage
     // directories under three patterns; the package verifier lists them all.
     it('fails a lineage directory no import names, whatever its name starts with', async () => {

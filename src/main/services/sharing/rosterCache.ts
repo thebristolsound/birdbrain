@@ -6,7 +6,7 @@ import { writeMembersFile } from '@main/services/sharing/syncState'
 import { isChainInstallationId } from '../../../packages/evidence-package-layout/index'
 
 // The roster cache of a Shared Case (#1810, moved from session.ts). Membership
-// is the Owner's to write (sharedCase.ts), and `case_members` is the cache of
+// is the Owner's to write (membership.ts), and `case_members` is the cache of
 // what the Owner's chain states: derived, never authoritative, rebuilt from
 // the chain (the design's "Case directory"). The Owner rebuilds it after each
 // roster write from its own chain; a member rebuilds it every session from the

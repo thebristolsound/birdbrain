@@ -391,4 +391,19 @@ The maintainer approved this plan and accepted each recommendation it made.
   hash alone. Extracted Text whose signed entry holds no text digest is checked and marked
   `unattested`. The view compares the record the check read, value included, with the hit,
   since a rebuild can give a record id to another record.
-- **Next.** Step 6, the unreviewed view, once the maintainer signs off the check (Ruling 4).
+- **2026-10-17, step 6.** The unreviewed view is the last row under Views in the Data screen's
+  rail, directly above Indicators. `listUnreviewedCaptures` in
+  `src/main/services/db/unreviewedRepo.ts` reads it behind `cases:listUnreviewed`, and it uses the
+  indicator browser's three columns: the four groups, a group's rows, and a row's Captures. Where
+  the code departs from D8's text: the Data screen has had no tab strip since #1149, so the view is
+  a rail row, as the extracted-data view is. `From` and `Reply-To` group by `norm`, the address, not
+  by the stored `value`, which keeps the display name. A link host is the hostname the URL parser
+  gives for the record's `norm`, `www.` kept. A Capture whose field records are missing, failed,
+  found no stored page, or were built from another Content Hash is in no header or link row and is
+  counted apart, since field search leaves such records out too. Rows run from the fewest Captures,
+  then by key. The count for a rare identifier covers every Capture of the Case, reviewed or not. The
+  limit is held in the view and starts at 2 each time, and the view reads the Case again each time
+  it opens. The second evaluation run is in the assessment. The runner now builds field records,
+  adds Field search as a third path, checks every Field search result, and counts the view through
+  the view's own read, which replaces the runner's query that matched note anchors by substring.
+- **Next.** Step 7, the Withheld from analysis mark, waits on ADR-0042's storage (D9).

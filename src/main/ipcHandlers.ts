@@ -66,6 +66,7 @@ import { readCaptureLinks } from '@main/services/captureLinks'
 import { ensureCaseFields, rebuildAllFields } from '@main/services/search/fieldIndex'
 import * as searchFieldRepo from '@main/services/db/searchFieldRepo'
 import { checkFieldHit } from '@main/services/investigation/claimCheck'
+import * as unreviewedRepo from '@main/services/db/unreviewedRepo'
 import { renderCapturePdf } from '@main/services/pdfExport'
 import { getThumbnail } from '@main/services/thumbnails'
 import { getCaseInventory, getManifestSnapshot, verifyExhibit } from '@main/services/exhibits'
@@ -272,6 +273,20 @@ export function registerIpcHandlers(deps: {
     } catch (err) {
       logger.error('ipc', 'searchFields.check_failed', undefined, err)
       throw new IpcFailure('The check could not run', 'CHECK_FAILED')
+    }
+  })
+
+  // The unreviewed view (the same plan, D8). A limit the view should never send is refused
+  // before the read; a read that throws must not look like a Case with nothing to list.
+  handle(IPC_CHANNELS.CASES_LIST_UNREVIEWED, (_, caseId: string, rareLimit: number) => {
+    if (!Number.isInteger(rareLimit) || rareLimit < 1) {
+      throw new IpcFailure('The limit must be a whole number of at least 1', 'INVALID_LIMIT')
+    }
+    try {
+      return unreviewedRepo.listUnreviewedCaptures(caseId, rareLimit)
+    } catch (err) {
+      logger.error('ipc', 'searchFields.unreviewed_failed', { caseId: ident(caseId) }, err)
+      throw new IpcFailure('The unreviewed captures could not be listed', 'UNREVIEWED_FAILED')
     }
   })
 

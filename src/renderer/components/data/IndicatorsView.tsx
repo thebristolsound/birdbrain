@@ -310,7 +310,7 @@ export function IndicatorsView({
   )
 }
 
-function Column({
+export function Column({
   title,
   subtitle,
   className = '',
@@ -338,7 +338,7 @@ function Column({
   )
 }
 
-function DirRow({
+export function DirRow({
   selected,
   onClick,
   children
@@ -361,6 +361,6 @@ function DirRow({
   )
 }
 
-function EmptyState({ children }: { children: ReactNode }) {
+export function EmptyState({ children }: { children: ReactNode }) {
   return <div className="px-4 py-6 text-center text-xs text-text-muted">{children}</div>
 }

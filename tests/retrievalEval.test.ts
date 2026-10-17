@@ -4,15 +4,25 @@ import { join, resolve } from 'path'
 import { fillerPage } from '../scripts/retrieval-eval/filler'
 import { QUERIES } from '../scripts/retrieval-eval/queries'
 import {
+  FIELD_SEARCH,
   firstRank,
+  measureUnreviewed,
+  misses,
   percentile,
   rankedKeys,
   renderReport,
   scoreQuery,
   spread,
+  tallyChecks,
   type EvalReport
 } from '../scripts/retrieval-eval/score'
-import { POOLED_FILE, TARGET_ONLY_STRINGS, TARGET_PAGES } from '../scripts/retrieval-eval/targets'
+import {
+  EXPECTED_PLACEMENTS,
+  POOLED_FILE,
+  TARGET_ONLY_STRINGS,
+  TARGET_PAGES
+} from '../scripts/retrieval-eval/targets'
+import type { UnreviewedCaptures, UnreviewedRow } from '@shared/types'
 
 const PAGES_DIR = resolve(__dirname, '..', 'scripts', 'retrieval-eval', 'pages')
 const RESERVED_HOST = /(^|\.)example\.(com|net|org)$/
@@ -168,33 +178,217 @@ describe('target pages', () => {
   })
 })
 
+function row(key: string, ids: string[]): UnreviewedRow {
+  return {
+    key,
+    identifier: null,
+    caseCaptures: null,
+    captures: ids.map((exhibitId) => ({ exhibitId, exhibitCitation: '1', title: 't', hit: null }))
+  }
+}
+
+const VIEW: UnreviewedCaptures = {
+  captures: 10,
+  total: 6,
+  ungrouped: 2,
+  notCurrent: 1,
+  partial: 1,
+  rareLimit: 2,
+  groups: {
+    from: [row('orders@quillmere-supplies.example.com', ['t-mail'])],
+    'reply-to': [row('l.marsh.remit@corvane-post.example.net', ['t-mail'])],
+    'link-host': [row('a.example.org', ['f1', 't-image']), row('b.example.org', ['f1'])],
+    rare: [row('someone@else.example.org', ['f2'])]
+  }
+}
+
+describe('tallyChecks and misses', () => {
+  it('counts each outcome, the false locators and the reasons a hit could not be checked', () => {
+    const tally = tallyChecks([
+      {
+        queryId: 'q1',
+        checks: [
+          { text: 'present', basis: 'decoded', reason: null },
+          { text: 'absent', basis: 'hash-verified', reason: null }
+        ]
+      },
+      {
+        queryId: 'q2',
+        checks: [
+          { text: 'cannot-check', basis: null, reason: 'gone' },
+          { text: 'cannot-check', basis: null, reason: 'gone' }
+        ]
+      },
+      { queryId: 'q3', checks: [] }
+    ])
+    expect(tally).toEqual({
+      byQuery: [
+        { queryId: 'q1', present: 1, absent: 1, cannotCheck: 0 },
+        { queryId: 'q2', present: 0, absent: 0, cannotCheck: 2 },
+        { queryId: 'q3', present: 0, absent: 0, cannotCheck: 0 }
+      ],
+      present: 1,
+      absent: 1,
+      cannotCheck: 2,
+      falseLocators: 3,
+      reasons: [{ reason: 'gone', count: 2 }]
+    })
+  })
+
+  it('names the queries with expected targets that a path did not return', () => {
+    const scored = [
+      scoreQuery(QUERIES[0], FIELD_SEARCH, { ranked: [], returned: 0 }),
+      scoreQuery(QUERIES[0], 'Case search', { ranked: [], returned: 0 }),
+      scoreQuery(QUERIES[2], FIELD_SEARCH, { ranked: ['address-variant'], returned: 1 }),
+      // The pooled file's query expects nothing, so an empty answer is no miss.
+      scoreQuery(QUERIES[7], FIELD_SEARCH, { ranked: [], returned: 0 })
+    ]
+    expect(misses(scored, FIELD_SEARCH, QUERIES)).toEqual([QUERIES[0].id])
+  })
+})
+
+describe('measureUnreviewed', () => {
+  it("counts each group's rows and Captures, and finds the planted pages where D10 expects them", () => {
+    const measured = measureUnreviewed(
+      VIEW,
+      { 't-mail': 'mail-header', 't-image': 'image-link' },
+      EXPECTED_PLACEMENTS,
+      1.5
+    )
+    expect(measured).toMatchObject({
+      captures: 10,
+      total: 6,
+      ungrouped: 2,
+      notCurrent: 1,
+      partial: 1,
+      rareLimit: 2,
+      listed: 4,
+      listedTargets: ['image-link', 'mail-header'],
+      readMedianMs: 1.5
+    })
+    expect(measured.groups).toEqual([
+      { group: 'from', rows: 1, captures: 1 },
+      { group: 'reply-to', rows: 1, captures: 1 },
+      { group: 'link-host', rows: 2, captures: 2 },
+      { group: 'rare', rows: 1, captures: 1 }
+    ])
+    expect(measured.placements.map(({ target, group, listed }) => [target, group, listed])).toEqual(
+      [
+        ['mail-header', 'from', true],
+        ['mail-header', 'reply-to', true],
+        ['rare-address', 'rare', false]
+      ]
+    )
+  })
+
+  it('expects addresses the planted pages hold, in the lower case the view groups by', () => {
+    for (const { target, key } of EXPECTED_PLACEMENTS) {
+      const page = TARGET_PAGES.find((candidate) => candidate.key === target)!
+      const html = readFileSync(join(PAGES_DIR, page.file), 'utf-8')
+      expect(html.toLowerCase()).toContain(key)
+      expect(key).toBe(key.toLowerCase())
+    }
+  })
+})
+
 describe('renderReport', () => {
-  it('writes one table row per scored query and states the unreviewed targets', () => {
+  it('writes the scored queries, both latency passes, sizes, builds, checks and the view', () => {
     const report: EvalReport = {
       generatedAt: '2026-10-09T00:00:00.000Z',
       toolVersion: '0.0.0',
+      caseId: 'case-1',
       captures: 10,
       targets: 5,
       fillers: 5,
       queries: QUERIES.slice(0, 1),
       scored: [
         scoreQuery(QUERIES[0], 'Case search', { ranked: [], returned: 0, error: 'boom' }),
-        scoreQuery(QUERIES[0], 'Data search', { ranked: ['image-link'], returned: 1 })
+        scoreQuery(QUERIES[0], 'Data search', { ranked: ['image-link'], returned: 1 }),
+        scoreQuery(QUERIES[0], FIELD_SEARCH, {
+          ranked: ['image-link'],
+          returned: 200,
+          truncated: true,
+          unavailable: 0
+        })
       ],
       latency: [
         { path: 'Case search', queryId: 'image-link-host', medianMs: 0.1, p95Ms: 0.2, samples: 3 }
       ],
-      indexSizes: [{ name: 'captures_fts_data', bytes: 4096 }],
+      earlierLatency: [
+        [{ path: 'Case search', queryId: 'image-link-host', medianMs: 0.3, p95Ms: 0.4, samples: 3 }]
+      ],
+      indexSizes: [
+        { name: 'captures_fts_data', bytes: 4096 },
+        { name: 'exhibit_search_fields_fts_data', bytes: 8192 }
+      ],
       fullRebuildMs: 1,
       incrementalMedianMs: null,
-      unreviewedCaptures: 4,
-      unreviewedTargets: ['mail-header']
+      fieldBuild: {
+        outcomes: [
+          { outcome: 'built', count: 9 },
+          { outcome: 'partial', count: 1 }
+        ],
+        fullRebuildMs: 250,
+        incrementalMedianMs: 0.25
+      },
+      checks: tallyChecks([
+        {
+          queryId: 'image-link-host',
+          checks: [
+            { text: 'present', basis: 'decoded', reason: null },
+            {
+              text: 'cannot-check',
+              basis: null,
+              reason: 'The search record is gone. Search again.'
+            }
+          ]
+        }
+      ]),
+      unreviewed: measureUnreviewed(VIEW, { 't-mail': 'mail-header' }, EXPECTED_PLACEMENTS, 2)
     }
     const markdown = renderReport(report)
-    expect(markdown).toContain('| image-link-host | Case search | - | no | no | 0 | no | boom |')
-    expect(markdown).toContain('| image-link-host | Data search | 1 | yes | yes | 1 | yes |  |')
-    expect(markdown).toContain('| Case search | image-link-host | 0.10 | 0.20 | 3 |')
+    expect(markdown).toContain(
+      '| image-link-host | Case search | - | no | no | 0 | no | - | - | boom |'
+    )
+    expect(markdown).toContain(
+      '| image-link-host | Data search | 1 | yes | yes | 1 | yes | - | - |  |'
+    )
+    expect(markdown).toContain(
+      '| image-link-host | Field search | 1 | yes | yes | 200 | yes | yes | 0 |  |'
+    )
+    expect(markdown).toContain(
+      '| Path | Query | Pass 1 median (ms) | Pass 1 95th percentile (ms) | Pass 2 median (ms) | ' +
+        'Pass 2 95th percentile (ms) | Samples |'
+    )
+    expect(markdown).toContain('| Case search | image-link-host | 0.30 | 0.40 | 0.10 | 0.20 | 3 |')
     expect(markdown).toContain('| captures_fts_data | 4096 | 410 |')
-    expect(markdown).toContain('Targets among them: mail-header.')
+    expect(markdown).toContain('| exhibit_search_fields_fts_data | 8192 | 819 |')
+    expect(markdown).toContain('- Full rebuild of the field records and their index: 250.00 ms.')
+    expect(markdown).toContain("- Building one Capture's field records, median: 0.25 ms.")
+    expect(markdown).toContain('- Field build rows by outcome: built 9, partial 1.')
+    expect(markdown).toContain('| image-link-host | 1 | 0 | 1 |')
+    expect(markdown).toContain(
+      '- In all: 1 present, 0 absent, 1 cannot be checked. False locators (absent or cannot be ' +
+        'checked): 1.'
+    )
+    expect(markdown).toContain('- Cannot be checked, 1: The search record is gone. Search again.')
+    expect(markdown).toContain(
+      '- Misses, queries whose expected targets Field search did not return: none.'
+    )
+    expect(markdown).toContain(
+      '6 of 10 committed Captures have no live Note and no Persisted Match. 2 are under no row, ' +
+        '1 have no current field records, and 1 have a partial build.'
+    )
+    expect(markdown).toContain('| Link host | 2 | 2 |')
+    expect(markdown).toContain(
+      '- Captures under at least one row: 4. Targets among them: mail-header.'
+    )
+    expect(markdown).toContain(
+      '- `mail-header` under Reply-To `l.marsh.remit@corvane-post.example.net`: yes.'
+    )
+    expect(markdown).toContain(
+      '- `rare-address` under Rare identifiers `ada.penrose@larchfield.example.org`: no.'
+    )
+    expect(markdown).toContain("- The view's read, median: 2.00 ms.")
   })
 })

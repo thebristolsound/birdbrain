@@ -232,6 +232,42 @@ describe('DataExplorer (#1149)', () => {
     expect(screen.queryByTestId('artifact-table')).toBeNull()
   })
 
+  // The unreviewed view (docs/plans/2026-10-09-case-retrieval-first-slice.md, D8): its
+  // rail row under Views replaces the table and the strip, and takes the view's total.
+  it('opens the unreviewed view from its row under Views, with no Verify there', async () => {
+    const listUnreviewed = vi.fn(async () => ({
+      captures: 3,
+      total: 2,
+      ungrouped: 2,
+      notCurrent: 0,
+      partial: 0,
+      rareLimit: 2,
+      groups: { from: [], 'reply-to': [], 'link-host': [], rare: [] }
+    }))
+    window.birdbrain.cases.listUnreviewed = listUnreviewed
+    renderExplorer()
+    const rail = await tree()
+    const row = rail.getByTestId('data-tree-node-unreviewed')
+    expect(text(row)).toContain('Unreviewed Captures')
+    // Absent, not 0, until the view has read.
+    expect(rail.queryByTestId('data-tree-count-unreviewed')).toBeNull()
+
+    fireEvent.click(row.querySelector('button:last-of-type')!)
+    expect(await screen.findByTestId('unreviewed-view')).toBeTruthy()
+    expect(listUnreviewed).toHaveBeenCalledWith('case1', 2)
+    expect(screen.queryByTestId('artifact-table')).toBeNull()
+    expect(screen.queryByTestId('node-verify')).toBeNull()
+    expect(screen.queryByTestId('row-verify')).toBeNull()
+    await waitFor(() => expect(text(rail.getByTestId('data-tree-count-unreviewed'))).toBe('2'))
+
+    // Another node brings the table back; the row keeps its count.
+    fireEvent.click(
+      rail.getByTestId('data-tree-node-kind:capture').querySelector('button:last-of-type')!
+    )
+    expect(await screen.findByTestId('artifact-table')).toBeTruthy()
+    expect(text(rail.getByTestId('data-tree-count-unreviewed'))).toBe('2')
+  })
+
   it('keeps the rail and the Indicators columns on one selection', async () => {
     window.birdbrain.extractedData.subcategories = vi.fn(async () => [
       { subcategory: 'personal', count: 1 }

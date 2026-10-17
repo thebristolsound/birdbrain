@@ -50,6 +50,7 @@ import type {
   SelectorOrigin,
   SessionRecord,
   Tag,
+  UnreviewedCaptures,
   UpdateStatus,
   WaybackLookupResult,
   WaybackSnapshot,
@@ -77,6 +78,7 @@ export const IPC_CHANNELS = {
   CASES_ENSURE_SEARCH_FIELDS: 'cases:ensureSearchFields',
   CASES_SEARCH_FIELDS: 'cases:searchFields',
   CASES_CHECK_FIELD_HIT: 'cases:checkFieldHit',
+  CASES_LIST_UNREVIEWED: 'cases:listUnreviewed',
 
   // Captures
   CAPTURES_LIST: 'captures:list',
@@ -812,6 +814,10 @@ export interface IpcInvokeContract {
   'cases:ensureSearchFields': { args: [caseId: string]; result: FieldBuildSummary }
   'cases:searchFields': { args: [caseId: string, query: string]; result: FieldSearchResult }
   'cases:checkFieldHit': { args: [fieldId: number]; result: FieldHitCheck }
+  'cases:listUnreviewed': {
+    args: [caseId: string, rareLimit: number]
+    result: UnreviewedCaptures
+  }
 
   'captures:list': { args: [caseId: string]; result: Capture[] }
   'captures:get': { args: [id: string]; result: Capture | undefined }

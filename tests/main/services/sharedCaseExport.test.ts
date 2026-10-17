@@ -882,6 +882,82 @@ describe('Shared Case export, import and fork (#1511)', () => {
     expect((await verifyExhibit(newCaseId, earlierDoc)).status).toBe('chain-broken')
   })
 
+  // #1638: a fork's `import` follows the source Owner's `member-add` entries,
+  // and custody stops there. These forks run on one installation, so the
+  // forking member is also the installation that imports the fork again.
+  async function forkOf(id: string): Promise<string> {
+    const out = join(tempDir, `${id}.birdbrain`)
+    await exportCaseArchive(id, out)
+    // With the source gone the import keeps every row id.
+    deleteCase(id)
+    return (await importCaseArchive(out)).newCaseId
+  }
+
+  const relabel = (exhibitId: string, author: string): void => {
+    getDb()
+      .prepare('UPDATE exhibits SET author_installation_id = ? WHERE id = ?')
+      .run(author, exhibitId)
+  }
+
+  // The forking member's own row and the Owner's both carry Exhibit Number 1,
+  // which one author holds once. Verifying an Exhibit reads no number.
+  const renumber = (exhibitId: string): void => {
+    getDb().prepare('UPDATE exhibits SET exhibit_number = 9 WHERE id = ?').run(exhibitId)
+  }
+
+  const verdict = async (id: string, exhibitId: string): Promise<[string, string | undefined]> => {
+    const { status, reason } = await verifyExhibit(id, exhibitId)
+    return [status, reason]
+  }
+
+  it("fails the source Owner's Exhibit relabelled to the forking member after a fork", async () => {
+    const { owner, ownerDoc, ownDoc } = memberReplica()
+    const newCaseId = await forkOf(caseId)
+    const index = owner.lines.length - 1
+    expect(await verdict(newCaseId, ownerDoc)).toEqual(['verified', undefined])
+
+    renumber(ownDoc)
+    relabel(ownerDoc, localId)
+    expect(await verdict(newCaseId, ownerDoc)).toEqual([
+      'chain-broken',
+      `no verified chain of ${localId} holds entry ${index} for these bytes`
+    ])
+    relabel(ownerDoc, 'installation-unknown-0001')
+    expect(await verdict(newCaseId, ownerDoc)).toEqual([
+      'chain-broken',
+      `no verified chain of installation-unknown-0001 holds entry ${index} for these bytes`
+    ])
+  })
+
+  it("fails the source Owner's Exhibit relabelled to the importer after an ordinary import of a fork", async () => {
+    const { owner, ownerDoc, ownDoc } = memberReplica()
+    const reimported = await forkOf(await forkOf(caseId))
+    expect(await verdict(reimported, ownerDoc)).toEqual(['verified', undefined])
+
+    // Only the Owner's row: the forking member's own reads chain-broken here
+    // before any relabel (#1836).
+    renumber(ownDoc)
+    relabel(ownerDoc, localId)
+    expect(await verdict(reimported, ownerDoc)).toEqual([
+      'chain-broken',
+      `no verified chain of ${localId} holds entry ${owner.lines.length - 1} for these bytes`
+    ])
+  })
+
+  it("keeps the Owner's pre-share import with the Owner in a member's fork, and fails it under the forking member", async () => {
+    const { earlierDoc } = memberReplicaAfterImport()
+    const newCaseId = await forkOf(caseId)
+    const row = listExhibits(newCaseId).find((e) => e.id === earlierDoc)
+    expect(row?.authorInstallationId).toBe(PEER_ID)
+    expect(await verdict(newCaseId, earlierDoc)).toEqual(['verified', undefined])
+
+    relabel(earlierDoc, localId)
+    expect(await verdict(newCaseId, earlierDoc)).toEqual([
+      'chain-broken',
+      `no verified chain of ${localId} holds entry 0 for these bytes`
+    ])
+  })
+
   it('exports a fork as an Evidence Package that the package verifier passes', async () => {
     memberReplica()
     const out = join(tempDir, 'fork.birdbrain')

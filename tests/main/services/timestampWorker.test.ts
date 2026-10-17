@@ -17,6 +17,12 @@ import {
   resetInstallationId
 } from '@main/services/installationId'
 import { getPublicKeyPem } from '@main/services/signingKey'
+import {
+  buildTrustedTimeIndexFromEntries,
+  parseTimestampToken,
+  receiptStampsFromEntries,
+  verifyManifestChainText
+} from '@shared/verify'
 import { createTimestampWorker } from '@main/services/timestampWorker'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 
@@ -475,6 +481,133 @@ describe('timestampWorker', () => {
         expect(receiptEntries()).toHaveLength(1)
         expect(receiptEntries()[0].captureContentHash).toBe(merge.entryHash)
       })
+    })
+  })
+
+  // Known-answer test for the receipt stamp (#1515 evidence gate). The input is
+  // a fixed two-entry chain the writer rebuilds from invented fields, and the
+  // committed DigiCert token issued over the `merge` entry's Entry Hash; the
+  // answer is the Entry Hash itself, the receipt entry the worker writes, and
+  // what the receipt rule and the trusted-time index resolve from it.
+  describe('known answer: a real DigiCert token over a merge Entry Hash', () => {
+    const FIXTURES = join(process.cwd(), 'tests/fixtures/timestamp')
+    const MERGE_ENTRY_HASH = readFileSync(join(FIXTURES, 'merge-entry-hash.txt'), 'utf-8').trim()
+    const MERGE_TOKEN = readFileSync(join(FIXTURES, 'merge-digicert-token.der'))
+    const KAT_CASE_ID = '0196f7a2-aaaa-bbbb-cccc-000000001515'
+    const KAT_BY = {
+      operatorId: 'installation-receiver-0001',
+      operatorName: 'Casey Operator',
+      toolVersion: '0.9.0'
+    }
+    const KAT_CONTENT_HASH = createHash('sha256').update('receipt stamp known answer').digest('hex')
+
+    // The fixed chain, in the Case directory of a Case row named after it so
+    // the worker reads it where it reads every chain. The fixture README
+    // records the same fields.
+    function fixedChain(): { caseId: string; caseDir: string; mergeIndex: number } {
+      const id = createCase({ name: 'Receipt KAT' }).id
+      const dir = join(getStorageRoot(), id)
+      ensureCaseDir(id)
+      initManifest(dir)
+      appendManifestEntry(dir, {
+        type: 'capture',
+        captureId: '0196f7a2-aaaa-bbbb-cccc-000000000151',
+        caseId: KAT_CASE_ID,
+        url: 'https://example.com/receipt',
+        timestamp: '2026-10-17T10:00:00.000Z',
+        contentHash: KAT_CONTENT_HASH,
+        sizeBytes: 1,
+        ...KAT_BY
+      })
+      const merge = appendManifestEntry(dir, {
+        type: 'merge',
+        caseId: KAT_CASE_ID,
+        heads: [
+          {
+            installationId: 'installation-peer-0001',
+            index: 0,
+            entryHash: createHash('sha256').update('peer head').digest('hex'),
+            entriesReceived: 1
+          }
+        ],
+        timestamp: '2026-10-17T10:01:00.000Z',
+        ...KAT_BY
+      })
+      return { caseId: id, caseDir: dir, mergeIndex: merge.index }
+    }
+
+    const lines = (dir: string): Array<Record<string, unknown>> =>
+      readFileSync(join(dir, 'manifest.jsonl'), 'utf-8')
+        .split('\n')
+        .filter((line) => line.trim())
+        .map((line) => JSON.parse(line) as Record<string, unknown>)
+
+    it('writes the merge the fixture was requested over, hash for hash', () => {
+      const { caseDir: dir, mergeIndex } = fixedChain()
+      const merge = lines(dir)[mergeIndex]
+      expect(merge.entryHash).toBe(MERGE_ENTRY_HASH)
+      expect(merge.schemaVersion).toBe(4)
+      expect(merge.prevHash).toBe(lines(dir)[0].entryHash)
+      expect(parseTimestampToken(MERGE_TOKEN).messageImprintHex).toBe(MERGE_ENTRY_HASH)
+    })
+
+    it('enabled: retains the token verbatim and resolves the receipt off it', async () => {
+      const { caseId: id, caseDir: dir, mergeIndex } = fixedChain()
+      const requestToken = vi.fn(async () => MERGE_TOKEN)
+      const worker = createTimestampWorker({ requestToken })
+
+      expect(await worker.stampMerge(id, mergeIndex)).toBe(true)
+
+      expect(requestToken).toHaveBeenCalledTimes(1)
+      expect(requestToken).toHaveBeenCalledWith(MERGE_ENTRY_HASH, 'http://tsa.example.com')
+      const entries = lines(dir)
+      expect(entries).toHaveLength(3)
+      expect(entries[2]).toMatchObject({
+        type: 'timestamp',
+        subject: 'entry',
+        captureContentHash: MERGE_ENTRY_HASH,
+        schemaVersion: 4,
+        // Byte-for-byte: the retained token is the one the authority signed.
+        tsaToken: MERGE_TOKEN.toString('base64')
+      })
+      expect(
+        verifyManifestChainText(readFileSync(join(dir, 'manifest.jsonl'), 'utf-8'), {
+          publicKeyPem: getPublicKeyPem()
+        }).valid
+      ).toBe(true)
+
+      const { merges, unbound } = receiptStampsFromEntries(entries)
+      expect(unbound).toEqual([])
+      expect(merges).toEqual([
+        {
+          mergeIndex,
+          entryHash: MERGE_ENTRY_HASH,
+          stamp: {
+            index: 2,
+            trustedTime: 'rfc3161',
+            tsaName: 'DigiCert SHA256 RSA4096 Timestamp Responder 2026 1',
+            stampedAt: '2026-10-17T03:57:17.000Z'
+          }
+        }
+      ])
+      // The receipt vouches for no content: the capture stays pending.
+      expect(buildTrustedTimeIndexFromEntries(entries).get(KAT_CONTENT_HASH)).toEqual({
+        trustedTime: 'pending'
+      })
+      expect(buildTrustedTimeIndexFromEntries(entries).has(MERGE_ENTRY_HASH)).toBe(false)
+    })
+
+    it('declined: the same input yields no entry and no request', async () => {
+      const { caseId: id, caseDir: dir, mergeIndex } = fixedChain()
+      updateSettings({ tsaEnabled: false })
+      const requestToken = vi.fn(async () => MERGE_TOKEN)
+      const worker = createTimestampWorker({ requestToken })
+
+      expect(await worker.stampMerge(id, mergeIndex)).toBe(false)
+
+      expect(requestToken).not.toHaveBeenCalled()
+      expect(lines(dir)).toHaveLength(2)
+      expect(receiptStampsFromEntries(lines(dir)).merges[0].stamp).toBeUndefined()
     })
   })
 

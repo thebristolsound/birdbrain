@@ -37,7 +37,8 @@ function extractFromStore(
   const mhtml = store.readArtifact(caseId, exhibitId, 'mhtml')
   // A legacy Capture from before MHTML has its page as `.html` instead.
   const html = mhtml ? null : store.readArtifact(caseId, exhibitId, 'html')
-  // Every Capture stores a page, so none means the file cannot be read now.
+  // No page means none is there now: its drive may not be attached, or a Case
+  // Archive carried the Capture as a row only.
   if (!mhtml && !html) {
     return { fields: [], textHash: null, outcome: 'no-source', skippedJson: null }
   }
@@ -79,7 +80,12 @@ export function buildExhibitFields(
     logger.error('searchFields', 'searchFields.build_failed', { exhibitId: ident(exhibitId) }, err)
     built = { fields: [], textHash: null, outcome: 'failed', skippedJson: null }
   }
-  if (built.outcome === 'no-source') {
+  // Every Case open retries a missing page, so warn when it goes missing, not on each
+  // retry that still finds nothing; a build that finds it re-arms the warning.
+  if (
+    built.outcome === 'no-source' &&
+    searchFieldRepo.getExhibitSearchBuild(exhibitId)?.outcome !== 'no-source'
+  ) {
     logger.warn('searchFields', 'searchFields.source_missing', { exhibitId: ident(exhibitId) })
   }
   const { fields, ...build } = built

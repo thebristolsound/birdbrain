@@ -155,9 +155,10 @@ export const TIME = '2026-10-02T09:00:00.000Z'
 export const caseDirOf = (caseId: string): string => join(getStorageRoot(), caseId)
 
 // Appends one entry to the active peer's own chain, filling index, prevHash,
-// hash and signature the way appendManifestEntry does: for the schema-4
-// membership entries, which the app has no writer for until the invite flow
-// lands (#1810).
+// hash and signature the way appendManifestEntry does, with none of the
+// roster checks or database writes the writers in membership.ts make. A test
+// builds a roster chain directly with it, including entries no join can lead
+// to, such as a member-add whose id cannot name a chain file.
 export function appendOwnChainLine(
   caseId: string,
   body: Record<string, unknown>

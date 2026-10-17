@@ -3,6 +3,7 @@ import type {
   CaseAutoCapturePolicy,
   Capture,
   CaptureLinks,
+  FieldHitCheck,
   FieldSearchResult,
   Tag,
   BirdbrainSettings,
@@ -124,6 +125,8 @@ export interface BirdbrainAPI {
     ensureSearchFields(caseId: string): Promise<FieldBuildSummary>
     // Searches the Case's link and header records (the same plan, D6).
     searchFields(caseId: string, query: string): Promise<FieldSearchResult>
+    // Checks one field record against the stored files (the same plan, D7).
+    checkFieldHit(fieldId: number): Promise<FieldHitCheck>
   }
   captures: {
     list(caseId: string): Promise<Capture[]>

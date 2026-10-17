@@ -141,6 +141,7 @@ import type {
   BugReportResult,
   Capture,
   Case,
+  FieldHitCheck,
   FieldSearchResult,
   LogEntry,
   RecentActivityEvent,
@@ -2130,6 +2131,49 @@ describe('ipcHandlers — Case search fields', () => {
       expect(
         readRecentEntries(20).some(
           (e) => e.source === 'ipc' && e.code === 'searchFields.search_failed'
+        )
+      ).toBe(true)
+    } finally {
+      disposeLogger()
+    }
+  })
+
+  it('checks a hit, and reports a check that cannot run as a failure, not an outcome', async () => {
+    writeFileSync(
+      defaultCaptureStore.artifactPaths(caseId, captureId, 'html').abs,
+      '<a href="https://ledger-tollgate.example.org/x">x</a>'
+    )
+    expectOk(await invoke(IPC_CHANNELS.CASES_ENSURE_SEARCH_FIELDS, caseId))
+    const [hit] = expectOk<FieldSearchResult>(
+      await invoke(IPC_CHANNELS.CASES_SEARCH_FIELDS, caseId, 'ledger-tollgate')
+    ).hits
+
+    // The fixture is a legacy `.html` Capture, which its verification does not hash.
+    const checked = expectOk<FieldHitCheck>(
+      await invoke(IPC_CHANNELS.CASES_CHECK_FIELD_HIT, hit.fieldId)
+    )
+    expect(checked.check).toMatchObject({ text: 'cannot-check', basis: null })
+    expect(checked.check.reason).toMatch(/verification result is legacy/)
+    expect(checked.record).toEqual({
+      exhibitId: hit.exhibitId,
+      field: hit.field,
+      locator: hit.locator
+    })
+
+    initLogger(userDataPath, 'check-field-hit-test-session')
+    try {
+      vi.spyOn(searchFieldRepo, 'getFieldRecord').mockImplementationOnce(() => {
+        throw new Error('database is locked')
+      })
+      const res = (await invoke(IPC_CHANNELS.CASES_CHECK_FIELD_HIT, hit.fieldId)) as {
+        ok: boolean
+        code?: string
+      }
+      expect(res).toMatchObject({ ok: false, code: 'CHECK_FAILED' })
+      flushLogger()
+      expect(
+        readRecentEntries(20).some(
+          (e) => e.source === 'ipc' && e.code === 'searchFields.check_failed'
         )
       ).toBe(true)
     } finally {

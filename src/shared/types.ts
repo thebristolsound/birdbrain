@@ -3,6 +3,7 @@
 
 import type { NoteAnchor } from '@shared/noteAnchor'
 import type { MentionTargetType } from '@shared/noteDoc'
+import type { ClaimCheck } from '@shared/investigation'
 
 export interface Case {
   id: string
@@ -215,6 +216,17 @@ export interface FieldSearchResult {
   unavailable: Array<{ exhibitId: string; exhibitCitation: string }>
   /** More hits matched than the result holds. */
   truncated: boolean
+}
+
+/**
+ * The exact check of a field hit against the stored files (retrieval plan D7), with the
+ * record it read. Search records are replaced in place, so a record id can name another
+ * record by the time it is checked; the view compares `record` with the hit it shows.
+ */
+export interface FieldHitCheck {
+  check: ClaimCheck
+  /** Null when no record has the id. */
+  record: Pick<FieldHit, 'exhibitId' | 'field' | 'locator'> | null
 }
 
 export interface Capture {
@@ -794,6 +806,9 @@ export const LOG_CODES = [
   // holds the error. A pass over a Case that could not start is logged on its own,
   // since no build row records it.
   'searchFields.build_failed',
+  // An exact check that threw: the view says the check could not run, and this line
+  // holds the error.
+  'searchFields.check_failed',
   'searchFields.ensure_failed',
   // A field search that threw: the search bar says the search could not run, and this
   // line holds the error.

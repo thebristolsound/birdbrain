@@ -318,7 +318,11 @@ function* ruleSpans(
   const lead = /^[A-Za-z0-9-]*/.exec(pattern.source)?.[0] ?? ''
   const sticky = new RegExp(pattern.source, `${pattern.flags.replace('g', '')}y`)
   let from = 0
-  for (let at = text.indexOf(lead); at !== -1 && at < text.length; at = text.indexOf(lead, from)) {
+  for (
+    let at = text.indexOf(lead, from);
+    at !== -1 && at < text.length;
+    at = text.indexOf(lead, from)
+  ) {
     from = at + 1
     sticky.lastIndex = 0
     const match = sticky.exec(text.slice(at, at + RULE_WINDOW))

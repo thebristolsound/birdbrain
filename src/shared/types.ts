@@ -1529,3 +1529,114 @@ export interface SyncState {
   transfer: SyncTransfer | null
   lastError: { kind: SyncErrorKind; at: string } | null
 }
+
+// Why a sharing command refused (#1810). Every code reaches the renderer as
+// `IpcFailure.code`, so a screen can name the refusal rather than parse a
+// message. The table of when each is raised is in the #1810 plan, section 4.
+export const SHARING_ERROR_CODES = [
+  'invite-malformed',
+  'invite-expired',
+  'invite-reused',
+  'invite-cancelled',
+  'invite-unknown',
+  'invite-not-found',
+  'join-signature-invalid',
+  'join-request-unknown',
+  'declined',
+  'already-member',
+  'member-code-rejected',
+  'welcome-invalid',
+  'case-exists',
+  'owner-unreachable',
+  'not-owner',
+  'not-shared',
+  'not-a-member',
+  'already-revoked',
+  'owner-not-revocable',
+  'exhibit-not-found',
+  'exhibit-ambiguous',
+  'already-excluded',
+  'operator-name-required',
+  'sharing-unavailable'
+] as const
+export type SharingErrorCode = (typeof SHARING_ERROR_CODES)[number]
+
+// What `sharing:createInvite` returns: the string the Owner hands over, and
+// the id the Owner cancels it by. The secret inside the string is never held
+// anywhere else.
+export interface SharingInvite {
+  inviteId: string
+  invite: string
+  expiresAt: string
+}
+
+// What `sharing:readInvite` shows before the joiner commits.
+export interface SharingInvitePreview {
+  caseId: string
+  ownerName: string
+  expiresAt: string
+}
+
+export interface SharingOpenInvite {
+  inviteId: string
+  expiresAt: string
+}
+
+// A join waiting for the Owner's approval, as the approval dialog shows it.
+export interface SharingPendingJoin {
+  requestId: string
+  caseId: string
+  installationId: string
+  operatorName: string
+  // SHA-256 hex of the offered key's DER form; the dialog groups the first 32
+  // characters in fours.
+  fingerprint: string
+  suggestedMemberCode: string
+  receivedAt: string
+}
+
+export interface SharingMember extends CaseMember {
+  // Null when the roster key does not parse; never attributed by default.
+  fingerprint: string | null
+}
+
+// The payload of `sharing:getMembers`.
+export interface SharingMembers {
+  caseId: string
+  installationId: string
+  isOwner: boolean
+  members: SharingMember[]
+  invites: SharingOpenInvite[]
+  pendingJoins: SharingPendingJoin[]
+}
+
+export type SharingJoinStep = 'connecting' | 'waiting' | 'adopting' | 'syncing'
+
+export interface SharingJoinProgressEvent {
+  caseId: string
+  ownerName: string
+  step: SharingJoinStep
+}
+
+export interface SharingChangedEvent {
+  caseId: string
+}
+
+export interface SharingJoinResult {
+  caseId: string
+  caseName: string
+}
+
+// One member's outcome from `sharing:syncNow`.
+export type SharingSyncOutcome = { installationId: string } & (
+  | {
+      outcome: 'synced'
+      entries: number
+      blobs: number
+      rowsApplied: number
+      errors: number
+    }
+  | { outcome: 'no-address' }
+  | { outcome: 'unreachable' }
+  | { outcome: 'failed'; detail: string }
+)

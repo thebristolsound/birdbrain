@@ -11,6 +11,7 @@ import {
   statSync
 } from 'node:fs'
 import { dirname, isAbsolute, join, relative, sep } from 'node:path'
+import { replaceGenerationsInFile } from '@main/services/db/caseGenerations'
 import {
   closeDatabase,
   emptyWalBeforeReplace,
@@ -183,7 +184,8 @@ function adoptSnapshots(scratch: string, dbPath: string): void {
 }
 
 // Copies the picked file to the scratch path and makes it installable: checked,
-// migrated, and flushed. Returns the refusal, or null when the copy is ready.
+// migrated, given new generations, and flushed. Returns the refusal, or null when
+// the copy is ready.
 async function prepareScratch(sourcePath: string, scratch: string): Promise<RestoreOutcome | null> {
   try {
     mkdirSync(dirname(scratch), { recursive: true })
@@ -209,9 +211,11 @@ async function prepareScratch(sourcePath: string, scratch: string): Promise<Rest
   }
 
   try {
-    // migrateFile's connection was the last one, so its close folded the WAL
-    // back into the file. A sidecar still here holds pages the rename would
-    // leave behind.
+    // The restored Cases get new generations on the copy (ADR-0042). Its
+    // connection, like migrateFile's before it, was the last one, so its close
+    // folded the WAL back into the file. A sidecar still here holds pages the
+    // rename would leave behind.
+    replaceGenerationsInFile(scratch)
     if (DB_SIDECAR_SUFFIXES.some((suffix) => existsSync(`${scratch}${suffix}`))) {
       throw new Error('the scratch copy still has a WAL sidecar after its last close')
     }

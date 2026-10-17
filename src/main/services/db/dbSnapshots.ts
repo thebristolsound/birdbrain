@@ -12,6 +12,7 @@ import {
   statSync
 } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { replaceGenerationsInFile } from '@main/services/db/caseGenerations'
 import { logger } from '@main/services/logger'
 import type { DbSnapshot } from '@shared/ipc'
 
@@ -382,19 +383,31 @@ export async function createPreMigrationSnapshot(
 }
 
 /**
- * Remove the restore staging file beside `dbPath`, if one is there.
+ * Remove the restore staging file beside `dbPath`, and its sidecars, if any are
+ * there.
  *
  * Non-throwing by design, and called from both ends of the restore: on the way
  * in, where the copy that follows would truncate whatever is there anyway, and
  * on the failure path, where its own error would replace the one that actually
  * stopped the restore. A staging file that cannot be removed is a disk-space
  * problem and not a correctness one — nothing reads it and nothing trusts it.
+ * A sidecar that cannot be removed stops the next restore before it opens the
+ * staged copy.
  */
 function clearRestorePartial(dbPath: string): void {
-  try {
-    rmSync(`${dbPath}${RESTORE_PARTIAL_SUFFIX}`, { force: true })
-  } catch {
-    // Deliberately swallowed — see above.
+  const partial = `${dbPath}${RESTORE_PARTIAL_SUFFIX}`
+  for (const path of [partial, ...DB_SIDECAR_SUFFIXES.map((suffix) => `${partial}${suffix}`)]) {
+    try {
+      rmSync(path, { force: true })
+    } catch {
+      // Deliberately swallowed — see above.
+    }
+  }
+}
+
+function assertNoSidecar(path: string): void {
+  if (DB_SIDECAR_SUFFIXES.some((suffix) => existsSync(`${path}${suffix}`))) {
+    throw new Error('the staged snapshot has a WAL sidecar beside it')
   }
 }
 
@@ -463,6 +476,13 @@ export function restoreSnapshotFile(dbPath: string, fileName: string): void {
 
   try {
     copyFileSync(snapshot.path, partial)
+    // The restored Cases get new generations on the staged copy (ADR-0042).
+    // Opening it would replay a -wal already beside it, and its connection is
+    // the only one, so its close folds the WAL back into the file: a sidecar
+    // there before the open or after the close stops the restore.
+    assertNoSidecar(partial)
+    replaceGenerationsInFile(partial)
+    assertNoSidecar(partial)
     // Flushed before the rename rather than left to the page cache, so the
     // staged pages are on disk before anything points at them. That buys
     // atomicity against this process dying, which is what is claimed here — not

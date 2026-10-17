@@ -242,6 +242,11 @@ describe('UnreviewedView', () => {
     pick('pay@corvane.example.net')
     fireEvent.click(screen.getByTestId('unreviewed-capture-cap-mail'))
     expect(useAppStore.getState().viewerHit).toEqual(REPLY_HIT)
+
+    // Each press is a new opening, so the exact check beside the hit starts with no answer.
+    const opening = useAppStore.getState().viewerHitOpening
+    fireEvent.click(screen.getByTestId('unreviewed-capture-cap-mail'))
+    expect(useAppStore.getState().viewerHitOpening).toBe(opening + 1)
   })
 
   it('opens a link host Capture at its link in the Links tab', async () => {

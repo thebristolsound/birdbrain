@@ -307,6 +307,8 @@ inventory: {
         bodiesOmitted: number
         incompleteRequestBodies: number
         webSockets: number
+        recordedTargets: number
+        unrecordedTargets: number
         replacedHeaders: string[]
         budget: { totalBytes: number; resourceBytes: number }
       }
@@ -350,6 +352,10 @@ inventory: {
   - `webSockets`: `Network.webSocketCreated` events. ADR-0035 has the inventory account for every
     exchange the record lacks, and a WebSocket handshake reaches CDP outside `requestWillBeSent`.
     Frames are not recorded (spec open question 5).
+  - `recordedTargets` and `unrecordedTargets`: the page, frames, and dedicated workers whose
+    requests the record holds, and those that attached but whose `Network.enable` failed or timed
+    out, so their requests are missing (D17). Proposed 2026-10-17, with D17, for the maintainer's
+    approval: they change the D4 shape accepted on 2026-10-10.
   - `replacedHeaders`: the lower-case names whose values the writer replaced (ADR-0036), sorted and
     unique.
   - `budget`: the two limits passed to `Network.enable`, so a reader knows what "over the budget"
@@ -598,6 +604,76 @@ that ships the writers. `-assessment.md` is one of the suffixes `docs/README.md`
 `specs/`, which treats a spec as immutable once approved. The acceptance decision is this record's
 approval, so the steps extend it before then and nothing changes it after.
 
+### D17. Out-of-process frames and dedicated workers
+
+**Ruled 2026-10-17: the engine attaches to each cross-site frame's process and records its
+requests, so the Transaction Record covers the whole page (option (a) on #1823). This design
+awaits the maintainer's approval on its pull request; step 1 does not start before it.** The
+renderer spike found that a cross-site iframe runs in a renderer process of its own and that none
+of its subresource requests reach `wc.debugger`; its document request starts there and never
+finishes there ([renderer spike](../specs/2026-10-11-capture-engine-renderer-spike.md), Question
+4). That met step 0's first stop condition.
+
+**Measured on 2026-10-17.** A scratch Electron script ran in the spike's form: Electron 44.7.0
+(Chromium 152.0.7977.130) under `xvfb-run`, an offscreen window on a fresh partition, `about:blank`
+loaded and `Network.enable` sent before the target. The target, on `127.0.0.1`, started a
+dedicated worker and framed a page on `localhost`; the framed page loaded a stylesheet, an image,
+a `fetch`, and a dedicated worker of its own, and each worker fetched one file. The two servers
+logged ten requests in each pass.
+
+| Pass | What `wc.debugger` reported |
+| --- | --- |
+| As today: `Network.enable` on the page only | The page's document and image, finished. The frame's document and the page's worker script started and never finished. Nothing for the frame's stylesheet, image, `fetch`, or worker, or for either worker's file. |
+| `Target.setAutoAttach` with `autoAttach`, `waitForDebuggerOnStart`, and `flatten` on the page's session, then on each attached target `Network.enable`, the same `Target.setAutoAttach`, and `Runtime.runIfWaitingForDebugger` | Three targets attached, each paused until resumed: the page's worker (type `worker`), the frame (type `iframe`), and the frame's worker. All ten requests appeared and finished. `Network.getResponseBody` sent on the frame's session returned the frame's bodies. |
+
+Two further readings. A frame's document request and a worker's script request start on the
+parent's session and finish on the child's, under one request id. And the page's own dedicated
+worker was missing from the first pass although it shares the page's origin, so the gap is not
+only cross-site frames. The script is not committed; step 9's probe script (D15) loads the same
+page.
+
+**The attach.** Step 9, after `Network.enable` on the page and before it loads the target:
+
+1. Sends `Target.setAutoAttach` with `autoAttach`, `waitForDebuggerOnStart`, and `flatten` true on
+   the page's session. `wc.debugger.sendCommand` takes a session id as its third argument and its
+   `message` event reports one, which is how a child session reaches the collector.
+2. On each `Target.attachedToTarget` whose `targetInfo.type` is `iframe` or `worker`, sends on that
+   session `Network.enable` with the same budget, the same `Target.setAutoAttach` (so a frame's own
+   frames and workers attach the same way), and then `Runtime.runIfWaitingForDebugger`, each
+   under a bounded wait. A target of any other type is resumed at once and not recorded.
+3. Resumes every target whether or not its commands answered, so no frame stays paused and the
+   page renders as it would without the engine. A target whose `Network.enable` failed or timed
+   out counts in `unrecordedTargets` (D4).
+4. Fetches each body on the session that reported its `loadingFinished`. A target that detaches
+   before its body arrives leaves the body omitted (`bodiesOmitted`), and its unfinished requests
+   count as in flight.
+
+**The collector.** Step 7's input becomes session id, method, and params triples. It keys an
+exchange by request id across sessions, because a frame's or a worker's first request starts on
+the parent's session and ends on the child's. Step 0's committed streams carry no session id;
+step 7 reads them as the page's session and adds a multi-session sequence built on the readings
+above.
+
+**What the record still does not hold**, stated beside the capability in `features.mdx` with the
+in-page reuse (D4):
+
+- Requests a service worker or a shared worker makes. A fresh partition has no service worker
+  when a render starts, but a page can register one during it. Neither kind was measured in
+  Electron. In launched Chrome a shared worker attached on the browser connection, not as a child
+  of the page ([launched-browser probe](../specs/2026-10-11-capture-engine-launched-browser-probe-spike.md),
+  P5), and the hidden window's debugger has no browser connection. The inventory cannot count
+  requests that never reach it.
+- More than one budget's worth of bodies. The `Network.enable` limits D4 records apply to each
+  session, so a page with many frames can buffer more than `totalBytes` in all. Step 9 picks the
+  values with that in mind (open question 3).
+
+**Risks.** `flatten` is marked experimental in `devtools-protocol`, as the stage 2 spec records of
+the same command ([stage 2 spec](../specs/2026-10-10-capture-engine-launched-browser-design.md),
+Attach before request), so D15's probe watches it on each Electron change. Playwright attaches its
+own debugger to the app in every e2e run, and whether a target paused for one client waits for the
+other was not measured; step 9's e2e specs show it either way, and the spike found the specs pass
+with `Network` enabled (Question 1). Bound TLS Details stay the main document's (D7).
+
 ## The spec's open questions
 
 The maintainer ruled on questions 1 and 2 on 2026-10-10, each as this plan recommended. Questions
@@ -811,12 +887,14 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
 - **Done when.** Each question has an answer from a run. If question 1 fails, the doc says so and
   step 9 needs an Electron-run harness shaped like the probe. If question 4 shows an iframe's
   requests missing, step 1 stops: the inventory needs a design for child targets, which goes to the
-  maintainer. If question 6 shows no `securityDetails`, step 1 leaves `boundTls` out and Bound TLS
+  maintainer. Question 4 found them missing, and the maintainer ruled on 2026-10-17; the design is
+  D17. If question 6 shows no `securityDetails`, step 1 leaves `boundTls` out and Bound TLS
   Details go back to the maintainer.
 - **Verify with.** `.claude/hooks/vale-prose.sh --base origin/main`.
 
 ### Step 1. Verifier and schema (CE-5)
 
+- **Waits for** the maintainer's approval of D17, whose two counts it freezes with the rest of D4.
 - **Changes.** D1, D2, D3, and D14 in `src/shared/schemas.ts`, `src/shared/types.ts`,
   `src/shared/constants.ts`, `manifest.ts` (`ManifestEntryInput`, `fieldMinReaderSchemaVersion`,
   `CaptureEntryContext`, `withCaptureEntry`), `manifestChain.ts` (`CaptureChainEntry`),
@@ -971,11 +1049,14 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
 ### Step 7. Exchange collector and Bound TLS conversion (CE-7, first part)
 
 - **Changes.** Creates `src/packages/transaction-record/` with `collector.ts` (CDP `Network`
-  events in, as recorded method and params pairs; exchanges and the D4 counts out) and `boundTls.ts`
+  events in, as recorded session id, method, and params triples (D17); exchanges and the D4 counts
+  out) and `boundTls.ts`
   (a `securityDetails` object in, D7's `boundTls` out, times as ISO strings). The pull request adds
   `src/packages/transaction-record/**` to the assessment as a blocking row.
 - **Done when.** From the event streams step 0 committed and from sequences built on the probe's
-  observations: each redirect hop becomes its own exchange under a reused request id; each count in
+  observations: each redirect hop becomes its own exchange under a reused request id; a frame's
+  document request that starts on the page's session and finishes on the frame's is one complete
+  exchange (D17); each count in
   D4 has a sequence that moves it, and none of those exchanges is counted as complete; the output
   order is deterministic. The step defines how it tells an incomplete request body from a complete
   one, with a multipart sequence as its test. A recorded `securityDetails` object converts to D7's
@@ -1012,7 +1093,7 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
 
 - **Changes.** In `renderPageInHiddenWindow`: CE-3's proxy on the partition before the first
   navigation, then attach, load `about:blank`, send `Network.enable` with the budget under a bounded
-  wait, remove the `about:blank` entry if step 0 question 7 found a way, and load the target. The
+  wait, set up D17's attach for frames and dedicated workers, remove the `about:blank` entry if step 0 question 7 found a way, and load the target. The
   collector reads `wc.debugger` `message` events; each body is fetched when its `loadingFinished`
   arrives; collection stops at the point step 0 question 2 fixes and the spike records. The spec
   puts that point "at the moment the screenshot and MHTML are taken" (spec, Transaction Record).
@@ -1044,7 +1125,9 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   `not-recorded`, and the Capture stores.
 - **Done when.** Against a local fixture server reached through CE-2's loopback allowance, a new e2e
   spec shows the spec's known answers (spec, Validation): `gzip` and plain digests; a redirect,
-  same-origin and cross-origin; failed, cancelled, in-flight, and over-budget requests; and a cached
+  same-origin and cross-origin; failed, cancelled, in-flight, and over-budget requests; a
+  cross-site frame with a dedicated worker of its own, and a dedicated worker of the page, every
+  request of which is an exchange, with `recordedTargets` counting them (D17); and a cached
   response if step 0 found a way to produce one. The consent filter's cancelled request is counted.
   Inventory counts match the server's request log, apart from the in-page reuse the probe
   documented. A cookie the fixture sets and sends appears nowhere in the inflated record. For a
@@ -1364,6 +1447,13 @@ folded in.
   clarified (CE-S2 decision D5). A `launched` entry signs the browser product, version, and family,
   and a `launched-passive` entry records which rule took it (CE-S2 decision D12).
 
+## Ruling, 2026-10-17
+
+- **Requests inside a cross-site frame (#1823, step 0 question 4).** The engine attaches to each
+  cross-site frame's process and records its requests, so the Transaction Record covers the whole
+  page. An agent adds a short design to this plan for the maintainer's approval before step 1
+  starts; that design is D17, with the two counts it adds to D4.
+
 ## Progress
 
 - **2026-10-10.** Drafted from two independent drafts and checked against `origin/main` at
@@ -1380,3 +1470,7 @@ folded in.
   gate, the probe rerun, beta.23, update checks, #1694, #1667, #598, and parallel lanes. D13 now
   cites the stage 2 spec and the two stage 2 rulings that bear on it. The plan and the spec still
   await the maintainer's approval on #1803.
+- **2026-10-17.** Step 0 delivered as the renderer spike (#1840). Added D17, the design for
+  out-of-process frames and dedicated workers that the maintainer's ruling of the same day asks
+  for, from a scratch measurement on Electron 44.7.0, and the two inventory counts it proposes.
+  Step 1 waits for its approval.

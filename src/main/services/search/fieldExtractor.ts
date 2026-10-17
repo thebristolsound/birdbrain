@@ -526,7 +526,8 @@ function trimmed(text: string, start: number, end: number): Span {
 }
 
 // Splits an address list at the commas outside quotes, angle brackets and comments,
-// and returns each mailbox's span, trimmed.
+// and returns each mailbox's span, trimmed. A group (`Desk team: a@x, b@y;`) gives its
+// mailboxes without its name or its closing `;`, and an empty group gives none.
 function mailboxSpans(value: string): Span[] {
   const spans: Span[] = []
   let quoted = false
@@ -547,7 +548,8 @@ function mailboxSpans(value: string): Span[] {
     else if (comment > 0) continue
     else if (char === '<') angle += 1
     else if (char === '>' && angle > 0) angle -= 1
-    else if (char === ',' && angle === 0) {
+    else if (char === ':' && angle === 0) from = i + 1
+    else if ((char === ',' || char === ';') && angle === 0) {
       push(i)
       from = i + 1
     }

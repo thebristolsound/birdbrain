@@ -643,6 +643,22 @@ describe('extractFields: the headers fields/2 adds', () => {
     expectSpansInText(text, fields)
   })
 
+  it('reads the mailboxes of a group, without its name or closing semicolon', () => {
+    const text = [
+      'From: Lena <lena@harrow.example.net>',
+      'To: undisclosed-recipients:;',
+      'Cc: Desk team: A@Harrow.example.net, b@harrow.example.net;',
+      '',
+      'body'
+    ].join('\n')
+    const fields = headerFieldsFromText(text)
+    expect(pick(only(fields, 'header.to', 'header.cc'))).toEqual([
+      { field: 'header.cc', value: 'A@Harrow.example.net', norm: 'a@harrow.example.net' },
+      { field: 'header.cc', value: 'b@harrow.example.net', norm: 'b@harrow.example.net' }
+    ])
+    expectSpansInText(text, fields)
+  })
+
   it('reads each site in a Path, and nothing from the tail, an empty entry or a bare diagnostic', () => {
     const text = [
       'Path: News.Harrow.example.net!.POSTED.posting.example.org!!feed.example.org!',

@@ -5,9 +5,9 @@
 //
 // Every person is named with one of the engine spec's invented names, and every host is
 // example.com, example.net or example.org or a subdomain of one (E14), the Wayback snapshot URL
-// included, so following a fixture link never reaches a real site. A handle appears only on an
-// invented platform under one of those hosts. The populated result seeds decisions and marks for
-// the view to render; they are not a history a run could produce.
+// included, so following a fixture link never reaches a real site. A handle appears only as a
+// profile URL on an invented platform under one of those hosts. The populated result seeds
+// decisions and marks for the view to render; they are not a history a run could produce.
 
 import {
   compareMembers,
@@ -404,7 +404,7 @@ const VERIFIED: ClaimCheck = { text: 'present', basis: 'hash-verified', reason: 
 const READ_OF = 13
 const ADDRESS_HOLDERS = { count: 4, of: READ_OF }
 const MAIL = { kind: 'mail', platform: null, value: ADDRESS }
-const HANDLE = { kind: 'handle', platform: 'social.example.org', value: 'ferryman' }
+const HANDLE = { kind: 'handle', platform: 'social.example.org', value: PROFILE }
 
 let spanSeq = 0x400
 
@@ -865,12 +865,9 @@ const PATHS: FixturePath[] = [
   }
 ]
 
+// Three gap kinds (missing-date, missing-original, same-name-unjoined) are fixed entries of the
+// populated result and do not follow later writes; every other gap kind is derived at read time.
 const STATIC_GAPS: GapGroup[] = [
-  {
-    kind: 'reached-only-through-another',
-    entries: [{ kind: 'subjects', subjectIds: [S.article] }]
-  },
-  { kind: 'path-on-unaccepted-joint', entries: [{ kind: 'joint', jointId: J.sharedPassage }] },
   {
     kind: 'missing-date',
     entries: [{ kind: 'exhibit', exhibitId: E.copy, spanId: null, field: 'date' }]
@@ -888,7 +885,8 @@ const STATIC_GAPS: GapGroup[] = [
 // --- State --------------------------------------------------------------------------------------
 
 // One Case's investigation data as the fake holds it. Plain records, so the fake can change them
-// and the view builder below derives every list, status and gap from them at read time (E9).
+// and the view builder below derives every list, status and path from them at read time (E9), and
+// every gap except the three in STATIC_GAPS.
 export interface FixtureState {
   populated: boolean
   subjects: FixtureSubject[]
@@ -964,7 +962,7 @@ export function createFixtureState(): FixtureState {
         id: FIXTURE_IDS.ownIdentifiers.teammateHandle,
         kind: 'handle',
         platform: 'social.example.org',
-        value: 'harbourwatch',
+        value: 'https://social.example.org/@harbourwatch',
         personaId: null,
         member: FIXTURE_TEAMMATE
       }
@@ -1238,6 +1236,35 @@ function derivedGaps(joints: JointView[]): GapGroup[] {
   ]
 }
 
+// A possible path names each Joint on it not yet accepted; a path's far end is reached only through
+// another Subject unless an accepted Joint joins the two ends directly.
+function pathGaps(paths: PathView[], joints: JointView[]): GapGroup[] {
+  const unaccepted = new Set(
+    paths
+      .filter((p) => !p.accepted)
+      .flatMap((p) => p.jointIds)
+      .filter((id) => joints.find((j) => j.id === id)?.status !== 'accepted')
+  )
+  const joinedDirectly = (path: PathView): boolean =>
+    joints.some(
+      (j) =>
+        j.status === 'accepted' &&
+        j.subjectIds.includes(path.fromSubjectId) &&
+        j.subjectIds.includes(path.toSubjectId)
+    )
+  const farEnds = new Set(paths.filter((p) => !joinedDirectly(p)).map((p) => p.toSubjectId))
+  return [
+    {
+      kind: 'reached-only-through-another',
+      entries: [...farEnds].map((id) => ({ kind: 'subjects', subjectIds: [id] }))
+    },
+    {
+      kind: 'path-on-unaccepted-joint',
+      entries: [...unaccepted].map((jointId) => ({ kind: 'joint', jointId }))
+    }
+  ]
+}
+
 function pathViews(joints: JointView[]): PathView[] {
   const byId = new Map(joints.map((j) => [j.id, j]))
   const paths: PathView[] = []
@@ -1265,11 +1292,13 @@ function pathViews(joints: JointView[]): PathView[] {
 
 export function buildInvestigationView(state: FixtureState, ctx: ViewContext): InvestigationView {
   const joints = state.joints.map((j) => jointView(state, j))
+  const paths = pathViews(joints)
   const ceiling =
     ctx.run?.parameters.passageGroupCeiling ?? FIXTURE_DEFAULT_PARAMETERS.passageGroupCeiling
   const gaps: GapGroup[] = ctx.run
     ? [
         ...derivedGaps(joints),
+        ...pathGaps(paths, joints),
         ...(state.populated ? structuredClone(STATIC_GAPS) : []),
         {
           kind: 'search-not-run',
@@ -1296,7 +1325,7 @@ export function buildInvestigationView(state: FixtureState, ctx: ViewContext): I
       count: g.holders.length,
       ceiling
     })),
-    paths: pathViews(joints),
+    paths,
     gaps: gaps.filter((g) => g.entries.length > 0),
     withheld: Object.entries(state.withheld)
       .filter(([, holders]) => holders.length > 0)

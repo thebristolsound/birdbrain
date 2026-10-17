@@ -431,7 +431,8 @@ export function createFakeInvestigation(deps: FakeInvestigationDeps = {}): FakeI
         dismiss: 'dismissed',
         undo: 'unreviewed'
       } as const
-      if (!(action in reviews)) fail('Unknown span action')
+      // An own-property check, so an inherited name such as `constructor` is refused.
+      if (!Object.hasOwn(reviews, action)) fail('Unknown span action')
       span.review = reviews[action]
       span.addedBy = action === 'undo' ? null : { ...FIXTURE_SELF }
       return write(cs, { kind: 'decision', targetId: spanId })

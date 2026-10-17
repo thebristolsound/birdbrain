@@ -176,6 +176,19 @@ describe('S1 and state 1: before any run', () => {
     expect(claim.support).toEqual([])
     const unsupported = view.gaps.find((g) => g.kind === 'claim-without-support')
     expect(unsupported?.entries).toContainEqual({ kind: 'joint', jointId: J.noteClaimRun })
+
+    // A second Note-claim run updates the same Operator-started Joint.
+    const otherNote = '20000000-0000-4000-8000-0000000000aa'
+    await storedRun({
+      caseId: CASE,
+      from: 'note-claim',
+      noteId: otherNote,
+      passage: { start: 3, end: 9 },
+      subjectIds: [S.sato]
+    })
+    const again = jointIn(await getView(), J.noteClaimRun)
+    expect(again.subjectIds).toEqual([S.sato])
+    expect(again.producer).toEqual({ kind: 'operator', noteId: otherNote })
   })
 })
 
@@ -233,6 +246,31 @@ describe('S3: the Joint map and list', () => {
     })
     const view = await getView()
     expect(view.paths.some((p) => p.jointIds.includes(J.sharedPassage))).toBe(false)
+    const named = (kind: string) => view.gaps.find((g) => g.kind === kind)?.entries ?? []
+    expect(named('path-on-unaccepted-joint')).toEqual([])
+    expect(named('reached-only-through-another')).toEqual([
+      { kind: 'subjects', subjectIds: [S.ferryman] }
+    ])
+  })
+
+  it('names each unaccepted Joint on a possible path, and each path end reached through another', async () => {
+    await storedRun()
+    const view = await getView()
+    const possible = view.paths.filter((p) => !p.accepted)
+    expect(possible.length).toBeGreaterThan(0)
+    const unaccepted = possible
+      .flatMap((p) => p.jointIds)
+      .filter((id) => jointIn(view, id).status !== 'accepted')
+    const named = (kind: string) => view.gaps.find((g) => g.kind === kind)?.entries ?? []
+    expect(named('path-on-unaccepted-joint')).toEqual(
+      unaccepted.sort().map((jointId) => ({ kind: 'joint', jointId }))
+    )
+    expect(named('reached-only-through-another')).toEqual(
+      view.paths
+        .map((p) => p.toSubjectId)
+        .sort()
+        .map((id) => ({ kind: 'subjects', subjectIds: [id] }))
+    )
   })
 })
 
@@ -338,6 +376,22 @@ describe('S4: Joint detail', () => {
     })
     expect(refused.ok).toBe(false)
   })
+
+  it('refuses an inherited property name as a span action, and the view still reads', async () => {
+    await storedRun()
+    const before = await getView()
+    const span = jointIn(before, J.sharedPassage).unreviewed[0]
+    for (const action of ['constructor', 'toString', '__proto__']) {
+      const result = await call(C.INVESTIGATION_DECIDE_SPAN, {
+        caseId: CASE,
+        spanId: span.id,
+        action,
+        reason: null
+      })
+      expect(result.ok, action).toBe(false)
+    }
+    expect(await getView()).toEqual(before)
+  })
 })
 
 describe('S5: the source inspector', () => {
@@ -372,6 +426,15 @@ describe('S5: the source inspector', () => {
     }
     expect((await detailOn(E.headersOnly)).exhibit.bodyAcquired).toBe(false)
     const forum = await detailOn(E.forum, 'text.address')
+    const forumSpan = allSpans(view).find((s) => s.id === forum.spanId)
+    expect(forum.exhibit).toMatchObject({
+      exhibitId: E.forum,
+      exhibitNumber: 4,
+      memberCode: 'MB',
+      kind: 'capture',
+      contentHash: forumSpan?.contentHash
+    })
+    expect(forum.exhibit.contentHash).toMatch(/^[0-9a-f]{64}$/)
     expect(forum.check?.basis).toBe('unattested')
     expect(forum.holders).toEqual({ count: 4, of: 13 })
     expect(forum.identifier).toMatchObject({ kind: 'mail', ownIdentifierId: null })
@@ -480,6 +543,9 @@ describe('S10 and state 8: same-name Subjects', () => {
       false
     )
     expect((await call(C.INVESTIGATION_CHOOSE_SUBJECT, { ...choose, action: 'undo' })).ok).toBe(
+      false
+    )
+    expect((await call(C.INVESTIGATION_CHOOSE_SUBJECT, { ...choose, action: 'pick' })).ok).toBe(
       false
     )
     await ok(C.INVESTIGATION_CHOOSE_SUBJECT, choose)
@@ -595,6 +661,28 @@ describe('state 6: a withheld Exhibit', () => {
     await ok(C.INVESTIGATION_SET_WITHHELD, { caseId: CASE, exhibitId: E.forum, withheld: false })
     expect((await getView()).joints).toEqual(before.joints)
 
+    // The events page holds a reviewed conflict and an unreviewed span, which move the same way.
+    const onEvents = (view: InvestigationView) =>
+      view.joints
+        .flatMap((j) => [
+          ...j.conflicts.map((s) => ['conflicts', s] as const),
+          ...j.unreviewed.map((s) => ['unreviewed', s] as const),
+          ...j.noLongerCounted.map((s) => ['noLongerCounted', s] as const)
+        ])
+        .filter(([, s]) => s.exhibitId === E.events)
+    expect(new Set(onEvents(before).map(([list]) => list))).toEqual(
+      new Set(['conflicts', 'unreviewed'])
+    )
+    await ok(C.INVESTIGATION_SET_WITHHELD, { caseId: CASE, exhibitId: E.events, withheld: true })
+    const events = onEvents(await getView())
+    expect(events.length).toBe(onEvents(before).length)
+    expect(
+      events.every(([list, s]) => list === 'noLongerCounted' && s.availability === 'withheld')
+    ).toBe(true)
+    expect(new Set(events.map(([, s]) => s.review))).toEqual(new Set(['conflict', 'unreviewed']))
+    await ok(C.INVESTIGATION_SET_WITHHELD, { caseId: CASE, exhibitId: E.events, withheld: false })
+    expect((await getView()).joints).toEqual(before.joints)
+
     await ok(C.INVESTIGATION_SET_WITHHELD, {
       caseId: CASE,
       exhibitId: E.withheldBefore,
@@ -694,18 +782,29 @@ describe('state 10: run basis out of date', () => {
 
   it('markOwnIdentifier and addSubject put it out of date, naming the new row', async () => {
     const runId = await storedRun()
-    await ok(C.INVESTIGATION_MARK_OWN_IDENTIFIER, {
+    const { run } = await getView()
+    const marked = await ok<CaseRevision>(C.INVESTIGATION_MARK_OWN_IDENTIFIER, {
       caseId: CASE,
       kind: 'mail',
       platform: null,
       value: 'another@post.example.com',
       personaId: null
     })
-    await ok(C.INVESTIGATION_ADD_SUBJECT, { caseId: CASE, name: 'Marlow Star', kind: 'vessel' })
+    const first = await ok<CaseChange[]>(C.INVESTIGATION_GET_CHANGES, CASE, runId)
+    expect((await getView()).outOfDate).toEqual({
+      stored: run?.stored,
+      current: marked,
+      changes: first
+    })
+    const added = await ok<CaseRevision>(C.INVESTIGATION_ADD_SUBJECT, {
+      caseId: CASE,
+      name: 'Marlow Star',
+      kind: 'vessel'
+    })
     const changes = await ok<CaseChange[]>(C.INVESTIGATION_GET_CHANGES, CASE, runId)
     expect(changes.map((c) => c.kind)).toEqual(['own-identifier', 'subject'])
     const view = await getView()
-    expect(view.outOfDate?.changes).toEqual(changes)
+    expect(view.outOfDate).toEqual({ stored: run?.stored, current: added, changes })
     expect(view.subjects.find((s) => s.id === changes[1].targetId)?.name).toBe('Marlow Star')
     const blank = await call(C.INVESTIGATION_ADD_SUBJECT, { caseId: CASE, name: '', kind: 'x' })
     expect(blank.ok).toBe(false)
@@ -808,6 +907,15 @@ describe('state 15: run invalidated', () => {
     expect(terminal?.status).toBe('invalidated')
     expect(terminal?.reason).toBeTruthy()
     expect((await getView()).run?.id).toBe(first)
+  })
+
+  it('leaves a Case with no stored run showing none after an invalidated run', async () => {
+    const runId = await ok<string>(C.INVESTIGATION_START_RUN, populated())
+    await ok(C.INVESTIGATION_SET_WITHHELD, { caseId: CASE, exhibitId: E.forum, withheld: true })
+    expect(terminalOf(runId)?.status).toBe('invalidated')
+    const view = await getView()
+    expect(view.run).toBeNull()
+    expect(view.joints).toEqual([])
   })
 })
 

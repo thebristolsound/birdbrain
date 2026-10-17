@@ -22,6 +22,7 @@ import { MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import { buildSyntheticToken } from '../helpers/timestampFixtures'
 import { seedMixedKindCase, type MixedKindCase } from '../helpers/mixedKindCase'
 import { EGRESS_CAPTURE_ID, writeEgressPackage } from '../helpers/egressPackage'
+import { RECEIPT_TSA, writeReceiptPackage } from '../helpers/receiptPackage'
 import type { ExportOptions } from '@shared/types'
 
 // Integration test for the BUILT SEA binary (#122 §11). It is GATED on the
@@ -396,6 +397,35 @@ describe.skipIf(!haveBinary)('built verifier binary', () => {
     )
     expect(proc.stdout).toContain(`[SKIP] capture ${EGRESS_CAPTURE_ID} user agent`)
     rmSync(egressDir, { recursive: true, force: true })
+  })
+
+  // #1515 through the BUILT binary: a receipt stamp over a `merge` entry gets
+  // its own PASS line naming the TSA, and one whose token attests another
+  // hash fails the package. The same fixture runs in-process in
+  // tests/shared/verify/evidencePackage.test.ts.
+  it('exits 0 with a PASS line for a receipt stamp over a merge entry', () => {
+    const receiptDir = mkdtempSync(join(tmpdir(), 'bb-binreceipt-'))
+    const { mergeIndex } = writeReceiptPackage(receiptDir)
+    const proc = spawnSync(binaryPath, [receiptDir], { encoding: 'utf-8' })
+    expect(proc.status, proc.stdout + proc.stderr).toBe(0)
+    expect(proc.stdout).toContain('RESULT: PASS')
+    expect(proc.stdout).toContain(
+      `[PASS] merge ${mergeIndex} receipt timestamp — rfc3161 per ${RECEIPT_TSA} at `
+    )
+    rmSync(receiptDir, { recursive: true, force: true })
+  })
+
+  it('exits 1 with a FAIL line for a receipt token attesting another hash', () => {
+    const receiptDir = mkdtempSync(join(tmpdir(), 'bb-binreceipt-'))
+    const { mergeIndex, receiptIndex } = writeReceiptPackage(receiptDir, { wrongImprint: true })
+    const proc = spawnSync(binaryPath, [receiptDir], { encoding: 'utf-8' })
+    expect(proc.status, proc.stdout + proc.stderr).toBe(1)
+    expect(proc.stdout).toContain('RESULT: FAIL')
+    expect(proc.stdout).toContain(
+      `[FAIL] merge ${mergeIndex} receipt timestamp — the receipt token at index ` +
+        `${receiptIndex} names merge entry ${mergeIndex} but does not parse or attests another hash`
+    )
+    rmSync(receiptDir, { recursive: true, force: true })
   })
 
   // #399 AC 2 through the BUILT binary: a Working Copy is reported as not a

@@ -1,6 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createHash, createSign, generateKeyPairSync } from 'crypto'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from 'fs'
 import { dirname, join } from 'path'
 import { tmpdir } from 'os'
 import { closeDatabase, getDb, initDatabase } from '@main/services/db/core'
@@ -1121,7 +1129,7 @@ describe('Shared Case export, import and fork (#1511)', () => {
           'this script reads (type exhibit-review, schema version 6; it reads up to schema ' +
           'version 5), so the chain was checked only up to that entry',
         'INCOMPLETE [step 4a] merge heads, citations and exclusions were not checked: a member ' +
-          'chain holds an entry this script cannot read'
+          'chain was not read to its end'
       ])
       expect(run.output).not.toContain('PASS')
       const result = verifyEvidencePackage(dir)
@@ -1198,6 +1206,39 @@ describe('Shared Case export, import and fork (#1511)', () => {
       ])
       expect(verifyEvidencePackage(dir).pass).toBe(false)
     })
+
+    // A loop over a file the shell cannot open reads nothing, which once
+    // printed "0 entr(ies) verified". The chain's row comes out of
+    // evidence.json, or step 1, which cannot open it either, fails the
+    // package first. Mode 000 means nothing to root, which reads it anyway.
+    it.skipIf(process.getuid?.() === 0)(
+      'reports a member chain file it cannot open as INCOMPLETE, never PASS',
+      async () => {
+        ownerReplica()
+        const { dir } = await exportPackage()
+        const indexPath = join(dir, 'evidence.json')
+        const index = JSON.parse(readFileSync(indexPath, 'utf-8'))
+        index.artifacts = index.artifacts.filter((a: { path: string }) => a.path !== peerChain)
+        writeFileSync(indexPath, JSON.stringify(index))
+        chmodSync(join(dir, peerChain), 0)
+
+        try {
+          const run = runVerifyScript(dir)
+          expect(run.status, run.output).toBe(3)
+          expect(findings(run.output, 'FAIL')).toEqual([])
+          expect(findings(run.output, 'INCOMPLETE')).toEqual([
+            `INCOMPLETE [step 4a] ${peerChain} (member RP): the file cannot be read, so none ` +
+              'of its entries was checked',
+            'INCOMPLETE [step 4a] merge heads, citations and exclusions were not checked: a ' +
+              'member chain was not read to its end'
+          ])
+          // The package verifier reaches no verdict on a file it cannot read.
+          expect(() => verifyEvidencePackage(dir)).toThrow('EACCES')
+        } finally {
+          chmodSync(join(dir, peerChain), 0o644)
+        }
+      }
+    )
 
     it("passes a package a member exported, anchoring the Owner's key in its merge", async () => {
       const { owner } = memberReplica()

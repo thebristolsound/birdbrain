@@ -325,14 +325,21 @@ cc_key_for() {
 # or above, with no unsigned entry after a signed one. $3 names the chain in a
 # finding. An entry from a newer schema than this script reads ends the check:
 # the entries before it and its own signature under $2 are verified, nothing
-# after it is read, and the result is INCOMPLETE. Returns 0 when the chain
-# verifies, 1 after one FAIL, 3 after one INCOMPLETE; cc_count counts the
-# entries verified. Its loops read a last line no newline ends, as ${stepRef(2)} explains.
+# after it is read, and the result is INCOMPLETE, as it is for a file this
+# script cannot open. Returns 0 when the chain verifies, 1 after one FAIL, 3
+# after one INCOMPLETE; cc_count counts the entries verified. Its loops read a
+# last line no newline ends, as ${stepRef(2)} explains.
 check_chain() {
   cc_file=$1
   cc_key=$2
   cc_name=$3
   cc_count=0
+  # A loop over a file it cannot open runs no iteration, which would read as a
+  # chain of no entries that verified.
+  if [ ! -r "$cc_file" ]; then
+    incomplete "$cc_name: the file cannot be read, so none of its entries was checked"
+    return 3
+  fi
   cc_stop=''
   cc_stop_line=''
   : >"$tmp/cc-bounds.txt"
@@ -535,7 +542,7 @@ walk_case() {
   done <"$tmp/expected.txt"
 
   if [ "$wk_unreadable" -eq 1 ]; then
-    incomplete "\${wk_prefix}merge heads, citations and exclusions were not checked: a member chain holds an entry this script cannot read"
+    incomplete "\${wk_prefix}merge heads, citations and exclusions were not checked: a member chain was not read to its end"
     return 0
   fi
 

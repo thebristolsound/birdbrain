@@ -14,10 +14,9 @@ export type LinkHit = Pick<GuestLinkHit, 'linkUrl' | 'linkText' | 'imageUrl' | '
 /**
  * Builds the `link` menu target for a hit in a stored page of `caseId` (#1708).
  * Capture link files into that Case, never the Active Case, through the same
- * `recapture:enqueue` queue every background Capture uses. That queue's own URL
- * check (`validateUrl`) refuses only a non-http(s) scheme, so the menu's address
- * refusals (`captureLinkBlockReason`) have no backstop in main; and neither looks at
- * where a public URL redirects once rendered.
+ * `recapture:enqueue` queue every background Capture uses. That queue refuses the
+ * same literal local addresses the menu does, from the same classification, and the
+ * hidden render refuses a main-frame redirect to one (#1726).
  */
 export function useLinkMenuTarget(caseId: string): (hit: LinkHit) => LinkMenuTarget {
   const { data: captures = [] } = useQuery(capturesQueryOptions(caseId))

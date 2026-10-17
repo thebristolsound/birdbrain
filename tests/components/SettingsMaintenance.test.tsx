@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { DatabaseAdmin } from '@renderer/components/settings/DatabaseAdmin'
@@ -489,6 +489,54 @@ describe('Egress setting', () => {
     fireEvent.click(within(group).getByRole('radio', { name: /Proxy/ }))
     expect(await screen.findByText(/The saved Egress stays in effect/)).toBeDefined()
     expect(update).not.toHaveBeenCalled()
+  })
+
+  it('follows the saved Egress when it changes under the pane', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    fakeBridge({
+      settings: {
+        getIdentity: vi.fn().mockResolvedValue({
+          operatorName: 'A. Analyst',
+          operatorRole: '',
+          operatorOrganization: '',
+          installationId: 'install-1'
+        }),
+        get: vi.fn().mockResolvedValue({
+          tsaUrl: DEFAULT_TSA_URL,
+          egress: { kind: 'tor', proxyUrl: 'socks5://127.0.0.1:9150', label: '' }
+        }),
+        update: vi.fn()
+      }
+    })
+    render(
+      <QueryClientProvider client={client}>
+        <OperatorConfig />
+      </QueryClientProvider>
+    )
+    const group = await screen.findByRole('radiogroup', { name: 'Egress' })
+    await waitFor(() =>
+      expect(within(group).getByRole('radio', { name: /Tor/ })).toHaveProperty('checked', true)
+    )
+    const setEgress = (egress: object) =>
+      act(() => {
+        client.setQueryData(['settings'], { tsaUrl: DEFAULT_TSA_URL, egress })
+      })
+
+    setEgress({ kind: 'unavailable' })
+    await waitFor(() => {
+      for (const radio of within(group).getAllByRole('radio')) {
+        expect(radio).toHaveProperty('checked', false)
+      }
+    })
+    setEgress({ kind: 'tor', proxyUrl: 'socks5://127.0.0.1:9050', label: 'Home' })
+    await waitFor(() =>
+      expect(screen.getByLabelText('Proxy address')).toHaveProperty(
+        'value',
+        'socks5://127.0.0.1:9050'
+      )
+    )
+    expect(within(group).getByRole('radio', { name: /Tor/ })).toHaveProperty('checked', true)
+    expect(screen.getByLabelText('Label')).toHaveProperty('value', 'Home')
   })
 
   it('shows a stored proxy with its address and label', async () => {

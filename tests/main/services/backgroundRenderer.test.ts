@@ -471,17 +471,24 @@ describe('renderPageInHiddenWindow', () => {
     await result.cleanup()
   }, 30_000)
 
-  it('names the proxy when the load fails at it', async () => {
-    ctl.egress = { kind: 'proxy', proxyUrl: 'socks5://127.0.0.1:1080', label: '' }
-    ctl.loadUrlError = "ERR_PROXY_CONNECTION_FAILED (-130) loading 'https://example.test/'"
+  it.each([
+    "ERR_PROXY_CONNECTION_FAILED (-130) loading 'https://example.test/'",
+    "ERR_NO_SUPPORTED_PROXIES (-336) loading 'https://example.test/'"
+  ])(
+    'names the proxy when the load fails at it (%s)',
+    async (loadUrlError) => {
+      ctl.egress = { kind: 'proxy', proxyUrl: 'socks5://127.0.0.1:1080', label: '' }
+      ctl.loadUrlError = loadUrlError
 
-    await expect(
-      renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000 })
-    ).rejects.toThrow(
-      "Could not go through the Egress proxy socks5://127.0.0.1:1080: ERR_PROXY_CONNECTION_FAILED (-130) loading 'https://example.test/'"
-    )
-    expect(ctl.lastWindow!.isDestroyed()).toBe(true)
-  }, 30_000)
+      await expect(
+        renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000 })
+      ).rejects.toThrow(
+        `Could not go through the Egress proxy socks5://127.0.0.1:1080: ${loadUrlError}`
+      )
+      expect(ctl.lastWindow!.isDestroyed()).toBe(true)
+    },
+    30_000
+  )
 
   it('passes any other load failure through unchanged while a proxy is set', async () => {
     ctl.egress = { kind: 'proxy', proxyUrl: 'http://10.1.2.3:3128', label: '' }

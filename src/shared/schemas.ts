@@ -1202,7 +1202,7 @@ export function parseProxyUrl(value: string): ProxyUrlParse {
   // A host name or an IP address and nothing else. Chromium's proxy rules read `=`
   // and `;` as rule syntax, so `socks5://http=x;y:9050` would read there as "no
   // proxy for http" while the setting said Tor.
-  if (!/^[a-z0-9.-]+$/i.test(hostname) && !/^\[[0-9a-f:.]+\]$/i.test(hostname)) {
+  if (!isHostLiteral(hostname)) {
     return { ok: false, reason: 'The proxy host must be a host name or an IP address.' }
   }
   // `URL` drops a scheme's default port, so `http://proxy:80` arrives with none.
@@ -1214,6 +1214,20 @@ export function parseProxyUrl(value: string): ProxyUrlParse {
     return { ok: false, reason: 'A proxy address is only scheme://host:port.' }
   }
   return { ok: true, url: `${protocol}//${hostname}:${effectivePort}` }
+}
+
+// A DNS host name, a dotted-quad IPv4 address, or a bracketed IPv6 address. A
+// socks5:// URL's host is opaque to `URL`, which checks none of this for it.
+function isHostLiteral(host: string): boolean {
+  if (host.startsWith('[')) return /^\[[0-9a-f:.]+\]$/i.test(host)
+  const labels = host.split('.')
+  if (/^\d+$/.test(labels[labels.length - 1])) {
+    return (
+      labels.length === 4 &&
+      labels.every((part) => /^(0|[1-9]\d{0,2})$/.test(part) && Number(part) <= 255)
+    )
+  }
+  return labels.every((part) => /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/i.test(part))
 }
 
 const ProxyUrlSchema = z.string().transform((value, ctx) => {

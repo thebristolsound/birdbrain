@@ -44,7 +44,12 @@ import {
 } from '@main/webviewPolicy'
 import { forwardGuestMouseDown } from '@main/guestMouseDown'
 import { initSettings, getSettings, onEgressChange, onThemeChange } from '@main/services/settings'
-import { createRoutedSession, webRtcPolicyFor, type RoutedSession } from '@main/services/egress'
+import {
+  createRoutedSession,
+  currentEgress,
+  webRtcPolicyFor,
+  type RoutedSession
+} from '@main/services/egress'
 import { titleBarOptions, titleBarOverlay, windowBackgroundColor } from '@main/windowChrome'
 import { initInstallationId, getInstallationId } from '@main/services/installationId'
 import { initSigningKey, SigningKeyUnacknowledgedError } from '@main/services/signingKey'
@@ -666,24 +671,29 @@ if (!gotSingleInstanceLock) {
 
       // The Wayback replay pane follows the Egress (ADR-0032). Its partition refuses
       // every request until it carries the current Egress (createRoutedSession), set
-      // up before the window exists, so no replay loads ahead of its proxy. Its
-      // guests keep WebRTC's UDP inside the proxy, re-set on every change.
+      // up before the window exists, so no replay loads ahead of its proxy. The gate
+      // re-reads the setting on each request, so a file changed or made unreadable
+      // outside the app shuts it too. Its guests keep WebRTC's UDP inside the proxy,
+      // re-set whenever the route the gate follows changes.
       waybackRoute = createRoutedSession(
         electronSession.fromPartition(WAYBACK_PARTITION),
         (err) => {
           logger.error('app', 'app.egress_apply_failed', undefined, err)
+        },
+        currentEgress,
+        (egress) => {
+          for (const contents of electronWebContents.getAllWebContents()) {
+            if (
+              contents.getType() === 'webview' &&
+              webviewPartitionOf(contents) === WAYBACK_PARTITION
+            ) {
+              contents.setWebRTCIPHandlingPolicy(webRtcPolicyFor(egress))
+            }
+          }
         }
       )
       onEgressChange((egress) => {
         waybackRoute?.sync(egress)
-        for (const contents of electronWebContents.getAllWebContents()) {
-          if (
-            contents.getType() === 'webview' &&
-            webviewPartitionOf(contents) === WAYBACK_PARTITION
-          ) {
-            contents.setWebRTCIPHandlingPolicy(webRtcPolicyFor(egress))
-          }
-        }
       })
 
       // Create window and connect to capture server

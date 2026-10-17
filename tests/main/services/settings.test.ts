@@ -165,6 +165,25 @@ describe('settings', () => {
       )
     })
 
+    it.each([
+      'socks5://999.999.999.999:9050',
+      'socks5://1.2.3.999:9050',
+      'socks5://..:9050',
+      'socks5://-:9050'
+    ])('refuses %s, which is neither a host name nor an IP address', (proxyUrl) => {
+      expect(() => updateSettings({ egress: { kind: 'tor', proxyUrl, label: '' } })).toThrow(
+        /host name or an IP address/
+      )
+    })
+
+    it.each(['socks5://tor-proxy.lan:9050', 'socks5://10.0.0.2:9050', 'socks5://[::1]:9050'])(
+      'takes %s',
+      (proxyUrl) => {
+        updateSettings({ egress: { kind: 'tor', proxyUrl, label: '' } })
+        expect(getSettings().egress).toMatchObject({ proxyUrl })
+      }
+    )
+
     it('takes an http proxy on port 80, which URL reports as no port', () => {
       updateSettings({ egress: { kind: 'proxy', proxyUrl: 'http://proxy.example:80', label: '' } })
       expect(getSettings().egress).toMatchObject({ proxyUrl: 'http://proxy.example:80' })

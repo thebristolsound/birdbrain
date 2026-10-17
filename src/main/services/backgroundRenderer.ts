@@ -371,7 +371,7 @@ export async function trimTrailingBackground(png: Buffer): Promise<Buffer> {
 function proxyFailure(err: unknown, egress: KnownEgress): Error | null {
   if (egress.kind === 'direct') return null
   const message = err instanceof Error ? err.message : String(err)
-  if (!/ERR_(PROXY|SOCKS|TUNNEL)_/.test(message)) return null
+  if (!/ERR_(PROXY|SOCKS|TUNNEL)_|ERR_NO_SUPPORTED_PROXIES/.test(message)) return null
   return new Error(`Could not go through the Egress proxy ${egress.proxyUrl}: ${message}`)
 }
 

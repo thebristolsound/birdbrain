@@ -241,6 +241,17 @@ export function createUpdaterService(deps: UpdaterServiceDeps): UpdaterService {
     return egressApplied
   }
 
+  // Waits out an apply in flight, and any the setting started while it waited, so
+  // a check never goes out on a route the setting has already left.
+  async function egressSettled(ready: boolean | Promise<boolean>): Promise<boolean> {
+    let next = ready
+    while (typeof next !== 'boolean') {
+      await next
+      next = egressReady()
+    }
+    return next
+  }
+
   function clearTimers(): void {
     if (initialTimer) {
       clearTimeout(initialTimer)
@@ -266,7 +277,7 @@ export function createUpdaterService(deps: UpdaterServiceDeps): UpdaterService {
     checkInProgress = true
     try {
       const ready = egressReady()
-      if (ready !== true && !(await ready)) return status
+      if (ready !== true && !(await egressSettled(ready))) return status
       await autoUpdater.checkForUpdates()
     } catch (err) {
       // electron-updater normally emits 'error' before rejecting, which already
@@ -291,7 +302,7 @@ export function createUpdaterService(deps: UpdaterServiceDeps): UpdaterService {
     downloadInProgress = true
     try {
       const ready = egressReady()
-      if (ready !== true && !(await ready)) return
+      if (ready !== true && !(await egressSettled(ready))) return
       await autoUpdater.downloadUpdate()
     } catch (err) {
       // Mirrors check(): 'error' usually fired already; synthesize one only if

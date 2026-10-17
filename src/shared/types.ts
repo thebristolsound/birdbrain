@@ -756,7 +756,7 @@ export const LOG_CODES = [
   'app.extension_sweep_failed',
   'app.extension_version_stale',
   // The Wayback replay partition refused the Egress proxy (ADR-0032). The pane then
-  // keeps the proxy it had before the change, which is Direct if there was none.
+  // refuses every request until the setting names a proxy the partition takes.
   'app.egress_apply_failed',
   // The at-rest key-protection gate (#414): recorded either way so the log
   // carries the same signal the Settings/Diagnostics indicator shows live.

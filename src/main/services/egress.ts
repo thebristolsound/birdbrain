@@ -70,12 +70,14 @@ export async function applyEgressToSession(ses: Session, egress: KnownEgress): P
 
 /**
  * A long-lived session that follows the Egress, such as the Wayback replay pane's.
- * Requests are refused while the session does not yet carry the current Egress: from
- * a change of setting until its proxy is applied, while the setting is unreadable,
- * and after the session refused a proxy. A refused request re-reads the setting, so
- * the session recovers once the file reads again; a proxy the session refused is not
- * retried until the setting names another. A session the Egress has been Direct on
- * since it was created is left as it was.
+ * Each request re-reads the setting and is refused unless the session carries it:
+ * from a change of setting until its proxy is applied, including a change written
+ * to the file outside the app, while the setting is unreadable, and after the
+ * session refused a proxy. A proxy the session refused is not retried on every
+ * request, only once the setting names another or once another proxy has applied.
+ * A session the Egress has been Direct on since it was created is left as it was.
+ * `onRoute` hears every Egress the session is set to follow, the unreadable one
+ * included, so pages on the session can follow it too (their WebRTC policy).
  */
 export interface RoutedSession {
   sync: (egress?: EgressSetting) => void
@@ -85,39 +87,41 @@ export interface RoutedSession {
 export function createRoutedSession(
   ses: Session,
   onApplyFailed: (err: unknown) => void,
-  readEgress: () => EgressSetting = currentEgress
+  readEgress: () => EgressSetting = currentEgress,
+  onRoute: (egress: EgressSetting) => void = () => {}
 ): RoutedSession {
-  let applied: string | null = null
-  let applying: string | null = null
+  // `carried` is the route the session last took, 'direct' for a new session.
+  // `pending` is the latest apply still in flight; an older one that lands after
+  // it only updates `carried`, so the gate stays shut until the latest lands.
+  let carried = 'direct'
+  let pending: string | null = null
   let refused: string | null = null
-  let touched = false
+  let followed: string | null = null
 
   const keyOf = (egress: EgressSetting): string =>
     egress.kind === 'direct' ? 'direct' : egress.kind === 'unavailable' ? '' : egress.proxyUrl
 
+  function follow(egress: EgressSetting): void {
+    const key = `${egress.kind} ${keyOf(egress)}`
+    if (followed === key) return
+    followed = key
+    onRoute(egress)
+  }
+
   function sync(egress: EgressSetting = readEgress()): void {
-    if (egress.kind === 'unavailable') {
-      applied = null
-      return
-    }
-    if (egress.kind === 'direct' && !touched) {
-      applied = 'direct'
-      return
-    }
+    follow(egress)
+    if (egress.kind === 'unavailable') return
     const key = keyOf(egress)
-    if (applying === key) return
-    touched = true
-    applied = null
-    applying = key
+    if (pending === key || (pending === null && carried === key)) return
+    pending = key
     applyEgressToSession(ses, egress).then(
       () => {
-        if (applying === key) {
-          applied = key
-          applying = null
-        }
+        carried = key
+        refused = null
+        if (pending === key) pending = null
       },
       (err: unknown) => {
-        if (applying === key) applying = null
+        if (pending === key) pending = null
         refused = key
         onApplyFailed(err)
       }
@@ -125,12 +129,15 @@ export function createRoutedSession(
   }
 
   function allowsRequests(): boolean {
-    if (applied !== null) return true
-    if (applying === null) {
-      const egress = readEgress()
-      if (keyOf(egress) !== refused) sync(egress)
+    const egress = readEgress()
+    const key = keyOf(egress)
+    if (egress.kind !== 'unavailable' && pending === null && carried === key) {
+      follow(egress)
+      return true
     }
-    return applied !== null
+    if (key !== refused) sync(egress)
+    else follow(egress)
+    return false
   }
 
   sync()

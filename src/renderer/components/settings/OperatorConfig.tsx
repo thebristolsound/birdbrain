@@ -274,19 +274,23 @@ function EgressSettings({ stored }: { stored: EgressSetting }) {
   const [label, setLabel] = useState(routed?.label ?? '')
   const [error, setError] = useState('')
   const [note, setNote] = useState('')
-  const seeded = useRef(false)
+  const storedKind = stored.kind
+  const storedUrl = routed?.proxyUrl ?? ''
+  const storedLabel = routed?.label ?? ''
 
-  useEffect(() => {
-    if (seeded.current || stored.kind === 'direct') return
-    seeded.current = true
-    if (stored.kind === 'unavailable') {
-      setKind(null)
-      return
+  // Follow the saved Egress whenever it changes, a file that stops or starts
+  // reading included. A choice the Operator has made but not yet saved (Proxy with
+  // no address) stays until the saved Egress changes under it.
+  const storedKey = `${storedKind} ${storedUrl} ${storedLabel}`
+  const [followedKey, setFollowedKey] = useState(storedKey)
+  if (followedKey !== storedKey) {
+    setFollowedKey(storedKey)
+    setKind(storedKind === 'unavailable' ? null : storedKind)
+    if (storedKind === 'proxy' || storedKind === 'tor') {
+      setProxyUrl(storedUrl)
+      setLabel(storedLabel)
     }
-    setKind(stored.kind)
-    setProxyUrl(stored.proxyUrl)
-    setLabel(stored.label)
-  }, [stored])
+  }
 
   async function save(next: KnownEgress) {
     try {
@@ -335,10 +339,10 @@ function EgressSettings({ stored }: { stored: EgressSetting }) {
     <div>
       <div className="text-xs font-medium text-text-secondary">Egress</div>
       <p className="mt-1 text-[11px] text-text-muted">
-        Where Birdbrain&rsquo;s own traffic leaves from: background captures, the Wayback pane,
-        timestamp requests, filter lists and update checks. While it is not Direct, each of these
-        goes through the proxy and fails when the proxy is down, with no fallback to this
-        device&rsquo;s connection, and the TLS certificate re-fetch after each capture does not run.
+        The connection these routes use: background captures, the Wayback pane, timestamp requests,
+        filter lists and update checks. While it is not Direct, each of these goes through the proxy
+        and fails when the proxy is down, with no fallback to this device&rsquo;s connection, and
+        the TLS certificate re-fetch after each capture does not run.
       </p>
       {stored.kind === 'unavailable' && (
         <p role="alert" className="mt-1 text-[11px] text-danger-fg">

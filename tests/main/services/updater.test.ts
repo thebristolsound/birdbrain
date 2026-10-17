@@ -576,4 +576,25 @@ describe('updater service — Egress (ADR-0032)', () => {
     await checking
     expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1)
   })
+
+  it('does not check on a route the setting left while the check waited', async () => {
+    let egress: EgressSetting = tor
+    const finishes: Array<() => void> = []
+    const { deps, setProxy } = sessionDeps(() => egress)
+    const svc = createUpdaterService(deps)
+    svc.start()
+    await Promise.resolve()
+    setProxy.mockImplementation(() => new Promise<void>((resolve) => finishes.push(resolve)))
+
+    egress = { kind: 'direct' }
+    const checking = svc.check()
+    egress = { kind: 'proxy', proxyUrl: 'http://10.0.0.2:3128', label: '' }
+    svc.applySettingsChange({ egress })
+    finishes[0]()
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(autoUpdater.checkForUpdates).not.toHaveBeenCalled()
+    finishes[1]()
+    await checking
+    expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1)
+  })
 })

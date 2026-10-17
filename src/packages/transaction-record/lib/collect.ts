@@ -1,0 +1,283 @@
+import { toBoundTls } from './boundTls'
+import { holdRequestBody } from './requestBody'
+import { isoFromEpochSeconds } from './time'
+import type {
+  AttachedToTarget,
+  CdpResponse,
+  CollectedExchanges,
+  CollectorInput,
+  Exchange,
+  ExchangeResponse,
+  ExchangeState,
+  HeaderMap,
+  LoadingFailed,
+  RecordedEvent,
+  RequestWillBeSent,
+  ResponseReceived,
+  ResponseReceivedExtraInfo,
+  TransactionRecordCounts
+} from './types'
+
+interface ResponseExtra {
+  statusCode: number
+  headers: HeaderMap
+}
+
+interface Hop {
+  sent: RequestWillBeSent
+  response?: CdpResponse
+  servedFromCache: boolean
+  finished: boolean
+  failure?: LoadingFailed
+  requestExtra?: HeaderMap
+  responseExtra?: ResponseExtra
+}
+
+// A frame's or worker's first request starts on the parent's session and ends on the child's
+// under one request id (plan D17), so a chain is keyed by request id, whichever session reported
+// the event.
+interface Chain {
+  requestId: string
+  hops: Hop[]
+  early: RecordedEvent[]
+  requestExtras: HeaderMap[]
+  responseExtras: ResponseExtra[]
+}
+
+// Frames and dedicated workers are the targets the engine records (plan D17); a target of any
+// other type is in neither target count.
+const RECORDED_TARGET_TYPES = new Set(['iframe', 'worker'])
+
+const applyToHop = (hop: Hop, { method, params }: RecordedEvent): void => {
+  switch (method) {
+    case 'Network.responseReceived':
+      hop.response = (params as ResponseReceived).response
+      break
+    case 'Network.requestServedFromCache':
+      hop.servedFromCache = true
+      break
+    case 'Network.loadingFinished':
+      hop.finished = true
+      break
+    case 'Network.loadingFailed':
+      hop.failure = params as LoadingFailed
+      break
+  }
+}
+
+// ExtraInfo events can arrive before the `requestWillBeSent` they belong to (renderer spike,
+// "Event order"), so they queue per request id and pair with hops once every event is in. A hop a
+// redirect closed takes the next of each queue when that redirect's `redirectHasExtraInfo` says
+// the hop had them, and the last hop takes the last of what remains.
+const pairExtraInfo = ({ hops, requestExtras, responseExtras }: Chain): void => {
+  let nextRequest = 0
+  let nextResponse = 0
+  hops.forEach((hop, index) => {
+    const next = hops[index + 1]
+    if (next === undefined) {
+      if (nextRequest < requestExtras.length) hop.requestExtra = requestExtras.at(-1)
+      if (nextResponse < responseExtras.length) hop.responseExtra = responseExtras.at(-1)
+    } else if (next.sent.redirectHasExtraInfo === true) {
+      hop.requestExtra = requestExtras[nextRequest++]
+      hop.responseExtra = responseExtras[nextResponse++]
+    }
+  })
+}
+
+// The order of these tests is the one stated on `ExchangeState`.
+const stateOf = (hop: Hop, next: Hop | undefined, hasBody: boolean): ExchangeState => {
+  if (hop.failure) return hop.failure.canceled === true ? 'cancelled' : 'failed'
+  const redirect = next?.sent.redirectResponse
+  if (hop.servedFromCache || (hop.response ?? redirect)?.fromDiskCache === true) return 'cached'
+  if (redirect) return 'redirected'
+  if (hop.finished) return hasBody ? 'complete' : 'body-omitted'
+  return 'in-flight'
+}
+
+const toResponse = (
+  {
+    url,
+    status,
+    statusText,
+    protocol,
+    mimeType,
+    remoteIPAddress,
+    headers,
+    securityDetails
+  }: CdpResponse,
+  extra: ResponseExtra | undefined
+): ExchangeResponse => ({
+  url,
+  status,
+  statusText,
+  ...(protocol !== undefined ? { protocol } : {}),
+  mimeType,
+  ...(remoteIPAddress !== undefined ? { remoteIPAddress } : {}),
+  headers: { ...headers },
+  ...(extra ? { extraInfo: { statusCode: extra.statusCode, headers: { ...extra.headers } } } : {}),
+  ...(securityDetails ? { securityDetails: toBoundTls(securityDetails) } : {})
+})
+
+const lastIndex = (hops: Hop[], test: (hop: Hop) => boolean): number =>
+  hops.reduce((found, hop, index) => (test(hop) ? index : found), -1)
+
+const toExchanges = (chain: Chain, input: CollectorInput): Exchange[] => {
+  pairExtraInfo(chain)
+  const { requestId, hops } = chain
+  // Both commands take only a request id: a body belongs to the hop that finished, and fetched
+  // post data to the last hop that reported a body.
+  const bodyHop = lastIndex(hops, (hop) => hop.finished)
+  const postDataHop = lastIndex(hops, (hop) => hop.sent.request.hasPostData === true)
+  const body = input.responseBodies?.get(requestId)
+  return hops.map((hop, index) => {
+    const next = hops[index + 1]
+    const { sent, failure, requestExtra, responseExtra } = hop
+    const { request, frameId, type, wallTime } = sent
+    const state = stateOf(hop, next, index === bodyHop && body !== undefined)
+    const requestBody = request.hasPostData
+      ? holdRequestBody(
+          request,
+          requestExtra,
+          index === postDataHop ? input.requestPostData?.get(requestId) : undefined
+        )
+      : undefined
+    const response = hop.response ?? next?.sent.redirectResponse
+    return {
+      requestId,
+      hop: index,
+      state,
+      complete: (state === 'complete' || state === 'redirected') && (requestBody?.complete ?? true),
+      startedAt: isoFromEpochSeconds(wallTime),
+      ...(type !== undefined ? { type } : {}),
+      ...(frameId !== undefined ? { frameId } : {}),
+      request: {
+        method: request.method,
+        url: request.url,
+        headers: { ...request.headers },
+        ...(requestExtra ? { extraInfo: { headers: { ...requestExtra } } } : {})
+      },
+      ...(requestBody ? { requestBody } : {}),
+      ...(response ? { response: toResponse(response, responseExtra) } : {}),
+      ...(state === 'complete' && body
+        ? { responseBody: { data: body.body, base64Encoded: body.base64Encoded } }
+        : {}),
+      ...(failure
+        ? {
+            failure: {
+              errorText: failure.errorText,
+              canceled: failure.canceled === true,
+              ...(failure.blockedReason !== undefined
+                ? { blockedReason: failure.blockedReason }
+                : {})
+            }
+          }
+        : {})
+    }
+  })
+}
+
+// Chains sort by when their first hop started, then by request id, so the order does not depend
+// on how events from several sessions interleaved on arrival. Hops keep their order.
+const byStart = (a: Chain, b: Chain): number => {
+  const delta = a.hops[0].sent.wallTime - b.hops[0].sent.wallTime
+  if (delta !== 0) return delta
+  return a.requestId < b.requestId ? -1 : 1
+}
+
+const countOf = (exchanges: Exchange[], state: ExchangeState): number =>
+  exchanges.filter((exchange) => exchange.state === state).length
+
+/**
+ * Turns the recorded CDP events of one render into its exchanges and the Transaction Record
+ * counts. Each `Network.requestWillBeSent` starts an exchange, so each redirect hop is one under
+ * the reused request id.
+ */
+export const collectExchanges = (input: CollectorInput): CollectedExchanges => {
+  const chains = new Map<string, Chain>()
+  const chainOf = (requestId: string): Chain => {
+    let chain = chains.get(requestId)
+    if (chain === undefined) {
+      chain = { requestId, hops: [], early: [], requestExtras: [], responseExtras: [] }
+      chains.set(requestId, chain)
+    }
+    return chain
+  }
+  const webSockets = new Set<string>()
+  const childTargets = new Map<string, string>()
+
+  for (const event of input.events) {
+    const { method, params } = event
+    if (method === 'Target.attachedToTarget') {
+      const { sessionId, targetInfo } = params as AttachedToTarget
+      childTargets.set(sessionId, targetInfo.type)
+      continue
+    }
+    if (!method.startsWith('Network.')) continue
+    const { requestId } = params as { requestId?: string }
+    if (requestId === undefined) continue
+    switch (method) {
+      case 'Network.webSocketCreated':
+        webSockets.add(requestId)
+        break
+      case 'Network.requestWillBeSent': {
+        const chain = chainOf(requestId)
+        const hop: Hop = {
+          sent: params as RequestWillBeSent,
+          servedFromCache: false,
+          finished: false
+        }
+        chain.hops.push(hop)
+        if (chain.hops.length === 1) chain.early.forEach((early) => applyToHop(hop, early))
+        break
+      }
+      case 'Network.requestWillBeSentExtraInfo':
+        chainOf(requestId).requestExtras.push((params as { headers: HeaderMap }).headers)
+        break
+      case 'Network.responseReceivedExtraInfo': {
+        const { statusCode, headers } = params as ResponseReceivedExtraInfo
+        chainOf(requestId).responseExtras.push({ statusCode, headers })
+        break
+      }
+      default: {
+        const chain = chainOf(requestId)
+        const hop = chain.hops.at(-1)
+        if (hop) applyToHop(hop, event)
+        else chain.early.push(event)
+      }
+    }
+  }
+
+  const exchanges = [...chains.values()]
+    .filter((chain) => chain.hops.length > 0)
+    .sort(byStart)
+    .flatMap((chain) => toExchanges(chain, input))
+
+  // The page always counts as recorded: when its own `Network.enable` fails, the render keeps no
+  // Transaction Record at all (plan step 9).
+  let recordedTargets = 1
+  let unrecordedTargets = 0
+  for (const [sessionId, type] of childTargets) {
+    if (!RECORDED_TARGET_TYPES.has(type)) continue
+    if (input.recordedSessions?.has(sessionId)) recordedTargets += 1
+    else unrecordedTargets += 1
+  }
+
+  const counts: TransactionRecordCounts = {
+    exchanges:
+      countOf(exchanges, 'complete') +
+      countOf(exchanges, 'redirected') +
+      countOf(exchanges, 'body-omitted'),
+    cached: countOf(exchanges, 'cached'),
+    cancelled: countOf(exchanges, 'cancelled'),
+    failed: countOf(exchanges, 'failed'),
+    inFlight: countOf(exchanges, 'in-flight'),
+    bodiesOmitted: countOf(exchanges, 'body-omitted'),
+    incompleteRequestBodies: exchanges.filter(
+      ({ requestBody }) => requestBody !== undefined && !requestBody.complete
+    ).length,
+    webSockets: webSockets.size,
+    recordedTargets,
+    unrecordedTargets
+  }
+  return { exchanges, counts }
+}

@@ -48,6 +48,9 @@ export default defineConfig({
         // The MCP entry runs in a child process (tests/mcp/stdio.test.ts), out of v8's reach.
         'src/mcp/index.ts',
         'src/mcp/stdoutGuard.ts',
+        // The extraction utility process's entry runs only under Electron's utilityProcess,
+        // which the unit runner lacks; its handler is tested directly.
+        'src/main/services/extraction/process.ts',
         'src/preload/**',
         'src/renderer/main.tsx',
         'src/renderer/routeTree.gen.ts',

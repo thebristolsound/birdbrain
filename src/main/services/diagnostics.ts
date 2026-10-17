@@ -16,8 +16,8 @@ import type {
 // feed the snapshot:
 //
 // 1. An event-loop lag sampler on the MAIN process. Birdbrain runs SQLite and
-//    the extraction pipeline on the main process, so a blocked event loop is
-//    the whole app freezing (the macOS pinwheel). The sampler records every
+//    the capture server on the main process, so a blocked event loop is the
+//    whole app freezing (the macOS pinwheel). The sampler records every
 //    blocked span over the stall threshold with a timestamp, turning "it
 //    pinwheeled earlier" into an inspectable log.
 // 2. A slow-operation ring buffer that instrumented call sites (per-capture

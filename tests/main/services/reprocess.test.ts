@@ -14,6 +14,7 @@ import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
 import { initStorage } from '@main/services/storage'
 import { createCaptureLifecycle, type CaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
+import { inProcessExtraction } from '../../helpers/inProcessExtraction'
 
 function writeHtml(root: string, caseId: string, captureId: string, html: string): void {
   const dir = join(root, caseId)
@@ -30,7 +31,10 @@ describe('captureLifecycle.reprocessCase', () => {
     initStorage(tempDir)
     await initDatabase(':memory:')
     const selectorLifecycle = createSelectorLifecycle({ emitRematched: () => {} })
-    captureLifecycle = createCaptureLifecycle({ selectorLifecycle })
+    captureLifecycle = createCaptureLifecycle({
+      selectorLifecycle,
+      extraction: inProcessExtraction()
+    })
   })
 
   afterEach(() => {
@@ -126,7 +130,7 @@ describe('captureLifecycle.reprocessCase', () => {
     })
 
     // cap1: write a directory where the .html file is expected so the read throws.
-    // (readExtractionHtml falls back to reading <captureId>.html as a buffer; if a
+    // (the extraction process falls back to reading <captureId>.html as a buffer; if a
     // directory of that name exists, the read raises EISDIR.)
     const caseDir = join(tempDir, c.id)
     mkdirSync(caseDir, { recursive: true })

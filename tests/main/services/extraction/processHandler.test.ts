@@ -1,0 +1,96 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
+import * as dataExtractor from '@main/services/dataExtractor'
+import { handleExtractionMessage } from '@main/services/extraction/processHandler'
+import {
+  FIXTURE_DIR,
+  FIXTURE_KNOWN_ANSWERS,
+  rowKeys
+} from '../../../helpers/extractionKnownAnswers'
+
+describe('handleExtractionMessage', () => {
+  let dir: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'birdbrain-extraction-handler-'))
+  })
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+    vi.restoreAllMocks()
+  })
+
+  for (const [fixture, expected] of Object.entries(FIXTURE_KNOWN_ANSWERS)) {
+    it(`returns the known rows for ${fixture}`, () => {
+      const reply = handleExtractionMessage({
+        id: 7,
+        mhtmlPath: join(FIXTURE_DIR, fixture),
+        htmlPath: join(dir, 'absent.html')
+      })
+      if (!reply.ok) throw new Error(`extraction failed: ${reply.error.message}`)
+      expect(reply.id).toBe(7)
+      expect(rowKeys(reply.rows)).toEqual(expected)
+      expect(reply.durationMs).toBeGreaterThan(0)
+    })
+  }
+
+  it('reads a legacy Capture from its .html file when there is no MHTML', () => {
+    const htmlPath = join(dir, 'legacy.html')
+    writeFileSync(htmlPath, '<html><body>write to wren@desk.example.net</body></html>')
+    const reply = handleExtractionMessage({ id: 1, mhtmlPath: join(dir, 'none.mhtml'), htmlPath })
+    expect(reply).toMatchObject({ ok: true })
+    expect(reply.ok && rowKeys(reply.rows)).toEqual([
+      'Infrastructure|Domain Reference|desk.example.net',
+      'Infrastructure|Email Address|wren@desk.example.net'
+    ])
+  })
+
+  it('prefers the MHTML when both files exist', () => {
+    const htmlPath = join(dir, 'legacy.html')
+    writeFileSync(htmlPath, '<html><body>write to wren@desk.example.net</body></html>')
+    const reply = handleExtractionMessage({
+      id: 1,
+      mhtmlPath: join(FIXTURE_DIR, 'cnn-iran-synthetic.mhtml'),
+      htmlPath
+    })
+    expect(reply.ok && rowKeys(reply.rows)).toEqual(
+      FIXTURE_KNOWN_ANSWERS['cnn-iran-synthetic.mhtml']
+    )
+  })
+
+  it('answers with no rows, without extracting, when neither file exists', () => {
+    const extract = vi.spyOn(dataExtractor, 'extractData')
+    const reply = handleExtractionMessage({
+      id: 2,
+      mhtmlPath: join(dir, 'none.mhtml'),
+      htmlPath: join(dir, 'none.html')
+    })
+    expect(reply).toMatchObject({ id: 2, ok: true, rows: [] })
+    expect(extract).not.toHaveBeenCalled()
+  })
+
+  it('answers a read failure with the error name and errno code', () => {
+    const htmlPath = join(dir, 'a-directory.html')
+    mkdirSync(htmlPath)
+    const reply = handleExtractionMessage({ id: 3, mhtmlPath: join(dir, 'none.mhtml'), htmlPath })
+    expect(reply).toMatchObject({ id: 3, ok: false, error: { name: 'Error', code: 'EISDIR' } })
+  })
+
+  it('answers a non-Error throw with a generic error', () => {
+    vi.spyOn(dataExtractor, 'extractData').mockImplementation(() => {
+      throw 'not an Error'
+    })
+    const reply = handleExtractionMessage({
+      id: 4,
+      mhtmlPath: join(FIXTURE_DIR, 'cnn-pope-synthetic.mhtml'),
+      htmlPath: join(dir, 'none.html')
+    })
+    expect(reply).toMatchObject({
+      id: 4,
+      ok: false,
+      error: { name: 'Error', code: null, message: 'not an Error' }
+    })
+  })
+})

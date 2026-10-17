@@ -7,9 +7,8 @@ import * as captureRepo from '@main/services/db/captureRepo'
 import { getExhibit } from '@main/services/db/exhibitRepo'
 import { nextExhibitNumber } from '@main/services/exhibitNumbering'
 import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
-import { extractData } from '@main/services/dataExtractor'
 import { recordSlowOp } from '@main/services/diagnostics'
-import { readExtractionHtml } from '@main/services/extraction/extractionSource'
+import type { ExtractionClient } from '@main/services/extraction/processClient'
 import { buildExhibitFields, rebuildCaseFields } from '@main/services/search/fieldIndex'
 import { getInstallationId } from '@main/services/installationId'
 import {
@@ -165,6 +164,10 @@ export interface CaptureLifecycleDeps {
   // Both optional so a headless lifecycle emits nothing.
   emitCaptureEvent?: (event: CaptureEvent) => void
   emitNewCapture?: (capture: Capture) => void
+  // The extraction utility process (#598). Optional: a lifecycle built without
+  // one extracts nothing, so no headless lifecycle decodes or extracts on the
+  // process it runs in. Main supplies the client of the real process.
+  extraction?: ExtractionClient
 }
 
 export interface CaptureLifecycle {
@@ -752,15 +755,24 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
   const manualDedup = new Map<string, number>()
   const store = deps.store ?? defaultCaptureStore
 
-  function runDataExtraction(captureId: string, caseId: string, url: string): void {
-    // Timed for Settings → Diagnostics: this runs synchronously on the main
-    // process, so its duration is exactly how long the app was unresponsive.
-    const t0 = performance.now()
+  // Decoding and extraction run in the utility process; this side names the
+  // stored files and writes the rows. The duration recorded for Settings →
+  // Diagnostics is the one the process measured, or the time until the client
+  // gave up on it, so it no longer measures how long the app was unresponsive.
+  async function runDataExtraction(captureId: string, caseId: string, url: string): Promise<void> {
+    const { extraction } = deps
+    if (!extraction) return
     try {
-      const html = readExtractionHtml(caseId, captureId, store)
-      if (html) {
-        const extracted = extractData(html)
-        extractedDataRepo.insertExtractedData(captureId, caseId, url, extracted)
+      const outcome = await extraction.extract({
+        mhtmlPath: store.artifactPaths(caseId, captureId, 'mhtml').abs,
+        htmlPath: store.artifactPaths(caseId, captureId, 'html').abs
+      })
+      recordSlowOp('data-extraction', url, outcome.durationMs)
+      if (!outcome.ok) throw outcome.error
+      // The lookup and the insert run in one turn of the main process, so a
+      // Capture deleted while its extraction ran gets no rows.
+      if (captureRepo.getCapture(captureId)) {
+        extractedDataRepo.insertExtractedData(captureId, caseId, url, outcome.rows)
       }
     } catch (err) {
       logger.error(
@@ -769,14 +781,13 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
         { captureId: ident(captureId) },
         err
       )
-    } finally {
-      recordSlowOp('data-extraction', url, performance.now() - t0)
     }
   }
 
   // The Case search field records (docs/plans/2026-10-09-case-retrieval-first-slice.md,
-  // D5). Timed for the same reason as data extraction. A failure never fails the
-  // ingest: the build writes a `failed` row, and a database fault is logged here.
+  // D5). Timed for Settings → Diagnostics: the build runs synchronously on the main
+  // process, so its duration is how long the app was unresponsive. A failure never
+  // fails the ingest: the build writes a `failed` row, and a database fault is logged here.
   function runFieldBuild(captureId: string, url: string): void {
     const t0 = performance.now()
     try {
@@ -813,7 +824,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
         )
       }
 
-      runDataExtraction(captureId, caseId, url)
+      void runDataExtraction(captureId, caseId, url)
       runFieldBuild(captureId, url)
     })
   }
@@ -1448,7 +1459,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
           // Always clear first so legacy rows don't linger when a capture has no
           // readable source file anymore.
           extractedDataRepo.deleteExtractedDataForCapture(cap.id)
-          runDataExtraction(cap.id, caseId, cap.url)
+          await runDataExtraction(cap.id, caseId, cap.url)
         } catch (err) {
           logger.error(
             'captureLifecycle',

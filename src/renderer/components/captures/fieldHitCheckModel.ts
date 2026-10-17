@@ -11,6 +11,9 @@ export function isHitRecord(hit: FieldHit, record: FieldHitCheck['record']): boo
   return (
     record.exhibitId === hit.exhibitId &&
     record.field === hit.field &&
+    // The preview is the value's first characters, so a record at the same place with
+    // another value is told apart too.
+    record.value.startsWith(hit.preview) &&
     locator.source === hit.locator.source &&
     locator.part === hit.locator.part &&
     locator.startOffset === hit.locator.startOffset &&

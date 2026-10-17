@@ -39,8 +39,8 @@ const TEXT_HIT = hit({
 })
 
 function answerFor(target: FieldHit, check: ClaimCheck): Result {
-  const { exhibitId, field, locator } = target
-  return { check, record: { exhibitId, field, locator } }
+  const { exhibitId, field, locator, preview } = target
+  return { check, record: { exhibitId, field, value: preview, locator } }
 }
 
 function stub(...answers: Array<Result | Error>) {
@@ -146,6 +146,16 @@ describe('FieldHitCheck answers', () => {
     )
   })
 
+  it('never shows the outcome of a record holding another value at the same place', async () => {
+    const target = hit()
+    const other = answerFor(target, { text: 'present', basis: 'decoded', reason: null })
+    stub({ ...other, record: { ...other.record!, value: 'https://other.example/pay' } })
+    render(<FieldHitCheck hit={target} />)
+    expect(await press()).toBe(
+      'Cannot check. The search records changed after this search. Search again.'
+    )
+  })
+
   it('reads a failed call as a check that could not run, not as an outcome', async () => {
     stub(new Error('The check could not run'))
     render(<FieldHitCheck hit={hit()} />)
@@ -168,7 +178,7 @@ describe('FieldHitCheck keeps nothing', () => {
     expect(checkFieldHit).toHaveBeenNthCalledWith(2, 7)
   })
 
-  it('shows that a check is running and drops an answer for a hit no longer open', async () => {
+  it('disables the press while a check runs, so presses never race', async () => {
     let settle: (value: Result) => void = () => {}
     const checkFieldHit = vi.fn(
       () =>
@@ -177,24 +187,15 @@ describe('FieldHitCheck keeps nothing', () => {
         })
     )
     fakeBridge({ cases: { checkFieldHit } })
-    const first = hit()
-    const { rerender } = render(<FieldHitCheck hit={first} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Check against the stored file' }))
-    expect(screen.getByRole('button', { name: 'Checking…' })).toHaveProperty('disabled', true)
-
-    rerender(<FieldHitCheck hit={hit({ fieldId: 8 })} />)
-    settle(answerFor(first, { text: 'present', basis: 'decoded', reason: null }))
-    await Promise.resolve()
-    expect(screen.queryByTestId('field-hit-check-answer')).toBeNull()
-    expect(screen.getByRole('button', { name: 'Check against the stored file' })).toBeDefined()
-  })
-
-  it('removes the answer when another hit opens', async () => {
     const target = hit()
-    stub(answerFor(target, { text: 'present', basis: 'decoded', reason: null }))
-    const { rerender } = render(<FieldHitCheck hit={target} />)
-    await press()
-    rerender(<FieldHitCheck hit={hit({ fieldId: 8 })} />)
-    expect(screen.queryByTestId('field-hit-check-answer')).toBeNull()
+    render(<FieldHitCheck hit={target} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Check against the stored file' }))
+    const busy = screen.getByRole('button', { name: 'Checking…' })
+    expect(busy).toHaveProperty('disabled', true)
+    fireEvent.click(busy)
+    expect(checkFieldHit).toHaveBeenCalledTimes(1)
+
+    settle(answerFor(target, { text: 'present', basis: 'decoded', reason: null }))
+    expect(await screen.findByText(/^Present\./)).toBeDefined()
   })
 })

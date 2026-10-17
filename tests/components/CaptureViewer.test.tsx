@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
-import type { Capture, CaptureLinks, FieldHit } from '@shared/types'
+import type { Capture, CaptureLinks, FieldHit, FieldHitCheck } from '@shared/types'
 import { LEGACY_HTML_PARTITION } from '@shared/constants'
 
 vi.mock('@tanstack/react-router', () => ({
@@ -557,5 +557,82 @@ describe('CaptureViewer exact check', () => {
 
     await screen.findByTestId(tab === 'text' ? 'capture-text' : 'links-tab')
     expect(screen.queryByTestId('field-hit-check')).toBeNull()
+  })
+
+  // The answer belongs to one opening of a hit.
+  describe('the answer', () => {
+    const PRESS = { name: 'Check against the stored file' }
+    const present = (target: FieldHit): FieldHitCheck => {
+      const { exhibitId, field, locator, preview } = target
+      return {
+        check: { text: 'present', basis: 'hash-verified', reason: null },
+        record: { exhibitId, field, value: preview, locator }
+      }
+    }
+
+    function openText(checkFieldHit: ReturnType<typeof vi.fn>, others: Capture[] = []) {
+      getContent.mockResolvedValue(TEXT)
+      fakeBridge({
+        captures: { list: vi.fn(async () => [capture, ...others]), getContent, getHtmlUrl },
+        cases: { checkFieldHit }
+      })
+      useAppStore.getState().setActiveViewerTab('text')
+    }
+
+    it('goes when another Capture is selected, and stays gone on return', async () => {
+      const hitA = fieldHit('text')
+      const checkFieldHit = vi.fn(async () => present(hitA))
+      openText(checkFieldHit, [{ ...capture, id: 'cap2', title: 'Second page' }])
+      useAppStore.getState().setViewerHit(hitA)
+      renderViewer()
+
+      fireEvent.click(await screen.findByRole('button', PRESS))
+      expect(await screen.findByTestId('field-hit-check-answer')).toBeDefined()
+      act(() => useAppStore.getState().selectCapture('cap2'))
+      expect(screen.queryByTestId('field-hit-check-answer')).toBeNull()
+      act(() => useAppStore.getState().selectCapture('cap1'))
+      await screen.findByTestId('capture-text')
+      expect(screen.queryByTestId('field-hit-check-answer')).toBeNull()
+    })
+
+    it('does not come back when the same hit is opened again', async () => {
+      // A repeated search hands back the same hit object, so reopening hit A passes
+      // the object the answer was given for.
+      const hitA = fieldHit('text')
+      const hitB = { ...fieldHit('text'), fieldId: 2 }
+      const checkFieldHit = vi.fn(async () => present(hitA))
+      openText(checkFieldHit)
+      useAppStore.getState().setViewerHit(hitA)
+      renderViewer()
+
+      fireEvent.click(await screen.findByRole('button', PRESS))
+      expect(await screen.findByTestId('field-hit-check-answer')).toBeDefined()
+      act(() => useAppStore.getState().setViewerHit(hitB))
+      expect(screen.queryByTestId('field-hit-check-answer')).toBeNull()
+      act(() => useAppStore.getState().setViewerHit(hitA))
+      expect(screen.getByRole('button', PRESS)).toBeDefined()
+      expect(screen.queryByTestId('field-hit-check-answer')).toBeNull()
+      expect(checkFieldHit).toHaveBeenCalledTimes(1)
+    })
+
+    it('from an earlier opening never shows in a later one', async () => {
+      const hitA = fieldHit('text')
+      let settle: (value: FieldHitCheck) => void = () => {}
+      const checkFieldHit = vi.fn(
+        () =>
+          new Promise<FieldHitCheck>((resolve) => {
+            settle = resolve
+          })
+      )
+      openText(checkFieldHit)
+      useAppStore.getState().setViewerHit(hitA)
+      renderViewer()
+
+      fireEvent.click(await screen.findByRole('button', PRESS))
+      act(() => useAppStore.getState().setViewerHit(hitA))
+      await act(async () => settle(present(hitA)))
+      expect(screen.queryByTestId('field-hit-check-answer')).toBeNull()
+      expect(screen.getByRole('button', PRESS)).toHaveProperty('disabled', false)
+    })
   })
 })

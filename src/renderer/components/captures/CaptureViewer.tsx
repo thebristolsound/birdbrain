@@ -63,6 +63,7 @@ export function CaptureViewer() {
   const activeTab = useAppStore((s) => s.activeViewerTab)
   const setActiveTab = useAppStore((s) => s.setActiveViewerTab)
   const viewerHit = useAppStore((s) => s.viewerHit)
+  const viewerHitOpening = useAppStore((s) => s.viewerHitOpening)
   const capture = captures.find((item) => item.id === selectedCaptureId) ?? null
 
   // Determine content type based on active tab and capture format. Wayback
@@ -296,7 +297,8 @@ export function CaptureViewer() {
         </Button>
       </div>
 
-      {checkedHit && <FieldHitCheck hit={checkedHit} />}
+      {/* Keyed by the opening, so an answer never outlives the opening it answers. */}
+      {checkedHit && <FieldHitCheck key={viewerHitOpening} hit={checkedHit} />}
 
       {/* Content area — keep existing content branches except analysis */}
       <div className="flex-1 overflow-hidden min-h-0">

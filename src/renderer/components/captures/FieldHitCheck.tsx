@@ -1,36 +1,26 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import type { FieldHit } from '@shared/types'
 import { checkFieldHit } from '@renderer/lib/api/captures'
 import { CHECK_FAILED_TEXT, checkAnswer } from '@renderer/components/captures/fieldHitCheckModel'
 
-interface Answer {
-  hit: FieldHit
-  /** Which press this answers, so an earlier press that settles late is dropped. */
-  ask: number
-  text: string | null
-}
-
 /**
  * The exact check of the search hit open in the viewer (docs/plans/2026-10-09-case-
  * retrieval-first-slice.md, D7). Each press reads the stored files again in the main
- * process. The answer is held here for the hit it answers and nowhere else: opening
- * another hit, or another Capture, leaves nothing to show.
+ * process. The answer is held only in this component, which the viewer mounts afresh
+ * for each opening of a hit, so closing the hit or opening any hit, the same one
+ * included, leaves no answer until the next press.
  */
 export function FieldHitCheck({ hit }: { hit: FieldHit }) {
-  const [answer, setAnswer] = useState<Answer | null>(null)
-  const asks = useRef(0)
-  const current = answer?.hit === hit ? answer : null
-  const running = current !== null && current.text === null
+  // Null before the first press; '' while a check runs. The button is disabled while
+  // one runs, so a press never races an earlier one.
+  const [answer, setAnswer] = useState<string | null>(null)
+  const running = answer === ''
 
   const run = () => {
-    asks.current += 1
-    const ask = asks.current
-    const settle = (text: string) =>
-      setAnswer((prev) => (prev?.ask === ask ? { hit, ask, text } : prev))
-    setAnswer({ hit, ask, text: null })
+    setAnswer('')
     checkFieldHit(hit.fieldId).then(
-      (result) => settle(checkAnswer(hit, result)),
-      () => settle(CHECK_FAILED_TEXT)
+      (result) => setAnswer(checkAnswer(hit, result)),
+      () => setAnswer(CHECK_FAILED_TEXT)
     )
   }
 
@@ -47,13 +37,13 @@ export function FieldHitCheck({ hit }: { hit: FieldHit }) {
       >
         {running ? 'Checking…' : 'Check against the stored file'}
       </button>
-      {current?.text ? (
+      {answer ? (
         <p
           data-testid="field-hit-check-answer"
           role="status"
           className="min-w-0 pt-0.5 text-[11px] text-text-secondary"
         >
-          {current.text}
+          {answer}
         </p>
       ) : null}
     </div>

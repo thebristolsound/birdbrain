@@ -1,6 +1,6 @@
 # Plan: receipt stamps on `merge` entries (#1515)
 
-**Status:** active
+**Status:** approved 2026-10-17
 
 Plan only. Nothing here is built. Issue #1515 is SC-4 in
 `docs/plans/2026-10-10-three-programme-agent-briefs.md:265`, and step 7 of the build order in the
@@ -85,7 +85,7 @@ Tasks 1, 2, and 9 have no dependencies. Task 3 needs Task 2, Task 4 needs Tasks 
 Task 5 needs Task 4. Before Task 6 come Tasks 1, 2, and 4, and before Task 7 comes Task 2. Task 8
 needs Task 7's test helper, and Task 10 comes last.
 
-Tasks 3, 8, and 9 follow the recommended answers to questions 2, 1, and 4 in section 13.
+Tasks 3, 8, and 9 follow the answers to questions 2, 1, and 4 in section 13.
 
 ### Task 1. Let the writer accept `subject: 'entry'`
 
@@ -626,7 +626,7 @@ pnpm preflight
 
 `pnpm test <path>` takes no `--` (`CLAUDE.md:9`).
 
-## 13. Questions for the maintainer
+## 13. Questions the maintainer answered
 
 1. **Packages and receipt stamps.** Every package already holds each receipt token inside its
    signed Manifest line. Should `verify.sh` and `VERIFY.md` also check those tokens, and should the
@@ -641,6 +641,9 @@ pnpm preflight
    Recommended: **B**, for the reasons in section 5. The token bytes are already signed into the
    package, the binary sends its reader to `VERIFY.md` for the authenticity check, and B keeps
    this PR out of `export.ts`.
+
+   Answer (2026-10-17): **B**. `verify.sh` and `VERIFY.md` check each receipt token decoded from
+   its signed line; packages gain no file and `export.ts` is unchanged.
 2. **Retry rule.** When a receipt stamp's request fails, or timestamping was off when the `merge`
    was written, which `merge` entries should the five-minute retry stamp later?
    - **a.** Every unstamped `merge` after the last `import`, one request each, as Captures are
@@ -654,6 +657,8 @@ pnpm preflight
    after an outage that could mean hundreds of requests (question 3). Option c loses the stamp for
    good on one failed request. The cost of b is that an older `merge` covered only by a later one
    gets no checker row of its own.
+
+   Answer (2026-10-17): **b**. The retry loop stamps only the newest unstamped `merge`.
 3. **The `merge` rate.** Each member's last `merge`, and now its receipt stamp, is a new entry to
    the other member. Two connected members therefore write a `merge` in every session, and with the
    design's 60-second timer (`...design.md:200-201`) each would request one token per connected
@@ -666,6 +671,9 @@ pnpm preflight
    design's one-`merge`-per-session rule (decision 14) would change if sessions that bring only
    other members' `merge` entries should write none. Skipping stamps here would still leave the
    chain growing by one `merge` a minute per peer.
+
+   Answer (2026-10-17): **stamp every `merge`**. The request rate goes in the PR's findings,
+   pointed at the sync service issue (#1881), which owns the timer.
 4. **The Data screen ledger.** Once receipt stamps exist, the Manifest ledger shows each one as a
    `timestamp` row labelled `hash <12 hex>`, the label a content stamp gets, and its target finds no
    Exhibit. Should this PR label it as a receipt (Task 9: three small edits in `ledgerModel.ts` and
@@ -673,6 +681,9 @@ pnpm preflight
 
    Recommended: **this PR**. The issue asks for the receipt stamp to be reported distinct from a
    Capture's content stamp, and #1515 is the first change that writes one.
+
+   Answer (2026-10-17): **this PR**. The Data screen's Manifest ledger labels receipt stamps as
+   receipts.
 5. **The DigiCert request.** Task 6 needs one real token: one HTTP POST to
    `http://timestamp.digicert.com` carrying the SHA-256 of an invented `merge` entry. Should the
    implementing session make that request and commit the response, or should you run the commands
@@ -682,6 +693,9 @@ pnpm preflight
    first DigiCert fixture's README does. The request carries no Case data, and the app makes the
    same request for every Capture. If the session has no network access, it stops and hands you the
    commands.
+
+   Answer (2026-10-17): **the implementing session** makes the one request, sending only the
+   hash of an invented `merge` entry, and records the commands in the fixture README.
 6. **Merge order.** Two unmerged changes edit files this one edits, and the briefs order both
    ahead of it: the change that writes received Captures into the database (#1811, draft PR #1879),
    and the change that makes `verify.sh` check every member chain (#1864, a branch with no PR yet).
@@ -691,3 +705,6 @@ pnpm preflight
    received-Captures change is one manual line. The rebase onto the `verify.sh` change moves the
    receipt walk onto `$case_entries`. If the `verify.sh` change still has no PR when this one is
    green, ask again before merging ahead of it.
+
+   Answer (2026-10-17): **build from `main` now**; merge after #1879 and #1880, with the
+   orchestrator handling the rebases.

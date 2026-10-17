@@ -347,17 +347,18 @@ inventory: {
   - `inFlight`: neither `loadingFinished` nor `loadingFailed` had arrived when collection stopped.
   - `bodiesOmitted`: a finished response whose body `Network.getResponseBody` did not return,
     because it was over the budget or the browser no longer held it. One count covers both, because
-    the probe tested neither case and nothing yet shows the two failures can be told apart.
+    the probe tested neither case and nothing yet shows the two failures can be told apart. With
+    D17 it also counts a body the engine did not fetch because the total body cap was reached (D17,
+    "The attach", item 7).
   - `incompleteRequestBodies`: a request that reports `hasPostData` and whose body is still
     incomplete after `Network.getRequestPostData` (spec, Transaction Record).
   - `webSockets`: `Network.webSocketCreated` events. ADR-0035 has the inventory account for every
     exchange the record lacks, and a WebSocket handshake reaches CDP outside `requestWillBeSent`.
     Frames are not recorded (spec open question 5).
-  - `recordedTargets` and `unrecordedTargets`: the page plus each attached frame, dedicated worker,
-    and service worker whose `Network.enable` answered, and each one whose setup failed or did not
-    answer, so its requests may be missing; one target per attached session (D17, "The two
-    counts"). Proposed 2026-10-17, with D17, for the maintainer's approval: they change the D4
-    shape accepted on 2026-10-10.
+  - `recordedTargets` and `unrecordedTargets`: the targets whose setup answered and those whose
+    setup failed, did not answer, or was not attempted, each target in exactly one, as D17 defines
+    them ("The two counts"). Proposed 2026-10-17, with D17, for the maintainer's approval: they
+    change the D4 shape accepted on 2026-10-10.
   - `replacedHeaders`: the lower-case names whose values the writer replaced (ADR-0036), sorted and
     unique.
   - `budget`: the two limits passed to `Network.enable`, so a reader knows what "over the budget"
@@ -639,72 +640,116 @@ attaches to the page's session as type `service_worker`, paused, and when it is 
 `Network.enable` its script and its own fetch reach the server and appear on no session; a shared
 worker never attaches to the page's session, and of its requests only its script appears there.
 
+**The setup order, measured.** The review then found that the order each attached session is set
+up in decides what loads. A second scratch script reran that comparison on 2026-10-17, on the same
+Electron and host: the fixture above plus a service worker the page registers, whose install
+handler fetches a file, with every `fetch` reading its body. In a pass where everything ran, the
+two servers logged twelve requests.
+
+| Order on each attached session | Runs | Cross-site frame | Service worker |
+| --- | --- | --- | --- |
+| `Network.enable`, `Target.setAutoAttach`, and `Runtime.runIfWaitingForDebugger` sent together | 2 | Never loads: its document request starts on the page's session and never finishes, nothing inside the frame is requested, and `wc.loadURL` has not resolved at the 15-second deadline | Runs: its script and its fetch finish on its session |
+| Each command sent once the one before it answered | 2 | Loads: every request finishes on a session | Paused for good: its `Network.enable` never answers and its script is never requested |
+| By type: on an `iframe` or `worker`, `Network.enable` and `Target.setAutoAttach` together, then the resume once both answered; on a `service_worker`, all three together | 7 | Loads | Runs |
+
+In each of the seven runs of the third order the frame loaded and every request the servers logged
+finished on a session; one run had no service worker, and one had a worker that claims the page
+and serves a `fetch` by fetching it again. In that run one server request gave two exchanges: one on
+the page's session whose `Network.responseReceived` reports `fromServiceWorker`, and the worker's
+own fetch on its session under another request id. `Network.dataReceived` events arrived on every
+session. Not traced: why the first order stalls a frame in Electron.
+
 **The attach.** Step 9, after `Network.enable` on the page and before it loads the target:
 
 1. Sends `Target.setAutoAttach` with `autoAttach`, `waitForDebuggerOnStart`, and `flatten` true on
-   the page's session. `wc.debugger.sendCommand` takes a session id as its third argument and its
-   `message` event reports one, which is how a child session reaches the collector.
-2. On each `Target.attachedToTarget` whose `targetInfo.type` is `iframe`, `worker`, or
-   `service_worker`, sends on that session, in one batch without waiting for each answer in turn,
-   `Network.enable` with the same limits, the same `Target.setAutoAttach` (so a target's own frames
-   and workers attach the same way), and `Runtime.runIfWaitingForDebugger`. A session runs its
-   commands in order, so the domain is on before the target runs its first line. Waiting for
-   `Network.enable` before resuming can deadlock: the protocol says so of the order it names, and in
-   launched Chrome an awaited enable left a tab paused for 15 seconds while the batched order
-   recorded it at once ([launched-browser probe](../specs/2026-10-11-capture-engine-launched-browser-probe-spike.md),
-   P4).
-3. Waits for those answers within a bound. A target whose `Network.enable` or `Target.setAutoAttach`
-   failed or did not answer within it counts in `unrecordedTargets` (D4). Its requests may still
-   arrive, since in that probe a late enable took effect after the tab resumed, and any that arrive
-   are recorded.
-4. Resumes every target, whatever its commands answered. A target of any other type, and any target
-   that attaches after collection stops, is resumed at once and not recorded.
-5. Fetches each body on the session that reported its `loadingFinished`. A target that detaches
+   the page's session, and waits for its answer within the bound of the page's `Network.enable`.
+   `wc.debugger.sendCommand` takes a session id as its third argument and its `message` event
+   reports one, which is how a child session reaches the collector. If the answer fails or does not
+   arrive, the record is kept and the page counts in `unrecordedTargets` (The two counts).
+2. On each `Target.attachedToTarget` whose `targetInfo.type` is `iframe` or `worker`, sends
+   `Network.enable` with the same limits and the same `Target.setAutoAttach` together on that
+   session (so a target's own frames and workers attach the same way), waits for both answers
+   within a bound, and then sends `Runtime.runIfWaitingForDebugger`. Sending the resume with the
+   other two stalled the cross-site frame in every run above.
+3. On each `Target.attachedToTarget` whose type is `service_worker`, sends the same three commands
+   together without waiting. Waiting for the service worker's `Network.enable` before resuming it
+   left it paused in every run above.
+4. Resumes each target once, by item 2 or 3, whatever its commands answered. A target whose
+   `Network.enable` or `Target.setAutoAttach` failed or did not answer within the bound counts in
+   `unrecordedTargets` (D4). Its requests may still arrive and are recorded: in launched Chrome a
+   late enable took effect after the tab resumed
+   ([launched-browser probe](../specs/2026-10-11-capture-engine-launched-browser-probe-spike.md),
+   P4). The protocol notes a deadlock for one waiting order (the probe's P4 cites the note), and in
+   that probe an awaited enable left a tab paused for 15 seconds; in Electron the wait is what lets
+   a cross-site frame load. The order is therefore per target type and per host, measured on one
+   fixture (Risks).
+5. Resumes a target of any other type at once, without recording it, and counts it in
+   `unrecordedTargets`. A target that attaches after collection stops is resumed at once and is
+   neither recorded nor counted, since collection has ended for every session.
+6. Fetches each body on the session that reported its `loadingFinished`. A target that detaches
    before its body arrives leaves the body omitted (`bodiesOmitted`), and its unfinished requests
    count as in flight.
-6. Caps the bytes of all bodies the record keeps, across every session, at `budget.totalBytes`.
-   Each session's `Network.enable` gets the same `maxTotalBufferSize` and `maxResourceBufferSize`,
-   so the browser's own buffers are per session and only the engine's cap bounds the total. A body
-   past the cap is omitted (`bodiesOmitted`). D4's `budget` then states the total and per-resource
-   limits the record was kept under, and its shape does not change.
+7. Bounds the body bytes it fetches, across every session, at `budget.totalBytes`. The engine keeps
+   a running total of the bodies `Network.getResponseBody` returned. Once the total reaches the
+   cap it sends no further `Network.getResponseBody`, and before that it skips a body whose
+   `Network.dataReceived` events already report more `dataLength` than the cap has left. Each body
+   skipped either way counts in `bodiesOmitted`. Each session's `Network.enable` gets the same
+   `maxTotalBufferSize` and `maxResourceBufferSize`; whether the browser applies those per session
+   or across sessions was not measured, so the engine's cap is what bounds the total. D4's
+   `budget` then states the total and per-resource limits the record was kept under, and its shape
+   does not change.
 
-**The two counts.** One target is one `Target.attachedToTarget` session. `recordedTargets` is the
-page plus each attached `iframe`, `worker`, or `service_worker` target whose `Network.enable` and
-`Target.setAutoAttach` both answered within the bound. `unrecordedTargets` is each such target
-whose commands failed or did not answer. Both are non-negative integers. Step 9's attach code knows
-which sessions answered and passes that set to step 7's collector with the `Target.attachedToTarget`
+**The two counts.** A target is the page or one `Target.attachedToTarget` session, and each target
+collection saw is in exactly one count. `recordedTargets` is the page when its
+`Target.setAutoAttach` answered, plus each attached `iframe`, `worker`, or `service_worker` target
+whose `Network.enable` and `Target.setAutoAttach` both answered within the bound.
+`unrecordedTargets` is every other target: the page when its `Target.setAutoAttach` failed or did
+not answer, each such attached target whose commands failed or did not answer, and each target of
+another type (item 5). The page counted there still has its own requests recorded; the count says
+that what runs below it was not seen. Both are non-negative integers. Step 9's attach code knows
+which targets answered and passes that set to step 7's collector with the `Target.attachedToTarget`
 events, and the collector computes both counts (step 7, #1903). Step 7 moves `unrecordedTargets`
-with a stream in which a child's enable never answers; step 9 moves it with a stubbed failure.
+with a stream in which a child's enable never answers and one in which the page's auto-attach
+fails; step 9 moves it with stubbed failures of both.
 
 **Ruling E for a child session.** Ruling E keeps the Capture with the Transaction Record absent as
-`failed` when `Network.enable` fails. D17 reads the ruling as the page's own session: when that
-fails, the record is absent as `failed`, as ruled. When a frame's or a worker's session fails, the
-record is kept and the target counts in `unrecordedTargets`. This narrows ruling E and is part of
-what the maintainer approves with D17.
+`failed` when `Network.enable` fails. D17 reads the ruling as the page's own `Network.enable`: when
+that fails, the record is absent as `failed`, as ruled. When the page's `Target.setAutoAttach`, or a
+frame's or a worker's session, fails, the record is kept and the target counts in
+`unrecordedTargets`. This narrows ruling E and is part of what the maintainer approves with D17.
 
 **The collector.** Step 7's input is session id, method, and params triples, plus the
-`Target.attachedToTarget` events and the set of sessions that answered. It keys an exchange by
-request id across sessions, because a frame's or a worker's first request starts on the parent's
-session and ends on the child's, and a worker's `ExtraInfo` events arrive on the parent's. Step 0's
-committed streams carry no session id; step 7 reads them as the page's session and adds
-multi-session sequences built on the readings above.
+`Target.attachedToTarget` events and the set of targets whose setup answered. It keys an exchange
+by request id across sessions, because a frame's or a worker's first request starts on the parent's
+session and ends on the child's, and a worker's `ExtraInfo` events arrive on the parent's. A page
+request a service worker answers and the worker's own fetch for it carry different request ids, so
+they are two exchanges, each as its session reported it. Step 0's committed streams carry no
+session id; step 7 reads them as the page's session and adds multi-session sequences built on the
+readings above.
 
 **What the record still does not hold**, stated beside the capability in `features.mdx` with the
 in-page reuse (D4):
 
 - Requests a shared worker makes. It does not attach to the page's session, so none of its own
   requests reach the engine and the inventory cannot count them.
-- Targets below a session whose `Target.setAutoAttach` failed. The failing target counts in
-  `unrecordedTargets`; whatever would have attached below it is never seen.
+- Targets below a target whose `Target.setAutoAttach` failed. The failing target, the page
+  included, counts in `unrecordedTargets`; whatever would have attached below it is never seen.
+
+Both are exchanges the record lacks that the inventory does not account for one by one. ADR-0035
+has the inventory account for every exchange a Transaction Record lacks, so these two limits depart
+from it, and that departure is part of what the maintainer approves with D17.
 
 **Risks.** `flatten` is marked experimental in `devtools-protocol`, as the stage 2 spec records of
 the same command ([stage 2 spec](../specs/2026-10-10-capture-engine-launched-browser-design.md),
-Attach before request). Step 9's e2e spec loads a page with a cross-site frame, dedicated workers in
-the page and in the frame, and a service worker, and checks every request the fixture serves is an
-exchange; it runs in CI on every pull request, so a Chromium change that breaks the attach fails
-there. Playwright attaches its own debugger to the app in every e2e run, and whether a target paused
-for the engine also waits on Playwright was not measured; the same spec shows it. Bound TLS Details
-stay the main document's (D7).
+Attach before request). The order per target type rests on one fixture on one Linux host, and why
+the other orders fail was not traced. Step 9's e2e spec loads a page with a cross-site frame,
+dedicated workers in the page and in the frame, and a service worker, and checks every request the
+fixture serves is an exchange. CI runs it on every pull request that changes a path outside its
+documentation-only list (`.github/workflows/ci.yml`, the `changes` job); an Electron update changes
+the lockfile, so a Chromium change that breaks the attach or the order fails there. Playwright
+attaches its own debugger to the app in every e2e run, and whether a target paused for the engine
+also waits on Playwright was not measured; the same spec shows it. Bound TLS Details stay the main
+document's (D7).
 
 ## The spec's open questions
 
@@ -1081,16 +1126,17 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
 ### Step 7. Exchange collector and Bound TLS conversion (CE-7, first part)
 
 - **Changes.** Creates `src/packages/transaction-record/` with `collector.ts` (CDP `Network`
-  events in, as recorded session id, method, and params triples (D17); exchanges and the D4 counts
-  out) and `boundTls.ts`
-  (a `securityDetails` object in, D7's `boundTls` out, times as ISO strings). The pull request adds
+  events in, as recorded session id, method, and params triples, with the `Target.attachedToTarget`
+  events and the set of targets whose setup answered (D17, "The collector"); exchanges and the D4
+  counts out) and `boundTls.ts` (a `securityDetails` object in, D7's `boundTls` out, times as ISO
+  strings). The pull request adds
   `src/packages/transaction-record/**` to the assessment as a blocking row.
 - **Done when.** From the event streams step 0 committed and from sequences built on the probe's
   observations: each redirect hop becomes its own exchange under a reused request id; a frame's
   document request that starts on the page's session and finishes on the frame's is one complete
-  exchange, and a stream in which a child's enable never answers moves `unrecordedTargets` (D17); each count in
-  D4 has a sequence that moves it, and none of those exchanges is counted as complete; the output
-  order is deterministic. The step defines how it tells an incomplete request body from a complete
+  exchange; a stream in which a child's enable never answers, and one in which the page's
+  auto-attach fails, each move `unrecordedTargets` (D17); each count in D4 has a sequence that
+  moves it, and none of those exchanges is counted as complete; the output order is deterministic. The step defines how it tells an incomplete request body from a complete
   one, with a multipart sequence as its test. A recorded `securityDetails` object converts to D7's
   shape with no fractional number.
 - **Verify with.** `pnpm test src/packages/transaction-record/tests`, `pnpm lint:boundaries`, then
@@ -1125,9 +1171,10 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
 
 - **Changes.** In `renderPageInHiddenWindow`: CE-3's proxy on the partition before the first
   navigation, then attach, load `about:blank`, send `Network.enable` with the budget under a bounded
-  wait, set up D17's attach for frames and dedicated workers, remove the `about:blank` entry if step 0 question 7 found a way, and load the target. The
-  collector reads `wc.debugger` `message` events; each body is fetched when its `loadingFinished`
-  arrives; collection stops at the point step 0 question 2 fixes and the spike records. The spec
+  wait, set up D17's attach for frames, dedicated workers, and service workers in its order per
+  target type, remove the `about:blank` entry if step 0 question 7 found a way, and load the
+  target. The collector reads `wc.debugger` `message` events; each body is fetched when its
+  `loadingFinished` arrives, until D17's total body cap is reached; collection stops at the point step 0 question 2 fixes and the spike records. The spec
   puts that point "at the moment the screenshot and MHTML are taken" (spec, Transaction Record).
   The writer's output, the inventory part, and the main document's `securityDetails` travel on
   `RenderedPage`. Ingest writes the file through step 3's store method, `transactionRecordHash`,
@@ -1160,10 +1207,12 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   same-origin and cross-origin; failed, cancelled, in-flight, and over-budget requests; a
   cross-site frame with a dedicated worker of its own, a dedicated worker of the page, and a
   service worker, every request of which is an exchange, with `recordedTargets` counting them and
-  a stubbed child failure moving `unrecordedTargets` (D17); and a cached response if step 0 found
+  stubbed failures of a child's setup and of the page's auto-attach each moving
+  `unrecordedTargets` (D17); and a cached response if step 0 found
   a way to produce one. The consent filter's cancelled request is counted.
   Inventory counts match the server's request log, apart from the in-page reuse the probe
-  documented. A cookie the fixture sets and sends appears nowhere in the inflated record. For a
+  documented and a page exchange a service worker answered, whose response reports
+  `fromServiceWorker` (D17). A cookie the fixture sets and sends appears nowhere in the inflated record. For a
   fixture served over TLS with a known certificate, through that certificate allowance, `boundTls`
   matches its subject, SANs, issuer, and validity; an `http:` page writes `not-https`. With CE-3's
   SOCKS5 fixture and a proxy Egress, neither the record nor the inventory holds the proxy's host or
@@ -1403,10 +1452,10 @@ approval is the maintainer's record. **Ruled 2026-10-10:** yes, it covers both.
   (question 4), whether a fresh partition produces a cache event (question 5), and whether
   `securityDetails` arrives under a test certificate (question 6). Step 0 answered each; question
   4 led to D17.
-- For D17: whether a target paused for the engine also waits on Playwright's own debugger; a
-  service worker's requests with `Network.enable` on its session (the review measured them only
-  without it); nested cross-site frames; and the stall that waiting for `Network.enable` causes in
-  Electron, which no fixture here produced.
+- For D17: whether a target paused for the engine also waits on Playwright's own debugger; nested
+  cross-site frames; why sending the resume with a frame's other setup commands stalls the frame
+  in Electron; whether the order per target type holds beyond one fixture on one Linux host; and
+  what happens when the page's `Target.setAutoAttach` fails or hangs, which no fixture made.
 - CDP command, event, and type facts come from the `devtools-protocol` npm package 0.0.1716261, not
   from the definition Chromium 152 ships. Whether CDP's `remoteIPAddress` names the proxy through a
   SOCKS5 Egress is unmeasured.
@@ -1513,6 +1562,8 @@ folded in.
 - **2026-10-17.** Step 0 delivered as the renderer spike (#1840). Added D17, the design for
   out-of-process frames and workers that the maintainer's ruling of the same day asks for, from a
   scratch measurement on Electron 44.7.0, and the two inventory counts it proposes. Revised after
-  the pull request's review: service workers recorded, the setup sent in one batch, a total body
-  cap, the counts defined, ruling E's reading for a child session, and the limits restated. Step 1
-  waits for its approval.
+  the pull request's review: service workers recorded, a total body cap, the counts defined,
+  ruling E's reading for a child session, and the limits restated. Revised after its second
+  review: the setup order set per target type from a rerun measurement, the body cap applied
+  before fetching, the page's own auto-attach bounded and counted, and the departure from ADR-0035
+  named for approval. Step 1 waits for its approval.

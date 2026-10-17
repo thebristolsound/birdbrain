@@ -276,6 +276,10 @@ _Avoid_: excluded, hidden, suppressed (for this flag).
 An address, handle, domain, or other identifier the Operator marks as their own, such as a Persona's account shown in a captured page's header. No analysis follows it, so a Joint never rests on the Operator's own presence in a Capture.
 _Avoid_: my account, self selector, persona identifier.
 
+**Case revision**:
+The state of a Case an analysis run reads, in three parts: a generation that changes when the database or the Case is replaced (a restore, or a Case Archive import), a counter that every write to a run input advances (Notes, Selectors, Extracted Data, Exhibits, search builds, and the investigation records), and the head of the Case's Manifest. Two revisions are equal only when all three parts are. Edits outside the run inputs, such as Tags, leave it unchanged.
+_Avoid_: Case version, revision number, snapshot.
+
 ### Export and verification
 
 **Evidence Package**:

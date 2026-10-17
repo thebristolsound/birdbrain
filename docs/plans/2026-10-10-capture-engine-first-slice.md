@@ -348,8 +348,8 @@ inventory: {
   - `bodiesOmitted`: a finished response whose body `Network.getResponseBody` did not return,
     because it was over the budget or the browser no longer held it. One count covers both, because
     the probe tested neither case and nothing yet shows the two failures can be told apart. With
-    D17 it also counts a body the engine did not fetch because the total body cap was reached (D17,
-    "The attach", item 7).
+    D17 it also counts a body the engine did not fetch because fetching it could have taken the
+    total past the body cap (D17, "The attach", item 7).
   - `incompleteRequestBodies`: a request that reports `hasPostData` and whose body is still
     incomplete after `Network.getRequestPostData` (spec, Transaction Record).
   - `webSockets`: `Network.webSocketCreated` events. ADR-0035 has the inventory account for every
@@ -643,21 +643,24 @@ worker never attaches to the page's session, and of its requests only its script
 **The setup order, measured.** The review then found that the order each attached session is set
 up in decides what loads. A second scratch script reran that comparison on 2026-10-17, on the same
 Electron and host: the fixture above plus a service worker the page registers, whose install
-handler fetches a file, with every `fetch` reading its body. In a pass where everything ran, the
-two servers logged twelve requests.
+handler fetches a file. In the first run of each of the first two orders below, no `fetch` read
+its body; in every other run each `fetch` read its body. In a pass where everything ran, the two
+servers logged twelve requests.
 
 | Order on each attached session | Runs | Cross-site frame | Service worker |
 | --- | --- | --- | --- |
-| `Network.enable`, `Target.setAutoAttach`, and `Runtime.runIfWaitingForDebugger` sent together | 2 | Never loads: its document request starts on the page's session and never finishes, nothing inside the frame is requested, and `wc.loadURL` has not resolved at the 15-second deadline | Runs: its script and its fetch finish on its session |
-| Each command sent once the one before it answered | 2 | Loads: every request finishes on a session | Paused for good: its `Network.enable` never answers and its script is never requested |
-| By type: on an `iframe` or `worker`, `Network.enable` and `Target.setAutoAttach` together, then the resume once both answered; on a `service_worker`, all three together | 7 | Loads | Runs |
+| `Network.enable`, `Target.setAutoAttach`, and `Runtime.runIfWaitingForDebugger` sent together | 3 | Never loads: its document request starts on the page's session and never finishes, nothing inside the frame is requested, and `wc.loadURL` has not resolved at the 15-second deadline | Runs: its script finishes on its session; its fetch finished in two runs and in the first reported data but no `loadingFinished`, as did the page's worker's fetch |
+| Each command sent once the one before it answered | 3 | Loads; in the first run the frame's `fetch` and both workers' fetches reported data but no `loadingFinished`, and in the other two every request finished | Paused for good: its `Network.enable` never answers and its script is never requested |
+| By type: on an `iframe` or `worker`, `Network.enable` and `Target.setAutoAttach` together, then the resume once both answered; on a `service_worker`, all three together | 9 | Loads | Runs |
 
-In each of the seven runs of the third order the frame loaded and every request the servers logged
-finished on a session; one run had no service worker, and one had a worker that claims the page
-and serves a `fetch` by fetching it again. In that run one server request gave two exchanges: one on
-the page's session whose `Network.responseReceived` reports `fromServiceWorker`, and the worker's
-own fetch on its session under another request id. `Network.dataReceived` events arrived on every
-session. Not traced: why the first order stalls a frame in Electron.
+In each of the nine runs of the third order the frame loaded and every request the servers logged
+finished on a session. One run had no service worker, one had a worker that claims the page and
+serves a `fetch` by fetching it again, and two used fetches that did not read their bodies. In the
+claiming run one server request gave two exchanges: one on the page's session whose
+`Network.responseReceived` reports `fromServiceWorker`, and the worker's own fetch on its session
+under another request id. `Network.dataReceived` events arrived on every session, and the setup
+answers on a frame or a dedicated worker arrived within 50 ms in every run. Not traced: why the
+first order stalls a frame in Electron.
 
 **The attach.** Step 9, after `Network.enable` on the page and before it loads the target:
 
@@ -668,9 +671,11 @@ session. Not traced: why the first order stalls a frame in Electron.
    arrive, the record is kept and the page counts in `unrecordedTargets` (The two counts).
 2. On each `Target.attachedToTarget` whose `targetInfo.type` is `iframe` or `worker`, sends
    `Network.enable` with the same limits and the same `Target.setAutoAttach` together on that
-   session (so a target's own frames and workers attach the same way), waits for both answers
-   within a bound, and then sends `Runtime.runIfWaitingForDebugger`. Sending the resume with the
-   other two stalled the cross-site frame in every run above.
+   session (so a target's own frames and workers attach the same way), waits for both answers within
+   the child setup bound, and then sends `Runtime.runIfWaitingForDebugger`. The bound is a constant
+   step 9 defines beside the page's `Network.enable` bound; this plan proposes 2 seconds, the value
+   the scratch script used, and the target stays paused for at most that long. Sending the resume
+   with the other two stalled the cross-site frame in every run above.
 3. On each `Target.attachedToTarget` whose type is `service_worker`, sends the same three commands
    together without waiting. Waiting for the service worker's `Network.enable` before resuming it
    left it paused in every run above.
@@ -689,28 +694,33 @@ session. Not traced: why the first order stalls a frame in Electron.
 6. Fetches each body on the session that reported its `loadingFinished`. A target that detaches
    before its body arrives leaves the body omitted (`bodiesOmitted`), and its unfinished requests
    count as in flight.
-7. Bounds the body bytes it fetches, across every session, at `budget.totalBytes`. The engine keeps
-   a running total of the bodies `Network.getResponseBody` returned. Once the total reaches the
-   cap it sends no further `Network.getResponseBody`, and before that it skips a body whose
-   `Network.dataReceived` events already report more `dataLength` than the cap has left. Each body
-   skipped either way counts in `bodiesOmitted`. Each session's `Network.enable` gets the same
-   `maxTotalBufferSize` and `maxResourceBufferSize`; whether the browser applies those per session
-   or across sessions was not measured, so the engine's cap is what bounds the total. D4's
-   `budget` then states the total and per-resource limits the record was kept under, and its shape
-   does not change.
+7. Bounds the body bytes it fetches, across every session, at `budget.totalBytes`. The engine counts
+   a body against the cap when it sends `Network.getResponseBody` for it, at the sum of the
+   `dataLength` its `Network.dataReceived` events reported, so bodies still in flight count before
+   they return. It sends no request that would take that total past the cap, and counts each body it
+   does not fetch in `bodiesOmitted`. When a body returns, the engine replaces its estimate with the
+   length of the returned string. That string can be longer than `dataLength`: a binary body returns
+   base64-encoded, about four thirds of its decoded size. The engine therefore estimates a body as
+   four thirds of its `dataLength`, rounded up to a multiple of four, whenever it cannot tell in
+   advance that the body will return as text, so a returned body does not take the total past the
+   cap. Each session's `Network.enable` gets the same `maxTotalBufferSize` and
+   `maxResourceBufferSize`; whether the browser applies those per session or across sessions was not
+   measured, so the engine's cap is what bounds the total. D4's `budget` then states the total and
+   per-resource limits the record was kept under, and its shape does not change.
 
 **The two counts.** A target is the page or one `Target.attachedToTarget` session, and each target
 collection saw is in exactly one count. `recordedTargets` is the page when its
 `Target.setAutoAttach` answered, plus each attached `iframe`, `worker`, or `service_worker` target
-whose `Network.enable` and `Target.setAutoAttach` both answered within the bound.
+whose `Network.enable` and `Target.setAutoAttach` both answered within the child setup bound.
 `unrecordedTargets` is every other target: the page when its `Target.setAutoAttach` failed or did
 not answer, each such attached target whose commands failed or did not answer, and each target of
 another type (item 5). The page counted there still has its own requests recorded; the count says
-that what runs below it was not seen. Both are non-negative integers. Step 9's attach code knows
-which targets answered and passes that set to step 7's collector with the `Target.attachedToTarget`
-events, and the collector computes both counts (step 7, #1903). Step 7 moves `unrecordedTargets`
-with a stream in which a child's enable never answers and one in which the page's auto-attach
-fails; step 9 moves it with stubbed failures of both.
+that what runs below it may not have been seen, since an auto-attach that answers after the bound
+may still take effect, as item 4 says of a child's late enable. Both are non-negative integers. Step
+9's attach code knows which targets answered and passes that set to step 7's collector with the
+`Target.attachedToTarget` events, and the collector computes both counts (step 7, #1903). Step 7
+moves `unrecordedTargets` with a stream in which a child's enable never answers and one in which the
+page's auto-attach fails; step 9 moves it with stubbed failures of both.
 
 **Ruling E for a child session.** Ruling E keeps the Capture with the Transaction Record absent as
 `failed` when `Network.enable` fails. D17 reads the ruling as the page's own `Network.enable`: when
@@ -1174,9 +1184,11 @@ recipe while a running Birdbrain holds port 19845 (#1693, Verification). A step 
   wait, set up D17's attach for frames, dedicated workers, and service workers in its order per
   target type, remove the `about:blank` entry if step 0 question 7 found a way, and load the
   target. The collector reads `wc.debugger` `message` events; each body is fetched when its
-  `loadingFinished` arrives, until D17's total body cap is reached; collection stops at the point step 0 question 2 fixes and the spike records. The spec
-  puts that point "at the moment the screenshot and MHTML are taken" (spec, Transaction Record).
-  The writer's output, the inventory part, and the main document's `securityDetails` travel on
+  `loadingFinished` arrives, if D17's body cap, which counts bodies still being fetched, leaves
+  room for it; collection stops at the point step 0 question 2 fixes and the spike records. The
+  spec puts that point "at the moment the screenshot and MHTML are taken" (spec, Transaction
+  Record). The writer's output, the inventory part, and the main document's `securityDetails`
+  travel on
   `RenderedPage`. Ingest writes the file through step 3's store method, `transactionRecordHash`,
   `boundTls` or `boundTlsAbsent`, the inventory part, and the row. If `Network.enable` fails or
   times out, the inventory records the Transaction Record absent as `failed`, `boundTlsAbsent` is
@@ -1453,9 +1465,12 @@ approval is the maintainer's record. **Ruled 2026-10-10:** yes, it covers both.
   `securityDetails` arrives under a test certificate (question 6). Step 0 answered each; question
   4 led to D17.
 - For D17: whether a target paused for the engine also waits on Playwright's own debugger; nested
-  cross-site frames; why sending the resume with a frame's other setup commands stalls the frame
-  in Electron; whether the order per target type holds beyond one fixture on one Linux host; and
-  what happens when the page's `Target.setAutoAttach` fails or hangs, which no fixture made.
+  cross-site frames; why sending the resume with a frame's other setup commands stalls the frame in
+  Electron; why a fetch that delivered its data reported no `loadingFinished` in two of the six runs
+  of the other two orders (the first run of each, whose fetches did not read their bodies), which
+  none of the nine runs of the order per type showed, two of them with the same fetches; whether the
+  order per target type holds beyond one fixture on one Linux host; and what happens when the page's
+  `Target.setAutoAttach` fails or hangs, which no fixture made.
 - CDP command, event, and type facts come from the `devtools-protocol` npm package 0.0.1716261, not
   from the definition Chromium 152 ships. Whether CDP's `remoteIPAddress` names the proxy through a
   SOCKS5 Egress is unmeasured.

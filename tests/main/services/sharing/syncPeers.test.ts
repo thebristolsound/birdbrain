@@ -45,6 +45,7 @@ import {
   type SyncSource
 } from '@main/services/sharing/session'
 import type { WireRow } from '@main/services/sharing/messages'
+import type { ManifestEntry } from '@shared/schemas'
 import {
   MEMBERS_FILENAME,
   getSyncState,
@@ -1443,8 +1444,10 @@ describe('sync session between peers (#1512)', () => {
       vi.fn(async (hash: string) =>
         buildSyntheticToken({ contentHash: hash, genTime: new Date(TIME), tsaDnsName: 'tsa.bob' })
       )
-    const stamps = (): ManifestEntry[] =>
-      parsedChain(ownChainText(CASE_ID)).filter((e) => e.type === 'timestamp')
+    const stamps = (): Array<Extract<ManifestEntry, { type: 'timestamp' }>> =>
+      parsedChain(ownChainText(CASE_ID)).filter(
+        (e): e is Extract<ManifestEntry, { type: 'timestamp' }> => e.type === 'timestamp'
+      )
     const walkPasses = (): void => {
       const caseDir = caseDirOf(CASE_ID)
       const { verification } = readSharedCaseSnapshot(caseDir, readManifestSnapshot(caseDir))

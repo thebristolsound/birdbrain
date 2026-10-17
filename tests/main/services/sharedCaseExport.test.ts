@@ -965,7 +965,7 @@ describe('Shared Case export, import and fork (#1511)', () => {
     // The Owner's replica with a receipt stamp on its merge (index 3), the
     // stamp at index 4, issued by `issuer`.
     function receiptReplica(issuer: () => LocalTsa) {
-      let receiptToken = Buffer.alloc(0)
+      let receiptToken: Buffer = Buffer.alloc(0)
       const replica = ownerReplica((owner) => {
         const mergeHash = owner.hashes[owner.hashes.length - 1]
         receiptToken = issuer().issueToken(mergeHash)

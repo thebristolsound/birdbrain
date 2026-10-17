@@ -18,6 +18,10 @@ import * as selectorRepo from '@main/services/db/selectorRepo'
 import * as noteRepo from '@main/services/db/noteRepo'
 import * as waybackRefRepo from '@main/services/db/waybackRefRepo'
 import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
+import * as subjectRepo from '@main/services/db/investigationSubjectRepo'
+import * as decisionRepo from '@main/services/db/investigationDecisionRepo'
+import * as markRepo from '@main/services/db/exhibitMarkRepo'
+import * as runRepo from '@main/services/db/investigationRunRepo'
 import {
   collectAnnotationsForCase,
   collectAnnotationPinsForCase,
@@ -68,6 +72,12 @@ import type {
   CaseArchiveCounts
 } from '@shared/types'
 
+// 10 since the investigation records (#1909, schema v40): data.json carries
+// the Subjects, Joints and their spans, the decisions on them, the marks on
+// Exhibits and the run records. A Birdbrain from before them imports the Case
+// without them, every decision lost with no error, so the gate refuses. The
+// Case revision and its change log stay behind: the import's triggers start the
+// new Case a fresh one (ADR-0042, ruling 61 of 2026-10-10).
 // 9 since per-author working-layer keys (#1512, schema v39): data.json's tag
 // applications and pins carry their author, tags their `created_at`, and the
 // import reads the author of every working-layer row. A Birdbrain from before
@@ -118,7 +128,7 @@ import type {
 // anchor_json, which a pre-v27 import would silently drop. Bump this whenever a
 // Case Archive gains data an older release would silently discard or reject
 // opaquely.
-export const CASE_ARCHIVE_SCHEMA_VERSION = 9
+export const CASE_ARCHIVE_SCHEMA_VERSION = 10
 
 export interface CaseArchiveData {
   case: Record<string, unknown>
@@ -152,6 +162,21 @@ export interface CaseArchiveData {
    * member, and the roster it came from is in the chains it keeps as lineage.
    */
   caseMembers?: Record<string, unknown>[]
+  /** The investigation records (#1909). Each absent before schemaVersion 10. */
+  subjects?: Record<string, unknown>[]
+  joints?: Record<string, unknown>[]
+  jointSpans?: Record<string, unknown>[]
+  subjectSpans?: Record<string, unknown>[]
+  jointDecisions?: Record<string, unknown>[]
+  spanDecisions?: Record<string, unknown>[]
+  sourceClassMarks?: Record<string, unknown>[]
+  copyMarks?: Record<string, unknown>[]
+  withheldFlags?: Record<string, unknown>[]
+  ownIdentifiers?: Record<string, unknown>[]
+  investigationRuns?: Record<string, unknown>[]
+  investigationRunBasis?: Record<string, unknown>[]
+  investigationRunCandidates?: Record<string, unknown>[]
+  investigationRunProposals?: Record<string, unknown>[]
 }
 
 interface CaseArchiveHeader {
@@ -202,7 +227,21 @@ export function collectCaseData(caseId: string): CaseArchiveData {
     captureArchiveRefs: waybackRefRepo.collectWaybackRefsForCase(caseId),
     exhibits: exhibitRepo.collectExhibitsForCase(caseId),
     stagingFiles: stagingRepo.collectStagingFilesForCase(caseId),
-    caseMembers: collectCaseMembersForCase(caseId)
+    caseMembers: collectCaseMembersForCase(caseId),
+    subjects: subjectRepo.collectSubjectsForCase(caseId),
+    joints: subjectRepo.collectJointsForCase(caseId),
+    jointSpans: subjectRepo.collectJointSpansForCase(caseId),
+    subjectSpans: subjectRepo.collectSubjectSpansForCase(caseId),
+    jointDecisions: decisionRepo.collectJointDecisionsForCase(caseId),
+    spanDecisions: decisionRepo.collectSpanDecisionsForCase(caseId),
+    sourceClassMarks: markRepo.collectSourceClassMarksForCase(caseId),
+    copyMarks: markRepo.collectCopyMarksForCase(caseId),
+    withheldFlags: markRepo.collectWithheldFlagsForCase(caseId),
+    ownIdentifiers: markRepo.collectOwnIdentifiersForCase(caseId),
+    investigationRuns: runRepo.collectInvestigationRunsForCase(caseId),
+    investigationRunBasis: runRepo.collectInvestigationRunBasisForCase(caseId),
+    investigationRunCandidates: runRepo.collectInvestigationRunCandidatesForCase(caseId),
+    investigationRunProposals: runRepo.collectInvestigationRunProposalsForCase(caseId)
   }
 }
 
@@ -679,7 +718,18 @@ export async function importCaseArchive(
     selectors: data.selectors,
     extracted_data: data.extractedData,
     capture_archive_refs: data.captureArchiveRefs,
-    annotation_pins: data.annotationPins
+    annotation_pins: data.annotationPins,
+    subjects: data.subjects ?? [],
+    joints: data.joints ?? [],
+    joint_spans: data.jointSpans ?? [],
+    subject_spans: data.subjectSpans ?? [],
+    joint_decisions: data.jointDecisions ?? [],
+    span_decisions: data.spanDecisions ?? [],
+    source_class_marks: data.sourceClassMarks ?? [],
+    copy_marks: data.copyMarks ?? [],
+    withheld_flags: data.withheldFlags ?? [],
+    own_identifiers: data.ownIdentifiers ?? [],
+    investigation_runs: data.investigationRuns ?? []
   }
   for (const table of ID_PROBE_TABLES) {
     for (const row of tableRows[table]) {
@@ -788,7 +838,7 @@ export async function importCaseArchive(
       ? { ...data, exhibits: attributeForkedExhibits(data.exhibits ?? [], plan.fork) }
       : data
     withTransaction(() => {
-      insertImportedRows(rows, newCaseId, mapId)
+      insertImportedRows(rows, newCaseId, mapId, header.source.installationId)
     })
   } catch (err) {
     rmSync(caseDir, { recursive: true, force: true })
@@ -808,7 +858,8 @@ export async function importCaseArchive(
 function insertImportedRows(
   data: CaseArchiveData,
   newCaseId: string,
-  mapId: (id: string) => string
+  mapId: (id: string) => string,
+  sourceInstallationId: string
 ): void {
   // Tags: merge by case-insensitive name against BOTH the persisted tags and
   // names already seen earlier in this same archive batch (an archive can carry
@@ -865,4 +916,24 @@ function insertImportedRows(
   // archive written before schemaVersion 4 carries no key at all (#391).
   tagRepo.importNoteTagRows(data.noteTags ?? [], ctx)
   stagingRepo.importStagingFileRows(data.stagingFiles ?? [], ctx)
+  // The investigation records, parents before the rows that name them. A row
+  // with no author was the exporter's own, and here would read as the
+  // importer's, so it takes the exporter's installation (ruling 62 of
+  // 2026-10-10): `header.source.installationId`, the installation
+  // `attributeForkedExhibits` stamps on a fork's Exhibits too.
+  const src = sourceInstallationId
+  subjectRepo.importSubjectRows(data.subjects ?? [], ctx, src)
+  subjectRepo.importJointRows(data.joints ?? [], ctx, src)
+  subjectRepo.importJointSpanRows(data.jointSpans ?? [], ctx, src)
+  subjectRepo.importSubjectSpanRows(data.subjectSpans ?? [], ctx, src)
+  decisionRepo.importJointDecisionRows(data.jointDecisions ?? [], ctx, src)
+  decisionRepo.importSpanDecisionRows(data.spanDecisions ?? [], ctx, src)
+  markRepo.importSourceClassMarkRows(data.sourceClassMarks ?? [], ctx, src)
+  markRepo.importCopyMarkRows(data.copyMarks ?? [], ctx, src)
+  markRepo.importWithheldFlagRows(data.withheldFlags ?? [], ctx, src)
+  markRepo.importOwnIdentifierRows(data.ownIdentifiers ?? [], ctx, src)
+  runRepo.importInvestigationRunRows(data.investigationRuns ?? [], ctx, src)
+  runRepo.importInvestigationRunBasisRows(data.investigationRunBasis ?? [], ctx, src)
+  runRepo.importInvestigationRunCandidateRows(data.investigationRunCandidates ?? [], ctx, src)
+  runRepo.importInvestigationRunProposalRows(data.investigationRunProposals ?? [], ctx, src)
 }

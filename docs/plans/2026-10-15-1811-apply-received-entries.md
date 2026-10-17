@@ -2,7 +2,7 @@
 
 **Status:** active
 
-Plan only. Nothing here is built. The maintainer approved the plan on 2026-10-15 and took the
+The pull request that closes #1811 builds this plan. The maintainer approved the plan on 2026-10-15 and took the
 recommended answer to every question in section 9. Issue #1811 is SC-2b in
 `docs/plans/2026-10-10-three-programme-agent-briefs.md:233`. This plan was written against
 PR #1873 (issue #1512) at 33b3235b, and every `file:line` citation refers to that commit.

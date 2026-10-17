@@ -24,6 +24,7 @@ import { CaptureViewerToolbar } from '@renderer/components/captures/CaptureViewe
 import { CaptureDownloadMenu } from '@renderer/components/captures/CaptureDownloadMenu'
 import { WaybackCompare } from '@renderer/components/captures/WaybackCompare'
 import { LinksTab } from '@renderer/components/captures/LinksTab'
+import { FieldHitCheck } from '@renderer/components/captures/FieldHitCheck'
 import { useAnnotationEditor } from '@renderer/components/captures/annotation/useAnnotationEditor'
 import { useZoomPan } from '@renderer/components/captures/annotation/useZoomPan'
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
@@ -125,6 +126,9 @@ export function CaptureViewer() {
   // The search hit opened on this Capture, if any (docs/plans/2026-10-09-case-retrieval-
   // first-slice.md, D7).
   const hit = viewerHit?.exhibitId === capture.id ? viewerHit : null
+  // The exact check sits in the tab the hit opened, whatever that tab can show of it.
+  const checkedHit =
+    hit && activeTab === (hit.locator.source === 'text' ? 'text' : 'links') ? hit : null
 
   let hostname: string
   try {
@@ -291,6 +295,8 @@ export function CaptureViewer() {
           <ChevronRight className="h-3.5 w-3.5" />
         </Button>
       </div>
+
+      {checkedHit && <FieldHitCheck hit={checkedHit} />}
 
       {/* Content area — keep existing content branches except analysis */}
       <div className="flex-1 overflow-hidden min-h-0">

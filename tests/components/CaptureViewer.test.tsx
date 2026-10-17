@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
-import type { Capture, FieldHit } from '@shared/types'
+import type { Capture, CaptureLinks, FieldHit } from '@shared/types'
 import { LEGACY_HTML_PARTITION } from '@shared/constants'
 
 vi.mock('@tanstack/react-router', () => ({
@@ -430,5 +430,132 @@ describe('CaptureViewer Text tab', () => {
 
     await screen.findByTestId('capture-text')
     expect(screen.queryAllByTestId('capture-text-hit')).toHaveLength(marks)
+  })
+})
+
+// The exact check (docs/plans/2026-10-09-case-retrieval-first-slice.md, D7) sits in the
+// tab the hit opened, in every state that tab can show while the hit is open.
+describe('CaptureViewer exact check', () => {
+  const TEXT = 'From: wren@hollis-mail.example.org'
+  const HREF = 'https://tollgate-ledger.example.com/pay'
+
+  function fieldHit(source: 'text' | 'html-part', exhibitId = 'cap1'): FieldHit {
+    return {
+      fieldId: 1,
+      caseId: 'case1',
+      exhibitId,
+      exhibitNumber: 1,
+      exhibitCitation: '1',
+      contentHash: 'h',
+      title: 'Example evidence page',
+      field: source === 'text' ? 'header.from' : 'link.href',
+      preview: source === 'text' ? 'wren@hollis-mail.example.org' : HREF,
+      norm: source === 'text' ? 'wren@hollis-mail.example.org' : HREF,
+      occurrences: 1,
+      locator:
+        source === 'text'
+          ? { source, part: null, startOffset: 6, endOffset: 34, extractor: 'fields/1' }
+          : { source, part: 0, startOffset: 9, endOffset: 48, extractor: 'fields/1' }
+    }
+  }
+
+  function links(href: string): CaptureLinks {
+    return {
+      links: [
+        {
+          href,
+          rawHref: href,
+          text: 'Pay',
+          rel: [],
+          kind: 'http' as const,
+          frame: 'main' as const,
+          documentUrl: capture.url,
+          occurrences: 1,
+          textHostMismatch: false
+        }
+      ],
+      truncated: false,
+      skippedParts: { tooLarge: 0, overPartCount: 0, overTotalSize: 0 },
+      mainDocumentSkipped: false
+    }
+  }
+
+  it.each([
+    ['a marked span', TEXT, 'capture-text-hit'],
+    [
+      'a span not at its recorded place',
+      'From: someone else entirely here',
+      'capture-text-hit-moved'
+    ],
+    ['no text file', null, null]
+  ] as const)('offers the check in the Text tab with %s', async (_name, text, shown) => {
+    getContent.mockResolvedValue(text)
+    useAppStore.getState().setViewerHit(fieldHit('text'))
+    useAppStore.getState().setActiveViewerTab('text')
+    renderViewer()
+
+    if (shown) await screen.findByTestId(shown)
+    else await screen.findByText('No text content available')
+    expect(screen.getByTestId('field-hit-check')).toBeDefined()
+  })
+
+  const linkStates: Array<
+    [string, Pick<Capture, 'format'>, () => Promise<CaptureLinks | null>, string]
+  > = [
+    ['a marked row', { format: 'mhtml' as const }, async () => links(HREF), 'links-hit'],
+    [
+      'no matching row',
+      { format: 'mhtml' as const },
+      async () => links('https://other.example/x'),
+      'links-notice'
+    ],
+    ['a legacy capture', { format: 'html' as const }, async () => null, 'links-empty'],
+    ['no stored page', { format: 'mhtml' as const }, async () => null, 'links-empty'],
+    [
+      'a read error',
+      { format: 'mhtml' as const },
+      async () => {
+        throw new Error('unreadable')
+      },
+      'links-empty'
+    ]
+  ]
+
+  it.each(linkStates)(
+    'offers the check in the Links tab with %s',
+    async (_name, over, getLinks, shown) => {
+      const viewed = { ...capture, ...over }
+      fakeBridge({
+        captures: { list: vi.fn(async () => [viewed]), getContent, getHtmlUrl, getLinks }
+      })
+      useAppStore.getState().setViewerHit(fieldHit('html-part'))
+      useAppStore.getState().setActiveViewerTab('links')
+      renderViewer()
+
+      await screen.findAllByTestId(shown)
+      expect(screen.getByTestId('field-hit-check')).toBeDefined()
+    }
+  )
+
+  it.each([
+    ['with no hit open', null, 'text'],
+    ["for another Capture's hit", fieldHit('text', 'cap9'), 'text'],
+    ['in a tab the hit did not open', fieldHit('text'), 'links']
+  ] as const)('offers no check %s', async (_name, openHit, tab) => {
+    getContent.mockResolvedValue(TEXT)
+    fakeBridge({
+      captures: {
+        list: vi.fn(async () => [capture]),
+        getContent,
+        getHtmlUrl,
+        getLinks: vi.fn(async () => links(HREF))
+      }
+    })
+    useAppStore.getState().setViewerHit(openHit)
+    useAppStore.getState().setActiveViewerTab(tab)
+    renderViewer()
+
+    await screen.findByTestId(tab === 'text' ? 'capture-text' : 'links-tab')
+    expect(screen.queryByTestId('field-hit-check')).toBeNull()
   })
 })

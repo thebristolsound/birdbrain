@@ -84,8 +84,6 @@ test.describe('Unreviewed captures', () => {
       'Wren Hollis <wren@Hollis-Mail.example.org>'
     )
     // The exact check sits beside the opened hit, as for a search hit.
-    await expect(
-      page.getByRole('button', { name: 'Check against the stored file' })
-    ).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Check against the stored file' })).toBeVisible()
   })
 })

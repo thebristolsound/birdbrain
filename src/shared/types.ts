@@ -184,7 +184,7 @@ export interface FieldHit {
   contentHash: string
   /** The Capture's title. */
   title: string
-  /** `link.href`, `link.alt`, or `header.<name in lower case>`. */
+  /** A field name `fieldLabel()` in `@shared/searchFields` labels, such as `link.href`. */
   field: string
   /** The span as stored, cut to its first 200 characters. */
   preview: string

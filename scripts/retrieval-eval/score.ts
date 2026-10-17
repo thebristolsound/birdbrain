@@ -92,6 +92,18 @@ export interface IndexSize {
   bytes: number
 }
 
+/** The Case search field records, built for every Capture by the Settings rebuild's pass. */
+export interface FieldIndexReport {
+  /** The extractor version that built them. */
+  extractor: string
+  /** Full build of every Capture's records, in milliseconds. */
+  fullBuildMs: number
+  /** Median time to build one Capture's records again, in milliseconds. */
+  incrementalMedianMs: number | null
+  outcomes: Array<{ outcome: string; builds: number }>
+  records: Array<{ field: string; records: number }>
+}
+
 export interface EvalReport {
   generatedAt: string
   toolVersion: string
@@ -107,6 +119,7 @@ export interface EvalReport {
   fullRebuildMs: number
   /** Median time to re-index one Capture's text, in milliseconds. */
   incrementalMedianMs: number | null
+  fieldIndex: FieldIndexReport
   /** Committed Captures that no live Note names and no Persisted Match covers. */
   unreviewedCaptures: number
   /** Target keys inside that unreviewed set. */
@@ -168,6 +181,24 @@ export function renderReport(report: EvalReport): string {
   lines.push('')
   lines.push(`- Full rebuild of the Extracted Text index: ${ms(report.fullRebuildMs)} ms.`)
   lines.push(`- Re-indexing one Capture's text, median: ${ms(report.incrementalMedianMs)} ms.`)
+  const { fieldIndex } = report
+  lines.push(
+    `- Full build of the search field records (\`${fieldIndex.extractor}\`): ` +
+      `${ms(fieldIndex.fullBuildMs)} ms.`
+  )
+  lines.push(
+    `- Building one Capture's search field records again, median: ` +
+      `${ms(fieldIndex.incrementalMedianMs)} ms.`
+  )
+  const outcomes = fieldIndex.outcomes.map(({ outcome, builds }) => `${outcome} ${builds}`)
+  lines.push(`- Search field builds by outcome: ${outcomes.join(', ') || 'none'}.`)
+  lines.push('')
+  lines.push('| Field | Records | Records per Capture |')
+  lines.push('| --- | --- | --- |')
+  for (const { field, records } of fieldIndex.records) {
+    const perCapture = report.captures === 0 ? 0 : (records / report.captures).toFixed(2)
+    lines.push(`| ${field} | ${records} | ${perCapture} |`)
+  }
   lines.push('')
 
   lines.push('## Unreviewed Captures', '')

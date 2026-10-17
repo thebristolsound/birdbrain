@@ -35,6 +35,8 @@ import { initStorage } from '@main/services/storage'
 import { ingestMhtmlCapture } from '@main/services/captureLifecycle'
 import { readExtractionHtml } from '@main/services/extraction/extractionSource'
 import { extractData } from '@main/services/dataExtractor'
+import { buildExhibitFields, rebuildAllFields } from '@main/services/search/fieldIndex'
+import { FIELD_EXTRACTOR_VERSION } from '@main/services/search/fieldExtractor'
 import { uploadToStaging } from '@main/services/staging'
 import { fillerPage } from './filler'
 import { QUERIES } from './queries'
@@ -45,6 +47,7 @@ import {
   scoreQuery,
   spread,
   type EvalReport,
+  type FieldIndexReport,
   type IndexSize,
   type PathAnswer,
   type PathLatency,
@@ -329,7 +332,7 @@ function indexSizes(): IndexSize[] {
     .prepare(
       `SELECT name, SUM(pgsize) AS bytes FROM dbstat
         WHERE name LIKE 'captures_fts%' OR name = 'capture_texts'
-           OR name LIKE 'extracted_data%'
+           OR name LIKE 'extracted_data%' OR name LIKE '%exhibit_search%'
         GROUP BY name ORDER BY name`
     )
     .all() as IndexSize[]
@@ -353,7 +356,25 @@ function unreviewedCaptureIds(caseId: string): string[] {
   return rows.map((row) => row.id)
 }
 
-function measure(record: CaseRecord): EvalReport {
+function fieldCounts(): Pick<FieldIndexReport, 'outcomes' | 'records'> {
+  const db = getDb()
+  return {
+    outcomes: db
+      .prepare(
+        `SELECT outcome, COUNT(*) AS builds FROM exhibit_search_builds
+          GROUP BY outcome ORDER BY outcome`
+      )
+      .all() as FieldIndexReport['outcomes'],
+    records: db
+      .prepare(
+        `SELECT field, COUNT(*) AS records FROM exhibit_search_fields
+          GROUP BY field ORDER BY field`
+      )
+      .all() as FieldIndexReport['records']
+  }
+}
+
+async function measure(record: CaseRecord): Promise<EvalReport> {
   const paths = searchPaths(record)
   const scored: ScoredQuery[] = []
   const latency: PathLatency[] = []
@@ -381,6 +402,12 @@ function measure(record: CaseRecord): EvalReport {
   const fullRebuildMs = timeMs(() =>
     db.exec("INSERT INTO captures_fts(captures_fts) VALUES ('rebuild')")
   )
+  // The pass the Settings rebuild runs, yields between Captures included. The ingest in
+  // build() writes no field records, so on a full run this is the Case's first build.
+  const fieldStart = performance.now()
+  await rebuildAllFields()
+  const fieldBuildMs = performance.now() - fieldStart
+  const fieldTotals = fieldCounts()
   // Before the re-index samples below, which add index segments.
   const sizes = indexSizes()
   // An UPDATE fires capture_texts_au, which deletes and re-inserts the row's
@@ -392,9 +419,9 @@ function measure(record: CaseRecord): EvalReport {
       capture_id: string
     }>
   ).map((row) => row.capture_id)
-  const incremental = spread(captureIds, INCREMENTAL_SAMPLES).map((id) =>
-    timeMs(() => reindex.run(id))
-  )
+  const sampled = spread(captureIds, INCREMENTAL_SAMPLES)
+  const incremental = sampled.map((id) => timeMs(() => reindex.run(id)))
+  const fieldIncremental = sampled.map((id) => timeMs(() => buildExhibitFields(id)))
 
   const unreviewed = unreviewedCaptureIds(record.caseId)
   return {
@@ -409,6 +436,12 @@ function measure(record: CaseRecord): EvalReport {
     indexSizes: sizes,
     fullRebuildMs,
     incrementalMedianMs: percentile(incremental, 50),
+    fieldIndex: {
+      extractor: FIELD_EXTRACTOR_VERSION,
+      fullBuildMs: fieldBuildMs,
+      incrementalMedianMs: percentile(fieldIncremental, 50),
+      ...fieldTotals
+    },
     unreviewedCaptures: unreviewed.length,
     unreviewedTargets: unreviewed.flatMap((id) => record.targets[id] ?? [])
   }
@@ -431,7 +464,7 @@ async function run(): Promise<void> {
     record = await build(size)
   }
   if (phase !== 'build') {
-    const report = measure(record)
+    const report = await measure(record)
     const markdown = renderReport(report)
     writeFileSync(join(OUT_DIR, 'report.json'), `${JSON.stringify(report, null, 2)}\n`)
     writeFileSync(join(OUT_DIR, 'report.md'), markdown)

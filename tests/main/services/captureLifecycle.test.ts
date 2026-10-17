@@ -475,7 +475,8 @@ describe('createCaptureLifecycle.ingest', () => {
     expect(norms).toEqual([
       { field: 'header.from', norm: 'ada@pell.example.org' },
       { field: 'header.message-id', norm: '<m1@pell>' },
-      { field: 'link.href', norm: 'https://larkspur-relay.example.net/x' }
+      { field: 'link.href', norm: 'https://larkspur-relay.example.net/x' },
+      { field: 'text.address', norm: 'ada@pell.example.org' }
     ])
   })
 

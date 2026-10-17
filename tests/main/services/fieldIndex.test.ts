@@ -169,7 +169,8 @@ describe('buildExhibitFields', () => {
       { field: 'header.message-id', norm: '<a1@x>' },
       { field: 'link.href', norm: 'https://quillmere-gazette.example.net/contact' },
       { field: 'link.href', norm: 'https://tollgate-ledger.example.com/pay' },
-      { field: 'link.alt', norm: 'Pay here' }
+      { field: 'link.alt', norm: 'Pay here' },
+      { field: 'text.address', norm: 'wren@hollis-mail.example.org' }
     ])
     const decoded = listHtmlPartsInMhtml(PAGE).parts[0].decode()
     for (const row of rows) {
@@ -305,6 +306,16 @@ describe('buildExhibitFields', () => {
     expectIndexInStep()
   })
 
+  it('builds a Capture whose text writes an address with [at], recording no address for it', () => {
+    const id = capture(caseId)
+    const files: Files = new Map([
+      [`${id}.mhtml`, PAGE],
+      [`${id}.txt`, Buffer.from('Write to wren[at]hollis-mail.example.org today.', 'utf-8')]
+    ])
+    expect(buildExhibitFields(id, storeOf(files))).toBe('built')
+    expect(fieldRows(id).filter((row) => row.field === 'text.address')).toEqual([])
+  })
+
   it('returns null for a Capture that is not there', () => {
     expect(buildExhibitFields('00000000-0000-4000-8000-000000000000', storeOf(new Map()))).toBe(
       null
@@ -431,6 +442,60 @@ describe('ensureCaseFields', () => {
   })
 })
 
+describe('moving to fields/2', () => {
+  const IMAGE_PAGE = mhtml(
+    '<html><body><a href="https://Tollgate-Ledger.example.com/pay">' +
+      '<img src="https://cdn.tollgate-ledger.example.com/pay.png" alt="Pay"></a></body></html>'
+  )
+
+  // A build as fields/1 left it: its version on the build row, and none of the later kinds.
+  function builtByFields1(id: string, store: ReturnType<typeof storeOf>): void {
+    buildExhibitFields(id, store)
+    getDb()
+      .prepare("UPDATE exhibit_search_builds SET extractor = 'fields/1' WHERE exhibit_id = ?")
+      .run(id)
+    getDb()
+      .prepare("DELETE FROM exhibit_search_fields WHERE exhibit_id = ? AND field = 'image.src'")
+      .run(id)
+  }
+
+  it('rebuilds on Case open what fields/1 built, and searches the rest meanwhile', async () => {
+    const older = capture(caseId, '2026-10-01T00:00:00.000Z')
+    const newer = capture(caseId, '2026-10-02T00:00:00.000Z')
+    const store = storeOf(new Map([older, newer].map((id) => [`${id}.mhtml`, IMAGE_PAGE])))
+    builtByFields1(older, store)
+    builtByFields1(newer, store)
+    const versions = () =>
+      searchCaseFields(caseId, 'tollgate-ledger.example.com/pay')
+        .hits.filter((hit) => hit.field === 'link.href')
+        .map((hit) => [hit.exhibitId, hit.locator.extractor])
+    const { replaceExhibitFields } = searchFieldRepo
+    const midway: string[][] = []
+    vi.spyOn(searchFieldRepo, 'replaceExhibitFields').mockImplementation((build, fields) => {
+      replaceExhibitFields(build, fields)
+      if (build.exhibitId === newer) midway.push(...versions())
+    })
+
+    const pass = ensureCaseFields(caseId, store)
+    expect(versions()).toEqual([
+      [newer, 'fields/1'],
+      [older, 'fields/1']
+    ])
+    expect(await pass).toEqual({ indexed: 2, noSource: 0, failed: 0 })
+
+    // The pass takes the newer Capture first; the older still answers from fields/1.
+    expect(midway).toEqual([
+      [newer, 'fields/2'],
+      [older, 'fields/1']
+    ])
+    for (const id of [older, newer]) {
+      expect(getExhibitSearchBuild(id)?.extractor).toBe('fields/2')
+      expect(fieldRows(id).filter((row) => row.field === 'image.src')).toHaveLength(1)
+    }
+    expectIndexInStep()
+  })
+})
+
 describe('rebuildCaseFields', () => {
   it("builds every Capture in the Case again, failed builds included, and no other Case's", async () => {
     const failed = capture(caseId, '2026-10-02T00:00:00.000Z')
@@ -546,7 +611,7 @@ describe('searchCaseFields', () => {
 
     expect(unavailable).toEqual([])
     expect(truncated).toBe(false)
-    expect(hits).toHaveLength(1)
+    expect(hits.map(({ field }) => field)).toEqual(['header.from', 'text.address'])
     const [hit] = hits
     expect(hit).toMatchObject({
       caseId,
@@ -638,9 +703,11 @@ describe('searchCaseFields', () => {
     expect(hits.map(({ field, contentHash }) => ({ field, contentHash }))).toEqual([
       { field: 'link.href', contentHash: 'c'.repeat(64) }
     ])
-    // A header record comes from the Extracted Text file, which no hash here covers.
+    // Header and address records come from the Extracted Text file, which no hash here
+    // covers.
     expect(searchCaseFields(caseId, 'wren@hollis').hits.map(({ field }) => field)).toEqual([
-      'header.from'
+      'header.from',
+      'text.address'
     ])
   })
 

@@ -66,7 +66,7 @@ const SAMPLES: SyncMessage[] = [
   // The join handshake (#1810).
   {
     t: 'join',
-    caseId: 'case-1',
+    caseId: '0196f7a2-aaaa-bbbb-cccc-000000000001',
     secret: new Uint8Array(16).fill(9),
     installationId: 'inst-b',
     publicKeyPem: '-----BEGIN PUBLIC KEY-----\nMIIB\n-----END PUBLIC KEY-----\n',
@@ -77,7 +77,7 @@ const SAMPLES: SyncMessage[] = [
   { t: 'join-pending' },
   {
     t: 'welcome',
-    caseId: 'case-1',
+    caseId: '0196f7a2-aaaa-bbbb-cccc-000000000001',
     caseName: 'Shared',
     ownerPublicKeyPem: '-----BEGIN PUBLIC KEY-----\nMIIA\n-----END PUBLIC KEY-----\n',
     roster: [
@@ -254,6 +254,14 @@ describe('sync messages', () => {
     expect(() => decodeMessage(encode({ ...welcome, tickets: { '../escape': 'mem:x' } }))).toThrow(
       'Malformed welcome message'
     )
+    // A Case id names the joiner's Case directory, so only the UUID form the
+    // app mints passes: not `..`, a separator, or an upper-case copy.
+    for (const caseId of ['../escaped', 'a/b', '', '0196F7A2-AAAA-BBBB-CCCC-000000000001']) {
+      expect(() => decodeMessage(encode({ ...join, caseId }))).toThrow('Malformed join message')
+      expect(() => decodeMessage(encode({ ...welcome, caseId }))).toThrow(
+        'Malformed welcome message'
+      )
+    }
   })
 
   it('reports a stream that ends inside a frame as a protocol error', async () => {

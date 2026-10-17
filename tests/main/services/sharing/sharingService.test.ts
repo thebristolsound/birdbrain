@@ -227,13 +227,13 @@ describe('sharing service (#1810)', () => {
       expect(ownChainText(caseId)).toBe('')
       const invite = encodeInvite({
         ticket: 'mem:nowhere',
-        caseId: 'another-case',
+        caseId: '0196f7a2-aaaa-bbbb-cccc-0000000000ff',
         operatorName: 'Alice Owner',
         secret: new Uint8Array(16),
         expiresAt: new Date(Date.now() + 60_000).toISOString()
       })
       expect(await refused(() => service.joinCase(invite))).toBe('sharing-unavailable')
-      expect(getCase('another-case')).toBeUndefined()
+      expect(getCase('0196f7a2-aaaa-bbbb-cccc-0000000000ff')).toBeUndefined()
       await shareCase(caseId, { nodeId: 'alice-node' })
       expect(await refused(() => service.syncNow(caseId))).toBe('sharing-unavailable')
       expect(await refused(() => service.approveJoin(caseId, 'r', 'X'))).toBe('sharing-unavailable')

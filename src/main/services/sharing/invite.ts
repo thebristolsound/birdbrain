@@ -20,7 +20,6 @@ export const INVITE_LIFETIME_MS = 24 * 60 * 60 * 1000
 // Bounds on what a pasted string can make the app hold. A relay-only Iroh
 // ticket is about 120 characters; the margin is for a longer relay URL.
 const MAX_TICKET_CHARS = 2048
-const MAX_CASE_ID_CHARS = 128
 const MAX_OPERATOR_NAME_CHARS = 256
 const MAX_TIMESTAMP_CHARS = 64
 const MAX_INVITE_CHARS = INVITE_PREFIX.length + 8192
@@ -34,12 +33,20 @@ export interface InviteFields {
   expiresAt: string
 }
 
+// A Case id from an invite, a join or a welcome names the Case directory on
+// the joiner (adoptWelcome), so it must have the form this app mints a Case
+// id in, a lower-case UUID (createCase, Case Archive import); anything else,
+// `..` or a separator among them, is refused at the codec.
+const CASE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+
+export const caseIdField = z.string().regex(CASE_ID, 'case id must be a UUID')
+
 const bytesField = z.custom<Uint8Array>((value) => value instanceof Uint8Array, 'expected bytes')
 
 const InviteSchema = z
   .object({
     ticket: z.string().min(1).max(MAX_TICKET_CHARS),
-    caseId: z.string().min(1).max(MAX_CASE_ID_CHARS),
+    caseId: caseIdField,
     operatorName: z.string().max(MAX_OPERATOR_NAME_CHARS),
     secret: bytesField.refine((b) => b.length === INVITE_SECRET_BYTES, {
       message: `secret must be ${INVITE_SECRET_BYTES} bytes`

@@ -2,7 +2,7 @@ import { decode, encode } from 'cborg'
 import { z } from 'zod'
 import { MAX_MHTML_SIZE } from '@shared/constants'
 import { SHARING_ERROR_CODES } from '@shared/types'
-import { INVITE_SECRET_BYTES } from '@main/services/sharing/invite'
+import { INVITE_SECRET_BYTES, caseIdField } from '@main/services/sharing/invite'
 import type { ByteStream } from '@main/services/sharing/transport'
 import { isChainInstallationId } from '../../../packages/evidence-package-layout/index'
 
@@ -148,7 +148,6 @@ const ByeSchema = z.object({ t: z.literal('bye'), reason: z.string() }).strict()
 // The join handshake (#1810, the design's "Invite and join"), on a stream of
 // its own that carries `join` first. The bounds are what a stranger's frame
 // can make the listener hold before the join signature verifies.
-const MAX_CASE_ID_CHARS = 128
 const MAX_NAME_CHARS = 256
 const MAX_CASE_NAME_CHARS = 1024
 const MAX_PEM_CHARS = 8192
@@ -166,7 +165,7 @@ const ticketField = z.string().min(1).max(MAX_TICKET_CHARS)
 const JoinSchema = z
   .object({
     t: z.literal('join'),
-    caseId: z.string().min(1).max(MAX_CASE_ID_CHARS),
+    caseId: caseIdField,
     secret: bytesField.refine((b) => b.length === INVITE_SECRET_BYTES, {
       message: `secret must be ${INVITE_SECRET_BYTES} bytes`
     }),
@@ -200,7 +199,7 @@ export type WelcomeMember = z.infer<typeof WelcomeMemberSchema>
 const WelcomeSchema = z
   .object({
     t: z.literal('welcome'),
-    caseId: z.string().min(1).max(MAX_CASE_ID_CHARS),
+    caseId: caseIdField,
     caseName: z.string().min(1).max(MAX_CASE_NAME_CHARS),
     ownerPublicKeyPem: pemField,
     roster: z.array(WelcomeMemberSchema).min(1).max(MAX_ROSTER_MEMBERS),

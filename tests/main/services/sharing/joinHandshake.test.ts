@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createHash, createSign } from 'crypto'
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { closeDatabase, getDb } from '@main/services/db/core'
@@ -312,7 +312,7 @@ describe('join handshake (#1810)', () => {
 
     const unknown = { ...inviteFor().invite, secret: new Uint8Array(16).fill(1) }
     expect(await refused(() => joinAs(C, unknown).outcome)).toBe('invite-unknown')
-    const otherCase = { ...inviteFor().invite, caseId: 'another-case' }
+    const otherCase = { ...inviteFor().invite, caseId: '0196f7a2-aaaa-bbbb-cccc-0000000000ff' }
     expect(await refused(() => joinAs(C, otherCase).outcome)).toBe('invite-unknown')
 
     vi.useFakeTimers({ toFake: ['Date'] })
@@ -500,7 +500,7 @@ describe('join handshake (#1810)', () => {
         tickets: {}
       })
       const variants: Array<[string, (joinerId: string) => WelcomeMessage]> = [
-        ['another Case', (id) => ({ ...good(id), caseId: 'another-case' })],
+        ['another Case', (id) => ({ ...good(id), caseId: '0196f7a2-aaaa-bbbb-cccc-0000000000ff' })],
         [
           'two Owners',
           (id) => ({ ...good(id), roster: [...good(id).roster, member(C, 'owner', 2)] })
@@ -562,6 +562,54 @@ describe('join handshake (#1810)', () => {
       }
       const { welcome } = await requestJoin({ transport: node, invite, identity: identity(B) })
       expect(welcome.roster).toHaveLength(2)
+      await owner.close()
+    })
+
+    // The reproduction from the first review of #1913: an invite and a
+    // welcome naming `../escaped` used to pass every check, and adopting the
+    // welcome wrote the Case's files beside the storage root.
+    it('refuses a Case id that is not one the app mints, and writes nothing outside the root', async () => {
+      const escaped = '../escaped'
+      const escapedWelcome = (joinerId: string): WelcomeMessage => ({
+        t: 'welcome',
+        caseId: escaped,
+        caseName: 'Shared',
+        ownerPublicKeyPem: A.publicKeyPem,
+        roster: [member(A, 'owner', 0), { ...member(B, 'member', 1), installationId: joinerId }],
+        tickets: {}
+      })
+      await activate(B)
+      const before = listCases()
+      // This Owner answers without reading the join, whose Case id its own
+      // codec would refuse, so the welcome reaches the joiner's codec.
+      const owner = hub.createTransport('fake-owner-escaped')
+      await owner.listen((stream: ByteStream) => {
+        void (async () => {
+          await writeMessage(stream, { t: 'join-pending' })
+          await writeMessage(stream, escapedWelcome(B.installationId))
+          stream.close()
+        })()
+      })
+      const invite: InviteFields = {
+        ticket: owner.ticket,
+        caseId: escaped,
+        operatorName: 'Fake',
+        secret: new Uint8Array(16),
+        expiresAt: new Date(Date.now() + INVITE_LIFETIME_MS).toISOString()
+      }
+      const node = hub.createTransport('bob-escaped')
+      const attempt = async (): Promise<void> => {
+        const { welcome, connection } = await requestJoin({
+          transport: node,
+          invite,
+          identity: identity(B)
+        })
+        connection.close()
+        adoptWelcome(welcome, owner.ticket)
+      }
+      await expect(attempt()).rejects.toThrow()
+      expect(existsSync(join(B.storageRoot, '..', 'escaped'))).toBe(false)
+      expect(listCases()).toEqual(before)
       await owner.close()
     })
   })

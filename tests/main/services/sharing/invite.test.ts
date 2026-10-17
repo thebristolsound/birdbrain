@@ -58,7 +58,7 @@ describe('invite string', () => {
     malformed(INVITE_PREFIX + 'a'.repeat(9000))
   })
 
-  it('refuses a map with an extra key, a missing key, a 15-byte secret and a bad expiry', () => {
+  it('refuses a map with an extra key, a missing key, a 15-byte secret, a bad expiry or Case id', () => {
     const as = (map: Record<string, unknown>): string =>
       INVITE_PREFIX + encodeBase32(encode(map)).toLowerCase()
     malformed(as({ ...FIELDS, extra: 1 }))
@@ -70,10 +70,14 @@ describe('invite string', () => {
     malformed(as({ ...FIELDS, expiresAt: 'tomorrow' }))
     malformed(as({ ...FIELDS, ticket: '' }))
     malformed(as({ ...FIELDS, ticket: 'x'.repeat(3000) }))
+    // A Case id names the joiner's Case directory (#1913 review).
+    malformed(as({ ...FIELDS, caseId: '../escaped' }))
+    malformed(as({ ...FIELDS, caseId: FIELDS.caseId.toUpperCase() }))
     malformed(INVITE_PREFIX + encodeBase32(encode([1, 2, 3])).toLowerCase())
   })
 
-  it('refuses to encode a secret of the wrong length', () => {
+  it('refuses to encode a secret of the wrong length or a Case id the app does not mint', () => {
     expect(() => encodeInvite({ ...FIELDS, secret: new Uint8Array(8) })).toThrow()
+    expect(() => encodeInvite({ ...FIELDS, caseId: '../escaped' })).toThrow()
   })
 })

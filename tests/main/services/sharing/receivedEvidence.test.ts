@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createHash, randomUUID } from 'crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import sharp from 'sharp'
 import { closeDatabase, getDb } from '@main/services/db/core'
+import * as captureRepo from '@main/services/db/captureRepo'
 import {
   getCapture,
   insertCapture,
@@ -12,6 +13,8 @@ import {
   searchCaptures,
   setCaptureTrustedTime
 } from '@main/services/db/captureRepo'
+import { createNote } from '@main/services/db/noteRepo'
+import { getAnnotations, saveAnnotations } from '@main/services/annotations'
 import { createCase } from '@main/services/db/caseRepo'
 import { exhibitCitationResolver } from '@main/services/db/caseMemberRepo'
 import { getExhibit } from '@main/services/db/exhibitRepo'
@@ -607,6 +610,170 @@ describe('received evidence (#1811)', () => {
     const cite = exhibitCitationResolver(CASE_ID, 'app')
     expect(cite(getExhibit(ownId)!)).toBe('AL-2')
     expect(getCapture(bobs.captureId)?.exhibitCitation).toBe('BO-1')
+  })
+
+  // Review finding 5 on this PR: the refusals of non-Capture entries, Exhibit Numbers from a
+  // `renumber` assignment, and the apply step throwing part way, had no test.
+  describe('the apply step', () => {
+    const refusal = (index: number, detail: string) => ({
+      kind: 'rejected-entry',
+      installationId: A.installationId,
+      index,
+      detail
+    })
+
+    it("numbers a Capture from its author's renumber entry, and refuses one with no number", async () => {
+      await activate(A)
+      const caseDir = caseDirOf(CASE_ID)
+      const unnumbered = (captureId: string, bytes: Buffer) => {
+        writeFileSync(artifact(captureId, 'mhtml').abs, bytes)
+        return appendManifestEntry(caseDir, {
+          type: 'capture',
+          captureId,
+          caseId: CASE_ID,
+          url: `https://example.com/${captureId}`,
+          timestamp: TIME,
+          contentHash: sha(bytes),
+          sizeBytes: bytes.length,
+          ...by(A)
+        })
+      }
+      const renumberedId = randomUUID()
+      const looseId = randomUUID()
+      const renumbered = unnumbered(renumberedId, Buffer.from('<html>numbered later</html>'))
+      const loose = unnumbered(looseId, Buffer.from('<html>never numbered</html>'))
+      appendManifestEntry(caseDir, {
+        type: 'renumber',
+        caseId: CASE_ID,
+        assignments: [
+          { exhibitId: renumberedId, exhibitNumber: 4, manifestIndex: renumbered.index }
+        ],
+        timestamp: TIME,
+        ...by(A)
+      })
+      const source = recordSource(CASE_ID, A)
+
+      await activate(B)
+      const result = await pull(CASE_ID, source)
+      expect(result.errors).toEqual([refusal(loose.index, `capture ${looseId}: no Exhibit Number`)])
+      expect(result.capturesApplied).toBe(1)
+      expect(getCapture(renumberedId)?.exhibitCitation).toBe('AL-4')
+      expect(getCapture(looseId)).toBeUndefined()
+    })
+
+    it("refuses exhibit entries naming a held id, a taken number or the replica's own file, and such a derivation", async () => {
+      await activate(B)
+      const bobs = await addCapture(CASE_ID, B, 1)
+
+      await activate(A)
+      const doc = addDocument(CASE_ID, A, 1)
+      const capture = await addCapture(CASE_ID, A, 2)
+      const caseDir = caseDirOf(CASE_ID)
+      const exhibit = (exhibitId: string, exhibitNumber: number, path: string) => ({
+        type: 'exhibit' as const,
+        exhibitId,
+        caseId: CASE_ID,
+        kind: 'document',
+        origin: 'manual-upload',
+        name: `${exhibitId}.pdf`,
+        exhibitNumber,
+        path,
+        contentHash: doc.contentHash,
+        sizeBytes: 1,
+        timestamp: TIME,
+        ...by(A)
+      })
+      const takenId = randomUUID()
+      const outsideId = randomUUID()
+      const reserved = `${CASE_ID}/manifest.jsonl`
+      const held = appendManifestEntry(caseDir, exhibit(bobs.captureId, 3, doc.path))
+      const taken = appendManifestEntry(caseDir, exhibit(takenId, 1, doc.path))
+      const outside = appendManifestEntry(caseDir, exhibit(outsideId, 4, reserved))
+      const derivation = appendManifestEntry(caseDir, {
+        type: 'derivation',
+        caseId: CASE_ID,
+        parentExhibitId: capture.captureId,
+        parentContentHash: capture.contentHash,
+        derivation: 'thumbnail',
+        derivationToolVersion: '0.0.0',
+        outputHash: 'd'.repeat(64),
+        outputPath: reserved,
+        timestamp: TIME,
+        ...by(A)
+      })
+      const source = recordSource(CASE_ID, A)
+
+      await activate(B)
+      const result = await pull(CASE_ID, source)
+      expect(result.errors).toEqual([
+        refusal(
+          held.index,
+          `exhibit ${bobs.captureId}: id ${bobs.captureId} is already held by another row`
+        ),
+        refusal(
+          taken.index,
+          `exhibit ${takenId}: Exhibit Number 1 is already held by ${doc.exhibitId}`
+        ),
+        refusal(outside.index, `${reserved}: not a path inside this Case`),
+        refusal(derivation.index, `${reserved}: not a path inside this Case`)
+      ])
+      expect(result.exhibitsApplied).toBe(1)
+      expect(result.capturesApplied).toBe(1)
+      expect(getExhibit(bobs.captureId)?.authorInstallationId).toBeNull()
+      expect(getExhibit(takenId)).toBeUndefined()
+      expect(getExhibit(outsideId)).toBeUndefined()
+      expect(listDerivedFilesForExhibit(capture.captureId)).toEqual([])
+    })
+
+    it('lands nothing when its transaction throws part way, and all of it in the next session', async () => {
+      await activate(A)
+      const first = await addCapture(CASE_ID, A, 1)
+      const second = await addCapture(CASE_ID, A, 2)
+      saveAnnotations({ captureId: first.captureId, shapes: [], imageWidth: 1, imageHeight: 1 })
+      createNote({ caseId: CASE_ID, title: 'Alice note', body: '' })
+      const source = recordSource(CASE_ID, A)
+
+      await activate(B)
+      const insert = captureRepo.insertCapture
+      let inserts = 0
+      const failing = vi.spyOn(captureRepo, 'insertCapture').mockImplementation((params) => {
+        inserts += 1
+        if (inserts === 2) throw new Error('disk I/O error')
+        return insert(params)
+      })
+      const failed = await pull(CASE_ID, source)
+      failing.mockRestore()
+      expect(inserts).toBe(2)
+      expect(failed.errors).toEqual([
+        { kind: 'local', detail: 'received evidence could not be applied: disk I/O error' },
+        {
+          kind: 'peer',
+          detail: expect.stringContaining(
+            'rows received this session could not be applied: FOREIGN KEY'
+          )
+        }
+      ])
+      expect(failed.capturesApplied).toBe(0)
+      expect(failed.rowsApplied).toBe(0)
+      const count = (table: string): number =>
+        (getDb().prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n
+      for (const table of ['captures', 'capture_texts', 'exhibits', 'notes', 'annotations']) {
+        expect(count(table)).toBe(0)
+      }
+      // The files arrived in the file step and stay for the next session to write rows for.
+      for (const { captureId } of [first, second]) {
+        for (const type of ['mhtml', 'png', 'txt'] as const) {
+          expect(existsSync(artifact(captureId, type).abs)).toBe(true)
+        }
+      }
+
+      const landed = await pull(CASE_ID, source)
+      expect(landed.errors).toEqual([])
+      expect(landed.blobsReceived).toBe(0)
+      expect(landed.capturesApplied).toBe(2)
+      expect(landed.rowsApplied).toBe(2)
+      expect(getAnnotations(first.captureId).annotations).not.toBeNull()
+    })
   })
 
   describe('Trusted Time', () => {

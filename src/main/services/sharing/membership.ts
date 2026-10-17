@@ -9,7 +9,7 @@ import { getCase, markCaseShared } from '@main/services/db/caseRepo'
 import { getInstallationId } from '@main/services/installationId'
 import { getPublicKeyPem } from '@main/services/signingKey'
 import { getSettings } from '@main/services/settings'
-import { getStorageRoot } from '@main/services/storage'
+import { ensureCaseDir, getStorageRoot } from '@main/services/storage'
 import { resolveToolVersion } from '@main/services/toolVersion'
 import {
   readManifestSnapshot,
@@ -152,7 +152,9 @@ export async function shareCase(caseId: string, options: ShareCaseOptions): Prom
   if (row.sharedAt !== undefined && row.ownerInstallationId !== self) {
     throw new SharingError('not-owner')
   }
-  const caseDir = join(getStorageRoot(), caseId)
+  // A Case with no Capture yet has no directory: ingest makes it, and so
+  // does the first invite.
+  const caseDir = ensureCaseDir(caseId)
   const existing = ownerMemberAdd(ownEntries(caseDir))
   if (existing !== undefined) {
     if (existing.memberInstallationId !== self) throw new SharingError('not-owner')

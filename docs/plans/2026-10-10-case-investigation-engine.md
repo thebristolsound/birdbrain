@@ -1830,5 +1830,16 @@ implements it amends ADR-0042 in the same PR, so no code ships against an unamen
   `ManifestHeadRef`, which `src/shared/` cannot import; and every channel's arguments carry the Case
   id, as `exhibits:verify` takes one, because the fake keeps one copy of the fixture per Case under
   the same ids.
-- **Next.** CI-9, CI-E, and CI-V1, each against this contract. The gates still open are in "Gates
-  this plan waits on".
+- **2026-10-17, CI-V1 (#1894).** The route `/cases/$caseId/investigate` renders the run setup
+  (S1), the header (S2), and three panes that become tabs when the view is narrower than 1140
+  pixels (S7). No sidebar or command palette entry points at it (ruling 57). The route's search
+  holds the selection, `jointId`, `subjectId`, and `spanId`, for CI-V2 to CI-V4. The header's "not
+  read" count opens its reasons in this plan's wording and offers no "Show them" (maintainer
+  ruling, 2026-10-17), and the contract gains `NOT_READ_REASONS`, the reason values the view
+  words. A packaged build registers no `investigation:` handler, so the route shows only its load
+  failure there. Where the build departs from the accepted mock: no "Run N", because `RunSummary`
+  carries no run number; no "N of M Exhibits readable" before a run, which the contract does not
+  carry; no link to Settings -> AI analysis, which does not exist; each unread kind named as the
+  Data screen names it, not "PDFs" or "mbox file"; and the breakdown's heading says "did not read".
+- **Next.** CI-9, CI-E, and CI-V2 to CI-V4, each against this contract. The gates still open are
+  in "Gates this plan waits on".

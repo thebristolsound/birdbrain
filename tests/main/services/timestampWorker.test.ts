@@ -6,11 +6,17 @@ import { createHash } from 'crypto'
 import { initStorage, ensureCaseDir, getStorageRoot } from '@main/services/storage'
 import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
+import { upsertCaseMember } from '@main/services/db/caseMemberRepo'
 import { insertCapture, getCapture, setCaptureTrustedTime } from '@main/services/db/captureRepo'
 import { initManifest, appendManifestEntry } from '@main/services/manifest'
-import { resolveTrustedTime } from '@main/services/trustedTime'
+import { resolveReceiptStamps, resolveTrustedTime } from '@main/services/trustedTime'
 import { initSettings, updateSettings } from '@main/services/settings'
-import { initInstallationId, resetInstallationId } from '@main/services/installationId'
+import {
+  getInstallationId,
+  initInstallationId,
+  resetInstallationId
+} from '@main/services/installationId'
+import { getPublicKeyPem } from '@main/services/signingKey'
 import { createTimestampWorker } from '@main/services/timestampWorker'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 
@@ -251,6 +257,224 @@ describe('timestampWorker', () => {
 
       expect(result.stamped).toBe(1)
       expect(resolveTrustedTime(caseDir, hash).trustedTime).toBe('rfc3161')
+    })
+  })
+
+  // Receipt stamps (#1515, design decision 15): the same path over a `merge`
+  // entry's Entry Hash. The `merge` entries are written through the app's
+  // writer, as the sync session writes them; the roster is what makes the
+  // Case a Shared Case to the retry loop.
+  describe('receipt stamps on merge entries', () => {
+    const PEER_ID = 'installation-peer-0001'
+
+    function shareCase(id = caseId): void {
+      const base = { caseId: id, nodeId: 'node', revokedAtIndex: null }
+      upsertCaseMember({
+        ...base,
+        installationId: getInstallationId(),
+        publicKeyPem: getPublicKeyPem(),
+        memberCode: 'OW',
+        operatorName: 'Op',
+        role: 'owner',
+        addedAtIndex: 0
+      })
+      upsertCaseMember({
+        ...base,
+        installationId: PEER_ID,
+        publicKeyPem: 'peer-pem',
+        memberCode: 'PE',
+        operatorName: 'Peer',
+        role: 'member',
+        addedAtIndex: 1
+      })
+    }
+
+    function appendMerge(dir = caseDir, id = caseId): { index: number; entryHash: string } {
+      return appendManifestEntry(dir, {
+        type: 'merge',
+        caseId: id,
+        heads: [
+          { installationId: PEER_ID, index: 0, entryHash: 'f'.repeat(64), entriesReceived: 1 }
+        ],
+        timestamp: '2026-10-17T10:00:00.000Z',
+        operatorId: getInstallationId(),
+        operatorName: 'Op',
+        toolVersion: '0.1.0'
+      })
+    }
+
+    function receiptEntries(dir = caseDir): Array<Record<string, unknown>> {
+      return readFileSync(join(dir, 'manifest.jsonl'), 'utf-8')
+        .split('\n')
+        .filter((line) => line.trim())
+        .map((line) => JSON.parse(line) as Record<string, unknown>)
+        .filter((entry) => entry.type === 'timestamp')
+    }
+
+    it('stampMerge appends one receipt stamp over the Entry Hash and records one request', async () => {
+      seedCapture('receipt-capture')
+      const merge = appendMerge()
+      const requestToken = grantingRequester()
+      const worker = createTimestampWorker({ requestToken })
+
+      expect(await worker.stampMerge(caseId, merge.index)).toBe(true)
+
+      expect(requestToken).toHaveBeenCalledTimes(1)
+      expect(requestToken).toHaveBeenCalledWith(merge.entryHash, 'http://tsa.example.com')
+      const entries = receiptEntries()
+      expect(entries).toHaveLength(1)
+      expect(entries[0]).toMatchObject({
+        subject: 'entry',
+        captureContentHash: merge.entryHash,
+        schemaVersion: 4,
+        operatorId: getInstallationId()
+      })
+      const { merges } = resolveReceiptStamps(caseDir)
+      expect(merges[0].stamp).toMatchObject({ trustedTime: 'rfc3161', tsaName: 'tsa.example.com' })
+
+      // Stamped already: true, and no second request.
+      expect(await worker.stampMerge(caseId, merge.index)).toBe(true)
+      expect(requestToken).toHaveBeenCalledTimes(1)
+    })
+
+    it('returns false for an index that is not a merge, with no request', async () => {
+      seedCapture('not-a-merge')
+      const requestToken = grantingRequester()
+      const worker = createTimestampWorker({ requestToken })
+
+      expect(await worker.stampMerge(caseId, 0)).toBe(false)
+      expect(await worker.stampMerge(caseId, 7)).toBe(false)
+      expect(requestToken).not.toHaveBeenCalled()
+    })
+
+    it('appends nothing for a token whose imprint is another hash', async () => {
+      const merge = appendMerge()
+      const requestToken = vi.fn(async () =>
+        buildSyntheticToken({
+          contentHash: createHash('sha256').update('something-else').digest('hex'),
+          genTime: new Date('2026-10-17T10:05:00.000Z')
+        })
+      )
+      const worker = createTimestampWorker({ requestToken })
+
+      expect(await worker.stampMerge(caseId, merge.index)).toBe(false)
+      expect(receiptEntries()).toHaveLength(0)
+      expect(resolveReceiptStamps(caseDir).merges[0].stamp).toBeUndefined()
+    })
+
+    it('appends one receipt stamp under two concurrent attempts', async () => {
+      const merge = appendMerge()
+      const worker = createTimestampWorker({ requestToken: grantingRequester() })
+
+      await Promise.all([
+        worker.stampMerge(caseId, merge.index),
+        worker.stampMerge(caseId, merge.index)
+      ])
+
+      expect(receiptEntries()).toHaveLength(1)
+    })
+
+    it('enqueueReceiptStamp stamps the merge off the caller’s path', async () => {
+      const merge = appendMerge()
+      const worker = createTimestampWorker({ requestToken: grantingRequester() })
+
+      worker.enqueueReceiptStamp(caseId, merge.index)
+      expect(receiptEntries()).toHaveLength(0)
+      await flushImmediate()
+      await flushImmediate()
+
+      expect(receiptEntries()).toHaveLength(1)
+    })
+
+    it('processPending stamps only the newest unstamped merge of a Shared Case', async () => {
+      shareCase()
+      appendMerge()
+      const newest = appendMerge()
+      const requestToken = grantingRequester()
+      const worker = createTimestampWorker({ requestToken })
+
+      const result = await worker.processPending()
+
+      expect(result).toEqual({ stamped: 1, failed: 0 })
+      expect(requestToken).toHaveBeenCalledTimes(1)
+      expect(requestToken).toHaveBeenCalledWith(newest.entryHash, 'http://tsa.example.com')
+      expect(resolveReceiptStamps(caseDir).merges.map((m) => m.stamp !== undefined)).toEqual([
+        false,
+        true
+      ])
+      // Nothing left: a second tick makes no request.
+      expect(await worker.processPending()).toEqual({ stamped: 0, failed: 0 })
+      expect(requestToken).toHaveBeenCalledTimes(1)
+    })
+
+    it('processPending makes no request for a merge in a Case with no roster', async () => {
+      appendMerge()
+      const requestToken = grantingRequester()
+      const worker = createTimestampWorker({ requestToken })
+
+      expect(await worker.processPending()).toEqual({ stamped: 0, failed: 0 })
+      expect(requestToken).not.toHaveBeenCalled()
+    })
+
+    it('processPending counts a failed receipt request as failed and retries it', async () => {
+      shareCase()
+      const merge = appendMerge()
+      let calls = 0
+      const requestToken = vi.fn(async (hash: string) => {
+        calls++
+        if (calls === 1) throw new Error('ENOTFOUND tsa.example.com')
+        return buildSyntheticToken({ contentHash: hash, genTime: new Date('2026-10-17T10:05:00Z') })
+      })
+      const worker = createTimestampWorker({ requestToken })
+
+      expect(await worker.processPending()).toEqual({ stamped: 0, failed: 1 })
+      expect(receiptEntries()).toHaveLength(0)
+      expect(await worker.processPending()).toEqual({ stamped: 1, failed: 0 })
+      expect(requestToken).toHaveBeenLastCalledWith(merge.entryHash, 'http://tsa.example.com')
+    })
+
+    describe('with trusted timestamping declined (tsaEnabled=false)', () => {
+      const refusing = () =>
+        vi.fn(async () => {
+          throw new Error('a TSA request was issued while timestamping was declined')
+        })
+
+      beforeEach(() => {
+        updateSettings({ tsaEnabled: false })
+      })
+
+      it('issues no request from enqueueReceiptStamp, stampMerge or processPending', async () => {
+        shareCase()
+        const merge = appendMerge()
+        const requestToken = refusing()
+        const worker = createTimestampWorker({ requestToken })
+
+        worker.enqueueReceiptStamp(caseId, merge.index)
+        await flushImmediate()
+        await flushImmediate()
+        expect(await worker.stampMerge(caseId, merge.index)).toBe(false)
+        expect(await worker.processPending()).toEqual({ stamped: 0, failed: 0 })
+
+        expect(requestToken).not.toHaveBeenCalled()
+        expect(receiptEntries()).toHaveLength(0)
+      })
+
+      it('stamps the merge once timestamping is turned back on', async () => {
+        shareCase()
+        const merge = appendMerge()
+        const requestToken = grantingRequester()
+        const worker = createTimestampWorker({ requestToken })
+
+        worker.enqueueReceiptStamp(caseId, merge.index)
+        await flushImmediate()
+        await flushImmediate()
+        expect(requestToken).not.toHaveBeenCalled()
+
+        updateSettings({ tsaEnabled: true })
+        expect(await worker.processPending()).toEqual({ stamped: 1, failed: 0 })
+        expect(receiptEntries()).toHaveLength(1)
+        expect(receiptEntries()[0].captureContentHash).toBe(merge.entryHash)
+      })
     })
   })
 

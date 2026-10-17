@@ -5,11 +5,13 @@ import { extractHtmlFromMhtml, listHtmlPartsInMhtml } from '@main/services/mhtml
 import { CAPTURE_LINK_BUDGETS } from '@main/services/htmlParts'
 import { EXTRACTION_RULES, extractData } from '@main/services/dataExtractor'
 import * as iocAdapter from '@main/services/extraction/iocAdapter'
+import * as validators from '@main/services/extraction/validators'
 import {
   extractFields,
   FIELD_EXTRACTOR_VERSION,
   headerFieldsFromText,
-  type ExtractedField
+  type ExtractedField,
+  type FieldSources
 } from '@main/services/search/fieldExtractor'
 import { fieldLabel, HEADER_FIELDS } from '@shared/searchFields'
 
@@ -48,12 +50,15 @@ function page(body: string, head = ''): string {
 }
 
 function fromPage(body: string, head = '') {
-  return extractFields({
+  const buffer = mhtml([{ location: CAPTURE_URL, html: page(body, head) }])
+  const extraction = extractFields({
     captureUrl: CAPTURE_URL,
-    mhtml: mhtml([{ location: CAPTURE_URL, html: page(body, head) }]),
+    mhtml: buffer,
     html: null,
     text: null
   })
+  expectSpansInParts(buffer, extraction.fields)
+  return extraction
 }
 
 function pick(fields: ExtractedField[]) {
@@ -96,6 +101,18 @@ function expectSpansInText(text: string, fields: ExtractedField[]): void {
   for (const field of fields) {
     expect(field).toMatchObject({ source: 'text', part: null })
     expect(text.slice(field.startOffset, field.endOffset)).toBe(field.value)
+  }
+}
+
+// The same rule for an extraction from several sources at once: each field slices back
+// to its value in the MHTML part, the legacy page or the text it names.
+function expectSlicesBack(sources: FieldSources, fields: ExtractedField[]): void {
+  const parts = sources.mhtml
+    ? listHtmlPartsInMhtml(sources.mhtml).parts.map((part) => part.decode())
+    : [sources.html?.toString('utf8') ?? '']
+  for (const field of fields) {
+    const source = field.source === 'text' ? (sources.text ?? '') : parts[field.part ?? -1]
+    expect(source.slice(field.startOffset, field.endOffset)).toBe(field.value)
   }
 }
 
@@ -336,6 +353,18 @@ describe('extractFields: links', () => {
     }
   })
 
+  it('stops at the row ceiling on an image link alt text too', () => {
+    const buffer = mhtml([
+      { location: CAPTURE_URL, html: page('<a href="/1"><img alt="One"></a>') }
+    ])
+    const capped = extractFields(
+      { captureUrl: CAPTURE_URL, mhtml: buffer, html: null, text: null },
+      { ...CAPTURE_LINK_BUDGETS, maxRows: 1 }
+    )
+    expect(capped.fields.map((f) => f.field)).toEqual(['link.href'])
+    expect(capped.truncated).toBe(true)
+  })
+
   it('stops at the row ceiling and says so', () => {
     const buffer = mhtml([
       {
@@ -397,14 +426,16 @@ describe('headerFieldsFromText', () => {
       '',
       'Pay at https://ledger.example.org/pay'
     ].join('\n')
-    const { fields } = extractFields({
+    const sources = {
       captureUrl: CAPTURE_URL,
       mhtml: null,
       html: Buffer.from(
         page(`<a href="/a"><img src="a.png" alt="Pay"></a><p>GTM-QX4R7T ${ETH}</p>`)
       ),
       text: header
-    })
+    }
+    const { fields } = extractFields(sources)
+    expectSlicesBack(sources, fields)
     const recorded = new Set(fields.map((f) => f.field))
     // Each header, the two link fields, and the five page and text kinds fields/2 adds.
     expect(recorded.size).toBe(HEADER_FIELDS.length + 7)
@@ -689,6 +720,13 @@ describe('extractFields: the page identifiers fields/2 adds', () => {
     ])
   })
 
+  it('reads a Facebook Pixel call only within the rule window after its fbq', () => {
+    const near = "fbq('init', '204871365920471')"
+    const far = `fbq('init',${' '.repeat(120)}'204871365920472')`
+    const { fields } = fromParts(`<script>${near}; ${far}</script>`)
+    expect(only(fields, 'id.tracking').map((f) => f.value)).toEqual(['204871365920471'])
+  })
+
   it('gives one record when two patterns find the same span', () => {
     vi.spyOn(iocAdapter, 'extractIocs').mockReturnValue([
       { category: 'Tracking Code', subcategory: 'Google Analytics', value: 'G-QM7R2K4W9X' }
@@ -764,6 +802,18 @@ describe('extractFields: the page text identifiers fields/2 adds', () => {
     expect(only(fields, 'header.from').map((f) => f.norm)).toEqual(['wren@hollis-mail.example.org'])
   })
 
+  it('finds an address only where it stands whole, not at the start of a longer one', () => {
+    const text =
+      'Write to bob@harrow.example.net or to bob@harrow.example.net.au, ' +
+      'or bob@harrow.example.net-mail.example.org today.'
+    const { fields } = fromText(text)
+    expect(only(fields, 'text.address').map((f) => [f.value, f.startOffset])).toEqual([
+      ['bob@harrow.example.net', 9],
+      ['bob@harrow.example.net.au', 38],
+      ['bob@harrow.example.net-mail.example.org', 68]
+    ])
+  })
+
   it('records no address written with [at], which extractIocs() returns rewritten', () => {
     const { fields, truncated } = fromText('Write to wren[at]hollis-mail.example.org today.')
     expect(only(fields, 'text.address')).toEqual([])
@@ -810,6 +860,7 @@ describe('extractFields: reading order under fields/2', () => {
 
   it('reads the fields/1 kinds, then the page identifiers, then the text identifiers', () => {
     const { fields, truncated } = extractFields(sources)
+    expectSlicesBack(sources, fields)
     expect(fields.map((f) => f.field)).toEqual([
       'header.from',
       'header.message-id',
@@ -830,9 +881,22 @@ describe('extractFields: reading order under fields/2', () => {
     const atFive = extractFields(sources, { ...CAPTURE_LINK_BUDGETS, maxRows: 5 })
     expect(atFive.fields).toEqual(fields1(extractFields(sources).fields))
     expect(atFive.truncated).toBe(true)
+    expectSlicesBack(sources, atFive.fields)
     const atSeven = extractFields(sources, { ...CAPTURE_LINK_BUDGETS, maxRows: 7 })
     expect(atSeven.fields.slice(5).map((f) => f.field)).toEqual(['image.src', 'id.tracking'])
     expect(atSeven.truncated).toBe(true)
+    expectSlicesBack(sources, atSeven.fields)
+  })
+
+  it('reads the headers fields/2 adds in block order, so they can reach the ceiling first', () => {
+    const headed = {
+      ...sources,
+      text: 'To: a@hollis-mail.example.org, b@hollis-mail.example.org\nFrom: c@hollis-mail.example.org'
+    }
+    const capped = extractFields(headed, { ...CAPTURE_LINK_BUDGETS, maxRows: 2 })
+    expect(capped.fields.map((f) => f.field)).toEqual(['header.to', 'header.to'])
+    expect(capped.truncated).toBe(true)
+    expectSlicesBack(headed, capped.fields)
   })
 })
 
@@ -922,10 +986,101 @@ describe('extractData beside extractFields', () => {
         text: null
       })
       expect(fields.length).toBeGreaterThan(0)
+      expectSpansInParts(buffer, fields)
       for (const { patterns } of EXTRACTION_RULES) {
         for (const pattern of patterns) expect(pattern.lastIndex).toBe(0)
       }
       expect(extractData(html)).toEqual(before)
     }
   )
+})
+
+// The three inputs the review of #1899 measured, which took 57.8 s, 10.6 s and 8.4 s of
+// wall time at a load average of 40 to 56 before each new kind was read in one pass that
+// stops at the row ceiling. Each test checks what is recorded, counts the calls the scans
+// make (which no clock affects), and bounds this process's CPU time, which load from
+// other processes inflates far less than wall time. The same inputs took 6 to 123 ms of
+// wall time at a load average of 15 to 40 after the change, so the 2 s bound leaves more
+// than tenfold headroom on a loaded machine.
+describe('extractFields: inputs that once took seconds', () => {
+  const CPU_BOUND_MS = 2000
+
+  function cpuMs(run: () => unknown): number {
+    const start = process.cpuUsage()
+    run()
+    const { user, system } = process.cpuUsage(start)
+    return (user + system) / 1000
+  }
+
+  function counted(run: () => unknown): { has: number; slice: number } {
+    const has = vi.spyOn(Set.prototype, 'has')
+    const slice = vi.spyOn(String.prototype, 'slice')
+    try {
+      run()
+      return { has: has.mock.calls.length, slice: slice.mock.calls.length }
+    } finally {
+      has.mockRestore()
+      slice.mockRestore()
+    }
+  }
+
+  it('reads a web address followed by 40,000 closing brackets in one pass', () => {
+    const sources: FieldSources = {
+      captureUrl: CAPTURE_URL,
+      mhtml: null,
+      html: null,
+      text: `see http://a${')'.repeat(40_000)} end`
+    }
+    const { fields } = extractFields(sources)
+    expect(pick(fields)).toEqual([{ field: 'text.url', value: 'http://a', norm: 'http://a/' }])
+    expectSlicesBack(sources, fields)
+    // The brackets are counted once, with no copy of the address made per bracket.
+    expect(counted(() => extractFields(sources)).slice).toBeLessThan(10)
+    expect(cpuMs(() => extractFields(sources))).toBeLessThan(CPU_BOUND_MS)
+  })
+
+  it('stops reading addresses at the row ceiling, among 16,000', () => {
+    const sources = (n: number): FieldSources => ({
+      captureUrl: CAPTURE_URL,
+      mhtml: null,
+      html: null,
+      text: Array.from({ length: n }, (_, i) => `user${i}@host${i}.example.net`).join(' ')
+    })
+    const { fields, truncated } = extractFields(sources(16_000))
+    expect(only(fields, 'text.address')).toHaveLength(CAPTURE_LINK_BUDGETS.maxRows)
+    expect(truncated).toBe(true)
+    expectSlicesBack(sources(16_000), fields)
+    // Twice the addresses, the same work: nothing past the ceiling is read.
+    expect(counted(() => extractFields(sources(16_000)))).toEqual(
+      counted(() => extractFields(sources(8_000)))
+    )
+    const valid = vi.spyOn(validators, 'isValidEmail')
+    try {
+      extractFields(sources(16_000))
+      expect(valid.mock.calls.length).toBeLessThanOrEqual(CAPTURE_LINK_BUDGETS.maxRows + 1)
+    } finally {
+      valid.mockRestore()
+    }
+    expect(cpuMs(() => extractFields(sources(16_000)))).toBeLessThan(CPU_BOUND_MS)
+  })
+
+  it('stops reading tracking codes at the row ceiling, in a 280 KB part of 20,000', () => {
+    const sources = (n: number): FieldSources => ({
+      captureUrl: CAPTURE_URL,
+      mhtml: null,
+      html: Buffer.from(
+        page(Array.from({ length: n }, (_, i) => `UA-${10_000_000 + i}-1`).join(' '))
+      ),
+      text: null
+    })
+    expect(sources(20_000).html?.byteLength).toBeGreaterThan(280_000)
+    const { fields, truncated } = extractFields(sources(20_000))
+    expect(only(fields, 'id.tracking')).toHaveLength(CAPTURE_LINK_BUDGETS.maxRows)
+    expect(truncated).toBe(true)
+    expectSlicesBack(sources(20_000), fields)
+    expect(counted(() => extractFields(sources(20_000)))).toEqual(
+      counted(() => extractFields(sources(10_000)))
+    )
+    expect(cpuMs(() => extractFields(sources(20_000)))).toBeLessThan(CPU_BOUND_MS)
+  })
 })

@@ -6,6 +6,7 @@ import { tmpdir } from 'os'
 import { closeDatabase, getDb, initDatabase } from '@main/services/db/core'
 import { createCase, deleteCase, getCase } from '@main/services/db/caseRepo'
 import { listExhibits } from '@main/services/db/exhibitRepo'
+import { insertWithheldFlag, listWithheldFlags } from '@main/services/db/exhibitMarkRepo'
 import {
   exhibitCitationResolver,
   listCaseMembers,
@@ -720,6 +721,31 @@ describe('Shared Case export, import and fork (#1511)', () => {
         [PEER_ID, 'CO-1']
       ].sort()
     )
+  })
+
+  // Ruling 62 of 2026-10-10 (#1909): an investigation record with no author was
+  // the exporter's own, and a fork stamps it with the installation it stamps
+  // on the exporter's own Exhibits.
+  it("stamps a fork's author-less investigation records as the exporter's Exhibits", async () => {
+    const { ownDoc } = memberReplica()
+    const flag = insertWithheldFlag({
+      caseId,
+      exhibitId: ownDoc,
+      action: 'set',
+      actedAt: TIME,
+      operatorId: localId,
+      operatorName: 'Casey Operator'
+    })
+    expect(flag.authorInstallationId).toBeNull()
+    const out = join(tempDir, 'fork.birdbrain')
+    await exportCaseArchive(caseId, out)
+
+    const { newCaseId } = await importCaseArchive(out)
+
+    const exporterOwn = listExhibits(newCaseId).find((exhibit) => exhibit.memberCode === 'RP')
+    const [imported] = listWithheldFlags(newCaseId)
+    expect(exporterOwn?.authorInstallationId).toBe(localId)
+    expect(imported.authorInstallationId).toBe(exporterOwn?.authorInstallationId)
   })
 
   it("renumbers none of a fork's member-authored Exhibits and numbers its own from 1", async () => {

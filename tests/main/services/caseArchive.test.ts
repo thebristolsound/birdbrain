@@ -233,8 +233,10 @@ describe('caseArchive export', () => {
   // 9 since per-author working-layer keys (#1512): a pre-9 build would drop
   // the author columns, merge two members' same-name tags into one, and fail
   // the import outright on two members' annotation layers on one Capture.
-  it('keeps CASE_ARCHIVE_SCHEMA_VERSION at 9 since per-author working-layer keys', () => {
-    expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(9)
+  // 10 since the investigation records (#1909): a pre-10 build would import
+  // the Case without its decisions, marks and run records.
+  it('keeps CASE_ARCHIVE_SCHEMA_VERSION at 10 since the investigation records', () => {
+    expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(10)
   })
 
   it('exports a .birdbrain archive with header, data, manifest, and files', async () => {

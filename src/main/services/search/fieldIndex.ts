@@ -18,8 +18,9 @@ import type { FieldBuildSummary } from '@shared/ipc'
 // reprocess, and every Capture on a rebuild. A build that fails writes a `failed`
 // build row and a log entry, and is retried by a reprocess, a rebuild or a new
 // extractor version, not on the next Case open. A Capture whose stored page is not
-// found writes a `no-source` row and a log entry, and the next Case open tries it
-// again, since the file may be on a drive that is not attached.
+// found writes a `no-source` row, and the next Case open tries it again, since the
+// file may be on a drive that is not attached. Only the first of a run of such builds
+// logs a warning.
 
 type ArtifactReader = Pick<CaptureStore, 'readArtifact'>
 

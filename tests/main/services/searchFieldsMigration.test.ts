@@ -70,17 +70,64 @@ describe('migration v38 (Case search fields)', () => {
     return { builds: count('exhibit_search_builds'), fields: count('exhibit_search_fields') }
   }
 
-  // FTS5 raises an error from 'integrity-check' when an external-content index no
-  // longer agrees with its content table.
-  function expectIndexInStep(): void {
-    expect(() =>
-      getDb()
-        .prepare(
-          "INSERT INTO exhibit_search_fields_fts(exhibit_search_fields_fts) VALUES ('integrity-check')"
-        )
-        .run()
-    ).not.toThrow()
+  // Without the rank argument of 1, FTS5's 'integrity-check' does not compare an
+  // external-content index with its content table; the next test shows it now does.
+  function integrityCheck(): void {
+    getDb()
+      .prepare(
+        `INSERT INTO exhibit_search_fields_fts(exhibit_search_fields_fts, rank)
+         VALUES ('integrity-check', 1)`
+      )
+      .run()
   }
+
+  function expectIndexInStep(): void {
+    expect(integrityCheck).not.toThrow()
+  }
+
+  // COUNT(*) on an external-content FTS5 table reads the content table, so the index
+  // itself is read through an fts5vocab table over it.
+  function indexTerms(): number {
+    const d = getDb()
+    d.exec(
+      `CREATE VIRTUAL TABLE IF NOT EXISTS temp.search_terms
+         USING fts5vocab(main, exhibit_search_fields_fts, row)`
+    )
+    return (d.prepare('SELECT COUNT(*) AS n FROM temp.search_terms').get() as { n: number }).n
+  }
+
+  function unindex(rowid: number, norm: string): void {
+    getDb()
+      .prepare(
+        `INSERT INTO exhibit_search_fields_fts(exhibit_search_fields_fts, rowid, norm)
+         VALUES ('delete', ?, ?)`
+      )
+      .run(rowid, norm)
+  }
+
+  it('sees an index entry with no row behind it, and a row with no index entry', async () => {
+    await initDatabase(dbPath)
+    expect(indexTerms()).toBe(0)
+    getDb()
+      .prepare('INSERT INTO exhibit_search_fields_fts(rowid, norm) VALUES (?, ?)')
+      .run(999, 'https://stray.example.org/')
+    expect(counts()).toEqual({ builds: 0, fields: 0 })
+    expect(indexTerms()).toBeGreaterThan(0)
+    expect(integrityCheck).toThrow()
+
+    unindex(999, 'https://stray.example.org/')
+    expect(indexTerms()).toBe(0)
+    expectIndexInStep()
+
+    const caseId = createCase({ name: 'Unindexed' }).id
+    capture(caseId, 'c1')
+    build(caseId, 'c1', ['https://kept.example.org/'])
+    const [id] = matches('"kept.example"')
+    expect(id).toEqual(expect.any(Number))
+    expectIndexInStep()
+    unindex(id, 'https://kept.example.org/')
+    expect(integrityCheck).toThrow()
+  })
 
   it('creates both tables and the trigram index on a fresh database', async () => {
     await initDatabase(dbPath)
@@ -211,13 +258,8 @@ describe('migration v38 (Case search fields)', () => {
 
     expect(getDb().pragma('user_version', { simple: true })).toBe(LATEST_SCHEMA_VERSION)
     expect(counts()).toEqual({ builds: 0, fields: 0 })
-    expect(
-      (
-        getDb().prepare('SELECT COUNT(*) AS n FROM exhibit_search_fields_fts').get() as {
-          n: number
-        }
-      ).n
-    ).toBe(0)
+    expect(indexTerms()).toBe(0)
+    expectIndexInStep()
     for (const table of tables) expect(rows(table)).toEqual(before[table])
     expect(getDb().pragma('foreign_key_check')).toEqual([])
   })

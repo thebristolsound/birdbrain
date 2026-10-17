@@ -24,6 +24,12 @@ function renderWith(egress: EgressSetting | undefined, vpnSeen: boolean) {
 afterEach(cleanup)
 
 describe('egressIndicatorText', () => {
+  it('says nothing is sent while the saved Egress cannot be read', () => {
+    expect(egressIndicatorText({ kind: 'unavailable' }, undefined)).toBe(
+      'Egress unknown · nothing sent'
+    )
+  })
+
   it('names the Egress, and while Direct whether a VPN was seen', () => {
     const direct = { kind: 'direct' } as const
     expect(egressIndicatorText(direct, undefined)).toBe('Direct')

@@ -18,6 +18,9 @@ export function egressIndicatorText(egress: EgressSetting, vpnSeen: boolean | un
       return egress.label ? `Proxy: ${egress.label}` : 'Proxy'
     case 'tor':
       return egress.label ? `Tor: ${egress.label}` : 'Tor'
+    case 'unavailable':
+      // The saved Egress could not be read, so nothing goes out until one is chosen (#1695).
+      return 'Egress unknown · nothing sent'
   }
 }
 
@@ -29,7 +32,7 @@ export function EgressIndicator() {
   if (!egress) return null
 
   const vpnSeen = direct ? status?.vpnSeen : undefined
-  const warning = vpnSeen === false
+  const warning = vpnSeen === false || egress.kind === 'unavailable'
   const text = egressIndicatorText(egress, vpnSeen)
   const Icon = warning ? ShieldAlert : ShieldCheck
 

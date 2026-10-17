@@ -2,7 +2,9 @@ import { describe, it, expect, vi } from 'vitest'
 import { listHtmlPartsInMhtml } from '@main/services/mhtmlDecoder'
 import { CAPTURE_LINK_BUDGETS } from '@main/services/htmlParts'
 import {
+  BLOCK_MARKERS,
   extractFields,
+  FIELD_EXTRACTOR_VERSION,
   headerFieldsFromText,
   type ExtractedField
 } from '@main/services/search/fieldExtractor'
@@ -236,6 +238,18 @@ describe('extractFields: links', () => {
     ])
   })
 
+  // The version names the default budgets as well as the rules, so a change to the shared
+  // budgets fails here until the version moves with it.
+  it('pins the default budgets the extractor version was built with', () => {
+    expect(FIELD_EXTRACTOR_VERSION).toBe('fields/1')
+    expect(CAPTURE_LINK_BUDGETS).toEqual({
+      maxPartBytes: 8 * 1024 * 1024,
+      maxParts: 64,
+      maxTotalBytes: 32 * 1024 * 1024,
+      maxRows: 5000
+    })
+  })
+
   it('counts the parts the budgets refuse, and flags a refused main document', () => {
     const big = page(`<a href="/big">b</a>${'x'.repeat(200)}`)
     const frames = mhtml(
@@ -341,6 +355,17 @@ describe('headerFieldsFromText', () => {
       'Newsgroups',
       'NNTP-Posting-Host',
       'X-Originating-IP'
+    ])
+  })
+
+  it('lists the names that mark a run of header lines as a block', () => {
+    expect([...BLOCK_MARKERS]).toEqual([
+      'from',
+      'reply-to',
+      'sender',
+      'message-id',
+      'path',
+      'received'
     ])
   })
 

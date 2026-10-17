@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { listHtmlPartsInMhtml } from '@main/services/mhtmlDecoder'
+import { linksFromMhtml } from '@main/services/captureLinks'
 import { CAPTURE_LINK_BUDGETS } from '@main/services/htmlParts'
 import {
   BLOCK_MARKERS,
@@ -248,6 +249,39 @@ describe('extractFields: links', () => {
       maxTotalBytes: 32 * 1024 * 1024,
       maxRows: 5000
     })
+  })
+
+  it('refuses the same parts as the Links tab under each lowered budget', () => {
+    const frames = mhtml(
+      [
+        {
+          location: 'https://frames.example.net/a',
+          html: page(`<a href="/a">a</a>${'x'.repeat(300)}`)
+        },
+        { location: CAPTURE_URL, html: page('<a href="/main">m</a>') },
+        { location: 'https://frames.example.net/b', html: page('<a href="/b">b</a>') }
+      ],
+      CAPTURE_URL
+    )
+    for (const lowered of [
+      { maxPartBytes: 200 },
+      { maxPartBytes: 10 },
+      { maxParts: 1 },
+      { maxTotalBytes: 200 }
+    ]) {
+      const budgets = { ...CAPTURE_LINK_BUDGETS, ...lowered }
+      const links = linksFromMhtml(frames, CAPTURE_URL, budgets)
+      const extracted = extractFields(
+        { captureUrl: CAPTURE_URL, mhtml: frames, html: null, text: null },
+        budgets
+      )
+      const { tooLarge, overPartCount, overTotalSize } = extracted.skippedParts
+      expect(tooLarge + overPartCount + overTotalSize).toBeGreaterThan(0)
+      expect(extracted.skippedParts).toEqual(links.skippedParts)
+      expect(extracted.mainDocumentSkipped).toBe(links.mainDocumentSkipped)
+      const linked = new Set(links.links.map((link) => link.href))
+      expect(extracted.fields.map((f) => f.norm).filter((norm) => !linked.has(norm))).toEqual([])
+    }
   })
 
   it('counts the parts the budgets refuse, and flags a refused main document', () => {

@@ -138,6 +138,25 @@ describe('migration v38 (Case search fields)', () => {
     expectIndexInStep()
   })
 
+  it('follows an edited search form, and forgets a deleted field', async () => {
+    await initDatabase(dbPath)
+    const caseId = createCase({ name: 'Search' }).id
+    capture(caseId, 'c1')
+    build(caseId, 'c1', ['https://mail.example.com/inbox'])
+    const [id] = matches('"example.com"')
+
+    getDb()
+      .prepare('UPDATE exhibit_search_fields SET norm = ? WHERE id = ?')
+      .run('https://post.example.net/inbox', id)
+    expect(matches('"example.com"')).toEqual([])
+    expect(matches('"example.net"')).toEqual([id])
+    expectIndexInStep()
+
+    getDb().prepare('DELETE FROM exhibit_search_fields WHERE id = ?').run(id)
+    expect(matches('"example.net"')).toEqual([])
+    expectIndexInStep()
+  })
+
   it('goes with its Exhibit when the Capture is deleted', async () => {
     await initDatabase(dbPath)
     const caseId = createCase({ name: 'Delete capture' }).id

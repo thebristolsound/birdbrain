@@ -113,8 +113,8 @@ export function readMhtmlTitle(buffer: Buffer): string | null {
 
   const [first] = listHtmlPartsInMhtml(buffer).parts
   if (!first) return null
-  const match = first.decode().match(/<title\b[^>]*>([\s\S]*?)<\/title\s*>/i)
-  const title = match ? collapseWhitespace(decodeXmlEntities(match[1])) : ''
+  const content = firstTitleContent(first.decode())
+  const title = content === null ? '' : collapseWhitespace(decodeXmlEntities(content))
   return title ? title : null
 }
 
@@ -124,6 +124,20 @@ function headerOnItsLine(headers: string, name: string): string | null {
   const m = unfoldHeaders(headers).match(new RegExp('^' + name + ':[ \\t]*([^\\r\\n]*)', 'im'))
   const value = m ? m[1].trim() : ''
   return value ? value : null
+}
+
+// The text of the first `<title>` element: the first `<title` tag, the `>` that ends it, then
+// the first closing tag after that, each found by one forward search. A regex with a lazy body
+// rescans the rest of the page from every `<title` that is never closed, which is quadratic.
+function firstTitleContent(html: string): string | null {
+  const open = html.search(/<title\b/i)
+  if (open === -1) return null
+  const end = html.indexOf('>', open)
+  if (end === -1) return null
+  const close = /<\/title\s*>/gi
+  close.lastIndex = end + 1
+  const match = close.exec(html)
+  return match ? html.slice(end + 1, match.index) : null
 }
 
 function collapseWhitespace(value: string): string {

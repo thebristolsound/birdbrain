@@ -304,4 +304,27 @@ describe('readMhtmlTitle', () => {
     const buf = mhtml(['Subject:', '  Harbour Street ledger', top, '', ...page('Other')])
     expect(readMhtmlTitle(buf)).toBe('Harbour Street ledger')
   })
+
+  // Review finding 4 on this PR: the search for the first `<title>` was quadratic in the number
+  // of `<title` tags never closed, and took 12.7 s on a 320 KB page in the review.
+  it.each([
+    ['opening tags with no closing tag', '<title>x'],
+    ['opening tags that never end', '<title x']
+  ])('reads a 4 MB page of %s in linear time', (_, token) => {
+    const html = `<html><head></head><body><script>var s="${token.repeat(500_000)}"</script></body></html>`
+    const buf = mhtml([
+      'From: <Saved by Blink>',
+      top,
+      '',
+      '--B',
+      'Content-Type: text/html; charset=utf-8',
+      '',
+      html,
+      '--B--'
+    ])
+    expect(buf.length).toBeGreaterThan(4_000_000)
+    const started = performance.now()
+    expect(readMhtmlTitle(buf)).toBeNull()
+    expect(performance.now() - started).toBeLessThan(2_000)
+  })
 })

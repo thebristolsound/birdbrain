@@ -276,7 +276,9 @@ case_entries=$MANIFEST_FILE
 # "/" ends it. A name the Package Layout does not give a chain is not read.
 chain_files() {
   for chain_path in "$1"${CHAIN_PREFIX}*${CHAIN_SUFFIX}; do
-    [ -f "$chain_path" ] || continue
+    # The Birdbrain verifier reads every name the layout gives a chain, so a
+    # directory or a dangling link there is listed and found unreadable below.
+    [ -e "$chain_path" ] || [ -L "$chain_path" ] || continue
     chain_id=\${chain_path#"$1"${CHAIN_PREFIX}}
     chain_id=\${chain_id%${CHAIN_SUFFIX}}
     case "$chain_id" in
@@ -315,6 +317,11 @@ blank_filter='${JQ_TEXT} nonblank | not'
 blank_line() {
   case "$1" in *'{'*) return 1 ;; esac
   [ "$(printf '%s\\n' "$1" | jq -R "$blank_filter")" = true ]
+}
+
+# Whether $1 is a file this script can read.
+readable_file() {
+  [ -f "$1" ] && [ -r "$1" ]
 }
 
 # The keyless checks on one entry at position $2 whose predecessor's entryHash
@@ -364,7 +371,7 @@ check_chain() {
   : >"$cc_out"
   # A loop over a file it cannot open runs no iteration, which would read as a
   # chain of no entries that verified.
-  if [ ! -r "$cc_file" ]; then
+  if ! readable_file "$cc_file"; then
     incomplete "$cc_name: the file cannot be read, so none of its entries was checked"
     return 3
   fi
@@ -625,6 +632,10 @@ member_chains() {
   # member chain: the one whose own first member-add names it as the Owner.
   if [ "$(jq -s '[${JQ_SEGMENT}] | any(.[]; .type == "member-add")' "$MANIFEST_FILE")" = false ]; then
     while IFS= read -r mc_member; do
+      if ! readable_file "\${mc_member#*/}"; then
+        incomplete "\${mc_member#*/}: the file cannot be read, so whether it holds the Owner's chain was not checked"
+        return
+      fi
       mc_claim=$(jq -cRn --arg id "\${mc_member%%/*}" '${JQ_OWNER_CLAIM}' "\${mc_member#*/}")
       [ -n "$mc_claim" ] || continue
       mc_claims=$((mc_claims + 1))
@@ -809,7 +820,7 @@ export const VERIFY_SCRIPT = `#!/bin/sh
 # member's exhibits that are active and in scope match the chain their author
 # signed. Every read of a member chain after its check takes the lines that
 # check verified. A member chain holding an entry from a newer schema than this
-# script reads, or one whose file it cannot open, is INCOMPLETE. A signed token whose
+# script reads, or a chain file ${stepRef(MEMBER_CHAINS_STEP.id)} cannot open, is INCOMPLETE. A signed token whose
 # capture is active and in scope but whose bytes the package does not enclose
 # is a FAILURE, not a silence; a deleted or out-of-selection capture's token is
 # expected absent, exactly like its page and screenshot. What exit 0 does NOT

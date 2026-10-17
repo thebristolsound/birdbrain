@@ -7,6 +7,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync
 } from 'fs'
 import { dirname, join } from 'path'
@@ -1421,6 +1422,53 @@ describe('Shared Case export, import and fork (#1511)', () => {
       const run = runVerifyScript(dir)
       expect(run.status, run.output).toBe(0)
       expectOnlyPackageHash(dir)
+    })
+
+    // Drops a chain's row from evidence.json, so step 1 does not report the
+    // file the test replaces and the findings are step 4a's alone.
+    function unindex(dir: string, path: string): void {
+      const indexPath = join(dir, 'evidence.json')
+      const index = JSON.parse(readFileSync(indexPath, 'utf-8'))
+      index.artifacts = index.artifacts.filter((a: { path: string }) => a.path !== path)
+      writeFileSync(indexPath, JSON.stringify(index))
+    }
+
+    // The package verifier lists every name the layout gives a chain and
+    // throws on one it cannot read; the script reports it INCOMPLETE.
+    it('reports a member chain path that is a dangling link as INCOMPLETE', async () => {
+      ownerReplica()
+      const { dir } = await exportPackage()
+      unindex(dir, peerChain)
+      rmSync(join(dir, peerChain))
+      symlinkSync(join(dir, 'nowhere.jsonl'), join(dir, peerChain))
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(3)
+      expect(findings(run.output, 'FAIL')).toEqual([])
+      expect(findings(run.output, 'INCOMPLETE')).toEqual([
+        `INCOMPLETE [step 4a] ${peerChain} (member RP): the file cannot be read, so none of ` +
+          'its entries was checked',
+        'INCOMPLETE [step 4a] merge heads, citations and exclusions were not checked: a member ' +
+          'chain was not read to its end'
+      ])
+      expect(() => verifyEvidencePackage(dir)).toThrow('ENOENT')
+    })
+
+    it("reports an Owner's chain it cannot read, in a member's package, as INCOMPLETE", async () => {
+      memberReplica()
+      const { dir } = await exportPackage()
+      unindex(dir, peerChain)
+      rmSync(join(dir, peerChain))
+      mkdirSync(join(dir, peerChain))
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(3)
+      expect(findings(run.output, 'FAIL')).toEqual([])
+      expect(findings(run.output, 'INCOMPLETE')).toEqual([
+        `INCOMPLETE [step 4a] ${peerChain}: the file cannot be read, so whether it holds the ` +
+          "Owner's chain was not checked"
+      ])
+      expect(() => verifyEvidencePackage(dir)).toThrow('EISDIR')
     })
 
     it("passes a package a member exported, anchoring the Owner's key in its merge", async () => {

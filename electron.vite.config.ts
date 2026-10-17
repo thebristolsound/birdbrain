@@ -46,10 +46,13 @@ export default defineConfig({
     build: {
       rollupOptions: {
         // The MCP server (ADR-0038) is a second main-side entry: it reuses the
-        // app's services, so it builds with them and shares their chunks.
+        // app's services, so it builds with them and shares their chunks. The
+        // extraction utility process (#598) is a third, forked by the main
+        // process from out/main/extraction.js.
         input: {
           index: resolve('src/main/index.ts'),
-          mcp: resolve('src/mcp/index.ts')
+          mcp: resolve('src/mcp/index.ts'),
+          extraction: resolve('src/main/services/extraction/process.ts')
         }
       }
     }

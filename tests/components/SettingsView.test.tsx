@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { BirdbrainSettings } from '@shared/types'
@@ -13,12 +13,12 @@ const settings = {
   ignoredUrlPatterns: []
 } as unknown as BirdbrainSettings
 
-function renderView() {
+function renderView(props: Parameters<typeof SettingsView>[0] = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
   }
-  return render(<SettingsView />, { wrapper: Wrapper })
+  return render(<SettingsView {...props} />, { wrapper: Wrapper })
 }
 
 beforeEach(() => {
@@ -46,5 +46,39 @@ describe('SettingsView density', () => {
     const content = panel.querySelector('.neu-card > div')!
     expect(content.className).toContain('p-[var(--d-card)]')
     expect(content.className).not.toContain('p-5')
+  })
+})
+
+// The VPN warning's "Set up a proxy" opens Settings on the Egress setting (ADR-0032).
+describe('SettingsView on the Egress section', () => {
+  beforeEach(() => {
+    const egressSettings = { ...settings, tsaUrl: '', egress: { kind: 'direct' } }
+    fakeBridge({
+      settings: {
+        get: vi.fn(async () => egressSettings),
+        update: vi.fn(async () => egressSettings),
+        getIdentity: vi.fn(async () => ({
+          operatorName: 'Operator One',
+          operatorRole: '',
+          operatorOrganization: ''
+        }))
+      }
+    })
+  })
+
+  it('opens the Operator tab and focuses the chosen Egress, then reports it shown', async () => {
+    const onSectionShown = vi.fn()
+    renderView({ section: 'egress', onSectionShown })
+    const group = await screen.findByRole('radiogroup', { name: 'Egress' })
+    const direct = group.querySelector<HTMLInputElement>('input[value="direct"]')!
+    await waitFor(() => expect(document.activeElement).toBe(direct))
+    expect(onSectionShown).toHaveBeenCalledOnce()
+  })
+
+  it('switches to the Operator tab when the section is asked for after it opened', async () => {
+    const view = renderView()
+    expect(await screen.findByRole('tab', { name: 'Capture', selected: true })).toBeDefined()
+    view.rerender(<SettingsView section="egress" />)
+    expect(await screen.findByRole('tab', { name: 'Operator', selected: true })).toBeDefined()
   })
 })

@@ -1,6 +1,7 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { EnqueueResult, LinkedFrom } from '@shared/ipc'
 import { queryKeys } from '@renderer/lib/api/keys'
+import { requireContact } from '@renderer/lib/vpnWarning'
 
 // The queue only renders inside the CaptureHealth popover, so the poll
 // interval and `enabled` stay at the call site.
@@ -28,20 +29,25 @@ export function testCaptureHttp(): Promise<{
   return window.birdbrain.testHttp()
 }
 
+// Every recapture and added URL contacts a site, so each passes the VPN warning first
+// (ADR-0032). A contact stopped there rejects with ContactStoppedError, which the mutation
+// cache does not toast.
 export function useRecaptureMutations(caseId: string) {
   const queryClient = useQueryClient()
   const enqueue = useMutation({
-    mutationFn: (params: {
+    mutationFn: async (params: {
       urls: string[]
       supersedesCaptureId?: string
       linkedFrom?: LinkedFrom
-    }) =>
-      window.birdbrain.recapture.enqueue({
+    }) => {
+      await requireContact({ caseId }, 'site')
+      return window.birdbrain.recapture.enqueue({
         urls: params.urls,
         caseId,
         supersedesCaptureId: params.supersedesCaptureId,
         linkedFrom: params.linkedFrom
-      }),
+      })
+    },
     meta: { action: 'queue recapture' }
   })
   // No cache invalidation here: completion arrives via the NEW_CAPTURE event,
@@ -49,7 +55,10 @@ export function useRecaptureMutations(caseId: string) {
 
   // Batch recapture (#394): one job per capture, each superseding itself.
   const enqueueCaptures = useMutation<EnqueueResult, unknown, string[]>({
-    mutationFn: (captureIds) => window.birdbrain.recapture.enqueueCaptures({ caseId, captureIds }),
+    mutationFn: async (captureIds) => {
+      await requireContact({ caseId }, 'site')
+      return window.birdbrain.recapture.enqueueCaptures({ caseId, captureIds })
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.recaptureQueue })
     },
@@ -58,6 +67,10 @@ export function useRecaptureMutations(caseId: string) {
   return { enqueue, enqueueCaptures }
 }
 
-export function enqueueEventRecapture(caseId: string, captureId: string): Promise<EnqueueResult> {
+export async function enqueueEventRecapture(
+  caseId: string,
+  captureId: string
+): Promise<EnqueueResult> {
+  await requireContact({ caseId }, 'site')
   return window.birdbrain.recapture.enqueueCaptures({ caseId, captureIds: [captureId] })
 }

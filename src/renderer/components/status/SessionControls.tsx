@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'motion/react'
 import { useAppStore } from '@renderer/stores/appStore'
 import { casesQueryOptions, useSessionMutations } from '@renderer/lib/queries'
 import { presets } from '@renderer/lib/motion'
+import { confirmContact } from '@renderer/lib/vpnWarning'
 
 export function SessionControls() {
   const sessionActive = useAppStore((s) => s.sessionActive)
@@ -30,6 +31,8 @@ export function SessionControls() {
         setSessionActive(false)
       } else {
         if (!activeCaseId) return
+        // A session's Captures contact sites, so its start passes the VPN warning (ADR-0032).
+        if (!(await confirmContact({ caseId: activeCaseId }, 'session'))) return
         // Activate before starting: the main-side start refuses without an
         // active case, same as the HTTP route it replaces.
         await activateCase.mutateAsync(activeCaseId)

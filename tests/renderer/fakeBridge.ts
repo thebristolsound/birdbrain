@@ -124,3 +124,13 @@ export function fakeBridge(overrides: Overrides = {}): BirdbrainAPI {
   ;(window as unknown as { birdbrain: BirdbrainAPI }).birdbrain = typedBridge
   return typedBridge
 }
+
+/**
+ * The `egress` stub for a test that contacts a site but is not about the VPN warning:
+ * main answers that no warning is due, so the contact goes ahead.
+ */
+export function quietVpnWarning() {
+  return {
+    checkVpnWarning: vi.fn(async () => ({ caseId: '', warn: false, canMute: false }))
+  }
+}

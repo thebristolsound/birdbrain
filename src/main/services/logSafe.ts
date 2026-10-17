@@ -218,6 +218,7 @@ export const QUERY_DOMAINS = [
   'cases',
   'db',
   'diagnostics',
+  'egress',
   'exhibits',
   'export',
   'extractedData',

@@ -1,7 +1,11 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { QueryClient } from '@tanstack/react-query'
 import { fakeBridge } from '../fakeBridge'
-import { waybackLinkLookupQueryOptions } from '@renderer/lib/api/wayback'
+import {
+  waybackLinkLookupQueryOptions,
+  waybackLookupQueryOptions
+} from '@renderer/lib/api/wayback'
+import { settleVpnWarning, useVpnWarningStore } from '@renderer/lib/vpnWarning'
 
 afterEach(() => {
   vi.useRealTimers()
@@ -41,5 +45,49 @@ describe('waybackLinkLookupQueryOptions', () => {
     const options = waybackLinkLookupQueryOptions('cap1', 'https://a.example/1')
     expect(options.queryKey).toEqual(['wayback', 'linkLookup', 'cap1', 'https://a.example/1'])
     expect(options.enabled).toBe(false)
+  })
+})
+
+const SHOWN = { snapshots: [], closestIndex: null, checkedAt: '2026-10-17T09:00:00.000Z' }
+const lookup = vi.fn(async () => ({ ...SHOWN, checkedAt: '2026-10-17T10:00:00.000Z' }))
+
+function warning(warn: boolean) {
+  return vi.fn(async () => ({ caseId: 'case-a', warn, canMute: true }))
+}
+
+// Runs the lookup and answers the warning, if one comes up, with `outcome`.
+async function runLookup(client: QueryClient, outcome: 'continue' | 'dismiss') {
+  const pending = client.fetchQuery({ ...waybackLookupQueryOptions('cap-1'), staleTime: 0 })
+  if (outcome === 'dismiss') {
+    await vi.waitFor(() => expect(useVpnWarningStore.getState().open).toBe(true))
+    settleVpnWarning('dismiss')
+  }
+  return pending
+}
+
+describe('waybackLookupQueryOptions', () => {
+  beforeEach(() => {
+    lookup.mockClear()
+    useVpnWarningStore.setState({ open: false, request: null, settle: null })
+  })
+
+  it("passes the VPN warning for the Capture's Case before asking archive.org", async () => {
+    const checkVpnWarning = warning(false)
+    fakeBridge({ wayback: { lookup }, egress: { checkVpnWarning } })
+
+    const result = await runLookup(new QueryClient(), 'continue')
+    expect(checkVpnWarning).toHaveBeenCalledWith({ captureId: 'cap-1' })
+    expect(lookup).toHaveBeenCalledWith('cap-1')
+    expect(result?.checkedAt).toBe('2026-10-17T10:00:00.000Z')
+  })
+
+  it('sends nothing when stopped at the warning, and keeps the result shown', async () => {
+    fakeBridge({ wayback: { lookup }, egress: { checkVpnWarning: warning(true) } })
+    const client = new QueryClient()
+
+    expect(await runLookup(client, 'dismiss')).toBeNull()
+    client.setQueryData(waybackLookupQueryOptions('cap-1').queryKey, SHOWN)
+    expect(await runLookup(client, 'dismiss')).toEqual(SHOWN)
+    expect(lookup).not.toHaveBeenCalled()
   })
 })

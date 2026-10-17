@@ -13,7 +13,7 @@ import { notify } from '@renderer/lib/notify'
 import { useAppStore } from '@renderer/stores/appStore'
 import type { CaptureEvent } from '@shared/types'
 import type { GuestMouseDownEvent, GuestMouseUpEvent } from '@shared/ipc'
-import { fakeBridge } from '../renderer/fakeBridge'
+import { fakeBridge, quietVpnWarning } from '../renderer/fakeBridge'
 
 const FILE_URL = 'file:///store/case1/cap1.mhtml'
 
@@ -202,7 +202,8 @@ describe('MhtmlViewer', () => {
         getMhtmlUrl: vi.fn().mockResolvedValue(FILE_URL),
         list: vi.fn().mockResolvedValue([])
       },
-      recapture: { enqueue }
+      recapture: { enqueue },
+      egress: quietVpnWarning()
     })
     const success = vi.spyOn(notify, 'success')
     const warn = vi.spyOn(notify, 'warn')
@@ -255,6 +256,7 @@ describe('MhtmlViewer', () => {
         list: vi.fn().mockResolvedValue([])
       },
       recapture: { enqueue },
+      egress: quietVpnWarning(),
       onCaptureActivity
     })
     const warn = vi.spyOn(notify, 'warn')
@@ -324,6 +326,7 @@ describe('MhtmlViewer', () => {
         list: vi.fn().mockResolvedValue([])
       },
       recapture: { enqueue },
+      egress: quietVpnWarning(),
       onCaptureActivity
     })
     const success = vi.spyOn(notify, 'success')
@@ -648,6 +651,7 @@ describe('MhtmlViewer', () => {
         list: vi.fn().mockResolvedValue([VIEWED])
       },
       recapture: { enqueue },
+      egress: quietVpnWarning(),
       ...input.bridge
     })
     useAppStore.setState({ selectedCaptureId: 'cap1', captureTrail: [] })

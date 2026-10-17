@@ -1,5 +1,6 @@
 import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query'
 import { notify } from '@renderer/lib/notify'
+import { ContactStoppedError } from '@renderer/lib/vpnWarning'
 
 // Mutations toast; queries only log. With retry:false and services that are
 // not ready at launch, toasting query errors would greet every tester with a
@@ -32,6 +33,8 @@ export const queryClient = new QueryClient({
   },
   mutationCache: new MutationCache({
     onError: (error, _vars, _ctx, mutation) => {
+      // The Operator stopped it at the VPN warning; nothing failed.
+      if (error instanceof ContactStoppedError) return
       notify.error(failureMessage(mutation), { code: 'mutation.failed', cause: error })
     }
   }),

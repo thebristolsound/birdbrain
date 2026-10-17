@@ -47,14 +47,52 @@ const settingsTabs: { id: SettingsTab; label: string; icon: typeof Camera }[] = 
   { id: 'about', label: 'About', icon: Info }
 ]
 
-export function SettingsView() {
+interface SettingsViewProps {
+  section?: 'egress'
+  // Called once the section is open, so the route can drop it from the URL and a later
+  // request for the same section is a change the view sees.
+  onSectionShown?: () => void
+}
+
+export function SettingsView({ section, onSectionShown }: SettingsViewProps = {}) {
   const { data: settings } = useQuery(settingsQueryOptions)
   const { update } = useSettingsMutations()
-  const [activeTab, setActiveTab] = useState<SettingsTab>('capture')
+  const [activeTab, setActiveTab] = useState<SettingsTab>(
+    section === 'egress' ? 'operator' : 'capture'
+  )
+  // A section asked for while the view is already open, as from the VPN warning over
+  // Settings, moves the tab during render rather than in an effect a frame later.
+  const [askedSection, setAskedSection] = useState(section)
+  if (section !== askedSection) {
+    setAskedSection(section)
+    if (section === 'egress') setActiveTab('operator')
+  }
 
   useEffect(() => {
     update.mutate({ lastActiveSection: 'settings' })
   }, [])
+
+  // Opened on the Egress setting: its radio group sits in the Operator tab and is found by
+  // its accessible name. Focusing the chosen radio also scrolls it into view. The group can
+  // render a frame after the tab, so it is looked for again each frame, for up to 30 frames.
+  useEffect(() => {
+    if (section !== 'egress' || !settings) return
+    let frame = 0
+    let tries = 0
+    const focusEgress = () => {
+      const radio = document.querySelector<HTMLInputElement>(
+        '[role="radiogroup"][aria-label="Egress"] input:checked'
+      )
+      if (!radio && tries++ < 30) {
+        frame = requestAnimationFrame(focusEgress)
+        return
+      }
+      radio?.focus()
+      onSectionShown?.()
+    }
+    frame = requestAnimationFrame(focusEgress)
+    return () => cancelAnimationFrame(frame)
+  }, [section, settings])
 
   const handleUpdate = async (partial: Partial<BirdbrainSettings>) => {
     await update.mutateAsync(partial)

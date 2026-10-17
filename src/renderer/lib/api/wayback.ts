@@ -1,13 +1,22 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { PinWaybackSnapshotParams } from '@shared/ipc'
+import type { WaybackLookupResult } from '@shared/types'
 import { queryKeys } from '@renderer/lib/api/keys'
+import { confirmContact } from '@renderer/lib/vpnWarning'
 
 // `enabled: false` — the lookup is user-initiated (it discloses the URL to
-// archive.org). The Wayback panel triggers it with refetch() on button click.
+// archive.org). The Wayback panel triggers it with refetch() on button click,
+// and it passes the VPN warning first (ADR-0032). A lookup stopped there sends
+// nothing and keeps the result already shown, or none, rather than failing.
 export const waybackLookupQueryOptions = (captureId: string) =>
   queryOptions({
     queryKey: queryKeys.waybackLookup(captureId),
-    queryFn: () => window.birdbrain.wayback.lookup(captureId),
+    queryFn: async ({ client, queryKey }): Promise<WaybackLookupResult | null> => {
+      if (!(await confirmContact({ captureId }, 'site'))) {
+        return client.getQueryData<WaybackLookupResult | null>(queryKey) ?? null
+      }
+      return window.birdbrain.wayback.lookup(captureId)
+    },
     enabled: false,
     staleTime: 5 * 60 * 1000
   })

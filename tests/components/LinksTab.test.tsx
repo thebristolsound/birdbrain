@@ -11,7 +11,7 @@ import type { WaybackLinkProgressEvent } from '@shared/ipc'
 import { LinksTab } from '@renderer/components/captures/LinksTab'
 import { useAppStore } from '@renderer/stores/appStore'
 import { notify } from '@renderer/lib/notify'
-import { fakeBridge } from '../renderer/fakeBridge'
+import { fakeBridge, quietVpnWarning } from '../renderer/fakeBridge'
 
 const capture: Capture = {
   id: 'cap1',
@@ -257,7 +257,8 @@ describe('LinksTab', () => {
         getLinks: vi.fn(async () => result([link({ href: 'https://a.example/1', text: 'One' })])),
         list: vi.fn(async () => [])
       },
-      recapture: { enqueue }
+      recapture: { enqueue },
+      egress: quietVpnWarning()
     })
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
@@ -522,7 +523,8 @@ describe('LinksTab Wayback cell', () => {
         openExternal
       },
       wayback: { lookupLink },
-      recapture: { enqueue }
+      recapture: { enqueue },
+      egress: quietVpnWarning()
     })
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(

@@ -6,6 +6,7 @@ import { EntityContextMenu } from '@renderer/components/contextmenu/EntityContex
 import { getCapture } from '@renderer/lib/api/captures'
 import { copyCaptureUrl } from '@renderer/components/captures/useCopyCaptureUrl'
 import { notify } from '@renderer/lib/notify'
+import { ContactStoppedError } from '@renderer/lib/vpnWarning'
 import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '@renderer/stores/appStore'
 import { presets } from '@renderer/lib/motion'
@@ -60,6 +61,8 @@ function EventRow({ event }: { event: CaptureEvent }) {
         })
       }
     } catch (cause) {
+      // Stopped at the VPN warning: nothing was sent, and nothing failed.
+      if (cause instanceof ContactStoppedError) return
       notify.error(recapture ? "Couldn't queue recapture" : "Couldn't open capture", { cause })
     }
   }

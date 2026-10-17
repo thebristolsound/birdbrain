@@ -46,6 +46,12 @@ prove and what they do not.
   annotations.
 - Birdbrain assigns exhibit numbers to captures and cites them in exports.
 - Search the text of every capture in a case.
+- Search also finds link targets, the alt text of images inside links, and ten mail header
+  fields found in a page's text, such as `From`, `Reply-To`, and `Message-ID`. Each result
+  names its exhibit and the first 12 characters of its content hash. A header result opens the
+  capture's text with the value marked. A link result opens the links list with the matching
+  rows marked. A capture whose recorded hash changed after it was indexed is listed as
+  unavailable, not as a result.
 
 ## Analysis
 

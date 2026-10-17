@@ -1811,6 +1811,22 @@ implements it amends ADR-0042 in the same PR, so no code ships against an unamen
   questions 17, 20, and 21 became checks in CI-E's and CI-9's done-when. This revision records each
   ruling where its question or gate appears and applies E23 to the collaborative cases design. The
   plan as a whole still waits on approval.
-- **Next.** The maintainer reads this plan and approves it on PR #1805; the gates still open are in
-  "Gates this plan waits on". Each brief is then filed against the ready-for-agent bar in
-  `docs/agents/triage-labels.md`.
+- **2026-10-17, CI-8 (#1885).** `src/shared/investigation.ts` holds E10's types, the view types CI-8
+  defines, and `sortInvestigationView`, which sorts each array by a key that uses no run id and no
+  time. The 18 `investigation:` channels are in the IPC contract, the preload, and
+  `src/renderer/lib/api/investigation.ts`, and `event:investigationProgress` is in the first two.
+  `InvestigationEngine` is in `src/main/services/investigation/engine.ts`, and the fake engine
+  beside it serves every channel from `src/shared/investigationFixture.ts`. `ipcHandlers.ts`
+  registers the fake only when `app.isPackaged` is false. The fixture lives under `src/shared/`
+  because the renderer test project declares no `@main` path. Where E10's text left a gap, CI-8
+  departs from it: `RunProgressEvent` carries `status` and `reason`, and a run's last event names
+  its outcome; `InvestigationView` lists the withheld Exhibits with the members holding each flag;
+  `chooseSubject` takes `choose`, `none`, or `undo`, the same-name values in E1; `SpanView` carries
+  the Exhibit's Source Class, the span's dates, who added it, and its copy mark; `JointView` carries
+  its identity hash and a fifth list, the dismissed spans; `getSpan` returns a `SpanDetail` that
+  carries the Exhibit's Integrity Status; `CaseRevision.manifestHead` restates `ManifestHeadRef`,
+  which `src/shared/` cannot import; and every channel's arguments carry the Case id, as
+  `exhibits:verify` takes one, because the fake keeps one copy of the fixture per Case under the
+  same ids.
+- **Next.** CI-9, CI-E, and CI-V1, each against this contract. The gates still open are in "Gates
+  this plan waits on".

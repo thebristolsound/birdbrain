@@ -237,7 +237,8 @@ export async function revokeMember(caseId: string, installationId: string): Prom
   return listCaseMembers(caseId).find((m) => m.installationId === installationId)!
 }
 
-// Keeps an Exhibit out of the Case's exports. The author is found the way
+// Marks an Exhibit excluded; exports still enclose it and list the exclusion
+// (export.ts, reportHtml.ts). The author is found the way
 // step 5 of the walk checks an exclusion: among the accepted entries of each
 // current member chain, the one chain holding an `exhibit` with that id or a
 // `capture` with that `captureId`. A revoked author's entries past the head

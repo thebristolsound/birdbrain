@@ -844,8 +844,9 @@ export type ManifestEntryInput =
       toolVersion: string
     }
   | {
-      // The Owner keeping another member's Exhibit out of the Case's exports
-      // (#1810). The Exhibit's own entry stays in its author's chain.
+      // The Owner marking another member's Exhibit excluded (#1810). The
+      // Exhibit's own entry stays in its author's chain, and exports still
+      // enclose the Exhibit and list the exclusion.
       type: 'exclude'
       caseId: string
       exhibitId: string

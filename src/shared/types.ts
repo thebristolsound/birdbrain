@@ -229,6 +229,45 @@ export interface FieldHitCheck {
   record: (Pick<FieldHit, 'exhibitId' | 'field' | 'locator'> & { value: string }) | null
 }
 
+// The unreviewed view (docs/plans/2026-10-09-case-retrieval-first-slice.md, D8): the
+// committed Captures of a Case that no live Note names and no Persisted Match covers,
+// grouped four ways. `listUnreviewedCaptures` states the rules.
+export const UNREVIEWED_GROUPS = ['from', 'reply-to', 'link-host', 'rare'] as const
+export type UnreviewedGroup = (typeof UNREVIEWED_GROUPS)[number]
+
+export interface UnreviewedCapture {
+  exhibitId: string
+  exhibitCitation: string
+  title: string
+  /** The record the Capture opens at; null under a rare identifier, which has no locator. */
+  hit: FieldHit | null
+}
+
+export interface UnreviewedRow {
+  /** The address, the host, or the identifier's value. */
+  key: string
+  /** A rare identifier's `extracted_data` category and subcategory; null in the other groups. */
+  identifier: { category: string; subcategory: string } | null
+  /** How many Captures of the Case hold a rare identifier, reviewed or not; null elsewhere. */
+  caseCaptures: number | null
+  captures: UnreviewedCapture[]
+}
+
+export interface UnreviewedCaptures {
+  /** Committed Captures in the Case. */
+  captures: number
+  /** The unreviewed ones among them. */
+  total: number
+  /** Unreviewed Captures listed under no row. */
+  ungrouped: number
+  /** Unreviewed Captures with no current link and header records, so in no such row. */
+  notCurrent: number
+  /** Unreviewed Captures whose records a size limit cut short. */
+  partial: number
+  rareLimit: number
+  groups: Record<UnreviewedGroup, UnreviewedRow[]>
+}
+
 export interface Capture {
   id: string
   caseId: string
@@ -813,7 +852,10 @@ export const LOG_CODES = [
   // A field search that threw: the search bar says the search could not run, and this
   // line holds the error.
   'searchFields.search_failed',
-  'searchFields.source_missing'
+  'searchFields.source_missing',
+  // The unreviewed view's read that threw: the view says it could not load, and this line
+  // holds the error.
+  'searchFields.unreviewed_failed'
 ] as const
 export type LogCode = (typeof LOG_CODES)[number]
 

@@ -6,6 +6,7 @@ import type {
   FieldHitCheck,
   FieldSearchResult,
   Tag,
+  UnreviewedCaptures,
   BirdbrainSettings,
   ExportOptions,
   ExportPreflight,
@@ -127,6 +128,8 @@ export interface BirdbrainAPI {
     searchFields(caseId: string, query: string): Promise<FieldSearchResult>
     // Checks one field record against the stored files (the same plan, D7).
     checkFieldHit(fieldId: number): Promise<FieldHitCheck>
+    // The Case's unreviewed Captures in the view's four groups (the same plan, D8).
+    listUnreviewed(caseId: string, rareLimit: number): Promise<UnreviewedCaptures>
   }
   captures: {
     list(caseId: string): Promise<Capture[]>

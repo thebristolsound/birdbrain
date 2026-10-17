@@ -65,7 +65,8 @@ const birdbrain = {
     setAutoCapturePolicy: bridge(IPC_CHANNELS.CASES_SET_AUTO_CAPTURE_POLICY),
     ensureSearchFields: bridge(IPC_CHANNELS.CASES_ENSURE_SEARCH_FIELDS),
     searchFields: bridge(IPC_CHANNELS.CASES_SEARCH_FIELDS),
-    checkFieldHit: bridge(IPC_CHANNELS.CASES_CHECK_FIELD_HIT)
+    checkFieldHit: bridge(IPC_CHANNELS.CASES_CHECK_FIELD_HIT),
+    listUnreviewed: bridge(IPC_CHANNELS.CASES_LIST_UNREVIEWED)
   },
   captures: {
     list: bridge(IPC_CHANNELS.CAPTURES_LIST),

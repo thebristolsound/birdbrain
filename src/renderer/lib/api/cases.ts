@@ -55,6 +55,19 @@ export function useCaseAutoCapturePolicyMutation(caseId: string) {
   })
 }
 
+// The unreviewed view (docs/plans/2026-10-09-case-retrieval-first-slice.md, D8). Notes,
+// Selectors, ingest and field builds change what it lists from other screens, and none of
+// them invalidates this key, so each mount reads again instead of trusting the cache. A
+// new limit keeps the same Case's last answer on screen until its own arrives.
+export const unreviewedCapturesQueryOptions = (caseId: string, rareLimit: number) =>
+  queryOptions({
+    queryKey: queryKeys.caseUnreviewed(caseId, rareLimit),
+    queryFn: () => window.birdbrain.cases.listUnreviewed(caseId, rareLimit),
+    staleTime: 0,
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1] === caseId ? previous : undefined
+  })
+
 // Builds link and header search records for the Case's Captures that have none, or
 // that an older extractor built (docs/plans/2026-10-09-case-retrieval-first-slice.md,
 // D5). Nothing reads them yet, so there is no cache to invalidate.

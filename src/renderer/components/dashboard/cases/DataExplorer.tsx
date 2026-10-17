@@ -35,6 +35,7 @@ import {
 import { IntegrityStrip } from '@renderer/components/data/IntegrityStrip'
 import { rowsNaming } from '@renderer/components/data/ledgerModel'
 import { IndicatorsView } from '@renderer/components/data/IndicatorsView'
+import { UnreviewedView } from '@renderer/components/data/UnreviewedView'
 import { DiscardStagedDialog } from '@renderer/components/data/DiscardStagedDialog'
 import { useDataContextMenu } from '@renderer/components/data/useDataContextMenu'
 import { copyValue } from '@renderer/components/data/copy'
@@ -75,6 +76,7 @@ function nodeTitle(key: DataNodeKey, rows: InventoryRow[]): { title: string; sub
   if (key === 'keyword-hits') return { title: 'Keyword hits', subtitle: '' }
   if (key === 'integrity-exceptions') return { title: 'Integrity exceptions', subtitle: '' }
   if (key === 'manifest-ledger') return { title: 'Manifest ledger', subtitle: '' }
+  if (key === 'unreviewed') return { title: 'Unreviewed captures', subtitle: '' }
   if (key.startsWith('keyword:')) return { title: 'Keyword hit', subtitle: '' }
   if (key.startsWith('kind:')) return { title: kindLabel(key.slice('kind:'.length)), subtitle: '' }
   if (key.startsWith('file-type:')) return { title: key.slice('file-type:'.length), subtitle: '' }
@@ -134,6 +136,13 @@ export function DataExplorer() {
   // selection the strip follows, and cleared with it on a node change.
   const [multiIds, setMultiIds] = useState<ReadonlySet<string>>(() => new Set())
   const [discardTarget, setDiscardTarget] = useState<{ id: string; name: string } | null>(null)
+  // The unreviewed view's last total, for its rail row. Keyed by Case, so another Case's
+  // total never shows on this one.
+  const [unreviewed, setUnreviewed] = useState<{ caseId: string; total: number } | null>(null)
+  const reportUnreviewed = useCallback(
+    (total: number) => setUnreviewed({ caseId, total }),
+    [caseId]
+  )
   const navigate = useNavigate()
   const selectCapture = useAppStore((s) => s.selectCapture)
   // This session's `exhibits:verify` results, keyed by Exhibit id. Nothing
@@ -235,7 +244,8 @@ export function DataExplorer() {
           // The same bucket rule the node's table uses, so the count and the
           // rows cannot disagree.
           integrityExceptions: buckets.exception,
-          manifestLedger: snapshot ? snapshot.entries.length : null
+          manifestLedger: snapshot ? snapshot.entries.length : null,
+          unreviewed: unreviewed?.caseId === caseId ? unreviewed.total : null
         },
         keywordHits: selectors.map((selector) => ({
           selectorId: selector.id,
@@ -244,7 +254,17 @@ export function DataExplorer() {
         })),
         indicators: indicatorNodes
       }),
-    [rows, expanded, selectors, buckets.exception, snapshot, matchCounts, indicatorNodes]
+    [
+      rows,
+      expanded,
+      selectors,
+      buckets.exception,
+      snapshot,
+      matchCounts,
+      indicatorNodes,
+      unreviewed,
+      caseId
+    ]
   )
 
   const tableRows = useMemo(
@@ -600,6 +620,8 @@ export function DataExplorer() {
             railPicks={railPicks}
             onSelect={selectIndicator}
           />
+        ) : node === 'unreviewed' ? (
+          <UnreviewedView caseId={caseId} onTotal={reportUnreviewed} />
         ) : (
           <>
             <section className="flex min-h-0 min-w-0 flex-1 flex-col">

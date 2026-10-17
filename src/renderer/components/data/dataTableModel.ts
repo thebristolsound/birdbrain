@@ -264,6 +264,8 @@ export function rowsForNode(
   // The Indicators view replaces the table under Indicators, so its nodes
   // name no rows, and a node menu offers no Verify there.
   if (key === 'indicators' || key.startsWith('indicator-')) return []
+  // The unreviewed view replaces the table the same way.
+  if (key === 'unreviewed') return []
   if (key.startsWith('keyword:')) {
     // Matched Exhibits only, no snippet (X39): `selector_matches` stores no
     // offset, and nothing from pooled content can appear here (X15).

@@ -267,7 +267,14 @@ const MEMBER_CHAINS_BLOCK = `# A Shared Case package carries every other member'
 # member-add entry in the Owner's chain after that chain verified, and the
 # Owner's own key, when another member exported the package, only once a merge
 # in ${ROOT.manifest} names a head of the Owner's chain at or past that key's line.
-case_entries=$MANIFEST_FILE
+#
+# Every whole-file read of ${ROOT.manifest} from here on, in this step and in
+# ${stepRef(5, 6)}, takes this copy, jq's own output of each line, so none can
+# stop short at a line jq cannot read in the middle of a file; a copy jq did
+# not finish is INCOMPLETE.
+manifest_entries="$tmp/manifest-entries.jsonl"
+jq -c . "$MANIFEST_FILE" >"$manifest_entries" 2>/dev/null || unread "$MANIFEST_FILE"
+case_entries=$manifest_entries
 : >"$tmp/citations.txt"
 : >"$tmp/remote.jsonl"
 
@@ -301,7 +308,7 @@ done
 shared=0
 [ -s "$tmp/member-files.txt" ] && shared=1
 [ -s "$tmp/lineage-cases.txt" ] && shared=1
-[ "$(jq -n '${JQ_SHARED_SIGNAL}' "$MANIFEST_FILE" 2>/dev/null)" = true ] && shared=1
+[ "$(jq -n '${JQ_SHARED_SIGNAL}' "$manifest_entries" 2>/dev/null)" = true ] && shared=1
 
 newer_entry_filter='${JQ_NEWER_ENTRY}'
 roster_filter='${JQ_ROSTER}'
@@ -322,12 +329,6 @@ blank_line() {
 # Whether $1 is a file this script can read.
 readable_file() {
   [ -f "$1" ] && [ -r "$1" ]
-}
-
-# A whole-file read of verified lines that jq did not finish: the entries
-# after the point it stopped were never read, so this is never a pass.
-unread() {
-  incomplete "$1 could not be read in full, so the entries after the point jq stopped were not checked"
 }
 
 # The keyless checks on one entry at position $2 whose predecessor's entryHash
@@ -380,6 +381,11 @@ check_chain() {
   if ! readable_file "$cc_file"; then
     incomplete "$cc_name: the file cannot be read, so none of its entries was checked"
     return 3
+  fi
+  cc_nul=$(nul_line "$cc_file")
+  if [ -n "$cc_nul" ]; then
+    fail "$cc_name: entry $cc_nul: Invalid JSON"
+    return 1
   fi
   cc_stop=''
   cc_stop_line=''
@@ -634,7 +640,7 @@ member_chains() {
   mc_local=''
   mc_claims=0
   mc_claim_ids=''
-  jq -c . "$MANIFEST_FILE" >"$tmp/owner-0.jsonl" || unread "$MANIFEST_FILE"
+  jq -c . "$manifest_entries" >"$tmp/owner-0.jsonl"
   : >"$tmp/members-0.txt"
   while IFS= read -r mc_member; do
     printf '%s\\n' "$mc_member" >>"$tmp/members-0.txt"
@@ -642,7 +648,7 @@ member_chains() {
 
   # When ${ROOT.manifest} names no roster of its own, the Owner's chain is another
   # member chain: the one whose own first member-add names it as the Owner.
-  if [ "$(jq -s '[${JQ_SEGMENT}] | any(.[]; .type == "member-add")' "$MANIFEST_FILE")" = false ]; then
+  if [ "$(jq -s '[${JQ_SEGMENT}] | any(.[]; .type == "member-add")' "$manifest_entries")" = false ]; then
     while IFS= read -r mc_member; do
       if ! readable_file "\${mc_member#*/}"; then
         incomplete "\${mc_member#*/}: the file cannot be read, so whether it holds the Owner's chain was not checked"
@@ -667,7 +673,7 @@ member_chains() {
     printf '%s' "$mc_claim_json" | jq -j '.pem' >"$tmp/owner-key.pem"
     mc_anchor=$(jq -rs --arg id "$mc_claim_id" \\
       '[.[] | select(.type == "merge") | .heads[] | select(.installationId == $id) | .index] | max // empty' \\
-      "$MANIFEST_FILE")
+      "$manifest_entries")
     if [ -z "$mc_anchor" ]; then
       fail "no merge in $MANIFEST_FILE names the Owner's chain ($mc_claim_id), so its key cannot be anchored"
       return
@@ -781,8 +787,7 @@ if [ "$shared" -eq 1 ]; then
   fi
 fi
 if [ -s "$tmp/remote.jsonl" ]; then
-  jq -c . "$MANIFEST_FILE" "$tmp/remote.jsonl" >"$tmp/case-entries.jsonl" ||
-    unread "$MANIFEST_FILE with the other chains' accepted entries"
+  jq -c . "$manifest_entries" "$tmp/remote.jsonl" >"$tmp/case-entries.jsonl"
   case_entries="$tmp/case-entries.jsonl"
 fi
 
@@ -831,10 +836,11 @@ export const VERIFY_SCRIPT = `#!/bin/sh
 # member in its Case Owner's chain carries; that every merge entry names an
 # entry of the chain it names with that entry's entryHash; and that each
 # member's exhibits that are active and in scope match the chain their author
-# signed. A line that begins with a byte-order mark fails as Invalid JSON, as
-# it does in the Birdbrain verifier, in ${ROOT.manifest} and in every member chain.
-# Every read of a member chain after its check takes the lines that check
-# verified, and a whole-file read of them that jq does not finish is
+# signed. A line that begins with a byte-order mark, or that holds a NUL byte,
+# fails as Invalid JSON, as it does in the Birdbrain verifier, in ${ROOT.manifest}
+# and in every member chain. Every read of a member chain after its check takes
+# the lines that check verified, every whole-file read of ${ROOT.manifest} after
+# ${stepRef(4)} takes a copy jq wrote, and a copy of either that jq does not finish is
 # INCOMPLETE. A member chain holding an entry from a newer schema than this
 # script reads, or a chain file ${stepRef(MEMBER_CHAINS_STEP.id)} cannot open, is INCOMPLETE. A signed token whose
 # capture is active and in scope but whose bytes the package does not enclose
@@ -994,6 +1000,22 @@ bom_led() {
   return 1
 }
 
+# The position, counted as the Birdbrain verifier counts lines, of the first
+# line of file $1 that holds a NUL byte, or nothing. read drops NUL bytes, so
+# no loop here sees one; JSON.parse rejects the line, and jq stops at it in a
+# whole-file read. jq's raw-line mode keeps the byte, so it finds the line.
+nul_filter='${JQ_TEXT} first([inputs | select(nonblank)] | to_entries[]
+  | select(.value | explode | any(.[]; . == 0)) | .key)'
+nul_line() {
+  jq -Rrn "$nul_filter" "$1"
+}
+
+# A whole-file read that jq did not finish: the entries after the point it
+# stopped were never read, so this is never a pass.
+unread() {
+  incomplete "$1 could not be read in full, so the entries after the point jq stopped were not checked"
+}
+
 in_list() { printf '%s\\n' "$1" | grep -qxF -e "$2"; }
 
 # Verifies one manifest line's RSA signature over its bare entryHash hex with no
@@ -1050,13 +1072,14 @@ ${openStep(2)}
 # Every loop over a chain file reads its last line even with no newline after
 # it, the "|| [ -n ... ]" in its condition: jq, which later steps read the
 # chain with, reads that line, so a loop that skipped it would leave a line
-# those steps act on that no check here verified. The other direction, a line
-# a loop accepts that jq stops at in the middle of a file, is a line that
-# begins with a byte-order mark: jq skips one only at the start of its input.
-# ${sentenceStart(stepRef(4))} fails such a line, as the Birdbrain verifier does, and ${stepRef(MEMBER_CHAINS_STEP.id)}
-# fails it in a member chain, skips the blank lines the loop skips, reads each
-# member chain afterwards as jq's own output of the lines its check verified,
-# and reports a whole-file read jq did not finish as INCOMPLETE.
+# those steps act on that no check here verified. The other direction is a
+# line a loop accepts that jq stops at in the middle of a file. Two are known:
+# one that begins with a byte-order mark, which jq skips only at the start of
+# its input, and one that holds a NUL byte, which read drops. ${sentenceStart(stepRef(4))} fails
+# both, as the Birdbrain verifier does, and ${stepRef(MEMBER_CHAINS_STEP.id)} fails both in a member
+# chain. Any other such line is still caught: every whole-file read of
+# ${ROOT.manifest} after ${stepRef(4)} takes a copy jq wrote, and a copy jq did not finish
+# is INCOMPLETE, as is a member chain's.
 : >"$tmp/boundaries.txt"
 position=0
 while IFS= read -r line || [ -n "$line" ]; do
@@ -1160,6 +1183,9 @@ note "$counted entr(ies) recomputed from their bodies"
 ${openStep(4)}
 expect=0
 head_hash=''
+manifest_nul=$(nul_line "$MANIFEST_FILE")
+[ -z "$manifest_nul" ] ||
+  fail "entry at position $manifest_nul: Invalid JSON, it holds a NUL byte"
 while IFS= read -r line || [ -n "$line" ]; do
   [ -n "$line" ] || continue
   bom_led "$line" &&
@@ -1242,10 +1268,10 @@ else
   esac
 fi
 
-deleted=$(jq -r 'select(.type == "deletion") | .captureId' "$MANIFEST_FILE")
+deleted=$(jq -r 'select(.type == "deletion") | .captureId' "$manifest_entries")
 # In a Shared Case only an Exhibit's author deletes it, so another chain's
 # deletion entry does not remove an Exhibit this one authored.
-[ "$case_entries" = "$MANIFEST_FILE" ] || deleted=$(jq -rn --slurpfile l "$MANIFEST_FILE" \\
+[ "$case_entries" = "$manifest_entries" ] || deleted=$(jq -rn --slurpfile l "$manifest_entries" \\
   --slurpfile r "$tmp/remote.jsonl" '${JQ_DELETED}')
 jq -c 'select(.type == "capture")' "$case_entries" >"$tmp/captures.jsonl"
 

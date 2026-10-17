@@ -1569,6 +1569,64 @@ describe('Shared Case export, import and fork (#1511)', () => {
       ).toEqual(['Invalid JSON (at index 2)'])
     })
 
+    // read drops a NUL byte, so no loop sees one; JSON.parse rejects the line,
+    // and jq stops at it in a whole-file read.
+    it('fails a member entry line that holds a NUL byte, or is one', async () => {
+      const { peer } = ownerReplica()
+      document(peer, PEER, { installationId: PEER_ID, memberCode: 'RP' }, 2)
+      writeFileSync(join(caseDir(), peerChain), peer.jsonl)
+      const { dir } = await exportPackage()
+      const exported = readFileSync(join(dir, peerChain), 'utf-8')
+      const merge =
+        `merge entry 3 of ${localId} names installation ${PEER_ID}, whose chain ` +
+        'is not present or did not verify'
+      const lines = exported.split('\n')
+      lines[1] = `{\u0000${lines[1].slice(1)}`
+      for (const jsonl of [lines.join('\n'), withLine(exported, 0, '\u0000')]) {
+        writeFileSync(join(dir, peerChain), jsonl)
+        reindex(dir, peerChain)
+
+        const run = runVerifyScript(dir)
+        expect(run.status, run.output).toBe(1)
+        expect(findings(run.output, 'FAIL')).toEqual([
+          `FAIL [step 4a] ${peerChain} (member RP): entry 1: Invalid JSON`,
+          `FAIL [step 4a] ${merge}`
+        ])
+        expect(sharedCaseFailures(dir)).toEqual([
+          `chain-broken: chain of ${PEER_ID} (RP): Invalid JSON`,
+          `merge-head-mismatch: ${merge}`
+        ])
+      }
+    })
+
+    // The step-4 failure stops step 4a from reading a roster off the file, and
+    // the copy every later read takes reports that jq did not finish it.
+    it('fails a manifest line that holds a NUL byte and reports the short copy', async () => {
+      ownerReplica()
+      const { dir } = await exportPackage()
+      const lines = readFileSync(join(dir, 'manifest.jsonl'), 'utf-8').split('\n')
+      lines[2] = `{\u0000${lines[2].slice(1)}`
+      writeFileSync(join(dir, 'manifest.jsonl'), lines.join('\n'))
+      reindex(dir, 'manifest.jsonl')
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      expect(findings(run.output, 'FAIL')).toEqual([
+        'FAIL [step 4] entry at position 2: Invalid JSON, it holds a NUL byte'
+      ])
+      expect(findings(run.output, 'INCOMPLETE')).toEqual([
+        'INCOMPLETE [step 4] manifest.jsonl could not be read in full, so the entries after the ' +
+          'point jq stopped were not checked',
+        'INCOMPLETE [step 4a] the member chains were not checked: manifest.jsonl failed steps 2 ' +
+          'to 4, so no roster can be read from it'
+      ])
+      expect(
+        failures(dir)
+          .filter((check) => check.name === 'manifest chain')
+          .map((check) => check.reason)
+      ).toEqual(['Invalid JSON (at index 2)'])
+    })
+
     // Drops a chain's row from evidence.json, so step 1 does not report the
     // file the test replaces and the findings are step 4a's alone.
     function unindex(dir: string, path: string): void {

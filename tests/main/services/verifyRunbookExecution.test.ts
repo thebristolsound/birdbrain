@@ -576,6 +576,39 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
       says: ['does not hash to its own entryHash']
     },
     {
+      // read drops a NUL byte, so steps 2 to 4 once verified the line, and jq
+      // stops at it, so steps 5 and 6 read nothing after it. With an exhibit
+      // substituted and the tokens stripped, this package once passed.
+      name: 'a substituted exhibit behind a NUL byte, with the tokens stripped',
+      build: () => {
+        const dir = corruptedCopy('nul-byte-entry')
+        writeFileSync(join(dir, 'attachments', `${exhibitId}.zip`), 'substituted attachment')
+        rmSync(join(dir, 'timestamps'), { recursive: true, force: true })
+        dropArtifacts(dir, (path) => path.startsWith('timestamps/'))
+        const path = join(dir, 'manifest.jsonl')
+        const lines = readFileSync(path, 'utf-8').split('\n')
+        lines[1] = `{\u0000${lines[1].slice(1)}`
+        writeFileSync(path, lines.join('\n'))
+        const evidencePath = join(dir, 'evidence.json')
+        const evidence = JSON.parse(readFileSync(evidencePath, 'utf-8')) as {
+          artifacts: Array<{ path: string; sha256: string }>
+        }
+        for (const artifact of evidence.artifacts) {
+          if (artifact.path === 'manifest.jsonl' || artifact.path.startsWith('attachments/')) {
+            artifact.sha256 = sha256(readFileSync(join(dir, artifact.path)))
+          }
+        }
+        writeFileSync(evidencePath, JSON.stringify(evidence, null, 2))
+        return dir
+      },
+      binary: 'fail',
+      script: 'fail',
+      steps: [4],
+      says: ['entry at position 1: Invalid JSON, it holds a NUL byte'],
+      saysNot: ['PASS'],
+      binaryFails: { name: 'manifest chain', reason: 'Invalid JSON (at index 1)' }
+    },
+    {
       // jq skips a byte-order mark at the start of its input, so a per-line
       // read accepts the line, and stops at one in the middle of a file, so
       // step 5 once read nothing after it. JSON.parse rejects the line.
@@ -590,8 +623,9 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
       },
       binary: 'fail',
       script: 'fail',
-      // Steps 5 and 6 still read the file whole and stop at the mark, which
-      // step 6 reports as a token no entry names; step 4 has already failed.
+      // Steps 5 and 6 read the copy jq wrote of the file, which stops at the
+      // mark and is reported INCOMPLETE; step 6 then finds a token no entry
+      // in that copy names. Step 4 has already failed.
       steps: [1, 4, 6],
       says: ['entry at position 1: Invalid JSON, it begins with a byte-order mark'],
       binaryFails: { name: 'manifest chain', reason: 'Invalid JSON (at index 1)' }

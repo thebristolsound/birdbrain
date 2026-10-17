@@ -3,6 +3,7 @@ import ts from 'typescript'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
+  MEMBER_CHAINS_STEP,
   VERIFY_RECIPES,
   VERIFY_STEPS,
   sentenceStart,
@@ -50,6 +51,13 @@ describe('the verification step list', () => {
       expect(VERIFY_SCRIPT).toContain(`\nbegin ${number} '${scriptTitle}'\n`)
       expect(VERIFY_RUNBOOK).toContain(`\n## Step ${number} — ${runbookTitle}\n`)
     }
+  })
+
+  it('opens the Shared Case sub-step in verify.sh under the title VERIFY.md gives it', () => {
+    const { id, scriptTitle } = MEMBER_CHAINS_STEP
+    expect(scriptTitle).not.toContain("'")
+    expect(VERIFY_SCRIPT).toContain(`\nbegin ${id} '${scriptTitle}'\n`)
+    expect(VERIFY_RUNBOOK).toContain(`runs this section as ${stepRef(id)}, *${scriptTitle}*`)
   })
 
   it('spells each recipe the same way in both documents', () => {

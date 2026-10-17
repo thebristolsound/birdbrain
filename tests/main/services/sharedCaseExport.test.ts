@@ -1,6 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createHash, createSign, generateKeyPairSync } from 'crypto'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync
+} from 'fs'
 import { dirname, join } from 'path'
 import { tmpdir } from 'os'
 import { closeDatabase, getDb, initDatabase } from '@main/services/db/core'
@@ -43,6 +52,7 @@ import { HAS_JQ } from '../../helpers/jq'
 import { HAS_OPENSSL } from '../../helpers/openssl'
 import { extractRunbookBlocks, runRunbookBlocks } from '../../helpers/runbookBlocks'
 import { runVerifyScript } from '../../helpers/verifyScript'
+import { checkConformance } from '../../helpers/verifyConformance'
 
 // Shared Cases, step 3 (#1511): the writers. The three acceptance criteria are
 // frozen here, each end to end through the app's own export and import and
@@ -919,5 +929,808 @@ describe('Shared Case export, import and fork (#1511)', () => {
       `entries 0 to ${last}: ${owner.lines.length} signed entr(ies) verified under the key ` +
         `import entry ${last + 1} carries (SHA-256 ${fingerprint})`
     )
+  })
+
+  // #1864: verify.sh checks every member chain a Shared Case package carries,
+  // and reaches the verdict the package verifier above reaches.
+  describe.skipIf(!HAS_OPENSSL || !HAS_JQ)('verify.sh over the member chains (#1864)', () => {
+    const peerFingerprint = createHash('sha256').update(PEER_KEY.publicKey).digest('hex')
+    const peerChain = memberChainPath(PEER_ID)
+
+    // Restates one file's hash in the unsigned index, so that only a check
+    // against a signed chain can catch the edit.
+    function reindex(dir: string, path: string): void {
+      const indexPath = join(dir, 'evidence.json')
+      const index = JSON.parse(readFileSync(indexPath, 'utf-8'))
+      const sha256 = createHash('sha256')
+        .update(readFileSync(join(dir, path)))
+        .digest('hex')
+      index.artifacts = index.artifacts.map((a: { path: string }) =>
+        a.path === path ? { ...a, sha256 } : a
+      )
+      writeFileSync(indexPath, JSON.stringify(index))
+    }
+
+    const findings = (output: string, kind: 'FAIL' | 'INCOMPLETE'): string[] =>
+      output
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.startsWith(`${kind} [`))
+
+    // What the package verifier's Shared Case walk found, apart from its other
+    // checks: an edit to a packaged file fails those whatever the walk says,
+    // so its overall verdict cannot show the two verifiers agree on the walk.
+    const sharedCaseFailures = (dir: string): string[] =>
+      failures(dir)
+        .filter((check) => check.name === 'shared case')
+        .map((check) => check.reason ?? '')
+
+    // `chain` with a schema-valid deletion of `exhibitId` appended, signed by
+    // a key no member-add carries; `newline` false leaves it unterminated.
+    function forgedDeletion(
+      chain: Chain,
+      exhibitId: string,
+      by: ReturnType<typeof operator>,
+      newline: boolean
+    ): string {
+      const [row] = listExhibits(caseId).filter((e) => e.id === exhibitId)
+      const forger = new Chain(signWith(keyPair()))
+      forger.lines = [...chain.lines]
+      forger.hashes = [...chain.hashes]
+      forger.append({
+        type: 'deletion',
+        caseId,
+        captureId: exhibitId,
+        contentHash: row.contentHash,
+        timestamp: TIME,
+        ...by,
+        schemaVersion: 3
+      })
+      return newline ? forger.jsonl : forger.lines.join('\n')
+    }
+
+    it('passes the two-member package, naming each member chain and its key', async () => {
+      const { peerDoc } = ownerReplica()
+      const { dir } = await exportPackage()
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(0)
+      expect(run.output).toContain('\n== Step 4a - member chains of a Shared Case\n')
+      expect(run.output).toContain(`Case ${caseId}: 2 member(s): CO=${localId}, RP=${PEER_ID}`)
+      expect(run.output).toContain(
+        `${peerChain}: member RP (${PEER_ID}), 1 entr(ies) verified under the key the ` +
+          `Owner's member-add for it carries (SHA-256 ${peerFingerprint})`
+      )
+      expect(run.output).toContain(
+        '1 merge head(s) each name an entry of the chain they name, at that index and with ' +
+          'that entryHash'
+      )
+      // The member's Exhibit is bound in step 5 under its citation.
+      expect(run.output).toContain('2 exhibit(s) of other kinds bound to the signed chain')
+      expect(verifyEvidencePackage(dir).pass).toBe(true)
+
+      const [row] = listExhibits(caseId).filter((e) => e.id === peerDoc)
+      const enclosed = row.path!.slice(caseId.length + 1)
+      writeFileSync(join(dir, enclosed), 'edited')
+      reindex(dir, enclosed)
+      const edited = runVerifyScript(dir)
+      expect(edited.status).toBe(1)
+      expect(findings(edited.output, 'FAIL')).toEqual([
+        `FAIL [step 5] Exhibit RP-1: ${enclosed} does not match the contentHash in its signed entry`
+      ])
+      expect(
+        failures(dir)
+          .filter((check) => check.name === `exhibit ${peerDoc}`)
+          .map((check) => check.reason)
+      ).toEqual([
+        `Exhibit RP-1 (document): ${enclosed} does not match the contentHash in its signed entry`
+      ])
+    })
+
+    it('fails a forged entry in the member chain, naming the chain and the entry', async () => {
+      const { peer, peerDoc } = ownerReplica()
+      const { dir } = await exportPackage()
+      writeFileSync(join(dir, peerChain), forgedDeletion(peer, peerDoc, PEER, true))
+      reindex(dir, peerChain)
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      // The Owner's merge names the member chain, and it no longer verifies.
+      const merge =
+        `merge entry 3 of ${localId} names installation ${PEER_ID}, whose chain ` +
+        'is not present or did not verify'
+      expect(findings(run.output, 'FAIL')).toEqual([
+        `FAIL [step 4a] ${peerChain} (member RP): entry 1: Invalid signature`,
+        `FAIL [step 4a] ${merge}`
+      ])
+      expect(sharedCaseFailures(dir)).toEqual([
+        `chain-broken: chain of ${PEER_ID} (RP): Invalid signature`,
+        `merge-head-mismatch: ${merge}`
+      ])
+    })
+
+    // A shell `read` loop skips a last line with no newline after it, and jq
+    // reads that line all the same, so step 4a once accepted a line its checks
+    // had never read. evidence.json is left as exported: step 1 reports the
+    // edited file, and the findings after it are the chain check's.
+    it('fails a forged member entry written as the last line with no newline', async () => {
+      const { peer, peerDoc } = ownerReplica()
+      const { dir } = await exportPackage()
+      writeFileSync(join(dir, peerChain), forgedDeletion(peer, peerDoc, PEER, false))
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      const merge =
+        `merge entry 3 of ${localId} names installation ${PEER_ID}, whose chain ` +
+        'is not present or did not verify'
+      expect(findings(run.output, 'FAIL')).toEqual([
+        'FAIL [step 1] one or more enclosed files do not match evidence.json',
+        `FAIL [step 4a] ${peerChain} (member RP): entry 1: Invalid signature`,
+        `FAIL [step 4a] ${merge}`
+      ])
+      expect(run.output).not.toContain('a later deletion entry accounts for it')
+      expect(sharedCaseFailures(dir)).toEqual([
+        `chain-broken: chain of ${PEER_ID} (RP): Invalid signature`,
+        `merge-head-mismatch: ${merge}`
+      ])
+    })
+
+    it("fails a forged Owner's entry with no newline, in a package a member exported", async () => {
+      const { owner, ownerDoc } = memberReplica()
+      const { dir } = await exportPackage()
+      writeFileSync(join(dir, peerChain), forgedDeletion(owner, ownerDoc, PEER, false))
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      expect(findings(run.output, 'FAIL')).toEqual([
+        'FAIL [step 1] one or more enclosed files do not match evidence.json',
+        `FAIL [step 4a] ${peerChain} (the Owner): entry 3: Invalid signature`
+      ])
+      expect(run.output).not.toContain('a later deletion entry accounts for it')
+      expect(sharedCaseFailures(dir)).toEqual(['chain-broken: Owner chain: Invalid signature'])
+    })
+
+    it('fails a merge head the member chain does not reach', async () => {
+      ownerReplica(undefined, (peer) => {
+        document(peer, PEER, { installationId: PEER_ID, memberCode: 'RP' }, 2)
+      })
+      const { dir } = await exportPackage()
+      // The member chain the Owner merged up to index 1, cut back to index 0:
+      // still a chain the member signed, but not the one the merge names.
+      const [first] = readFileSync(join(dir, peerChain), 'utf-8').split('\n')
+      writeFileSync(join(dir, peerChain), `${first}\n`)
+      reindex(dir, peerChain)
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      expect(findings(run.output, 'FAIL')).toEqual([
+        `FAIL [step 4a] merge entry 3 of ${localId} names index 1 of ${PEER_ID}, which has 1 entries`
+      ])
+      expect(sharedCaseFailures(dir)).toEqual([
+        `merge-head-mismatch: merge entry 3 of ${localId} names index 1 of ${PEER_ID}, which ` +
+          'has 1 entries'
+      ])
+    })
+
+    it('reports a member chain it cannot read to the end as INCOMPLETE, never PASS', async () => {
+      const { peer } = ownerReplica()
+      const { dir } = await exportPackage()
+      // A genuine entry the member's newer build wrote, signed by its key.
+      peer.append({
+        type: 'exhibit-review',
+        caseId,
+        timestamp: TIME,
+        ...PEER,
+        schemaVersion: 6
+      })
+      writeFileSync(join(dir, peerChain), peer.jsonl)
+      reindex(dir, peerChain)
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(3)
+      expect(findings(run.output, 'FAIL')).toEqual([])
+      expect(findings(run.output, 'INCOMPLETE')).toEqual([
+        `INCOMPLETE [step 4a] ${peerChain} (member RP): entry 1 is from a newer schema than ` +
+          'this script reads (type exhibit-review, schema version 6; it reads up to schema ' +
+          'version 5), so the chain was checked only up to that entry',
+        'INCOMPLETE [step 4a] merge heads, citations and exclusions were not checked: a member ' +
+          'chain was not read to its end'
+      ])
+      expect(run.output).not.toContain('PASS')
+      const result = verifyEvidencePackage(dir)
+      expect([result.pass, result.unsupported !== undefined]).toEqual([false, true])
+    })
+
+    it("fails an Exhibit entry that claims another member's Member Code", async () => {
+      ownerReplica(undefined, (peer) => {
+        peer.append({
+          type: 'exhibit',
+          exhibitId: `${PEER_ID}-claimed`,
+          caseId,
+          kind: 'document',
+          origin: 'manual-upload',
+          name: 'claimed.pdf',
+          exhibitNumber: 5,
+          memberCode: 'CO',
+          path: `${caseId}/documents/${PEER_ID}-claimed.pdf`,
+          contentHash: 'e'.repeat(64),
+          sizeBytes: 1,
+          timestamp: TIME,
+          ...PEER,
+          schemaVersion: 4
+        })
+      })
+      const { dir } = await exportPackage()
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      // The entry names bytes the fixture never wrote, so step 5 finds them absent too.
+      expect(findings(run.output, 'FAIL')).toEqual([
+        `FAIL [step 4a] exhibit entry 1 of ${PEER_ID} claims Member Code CO, its writer's is RP`,
+        `FAIL [step 5] Exhibit 5: documents/${PEER_ID}-claimed.pdf is missing and nothing ` +
+          'signed accounts for its absence'
+      ])
+      expect(sharedCaseFailures(dir)).toEqual([
+        `citation-collision: exhibit entry 1 of ${PEER_ID} claims Member Code CO, its ` +
+          "writer's is RP"
+      ])
+    })
+
+    it("fails an exclude naming an Exhibit its author's chain does not hold", async () => {
+      ownerReplica((owner) => {
+        owner.append({
+          type: 'exclude',
+          caseId,
+          exhibitId: 'never-written',
+          authorInstallationId: PEER_ID,
+          timestamp: TIME,
+          ...LOCAL(),
+          schemaVersion: 4
+        })
+      })
+      const { dir } = await exportPackage()
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      expect(findings(run.output, 'FAIL')).toEqual([
+        `FAIL [step 4a] exclude at index 4 names Exhibit never-written, which the chain of ` +
+          `${PEER_ID} does not hold`
+      ])
+      expect(sharedCaseFailures(dir)).toEqual([
+        'roster-invalid: exclude at index 4 names Exhibit never-written, which the chain of ' +
+          `${PEER_ID} does not hold`
+      ])
+      // The package fails nothing else, so the whole verdicts compare too.
+      const conformance = checkConformance(dir)
+      expect(conformance).toMatchObject({ binary: 'fail', script: 'fail', scriptSteps: ['4a'] })
+      expect(conformance.binaryFailures.map((check) => check.name)).toEqual(['shared case'])
+    })
+
+    it('fails a member chain no member-add names', async () => {
+      ownerReplica()
+      const { dir } = await exportPackage()
+      const stray = new Chain(signWith(keyPair()))
+      document(stray, operator('installation-stray-0001', 'Sam Stray'), null, 7)
+      const strayChain = memberChainPath('installation-stray-0001')
+      writeFileSync(join(dir, strayChain), stray.jsonl)
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      expect(findings(run.output, 'FAIL')).toEqual([
+        `FAIL [step 4a] ${strayChain}: no member-add names installation installation-stray-0001`
+      ])
+      expect(sharedCaseFailures(dir)).toEqual([
+        'unknown-member: no member-add names installation installation-stray-0001'
+      ])
+    })
+
+    // No member chain and no membership entry: the Member Code on the
+    // exporter's own Exhibit entry is the only Shared Case signal.
+    it('opens step 4a for an Exhibit entry that carries a Member Code', async () => {
+      const owner = new Chain(signEntryHash)
+      owner.append({
+        type: 'exhibit',
+        exhibitId: `${localId}-claimed`,
+        caseId,
+        kind: 'document',
+        origin: 'manual-upload',
+        name: 'claimed.pdf',
+        exhibitNumber: 1,
+        memberCode: 'CO',
+        path: `${caseId}/documents/${localId}-claimed.pdf`,
+        contentHash: 'e'.repeat(64),
+        sizeBytes: 1,
+        timestamp: TIME,
+        ...LOCAL(),
+        schemaVersion: 4
+      })
+      writeFileSync(join(caseDir(), 'manifest.jsonl'), owner.jsonl)
+      const { dir } = await exportPackage()
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      expect(run.output).toContain('\n== Step 4a - member chains of a Shared Case\n')
+      const claim = 'exhibit entry 0 claims Member Code CO in a Case with no roster'
+      // The entry names bytes the fixture never wrote, so step 5 finds them absent too.
+      expect(findings(run.output, 'FAIL')).toEqual([
+        `FAIL [step 4a] ${claim}`,
+        `FAIL [step 5] Exhibit 1: documents/${localId}-claimed.pdf is missing and nothing ` +
+          'signed accounts for its absence'
+      ])
+      expect(sharedCaseFailures(dir)).toEqual([`citation-collision: ${claim}`])
+    })
+
+    // A shell glob's `*` skips a leading dot, so the script lists lineage
+    // directories under three patterns; the package verifier lists them all.
+    it('fails a lineage directory no import names, whatever its name starts with', async () => {
+      ownerReplica()
+      const { dir } = await exportPackage()
+      const names = ['x', '.x', '..x']
+      for (const name of names) mkdirSync(join(dir, 'lineage', name), { recursive: true })
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      const reason = (name: string): string =>
+        `lineage chains supplied for Case ${name}, which no import in the Owner's chain names`
+      expect(findings(run.output, 'FAIL').sort()).toEqual(
+        names.map((name) => `FAIL [step 4a] ${reason(name)}`).sort()
+      )
+      expect(sharedCaseFailures(dir).sort()).toEqual(
+        names.map((name) => `roster-invalid: ${reason(name)}`).sort()
+      )
+    })
+
+    // A loop over a file the shell cannot open reads nothing, which once
+    // printed "0 entr(ies) verified". The chain's row comes out of
+    // evidence.json, or step 1, which cannot open it either, fails the
+    // package first. Mode 000 means nothing to root, which reads it anyway.
+    it.skipIf(process.getuid?.() === 0)(
+      'reports a member chain file it cannot open as INCOMPLETE, never PASS',
+      async () => {
+        ownerReplica()
+        const { dir } = await exportPackage()
+        const indexPath = join(dir, 'evidence.json')
+        const index = JSON.parse(readFileSync(indexPath, 'utf-8'))
+        index.artifacts = index.artifacts.filter((a: { path: string }) => a.path !== peerChain)
+        writeFileSync(indexPath, JSON.stringify(index))
+        chmodSync(join(dir, peerChain), 0)
+
+        try {
+          const run = runVerifyScript(dir)
+          expect(run.status, run.output).toBe(3)
+          expect(findings(run.output, 'FAIL')).toEqual([])
+          expect(findings(run.output, 'INCOMPLETE')).toEqual([
+            `INCOMPLETE [step 4a] ${peerChain} (member RP): the file cannot be read, so none ` +
+              'of its entries was checked',
+            'INCOMPLETE [step 4a] merge heads, citations and exclusions were not checked: a ' +
+              'member chain was not read to its end'
+          ])
+          // The package verifier reaches no verdict on a file it cannot read.
+          expect(() => verifyEvidencePackage(dir)).toThrow('EACCES')
+        } finally {
+          chmodSync(join(dir, peerChain), 0o644)
+        }
+      }
+    )
+
+    // `jsonl` with `blank` inserted as its own line after line `at`.
+    const withLine = (jsonl: string, at: number, blank: string): string => {
+      const lines = jsonl.split('\n')
+      lines.splice(at + 1, 0, blank)
+      return lines.join('\n')
+    }
+
+    // The package verifier skips a line that String.prototype.trim empties.
+    // jq's parser takes only space, tab, CR and LF between values, so a form
+    // feed once ended every whole-file read of a chain the shell loop had
+    // verified past it, and the entries after it went unchecked.
+    it('fails an edited member Exhibit that follows a form-feed line in its chain', async () => {
+      const { peer } = ownerReplica()
+      const lateDoc = document(peer, PEER, { installationId: PEER_ID, memberCode: 'RP' }, 2)
+      writeFileSync(join(caseDir(), peerChain), peer.jsonl)
+      const { dir } = await exportPackage()
+      const [row] = listExhibits(caseId).filter((e) => e.id === lateDoc)
+      const enclosed = row.path!.slice(caseId.length + 1)
+      writeFileSync(join(dir, enclosed), 'edited')
+      reindex(dir, enclosed)
+      writeFileSync(
+        join(dir, peerChain),
+        withLine(readFileSync(join(dir, peerChain), 'utf-8'), 0, '\f')
+      )
+      reindex(dir, peerChain)
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      expect(findings(run.output, 'FAIL')).toEqual([
+        `FAIL [step 5] Exhibit RP-2: ${enclosed} does not match the contentHash in its signed entry`
+      ])
+      expect(
+        failures(dir)
+          .filter((check) => check.name === `exhibit ${lateDoc}`)
+          .map((check) => check.reason)
+      ).toEqual([
+        `Exhibit RP-2 (document): ${enclosed} does not match the contentHash in its signed entry`
+      ])
+    })
+
+    it("fails a revoked member's late entry that follows a form-feed line", async () => {
+      const { peer } = ownerReplica((owner) => {
+        owner.append({
+          type: 'member-revoke',
+          caseId,
+          memberInstallationId: PEER_ID,
+          timestamp: TIME,
+          ...LOCAL(),
+          schemaVersion: 4
+        })
+      })
+      document(peer, PEER, { installationId: PEER_ID, memberCode: 'RP' }, 2)
+      writeFileSync(join(caseDir(), peerChain), peer.jsonl)
+      const { dir } = await exportPackage()
+      writeFileSync(
+        join(dir, peerChain),
+        withLine(readFileSync(join(dir, peerChain), 'utf-8'), 0, '\f')
+      )
+      reindex(dir, peerChain)
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      const late =
+        `entry 1 of ${PEER_ID} (RP) is after its revocation: the Owner merged up to index 0 ` +
+        'before revoking it'
+      expect(findings(run.output, 'FAIL')).toEqual([`FAIL [step 4a] ${late}`])
+      expect(sharedCaseFailures(dir)).toEqual([`entry-after-revocation: ${late}`])
+    })
+
+    // The package verifier's verdict on a package whose evidence.json reindex
+    // rewrote: it recomputes the package hash over that file and the script
+    // does not, as its header states, so that is the one check it fails.
+    function expectOnlyPackageHash(dir: string): void {
+      expect(sharedCaseFailures(dir)).toEqual([])
+      expect(failures(dir).map((check) => check.name)).toEqual(['package hash'])
+    }
+
+    // Every line the package verifier skips as blank, including the ones a
+    // C-locale shell's [:space:] does not hold, and the one jq stops at.
+    it('passes a member chain holding every kind of line the package verifier skips', async () => {
+      ownerReplica(undefined, (peer) => {
+        document(peer, PEER, { installationId: PEER_ID, memberCode: 'RP' }, 2)
+      })
+      const { dir } = await exportPackage()
+      let jsonl = readFileSync(join(dir, peerChain), 'utf-8')
+      for (const blank of ['\f', '\v', '\u00a0', '\u3000', '\u2028', '\ufeff', ' \t\r']) {
+        jsonl = withLine(jsonl, 0, blank)
+      }
+      writeFileSync(join(dir, peerChain), jsonl)
+      reindex(dir, peerChain)
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(0)
+      expect(run.output).toContain(`${peerChain}: member RP (${PEER_ID}), 2 entr(ies) verified`)
+      expectOnlyPackageHash(dir)
+    })
+
+    it("passes a member's package whose Owner chain holds a form-feed line", async () => {
+      memberReplica()
+      const { dir } = await exportPackage()
+      writeFileSync(
+        join(dir, peerChain),
+        withLine(readFileSync(join(dir, peerChain), 'utf-8'), 0, '\f')
+      )
+      reindex(dir, peerChain)
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(0)
+      expectOnlyPackageHash(dir)
+    })
+
+    // Each read step 4a makes of a member chain after its check, pinned by an
+    // entry after a form-feed line that only that read acts on.
+    it('fails a member entry naming another Case that follows a form-feed line', async () => {
+      const { peer, peerDoc } = ownerReplica()
+      const [row] = listExhibits(caseId).filter((e) => e.id === peerDoc)
+      peer.append({
+        type: 'deletion',
+        caseId: 'case-elsewhere',
+        captureId: peerDoc,
+        contentHash: row.contentHash,
+        timestamp: TIME,
+        ...PEER,
+        schemaVersion: 3
+      })
+      writeFileSync(join(caseDir(), peerChain), peer.jsonl)
+      const { dir } = await exportPackage()
+      writeFileSync(
+        join(dir, peerChain),
+        withLine(readFileSync(join(dir, peerChain), 'utf-8'), 0, '\f')
+      )
+      reindex(dir, peerChain)
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      const merge =
+        `merge entry 3 of ${localId} names installation ${PEER_ID}, whose chain ` +
+        'is not present or did not verify'
+      const foreign = `entry 1 of ${PEER_ID} (RP) names Case case-elsewhere, the Shared Case is ${caseId}`
+      expect(findings(run.output, 'FAIL')).toEqual([
+        `FAIL [step 4a] ${foreign}`,
+        `FAIL [step 4a] ${merge}`
+      ])
+      expect(sharedCaseFailures(dir)).toEqual([
+        `roster-invalid: ${foreign}`,
+        `merge-head-mismatch: ${merge}`
+      ])
+    })
+
+    it('fails a membership entry in a member chain that follows a form-feed line', async () => {
+      const { peer } = ownerReplica()
+      peer.append(
+        memberAdd('installation-extra-0001', keyPair().publicKey, 'EX', 'Ex', 'member', PEER)
+      )
+      writeFileSync(join(caseDir(), peerChain), peer.jsonl)
+      const { dir } = await exportPackage()
+      writeFileSync(
+        join(dir, peerChain),
+        withLine(readFileSync(join(dir, peerChain), 'utf-8'), 0, '\f')
+      )
+      reindex(dir, peerChain)
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      const outside = "entry 1: member-add entry written outside the Owner's chain"
+      expect(findings(run.output, 'FAIL')).toEqual([`FAIL [step 4a] ${peerChain}: ${outside}`])
+      expect(sharedCaseFailures(dir)).toEqual([
+        "roster-invalid: member-add entry written outside the Owner's chain"
+      ])
+    })
+
+    it("passes a revoked member's merged entries that follow a form-feed line", async () => {
+      ownerReplica(
+        (owner) => {
+          owner.append({
+            type: 'member-revoke',
+            caseId,
+            memberInstallationId: PEER_ID,
+            timestamp: TIME,
+            ...LOCAL(),
+            schemaVersion: 4
+          })
+        },
+        (peer) => {
+          document(peer, PEER, { installationId: PEER_ID, memberCode: 'RP' }, 2)
+        }
+      )
+      const { dir } = await exportPackage()
+      writeFileSync(
+        join(dir, peerChain),
+        withLine(readFileSync(join(dir, peerChain), 'utf-8'), 0, '\f')
+      )
+      reindex(dir, peerChain)
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(0)
+      expectOnlyPackageHash(dir)
+    })
+
+    // jq skips a byte-order mark at the start of its input and stops at one
+    // anywhere after it; the package verifier's JSON.parse rejects the line.
+    it('fails a member entry line that begins with a byte-order mark', async () => {
+      const { peer } = ownerReplica()
+      const lateDoc = document(peer, PEER, { installationId: PEER_ID, memberCode: 'RP' }, 2)
+      writeFileSync(join(caseDir(), peerChain), peer.jsonl)
+      const { dir } = await exportPackage()
+      const [row] = listExhibits(caseId).filter((e) => e.id === lateDoc)
+      const enclosed = row.path!.slice(caseId.length + 1)
+      writeFileSync(join(dir, enclosed), 'edited')
+      reindex(dir, enclosed)
+      const lines = readFileSync(join(dir, peerChain), 'utf-8').split('\n')
+      lines[1] = `\ufeff${lines[1]}`
+      writeFileSync(join(dir, peerChain), lines.join('\n'))
+      reindex(dir, peerChain)
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      const merge =
+        `merge entry 3 of ${localId} names installation ${PEER_ID}, whose chain ` +
+        'is not present or did not verify'
+      expect(findings(run.output, 'FAIL')).toEqual([
+        `FAIL [step 4a] ${peerChain} (member RP): entry 1: Invalid JSON`,
+        `FAIL [step 4a] ${merge}`
+      ])
+      expect(sharedCaseFailures(dir)).toEqual([
+        `chain-broken: chain of ${PEER_ID} (RP): Invalid JSON`,
+        `merge-head-mismatch: ${merge}`
+      ])
+    })
+
+    it('fails a manifest entry line that begins with a byte-order mark', async () => {
+      const { peer } = ownerReplica()
+      const lateDoc = document(peer, PEER, { installationId: PEER_ID, memberCode: 'RP' }, 2)
+      writeFileSync(join(caseDir(), peerChain), peer.jsonl)
+      const { dir } = await exportPackage()
+      const [row] = listExhibits(caseId).filter((e) => e.id === lateDoc)
+      const enclosed = row.path!.slice(caseId.length + 1)
+      writeFileSync(join(dir, enclosed), 'edited')
+      reindex(dir, enclosed)
+      const lines = readFileSync(join(dir, 'manifest.jsonl'), 'utf-8').split('\n')
+      lines[2] = `\ufeff${lines[2]}`
+      writeFileSync(join(dir, 'manifest.jsonl'), lines.join('\n'))
+      reindex(dir, 'manifest.jsonl')
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      expect(findings(run.output, 'FAIL')).toEqual([
+        'FAIL [step 4] entry at position 2: Invalid JSON, it begins with a byte-order mark'
+      ])
+      expect(
+        failures(dir)
+          .filter((check) => check.name === 'manifest chain')
+          .map((check) => check.reason)
+      ).toEqual(['Invalid JSON (at index 2)'])
+    })
+
+    // read drops a NUL byte, so no loop sees one; JSON.parse rejects the line,
+    // and jq stops at it in a whole-file read.
+    it('fails a member entry line that holds a NUL byte, or is one', async () => {
+      const { peer } = ownerReplica()
+      document(peer, PEER, { installationId: PEER_ID, memberCode: 'RP' }, 2)
+      writeFileSync(join(caseDir(), peerChain), peer.jsonl)
+      const { dir } = await exportPackage()
+      const exported = readFileSync(join(dir, peerChain), 'utf-8')
+      const merge =
+        `merge entry 3 of ${localId} names installation ${PEER_ID}, whose chain ` +
+        'is not present or did not verify'
+      const lines = exported.split('\n')
+      lines[1] = `{\u0000${lines[1].slice(1)}`
+      for (const jsonl of [lines.join('\n'), withLine(exported, 0, '\u0000')]) {
+        writeFileSync(join(dir, peerChain), jsonl)
+        reindex(dir, peerChain)
+
+        const run = runVerifyScript(dir)
+        expect(run.status, run.output).toBe(1)
+        expect(findings(run.output, 'FAIL')).toEqual([
+          `FAIL [step 4a] ${peerChain} (member RP): entry 1: Invalid JSON`,
+          `FAIL [step 4a] ${merge}`
+        ])
+        expect(sharedCaseFailures(dir)).toEqual([
+          `chain-broken: chain of ${PEER_ID} (RP): Invalid JSON`,
+          `merge-head-mismatch: ${merge}`
+        ])
+      }
+    })
+
+    // The step-4 failure stops step 4a from reading a roster off the file, and
+    // the copy every later read takes reports that jq did not finish it.
+    it('fails a manifest line that holds a NUL byte and reports the short copy', async () => {
+      ownerReplica()
+      const { dir } = await exportPackage()
+      const lines = readFileSync(join(dir, 'manifest.jsonl'), 'utf-8').split('\n')
+      lines[2] = `{\u0000${lines[2].slice(1)}`
+      writeFileSync(join(dir, 'manifest.jsonl'), lines.join('\n'))
+      reindex(dir, 'manifest.jsonl')
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      expect(findings(run.output, 'FAIL')).toEqual([
+        'FAIL [step 4] entry at position 2: Invalid JSON, it holds a NUL byte'
+      ])
+      expect(findings(run.output, 'INCOMPLETE')).toEqual([
+        'INCOMPLETE [step 4] manifest.jsonl could not be read in full, so the entries after the ' +
+          'point jq stopped were not checked',
+        'INCOMPLETE [step 4a] the member chains were not checked: manifest.jsonl failed steps 2 ' +
+          'to 4, so no roster can be read from it'
+      ])
+      expect(
+        failures(dir)
+          .filter((check) => check.name === 'manifest chain')
+          .map((check) => check.reason)
+      ).toEqual(['Invalid JSON (at index 2)'])
+    })
+
+    // Drops a chain's row from evidence.json, so step 1 does not report the
+    // file the test replaces and the findings are step 4a's alone.
+    function unindex(dir: string, path: string): void {
+      const indexPath = join(dir, 'evidence.json')
+      const index = JSON.parse(readFileSync(indexPath, 'utf-8'))
+      index.artifacts = index.artifacts.filter((a: { path: string }) => a.path !== path)
+      writeFileSync(indexPath, JSON.stringify(index))
+    }
+
+    // The package verifier lists every name the layout gives a chain and
+    // throws on one it cannot read; the script reports it INCOMPLETE.
+    it('reports a member chain path that is a dangling link as INCOMPLETE', async () => {
+      ownerReplica()
+      const { dir } = await exportPackage()
+      unindex(dir, peerChain)
+      rmSync(join(dir, peerChain))
+      symlinkSync(join(dir, 'nowhere.jsonl'), join(dir, peerChain))
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(3)
+      expect(findings(run.output, 'FAIL')).toEqual([])
+      expect(findings(run.output, 'INCOMPLETE')).toEqual([
+        `INCOMPLETE [step 4a] ${peerChain} (member RP): the file cannot be read, so none of ` +
+          'its entries was checked',
+        'INCOMPLETE [step 4a] merge heads, citations and exclusions were not checked: a member ' +
+          'chain was not read to its end'
+      ])
+      expect(() => verifyEvidencePackage(dir)).toThrow('ENOENT')
+    })
+
+    it("reports an Owner's chain it cannot read, in a member's package, as INCOMPLETE", async () => {
+      memberReplica()
+      const { dir } = await exportPackage()
+      unindex(dir, peerChain)
+      rmSync(join(dir, peerChain))
+      mkdirSync(join(dir, peerChain))
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(3)
+      expect(findings(run.output, 'FAIL')).toEqual([])
+      expect(findings(run.output, 'INCOMPLETE')).toEqual([
+        `INCOMPLETE [step 4a] ${peerChain}: the file cannot be read, so whether it holds the ` +
+          "Owner's chain was not checked"
+      ])
+      expect(() => verifyEvidencePackage(dir)).toThrow('EISDIR')
+    })
+
+    it("passes a package a member exported, anchoring the Owner's key in its merge", async () => {
+      const { owner } = memberReplica()
+      const { dir } = await exportPackage()
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(0)
+      expect(run.output).toContain(
+        `${peerChain}: the Owner's chain (${PEER_ID}), ${owner.lines.length} entr(ies) verified ` +
+          `under the key its own member-add carries (SHA-256 ${peerFingerprint}), which a merge ` +
+          `in manifest.jsonl anchors at index ${owner.lines.length - 1}`
+      )
+      const localFingerprint = createHash('sha256').update(getPublicKeyPem()).digest('hex')
+      expect(run.output).toContain(
+        `manifest.jsonl: member RP (${localId}), 2 entr(ies) verified under the key the ` +
+          `Owner's member-add for it carries (SHA-256 ${localFingerprint})`
+      )
+      expect(verifyEvidencePackage(dir).pass).toBe(true)
+    })
+
+    // The Owner's chain begins with an entry an earlier installation signed,
+    // which verifies under the key the Owner's import entry carries.
+    it("passes a member's package whose Owner chain continues an earlier import", async () => {
+      memberReplicaAfterImport()
+      const { dir } = await exportPackage()
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(0)
+      expect(run.output).toContain(
+        `${peerChain}: the Owner's chain (${PEER_ID}), 5 entr(ies) verified under the key its ` +
+          `own member-add carries (SHA-256 ${peerFingerprint})`
+      )
+      expect(verifyEvidencePackage(dir).pass).toBe(true)
+    })
+
+    it("fails a package a member exported when no merge anchors the Owner's key", async () => {
+      // memberReplica without the merge: nothing this installation signed
+      // names the Owner's chain, so the key that chain claims is not trusted.
+      const owner = new Chain(signWith(PEER_KEY))
+      owner.append(memberAdd(PEER_ID, PEER_KEY.publicKey, 'CO', 'Robin', 'owner', PEER))
+      owner.append(memberAdd(localId, getPublicKeyPem(), 'RP', 'Casey', 'member', PEER))
+      const local = new Chain(signEntryHash)
+      document(local, LOCAL(), null, 1)
+      writeFileSync(join(caseDir(), 'manifest.jsonl'), local.jsonl)
+      writeFileSync(join(caseDir(), peerChain), owner.jsonl)
+      roster(PEER_ID, PEER_KEY.publicKey, localId, getPublicKeyPem())
+      const { dir } = await exportPackage()
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      expect(findings(run.output, 'FAIL')).toEqual([
+        `FAIL [step 4a] no merge in manifest.jsonl names the Owner's chain (${PEER_ID}), so its ` +
+          'key cannot be anchored'
+      ])
+      expect(sharedCaseFailures(dir)).toEqual([
+        "roster-invalid: no merge in the local chain names the Owner's chain " +
+          `(${PEER_ID}), so its key cannot be anchored`
+      ])
+    })
   })
 })

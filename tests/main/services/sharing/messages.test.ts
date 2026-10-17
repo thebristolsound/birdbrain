@@ -61,7 +61,49 @@ const SAMPLES: SyncMessage[] = [
       }
     ]
   },
-  { t: 'bye', reason: 'not a member' }
+  { t: 'bye', reason: 'not a member' },
+  // The join handshake (#1810).
+  {
+    t: 'join',
+    caseId: 'case-1',
+    secret: new Uint8Array(16).fill(9),
+    installationId: 'inst-b',
+    publicKeyPem: '-----BEGIN PUBLIC KEY-----\nMIIB\n-----END PUBLIC KEY-----\n',
+    operatorName: 'Bob Member',
+    ticket: 'mem:bob',
+    signature: 'sig'
+  },
+  { t: 'join-pending' },
+  {
+    t: 'welcome',
+    caseId: 'case-1',
+    caseName: 'Shared',
+    ownerPublicKeyPem: '-----BEGIN PUBLIC KEY-----\nMIIA\n-----END PUBLIC KEY-----\n',
+    roster: [
+      {
+        installationId: 'inst-a',
+        publicKeyPem: '-----BEGIN PUBLIC KEY-----\nMIIA\n-----END PUBLIC KEY-----\n',
+        memberCode: 'AO',
+        operatorName: 'Alice Owner',
+        nodeId: 'node-a',
+        role: 'owner',
+        addedAtIndex: 0,
+        revokedAtIndex: null
+      },
+      {
+        installationId: 'inst-b',
+        publicKeyPem: '-----BEGIN PUBLIC KEY-----\nMIIB\n-----END PUBLIC KEY-----\n',
+        memberCode: 'BM',
+        operatorName: 'Bob Member',
+        nodeId: 'node-b',
+        role: 'member',
+        addedAtIndex: 1,
+        revokedAtIndex: 3
+      }
+    ],
+    tickets: { 'inst-a': 'mem:alice', 'inst-b': 'mem:bob' }
+  },
+  { t: 'join-refused', reason: 'invite-expired' }
 ]
 
 describe('sync messages', () => {
@@ -173,6 +215,44 @@ describe('sync messages', () => {
         })
       )
     ).toThrow('Malformed rows message')
+    // The join handshake (#1810): a secret of the wrong length, a refusal
+    // outside the named codes, a roster row the shape does not admit, and a
+    // ticket keyed by an id that could not name a chain file.
+    const join = SAMPLES.find((m) => m.t === 'join')!
+    expect(() => decodeMessage(encode({ ...join, secret: new Uint8Array(15) }))).toThrow(
+      'Malformed join message'
+    )
+    expect(() => decodeMessage(encode({ ...join, ticket: '' }))).toThrow('Malformed join message')
+    expect(() => decodeMessage(encode({ ...join, publicKeyPem: 'x'.repeat(9000) }))).toThrow(
+      'Malformed join message'
+    )
+    expect(() => decodeMessage(encode({ t: 'join-refused', reason: 'because' }))).toThrow(
+      'Malformed join-refused message'
+    )
+    expect(() => decodeMessage(encode({ t: 'join-pending', extra: 1 }))).toThrow(
+      'Malformed join-pending message'
+    )
+    const welcome = SAMPLES.find((m) => m.t === 'welcome')! as Extract<
+      SyncMessage,
+      { t: 'welcome' }
+    >
+    expect(() => decodeMessage(encode({ ...welcome, roster: [] }))).toThrow(
+      'Malformed welcome message'
+    )
+    expect(() => decodeMessage(encode({ ...welcome, caseName: '' }))).toThrow(
+      'Malformed welcome message'
+    )
+    expect(() =>
+      decodeMessage(
+        encode({ ...welcome, roster: [{ ...welcome.roster[0], memberCode: 'TOOLONG' }] })
+      )
+    ).toThrow('Malformed welcome message')
+    expect(() =>
+      decodeMessage(encode({ ...welcome, roster: [{ ...welcome.roster[0], role: 'admin' }] }))
+    ).toThrow('Malformed welcome message')
+    expect(() => decodeMessage(encode({ ...welcome, tickets: { '../escape': 'mem:x' } }))).toThrow(
+      'Malformed welcome message'
+    )
   })
 
   it('reports a stream that ends inside a frame as a protocol error', async () => {

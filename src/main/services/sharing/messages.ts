@@ -1,6 +1,8 @@
 import { decode, encode } from 'cborg'
 import { z } from 'zod'
 import { MAX_MHTML_SIZE } from '@shared/constants'
+import { SHARING_ERROR_CODES } from '@shared/types'
+import { INVITE_SECRET_BYTES } from '@main/services/sharing/invite'
 import type { ByteStream } from '@main/services/sharing/transport'
 import { isChainInstallationId } from '../../../packages/evidence-package-layout/index'
 
@@ -139,6 +141,74 @@ const RowsSchema = z
 
 const ByeSchema = z.object({ t: z.literal('bye'), reason: z.string() }).strict()
 
+// The join handshake (#1810, the design's "Invite and join"), on a stream of
+// its own that carries `join` first. The bounds are what a stranger's frame
+// can make the listener hold before the join signature verifies.
+const MAX_CASE_ID_CHARS = 128
+const MAX_NAME_CHARS = 256
+const MAX_CASE_NAME_CHARS = 1024
+const MAX_PEM_CHARS = 8192
+const MAX_TICKET_CHARS = 2048
+const MAX_SIGNATURE_CHARS = 4096
+const MAX_ROSTER_MEMBERS = 1000
+
+const pemField = z.string().min(1).max(MAX_PEM_CHARS)
+const ticketField = z.string().min(1).max(MAX_TICKET_CHARS)
+
+// The joiner's request: the invite's secret, its identity, its own ticket so
+// the Owner can dial it later, and a signature over joinDigest (the secret
+// bound to the Owner's node id, the Case and the joiner), made with the
+// joiner's installation key.
+const JoinSchema = z
+  .object({
+    t: z.literal('join'),
+    caseId: z.string().min(1).max(MAX_CASE_ID_CHARS),
+    secret: bytesField.refine((b) => b.length === INVITE_SECRET_BYTES, {
+      message: `secret must be ${INVITE_SECRET_BYTES} bytes`
+    }),
+    installationId: installationIdField,
+    publicKeyPem: pemField,
+    operatorName: z.string().max(MAX_NAME_CHARS),
+    ticket: ticketField,
+    signature: z.string().min(1).max(MAX_SIGNATURE_CHARS)
+  })
+  .strict()
+
+const JoinPendingSchema = z.object({ t: z.literal('join-pending') }).strict()
+
+// One roster row as the Owner's cache holds it. The joiner checks the shape
+// of the roster as a whole (requestJoin); the codec bounds each field.
+const WelcomeMemberSchema = z
+  .object({
+    installationId: installationIdField,
+    publicKeyPem: pemField,
+    memberCode: z.string().max(3),
+    operatorName: z.string().max(MAX_NAME_CHARS),
+    nodeId: z.string().max(MAX_NAME_CHARS),
+    role: z.enum(['owner', 'member']),
+    addedAtIndex: indexField,
+    revokedAtIndex: indexField.nullable()
+  })
+  .strict()
+
+export type WelcomeMember = z.infer<typeof WelcomeMemberSchema>
+
+const WelcomeSchema = z
+  .object({
+    t: z.literal('welcome'),
+    caseId: z.string().min(1).max(MAX_CASE_ID_CHARS),
+    caseName: z.string().min(1).max(MAX_CASE_NAME_CHARS),
+    ownerPublicKeyPem: pemField,
+    roster: z.array(WelcomeMemberSchema).min(1).max(MAX_ROSTER_MEMBERS),
+    // Each member's last-known ticket, the Owner's own included.
+    tickets: z.record(installationIdField, ticketField)
+  })
+  .strict()
+
+const JoinRefusedSchema = z
+  .object({ t: z.literal('join-refused'), reason: z.enum(SHARING_ERROR_CODES) })
+  .strict()
+
 export const SyncMessageSchema = z.discriminatedUnion('t', [
   HelloSchema,
   ProofSchema,
@@ -149,7 +219,11 @@ export const SyncMessageSchema = z.discriminatedUnion('t', [
   BlobsSchema,
   RowsRequestSchema,
   RowsSchema,
-  ByeSchema
+  ByeSchema,
+  JoinSchema,
+  JoinPendingSchema,
+  WelcomeSchema,
+  JoinRefusedSchema
 ])
 
 export type SyncMessage = z.infer<typeof SyncMessageSchema>

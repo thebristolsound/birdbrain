@@ -443,6 +443,18 @@ describe('join handshake (#1810)', () => {
     expect(server.pendingJoins(caseId)).toEqual([])
   })
 
+  // A fixed answer: an Owner and a joiner on different builds must agree on
+  // this digest byte for byte, or no join verifies.
+  it('digests the canonical join body to a fixed answer', () => {
+    const secret = Uint8Array.from({ length: 16 }, (_, i) => i)
+    const text =
+      '{"caseId":"case-1","ownerNodeId":"node-owner","purpose":"birdbrain-invite-join",' +
+      '"secret":"000102030405060708090a0b0c0d0e0f","signer":"installation-joiner"}'
+    const digest = joinDigest('case-1', secret, 'node-owner', 'installation-joiner')
+    expect(digest).toBe(createHash('sha256').update(text).digest('hex'))
+    expect(digest).toBe('7eb4f0643ede31fadb295b080105c54f0dff4e6eaf10d1a5f128498f34996126')
+  })
+
   describe('a crafted welcome', () => {
     // A listener standing in for an Owner that answers every join with the
     // welcome the test hands it.

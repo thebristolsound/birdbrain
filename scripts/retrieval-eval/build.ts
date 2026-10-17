@@ -1,24 +1,25 @@
 /**
  * Builds the synthetic evaluation Case and measures Case search on it
- * (docs/plans/2026-10-09-case-retrieval-first-slice.md, D10, step 1).
+ * (docs/plans/2026-10-09-case-retrieval-first-slice.md, D10, steps 1 and 6).
  *
  * The Case is produced by the product's own pipeline, as the demo fixture is:
  * the target pages under `pages/` and the generated filler pages are served to
  * a real Chromium window over an intercepted https scheme, saved as MHTML, and
- * ingested through `ingestMhtmlCapture`. The extraction the app runs after an
- * ingest runs here too, because `ingestMhtmlCapture` alone does not run it.
- * Every page is fictional; see `targets.ts`.
+ * ingested through `ingestMhtmlCapture`. The extraction and the field build the
+ * app runs after an ingest run here too, because `ingestMhtmlCapture` alone
+ * runs neither. Every page is fictional; see `targets.ts`.
  *
  * Run it with `pnpm eval:retrieval`, which bundles this file and hands it to
  * Electron. `--eval-captures=<n>` sets the Case size (target pages included),
  * and `--eval-phase=build|measure|all` runs one half: `measure` re-reads the
  * profile a previous `build` left in `out/retrieval-eval/profile`, so a later
  * slice can be measured on the same Case. The report lands in
- * `out/retrieval-eval/report.md` and `report.json`.
+ * `out/retrieval-eval/report.md` and `report.json`; a `measure` run over the
+ * Case the last report measured keeps that report's latency as an earlier pass.
  */
 
 import { app, BrowserWindow, session } from 'electron'
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { performance } from 'perf_hooks'
 import { fileURLToPath } from 'url'
@@ -28,6 +29,11 @@ import * as captureRepo from '@main/services/db/captureRepo'
 import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
 import * as noteRepo from '@main/services/db/noteRepo'
 import * as selectorRepo from '@main/services/db/selectorRepo'
+import * as searchFieldRepo from '@main/services/db/searchFieldRepo'
+import { listUnreviewedCaptures } from '@main/services/db/unreviewedRepo'
+import { buildExhibitFields, rebuildAllFields } from '@main/services/search/fieldIndex'
+import { checkFieldHit } from '@main/services/investigation/claimCheck'
+import type { ClaimCheck } from '@shared/investigation'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { getInstallationId, initInstallationId } from '@main/services/installationId'
 import { initSigningKey } from '@main/services/signingKey'
@@ -39,18 +45,22 @@ import { uploadToStaging } from '@main/services/staging'
 import { fillerPage } from './filler'
 import { QUERIES } from './queries'
 import {
+  FIELD_SEARCH,
+  measureUnreviewed,
   percentile,
   rankedKeys,
   renderReport,
   scoreQuery,
   spread,
+  tallyChecks,
+  type CheckTally,
   type EvalReport,
   type IndexSize,
   type PathAnswer,
   type PathLatency,
   type ScoredQuery
 } from './score'
-import { POOLED_FILE, TARGET_PAGES, type TargetKey } from './targets'
+import { EXPECTED_PLACEMENTS, POOLED_FILE, TARGET_PAGES, type TargetKey } from './targets'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = join(HERE, '..', '..')
@@ -58,13 +68,15 @@ const PAGES_DIR = join(HERE, 'pages')
 const OUT_DIR = join(REPO_ROOT, 'out', 'retrieval-eval')
 const PROFILE_DIR = join(OUT_DIR, 'profile')
 const CASE_FILE = join(OUT_DIR, 'case.json')
+const REPORT_FILE = join(OUT_DIR, 'report.json')
 
 const PARTITION = 'retrieval-eval'
 const OPERATOR_NAME = 'Retrieval evaluation'
 const CASE_NAME = 'Retrieval evaluation (synthetic)'
-// A default for a quick run. The size the baseline is measured at is the
-// maintainer's open question in the plan.
+// A default for a quick run. The plan's Ruling 5 measures at 1,000.
 const DEFAULT_CAPTURES = 200
+// The view's limit when it opens (Ruling 3).
+const RARE_LIMIT = 2
 // One share of filler pages gets a Note, so the unreviewed count is not the
 // whole Case. The target pages' own annotation is fixed in targets.ts.
 const FILLER_NOTE_SHARE = 0.3
@@ -230,6 +242,8 @@ async function build(size: number): Promise<CaseRecord> {
       if (html) {
         extractedDataRepo.insertExtractedData(capture.id, evalCase.id, page.url, extractData(html))
       }
+      // What runFieldBuild does next.
+      buildExhibitFields(capture.id)
       texts.push({ captureId: capture.id, text: rendered.text })
 
       const annotated = page.target
@@ -306,6 +320,26 @@ function searchPaths(record: CaseRecord): SearchPath[] {
           returned: rows.length
         }
       }
+    },
+    {
+      // The slice's link and header search (`cases:searchFields`). It answers in capture
+      // time order, newest first, not by relevance.
+      name: FIELD_SEARCH,
+      answer: (query) => {
+        const { hits, unavailable, truncated } = searchFieldRepo.searchCaseFields(
+          record.caseId,
+          query
+        )
+        return {
+          ranked: rankedKeys(
+            hits.map((hit) => hit.exhibitId),
+            record.targets
+          ),
+          returned: hits.length,
+          truncated,
+          unavailable: unavailable.length
+        }
+      }
     }
   ]
 }
@@ -330,30 +364,37 @@ function indexSizes(): IndexSize[] {
       `SELECT name, SUM(pgsize) AS bytes FROM dbstat
         WHERE name LIKE 'captures_fts%' OR name = 'capture_texts'
            OR name LIKE 'extracted_data%'
+           OR name LIKE 'exhibit_search%' OR name LIKE 'idx_exhibit_search%'
+           OR name LIKE 'sqlite_autoindex_exhibit_search%'
         GROUP BY name ORDER BY name`
     )
     .all() as IndexSize[]
 }
 
-function unreviewedCaptureIds(caseId: string): string[] {
-  const rows = getDb()
-    .prepare(
-      `SELECT e.id FROM exhibits e
-        WHERE e.case_id = ? AND e.kind = 'capture'
-          AND NOT EXISTS (SELECT 1 FROM selector_matches m WHERE m.capture_id = e.id)
-          AND NOT EXISTS (
-            SELECT 1 FROM notes n
-             WHERE n.case_id = e.case_id AND n.deleted_at IS NULL
-               AND (n.capture_id = e.id OR instr(COALESCE(n.anchor_json, ''), e.id) > 0))
-          AND NOT EXISTS (
-            SELECT 1 FROM note_references r JOIN notes n ON n.id = r.note_id
-             WHERE r.target_type = 'capture' AND r.target_id = e.id AND n.deleted_at IS NULL)`
+// The exact check (step 5) on every Field search hit of every query. A query whose Field
+// search threw has that error in its scored row and no hits to check.
+async function checkEveryHit(record: CaseRecord, scored: ScoredQuery[]): Promise<CheckTally> {
+  const perQuery: Array<{ queryId: string; checks: ClaimCheck[] }> = []
+  for (const query of QUERIES) {
+    const failed = scored.some(
+      (row) => row.path === FIELD_SEARCH && row.queryId === query.id && row.error
     )
-    .all(caseId) as Array<{ id: string }>
-  return rows.map((row) => row.id)
+    const hits = failed ? [] : searchFieldRepo.searchCaseFields(record.caseId, query.text).hits
+    const checks: ClaimCheck[] = []
+    for (const hit of hits) checks.push((await checkFieldHit(hit.fieldId)).check)
+    perQuery.push({ queryId: query.id, checks })
+  }
+  return tallyChecks(perQuery)
 }
 
-function measure(record: CaseRecord): EvalReport {
+function earlierLatency(caseId: string): PathLatency[][] {
+  if (!existsSync(REPORT_FILE)) return []
+  const last = JSON.parse(readFileSync(REPORT_FILE, 'utf-8')) as Partial<EvalReport>
+  if (last.caseId !== caseId || !last.latency) return []
+  return [...(last.earlierLatency ?? []), last.latency]
+}
+
+async function measure(record: CaseRecord, earlier: PathLatency[][]): Promise<EvalReport> {
   const paths = searchPaths(record)
   const scored: ScoredQuery[] = []
   const latency: PathLatency[] = []
@@ -381,6 +422,16 @@ function measure(record: CaseRecord): EvalReport {
   const fullRebuildMs = timeMs(() =>
     db.exec("INSERT INTO captures_fts(captures_fts) VALUES ('rebuild')")
   )
+  // The Settings rebuild's field pass: every Capture's records, then their index.
+  const fieldRebuildStart = performance.now()
+  await rebuildAllFields()
+  const fieldFullRebuildMs = performance.now() - fieldRebuildStart
+  const outcomes = db
+    .prepare(
+      `SELECT outcome, COUNT(*) AS count FROM exhibit_search_builds
+        WHERE case_id = ? GROUP BY outcome ORDER BY outcome`
+    )
+    .all(record.caseId) as Array<{ outcome: string; count: number }>
   // Before the re-index samples below, which add index segments.
   const sizes = indexSizes()
   // An UPDATE fires capture_texts_au, which deletes and re-inserts the row's
@@ -392,25 +443,38 @@ function measure(record: CaseRecord): EvalReport {
       capture_id: string
     }>
   ).map((row) => row.capture_id)
-  const incremental = spread(captureIds, INCREMENTAL_SAMPLES).map((id) =>
-    timeMs(() => reindex.run(id))
-  )
+  const sample = spread(captureIds, INCREMENTAL_SAMPLES)
+  const incremental = sample.map((id) => timeMs(() => reindex.run(id)))
+  const fieldIncremental = sample.map((id) => timeMs(() => buildExhibitFields(id)))
 
-  const unreviewed = unreviewedCaptureIds(record.caseId)
+  const checks = await checkEveryHit(record, scored)
+
+  // Through the read the view calls, at the limit the view opens with.
+  const view = listUnreviewedCaptures(record.caseId, RARE_LIMIT)
+  const reads = Array.from({ length: TIMED_RUNS }, () =>
+    timeMs(() => listUnreviewedCaptures(record.caseId, RARE_LIMIT))
+  )
   return {
     generatedAt: new Date().toISOString(),
     toolVersion: app.getVersion(),
+    caseId: record.caseId,
     captures: record.captures,
     targets: TARGET_PAGES.length,
     fillers: record.fillers,
     queries: QUERIES,
     scored,
     latency,
+    earlierLatency: earlier,
     indexSizes: sizes,
     fullRebuildMs,
     incrementalMedianMs: percentile(incremental, 50),
-    unreviewedCaptures: unreviewed.length,
-    unreviewedTargets: unreviewed.flatMap((id) => record.targets[id] ?? [])
+    fieldBuild: {
+      outcomes,
+      fullRebuildMs: fieldFullRebuildMs,
+      incrementalMedianMs: percentile(fieldIncremental, 50)
+    },
+    checks,
+    unreviewed: measureUnreviewed(view, record.targets, EXPECTED_PLACEMENTS, percentile(reads, 50))
   }
 }
 
@@ -424,16 +488,18 @@ async function run(): Promise<void> {
   mkdirSync(OUT_DIR, { recursive: true })
 
   let record: CaseRecord
+  let earlier: PathLatency[][] = []
   if (phase === 'measure') {
     await openProfile(false)
     record = JSON.parse(readFileSync(CASE_FILE, 'utf-8')) as CaseRecord
+    earlier = earlierLatency(record.caseId)
   } else {
     record = await build(size)
   }
   if (phase !== 'build') {
-    const report = measure(record)
+    const report = await measure(record, earlier)
     const markdown = renderReport(report)
-    writeFileSync(join(OUT_DIR, 'report.json'), `${JSON.stringify(report, null, 2)}\n`)
+    writeFileSync(REPORT_FILE, `${JSON.stringify(report, null, 2)}\n`)
     writeFileSync(join(OUT_DIR, 'report.md'), markdown)
     process.stdout.write(`${markdown}\n`)
   }

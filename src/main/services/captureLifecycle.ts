@@ -25,6 +25,7 @@ import type { CaptureChainEntry, ManifestImportEntry } from '@main/services/mani
 import { reconcileCaptureTrustedTime, resolveTrustedTime } from '@main/services/trustedTime'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { getSettings } from '@main/services/settings'
+import { currentEgress, type CaptureEgress } from '@main/services/egress'
 import { resolveToolVersion } from '@main/services/toolVersion'
 import { fetchCertChain as defaultFetchCertChain } from '@main/services/tlsCertChain'
 import type { TlsCertChainResult } from '@main/services/tlsCertChain'
@@ -34,7 +35,8 @@ import type {
   CaptureMethod,
   CaptureSource,
   ConsentSuppression,
-  HashVerification
+  HashVerification,
+  TlsRefetchSkip
 } from '@shared/types'
 import type { BatchDeleteOutcome, BatchDeleteResult, DuplicateCaptureResult } from '@shared/ipc'
 import type { CaptureUploadSource, ScreenshotStatus } from '@shared/schemas'
@@ -83,6 +85,15 @@ export interface IngestParams {
   supersedesCaptureId?: string
   consentSuppression?: ConsentSuppression
   screenshot?: Buffer
+  // The Egress a background render sent the page through, when it was not Direct
+  // (ADR-0032 rule 5). The entry then records its kind, the Operator's label and
+  // `userAgent`. Passed only by a path that sent the page itself; an extension
+  // capture's page loaded in the Operator's own browser and passes none.
+  egress?: CaptureEgress
+  // Set by the lifecycle while the Egress is not Direct: the TLS Cert Chain
+  // re-fetch opens a raw socket the proxy cannot carry, so it does not run, and
+  // the entry says so (rule 3). For every method, extension included.
+  tlsSkipped?: TlsRefetchSkip
 }
 
 export interface IngestResult {
@@ -165,6 +176,9 @@ export interface CaptureLifecycleDeps {
   // Both optional so a headless lifecycle emits nothing.
   emitCaptureEvent?: (event: CaptureEvent) => void
   emitNewCapture?: (capture: Capture) => void
+  // Whether the Egress is Direct right now (ADR-0032). Optional; defaults to the
+  // installation's setting. Tests inject it.
+  egressIsDirect?: () => boolean
 }
 
 export interface CaptureLifecycle {
@@ -236,6 +250,17 @@ function outcomeError(err: unknown): string {
   return typeof code === 'string' && code.length > 0 ? `${err.name} (${code})` : err.name
 }
 
+// The re-fetch runs only for an https page (fetchCertChain), so only those can
+// record that it was skipped. An address that does not parse counts: the re-fetch
+// would have tried it.
+function wouldRefetchTls(url: string): boolean {
+  try {
+    return new URL(url).protocol === 'https:'
+  } catch {
+    return true
+  }
+}
+
 // End-to-end MHTML ingest:
 // 1. Stream-write + hash to disk (through the Capture Store)
 // 2. Inside withCaptureEntry's write-ahead seam: write sidecar files (.txt, .png) and insert the
@@ -292,16 +317,18 @@ export async function ingestMhtmlCapture(
   // fetch problem can NEVER fail the capture. Omitted (undefined) for non-https
   // URLs so those entries keep their original canonical body and chain hash.
   let tls: TlsCertChainResult | undefined
-  try {
-    tls = (await fetchTlsCertChain(params.url)) ?? undefined
-  } catch (err) {
-    logger.error(
-      'captureLifecycle',
-      'captureLifecycle.tls_refetch_failed',
-      { captureId: ident(captureId) },
-      err
-    )
-    tls = undefined
+  if (!params.tlsSkipped) {
+    try {
+      tls = (await fetchTlsCertChain(params.url)) ?? undefined
+    } catch (err) {
+      logger.error(
+        'captureLifecycle',
+        'captureLifecycle.tls_refetch_failed',
+        { captureId: ident(captureId) },
+        err
+      )
+      tls = undefined
+    }
   }
 
   // The write-ahead manifest entry + rollback-on-throw is owned by withCaptureEntry.
@@ -331,6 +358,11 @@ export async function ingestMhtmlCapture(
         supersedesCaptureId: params.supersedesCaptureId,
         consentSuppression: params.consentSuppression,
         exhibitNumber,
+        // Omitted for Direct, so those entries keep the canonical body they had.
+        egressKind: params.egress?.kind,
+        egressLabel: params.egress?.label,
+        userAgent: params.egress ? params.userAgent : undefined,
+        tlsSkipped: params.tlsSkipped,
         operatorId: params.operatorId,
         operatorName: params.operatorName,
         toolVersion: params.toolVersion
@@ -1031,8 +1063,14 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
 
   const lifecycle: CaptureLifecycle = {
     async ingest(params) {
+      const egressIsDirect = deps.egressIsDirect ?? (() => currentEgress().kind === 'direct')
+      const tlsSkipped =
+        params.tlsSkipped ??
+        ((params.egress !== undefined || !egressIsDirect()) && wouldRefetchTls(params.url)
+          ? 'egress-not-direct'
+          : undefined)
       const result = await ingestMhtmlCapture(
-        params,
+        { ...params, tlsSkipped },
         deps.fetchTlsCertChain ?? defaultFetchCertChain,
         store
       )
@@ -1379,6 +1417,12 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
               duplicatedAt,
               consentSuppression: sourceEntry.consentSuppression,
               exhibitNumber,
+              // The Egress the source was sent through, re-anchored from its signed
+              // entry like `tls` above (ADR-0032).
+              egressKind: sourceEntry.egressKind,
+              egressLabel: sourceEntry.egressLabel,
+              userAgent: sourceEntry.userAgent,
+              tlsSkipped: sourceEntry.tlsSkipped,
               sizeBytes: mhtml.sizeBytes,
               operatorId: getInstallationId(),
               operatorName,

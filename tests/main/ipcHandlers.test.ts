@@ -13,6 +13,7 @@ import {
   writeFileSync
 } from 'fs'
 import { join } from 'path'
+import { egressFetch } from '@main/services/egress'
 import { readStoredZip } from '@main/services/zipRead'
 import { tmpdir } from 'os'
 import { pathToFileURL } from 'url'
@@ -2899,7 +2900,14 @@ describe('archive handlers', () => {
     })
     const handler = registered.get('wayback:lookup')!
     const result = (await handler({} as never, cap.id)) as { ok: boolean; data: unknown }
-    expect(lookupSnapshots).toHaveBeenCalledWith('https://example.com/', '2020-01-15T12:00:00.000Z')
+    // The lookup follows the Egress (ADR-0032).
+    expect(lookupSnapshots).toHaveBeenCalledWith(
+      'https://example.com/',
+      '2020-01-15T12:00:00.000Z',
+      {
+        fetchImpl: egressFetch
+      }
+    )
     expect(result.ok).toBe(true)
   })
 

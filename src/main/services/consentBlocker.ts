@@ -2,6 +2,7 @@ import { app } from 'electron'
 import { promises as fs } from 'fs'
 import { join } from 'path'
 import { ElectronBlocker } from '@ghostery/adblocker-electron'
+import { egressFetch } from '@main/services/egress'
 import { logger } from '@main/services/logger'
 
 // Consent/cookie-notice lists ONLY — deliberately NOT the ad/tracker lists.
@@ -44,7 +45,9 @@ export function getConsentBlocker(): Promise<ElectronBlocker | null> {
         write: fs.writeFile
       }
   blockerKey = key
-  blockerPromise = ElectronBlocker.fromLists(fetch, lists, undefined, caching).catch(
+  // The list download follows the Egress (ADR-0032). Through a stopped proxy it
+  // fails, and the render proceeds without Consent Suppression, as it does offline.
+  blockerPromise = ElectronBlocker.fromLists(egressFetch, lists, undefined, caching).catch(
     (err): null => {
       logger.error('consentBlocker', 'consentBlocker.filter_engine_failed', undefined, err)
       // Only clear if this is still the in-flight build for this key, so a

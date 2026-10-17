@@ -1035,6 +1035,12 @@ export interface CaptureEntryContext {
   consentSuppression?: ConsentSuppression
   // The Exhibit Number the ingest assigned (X46); the row takes the same one.
   exhibitNumber?: number
+  // The Egress fields (ADR-0032), schema 5; omitted when absent, so an entry
+  // written while the Egress was Direct keeps its canonical body.
+  egressKind?: EgressKind
+  egressLabel?: string
+  userAgent?: string
+  tlsSkipped?: TlsRefetchSkip
   sizeBytes: number
   operatorId: string
   operatorName: string
@@ -1077,6 +1083,10 @@ export async function withCaptureEntry<T>(
         ? { consentSuppression: ctx.consentSuppression }
         : {}),
       ...(ctx.exhibitNumber !== undefined ? { exhibitNumber: ctx.exhibitNumber } : {}),
+      ...(ctx.egressKind !== undefined ? { egressKind: ctx.egressKind } : {}),
+      ...(ctx.egressLabel !== undefined ? { egressLabel: ctx.egressLabel } : {}),
+      ...(ctx.userAgent !== undefined ? { userAgent: ctx.userAgent } : {}),
+      ...(ctx.tlsSkipped !== undefined ? { tlsSkipped: ctx.tlsSkipped } : {}),
       sizeBytes: ctx.sizeBytes,
       operatorId: ctx.operatorId,
       operatorName: ctx.operatorName,

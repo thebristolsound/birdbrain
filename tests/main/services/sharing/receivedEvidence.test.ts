@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { createHash, randomUUID } from 'crypto'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import sharp from 'sharp'
@@ -13,6 +13,7 @@ import {
   setCaptureTrustedTime
 } from '@main/services/db/captureRepo'
 import { createCase } from '@main/services/db/caseRepo'
+import { exhibitCitationResolver } from '@main/services/db/caseMemberRepo'
 import { getExhibit } from '@main/services/db/exhibitRepo'
 import { listDerivedFilesForExhibit } from '@main/services/db/derivedFileRepo'
 import { resetInstallationId } from '@main/services/installationId'
@@ -31,6 +32,7 @@ import { backfillCase, runExhibitBackfill } from '@main/services/exhibitBackfill
 import { verifyCaseDerivedFiles } from '@main/services/exhibits'
 import { getThumbnail } from '@main/services/thumbnails'
 import { resetSyncStateMemory } from '@main/services/sharing/syncState'
+import { getStorageRoot } from '@main/services/storage'
 import type { ManifestEntry } from '@shared/schemas'
 import {
   activate,
@@ -551,6 +553,60 @@ describe('received evidence (#1811)', () => {
       expect(getCapture(forged)).toBeDefined()
       expect(filesOf(CASE_ID, bobs.captureId)).toEqual(before)
     })
+  })
+
+  // Review finding 2 on this PR: the Shared Case walk reports an `exhibit` entry claiming a code
+  // other than its writer's as a citation-collision, so the receiver writes it no row.
+  it("refuses an exhibit entry claiming another member's code, and keeps one stating its own", async () => {
+    await activate(B)
+    const bobs = await addCapture(CASE_ID, B, 1)
+    expect(getCapture(bobs.captureId)?.exhibitCitation).toBe('BO-1')
+
+    await activate(A)
+    const exhibitBody = (exhibitId: string, memberCode: string, exhibitNumber: number) => {
+      const path = `${CASE_ID}/documents/${exhibitId}.pdf`
+      const bytes = Buffer.from(`%PDF statement ${exhibitId}`)
+      writeFileSync(join(getStorageRoot(), path), bytes)
+      return {
+        type: 'exhibit',
+        exhibitId,
+        caseId: CASE_ID,
+        kind: 'document',
+        origin: 'manual-upload',
+        name: `${exhibitId}.pdf`,
+        exhibitNumber,
+        memberCode,
+        path,
+        contentHash: sha(bytes),
+        sizeBytes: bytes.length,
+        timestamp: TIME,
+        ...by(A),
+        schemaVersion: 4
+      }
+    }
+    mkdirSync(join(caseDirOf(CASE_ID), 'documents'), { recursive: true })
+    const spoofedId = randomUUID()
+    const ownId = randomUUID()
+    const spoofed = appendOwnChainLine(CASE_ID, exhibitBody(spoofedId, 'BO', 1))
+    appendOwnChainLine(CASE_ID, exhibitBody(ownId, 'AL', 2))
+    const source = recordSource(CASE_ID, A)
+
+    await activate(B)
+    const result = await pull(CASE_ID, source)
+    expect(result.errors).toEqual([
+      {
+        kind: 'rejected-entry',
+        installationId: A.installationId,
+        index: spoofed.index,
+        detail: `exhibit ${spoofedId}: claims Member Code BO, its author's is AL`
+      }
+    ])
+    expect(result.exhibitsApplied).toBe(1)
+    expect(getExhibit(spoofedId)).toBeUndefined()
+    expect(getExhibit(ownId)).toMatchObject({ memberCode: 'AL', exhibitNumber: 2 })
+    const cite = exhibitCitationResolver(CASE_ID, 'app')
+    expect(cite(getExhibit(ownId)!)).toBe('AL-2')
+    expect(getCapture(bobs.captureId)?.exhibitCitation).toBe('BO-1')
   })
 
   describe('Trusted Time', () => {

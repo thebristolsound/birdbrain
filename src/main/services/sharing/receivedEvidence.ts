@@ -249,9 +249,15 @@ export async function applyReceivedEvidence(
     entry: ExhibitEntry
   ): Promise<InsertExhibitParams | null> {
     const { exhibitId: id, index, exhibitNumber: n } = entry
-    const code = entry.memberCode ?? memberCode
-    if (code === undefined) {
+    if (memberCode === undefined) {
       refuse('rejected-entry', author, index, `exhibit ${id}: author has no Member Code`)
+      return null
+    }
+    // The Shared Case walk reports an entry claiming a code other than its writer's as a
+    // citation-collision (sharedCase.ts), so it gets no row here.
+    if (entry.memberCode !== undefined && entry.memberCode !== memberCode) {
+      const detail = `exhibit ${id}: claims Member Code ${entry.memberCode}, its author's is ${memberCode}`
+      refuse('rejected-entry', author, index, detail)
       return null
     }
     const problem = claimProblem(id, author, n)
@@ -284,7 +290,7 @@ export async function applyReceivedEvidence(
       committedAt: entry.timestamp,
       manifestSeq: index,
       exhibitNumber: n,
-      author: { installationId: author, memberCode: code }
+      author: { installationId: author, memberCode }
     }
   }
 

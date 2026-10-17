@@ -1424,6 +1424,94 @@ describe('Shared Case export, import and fork (#1511)', () => {
       expectOnlyPackageHash(dir)
     })
 
+    // Each read step 4a makes of a member chain after its check, pinned by an
+    // entry after a form-feed line that only that read acts on.
+    it('fails a member entry naming another Case that follows a form-feed line', async () => {
+      const { peer, peerDoc } = ownerReplica()
+      const [row] = listExhibits(caseId).filter((e) => e.id === peerDoc)
+      peer.append({
+        type: 'deletion',
+        caseId: 'case-elsewhere',
+        captureId: peerDoc,
+        contentHash: row.contentHash,
+        timestamp: TIME,
+        ...PEER,
+        schemaVersion: 3
+      })
+      writeFileSync(join(caseDir(), peerChain), peer.jsonl)
+      const { dir } = await exportPackage()
+      writeFileSync(
+        join(dir, peerChain),
+        withLine(readFileSync(join(dir, peerChain), 'utf-8'), 0, '\f')
+      )
+      reindex(dir, peerChain)
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      const merge =
+        `merge entry 3 of ${localId} names installation ${PEER_ID}, whose chain ` +
+        'is not present or did not verify'
+      const foreign = `entry 1 of ${PEER_ID} (RP) names Case case-elsewhere, the Shared Case is ${caseId}`
+      expect(findings(run.output, 'FAIL')).toEqual([
+        `FAIL [step 4a] ${foreign}`,
+        `FAIL [step 4a] ${merge}`
+      ])
+      expect(sharedCaseFailures(dir)).toEqual([
+        `roster-invalid: ${foreign}`,
+        `merge-head-mismatch: ${merge}`
+      ])
+    })
+
+    it('fails a membership entry in a member chain that follows a form-feed line', async () => {
+      const { peer } = ownerReplica()
+      peer.append(
+        memberAdd('installation-extra-0001', keyPair().publicKey, 'EX', 'Ex', 'member', PEER)
+      )
+      writeFileSync(join(caseDir(), peerChain), peer.jsonl)
+      const { dir } = await exportPackage()
+      writeFileSync(
+        join(dir, peerChain),
+        withLine(readFileSync(join(dir, peerChain), 'utf-8'), 0, '\f')
+      )
+      reindex(dir, peerChain)
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      const outside = "entry 1: member-add entry written outside the Owner's chain"
+      expect(findings(run.output, 'FAIL')).toEqual([`FAIL [step 4a] ${peerChain}: ${outside}`])
+      expect(sharedCaseFailures(dir)).toEqual([
+        "roster-invalid: member-add entry written outside the Owner's chain"
+      ])
+    })
+
+    it("passes a revoked member's merged entries that follow a form-feed line", async () => {
+      ownerReplica(
+        (owner) => {
+          owner.append({
+            type: 'member-revoke',
+            caseId,
+            memberInstallationId: PEER_ID,
+            timestamp: TIME,
+            ...LOCAL(),
+            schemaVersion: 4
+          })
+        },
+        (peer) => {
+          document(peer, PEER, { installationId: PEER_ID, memberCode: 'RP' }, 2)
+        }
+      )
+      const { dir } = await exportPackage()
+      writeFileSync(
+        join(dir, peerChain),
+        withLine(readFileSync(join(dir, peerChain), 'utf-8'), 0, '\f')
+      )
+      reindex(dir, peerChain)
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(0)
+      expectOnlyPackageHash(dir)
+    })
+
     // jq skips a byte-order mark at the start of its input and stops at one
     // anywhere after it; the package verifier's JSON.parse rejects the line.
     it('fails a member entry line that begins with a byte-order mark', async () => {

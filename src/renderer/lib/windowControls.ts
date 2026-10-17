@@ -12,6 +12,11 @@
 // (e2e/topbar-layout.spec.ts). The `titlebar-area-*` CSS variables share that problem,
 // which is why this is script and not a `calc()`.
 //
+// A resize fires `geometrychange` while the rect and `innerWidth` still disagree: the first
+// event of a resize can carry the new window width as the rect's width beside the old
+// `innerWidth`. Read then, the inset is off by the resize and stays off until the next
+// event, which Windows may not send. So the read waits until the events have stopped.
+//
 // macOS has no overlay; its traffic lights sit at the left, so the inset is fixed.
 
 export const WINDOW_CONTROLS_LEFT_PROPERTY = '--window-controls-left'
@@ -19,6 +24,9 @@ export const WINDOW_CONTROLS_RIGHT_PROPERTY = '--window-controls-right'
 
 // Room for the traffic lights at trafficLightPosition x 16 (windowChrome.ts).
 export const MAC_TRAFFIC_LIGHT_INSET_PX = 64
+
+// How long `geometrychange` must stay quiet before the overlay is read.
+export const GEOMETRY_SETTLE_MS = 150
 
 interface WindowControlsOverlay extends EventTarget {
   visible: boolean
@@ -75,7 +83,15 @@ export function syncWindowControlsInset(
   }
 
   const update = (): void => setInsets(windowControlsInsets(overlay, win.innerWidth))
+  let settle: ReturnType<typeof setTimeout> | undefined
+  const onGeometryChange = (): void => {
+    clearTimeout(settle)
+    settle = setTimeout(update, GEOMETRY_SETTLE_MS)
+  }
   update()
-  overlay.addEventListener('geometrychange', update)
-  return () => overlay.removeEventListener('geometrychange', update)
+  overlay.addEventListener('geometrychange', onGeometryChange)
+  return () => {
+    clearTimeout(settle)
+    overlay.removeEventListener('geometrychange', onGeometryChange)
+  }
 }

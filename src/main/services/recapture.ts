@@ -2,6 +2,7 @@ import * as captureRepo from '@main/services/db/captureRepo'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import { blockedSkipReason, matchCaseExclusion } from '@main/services/exclusionPolicy'
 import { getInstallationId } from '@main/services/installationId'
+import { RefusedAddressError, refusedAddressClass } from '@main/services/localAddressPolicy'
 import { getSettings } from '@main/services/settings'
 import { resolveToolVersion } from '@main/services/toolVersion'
 import type { Capture, CaptureEvent, ConsentSuppression } from '@shared/types'
@@ -100,7 +101,8 @@ function validateUrl(raw: string): string | null {
   try {
     const u = new URL(raw)
     if (u.protocol !== 'http:' && u.protocol !== 'https:') return 'Only http/https URLs supported'
-    return null
+    const refused = refusedAddressClass(raw)
+    return refused ? `Points at ${refused}` : null
   } catch {
     return 'Invalid URL'
   }
@@ -139,6 +141,22 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         rendered = await Promise.race([deps.renderPage(job.url, { timeoutMs }), fallbackTimeout])
       } finally {
         clearTimeout(fallbackTimer)
+      }
+
+      // `enqueue` refused a link that points at a local address; a redirect the renderer
+      // did not see as a hop still lands here (#1726). Nothing reaches the database or the
+      // manifest. The event names `job.url` so it replaces the job's in-flight entry.
+      const refused = refusedAddressClass(rendered.finalUrl)
+      if (refused) {
+        rendered.mhtmlStream.destroy?.()
+        deps.emitEvent({
+          type: 'skipped',
+          source: 'recapture',
+          url: job.url,
+          timestamp: new Date().toISOString(),
+          skipReason: `Redirects to ${refused}`
+        })
+        return
       }
 
       // Second enforcement point (#400). `enqueue` could only judge the URL the
@@ -212,6 +230,16 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         warning
       })
     } catch (err) {
+      if (err instanceof RefusedAddressError) {
+        deps.emitEvent({
+          type: 'skipped',
+          source: 'recapture',
+          url: job.url,
+          timestamp: new Date().toISOString(),
+          skipReason: err.message
+        })
+        return
+      }
       deps.emitEvent({
         type: 'failed',
         source: 'recapture',

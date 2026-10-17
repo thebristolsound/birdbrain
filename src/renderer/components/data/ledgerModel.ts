@@ -44,7 +44,9 @@ function targetOf(entry: ManifestEntry, rule: ExhibitCitationRule): string {
     case 'deletion':
       return `${entry.captureId}${entry.reason ? ` · ${entry.reason}` : ''}`
     case 'timestamp':
-      return `hash ${short(entry.captureContentHash)}${entry.tsaToken ? '' : ' · no token'}`
+      // A receipt stamp (#1515) binds a `merge` entry's Entry Hash, so its
+      // target is an entry, not an Exhibit's content.
+      return `${entry.subject === 'entry' ? 'receipt for entry' : 'hash'} ${short(entry.captureContentHash)}${entry.tsaToken ? '' : ' · no token'}`
     case 'export':
       return `package ${short(entry.packageHash)}${entry.scope === 'selection' ? ` · ${entry.captureIds?.length ?? 0} selected` : ''}${entry.exportClass === 'working-copy' ? ' · working copy' : ''}`
     case 'archive-export':
@@ -104,8 +106,9 @@ export function toLedgerRows(
 }
 
 // Whether a parsed entry names the Exhibit: by id on the entries that carry
-// one (an `exclude` included), by Content Hash on a `timestamp` (which binds a
-// hash, not an id), and by assignment on a `renumber`.
+// one (an `exclude` included), by Content Hash on a content `timestamp` (which
+// binds a hash, not an id), and by assignment on a `renumber`. A receipt stamp
+// binds an Entry Hash, which names no Exhibit.
 export function entryNames(
   entry: ManifestEntry,
   exhibit: { id: string; contentHash: string }
@@ -115,7 +118,7 @@ export function entryNames(
     case 'deletion':
       return entry.captureId === exhibit.id
     case 'timestamp':
-      return entry.captureContentHash === exhibit.contentHash
+      return entry.subject !== 'entry' && entry.captureContentHash === exhibit.contentHash
     case 'exhibit':
     case 'exclude':
       return entry.exhibitId === exhibit.id
@@ -151,6 +154,7 @@ export function targetExhibitId(
         entry.parentExhibitId
       )
     case 'timestamp':
+      if (entry.subject === 'entry') return null
       return rows.find((r) => r.contentHash === entry.captureContentHash)?.id ?? null
     default:
       return null

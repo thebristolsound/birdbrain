@@ -23,7 +23,7 @@ import { readMhtmlTitle } from '@main/services/mhtmlDecoder'
 import type { CaptureArtifactType, CaptureStore } from '@main/services/captureStore'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import { safeCasePath } from '@main/services/sharing/blobAcceptance'
-import { storedEntries } from '@main/services/sharing/entryAcceptance'
+import { isExhibitId, storedEntries } from '@main/services/sharing/entryAcceptance'
 import type { SyncError } from '@main/services/sharing/session'
 
 // Received evidence (#1811): turns the Captures, Exhibits and Derived Files another member's
@@ -103,7 +103,9 @@ export async function applyReceivedEvidence(
   // Removals first, so a Capture deleted and re-planned in one pass cannot collide with itself.
   for (const { author, entries } of chains) {
     for (const entry of entries) {
-      if (entry.type !== 'deletion') continue
+      // removeReceived builds the paths it removes from the id. Every row this step writes has a
+      // well-formed one, but an imported archive's rows keep the archive's ids.
+      if (entry.type !== 'deletion' || !isExhibitId(entry.captureId)) continue
       const row = getExhibit(entry.captureId)
       if (row?.caseId !== caseId || row.authorInstallationId !== author) continue
       if (await receivedCaptures.removeReceived(entry.captureId)) {

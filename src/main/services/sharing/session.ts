@@ -22,10 +22,10 @@ import { resolveToolVersion } from '@main/services/toolVersion'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import {
   acceptEntrySegment,
-  foreignCaseEntry,
   linesWithinBytes,
   nonEmptyLines,
   storedEntries,
+  unstorableEntry,
   type ChainHeadRef
 } from '@main/services/sharing/entryAcceptance'
 import {
@@ -420,18 +420,18 @@ export async function pullFromPeer(
   try {
     // Every stored member chain is judged before anything reads it, whether
     // or not this session will append to it: one stored whole by an older
-    // build, or by a session killed before its judgement, that names another
-    // Case is removed whole (foreignCaseEntry).
+    // build, or by a session killed before its judgement, that holds an entry
+    // this replica does not store is removed whole (unstorableEntry).
     for (const chain of readChainFileSnapshots(caseDir)) {
       if (chain.sourceCaseId !== undefined) continue
-      const foreign = foreignCaseEntry(storedEntries(chain.jsonl), caseId)
-      if (!foreign) continue
+      const refused = unstorableEntry(storedEntries(chain.jsonl), caseId)
+      if (!refused) continue
       truncateMemberChainLines(caseDir, chain.installationId, 0)
       result.errors.push({
         kind: 'rejected-entry',
-        detail: `entry ${foreign.index} of ${chain.installationId} names Case ${foreign.caseId}, this Case is ${caseId}`,
+        detail: `entry ${refused.index} of ${chain.installationId} ${refused.reason}`,
         installationId: chain.installationId,
-        index: foreign.index
+        index: refused.index
       })
     }
     // Before hello, so a revocation an earlier session stored but could not
@@ -579,29 +579,31 @@ export async function pullFromPeer(
           if (acceptance.outcome === 'newer-version' || acceptance.appended === 0) break
         }
       } finally {
-        // A chain names its Case in the entries after its last `import`; the
-        // ones before are a source Case's history (sharedCase.ts). That is
-        // judged over the chain as stored on every way out of the loop, the
-        // exceptional ones included, because the `import` may arrive on a
-        // later page and a session may end before it: a chain that names
-        // another Case is cut back to what this session found and is never
-        // counted as advanced. When what was stored before is itself foreign
-        // (an older build, or a session killed between a page and this
-        // check), the chain is removed whole.
+        // A chain names its Case, and the ids its files are found under, in
+        // the entries after its last `import`; the ones before are a source
+        // Case's history (sharedCase.ts). That is judged over the chain as
+        // stored on every way out of the loop, the exceptional ones included,
+        // because the `import` may arrive on a later page and a session may
+        // end before it: a chain holding an entry this replica does not store
+        // (unstorableEntry) is cut back to what this session found and is
+        // never counted as advanced, so neither the file step nor the apply
+        // step reads it. When what was stored before already holds one (an
+        // older build, or a session killed between a page and this check),
+        // the chain is removed whole.
         if (received > 0) {
           const stored = (): ManifestEntry[] =>
             storedEntries(Buffer.from(readMemberChainText(caseDir, installationId)))
-          const foreign = foreignCaseEntry(stored(), caseId)
-          if (foreign) {
+          const refused = unstorableEntry(stored(), caseId)
+          if (refused) {
             truncateMemberChainLines(caseDir, installationId, storedBefore)
-            if (foreignCaseEntry(stored(), caseId)) {
+            if (unstorableEntry(stored(), caseId)) {
               truncateMemberChainLines(caseDir, installationId, 0)
             }
             result.errors.push({
               kind: 'rejected-entry',
-              detail: `entry ${foreign.index} of ${installationId} names Case ${foreign.caseId}, this Case is ${caseId}`,
+              detail: `entry ${refused.index} of ${installationId} ${refused.reason}`,
               installationId,
-              index: foreign.index
+              index: refused.index
             })
             received = 0
             head = null

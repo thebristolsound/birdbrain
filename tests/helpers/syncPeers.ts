@@ -1,4 +1,4 @@
-import { createHash, createSign } from 'crypto'
+import { createHash, createSign, randomUUID } from 'crypto'
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs'
 import { dirname, join, relative, sep } from 'path'
 import { Readable } from 'stream'
@@ -223,9 +223,11 @@ export interface Document {
 }
 
 // One document Exhibit committed by the active peer: its bytes on disk under
-// the Case directory and the signed `exhibit` entry on its chain.
+// the Case directory and the signed `exhibit` entry on its chain. The id is
+// minted as the Staging Pool's commit mints one, since a receiver refuses an
+// entry whose id is in any other form (unstorableEntry).
 export function addDocument(caseId: string, peer: Peer, n: number, content?: string): Document {
-  const exhibitId = `${peer.name}-doc-${n}`
+  const exhibitId = randomUUID()
   const path = `${caseId}/documents/${exhibitId}.pdf`
   const bytes = Buffer.from(content ?? `%PDF statement ${n} by ${peer.name}`)
   const contentHash = createHash('sha256').update(bytes).digest('hex')

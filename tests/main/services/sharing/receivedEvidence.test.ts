@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { createHash } from 'crypto'
+import { createHash, randomUUID } from 'crypto'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -7,16 +7,19 @@ import sharp from 'sharp'
 import { closeDatabase, getDb } from '@main/services/db/core'
 import {
   getCapture,
+  insertCapture,
   listCaptures,
   searchCaptures,
   setCaptureTrustedTime
 } from '@main/services/db/captureRepo'
+import { createCase } from '@main/services/db/caseRepo'
 import { getExhibit } from '@main/services/db/exhibitRepo'
 import { listDerivedFilesForExhibit } from '@main/services/db/derivedFileRepo'
 import { resetInstallationId } from '@main/services/installationId'
 import { resetSigningKey } from '@main/services/signingKey'
 import {
   appendManifestEntry,
+  appendMemberChainLines,
   readManifestSnapshot,
   readSharedCaseSnapshot
 } from '@main/services/manifest'
@@ -311,9 +314,10 @@ describe('received evidence (#1811)', () => {
     // An entry whose id is Bob's own Capture: Bob's file is already at its path.
     const stolen = appendManifestEntry(caseDir, captureBody(bobs.captureId, bobs.contentHash, 7))
     // A second Capture reusing the number Alice's first one holds.
+    const reuseId = randomUUID()
     const reuseBytes = Buffer.from('<html>reused number</html>')
-    writeFileSync(artifact('alice-reuse', 'mhtml').abs, reuseBytes)
-    const reuse = appendManifestEntry(caseDir, captureBody('alice-reuse', sha(reuseBytes), 1))
+    writeFileSync(artifact(reuseId, 'mhtml').abs, reuseBytes)
+    const reuse = appendManifestEntry(caseDir, captureBody(reuseId, sha(reuseBytes), 1))
     // A deletion naming another of Bob's own Captures.
     appendManifestEntry(caseDir, {
       type: 'deletion',
@@ -339,7 +343,7 @@ describe('received evidence (#1811)', () => {
           kind: 'rejected-entry',
           installationId: A.installationId,
           index: reuse.index,
-          detail: `capture alice-reuse: Exhibit Number 1 is already held by ${first.captureId}`
+          detail: `capture ${reuseId}: Exhibit Number 1 is already held by ${first.captureId}`
         }
       ])
     )
@@ -355,6 +359,198 @@ describe('received evidence (#1811)', () => {
     expect(existsSync(artifact(target.captureId, 'mhtml').abs)).toBe(true)
     expect(await lifecycle().removeReceived(target.captureId)).toBe(false)
     expect(getCapture(target.captureId)).toBeDefined()
+  })
+
+  // Review finding 1 on this PR: the file and apply steps build a Capture's paths from the id
+  // its author's entry states, and ids were compared only as strings, so an id that climbed out
+  // of its segment, or an upper-case copy of one, named the receiver's own files, and the
+  // author's later deletion of it removed them.
+  describe('an entry whose id is not one this app writes', () => {
+    const notAnId = (author: Peer, index: number, type: string, id: string) => ({
+      kind: 'rejected-entry',
+      detail: `entry ${index} of ${author.installationId} names ${type} id ${JSON.stringify(id)}, which is not an id this app writes`,
+      installationId: author.installationId,
+      index
+    })
+    const filesOf = (caseId: string, id: string): Record<string, string> =>
+      Object.fromEntries(
+        (['mhtml', 'png', 'txt'] as const).map((type) => [
+          type,
+          sha(readFileSync(defaultCaptureStore.artifactPaths(caseId, id, type).abs))
+        ])
+      )
+    const aliasEntry = (alias: string, target: IngestedCapture, caseId: string) => ({
+      type: 'capture' as const,
+      captureId: alias,
+      caseId,
+      url: 'https://example.com/alias',
+      timestamp: TIME,
+      contentHash: target.contentHash,
+      screenshotHash: target.screenshotHash,
+      textHash: target.textHash,
+      sizeBytes: 1,
+      exhibitNumber: 9,
+      ...by(A)
+    })
+
+    const aliases: Array<[string, (id: string, otherCase: string) => string, boolean]> = [
+      ['climbs back into its own segment', (id) => `x/../${id}`, false],
+      ['is an upper-case copy', (id) => id.toUpperCase(), false],
+      ['climbs into another Case', (id, otherCase) => `../${otherCase}/${id}`, true]
+    ]
+    for (const [shape, alias, inOtherCase] of aliases) {
+      it(`refuses a capture id that ${shape} of the receiver's own, and its deletion touches nothing`, async () => {
+        await activate(B)
+        const targetCase = inOtherCase ? createCase({ name: 'Bob private' }).id : CASE_ID
+        const bobs = await addCapture(targetCase, B, 1)
+        const before = filesOf(targetCase, bobs.captureId)
+
+        await activate(A)
+        const forged = alias(bobs.captureId, targetCase)
+        const capture = appendManifestEntry(caseDirOf(CASE_ID), aliasEntry(forged, bobs, CASE_ID))
+        const first = recordSource(CASE_ID, A)
+        appendManifestEntry(caseDirOf(CASE_ID), {
+          type: 'deletion',
+          captureId: forged,
+          caseId: CASE_ID,
+          timestamp: TIME,
+          contentHash: bobs.contentHash,
+          ...by(A)
+        })
+        const second = recordSource(CASE_ID, A)
+
+        await activate(B)
+        for (const source of [first, second]) {
+          const result = await pull(CASE_ID, source)
+          expect(result.errors).toEqual([notAnId(A, capture.index, 'capture', forged)])
+          expect(result.capturesApplied).toBe(0)
+          expect(result.removed).toBe(0)
+          expect(memberChainText(CASE_ID, A)).toBe('')
+          expect(getCapture(forged)).toBeUndefined()
+        }
+        expect(getExhibit(bobs.captureId)?.authorInstallationId).toBeNull()
+        expect(filesOf(targetCase, bobs.captureId)).toEqual(before)
+        expect((await verifyCapture(bobs.captureId)).status).toBe('verified')
+      })
+    }
+
+    it('writes no file at a path such an id names, and no row', async () => {
+      await activate(A)
+      const fresh = randomUUID()
+      const bytes = Buffer.from('<html>planted under another id</html>')
+      const forged = `x/../${fresh}`
+      const capture = appendManifestEntry(caseDirOf(CASE_ID), {
+        type: 'capture',
+        captureId: forged,
+        caseId: CASE_ID,
+        url: 'https://example.com/planted',
+        timestamp: TIME,
+        contentHash: sha(bytes),
+        sizeBytes: bytes.length,
+        exhibitNumber: 1,
+        ...by(A)
+      })
+      const source = recordSource(CASE_ID, A)
+      const planted = artifact(fresh, 'mhtml')
+      source.files.set(planted.rel.replace(/\\/g, '/'), bytes)
+
+      await activate(B)
+      const result = await pull(CASE_ID, source)
+      expect(result.errors).toEqual([notAnId(A, capture.index, 'capture', forged)])
+      expect(result.blobsReceived).toBe(0)
+      expect(existsSync(artifact(fresh, 'mhtml').abs)).toBe(false)
+      expect(listCaptures(CASE_ID)).toEqual([])
+    })
+
+    it('refuses an exhibit entry whose id is not one this app writes', async () => {
+      await activate(A)
+      const doc = addDocument(CASE_ID, A, 1)
+      const forged = `x/../${doc.exhibitId}`
+      const exhibit = appendManifestEntry(caseDirOf(CASE_ID), {
+        type: 'exhibit',
+        exhibitId: forged,
+        caseId: CASE_ID,
+        kind: 'document',
+        origin: 'manual-upload',
+        name: 'forged.pdf',
+        exhibitNumber: 2,
+        path: doc.path,
+        contentHash: doc.contentHash,
+        sizeBytes: 1,
+        timestamp: TIME,
+        ...by(A)
+      })
+      const source = recordSource(CASE_ID, A)
+
+      await activate(B)
+      const result = await pull(CASE_ID, source)
+      expect(result.errors).toEqual([notAnId(A, exhibit.index, 'exhibit', forged)])
+      expect(result.exhibitsApplied).toBe(0)
+      expect(getExhibit(forged)).toBeUndefined()
+      expect(getExhibit(doc.exhibitId)).toBeUndefined()
+    })
+
+    it('removes such an entry an older build stored, before the file and apply steps read it', async () => {
+      await activate(B)
+      const bobs = await addCapture(CASE_ID, B, 1)
+      const before = filesOf(CASE_ID, bobs.captureId)
+
+      await activate(A)
+      const forged = `x/../${bobs.captureId}`
+      const capture = appendManifestEntry(caseDirOf(CASE_ID), aliasEntry(forged, bobs, CASE_ID))
+      const aliceLines = recordSource(CASE_ID, A).chains.get(A.installationId)!
+      await activate(C)
+      addDocument(CASE_ID, C, 1)
+      const fromCarol = recordSource(CASE_ID, C)
+      expect(fromCarol.chains.has(A.installationId)).toBe(false)
+
+      await activate(B)
+      appendMemberChainLines(caseDirOf(CASE_ID), A.installationId, aliceLines)
+      const result = await pull(CASE_ID, fromCarol)
+      expect(result.errors).toEqual([notAnId(A, capture.index, 'capture', forged)])
+      expect(result.capturesApplied).toBe(0)
+      expect(result.exhibitsApplied).toBe(1)
+      expect(memberChainText(CASE_ID, A)).toBe('')
+      expect(getCapture(forged)).toBeUndefined()
+      expect(filesOf(CASE_ID, bobs.captureId)).toEqual(before)
+    })
+
+    it('removes nothing on a deletion naming a row whose id is not one, whatever wrote the row', async () => {
+      await activate(B)
+      const bobs = await addCapture(CASE_ID, B, 1)
+      const before = filesOf(CASE_ID, bobs.captureId)
+      // A row an imported archive can leave: its ids are the archive's own.
+      const forged = `x/../${bobs.captureId}`
+      insertCapture({
+        id: forged,
+        caseId: CASE_ID,
+        url: 'https://example.com/imported',
+        title: 'Imported',
+        hash: bobs.contentHash,
+        timestamp: TIME,
+        format: 'mhtml',
+        exhibitNumber: 9,
+        author: { installationId: A.installationId, memberCode: 'AL' }
+      })
+
+      await activate(A)
+      appendManifestEntry(caseDirOf(CASE_ID), {
+        type: 'deletion',
+        captureId: forged,
+        caseId: CASE_ID,
+        timestamp: TIME,
+        contentHash: bobs.contentHash,
+        ...by(A)
+      })
+      const source = recordSource(CASE_ID, A)
+
+      await activate(B)
+      const result = await pull(CASE_ID, source)
+      expect(result.errors).toEqual([])
+      expect(result.removed).toBe(0)
+      expect(getCapture(forged)).toBeDefined()
+      expect(filesOf(CASE_ID, bobs.captureId)).toEqual(before)
+    })
   })
 
   describe('Trusted Time', () => {

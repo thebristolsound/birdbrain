@@ -39,6 +39,7 @@ import {
   serveSyncSession,
   type SyncSource
 } from '@main/services/sharing/session'
+import type { ReceivedCaptures } from '@main/services/sharing/receivedEvidence'
 import type { CaseMember } from '@shared/types'
 import { memberChainPath } from '../../../../src/packages/evidence-package-layout/index'
 
@@ -47,6 +48,12 @@ import { memberChainPath } from '../../../../src/packages/evidence-package-layou
 // is a SyncSource standing in for the peer, with its own key and a roster the
 // test can change mid-session. The peer-to-peer steps that move entries,
 // files and rows between two real replicas are in syncPeers.test.ts.
+
+// These sessions bring no Capture, so the apply step never calls either.
+const receivedCaptures: ReceivedCaptures = {
+  processReceived: () => {},
+  removeReceived: async () => false
+}
 
 const keyPair = () =>
   generateKeyPairSync('rsa', {
@@ -129,7 +136,7 @@ describe('sync session handshake (#1512)', () => {
   // Runs one session: this installation dials, the source answers.
   async function session(
     source: SyncSource | null,
-    options: Parameters<typeof pullFromPeer>[2] = {}
+    options: Partial<Parameters<typeof pullFromPeer>[2]> = {}
   ) {
     const hub = new MemoryHub()
     const dialer = hub.createTransport('dialer')
@@ -143,7 +150,7 @@ describe('sync session handshake (#1512)', () => {
       })
     })
     const stream = await dialer.openStream(await dialer.dial(listener.ticket))
-    const result = await pullFromPeer(caseId, stream, options)
+    const result = await pullFromPeer(caseId, stream, { receivedCaptures, ...options })
     await served
     return result
   }
@@ -299,7 +306,9 @@ describe('sync session handshake (#1512)', () => {
     const listener = hub.createTransport('listener')
     await listener.listen(() => {})
     const stream = await dialer.openStream(await dialer.dial(listener.ticket))
-    await expect(pullFromPeer(lonely, stream)).rejects.toThrow('not a Shared Case')
+    await expect(pullFromPeer(lonely, stream, { receivedCaptures })).rejects.toThrow(
+      'not a Shared Case'
+    )
   })
 
   it('serves a shared Case live: roster, every chain head, and this installation key', () => {

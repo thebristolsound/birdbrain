@@ -69,6 +69,7 @@ import { renderCapturePdf } from '@main/services/pdfExport'
 import { getThumbnail } from '@main/services/thumbnails'
 import { getCaseInventory, getManifestSnapshot, verifyExhibit } from '@main/services/exhibits'
 import { getSyncState } from '@main/services/sharing/syncState'
+import { registerFakeInvestigationHandlers } from '@main/services/investigation/fakeEngine'
 import { commitStagedFiles, discardStagedFiles, uploadToStaging } from '@main/services/staging'
 import * as settings from '@main/services/settings'
 import { generateReport, getExportPreflight } from '@main/services/export'
@@ -898,7 +899,10 @@ export function registerIpcHandlers(deps: {
     try {
       const capture = captureRepo.getCapture(captureId)
       if (!capture) return null
-      const buffer = await getThumbnail(capture.caseId, captureId)
+      const received = typeof exhibitRepo.getExhibit(captureId)?.authorInstallationId === 'string'
+      const buffer = await getThumbnail(capture.caseId, captureId, defaultCaptureStore, {
+        persist: !received
+      })
       if (!buffer) return null
       return buffer.toString('base64')
     } catch (err) {
@@ -1104,6 +1108,10 @@ export function registerIpcHandlers(deps: {
 
   // Shared Case sync (#1512): what the sync pill reads.
   handle(IPC_CHANNELS.SHARING_GET_SYNC_STATE, (_, caseId: string) => getSyncState(caseId))
+
+  // Case investigation: the fake engine serves these channels in unpackaged builds only, and a
+  // packaged build registers none of them (engine plan, open question 9).
+  if (!app.isPackaged) registerFakeInvestigationHandlers()
 
   // Staging Pool (ADR-0024, #1148). The file dialog lives here, as the archive
   // import's does; a cancel is an empty list, not an error.

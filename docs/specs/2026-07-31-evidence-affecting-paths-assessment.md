@@ -66,6 +66,8 @@ reasoning: it carries bytes between installations, reads no message, and decides
 what the session accepts. `IrohTransport`, when #1810 lands it, is the same kind of file and
 joins that entry. The repo module the rows step writes through,
 `src/main/services/db/workingRowRepo.ts`, is already swept in by `src/main/services/db/**`.
+#1811 added a fifth blocking module, `receivedEvidence.ts`, which turns received entries into
+Capture and Exhibit rows.
 
 ### Known gap: carve-outs are caught by review, not by a check
 
@@ -319,7 +321,7 @@ independent of the Operator who holds it.
 
 The sync session (#1512) is the one path by which another installation's chain entries, Exhibit
 bytes and working-layer rows enter a Case directory and database. What it accepts is decided in
-four modules; the rest of the directory moves bytes or records state.
+five modules; the rest of the directory moves bytes or records state.
 
 | Path | Tier | Why |
 |---|---|---|
@@ -327,6 +329,7 @@ four modules; the rest of the directory moves bytes or records state.
 | `src/main/services/sharing/entryAcceptance.ts` | blocking | Appends a received chain segment only when the stored chain plus the segment verifies under the member's key and continues the stored head; stops before an entry from a newer schema. Decides which remote entries exist on this replica |
 | `src/main/services/sharing/blobAcceptance.ts` | blocking | Writes a received file beside its path, hashes it from disk and renames it in only when the hash is the one a verified entry anchors; refuses paths outside the Case directory. Decides which remote bytes become visible |
 | `src/main/services/sharing/workingRows.ts` | blocking | Signs this installation's rows on every write, tombstones instead of deleting in a Shared Case, and applies a received row only under its author's roster key and above the stored version. Decides what another member's notes, tags and annotations say here |
+| `src/main/services/sharing/receivedEvidence.ts` | blocking | Writes the `captures`, `exhibits` and `derived_files` rows for another member's evidence only once every file its entry anchors is on disk with the anchored hash, and applies that member's `deletion` by removing the Capture and its files (#1811). Decides which received Captures and Exhibits this replica lists and which it removes |
 | `src/main/services/sharing/messages.ts` | advisory | The CBOR codec and frame reader: parses every frame against a strict schema at the trust boundary and passes it on. It admits nothing by itself, since each message is checked by the module above that consumes it |
 | `src/main/services/sharing/syncState.ts` | advisory | `sync-state.json` and `members.json`, neither of them evidence, and the version high-water mark the row signing reads. A defect here can make a peer ignore a row as old, never accept one it should not |
 

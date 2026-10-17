@@ -1,4 +1,4 @@
-import { createHash, createSign } from 'crypto'
+import { createHash, createSign, randomUUID } from 'crypto'
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs'
 import { dirname, join, relative, sep } from 'path'
 import { Readable } from 'stream'
@@ -34,7 +34,8 @@ import {
   initManifest,
   readMemberChainText
 } from '@main/services/manifest'
-import { ingestMhtmlCapture } from '@main/services/captureLifecycle'
+import { createCaptureLifecycle, ingestMhtmlCapture } from '@main/services/captureLifecycle'
+import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { MemoryHub } from '@main/services/sharing/transport'
 import {
   liveSyncSource,
@@ -222,9 +223,11 @@ export interface Document {
 }
 
 // One document Exhibit committed by the active peer: its bytes on disk under
-// the Case directory and the signed `exhibit` entry on its chain.
+// the Case directory and the signed `exhibit` entry on its chain. The id is
+// minted as the Staging Pool's commit mints one, since a receiver refuses an
+// entry whose id is in any other form (unstorableEntry).
 export function addDocument(caseId: string, peer: Peer, n: number, content?: string): Document {
-  const exhibitId = `${peer.name}-doc-${n}`
+  const exhibitId = randomUUID()
   const path = `${caseId}/documents/${exhibitId}.pdf`
   const bytes = Buffer.from(content ?? `%PDF statement ${n} by ${peer.name}`)
   const contentHash = createHash('sha256').update(bytes).digest('hex')
@@ -258,13 +261,25 @@ export interface IngestedCapture {
   textHash: string
 }
 
+// What a test may put in a Capture in place of the invented defaults.
+export interface CaptureContent {
+  mhtml?: Buffer
+  text?: string
+  screenshot?: Buffer
+}
+
 // One Capture ingested by the active peer through the app's own ingest: the
 // page archive, the screenshot and the extracted text on disk, the signed
 // `capture` entry on its chain, and its rows.
-export async function addCapture(caseId: string, peer: Peer, n: number): Promise<IngestedCapture> {
-  const page = `<html><body>Page ${n} captured by ${peer.name}</body></html>`
-  const screenshot = Buffer.from(`PNG screenshot ${n} by ${peer.name}`)
-  const text = `Page ${n} captured by ${peer.name}`
+export async function addCapture(
+  caseId: string,
+  peer: Peer,
+  n: number,
+  content: CaptureContent = {}
+): Promise<IngestedCapture> {
+  const page = content.mhtml ?? `<html><body>Page ${n} captured by ${peer.name}</body></html>`
+  const screenshot = content.screenshot ?? Buffer.from(`PNG screenshot ${n} by ${peer.name}`)
+  const text = content.text ?? `Page ${n} captured by ${peer.name}`
   const result = await ingestMhtmlCapture(
     {
       caseId,
@@ -415,13 +430,22 @@ export function recordSource(caseId: string, peer: Peer): RecordedSource {
   return source
 }
 
-// One session: the active peer dials a listener answering from `source`.
+// One session: the active peer dials a listener answering from `source`, with
+// a Capture Lifecycle of its own unless the test passes one. The post-ingest
+// work of received Captures runs on setImmediate, so one turn is waited out
+// after the session: it lands in this peer's database before a later
+// `activate` switches the singletons to another peer's.
 export async function pull(
   caseId: string,
   source: SyncSource,
-  options: SyncSessionOptions = {},
+  options: Partial<SyncSessionOptions> = {},
   serve: ServeOptions = {}
 ): Promise<SyncSessionResult> {
+  const receivedCaptures =
+    options.receivedCaptures ??
+    createCaptureLifecycle({
+      selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} })
+    })
   const hub = new MemoryHub({ chunkSize: 4096 })
   const dialer = hub.createTransport('dialer')
   const listener = hub.createTransport('listener')
@@ -434,7 +458,8 @@ export async function pull(
     })
   })
   const stream = await dialer.openStream(await dialer.dial(listener.ticket))
-  const result = await pullFromPeer(caseId, stream, options)
+  const result = await pullFromPeer(caseId, stream, { ...options, receivedCaptures })
   await served
+  await new Promise((resolve) => setImmediate(resolve))
   return result
 }

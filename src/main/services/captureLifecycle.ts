@@ -192,6 +192,15 @@ export interface CaptureLifecycle {
   // Startup sweep over every Case, archived ones included, for staged deletes a crash interrupted
   // (#1786): restores files whose row is live, purges the rest. Never throws.
   recoverPendingDeletes: () => Promise<void>
+  // The post-ingest work a local Capture gets (Selector matching, data extraction, the field
+  // build) for another member's Capture that sync has just written (#1811). No timestamp.
+  processReceived: (
+    capture: Pick<Capture, 'id' | 'caseId' | 'url'>,
+    textContent: string | undefined
+  ) => void
+  // Applies another member's signed deletion: removes the row and its files and writes no entry.
+  // False, touching nothing, when the row is missing or is this installation's own Capture.
+  removeReceived: (captureId: string) => Promise<boolean>
   // Byte copy of an existing capture into a second row of the same case (#827).
   // The copy observed nothing itself, so it gets its own artifacts, its own
   // signed manifest entry marked `method: 'duplicate'`, and a link back to what
@@ -855,6 +864,11 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
   // back, which is what `rolled_back` claims.
   async function deleteOne(capture: Capture, reason?: string): Promise<DeleteOneResult> {
     const captureId = capture.id
+    // Decision 10: only the author writes `deletion` for their Exhibit. A deletion here would
+    // name a teammate's Capture in this installation's chain, and the next sync brings it back.
+    if (isReceived(captureId)) {
+      return { outcome: { captureId, status: 'rejected', reason: 'not_author' } }
+    }
     if (capture.format === 'mhtml') {
       const caseDir = store.caseDir(capture.caseId)
       const headBefore = getManifestHead(caseDir).nextIndex
@@ -896,6 +910,13 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
 
     // Legacy html capture: no manifest entry exists for it, so none is written
     // (as before). Same stage, commit, purge order as the MHTML branch.
+    return removeUnmanifested(capture)
+  }
+
+  // Removes a Capture's row and files without writing a manifest entry: a legacy html capture,
+  // which has none, or a received one, whose author's chain already holds the deletion (#1811).
+  function removeUnmanifested(capture: Capture): DeleteOneResult {
+    const captureId = capture.id
     try {
       store.stageArtifacts(capture.caseId, captureId)
     } catch (err) {
@@ -920,6 +941,10 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
     }
     purgeAfterCommit(capture)
     return { outcome: { captureId, status: 'deleted_unmanifested' } }
+  }
+
+  function isReceived(captureId: string): boolean {
+    return typeof getExhibit(captureId)?.authorInstallationId === 'string'
   }
 
   // The commit step of a staged delete. A failed or refused row delete puts
@@ -1139,6 +1164,25 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
         const { outcome, cause } = await deleteOne(capture, reason)
         if (cause !== undefined && !(cause instanceof ManifestRollback)) throw cause
         return outcome.status === 'deleted' || outcome.status === 'deleted_unmanifested'
+      })
+    },
+
+    processReceived({ id, caseId, url }, textContent) {
+      // No timestamp hand-off and no new-capture event: the author stamps their own Capture,
+      // and nothing was captured here.
+      runPostCaptureWork(id, caseId, url, textContent)
+    },
+
+    async removeReceived(captureId) {
+      const probe = captureRepo.getCapture(captureId)
+      if (!probe || !isReceived(captureId)) return false
+      return withCaseSlot(probe.caseId, async () => {
+        recoverCase(probe.caseId)
+        const capture = captureRepo.getCapture(captureId)
+        if (!capture || !isReceived(captureId)) return false
+        const { outcome, cause } = removeUnmanifested(capture)
+        if (cause !== undefined) throw cause
+        return outcome.status === 'deleted_unmanifested'
       })
     },
 

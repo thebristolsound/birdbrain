@@ -1,7 +1,7 @@
-import type { ManifestEntry } from '@shared/schemas'
+import { ManifestEntrySchema, type ManifestEntry } from '@shared/schemas'
 import { verifyManifestChainText } from '@shared/verify'
 import type { CaseMember } from '@shared/types'
-import { appendMemberChainLines, readMemberChainText } from '@main/services/manifest'
+import { appendMemberChainLines, readEntries, readMemberChainText } from '@main/services/manifest'
 
 // Acceptance of another member's chain entries (docs/specs/2026-09-19-
 // collaborative-cases-design.md, "Sync session" step 3). A received segment
@@ -55,6 +55,16 @@ export function nonEmptyLines(text: string): string[] {
   return text.split('\n').filter((line) => line.trim().length > 0)
 }
 
+// The entries a stored member chain holds. Every line was verified under the
+// member's key before it was stored, so every line parses; one that does not
+// is skipped rather than trusted.
+export function storedEntries(jsonl: Buffer): ManifestEntry[] {
+  return readEntries(jsonl.toString('utf-8')).flatMap((raw) => {
+    const parsed = ManifestEntrySchema.safeParse(raw)
+    return parsed.success ? [parsed.data] : []
+  })
+}
+
 // One page of chain lines under `maxBytes`: lines are taken in order until
 // the next would cross the budget, and the first line always, so a page
 // always carries something and a chain of any length is served in pages.
@@ -77,19 +87,52 @@ function headOf(lines: string[]): ChainHeadRef | null {
   return { index, entryHash }
 }
 
-// The first entry of the chain's current segment that names another Case:
-// the same rule the Shared Case walk applies (sharedCase.ts). Entries before
-// the last `import` are a source Case's history and carry its id by design.
-// Judged over a chain held whole (session.ts), never over one page: the
-// `import` that makes a source Case's history legitimate may arrive on a
-// later page, and a page judged alone would refuse that history at its
-// first line.
-export function foreignCaseEntry(
+// The form of every Capture and Exhibit id this app writes into a `capture`
+// or `exhibit` entry: crypto.randomUUID()'s lowercase 8-4-4-4-12 hex (ingest
+// and duplicate in captureLifecycle.ts, the Staging Pool's commit in
+// staging.ts). The file and apply steps build a Capture's paths from its id,
+// so an id in any other form could name a file that is not its own: a
+// separator or `..` climbs out of its segment, and on a filesystem that
+// ignores case an upper-case copy of an id names the same file.
+const EXHIBIT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+
+export function isExhibitId(id: string): boolean {
+  return EXHIBIT_ID.test(id)
+}
+
+export interface UnstorableEntry {
+  index: number
+  reason: string
+}
+
+// The first entry of the chain's current segment this replica does not
+// store, and why: one that names another Case, the rule the Shared Case walk
+// applies (sharedCase.ts), or a `capture` or `exhibit` entry whose id is not
+// one this app writes (isExhibitId). Entries before the last `import` are a
+// source Case's history: they carry its id by design, and neither the file
+// step nor the apply step reads them. Judged over a chain held whole
+// (session.ts), never over one page: the `import` that makes a source Case's
+// history legitimate may arrive on a later page, and a page judged alone
+// would refuse that history at its first line.
+export function unstorableEntry(
   entries: ManifestEntry[],
   caseId: string
-): ManifestEntry | undefined {
+): UnstorableEntry | undefined {
   const lastImport = entries.reduce((at, e) => (e.type === 'import' ? e.index : at), 0)
-  return entries.find((e) => e.index >= lastImport && e.caseId !== caseId)
+  for (const entry of entries) {
+    if (entry.index < lastImport) continue
+    const { index } = entry
+    if (entry.caseId !== caseId) {
+      return { index, reason: `names Case ${entry.caseId}, this Case is ${caseId}` }
+    }
+    const id =
+      entry.type === 'capture' ? entry.captureId : entry.type === 'exhibit' ? entry.exhibitId : null
+    if (id !== null && !isExhibitId(id)) {
+      const reason = `names ${entry.type} id ${JSON.stringify(id)}, which is not an id this app writes`
+      return { index, reason }
+    }
+  }
+  return undefined
 }
 
 export function acceptEntrySegment(params: AcceptEntrySegmentParams): EntryAcceptance {

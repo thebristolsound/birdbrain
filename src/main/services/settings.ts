@@ -59,7 +59,8 @@ const DEFAULT_SETTINGS: BirdbrainSettings = {
   releaseChannel: 'stable',
   autoCheckForUpdates: true,
   egress: { kind: 'direct' },
-  sharingRelayUrl: ''
+  sharingRelayUrl: '',
+  vpnWarningMutedNetworks: []
 }
 
 // A semver prerelease is signalled by a hyphen before any build-metadata `+`

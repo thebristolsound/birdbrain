@@ -566,6 +566,10 @@ export interface BirdbrainSettings {
   // The relay Shared Case sync uses (#1809): a self-hosted relay's URL, or ''
   // for the default public relays. Set through `sharing:setRelayUrl`.
   sharingRelayUrl: string
+  // The networks the Operator stopped the VPN warning on (ADR-0032), each a SHA-256
+  // of the network name and the router's hardware address, so the file names no
+  // network. See `networkHash` in vpnWarning.ts.
+  vpnWarningMutedNetworks: string[]
 }
 
 // The Egress setting. A Proxy or Tor names a SOCKS5 or HTTP proxy that needs no

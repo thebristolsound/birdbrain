@@ -330,6 +330,12 @@ export const IPC_CHANNELS = {
   UPDATES_DOWNLOAD: 'updates:download',
   UPDATES_INSTALL: 'updates:install',
 
+  // The VPN check (ADR-0032): the top-bar indicator, and the warning before a
+  // Case's first contact with a site while the Egress is Direct.
+  EGRESS_VPN_STATUS: 'egress:vpnStatus',
+  EGRESS_CHECK_VPN_WARNING: 'egress:checkVpnWarning',
+  EGRESS_ANSWER_VPN_WARNING: 'egress:answerVpnWarning',
+
   // Events (main -> renderer)
   EXPORT_PROGRESS: 'event:exportProgress',
   NEW_CAPTURE: 'event:newCapture',
@@ -422,6 +428,32 @@ export interface SessionStateEvent {
 // Extension reachability, pushed when the companion extension connects or drops.
 export interface ExtensionConnectionEvent {
   connected: boolean
+}
+
+// Whether this computer's route to the internet runs through a tunnel adapter
+// (ADR-0032). Read from the routing table only; no Manifest Entry or capture row
+// records it.
+export interface VpnStatus {
+  vpnSeen: boolean
+}
+
+// The Case a contact belongs to. A Wayback lookup names only its Capture, and
+// main resolves the Case from it.
+export type VpnWarningTarget = { caseId: string } | { captureId: string }
+
+// `canMute` is false when Birdbrain could not read the router's hardware address,
+// so it has no network to stop warning on.
+export interface VpnWarningCheck {
+  caseId: string
+  warn: boolean
+  canMute: boolean
+}
+
+export type VpnWarningChoice = 'continue' | 'mute-network'
+
+export interface VpnWarningAnswer {
+  caseId: string
+  choice: VpnWarningChoice
 }
 
 // A subframe of an evidence guest committed a second document (#1708). Chromium
@@ -1250,6 +1282,10 @@ export interface IpcInvokeContract {
   'updates:check': { args: []; result: UpdateStatus }
   'updates:download': { args: []; result: void }
   'updates:install': { args: []; result: void }
+
+  'egress:vpnStatus': { args: []; result: VpnStatus }
+  'egress:checkVpnWarning': { args: [target: VpnWarningTarget]; result: VpnWarningCheck }
+  'egress:answerVpnWarning': { args: [answer: VpnWarningAnswer]; result: void }
 }
 
 export type ContractedChannel = keyof IpcInvokeContract

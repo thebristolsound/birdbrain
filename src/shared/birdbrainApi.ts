@@ -137,7 +137,11 @@ import type {
   BatchCountResult,
   DuplicateCaptureResult,
   FieldBuildSummary,
-  DbRebuildFtsResult
+  DbRebuildFtsResult,
+  VpnStatus,
+  VpnWarningTarget,
+  VpnWarningCheck,
+  VpnWarningAnswer
 } from '@shared/ipc'
 
 export interface BirdbrainAPI {
@@ -364,6 +368,11 @@ export interface BirdbrainAPI {
     check(): Promise<UpdateStatus>
     download(): Promise<void>
     install(): Promise<void>
+  }
+  egress: {
+    vpnStatus(): Promise<VpnStatus>
+    checkVpnWarning(target: VpnWarningTarget): Promise<VpnWarningCheck>
+    answerVpnWarning(answer: VpnWarningAnswer): Promise<void>
   }
   db: {
     stats(): Promise<DbStats>

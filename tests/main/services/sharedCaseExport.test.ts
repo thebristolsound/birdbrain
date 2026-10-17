@@ -1424,6 +1424,63 @@ describe('Shared Case export, import and fork (#1511)', () => {
       expectOnlyPackageHash(dir)
     })
 
+    // jq skips a byte-order mark at the start of its input and stops at one
+    // anywhere after it; the package verifier's JSON.parse rejects the line.
+    it('fails a member entry line that begins with a byte-order mark', async () => {
+      const { peer } = ownerReplica()
+      const lateDoc = document(peer, PEER, { installationId: PEER_ID, memberCode: 'RP' }, 2)
+      writeFileSync(join(caseDir(), peerChain), peer.jsonl)
+      const { dir } = await exportPackage()
+      const [row] = listExhibits(caseId).filter((e) => e.id === lateDoc)
+      const enclosed = row.path!.slice(caseId.length + 1)
+      writeFileSync(join(dir, enclosed), 'edited')
+      reindex(dir, enclosed)
+      const lines = readFileSync(join(dir, peerChain), 'utf-8').split('\n')
+      lines[1] = `\ufeff${lines[1]}`
+      writeFileSync(join(dir, peerChain), lines.join('\n'))
+      reindex(dir, peerChain)
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      const merge =
+        `merge entry 3 of ${localId} names installation ${PEER_ID}, whose chain ` +
+        'is not present or did not verify'
+      expect(findings(run.output, 'FAIL')).toEqual([
+        `FAIL [step 4a] ${peerChain} (member RP): entry 1: Invalid JSON`,
+        `FAIL [step 4a] ${merge}`
+      ])
+      expect(sharedCaseFailures(dir)).toEqual([
+        `chain-broken: chain of ${PEER_ID} (RP): Invalid JSON`,
+        `merge-head-mismatch: ${merge}`
+      ])
+    })
+
+    it('fails a manifest entry line that begins with a byte-order mark', async () => {
+      const { peer } = ownerReplica()
+      const lateDoc = document(peer, PEER, { installationId: PEER_ID, memberCode: 'RP' }, 2)
+      writeFileSync(join(caseDir(), peerChain), peer.jsonl)
+      const { dir } = await exportPackage()
+      const [row] = listExhibits(caseId).filter((e) => e.id === lateDoc)
+      const enclosed = row.path!.slice(caseId.length + 1)
+      writeFileSync(join(dir, enclosed), 'edited')
+      reindex(dir, enclosed)
+      const lines = readFileSync(join(dir, 'manifest.jsonl'), 'utf-8').split('\n')
+      lines[2] = `\ufeff${lines[2]}`
+      writeFileSync(join(dir, 'manifest.jsonl'), lines.join('\n'))
+      reindex(dir, 'manifest.jsonl')
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      expect(findings(run.output, 'FAIL')).toEqual([
+        'FAIL [step 4] entry at position 2: Invalid JSON, it begins with a byte-order mark'
+      ])
+      expect(
+        failures(dir)
+          .filter((check) => check.name === 'manifest chain')
+          .map((check) => check.reason)
+      ).toEqual(['Invalid JSON (at index 2)'])
+    })
+
     // Drops a chain's row from evidence.json, so step 1 does not report the
     // file the test replaces and the findings are step 4a's alone.
     function unindex(dir: string, path: string): void {

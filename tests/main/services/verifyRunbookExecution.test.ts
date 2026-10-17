@@ -576,6 +576,27 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
       says: ['does not hash to its own entryHash']
     },
     {
+      // jq skips a byte-order mark at the start of its input, so a per-line
+      // read accepts the line, and stops at one in the middle of a file, so
+      // step 5 once read nothing after it. JSON.parse rejects the line.
+      name: 'an entry line that begins with a byte-order mark',
+      build: () => {
+        const dir = corruptedCopy('bom-led-entry')
+        const path = join(dir, 'manifest.jsonl')
+        const lines = readFileSync(path, 'utf-8').split('\n')
+        lines[1] = `\ufeff${lines[1]}`
+        writeFileSync(path, lines.join('\n'))
+        return dir
+      },
+      binary: 'fail',
+      script: 'fail',
+      // Steps 5 and 6 still read the file whole and stop at the mark, which
+      // step 6 reports as a token no entry names; step 4 has already failed.
+      steps: [1, 4, 6],
+      says: ['entry at position 1: Invalid JSON, it begins with a byte-order mark'],
+      binaryFails: { name: 'manifest chain', reason: 'Invalid JSON (at index 1)' }
+    },
+    {
       // A shell `read` loop skips a last line with no newline after it, and
       // step 5 reads the manifest with jq, which does not. A deletion signed by
       // a key the package does not enclose, written that way, once reached

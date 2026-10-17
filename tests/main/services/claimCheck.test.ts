@@ -81,7 +81,7 @@ afterEach(() => {
   rmSync(tempDir, { recursive: true, force: true })
 })
 
-async function ingest(textContent = TEXT): Promise<string> {
+async function ingest(textContent = TEXT, screenshot?: Buffer): Promise<string> {
   const { capture } = await ingestMhtmlCapture({
     caseId,
     url: PAGE_URL,
@@ -89,6 +89,7 @@ async function ingest(textContent = TEXT): Promise<string> {
     timestamp: '2026-10-01T12:00:00.000Z',
     stream: Readable.from([mhtml()]) as unknown as ReadableStream<Uint8Array>,
     textContent,
+    screenshot,
     headers: {},
     browserVersion: 'Chrome/120',
     userAgent: 'Mozilla/5.0',
@@ -224,6 +225,16 @@ describe('checkFieldHit: cannot-check', () => {
     const { check } = await checkFieldHit(fieldId(id, 'link.href'))
     expect(check.text).toBe('cannot-check')
     expect(check.reason).toMatch(/^The capture's verification result is missing/)
+  })
+
+  it('refuses every record of a capture whose screenshot is missing', async () => {
+    const id = await ingest(TEXT, Buffer.from('invented screenshot bytes'))
+    unlinkSync(join(root, caseId, `${id}.png`))
+    for (const field of ['link.href', 'header.from']) {
+      const { check } = await checkFieldHit(fieldId(id, field))
+      expect(check.text).toBe('cannot-check')
+      expect(check.reason).toMatch(/^The capture's verification result is missing \(Screenshot/)
+    }
   })
 
   it('names a legacy capture, whose page the verification does not hash', async () => {

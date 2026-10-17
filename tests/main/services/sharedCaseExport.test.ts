@@ -1016,35 +1016,35 @@ describe('Shared Case export, import and fork (#1511)', () => {
       expect(findings(edited.output, 'FAIL')).toEqual([
         `FAIL [step 5] Exhibit RP-1: ${enclosed} does not match the contentHash in its signed entry`
       ])
-      expect(verifyEvidencePackage(dir).pass).toBe(false)
+      expect(
+        failures(dir)
+          .filter((check) => check.name === `exhibit ${peerDoc}`)
+          .map((check) => check.reason)
+      ).toEqual([
+        `Exhibit RP-1 (document): ${enclosed} does not match the contentHash in its signed entry`
+      ])
     })
 
     it('fails a forged entry in the member chain, naming the chain and the entry', async () => {
-      const { peer } = ownerReplica()
+      const { peer, peerDoc } = ownerReplica()
       const { dir } = await exportPackage()
-      const forger = new Chain(signWith(keyPair()))
-      forger.lines = [...peer.lines]
-      forger.hashes = [...peer.hashes]
-      forger.append({
-        type: 'deletion',
-        caseId,
-        captureId: `${PEER_ID}-doc-1`,
-        timestamp: TIME,
-        ...PEER,
-        schemaVersion: 3
-      })
-      writeFileSync(join(dir, peerChain), forger.jsonl)
+      writeFileSync(join(dir, peerChain), forgedDeletion(peer, peerDoc, PEER, true))
       reindex(dir, peerChain)
 
       const run = runVerifyScript(dir)
       expect(run.status, run.output).toBe(1)
       // The Owner's merge names the member chain, and it no longer verifies.
+      const merge =
+        `merge entry 3 of ${localId} names installation ${PEER_ID}, whose chain ` +
+        'is not present or did not verify'
       expect(findings(run.output, 'FAIL')).toEqual([
         `FAIL [step 4a] ${peerChain} (member RP): entry 1: Invalid signature`,
-        `FAIL [step 4a] merge entry 3 of ${localId} names installation ${PEER_ID}, whose chain ` +
-          'is not present or did not verify'
+        `FAIL [step 4a] ${merge}`
       ])
-      expect(verifyEvidencePackage(dir).pass).toBe(false)
+      expect(sharedCaseFailures(dir)).toEqual([
+        `chain-broken: chain of ${PEER_ID} (RP): Invalid signature`,
+        `merge-head-mismatch: ${merge}`
+      ])
     })
 
     // A shell `read` loop skips a last line with no newline after it, and jq
@@ -1104,7 +1104,10 @@ describe('Shared Case export, import and fork (#1511)', () => {
       expect(findings(run.output, 'FAIL')).toEqual([
         `FAIL [step 4a] merge entry 3 of ${localId} names index 1 of ${PEER_ID}, which has 1 entries`
       ])
-      expect(verifyEvidencePackage(dir).pass).toBe(false)
+      expect(sharedCaseFailures(dir)).toEqual([
+        `merge-head-mismatch: merge entry 3 of ${localId} names index 1 of ${PEER_ID}, which ` +
+          'has 1 entries'
+      ])
     })
 
     it('reports a member chain it cannot read to the end as INCOMPLETE, never PASS', async () => {
@@ -1165,7 +1168,10 @@ describe('Shared Case export, import and fork (#1511)', () => {
         `FAIL [step 5] Exhibit 5: documents/${PEER_ID}-claimed.pdf is missing and nothing ` +
           'signed accounts for its absence'
       ])
-      expect(verifyEvidencePackage(dir).pass).toBe(false)
+      expect(sharedCaseFailures(dir)).toEqual([
+        `citation-collision: exhibit entry 1 of ${PEER_ID} claims Member Code CO, its ` +
+          "writer's is RP"
+      ])
     })
 
     it("fails an exclude naming an Exhibit its author's chain does not hold", async () => {
@@ -1188,7 +1194,10 @@ describe('Shared Case export, import and fork (#1511)', () => {
         `FAIL [step 4a] exclude at index 4 names Exhibit never-written, which the chain of ` +
           `${PEER_ID} does not hold`
       ])
-      expect(verifyEvidencePackage(dir).pass).toBe(false)
+      expect(sharedCaseFailures(dir)).toEqual([
+        'roster-invalid: exclude at index 4 names Exhibit never-written, which the chain of ' +
+          `${PEER_ID} does not hold`
+      ])
     })
 
     it('fails a member chain no member-add names', async () => {
@@ -1204,7 +1213,9 @@ describe('Shared Case export, import and fork (#1511)', () => {
       expect(findings(run.output, 'FAIL')).toEqual([
         `FAIL [step 4a] ${strayChain}: no member-add names installation installation-stray-0001`
       ])
-      expect(verifyEvidencePackage(dir).pass).toBe(false)
+      expect(sharedCaseFailures(dir)).toEqual([
+        'unknown-member: no member-add names installation installation-stray-0001'
+      ])
     })
 
     // A shell glob's `*` skips a leading dot, so the script lists lineage
@@ -1298,7 +1309,10 @@ describe('Shared Case export, import and fork (#1511)', () => {
         `FAIL [step 4a] no merge in manifest.jsonl names the Owner's chain (${PEER_ID}), so its ` +
           'key cannot be anchored'
       ])
-      expect(verifyEvidencePackage(dir).pass).toBe(false)
+      expect(sharedCaseFailures(dir)).toEqual([
+        "roster-invalid: no merge in the local chain names the Owner's chain " +
+          `(${PEER_ID}), so its key cannot be anchored`
+      ])
     })
   })
 })

@@ -3,6 +3,7 @@ import { encode } from 'cborg'
 import {
   CHALLENGE_BYTES,
   MAX_FRAME_BYTES,
+  MAX_HANDSHAKE_FRAME_BYTES,
   MessageReader,
   PeerByeError,
   ProtocolError,
@@ -281,6 +282,34 @@ describe('sync messages', () => {
       bytes: new Uint8Array(MAX_FRAME_BYTES + 1)
     } satisfies SyncMessage
     await expect(writeMessage(near, huge)).rejects.toThrow('exceeds')
+  })
+
+  it('holds a reader opened at the handshake cap to it until allowFrames raises it', async () => {
+    const big = { t: 'blobs', path: 'p', bytes: new Uint8Array(MAX_HANDSHAKE_FRAME_BYTES) } as const
+    const [near, far] = await pair()
+    const header = new Uint8Array(4)
+    new DataView(header.buffer).setUint32(0, MAX_HANDSHAKE_FRAME_BYTES + 1)
+    await near.write(header)
+    await expect(new MessageReader(far, MAX_HANDSHAKE_FRAME_BYTES).next()).rejects.toThrow(
+      `exceeds ${MAX_HANDSHAKE_FRAME_BYTES}`
+    )
+
+    const [near2, far2] = await pair()
+    const reader = new MessageReader(far2, MAX_HANDSHAKE_FRAME_BYTES)
+    await writeMessage(near2, { t: 'heads', heads: [] })
+    await writeMessage(near2, big)
+    expect((await reader.next())?.t).toBe('heads')
+    reader.allowFrames(MAX_FRAME_BYTES * 2)
+    expect(await reader.next()).toEqual(big)
+
+    // allowFrames never lifts a reader above the frame cap.
+    const [near3, far3] = await pair()
+    const capped = new MessageReader(far3, MAX_HANDSHAKE_FRAME_BYTES)
+    capped.allowFrames(MAX_FRAME_BYTES * 2)
+    const over = new Uint8Array(4)
+    new DataView(over.buffer).setUint32(0, MAX_FRAME_BYTES + 1)
+    await near3.write(over)
+    await expect(capped.next()).rejects.toThrow(`exceeds ${MAX_FRAME_BYTES}`)
   })
 
   it('expectMessage returns the wanted type and names what it got instead', async () => {

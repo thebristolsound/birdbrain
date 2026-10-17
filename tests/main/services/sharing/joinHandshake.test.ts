@@ -21,7 +21,12 @@ import {
   type WelcomeMessage
 } from '@main/services/sharing/joinHandshake'
 import { addMember, shareCase } from '@main/services/sharing/membership'
-import { MessageReader, expectMessage, writeMessage } from '@main/services/sharing/messages'
+import {
+  MAX_HANDSHAKE_FRAME_BYTES,
+  MessageReader,
+  expectMessage,
+  writeMessage
+} from '@main/services/sharing/messages'
 import {
   memberTickets,
   rememberMemberTickets,
@@ -422,6 +427,17 @@ describe('join handshake (#1810)', () => {
     const node = hub.createTransport('bob-raw')
     const stream = await node.openStream(await node.dial(ownerNode.ticket))
     await writeMessage(stream, { t: 'heads', heads: [] })
+    expect(await new MessageReader(stream).next()).toBeNull()
+    await Promise.all(served)
+    expect(server.pendingJoins(caseId)).toEqual([])
+  })
+
+  it('closes a stream whose header announces more than a handshake frame', async () => {
+    const node = hub.createTransport('bob-raw')
+    const stream = await node.openStream(await node.dial(ownerNode.ticket))
+    const header = new Uint8Array(4)
+    new DataView(header.buffer).setUint32(0, MAX_HANDSHAKE_FRAME_BYTES + 1)
+    await stream.write(header)
     expect(await new MessageReader(stream).next()).toBeNull()
     await Promise.all(served)
     expect(server.pendingJoins(caseId)).toEqual([])

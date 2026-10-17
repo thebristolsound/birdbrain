@@ -13,7 +13,7 @@ import {
   initInstallationId,
   resetInstallationId
 } from '@main/services/installationId'
-import { getPublicKeyPem } from '@main/services/signingKey'
+import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
 import {
   appendManifestEntry,
   appendMemberChainLines,
@@ -25,6 +25,7 @@ import { MemoryHub, type ByteStream } from '@main/services/sharing/transport'
 import {
   CHALLENGE_BYTES,
   MAX_BLOB_BYTES,
+  MAX_HANDSHAKE_FRAME_BYTES,
   MessageReader,
   expectMessage,
   writeMessage,
@@ -284,6 +285,42 @@ describe('sync session handshake (#1512)', () => {
     await garbage.stream.write(new Uint8Array([0, 0, 0, 2, 0xff, 0xff]))
     expect(await garbage.reader.next()).toEqual({ t: 'bye', reason: BYE_REASONS.protocol })
     await garbage.served
+  })
+
+  it('reads no frame above the handshake cap until the dialer proves its key', async () => {
+    const oversized = new Uint8Array(4)
+    new DataView(oversized.buffer).setUint32(0, MAX_HANDSHAKE_FRAME_BYTES + 1)
+
+    // A stranger's header alone is refused: no body follows, and none is awaited.
+    const stranger = await rawDialer(peerSource())
+    await stranger.stream.write(oversized)
+    expect(await stranger.reader.next()).toEqual({ t: 'bye', reason: BYE_REASONS.protocol })
+    await stranger.served
+
+    // The same request after the proof is served.
+    const blob = vi.fn(() => null)
+    const proven = await rawDialer(peerSource({ blob }))
+    const challenge = randomBytes(CHALLENGE_BYTES)
+    await writeMessage(proven.stream, {
+      t: 'hello',
+      caseId,
+      installationId: localId,
+      challenge,
+      proof: null
+    })
+    const answer = await expectMessage(proven.reader, 'hello')
+    await writeMessage(proven.stream, {
+      t: 'proof',
+      signature: signEntryHash(helloDigest(caseId, answer.challenge, localId))
+    })
+    const paths = Array.from({ length: 70 }, (_, i) => `${i}-${'p'.repeat(1000)}`)
+    await writeMessage(proven.stream, { t: 'blobs-request', paths })
+    for (const path of paths) {
+      expect(await expectMessage(proven.reader, 'blobs')).toEqual({ t: 'blobs', path, bytes: null })
+    }
+    expect(blob).toHaveBeenCalledTimes(paths.length)
+    proven.stream.close()
+    await proven.served
   })
 
   it('ends quietly when the dialer closes without a word', async () => {

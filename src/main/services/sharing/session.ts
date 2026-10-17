@@ -53,6 +53,8 @@ import {
 import {
   CHALLENGE_BYTES,
   MAX_BLOB_BYTES,
+  MAX_FRAME_BYTES,
+  MAX_HANDSHAKE_FRAME_BYTES,
   MessageReader,
   PeerByeError,
   ProtocolError,
@@ -264,7 +266,8 @@ export async function serveSyncSession(
   serveOptions: ServeOptions = {}
 ): Promise<void> {
   const pageBytes = serveOptions.pageBytes ?? PAGE_BYTES
-  const reader = new MessageReader(stream)
+  // Bounded until the dialer has named a roster member and proved its key.
+  const reader = new MessageReader(stream, MAX_HANDSHAKE_FRAME_BYTES)
   try {
     const hello = await expectMessage(reader, 'hello')
     const source = sourceFor(hello.caseId)
@@ -288,6 +291,7 @@ export async function serveSyncSession(
     if (!member || !verifyEntrySignature(expected, signature, member.publicKeyPem)) {
       return await sayBye(stream, BYE_REASONS.badProof)
     }
+    reader.allowFrames(MAX_FRAME_BYTES)
 
     for (let message = await reader.next(); message !== null; message = await reader.next()) {
       if (message.t === 'bye') return

@@ -23,6 +23,10 @@ export const MAX_BLOB_BYTES = MAX_MHTML_SIZE
 export const MAX_FRAME_BYTES = MAX_BLOB_BYTES + 1024 * 1024
 const FRAME_HEADER_BYTES = 4
 export const CHALLENGE_BYTES = 32
+// The frame cap for a peer that has not yet proved who it is: the router's
+// first frame, a listener's `hello` and `proof`, and every frame of a join
+// stream. The largest of those is a `join` at its field bounds, under 16 KiB.
+export const MAX_HANDSHAKE_FRAME_BYTES = 64 * 1024
 
 export class ProtocolError extends Error {
   constructor(message: string) {
@@ -265,12 +269,24 @@ export async function writeMessage(stream: ByteStream, message: SyncMessage): Pr
 // that arrives in k chunks costs O(n) to assemble, not O(n * k): a page
 // archive near the frame cap arrives in many thousands of chunks over a
 // real transport.
+//
+// `maxFrameBytes` is checked against each frame's header before its body is
+// read, so a reader opened at MAX_HANDSHAKE_FRAME_BYTES holds no more than
+// that for a sender it has not identified; `allowFrames` raises it once the
+// sender has.
 export class MessageReader {
   private chunks: Uint8Array[] = []
   private buffered = 0
   private ended = false
 
-  constructor(private readonly stream: ByteStream) {}
+  constructor(
+    private readonly stream: ByteStream,
+    private maxFrameBytes: number = MAX_FRAME_BYTES
+  ) {}
+
+  allowFrames(maxFrameBytes: number): void {
+    this.maxFrameBytes = Math.min(maxFrameBytes, MAX_FRAME_BYTES)
+  }
 
   // The next message, or null when the stream ended between frames. A stream
   // that ends inside a frame is a ProtocolError: the peer went away mid-message.
@@ -281,8 +297,8 @@ export class MessageReader {
     }
     const header = this.joined()
     const length = new DataView(header.buffer, header.byteOffset, FRAME_HEADER_BYTES).getUint32(0)
-    if (length > MAX_FRAME_BYTES) {
-      throw new ProtocolError(`Frame of ${length} bytes exceeds ${MAX_FRAME_BYTES}`)
+    if (length > this.maxFrameBytes) {
+      throw new ProtocolError(`Frame of ${length} bytes exceeds ${this.maxFrameBytes}`)
     }
     const total = FRAME_HEADER_BYTES + length
     if (!(await this.fill(total))) throw new ProtocolError('Stream ended inside a frame')

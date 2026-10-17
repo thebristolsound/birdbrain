@@ -14,7 +14,11 @@ import { decodeInvite, encodeInvite } from '@main/services/sharing/invite'
 import { InviteRegistry } from '@main/services/sharing/inviteRegistry'
 import { JoinServer, requestJoin } from '@main/services/sharing/joinHandshake'
 import { addMember, shareCase } from '@main/services/sharing/membership'
-import { MessageReader, writeMessage } from '@main/services/sharing/messages'
+import {
+  MAX_HANDSHAKE_FRAME_BYTES,
+  MessageReader,
+  writeMessage
+} from '@main/services/sharing/messages'
 import { serveSyncSession } from '@main/services/sharing/session'
 import { SharingService, routeIncomingStream } from '@main/services/sharing/sharingService'
 import {
@@ -180,6 +184,22 @@ describe('sharing service (#1810)', () => {
       await Promise.all(routed)
       expect(joinHandler).toHaveBeenCalledTimes(1)
       await service.close()
+    })
+  })
+
+  describe('the router, before it knows the sender', () => {
+    it('closes a stream whose first header announces more than a handshake frame', async () => {
+      const handlers = { join: vi.fn(async () => {}), hello: vi.fn(async () => {}) }
+      const { node, routed } = await listening('alice-node', handlers)
+      const dialer = hub.createTransport('dialer')
+      const stream = await dialer.openStream(await dialer.dial(node.ticket))
+      const header = new Uint8Array(4)
+      new DataView(header.buffer).setUint32(0, MAX_HANDSHAKE_FRAME_BYTES + 1)
+      await stream.write(header)
+      expect(await new MessageReader(stream).next()).toBeNull()
+      await Promise.all(routed)
+      expect(handlers.join).not.toHaveBeenCalled()
+      expect(handlers.hello).not.toHaveBeenCalled()
     })
   })
 

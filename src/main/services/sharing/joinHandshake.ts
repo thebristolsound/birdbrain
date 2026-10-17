@@ -16,6 +16,7 @@ import type { InviteFields } from '@main/services/sharing/invite'
 import type { InviteRegistry } from '@main/services/sharing/inviteRegistry'
 import type { JoiningMember } from '@main/services/sharing/membership'
 import {
+  MAX_HANDSHAKE_FRAME_BYTES,
   MessageReader,
   PeerByeError,
   ProtocolError,
@@ -117,14 +118,11 @@ export class JoinServer {
 
   constructor(private readonly deps: JoinServerDeps) {}
 
-  // The Owner's side of one join stream. `reader` is the router's, which
-  // has already read the first frame when it hands the stream over.
-  async serve(
-    stream: ByteStream,
-    peerNodeId: string,
-    reader: MessageReader = new MessageReader(stream)
-  ): Promise<void> {
+  // The Owner's side of one join stream. Nothing a joiner sends is larger
+  // than a `join`, so every frame stays under the handshake cap.
+  async serve(stream: ByteStream, peerNodeId: string): Promise<void> {
     const { deps } = this
+    const reader = new MessageReader(stream, MAX_HANDSHAKE_FRAME_BYTES)
     let caseId: string | undefined
     let requestId: string | undefined
     const refuse = async (reason: SyncMessageOf<'join-refused'>['reason']): Promise<void> => {

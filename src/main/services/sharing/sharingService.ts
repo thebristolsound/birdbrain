@@ -31,7 +31,7 @@ import {
   revokeMember,
   shareCase
 } from '@main/services/sharing/membership'
-import { MessageReader } from '@main/services/sharing/messages'
+import { MAX_HANDSHAKE_FRAME_BYTES, MessageReader } from '@main/services/sharing/messages'
 import {
   liveSyncSource,
   pullFromPeer,
@@ -85,8 +85,9 @@ function replayed(stream: ByteStream, chunks: Uint8Array[]): ByteStream {
 
 // Hands an incoming stream to the handler its first message names: `join`
 // to the join server, `hello` to the sync session. Anything else, a stream
-// that ends before its first frame, and a first frame that is not a message
-// close the stream and reach no handler.
+// that ends before its first frame, a first frame that is not a message, and
+// one whose header announces more than a handshake frame close the stream
+// and reach no handler; the sender is unknown here, so no larger body is read.
 export async function routeIncomingStream(
   stream: ByteStream,
   peerNodeId: string,
@@ -104,7 +105,7 @@ export async function routeIncomingStream(
   }
   let first
   try {
-    first = await new MessageReader(recording).next()
+    first = await new MessageReader(recording, MAX_HANDSHAKE_FRAME_BYTES).next()
   } catch {
     stream.close()
     return

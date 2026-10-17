@@ -71,6 +71,7 @@ import { getCaseInventory, getManifestSnapshot, verifyExhibit } from '@main/serv
 import { getSyncState } from '@main/services/sharing/syncState'
 import { SharingError } from '@main/services/sharing/errors'
 import type { SharingService } from '@main/services/sharing/sharingService'
+import { registerFakeInvestigationHandlers } from '@main/services/investigation/fakeEngine'
 import { commitStagedFiles, discardStagedFiles, uploadToStaging } from '@main/services/staging'
 import * as settings from '@main/services/settings'
 import { generateReport, getExportPreflight } from '@main/services/export'
@@ -1173,6 +1174,10 @@ export function registerIpcHandlers(deps: {
     existingCaseOrThrow(caseId)
     return sharing(() => sharingService.getMembers(caseId))
   })
+
+  // Case investigation: the fake engine serves these channels in unpackaged builds only, and a
+  // packaged build registers none of them (engine plan, open question 9).
+  if (!app.isPackaged) registerFakeInvestigationHandlers()
 
   // Staging Pool (ADR-0024, #1148). The file dialog lives here, as the archive
   // import's does; a cancel is an empty list, not an error.

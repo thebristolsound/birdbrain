@@ -221,6 +221,27 @@ const birdbrain = {
     getMembers: bridge(IPC_CHANNELS.SHARING_GET_MEMBERS)
   },
 
+  investigation: {
+    getRevision: bridge(IPC_CHANNELS.INVESTIGATION_GET_REVISION),
+    getView: bridge(IPC_CHANNELS.INVESTIGATION_GET_VIEW),
+    getSpan: bridge(IPC_CHANNELS.INVESTIGATION_GET_SPAN),
+    checkSpan: bridge(IPC_CHANNELS.INVESTIGATION_CHECK_SPAN),
+    startRun: bridge(IPC_CHANNELS.INVESTIGATION_START_RUN),
+    cancelRun: bridge(IPC_CHANNELS.INVESTIGATION_CANCEL_RUN),
+    getChanges: bridge(IPC_CHANNELS.INVESTIGATION_GET_CHANGES),
+    decideJoint: bridge(IPC_CHANNELS.INVESTIGATION_DECIDE_JOINT),
+    decideSpan: bridge(IPC_CHANNELS.INVESTIGATION_DECIDE_SPAN),
+    chooseSubject: bridge(IPC_CHANNELS.INVESTIGATION_CHOOSE_SUBJECT),
+    addSubject: bridge(IPC_CHANNELS.INVESTIGATION_ADD_SUBJECT),
+    keepSubject: bridge(IPC_CHANNELS.INVESTIGATION_KEEP_SUBJECT),
+    setSourceClass: bridge(IPC_CHANNELS.INVESTIGATION_SET_SOURCE_CLASS),
+    setCopyMark: bridge(IPC_CHANNELS.INVESTIGATION_SET_COPY_MARK),
+    setWithheld: bridge(IPC_CHANNELS.INVESTIGATION_SET_WITHHELD),
+    listOwnIdentifiers: bridge(IPC_CHANNELS.INVESTIGATION_LIST_OWN_IDENTIFIERS),
+    markOwnIdentifier: bridge(IPC_CHANNELS.INVESTIGATION_MARK_OWN_IDENTIFIER),
+    unmarkOwnIdentifier: bridge(IPC_CHANNELS.INVESTIGATION_UNMARK_OWN_IDENTIFIER)
+  },
+
   staging: {
     upload: bridge(IPC_CHANNELS.STAGING_UPLOAD),
     commit: bridge(IPC_CHANNELS.STAGING_COMMIT),
@@ -299,6 +320,8 @@ const birdbrain = {
   onSharingChanged: subscribe(IPC_CHANNELS.SHARING_CHANGED),
 
   onSharingJoinProgress: subscribe(IPC_CHANNELS.SHARING_JOIN_PROGRESS),
+
+  onInvestigationProgress: subscribe(IPC_CHANNELS.INVESTIGATION_PROGRESS),
 
   testPipeline: bridge(IPC_CHANNELS.CAPTURES_TEST_PIPELINE),
 

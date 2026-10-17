@@ -65,11 +65,23 @@ const jqStrings = (values: Iterable<string>): string => JSON.stringify([...value
 // The jq programs step 4a runs. Each is the sh-quotable form of one rule in
 // src/shared/verify/sharedCase.ts, named after the function it mirrors; none
 // holds a single quote, so each sits inside one in the script.
-const JQ_PEM = String.raw`def pem: gsub("\r\n"; "\n") | sub("^\\s+"; "") | sub("\\s+$"; "");`
+//
+// The whitespace String.prototype.trim removes, by code point, and the two
+// uses sharedCase.ts makes of it: a line that holds more than whitespace, and
+// samePem's normalized key. None calls a jq regex builtin, which a jq built
+// without Oniguruma lacks.
+const JQ_TEXT = String.raw`def js_space: . == 32 or (. >= 9 and . <= 13) or . == 160 or . == 5760
+  or (. >= 8192 and . <= 8202) or . == 8232 or . == 8233 or . == 8239 or . == 8287
+  or . == 12288 or . == 65279;
+def nonblank: explode | any(.[]; js_space | not);
+def pem: split("\r\n") | join("\n") | explode as $c
+  | [range(0; $c | length) | select($c[.] | js_space | not)] as $k
+  | if ($k | length) == 0 then "" else $c[$k[0]:$k[-1] + 1] | implode end;`
 
 // A chain's raw lines and where its current segment starts (rawSegment).
-const JQ_RAW_SEGMENT = String.raw`def raw: try fromjson catch null;
-[inputs | select(test("\\S"))] as $lines
+const JQ_RAW_SEGMENT = String.raw`${JQ_TEXT}
+def raw: try fromjson catch null;
+[inputs | select(nonblank)] as $lines
 | ([range(0; $lines | length)
     | select(($lines[.] | raw | if type == "object" then .type else null end) == "import")]
    | last // 0) as $start`
@@ -86,8 +98,7 @@ const JQ_OWNER_CLAIM = String.raw`${JQ_RAW_SEGMENT}
 | {i: .i, pem: .r.memberPublicKeyPem}`
 
 // readMemberIdForKey: which installation the Owner's chain names with a key.
-const JQ_MEMBER_FOR_KEY = String.raw`${JQ_PEM}
-${JQ_RAW_SEGMENT}
+const JQ_MEMBER_FOR_KEY = String.raw`${JQ_RAW_SEGMENT}
 | first(range($start; $lines | length) as $i | ($lines[$i] | raw) as $r
     | if ($r | type) != "object" and ($r | type) != "array" then {stop: true}
       elif ($r | type) == "object" and $r.type == "member-add"
@@ -115,7 +126,7 @@ const JQ_SEGMENT = String.raw`(map(select(.type == "import") | .index) | max // 
 | .[] | select(.index >= $cut)`
 
 // buildRoster, over the Owner chain's current segment.
-const JQ_ROSTER = String.raw`${JQ_PEM}
+const JQ_ROSTER = String.raw`${JQ_TEXT}
 def on_roster($id): any(.members[]; .installationId == $id);
 . as $all
 | reduce $all[] as $e ({members: [], findings: [], exclusions: [], ownerId: null, caseId: null};

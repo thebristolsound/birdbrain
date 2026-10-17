@@ -327,7 +327,7 @@ cc_key_for() {
 # the entries before it and its own signature under $2 are verified, nothing
 # after it is read, and the result is INCOMPLETE. Returns 0 when the chain
 # verifies, 1 after one FAIL, 3 after one INCOMPLETE; cc_count counts the
-# entries verified.
+# entries verified. Its loops read a last line no newline ends, as ${stepRef(2)} explains.
 check_chain() {
   cc_file=$1
   cc_key=$2
@@ -337,7 +337,7 @@ check_chain() {
   cc_stop_line=''
   : >"$tmp/cc-bounds.txt"
   cc_at=0
-  while IFS= read -r cc_line; do
+  while IFS= read -r cc_line || [ -n "$cc_line" ]; do
     case "$cc_line" in *[![:space:]]*) ;; *) continue ;; esac
     if ! printf '%s' "$cc_line" | jq empty >/dev/null 2>&1; then
       fail "$cc_name: entry $cc_at: Invalid JSON"
@@ -362,7 +362,7 @@ check_chain() {
   cc_prev=''
   cc_signed=0
   cc_at=0
-  while IFS= read -r cc_line; do
+  while IFS= read -r cc_line || [ -n "$cc_line" ]; do
     case "$cc_line" in *[![:space:]]*) ;; *) continue ;; esac
     [ -n "$cc_stop" ] && [ "$cc_at" -ge "$cc_stop" ] && break
     cc_reason=$(chain_entry_fault "$cc_line" "$cc_at" "$cc_prev")
@@ -403,7 +403,7 @@ check_chain() {
     printf '%s\\n' "$cc_stop" >>"$tmp/cc-bounds.txt"
   fi
   cc_at=0
-  while IFS= read -r cc_line; do
+  while IFS= read -r cc_line || [ -n "$cc_line" ]; do
     case "$cc_line" in *[![:space:]]*) ;; *) continue ;; esac
     [ "$cc_at" -ge "$cc_stop" ] && break
     if [ "$(field "$cc_line" '(.schemaVersion // 0) >= 2')" = true ] &&
@@ -968,9 +968,14 @@ ${openStep(2)}
 # installation that imported it, so it verifies under the next key along. That
 # is why a carried key is not taken on trust: the entry carrying it is verified
 # here under the next key, and so on to the enclosed key.
+#
+# Every loop over a chain file reads its last line even with no newline after
+# it, the "|| [ -n ... ]" in its condition: jq, which later steps read the
+# chain with, reads that line, so a loop that skipped it would leave a line
+# those steps act on that no check here verified.
 : >"$tmp/boundaries.txt"
 position=0
-while IFS= read -r line; do
+while IFS= read -r line || [ -n "$line" ]; do
   [ -n "$line" ] || continue
   if [ "$(field "$line" '.type')" = 'import' ]; then
     printf '%s' "$line" | jq -j '.sourcePublicKeyPem // empty' >"$tmp/import-key-$position.pem"
@@ -1023,7 +1028,7 @@ else
   run_key=''
   run_from=0
   run_signed=0
-  while IFS= read -r line; do
+  while IFS= read -r line || [ -n "$line" ]; do
     [ -n "$line" ] || continue
     this=$position
     position=$((position + 1))
@@ -1059,7 +1064,7 @@ fi
 
 ${openStep(3)}
 counted=0
-while IFS= read -r line; do
+while IFS= read -r line || [ -n "$line" ]; do
   [ -n "$line" ] || continue
   counted=$((counted + 1))
   idx=$(field "$line" '.index')
@@ -1071,7 +1076,7 @@ note "$counted entr(ies) recomputed from their bodies"
 ${openStep(4)}
 expect=0
 head_hash=''
-while IFS= read -r line; do
+while IFS= read -r line || [ -n "$line" ]; do
   [ -n "$line" ] || continue
   idx=$(field "$line" '.index')
   [ "$idx" = "$expect" ] ||

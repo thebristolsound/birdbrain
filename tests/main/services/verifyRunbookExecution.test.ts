@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll, afterEach, vi } from 'vitest'
-import { createHash } from 'crypto'
+import { createHash, createSign, generateKeyPairSync } from 'crypto'
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { tmpdir } from 'os'
@@ -24,6 +24,7 @@ import { seedUnanchoredDerivedFile } from '../../helpers/mixedKindCase'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import { VERIFY_RUNBOOK } from '@main/services/verifyRunbook'
+import { canonicalStringify } from '@shared/verify'
 import { PACKAGE_ROOT_FILES } from '../../../src/packages/evidence-package-layout/index'
 import { HAS_OPENSSL } from '../../helpers/openssl'
 import { HAS_JQ, jqIsRequired } from '../../helpers/jq'
@@ -573,6 +574,46 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
       script: 'fail',
       steps: [1, 3],
       says: ['does not hash to its own entryHash']
+    },
+    {
+      // A shell `read` loop skips a last line with no newline after it, and
+      // step 5 reads the manifest with jq, which does not. A deletion signed by
+      // a key the package does not enclose, written that way, once reached
+      // step 5 without steps 2 to 4 reading it.
+      name: 'a forged entry written as the last line with no newline',
+      build: () => {
+        const dir = corruptedCopy('unterminated-forgery')
+        const path = join(dir, 'manifest.jsonl')
+        const lines = readFileSync(path, 'utf-8').split('\n').filter(Boolean)
+        const last = JSON.parse(lines.at(-1)!) as Record<string, unknown>
+        const body = {
+          type: 'deletion',
+          caseId,
+          captureId,
+          contentHash,
+          timestamp: '2026-04-05T12:02:00.000Z',
+          operatorId: 'op',
+          operatorName: 'Test Operator',
+          toolVersion: '0.1.0',
+          schemaVersion: last.schemaVersion,
+          index: lines.length,
+          prevHash: last.entryHash
+        }
+        const entryHash = sha256(Buffer.from(canonicalStringify(body)))
+        const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
+        const signature = createSign('sha256').update(entryHash).sign(privateKey, 'base64')
+        writeFileSync(
+          path,
+          [...lines, JSON.stringify({ ...body, entryHash, signature })].join('\n')
+        )
+        return dir
+      },
+      binary: 'fail',
+      script: 'fail',
+      // Step 5 also fails export-entry.json, which names the head before it.
+      steps: [1, 2, 5],
+      says: ['signature does not verify under signing-public-key.pem'],
+      binaryFails: { name: 'manifest chain', reason: 'Invalid signature' }
     },
     {
       // The attack step 6a warns about: anyone who can rewrite the package can

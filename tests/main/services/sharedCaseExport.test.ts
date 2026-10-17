@@ -947,6 +947,38 @@ describe('Shared Case export, import and fork (#1511)', () => {
         .map((line) => line.trim())
         .filter((line) => line.startsWith(`${kind} [`))
 
+    // What the package verifier's Shared Case walk found, apart from its other
+    // checks: an edit to a packaged file fails those whatever the walk says,
+    // so its overall verdict cannot show the two verifiers agree on the walk.
+    const sharedCaseFailures = (dir: string): string[] =>
+      failures(dir)
+        .filter((check) => check.name === 'shared case')
+        .map((check) => check.reason ?? '')
+
+    // `chain` with a schema-valid deletion of `exhibitId` appended, signed by
+    // a key no member-add carries; `newline` false leaves it unterminated.
+    function forgedDeletion(
+      chain: Chain,
+      exhibitId: string,
+      by: ReturnType<typeof operator>,
+      newline: boolean
+    ): string {
+      const [row] = listExhibits(caseId).filter((e) => e.id === exhibitId)
+      const forger = new Chain(signWith(keyPair()))
+      forger.lines = [...chain.lines]
+      forger.hashes = [...chain.hashes]
+      forger.append({
+        type: 'deletion',
+        caseId,
+        captureId: exhibitId,
+        contentHash: row.contentHash,
+        timestamp: TIME,
+        ...by,
+        schemaVersion: 3
+      })
+      return newline ? forger.jsonl : forger.lines.join('\n')
+    }
+
     it('passes the two-member package, naming each member chain and its key', async () => {
       const { peerDoc } = ownerReplica()
       const { dir } = await exportPackage()
@@ -1005,6 +1037,47 @@ describe('Shared Case export, import and fork (#1511)', () => {
           'is not present or did not verify'
       ])
       expect(verifyEvidencePackage(dir).pass).toBe(false)
+    })
+
+    // A shell `read` loop skips a last line with no newline after it, and jq
+    // reads that line all the same, so step 4a once accepted a line its checks
+    // had never read. evidence.json is left as exported: step 1 reports the
+    // edited file, and the findings after it are the chain check's.
+    it('fails a forged member entry written as the last line with no newline', async () => {
+      const { peer, peerDoc } = ownerReplica()
+      const { dir } = await exportPackage()
+      writeFileSync(join(dir, peerChain), forgedDeletion(peer, peerDoc, PEER, false))
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      const merge =
+        `merge entry 3 of ${localId} names installation ${PEER_ID}, whose chain ` +
+        'is not present or did not verify'
+      expect(findings(run.output, 'FAIL')).toEqual([
+        'FAIL [step 1] one or more enclosed files do not match evidence.json',
+        `FAIL [step 4a] ${peerChain} (member RP): entry 1: Invalid signature`,
+        `FAIL [step 4a] ${merge}`
+      ])
+      expect(run.output).not.toContain('a later deletion entry accounts for it')
+      expect(sharedCaseFailures(dir)).toEqual([
+        `chain-broken: chain of ${PEER_ID} (RP): Invalid signature`,
+        `merge-head-mismatch: ${merge}`
+      ])
+    })
+
+    it("fails a forged Owner's entry with no newline, in a package a member exported", async () => {
+      const { owner, ownerDoc } = memberReplica()
+      const { dir } = await exportPackage()
+      writeFileSync(join(dir, peerChain), forgedDeletion(owner, ownerDoc, PEER, false))
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      expect(findings(run.output, 'FAIL')).toEqual([
+        'FAIL [step 1] one or more enclosed files do not match evidence.json',
+        `FAIL [step 4a] ${peerChain} (the Owner): entry 3: Invalid signature`
+      ])
+      expect(run.output).not.toContain('a later deletion entry accounts for it')
+      expect(sharedCaseFailures(dir)).toEqual(['chain-broken: Owner chain: Invalid signature'])
     })
 
     it('fails a merge head the member chain does not reach', async () => {

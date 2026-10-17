@@ -247,6 +247,22 @@ describe('sharing service (#1810)', () => {
       await service.close()
     })
 
+    it('asks the provider again after a start that throws', async () => {
+      const service = newService()
+      let calls = 0
+      service.setTransportProvider(async () => {
+        calls += 1
+        if (calls === 1) throw new Error('no relay')
+        return hub.createTransport('alice-node')
+      })
+      await expect(service.createInvite(caseId)).rejects.toThrow('no relay')
+      expect((await service.getMembers(caseId)).pendingJoins).toEqual([])
+      const created = await service.createInvite(caseId)
+      expect(decodeInvite(created.invite).caseId).toBe(caseId)
+      expect(calls).toBe(2)
+      await service.close()
+    })
+
     it('refuses a join to a Case this installation holds before dialing, and a read of a bad invite', async () => {
       const service = newService()
       const invite = encodeInvite({

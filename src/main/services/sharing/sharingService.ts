@@ -153,12 +153,19 @@ export class SharingService {
   }
 
   // The transport, started on the first call and listened on once. A
-  // provider that returns null is asked again next time.
+  // provider that returns null, or a start that throws, is asked again next
+  // time rather than kept.
   private async transportOrThrow(): Promise<Started> {
-    this.started ??= this.start()
-    const started = await this.started
+    const pending = (this.started ??= this.start())
+    let started: Started | null
+    try {
+      started = await pending
+    } catch (err) {
+      if (this.started === pending) this.started = null
+      throw err
+    }
     if (started === null) {
-      this.started = null
+      if (this.started === pending) this.started = null
       throw new SharingError('sharing-unavailable')
     }
     return started

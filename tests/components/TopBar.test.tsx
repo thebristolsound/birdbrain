@@ -46,6 +46,11 @@ vi.mock('@renderer/components/status/SessionControls', () => ({
 }))
 vi.mock('@renderer/components/status/ConnectionStatus', () => ({ ConnectionStatus: () => null }))
 vi.mock('@renderer/components/status/CaptureHealth', () => ({ CaptureHealth: () => null }))
+vi.mock('@renderer/components/export/ExportMenu', () => ({
+  ExportMenu: ({ caseId, caseName }: { caseId: string; caseName: string }) => (
+    <div data-testid="export-menu">{`${caseId}:${caseName}`}</div>
+  )
+}))
 
 import { TopBar } from '@renderer/components/layout/TopBar'
 
@@ -81,7 +86,7 @@ describe('the case chrome', () => {
     expect(screen.getByTestId('global-search-input')).toBeTruthy()
   })
 
-  // They sit in CaseActionBar, so the bar's right side keeps one width beside the
+  // It sits in CaseActionBar, so the bar's right side keeps one width beside the
   // native window controls.
   it('leaves the session switch to the case action bar', async () => {
     renderAt('/cases/case1/overview')
@@ -89,18 +94,27 @@ describe('the case chrome', () => {
     expect(screen.queryByTestId('session-controls')).toBeNull()
   })
 
+  it('carries Export for the open case', async () => {
+    renderAt('/cases/case1/overview')
+    await waitFor(() =>
+      expect(screen.getByTestId('export-menu').textContent).toBe('case1:Operation Kestrel')
+    )
+  })
+
   it('treats the new-case wizard as no case, like the dashboard', () => {
     renderAt('/cases/new')
     expect(screen.queryByTestId('topbar-case-name')).toBeNull()
     expect(screen.queryByTestId('global-search-input')).toBeNull()
     expect(screen.queryByTestId('session-controls')).toBeNull()
+    expect(screen.queryByTestId('export-menu')).toBeNull()
     expect(getCase).not.toHaveBeenCalled()
   })
 
-  it('shows neither control on the dashboard', () => {
+  it('shows no case control on the dashboard', () => {
     renderAt('/')
     expect(screen.queryByTestId('topbar-case-name')).toBeNull()
     expect(screen.queryByTestId('global-search-input')).toBeNull()
+    expect(screen.queryByTestId('export-menu')).toBeNull()
   })
 })
 

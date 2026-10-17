@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import type { UpdateStatus, ReleaseChannel } from '@shared/types'
+import type { EgressSetting, UpdateStatus, ReleaseChannel } from '@shared/types'
 
 // --- Module mocks -----------------------------------------------------------
 // Built inside vi.hoisted so the shared stubs exist when the hoisted vi.mock
@@ -68,6 +68,7 @@ function makeDeps(overrides: Partial<UpdaterServiceDeps> = {}): {
     emit: (s) => emitted.push(s),
     getChannel: () => 'stable',
     isAutoCheckEnabled: () => true,
+    getEgress: () => ({ kind: 'direct' }),
     ...overrides
   }
   return { deps, emitted }
@@ -451,5 +452,128 @@ describe('updater service — dispose', () => {
     autoUpdater.emit('update-downloaded', { version: '9.9.9' })
     expect(emitted).toHaveLength(0)
     expect(svc.getStatus().state).toBe('idle')
+  })
+})
+
+describe('updater service — Egress (ADR-0032)', () => {
+  const tor: EgressSetting = {
+    kind: 'tor',
+    proxyUrl: 'socks5://127.0.0.1:9150',
+    label: 'Tor Browser'
+  }
+  const torConfig = {
+    mode: 'fixed_servers',
+    proxyRules: 'socks5://127.0.0.1:9150',
+    proxyBypassRules: '<-loopback>'
+  }
+
+  function sessionDeps(egress: () => EgressSetting) {
+    const setProxy = vi.fn<(config: unknown) => Promise<void>>(async () => {})
+    const netSession = () => ({ setProxy }) as unknown as Electron.Session
+    return { setProxy, ...makeDeps({ getEgress: egress, netSession }) }
+  }
+
+  it.each([true, false])(
+    'puts the proxy on the update session at start, with no direct fallback (packaged: %s)',
+    async (packaged) => {
+      appMock.isPackaged = packaged
+      const { deps, setProxy } = sessionDeps(() => tor)
+      createUpdaterService(deps).start()
+      expect(setProxy).toHaveBeenCalledWith(torConfig)
+      expect(JSON.stringify(setProxy.mock.calls)).not.toContain('direct')
+    }
+  )
+
+  it('re-applies on every change of the setting, and resets to direct on Direct', () => {
+    let egress: EgressSetting = tor
+    const { deps, setProxy } = sessionDeps(() => egress)
+    const svc = createUpdaterService(deps)
+    svc.start()
+    egress = { kind: 'proxy', proxyUrl: 'http://10.0.0.2:3128', label: '' }
+    svc.applySettingsChange({ egress })
+    expect(setProxy).toHaveBeenLastCalledWith({
+      mode: 'fixed_servers',
+      proxyRules: 'http://10.0.0.2:3128',
+      proxyBypassRules: '<-loopback>'
+    })
+    egress = { kind: 'direct' }
+    svc.applySettingsChange({ egress })
+    expect(setProxy).toHaveBeenLastCalledWith({ mode: 'direct' })
+    expect(setProxy).toHaveBeenCalledTimes(3)
+  })
+
+  it('leaves the session untouched while the Egress has been Direct since launch', () => {
+    const { deps, setProxy } = sessionDeps(() => ({ kind: 'direct' }))
+    const svc = createUpdaterService(deps)
+    svc.start()
+    svc.applySettingsChange({ egress: { kind: 'direct' } })
+    svc.applySettingsChange({ releaseChannel: 'beta' })
+    expect(setProxy).not.toHaveBeenCalled()
+  })
+
+  it('runs no check or download and reports an error when the proxy cannot be applied', async () => {
+    setPlatform('win32')
+    const { deps, setProxy, emitted } = sessionDeps(() => tor)
+    setProxy.mockRejectedValueOnce(new Error('bad proxy rules'))
+    const svc = createUpdaterService(deps)
+    svc.start()
+
+    const status = await svc.check()
+    expect(status.state).toBe('error')
+    expect(status.error).toContain('bad proxy rules')
+    expect(autoUpdater.checkForUpdates).not.toHaveBeenCalled()
+    expect(emitted.at(-1)?.state).toBe('error')
+
+    await svc.download()
+    expect(autoUpdater.downloadUpdate).not.toHaveBeenCalled()
+  })
+
+  it('runs no check and reports an error while the saved Egress cannot be read', async () => {
+    const { deps, setProxy, emitted } = sessionDeps(() => ({ kind: 'unavailable' }))
+    const svc = createUpdaterService(deps)
+    svc.start()
+    expect(emitted.at(-1)).toMatchObject({ state: 'error' })
+    expect((await svc.check()).state).toBe('error')
+    expect(autoUpdater.checkForUpdates).not.toHaveBeenCalled()
+    expect(setProxy).not.toHaveBeenCalled()
+  })
+
+  it('re-reads the setting before a check, so a file that reads again routes the check', async () => {
+    let egress: EgressSetting = { kind: 'unavailable' }
+    const { deps, setProxy } = sessionDeps(() => egress)
+    const svc = createUpdaterService(deps)
+    svc.start()
+    egress = tor
+    await svc.check()
+    expect(setProxy).toHaveBeenCalledWith(torConfig)
+    expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1)
+  })
+
+  it('puts a changed proxy on the session before the check a channel change starts', async () => {
+    let egress: EgressSetting = { kind: 'direct' }
+    const { deps, setProxy } = sessionDeps(() => egress)
+    const svc = createUpdaterService(deps)
+    svc.start()
+    egress = tor
+    svc.applySettingsChange({ releaseChannel: 'beta', egress })
+    await new Promise((resolve) => setImmediate(resolve))
+    const check = autoUpdater.checkForUpdates as ReturnType<typeof vi.fn>
+    expect(check).toHaveBeenCalledTimes(1)
+    expect(setProxy.mock.invocationCallOrder[0]).toBeLessThan(check.mock.invocationCallOrder[0])
+  })
+
+  it('waits for an apply in flight before the first check goes out', async () => {
+    let finish: () => void = () => {}
+    const { deps, setProxy } = sessionDeps(() => tor)
+    setProxy.mockImplementationOnce(() => new Promise<void>((resolve) => (finish = resolve)))
+    const svc = createUpdaterService(deps)
+    svc.start()
+
+    const checking = svc.check()
+    await Promise.resolve()
+    expect(autoUpdater.checkForUpdates).not.toHaveBeenCalled()
+    finish()
+    await checking
+    expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1)
   })
 })

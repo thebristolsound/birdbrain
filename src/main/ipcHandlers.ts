@@ -80,6 +80,7 @@ import {
 import { deleteDemoCase } from '@main/services/demoCase'
 import { getExtensionPath, extensionPathExists } from '@main/services/extensionPath'
 import { lookupSnapshots, isPersistableSnapshot } from '@main/services/waybackMachine'
+import { egressFetch } from '@main/services/egress'
 import { buildCsv } from '@main/services/csvEscape'
 import { getInstallationId } from '@main/services/installationId'
 import { getCaptureServerPort } from '@main/services/captureServer'
@@ -806,7 +807,8 @@ export function registerIpcHandlers(deps: {
     const capture = captureRepo.getCapture(captureId)
     if (!capture) throw new IpcFailure('Capture not found', 'NOT_FOUND')
     try {
-      return await lookupSnapshots(capture.url, capture.timestamp)
+      // The lookup follows the Egress (ADR-0032); through a stopped proxy it fails here.
+      return await lookupSnapshots(capture.url, capture.timestamp, { fetchImpl: egressFetch })
     } catch (err) {
       throw new IpcFailure(
         err instanceof Error ? err.message : 'Wayback lookup failed',

@@ -16,6 +16,7 @@ import {
   resetSettings,
   getDefaultSettings,
   onThemeChange,
+  onEgressChange,
   InvalidSettingsError
 } from '@main/services/settings'
 import { DEFAULT_TSA_URL } from '@shared/constants'
@@ -50,6 +51,144 @@ describe('settings', () => {
       expect(listener).toHaveBeenLastCalledWith('dark')
       off()
       updateSettings({ theme: 'light' })
+      expect(listener).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  describe('the Egress setting (ADR-0032)', () => {
+    const tor = { kind: 'tor', proxyUrl: 'socks5://127.0.0.1:9150', label: 'Tor Browser' } as const
+
+    it('defaults to Direct, also for a settings file written before it existed', () => {
+      expect(getSettings().egress).toEqual({ kind: 'direct' })
+      writeFileSync(settingsFile, JSON.stringify({ operatorName: 'Matt' }))
+      expect(getSettings().egress).toEqual({ kind: 'direct' })
+    })
+
+    it('stores a proxy in its normalised form and reads it back', () => {
+      updateSettings({
+        egress: { kind: 'proxy', proxyUrl: ' socks5://10.0.0.2:1080/ ', label: ' Lab ' }
+      })
+      expect(getSettings().egress).toEqual({
+        kind: 'proxy',
+        proxyUrl: 'socks5://10.0.0.2:1080',
+        label: 'Lab'
+      })
+      expect(JSON.parse(readFileSync(settingsFile, 'utf-8')).egress.proxyUrl).toBe(
+        'socks5://10.0.0.2:1080'
+      )
+    })
+
+    it.each([
+      ['socks4://127.0.0.1:1080', /SOCKS4/],
+      ['socks://127.0.0.1:1080', /SOCKS4/],
+      ['socks5://user:secret@127.0.0.1:1080', /login/],
+      ['http://user@proxy.example:3128', /login/],
+      ['https://proxy.example:443', /socks5:\/\/ or http:\/\//],
+      ['socks5://127.0.0.1', /port/],
+      ['not a url', /Not a proxy address/]
+    ])('refuses %s with a message and keeps the stored Egress', (proxyUrl, message) => {
+      updateSettings({ egress: tor })
+      expect(() => updateSettings({ egress: { kind: 'proxy', proxyUrl, label: '' } })).toThrow(
+        message
+      )
+      expect(() => updateSettings({ egress: { kind: 'proxy', proxyUrl, label: '' } })).toThrow(
+        InvalidSettingsError
+      )
+      expect(getSettings().egress).toEqual(tor)
+    })
+
+    // ADR-0032 rule 2 and the #1169 reading of an unknown privacy preference: an
+    // Egress the file no longer shows is unavailable, never Direct.
+    describe('when the saved Egress cannot be known', () => {
+      it.skipIf(process.getuid?.() === 0)('a file that cannot be read gives unavailable', () => {
+        writeFileSync(settingsFile, JSON.stringify({ egress: tor }), 'utf-8')
+        chmodSync(settingsFile, 0o000)
+        try {
+          expect(getSettings().egress).toEqual({ kind: 'unavailable' })
+        } finally {
+          chmodSync(settingsFile, 0o600)
+        }
+        expect(getSettings().egress).toEqual(tor)
+      })
+
+      it('a file that will not parse gives unavailable', () => {
+        writeFileSync(settingsFile, '{"egress": {"kind": "tor", "proxyUrl": "socks5://127', 'utf-8')
+        expect(getSettings().egress).toEqual({ kind: 'unavailable' })
+      })
+
+      it('a file whose Egress no longer parses gives unavailable', () => {
+        writeFileSync(
+          settingsFile,
+          JSON.stringify({
+            egress: { kind: 'tor', proxyUrl: 'socks4://127.0.0.1:9050', label: '' }
+          })
+        )
+        expect(getSettings().egress).toEqual({ kind: 'unavailable' })
+      })
+
+      it('keeps a legible Egress when another key fails the schema', () => {
+        writeFileSync(settingsFile, JSON.stringify({ theme: 'purple', egress: tor }))
+        expect(getSettings().egress).toEqual(tor)
+        writeFileSync(settingsFile, JSON.stringify({ theme: 'purple' }))
+        expect(getSettings().egress).toEqual({ kind: 'direct' })
+      })
+
+      it('keeps unavailable through a save until the Operator chooses an Egress', () => {
+        writeFileSync(settingsFile, 'not json at all', 'utf-8')
+        updateSettings({ operatorName: 'Matt' })
+        expect(JSON.parse(readFileSync(settingsFile, 'utf-8')).egress).toEqual({
+          kind: 'unavailable'
+        })
+        expect(getSettings()).toMatchObject({
+          operatorName: 'Matt',
+          egress: { kind: 'unavailable' }
+        })
+        updateSettings({ egress: { kind: 'direct' } })
+        expect(getSettings().egress).toEqual({ kind: 'direct' })
+      })
+
+      it('refuses unavailable as an edit', () => {
+        expect(() =>
+          updateSettings({ egress: { kind: 'unavailable' } } as unknown as Parameters<
+            typeof updateSettings
+          >[0])
+        ).toThrow(InvalidSettingsError)
+      })
+    })
+
+    it.each([
+      ['socks5://http=x;y:9050', /host name or an IP address/],
+      ['socks5://a;b:1080', /host name or an IP address/]
+    ])('refuses %s, which Chromium would read as proxy rules', (proxyUrl, message) => {
+      expect(() => updateSettings({ egress: { kind: 'tor', proxyUrl, label: '' } })).toThrow(
+        message
+      )
+    })
+
+    it('takes an http proxy on port 80, which URL reports as no port', () => {
+      updateSettings({ egress: { kind: 'proxy', proxyUrl: 'http://proxy.example:80', label: '' } })
+      expect(getSettings().egress).toMatchObject({ proxyUrl: 'http://proxy.example:80' })
+    })
+
+    it('takes only a socks5 address for Tor', () => {
+      expect(() =>
+        updateSettings({ egress: { kind: 'tor', proxyUrl: 'http://127.0.0.1:8118', label: '' } })
+      ).toThrow(/Tor takes a socks5/)
+    })
+
+    it('tells listeners when an update or reset moves the Egress, and only then', () => {
+      const listener = vi.fn()
+      const off = onEgressChange(listener)
+      updateSettings({ operatorName: 'Matt' })
+      expect(listener).not.toHaveBeenCalled()
+      updateSettings({ egress: tor })
+      expect(listener).toHaveBeenCalledWith(tor)
+      updateSettings({ egress: tor })
+      expect(listener).toHaveBeenCalledTimes(1)
+      resetSettings()
+      expect(listener).toHaveBeenLastCalledWith({ kind: 'direct' })
+      off()
+      updateSettings({ egress: tor })
       expect(listener).toHaveBeenCalledTimes(2)
     })
   })

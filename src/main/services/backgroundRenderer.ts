@@ -7,9 +7,10 @@ import { unlink } from 'fs/promises'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
 import { getConsentBlocker } from '@main/services/consentBlocker'
+import { captureEgressOf, knownEgress, proxyConfigFor } from '@main/services/egress'
 import { RefusedAddressError, refusedAddressClass } from '@main/services/localAddressPolicy'
 import type { RenderPage, RenderedPage } from '@main/services/recapture'
-import type { ConsentSuppression } from '@shared/types'
+import type { ConsentSuppression, KnownEgress } from '@shared/types'
 import { logger } from '@main/services/logger'
 
 const VIEWPORT = { width: 1280, height: 900 }
@@ -363,6 +364,17 @@ export async function trimTrailingBackground(png: Buffer): Promise<Buffer> {
   }
 }
 
+// A load that failed at the proxy names the proxy, so the Operator can tell a
+// stopped Tor from an unreachable site. Chromium reports those failures as
+// ERR_PROXY_*, ERR_SOCKS_* or ERR_TUNNEL_*. The address appears only in the
+// failure message, never in a stored Capture.
+function proxyFailure(err: unknown, egress: KnownEgress): Error | null {
+  if (egress.kind === 'direct') return null
+  const message = err instanceof Error ? err.message : String(err)
+  if (!/ERR_(PROXY|SOCKS|TUNNEL)_/.test(message)) return null
+  return new Error(`Could not go through the Egress proxy ${egress.proxyUrl}: ${message}`)
+}
+
 // Renders a URL in a locked-down, invisible BrowserWindow with a fresh
 // in-memory session (no persist: prefix = nothing touches disk, nothing is
 // shared with the app or previous jobs). A hostile page runs in our process,
@@ -370,6 +382,9 @@ export async function trimTrailingBackground(png: Buffer): Promise<Buffer> {
 // window destroyed in finally. The only preload is the consent blocker's
 // isolated cosmetic-filter bridge (see below).
 export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) => {
+  // An Egress that could not be read sends nothing, so no window is made (ADR-0032).
+  const egress = knownEgress()
+
   // Offscreen rendering (OSR), NOT a plain show:false window. A hidden window
   // never composites, so JS/SPA sites (CNN, most news) never lay out or hydrate,
   // and IntersectionObserver/requestAnimationFrame never fire — lazy content
@@ -461,6 +476,14 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
   }
 
   async function render(): Promise<RenderedPage> {
+    // The Egress goes on the partition before anything loads (ADR-0032): every
+    // request of the render, the first included, leaves through the proxy or fails.
+    // WebRTC may then use UDP only through it. Direct leaves the session as it was.
+    if (egress.kind !== 'direct') {
+      await session.setProxy(proxyConfigFor(egress))
+      wc.setWebRTCIPHandlingPolicy('disable_non_proxied_udp')
+    }
+
     wc.session.setPermissionRequestHandler((_wc, _permission, callback) => callback(false))
     // Without a check handler, permission checks (Notification.permission,
     // navigator.permissions.query) report `granted` while every request above is
@@ -513,7 +536,11 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
     networkTracker = createNetworkIdleTracker(session)
 
     try {
-      await wc.loadURL(url)
+      try {
+        await wc.loadURL(url)
+      } catch (err) {
+        throw proxyFailure(err, egress) ?? err
+      }
       await waitForDocumentComplete(wc, remainingMs(FINAL_ARTIFACT_RESERVE_MS))
       await networkTracker.waitForIdle(
         NETWORK_IDLE_MS,
@@ -551,6 +578,7 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
         userAgent: wc.getUserAgent(),
         browserVersion: `Chrome/${process.versions.chrome}`,
         consentSuppression,
+        egress: captureEgressOf(egress),
         cleanup: async () => {
           if (!win.isDestroyed()) win.destroy()
           await unlink(tmpPath).catch(() => {})

@@ -6,6 +6,7 @@ import {
   dialog,
   shell,
   session as electronSession,
+  webContents as electronWebContents,
   webFrameMain
 } from 'electron'
 import { join, resolve } from 'path'
@@ -38,10 +39,12 @@ import {
   sanitizeWebviewPreferences,
   webviewPolicyFor,
   MHTML_PARTITION,
+  WAYBACK_PARTITION,
   WEBVIEW_PARTITIONS
 } from '@main/webviewPolicy'
 import { forwardGuestMouseDown } from '@main/guestMouseDown'
-import { initSettings, getSettings, onThemeChange } from '@main/services/settings'
+import { initSettings, getSettings, onEgressChange, onThemeChange } from '@main/services/settings'
+import { createRoutedSession, webRtcPolicyFor, type RoutedSession } from '@main/services/egress'
 import { titleBarOptions, titleBarOverlay, windowBackgroundColor } from '@main/windowChrome'
 import { initInstallationId, getInstallationId } from '@main/services/installationId'
 import { initSigningKey, SigningKeyUnacknowledgedError } from '@main/services/signingKey'
@@ -175,6 +178,9 @@ app.on('child-process-gone', (_event, details) => {
 // already hardened.
 let webviewSessionsHardened = false
 
+// Gates the Wayback partition on the Egress; set at startup, before any window.
+let waybackRoute: RoutedSession | null = null
+
 // Denies permissions, downloads and off-allow-list requests on every partition a
 // webview may run on. Runs before the window exists, so no guest can attach ahead
 // of its own session's handlers. Both permission handlers are set: a request
@@ -204,7 +210,10 @@ function hardenWebviewSessions(): void {
     // can issue hundreds and the fact worth keeping is the allow-list, which is
     // written down in webviewPolicy.ts rather than inferred from a log.
     guestSession.webRequest.onBeforeRequest((details, callback) => {
-      callback({ cancel: decideWebviewRequest({ partition, url: details.url }) === 'block' })
+      const unrouted = partition === WAYBACK_PARTITION && waybackRoute?.allowsRequests() === false
+      callback({
+        cancel: unrouted || decideWebviewRequest({ partition, url: details.url }) === 'block'
+      })
     })
   }
 }
@@ -357,6 +366,9 @@ app.on('web-contents-created', (_event, contents) => {
   if (contents.getType() !== 'webview') return
   const partition = webviewPartitionOf(contents)
   contents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  if (partition === WAYBACK_PARTITION) {
+    contents.setWebRTCIPHandlingPolicy(webRtcPolicyFor(getSettings().egress))
+  }
   // The stored-page viewer closes its link menu on a press in the guest (#1708).
   if (partition === MHTML_PARTITION) forwardGuestMouseDown(contents)
   if (webviewPolicyFor(partition)?.allowSubsequentNavigation === false) {
@@ -631,7 +643,8 @@ if (!gotSingleInstanceLock) {
           }
         },
         getChannel: () => getSettings().releaseChannel,
-        isAutoCheckEnabled: () => getSettings().autoCheckForUpdates
+        isAutoCheckEnabled: () => getSettings().autoCheckForUpdates,
+        getEgress: () => getSettings().egress
       })
 
       // Register IPC handlers
@@ -650,6 +663,28 @@ if (!gotSingleInstanceLock) {
       // present as ready to capture while silently receiving nothing.
       await startCaptureServer({ selectorLifecycle, captureLifecycle, sessionService })
       startExtensionConnectionCheck()
+
+      // The Wayback replay pane follows the Egress (ADR-0032). Its partition refuses
+      // every request until it carries the current Egress (createRoutedSession), set
+      // up before the window exists, so no replay loads ahead of its proxy. Its
+      // guests keep WebRTC's UDP inside the proxy, re-set on every change.
+      waybackRoute = createRoutedSession(
+        electronSession.fromPartition(WAYBACK_PARTITION),
+        (err) => {
+          logger.error('app', 'app.egress_apply_failed', undefined, err)
+        }
+      )
+      onEgressChange((egress) => {
+        waybackRoute?.sync(egress)
+        for (const contents of electronWebContents.getAllWebContents()) {
+          if (
+            contents.getType() === 'webview' &&
+            webviewPartitionOf(contents) === WAYBACK_PARTITION
+          ) {
+            contents.setWebRTCIPHandlingPolicy(webRtcPolicyFor(egress))
+          }
+        }
+      })
 
       // Create window and connect to capture server
       const win = createWindow()

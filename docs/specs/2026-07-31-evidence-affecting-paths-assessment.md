@@ -213,6 +213,7 @@ that caused it was to record the carved-out file as an exclusion (#515), which i
 | `src/main/services/recapture.ts` | blocking | Recapture queue re-acquiring URLs as new evidence |
 | `src/main/services/backgroundRenderer.ts` | blocking | Headless render producing the artifacts that get hashed |
 | `src/main/services/localAddressPolicy.ts` | blocking | Applies that classification to recapture links and each redirect hop, and holds the test-only loopback switch a packaged build ignores (#1726). Added 2026-10-16 |
+| `src/main/services/egress.ts` | blocking | The Egress (ADR-0032): the proxy configuration every render, the Wayback pane and update checks receive, the routed fetch for the TSA request, the Wayback lookup and the filter lists, and what a signed capture entry records about the route (#1695). Added 2026-10-17 |
 | `src/main/services/consentBlocker.ts` | blocking | Suppresses consent overlays during recapture — alters acquired page content |
 
 ### Integrity core (hash, manifest, signing, trusted time, verification)

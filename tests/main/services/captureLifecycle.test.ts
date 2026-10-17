@@ -103,6 +103,8 @@ describe('createCaptureLifecycle.ingest', () => {
   beforeEach(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-lifecycle-'))
     initStorage(join(tempDir, 'captures'))
+    // Ingest reads the Egress to decide the TLS re-fetch (ADR-0032).
+    initSettings(tempDir)
     await initDatabase(':memory:')
     caseId = createCase({ name: 'Lifecycle' }).id
     ensureCaseDir(caseId)
@@ -350,6 +352,116 @@ describe('createCaptureLifecycle.ingest', () => {
     expect(capture.id).toBeTruthy()
     expect(getCapture(capture.id)?.tlsCertChain).toBeUndefined()
     expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+  })
+
+  describe('under an Egress that is not Direct (ADR-0032)', () => {
+    function lastEntry(): Record<string, unknown> {
+      const lines = readFileSync(join(tempDir, 'captures', caseId, 'manifest.jsonl'), 'utf-8')
+        .split('\n')
+        .filter((l) => l.trim().length > 0)
+      return JSON.parse(lines[lines.length - 1])
+    }
+
+    it('records the kind, label and user agent of a rendered capture, and skips the re-fetch', async () => {
+      const fetchTlsCertChain = vi.fn(async () => null)
+      const lifecycle = createCaptureLifecycle({
+        selectorLifecycle: selectorStub,
+        fetchTlsCertChain,
+        egressIsDirect: () => false
+      })
+      await lifecycle.ingest(
+        buildIngestParams(caseId, Buffer.from('mhtml-body'), {
+          method: 'background',
+          egress: { kind: 'proxy', label: 'Lab tunnel' }
+        })
+      )
+
+      expect(fetchTlsCertChain).not.toHaveBeenCalled()
+      const entry = lastEntry()
+      expect(entry).toMatchObject({
+        egressKind: 'proxy',
+        egressLabel: 'Lab tunnel',
+        userAgent: 'Mozilla/5.0',
+        tlsSkipped: 'egress-not-direct',
+        schemaVersion: 5
+      })
+      expect(entry).not.toHaveProperty('tls')
+      expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+    })
+
+    it('records only the skipped re-fetch for a capture whose page did not go through it', async () => {
+      const fetchTlsCertChain = vi.fn(async () => null)
+      const lifecycle = createCaptureLifecycle({
+        selectorLifecycle: selectorStub,
+        fetchTlsCertChain,
+        egressIsDirect: () => false
+      })
+      await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('mhtml-body')))
+
+      expect(fetchTlsCertChain).not.toHaveBeenCalled()
+      const entry = lastEntry()
+      expect(entry.tlsSkipped).toBe('egress-not-direct')
+      for (const field of ['egressKind', 'egressLabel', 'userAgent', 'tls']) {
+        expect(entry).not.toHaveProperty(field)
+      }
+      expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+    })
+
+    it('records no skip for a page the re-fetch would not have reached', async () => {
+      const lifecycle = createCaptureLifecycle({
+        selectorLifecycle: selectorStub,
+        egressIsDirect: () => false
+      })
+      await lifecycle.ingest(
+        buildIngestParams(caseId, Buffer.from('mhtml-body'), { url: 'http://example.com/' })
+      )
+      expect(lastEntry()).not.toHaveProperty('tlsSkipped')
+    })
+
+    it('reads the installation setting when no Egress check is injected', async () => {
+      updateSettings({
+        egress: { kind: 'tor', proxyUrl: 'socks5://127.0.0.1:9150', label: '' }
+      })
+      const fetchTlsCertChain = vi.fn(async () => null)
+      const lifecycle = createCaptureLifecycle({
+        selectorLifecycle: selectorStub,
+        fetchTlsCertChain
+      })
+      await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('mhtml-body')))
+
+      expect(fetchTlsCertChain).not.toHaveBeenCalled()
+      expect(lastEntry().tlsSkipped).toBe('egress-not-direct')
+    })
+
+    it('skips the re-fetch while the saved Egress cannot be read', async () => {
+      writeFileSync(join(tempDir, 'settings.json'), 'not json', 'utf-8')
+      const fetchTlsCertChain = vi.fn(async () => null)
+      const lifecycle = createCaptureLifecycle({
+        selectorLifecycle: selectorStub,
+        fetchTlsCertChain
+      })
+      await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('mhtml-body')))
+
+      expect(fetchTlsCertChain).not.toHaveBeenCalled()
+      expect(lastEntry().tlsSkipped).toBe('egress-not-direct')
+    })
+
+    it('leaves a Direct capture exactly as before: the re-fetch runs and no Egress field is written', async () => {
+      const fetchTlsCertChain = vi.fn(async () => null)
+      const lifecycle = createCaptureLifecycle({
+        selectorLifecycle: selectorStub,
+        fetchTlsCertChain,
+        egressIsDirect: () => true
+      })
+      await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('mhtml-body')))
+
+      expect(fetchTlsCertChain).toHaveBeenCalledWith('https://example.com')
+      const entry = lastEntry()
+      for (const field of ['egressKind', 'egressLabel', 'userAgent', 'tlsSkipped']) {
+        expect(entry).not.toHaveProperty(field)
+      }
+      expect(entry.schemaVersion).not.toBe(5)
+    })
   })
 
   it('OMITS the tls field from the manifest body when no cert chain is recorded (#123 backward-compat)', async () => {
@@ -1844,6 +1956,8 @@ describe('createCaptureLifecycle.verify', () => {
   beforeEach(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-lifecycle-verify-'))
     initStorage(join(tempDir, 'captures'))
+    // Ingest reads the Egress to decide the TLS re-fetch (ADR-0032).
+    initSettings(tempDir)
     await initDatabase(':memory:')
     caseId = createCase({ name: 'Verify' }).id
     ensureCaseDir(caseId)

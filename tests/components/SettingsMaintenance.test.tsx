@@ -403,3 +403,104 @@ it('binds nested tab orientation to its own root', () => {
   })
   expect(screen.getByText('Log content')).toBeDefined()
 })
+
+// ADR-0032. Direct saves at once; a Proxy or Tor saves only an address that
+// parses, so a half-typed or refused one never becomes the route.
+describe('Egress setting', () => {
+  function mountEgress(egress?: object) {
+    const update = vi.fn(async (partial: object) => ({
+      tsaUrl: DEFAULT_TSA_URL,
+      egress,
+      ...partial
+    }))
+    fakeBridge({
+      settings: {
+        getIdentity: vi.fn().mockResolvedValue({
+          operatorName: 'A. Analyst',
+          operatorRole: '',
+          operatorOrganization: '',
+          installationId: 'install-1'
+        }),
+        get: vi.fn().mockResolvedValue({ tsaUrl: DEFAULT_TSA_URL, egress }),
+        update
+      }
+    })
+    mount(<OperatorConfig />)
+    return update
+  }
+
+  it('saves Tor on its Tor Browser preset, and Direct at once', async () => {
+    const update = mountEgress()
+    const group = await screen.findByRole('radiogroup', { name: 'Egress' })
+    expect(within(group).getByRole('radio', { name: /Direct/ })).toHaveProperty('checked', true)
+    fireEvent.click(within(group).getByRole('radio', { name: /Tor/ }))
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith({
+        egress: { kind: 'tor', proxyUrl: 'socks5://127.0.0.1:9150', label: '' }
+      })
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Tor service (9050)' }))
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith({
+        egress: { kind: 'tor', proxyUrl: 'socks5://127.0.0.1:9050', label: '' }
+      })
+    )
+    fireEvent.click(within(group).getByRole('radio', { name: /Direct/ }))
+    await waitFor(() => expect(update).toHaveBeenLastCalledWith({ egress: { kind: 'direct' } }))
+  })
+
+  it('refuses a SOCKS4 or login address with a message, and saves a valid one normalised', async () => {
+    const update = mountEgress()
+    const group = await screen.findByRole('radiogroup', { name: 'Egress' })
+    fireEvent.click(within(group).getByRole('radio', { name: /Proxy/ }))
+    const address = await screen.findByLabelText('Proxy address')
+
+    fireEvent.change(address, { target: { value: 'socks4://127.0.0.1:1080' } })
+    fireEvent.blur(address)
+    expect((await screen.findByRole('alert')).textContent).toContain('SOCKS4')
+    fireEvent.change(address, { target: { value: 'socks5://me:pw@127.0.0.1:1080' } })
+    fireEvent.blur(address)
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('login'))
+    expect(update).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByLabelText('Label'), { target: { value: 'Lab tunnel' } })
+    fireEvent.change(address, { target: { value: 'socks5://127.0.0.1:1080/' } })
+    fireEvent.blur(address)
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith({
+        egress: { kind: 'proxy', proxyUrl: 'socks5://127.0.0.1:1080', label: 'Lab tunnel' }
+      })
+    )
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('says when the saved Egress could not be read, and checks no choice', async () => {
+    mountEgress({ kind: 'unavailable' })
+    expect((await screen.findByRole('alert')).textContent).toContain('could not be read')
+    const group = screen.getByRole('radiogroup', { name: 'Egress' })
+    for (const radio of within(group).getAllByRole('radio')) {
+      expect(radio).toHaveProperty('checked', false)
+    }
+  })
+
+  it('says the saved Egress stays when Proxy is chosen with no address', async () => {
+    const update = mountEgress()
+    const group = await screen.findByRole('radiogroup', { name: 'Egress' })
+    fireEvent.click(within(group).getByRole('radio', { name: /Proxy/ }))
+    expect(await screen.findByText(/The saved Egress stays in effect/)).toBeDefined()
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('shows a stored proxy with its address and label', async () => {
+    mountEgress({ kind: 'proxy', proxyUrl: 'http://10.0.0.2:3128', label: 'Office' })
+    await waitFor(() =>
+      expect(screen.getByLabelText('Proxy address')).toHaveProperty('value', 'http://10.0.0.2:3128')
+    )
+    expect(screen.getByLabelText('Label')).toHaveProperty('value', 'Office')
+    expect(
+      within(screen.getByRole('radiogroup', { name: 'Egress' })).getByRole('radio', {
+        name: /Proxy/
+      })
+    ).toHaveProperty('checked', true)
+  })
+})

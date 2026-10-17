@@ -1,6 +1,7 @@
 import * as captureRepo from '@main/services/db/captureRepo'
 import type { CaptureLifecycle } from '@main/services/captureLifecycle'
 import { blockedSkipReason, matchCaseExclusion } from '@main/services/exclusionPolicy'
+import type { CaptureEgress } from '@main/services/egress'
 import { getInstallationId } from '@main/services/installationId'
 import { RefusedAddressError, refusedAddressClass } from '@main/services/localAddressPolicy'
 import { getSettings } from '@main/services/settings'
@@ -23,6 +24,8 @@ export interface RenderedPage {
   browserVersion: string
   // Set when consent/cookie-notice filter lists were active while rendering.
   consentSuppression?: ConsentSuppression
+  // The Egress the render was sent through, when it was not Direct (ADR-0032).
+  egress?: CaptureEgress
   // Releases renderer-owned resources (tmp file, window). Always called.
   cleanup: () => Promise<void>
 }
@@ -207,7 +210,8 @@ export function createRecaptureService(deps: RecaptureDeps): RecaptureService {
         screenshot: rendered.screenshot,
         method: 'background',
         supersedesCaptureId: job.supersedesCaptureId,
-        consentSuppression: rendered.consentSuppression
+        consentSuppression: rendered.consentSuppression,
+        egress: rendered.egress
       })
 
       const warning = looksLikeLoginWall({

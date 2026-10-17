@@ -122,6 +122,7 @@ const CODE_LABELS: Record<LogCode, string> = {
   'app.render_process_gone': 'The window stopped responding',
   'app.child_process_gone': 'A helper process stopped',
   'app.storage_init_failed': "Couldn't open the storage folder — using the default location",
+  'app.egress_apply_failed': "Couldn't send the Wayback pane through the Egress",
   'capture.failed': 'Capture failed',
   'capture.screenshot_dropped': 'Screenshot was skipped',
   'capture.server_started': 'Capture server started',

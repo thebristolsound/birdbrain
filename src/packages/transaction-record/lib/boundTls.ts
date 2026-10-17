@@ -26,6 +26,9 @@ const toTimestamp = ({
   signatureData
 })
 
+// The closed set plan D7 admits; a value a later Chromium adds is refused, not passed on.
+const CT_COMPLIANCE = new Set(['unknown', 'not-compliant', 'compliant'])
+
 // Fields are copied by name, never spread, so a field a later Chromium adds stays out of the
 // signed entry until a schema step admits it.
 export const toBoundTls = ({
@@ -44,6 +47,11 @@ export const toBoundTls = ({
   serverSignatureAlgorithm,
   encryptedClientHello
 }: SecurityDetails): BoundTls => {
+  if (!CT_COMPLIANCE.has(certificateTransparencyCompliance)) {
+    throw new RangeError(
+      `certificateTransparencyCompliance is not a value plan D7 admits: ${certificateTransparencyCompliance}`
+    )
+  }
   if (
     serverSignatureAlgorithm !== undefined &&
     !(Number.isSafeInteger(serverSignatureAlgorithm) && serverSignatureAlgorithm >= 0)

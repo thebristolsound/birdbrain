@@ -93,3 +93,37 @@ describe('toBoundTls', () => {
     expect(() => toBoundTls({ ...recorded('q6-tls13'), validFrom: Number.NaN })).toThrow(RangeError)
   })
 })
+
+describe('toBoundTls refusals', () => {
+  const base = {
+    protocol: 'TLS 1.3',
+    keyExchange: '',
+    cipher: 'AES_128_GCM',
+    subjectName: 'example.test',
+    sanList: ['example.test'],
+    issuer: 'Test CA',
+    validFrom: 1790000000,
+    validTo: 1800000000,
+    signedCertificateTimestampList: [],
+    certificateTransparencyCompliance: 'compliant',
+    encryptedClientHello: false
+  }
+
+  it.each([null, '', false, true, Number.NaN, Number.POSITIVE_INFINITY])(
+    'refuses %s as a time instead of writing a wrong date',
+    (value) => {
+      expect(() =>
+        toBoundTls({ ...base, validFrom: value } as unknown as Parameters<typeof toBoundTls>[0])
+      ).toThrow(RangeError)
+    }
+  )
+
+  it('refuses a transparency compliance value outside the closed set', () => {
+    expect(() =>
+      toBoundTls({
+        ...base,
+        certificateTransparencyCompliance: 'something-new'
+      } as unknown as Parameters<typeof toBoundTls>[0])
+    ).toThrow(/certificateTransparencyCompliance/)
+  })
+})

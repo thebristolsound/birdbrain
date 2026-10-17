@@ -46,7 +46,10 @@ interface Chain {
 
 // Frames and dedicated workers are the targets the engine records (plan D17); a target of any
 // other type is in neither target count.
-const RECORDED_TARGET_TYPES = new Set(['iframe', 'worker'])
+const RECORDED_TARGET_TYPES = new Set(['iframe', 'worker', 'service_worker'])
+
+// The page's own debugger session, as `wc.debugger` reports it and step 0's streams are read.
+const PAGE_SESSION = ''
 
 const applyToHop = (hop: Hop, { method, params }: RecordedEvent): void => {
   switch (method) {
@@ -105,7 +108,8 @@ const toResponse = (
     headers,
     securityDetails
   }: CdpResponse,
-  extra: ResponseExtra | undefined
+  extra: ResponseExtra | undefined,
+  mainDocument: boolean
 ): ExchangeResponse => ({
   url,
   status,
@@ -115,13 +119,19 @@ const toResponse = (
   ...(remoteIPAddress !== undefined ? { remoteIPAddress } : {}),
   headers: { ...headers },
   ...(extra ? { extraInfo: { statusCode: extra.statusCode, headers: { ...extra.headers } } } : {}),
-  ...(securityDetails ? { securityDetails: toBoundTls(securityDetails) } : {})
+  // Bound TLS Details are the main document's alone (plan D7), so only its response is converted,
+  // and a subresource's details can neither reach the record nor fail the collection.
+  ...(mainDocument && securityDetails ? { securityDetails: toBoundTls(securityDetails) } : {})
 })
 
 const lastIndex = (hops: Hop[], test: (hop: Hop) => boolean): number =>
   hops.reduce((found, hop, index) => (test(hop) ? index : found), -1)
 
-const toExchanges = (chain: Chain, input: CollectorInput): Exchange[] => {
+const toExchanges = (
+  chain: Chain,
+  input: CollectorInput,
+  mainFrameId: string | undefined
+): Exchange[] => {
   pairExtraInfo(chain)
   const { requestId, hops } = chain
   // Both commands take only a request id: a body belongs to the hop that finished, and fetched
@@ -157,7 +167,15 @@ const toExchanges = (chain: Chain, input: CollectorInput): Exchange[] => {
         ...(requestExtra ? { extraInfo: { headers: { ...requestExtra } } } : {})
       },
       ...(requestBody ? { requestBody } : {}),
-      ...(response ? { response: toResponse(response, responseExtra) } : {}),
+      ...(response
+        ? {
+            response: toResponse(
+              response,
+              responseExtra,
+              type === 'Document' && frameId !== undefined && frameId === mainFrameId
+            )
+          }
+        : {}),
       ...(state === 'complete' && body
         ? { responseBody: { data: body.body, base64Encoded: body.base64Encoded } }
         : {}),
@@ -204,6 +222,9 @@ export const collectExchanges = (input: CollectorInput): CollectedExchanges => {
   }
   const webSockets = new Set<string>()
   const childTargets = new Map<string, string>()
+  // The main frame is the one the page's own session sends the first document request for; a
+  // frame's document request also starts there, later, under its own frame id.
+  let mainFrameId: string | undefined
 
   for (const event of input.events) {
     const { method, params } = event
@@ -220,6 +241,10 @@ export const collectExchanges = (input: CollectorInput): CollectedExchanges => {
         webSockets.add(requestId)
         break
       case 'Network.requestWillBeSent': {
+        const { type, frameId } = params as RequestWillBeSent
+        if (mainFrameId === undefined && event.sessionId === PAGE_SESSION && type === 'Document') {
+          mainFrameId = frameId
+        }
         const chain = chainOf(requestId)
         const hop: Hop = {
           sent: params as RequestWillBeSent,
@@ -250,7 +275,7 @@ export const collectExchanges = (input: CollectorInput): CollectedExchanges => {
   const exchanges = [...chains.values()]
     .filter((chain) => chain.hops.length > 0)
     .sort(byStart)
-    .flatMap((chain) => toExchanges(chain, input))
+    .flatMap((chain) => toExchanges(chain, input, mainFrameId))
 
   // The page always counts as recorded: when its own `Network.enable` fails, the render keeps no
   // Transaction Record at all (plan step 9).

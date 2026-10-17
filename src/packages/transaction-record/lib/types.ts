@@ -33,8 +33,8 @@ export interface CollectorInput {
   /** Keyed by request id. */
   requestPostData?: ReadonlyMap<string, RequestPostDataResult>
   /**
-   * Child sessions whose `Network.enable` answered. An attached frame or dedicated worker whose
-   * session is not here counts as unrecorded.
+   * Child sessions whose `Network.enable` answered. An attached frame, dedicated worker, or service
+   * worker whose session is not here counts as unrecorded (plan D17).
    */
   recordedSessions?: ReadonlySet<string>
 }

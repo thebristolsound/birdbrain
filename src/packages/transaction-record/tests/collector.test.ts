@@ -186,6 +186,95 @@ describe('collectExchanges on the step 0 streams', () => {
   })
 })
 
+// The known answers for each step 0 stream with an invented body for every finished request:
+// all ten counts, so a change that moves any one of them fails here.
+const SPIKE_COUNTS: Record<string, Partial<Record<string, number>>> = {
+  'q2-savepage': { exchanges: 10 },
+  'q3-consent-network-rule': { exchanges: 2, failed: 3 },
+  'q4-cross-site-iframe': { exchanges: 2, inFlight: 1 },
+  'q4-cross-port-redirect': { exchanges: 3 },
+  'q5-cache': { exchanges: 11, cached: 4 },
+  'q6-tls13': { exchanges: 2 },
+  'q6-tls12-cbc': { exchanges: 2 },
+  'q6-tls12-gcm': { exchanges: 2 }
+}
+
+describe('collectExchanges counts on every step 0 stream', () => {
+  it('names a known answer for each stream the fixture holds', () => {
+    expect(Object.keys(SPIKE_COUNTS).sort()).toEqual([...SPIKE_RUNS].sort())
+  })
+
+  it.each(Object.entries(SPIKE_COUNTS))('pins all ten counts for %s', (name, expected) => {
+    expect(collectSpike(name).counts).toEqual({
+      exchanges: 0,
+      cached: 0,
+      cancelled: 0,
+      failed: 0,
+      inFlight: 0,
+      bodiesOmitted: 0,
+      incompleteRequestBodies: 0,
+      webSockets: 0,
+      recordedTargets: 1,
+      unrecordedTargets: 0,
+      ...expected
+    })
+  })
+})
+
+describe('Bound TLS Details in the collector', () => {
+  const details = (extra: Record<string, unknown> = {}) => ({
+    protocol: 'TLS 1.3',
+    keyExchange: '',
+    keyExchangeGroup: 'X25519',
+    cipher: 'AES_128_GCM',
+    certificateId: 7,
+    subjectName: 'example.test',
+    sanList: ['example.test'],
+    issuer: 'Test CA',
+    validFrom: 1790000000,
+    validTo: 1800000000,
+    signedCertificateTimestampList: [],
+    certificateTransparencyCompliance: 'unknown',
+    encryptedClientHello: false,
+    ...extra
+  })
+
+  it('converts the main document only, so a subresource cannot fail the collection', () => {
+    const doc = 'https://example.test/'
+    const image = 'https://cdn.example.test/a.png'
+    const { exchanges } = collectExchanges({
+      events: [
+        sent('doc', doc, { type: 'Document', frameId: 'main' }),
+        received('doc', doc, { securityDetails: details() }),
+        finished('doc'),
+        sent('img', image, { type: 'Image', frameId: 'main' }),
+        received('img', image, { securityDetails: details({ serverSignatureAlgorithm: 1.5 }) }),
+        finished('img')
+      ],
+      responseBodies: new Map([...body('doc'), ...body('img')])
+    })
+    const [document, subresource] = exchanges
+    expect(document.response?.securityDetails).toMatchObject({ protocol: 'TLS 1.3' })
+    expect(subresource.response).not.toHaveProperty('securityDetails')
+  })
+
+  it('takes the main frame from the first document request on the page session', () => {
+    const frame = 'https://frame.example/'
+    const doc = 'https://example.test/'
+    const { exchanges } = collectExchanges({
+      events: [
+        sent('doc', doc, { type: 'Document', frameId: 'main' }),
+        received('doc', doc, { securityDetails: details() }),
+        sent('frame', frame, { type: 'Document', frameId: 'child' }),
+        received('frame', frame, { securityDetails: details() })
+      ]
+    })
+    expect(exchanges.find(({ requestId }) => requestId === 'frame')?.response).not.toHaveProperty(
+      'securityDetails'
+    )
+  })
+})
+
 describe('collectExchanges output order', () => {
   // A seeded shuffle that keeps each request id's own events in order, as two sessions or two
   // connections interleaving would.
@@ -353,18 +442,31 @@ describe('collectExchanges across sessions (plan D17)', () => {
         worker('Network.loadingFinished', { requestId: 'worker.1' })
       ],
       responseBodies: body('worker.1'),
-      recordedSessions: new Set(['worker-session'])
+      recordedSessions: new Set(['worker-session', 'service-worker-session'])
     })
     expect(exchanges.map(({ requestId, state }) => [requestId, state])).toEqual([
       ['frame-doc', 'in-flight'],
       ['worker.1', 'complete']
     ])
+    // The page, the dedicated worker and the service worker answered; the frame did not (D17).
     expect(counts).toMatchObject({
       exchanges: 1,
       inFlight: 1,
-      recordedTargets: 2,
+      recordedTargets: 3,
       unrecordedTargets: 1
     })
+  })
+
+  it('counts a service worker whose setup did not answer as unrecorded', () => {
+    const { counts } = collectExchanges({
+      events: [
+        page('Target.attachedToTarget', {
+          sessionId: 'service-worker-session',
+          targetInfo: { type: 'service_worker' }
+        })
+      ]
+    })
+    expect(counts).toMatchObject({ recordedTargets: 1, unrecordedTargets: 1 })
   })
 
   it('treats an attached frame as unrecorded when no session is named as recorded', () => {

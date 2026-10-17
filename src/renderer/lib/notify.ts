@@ -219,6 +219,7 @@ const CODE_LABELS: Record<LogCode, string> = {
   'persona.orphan_sweep_skipped':
     'Skipped the persona browser data check because the data folders differ',
   'searchFields.build_failed': "Couldn't index a capture's links and headers for search",
+  'searchFields.check_failed': "Couldn't check a search hit against the stored capture",
   'searchFields.ensure_failed': "Couldn't index this case's links and headers for search",
   'searchFields.search_failed': "Couldn't search this case's links and headers",
   'searchFields.source_missing':

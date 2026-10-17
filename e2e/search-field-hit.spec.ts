@@ -2,7 +2,8 @@ import { test, expect } from './fixtures/electronApp'
 
 // Case search over mail headers (docs/plans/2026-10-09-case-retrieval-first-slice.md,
 // D6 and D7): a header address found from the top bar opens the Capture's Text tab with
-// the address marked. The page, person and addresses are invented.
+// the address marked, and the exact check finds it in the stored text. The page, person
+// and addresses are invented.
 
 const HEADER_TEXT = [
   'Show original',
@@ -76,6 +77,14 @@ test.describe('Case search field hits', () => {
     })
     await expect(page.getByTestId('capture-text-hit')).toHaveText(
       'Wren Hollis <wren@Hollis-Mail.example.org>'
+    )
+
+    // The exact check (D7) re-reads the stored files through the real verification. The
+    // form upload sends line breaks as CRLF, so the offsets are not HEADER_TEXT's.
+    await page.getByRole('button', { name: 'Check against the stored file' }).click()
+    await expect(page.getByTestId('field-hit-check-answer')).toHaveText(
+      /^Present\. The Extracted Text holds the text the search recorded at characters \d+ to \d+\. The text file matches the digest in the capture's signed record\.$/,
+      { timeout: 10000 }
     )
   })
 })

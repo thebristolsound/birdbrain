@@ -65,6 +65,7 @@ import { defaultCaptureStore } from '@main/services/captureStore'
 import { readCaptureLinks } from '@main/services/captureLinks'
 import { ensureCaseFields, rebuildAllFields } from '@main/services/search/fieldIndex'
 import * as searchFieldRepo from '@main/services/db/searchFieldRepo'
+import { checkFieldHit } from '@main/services/investigation/claimCheck'
 import { renderCapturePdf } from '@main/services/pdfExport'
 import { getThumbnail } from '@main/services/thumbnails'
 import { getCaseInventory, getManifestSnapshot, verifyExhibit } from '@main/services/exhibits'
@@ -260,6 +261,17 @@ export function registerIpcHandlers(deps: {
       // See NOTES_SEARCH: a failed search must not look like an empty one.
       logger.error('ipc', 'searchFields.search_failed', { caseId: ident(caseId) }, err)
       throw new IpcFailure('Search could not run', 'SEARCH_FAILED')
+    }
+  })
+
+  // The exact check (docs/plans/2026-10-09-case-retrieval-first-slice.md, D7). An error
+  // is not an outcome, so it is reported as a failure, never as `cannot-check`.
+  handle(IPC_CHANNELS.CASES_CHECK_FIELD_HIT, async (_, fieldId: number) => {
+    try {
+      return await checkFieldHit(fieldId)
+    } catch (err) {
+      logger.error('ipc', 'searchFields.check_failed', undefined, err)
+      throw new IpcFailure('The check could not run', 'CHECK_FAILED')
     }
   })
 

@@ -1,13 +1,15 @@
 import { describe, it, expect, vi } from 'vitest'
 import { listHtmlPartsInMhtml } from '@main/services/mhtmlDecoder'
 import { linksFromMhtml } from '@main/services/captureLinks'
-import { CAPTURE_LINK_BUDGETS } from '@main/services/htmlParts'
+import { CAPTURE_LINK_BUDGETS, type CaptureLinkBudgets } from '@main/services/htmlParts'
 import {
   BLOCK_MARKERS,
   extractFields,
   FIELD_EXTRACTOR_VERSION,
   headerFieldsFromText,
-  type ExtractedField
+  type ExtractedField,
+  type FieldExtraction,
+  type FieldSources
 } from '@main/services/search/fieldExtractor'
 import { fieldLabel, HEADER_FIELDS } from '@shared/searchFields'
 
@@ -45,7 +47,7 @@ function page(body: string, head = ''): string {
 }
 
 function fromPage(body: string, head = '') {
-  return extractFields({
+  return extract({
     captureUrl: CAPTURE_URL,
     mhtml: mhtml([{ location: CAPTURE_URL, html: page(body, head) }]),
     html: null,
@@ -73,6 +75,34 @@ function expectSpansInText(text: string, fields: ExtractedField[]): void {
     expect(field).toMatchObject({ source: 'text', part: null })
     expect(text.slice(field.startOffset, field.endOffset)).toBe(field.value)
   }
+}
+
+// Every field, sliced from the string it indexes, is its value: the decoded part for
+// an html-part field (a legacy page's file read as UTF-8 for part 0), the text for a
+// text field. Every test reads fields through these two wrappers, so each checks it.
+function expectSpansSliceBack(sources: FieldSources, fields: ExtractedField[]): void {
+  if (fields.length === 0) return
+  const parts = sources.mhtml
+    ? listHtmlPartsInMhtml(sources.mhtml).parts.map((part) => part.decode())
+    : sources.html
+      ? [sources.html.toString('utf8')]
+      : []
+  for (const field of fields) {
+    const indexed = field.source === 'text' ? sources.text : parts[field.part ?? -1]
+    expect(indexed?.slice(field.startOffset, field.endOffset)).toBe(field.value)
+  }
+}
+
+function extract(sources: FieldSources, budgets?: CaptureLinkBudgets): FieldExtraction {
+  const extraction = extractFields(sources, budgets)
+  expectSpansSliceBack(sources, extraction.fields)
+  return extraction
+}
+
+function headersOf(text: string): ExtractedField[] {
+  const fields = headerFieldsFromText(text)
+  expectSpansSliceBack({ captureUrl: CAPTURE_URL, mhtml: null, html: null, text }, fields)
+  return fields
 }
 
 describe('extractFields: links', () => {
@@ -116,9 +146,20 @@ describe('extractFields: links', () => {
     ])
   })
 
+  it('resolves a relative <base href> against the document first', () => {
+    const { fields } = fromPage('<a href="ledger/7">a</a>', '<base href="/archive/">')
+    expect(pick(fields)).toEqual([
+      {
+        field: 'link.href',
+        value: 'ledger/7',
+        norm: 'https://brindle-forum.example.org/archive/ledger/7'
+      }
+    ])
+  })
+
   it("records an href written with no value as an empty span at the attribute's end", () => {
     const html = page('<a href>x</a>')
-    const { fields } = extractFields({
+    const { fields } = extract({
       captureUrl: CAPTURE_URL,
       mhtml: null,
       html: Buffer.from(html),
@@ -155,7 +196,7 @@ describe('extractFields: links', () => {
       '<a  HREF = \'/p?a=1&amp;b=2\' >a</a>\r\n<a href=bare.html><img alt="Pay &amp; desk"></a>'
     )
     const buffer = mhtml([{ location: CAPTURE_URL, html }])
-    const { fields } = extractFields({
+    const { fields } = extract({
       captureUrl: CAPTURE_URL,
       mhtml: buffer,
       html: null,
@@ -185,7 +226,7 @@ describe('extractFields: links', () => {
       ],
       CAPTURE_URL
     )
-    const { fields } = extractFields({
+    const { fields } = extract({
       captureUrl: CAPTURE_URL,
       mhtml: buffer,
       html: null,
@@ -202,7 +243,7 @@ describe('extractFields: links', () => {
     const qp =
       '<html><body><p>caf=C3=A9 =E2=80=94</p><a href=3D"https://northgate-ledger.exa=\r\nmple.com/pay">x</a></body></html>'
     const buffer = mhtml([{ location: CAPTURE_URL, html: qp, encoding: 'quoted-printable' }])
-    const { fields } = extractFields({
+    const { fields } = extract({
       captureUrl: CAPTURE_URL,
       mhtml: buffer,
       html: null,
@@ -220,7 +261,7 @@ describe('extractFields: links', () => {
 
   it('reads a legacy HTML Capture as part 0', () => {
     const html = page('<a href="/old">o</a>')
-    const { fields } = extractFields({
+    const { fields } = extract({
       captureUrl: CAPTURE_URL,
       mhtml: null,
       html: Buffer.from(html),
@@ -239,8 +280,8 @@ describe('extractFields: links', () => {
     ])
   })
 
-  // The version names the default budgets as well as the rules, so a change to the shared
-  // budgets fails here until the version moves with it.
+  // The version names the default budgets as well as the rules. A change to the shared
+  // budgets fails here, and whoever edits these values moves the version with them.
   it('pins the default budgets the extractor version was built with', () => {
     expect(FIELD_EXTRACTOR_VERSION).toBe('fields/1')
     expect(CAPTURE_LINK_BUDGETS).toEqual({
@@ -271,7 +312,7 @@ describe('extractFields: links', () => {
     ]) {
       const budgets = { ...CAPTURE_LINK_BUDGETS, ...lowered }
       const links = linksFromMhtml(frames, CAPTURE_URL, budgets)
-      const extracted = extractFields(
+      const extracted = extract(
         { captureUrl: CAPTURE_URL, mhtml: frames, html: null, text: null },
         budgets
       )
@@ -294,7 +335,7 @@ describe('extractFields: links', () => {
       CAPTURE_URL
     )
     const budgets = { ...CAPTURE_LINK_BUDGETS, maxPartBytes: 100 }
-    const refused = extractFields(
+    const refused = extract(
       { captureUrl: CAPTURE_URL, mhtml: frames, html: null, text: null },
       budgets
     )
@@ -304,12 +345,12 @@ describe('extractFields: links', () => {
 
     const main = mhtml([{ location: CAPTURE_URL, html: big }])
     expect(
-      extractFields({ captureUrl: CAPTURE_URL, mhtml: main, html: null, text: null }, budgets)
+      extract({ captureUrl: CAPTURE_URL, mhtml: main, html: null, text: null }, budgets)
     ).toMatchObject({ fields: [], mainDocumentSkipped: true })
     const legacy = Buffer.from(big)
     const decode = vi.spyOn(legacy, 'toString')
     expect(
-      extractFields({ captureUrl: CAPTURE_URL, mhtml: null, html: legacy, text: null }, budgets)
+      extract({ captureUrl: CAPTURE_URL, mhtml: null, html: legacy, text: null }, budgets)
     ).toMatchObject({ fields: [], mainDocumentSkipped: true })
     expect(decode).not.toHaveBeenCalled()
   })
@@ -321,7 +362,7 @@ describe('extractFields: links', () => {
       { ...CAPTURE_LINK_BUDGETS, maxParts: 0 },
       { ...CAPTURE_LINK_BUDGETS, maxTotalBytes: 10 }
     ]) {
-      expect(extractFields(sources, budgets)).toMatchObject({
+      expect(extract(sources, budgets)).toMatchObject({
         fields: [],
         mainDocumentSkipped: true
       })
@@ -331,18 +372,20 @@ describe('extractFields: links', () => {
   it('stops scanning header blocks at the row ceiling', () => {
     const block = 'From: a@example.net\nMessage-ID: <1@example.net>\n\n'
     const text = block.repeat(5000)
+    const sources = { captureUrl: CAPTURE_URL, mhtml: null, html: null, text }
+    const budgets = { ...CAPTURE_LINK_BUDGETS, maxRows: 2 }
     const slice = vi.spyOn(String.prototype, 'slice')
+    let capped: FieldExtraction
     try {
-      const capped = extractFields(
-        { captureUrl: CAPTURE_URL, mhtml: null, html: null, text },
-        { ...CAPTURE_LINK_BUDGETS, maxRows: 2 }
-      )
-      expect(capped.fields).toHaveLength(2)
-      expect(capped.truncated).toBe(true)
+      // Read without the wrapper, whose own slicing would count against the spy.
+      capped = extractFields(sources, budgets)
       expect(slice.mock.calls.length).toBeLessThan(100)
     } finally {
       slice.mockRestore()
     }
+    expect(capped.fields).toHaveLength(2)
+    expect(capped.truncated).toBe(true)
+    expectSpansSliceBack(sources, capped.fields)
   })
 
   it('stops at the row ceiling and says so', () => {
@@ -353,10 +396,10 @@ describe('extractFields: links', () => {
       }
     ])
     const sources = { captureUrl: CAPTURE_URL, mhtml: buffer, html: null, text: null }
-    const capped = extractFields(sources, { ...CAPTURE_LINK_BUDGETS, maxRows: 2 })
+    const capped = extract(sources, { ...CAPTURE_LINK_BUDGETS, maxRows: 2 })
     expect(capped.fields.map((f) => f.value)).toEqual(['/1', '/2'])
     expect(capped.truncated).toBe(true)
-    expect(extractFields(sources, { ...CAPTURE_LINK_BUDGETS, maxRows: 3 }).truncated).toBe(false)
+    expect(extract(sources, { ...CAPTURE_LINK_BUDGETS, maxRows: 3 }).truncated).toBe(false)
   })
 })
 
@@ -405,7 +448,7 @@ describe('headerFieldsFromText', () => {
 
   it('gives every field it records a search bar label', () => {
     const header = HEADER_FIELDS.map((name) => `${name}: x@example.org`).join('\n')
-    const { fields } = extractFields({
+    const { fields } = extract({
       captureUrl: CAPTURE_URL,
       mhtml: null,
       html: Buffer.from(page('<a href="/a"><img alt="Pay"></a>')),
@@ -419,7 +462,7 @@ describe('headerFieldsFromText', () => {
 
   it('reads a block with folded lines, one field per address, with LF line ends', () => {
     const text = HEADER_PAGE.join('\n')
-    const fields = headerFieldsFromText(text)
+    const fields = headersOf(text)
     expect(pick(fields)).toEqual([
       {
         field: 'header.return-path',
@@ -453,10 +496,8 @@ describe('headerFieldsFromText', () => {
 
   it('gives the same fields with CRLF line ends, at offsets into that text', () => {
     const text = HEADER_PAGE.join('\r\n')
-    const fields = headerFieldsFromText(text)
-    expect(fields.map((f) => f.norm)).toEqual(
-      headerFieldsFromText(HEADER_PAGE.join('\n')).map((f) => f.norm)
-    )
+    const fields = headersOf(text)
+    expect(fields.map((f) => f.norm)).toEqual(headersOf(HEADER_PAGE.join('\n')).map((f) => f.norm))
     expect(fields[1].value).toBe('"Marsh, Lena"\r\n <L.Marsh@Ostrander.EXAMPLE.net>')
     expectSpansInText(text, fields)
   })
@@ -470,7 +511,7 @@ describe('headerFieldsFromText', () => {
       'Organization: Quillmere   Supplies',
       'NNTP-Posting-Host: posting.example.org'
     ].join('\n')
-    const fields = headerFieldsFromText(text)
+    const fields = headersOf(text)
     expect(fields.map(({ field, norm }) => [field, norm])).toEqual([
       ['header.sender', 'desk@quillmere-supplies.example.com'],
       ['header.newsgroups', 'misc.test, alt.test'],
@@ -483,17 +524,13 @@ describe('headerFieldsFromText', () => {
 
   it('reads nothing from a lone From: line in prose, or from a run with no marker', () => {
     expect(
-      headerFieldsFromText(
-        'The letter was signed\nFrom: Lena Marsh <lena@example.net>\nand nothing else.'
-      )
+      headersOf('The letter was signed\nFrom: Lena Marsh <lena@example.net>\nand nothing else.')
     ).toEqual([])
-    expect(headerFieldsFromText('Status: open\nPriority: high\nOrganization: Quillmere')).toEqual(
-      []
-    )
+    expect(headersOf('Status: open\nPriority: high\nOrganization: Quillmere')).toEqual([])
   })
 
   it('reads a short block, and skips an empty value and an empty address', () => {
-    const fields = headerFieldsFromText('From: Lena Marsh\nReply-To:\nReturn-Path: <>')
+    const fields = headersOf('From: Lena Marsh\nReply-To:\nReturn-Path: <>')
     expect(pick(fields)).toEqual([
       { field: 'header.from', value: 'Lena Marsh', norm: 'lena marsh' }
     ])
@@ -501,7 +538,7 @@ describe('headerFieldsFromText', () => {
 
   it('keeps the spaces in a quoted local part, and drops its line breaks', () => {
     const text = 'From: <"First Last"@Example.com>\nReply-To: <"first\n last"@example.com>'
-    expect(headerFieldsFromText(text).map((f) => f.norm)).toEqual([
+    expect(headersOf(text).map((f) => f.norm)).toEqual([
       '"first last"@example.com',
       '"first last"@example.com'
     ])
@@ -511,7 +548,7 @@ describe('headerFieldsFromText', () => {
 describe('extractFields: text and page together', () => {
   it('lists the header fields first, then the links', () => {
     const text = 'From: a@example.net\nMessage-ID: <1@example.net>'
-    const { fields } = extractFields({
+    const { fields } = extract({
       captureUrl: CAPTURE_URL,
       mhtml: mhtml([{ location: CAPTURE_URL, html: page('<a href="/x">x</a>') }]),
       html: null,
@@ -521,13 +558,11 @@ describe('extractFields: text and page together', () => {
   })
 
   it('returns nothing, and refuses nothing, when there is no source', () => {
-    expect(extractFields({ captureUrl: CAPTURE_URL, mhtml: null, html: null, text: null })).toEqual(
-      {
-        fields: [],
-        skippedParts: { tooLarge: 0, overPartCount: 0, overTotalSize: 0 },
-        mainDocumentSkipped: false,
-        truncated: false
-      }
-    )
+    expect(extract({ captureUrl: CAPTURE_URL, mhtml: null, html: null, text: null })).toEqual({
+      fields: [],
+      skippedParts: { tooLarge: 0, overPartCount: 0, overTotalSize: 0 },
+      mainDocumentSkipped: false,
+      truncated: false
+    })
   })
 })

@@ -27,7 +27,7 @@ export const FIELD_EXTRACTOR_VERSION = 'fields/1'
 
 // A run of header lines is a header block only when one of these names is in it, so
 // a few `Label: value` lines in ordinary page text are not read as mail headers.
-export const BLOCK_MARKERS = new Set([
+export const BLOCK_MARKERS: ReadonlySet<string> = new Set([
   'from',
   'reply-to',
   'sender',

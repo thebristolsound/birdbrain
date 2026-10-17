@@ -2153,10 +2153,11 @@ describe('ipcHandlers — Case search fields', () => {
       await invoke(IPC_CHANNELS.CASES_CHECK_FIELD_HIT, hit.fieldId)
     )
     expect(checked.check).toMatchObject({ text: 'cannot-check', basis: null })
-    expect(checked.check.reason).toMatch(/verification result is legacy/)
+    expect(checked.check.reason).toMatch(/^This capture was stored before page archives/)
     expect(checked.record).toEqual({
       exhibitId: hit.exhibitId,
       field: hit.field,
+      value: hit.preview,
       locator: hit.locator
     })
 

@@ -225,8 +225,8 @@ export interface FieldSearchResult {
  */
 export interface FieldHitCheck {
   check: ClaimCheck
-  /** Null when no record has the id. */
-  record: Pick<FieldHit, 'exhibitId' | 'field' | 'locator'> | null
+  /** Null when no record has the id. `value` is the record's whole value, as stored. */
+  record: (Pick<FieldHit, 'exhibitId' | 'field' | 'locator'> & { value: string }) | null
 }
 
 export interface Capture {

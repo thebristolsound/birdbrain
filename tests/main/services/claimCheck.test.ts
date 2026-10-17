@@ -9,6 +9,7 @@ import { ingestMhtmlCapture } from '@main/services/captureLifecycle'
 import { defaultCaptureStore, type CaptureStore } from '@main/services/captureStore'
 import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
+import * as captureRepo from '@main/services/db/captureRepo'
 import { getCapture, insertCapture } from '@main/services/db/captureRepo'
 import { getExhibitSearchBuild, replaceExhibitFields } from '@main/services/db/searchFieldRepo'
 import { initManifest } from '@main/services/manifest'
@@ -216,7 +217,9 @@ describe('checkFieldHit: cannot-check', () => {
     const { check } = await checkFieldHit(fieldId(id, 'link.href'))
     expect(check.text).toBe('cannot-check')
     expect(check.basis).toBeNull()
-    expect(check.reason).toMatch(/^The capture's verification result is tampered/)
+    expect(check.reason).toBe(
+      'The stored page does not match the hash recorded for it, so the capture does not verify.'
+    )
   })
 
   it('names a stored page that is missing', async () => {
@@ -224,7 +227,10 @@ describe('checkFieldHit: cannot-check', () => {
     unlinkSync(pagePath(id))
     const { check } = await checkFieldHit(fieldId(id, 'link.href'))
     expect(check.text).toBe('cannot-check')
-    expect(check.reason).toMatch(/^The capture's verification result is missing/)
+    // The verification's own reason holds the file's absolute path; the answer does not.
+    expect(check.reason).toBe(
+      'The stored page could not be read, so the capture cannot be verified.'
+    )
   })
 
   it('refuses every record of a capture whose screenshot is missing', async () => {
@@ -233,7 +239,9 @@ describe('checkFieldHit: cannot-check', () => {
     for (const field of ['link.href', 'header.from']) {
       const { check } = await checkFieldHit(fieldId(id, field))
       expect(check.text).toBe('cannot-check')
-      expect(check.reason).toMatch(/^The capture's verification result is missing \(Screenshot/)
+      expect(check.reason).toBe(
+        'The screenshot could not be read, so the capture cannot be verified.'
+      )
     }
   })
 
@@ -251,7 +259,8 @@ describe('checkFieldHit: cannot-check', () => {
     expect(check).toEqual({
       text: 'cannot-check',
       basis: null,
-      reason: "The capture's verification result is legacy (Legacy HTML capture (pre-MHTML era))."
+      reason:
+        'This capture was stored before page archives, and its verification does not hash its stored page.'
     })
     expect(record?.locator.part).toBe(0)
   })
@@ -267,7 +276,86 @@ describe('checkFieldHit: cannot-check', () => {
     expect(getExhibitSearchBuild(id)?.textHash).toBe(sha256(edited))
     const { check } = await checkFieldHit(fieldId(id, 'header.from'))
     expect(check.text).toBe('cannot-check')
-    expect(check.reason).toMatch(/tampered \(Extracted text hash mismatch/)
+    expect(check.reason).toBe(
+      'The Extracted Text file does not match the hash recorded for it, so the capture does not verify.'
+    )
+  })
+
+  it('names a Case whose signed record does not verify', async () => {
+    const id = await ingest()
+    const manifestPath = join(root, caseId, 'manifest.jsonl')
+    writeFileSync(
+      manifestPath,
+      readFileSync(manifestPath, 'utf8').replace('"capture"', '"kapture"')
+    )
+    const { check } = await checkFieldHit(fieldId(id, 'link.href'))
+    expect(check).toEqual({
+      text: 'cannot-check',
+      basis: null,
+      reason: "The Case's signed record does not verify for this capture."
+    })
+  })
+
+  it('names a capture that is gone by the time it is verified', async () => {
+    const id = await ingest()
+    const field = fieldId(id, 'link.href')
+    vi.spyOn(captureRepo, 'getCapture').mockReturnValueOnce(undefined)
+    const { check } = await checkFieldHit(field)
+    expect(check.reason).toBe('The capture is gone.')
+  })
+
+  // A row with no index into the signed record verifies against the database's hash
+  // alone (captureLifecycle.ts), so nothing signed covers what the check would read.
+  describe('a capture no signed capture record covers', () => {
+    async function unsigned(): Promise<{ id: string; edited: string }> {
+      const id = await ingest()
+      const edited = mhtml().toString('utf8').replace('Tollgate-Ledger', 'Tollgate-Lodger')
+      writeFileSync(pagePath(id), edited)
+      const editedHash = sha256(edited)
+      sql('UPDATE captures SET manifest_index = NULL, hash = ? WHERE id = ?', editedHash, id)
+      sql('UPDATE exhibits SET content_hash = ? WHERE id = ?', editedHash, id)
+      expect(buildExhibitFields(id)).toBe('built')
+      return { id, edited: editedHash }
+    }
+
+    it('refuses the edited page the reviewer reproduced', async () => {
+      const { id, edited } = await unsigned()
+      const field = fieldId(id, 'link.href')
+      expect(
+        getDb().prepare('SELECT value FROM exhibit_search_fields WHERE id = ?').get(field)
+      ).toEqual({ value: 'https://Tollgate-Lodger.example.com/pay' })
+      expect(readFileSync(join(root, caseId, 'manifest.jsonl'), 'utf8')).not.toContain(edited)
+      const { check } = await checkFieldHit(field)
+      expect(check).toEqual({
+        text: 'cannot-check',
+        basis: null,
+        reason: 'No signed capture record covers this capture.'
+      })
+    })
+
+    it('refuses its Extracted Text too, rather than marking it unattested', async () => {
+      const { id } = await unsigned()
+      const { check } = await checkFieldHit(fieldId(id, 'header.from'))
+      expect(check).toEqual({
+        text: 'cannot-check',
+        basis: null,
+        reason: 'No signed capture record covers this capture.'
+      })
+    })
+  })
+
+  it("reads the text file from the Capture's own Case, not the search record's", async () => {
+    const id = await ingest('')
+    defaultCaptureStore.writeText(caseId, id, TEXT)
+    expect(buildExhibitFields(id)).toBe('built')
+    const field = fieldId(id, 'header.from')
+    // A planted file in another Case, named by an edited search record.
+    const other = createCase({ name: 'Other' }).id
+    ensureCaseDir(other)
+    defaultCaptureStore.writeText(other, id, TEXT.replace('Wren', 'Ward'))
+    sql('UPDATE exhibit_search_fields SET case_id = ? WHERE id = ?', other, field)
+    const { check } = await checkFieldHit(field)
+    expect(check).toEqual({ text: 'present', basis: 'unattested', reason: null })
   })
 
   it('refuses Extracted Text read for the check that differs from the verified file', async () => {
@@ -391,6 +479,11 @@ describe('checkFieldHit writes nothing', () => {
     expect((await checkFieldHit(fieldId(id, 'link.href'))).check.text).toBe('present')
     expect((await checkFieldHit(absentField)).check.text).toBe('absent')
     expect((await checkFieldHit(424242)).check.text).toBe('cannot-check')
+    // A cannot-check the verification itself gave, with `record: false`.
+    unlinkSync(join(root, caseId, `${id}.txt`))
+    expect((await checkFieldHit(fieldId(id, 'link.href'))).check.reason).toMatch(
+      /could not be read/
+    )
 
     expect(readFileSync(join(root, caseId, 'manifest.jsonl'))).toEqual(manifest)
     expect(getCapture(id)).toEqual(capture)

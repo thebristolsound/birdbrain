@@ -55,7 +55,16 @@ import type {
   Persona,
   PersonaImportResult,
   PersonaStorageState,
-  SyncState
+  SyncState,
+  CaseMember,
+  SharingChangedEvent,
+  SharingInvite,
+  SharingInvitePreview,
+  SharingJoinProgressEvent,
+  SharingJoinResult,
+  SharingMembers,
+  SharingSyncOutcome,
+  SharingExclusion
 } from '@shared/types'
 import type { CaseManifestSnapshot } from '@shared/manifestSnapshot'
 
@@ -220,10 +229,23 @@ export const IPC_CHANNELS = {
   // Manifest
   MANIFEST_SNAPSHOT: 'manifest:snapshot',
 
-  // Shared Case sync (#1512). The session itself runs without a channel
-  // until the scheduler and Sync now land (#1810); this reads what the last
-  // sessions left in the Case's sync state.
+  // Shared Cases (#1512, #1810). The sync state is what the last sessions
+  // left in the Case's file; the rest are the invite, join and roster
+  // commands the members screens call. Every refusal arrives as an
+  // IpcFailure whose code is a SharingErrorCode. The scheduler is SC-9's.
   SHARING_GET_SYNC_STATE: 'sharing:getSyncState',
+  SHARING_CREATE_INVITE: 'sharing:createInvite',
+  SHARING_CANCEL_INVITE: 'sharing:cancelInvite',
+  SHARING_READ_INVITE: 'sharing:readInvite',
+  SHARING_JOIN: 'sharing:join',
+  SHARING_APPROVE_JOIN: 'sharing:approveJoin',
+  SHARING_DECLINE_JOIN: 'sharing:declineJoin',
+  SHARING_REVOKE: 'sharing:revoke',
+  SHARING_EXCLUDE_EXHIBIT: 'sharing:excludeExhibit',
+  SHARING_SYNC_NOW: 'sharing:syncNow',
+  SHARING_GET_MEMBERS: 'sharing:getMembers',
+  SHARING_CHANGED: 'event:sharingChanged',
+  SHARING_JOIN_PROGRESS: 'event:sharingJoinProgress',
 
   // Staging Pool (ADR-0024). Upload lands bytes outside the chain; commit is
   // the only route by which a pooled file becomes an Exhibit.
@@ -1004,6 +1026,27 @@ export interface IpcInvokeContract {
   'manifest:snapshot': { args: [caseId: string]; result: CaseManifestSnapshot }
 
   'sharing:getSyncState': { args: [caseId: string]; result: SyncState }
+  // `ownerMemberCode` is read on the first invite for a Case only, when the
+  // Owner's own member-add is written.
+  'sharing:createInvite': {
+    args: [caseId: string, ownerMemberCode?: string]
+    result: SharingInvite
+  }
+  'sharing:cancelInvite': { args: [caseId: string, inviteId: string]; result: void }
+  'sharing:readInvite': { args: [invite: string]; result: SharingInvitePreview }
+  'sharing:join': { args: [invite: string]; result: SharingJoinResult }
+  'sharing:approveJoin': {
+    args: [caseId: string, requestId: string, memberCode: string]
+    result: CaseMember
+  }
+  'sharing:declineJoin': { args: [caseId: string, requestId: string]; result: void }
+  'sharing:revoke': { args: [caseId: string, installationId: string]; result: CaseMember }
+  'sharing:excludeExhibit': {
+    args: [caseId: string, exhibitId: string, reason?: string]
+    result: SharingExclusion
+  }
+  'sharing:syncNow': { args: [caseId: string]; result: SharingSyncOutcome[] }
+  'sharing:getMembers': { args: [caseId: string]; result: SharingMembers }
 
   // The open-file dialog lives in the handler; an empty list is a cancel.
   'staging:upload': { args: [caseId: string]; result: StagingFile[] }
@@ -1061,6 +1104,10 @@ export interface IpcEventContract {
   'event:guestFrameReplaced': GuestFrameReplacedEvent
   'event:guestMouseDown': GuestMouseDownEvent
   'event:logEntry': LogEntry
+  // Shared Cases (#1810): any invite, pending join or roster change in a
+  // Case, and each step of a join in flight.
+  'event:sharingChanged': SharingChangedEvent
+  'event:sharingJoinProgress': SharingJoinProgressEvent
 }
 
 export type IpcEventChannel = keyof IpcEventContract

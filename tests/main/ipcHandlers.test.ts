@@ -16,6 +16,7 @@ import { join } from 'path'
 import { readStoredZip } from '@main/services/zipRead'
 import { tmpdir } from 'os'
 import { pathToFileURL } from 'url'
+import { generateKeyPairSync } from 'crypto'
 import type { IpcMainInvokeEvent } from 'electron'
 
 // --- Module mocks -----------------------------------------------------------
@@ -173,6 +174,10 @@ import { initServerToken } from '@main/services/serverToken'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSessionService, type SessionService } from '@main/services/session'
+import { SharingService } from '@main/services/sharing/sharingService'
+import { MemoryHub } from '@main/services/sharing/transport'
+import { addMember } from '@main/services/sharing/membership'
+import { listCaseMembers } from '@main/services/db/caseMemberRepo'
 import type { RecaptureService } from '@main/services/recapture'
 import type { UpdaterService } from '@main/services/updater'
 import {
@@ -190,6 +195,13 @@ import { UnsupportedCookieFileError } from '@main/services/persona/cookieFiles'
 import type { Persona, PersonaImportResult } from '@shared/types'
 
 const fakeEvent = {} as IpcMainInvokeEvent
+
+// A member key no installation here holds, for a roster entry a test adds.
+const PEER_PUBLIC_KEY = generateKeyPairSync('rsa', {
+  modulusLength: 2048,
+  publicKeyEncoding: { type: 'spki', format: 'pem' },
+  privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
+}).publicKey
 
 // Invoke a registered handler by channel. Returns the raw handler result;
 // `handle()`-wrapped channels return `{ ok, data }`, raw ones return the value.
@@ -209,6 +221,7 @@ function expectOk<T = unknown>(res: { ok: boolean; data?: T; error?: string }): 
 }
 
 let sessionService: SessionService
+let sharingService: SharingService
 let dbPath = ''
 let caseId = ''
 let captureId = ''
@@ -283,12 +296,14 @@ beforeEach(async () => {
     dispose: vi.fn()
   }
   sessionService = createSessionService()
+  sharingService = new SharingService()
   registerIpcHandlers({
     selectorLifecycle,
     captureLifecycle,
     recaptureService,
     updaterService,
-    sessionService
+    sessionService,
+    sharingService
   })
 
   const created = caseRepo.createCase({ name: 'Test Case' })
@@ -737,6 +752,118 @@ describe('ipcHandlers — captures', () => {
       transfer: null,
       lastError: null
     })
+  })
+
+  // The sharing channels (#1810): each refusal arrives as `{ ok: false }`
+  // under its SharingError code, a Case that does not exist is NOT_FOUND,
+  // and with no transport wired in the network calls refuse
+  // `sharing-unavailable` and share nothing.
+  it('refuses the sharing commands on a Case nobody shared, under the named code', async () => {
+    settings.updateSettings({ operatorName: 'Operator One' })
+    const failure = async (channel: string, ...args: unknown[]): Promise<string | undefined> => {
+      const result = (await invoke(channel, ...args)) as { ok: boolean; code?: string }
+      expect(result.ok).toBe(false)
+      return result.code
+    }
+    expect(await failure(IPC_CHANNELS.SHARING_CREATE_INVITE, caseId)).toBe('sharing-unavailable')
+    expect(await failure(IPC_CHANNELS.SHARING_SYNC_NOW, caseId)).toBe('not-shared')
+    expect(await failure(IPC_CHANNELS.SHARING_JOIN, 'bbinvite1nope')).toBe('invite-malformed')
+    expect(await failure(IPC_CHANNELS.SHARING_READ_INVITE, 'nope')).toBe('invite-malformed')
+    expect(await failure(IPC_CHANNELS.SHARING_REVOKE, caseId, 'someone')).toBe('not-shared')
+    expect(await failure(IPC_CHANNELS.SHARING_EXCLUDE_EXHIBIT, caseId, captureId)).toBe(
+      'not-shared'
+    )
+    expect(await failure(IPC_CHANNELS.SHARING_CANCEL_INVITE, caseId, 'nope')).toBe(
+      'invite-not-found'
+    )
+    expect(await failure(IPC_CHANNELS.SHARING_APPROVE_JOIN, caseId, 'r', 'AB')).toBe(
+      'sharing-unavailable'
+    )
+    expect(await failure(IPC_CHANNELS.SHARING_DECLINE_JOIN, caseId, 'r')).toBe(
+      'sharing-unavailable'
+    )
+    for (const channel of [
+      IPC_CHANNELS.SHARING_GET_MEMBERS,
+      IPC_CHANNELS.SHARING_SYNC_NOW,
+      IPC_CHANNELS.SHARING_CREATE_INVITE,
+      IPC_CHANNELS.SHARING_REVOKE
+    ]) {
+      expect(await failure(channel, 'no-such-case', 'x', 'y')).toBe('NOT_FOUND')
+    }
+    expect(caseRepo.getCase(caseId)?.sharedAt).toBeUndefined()
+    const members = expectOk<{ isOwner: boolean; members: unknown[]; invites: unknown[] }>(
+      await invoke(IPC_CHANNELS.SHARING_GET_MEMBERS, caseId)
+    )
+    expect(members).toMatchObject({ isOwner: false, members: [], invites: [], pendingJoins: [] })
+  })
+
+  it('creates, reads and cancels an invite, and revokes and excludes, once a transport is wired', async () => {
+    settings.updateSettings({ operatorName: 'Operator One' })
+    const hub = new MemoryHub()
+    sharingService.setTransportProvider(async () => hub.createTransport('owner-node'))
+    const invite = expectOk<{ inviteId: string; invite: string; expiresAt: string }>(
+      await invoke(IPC_CHANNELS.SHARING_CREATE_INVITE, caseId, 'TC')
+    )
+    expect(invite.invite.startsWith('bbinvite1')).toBe(true)
+    expect(caseRepo.getCase(caseId)?.sharedAt).toBeDefined()
+    expect(expectOk(await invoke(IPC_CHANNELS.SHARING_READ_INVITE, invite.invite))).toEqual({
+      caseId,
+      ownerName: settings.getSettings().operatorName,
+      expiresAt: invite.expiresAt
+    })
+    const members = expectOk<{ isOwner: boolean; invites: Array<{ inviteId: string }> }>(
+      await invoke(IPC_CHANNELS.SHARING_GET_MEMBERS, caseId)
+    )
+    expect(members.isOwner).toBe(true)
+    expect(members.invites.map((i) => i.inviteId)).toEqual([invite.inviteId])
+    expectOk(await invoke(IPC_CHANNELS.SHARING_CANCEL_INVITE, caseId, invite.inviteId))
+    expect(
+      expectOk<{ invites: unknown[] }>(await invoke(IPC_CHANNELS.SHARING_GET_MEMBERS, caseId))
+        .invites
+    ).toEqual([])
+    // The Owner's own invite pasted back: the Case exists here.
+    const own = (await invoke(IPC_CHANNELS.SHARING_JOIN, invite.invite)) as { code?: string }
+    expect(own.code).toBe('case-exists')
+
+    // The seeded Capture has a row and no chain entry, so it is not an
+    // Exhibit the walk holds; one with an entry is.
+    const missing = (await invoke(IPC_CHANNELS.SHARING_EXCLUDE_EXHIBIT, caseId, captureId)) as {
+      code?: string
+    }
+    expect(missing.code).toBe('exhibit-not-found')
+    appendManifestEntry(join(storage.getStorageRoot(), caseId), {
+      type: 'capture',
+      captureId,
+      caseId,
+      url: 'https://example.com',
+      timestamp: '2026-04-05T12:00:00.000Z',
+      contentHash: 'c'.repeat(64),
+      sizeBytes: 10,
+      operatorId: 'op-1',
+      operatorName: 'Operator One',
+      toolVersion: '1.2.3'
+    })
+    const excluded = expectOk<{ exhibitId: string; authorInstallationId: string }>(
+      await invoke(IPC_CHANNELS.SHARING_EXCLUDE_EXHIBIT, caseId, captureId, 'withdrawn')
+    )
+    expect(excluded.exhibitId).toBe(captureId)
+    const peer = await addMember(caseId, {
+      installationId: 'installation-peer',
+      publicKeyPem: PEER_PUBLIC_KEY,
+      operatorName: 'Peer',
+      nodeId: 'peer-node',
+      memberCode: 'PR'
+    })
+    const revoked = expectOk<{ revokedAtIndex: number | null }>(
+      await invoke(IPC_CHANNELS.SHARING_REVOKE, caseId, peer.installationId)
+    )
+    expect(revoked.revokedAtIndex).not.toBeNull()
+    expect(listCaseMembers(caseId)).toHaveLength(2)
+    const outcomes = expectOk<Array<{ outcome: string }>>(
+      await invoke(IPC_CHANNELS.SHARING_SYNC_NOW, caseId)
+    )
+    expect(outcomes).toEqual([])
+    await sharingService.close()
   })
 
   // The Staging Pool channels (#1148). The dialog lives in the upload

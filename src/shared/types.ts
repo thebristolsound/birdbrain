@@ -1633,6 +1633,20 @@ export interface SharingJoinResult {
   caseName: string
 }
 
+// An exclusion as the Shared Case walk lists it (SharedCaseExclusion in
+// `@shared/verify`, which the renderer project does not compile); the fields
+// are the same, so the walk's result is assignable here.
+export interface SharingExclusion {
+  exhibitId: string
+  authorInstallationId: string
+  reason?: string
+  // Index in the Owner's chain of the `exclude`.
+  index: number
+  timestamp: string
+  operatorName: string
+  sourceCaseId?: string
+}
+
 // One member's outcome from `sharing:syncNow`.
 export type SharingSyncOutcome = { installationId: string } & (
   | {

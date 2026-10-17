@@ -79,7 +79,9 @@ function expectSpansInText(text: string, fields: ExtractedField[]): void {
 
 // Every field, sliced from the string it indexes, is its value: the decoded part for
 // an html-part field (a legacy page's file read as UTF-8 for part 0), the text for a
-// text field. Every test reads fields through these two wrappers, so each checks it.
+// text field. Every test checks it: through these two wrappers, or, in the row-ceiling
+// test, which reads fields directly so its slice spy counts only the extractor, by
+// calling this check itself once the spy is removed.
 function expectSpansSliceBack(sources: FieldSources, fields: ExtractedField[]): void {
   if (fields.length === 0) return
   const parts = sources.mhtml

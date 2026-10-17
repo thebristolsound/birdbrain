@@ -1,0 +1,1 @@
+192.0.2.1 dev tailscale0 table 52 src 100.101.102.103 uid 1000 \    cache 

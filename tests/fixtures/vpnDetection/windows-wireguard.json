@@ -1,0 +1,35 @@
+{
+  "routes": [
+    { "DestinationPrefix": "192.168.1.0/24", "NextHop": "0.0.0.0", "RouteMetric": 256, "InterfaceIndex": 12 },
+    { "DestinationPrefix": "10.64.0.2/32", "NextHop": "0.0.0.0", "RouteMetric": 256, "InterfaceIndex": 18 },
+    { "DestinationPrefix": "0.0.0.0/0", "NextHop": "0.0.0.0", "RouteMetric": 0, "InterfaceIndex": 18 },
+    { "DestinationPrefix": "0.0.0.0/0", "NextHop": "192.168.1.1", "RouteMetric": 0, "InterfaceIndex": 12 }
+  ],
+  "interfaces": [
+    { "InterfaceIndex": 12, "InterfaceMetric": 35, "ConnectionState": 1 },
+    { "InterfaceIndex": 18, "InterfaceMetric": 5, "ConnectionState": 1 }
+  ],
+  "adapters": [
+    {
+      "InterfaceIndex": 12,
+      "Name": "Wi-Fi",
+      "InterfaceDescription": "Intel(R) Wi-Fi 6 AX201 160MHz",
+      "InterfaceType": 71,
+      "NdisPhysicalMedium": 9
+    },
+    {
+      "InterfaceIndex": 18,
+      "Name": "office",
+      "InterfaceDescription": "WireGuard Tunnel",
+      "InterfaceType": 53,
+      "NdisPhysicalMedium": 0
+    }
+  ],
+  "neighbors": [
+    { "IPAddress": "192.168.1.1", "InterfaceIndex": 12, "LinkLayerAddress": "00-00-5E-00-53-01" }
+  ],
+  "profiles": [
+    { "InterfaceIndex": 12, "Name": "Example Network" },
+    { "InterfaceIndex": 18, "Name": "office" }
+  ]
+}

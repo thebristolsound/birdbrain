@@ -905,6 +905,9 @@ export const LOG_CODES = [
   // The Wayback replay partition refused the Egress proxy (ADR-0032). The pane then
   // refuses every request until the setting names a route the partition takes.
   'app.egress_apply_failed',
+  // The routing-table read behind the VPN indicator failed (ADR-0032). Logged once
+  // per run; until a read succeeds the indicator says a VPN was not seen.
+  'app.vpn_check_failed',
   // The at-rest key-protection gate (#414): recorded either way so the log
   // carries the same signal the Settings/Diagnostics indicator shows live.
   'signingKey.unprotected_key_acknowledged',

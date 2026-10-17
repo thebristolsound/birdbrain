@@ -66,6 +66,9 @@ reasoning: it carries bytes between installations, reads no message, and decides
 what the session accepts. `IrohTransport`, when #1810 lands it, is the same kind of file and
 joins that entry. The repo module the rows step writes through,
 `src/main/services/db/workingRowRepo.ts`, is already swept in by `src/main/services/db/**`.
+`src/packages/transaction-record/**` was added to Acquisition at blocking tier on 2026-10-17 with
+#1903, the capture engine's step 7 (D12 of the first-slice plan): it decides which of the
+browser's exchanges a Transaction Record holds as complete and how the inventory counts the rest.
 
 ### Known gap: carve-outs are caught by review, not by a check
 
@@ -212,6 +215,7 @@ that caused it was to record the carved-out file as an exclusion (#515), which i
 | `src/main/services/recapture.ts` | blocking | Recapture queue re-acquiring URLs as new evidence |
 | `src/main/services/backgroundRenderer.ts` | blocking | Headless render producing the artifacts that get hashed |
 | `src/main/services/consentBlocker.ts` | blocking | Suppresses consent overlays during recapture — alters acquired page content |
+| `src/packages/transaction-record/**` | blocking | Turns the browser's network events into the exchanges a Transaction Record holds and the inventory counts of what it lacks, and a main document's `securityDetails` into Bound TLS Details |
 
 ### Integrity core (hash, manifest, signing, trusted time, verification)
 

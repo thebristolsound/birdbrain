@@ -46,14 +46,18 @@ prove and what they do not.
   annotations.
 - Birdbrain assigns exhibit numbers to captures and cites them in exports.
 - Search the text of every capture in a case.
-- Search also finds link targets, the alt text of images inside links, and ten mail header
-  fields in a block of header lines in a page's text, such as `From`, `Reply-To`, and
-  `Message-ID`. Each result names its exhibit and the first 12 characters of its content hash. A
-  header result opens the capture's **Text** tab with the value marked, unless the text there has
-  changed since it was indexed. A link result opens the **Links** tab and marks the rows with that
-  link target, or for alt text the rows whose text is that alt text. The tab says when no listed
-  link matches, and an older plain HTML capture has no link list. If a capture's content hash
-  changed after it was indexed, its link and header matches are listed as unavailable instead.
+- Search also finds link targets, the alt text of images inside links, image addresses, tracking
+  codes, and cryptocurrency addresses in a stored page, email and web addresses written in a page's
+  text, and fourteen mail header fields in a block of header lines in that text, such as `From`,
+  `To`, `Cc`, `Reply-To`, `Message-ID`, `References`, and a Usenet `Path`. Each result names its
+  exhibit and the first 12 characters of its content hash. A header result opens the capture's
+  **Text** tab with the value marked, unless the text there has changed since it was indexed. An
+  email or web address from the text opens the same way. A link result opens the **Links** tab and
+  marks the rows with that link target, or for alt text the rows whose text is that alt text. An
+  image address, tracking code, or cryptocurrency address opens the **Links** tab too, and marks no
+  row. The tab says when no listed link matches, and an older plain HTML capture has no link list.
+  If a capture's content hash changed after it was indexed, its link and header matches are listed
+  as unavailable instead.
 
 ## Analysis
 

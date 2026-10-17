@@ -623,6 +623,7 @@ export const LOG_SOURCES = [
   'staging',
   'persona',
   'searchFields',
+  'sharing',
   'renderer'
 ] as const
 export type LogSource = (typeof LOG_SOURCES)[number]
@@ -798,7 +799,12 @@ export const LOG_CODES = [
   // A field search that threw: the search bar says the search could not run, and this
   // line holds the error.
   'searchFields.search_failed',
-  'searchFields.source_missing'
+  'searchFields.source_missing',
+  // Shared Case sharing (#1810): an incoming stream whose handler threw on
+  // this installation (the peer saw the stream close), and a joiner's first
+  // session that failed after the Case was adopted (Sync now retries it).
+  'sharing.stream_failed',
+  'sharing.first_session_failed'
 ] as const
 export type LogCode = (typeof LOG_CODES)[number]
 

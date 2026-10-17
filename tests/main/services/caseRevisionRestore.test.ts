@@ -26,7 +26,7 @@ vi.mock('node:fs', async (importOriginal) => {
 import { closeDatabase, getDb, initDatabase, LATEST_SCHEMA_VERSION } from '@main/services/db/core'
 import { createCase, getCase } from '@main/services/db/caseRepo'
 import { createNote } from '@main/services/db/noteRepo'
-import { restoreDatabase } from '@main/services/db/dbRestore'
+import { restoreDatabase, scratchPathFor } from '@main/services/db/dbRestore'
 import { restoreSnapshotFile, snapshotDirFor } from '@main/services/db/dbSnapshots'
 import { readCaseRevision, type CaseRevision } from '@main/services/caseRevision'
 
@@ -121,6 +121,25 @@ describe('Restore from File', () => {
     })
 
     expectReplaced(before, beforeLog)
+  })
+})
+
+describe('Restore from File, with a sidecar left by the generation write', () => {
+  it('refuses the copy and leaves the live database open as it was', async () => {
+    const backup = await copyTo(join(dir, 'backup.db'))
+    const live = createCase({ name: 'Only in the live database' }).id
+    // The second look at the scratch copy's -wal, the one after the close.
+    let looks = 0
+    fsHooks.exists = (path) =>
+      path === `${scratchPathFor(dbPath)}-wal` && ++looks === 2 ? true : undefined
+
+    expect(await restoreDatabase({ kind: 'file', path: backup }, { dbPath })).toEqual({
+      status: 'rejected',
+      reason: 'copy_failed'
+    })
+
+    expect(looks).toBe(2)
+    expect(getCase(live)).toBeDefined()
   })
 })
 

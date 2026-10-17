@@ -211,14 +211,14 @@ async function prepareScratch(sourcePath: string, scratch: string): Promise<Rest
   }
 
   try {
-    // The restored Cases get new generations on the copy (ADR-0042). Its
-    // connection, like migrateFile's before it, was the last one, so its close
-    // folded the WAL back into the file. A sidecar still here holds pages the
-    // rename would leave behind.
+    // migrateFile's connection was the last one, so its close folded the WAL
+    // back into the file. A sidecar still here holds pages the rename would
+    // leave behind. The restored Cases then get new generations on the copy
+    // (ADR-0042), on a connection that is the only one too, so the same check
+    // follows its close.
+    assertNoSidecar(scratch)
     replaceGenerationsInFile(scratch)
-    if (DB_SIDECAR_SUFFIXES.some((suffix) => existsSync(`${scratch}${suffix}`))) {
-      throw new Error('the scratch copy still has a WAL sidecar after its last close')
-    }
+    assertNoSidecar(scratch)
     const fd = openSync(scratch, 'r+')
     try {
       fsyncSync(fd)
@@ -229,6 +229,12 @@ async function prepareScratch(sourcePath: string, scratch: string): Promise<Rest
     return rejected('copy_failed', err)
   }
   return null
+}
+
+function assertNoSidecar(scratch: string): void {
+  if (DB_SIDECAR_SUFFIXES.some((suffix) => existsSync(`${scratch}${suffix}`))) {
+    throw new Error('the scratch copy still has a WAL sidecar after its last close')
+  }
 }
 
 // Through SQLite's backup API rather than a file copy, so committed rows still

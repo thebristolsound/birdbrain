@@ -22,8 +22,8 @@ describe('migration v25: capture_texts', () => {
     // `mhtml_path`, `size_bytes` and `manifest_index` and rebuilds
     // `capture_tags`, all of which a real v24 database has (v11 and v23), so
     // they are declared here rather than worked around in the migration. v36
-    // adds columns to `annotations` (v17) for the same reason, and v39 to
-    // `annotation_pins` (v17).
+    // adds columns to `annotations` (v17) for the same reason, v39 to
+    // `annotation_pins` (v17), and v40 puts triggers on `extracted_data` (v16).
     raw.exec(`
       CREATE TABLE cases (id TEXT PRIMARY KEY, name TEXT, description TEXT, type TEXT,
         created_at TEXT, updated_at TEXT, archived INTEGER DEFAULT 0);
@@ -45,6 +45,9 @@ describe('migration v25: capture_texts', () => {
         number INTEGER NOT NULL, body TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
       CREATE TABLE capture_tags (capture_id TEXT NOT NULL REFERENCES captures(id) ON DELETE CASCADE,
         tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE, PRIMARY KEY (capture_id, tag_id));
+      CREATE TABLE extracted_data (id TEXT PRIMARY KEY, capture_id TEXT NOT NULL,
+        case_id TEXT NOT NULL, category TEXT NOT NULL, subcategory TEXT NOT NULL,
+        value TEXT NOT NULL, source_url TEXT NOT NULL, created_at TEXT NOT NULL);
       CREATE VIRTUAL TABLE captures_fts USING fts5(title, url, content);
     `)
     raw

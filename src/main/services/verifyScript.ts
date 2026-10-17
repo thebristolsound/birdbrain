@@ -707,6 +707,31 @@ while IFS= read -r line; do
   required_tokens=$((required_tokens + 1))
 done <"$tmp/exhibits.jsonl"
 
+# Receipt stamps (#1515): a schema-4 stamp with subject "entry" binds a merge
+# entry's Entry Hash, bounding when this chain's writer held what the merge
+# names, and vouches for no Exhibit's bytes. Its token has no enclosed file;
+# the signed line is the only copy, so it is decoded from there. The merge
+# is found by the hash the stamp names, which ${stepRef(3)} recomputed from the
+# entry's own body.
+receipt_token_filter='${VERIFY_RECIPES.receiptTokenFilter}'
+jq -r "$receipt_token_filter"' | "\\(.index) \\(.captureContentHash) \\(.tsaToken)"' \\
+  "$MANIFEST_FILE" >"$tmp/receipt-tokens.txt"
+
+: >"$tmp/required-receipts.txt"
+receipt_tokens=0
+while IFS=' ' read -r stamp_idx imprint encoded; do
+  [ -n "$encoded" ] || continue
+  merge_idx=$(jq -rn --arg h "$imprint" \\
+    'first(inputs | select(.type == "merge" and .entryHash == $h) | .index) // empty' \\
+    "$MANIFEST_FILE")
+  if [ -z "$merge_idx" ]; then
+    note "receipt timestamp entry $stamp_idx names no merge entry in the chain (hash $imprint), so nothing states what it attests"
+    continue
+  fi
+  printf '%s %s %s %s\\n' "$stamp_idx" "$merge_idx" "$imprint" "$encoded" >>"$tmp/required-receipts.txt"
+  receipt_tokens=$((receipt_tokens + 1))
+done <"$tmp/receipt-tokens.txt"
+
 # sha256 of every enclosed token file. A signed entry is matched to a file by
 # its bytes, because nothing signed the file's name.
 : >"$tmp/file-index.txt"
@@ -719,17 +744,19 @@ fi
 
 anchor_named=0
 verified_count=0
+receipts_verified=0
 
-if [ "$required_tokens" -eq 0 ]; then
-  if [ "$signed_tokens" -gt 0 ]; then
-    note "$signed_tokens signed token(s) belong only to deleted or out-of-scope captures, so they are expected absent and need no anchor"
-  else
+if [ "$required_tokens" -eq 0 ] && [ "$signed_tokens" -gt 0 ]; then
+  note "$signed_tokens signed token(s) belong only to deleted or out-of-scope captures, so they are expected absent and need no anchor"
+fi
+if [ "$required_tokens" -eq 0 ] && [ "$receipt_tokens" -eq 0 ]; then
+  if [ "$signed_tokens" -eq 0 ]; then
     note 'the signed manifest carries no RFC 3161 token, so it makes no trusted-time claim'
   fi
 elif [ ! -f "$TSA_ROOT" ]; then
   note "$TSA_ROOT is absent: this case was configured with a non-default timestamp authority"
   note "obtain that authority's own root and re-run the ${stepRef('6b')} command from ${ROOT.verifyRunbook} with it as -CAfile"
-  incomplete "$required_tokens signed token(s) were not verified: no anchor is enclosed for this script to name"
+  incomplete "$((required_tokens + receipt_tokens)) signed token(s) were not verified: no anchor is enclosed for this script to name"
 elif openssl x509 -in "$TSA_ROOT" -noout -subject -issuer -fingerprint -sha256 \\
   >"$tmp/anchor.txt" 2>&1; then
   anchor_subject=$(grep '^subject=' "$tmp/anchor.txt" | cut -d= -f2-)
@@ -791,6 +818,36 @@ while IFS=' ' read -r id imprint encoded; do
   fi
 done <"$tmp/required-tokens.txt"
 
+# Every receipt token: decoded from its signed line and verified to the anchor
+# over the merge entry's Entry Hash, the digest the signed stamp names. The
+# openssl check fails on a token whose imprint is another digest, as it does
+# for a capture's.
+while IFS=' ' read -r stamp_idx merge_idx imprint encoded; do
+  [ -n "$encoded" ] || continue
+  if ! printf '%s' "$encoded" | openssl base64 -d -A >"$tmp/receipt-token.der" 2>/dev/null; then
+    fail "merge entry $merge_idx: its receipt timestamp entry $stamp_idx carries a tsaToken that is not base64"
+    continue
+  fi
+  [ "$anchor_named" -eq 1 ] || continue
+  result=0
+  if [ -n "$untrusted" ]; then
+    openssl ts -verify -digest "$imprint" -in "$tmp/receipt-token.der" -token_in \\
+      -CAfile "$TSA_ROOT" -untrusted "$untrusted" >"$tmp/ts.out" 2>&1 || result=$?
+  else
+    openssl ts -verify -digest "$imprint" -in "$tmp/receipt-token.der" -token_in \\
+      -CAfile "$TSA_ROOT" >"$tmp/ts.out" 2>&1 || result=$?
+  fi
+  if [ "$result" -eq 0 ]; then
+    receipts_verified=$((receipts_verified + 1))
+    note "merge entry $merge_idx: receipt timestamp entry $stamp_idx verifies to $TSA_ROOT over the Entry Hash $imprint - a receipt of what this chain's writer held, not a trusted time for any Exhibit"
+  else
+    fail "merge entry $merge_idx: receipt timestamp entry $stamp_idx does not verify to $TSA_ROOT over the Entry Hash $imprint"
+    while IFS= read -r detail; do
+      printf '   openssl: %s\\n' "$detail"
+    done <"$tmp/ts.out"
+  fi
+done <"$tmp/required-receipts.txt"
+
 # The other direction: a .tst no signed entry accounts for is reported, never
 # verified against a digest of its own choosing.
 while IFS=' ' read -r file_sha file_path; do
@@ -841,6 +898,12 @@ elif [ "$signed_tokens" -gt 0 ]; then
   printf 'That is an integrity and internal-consistency result only. The signed chain carries\\n'
   printf 'RFC 3161 tokens, but only for captures this package does not enclose, so it makes no\\n'
   printf 'trusted-time claim about its contents for you to check.\\n'
+elif [ "$receipt_tokens" -gt 0 ]; then
+  printf 'That is an integrity and internal-consistency result only. The signed chain carries no\\n'
+  printf 'RFC 3161 token over any Exhibit'"'"'s content, so this package makes no trusted-time claim\\n'
+  printf 'about its contents for you to check. %s of its %s receipt token(s) over merge entries\\n' "$receipts_verified" "$receipt_tokens"
+  printf 'verified: a receipt bounds when its writer held what the merge names, not when anything\\n'
+  printf 'was captured, and it becomes a claim only once the ${stepRef('6a')} fingerprint is checked.\\n'
 else
   printf 'That is an integrity and internal-consistency result only. The signed chain carries no\\n'
   printf 'RFC 3161 token, so this package makes no trusted-time claim for you to check.\\n'

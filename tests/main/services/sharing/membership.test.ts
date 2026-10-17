@@ -24,7 +24,7 @@ import {
   readSharedCaseSnapshot
 } from '@main/services/manifest'
 import { commitStagedFiles, uploadToStaging } from '@main/services/staging'
-import { generateReport, type ExportOptions } from '@main/services/export'
+import { generateReport } from '@main/services/export'
 import { exportCaseArchive, importCaseArchive } from '@main/services/caseArchive'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
@@ -39,6 +39,7 @@ import {
 import { MEMBERS_FILENAME, resetSyncStateMemory } from '@main/services/sharing/syncState'
 import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
 import { ManifestEntrySchema } from '@shared/schemas'
+import type { ExportOptions } from '@shared/types'
 import type { SharedCaseVerifyResult } from '@shared/verify'
 import { memberChainPath } from '../../../../src/packages/evidence-package-layout/index'
 import {

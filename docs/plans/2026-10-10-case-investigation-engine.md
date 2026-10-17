@@ -1811,6 +1811,22 @@ implements it amends ADR-0042 in the same PR, so no code ships against an unamen
   questions 17, 20, and 21 became checks in CI-E's and CI-9's done-when. This revision records each
   ruling where its question or gate appears and applies E23 to the collaborative cases design. The
   plan as a whole still waits on approval.
+- **2026-10-17, CI-9 (#1891).** Migration 40 creates E1's tables and view, the Case revision, and
+  the triggers on the fifteen input tables. Both restores give every Case a new generation on the
+  copy they install, and `readCaseRevision()` and the MCP tool `get_case_revision` read the
+  revision. ADR-0042's input list now names `exhibits` and `exhibit_search_builds`. Departures:
+  every generation code writes comes from `crypto.randomUUID()`, and only the new-Case trigger
+  uses `randomblob(16)` (open question 20). A local Note write advances the counter twice, because
+  `signLocalRow` re-signs the row with a second `UPDATE` that sets `deleted_at`; E2 assumed local
+  rows stay unsigned until CI-S. The block runs again over its own objects, and its backfill skips
+  a Case that has a row. `windBackToV38` in the tests drops the eligibility view, which blocks the
+  `exhibits` rebuild the older wind-backs make. The SQL sits in `db/caseRevisionRepo.ts` and
+  `db/caseGenerations.ts`, since `getDb` is restricted to `db/`. The engine assessment
+  (`docs/specs/2026-10-17-case-investigation-engine-assessment.md`) starts with the trigger
+  timing, because CI-E has not started it: on the 1,000-Capture Case the run-to-run spread of a
+  reprocess, an import and its field build is larger than the difference between the medians with
+  and without the triggers, and the change-log rows each writes are counted exactly. Whether imported runs read as out of date
+  moves to CI-9b, whose archive first carries them.
 - **Next.** The maintainer reads this plan and approves it on PR #1805; the gates still open are in
   "Gates this plan waits on". Each brief is then filed against the ready-for-agent bar in
   `docs/agents/triage-labels.md`.

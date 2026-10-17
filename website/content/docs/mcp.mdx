@@ -61,6 +61,11 @@ configuration format.
   verification does not change.
 - **Notes**, the Captures and Notes they mention, and the Notes that mention a Capture.
 - **Extracted data** and **full-text search** over Captures, Notes, and extracted values.
+- **The Case revision**: a generation that changes when the database is restored, a counter that
+  every write to a Note, Selector, extracted value, Exhibit, or search index build advances, and
+  the last entry of this computer's Manifest for the Case. An agent can read it before and after
+  its other reads to tell whether those records changed in between. Tag, favorite, and Case name
+  edits do not change it.
 
 The agent cannot create, edit, tag, delete, export, or recapture anything.
 

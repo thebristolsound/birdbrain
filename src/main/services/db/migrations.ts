@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto'
 import type Database from 'better-sqlite3'
 
 // `tags.created_at` for a tag that predates the column (migration 39) or that
@@ -1292,5 +1293,445 @@ export function runMigrations(db: Database.Database): void {
     } finally {
       db.pragma('foreign_keys = ON')
     }
+  }
+
+  if (version < 40) {
+    db.transaction(() => {
+      // Investigation records and the Case revision (ADR-0042; docs/plans/2026-10-10-
+      // case-investigation-engine.md, E1 to E3 and E8). Storage only: nothing writes
+      // the investigation tables yet, so from here on only `case_revisions` and
+      // `case_change_log` hold rows.
+      //
+      // The ten tables that sync in a Shared Case end with v36's four working-layer
+      // columns, and their unique indexes run over COALESCE(author_installation_id, '')
+      // as v36's Exhibit Numbers do. None has a foreign key onto `exhibits`: a span,
+      // mark or flag names its Exhibit by id, so deleting the Exhibit leaves the
+      // decision history standing. Each statement is IF NOT EXISTS and the backfill
+      // skips a Case that has a row, so the block can run again over its own objects,
+      // as a restored copy marked one version back does.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS subjects (
+          id TEXT PRIMARY KEY,
+          case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          bound_exhibit_id TEXT,
+          bound_identifier TEXT,
+          created_by_run_id TEXT,
+          kept_at TEXT,
+          created_at TEXT NOT NULL,
+          operator_id TEXT NOT NULL,
+          operator_name TEXT NOT NULL,
+          author_installation_id TEXT, version INTEGER NOT NULL DEFAULT 0,
+          deleted_at TEXT, row_signature TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_subjects_case ON subjects(case_id, kind);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_subjects_document ON subjects(
+          case_id, bound_exhibit_id, COALESCE(author_installation_id, '')
+        ) WHERE bound_exhibit_id IS NOT NULL AND deleted_at IS NULL;
+
+        CREATE TABLE IF NOT EXISTS joints (
+          id TEXT PRIMARY KEY,
+          case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+          claim TEXT NOT NULL,
+          claim_hash TEXT NOT NULL,
+          subject_a_id TEXT NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+          subject_b_id TEXT REFERENCES subjects(id) ON DELETE CASCADE, -- NULL: one Subject
+          producer_kind TEXT NOT NULL, -- 'rule' | 'operator'
+          producer TEXT NOT NULL,
+          producer_version TEXT NOT NULL,
+          identity_hash TEXT NOT NULL,
+          from_note_id TEXT,
+          from_note_passage TEXT,
+          from_span_decision_id TEXT, -- set when a same-name choice started it
+          created_by_run_id TEXT,
+          created_at TEXT NOT NULL,
+          author_installation_id TEXT, version INTEGER NOT NULL DEFAULT 0,
+          deleted_at TEXT, row_signature TEXT
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_joints_identity ON joints(
+          case_id, identity_hash, COALESCE(author_installation_id, '')
+        ) WHERE deleted_at IS NULL;
+        CREATE INDEX IF NOT EXISTS idx_joints_subjects ON joints(subject_a_id, subject_b_id);
+
+        CREATE TABLE IF NOT EXISTS joint_spans (
+          id TEXT PRIMARY KEY,
+          case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+          joint_id TEXT NOT NULL REFERENCES joints(id) ON DELETE CASCADE,
+          side TEXT,
+          exhibit_id TEXT NOT NULL,
+          content_hash TEXT NOT NULL,
+          representation TEXT NOT NULL, -- 'html-part' | 'text' | 'capture-url'
+          field TEXT NOT NULL,
+          locator TEXT NOT NULL,
+          value TEXT NOT NULL,
+          span_key TEXT NOT NULL,
+          reading TEXT NOT NULL,
+          created_by_run_id TEXT, -- NULL only for the span a same-name choice cites
+          created_at TEXT NOT NULL,
+          author_installation_id TEXT, version INTEGER NOT NULL DEFAULT 0,
+          deleted_at TEXT, row_signature TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_joint_spans_joint ON joint_spans(joint_id, span_key);
+        CREATE INDEX IF NOT EXISTS idx_joint_spans_exhibit ON joint_spans(case_id, exhibit_id);
+
+        CREATE TABLE IF NOT EXISTS subject_spans (
+          id TEXT PRIMARY KEY,
+          case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+          subject_id TEXT NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+          exhibit_id TEXT NOT NULL,
+          content_hash TEXT NOT NULL,
+          representation TEXT NOT NULL,
+          field TEXT NOT NULL,
+          locator TEXT NOT NULL,
+          value TEXT NOT NULL,
+          span_key TEXT NOT NULL,
+          created_by_run_id TEXT,
+          created_at TEXT NOT NULL,
+          author_installation_id TEXT, version INTEGER NOT NULL DEFAULT 0,
+          deleted_at TEXT, row_signature TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_subject_spans_key ON subject_spans(case_id, span_key);
+
+        CREATE TABLE IF NOT EXISTS joint_decisions (
+          id TEXT PRIMARY KEY,
+          case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+          joint_id TEXT NOT NULL REFERENCES joints(id) ON DELETE CASCADE,
+          decision TEXT NOT NULL, -- 'accept' | 'reject' | 'restore'
+          reason TEXT,
+          assumptions TEXT,
+          confidence TEXT,
+          alternatives TEXT,
+          basis_run_id TEXT,
+          basis_as_of TEXT,
+          basis_proposal_hash TEXT,
+          replaces TEXT NOT NULL DEFAULT '[]',
+          decided_at TEXT NOT NULL,
+          operator_id TEXT NOT NULL,
+          operator_name TEXT NOT NULL,
+          author_installation_id TEXT, version INTEGER NOT NULL DEFAULT 0,
+          deleted_at TEXT, row_signature TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_joint_decisions_joint ON joint_decisions(joint_id);
+
+        CREATE TABLE IF NOT EXISTS span_decisions (
+          id TEXT PRIMARY KEY,
+          case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+          joint_span_id TEXT REFERENCES joint_spans(id) ON DELETE CASCADE,
+          subject_span_id TEXT REFERENCES subject_spans(id) ON DELETE CASCADE,
+          action TEXT NOT NULL,
+          chosen_subject_id TEXT,
+          reason TEXT,
+          replaces TEXT NOT NULL DEFAULT '[]',
+          decided_at TEXT NOT NULL,
+          operator_id TEXT NOT NULL,
+          operator_name TEXT NOT NULL,
+          author_installation_id TEXT, version INTEGER NOT NULL DEFAULT 0,
+          deleted_at TEXT, row_signature TEXT,
+          CHECK ((joint_span_id IS NULL) <> (subject_span_id IS NULL))
+        );
+        CREATE INDEX IF NOT EXISTS idx_span_decisions_joint_span
+          ON span_decisions(joint_span_id);
+        CREATE INDEX IF NOT EXISTS idx_span_decisions_subject_span
+          ON span_decisions(subject_span_id);
+
+        CREATE TABLE IF NOT EXISTS source_class_marks (
+          id TEXT PRIMARY KEY,
+          case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+          exhibit_id TEXT NOT NULL,
+          value TEXT NOT NULL,
+          reason TEXT,
+          replaces TEXT NOT NULL DEFAULT '[]',
+          acted_at TEXT NOT NULL,
+          operator_id TEXT NOT NULL,
+          operator_name TEXT NOT NULL,
+          author_installation_id TEXT, version INTEGER NOT NULL DEFAULT 0,
+          deleted_at TEXT, row_signature TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_source_class_marks_exhibit
+          ON source_class_marks(case_id, exhibit_id);
+
+        CREATE TABLE IF NOT EXISTS copy_marks (
+          id TEXT PRIMARY KEY,
+          case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+          copy_exhibit_id TEXT NOT NULL,
+          original_exhibit_id TEXT NOT NULL,
+          marked INTEGER NOT NULL,
+          reason TEXT,
+          replaces TEXT NOT NULL DEFAULT '[]',
+          acted_at TEXT NOT NULL,
+          operator_id TEXT NOT NULL,
+          operator_name TEXT NOT NULL,
+          author_installation_id TEXT, version INTEGER NOT NULL DEFAULT 0,
+          deleted_at TEXT, row_signature TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_copy_marks_pair
+          ON copy_marks(case_id, copy_exhibit_id, original_exhibit_id);
+
+        CREATE TABLE IF NOT EXISTS withheld_flags (
+          id TEXT PRIMARY KEY,
+          case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+          exhibit_id TEXT NOT NULL,
+          holder_installation_id TEXT, -- NULL: the row's author
+          action TEXT NOT NULL, -- 'set' | 'clear'
+          replaces TEXT NOT NULL DEFAULT '[]',
+          acted_at TEXT NOT NULL,
+          operator_id TEXT NOT NULL,
+          operator_name TEXT NOT NULL,
+          author_installation_id TEXT, version INTEGER NOT NULL DEFAULT 0,
+          deleted_at TEXT, row_signature TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_withheld_flags_exhibit
+          ON withheld_flags(case_id, exhibit_id);
+
+        CREATE TABLE IF NOT EXISTS own_identifiers (
+          id TEXT PRIMARY KEY,
+          case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+          holder_installation_id TEXT, -- NULL: the row's author
+          kind TEXT NOT NULL,
+          platform TEXT,
+          value TEXT NOT NULL,
+          persona_id TEXT, -- local only: never synced, never in a Case Archive
+          marked INTEGER NOT NULL,
+          replaces TEXT NOT NULL DEFAULT '[]',
+          acted_at TEXT NOT NULL,
+          operator_id TEXT NOT NULL,
+          operator_name TEXT NOT NULL,
+          author_installation_id TEXT, version INTEGER NOT NULL DEFAULT 0,
+          deleted_at TEXT, row_signature TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_own_identifiers_case ON own_identifiers(case_id, kind);
+
+        CREATE TABLE IF NOT EXISTS investigation_runs (
+          id TEXT PRIMARY KEY,
+          case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+          started_from TEXT NOT NULL,
+          inquiry TEXT,
+          joint_id TEXT,
+          status TEXT NOT NULL,
+          status_reason TEXT,
+          start_generation TEXT NOT NULL,
+          start_counter INTEGER NOT NULL,
+          start_head_index INTEGER,
+          start_head_hash TEXT,
+          stored_generation TEXT,
+          stored_counter INTEGER,
+          stored_head_index INTEGER,
+          stored_head_hash TEXT,
+          layers TEXT NOT NULL,
+          versions TEXT NOT NULL,
+          params TEXT NOT NULL,
+          counts TEXT,
+          started_at TEXT NOT NULL,
+          ended_at TEXT,
+          operator_id TEXT NOT NULL,
+          operator_name TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_investigation_runs_case
+          ON investigation_runs(case_id, started_at);
+
+        CREATE TABLE IF NOT EXISTS investigation_run_basis (
+          run_id TEXT NOT NULL REFERENCES investigation_runs(id) ON DELETE CASCADE,
+          kind TEXT NOT NULL,
+          ref_id TEXT NOT NULL,
+          snapshot TEXT,
+          snapshot_hash TEXT,
+          PRIMARY KEY (run_id, kind, ref_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS investigation_run_candidates (
+          run_id TEXT NOT NULL REFERENCES investigation_runs(id) ON DELETE CASCADE,
+          ord INTEGER NOT NULL,
+          rule TEXT NOT NULL,
+          group_key TEXT,
+          exhibit_id TEXT NOT NULL,
+          content_hash TEXT NOT NULL,
+          field TEXT NOT NULL,
+          locator TEXT NOT NULL,
+          joint_span_id TEXT,
+          text_check TEXT,
+          text_basis TEXT,
+          check_reason TEXT,
+          PRIMARY KEY (run_id, ord)
+        );
+
+        CREATE TABLE IF NOT EXISTS investigation_run_proposals (
+          run_id TEXT NOT NULL REFERENCES investigation_runs(id) ON DELETE CASCADE,
+          joint_id TEXT NOT NULL,
+          proposal_hash TEXT NOT NULL,
+          created INTEGER NOT NULL,
+          PRIMARY KEY (run_id, joint_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS case_revisions (
+          case_id TEXT PRIMARY KEY REFERENCES cases(id) ON DELETE CASCADE,
+          generation TEXT NOT NULL,
+          counter INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS case_change_log (
+          case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+          counter INTEGER NOT NULL,
+          kind TEXT NOT NULL,
+          target_id TEXT, -- ids and kinds only, never text
+          PRIMARY KEY (case_id, counter)
+        );
+
+        -- An Exhibit is eligible for analysis while no live withheld head is 'set'.
+        CREATE VIEW IF NOT EXISTS analysis_eligible_exhibits AS
+          SELECT e.* FROM exhibits e
+           WHERE NOT EXISTS (
+             SELECT 1 FROM withheld_flags w
+              WHERE w.case_id = e.case_id AND w.exhibit_id = e.id
+                AND w.action = 'set' AND w.deleted_at IS NULL
+                AND NOT EXISTS (
+                  SELECT 1 FROM withheld_flags s, json_each(s.replaces) r
+                   WHERE s.case_id = w.case_id AND s.deleted_at IS NULL AND r.value = w.id));
+      `)
+
+      // The generations code writes come from crypto.randomUUID(), here and in both
+      // restores. A new Case's first one comes from the trigger, which cannot call into
+      // JavaScript and uses randomblob() instead.
+      const unrevised = db
+        .prepare('SELECT id FROM cases WHERE id NOT IN (SELECT case_id FROM case_revisions)')
+        .all() as Array<{ id: string }>
+      const addRevision = db.prepare(
+        'INSERT INTO case_revisions (case_id, generation) VALUES (?, ?)'
+      )
+      for (const { id } of unrevised) addRevision.run(id, randomUUID())
+      db.exec(`
+        CREATE TRIGGER IF NOT EXISTS cases_revision_ai AFTER INSERT ON cases BEGIN
+          INSERT INTO case_revisions (case_id, generation)
+            VALUES (NEW.id, lower(hex(randomblob(16))));
+        END;
+      `)
+
+      // Every write to a run input advances its Case's counter and logs one row in the
+      // writer's own transaction, so no writer can skip it: not Settings > Database, a
+      // reprocess, a sync or an import. The log row is selected from `case_revisions`,
+      // so a Case with no revision row logs nothing. An update names both Cases,
+      // because Settings > Database can move a Note or a Selector to another Case and
+      // the Case it left has changed too. The log kind and target follow E3's table;
+      // the three rows a same-name choice writes all log as one decision on the chosen
+      // same-name span.
+      type Row = 'NEW' | 'OLD'
+      const inputs: Array<{
+        table: string
+        kind: (row: Row, update: boolean) => string
+        target: (row: Row) => string
+        synced: boolean
+      }> = [
+        { table: 'notes', kind: () => `'note'`, target: (r) => `${r}.id`, synced: false },
+        {
+          table: 'extracted_data',
+          kind: () => `'extracted-datum'`,
+          // Reprocessing replaces every row id, so the log names the Capture.
+          target: (r) => `${r}.capture_id`,
+          synced: false
+        },
+        { table: 'selectors', kind: () => `'selector'`, target: (r) => `${r}.id`, synced: false },
+        { table: 'exhibits', kind: () => `'exhibit'`, target: (r) => `${r}.id`, synced: false },
+        {
+          table: 'exhibit_search_builds',
+          kind: () => `'search-build'`,
+          target: (r) => `${r}.exhibit_id`,
+          synced: false
+        },
+        {
+          table: 'subjects',
+          kind: (_r, update) =>
+            update
+              ? `CASE WHEN OLD.kept_at IS NOT NEW.kept_at THEN 'decision' ELSE 'subject' END`
+              : `'subject'`,
+          target: (r) => `${r}.id`,
+          synced: true
+        },
+        {
+          table: 'joints',
+          kind: (r) =>
+            `CASE WHEN ${r}.from_span_decision_id IS NULL THEN 'joint' ELSE 'decision' END`,
+          target: (r) =>
+            `CASE WHEN ${r}.from_span_decision_id IS NULL THEN ${r}.id
+                  ELSE (SELECT subject_span_id FROM span_decisions
+                         WHERE id = ${r}.from_span_decision_id) END`,
+          synced: true
+        },
+        {
+          table: 'joint_spans',
+          kind: (r) => `CASE WHEN ${r}.created_by_run_id IS NULL THEN 'decision' ELSE 'span' END`,
+          target: (r) =>
+            `CASE WHEN ${r}.created_by_run_id IS NOT NULL THEN ${r}.id
+                  ELSE (SELECT d.subject_span_id FROM joints j
+                          JOIN span_decisions d ON d.id = j.from_span_decision_id
+                         WHERE j.id = ${r}.joint_id) END`,
+          synced: true
+        },
+        { table: 'subject_spans', kind: () => `'span'`, target: (r) => `${r}.id`, synced: true },
+        {
+          table: 'joint_decisions',
+          kind: () => `'decision'`,
+          target: (r) => `${r}.joint_id`,
+          synced: true
+        },
+        {
+          table: 'span_decisions',
+          kind: () => `'decision'`,
+          target: (r) => `COALESCE(${r}.joint_span_id, ${r}.subject_span_id)`,
+          synced: true
+        },
+        {
+          table: 'source_class_marks',
+          kind: () => `'source-class'`,
+          target: (r) => `${r}.exhibit_id`,
+          synced: true
+        },
+        {
+          table: 'copy_marks',
+          kind: () => `'copy-mark'`,
+          target: (r) => `${r}.copy_exhibit_id`,
+          synced: true
+        },
+        {
+          table: 'withheld_flags',
+          kind: () => `'withheld'`,
+          target: (r) => `${r}.exhibit_id`,
+          synced: true
+        },
+        {
+          table: 'own_identifiers',
+          kind: () => `'own-identifier'`,
+          target: (r) => `${r}.id`,
+          synced: true
+        }
+      ]
+      const advance = (cases: string, kind: string, target: string): string => `
+          UPDATE case_revisions SET counter = counter + 1 WHERE case_id IN (${cases});
+          INSERT INTO case_change_log (case_id, counter, kind, target_id)
+            SELECT case_id, counter, ${kind}, ${target} FROM case_revisions
+             WHERE case_id IN (${cases});`
+      for (const { table, kind, target, synced } of inputs) {
+        // On a synced table the sync step re-versions and re-signs a held-back row when
+        // it becomes eligible (E23, item 2). That writes only `version` and
+        // `row_signature`, and changes nothing a run reads, so it moves no counter.
+        const columns = synced
+          ? (db.pragma(`table_info(${table})`) as Array<{ name: string }>)
+              .map(({ name }) => name)
+              .filter((name) => name !== 'version' && name !== 'row_signature')
+          : null
+        const onUpdate = columns ? `UPDATE OF ${columns.join(', ')}` : 'UPDATE'
+        db.exec(`
+          CREATE TRIGGER IF NOT EXISTS ${table}_revision_ai AFTER INSERT ON ${table} BEGIN
+            ${advance('NEW.case_id', kind('NEW', false), target('NEW'))}
+          END;
+          CREATE TRIGGER IF NOT EXISTS ${table}_revision_au AFTER ${onUpdate} ON ${table} BEGIN
+            ${advance('OLD.case_id, NEW.case_id', kind('NEW', true), target('NEW'))}
+          END;
+          CREATE TRIGGER IF NOT EXISTS ${table}_revision_ad AFTER DELETE ON ${table} BEGIN
+            ${advance('OLD.case_id', kind('OLD', false), target('OLD'))}
+          END;
+        `)
+      }
+      db.pragma('user_version = 40')
+    })()
   }
 }

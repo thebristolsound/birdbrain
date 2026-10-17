@@ -7,6 +7,7 @@ import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
 import * as noteRepo from '@main/services/db/noteRepo'
 import * as selectorRepo from '@main/services/db/selectorRepo'
 import * as tagRepo from '@main/services/db/tagRepo'
+import { readCaseRevision } from '@main/services/caseRevision'
 import { READ_ONLY, failure, json } from '../results'
 
 export function registerCaseTools(server: McpServer): void {
@@ -53,5 +54,24 @@ export function registerCaseTools(server: McpServer): void {
       annotations: READ_ONLY
     },
     ({ limit }) => json(activityRepo.listRecentActivity(limit))
+  )
+
+  server.registerTool(
+    'get_case_revision',
+    {
+      description:
+        "A Case's revision: a generation that changes when the database is restored, a " +
+        'counter that every write to a Note, Selector, Extracted Data row, Exhibit or ' +
+        "search index build advances, and the head of this installation's Manifest for " +
+        'the Case. Read it before and after other reads; a different value means the ' +
+        'records an investigation reads changed between them.',
+      inputSchema: z.object({ caseId: z.string() }),
+      annotations: READ_ONLY
+    },
+    ({ caseId }) => {
+      const revision = readCaseRevision(caseId)
+      if (!revision) return failure(`No Case with id ${caseId}`)
+      return json(revision)
+    }
   )
 }

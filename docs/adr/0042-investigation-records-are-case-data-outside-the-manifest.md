@@ -98,7 +98,12 @@ head. Two revisions are equal only when all three parts are.
   inputs are the ones the engine spec names other than Manifest Entries: Withheld from analysis,
   Source Class, copy marks, the Operator's own identifiers, Subjects, Joints, decisions, Notes,
   and Extracted Data rows. Selectors join them, because the spec's inventory step reads them
-  too: creating, editing, enabling, disabling, or deleting one moves the counter.
+  too: creating, editing, enabling, disabling, or deleting one moves the counter. **Amended
+  2026-10-16:** `exhibits` writes and `exhibit_search_builds` writes join them as well, as the
+  maintainer ruled on 2026-10-10 on the engine plan's open questions 3 and 4. In a Shared Case
+  a received Exhibit's rows arrive while its Manifest Entry sits in another member's chain, so
+  this installation's Manifest head does not move with them. A search rebuild replaces the
+  field records a run reads, and writes one build row per Exhibit.
 - **The Manifest head is the index and hash of the last entry in the Case's `manifest.jsonl`**,
   read from the file whenever the revision is read. Manifest Entries are the one run input kept
   outside the database: `appendManifestEntry` writes the file directly, and writers such as the

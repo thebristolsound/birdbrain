@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { createHash } from 'crypto'
 import {
+  appendFileSync,
   copyFileSync,
   mkdtempSync,
   readdirSync,
@@ -23,7 +24,8 @@ import { resetSigningKey } from '@main/services/signingKey'
 import { getStorageRoot } from '@main/services/storage'
 import { createBirdbrainServer } from '../../src/mcp/server'
 import { MAX_IMAGE_BYTES, page, storedFilePath } from '../../src/mcp/results'
-import { startReadOnly } from '../../src/mcp/session'
+import { startReadOnly, withReadConnection } from '../../src/mcp/session'
+import { readCaseRevision } from '@main/services/caseRevision'
 import {
   MCP_MHTML_BODY,
   MCP_PAGE_TEXT,
@@ -43,6 +45,7 @@ const TOOLS = [
   'get_capture_screenshot',
   'get_capture_text',
   'get_case',
+  'get_case_revision',
   'get_exhibit_file',
   'get_manifest',
   'get_note',
@@ -211,6 +214,17 @@ describe('Birdbrain MCP server (ADR-0038)', () => {
     })
     expect((await call('get_case', { caseId: 'nope' })).isError).toBe(true)
     expect(await data<unknown[]>('recent_activity', { limit: 5 })).not.toHaveLength(0)
+  })
+
+  it('reads the same Case revision the app reads', async () => {
+    const { caseId } = fixture
+    const revision = await data('get_case_revision', { caseId })
+    const appRead = await withReadConnection(join(tempDir, 'birdbrain.db'), () =>
+      readCaseRevision(caseId)
+    )
+    expect(revision).toEqual(appRead)
+    expect(revision).toMatchObject({ caseId, manifestHead: { index: expect.any(Number) } })
+    expect((await call('get_case_revision', { caseId: 'no-such-case' })).isError).toBe(true)
   })
 
   it('lists Captures with their citation, and filters by Tag, selector and favourite', async () => {
@@ -387,7 +401,7 @@ describe('Birdbrain MCP server (ADR-0038)', () => {
 describe('Birdbrain MCP server over a changed data folder (ADR-0038)', () => {
   let tempDir: string
   let fixture: McpCase
-  const { data, start, stop } = mcpClient()
+  const { call, data, start, stop } = mcpClient()
 
   beforeAll(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-mcp-shared-'))
@@ -446,5 +460,33 @@ describe('Birdbrain MCP server over a changed data folder (ADR-0038)', () => {
     renameSync(replacement, dbPath)
 
     expect(await data('get_case', { caseId: fixture.caseId })).toMatchObject({ name: 'Restored' })
+  })
+
+  // The head is read from manifest.jsonl on every call, so an append with no
+  // database write, as the timestamp worker makes, moves the revision too.
+  it('reads a Manifest append in the Case revision', async () => {
+    type Revision = { manifestHead: { index: number; entryHash: string } }
+    const { caseId } = fixture
+    const before = await data<Revision>('get_case_revision', { caseId })
+    const entryHash = 'f'.repeat(64)
+    appendFileSync(
+      join(getStorageRoot(), caseId, 'manifest.jsonl'),
+      `${JSON.stringify({ type: 'timestamp', index: before.manifestHead.index + 1, entryHash })}\n`
+    )
+
+    const after = await data<Revision>('get_case_revision', { caseId })
+
+    expect(after).toEqual({
+      ...before,
+      manifestHead: { index: before.manifestHead.index + 1, entryHash }
+    })
+  })
+
+  // Strict, as the append path is: a damaged last line is an error, never an
+  // empty Manifest.
+  it('answers a Case revision over a damaged last Manifest line with an error', async () => {
+    appendFileSync(join(getStorageRoot(), fixture.caseId, 'manifest.jsonl'), '{"index": "torn\n')
+    const result = await call('get_case_revision', { caseId: fixture.caseId })
+    expect(result.isError).toBe(true)
   })
 })

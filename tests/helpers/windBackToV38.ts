@@ -6,8 +6,15 @@ import type Database from 'better-sqlite3'
 // appended; the user_version is the caller's to set. Tests that wind back
 // further than v38 run this first, since v39's unique indexes name the author
 // column those tests drop.
+//
+// The v40 eligibility view goes too: it names `exhibits`, and SQLite refuses
+// the `exhibits` rebuild that the deeper wind-backs and a re-run of v36 make
+// while a view names that table. v40's other objects stay, since v40 creates
+// each one only where it is missing.
 export function windBackToV38(raw: Database.Database): void {
   raw.exec(`
+    DROP VIEW IF EXISTS analysis_eligible_exhibits;
+
     CREATE TABLE tags_v38 (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,

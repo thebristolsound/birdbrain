@@ -107,7 +107,7 @@ export function listHtmlPartsInMhtml(buffer: Buffer): MhtmlHtmlPartList {
 export function readMhtmlTitle(buffer: Buffer): string | null {
   const topHeaderEnd = findHeaderEndBuf(buffer, 0)
   if (topHeaderEnd === -1) return null
-  const subject = parseHeader(buffer.slice(0, topHeaderEnd).toString('latin1'), 'subject')
+  const subject = headerOnItsLine(buffer.slice(0, topHeaderEnd).toString('latin1'), 'subject')
   const decoded = subject ? collapseWhitespace(decodeEncodedWords(subject)) : ''
   if (decoded) return decoded
 
@@ -116,6 +116,14 @@ export function readMhtmlTitle(buffer: Buffer): string | null {
   const match = first.decode().match(/<title\b[^>]*>([\s\S]*?)<\/title\s*>/i)
   const title = match ? collapseWhitespace(decodeXmlEntities(match[1])) : ''
   return title ? title : null
+}
+
+// A header's value, read from its own line only, so a header written with no value is absent.
+// parseHeader's `\s*` crosses the line break and returns the next header line instead.
+function headerOnItsLine(headers: string, name: string): string | null {
+  const m = unfoldHeaders(headers).match(new RegExp('^' + name + ':[ \\t]*([^\\r\\n]*)', 'im'))
+  const value = m ? m[1].trim() : ''
+  return value ? value : null
 }
 
 function collapseWhitespace(value: string): string {

@@ -282,4 +282,26 @@ describe('readMhtmlTitle', () => {
     expect(readMhtmlTitle(buf)).toBeNull()
     expect(readMhtmlTitle(Buffer.alloc(0))).toBeNull()
   })
+
+  // Review finding 3 on this PR: an empty Subject read the next header line as the title.
+  it.each(['Subject: ', 'Subject:', 'Subject:\t'])(
+    'falls back to the page title when the Subject is blank (%j)',
+    (blank) => {
+      const fixture = join(__dirname, 'extraction/fixtures/cnn-iran-synthetic.mhtml')
+      const raw = readFileSync(fixture, 'latin1')
+      const emptied = raw.replace(/^Subject: [^\r\n]*/m, blank)
+      expect(emptied).not.toBe(raw)
+      expect(readMhtmlTitle(Buffer.from(raw, 'latin1'))).toBe(
+        'Iran-Linked Threat Actor Targets Nuclear Negotiators'
+      )
+      expect(readMhtmlTitle(Buffer.from(emptied, 'latin1'))).toBe(
+        'Iran Nuclear Talks and Network Intrusions - Synthetic News'
+      )
+    }
+  )
+
+  it('reads a Subject whose value starts on a folded line', () => {
+    const buf = mhtml(['Subject:', '  Harbour Street ledger', top, '', ...page('Other')])
+    expect(readMhtmlTitle(buf)).toBe('Harbour Street ledger')
+  })
 })

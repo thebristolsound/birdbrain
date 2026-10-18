@@ -17,6 +17,11 @@ closes the browser and leaves the Capture Session running. A ruling of 2026-10-1
 windowless seeding launch during a Persona cookie import, which opens no window, loads no page,
 follows the Egress, and is refused while another launched browser is running.
 
+**Amended 2026-10-17 by
+[ADR-0052](0052-import-persona-cookies-from-installed-browsers.md):** the cookie import that seeds
+both of a Persona's browser sessions reads a cookie file or a browser installed on the Operator's
+machine. "Background Captures stay in Electron's hidden window" names both sources.
+
 Amends [ADR-0002](0002-tls-capture-corroboration-only.md) (binding is no longer deferred where
 the engine attaches before the request) and
 [ADR-0030](0030-persona-is-a-provenance-axis-beside-operator.md) (the `persona-window` method and
@@ -87,7 +92,8 @@ main document.
 
 **Background Captures stay in Electron's hidden window.** A Persona may therefore hold one
 browser session per engine, an Electron partition and a launched-browser profile, both seeded
-from the same cookie import.
+from the same cookie import. That import reads a cookie file or, under ADR-0052, a browser
+installed on the Operator's machine.
 
 **Capture Methods** are `companion`, `launched`, `background`, and `duplicate`. `extension` stays
 as a legacy value for rows already written. `persona-window`, which never shipped, is withdrawn.

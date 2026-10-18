@@ -26,7 +26,6 @@ import { queryKeys } from '@renderer/lib/api/keys'
 import { notify } from '@renderer/lib/notify'
 import { regexPatternError } from '@shared/selectorPattern'
 import { useAppStore } from '@renderer/stores/appStore'
-import { CreateSelectorCard } from '@renderer/components/selectors/CreateSelectorCard'
 import { AutoCaptureCard } from '@renderer/components/signals/AutoCaptureCard'
 import { copyValue } from '@renderer/components/data/copy'
 import { AddSelectorRow, type SelectorPrefill } from '@renderer/components/signals/AddSelectorRow'
@@ -117,7 +116,6 @@ export function SignalsOverview() {
   // context menu. One dialog for both routes, mounted here rather than in the
   // rail, so the two cannot drift apart.
   const [mergeSource, setMergeSource] = useState<{ id: string; name: string } | null>(null)
-  const [advancedOpen, setAdvancedOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
   const rowRefs = useRef(new Map<string, HTMLDivElement>())
   // Each list is a grid with one Tab stop: the row last focused, else the
@@ -452,23 +450,6 @@ export function SignalsOverview() {
                     {action}
                   </span>
                 ))}
-              </div>
-
-              {/* The inline row above is the fast path. This keeps the label
-                  field and the Foreground Match Preview, which the design's row
-                  has no room for and which nothing else on the screen offers —
-                  testing a pattern before it starts matching evidence is not a
-                  capability to drop with the old screen. */}
-              <div className="mt-2.5">
-                <CreateSelectorCard
-                  isOpen={advancedOpen}
-                  onToggle={() => setAdvancedOpen((v) => !v)}
-                  onCreated={() => {
-                    setAdvancedOpen(false)
-                    refreshSelectors()
-                  }}
-                  caseId={caseId}
-                />
               </div>
             </section>
 

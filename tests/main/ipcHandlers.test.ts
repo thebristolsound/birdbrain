@@ -16,6 +16,7 @@ import { join } from 'path'
 import { readStoredZip } from '@main/services/zipRead'
 import { tmpdir } from 'os'
 import { pathToFileURL } from 'url'
+import sharp from 'sharp'
 import type { IpcMainInvokeEvent } from 'electron'
 
 // --- Module mocks -----------------------------------------------------------
@@ -501,6 +502,39 @@ describe('ipcHandlers — captures', () => {
     expect(expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, 'missing'))).toBeNull()
     const sel = expectOk(await invoke(IPC_CHANNELS.CAPTURES_GET_MATCHING_SELECTORS, captureId))
     expect(Array.isArray(sel)).toBe(true)
+  })
+
+  it("renders another member's thumbnail without writing it, and caches a local one", async () => {
+    const png = await sharp({
+      create: { width: 40, height: 30, channels: 3, background: { r: 1, g: 2, b: 3 } }
+    })
+      .png()
+      .toBuffer()
+    const received = captureRepo.insertCapture({
+      caseId,
+      url: 'https://example.com/received',
+      title: 'Received',
+      hash: 'receivedhash',
+      timestamp: '2026-04-05T12:00:00.000Z',
+      exhibitNumber: 1,
+      author: { installationId: 'inst-alice', memberCode: 'AL' }
+    })
+    const local = captureRepo.insertCapture({
+      caseId,
+      url: 'https://example.com/local',
+      title: 'Local',
+      hash: 'localhash',
+      timestamp: '2026-04-05T12:00:00.000Z'
+    })
+    for (const { id } of [received, local]) defaultCaptureStore.writeScreenshot(caseId, id, png)
+
+    for (const { id } of [received, local]) {
+      const thumb = expectOk<string>(await invoke(IPC_CHANNELS.CAPTURES_GET_THUMBNAIL, id))
+      expect(thumb.length).toBeGreaterThan(0)
+    }
+    const thumbAt = (id: string) => defaultCaptureStore.thumbnailPaths(caseId, id).abs
+    expect(existsSync(thumbAt(received.id))).toBe(false)
+    expect(existsSync(thumbAt(local.id))).toBe(true)
   })
 
   it('counts captures by case', async () => {

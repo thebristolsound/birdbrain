@@ -68,6 +68,9 @@ joins that entry. The repo module the rows step writes through,
 `src/main/services/db/workingRowRepo.ts`, is already swept in by `src/main/services/db/**`.
 #1811 added a fifth blocking module, `receivedEvidence.ts`, which turns received entries into
 Capture and Exhibit rows.
+`src/packages/transaction-record/**` was added to Acquisition at blocking tier on 2026-10-17 with
+#1903, the capture engine's step 7 (D12 of the first-slice plan): it decides which of the
+browser's exchanges a Transaction Record holds as complete and how the inventory counts the rest.
 
 ### Known gap: carve-outs are caught by review, not by a check
 
@@ -217,6 +220,7 @@ that caused it was to record the carved-out file as an exclusion (#515), which i
 | `src/main/services/localAddressPolicy.ts` | blocking | Applies that classification to recapture links and each redirect hop, and holds the test-only loopback switch a packaged build ignores (#1726). Added 2026-10-16 |
 | `src/main/services/egress.ts` | blocking | The Egress (ADR-0032): the proxy configuration every render, the Wayback pane and update checks receive, the routed fetch for the TSA request, the Wayback lookup and the filter lists, and what a signed capture entry records about the route (#1695). Added 2026-10-17 |
 | `src/main/services/consentBlocker.ts` | blocking | Suppresses consent overlays during recapture — alters acquired page content |
+| `src/packages/transaction-record/**` | blocking | Turns the browser's network events into the exchanges a Transaction Record holds and the inventory counts of what it lacks, and a main document's `securityDetails` into Bound TLS Details |
 
 ### Integrity core (hash, manifest, signing, trusted time, verification)
 

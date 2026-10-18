@@ -685,9 +685,9 @@ export type ManifestEntryInput =
       captureContentHash: string
       // A receipt stamp (#1515, design decision 15): `captureContentHash` is
       // then a `merge` entry's Entry Hash, and the entry is stamped 4
-      // (TIMESTAMP_SUBJECT_MIN_READER). Only `entry` is writable: the schema
-      // omits `content` and nothing ever writes it, so every content stamp
-      // keeps its canonical body.
+      // (TIMESTAMP_SUBJECT_MIN_READER). Only `entry` is writable here: the
+      // schema also reads `content`, but nothing ever writes it, so every
+      // content stamp keeps its canonical body.
       subject?: 'entry'
       timestamp: string
       tsaToken?: string

@@ -314,7 +314,8 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
 
   // The sync session's hand-off (#1515): the `merge` it just wrote. Nothing
   // waits on the TSA; a session that gets no stamp is caught by the retry
-  // loop within one interval.
+  // loop within one interval, for as long as its `merge` is the Case's newest
+  // unstamped one (`pendingReceiptStamp` stamps only the newest).
   function enqueueReceiptStamp(caseId: string, mergeIndex: number): void {
     if (!timestampingEnabled()) return
     setImmediate(() => {

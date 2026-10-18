@@ -3,6 +3,7 @@ import { encode } from 'cborg'
 import {
   CHALLENGE_BYTES,
   MAX_FRAME_BYTES,
+  MAX_HANDSHAKE_FRAME_BYTES,
   MessageReader,
   PeerByeError,
   ProtocolError,
@@ -61,7 +62,49 @@ const SAMPLES: SyncMessage[] = [
       }
     ]
   },
-  { t: 'bye', reason: 'not a member' }
+  { t: 'bye', reason: 'not a member' },
+  // The join handshake (#1810).
+  {
+    t: 'join',
+    caseId: '0196f7a2-aaaa-bbbb-cccc-000000000001',
+    secret: new Uint8Array(16).fill(9),
+    installationId: 'inst-b',
+    publicKeyPem: '-----BEGIN PUBLIC KEY-----\nMIIB\n-----END PUBLIC KEY-----\n',
+    operatorName: 'Bob Member',
+    ticket: 'mem:bob',
+    signature: 'sig'
+  },
+  { t: 'join-pending' },
+  {
+    t: 'welcome',
+    caseId: '0196f7a2-aaaa-bbbb-cccc-000000000001',
+    caseName: 'Shared',
+    ownerPublicKeyPem: '-----BEGIN PUBLIC KEY-----\nMIIA\n-----END PUBLIC KEY-----\n',
+    roster: [
+      {
+        installationId: 'inst-a',
+        publicKeyPem: '-----BEGIN PUBLIC KEY-----\nMIIA\n-----END PUBLIC KEY-----\n',
+        memberCode: 'AO',
+        operatorName: 'Alice Owner',
+        nodeId: 'node-a',
+        role: 'owner',
+        addedAtIndex: 0,
+        revokedAtIndex: null
+      },
+      {
+        installationId: 'inst-b',
+        publicKeyPem: '-----BEGIN PUBLIC KEY-----\nMIIB\n-----END PUBLIC KEY-----\n',
+        memberCode: 'BM',
+        operatorName: 'Bob Member',
+        nodeId: 'node-b',
+        role: 'member',
+        addedAtIndex: 1,
+        revokedAtIndex: 3
+      }
+    ],
+    tickets: { 'inst-a': 'mem:alice', 'inst-b': 'mem:bob' }
+  },
+  { t: 'join-refused', reason: 'invite-expired' }
 ]
 
 describe('sync messages', () => {
@@ -173,6 +216,52 @@ describe('sync messages', () => {
         })
       )
     ).toThrow('Malformed rows message')
+    // The join handshake (#1810): a secret of the wrong length, a refusal
+    // outside the named codes, a roster row the shape does not admit, and a
+    // ticket keyed by an id that could not name a chain file.
+    const join = SAMPLES.find((m) => m.t === 'join')!
+    expect(() => decodeMessage(encode({ ...join, secret: new Uint8Array(15) }))).toThrow(
+      'Malformed join message'
+    )
+    expect(() => decodeMessage(encode({ ...join, ticket: '' }))).toThrow('Malformed join message')
+    expect(() => decodeMessage(encode({ ...join, publicKeyPem: 'x'.repeat(9000) }))).toThrow(
+      'Malformed join message'
+    )
+    expect(() => decodeMessage(encode({ t: 'join-refused', reason: 'because' }))).toThrow(
+      'Malformed join-refused message'
+    )
+    expect(() => decodeMessage(encode({ t: 'join-pending', extra: 1 }))).toThrow(
+      'Malformed join-pending message'
+    )
+    const welcome = SAMPLES.find((m) => m.t === 'welcome')! as Extract<
+      SyncMessage,
+      { t: 'welcome' }
+    >
+    expect(() => decodeMessage(encode({ ...welcome, roster: [] }))).toThrow(
+      'Malformed welcome message'
+    )
+    expect(() => decodeMessage(encode({ ...welcome, caseName: '' }))).toThrow(
+      'Malformed welcome message'
+    )
+    expect(() =>
+      decodeMessage(
+        encode({ ...welcome, roster: [{ ...welcome.roster[0], memberCode: 'TOOLONG' }] })
+      )
+    ).toThrow('Malformed welcome message')
+    expect(() =>
+      decodeMessage(encode({ ...welcome, roster: [{ ...welcome.roster[0], role: 'admin' }] }))
+    ).toThrow('Malformed welcome message')
+    expect(() => decodeMessage(encode({ ...welcome, tickets: { '../escape': 'mem:x' } }))).toThrow(
+      'Malformed welcome message'
+    )
+    // A Case id names the joiner's Case directory, so only the UUID form the
+    // app mints passes: not `..`, a separator, or an upper-case copy.
+    for (const caseId of ['../escaped', 'a/b', '', '0196F7A2-AAAA-BBBB-CCCC-000000000001']) {
+      expect(() => decodeMessage(encode({ ...join, caseId }))).toThrow('Malformed join message')
+      expect(() => decodeMessage(encode({ ...welcome, caseId }))).toThrow(
+        'Malformed welcome message'
+      )
+    }
   })
 
   it('reports a stream that ends inside a frame as a protocol error', async () => {
@@ -201,6 +290,34 @@ describe('sync messages', () => {
       bytes: new Uint8Array(MAX_FRAME_BYTES + 1)
     } satisfies SyncMessage
     await expect(writeMessage(near, huge)).rejects.toThrow('exceeds')
+  })
+
+  it('holds a reader opened at the handshake cap to it until allowFrames raises it', async () => {
+    const big = { t: 'blobs', path: 'p', bytes: new Uint8Array(MAX_HANDSHAKE_FRAME_BYTES) } as const
+    const [near, far] = await pair()
+    const header = new Uint8Array(4)
+    new DataView(header.buffer).setUint32(0, MAX_HANDSHAKE_FRAME_BYTES + 1)
+    await near.write(header)
+    await expect(new MessageReader(far, MAX_HANDSHAKE_FRAME_BYTES).next()).rejects.toThrow(
+      `exceeds ${MAX_HANDSHAKE_FRAME_BYTES}`
+    )
+
+    const [near2, far2] = await pair()
+    const reader = new MessageReader(far2, MAX_HANDSHAKE_FRAME_BYTES)
+    await writeMessage(near2, { t: 'heads', heads: [] })
+    await writeMessage(near2, big)
+    expect((await reader.next())?.t).toBe('heads')
+    reader.allowFrames(MAX_FRAME_BYTES * 2)
+    expect(await reader.next()).toEqual(big)
+
+    // allowFrames never lifts a reader above the frame cap.
+    const [near3, far3] = await pair()
+    const capped = new MessageReader(far3, MAX_HANDSHAKE_FRAME_BYTES)
+    capped.allowFrames(MAX_FRAME_BYTES * 2)
+    const over = new Uint8Array(4)
+    new DataView(over.buffer).setUint32(0, MAX_FRAME_BYTES + 1)
+    await near3.write(over)
+    await expect(capped.next()).rejects.toThrow(`exceeds ${MAX_FRAME_BYTES}`)
   })
 
   it('expectMessage returns the wanted type and names what it got instead', async () => {

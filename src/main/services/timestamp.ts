@@ -9,6 +9,7 @@ import {
   PKIStatus
 } from '@peculiar/asn1-tsp'
 import { SHA256_OID } from '@shared/verify'
+import { egressFetch } from '@main/services/egress'
 
 // RFC 3161 trusted timestamping (#120) — the NETWORK half: builds a
 // TimeStampReq over a capture's server-computed contentHash and sends it to an
@@ -45,9 +46,15 @@ export function buildTimestampRequest(contentHash: string): Buffer {
 // TimeStampToken (CMS SignedData) DER on success. Throws on transport failure,
 // a non-2xx response, or a non-granted PKIStatus. The caller is responsible for
 // keeping this OFF the capture's critical path (it may block on the network).
-export async function requestTimestamp(contentHash: string, tsaUrl: string): Promise<Buffer> {
+// The request follows the Egress (ADR-0032): while it is not Direct it goes through
+// the proxy or fails, and the capture stays pending for the next retry.
+export async function requestTimestamp(
+  contentHash: string,
+  tsaUrl: string,
+  fetchImpl: typeof fetch = egressFetch
+): Promise<Buffer> {
   const reqBody = buildTimestampRequest(contentHash)
-  const res = await fetch(tsaUrl, {
+  const res = await fetchImpl(tsaUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/timestamp-query' },
     body: reqBody,

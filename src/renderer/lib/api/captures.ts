@@ -1,5 +1,5 @@
 import { queryOptions, useIsMutating, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { Capture } from '@shared/types'
+import type { Capture, FieldHitCheck } from '@shared/types'
 import type { BatchCountResult, BatchDeleteResult, DuplicateCaptureResult } from '@shared/ipc'
 import { queryKeys } from '@renderer/lib/api/keys'
 
@@ -100,6 +100,12 @@ export function getCaptureContent(
   type: 'html' | 'png' | 'txt'
 ): Promise<string | null> {
   return window.birdbrain.captures.getContent(captureId, type)
+}
+
+// The exact check of a field hit (docs/plans/2026-10-09-case-retrieval-first-slice.md,
+// D7). Uncached: each call reads the stored files again, and the answer is never kept.
+export function checkFieldHit(fieldId: number): Promise<FieldHitCheck> {
+  return window.birdbrain.cases.checkFieldHit(fieldId)
 }
 
 export function useCapturesMutations(caseId: string) {

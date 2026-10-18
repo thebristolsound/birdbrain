@@ -55,6 +55,15 @@ describe('appStore', () => {
       setSelectedCaptureId('cap-1')
       expect(useAppStore.getState().viewerHit).toBeNull()
     })
+
+    it('counts each opening of a hit, the same hit object included', () => {
+      const hit = { exhibitId: 'cap-1', fieldId: 1 } as FieldHit
+      const { setViewerHit } = useAppStore.getState()
+      const before = useAppStore.getState().viewerHitOpening
+      setViewerHit(hit)
+      setViewerHit(hit)
+      expect(useAppStore.getState().viewerHitOpening).toBe(before + 2)
+    })
   })
 
   describe('setSelectedNoteId', () => {

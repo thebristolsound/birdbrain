@@ -4,7 +4,7 @@ import { join } from 'path'
 import type { ManifestEntry } from '@shared/schemas'
 import type { CaseMember, SyncErrorKind } from '@shared/types'
 import { acceptedHeadBefore, canonicalStringify, verifyEntrySignature } from '@shared/verify'
-import { listCaseMembers, upsertCaseMember } from '@main/services/db/caseMemberRepo'
+import { listCaseMembers } from '@main/services/db/caseMemberRepo'
 import { getInstallationId } from '@main/services/installationId'
 import { signEntryHash } from '@main/services/signingKey'
 import {
@@ -47,6 +47,7 @@ import {
   type RowPage
 } from '@main/services/sharing/workingRows'
 import { beginSession, finishSession, writeMembersFile } from '@main/services/sharing/syncState'
+import { rebuildRosterCache } from '@main/services/sharing/rosterCache'
 import { isChainInstallationId } from '../../../packages/evidence-package-layout/index'
 import {
   applyRows,
@@ -58,6 +59,8 @@ import {
 import {
   CHALLENGE_BYTES,
   MAX_BLOB_BYTES,
+  MAX_FRAME_BYTES,
+  MAX_HANDSHAKE_FRAME_BYTES,
   MessageReader,
   PeerByeError,
   ProtocolError,
@@ -250,50 +253,6 @@ export function liveSyncSource(caseId: string): SyncSource | null {
   }
 }
 
-// Membership is the Owner's to write (sharedCase.ts), and `case_members` is
-// the cache of what the Owner's chain states: derived, never authoritative,
-// rebuilt from the chain (the design's "Case directory"). This rebuilds it
-// from the Owner's chain as stored, which is how a member learns who joined
-// or was revoked after it did. Idempotent: a member already held is not
-// added again and a revocation already held is kept, so it runs over the
-// whole stored chain every session, and a stored line an earlier session
-// left unapplied is applied by the next. A member-add whose id cannot name a
-// chain file is refused and returned; a write that fails throws, so the
-// session fails and the next one retries from the file.
-function rebuildRosterFromOwnerChain(caseId: string, entries: ManifestEntry[]): string[] {
-  const refused: string[] = []
-  for (const entry of entries) {
-    if (entry.type !== 'member-add' && entry.type !== 'member-revoke') continue
-    // The id names that member's chain file on every replica; one that is
-    // not a single path segment is refused here rather than written to.
-    if (!isChainInstallationId(entry.memberInstallationId)) {
-      refused.push(
-        `${entry.type} at index ${entry.index}: installation id ${JSON.stringify(entry.memberInstallationId)} cannot name a chain file`
-      )
-      continue
-    }
-    const existing = listCaseMembers(caseId).find(
-      (m) => m.installationId === entry.memberInstallationId
-    )
-    if (entry.type === 'member-add' && !existing) {
-      upsertCaseMember({
-        caseId,
-        installationId: entry.memberInstallationId,
-        publicKeyPem: entry.memberPublicKeyPem,
-        memberCode: entry.memberCode,
-        operatorName: entry.memberOperatorName,
-        nodeId: entry.nodeId,
-        role: entry.role,
-        addedAtIndex: entry.index,
-        revokedAtIndex: null
-      })
-    } else if (entry.type === 'member-revoke' && existing && existing.revokedAtIndex === null) {
-      upsertCaseMember({ ...existing, revokedAtIndex: entry.index })
-    }
-  }
-  return refused
-}
-
 async function sayBye(stream: ByteStream, reason: string): Promise<void> {
   try {
     await writeMessage(stream, { t: 'bye', reason })
@@ -310,7 +269,8 @@ export async function serveSyncSession(
   serveOptions: ServeOptions = {}
 ): Promise<void> {
   const pageBytes = serveOptions.pageBytes ?? PAGE_BYTES
-  const reader = new MessageReader(stream)
+  // Bounded until the dialer has named a roster member and proved its key.
+  const reader = new MessageReader(stream, MAX_HANDSHAKE_FRAME_BYTES)
   try {
     const hello = await expectMessage(reader, 'hello')
     const source = sourceFor(hello.caseId)
@@ -334,6 +294,7 @@ export async function serveSyncSession(
     if (!member || !verifyEntrySignature(expected, signature, member.publicKeyPem)) {
       return await sayBye(stream, BYE_REASONS.badProof)
     }
+    reader.allowFrames(MAX_FRAME_BYTES)
 
     for (let message = await reader.next(); message !== null; message = await reader.next()) {
       if (message.t === 'bye') return
@@ -404,12 +365,12 @@ export async function pullFromPeer(
   const ownerId = roster.find((m) => m.role === 'owner')?.installationId
   const refusedMembers = new Set<string>()
   // The roster rebuilt from the Owner's chain as this replica stores it
-  // (rebuildRosterFromOwnerChain); on the Owner's own replica the roster is
-  // the one its own membership writes keep.
+  // (rosterCache.ts); on the Owner's own replica the roster is the one its
+  // own membership writes keep (membership.ts).
   const rebuildRoster = (): void => {
     if (ownerId === undefined || ownerId === self) return
     const stored = storedEntries(Buffer.from(readMemberChainText(caseDir, ownerId)))
-    for (const detail of rebuildRosterFromOwnerChain(caseId, stored)) {
+    for (const detail of rebuildRosterCache({ caseId, caseDir, ownerEntries: stored, self })) {
       if (refusedMembers.has(detail)) continue
       refusedMembers.add(detail)
       result.errors.push({ kind: 'rejected-entry', detail, installationId: ownerId })

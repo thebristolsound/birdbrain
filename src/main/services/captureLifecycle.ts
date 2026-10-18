@@ -1,4 +1,4 @@
-import { createReadStream, readFileSync } from 'fs'
+import { createReadStream, existsSync, readFileSync } from 'fs'
 import { createHash, randomUUID } from 'crypto'
 import { join } from 'path'
 import { defaultCaptureStore, StagedRestoreError } from '@main/services/captureStore'
@@ -20,10 +20,11 @@ import {
   withDeletionEntry,
   ManifestRollback
 } from '@main/services/manifest'
-import type { CaptureChainEntry, ManifestImportEntry } from '@main/services/manifest'
+import type { AuthorChain, CaptureChainEntry, ManifestImportEntry } from '@main/services/manifest'
 import { reconcileCaptureTrustedTime, resolveTrustedTime } from '@main/services/trustedTime'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { getSettings } from '@main/services/settings'
+import { currentEgress, type CaptureEgress } from '@main/services/egress'
 import { resolveToolVersion } from '@main/services/toolVersion'
 import { fetchCertChain as defaultFetchCertChain } from '@main/services/tlsCertChain'
 import type { TlsCertChainResult } from '@main/services/tlsCertChain'
@@ -33,9 +34,11 @@ import type {
   CaptureMethod,
   CaptureSource,
   ConsentSuppression,
-  HashVerification
+  HashVerification,
+  TlsRefetchSkip
 } from '@shared/types'
 import type { BatchDeleteOutcome, BatchDeleteResult, DuplicateCaptureResult } from '@shared/ipc'
+import { ManifestEntrySchema } from '@shared/schemas'
 import type { CaptureUploadSource, ScreenshotStatus } from '@shared/schemas'
 import {
   IMPORT_ID_MAP_FILENAME,
@@ -82,6 +85,15 @@ export interface IngestParams {
   supersedesCaptureId?: string
   consentSuppression?: ConsentSuppression
   screenshot?: Buffer
+  // The Egress a background render sent the page through, when it was not Direct
+  // (ADR-0032 rule 5). The entry then records its kind, the Operator's label and
+  // `userAgent`. Passed only by a path that sent the page itself; an extension
+  // capture's page loaded in the Operator's own browser and passes none.
+  egress?: CaptureEgress
+  // Set by the lifecycle while the Egress is not Direct: the TLS Cert Chain
+  // re-fetch opens a raw socket the proxy cannot carry, so it does not run, and
+  // the entry says so (rule 3). For every method, extension included.
+  tlsSkipped?: TlsRefetchSkip
 }
 
 export interface IngestResult {
@@ -168,6 +180,9 @@ export interface CaptureLifecycleDeps {
   // one extracts nothing, so no headless lifecycle decodes or extracts on the
   // process it runs in. Main supplies the client of the real process.
   extraction?: ExtractionClient
+  // Whether the Egress is Direct right now (ADR-0032). Optional; defaults to the
+  // installation's setting. Tests inject it.
+  egressIsDirect?: () => boolean
 }
 
 export interface CaptureLifecycle {
@@ -230,6 +245,8 @@ interface DeleteOneResult {
   cause?: unknown
 }
 
+type DeletionIdResolver = (capture: Capture) => string
+
 // `rolled_back.error` crosses the preload bridge, so it carries the error's
 // name and errno code only — an fs message would otherwise hand the renderer
 // an absolute storage path.
@@ -237,6 +254,17 @@ function outcomeError(err: unknown): string {
   if (!(err instanceof Error)) return 'UnknownError'
   const { code } = err as NodeJS.ErrnoException
   return typeof code === 'string' && code.length > 0 ? `${err.name} (${code})` : err.name
+}
+
+// The re-fetch runs only for an https page (fetchCertChain), so only those can
+// record that it was skipped. An address that does not parse counts: the re-fetch
+// would have tried it.
+function wouldRefetchTls(url: string): boolean {
+  try {
+    return new URL(url).protocol === 'https:'
+  } catch {
+    return true
+  }
 }
 
 // End-to-end MHTML ingest:
@@ -295,16 +323,18 @@ export async function ingestMhtmlCapture(
   // fetch problem can NEVER fail the capture. Omitted (undefined) for non-https
   // URLs so those entries keep their original canonical body and chain hash.
   let tls: TlsCertChainResult | undefined
-  try {
-    tls = (await fetchTlsCertChain(params.url)) ?? undefined
-  } catch (err) {
-    logger.error(
-      'captureLifecycle',
-      'captureLifecycle.tls_refetch_failed',
-      { captureId: ident(captureId) },
-      err
-    )
-    tls = undefined
+  if (!params.tlsSkipped) {
+    try {
+      tls = (await fetchTlsCertChain(params.url)) ?? undefined
+    } catch (err) {
+      logger.error(
+        'captureLifecycle',
+        'captureLifecycle.tls_refetch_failed',
+        { captureId: ident(captureId) },
+        err
+      )
+      tls = undefined
+    }
   }
 
   // The write-ahead manifest entry + rollback-on-throw is owned by withCaptureEntry.
@@ -334,6 +364,11 @@ export async function ingestMhtmlCapture(
         supersedesCaptureId: params.supersedesCaptureId,
         consentSuppression: params.consentSuppression,
         exhibitNumber,
+        // Omitted for Direct, so those entries keep the canonical body they had.
+        egressKind: params.egress?.kind,
+        egressLabel: params.egress?.label,
+        userAgent: params.egress ? params.userAgent : undefined,
+        tlsSkipped: params.tlsSkipped,
         operatorId: params.operatorId,
         operatorName: params.operatorName,
         toolVersion: params.toolVersion
@@ -699,6 +734,28 @@ function describesRow(
   return idMap()?.[entry.rowId] === row.id
 }
 
+// The id a `deletion` entry names a Capture by (#1815): the `captureId` its
+// own `capture` entry carries when an import renamed the row, since both
+// package verifiers count an entry deleted only by that id. The rename is
+// accepted only through `entryDescribesRow`; any other row keeps its own id.
+// `entries` and `imports` must come from one verified read of the chain.
+export function signedCaptureId(
+  row: { id: string; caseId: string; manifestIndex?: number },
+  entries: Record<string, unknown>[],
+  imports: ManifestImportEntry[],
+  caseDir: string
+): string {
+  const { id, manifestIndex } = row
+  if (typeof manifestIndex !== 'number') return id
+  const parsed = ManifestEntrySchema.safeParse(entries[manifestIndex])
+  if (!parsed.success || parsed.data.type !== 'capture' || parsed.data.index !== manifestIndex) {
+    return id
+  }
+  const { caseId, captureId } = parsed.data
+  if (captureId === id) return id
+  return entryDescribesRow({ caseId, rowId: captureId }, row, imports, caseDir) ? captureId : id
+}
+
 // The id-collision remap archive import wrote into this case directory, read
 // back ONLY when its digest matches the `idMapSha256` the import's signed entry
 // anchors — an unanchored file in the case directory must not be able to point
@@ -873,7 +930,11 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
   // `rolled_back` outcome. Staging renames them aside, the row delete commits,
   // and only then are they purged. Every fault before the commit moves them
   // back, which is what `rolled_back` claims.
-  async function deleteOne(capture: Capture, reason?: string): Promise<DeleteOneResult> {
+  async function deleteOne(
+    capture: Capture,
+    deletionId: DeletionIdResolver,
+    reason?: string
+  ): Promise<DeleteOneResult> {
     const captureId = capture.id
     // Decision 10: only the author writes `deletion` for their Exhibit. A deletion here would
     // name a teammate's Capture in this installation's chain, and the next sync brings it back.
@@ -888,7 +949,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
         await withDeletionEntry(
           caseDir,
           {
-            captureId,
+            captureId: deletionId(capture),
             caseId: capture.caseId,
             contentHash: capture.hash,
             operatorId: getInstallationId(),
@@ -952,6 +1013,22 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
     }
     purgeAfterCommit(capture)
     return { outcome: { captureId, status: 'deleted_unmanifested' } }
+  }
+
+  // The id each `deletion` entry names its Capture by, for one delete or one
+  // batch under the case slot. A batch appends only `deletion` entries, so the
+  // existing entries and imports `signedCaptureId` reads stay fixed across it,
+  // and one verified read, taken for the first MHTML row, serves every row.
+  // A rename needs the anchored id map (`readAnchoredIdMap`), so without that
+  // file every row keeps its own id and no chain is read.
+  function deletionIdResolver(caseDir: string): DeletionIdResolver {
+    if (!existsSync(join(caseDir, IMPORT_ID_MAP_FILENAME))) return ({ id }) => id
+    let own: AuthorChain | undefined
+    return (capture) => {
+      own ??= readCaseChains(caseDir).own
+      const { chain, entries, imports } = own
+      return chain.valid ? signedCaptureId(capture, entries, imports, caseDir) : capture.id
+    }
   }
 
   function isReceived(captureId: string): boolean {
@@ -1042,8 +1119,14 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
 
   const lifecycle: CaptureLifecycle = {
     async ingest(params) {
+      const egressIsDirect = deps.egressIsDirect ?? (() => currentEgress().kind === 'direct')
+      const tlsSkipped =
+        params.tlsSkipped ??
+        ((params.egress !== undefined || !egressIsDirect()) && wouldRefetchTls(params.url)
+          ? 'egress-not-direct'
+          : undefined)
       const result = await ingestMhtmlCapture(
-        params,
+        { ...params, tlsSkipped },
         deps.fetchTlsCertChain ?? defaultFetchCertChain,
         store
       )
@@ -1172,7 +1255,8 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
         // removed it while we waited.
         const capture = captureRepo.getCapture(captureId)
         if (!capture) return false
-        const { outcome, cause } = await deleteOne(capture, reason)
+        const deletionId = deletionIdResolver(store.caseDir(capture.caseId))
+        const { outcome, cause } = await deleteOne(capture, deletionId, reason)
         if (cause !== undefined && !(cause instanceof ManifestRollback)) throw cause
         return outcome.status === 'deleted' || outcome.status === 'deleted_unmanifested'
       })
@@ -1213,6 +1297,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
 
         const caseDir = store.caseDir(caseId)
         const baseIndex = getManifestHead(caseDir).nextIndex
+        const deletionId = deletionIdResolver(caseDir)
         const outcomes: BatchDeleteOutcome[] = []
         const seen = new Set<string>()
         let haltedAt: string | undefined
@@ -1232,7 +1317,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
             outcomes.push({ captureId: id, status: 'not_attempted' })
             continue
           }
-          const { outcome } = await deleteOne(capture)
+          const { outcome } = await deleteOne(capture, deletionId)
           outcomes.push(outcome)
           if (outcome.status === 'rolled_back') haltedAt = id
         }
@@ -1390,6 +1475,12 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
               duplicatedAt,
               consentSuppression: sourceEntry.consentSuppression,
               exhibitNumber,
+              // The Egress the source was sent through, re-anchored from its signed
+              // entry like `tls` above (ADR-0032).
+              egressKind: sourceEntry.egressKind,
+              egressLabel: sourceEntry.egressLabel,
+              userAgent: sourceEntry.userAgent,
+              tlsSkipped: sourceEntry.tlsSkipped,
               sizeBytes: mhtml.sizeBytes,
               operatorId: getInstallationId(),
               operatorName,

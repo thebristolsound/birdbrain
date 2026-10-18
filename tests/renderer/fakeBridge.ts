@@ -53,6 +53,8 @@ const EVENTS = [
   'onUpdateStatus',
   'onGuestFrameReplaced',
   'onGuestMouseDown',
+  'onSharingChanged',
+  'onSharingJoinProgress',
   'onInvestigationProgress'
 ] as const satisfies readonly EventKey[]
 

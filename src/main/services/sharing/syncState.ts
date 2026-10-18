@@ -66,7 +66,12 @@ const SyncStateFileSchema = z
       .object({ kind: z.enum(SYNC_ERROR_KINDS), at: z.string(), detail: z.string() })
       .strict()
       .nullable(),
-    peers: z.record(z.string(), PeerStateSchema)
+    peers: z.record(z.string(), PeerStateSchema),
+    // Each member's last-known transport ticket, by installation id (#1810):
+    // learned from the member's `join` on the Owner, from `welcome` on a
+    // joiner, and what Sync now dials. Defaulted so a file written before
+    // the field existed still reads.
+    tickets: z.record(z.string(), z.string()).default({})
   })
   .strict()
 
@@ -78,7 +83,8 @@ const EMPTY_STATE: SyncStateFile = {
   lastSuccessAt: null,
   transfer: null,
   lastError: null,
-  peers: {}
+  peers: {},
+  tickets: {}
 }
 
 // Reads a Case's sync state; the empty state when the file is absent. A file
@@ -87,7 +93,7 @@ const EMPTY_STATE: SyncStateFile = {
 // version, and losing it silently is the failure it exists to prevent.
 export function readSyncStateFile(caseDir: string): SyncStateFile {
   const path = join(caseDir, SYNC_STATE_FILENAME)
-  if (!existsSync(path)) return { ...EMPTY_STATE, peers: {} }
+  if (!existsSync(path)) return { ...EMPTY_STATE, peers: {}, tickets: {} }
   const parsed = SyncStateFileSchema.safeParse(JSON.parse(readFileSync(path, 'utf-8')))
   if (!parsed.success) throw new Error(`${path} is not a sync state file this build reads`)
   return parsed.data
@@ -192,6 +198,19 @@ export function finishSession(caseId: string, outcome: SessionOutcome): void {
       error === null ? state.lastError : { kind: error.kind, at: now, detail: error.detail },
     peers
   })
+}
+
+// Records members' tickets in the Case's file, replacing any held for the
+// same installation. A member whose relay changes is dialed at its old ticket
+// until something refreshes it here.
+export function rememberMemberTickets(caseId: string, tickets: Record<string, string>): void {
+  const caseDir = join(getStorageRoot(), caseId)
+  const state = readSyncStateFile(caseDir)
+  writeSyncStateFile(caseDir, { ...state, tickets: { ...state.tickets, ...tickets } })
+}
+
+export function memberTickets(caseId: string): Record<string, string> {
+  return { ...readSyncStateFile(join(getStorageRoot(), caseId)).tickets }
 }
 
 // The payload the sync pill reads. `peersTotal` is the roster less this

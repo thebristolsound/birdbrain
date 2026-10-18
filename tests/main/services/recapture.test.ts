@@ -129,6 +129,24 @@ describe('recapture service', () => {
     expect(verification.status).toBe('verified')
   })
 
+  it('signs the Egress the render went through, its label and the user agent (ADR-0032)', async () => {
+    const svc = makeService(fakeRender({ egress: { kind: 'tor', label: 'Tor Browser' } }))
+    svc.enqueue([{ url: 'https://example.com/page', caseId }])
+    await svc.idle()
+    expect(newCaptures).toHaveLength(1)
+    const lines = readFileSync(join(getStorageRoot(), caseId, MANIFEST_FILENAME), 'utf-8')
+      .trim()
+      .split('\n')
+    const entry = JSON.parse(lines[lines.length - 1])
+    expect(entry).toMatchObject({
+      egressKind: 'tor',
+      egressLabel: 'Tor Browser',
+      userAgent: 'HiddenWindow UA',
+      tlsSkipped: 'egress-not-direct'
+    })
+    expect((await verifyCapture(newCaptures[0].id)).status).toBe('verified')
+  })
+
   it('omits consent-suppression provenance when the renderer did not suppress', async () => {
     const svc = makeService(fakeRender())
     svc.enqueue([{ url: 'https://example.com/page', caseId }])

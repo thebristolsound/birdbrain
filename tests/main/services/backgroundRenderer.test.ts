@@ -3,6 +3,8 @@ import { writeFileSync } from 'fs'
 import sharp from 'sharp'
 import { trimTrailingBackground, renderPageInHiddenWindow } from '@main/services/backgroundRenderer'
 import { RefusedAddressError } from '@main/services/localAddressPolicy'
+import { EgressUnavailableError } from '@main/services/egress'
+import type { EgressSetting } from '@shared/types'
 
 // Mutable harness the fake BrowserWindow/webContents read from, so each test can
 // steer the render (network, scroll steps, load failure, consent blocker).
@@ -16,7 +18,12 @@ const ctl = vi.hoisted(() => ({
   // A navigation hop the fake load reports before it settles, as Chromium does for a
   // server redirect (`will-redirect`) or a page that navigates itself (`will-navigate`).
   hop: null as { event: string; url: string; isMainFrame: boolean } | null,
-  lastHop: null as { preventDefault: ReturnType<typeof vi.fn> } | null
+  lastHop: null as { preventDefault: ReturnType<typeof vi.fn> } | null,
+  // The Egress the render reads at start, and the order of the session and load
+  // calls, so a test can see the proxy go on before the first navigation.
+  egress: { kind: 'direct' } as EgressSetting,
+  loadUrlError: null as string | null,
+  calls: [] as string[]
 }))
 
 type Handler = (...args: unknown[]) => void
@@ -39,6 +46,7 @@ interface FakeWebContents {
     sendCommand(cmd: string): Promise<unknown>
   }
   setFrameRate(): void
+  setWebRTCIPHandlingPolicy(policy: string): void
   setWindowOpenHandler(): void
   setAudioMuted(): void
   setPermissionRequestHandler(): void
@@ -62,7 +70,10 @@ const { MockBrowserWindow } = vi.hoisted(() => {
       onErrorOccurred: vi.fn()
     },
     setPermissionRequestHandler: vi.fn(),
-    setPermissionCheckHandler: vi.fn()
+    setPermissionCheckHandler: vi.fn(),
+    setProxy: vi.fn(async (config: unknown) => {
+      ctl.calls.push(`setProxy ${JSON.stringify(config)}`)
+    })
   })
 
   class MockBrowserWindow implements FakeWindow {
@@ -95,6 +106,9 @@ const { MockBrowserWindow } = vi.hoisted(() => {
           }
         },
         setFrameRate() {},
+        setWebRTCIPHandlingPolicy(policy: string) {
+          ctl.calls.push(`webrtc ${policy}`)
+        },
         setWindowOpenHandler() {},
         setAudioMuted() {},
         setPermissionRequestHandler() {},
@@ -102,6 +116,8 @@ const { MockBrowserWindow } = vi.hoisted(() => {
           handlers.set(event, cb)
         },
         async loadURL(url: string) {
+          ctl.calls.push(`loadURL ${url}`)
+          if (ctl.loadUrlError) throw new Error(ctl.loadUrlError)
           if (ctl.loadUrlShouldReject) throw new Error('navigation failed')
           if (ctl.loadUrlShouldHang) return new Promise<void>(() => {})
           if (ctl.hop) {
@@ -154,6 +170,15 @@ vi.mock('electron', () => ({
   BrowserWindow: MockBrowserWindow,
   app: { getPath: vi.fn(() => '/tmp') }
 }))
+
+vi.mock('@main/services/egress', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@main/services/egress')>()
+  return {
+    ...actual,
+    currentEgress: () => ctl.egress,
+    knownEgress: (egress: EgressSetting = ctl.egress) => actual.knownEgress(egress)
+  }
+})
 
 vi.mock('@main/services/consentBlocker', () => ({
   getConsentBlocker: vi.fn(async () => ctl.blocker)
@@ -293,6 +318,9 @@ describe('renderPageInHiddenWindow', () => {
     ctl.createdWindows = 0
     ctl.hop = null
     ctl.lastHop = null
+    ctl.egress = { kind: 'direct' }
+    ctl.loadUrlError = null
+    ctl.calls = []
     vi.spyOn(console, 'error').mockImplementation(() => {})
   })
 
@@ -417,5 +445,70 @@ describe('renderPageInHiddenWindow', () => {
     expect(ctl.lastHop!.preventDefault).not.toHaveBeenCalled()
     for await (const _chunk of result.mhtmlStream) void _chunk
     await result.cleanup()
+  }, 30_000)
+
+  it('puts the Egress proxy and the WebRTC policy on the partition before the first load', async () => {
+    ctl.egress = { kind: 'tor', proxyUrl: 'socks5://127.0.0.1:9150', label: 'Tor Browser' }
+
+    const result = await renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000 })
+
+    expect(ctl.calls.slice(0, 3)).toEqual([
+      'setProxy {"mode":"fixed_servers","proxyRules":"socks5://127.0.0.1:9150","proxyBypassRules":"<-loopback>"}',
+      'webrtc disable_non_proxied_udp',
+      'loadURL https://example.test/'
+    ])
+    expect(result.egress).toEqual({ kind: 'tor', label: 'Tor Browser' })
+    for await (const _chunk of result.mhtmlStream) void _chunk
+    await result.cleanup()
+  }, 30_000)
+
+  it('leaves the partition alone and reports no Egress while it is Direct', async () => {
+    const result = await renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000 })
+
+    expect(ctl.calls).toEqual(['loadURL https://example.test/'])
+    expect(result.egress).toBeUndefined()
+    for await (const _chunk of result.mhtmlStream) void _chunk
+    await result.cleanup()
+  }, 30_000)
+
+  it('names the proxy when the load fails at it', async () => {
+    ctl.egress = { kind: 'proxy', proxyUrl: 'socks5://127.0.0.1:1080', label: '' }
+    ctl.loadUrlError = "ERR_PROXY_CONNECTION_FAILED (-130) loading 'https://example.test/'"
+
+    await expect(
+      renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000 })
+    ).rejects.toThrow(
+      "Could not go through the Egress proxy socks5://127.0.0.1:1080: ERR_PROXY_CONNECTION_FAILED (-130) loading 'https://example.test/'"
+    )
+    expect(ctl.lastWindow!.isDestroyed()).toBe(true)
+  }, 30_000)
+
+  it('names the proxy when Chromium finds no usable proxy in the rules', async () => {
+    ctl.egress = { kind: 'proxy', proxyUrl: 'socks5://127.0.0.1:1080', label: '' }
+    ctl.loadUrlError = "ERR_NO_SUPPORTED_PROXIES (-336) loading 'https://example.test/'"
+
+    await expect(
+      renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000 })
+    ).rejects.toThrow('Could not go through the Egress proxy socks5://127.0.0.1:1080')
+  }, 30_000)
+
+  it('passes any other load failure through unchanged while a proxy is set', async () => {
+    ctl.egress = { kind: 'proxy', proxyUrl: 'http://10.1.2.3:3128', label: '' }
+    ctl.loadUrlError = "ERR_NAME_NOT_RESOLVED (-105) loading 'https://example.test/'"
+
+    await expect(
+      renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000 })
+    ).rejects.toThrow(/^ERR_NAME_NOT_RESOLVED/)
+  }, 30_000)
+  it('makes no window and sends nothing while the saved Egress cannot be read', async () => {
+    ctl.egress = { kind: 'unavailable' }
+    const before = ctl.createdWindows
+
+    await expect(
+      renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000 })
+    ).rejects.toThrow(EgressUnavailableError)
+
+    expect(ctl.createdWindows).toBe(before)
+    expect(ctl.calls).toEqual([])
   }, 30_000)
 })

@@ -31,6 +31,7 @@ import type {
   ExtractedDataItem,
   ExtractedDataSearchResult,
   ExtractedDataSubcategory,
+  FieldHitCheck,
   FieldSearchResult,
   HashVerification,
   LogCode,
@@ -55,7 +56,16 @@ import type {
   Persona,
   PersonaImportResult,
   PersonaStorageState,
-  SyncState
+  SyncState,
+  CaseMember,
+  SharingChangedEvent,
+  SharingInvite,
+  SharingInvitePreview,
+  SharingJoinProgressEvent,
+  SharingJoinResult,
+  SharingMembers,
+  SharingSyncOutcome,
+  SharingExclusion
 } from '@shared/types'
 import type { CaseManifestSnapshot } from '@shared/manifestSnapshot'
 import type {
@@ -95,6 +105,7 @@ export const IPC_CHANNELS = {
   CASES_SET_AUTO_CAPTURE_POLICY: 'cases:setAutoCapturePolicy',
   CASES_ENSURE_SEARCH_FIELDS: 'cases:ensureSearchFields',
   CASES_SEARCH_FIELDS: 'cases:searchFields',
+  CASES_CHECK_FIELD_HIT: 'cases:checkFieldHit',
 
   // Captures
   CAPTURES_LIST: 'captures:list',
@@ -240,10 +251,23 @@ export const IPC_CHANNELS = {
   // Manifest
   MANIFEST_SNAPSHOT: 'manifest:snapshot',
 
-  // Shared Case sync (#1512). The session itself runs without a channel
-  // until the scheduler and Sync now land (#1810); this reads what the last
-  // sessions left in the Case's sync state.
+  // Shared Cases (#1512, #1810). The sync state is what the last sessions
+  // left in the Case's file; the rest are the invite, join and roster
+  // commands the members screens call. Every refusal arrives as an
+  // IpcFailure whose code is a SharingErrorCode. The scheduler is SC-9's.
   SHARING_GET_SYNC_STATE: 'sharing:getSyncState',
+  SHARING_CREATE_INVITE: 'sharing:createInvite',
+  SHARING_CANCEL_INVITE: 'sharing:cancelInvite',
+  SHARING_READ_INVITE: 'sharing:readInvite',
+  SHARING_JOIN: 'sharing:join',
+  SHARING_APPROVE_JOIN: 'sharing:approveJoin',
+  SHARING_DECLINE_JOIN: 'sharing:declineJoin',
+  SHARING_REVOKE: 'sharing:revoke',
+  SHARING_EXCLUDE_EXHIBIT: 'sharing:excludeExhibit',
+  SHARING_SYNC_NOW: 'sharing:syncNow',
+  SHARING_GET_MEMBERS: 'sharing:getMembers',
+  SHARING_CHANGED: 'event:sharingChanged',
+  SHARING_JOIN_PROGRESS: 'event:sharingJoinProgress',
 
   // Case investigation (engine plan, E10). The fake engine answers these in unpackaged builds
   // until each real brief replaces its channels, and CI-V5 removes it (ruling 63).
@@ -851,6 +875,7 @@ export interface IpcInvokeContract {
   }
   'cases:ensureSearchFields': { args: [caseId: string]; result: FieldBuildSummary }
   'cases:searchFields': { args: [caseId: string, query: string]; result: FieldSearchResult }
+  'cases:checkFieldHit': { args: [fieldId: number]; result: FieldHitCheck }
 
   'captures:list': { args: [caseId: string]; result: Capture[] }
   'captures:get': { args: [id: string]; result: Capture | undefined }
@@ -1046,6 +1071,27 @@ export interface IpcInvokeContract {
   'manifest:snapshot': { args: [caseId: string]; result: CaseManifestSnapshot }
 
   'sharing:getSyncState': { args: [caseId: string]; result: SyncState }
+  // `ownerMemberCode` is read on the first invite for a Case only, when the
+  // Owner's own member-add is written.
+  'sharing:createInvite': {
+    args: [caseId: string, ownerMemberCode?: string]
+    result: SharingInvite
+  }
+  'sharing:cancelInvite': { args: [caseId: string, inviteId: string]; result: void }
+  'sharing:readInvite': { args: [invite: string]; result: SharingInvitePreview }
+  'sharing:join': { args: [invite: string]; result: SharingJoinResult }
+  'sharing:approveJoin': {
+    args: [caseId: string, requestId: string, memberCode: string]
+    result: CaseMember
+  }
+  'sharing:declineJoin': { args: [caseId: string, requestId: string]; result: void }
+  'sharing:revoke': { args: [caseId: string, installationId: string]; result: CaseMember }
+  'sharing:excludeExhibit': {
+    args: [caseId: string, exhibitId: string, reason?: string]
+    result: SharingExclusion
+  }
+  'sharing:syncNow': { args: [caseId: string]; result: SharingSyncOutcome[] }
+  'sharing:getMembers': { args: [caseId: string]; result: SharingMembers }
 
   'investigation:getRevision': { args: [caseId: string]; result: CaseRevision }
   'investigation:getView': { args: [caseId: string]; result: InvestigationView }
@@ -1129,6 +1175,10 @@ export interface IpcEventContract {
   'event:guestFrameReplaced': GuestFrameReplacedEvent
   'event:guestMouseDown': GuestMouseDownEvent
   'event:logEntry': LogEntry
+  // Shared Cases (#1810): any invite, pending join or roster change in a
+  // Case, and each step of a join in flight.
+  'event:sharingChanged': SharingChangedEvent
+  'event:sharingJoinProgress': SharingJoinProgressEvent
   'event:investigationProgress': RunProgressEvent
 }
 

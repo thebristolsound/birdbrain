@@ -62,8 +62,16 @@ function BatchDeleteSummary({ result }: { result: BatchDeleteResult }) {
   const rejectedDuplicate = result.outcomes.filter(
     (o) => o.status === 'rejected' && o.reason === 'duplicate'
   ).length
+  const rejectedNotAuthor = result.outcomes.filter(
+    (o) => o.status === 'rejected' && o.reason === 'not_author'
+  ).length
   const { committedEntries } = result.manifest
-  const clean = !rolledBack && notAttempted === 0 && rejectedGone === 0 && rejectedDuplicate === 0
+  const clean =
+    !rolledBack &&
+    notAttempted === 0 &&
+    rejectedGone === 0 &&
+    rejectedDuplicate === 0 &&
+    rejectedNotAuthor === 0
   return (
     <>
       {clean && <span>All selected captures were removed from this machine.</span>}
@@ -98,6 +106,13 @@ function BatchDeleteSummary({ result }: { result: BatchDeleteResult }) {
       {rejectedDuplicate > 0 && (
         <span className="mt-1.5 block">
           {rejectedDuplicate} duplicate id{rejectedDuplicate === 1 ? ' was' : 's were'} ignored.
+        </span>
+      )}
+      {rejectedNotAuthor > 0 && (
+        <span className="mt-1.5 block">
+          {rejectedNotAuthor} {rejectedNotAuthor === 1 ? 'was' : 'were'} kept: only the member who
+          captured {rejectedNotAuthor === 1 ? 'it' : 'them'} can delete{' '}
+          {rejectedNotAuthor === 1 ? 'it' : 'them'}.
         </span>
       )}
     </>

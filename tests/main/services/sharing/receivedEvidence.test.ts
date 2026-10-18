@@ -821,6 +821,9 @@ describe('received evidence (#1811)', () => {
     const own = await addCapture(CASE_ID, B, 1, { screenshot: await realPng(200) })
     expect((await pull(CASE_ID, source)).errors).toEqual([])
     expect(getExhibit(doc.exhibitId)?.authorInstallationId).toBe(A.installationId)
+    // The `merge` the pull wrote is Bob's own entry: the worker stamps it with a
+    // receipt (#1515), the one request beside Bob's own Capture.
+    const mergeHash = parsedChain(ownChainText(CASE_ID)).find((e) => e.type === 'merge')?.entryHash
 
     const requested: string[] = []
     const worker = createTimestampWorker({
@@ -843,7 +846,7 @@ describe('received evidence (#1811)', () => {
     await worker.processPending()
     expect(await worker.stampExhibit(doc.exhibitId)).toBe(false)
     expect(await worker.stampCapture(capture.captureId)).toBe(false)
-    expect(requested).toEqual([own.contentHash])
+    expect(requested).toEqual([own.contentHash, mergeHash])
     expect(ownEntriesNaming(received)).toEqual([])
 
     closeDatabase()
@@ -852,7 +855,7 @@ describe('received evidence (#1811)', () => {
     worker.start()
     await worker.processPending()
     worker.stop()
-    expect(requested).toEqual([own.contentHash])
+    expect(requested).toEqual([own.contentHash, mergeHash])
     expect(ownEntriesNaming(received)).toEqual([])
     // The positive control: Bob's own Capture did get its thumbnail derivation.
     expect(ownEntriesNaming([own.captureId]).map((e) => e.type)).toContain('derivation')

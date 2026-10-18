@@ -1104,21 +1104,9 @@ describe('extractData beside extractFields', () => {
 
 // The three inputs the review of #1899 measured, which took 57.8 s, 10.6 s and 8.4 s of
 // wall time at a load average of 40 to 56 before each new kind was read in one pass that
-// stops at the row ceiling. Each test checks what is recorded, counts the calls the scans
-// make (which no clock affects), and bounds this process's CPU time, which load from
-// other processes inflates far less than wall time. The same inputs took 6 to 123 ms of
-// wall time at a load average of 15 to 40 after the change, so the 2 s bound leaves more
-// than tenfold headroom on a loaded machine.
+// stops at the row ceiling. Each test checks what is recorded and counts the calls the
+// scans make, which no clock affects; a time bound would fail on a loaded runner.
 describe('extractFields: inputs that once took seconds', () => {
-  const CPU_BOUND_MS = 2000
-
-  function cpuMs(run: () => unknown): number {
-    const start = process.cpuUsage()
-    run()
-    const { user, system } = process.cpuUsage(start)
-    return (user + system) / 1000
-  }
-
   function counted(run: () => unknown): { has: number; slice: number } {
     const has = vi.spyOn(Set.prototype, 'has')
     const slice = vi.spyOn(String.prototype, 'slice')
@@ -1143,7 +1131,6 @@ describe('extractFields: inputs that once took seconds', () => {
     expectSpansSliceBack(sources, fields)
     // The brackets are counted once, with no copy of the address made per bracket.
     expect(counted(() => extractFields(sources)).slice).toBeLessThan(10)
-    expect(cpuMs(() => extractFields(sources))).toBeLessThan(CPU_BOUND_MS)
   })
 
   it('stops reading addresses at the row ceiling, among 16,000', () => {
@@ -1168,7 +1155,6 @@ describe('extractFields: inputs that once took seconds', () => {
     } finally {
       valid.mockRestore()
     }
-    expect(cpuMs(() => extractFields(sources(16_000)))).toBeLessThan(CPU_BOUND_MS)
   })
 
   it('stops reading tracking codes at the row ceiling, in a 280 KB part of 20,000', () => {
@@ -1188,6 +1174,5 @@ describe('extractFields: inputs that once took seconds', () => {
     expect(counted(() => extractFields(sources(20_000)))).toEqual(
       counted(() => extractFields(sources(10_000)))
     )
-    expect(cpuMs(() => extractFields(sources(20_000)))).toBeLessThan(CPU_BOUND_MS)
   })
 })

@@ -277,6 +277,32 @@ describe('Bound TLS Details in the collector', () => {
     expect(subresource.response).not.toHaveProperty('securityDetails')
   })
 
+  it('leaves a redirect hop of the main document unconverted, so it cannot fail the collection', () => {
+    const start = 'https://example.test/start'
+    const end = 'https://example.test/end'
+    const { exchanges } = collectExchanges({
+      events: [
+        sent('doc', start, { type: 'Document', frameId: 'main' }),
+        sent('doc', end, {
+          type: 'Document',
+          frameId: 'main',
+          redirectResponse: response(start, {
+            status: 302,
+            securityDetails: details({ serverSignatureAlgorithm: 1.5 })
+          })
+        }),
+        received('doc', end, { securityDetails: details() }),
+        finished('doc')
+      ],
+      responseBodies: body('doc')
+    })
+    const [redirect, document] = exchanges
+    expect(redirect).toMatchObject({ hop: 0, state: 'redirected' })
+    expect(redirect.response).not.toHaveProperty('securityDetails')
+    expect(document).toMatchObject({ hop: 1, state: 'complete' })
+    expect(document.response?.securityDetails).toMatchObject({ protocol: 'TLS 1.3' })
+  })
+
   it('takes the main frame from the first document request on the page session', () => {
     const frame = 'https://frame.example/'
     const doc = 'https://example.test/'

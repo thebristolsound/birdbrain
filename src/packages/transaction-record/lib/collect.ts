@@ -119,8 +119,9 @@ const toResponse = (
   ...(remoteIPAddress !== undefined ? { remoteIPAddress } : {}),
   headers: { ...headers },
   ...(extra ? { extraInfo: { statusCode: extra.statusCode, headers: { ...extra.headers } } } : {}),
-  // Bound TLS Details are the main document's alone (plan D7), so only its response is converted,
-  // and a subresource's details can neither reach the record nor fail the collection.
+  // Bound TLS Details are the main document response's alone (plan D7), so only that response is
+  // converted, and the details on a redirect hop, a frame or a subresource can neither reach the
+  // record nor fail the collection.
   ...(mainDocument && securityDetails ? { securityDetails: toBoundTls(securityDetails) } : {})
 })
 
@@ -169,10 +170,15 @@ const toExchanges = (
       ...(requestBody ? { requestBody } : {}),
       ...(response
         ? {
+            // The main document response is the last hop of the main frame's document chain; an
+            // earlier hop's response is a redirect.
             response: toResponse(
               response,
               responseExtra,
-              type === 'Document' && frameId !== undefined && frameId === mainFrameId
+              next === undefined &&
+                type === 'Document' &&
+                frameId !== undefined &&
+                frameId === mainFrameId
             )
           }
         : {}),

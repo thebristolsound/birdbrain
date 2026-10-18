@@ -48,6 +48,36 @@ export function createCase(params: CreateCaseParams): Case {
   return getCase(id)!
 }
 
+// Marks a Case shared, once (#1810). The Owner's own `member-add` is the
+// record; these two columns are the cache the Shared Case rules read
+// (`listSharedCaseIds`, the Database Admin refusal, row signing). A Case
+// already marked keeps its first `shared_at`.
+export function markCaseShared(caseId: string, ownerInstallationId: string): void {
+  getDb()
+    .prepare(
+      'UPDATE cases SET shared_at = ?, owner_installation_id = ? WHERE id = ? AND shared_at IS NULL'
+    )
+    .run(new Date().toISOString(), ownerInstallationId, caseId)
+}
+
+// The Case a joiner creates from the Owner's `welcome` (#1810): under the
+// Owner's id, which every member chain's entries carry, and shared from the
+// start. `createCase` always makes a new id, so it cannot be used here.
+export function createJoinedCase(params: {
+  id: string
+  name: string
+  ownerInstallationId: string
+}): Case {
+  const now = new Date().toISOString()
+  getDb()
+    .prepare(
+      `INSERT INTO cases (id, name, description, type, created_at, updated_at, shared_at, owner_installation_id)
+       VALUES (?, ?, NULL, 'custom', ?, ?, ?, ?)`
+    )
+    .run(params.id, params.name, now, now, now, params.ownerInstallationId)
+  return getCase(params.id)!
+}
+
 export function updateCase(params: UpdateCaseParams): Case | undefined {
   const existing = getCase(params.id)
   if (!existing) return undefined

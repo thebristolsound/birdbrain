@@ -15,7 +15,8 @@ import {
   deleteExhibit,
   backfillExhibitsForCaptures,
   insertExhibitForCapture,
-  rerootPath
+  rerootPath,
+  type ExhibitAuthor
 } from '@main/services/db/exhibitRepo'
 import {
   exhibitCitationResolver,
@@ -121,6 +122,11 @@ export interface InsertCaptureParams {
   // The Exhibit Number the capture entry carries (X46), so the row and the
   // entry state one number. Not a `captures` column: it lands on `exhibits`.
   exhibitNumber?: number
+  // Another member's Capture, received by sync (#1811). Absent means this installation's.
+  author?: ExhibitAuthor
+  // The Exhibit row's `committed_at`. Defaults to now; a received Capture passes its page
+  // timestamp, because no entry carries the author's ingest time.
+  committedAt?: string
 }
 
 // The single declaration of the captures row shape: every column in schema
@@ -245,10 +251,11 @@ export const insertCapture = function (params: InsertCaptureParams & { id?: stri
       hash: params.hash,
       path: params.mhtmlPath ?? params.htmlPath ?? null,
       sizeBytes: params.sizeBytes ?? null,
-      committedAt: now,
+      committedAt: params.committedAt ?? now,
       manifestSeq: params.manifestIndex ?? null,
       method: params.method ?? null,
-      ...(params.exhibitNumber !== undefined ? { exhibitNumber: params.exhibitNumber } : {})
+      ...(params.exhibitNumber !== undefined ? { exhibitNumber: params.exhibitNumber } : {}),
+      ...(params.author ? { author: params.author } : {})
     })
 
     // Touch the case's updated_at
@@ -299,6 +306,7 @@ export function setCaptureTrustedTime(captureId: string, status: TrustedTime): v
 
 // The retry-worker queue: captures still awaiting a trusted timestamp. Returns
 // the minimum the worker needs to re-stamp (capture id, case, content hash).
+// Another member's Capture is never queued: only its author stamps it (#1811).
 export function listPendingTimestampCaptures(): Array<{
   id: string
   caseId: string
@@ -306,7 +314,10 @@ export function listPendingTimestampCaptures(): Array<{
 }> {
   const rows = getDb()
     .prepare(
-      "SELECT id, case_id, hash FROM captures WHERE trusted_time_status = 'pending' ORDER BY created_at ASC"
+      `SELECT c.id, c.case_id, c.hash FROM captures c
+         LEFT JOIN exhibits e ON e.id = c.id
+        WHERE c.trusted_time_status = 'pending' AND e.author_installation_id IS NULL
+        ORDER BY c.created_at ASC`
     )
     .all() as Array<{ id: string; case_id: string; hash: string }>
   return rows.map((r) => ({ id: r.id, caseId: r.case_id, hash: r.hash }))

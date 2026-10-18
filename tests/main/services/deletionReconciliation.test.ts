@@ -3,12 +3,17 @@ import { mkdtempSync, mkdirSync, rmSync, appendFileSync, readFileSync, writeFile
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { createHash } from 'crypto'
+import { Readable } from 'stream'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
 import { initDatabase, closeDatabase } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
-import { insertCapture, deleteCapture } from '@main/services/db/captureRepo'
+import { insertCapture, deleteCapture, listCaptures } from '@main/services/db/captureRepo'
 import { appendManifestEntry, initManifest, verifyManifestChain } from '@main/services/manifest'
 import { scanUnreconciledDeletions } from '@main/services/deletionReconciliation'
+import { ingestMhtmlCapture } from '@main/services/captureLifecycle'
+import { exportCaseArchive, importCaseArchive } from '@main/services/caseArchive'
+import { initSettings, updateSettings } from '@main/services/settings'
+import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import type { Capture } from '@shared/types'
 
 // #622. The state under test is the write-ahead crash window inside
@@ -241,6 +246,106 @@ describe('scanUnreconciledDeletions', () => {
     const report = scanUnreconciledDeletions()
     expect(report.findings.map((f) => f.caseName).sort()).toEqual(['First', 'Second'])
     expect(report.casesScanned).toBe(2)
+  })
+
+  // #1815. A Capture an archive import renamed is deleted under the id its
+  // signed entry carries, so its trailing entry names that id, not the row's.
+  describe('a Case an import renamed', () => {
+    beforeEach(() => {
+      initSettings(tempDir)
+      updateSettings({ operatorName: 'Test Operator' })
+      resetInstallationId()
+      initInstallationId(tempDir)
+    })
+
+    afterEach(() => {
+      resetInstallationId()
+    })
+
+    async function ingest(caseId: string, name: string): Promise<Capture> {
+      const { capture } = await ingestMhtmlCapture({
+        caseId,
+        url: `https://example.com/${name}`,
+        title: name,
+        timestamp: '2026-04-05T12:00:00.000Z',
+        stream: Readable.from([Buffer.from(name)]) as unknown as ReadableStream<Uint8Array>,
+        textContent: name,
+        headers: {},
+        browserVersion: '',
+        userAgent: '',
+        httpStatus: 200,
+        extensionVersion: '',
+        operatorId: 'op-1',
+        operatorName: 'Test Operator',
+        toolVersion: '0.1.0'
+      })
+      return capture
+    }
+
+    // Exported and imported on this installation while the source is still
+    // here, so the import gives each Capture row a new id.
+    async function renamedImport(sourceId: string): Promise<{ caseId: string; caseDir: string }> {
+      const archive = join(tempDir, `${sourceId}.birdbrain`)
+      await exportCaseArchive(sourceId, archive)
+      const { newCaseId } = await importCaseArchive(archive)
+      return { caseId: newCaseId, caseDir: join(storageRoot, newCaseId) }
+    }
+
+    const scannedIn = (caseId: string) =>
+      scanUnreconciledDeletions().findings.filter((finding) => finding.caseId === caseId)
+
+    it('reports a trailing deletion under the signed id whose renamed row survived', async () => {
+      const source = makeCase('Source')
+      const signed = await ingest(source.caseId, 'renamed')
+      const imported = await renamedImport(source.caseId)
+      const [row] = listCaptures(imported.caseId)
+      expect(row.id).not.toBe(signed.id)
+
+      const index = appendDeletion(imported.caseDir, { ...row, id: signed.id })
+
+      expect(scannedIn(imported.caseId)).toEqual([
+        expect.objectContaining({ captureId: row.id, manifestIndex: index })
+      ])
+      expect(scannedIn(source.caseId)).toEqual([])
+    })
+
+    it('reports nothing once the renamed row is gone', async () => {
+      const source = makeCase('Source')
+      const signed = await ingest(source.caseId, 'gone')
+      const imported = await renamedImport(source.caseId)
+      const [row] = listCaptures(imported.caseId)
+      appendDeletion(imported.caseDir, { ...row, id: signed.id })
+      expect(deleteCapture(row.id)).toBe(true)
+
+      expect(scannedIn(imported.caseId)).toEqual([])
+    })
+
+    // The source Case signed a deletion of its own before the export. Only a
+    // row its own signed entry names may answer for an inherited entry.
+    it('reports an inherited deletion only against the row it names', async () => {
+      const source = makeCase('Source')
+      const deleted = await ingest(source.caseId, 'deleted-at-source')
+      const kept = await ingest(source.caseId, 'kept')
+      appendDeletion(source.caseDir, deleted)
+      expect(deleteCapture(deleted.id)).toBe(true)
+      const imported = await renamedImport(source.caseId)
+      const [row] = listCaptures(imported.caseId)
+      expect(row.id).not.toBe(kept.id)
+
+      expect(scannedIn(imported.caseId)).toEqual([])
+    })
+
+    it('reports an inherited deletion whose row survived against the renamed row', async () => {
+      const source = makeCase('Source')
+      const interrupted = await ingest(source.caseId, 'interrupted-at-source')
+      const index = appendDeletion(source.caseDir, interrupted)
+      const imported = await renamedImport(source.caseId)
+      const [row] = listCaptures(imported.caseId)
+
+      expect(scannedIn(imported.caseId)).toEqual([
+        expect.objectContaining({ captureId: row.id, manifestIndex: index })
+      ])
+    })
   })
 
   it('returns an unavailable report rather than throwing when the database is closed', () => {

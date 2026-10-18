@@ -3,12 +3,16 @@ import { execFileSync } from 'child_process'
 import {
   CAPTURE_PACKAGE_DIRECTORY,
   PACKAGE_ROOT_FILES,
+  PDF_PACKAGE_DIRECTORY,
   SCREENSHOT_PACKAGE_DIRECTORY,
   TIMESTAMP_PACKAGE_DIRECTORY,
+  TRANSACTION_RECORD_PACKAGE_DIRECTORY,
   capturePagePath,
   inCasePath,
+  pdfPath,
   screenshotPath,
-  timestampTokenPath
+  timestampTokenPath,
+  transactionRecordPath
 } from '../index'
 import {
   SHELL_DIRECTORY_VARS,
@@ -53,6 +57,10 @@ describe('Package Layout as sh', () => {
           expect(sh(shell, `${SHELL_PATH_HELPERS.timestampTokenPath} "$1"`, id)).toBe(
             timestampTokenPath(id)
           )
+          expect(sh(shell, `${SHELL_PATH_HELPERS.transactionRecordPath} "$1"`, id)).toBe(
+            transactionRecordPath(id)
+          )
+          expect(sh(shell, `${SHELL_PATH_HELPERS.pdfPath} "$1"`, id)).toBe(pdfPath(id))
         }
       })
 
@@ -73,6 +81,10 @@ describe('Package Layout as sh', () => {
         expect(read(SHELL_DIRECTORY_VARS.pages)).toBe(CAPTURE_PACKAGE_DIRECTORY)
         expect(read(SHELL_DIRECTORY_VARS.screenshots)).toBe(SCREENSHOT_PACKAGE_DIRECTORY)
         expect(read(SHELL_DIRECTORY_VARS.timestamps)).toBe(TIMESTAMP_PACKAGE_DIRECTORY)
+        expect(read(SHELL_DIRECTORY_VARS.transactionRecords)).toBe(
+          TRANSACTION_RECORD_PACKAGE_DIRECTORY
+        )
+        expect(read(SHELL_DIRECTORY_VARS.pdfs)).toBe(PDF_PACKAGE_DIRECTORY)
       })
     })
   }

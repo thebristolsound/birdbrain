@@ -7,8 +7,10 @@ import {
   exhibitPackageDirectory,
   exhibitPackagePath,
   inCasePath,
+  pdfPath,
   screenshotPath,
-  timestampTokenPath
+  timestampTokenPath,
+  transactionRecordPath
 } from '../index'
 
 describe('Package Layout paths', () => {
@@ -16,6 +18,12 @@ describe('Package Layout paths', () => {
     expect(capturePagePath('cap-1')).toBe('pages/cap-1.mhtml')
     expect(screenshotPath('ab12')).toBe('screenshots/ab12.png')
     expect(timestampTokenPath('ex-9')).toBe('timestamps/ex-9.tst')
+  })
+
+  it('names a Transaction Record and a PDF by their digests, like the screenshot', () => {
+    const digest = 'ab'.repeat(32)
+    expect(transactionRecordPath(digest)).toBe(`transaction-records/${digest}.warc.gz`)
+    expect(pdfPath(digest)).toBe(`pdfs/${digest}.pdf`)
   })
 
   it('drops the Case segment and normalizes backslashes', () => {

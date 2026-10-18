@@ -6,11 +6,15 @@
 import {
   CAPTURE_PACKAGE_DIRECTORY,
   PACKAGE_ROOT_FILES,
+  PDF_PACKAGE_DIRECTORY,
   SCREENSHOT_PACKAGE_DIRECTORY,
   TIMESTAMP_PACKAGE_DIRECTORY,
+  TRANSACTION_RECORD_PACKAGE_DIRECTORY,
   capturePagePath,
+  pdfPath,
   screenshotPath,
-  timestampTokenPath
+  timestampTokenPath,
+  transactionRecordPath
 } from './paths'
 
 /** The sh variable each root document is reachable through. */
@@ -27,7 +31,9 @@ export const SHELL_ROOT_FILE_VARS = Object.freeze({
 export const SHELL_DIRECTORY_VARS = Object.freeze({
   pages: 'PAGES_DIR',
   screenshots: 'SCREENSHOTS_DIR',
-  timestamps: 'TIMESTAMPS_DIR'
+  timestamps: 'TIMESTAMPS_DIR',
+  transactionRecords: 'TRANSACTION_RECORDS_DIR',
+  pdfs: 'PDFS_DIR'
 })
 
 /** The sh helpers, one per TS path function. */
@@ -35,6 +41,8 @@ export const SHELL_PATH_HELPERS = Object.freeze({
   capturePagePath: 'capture_page_path',
   screenshotPath: 'screenshot_path',
   timestampTokenPath: 'timestamp_token_path',
+  transactionRecordPath: 'transaction_record_path',
+  pdfPath: 'pdf_path',
   inCasePath: 'in_case_path'
 })
 
@@ -67,9 +75,13 @@ export function renderShellPathHelpers(): string {
     `${SHELL_DIRECTORY_VARS.pages}=${CAPTURE_PACKAGE_DIRECTORY}`,
     `${SHELL_DIRECTORY_VARS.screenshots}=${SCREENSHOT_PACKAGE_DIRECTORY}`,
     `${SHELL_DIRECTORY_VARS.timestamps}=${TIMESTAMP_PACKAGE_DIRECTORY}`,
+    `${SHELL_DIRECTORY_VARS.transactionRecords}=${TRANSACTION_RECORD_PACKAGE_DIRECTORY}`,
+    `${SHELL_DIRECTORY_VARS.pdfs}=${PDF_PACKAGE_DIRECTORY}`,
     `${SHELL_PATH_HELPERS.capturePagePath}() { printf ${printfFormat(capturePagePath, SHELL_DIRECTORY_VARS.pages)}; }`,
     `${SHELL_PATH_HELPERS.screenshotPath}() { printf ${printfFormat(screenshotPath, SHELL_DIRECTORY_VARS.screenshots)}; }`,
     `${SHELL_PATH_HELPERS.timestampTokenPath}() { printf ${printfFormat(timestampTokenPath, SHELL_DIRECTORY_VARS.timestamps)}; }`,
+    `${SHELL_PATH_HELPERS.transactionRecordPath}() { printf ${printfFormat(transactionRecordPath, SHELL_DIRECTORY_VARS.transactionRecords)}; }`,
+    `${SHELL_PATH_HELPERS.pdfPath}() { printf ${printfFormat(pdfPath, SHELL_DIRECTORY_VARS.pdfs)}; }`,
     '',
     '# The part of a storage path that lies inside the Case directory:',
     '# "<caseId>/documents/x.pdf" -> "documents/x.pdf", which is where the package',

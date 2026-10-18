@@ -277,6 +277,7 @@ jq -c . "$MANIFEST_FILE" >"$manifest_entries" 2>/dev/null || unread "$MANIFEST_F
 case_entries=$manifest_entries
 : >"$tmp/citations.txt"
 : >"$tmp/remote.jsonl"
+: >"$tmp/remote-records.jsonl"
 
 # Every chain file in directory $1 ('' for the package root), one
 # "<installationId>/<path>" line each. An id is one path segment, so the first
@@ -633,7 +634,8 @@ walk_case() {
 
 # Every Case in this package, from this one back through each Case it was
 # forked from, and the accepted entries of every chain but the exporter's into
-# remote.jsonl for ${stepRef(5, 6)}.
+# remote.jsonl for ${stepRef(5, 6)}, and with their chain's name into
+# remote-records.jsonl for the receipt walk of ${stepRef(6)}.
 member_chains() {
   mc_owner_key=$SIGNING_KEY_FILE
   mc_owner_name=$MANIFEST_FILE
@@ -731,6 +733,8 @@ member_chains() {
     [ "$mc_level" -eq 0 ] && [ -n "$mc_local" ] && mc_skip=$mc_local
     jq -c --arg skip "$mc_skip" 'select(.e != null and .chain != $skip) | .e' \\
       "$tmp/records-$mc_level.jsonl" >>"$tmp/remote.jsonl" || unread 'the accepted entries'
+    jq -c --arg skip "$mc_skip" 'select(.e != null and .chain != $skip)' \\
+      "$tmp/records-$mc_level.jsonl" >>"$tmp/remote-records.jsonl" || unread 'the accepted entries'
     if [ "$mc_level" -gt 0 ]; then
       # The import names the Case and the Owner its verified history establishes.
       mc_established=$(jq -r '.caseId // empty' "$tmp/roster-$mc_level.json")
@@ -1531,27 +1535,41 @@ while IFS= read -r line; do
 done <"$tmp/exhibits.jsonl"
 
 # Receipt stamps (#1515): a schema-4 stamp with subject "entry" binds a merge
-# entry's Entry Hash, bounding when this chain's writer held what the merge
+# entry's Entry Hash, bounding when its chain's writer held what the merge
 # names, and vouches for no Exhibit's bytes. Its token has no enclosed file;
-# the signed line is the only copy, so it is decoded from there. The merge
-# is found by the hash the stamp names, which ${stepRef(3)} recomputed from the
-# entry's own body.
+# the signed line is the only copy, so it is decoded from there. A receipt
+# binds a merge of the chain it sits in, so each chain is read on its own, as
+# the Birdbrain verifier reads them: the exporter's chain unnamed, and every
+# chain ${stepRef('4a')} accepted under its installation id. The merge is found
+# by the hash the stamp names, which ${stepRef(3)} or ${stepRef('4a')} recomputed
+# from the entry's own body. A stamp that names a merge and carries no token
+# is a claim with nothing behind it, and fails as the Birdbrain verifier fails it.
+jq -c '{chain: "", e: .}' "$manifest_entries" >"$tmp/receipt-chains.jsonl"
+cat "$tmp/remote-records.jsonl" >>"$tmp/receipt-chains.jsonl"
 receipt_token_filter='${VERIFY_RECIPES.receiptTokenFilter}'
-jq -r "$receipt_token_filter"' | "\\(.index) \\(.captureContentHash) \\(.tsaToken)"' \\
-  "$MANIFEST_FILE" >"$tmp/receipt-tokens.txt"
+jq -r '.chain as $c | .e | '"$receipt_token_filter"' | "\\(.index) \\(.captureContentHash) \\(.tsaToken) \\($c)"' \\
+  "$tmp/receipt-chains.jsonl" >"$tmp/receipt-tokens.txt"
+jq -r '.chain as $c | .e
+  | select(.type == "timestamp" and .subject == "entry" and (.tsaToken | type) != "string")
+  | "\\(.index) \\(.captureContentHash) - \\($c)"' \\
+  "$tmp/receipt-chains.jsonl" >>"$tmp/receipt-tokens.txt"
 
 : >"$tmp/required-receipts.txt"
 receipt_tokens=0
-while IFS=' ' read -r stamp_idx imprint encoded; do
+while IFS=' ' read -r stamp_idx imprint encoded chain; do
   [ -n "$encoded" ] || continue
-  merge_idx=$(jq -rn --arg h "$imprint" \\
-    'first(inputs | select(.type == "merge" and .entryHash == $h) | .index) // empty' \\
-    "$MANIFEST_FILE")
+  merge_idx=$(jq -rn --arg h "$imprint" --arg c "$chain" \\
+    'first(inputs | select(.chain == $c and .e.type == "merge" and .e.entryHash == $h) | .e.index) // empty' \\
+    "$tmp/receipt-chains.jsonl")
   if [ -z "$merge_idx" ]; then
-    note "receipt timestamp entry $stamp_idx names no merge entry in the chain (hash $imprint), so nothing states what it attests"
+    note "receipt timestamp entry $stamp_idx\${chain:+ of $chain} names no merge entry in its chain (hash $imprint), so nothing states what it attests"
     continue
   fi
-  printf '%s %s %s %s\\n' "$stamp_idx" "$merge_idx" "$imprint" "$encoded" >>"$tmp/required-receipts.txt"
+  if [ "$encoded" = - ]; then
+    fail "merge entry $merge_idx\${chain:+ of $chain}: its receipt timestamp entry $stamp_idx carries no token"
+    continue
+  fi
+  printf '%s %s %s %s %s\\n' "$stamp_idx" "$merge_idx" "$imprint" "$encoded" "$chain" >>"$tmp/required-receipts.txt"
   receipt_tokens=$((receipt_tokens + 1))
 done <"$tmp/receipt-tokens.txt"
 
@@ -1645,10 +1663,11 @@ done <"$tmp/required-tokens.txt"
 # over the merge entry's Entry Hash, the digest the signed stamp names. The
 # openssl check fails on a token whose imprint is another digest, as it does
 # for a capture's.
-while IFS=' ' read -r stamp_idx merge_idx imprint encoded; do
+while IFS=' ' read -r stamp_idx merge_idx imprint encoded chain; do
   [ -n "$encoded" ] || continue
+  merge_name="merge entry $merge_idx\${chain:+ of $chain}"
   if ! printf '%s' "$encoded" | openssl base64 -d -A >"$tmp/receipt-token.der" 2>/dev/null; then
-    fail "merge entry $merge_idx: its receipt timestamp entry $stamp_idx carries a tsaToken that is not base64"
+    fail "$merge_name: its receipt timestamp entry $stamp_idx carries a tsaToken that is not base64"
     continue
   fi
   [ "$anchor_named" -eq 1 ] || continue
@@ -1662,9 +1681,9 @@ while IFS=' ' read -r stamp_idx merge_idx imprint encoded; do
   fi
   if [ "$result" -eq 0 ]; then
     receipts_verified=$((receipts_verified + 1))
-    note "merge entry $merge_idx: receipt timestamp entry $stamp_idx verifies to $TSA_ROOT over the Entry Hash $imprint - a receipt of what this chain's writer held, not a trusted time for any Exhibit"
+    note "$merge_name: receipt timestamp entry $stamp_idx verifies to $TSA_ROOT over the Entry Hash $imprint - a receipt of what its chain's writer held, not a trusted time for any Exhibit"
   else
-    fail "merge entry $merge_idx: receipt timestamp entry $stamp_idx does not verify to $TSA_ROOT over the Entry Hash $imprint"
+    fail "$merge_name: receipt timestamp entry $stamp_idx does not verify to $TSA_ROOT over the Entry Hash $imprint"
     while IFS= read -r detail; do
       printf '   openssl: %s\\n' "$detail"
     done <"$tmp/ts.out"

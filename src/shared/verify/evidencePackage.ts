@@ -1070,8 +1070,9 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
           'structural (imprint only); run `openssl ts -verify` for TSA authenticity'
       )
     }
-    for (const { index, mergeIndex, entryHash } of unbound) {
-      if (mergeIndex === undefined) {
+    for (const stamp of unbound) {
+      const { index, entryHash } = stamp
+      if (stamp.reason === 'no-merge') {
         add(
           `receipt timestamp ${index}${where}`,
           'skip',
@@ -1080,11 +1081,15 @@ export function verifyEvidencePackage(dir: string): PackageVerifyResult {
         )
         continue
       }
+      const { mergeIndex } = stamp
       add(
         `merge ${mergeIndex} receipt timestamp${where}`,
         'fail',
-        `the receipt token at index ${index} names merge entry ${mergeIndex} but does not ` +
-          'parse or attests another hash'
+        stamp.reason === 'no-token'
+          ? `the receipt timestamp entry at index ${index} names merge entry ${mergeIndex} but ` +
+              'carries no token'
+          : `the receipt token at index ${index} names merge entry ${mergeIndex} but does not ` +
+              'parse or attests another hash'
       )
     }
   }

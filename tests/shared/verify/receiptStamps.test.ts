@@ -96,15 +96,21 @@ describe('receiptStampsFromEntries', () => {
   })
 
   it('leaves a merge unstamped and lists the stamp when its token does not bind it', () => {
-    for (const bad of [
-      { tsaToken: token(OTHER_MERGE_HASH) },
-      { tsaToken: 'not a token' },
-      { tsaToken: undefined }
-    ]) {
+    for (const bad of [{ tsaToken: token(OTHER_MERGE_HASH) }, { tsaToken: 'not a token' }]) {
       const report = receiptStampsFromEntries([capture, merge, receipt(bad)])
       expect(report.merges).toEqual([{ mergeIndex: 1, entryHash: MERGE_HASH }])
-      expect(report.unbound).toEqual([{ index: 2, entryHash: MERGE_HASH, mergeIndex: 1 }])
+      expect(report.unbound).toEqual([
+        { index: 2, entryHash: MERGE_HASH, mergeIndex: 1, reason: 'token-mismatch' }
+      ])
     }
+  })
+
+  it('tells a stamp that names a merge and carries no token from one whose token misses', () => {
+    const report = receiptStampsFromEntries([capture, merge, receipt({ tsaToken: undefined })])
+    expect(report.merges).toEqual([{ mergeIndex: 1, entryHash: MERGE_HASH }])
+    expect(report.unbound).toEqual([
+      { index: 2, entryHash: MERGE_HASH, mergeIndex: 1, reason: 'no-token' }
+    ])
   })
 
   it('lists a receipt naming a capture entry or an unknown hash as binding no merge', () => {
@@ -113,8 +119,8 @@ describe('receiptStampsFromEntries', () => {
     const report = receiptStampsFromEntries([capture, merge, onCapture, onNothing])
     expect(report.merges).toEqual([{ mergeIndex: 1, entryHash: MERGE_HASH }])
     expect(report.unbound).toEqual([
-      { index: 2, entryHash: CAPTURE_HASH },
-      { index: 3, entryHash: OTHER_MERGE_HASH }
+      { index: 2, entryHash: CAPTURE_HASH, reason: 'no-merge' },
+      { index: 3, entryHash: OTHER_MERGE_HASH, reason: 'no-merge' }
     ])
   })
 

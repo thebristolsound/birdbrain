@@ -37,6 +37,8 @@ export interface ReceiptPackageOptions {
   wrongImprint?: boolean
   // The receipt stamp names a hash no `merge` in its chain has.
   namesNoMerge?: boolean
+  // The receipt stamp names the `merge` and carries no `tsaToken`.
+  withoutToken?: boolean
   // The member's chain carries a `merge` naming the Owner's document, and a
   // receipt stamp over it.
   memberReceipt?: boolean
@@ -139,17 +141,21 @@ const mergeEntry = (
   schemaVersion: 4
 })
 
-const receiptEntry = (entryHash: string, imprint: string, by: typeof OWNER) => ({
+const receiptEntry = (entryHash: string, imprint: string | null, by: typeof OWNER) => ({
   type: 'timestamp',
   caseId: RECEIPT_CASE_ID,
   captureContentHash: entryHash,
   subject: 'entry',
   timestamp: TIME,
-  tsaToken: buildSyntheticToken({
-    contentHash: imprint,
-    genTime: RECEIPT_TIME,
-    tsaDnsName: RECEIPT_TSA
-  }).toString('base64'),
+  ...(imprint === null
+    ? {}
+    : {
+        tsaToken: buildSyntheticToken({
+          contentHash: imprint,
+          genTime: RECEIPT_TIME,
+          tsaDnsName: RECEIPT_TSA
+        }).toString('base64')
+      }),
   ...by,
   schemaVersion: 4
 })
@@ -199,7 +205,7 @@ export function writeReceiptPackage(
   result.mergeIndex = owner.head.index
   if (!options.withoutReceipt) {
     const named = options.namesNoMerge ? 'b'.repeat(64) : mergeHash
-    const imprint = options.wrongImprint ? 'c'.repeat(64) : named
+    const imprint = options.withoutToken ? null : options.wrongImprint ? 'c'.repeat(64) : named
     owner.append(
       receiptEntry(named, imprint, OWNER),
       options.breakAtReceipt ? signEntryHash('d'.repeat(64)) : undefined

@@ -114,13 +114,12 @@ export interface MergeReceipt {
   stamp?: TrustedTimeResult & { index: number }
 }
 
-// A receipt stamp that binds nothing: it names a `merge` whose hash its token
-// does not attest (`mergeIndex` set), or a hash no `merge` in the chain has.
-export interface UnboundReceiptStamp {
-  index: number
-  entryHash: string
-  mergeIndex?: number
-}
+// A receipt stamp that binds nothing, and why: it names a hash no `merge` in
+// the chain has; or it names a `merge` (`mergeIndex`) and carries no token, or
+// a token that does not parse or attests another hash.
+export type UnboundReceiptStamp =
+  | { index: number; entryHash: string; reason: 'no-merge' }
+  | { index: number; entryHash: string; mergeIndex: number; reason: 'no-token' | 'token-mismatch' }
 
 export interface ReceiptStampReport {
   merges: MergeReceipt[]
@@ -167,12 +166,17 @@ export function receiptStampsFromEntries(entries: ReadonlyArray<EntryRecord>): R
     const index = indexOf(entry, position)
     const merge = byHash.get(receipt.entryHash)
     if (!merge) {
-      unbound.push({ index, entryHash: receipt.entryHash })
+      unbound.push({ index, entryHash: receipt.entryHash, reason: 'no-merge' })
+      return
+    }
+    const { mergeIndex } = merge
+    if (typeof entry.tsaToken !== 'string') {
+      unbound.push({ index, entryHash: receipt.entryHash, mergeIndex, reason: 'no-token' })
       return
     }
     const stamp = receiptStampFor(entry, merge.entryHash)
     if (!stamp) {
-      unbound.push({ index, entryHash: receipt.entryHash, mergeIndex: merge.mergeIndex })
+      unbound.push({ index, entryHash: receipt.entryHash, mergeIndex, reason: 'token-mismatch' })
       return
     }
     if (!merge.stamp) merge.stamp = { ...stamp, index }

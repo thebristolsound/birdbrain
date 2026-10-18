@@ -2212,6 +2212,22 @@ describe('verifyEvidencePackage — receipt stamps on merge entries (#1515)', ()
     expect(result.checks.filter((c) => c.status === 'fail')).toHaveLength(1)
   })
 
+  it('fails the row, naming the missing token, when the receipt stamp carries none', () => {
+    const { mergeIndex, receiptIndex } = writeReceiptPackage(dir, { withoutToken: true })
+    const result = verifyEvidencePackage(dir)
+    expect(result.pass).toBe(false)
+    expect(receiptRows(result)).toEqual([
+      {
+        name: `merge ${mergeIndex} receipt timestamp`,
+        status: 'fail',
+        reason:
+          `the receipt timestamp entry at index ${receiptIndex} names merge entry ` +
+          `${mergeIndex} but carries no token`
+      }
+    ])
+    expect(result.checks.filter((c) => c.status === 'fail')).toHaveLength(1)
+  })
+
   it('reports a receipt stamp naming no merge as a skip, and passes', () => {
     const { receiptIndex } = writeReceiptPackage(dir, { namesNoMerge: true })
     const result = verifyEvidencePackage(dir)

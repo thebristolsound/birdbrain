@@ -57,6 +57,7 @@ export function CaseWorkspace() {
   const isNotes = matchRoute({ to: '/cases/$caseId/notes', fuzzy: true }) !== false
   const isSignals = matchRoute({ to: '/cases/$caseId/signals', fuzzy: true }) !== false
   const isData = matchRoute({ to: '/cases/$caseId/data', fuzzy: true }) !== false
+  const isInvestigate = matchRoute({ to: '/cases/$caseId/investigate', fuzzy: true }) !== false
 
   // Persist active section for session restore
   useEffect(() => {
@@ -90,7 +91,7 @@ export function CaseWorkspace() {
     <div className="flex h-full flex-col">
       <CaseActionBar />
       {/* Split workspaces own their scroll regions and fill the available height. */}
-      {isCaptures || isData || isSignals || isNotes ? (
+      {isCaptures || isData || isSignals || isNotes || isInvestigate ? (
         <div className="flex-1 overflow-hidden">
           <Outlet />
         </div>

@@ -1851,6 +1851,17 @@ implements it amends ADR-0042 in the same PR, so no code ships against an unamen
   in one pass that stops at the row ceiling. A header name now takes any printable character but a
   space or colon (scope added to #1890 from the #1884 review). The Links tab marks a row only for a
   link target or alt text hit.
+- **2026-10-17, CI-V1 (#1894).** The route `/cases/$caseId/investigate` renders the run setup
+  (S1), the header (S2), and three panes that become tabs when the view is narrower than 1140
+  pixels (S7). No sidebar or command palette entry points at it (ruling 57). The route's search
+  holds the selection, `jointId`, `subjectId`, and `spanId`, for CI-V2 to CI-V4. The header's "not
+  read" count opens its reasons in this plan's wording and offers no "Show them" (maintainer
+  ruling, 2026-10-17), and the contract gains `NOT_READ_REASONS`, the reason values the view
+  words. A packaged build registers no `investigation:` handler, so the route shows only its load
+  failure there. Where the build departs from the accepted mock: no "Run N", because `RunSummary`
+  carries no run number; no "N of M Exhibits readable" before a run, which the contract does not
+  carry; no link to Settings -> AI analysis, which does not exist; each unread kind named as the
+  Data screen names it, not "PDFs" or "mbox file"; and the breakdown's heading says "did not read".
 - **2026-10-17, CI-9 (#1891).** Migration 40 creates E1's tables and view, the Case revision, and
   the triggers on the fifteen input tables. Both restores give every Case a new generation on the
   copy they install, and `readCaseRevision()` and the MCP tool `get_case_revision` read the
@@ -1867,5 +1878,5 @@ implements it amends ADR-0042 in the same PR, so no code ships against an unamen
   reprocess, an import and its field build is larger than the difference between the medians with
   and without the triggers, and the change-log rows each writes are counted exactly. Whether imported runs read as out of date
   moves to CI-9b, whose archive first carries them.
-- **Next.** CI-E and CI-V1, each against this contract. The gates still open are in "Gates
+- **Next.** CI-E and CI-V2 to CI-V4, each against this contract. The gates still open are in "Gates
   this plan waits on".

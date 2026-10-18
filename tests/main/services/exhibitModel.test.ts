@@ -18,7 +18,13 @@ import sharp from 'sharp'
 import { ensureCaseDir, getCaseStorageSize, initStorage } from '@main/services/storage'
 import { closeDatabase, getDb, initDatabase, LATEST_SCHEMA_VERSION } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
-import { getCapture, insertCapture, deleteCapture } from '@main/services/db/captureRepo'
+import {
+  getCapture,
+  insertCapture,
+  deleteCapture,
+  listPendingTimestampCaptures,
+  setCaptureTrustedTime
+} from '@main/services/db/captureRepo'
 import {
   addTagToCapture,
   createTag,
@@ -1521,5 +1527,56 @@ describe('exhibit model', () => {
       manifestSeq: 7
     })
     expect(getCapture(capture.id)?.id).toBe(capture.id)
+  })
+
+  describe("another member's rows (#1811)", () => {
+    const author = { installationId: 'inst-alice', memberCode: 'AL' }
+    const received = {
+      url: 'https://example.com/received',
+      title: 'Received page',
+      hash: '7'.repeat(64),
+      timestamp: '2026-04-05T12:00:00.000Z'
+    }
+
+    it('refuses an author without an Exhibit Number', () => {
+      expect(() => insertCapture({ caseId, ...received, author })).toThrow(/no Exhibit Number/)
+      expect(listExhibits(caseId)).toEqual([])
+    })
+
+    it('refuses an author whose Member Code the roster rule would refuse', () => {
+      expect(() =>
+        insertCapture({
+          caseId,
+          ...received,
+          exhibitNumber: 1,
+          author: { ...author, memberCode: 'alice' }
+        })
+      ).toThrow(/invalid Member Code/)
+    })
+
+    it("writes the author onto the Exhibit and cites the author's code", () => {
+      const capture = insertCapture({
+        caseId,
+        ...received,
+        exhibitNumber: 3,
+        author,
+        committedAt: received.timestamp
+      })
+      expect(getExhibit(capture.id)).toMatchObject({
+        exhibitNumber: 3,
+        memberCode: 'AL',
+        authorInstallationId: 'inst-alice',
+        committedAt: received.timestamp
+      })
+      expect(getCapture(capture.id)?.exhibitCitation).toBe('AL-3')
+    })
+
+    it("leaves another member's Capture out of the pending timestamp list", () => {
+      const own = insertCapture({ caseId, ...received, hash: '8'.repeat(64) })
+      const theirs = insertCapture({ caseId, ...received, exhibitNumber: 1, author })
+      setCaptureTrustedTime(own.id, 'pending')
+      setCaptureTrustedTime(theirs.id, 'pending')
+      expect(listPendingTimestampCaptures().map(({ id }) => id)).toEqual([own.id])
+    })
   })
 })

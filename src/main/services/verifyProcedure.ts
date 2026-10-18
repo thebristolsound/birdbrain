@@ -9,7 +9,7 @@
 // hash feeds step 5), so per-step strings here would hide that coupling.
 
 export type VerifyStepNumber = 1 | 2 | 3 | 4 | 5 | 6
-export type VerifySubStep = '6a' | '6b' | '6c'
+export type VerifySubStep = '4a' | '6a' | '6b' | '6c'
 
 export interface VerifyStep {
   number: VerifyStepNumber
@@ -47,6 +47,14 @@ export const VERIFY_STEPS: readonly VerifyStep[] = [
     runbookTitle: 'Timestamp (canonical TSA verification)'
   }
 ]
+
+// The one sub-step verify.sh opens as a step of its own. It runs only for a
+// package that carries member chains, so a single-chain package's output keeps
+// the six steps above and nothing else.
+export const MEMBER_CHAINS_STEP: { id: VerifySubStep; scriptTitle: string } = {
+  id: '4a',
+  scriptTitle: 'member chains of a Shared Case'
+}
 
 export function verifyStep(number: VerifyStepNumber): VerifyStep {
   return VERIFY_STEPS[number - 1]

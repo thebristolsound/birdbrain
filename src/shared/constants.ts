@@ -86,6 +86,13 @@ export const MANIFEST_SCHEMA_VERSION = 5
 // (e.g. freetsa.org) are a documented dev/test fallback only.
 export const DEFAULT_TSA_URL = 'http://timestamp.digicert.com'
 
+// The two local SOCKS ports Tor listens on, offered as presets for the Tor Egress
+// (ADR-0032 rule 6). Birdbrain does not run Tor; the Operator's own Tor does.
+export const TOR_PROXY_PRESETS = [
+  { name: 'Tor Browser', proxyUrl: 'socks5://127.0.0.1:9150' },
+  { name: 'Tor service', proxyUrl: 'socks5://127.0.0.1:9050' }
+] as const
+
 // GitHub repository that hosts Birdbrain releases, the source repository
 // (ADR-0047). The updater service builds release-page URLs from this for the
 // "View release" notify action, and it mirrors the electron-builder `publish`

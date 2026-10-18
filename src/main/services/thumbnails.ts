@@ -92,7 +92,8 @@ export async function renderThumbnail(screenshot: Buffer): Promise<RenderedThumb
 export async function getThumbnail(
   caseId: string,
   captureId: string,
-  store: CaptureStore = defaultCaptureStore
+  store: CaptureStore = defaultCaptureStore,
+  { persist = true }: { persist?: boolean } = {}
 ): Promise<Buffer | null> {
   const thumbPath = store.thumbnailPaths(caseId, captureId).abs
 
@@ -114,7 +115,9 @@ export async function getThumbnail(
     const screenshot = await readFile(screenshotPath)
     const { bytes } = await renderThumbnail(screenshot)
 
-    await writeFile(thumbPath, bytes)
+    // `persist: false` is for another member's Capture (#1811): a file here would sit at the path
+    // its author's later `derivation` anchors, so the anchored file would never be fetched.
+    if (persist) await writeFile(thumbPath, bytes)
     return bytes
   } catch (error) {
     logger.error('thumbnails', 'thumbnails.generate_failed', { captureId: ident(captureId) }, error)

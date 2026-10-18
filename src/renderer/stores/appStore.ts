@@ -74,6 +74,10 @@ interface AppState {
   // Keyed by its Exhibit, which is the Capture's id. Selecting another Capture, or none,
   // drops it.
   viewerHit: FieldHit | null
+  // Counts the openings of a hit. A repeated search returns the same hit object, so the
+  // count, not the object, tells one opening from the next; the exact check's answer
+  // belongs to one opening.
+  viewerHitOpening: number
 
   setSessionActive: (active: boolean) => void
   setConnectedToExtension: (connected: boolean) => void
@@ -139,6 +143,7 @@ export const useAppStore = create<AppState>((set) => ({
   activeViewerTab: 'screenshot',
   waybackSelection: null,
   viewerHit: null,
+  viewerHitOpening: 0,
 
   setSessionActive: (active) => set({ sessionActive: active }),
   setConnectedToExtension: (connected) => set({ connectedToExtension: connected }),
@@ -151,7 +156,7 @@ export const useAppStore = create<AppState>((set) => ({
   setPanelCollapsedForced: (forced) => set({ panelCollapsedForced: forced }),
   setActiveViewerTab: (tab) => set({ activeViewerTab: tab }),
   setWaybackSelection: (selection) => set({ waybackSelection: selection }),
-  setViewerHit: (hit) => set({ viewerHit: hit }),
+  setViewerHit: (hit) => set((s) => ({ viewerHit: hit, viewerHitOpening: s.viewerHitOpening + 1 })),
   setSelectedCaptureId: (id) => set(selectedCaptureState(id)),
   setSelectedNoteId: (id) => set({ selectedNoteId: id }),
   setSelectedSignalId: (id) => set({ selectedSignalId: id }),

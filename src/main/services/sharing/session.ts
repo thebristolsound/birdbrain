@@ -1,10 +1,10 @@
 import { createHash, randomBytes } from 'crypto'
 import { existsSync, readFileSync, statSync } from 'fs'
 import { join } from 'path'
-import { ManifestEntrySchema, type ManifestEntry } from '@shared/schemas'
+import type { ManifestEntry } from '@shared/schemas'
 import type { CaseMember, SyncErrorKind } from '@shared/types'
 import { acceptedHeadBefore, canonicalStringify, verifyEntrySignature } from '@shared/verify'
-import { listCaseMembers, upsertCaseMember } from '@main/services/db/caseMemberRepo'
+import { listCaseMembers } from '@main/services/db/caseMemberRepo'
 import { getInstallationId } from '@main/services/installationId'
 import { signEntryHash } from '@main/services/signingKey'
 import {
@@ -22,11 +22,17 @@ import { resolveToolVersion } from '@main/services/toolVersion'
 import { defaultCaptureStore } from '@main/services/captureStore'
 import {
   acceptEntrySegment,
-  foreignCaseEntry,
   linesWithinBytes,
   nonEmptyLines,
+  storedEntries,
+  unstorableEntry,
   type ChainHeadRef
 } from '@main/services/sharing/entryAcceptance'
+import {
+  applyReceivedEvidence,
+  type ReceivedCaptures
+} from '@main/services/sharing/receivedEvidence'
+import { reconcileCaseMirrors } from '@main/services/trustedTime'
 import {
   acceptBlob,
   anchoredFiles,
@@ -41,6 +47,7 @@ import {
   type RowPage
 } from '@main/services/sharing/workingRows'
 import { beginSession, finishSession, writeMembersFile } from '@main/services/sharing/syncState'
+import { rebuildRosterCache } from '@main/services/sharing/rosterCache'
 import { isChainInstallationId } from '../../../packages/evidence-package-layout/index'
 import {
   applyRows,
@@ -52,6 +59,8 @@ import {
 import {
   CHALLENGE_BYTES,
   MAX_BLOB_BYTES,
+  MAX_FRAME_BYTES,
+  MAX_HANDSHAKE_FRAME_BYTES,
   MessageReader,
   PeerByeError,
   ProtocolError,
@@ -112,7 +121,7 @@ export interface ServeOptions {
   pageBytes?: number
 }
 
-export type SyncPhase = 'hello' | 'heads' | 'entries' | 'blobs' | 'rows' | 'merge'
+export type SyncPhase = 'hello' | 'heads' | 'entries' | 'blobs' | 'apply' | 'rows' | 'merge'
 
 export interface SyncError {
   kind: SyncErrorKind
@@ -128,6 +137,11 @@ export interface SyncSessionResult {
   blobsReceived: number
   bytesReceived: number
   rowsApplied: number
+  // Rows the apply step wrote for other members' Captures and other Exhibits, and the received
+  // Captures it removed on their author's deletion (receivedEvidence.ts).
+  capturesApplied: number
+  exhibitsApplied: number
+  removed: number
   // Index of the `merge` entry this session wrote, or null on a session that
   // brought no new entry.
   mergeIndex: number | null
@@ -136,6 +150,8 @@ export interface SyncSessionResult {
 
 export interface SyncSessionOptions {
   onPhase?: (phase: SyncPhase) => void
+  // Required, so no caller can skip applying an author's deletion by leaving it out.
+  receivedCaptures: ReceivedCaptures
 }
 
 // Why a listener ends a session before serving it; sent in `bye`.
@@ -237,60 +253,6 @@ export function liveSyncSource(caseId: string): SyncSource | null {
   }
 }
 
-// The entries a stored member chain holds. Every line was verified under the
-// member's key before it was stored, so every line parses; one that does not
-// is skipped rather than trusted.
-function storedEntries(jsonl: Buffer): ManifestEntry[] {
-  return readEntries(jsonl.toString('utf-8')).flatMap((raw) => {
-    const parsed = ManifestEntrySchema.safeParse(raw)
-    return parsed.success ? [parsed.data] : []
-  })
-}
-
-// Membership is the Owner's to write (sharedCase.ts), and `case_members` is
-// the cache of what the Owner's chain states: derived, never authoritative,
-// rebuilt from the chain (the design's "Case directory"). This rebuilds it
-// from the Owner's chain as stored, which is how a member learns who joined
-// or was revoked after it did. Idempotent: a member already held is not
-// added again and a revocation already held is kept, so it runs over the
-// whole stored chain every session, and a stored line an earlier session
-// left unapplied is applied by the next. A member-add whose id cannot name a
-// chain file is refused and returned; a write that fails throws, so the
-// session fails and the next one retries from the file.
-function rebuildRosterFromOwnerChain(caseId: string, entries: ManifestEntry[]): string[] {
-  const refused: string[] = []
-  for (const entry of entries) {
-    if (entry.type !== 'member-add' && entry.type !== 'member-revoke') continue
-    // The id names that member's chain file on every replica; one that is
-    // not a single path segment is refused here rather than written to.
-    if (!isChainInstallationId(entry.memberInstallationId)) {
-      refused.push(
-        `${entry.type} at index ${entry.index}: installation id ${JSON.stringify(entry.memberInstallationId)} cannot name a chain file`
-      )
-      continue
-    }
-    const existing = listCaseMembers(caseId).find(
-      (m) => m.installationId === entry.memberInstallationId
-    )
-    if (entry.type === 'member-add' && !existing) {
-      upsertCaseMember({
-        caseId,
-        installationId: entry.memberInstallationId,
-        publicKeyPem: entry.memberPublicKeyPem,
-        memberCode: entry.memberCode,
-        operatorName: entry.memberOperatorName,
-        nodeId: entry.nodeId,
-        role: entry.role,
-        addedAtIndex: entry.index,
-        revokedAtIndex: null
-      })
-    } else if (entry.type === 'member-revoke' && existing && existing.revokedAtIndex === null) {
-      upsertCaseMember({ ...existing, revokedAtIndex: entry.index })
-    }
-  }
-  return refused
-}
-
 async function sayBye(stream: ByteStream, reason: string): Promise<void> {
   try {
     await writeMessage(stream, { t: 'bye', reason })
@@ -307,7 +269,8 @@ export async function serveSyncSession(
   serveOptions: ServeOptions = {}
 ): Promise<void> {
   const pageBytes = serveOptions.pageBytes ?? PAGE_BYTES
-  const reader = new MessageReader(stream)
+  // Bounded until the dialer has named a roster member and proved its key.
+  const reader = new MessageReader(stream, MAX_HANDSHAKE_FRAME_BYTES)
   try {
     const hello = await expectMessage(reader, 'hello')
     const source = sourceFor(hello.caseId)
@@ -331,6 +294,7 @@ export async function serveSyncSession(
     if (!member || !verifyEntrySignature(expected, signature, member.publicKeyPem)) {
       return await sayBye(stream, BYE_REASONS.badProof)
     }
+    reader.allowFrames(MAX_FRAME_BYTES)
 
     for (let message = await reader.next(); message !== null; message = await reader.next()) {
       if (message.t === 'bye') return
@@ -376,7 +340,7 @@ export async function serveSyncSession(
 export async function pullFromPeer(
   caseId: string,
   stream: ByteStream,
-  options: SyncSessionOptions = {}
+  options: SyncSessionOptions
 ): Promise<SyncSessionResult> {
   let roster = listCaseMembers(caseId)
   if (roster.length === 0) throw new Error(`Case ${caseId} is not a Shared Case`)
@@ -389,6 +353,9 @@ export async function pullFromPeer(
     blobsReceived: 0,
     bytesReceived: 0,
     rowsApplied: 0,
+    capturesApplied: 0,
+    exhibitsApplied: 0,
+    removed: 0,
     mergeIndex: null,
     errors: []
   }
@@ -398,12 +365,12 @@ export async function pullFromPeer(
   const ownerId = roster.find((m) => m.role === 'owner')?.installationId
   const refusedMembers = new Set<string>()
   // The roster rebuilt from the Owner's chain as this replica stores it
-  // (rebuildRosterFromOwnerChain); on the Owner's own replica the roster is
-  // the one its own membership writes keep.
+  // (rosterCache.ts); on the Owner's own replica the roster is the one its
+  // own membership writes keep (membership.ts).
   const rebuildRoster = (): void => {
     if (ownerId === undefined || ownerId === self) return
     const stored = storedEntries(Buffer.from(readMemberChainText(caseDir, ownerId)))
-    for (const detail of rebuildRosterFromOwnerChain(caseId, stored)) {
+    for (const detail of rebuildRosterCache({ caseId, caseDir, ownerEntries: stored, self })) {
       if (refusedMembers.has(detail)) continue
       refusedMembers.add(detail)
       result.errors.push({ kind: 'rejected-entry', detail, installationId: ownerId })
@@ -414,18 +381,18 @@ export async function pullFromPeer(
   try {
     // Every stored member chain is judged before anything reads it, whether
     // or not this session will append to it: one stored whole by an older
-    // build, or by a session killed before its judgement, that names another
-    // Case is removed whole (foreignCaseEntry).
+    // build, or by a session killed before its judgement, that holds an entry
+    // this replica does not store is removed whole (unstorableEntry).
     for (const chain of readChainFileSnapshots(caseDir)) {
       if (chain.sourceCaseId !== undefined) continue
-      const foreign = foreignCaseEntry(storedEntries(chain.jsonl), caseId)
-      if (!foreign) continue
+      const refused = unstorableEntry(storedEntries(chain.jsonl), caseId)
+      if (!refused) continue
       truncateMemberChainLines(caseDir, chain.installationId, 0)
       result.errors.push({
         kind: 'rejected-entry',
-        detail: `entry ${foreign.index} of ${chain.installationId} names Case ${foreign.caseId}, this Case is ${caseId}`,
+        detail: `entry ${refused.index} of ${chain.installationId} ${refused.reason}`,
         installationId: chain.installationId,
-        index: foreign.index
+        index: refused.index
       })
     }
     // Before hello, so a revocation an earlier session stored but could not
@@ -573,29 +540,31 @@ export async function pullFromPeer(
           if (acceptance.outcome === 'newer-version' || acceptance.appended === 0) break
         }
       } finally {
-        // A chain names its Case in the entries after its last `import`; the
-        // ones before are a source Case's history (sharedCase.ts). That is
-        // judged over the chain as stored on every way out of the loop, the
-        // exceptional ones included, because the `import` may arrive on a
-        // later page and a session may end before it: a chain that names
-        // another Case is cut back to what this session found and is never
-        // counted as advanced. When what was stored before is itself foreign
-        // (an older build, or a session killed between a page and this
-        // check), the chain is removed whole.
+        // A chain names its Case, and the ids its files are found under, in
+        // the entries after its last `import`; the ones before are a source
+        // Case's history (sharedCase.ts). That is judged over the chain as
+        // stored on every way out of the loop, the exceptional ones included,
+        // because the `import` may arrive on a later page and a session may
+        // end before it: a chain holding an entry this replica does not store
+        // (unstorableEntry) is cut back to what this session found and is
+        // never counted as advanced, so neither the file step nor the apply
+        // step reads it. When what was stored before already holds one (an
+        // older build, or a session killed between a page and this check),
+        // the chain is removed whole.
         if (received > 0) {
           const stored = (): ManifestEntry[] =>
             storedEntries(Buffer.from(readMemberChainText(caseDir, installationId)))
-          const foreign = foreignCaseEntry(stored(), caseId)
-          if (foreign) {
+          const refused = unstorableEntry(stored(), caseId)
+          if (refused) {
             truncateMemberChainLines(caseDir, installationId, storedBefore)
-            if (foreignCaseEntry(stored(), caseId)) {
+            if (unstorableEntry(stored(), caseId)) {
               truncateMemberChainLines(caseDir, installationId, 0)
             }
             result.errors.push({
               kind: 'rejected-entry',
-              detail: `entry ${foreign.index} of ${installationId} names Case ${foreign.caseId}, this Case is ${caseId}`,
+              detail: `entry ${refused.index} of ${installationId} ${refused.reason}`,
               installationId,
-              index: foreign.index
+              index: refused.index
             })
             received = 0
             head = null
@@ -663,6 +632,31 @@ export async function pullFromPeer(
       }
     }
 
+    // Received evidence (#1811): rows for the other members' Captures and Exhibits whose files
+    // are now on disk, and their deletions, in a transaction of its own that commits before any
+    // working-layer row is asked for, so those rows can reference them.
+    options.onPhase?.('apply')
+    let inserted = 0
+    try {
+      const applied = await applyReceivedEvidence({
+        caseId,
+        storageRoot,
+        self,
+        roster,
+        store: defaultCaptureStore,
+        receivedCaptures: options.receivedCaptures
+      })
+      result.capturesApplied = applied.capturesInserted.length
+      result.exhibitsApplied = applied.exhibitsInserted.length
+      result.removed = applied.removed.length
+      result.errors.push(...applied.errors)
+      inserted = applied.capturesInserted.length + applied.exhibitsInserted.length
+    } catch (err) {
+      fail('local', `received evidence could not be applied: ${(err as Error).message}`)
+    }
+    // A stamp can arrive in a later session than the Capture it stamps, and only with new entries.
+    if (advanced.length > 0 || inserted > 0) reconcileCaseMirrors(caseId)
+
     // 5. Rows: every other member's working-layer rows above the version this
     // replica holds for them, applied only under that member's signature and
     // only above the stored version (workingRows.ts). The cursor is read from
@@ -702,9 +696,10 @@ export async function pullFromPeer(
     // Every row this session received lands in one transaction with foreign
     // keys deferred to its commit (the design's "Working-layer rows" rule,
     // ruling of 2026-10-15): a row may reference one from a later page or
-    // another author. Until #1811 writes Capture rows for other members'
-    // Captures, a row that references one this replica lacks rolls back the
-    // session's rows as a whole; the next session asks from the same cursors.
+    // another author. The apply step above has written the rows of every
+    // received Capture whose files arrived; a row that references one this
+    // replica still lacks rolls back the session's rows as a whole, and the
+    // next session asks from the same cursors.
     if (received.length > 0) {
       try {
         result.rowsApplied += applyRows(received).applied

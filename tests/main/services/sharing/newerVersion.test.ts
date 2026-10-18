@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest'
+import { randomUUID } from 'crypto'
 import { mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -76,7 +77,7 @@ describe('an entry from a newer schema (#1512)', () => {
       peers.caseDirOf(CASE_ID),
       {
         type: 'exhibit',
-        exhibitId: 'from-the-future',
+        exhibitId: randomUUID(),
         caseId: CASE_ID,
         kind: 'document',
         origin: 'manual-upload',

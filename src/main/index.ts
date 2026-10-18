@@ -6,6 +6,7 @@ import {
   dialog,
   shell,
   session as electronSession,
+  webContents as electronWebContents,
   webFrameMain
 } from 'electron'
 import { join, resolve } from 'path'
@@ -38,15 +39,23 @@ import {
   sanitizeWebviewPreferences,
   webviewPolicyFor,
   MHTML_PARTITION,
+  WAYBACK_PARTITION,
   WEBVIEW_PARTITIONS
 } from '@main/webviewPolicy'
 import { forwardGuestMouseDown } from '@main/guestMouseDown'
-import { initSettings, getSettings, onThemeChange } from '@main/services/settings'
+import { initSettings, getSettings, onEgressChange, onThemeChange } from '@main/services/settings'
+import {
+  createRoutedSession,
+  currentEgress,
+  webRtcPolicyFor,
+  type RoutedSession
+} from '@main/services/egress'
 import { titleBarOptions, titleBarOverlay, windowBackgroundColor } from '@main/windowChrome'
 import { initInstallationId, getInstallationId } from '@main/services/installationId'
 import { initSigningKey, SigningKeyUnacknowledgedError } from '@main/services/signingKey'
 import { initServerToken } from '@main/services/serverToken'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
+import { SharingService } from '@main/services/sharing/sharingService'
 import { createTimestampWorker } from '@main/services/timestampWorker'
 import { runExhibitBackfill } from '@main/services/exhibitBackfill'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
@@ -66,6 +75,7 @@ import { ident, tag } from '@main/services/logSafe'
 import { detectInstallFormat } from '@main/services/diagnostics'
 import { markCleanExit, startSession } from '@main/services/sessionLog'
 import { IPC_CHANNELS, type DeepLinkTarget, type SelectorRematchedEvent } from '@shared/ipc'
+import type { EgressSetting } from '@shared/types'
 import { sendEvent } from '@main/ipcWrap'
 
 let mainWindow: BrowserWindow | null = null
@@ -77,6 +87,9 @@ let windowThemeWatcher: (() => void) | null = null
 let pendingNavigate: DeepLinkTarget | null = null
 // Update-delivery service; disposed on quit.
 let updaterService: UpdaterService | null = null
+// The sharing service, closed on quit so a listening transport does not
+// outlive the window.
+let sharingService: SharingService | null = null
 
 // Registered before whenReady so a failure during startup is still captured.
 // logger.* is a no-op until initLogger runs, which is safe by construction.
@@ -175,6 +188,9 @@ app.on('child-process-gone', (_event, details) => {
 // already hardened.
 let webviewSessionsHardened = false
 
+// Gates the Wayback partition on the Egress; set at startup, before any window.
+let waybackRoute: RoutedSession | null = null
+
 // Denies permissions, downloads and off-allow-list requests on every partition a
 // webview may run on. Runs before the window exists, so no guest can attach ahead
 // of its own session's handlers. Both permission handlers are set: a request
@@ -204,7 +220,10 @@ function hardenWebviewSessions(): void {
     // can issue hundreds and the fact worth keeping is the allow-list, which is
     // written down in webviewPolicy.ts rather than inferred from a log.
     guestSession.webRequest.onBeforeRequest((details, callback) => {
-      callback({ cancel: decideWebviewRequest({ partition, url: details.url }) === 'block' })
+      const unrouted = partition === WAYBACK_PARTITION && waybackRoute?.allowsRequests() === false
+      callback({
+        cancel: unrouted || decideWebviewRequest({ partition, url: details.url }) === 'block'
+      })
     })
   }
 }
@@ -357,6 +376,9 @@ app.on('web-contents-created', (_event, contents) => {
   if (contents.getType() !== 'webview') return
   const partition = webviewPartitionOf(contents)
   contents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  if (partition === WAYBACK_PARTITION) {
+    contents.setWebRTCIPHandlingPolicy(webRtcPolicyFor(getSettings().egress))
+  }
   // The stored-page viewer closes its link menu on a press in the guest (#1708).
   if (partition === MHTML_PARTITION) forwardGuestMouseDown(contents)
   if (webviewPolicyFor(partition)?.allowSubsequentNavigation === false) {
@@ -631,7 +653,25 @@ if (!gotSingleInstanceLock) {
           }
         },
         getChannel: () => getSettings().releaseChannel,
-        isAutoCheckEnabled: () => getSettings().autoCheckForUpdates
+        isAutoCheckEnabled: () => getSettings().autoCheckForUpdates,
+        getEgress: () => getSettings().egress
+      })
+
+      // Shared Cases (#1810). The transport provider stays at its null
+      // default until IrohTransport is wired in (#1809), so every network
+      // call refuses `sharing-unavailable` and nothing listens.
+      sharingService = new SharingService({
+        receivedCaptures: captureLifecycle,
+        emitChanged: (payload) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            sendEvent(mainWindow.webContents, IPC_CHANNELS.SHARING_CHANGED, payload)
+          }
+        },
+        emitJoinProgress: (payload) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            sendEvent(mainWindow.webContents, IPC_CHANNELS.SHARING_JOIN_PROGRESS, payload)
+          }
+        }
       })
 
       // Register IPC handlers
@@ -641,6 +681,7 @@ if (!gotSingleInstanceLock) {
         recaptureService,
         updaterService,
         sessionService,
+        sharingService,
         enqueueExhibitTimestamp: (exhibitId) => timestampWorker.enqueueExhibit(exhibitId)
       })
 
@@ -650,6 +691,33 @@ if (!gotSingleInstanceLock) {
       // present as ready to capture while silently receiving nothing.
       await startCaptureServer({ selectorLifecycle, captureLifecycle, sessionService })
       startExtensionConnectionCheck()
+
+      // The Wayback replay pane follows the Egress (ADR-0032). Its partition refuses
+      // every request until it carries the current Egress (createRoutedSession), set
+      // up before the window exists, so no replay loads ahead of its proxy. Its
+      // guests keep WebRTC's UDP inside the proxy, re-set on every change.
+      const setWaybackWebRtc = (egress: EgressSetting): void => {
+        for (const contents of electronWebContents.getAllWebContents()) {
+          if (
+            contents.getType() === 'webview' &&
+            webviewPartitionOf(contents) === WAYBACK_PARTITION
+          ) {
+            contents.setWebRTCIPHandlingPolicy(webRtcPolicyFor(egress))
+          }
+        }
+      }
+      waybackRoute = createRoutedSession(
+        electronSession.fromPartition(WAYBACK_PARTITION),
+        (err) => {
+          logger.error('app', 'app.egress_apply_failed', undefined, err)
+        },
+        currentEgress,
+        setWaybackWebRtc
+      )
+      onEgressChange((egress) => {
+        waybackRoute?.sync(egress)
+        setWaybackWebRtc(egress)
+      })
 
       // Create window and connect to capture server
       const win = createWindow()
@@ -749,6 +817,7 @@ if (!gotSingleInstanceLock) {
 
     stopExtensionConnectionCheck()
     updaterService?.dispose()
+    await sharingService?.close()
     await stopCaptureServer()
     closeDatabase()
   })

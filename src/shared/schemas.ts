@@ -1168,6 +1168,96 @@ const TsaUrlEditSchema = z.string().transform((value, ctx) => {
   return url
 })
 
+export type ProxyUrlParse = { ok: true; url: string } | { ok: false; reason: string }
+
+// The one definition of a usable Egress proxy address (ADR-0032 rule 2), shared
+// by the settings load and edit paths and the Settings pane. SOCKS5 or HTTP only:
+// SOCKS4 resolves site names on this computer, and `socks://` is SOCKS4 to
+// Chromium. No user name or password, because Chromium cannot log in to a SOCKS5
+// proxy and Birdbrain stores no passwords. The address is returned as
+// `scheme://host:port`, the form Chromium's proxy rules take.
+// A host name of dot-separated labels, a dotted IPv4 address with each part in
+// range, or a bracketed IPv6 address. Chromium turns an out-of-range address into
+// an empty proxy list, which fails without naming the proxy.
+function isProxyHost(hostname: string): boolean {
+  if (/^\[[0-9a-f:.]+\]$/i.test(hostname)) return true
+  const labels = hostname.split('.')
+  if (!labels.every((part) => /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(part))) return false
+  if (!/^[0-9]+$/.test(labels[labels.length - 1])) return true
+  return labels.length === 4 && labels.every((part) => /^[0-9]+$/.test(part) && Number(part) <= 255)
+}
+
+export function parseProxyUrl(value: string): ProxyUrlParse {
+  const trimmed = value.trim()
+  if (!trimmed) return { ok: false, reason: 'Enter the proxy address, as socks5://host:port.' }
+  let parsed: URL
+  try {
+    parsed = new URL(trimmed)
+  } catch {
+    return { ok: false, reason: 'Not a proxy address. Use socks5://host:port or http://host:port.' }
+  }
+  const { protocol, username, password, hostname, port, pathname, search, hash } = parsed
+  if (protocol === 'socks4:' || protocol === 'socks4a:' || protocol === 'socks:') {
+    return { ok: false, reason: 'SOCKS4 resolves site names on this computer. Use socks5://.' }
+  }
+  if (protocol !== 'socks5:' && protocol !== 'http:') {
+    return { ok: false, reason: 'Use a socks5:// or http:// proxy address.' }
+  }
+  if (username || password) {
+    return {
+      ok: false,
+      reason: 'A proxy that needs a login is not supported. Remove the user name and password.'
+    }
+  }
+  if (!hostname) return { ok: false, reason: 'The proxy address names no host.' }
+  // A host name or an IP address and nothing else. Chromium's proxy rules read `=`
+  // and `;` as rule syntax, so `socks5://http=x;y:9050` would read there as "no
+  // proxy for http" while the setting said Tor.
+  if (!isProxyHost(hostname)) {
+    return { ok: false, reason: 'The proxy host must be a host name or an IP address.' }
+  }
+  // `URL` drops a scheme's default port, so `http://proxy:80` arrives with none.
+  const effectivePort = port || (protocol === 'http:' ? '80' : '')
+  if (!effectivePort) {
+    return { ok: false, reason: 'Add the proxy port, as in socks5://127.0.0.1:9050.' }
+  }
+  if ((pathname && pathname !== '/') || search || hash) {
+    return { ok: false, reason: 'A proxy address is only scheme://host:port.' }
+  }
+  return { ok: true, url: `${protocol}//${hostname}:${effectivePort}` }
+}
+
+const ProxyUrlSchema = z.string().transform((value, ctx) => {
+  const result = parseProxyUrl(value)
+  if (!result.ok) {
+    ctx.addIssue({ code: 'custom', message: result.reason })
+    return z.NEVER
+  }
+  return result.url
+})
+
+// The Egress an edit may store. A stored Egress that no longer parses is never
+// coerced to a working one: the loader reads it as unavailable (settings.ts).
+export const EgressSettingSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('direct') }),
+  z.object({ kind: z.literal('proxy'), proxyUrl: ProxyUrlSchema, label: z.string().trim() }),
+  z.object({
+    kind: z.literal('tor'),
+    // Tor listens for SOCKS5 only.
+    proxyUrl: ProxyUrlSchema.refine((url) => url.startsWith('socks5://'), {
+      message: 'Tor takes a socks5:// address.'
+    }),
+    label: z.string().trim()
+  })
+])
+
+// On load, also the unavailable marker, which a save over an unparseable file can
+// write back. It stays until the Operator chooses an Egress.
+export const StoredEgressSchema = z.union([
+  EgressSettingSchema,
+  z.object({ kind: z.literal('unavailable') })
+])
+
 export const BirdbrainSettingsSchema = z.object({
   captureScreenshots: z.boolean(),
   dedupeWindowSeconds: z.number(),
@@ -1215,7 +1305,8 @@ export const BirdbrainSettingsSchema = z.object({
   // `is_demo` probe in the database is what holds when it does (#1301).
   demoCaseSeeded: z.boolean().optional().default(false),
   releaseChannel: z.enum(['stable', 'beta']).optional().default('stable'),
-  autoCheckForUpdates: z.boolean().optional().default(true)
+  autoCheckForUpdates: z.boolean().optional().default(true),
+  egress: StoredEgressSchema.optional().default({ kind: 'direct' })
 })
 
 // Used on load: user may have an older settings file missing newer keys, so
@@ -1224,7 +1315,9 @@ export const BirdbrainSettingsSchema = z.object({
 // are stripped rather than rejected, so an older file still parses.
 export const PartialBirdbrainSettingsSchema = BirdbrainSettingsSchema.partial()
 
-// Used on edit: the load schema with `tsaUrl` strict. See TsaUrlEditSchema.
+// Used on edit: the load schema with `tsaUrl` strict (see TsaUrlEditSchema), and an
+// Egress the Operator chose, never the unavailable marker.
 export const SettingsUpdateSchema = PartialBirdbrainSettingsSchema.extend({
-  tsaUrl: TsaUrlEditSchema.optional().default(DEFAULT_TSA_URL)
+  tsaUrl: TsaUrlEditSchema.optional().default(DEFAULT_TSA_URL),
+  egress: EgressSettingSchema.optional()
 })

@@ -44,8 +44,8 @@ interface Chain {
   responseExtras: ResponseExtra[]
 }
 
-// Frames and dedicated workers are the targets the engine records (plan D17); a target of any
-// other type is in neither target count.
+// Frames, dedicated workers and service workers are the targets the engine records (plan D17);
+// an attached target of any other type always counts as unrecorded.
 const RECORDED_TARGET_TYPES = new Set(['iframe', 'worker', 'service_worker'])
 
 // The page's own debugger session, as `wc.debugger` reports it and step 0's streams are read.
@@ -277,13 +277,15 @@ export const collectExchanges = (input: CollectorInput): CollectedExchanges => {
     .sort(byStart)
     .flatMap((chain) => toExchanges(chain, input, mainFrameId))
 
-  // The page always counts as recorded: when its own `Network.enable` fails, the render keeps no
-  // Transaction Record at all (plan step 9).
-  let recordedTargets = 1
-  let unrecordedTargets = 0
+  // Each target is in exactly one count (plan D17, "The two counts"). The page is a target too:
+  // it counts as recorded only when the caller lists its session, since an auto-attach that
+  // failed, did not answer, or was never sent means what runs below the page may not have been seen.
+  const recorded = (sessionId: string, type: string): boolean =>
+    RECORDED_TARGET_TYPES.has(type) && (input.recordedSessions?.has(sessionId) ?? false)
+  let recordedTargets = input.recordedSessions?.has(PAGE_SESSION) ? 1 : 0
+  let unrecordedTargets = 1 - recordedTargets
   for (const [sessionId, type] of childTargets) {
-    if (!RECORDED_TARGET_TYPES.has(type)) continue
-    if (input.recordedSessions?.has(sessionId)) recordedTargets += 1
+    if (recorded(sessionId, type)) recordedTargets += 1
     else unrecordedTargets += 1
   }
 

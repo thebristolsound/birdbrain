@@ -33,8 +33,11 @@ export interface CollectorInput {
   /** Keyed by request id. */
   requestPostData?: ReadonlyMap<string, RequestPostDataResult>
   /**
-   * Child sessions whose `Network.enable` answered. An attached frame, dedicated worker, or service
-   * worker whose session is not here counts as unrecorded (plan D17).
+   * The targets whose setup answered, by session id (plan D17, "The two counts"): the page's own
+   * session `''` when its `Target.setAutoAttach` answered, and each attached frame, dedicated
+   * worker or service worker whose `Network.enable` and `Target.setAutoAttach` both answered. A
+   * target not listed here, the page included, counts as unrecorded; so does an attached target of
+   * any other type, listed or not. Absent, every target counts as unrecorded.
    */
   recordedSessions?: ReadonlySet<string>
 }

@@ -136,8 +136,8 @@ describe('collectExchanges on the step 0 streams', () => {
       bodiesOmitted: 0,
       incompleteRequestBodies: 0,
       webSockets: 0,
-      recordedTargets: 1,
-      unrecordedTargets: 0
+      recordedTargets: 0,
+      unrecordedTargets: 1
     })
   })
 
@@ -187,7 +187,8 @@ describe('collectExchanges on the step 0 streams', () => {
 })
 
 // The known answers for each step 0 stream with an invented body for every finished request:
-// all ten counts, so a change that moves any one of them fails here.
+// all ten counts, so a change that moves any one of them fails here. The spike sent no
+// `Target.setAutoAttach`, so the page is the one target and counts as unrecorded (plan D17).
 const SPIKE_COUNTS: Record<string, Partial<Record<string, number>>> = {
   'q2-savepage': { exchanges: 10 },
   'q3-consent-network-rule': { exchanges: 2, failed: 3 },
@@ -214,10 +215,28 @@ describe('collectExchanges counts on every step 0 stream', () => {
       bodiesOmitted: 0,
       incompleteRequestBodies: 0,
       webSockets: 0,
-      recordedTargets: 1,
-      unrecordedTargets: 0,
+      recordedTargets: 0,
+      unrecordedTargets: 1,
       ...expected
     })
+  })
+
+  it('counts the page as recorded on every stream once its session is listed', () => {
+    for (const name of SPIKE_RUNS) {
+      const events = spikeStream(name)
+      const raw = collectExchanges({ events, responseBodies: inventedBodies(events) })
+      const attached = collectExchanges({
+        events,
+        responseBodies: inventedBodies(events),
+        recordedSessions: new Set([''])
+      })
+      expect(attached.exchanges, name).toEqual(raw.exchanges)
+      expect(attached.counts, name).toEqual({
+        ...raw.counts,
+        recordedTargets: 1,
+        unrecordedTargets: 0
+      })
+    }
   })
 })
 
@@ -376,7 +395,7 @@ describe('collectExchanges across sessions (plan D17)', () => {
     const { exchanges, counts } = collectExchanges({
       events: frameSequence(frame),
       responseBodies: frameBodies,
-      recordedSessions: new Set(['frame-session'])
+      recordedSessions: new Set(['', 'frame-session'])
     })
     const [document, stylesheet] = exchanges
     expect(document).toMatchObject({
@@ -399,7 +418,7 @@ describe('collectExchanges across sessions (plan D17)', () => {
   })
 
   it('counts a request on a child session like one on the page session', () => {
-    const recordedSessions = new Set(['frame-session'])
+    const recordedSessions = new Set(['', 'frame-session'])
     const onChild = collectExchanges({
       events: frameSequence(frame),
       responseBodies: frameBodies,
@@ -442,7 +461,7 @@ describe('collectExchanges across sessions (plan D17)', () => {
         worker('Network.loadingFinished', { requestId: 'worker.1' })
       ],
       responseBodies: body('worker.1'),
-      recordedSessions: new Set(['worker-session', 'service-worker-session'])
+      recordedSessions: new Set(['', 'worker-session', 'service-worker-session'])
     })
     expect(exchanges.map(({ requestId, state }) => [requestId, state])).toEqual([
       ['frame-doc', 'in-flight'],
@@ -464,12 +483,13 @@ describe('collectExchanges across sessions (plan D17)', () => {
           sessionId: 'service-worker-session',
           targetInfo: { type: 'service_worker' }
         })
-      ]
+      ],
+      recordedSessions: new Set([''])
     })
     expect(counts).toMatchObject({ recordedTargets: 1, unrecordedTargets: 1 })
   })
 
-  it('treats an attached frame as unrecorded when no session is named as recorded', () => {
+  it('treats every target as unrecorded when no session is named as recorded', () => {
     const { counts } = collectExchanges({
       events: [
         page('Target.attachedToTarget', {
@@ -478,7 +498,39 @@ describe('collectExchanges across sessions (plan D17)', () => {
         })
       ]
     })
-    expect(counts).toMatchObject({ recordedTargets: 1, unrecordedTargets: 1 })
+    expect(counts).toMatchObject({ recordedTargets: 0, unrecordedTargets: 2 })
+  })
+
+  it('keeps the record and counts the page as unrecorded when its auto-attach failed', () => {
+    // The step 0 cross-site iframe run is this stream: no auto-attach, so the frame's document
+    // started on the page's session and never finished there.
+    const events = spikeStream('q4-cross-site-iframe')
+    const { exchanges, counts } = collectExchanges({
+      events,
+      responseBodies: inventedBodies(events),
+      recordedSessions: new Set()
+    })
+    expect(exchanges.map(pathOf)).toContain('/frame-child')
+    expect(counts).toMatchObject({
+      exchanges: 2,
+      inFlight: 1,
+      recordedTargets: 0,
+      unrecordedTargets: 1
+    })
+  })
+
+  it('counts an attached target of another type as unrecorded, listed or not', () => {
+    const attached = (sessionId: string, type: string) =>
+      page('Target.attachedToTarget', { sessionId, targetInfo: { type } })
+    const { counts } = collectExchanges({
+      events: [
+        attached('shared-worker-session', 'shared_worker'),
+        attached('browser-session', 'browser'),
+        attached('frame-session', 'iframe')
+      ],
+      recordedSessions: new Set(['', 'shared-worker-session', 'frame-session'])
+    })
+    expect(counts).toMatchObject({ recordedTargets: 2, unrecordedTargets: 2 })
   })
 })
 

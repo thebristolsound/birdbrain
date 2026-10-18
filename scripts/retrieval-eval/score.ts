@@ -215,13 +215,16 @@ export function measureUnreviewed(
   }
 }
 
-export interface FieldBuildMeasure {
-  /** Build rows by outcome after the full rebuild. */
-  outcomes: Array<{ outcome: string; count: number }>
-  /** Every Capture's field records built again, and their index, in milliseconds. */
-  fullRebuildMs: number
-  /** Median time to build one Capture's field records, in milliseconds. */
+/** The Case search field records, built for every Capture by the Settings rebuild's pass. */
+export interface FieldIndexReport {
+  /** The extractor version that built them. */
+  extractor: string
+  /** Full build of every Capture's records, in milliseconds. */
+  fullBuildMs: number
+  /** Median time to build one Capture's records again, in milliseconds. */
   incrementalMedianMs: number | null
+  outcomes: Array<{ outcome: string; builds: number }>
+  records: Array<{ field: string; records: number }>
 }
 
 export interface EvalReport {
@@ -243,7 +246,7 @@ export interface EvalReport {
   fullRebuildMs: number
   /** Median time to re-index one Capture's text, in milliseconds. */
   incrementalMedianMs: number | null
-  fieldBuild: FieldBuildMeasure
+  fieldIndex: FieldIndexReport
   checks: CheckTally
   unreviewed: UnreviewedMeasure
 }
@@ -327,20 +330,24 @@ export function renderReport(report: EvalReport): string {
   lines.push('')
   lines.push(`- Full rebuild of the Extracted Text index: ${ms(report.fullRebuildMs)} ms.`)
   lines.push(`- Re-indexing one Capture's text, median: ${ms(report.incrementalMedianMs)} ms.`)
-  const { fieldBuild } = report
+  const { fieldIndex } = report
   lines.push(
-    `- Full rebuild of the field records and their index: ${ms(fieldBuild.fullRebuildMs)} ms.`
+    `- Full build of the search field records (\`${fieldIndex.extractor}\`): ` +
+      `${ms(fieldIndex.fullBuildMs)} ms.`
   )
   lines.push(
-    `- Building one Capture's field records, median: ${ms(fieldBuild.incrementalMedianMs)} ms.`
+    `- Building one Capture's search field records again, median: ` +
+      `${ms(fieldIndex.incrementalMedianMs)} ms.`
   )
-  lines.push(
-    `- Field build rows by outcome: ${
-      fieldBuild.outcomes.length > 0
-        ? fieldBuild.outcomes.map(({ outcome, count }) => `${outcome} ${count}`).join(', ')
-        : 'none'
-    }.`
-  )
+  const outcomes = fieldIndex.outcomes.map(({ outcome, builds }) => `${outcome} ${builds}`)
+  lines.push(`- Search field builds by outcome: ${outcomes.join(', ') || 'none'}.`)
+  lines.push('')
+  lines.push('| Field | Records | Records per Capture |')
+  lines.push('| --- | --- | --- |')
+  for (const { field, records } of fieldIndex.records) {
+    const perCapture = report.captures === 0 ? 0 : (records / report.captures).toFixed(2)
+    lines.push(`| ${field} | ${records} | ${perCapture} |`)
+  }
   lines.push('')
 
   const { checks } = report

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { createHash } from 'crypto'
 import { execFileSync } from 'child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
@@ -7,6 +7,7 @@ import { join } from 'path'
 import { AsnConvert } from '@peculiar/asn1-schema'
 import { TimeStampReq, MessageImprint, PKIStatus } from '@peculiar/asn1-tsp'
 import { buildTimestampRequest, requestTimestamp } from '@main/services/timestamp'
+import { initSettings } from '@main/services/settings'
 import { parseTimestampToken } from '@shared/verify'
 import { buildSyntheticToken, buildTimestampResponse } from '../../helpers/timestampFixtures'
 import { HAS_OPENSSL } from '../../helpers/openssl'
@@ -92,8 +93,17 @@ describe('parseTimestampToken', () => {
 })
 
 describe('requestTimestamp', () => {
+  // The request follows the Egress, read from settings; Direct, the default here,
+  // sends it with the global fetch the tests spy on.
+  let settingsDir: string
+  beforeEach(() => {
+    settingsDir = mkdtempSync(join(tmpdir(), 'birdbrain-tsa-settings-'))
+    initSettings(settingsDir)
+  })
+
   afterEach(() => {
     vi.restoreAllMocks()
+    rmSync(settingsDir, { recursive: true, force: true })
   })
 
   it('POSTs an RFC 3161 query and returns the token DER on a granted response', async () => {

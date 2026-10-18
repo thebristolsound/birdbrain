@@ -389,6 +389,25 @@ describe('CapturesRoute', () => {
       expect(within(result).queryByText(/All selected captures were removed/)).toBeNull()
     })
 
+    it("says a teammate's capture was kept rather than claiming every capture was removed", async () => {
+      deleteMany.mockResolvedValue({
+        outcomes: [
+          { captureId: 'cap1', status: 'deleted' },
+          { captureId: 'cap2', status: 'rejected', reason: 'not_author' }
+        ],
+        deletedIds: ['cap1'],
+        failedIds: [],
+        manifest: { baseIndex: 4, committedEntries: 1 }
+      } satisfies BatchDeleteResult)
+
+      const result = await runBatchDelete()
+
+      expect(
+        within(result).getByText(/1 was kept: only the member who captured it can delete it/)
+      ).toBeDefined()
+      expect(within(result).queryByText(/All selected captures were removed/)).toBeNull()
+    })
+
     it('names the artifact stage when the files themselves could not be removed', async () => {
       deleteMany.mockResolvedValue({
         outcomes: [

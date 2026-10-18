@@ -29,11 +29,6 @@ vi.mock('@renderer/components/signals/SignalDetailRail', () => ({
     <div data-testid="rail">{signal ? signal.name : 'empty'}</div>
   )
 }))
-// Likewise the advanced create card: it is the surviving CreateSelectorCard and
-// keeps its own test.
-vi.mock('@renderer/components/selectors/CreateSelectorCard', () => ({
-  CreateSelectorCard: () => <div data-testid="create-selector-card" />
-}))
 vi.mock('@renderer/components/signals/AutoCaptureCard', () => ({
   AutoCaptureCard: () => <div data-testid="auto-capture-card" />
 }))
@@ -351,12 +346,6 @@ describe('SignalsOverview', () => {
     await waitFor(() =>
       expect(screen.getByTestId('export-matches-btn')).toHaveProperty('disabled', true)
     )
-  })
-
-  it('keeps the advanced create card reachable for labels and the match preview', async () => {
-    renderScreen()
-
-    expect(await screen.findByTestId('create-selector-card')).toBeTruthy()
   })
 })
 

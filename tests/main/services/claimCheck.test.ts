@@ -14,6 +14,7 @@ import { getCapture, insertCapture } from '@main/services/db/captureRepo'
 import { getExhibitSearchBuild, replaceExhibitFields } from '@main/services/db/searchFieldRepo'
 import { initManifest } from '@main/services/manifest'
 import { buildExhibitFields } from '@main/services/search/fieldIndex'
+import { FIELD_EXTRACTOR_VERSION } from '@main/services/search/fieldExtractor'
 import { CAPTURE_LINK_BUDGETS } from '@main/services/htmlParts'
 import { checkFieldHit } from '@main/services/investigation/claimCheck'
 
@@ -130,7 +131,7 @@ describe('checkFieldHit: present', () => {
     expect(result.record).toMatchObject({
       exhibitId: id,
       field: 'link.href',
-      locator: { source: 'html-part', part: 0, extractor: 'fields/1' }
+      locator: { source: 'html-part', part: 0, extractor: FIELD_EXTRACTOR_VERSION }
     })
   })
 

@@ -41,6 +41,7 @@ import { initStorage } from '@main/services/storage'
 import { ingestMhtmlCapture } from '@main/services/captureLifecycle'
 import { readExtractionHtml } from '@main/services/extraction/extractionSource'
 import { extractData } from '@main/services/dataExtractor'
+import { FIELD_EXTRACTOR_VERSION } from '@main/services/search/fieldExtractor'
 import { uploadToStaging } from '@main/services/staging'
 import { fillerPage } from './filler'
 import { QUERIES } from './queries'
@@ -55,6 +56,7 @@ import {
   tallyChecks,
   type CheckTally,
   type EvalReport,
+  type FieldIndexReport,
   type IndexSize,
   type PathAnswer,
   type PathLatency,
@@ -363,9 +365,7 @@ function indexSizes(): IndexSize[] {
     .prepare(
       `SELECT name, SUM(pgsize) AS bytes FROM dbstat
         WHERE name LIKE 'captures_fts%' OR name = 'capture_texts'
-           OR name LIKE 'extracted_data%'
-           OR name LIKE 'exhibit_search%' OR name LIKE 'idx_exhibit_search%'
-           OR name LIKE 'sqlite_autoindex_exhibit_search%'
+           OR name LIKE 'extracted_data%' OR name LIKE '%exhibit_search%'
         GROUP BY name ORDER BY name`
     )
     .all() as IndexSize[]
@@ -392,6 +392,24 @@ function earlierLatency(caseId: string): PathLatency[][] {
   const last = JSON.parse(readFileSync(REPORT_FILE, 'utf-8')) as Partial<EvalReport>
   if (last.caseId !== caseId || !last.latency) return []
   return [...(last.earlierLatency ?? []), last.latency]
+}
+
+function fieldCounts(): Pick<FieldIndexReport, 'outcomes' | 'records'> {
+  const db = getDb()
+  return {
+    outcomes: db
+      .prepare(
+        `SELECT outcome, COUNT(*) AS builds FROM exhibit_search_builds
+          GROUP BY outcome ORDER BY outcome`
+      )
+      .all() as FieldIndexReport['outcomes'],
+    records: db
+      .prepare(
+        `SELECT field, COUNT(*) AS records FROM exhibit_search_fields
+          GROUP BY field ORDER BY field`
+      )
+      .all() as FieldIndexReport['records']
+  }
 }
 
 async function measure(record: CaseRecord, earlier: PathLatency[][]): Promise<EvalReport> {
@@ -422,16 +440,12 @@ async function measure(record: CaseRecord, earlier: PathLatency[][]): Promise<Ev
   const fullRebuildMs = timeMs(() =>
     db.exec("INSERT INTO captures_fts(captures_fts) VALUES ('rebuild')")
   )
-  // The Settings rebuild's field pass: every Capture's records, then their index.
-  const fieldRebuildStart = performance.now()
+  // The pass the Settings rebuild runs, yields between Captures included. build() built each
+  // Capture's records after its ingest, so this pass replaces them.
+  const fieldStart = performance.now()
   await rebuildAllFields()
-  const fieldFullRebuildMs = performance.now() - fieldRebuildStart
-  const outcomes = db
-    .prepare(
-      `SELECT outcome, COUNT(*) AS count FROM exhibit_search_builds
-        WHERE case_id = ? GROUP BY outcome ORDER BY outcome`
-    )
-    .all(record.caseId) as Array<{ outcome: string; count: number }>
+  const fieldBuildMs = performance.now() - fieldStart
+  const fieldTotals = fieldCounts()
   // Before the re-index samples below, which add index segments.
   const sizes = indexSizes()
   // An UPDATE fires capture_texts_au, which deletes and re-inserts the row's
@@ -443,9 +457,9 @@ async function measure(record: CaseRecord, earlier: PathLatency[][]): Promise<Ev
       capture_id: string
     }>
   ).map((row) => row.capture_id)
-  const sample = spread(captureIds, INCREMENTAL_SAMPLES)
-  const incremental = sample.map((id) => timeMs(() => reindex.run(id)))
-  const fieldIncremental = sample.map((id) => timeMs(() => buildExhibitFields(id)))
+  const sampled = spread(captureIds, INCREMENTAL_SAMPLES)
+  const incremental = sampled.map((id) => timeMs(() => reindex.run(id)))
+  const fieldIncremental = sampled.map((id) => timeMs(() => buildExhibitFields(id)))
 
   const checks = await checkEveryHit(record, scored)
 
@@ -468,10 +482,11 @@ async function measure(record: CaseRecord, earlier: PathLatency[][]): Promise<Ev
     indexSizes: sizes,
     fullRebuildMs,
     incrementalMedianMs: percentile(incremental, 50),
-    fieldBuild: {
-      outcomes,
-      fullRebuildMs: fieldFullRebuildMs,
-      incrementalMedianMs: percentile(fieldIncremental, 50)
+    fieldIndex: {
+      extractor: FIELD_EXTRACTOR_VERSION,
+      fullBuildMs: fieldBuildMs,
+      incrementalMedianMs: percentile(fieldIncremental, 50),
+      ...fieldTotals
     },
     checks,
     unreviewed: measureUnreviewed(view, record.targets, EXPECTED_PLACEMENTS, percentile(reads, 50))

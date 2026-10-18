@@ -9,7 +9,13 @@ import type {
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
 import { defaultCaptureStore, type CaptureStore } from '@main/services/captureStore'
-import { readManifestSnapshot, verifyManifestChainText } from '@main/services/manifest'
+import {
+  importEntriesOf,
+  readManifestSnapshot,
+  verifyManifestChainText,
+  type ManifestImportEntry
+} from '@main/services/manifest'
+import { signedCaptureId } from '@main/services/captureLifecycle'
 import { getPublicKeyPem } from '@main/services/signingKey'
 
 // #622. A capture delete is write-ahead: the signed `deletion` entry is
@@ -82,7 +88,9 @@ export function scanUnreconciledDeletions(
   let casesScanned = 0
 
   for (const { id: caseId, name: caseName } of cases) {
+    let caseDir: string
     let entries: Record<string, unknown>[]
+    let imports: ManifestImportEntry[]
     let chainValid: boolean
     let chainReason: string | undefined
     try {
@@ -98,7 +106,7 @@ export function scanUnreconciledDeletions(
       // missing manifest as clean. Emptiness alone is not the test — initManifest
       // creates an empty file, so a case that has never written an entry is
       // legitimately empty and genuinely has nothing to reconcile.
-      const caseDir = store.caseDir(caseId)
+      caseDir = store.caseDir(caseId)
       if (!existsSync(join(caseDir, MANIFEST_FILENAME))) {
         unscanned.push({
           caseId,
@@ -109,6 +117,7 @@ export function scanUnreconciledDeletions(
       }
       const snapshot = readManifestSnapshot(caseDir)
       entries = snapshot.entries
+      imports = importEntriesOf(snapshot)
       const chain = verifyManifestChainText(snapshot.jsonl.toString('utf-8'), { publicKeyPem })
       chainValid = chain.valid
       chainReason = chain.reason
@@ -134,19 +143,31 @@ export function scanUnreconciledDeletions(
     // an imported chain carries the source installation's case id, and archive
     // import remaps colliding ids, so matching on the entry field could alias a
     // finding onto an unrelated case's capture.
-    const liveIds = new Set(
+    const deletedIds = new Set(deletions.map((entry) => entry.captureId))
+    const liveIds = new Map(
       captureRepo
-        .getCapturesByIds([...new Set(deletions.map((entry) => entry.captureId))])
+        .getCapturesByIds([...deletedIds])
         .filter((capture) => capture.caseId === caseId)
-        .map((capture) => capture.id)
+        .map((capture) => [capture.id, capture.id])
     )
+    // A Capture an import renamed is deleted under the id its signed entry
+    // carries (#1815), so its entry is matched to the row by the same rule.
+    if (imports.length > 0 && liveIds.size < deletedIds.size) {
+      for (const capture of captureRepo.listCaptures(caseId)) {
+        const { id, manifestIndex } = capture
+        const named = manifestIndex === undefined ? undefined : entries[manifestIndex]?.captureId
+        if (named === id || typeof named !== 'string' || !deletedIds.has(named)) continue
+        if (signedCaptureId(capture, entries, imports, caseDir) === named) liveIds.set(named, id)
+      }
+    }
 
     for (const entry of deletions) {
-      if (!liveIds.has(entry.captureId)) continue
+      const rowId = liveIds.get(entry.captureId)
+      if (rowId === undefined) continue
       findings.push({
         caseId,
         caseName,
-        captureId: entry.captureId,
+        captureId: rowId,
         manifestIndex: entry.index,
         entryTimestamp: typeof entry.timestamp === 'string' ? entry.timestamp : '',
         operatorName: typeof entry.operatorName === 'string' ? entry.operatorName : '',

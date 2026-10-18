@@ -47,9 +47,38 @@ import type {
   Persona,
   PersonaImportResult,
   PersonaStorageState,
-  SyncState
+  SyncState,
+  CaseMember,
+  SharingChangedEvent,
+  SharingInvite,
+  SharingInvitePreview,
+  SharingJoinProgressEvent,
+  SharingJoinResult,
+  SharingMembers,
+  SharingSyncOutcome,
+  SharingExclusion
 } from '@shared/types'
 import type { CaseManifestSnapshot } from '@shared/manifestSnapshot'
+import type {
+  AddSubjectParams,
+  CaseChange,
+  CaseRevision,
+  ChooseSubjectParams,
+  ClaimCheck,
+  DecideJointParams,
+  DecideSpanParams,
+  InvestigationView,
+  KeepSubjectParams,
+  MarkOwnIdentifierParams,
+  OwnIdentifierEntry,
+  RunProgressEvent,
+  RunRequest,
+  SetCopyMarkParams,
+  SetSourceClassParams,
+  SetWithheldParams,
+  SpanDetail,
+  UnmarkOwnIdentifierParams
+} from '@shared/investigation'
 import type {
   CreateCaseParams,
   UpdateCaseParams,
@@ -268,6 +297,37 @@ export interface BirdbrainAPI {
   }
   sharing: {
     getSyncState(caseId: string): Promise<SyncState>
+    createInvite(caseId: string, ownerMemberCode?: string): Promise<SharingInvite>
+    cancelInvite(caseId: string, inviteId: string): Promise<void>
+    readInvite(invite: string): Promise<SharingInvitePreview>
+    join(invite: string): Promise<SharingJoinResult>
+    approveJoin(caseId: string, requestId: string, memberCode: string): Promise<CaseMember>
+    declineJoin(caseId: string, requestId: string): Promise<void>
+    revoke(caseId: string, installationId: string): Promise<CaseMember>
+    excludeExhibit(caseId: string, exhibitId: string, reason?: string): Promise<SharingExclusion>
+    syncNow(caseId: string): Promise<SharingSyncOutcome[]>
+    getMembers(caseId: string): Promise<SharingMembers>
+  }
+  // Case investigation (engine plan, E10); served by the fake engine in unpackaged builds.
+  investigation: {
+    getRevision(caseId: string): Promise<CaseRevision>
+    getView(caseId: string): Promise<InvestigationView>
+    getSpan(caseId: string, spanId: string): Promise<SpanDetail>
+    checkSpan(caseId: string, spanId: string): Promise<ClaimCheck>
+    startRun(request: RunRequest): Promise<string>
+    cancelRun(caseId: string, runId: string): Promise<void>
+    getChanges(caseId: string, runId: string): Promise<CaseChange[]>
+    decideJoint(params: DecideJointParams): Promise<CaseRevision>
+    decideSpan(params: DecideSpanParams): Promise<CaseRevision>
+    chooseSubject(params: ChooseSubjectParams): Promise<CaseRevision>
+    addSubject(params: AddSubjectParams): Promise<CaseRevision>
+    keepSubject(params: KeepSubjectParams): Promise<CaseRevision>
+    setSourceClass(params: SetSourceClassParams): Promise<CaseRevision>
+    setCopyMark(params: SetCopyMarkParams): Promise<CaseRevision>
+    setWithheld(params: SetWithheldParams): Promise<CaseRevision>
+    listOwnIdentifiers(caseId: string): Promise<OwnIdentifierEntry[]>
+    markOwnIdentifier(params: MarkOwnIdentifierParams): Promise<CaseRevision>
+    unmarkOwnIdentifier(params: UnmarkOwnIdentifierParams): Promise<CaseRevision>
   }
   staging: {
     upload(caseId: string): Promise<StagingFile[]>
@@ -331,6 +391,9 @@ export interface BirdbrainAPI {
   onUpdateStatus(callback: (status: UpdateStatus) => void): () => void
   onGuestFrameReplaced(callback: (event: GuestFrameReplacedEvent) => void): () => void
   onGuestMouseDown(callback: (event: GuestMouseDownEvent) => void): () => void
+  onSharingChanged(callback: (event: SharingChangedEvent) => void): () => void
+  onSharingJoinProgress(callback: (event: SharingJoinProgressEvent) => void): () => void
+  onInvestigationProgress(callback: (event: RunProgressEvent) => void): () => void
   testPipeline(): Promise<{ success: boolean; durationMs: number; error?: string }>
   testHttp(): Promise<{ success: boolean; durationMs: number; error?: string }>
   extractedData: {

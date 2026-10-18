@@ -185,7 +185,7 @@ export interface FieldHit {
   contentHash: string
   /** The Capture's title. */
   title: string
-  /** `link.href`, `link.alt`, or `header.<name in lower case>`. */
+  /** A field name `fieldLabel()` in `@shared/searchFields` labels, such as `link.href`. */
   field: string
   /** The span as stored, cut to its first 200 characters. */
   preview: string
@@ -489,7 +489,24 @@ export interface BirdbrainSettings {
   // version's prerelease suffix in initSettings().
   releaseChannel: ReleaseChannel
   autoCheckForUpdates: boolean
+  // Where Birdbrain's own traffic leaves from (ADR-0032). One setting for the
+  // installation.
+  egress: EgressSetting
 }
+
+// The Egress setting. A Proxy or Tor names a SOCKS5 or HTTP proxy that needs no
+// login, as a normalised `scheme://host:port`; `label` is the Operator's own name
+// for it ('' for none), which a Capture rendered through it records.
+export type EgressSetting =
+  | { kind: 'direct' }
+  | { kind: EgressKind; proxyUrl: string; label: string }
+  // The saved Egress could not be read. An unknown privacy preference takes the
+  // restrictive reading (#1169), and the Egress fails closed (ADR-0032 rule 2):
+  // nothing goes out on the routes it governs until the Operator chooses one.
+  | { kind: 'unavailable' }
+
+// An Egress Birdbrain can route by.
+export type KnownEgress = Exclude<EgressSetting, { kind: 'unavailable' }>
 
 // Update-delivery state machine surfaced to the renderer. Phase 1 (notify) only
 // ever reaches idle → checking → up-to-date | available | error; the
@@ -674,6 +691,7 @@ export const LOG_SOURCES = [
   'staging',
   'persona',
   'searchFields',
+  'sharing',
   'renderer'
 ] as const
 export type LogSource = (typeof LOG_SOURCES)[number]
@@ -789,6 +807,9 @@ export const LOG_CODES = [
   'app.extension_sync_failed',
   'app.extension_sweep_failed',
   'app.extension_version_stale',
+  // The Wayback replay partition refused the Egress proxy (ADR-0032). The pane then
+  // refuses every request until the setting names a route the partition takes.
+  'app.egress_apply_failed',
   // The at-rest key-protection gate (#414): recorded either way so the log
   // carries the same signal the Settings/Diagnostics indicator shows live.
   'signingKey.unprotected_key_acknowledged',
@@ -855,7 +876,12 @@ export const LOG_CODES = [
   'searchFields.source_missing',
   // The unreviewed view's read that threw: the view says it could not load, and this line
   // holds the error.
-  'searchFields.unreviewed_failed'
+  'searchFields.unreviewed_failed',
+  // Shared Case sharing (#1810): an incoming stream whose handler threw on
+  // this installation (the peer saw the stream close), and a joiner's first
+  // session that failed after the Case was adopted (Sync now retries it).
+  'sharing.stream_failed',
+  'sharing.first_session_failed'
 ] as const
 export type LogCode = (typeof LOG_CODES)[number]
 
@@ -1586,3 +1612,128 @@ export interface SyncState {
   transfer: SyncTransfer | null
   lastError: { kind: SyncErrorKind; at: string } | null
 }
+
+// Why a sharing command refused (#1810). Every code reaches the renderer as
+// `IpcFailure.code`, so a screen can name the refusal rather than parse a
+// message. The table of when each is raised is in the #1810 plan, section 4.
+export const SHARING_ERROR_CODES = [
+  'invite-malformed',
+  'invite-expired',
+  'invite-reused',
+  'invite-cancelled',
+  'invite-unknown',
+  'invite-not-found',
+  'join-signature-invalid',
+  'join-request-unknown',
+  'declined',
+  'already-member',
+  'member-code-rejected',
+  'welcome-invalid',
+  'case-exists',
+  'owner-unreachable',
+  'not-owner',
+  'not-shared',
+  'not-a-member',
+  'already-revoked',
+  'owner-not-revocable',
+  'exhibit-not-found',
+  'exhibit-ambiguous',
+  'already-excluded',
+  'operator-name-required',
+  'sharing-unavailable'
+] as const
+export type SharingErrorCode = (typeof SHARING_ERROR_CODES)[number]
+
+// What `sharing:createInvite` returns: the string the Owner hands over, and
+// the id the Owner cancels it by. The secret inside the string is never held
+// anywhere else.
+export interface SharingInvite {
+  inviteId: string
+  invite: string
+  expiresAt: string
+}
+
+// What `sharing:readInvite` shows before the joiner commits.
+export interface SharingInvitePreview {
+  caseId: string
+  ownerName: string
+  expiresAt: string
+}
+
+export interface SharingOpenInvite {
+  inviteId: string
+  expiresAt: string
+}
+
+// A join waiting for the Owner's approval, as the approval dialog shows it.
+export interface SharingPendingJoin {
+  requestId: string
+  caseId: string
+  installationId: string
+  operatorName: string
+  // SHA-256 hex of the offered key's DER form; the dialog groups the first 32
+  // characters in fours.
+  fingerprint: string
+  suggestedMemberCode: string
+  receivedAt: string
+}
+
+export interface SharingMember extends CaseMember {
+  // Null when the roster key does not parse; never attributed by default.
+  fingerprint: string | null
+}
+
+// The payload of `sharing:getMembers`.
+export interface SharingMembers {
+  caseId: string
+  installationId: string
+  isOwner: boolean
+  members: SharingMember[]
+  invites: SharingOpenInvite[]
+  pendingJoins: SharingPendingJoin[]
+}
+
+export type SharingJoinStep = 'connecting' | 'waiting' | 'adopting' | 'syncing'
+
+export interface SharingJoinProgressEvent {
+  caseId: string
+  ownerName: string
+  step: SharingJoinStep
+}
+
+export interface SharingChangedEvent {
+  caseId: string
+}
+
+export interface SharingJoinResult {
+  caseId: string
+  caseName: string
+}
+
+// An exclusion as the Shared Case walk lists it (SharedCaseExclusion in
+// `@shared/verify`, which the renderer project does not compile); the fields
+// are the same, so the walk's result is assignable here.
+export interface SharingExclusion {
+  exhibitId: string
+  authorInstallationId: string
+  reason?: string
+  // Index in the Owner's chain of the `exclude`.
+  index: number
+  timestamp: string
+  operatorName: string
+  sourceCaseId?: string
+}
+
+// One member's outcome from `sharing:syncNow`.
+export type SharingSyncOutcome = { installationId: string } & (
+  | {
+      outcome: 'synced'
+      entries: number
+      blobs: number
+      rowsApplied: number
+      errors: number
+    }
+  | { outcome: 'no-address' }
+  | { outcome: 'unreachable' }
+  | { outcome: 'failed'; detail: string }
+)

@@ -216,6 +216,45 @@ describe('createCaptureLifecycle.duplicate (#827)', () => {
     expect(verifyManifestChain(caseDir).valid).toBe(true)
   })
 
+  it('re-anchors the Egress the source entry records (ADR-0032)', async () => {
+    const routed = createCaptureLifecycle({
+      selectorLifecycle: { runActiveSelectorsForCapture: vi.fn() } as unknown as SelectorLifecycle,
+      egressIsDirect: () => false
+    })
+    const { capture: proxied } = await routed.ingest({
+      caseId,
+      url: 'https://example.com/routed',
+      title: 'Routed',
+      timestamp: '2026-04-05T12:00:00.000Z',
+      stream: Readable.from([Buffer.from(MHTML_BODY)]) as unknown as ReadableStream<Uint8Array>,
+      textContent: TEXT,
+      headers: {},
+      browserVersion: 'Chrome/120',
+      userAgent: 'birdbrain/1.0.1 Chrome/120 Electron/44',
+      httpStatus: 200,
+      operatorId: 'op-source',
+      operatorName: 'Original Operator',
+      toolVersion: '0.1.0',
+      method: 'background',
+      egress: { kind: 'tor', label: 'Tor Browser' }
+    })
+
+    const result = await lifecycle.duplicate(proxied.id)
+    if (result.status !== 'duplicated') throw new Error('expected a duplicate')
+
+    const entry = manifestLines().at(-1)!
+    expect(entry).toMatchObject({
+      method: 'duplicate',
+      egressKind: 'tor',
+      egressLabel: 'Tor Browser',
+      userAgent: 'birdbrain/1.0.1 Chrome/120 Electron/44',
+      tlsSkipped: 'egress-not-direct',
+      schemaVersion: 5
+    })
+    expect(ManifestEntrySchema.safeParse(entry).success).toBe(true)
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+  })
+
   it('copies no tags, notes or extracted data — only the bytes and their provenance', async () => {
     const { getDb } = await import('@main/services/db/core')
     const db = getDb()

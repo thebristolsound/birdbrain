@@ -375,6 +375,9 @@ export async function backfillCase(
   const describes = rowDescriber(caseDir, own.imports)
   for (const exhibit of exhibits) {
     if (exhibit.kind !== 'capture') continue
+    // Another member's Capture: its `manifestSeq` indexes its author's chain, not this one, and
+    // only its author signs a derivation for it (#1811).
+    if (exhibit.authorInstallationId !== null) continue
     // Checked before the signed id is resolved, so a launch spends nothing on
     // a row that is already recorded.
     if (hasDerivation(exhibit.id, THUMBNAIL_DERIVATION)) continue

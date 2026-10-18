@@ -68,6 +68,19 @@ export const queryKeys = {
   exhibitVerification: (caseId: string, exhibitId: string) =>
     ['exhibits', 'verification', caseId, exhibitId] as const,
   manifestSnapshot: (caseId: string) => ['manifest', 'snapshot', caseId] as const,
+  // Case investigation (engine plan, E10). Each family is keyed per Case, so a write can
+  // invalidate one Case's reads by prefix.
+  investigationRevision: (caseId: string) => ['investigation', 'revision', caseId] as const,
+  investigationView: (caseId: string) => ['investigation', 'view', caseId] as const,
+  investigationSpans: (caseId: string) => ['investigation', 'span', caseId] as const,
+  investigationSpan: (caseId: string, spanId: string) =>
+    ['investigation', 'span', caseId, spanId] as const,
+  investigationCheck: (caseId: string, spanId: string) =>
+    ['investigation', 'check', caseId, spanId] as const,
+  investigationChangesAll: (caseId: string) => ['investigation', 'changes', caseId] as const,
+  investigationChanges: (caseId: string, runId: string) =>
+    ['investigation', 'changes', caseId, runId] as const,
+  ownIdentifiers: (caseId: string) => ['investigation', 'ownIdentifiers', caseId] as const,
   waybackLookup: (captureId: string) => ['wayback', 'lookup', captureId] as const,
   waybackPins: (captureId: string) => ['wayback', 'pins', captureId] as const,
   waybackCasePins: (caseId: string) => ['wayback', 'casePins', caseId] as const,

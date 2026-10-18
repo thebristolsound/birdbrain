@@ -19,9 +19,13 @@ test.describe('Recapture (background capture)', () => {
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
     const addr = server.address()
     baseUrl = typeof addr === 'object' && addr ? `http://127.0.0.1:${addr.port}` : ''
+    // The fixture is served on 127.0.0.1, which a background capture refuses unless an
+    // unpackaged build is launched with this switch (#1726). Set before the app launches.
+    process.env.BIRDBRAIN_E2E_ALLOW_LOOPBACK = '1'
   })
 
   test.afterAll(async () => {
+    delete process.env.BIRDBRAIN_E2E_ALLOW_LOOPBACK
     await new Promise<void>((resolve) => server.close(() => resolve()))
   })
 

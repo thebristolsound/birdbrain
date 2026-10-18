@@ -323,13 +323,15 @@ describe('renderReport', () => {
       ],
       fullRebuildMs: 1,
       incrementalMedianMs: null,
-      fieldBuild: {
+      fieldIndex: {
+        extractor: 'fields/9',
+        fullBuildMs: 12.5,
+        incrementalMedianMs: 0.25,
         outcomes: [
-          { outcome: 'built', count: 9 },
-          { outcome: 'partial', count: 1 }
+          { outcome: 'built', builds: 9 },
+          { outcome: 'partial', builds: 1 }
         ],
-        fullRebuildMs: 250,
-        incrementalMedianMs: 0.25
+        records: [{ field: 'link.href', records: 25 }]
       },
       checks: tallyChecks([
         {
@@ -363,9 +365,11 @@ describe('renderReport', () => {
     expect(markdown).toContain('| Case search | image-link-host | 0.30 | 0.40 | 0.10 | 0.20 | 3 |')
     expect(markdown).toContain('| captures_fts_data | 4096 | 410 |')
     expect(markdown).toContain('| exhibit_search_fields_fts_data | 8192 | 819 |')
-    expect(markdown).toContain('- Full rebuild of the field records and their index: 250.00 ms.')
-    expect(markdown).toContain("- Building one Capture's field records, median: 0.25 ms.")
-    expect(markdown).toContain('- Field build rows by outcome: built 9, partial 1.')
+    expect(markdown).toContain('- Full build of the search field records (`fields/9`): 12.50 ms.')
+    expect(markdown).toContain(
+      "- Building one Capture's search field records again, median: 0.25 ms."
+    )
+    expect(markdown).toContain('- Search field builds by outcome: built 9, partial 1.')
     expect(markdown).toContain('| image-link-host | 1 | 0 | 1 |')
     expect(markdown).toContain(
       '- In all: 1 present, 0 absent, 1 cannot be checked. False locators (absent or cannot be ' +
@@ -390,5 +394,48 @@ describe('renderReport', () => {
       '- `rare-address` under Rare identifiers `ada.penrose@larchfield.example.org`: no.'
     )
     expect(markdown).toContain("- The view's read, median: 2.00 ms.")
+  })
+
+  it('states the search field build and its records per field', () => {
+    const report: EvalReport = {
+      generatedAt: '2026-10-16T00:00:00.000Z',
+      toolVersion: '0.0.0',
+      caseId: 'case-1',
+      captures: 10,
+      targets: 5,
+      fillers: 5,
+      queries: [],
+      scored: [],
+      latency: [],
+      earlierLatency: [],
+      indexSizes: [{ name: 'exhibit_search_fields', bytes: 8192 }],
+      fullRebuildMs: 1,
+      incrementalMedianMs: 0.1,
+      fieldIndex: {
+        extractor: 'fields/9',
+        fullBuildMs: 12.5,
+        incrementalMedianMs: null,
+        outcomes: [
+          { outcome: 'built', builds: 9 },
+          { outcome: 'partial', builds: 1 }
+        ],
+        records: [
+          { field: 'header.from', records: 3 },
+          { field: 'link.href', records: 25 }
+        ]
+      },
+      checks: tallyChecks([]),
+      unreviewed: measureUnreviewed(VIEW, {}, [], null)
+    }
+    const markdown = renderReport(report)
+    expect(markdown).toContain('| exhibit_search_fields | 8192 | 819 |')
+    expect(markdown).toContain('- Full build of the search field records (`fields/9`): 12.50 ms.')
+    expect(markdown).toContain("- Building one Capture's search field records again, median: - ms.")
+    expect(markdown).toContain('- Search field builds by outcome: built 9, partial 1.')
+    expect(markdown).toContain('| header.from | 3 | 0.30 |')
+    expect(markdown).toContain('| link.href | 25 | 2.50 |')
+    expect(
+      renderReport({ ...report, fieldIndex: { ...report.fieldIndex, outcomes: [] } })
+    ).toContain('- Search field builds by outcome: none.')
   })
 })

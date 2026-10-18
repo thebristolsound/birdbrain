@@ -40,9 +40,11 @@ function hitPlace({ locator }: FieldHit): string {
 
 // The Links tab collapses repeats and keeps no offsets, so a hit finds its row by value:
 // a link target by its resolved address, and alt text by the row's text, which is an
-// image's alt when the link has no text of its own.
+// image's alt when the link has no text of its own. Any other field read from the page,
+// such as an image address or a tracking code, is not a link and marks no row.
 function matchesHit(link: CaptureLink, hit: FieldHit): boolean {
-  return hit.field === 'link.href' ? link.href === hit.norm : link.text === hit.norm
+  if (hit.field === 'link.href') return link.href === hit.norm
+  return hit.field === 'link.alt' && link.text === hit.norm
 }
 
 function LinkRow({

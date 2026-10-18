@@ -1,6 +1,7 @@
 # Case retrieval first slice: evaluation
 
-**Status:** Baseline recorded. Step 6 adds the slice's own search.
+**Status:** Baseline recorded, and the second field extractor version measured. Step 6 adds the
+slice's own search.
 **Date:** 2026-10-09
 **Audience:** Maintainer and implementers of the retrieval first slice.
 
@@ -56,7 +57,9 @@ figures of the others. After a timed rebuild of `captures_fts`, the run records 
 Capture from SQLite's `dbstat` table, the median time to re-index one Capture's text over 20
 Captures spread across the Case, and how many committed Captures no live Note names and no
 Persisted Match covers. The plan's locator checks and the unreviewed view's
-groups have nothing to measure until steps 5 and 6.
+groups have nothing to measure until steps 5 and 6. Since the second field extractor version
+(#1890), the run also builds the Case search field records and measures them; the section on
+that version says how.
 
 The queries differ from the indexed wording:
 
@@ -118,6 +121,61 @@ latency change as the slice's.
 - **The unreviewed set is large.** 631 of 1,000 Captures have no Note and no Persisted Match. The
   unreviewed view's groups have to shrink that list to something an Operator can read; step 6
   measures how far they do.
+
+## Field extractor `fields/2`, 2026-10-17
+
+The second version of the field extractor (#1890, engine plan E11) adds To, Cc, Path and
+References headers, image addresses, tracking codes and cryptocurrency addresses from the stored
+page, and email and web addresses from the Extracted Text. To measure it, the runner now builds
+the Case search field records after the timed `captures_fts` rebuild, through the pass the
+Settings rebuild runs (`rebuildAllFields()`), and times that build. It then records the bytes of
+every table and index whose name contains `exhibit_search`, the records per field, the build
+outcomes, and the median time to build one Capture's records again over the same 20 Captures the
+text re-index samples.
+
+Each run built a fresh 1,000-Capture Case with `pnpm eval:retrieval --eval-captures=1000`: two
+runs at commit `1d758124`, where the extractor was still `fields/1`, and two at `2833cfe1`, with
+`fields/2`. Where the two runs of a version differ, both figures are given, first run first. The
+`fields/2` runs predate commit `e3b3c3bc`, which reads each new kind in one pass that stops at the
+row ceiling; the evaluation was not run again after it.
+
+| Measure                                      | `fields/1`           | `fields/2`            |
+| -------------------------------------------- | -------------------- | --------------------- |
+| Field records                                | 17,762               | 18,739                |
+| Full field build of 1,000 Captures           | 12.03 s and 17.47 s  | 19.96 s and 31.49 s   |
+| Building one Capture's records again, median | 10.65 ms and 6.53 ms | 16.02 ms and 10.33 ms |
+| Build outcomes                               | 1,000 built          | 1,000 built           |
+
+Bytes per Capture for each table and index, as `dbstat` reports them:
+
+| Table or index                             | `fields/1`      | `fields/2`      |
+| ------------------------------------------ | --------------- | --------------- |
+| `exhibit_search_builds`                    | 262             | 262             |
+| `exhibit_search_fields`                    | 3,510           | 3,682           |
+| `exhibit_search_fields_fts_config`         | 4               | 4               |
+| `exhibit_search_fields_fts_data`           | 2,204           | 2,310           |
+| `exhibit_search_fields_fts_docsize`        | 184             | 197             |
+| `exhibit_search_fields_fts_idx`            | 12              | 12              |
+| `idx_exhibit_search_builds_case_id`        | 53              | 53              |
+| `idx_exhibit_search_fields_exhibit_id`     | 913 and 926     | 987 and 975     |
+| `idx_exhibit_search_fields_lookup`         | 1,925           | 2,044           |
+| `sqlite_autoindex_exhibit_search_builds_1` | 53 and 49       | 53              |
+| All of them, from their summed bytes       | 9,122 and 9,130 | 9,605 and 9,593 |
+
+Both versions recorded 14,763 `link.href` records, 2,993 `link.alt` records and one record each
+for six headers. `fields/2` added 976 `text.address` records and one `header.to` record.
+
+- **Size grew by about 5%.** The new records are addresses in page text. The Case's pages hold no
+  web address in their text, no tracking code and no cryptocurrency address, and every image in
+  them has a `data:` source, which `fields/2` does not record. So this Case measures what
+  addresses in text cost, and leaves the size of the other new kinds unmeasured.
+- **The build took longer in both pairs of runs.** The `fields/2` full build took 1.66 and 1.80
+  times as long as the `fields/1` build of the same pair, and the one-Capture median 1.50 and 1.58
+  times. `fields/2` reads each decoded part again with ioc-extractor and the tracking code
+  patterns, and the text again with ioc-extractor and a web address pattern. The absolute times
+  are rough: other work kept the machine's load average between 25 and 53 when it was sampled
+  around the runs, and the `captures_fts` rebuild, which this version does not change, took
+  between 53 ms and 328 ms across the four runs.
 
 ## Smoke runs, 2026-10-10
 

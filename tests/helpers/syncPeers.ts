@@ -35,6 +35,7 @@ import {
   readMemberChainText
 } from '@main/services/manifest'
 import { createCaptureLifecycle, ingestMhtmlCapture } from '@main/services/captureLifecycle'
+import type { ExtractionClient } from '@main/services/extraction/processClient'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { MemoryHub } from '@main/services/sharing/transport'
 import {
@@ -48,6 +49,7 @@ import {
 } from '@main/services/sharing/session'
 import type { ChainHead, WireRow } from '@main/services/sharing/messages'
 import type { CaseMember } from '@shared/types'
+import { inProcessExtraction } from './inProcessExtraction'
 // @ts-expect-error - build script with no type declarations; the tsconfigs exclude scripts/
 import { prepareProfile } from '../../scripts/dev-seed/profile.mjs'
 
@@ -432,19 +434,31 @@ export function recordSource(caseId: string, peer: Peer): RecordedSource {
 
 // One session: the active peer dials a listener answering from `source`, with
 // a Capture Lifecycle of its own unless the test passes one. The post-ingest
-// work of received Captures runs on setImmediate, so one turn is waited out
-// after the session: it lands in this peer's database before a later
-// `activate` switches the singletons to another peer's.
+// work of received Captures runs on setImmediate and asks the extraction
+// process (#598) for each page's rows, which arrive on a later turn, so the
+// helper waits out the turn and then every answer: both land in this peer's
+// database before a later `activate` switches the singletons to another peer's.
 export async function pull(
   caseId: string,
   source: SyncSource,
   options: Partial<SyncSessionOptions> = {},
   serve: ServeOptions = {}
 ): Promise<SyncSessionResult> {
+  const answers: Promise<unknown>[] = []
+  const extraction = inProcessExtraction()
+  const awaitedExtraction: ExtractionClient = {
+    extract: (request) => {
+      const answer = extraction.extract(request)
+      answers.push(answer)
+      return answer
+    },
+    dispose: () => extraction.dispose()
+  }
   const receivedCaptures =
     options.receivedCaptures ??
     createCaptureLifecycle({
-      selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} })
+      selectorLifecycle: createSelectorLifecycle({ emitRematched: () => {} }),
+      extraction: awaitedExtraction
     })
   const hub = new MemoryHub({ chunkSize: 4096 })
   const dialer = hub.createTransport('dialer')
@@ -460,6 +474,10 @@ export async function pull(
   const stream = await dialer.openStream(await dialer.dial(listener.ticket))
   const result = await pullFromPeer(caseId, stream, { ...options, receivedCaptures })
   await served
+  await new Promise((resolve) => setImmediate(resolve))
+  await Promise.all(answers)
+  // The lifecycle writes the rows in its own continuation of each answer; one
+  // more turn puts that write before the return without leaning on reaction order.
   await new Promise((resolve) => setImmediate(resolve))
   return result
 }

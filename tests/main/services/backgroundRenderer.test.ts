@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
 import { writeFileSync } from 'fs'
 import sharp from 'sharp'
 import { trimTrailingBackground, renderPageInHiddenWindow } from '@main/services/backgroundRenderer'
+import { RefusedAddressError } from '@main/services/localAddressPolicy'
 
 // Mutable harness the fake BrowserWindow/webContents read from, so each test can
 // steer the render (network, scroll steps, load failure, consent blocker).
@@ -11,7 +12,11 @@ const ctl = vi.hoisted(() => ({
   loadUrlShouldHang: false,
   blocker: null as unknown,
   lastWindow: null as FakeWindow | null,
-  createdWindows: 0
+  createdWindows: 0,
+  // A navigation hop the fake load reports before it settles, as Chromium does for a
+  // server redirect (`will-redirect`) or a page that navigates itself (`will-navigate`).
+  hop: null as { event: string; url: string; isMainFrame: boolean } | null,
+  lastHop: null as { preventDefault: ReturnType<typeof vi.fn> } | null
 }))
 
 type Handler = (...args: unknown[]) => void
@@ -99,6 +104,13 @@ const { MockBrowserWindow } = vi.hoisted(() => {
         async loadURL(url: string) {
           if (ctl.loadUrlShouldReject) throw new Error('navigation failed')
           if (ctl.loadUrlShouldHang) return new Promise<void>(() => {})
+          if (ctl.hop) {
+            const details = { ...ctl.hop, preventDefault: vi.fn() }
+            ctl.lastHop = details
+            handlers.get(ctl.hop.event)?.(details)
+            // A prevented hop aborts the load, as Chromium does.
+            if (details.preventDefault.mock.calls.length > 0) throw new Error('ERR_ABORTED (-3)')
+          }
           handlers.get('did-navigate')?.({}, url, 200)
         },
         async executeJavaScript(script: string) {
@@ -279,6 +291,8 @@ describe('renderPageInHiddenWindow', () => {
     ctl.loadUrlShouldHang = false
     ctl.blocker = null
     ctl.createdWindows = 0
+    ctl.hop = null
+    ctl.lastHop = null
     vi.spyOn(console, 'error').mockImplementation(() => {})
   })
 
@@ -373,5 +387,35 @@ describe('renderPageInHiddenWindow', () => {
 
     // The timeout path also tears the window down.
     expect(ctl.lastWindow!.isDestroyed()).toBe(true)
+  }, 30_000)
+
+  it.each([
+    ['will-redirect', 'http://127.0.0.1:8080/admin', 'Redirects to a loopback address'],
+    ['will-redirect', 'http://192.168.1.1/', 'Redirects to a private address'],
+    ['will-navigate', 'http://10.0.0.5/', 'Redirects to a private address'],
+    ['will-redirect', 'http://localhost/', 'Redirects to this computer']
+  ])(
+    'refuses a %s hop to %s before following it',
+    async (event, url, reason) => {
+      ctl.hop = { event, url, isMainFrame: true }
+
+      const render = renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000 })
+      await expect(render).rejects.toThrow(RefusedAddressError)
+      await expect(render).rejects.toThrow(reason)
+
+      expect(ctl.lastHop!.preventDefault).toHaveBeenCalledTimes(1)
+      expect(ctl.lastWindow!.isDestroyed()).toBe(true)
+    },
+    30_000
+  )
+
+  it('follows a redirect hop to a public address', async () => {
+    ctl.hop = { event: 'will-redirect', url: 'https://example.org/next', isMainFrame: true }
+
+    const result = await renderPageInHiddenWindow('https://example.test/', { timeoutMs: 30_000 })
+
+    expect(ctl.lastHop!.preventDefault).not.toHaveBeenCalled()
+    for await (const _chunk of result.mhtmlStream) void _chunk
+    await result.cleanup()
   }, 30_000)
 })

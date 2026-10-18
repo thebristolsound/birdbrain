@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import {
+  GEOMETRY_SETTLE_MS,
   MAC_TRAFFIC_LIGHT_INSET_PX,
   WINDOW_CONTROLS_LEFT_PROPERTY,
   WINDOW_CONTROLS_RIGHT_PROPERTY,
@@ -52,7 +53,12 @@ describe('windowControlsInsets', () => {
 })
 
 describe('syncWindowControlsInset', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
   afterEach(() => {
+    vi.useRealTimers()
     document.documentElement.style.removeProperty(WINDOW_CONTROLS_LEFT_PROPERTY)
     document.documentElement.style.removeProperty(WINDOW_CONTROLS_RIGHT_PROPERTY)
   })
@@ -74,12 +80,34 @@ describe('syncWindowControlsInset', () => {
     overlay.rect = { x: 0, width: 784 }
     win.innerWidth = 922
     overlay.dispatchEvent(new Event('geometrychange'))
+    vi.advanceTimersByTime(GEOMETRY_SETTLE_MS)
     expect(read()).toEqual(['0px', '138px'])
 
     stop()
     overlay.rect = { x: 0, width: 922 }
     overlay.dispatchEvent(new Event('geometrychange'))
+    vi.advanceTimersByTime(GEOMETRY_SETTLE_MS)
     expect(read()).toEqual(['0px', '138px'])
+  })
+
+  it('reads the overlay once a resize has settled, not at its first event', () => {
+    // Recorded from a real resize from 1800 to 1000: the first event carries the new
+    // width as the rect's width while innerWidth is still the old one.
+    const overlay = fakeOverlay(true, { x: 0, width: 1687 })
+    const win = { innerWidth: 1800 }
+    const stop = syncWindowControlsInset(navigatorWith(overlay), win)
+    expect(read()).toEqual(['0px', '113px'])
+
+    overlay.rect = { x: 0, width: 1000 }
+    overlay.dispatchEvent(new Event('geometrychange'))
+    vi.advanceTimersByTime(GEOMETRY_SETTLE_MS - 1)
+    expect(read()).toEqual(['0px', '113px'])
+
+    overlay.rect = { x: 0, width: 887 }
+    win.innerWidth = 1000
+    vi.advanceTimersByTime(1)
+    expect(read()).toEqual(['0px', '113px'])
+    stop()
   })
 
   it('does not re-read when only the window width moves', () => {

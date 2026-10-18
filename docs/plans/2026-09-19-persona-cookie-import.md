@@ -4,6 +4,14 @@ Map: #541. Sub-issues: #542 (domain model), #543 (export disclosure), #544 (mech
 (bot-detection research), #546 (threat-model delta). Status: decisions grilled and confirmed by
 the maintainer on 2026-09-19; not yet scheduled.
 
+**Amended 2026-10-17 by
+[ADR-0052](../adr/0052-import-persona-cookies-from-installed-browsers.md):** besides a cookie
+file, a Persona's cookies may come from a browser installed on the Operator's machine, Firefox
+first and then Chromium browsers on macOS and Linux, from the sites the Operator picks. Cookie
+files stay as the fallback. The Firefox, Chrome `Cookies`, and whole-browser-profile rows of
+"Supported cookie formats", the "Out of scope" list, and the extension-seeding item under
+"Pinned, not decided" say so. A new ticket under #541 builds the browser import.
+
 ## Goal
 
 A user registers a persona, seeds it with a cookie file exported from the browser where that
@@ -85,9 +93,9 @@ Recorded in ADR-0030 and the `CONTEXT.md` entry for **Persona** (phase 0, 2026-0
 | --- | --- | --- | --- |
 | Netscape `cookies.txt` | the "Get cookies.txt LOCALLY" extension, curl, yt-dlp | yes | plain TSV, widest tooling |
 | JSON array | Cookie-Editor, EditThisCookie exports | yes | plain, fields map 1:1 to Electron's Cookie object |
-| Firefox `cookies.sqlite` | profile directory | later | stored in the clear, readable with better-sqlite3, needs file-lock copy |
-| Chrome `Cookies` SQLite | profile directory | no | values are OS-encrypted and app-bound on Windows since Chrome 127; not readable from another process |
-| Whole browser profile directory | any | no | Electron cannot mount a Chrome or Firefox profile as a session |
+| Firefox `cookies.sqlite` | profile directory | later, the first browser-import source (ADR-0052) | stored in the clear, readable with better-sqlite3, so no new dependency; Firefox holds an exclusive lock on the database while it runs, so Firefox is closed during the import, which reads a temporary copy of the database |
+| Chrome `Cookies` SQLite | profile directory | later on macOS and Linux (ADR-0052); no on Windows | values are OS-encrypted; on macOS and Linux the import needs a key reader for the keychain or `libsecret`, a dependency decision still open; Chrome and Edge on Windows use App-Bound Encryption since version 127, and Birdbrain never works around it, so they stay file-only |
+| Whole browser profile directory | any | no as a directory; its cookies later (ADR-0052) | Electron cannot mount a Chrome or Firefox profile as a session; a browser import takes every cookie in a source profile only when the Operator states that the profile serves this Persona alone |
 
 Each cookie maps to the Electron `Cookie` fields in `ses.cookies.set({ url, name, value,
 domain, path, secure, httpOnly, expirationDate, sameSite })`. `url` is derived from `domain` +
@@ -187,9 +195,12 @@ Gated on the phase 0 go/no-go.
 
 ## Out of scope
 
-Password storage, automated login, fingerprint or user-agent spoofing (the t3code research also found UA rewriting breaks Turnstile), Chrome `Cookies` DB
-decryption, mounting browser profiles, per-Case persona binding, first-run auto-created
-personas.
+Password storage, automated login, fingerprint or user-agent spoofing (the t3code research also found UA rewriting breaks Turnstile), working around
+App-Bound Encryption (Chrome and Edge on Windows stay file-only), mounting browser profiles as a
+session, per-Case persona binding, first-run auto-created personas. Since ADR-0052, a browser
+import is planned to decrypt the `Cookies` database of a Chromium browser on macOS and Linux, and
+it may take every cookie in a source profile when the Operator states that the profile serves
+this Persona alone.
 
 ## Pinned, not decided
 
@@ -200,6 +211,9 @@ personas.
 - **One-click seeding from the Birdbrain extension** through the `cookies` permission. Removes
   the export step for the casual audience. Costs a store-review permission and moves cookie
   values over the capture-server channel. Phase 7 candidate, measured against whether users
-  stall on the export step.
+  stall on the export step. Ruling 72 of 2026-10-10 adopted import from installed browsers
+  instead of file import plus this route (ADR-0052). Chrome and Edge on Windows stay file-only,
+  so the export step remains there, and whether App-Bound Encryption affects this route's
+  `chrome.cookies.getAll` is not verified.
 - **Research: t3code's browser-launcher profiles and integrated preview browser.** Read their
   current profile model before phase 3 design review.

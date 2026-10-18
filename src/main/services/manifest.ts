@@ -406,15 +406,27 @@ export function readCaseChains(caseDir: string): CaseChains {
   }
 }
 
-// Whether `author` holds `entry` of a chain: it wrote the entry, or it wrote a
-// later `import` and so continued the chain that holds it. An archive import
-// keeps the source's entries as they were signed, so an Exhibit from before
-// an Owner's earlier import carries that source's operatorId.
+// Whether `author` holds `entry` of a chain (#1638): it wrote the entry, or it
+// wrote a later ordinary `import` with no fork import between the two. An
+// archive import keeps the source's entries as they were signed, so an
+// Exhibit from before an Owner's earlier import carries that source's
+// operatorId. A fork import is an `import` with a `member-add` after the
+// previous `import`, or the chain's start: the source was a Shared Case, its
+// entries stay its members', and custody stops there, for the forking member
+// and for any later importer.
 function heldBy(entries: ManifestEntry[], entry: ManifestEntry, author: string): boolean {
-  return (
-    entry.operatorId === author ||
-    entries.some((e) => e.type === 'import' && e.index > entry.index && e.operatorId === author)
-  )
+  if (entry.operatorId === author) return true
+  let shared = false
+  for (const e of entries) {
+    if (e.type === 'member-add') shared = true
+    if (e.type !== 'import') continue
+    if (e.index > entry.index) {
+      if (shared) return false
+      if (e.operatorId === author) return true
+    }
+    shared = false
+  }
+  return false
 }
 
 // The chain that answers for a row (#1511). A row with no author is this

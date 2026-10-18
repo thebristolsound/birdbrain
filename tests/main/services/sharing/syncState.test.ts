@@ -24,8 +24,10 @@ import {
   finishSession,
   getSyncState,
   localVersionHighWater,
+  memberTickets,
   readSyncStateFile,
   recordLocalVersion,
+  rememberMemberTickets,
   resetSyncStateMemory,
   writeMembersFile,
   writeSyncStateFile
@@ -105,7 +107,8 @@ describe('sync state (#1512)', () => {
       lastSuccessAt: null,
       transfer: null,
       lastError: null,
-      peers: {}
+      peers: {},
+      tickets: {}
     })
     const state = {
       schemaVersion: 1 as const,
@@ -115,13 +118,36 @@ describe('sync state (#1512)', () => {
       lastError: { kind: 'peer' as const, at: '2026-10-01T00:00:00.000Z', detail: 'x' },
       peers: {
         [PEER_ID]: { lastSessionAt: 'now', ok: true, heads: { a: { index: 1, entryHash: 'h' } } }
-      }
+      },
+      tickets: { [PEER_ID]: 'mem:peer' }
     }
     writeSyncStateFile(caseDir(), state)
     expect(readSyncStateFile(caseDir())).toEqual(state)
     expect(existsSync(join(caseDir(), `${SYNC_STATE_FILENAME}.partial`))).toBe(false)
+    // A file written before `tickets` existed (#1810) reads with none.
+    const older: Record<string, unknown> = { ...state }
+    delete older.tickets
+    writeFileSync(join(caseDir(), SYNC_STATE_FILENAME), JSON.stringify(older))
+    expect(readSyncStateFile(caseDir()).tickets).toEqual({})
     writeFileSync(join(caseDir(), SYNC_STATE_FILENAME), '{"schemaVersion": 2}')
     expect(() => readSyncStateFile(caseDir())).toThrow('not a sync state file')
+  })
+
+  it('remembers member tickets by installation and replaces a changed one', () => {
+    expect(memberTickets(caseId)).toEqual({})
+    rememberMemberTickets(caseId, { [PEER_ID]: 'mem:peer', other: 'mem:other' })
+    rememberMemberTickets(caseId, { [PEER_ID]: 'mem:peer-moved' })
+    expect(memberTickets(caseId)).toEqual({ [PEER_ID]: 'mem:peer-moved', other: 'mem:other' })
+    // A copy, not the file's object.
+    memberTickets(caseId).other = 'changed'
+    expect(memberTickets(caseId).other).toBe('mem:other')
+    // The mark written beside them leaves them in place.
+    writeSyncStateFile(caseDir(), { ...readSyncStateFile(caseDir()), localVersionHighWater: 5 })
+    expect(readSyncStateFile(caseDir()).localVersionHighWater).toBe(5)
+    expect(readSyncStateFile(caseDir()).tickets).toEqual({
+      [PEER_ID]: 'mem:peer-moved',
+      other: 'mem:other'
+    })
   })
 
   it('keeps the high-water mark in every Shared Case and never lowers it', () => {

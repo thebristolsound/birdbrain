@@ -455,9 +455,9 @@ describe('manifest schema 3 — writing stays readable by a schema-2 verifier', 
     // reader that reports a too-new entry as "verifier too old" instead of as
     // a broken chain.
     const v3Types = new Set(['exhibit', 'derivation', 'renumber'])
-    // `merge` is a schema-4 type (#1512); the other Shared Case types have no
-    // writer in the app yet.
-    const v4Types = new Set(['merge'])
+    // The Shared Case types are schema 4: `merge` from the sync session
+    // (#1512), the roster entries from the Owner's writers (#1810).
+    const v4Types = new Set(['merge', 'member-add', 'member-revoke', 'exclude'])
     for (const [type, version] of Object.entries(MIN_READER_SCHEMA_VERSION)) {
       expect(version).toBe(v4Types.has(type) ? 4 : v3Types.has(type) ? 3 : 2)
       expect(version).toBeLessThanOrEqual(MANIFEST_SCHEMA_VERSION)

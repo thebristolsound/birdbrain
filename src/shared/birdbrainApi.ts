@@ -3,6 +3,7 @@ import type {
   CaseAutoCapturePolicy,
   Capture,
   CaptureLinks,
+  FieldHitCheck,
   FieldSearchResult,
   Tag,
   BirdbrainSettings,
@@ -45,7 +46,16 @@ import type {
   Persona,
   PersonaImportResult,
   PersonaStorageState,
-  SyncState
+  SyncState,
+  CaseMember,
+  SharingChangedEvent,
+  SharingInvite,
+  SharingInvitePreview,
+  SharingJoinProgressEvent,
+  SharingJoinResult,
+  SharingMembers,
+  SharingSyncOutcome,
+  SharingExclusion
 } from '@shared/types'
 import type { CaseManifestSnapshot } from '@shared/manifestSnapshot'
 import type {
@@ -144,6 +154,8 @@ export interface BirdbrainAPI {
     ensureSearchFields(caseId: string): Promise<FieldBuildSummary>
     // Searches the Case's link and header records (the same plan, D6).
     searchFields(caseId: string, query: string): Promise<FieldSearchResult>
+    // Checks one field record against the stored files (the same plan, D7).
+    checkFieldHit(fieldId: number): Promise<FieldHitCheck>
   }
   captures: {
     list(caseId: string): Promise<Capture[]>
@@ -282,6 +294,16 @@ export interface BirdbrainAPI {
   }
   sharing: {
     getSyncState(caseId: string): Promise<SyncState>
+    createInvite(caseId: string, ownerMemberCode?: string): Promise<SharingInvite>
+    cancelInvite(caseId: string, inviteId: string): Promise<void>
+    readInvite(invite: string): Promise<SharingInvitePreview>
+    join(invite: string): Promise<SharingJoinResult>
+    approveJoin(caseId: string, requestId: string, memberCode: string): Promise<CaseMember>
+    declineJoin(caseId: string, requestId: string): Promise<void>
+    revoke(caseId: string, installationId: string): Promise<CaseMember>
+    excludeExhibit(caseId: string, exhibitId: string, reason?: string): Promise<SharingExclusion>
+    syncNow(caseId: string): Promise<SharingSyncOutcome[]>
+    getMembers(caseId: string): Promise<SharingMembers>
   }
   // Case investigation (engine plan, E10); served by the fake engine in unpackaged builds.
   investigation: {
@@ -366,6 +388,8 @@ export interface BirdbrainAPI {
   onUpdateStatus(callback: (status: UpdateStatus) => void): () => void
   onGuestFrameReplaced(callback: (event: GuestFrameReplacedEvent) => void): () => void
   onGuestMouseDown(callback: (event: GuestMouseDownEvent) => void): () => void
+  onSharingChanged(callback: (event: SharingChangedEvent) => void): () => void
+  onSharingJoinProgress(callback: (event: SharingJoinProgressEvent) => void): () => void
   onInvestigationProgress(callback: (event: RunProgressEvent) => void): () => void
   testPipeline(): Promise<{ success: boolean; durationMs: number; error?: string }>
   testHttp(): Promise<{ success: boolean; durationMs: number; error?: string }>

@@ -24,6 +24,7 @@ import {
   appendManifestEntry,
   getManifestHead
 } from '@main/services/manifest'
+import * as manifestModule from '@main/services/manifest'
 import { createCaptureStore, StagedRestoreError } from '@main/services/captureStore'
 import type { CaptureStore } from '@main/services/captureStore'
 import type { BatchDeleteOutcome } from '@shared/ipc'
@@ -40,7 +41,8 @@ import { createSessionService } from '@main/services/session'
 import type { SessionService } from '@main/services/session'
 import { setAutoCapturePolicy, updateCase } from '@main/services/db/caseRepo'
 import type { CaptureEvent } from '@shared/types'
-import { MAX_SCREENSHOT_SIZE } from '@shared/constants'
+import { IMPORT_ID_MAP_FILENAME, MAX_SCREENSHOT_SIZE } from '@shared/constants'
+import { exportCaseArchive, importCaseArchive } from '@main/services/caseArchive'
 import { scanUnreconciledDeletions } from '@main/services/deletionReconciliation'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
@@ -68,6 +70,24 @@ vi.mock('@main/services/tlsCertChain', async (importOriginal) => {
 function flushImmediate(): Promise<void> {
   return new Promise<void>((resolve) => setImmediate(resolve))
 }
+
+// Every key a `deletion` entry from the lifecycle carries, reason included.
+const DELETION_ENTRY_KEYS = [
+  'captureId',
+  'caseId',
+  'contentHash',
+  'entryHash',
+  'index',
+  'operatorId',
+  'operatorName',
+  'prevHash',
+  'reason',
+  'schemaVersion',
+  'signature',
+  'timestamp',
+  'toolVersion',
+  'type'
+]
 
 function buildIngestParams(
   caseId: string,
@@ -1049,6 +1069,142 @@ describe('createCaptureLifecycle.delete', () => {
     expect(existsSync(join(getStorageRoot(), capture.mhtmlPath!))).toBe(false)
     expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
   })
+
+  function lastEntry(): Record<string, unknown> {
+    const lines = readFileSync(join(tempDir, 'captures', caseId, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter(Boolean)
+    return JSON.parse(lines.at(-1)!)
+  }
+
+  // #1815 resolves a renamed import's Capture to its signed id. A Capture no
+  // import renamed keeps the entry it was always given: these keys, these values.
+  it('signs a Capture no import renamed under its own id, with the same fields', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture } = await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('mhtml-body')))
+
+    expect(await lifecycle.delete(capture.id, 'operator cleanup')).toBe(true)
+
+    const entry = lastEntry()
+    expect(Object.keys(entry).sort()).toEqual(DELETION_ENTRY_KEYS)
+    expect(entry).toMatchObject({
+      type: 'deletion',
+      captureId: capture.id,
+      caseId,
+      contentHash: capture.hash,
+      operatorName: 'Test Operator',
+      reason: 'operator cleanup'
+    })
+  })
+
+  // The stored index is editable; only an import's anchored id map may name
+  // the row by another entry's id, and a native Case has none.
+  it('signs under the row id when an edited index lands on another Capture entry', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { capture: a } = await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('a')))
+    const { capture: b } = await lifecycle.ingest(buildIngestParams(caseId, Buffer.from('b')))
+    getDb()
+      .prepare('UPDATE captures SET manifest_index = ? WHERE id = ?')
+      .run(a.manifestIndex, b.id)
+
+    expect(await lifecycle.delete(b.id)).toBe(true)
+
+    expect(lastEntry()).toMatchObject({ type: 'deletion', captureId: b.id })
+  })
+
+  // Exported and imported on this installation while the source is still
+  // here, so the import gives the Capture row a new id.
+  async function renamedImport(lifecycle: ReturnType<typeof createCaptureLifecycle>) {
+    const { capture: signed } = await lifecycle.ingest(
+      buildIngestParams(caseId, Buffer.from('renamed'))
+    )
+    const archive = join(tempDir, 'renamed.birdbrain')
+    await exportCaseArchive(caseId, archive)
+    const { newCaseId } = await importCaseArchive(archive)
+    const [row] = listCaptures(newCaseId)
+    expect(row.id).not.toBe(signed.id)
+    return { signed, row, caseDir: join(tempDir, 'captures', newCaseId) }
+  }
+
+  it('signs a renamed import under the id its capture entry carries (#1815)', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { signed, row, caseDir } = await renamedImport(lifecycle)
+
+    expect(await lifecycle.delete(row.id)).toBe(true)
+
+    const lines = readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8').split('\n')
+    const entry = JSON.parse(lines.filter(Boolean).at(-1)!)
+    expect(Object.keys(entry).sort()).toEqual(DELETION_ENTRY_KEYS.filter((k) => k !== 'reason'))
+    expect(entry).toMatchObject({
+      type: 'deletion',
+      captureId: signed.id,
+      caseId: row.caseId,
+      contentHash: row.hash
+    })
+    expect(verifyManifestChain(caseDir).valid).toBe(true)
+  })
+
+  it('signs a renamed import under the row id when its id map fails its anchor', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { row, caseDir } = await renamedImport(lifecycle)
+    const mapPath = join(caseDir, IMPORT_ID_MAP_FILENAME)
+    writeFileSync(mapPath, readFileSync(mapPath, 'utf-8').replace('{', '{"edited":true,'))
+
+    expect(await lifecycle.delete(row.id)).toBe(true)
+
+    const lines = readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8').split('\n')
+    expect(JSON.parse(lines.filter(Boolean).at(-1)!)).toMatchObject({ captureId: row.id })
+  })
+
+  function manifestLines(caseDir: string): Record<string, unknown>[] {
+    return readFileSync(join(caseDir, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+  }
+
+  it('signs under the row id when the entry at its index is not a capture entry', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { row, caseDir } = await renamedImport(lifecycle)
+    const importEntry = manifestLines(caseDir).find((entry) => entry.type === 'import')!
+    getDb()
+      .prepare('UPDATE captures SET manifest_index = ? WHERE id = ?')
+      .run(importEntry.index, row.id)
+
+    expect(await lifecycle.delete(row.id)).toBe(true)
+
+    expect(manifestLines(caseDir).at(-1)).toMatchObject({ type: 'deletion', captureId: row.id })
+  })
+
+  it('signs a renamed import under the row id when its chain does not verify', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { row, caseDir } = await renamedImport(lifecycle)
+    const path = join(caseDir, 'manifest.jsonl')
+    const tampered = manifestLines(caseDir).map((entry) =>
+      entry.type === 'capture' ? { ...entry, url: 'https://tampered.example' } : entry
+    )
+    writeFileSync(path, tampered.map((entry) => JSON.stringify(entry)).join('\n') + '\n')
+    expect(verifyManifestChain(caseDir).valid).toBe(false)
+
+    expect(await lifecycle.delete(row.id)).toBe(true)
+
+    expect(manifestLines(caseDir).at(-1)).toMatchObject({ type: 'deletion', captureId: row.id })
+  })
+
+  it('verifies the chain once for a renamed delete', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const { signed, row } = await renamedImport(lifecycle)
+    const chainReads = vi.spyOn(manifestModule, 'readCaseChains')
+
+    expect(await lifecycle.delete(row.id)).toBe(true)
+
+    expect(chainReads).toHaveBeenCalledTimes(1)
+    expect(lastEntryOf(row.caseId)).toMatchObject({ captureId: signed.id })
+  })
+
+  function lastEntryOf(id: string): Record<string, unknown> | undefined {
+    return manifestLines(join(tempDir, 'captures', id)).at(-1)
+  }
 })
 
 describe('createCaptureLifecycle.deleteMany (#394)', () => {
@@ -1159,6 +1315,51 @@ describe('createCaptureLifecycle.deleteMany (#394)', () => {
       expect(getCapture(c.id)).toBeUndefined()
       expect(mhtmlExists(c)).toBe(false)
     }
+  })
+
+  // #1815: the id each `deletion` entry names comes from one verified read
+  // per batch, and a Case with no import id map reads no chain at all.
+  it('reads no chain for a native batch', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const captures = await ingestN(lifecycle, 3)
+    const chainReads = vi.spyOn(manifestModule, 'readCaseChains')
+    const wholeReads = vi.spyOn(manifestModule, 'readManifestSnapshot')
+
+    const { deletedIds } = await lifecycle.deleteMany(
+      caseId,
+      captures.map(({ id }) => id)
+    )
+
+    expect(deletedIds).toEqual(captures.map(({ id }) => id))
+    expect(chainReads).not.toHaveBeenCalled()
+    expect(wholeReads).not.toHaveBeenCalled()
+  })
+
+  it('verifies the chain once for a batch of renamed Captures', async () => {
+    const lifecycle = createCaptureLifecycle({ selectorLifecycle: selectorStub })
+    const signed = await ingestN(lifecycle, 3)
+    const archive = join(tempDir, 'renamed.birdbrain')
+    await exportCaseArchive(caseId, archive)
+    const { newCaseId } = await importCaseArchive(archive)
+    const rows = listCaptures(newCaseId)
+    const signedIdOf = new Map(signed.map(({ id, hash }) => [hash, id]))
+    const expected = rows.map(({ hash }) => signedIdOf.get(hash))
+    expect(rows.some(({ id }, i) => id === expected[i])).toBe(false)
+    const chainReads = vi.spyOn(manifestModule, 'readCaseChains')
+
+    const { deletedIds } = await lifecycle.deleteMany(
+      newCaseId,
+      rows.map(({ id }) => id)
+    )
+
+    expect(deletedIds).toHaveLength(3)
+    expect(chainReads).toHaveBeenCalledTimes(1)
+    const deletions = readFileSync(join(tempDir, 'captures', newCaseId, 'manifest.jsonl'), 'utf-8')
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+      .filter((entry) => entry.type === 'deletion')
+    expect(deletions.map((entry) => entry.captureId)).toEqual(expected)
   })
 
   it('returns an empty result for an empty id list without touching the manifest', async () => {

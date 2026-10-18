@@ -63,7 +63,7 @@ The four that decide what is stored (`session.ts`, `entryAcceptance.ts`, `blobAc
 `workingRows.ts`) are blocking; `messages.ts` and `syncState.ts` are advisory; and the transport
 interface with its in-process form, `transport.ts`, is an exclusion by the #227 and #515
 reasoning: it carries bytes between installations, reads no message, and decides nothing about
-what the session accepts. `IrohTransport`, when #1810 lands it, is the same kind of file and
+what the session accepts. `IrohTransport`, when #1809 lands it, is the same kind of file and
 joins that entry. The repo module the rows step writes through,
 `src/main/services/db/workingRowRepo.ts`, is already swept in by `src/main/services/db/**`.
 #1811 added a fifth blocking module, `receivedEvidence.ts`, which turns received entries into
@@ -321,7 +321,8 @@ independent of the Operator who holds it.
 
 The sync session (#1512) is the one path by which another installation's chain entries, Exhibit
 bytes and working-layer rows enter a Case directory and database. What it accepts is decided in
-five modules; the rest of the directory moves bytes or records state.
+five modules, and who is a member in three more (#1810); the rest of the directory moves bytes or
+records state.
 
 | Path | Tier | Why |
 |---|---|---|
@@ -331,6 +332,13 @@ five modules; the rest of the directory moves bytes or records state.
 | `src/main/services/sharing/workingRows.ts` | blocking | Signs this installation's rows on every write, tombstones instead of deleting in a Shared Case, and applies a received row only under its author's roster key and above the stored version. Decides what another member's notes, tags and annotations say here |
 | `src/main/services/sharing/receivedEvidence.ts` | blocking | Writes the `captures`, `exhibits` and `derived_files` rows for another member's evidence only once every file its entry anchors is on disk with the anchored hash, and applies that member's `deletion` by removing the Capture and its files (#1811). Decides which received Captures and Exhibits this replica lists and which it removes |
 | `src/main/services/sharing/messages.ts` | advisory | The CBOR codec and frame reader: parses every frame against a strict schema at the trust boundary and passes it on. It admits nothing by itself, since each message is checked by the module above that consumes it |
+| `src/main/services/sharing/membership.ts` | blocking | Writes the Owner's signed `member-add`, `member-revoke` and `exclude` entries (#1810), and refuses before writing any roster the Shared Case walk would call invalid. Decides which installation and key become a member, and which Exhibits the Owner marks excluded, which exports list |
+| `src/main/services/sharing/rosterCache.ts` | blocking | Rebuilds `case_members` from the current segment of the Owner's chain, and keeps an empty chain file for each member in good standing (#1810). Decides which keys every session checks a peer against |
+| `src/main/services/sharing/joinHandshake.ts` | blocking | The join handshake (#1810): verifies the join signature over this Owner's node id before the invite is claimed, and on the joiner checks the `welcome` before it writes the roster that the first session trusts |
+| `src/main/services/sharing/base32.ts` | advisory | Base32 for the invite string (#1810). A defect here makes an invite unreadable, never admits a member |
+| `src/main/services/sharing/invite.ts` | advisory | Encodes and parses the invite string at a trust boundary (#1810). The fields it returns are checked by the join handshake, not here |
+| `src/main/services/sharing/inviteRegistry.ts` | advisory | Holds the hash of each open invite's secret in memory, and refuses an unknown, cancelled, used or expired one (#1810). It decides who may ask to join; the Owner's approval and the signed `member-add` decide who joins |
+| `src/main/services/sharing/sharingService.ts` | advisory | Routes each incoming stream to the join handshake or the sync session by its first message, and composes the commands behind the `sharing:*` channels (#1810). It decides nothing a session stores |
 | `src/main/services/sharing/syncState.ts` | advisory | `sync-state.json` and `members.json`, neither of them evidence, and the version high-water mark the row signing reads. A defect here can make a peer ignore a row as old, never accept one it should not |
 
 ### Cross-process contracts and configuration
@@ -377,7 +385,7 @@ It is *notable* exclusions, not an exhaustive complement of the include list.
 | `src/main/services/deepLink.ts` | Navigation plumbing |
 | `src/main/services/extensionPath.ts` | Extension setup plumbing |
 | `src/main/windowSize.ts` | Main-window geometry, and the `BIRDBRAIN_WINDOW_SIZE` override read only in an unpackaged build. It holds none of the invariants `src/main/index.ts` is listed for: no capture, content hash, manifest entry, canonical JSON field or signature depends on the size of the window the evidence is later viewed in. Split out of the included `src/main/index.ts` by #478, and left off both lists until #515 |
-| `src/main/services/sharing/transport.ts` | The transport interface and its in-process form, `MemoryTransport` (#1512). A transport carries bytes between installations: it reads no message and decides nothing about what the session accepts, which the four blocking modules above do. The same reasoning as `src/main/services/exclusionPolicy.ts`'s inclusion in reverse (#227) and as `src/main/windowSize.ts` (#515): the evidentiary decision lives elsewhere. `IrohTransport` joins this entry when #1810 adds it |
+| `src/main/services/sharing/transport.ts` | The transport interface and its in-process form, `MemoryTransport` (#1512). A transport carries bytes between installations: it reads no message and decides nothing about what the session accepts, which the four blocking modules above do. The same reasoning as `src/main/services/exclusionPolicy.ts`'s inclusion in reverse (#227) and as `src/main/windowSize.ts` (#515): the evidentiary decision lives elsewhere. `IrohTransport` joins this entry when #1809 adds it |
 | `src/renderer/lib/api/**` | High-churn typed passthrough; evidence parameters originate in included dialogs and are enforced in main (but see judgment call 2) |
 | `src/renderer/lib/queries.ts` | Same rationale — the re-export barrel left behind by the split, deleted by the last PR of #229 |
 | `src/renderer/components/captures/AddUrlsBox.tsx` | Removed by the challenge pass as inconsistent with the standard applied to `src/renderer/lib/queries.ts` and `src/renderer/components/settings/CapturePreferences.tsx` — UI-side plumbing whose values are enforced in main |

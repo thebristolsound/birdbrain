@@ -1,4 +1,4 @@
-import { createReadStream, readFileSync } from 'fs'
+import { createReadStream, existsSync, readFileSync } from 'fs'
 import { createHash, randomUUID } from 'crypto'
 import { join } from 'path'
 import { defaultCaptureStore, StagedRestoreError } from '@main/services/captureStore'
@@ -21,7 +21,7 @@ import {
   withDeletionEntry,
   ManifestRollback
 } from '@main/services/manifest'
-import type { CaptureChainEntry, ManifestImportEntry } from '@main/services/manifest'
+import type { AuthorChain, CaptureChainEntry, ManifestImportEntry } from '@main/services/manifest'
 import { reconcileCaptureTrustedTime, resolveTrustedTime } from '@main/services/trustedTime'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import { getSettings } from '@main/services/settings'
@@ -37,6 +37,7 @@ import type {
   HashVerification
 } from '@shared/types'
 import type { BatchDeleteOutcome, BatchDeleteResult, DuplicateCaptureResult } from '@shared/ipc'
+import { ManifestEntrySchema } from '@shared/schemas'
 import type { CaptureUploadSource, ScreenshotStatus } from '@shared/schemas'
 import {
   IMPORT_ID_MAP_FILENAME,
@@ -226,6 +227,8 @@ interface DeleteOneResult {
   outcome: BatchDeleteOutcome
   cause?: unknown
 }
+
+type DeletionIdResolver = (capture: Capture) => string
 
 // `rolled_back.error` crosses the preload bridge, so it carries the error's
 // name and errno code only — an fs message would otherwise hand the renderer
@@ -696,6 +699,28 @@ function describesRow(
   return idMap()?.[entry.rowId] === row.id
 }
 
+// The id a `deletion` entry names a Capture by (#1815): the `captureId` its
+// own `capture` entry carries when an import renamed the row, since both
+// package verifiers count an entry deleted only by that id. The rename is
+// accepted only through `entryDescribesRow`; any other row keeps its own id.
+// `entries` and `imports` must come from one verified read of the chain.
+export function signedCaptureId(
+  row: { id: string; caseId: string; manifestIndex?: number },
+  entries: Record<string, unknown>[],
+  imports: ManifestImportEntry[],
+  caseDir: string
+): string {
+  const { id, manifestIndex } = row
+  if (typeof manifestIndex !== 'number') return id
+  const parsed = ManifestEntrySchema.safeParse(entries[manifestIndex])
+  if (!parsed.success || parsed.data.type !== 'capture' || parsed.data.index !== manifestIndex) {
+    return id
+  }
+  const { caseId, captureId } = parsed.data
+  if (captureId === id) return id
+  return entryDescribesRow({ caseId, rowId: captureId }, row, imports, caseDir) ? captureId : id
+}
+
 // The id-collision remap archive import wrote into this case directory, read
 // back ONLY when its digest matches the `idMapSha256` the import's signed entry
 // anchors — an unanchored file in the case directory must not be able to point
@@ -862,7 +887,11 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
   // `rolled_back` outcome. Staging renames them aside, the row delete commits,
   // and only then are they purged. Every fault before the commit moves them
   // back, which is what `rolled_back` claims.
-  async function deleteOne(capture: Capture, reason?: string): Promise<DeleteOneResult> {
+  async function deleteOne(
+    capture: Capture,
+    deletionId: DeletionIdResolver,
+    reason?: string
+  ): Promise<DeleteOneResult> {
     const captureId = capture.id
     // Decision 10: only the author writes `deletion` for their Exhibit. A deletion here would
     // name a teammate's Capture in this installation's chain, and the next sync brings it back.
@@ -877,7 +906,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
         await withDeletionEntry(
           caseDir,
           {
-            captureId,
+            captureId: deletionId(capture),
             caseId: capture.caseId,
             contentHash: capture.hash,
             operatorId: getInstallationId(),
@@ -941,6 +970,22 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
     }
     purgeAfterCommit(capture)
     return { outcome: { captureId, status: 'deleted_unmanifested' } }
+  }
+
+  // The id each `deletion` entry names its Capture by, for one delete or one
+  // batch under the case slot. A batch appends only `deletion` entries, so the
+  // existing entries and imports `signedCaptureId` reads stay fixed across it,
+  // and one verified read, taken for the first MHTML row, serves every row.
+  // A rename needs the anchored id map (`readAnchoredIdMap`), so without that
+  // file every row keeps its own id and no chain is read.
+  function deletionIdResolver(caseDir: string): DeletionIdResolver {
+    if (!existsSync(join(caseDir, IMPORT_ID_MAP_FILENAME))) return ({ id }) => id
+    let own: AuthorChain | undefined
+    return (capture) => {
+      own ??= readCaseChains(caseDir).own
+      const { chain, entries, imports } = own
+      return chain.valid ? signedCaptureId(capture, entries, imports, caseDir) : capture.id
+    }
   }
 
   function isReceived(captureId: string): boolean {
@@ -1161,7 +1206,8 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
         // removed it while we waited.
         const capture = captureRepo.getCapture(captureId)
         if (!capture) return false
-        const { outcome, cause } = await deleteOne(capture, reason)
+        const deletionId = deletionIdResolver(store.caseDir(capture.caseId))
+        const { outcome, cause } = await deleteOne(capture, deletionId, reason)
         if (cause !== undefined && !(cause instanceof ManifestRollback)) throw cause
         return outcome.status === 'deleted' || outcome.status === 'deleted_unmanifested'
       })
@@ -1202,6 +1248,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
 
         const caseDir = store.caseDir(caseId)
         const baseIndex = getManifestHead(caseDir).nextIndex
+        const deletionId = deletionIdResolver(caseDir)
         const outcomes: BatchDeleteOutcome[] = []
         const seen = new Set<string>()
         let haltedAt: string | undefined
@@ -1221,7 +1268,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
             outcomes.push({ captureId: id, status: 'not_attempted' })
             continue
           }
-          const { outcome } = await deleteOne(capture)
+          const { outcome } = await deleteOne(capture, deletionId)
           outcomes.push(outcome)
           if (outcome.status === 'rolled_back') haltedAt = id
         }

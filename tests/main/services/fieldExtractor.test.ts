@@ -838,6 +838,23 @@ describe('extractFields: the page identifiers fields/2 adds', () => {
       vi.restoreAllMocks()
     }
   })
+
+  // A spread of every returned value's length (`Math.min(...lengths)`) overflowed the
+  // stack at about 125,000 values, before the row ceiling, and the build wrote a failed
+  // row with no records for the Capture.
+  it('reads a part whose extractIocs() returns 200,000 distinct values', () => {
+    const values = Array.from({ length: 200_000 }, (_, i) => `UA-${10_000_000 + i}-1`)
+    vi.spyOn(iocAdapter, 'extractIocs').mockReturnValue(
+      values.map((value) => ({ category: 'Tracking Code', subcategory: 'Google Analytics', value }))
+    )
+    try {
+      const { fields, truncated } = fromParts(`<p>${values[0]} and ${values[199_999]}</p>`)
+      expect(only(fields, 'id.tracking').map((f) => f.value)).toEqual([values[0], values[199_999]])
+      expect(truncated).toBe(false)
+    } finally {
+      vi.restoreAllMocks()
+    }
+  })
 })
 
 describe('extractFields: the page text identifiers fields/2 adds', () => {
@@ -892,6 +909,15 @@ describe('extractFields: the page text identifiers fields/2 adds', () => {
       ['bob@harrow.example.net', 9],
       ['bob@harrow.example.net.au', 38],
       ['bob@harrow.example.net-mail.example.org', 68]
+    ])
+  })
+
+  it("reads a local part with the characters extractIocs() reads, such as ' and !", () => {
+    const text = "Mail to o'neil@harrow.example.net, or to x!bob@harrow.example.net now."
+    const { fields } = fromText(text)
+    expect(only(fields, 'text.address').map((f) => [f.value, f.startOffset])).toEqual([
+      ["o'neil@harrow.example.net", 8],
+      ['x!bob@harrow.example.net', 41]
     ])
   })
 

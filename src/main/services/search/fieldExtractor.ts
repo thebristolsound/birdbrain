@@ -48,8 +48,9 @@ export const BLOCK_MARKERS: ReadonlySet<string> = new Set([
 const ADDRESS_HEADERS = new Set(['from', 'reply-to', 'sender', 'return-path', 'to', 'cc'])
 const RECORDED_HEADERS = new Set(HEADER_FIELDS.map((name) => name.toLowerCase()))
 
-// The rules extractData() runs for tracking codes, imported so both find the same codes;
-// dataExtractor.ts itself is left as it is (E11).
+// The rules extractData() runs for tracking codes, imported so the same patterns are read
+// here, each within RULE_WINDOW of its lead (see ruleSpans); dataExtractor.ts itself is
+// left as it is (E11).
 const TRACKING_RULES = EXTRACTION_RULES.filter((rule) => rule.category === 'Tracking Code')
 
 export interface ExtractedField {
@@ -244,7 +245,9 @@ const isLabelChar = (c: number): boolean => isDigit(c) || isLetter(c) || c === 4
 // Letters, digits, `_` and `-`: a run of them is one token, and a value found inside a
 // longer run is not that value.
 const isTokenChar = (c: number): boolean => isLabelChar(c) || c === 95 // _
-const LOCAL_PART_SIGNS = new Set(['.', '_', '%', '+', '-'])
+// The local part characters ioc-extractor's email pattern reads (its src/aux/email.ts),
+// so a run is cut where the library cuts it: `o'neil@...` is one address, not `neil@...`.
+const LOCAL_PART_SIGNS = new Set(".!#$%&'*+/=?^_`{|}~-")
 const isLocalChar = (c: number): boolean =>
   isDigit(c) || isLetter(c) || LOCAL_PART_SIGNS.has(String.fromCharCode(c))
 
@@ -272,9 +275,14 @@ function* addressSpans(text: string): Generator<Span> {
 // and has no place.
 function* tokenSpans(text: string, values: ReadonlySet<string>): Generator<Span> {
   if (values.size === 0) return
-  const lengths = [...values].map((value) => value.length)
-  const shortest = Math.min(...lengths)
-  const longest = Math.max(...lengths)
+  // A loop, not `Math.min(...lengths)`: a spread of 125,000 or more arguments overflows
+  // the stack, and a part can hold more distinct values than that.
+  let shortest = Infinity
+  let longest = 0
+  for (const { length } of values) {
+    if (length < shortest) shortest = length
+    if (length > longest) longest = length
+  }
   let start = 0
   while (start < text.length) {
     if (!isTokenChar(code(text, start))) {

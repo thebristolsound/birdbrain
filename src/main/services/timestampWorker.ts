@@ -77,6 +77,8 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
       // with or, for a Capture this installation did not record, one in another
       // member's chain of a Shared Case: no TSA request.
       if (reconcileCaptureTrustedTime(capture).trustedTime === 'rfc3161') return true
+      // Another member's Capture is stamped by its author alone (#1811).
+      if (typeof getExhibit(captureId)?.authorInstallationId === 'string') return false
       const token = await requestToken(capture.hash, tsaUrl)
       const parsed = parseTimestampToken(token)
       if (parsed.messageImprintHex !== capture.hash) {
@@ -123,6 +125,7 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
     const exhibit = getExhibit(exhibitId)
     if (!exhibit || exhibit.manifestSeq === null) return false
     if (exhibit.kind === 'capture') return stampCapture(exhibitId)
+    if (exhibit.authorInstallationId !== null) return false
 
     const settings = getSettings()
     const tsaUrl = settings.tsaUrl || DEFAULT_TSA_URL
@@ -167,13 +170,17 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
     }
   }
 
-  // Anchored non-Capture Exhibits with no `timestamp` entry over their hash,
-  // one manifest pass per Case.
+  // Anchored non-Capture Exhibits of this installation with no `timestamp`
+  // entry over their hash, one manifest pass per Case. Another member's are
+  // its author's to stamp (#1811).
   function listPendingExhibits(): string[] {
     const pending: string[] = []
     for (const c of caseRepo.listCases()) {
       const candidates = listExhibits(c.id).filter(
-        (exhibit) => exhibit.kind !== 'capture' && exhibit.manifestSeq !== null
+        (exhibit) =>
+          exhibit.kind !== 'capture' &&
+          exhibit.manifestSeq !== null &&
+          exhibit.authorInstallationId === null
       )
       // Most Cases hold Captures only; no manifest read for those.
       if (candidates.length === 0) continue

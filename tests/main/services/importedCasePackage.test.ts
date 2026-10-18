@@ -13,6 +13,7 @@ import {
 import { dirname, join, resolve } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
+import sharp from 'sharp'
 import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
 import { listCaptures } from '@main/services/db/captureRepo'
@@ -29,6 +30,7 @@ import {
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { generateReport } from '@main/services/export'
 import { exportCaseArchive, importCaseArchive } from '@main/services/caseArchive'
+import { backfillCase, THUMBNAIL_DERIVATION } from '@main/services/exhibitBackfill'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
 import {
@@ -43,6 +45,7 @@ import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
 import { DEMO_CASE_ARCHIVE_FILENAME, DEMO_CASE_OPERATOR_NAME } from '@shared/constants'
 import { WORKING_COPY_MARKER_FILENAME } from '@shared/schemas'
 import {
+  CAPTURE_PACKAGE_DIRECTORY,
   PACKAGE_ROOT_FILES,
   capturePagePath,
   exhibitPackagePath,
@@ -285,8 +288,11 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
 
   // A Case begun on the current installation: a capture with a screenshot and a
   // timestamp, a committed PDF, a note attached to the capture and one anchored
-  // to it.
-  async function nativeCase(name: string): Promise<{
+  // to it. The screenshot is placeholder bytes unless a test needs a real image.
+  async function nativeCase(
+    name: string,
+    screenshot: Buffer = Buffer.from(`screenshot of ${name}`)
+  ): Promise<{
     caseId: string
     captureId: string
     exhibitId: string
@@ -303,7 +309,7 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
       timestamp: '2026-09-02T10:00:00.000Z',
       stream: Readable.from([Buffer.from(payload)]) as unknown as ReadableStream<Uint8Array>,
       textContent: payload,
-      screenshot: Buffer.from(`screenshot of ${name}`),
+      screenshot,
       headers: {},
       browserVersion: '',
       userAgent: '',
@@ -345,14 +351,17 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
   // the import gives each row a new one. The inherited entries keep the ids
   // they were signed under: the `chain` ids below.
   // `before` runs on the source Case ahead of its export.
-  async function remappedCase(before?: (caseId: string) => Promise<void>): Promise<{
+  async function remappedCase({
+    screenshot,
+    before
+  }: { screenshot?: Buffer; before?: (caseId: string) => Promise<void> } = {}): Promise<{
     caseId: string
     chainCaptureId: string
     rowCaptureId: string
     chainExhibitId: string
     rowExhibitId: string
   }> {
-    const original = await nativeCase('Remapped')
+    const original = await nativeCase('Remapped', screenshot)
     await before?.(original.caseId)
     const archive = join(tempDir, 'remapped.birdbrain')
     await exportCaseArchive(original.caseId, archive)
@@ -655,13 +664,36 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
   })
 
   it.skipIf(!RUNS)('passes both shipped verifiers on a Case an import renamed', async () => {
-    const remapped = await remappedCase()
+    const screenshot = await sharp({
+      create: { width: 32, height: 24, channels: 3, background: { r: 10, g: 120, b: 200 } }
+    })
+      .png()
+      .toBuffer()
+    const remapped = await remappedCase({ screenshot })
+    // The startup backfill, as the next launch runs it on the imported Case
+    // (#1814). The source Case is left as it was: one whose thumbnails were
+    // already anchored is #1813's question.
+    const backfill = await backfillCase(remapped.caseId, { toolVersion: '0.1.0' })
+    expect(backfill.thumbnailsAnchored).toBe(1)
     const dir = await exportPackage(remapped.caseId, 'remapped', { notes: true })
 
     expectInAppPass(dir)
     const run = runVerifyScript(dir)
     expect(run.status, run.output).toBe(0)
     expect(run.output).toContain('verify.sh: PASS')
+    expect(run.output).toContain('1 derived file(s) bound to the signed chain')
+
+    // The thumbnail's entry names its parent by the id the capture entry
+    // signed, and the package lists the thumbnail under that id. Its file
+    // keeps the name the row's stored path gives it.
+    const thumbnail = `${remapped.rowCaptureId}_thumb.jpg`
+    const [derivation] = chainLines(dir).filter((line) => line.type === 'derivation')
+    expect(derivation).toMatchObject({
+      caseId: remapped.caseId,
+      parentExhibitId: remapped.chainCaptureId,
+      derivation: THUMBNAIL_DERIVATION
+    })
+    expect(derivation.outputPath).toContain(thumbnail)
 
     // Known answer: every file and index row is named by the id the chain signed.
     const files = packageFiles(dir)
@@ -677,15 +709,24 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
       [remapped.chainCaptureId, remapped.chainExhibitId].sort()
     )
     expect(evidence.warnings.unreconciledChainCaptureIds).toEqual([])
+    const thumbnailPath = `${CAPTURE_PACKAGE_DIRECTORY}/${thumbnail}`
+    expect(files.has(thumbnailPath)).toBe(true)
+    const listed = evidence.exhibits.find(
+      (row: { id: string }) => row.id === remapped.chainCaptureId
+    )
+    expect(listed.derivedFiles).toEqual([
+      expect.objectContaining({ derivation: THUMBNAIL_DERIVATION, path: thumbnailPath })
+    ])
     const notesMd = files.get(PACKAGE_ROOT_FILES.notes)!.toString()
     expect(notesMd).toContain(`- Attached to capture: ${remapped.chainCaptureId}`)
     expect(notesMd).toContain(`- Anchored to capture: ${remapped.chainCaptureId}`)
     expect(files.get(PACKAGE_ROOT_FILES.report)!.toString()).toContain(remapped.chainCaptureId)
     expect(signatureStep(dir)).toBe(IMPORTED_SIGNATURE_STEP)
 
-    // The ids the import gave the rows are named by no file in the package.
+    // The ids the import gave the rows are named by no file in the package,
+    // except as the thumbnail's file name, which its signed entry records.
     for (const [path, bytes] of files) {
-      const text = bytes.toString('latin1')
+      const text = bytes.toString('latin1').replaceAll(thumbnail, '')
       expect(text.includes(remapped.rowCaptureId), path).toBe(false)
       expect(text.includes(remapped.rowExhibitId), path).toBe(false)
     }
@@ -750,26 +791,28 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
     'passes both verifiers when the source Case already holds a deletion',
     async () => {
       let sourceDeletedId = ''
-      const remapped = await remappedCase(async (caseId) => {
-        const payload = '<html><body>deleted at the source</body></html>'
-        const { capture } = await ingestMhtmlCapture({
-          caseId,
-          url: 'https://example.com/deleted-at-source',
-          title: 'Deleted at source',
-          timestamp: '2026-09-02T11:00:00.000Z',
-          stream: Readable.from([Buffer.from(payload)]) as unknown as ReadableStream<Uint8Array>,
-          textContent: payload,
-          headers: {},
-          browserVersion: '',
-          userAgent: '',
-          httpStatus: 200,
-          extensionVersion: '',
-          operatorId: 'op',
-          operatorName: 'Operator local',
-          toolVersion: '0.1.0'
-        })
-        sourceDeletedId = capture.id
-        expect(await lifecycle.delete(capture.id)).toBe(true)
+      const remapped = await remappedCase({
+        before: async (caseId) => {
+          const payload = '<html><body>deleted at the source</body></html>'
+          const { capture } = await ingestMhtmlCapture({
+            caseId,
+            url: 'https://example.com/deleted-at-source',
+            title: 'Deleted at source',
+            timestamp: '2026-09-02T11:00:00.000Z',
+            stream: Readable.from([Buffer.from(payload)]) as unknown as ReadableStream<Uint8Array>,
+            textContent: payload,
+            headers: {},
+            browserVersion: '',
+            userAgent: '',
+            httpStatus: 200,
+            extensionVersion: '',
+            operatorId: 'op',
+            operatorName: 'Operator local',
+            toolVersion: '0.1.0'
+          })
+          sourceDeletedId = capture.id
+          expect(await lifecycle.delete(capture.id)).toBe(true)
+        }
       })
       expect(await lifecycle.delete(remapped.rowCaptureId)).toBe(true)
 
@@ -781,6 +824,45 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
           .map((line) => line.captureId)
       ).toEqual([sourceDeletedId, remapped.chainCaptureId])
       expect(packageFiles(dir).has(capturePagePath(sourceDeletedId))).toBe(false)
+    }
+  )
+
+  // The usual shape, a source that was backfilled before its archive was
+  // exported, still fails both verifiers: the archive carries no thumbnails,
+  // so the source's anchored one is missing (#1813). The row's own thumbnail
+  // binds; only the source's is reported.
+  it.skipIf(!RUNS)(
+    'fails only on the source thumbnail when the source was backfilled',
+    async () => {
+      const screenshot = await sharp({
+        create: { width: 32, height: 24, channels: 3, background: { r: 200, g: 120, b: 10 } }
+      })
+        .png()
+        .toBuffer()
+      const original = await nativeCase('Backfilled', screenshot)
+      await backfillCase(original.caseId, { toolVersion: '0.1.0' })
+      const archive = join(tempDir, 'backfilled.birdbrain')
+      await exportCaseArchive(original.caseId, archive)
+      const { newCaseId } = await importCaseArchive(archive)
+      const backfill = await backfillCase(newCaseId, { toolVersion: '0.1.0' })
+      expect(backfill.thumbnailsAnchored).toBe(1)
+      const dir = await exportPackage(newCaseId, 'backfilled')
+
+      const source = `${CAPTURE_PACKAGE_DIRECTORY}/${original.captureId}_thumb.jpg`
+      const failures = verifyEvidencePackage(dir)
+        .checks.filter((check) => check.status === 'fail')
+        .map((check) => check.reason)
+      expect(failures).toEqual([
+        expect.stringContaining(`${source} is missing from the package`),
+        expect.stringContaining(`omits derived file \`thumbnail\` of exhibit ${original.captureId}`)
+      ])
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      expect(run.output).toContain(
+        `FAIL [step 5] Exhibit 1, derivation thumbnail: ${source} is missing`
+      )
+      expect(run.output).toContain('1 derived file(s) bound to the signed chain')
+      expect(run.output).toContain('verify.sh: FAIL - 1 check(s) failed, in step(s): 5')
     }
   )
 

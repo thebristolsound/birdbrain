@@ -34,6 +34,7 @@ async function seedSigningKey(dir) {
   })
   await writeFile(join(dir, 'signing-key.pem'), privateKey, 'utf-8')
   await writeFile(join(dir, 'signing-public-key.pem'), publicKey, 'utf-8')
+  return { privateKey, publicKey }
 }
 
 /**
@@ -43,8 +44,12 @@ async function seedSigningKey(dir) {
  * `hasCompletedOnboarding` flag the New Case wizard sets; no startup code reads it, so it does not
  * change which screen opens (useSessionRestore.ts reopens the newest Case when there is one).
  *
+ * Returns the keypair it wrote, so a test standing in for another installation (the sync peers
+ * of tests/helpers/syncPeers.ts) can sign as that profile without reading the file back.
+ *
  * @param {string} dir
  * @param {{ operatorName: string, completedOnboarding?: boolean }} [settings]
+ * @returns {Promise<{ privateKey: string, publicKey: string }>}
  */
 export async function prepareProfile(dir, settings) {
   if (settings) {
@@ -56,7 +61,7 @@ export async function prepareProfile(dir, settings) {
       })
     )
   }
-  await seedSigningKey(dir)
+  return seedSigningKey(dir)
 }
 
 /**

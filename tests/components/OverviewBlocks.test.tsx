@@ -10,6 +10,9 @@ import { OverviewSelectorsBlock } from '@renderer/components/overview/OverviewSe
 import { SinceLastVisitBanner } from '@renderer/components/overview/SinceLastVisitBanner'
 import { fakeBridge } from '../renderer/fakeBridge'
 
+const notifyInfo = vi.hoisted(() => vi.fn())
+vi.mock('@renderer/lib/notify', () => ({ notify: { info: notifyInfo } }))
+
 const note = (over: Partial<Note>): Note => ({
   id: 'n1',
   caseId: 'case1',
@@ -38,7 +41,10 @@ function withClient(ui: ReactNode) {
   return render(<>{ui}</>, { wrapper: Wrapper })
 }
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  notifyInfo.mockClear()
+})
 
 describe('QuickNotesBlock', () => {
   it('shows only the two most recent notes', () => {
@@ -107,29 +113,71 @@ describe('OverviewTagsBlock', () => {
   ]
 
   it('ranks the tags this case actually uses and drops the ones it does not', () => {
-    render(<OverviewTagsBlock tags={tags} usageCounts={{ t1: 2, t2: 5 }} onManage={vi.fn()} />)
+    withClient(<OverviewTagsBlock caseId="case1" tags={tags} usageCounts={{ t1: 2, t2: 5 }} />)
     const chips = screen.getAllByTestId('overview-tag-chip').map((c) => c.textContent)
 
     expect(chips).toEqual(['lead5', 'evidence2'])
   })
 
   it('renders only the new-tag affordance when nothing is tagged yet', () => {
-    render(<OverviewTagsBlock tags={tags} usageCounts={{}} onManage={vi.fn()} />)
+    withClient(<OverviewTagsBlock caseId="case1" tags={tags} usageCounts={{}} />)
 
     expect(screen.queryAllByTestId('overview-tag-chip')).toHaveLength(0)
     expect(screen.getByTestId('overview-tags-new')).toBeTruthy()
   })
 
-  it('sends the new-tag button to the signals screen', () => {
-    const onManage = vi.fn()
-    render(<OverviewTagsBlock tags={tags} usageCounts={{ t1: 1 }} onManage={onManage} />)
+  it('opens an inline menu from the new-tag button, and Escape closes it', () => {
+    withClient(<OverviewTagsBlock caseId="case1" tags={tags} usageCounts={{ t1: 1 }} />)
 
     fireEvent.click(screen.getByTestId('overview-tags-new'))
-    expect(onManage).toHaveBeenCalled()
+    expect(screen.getByTestId('overview-new-tag-popover')).toBeTruthy()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByTestId('overview-new-tag-popover')).toBeNull()
+  })
+
+  // Named the way the Signals add row names it, and kept on screen at zero uses
+  // so the create is visible rather than filtered straight back out.
+  it('creates a slugged tag and shows it with a zero count', async () => {
+    const created: Tag = { id: 't9', name: 'follow-up', color: '#ef4444' }
+    const create = vi.fn(async () => created)
+    fakeBridge({ tags: { create, list: vi.fn(async () => [...tags, created]) } })
+    const { rerender } = withClient(
+      <OverviewTagsBlock caseId="case1" tags={tags} usageCounts={{}} />
+    )
+
+    fireEvent.click(screen.getByTestId('overview-tags-new'))
+    fireEvent.click(screen.getByLabelText('Pick color'))
+    fireEvent.click(screen.getByLabelText('Use color #ef4444'))
+    const input = screen.getByTestId('overview-new-tag-input') as HTMLInputElement
+    fireEvent.change(input, { target: { value: ' #Follow Up ' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith({ name: 'follow-up', color: '#ef4444' })
+    )
+    await waitFor(() => expect(input.value).toBe(''))
+    rerender(<OverviewTagsBlock caseId="case1" tags={[...tags, created]} usageCounts={{}} />)
+    expect(screen.getAllByTestId('overview-tag-chip').map((c) => c.textContent)).toEqual([
+      'follow-up0'
+    ])
+  })
+
+  it('refuses a name another tag already has, without writing', () => {
+    const create = vi.fn()
+    fakeBridge({ tags: { create } })
+    withClient(<OverviewTagsBlock caseId="case1" tags={tags} usageCounts={{}} />)
+
+    fireEvent.click(screen.getByTestId('overview-tags-new'))
+    const input = screen.getByTestId('overview-new-tag-input')
+    fireEvent.change(input, { target: { value: 'Evidence' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(create).not.toHaveBeenCalled()
+    expect(notifyInfo).toHaveBeenCalledWith('A tag named ‘evidence’ already exists')
   })
 
   it('tints a colourless tag from a theme token rather than a broken value', () => {
-    render(<OverviewTagsBlock tags={tags} usageCounts={{ t2: 1 }} onManage={vi.fn()} />)
+    withClient(<OverviewTagsBlock caseId="case1" tags={tags} usageCounts={{ t2: 1 }} />)
     const [chip] = screen.getAllByTestId('overview-tag-chip')
 
     expect(chip.getAttribute('style')).toContain('var(--color-text-muted)')
@@ -139,8 +187,13 @@ describe('OverviewTagsBlock', () => {
 describe('OverviewSelectorsBlock', () => {
   it('lists every selector, uncapped, with its match count', () => {
     const selectors = Array.from({ length: 9 }, (_, i) => selector({ id: `s${i}` }))
-    render(
-      <OverviewSelectorsBlock selectors={selectors} matchCounts={{ s0: 4 }} onToggle={vi.fn()} />
+    withClient(
+      <OverviewSelectorsBlock
+        caseId="case1"
+        selectors={selectors}
+        matchCounts={{ s0: 4 }}
+        onToggle={vi.fn()}
+      />
     )
 
     expect(screen.getAllByTestId('overview-selector-row')).toHaveLength(9)
@@ -149,8 +202,9 @@ describe('OverviewSelectorsBlock', () => {
   })
 
   it('prefers the label and keeps the pattern underneath it', () => {
-    render(
+    withClient(
       <OverviewSelectorsBlock
+        caseId="case1"
         selectors={[selector({ label: 'Acme Corp', pattern: 'acme\\.example' })]}
         matchCounts={{}}
         onToggle={vi.fn()}
@@ -165,7 +219,14 @@ describe('OverviewSelectorsBlock', () => {
   it('reports the switch state and asks for the opposite one on click', () => {
     const onToggle = vi.fn()
     const off = selector({ id: 's2', enabled: false })
-    render(<OverviewSelectorsBlock selectors={[off]} matchCounts={{}} onToggle={onToggle} />)
+    withClient(
+      <OverviewSelectorsBlock
+        caseId="case1"
+        selectors={[off]}
+        matchCounts={{}}
+        onToggle={onToggle}
+      />
+    )
     const sw = screen.getByRole('switch')
 
     expect(sw.getAttribute('aria-checked')).toBe('false')
@@ -175,9 +236,69 @@ describe('OverviewSelectorsBlock', () => {
   })
 
   it('says so when the case has no selectors', () => {
-    render(<OverviewSelectorsBlock selectors={[]} matchCounts={{}} onToggle={vi.fn()} />)
+    withClient(
+      <OverviewSelectorsBlock caseId="case1" selectors={[]} matchCounts={{}} onToggle={vi.fn()} />
+    )
 
     expect(screen.getByText('No selectors defined yet.')).toBeTruthy()
+  })
+
+  function addSelector(existing: Selector[], value: string) {
+    const create = vi.fn(async () => selector({ id: 's9' }))
+    fakeBridge({ selectors: { create } })
+    withClient(
+      <OverviewSelectorsBlock
+        caseId="case1"
+        selectors={existing}
+        matchCounts={{}}
+        onToggle={vi.fn()}
+      />
+    )
+    const input = screen.getByTestId('overview-selector-input') as HTMLInputElement
+    fireEvent.change(input, { target: { value } })
+    fireEvent.submit(input.closest('form')!)
+    return { create, input }
+  }
+
+  it('quick-adds exact text as a manual selector and clears the field', async () => {
+    const { create, input } = addSelector([], '  acme.example  ')
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith({
+        caseId: 'case1',
+        pattern: 'acme.example',
+        isRegex: false,
+        origin: 'manual'
+      })
+    )
+    await waitFor(() => expect(input.value).toBe(''))
+  })
+
+  it('reads a slash-wrapped value as a regex', async () => {
+    const { create } = addSelector([], '/bc1[a-z0-9]{20,}/')
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ pattern: 'bc1[a-z0-9]{20,}', isRegex: true })
+      )
+    )
+  })
+
+  // Saved, it would match nothing and read as "the term is absent" (#1754).
+  it('refuses a regex that does not compile and says why', () => {
+    const { create, input } = addSelector([], '/acme(/')
+
+    expect(create).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert').textContent).toContain('Not a valid regular expression')
+    expect(input.value).toBe('/acme(/')
+  })
+
+  it('refuses a pattern the case already has, case-insensitively', () => {
+    const { create, input } = addSelector([selector({ pattern: 'acme' })], 'ACME')
+
+    expect(create).not.toHaveBeenCalled()
+    expect(notifyInfo).toHaveBeenCalledWith('‘ACME’ is already a selector in this case')
+    expect(input.value).toBe('ACME')
   })
 })
 

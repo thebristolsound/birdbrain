@@ -8,91 +8,159 @@ import type {
   MergeTagsParams,
   MergeTagsResult
 } from '@shared/ipc'
-import { getDb, syncColumnValues, type ImportCtx } from '@main/services/db/core'
+import { getDb, syncColumnValues, withTransaction, type ImportCtx } from '@main/services/db/core'
 import { UNDATED_TAG_CREATED_AT } from '@main/services/db/migrations'
+import { isLiveLocalRow } from '@main/services/db/workingRowRepo'
+import {
+  allocateLocalVersion,
+  deleteLocalRow,
+  ensureLocalRow,
+  signLocalRow
+} from '@main/services/sharing/workingRows'
 
 // The wire shape of a Tag is these three columns. `tags` also carries the
 // Shared Case sync columns since v36 (#1510), which are storage and never
 // part of what the renderer receives.
+//
+// Every reader skips tombstoned rows, and every write of this installation's
+// own rows signs them (workingRows.ts, #1512): a tag or a tag application
+// deleted in a Shared Case keeps its row so the deletion syncs, and is as
+// gone to the app as one removed outright. Another member's tag is listed
+// and applied like any other; only its author edits or deletes it.
 const TAG_COLUMNS = 'id, name, color'
 
 export function listTags(): Tag[] {
-  return getDb().prepare(`SELECT ${TAG_COLUMNS} FROM tags ORDER BY name`).all() as Tag[]
+  return getDb()
+    .prepare(`SELECT ${TAG_COLUMNS} FROM tags WHERE deleted_at IS NULL ORDER BY name`)
+    .all() as Tag[]
 }
 
 export function getTag(id: string): Tag | undefined {
-  return getDb().prepare(`SELECT ${TAG_COLUMNS} FROM tags WHERE id = ?`).get(id) as Tag | undefined
+  return getDb()
+    .prepare(`SELECT ${TAG_COLUMNS} FROM tags WHERE id = ? AND deleted_at IS NULL`)
+    .get(id) as Tag | undefined
 }
 
 export function createTag(params: CreateTagParams): Tag {
-  const id = uuid()
-  getDb()
-    .prepare('INSERT INTO tags (id, name, color, created_at) VALUES (?, ?, ?, ?)')
-    .run(id, params.name, params.color ?? null, new Date().toISOString())
-  return { id, name: params.name, color: params.color }
+  return withTransaction(() => {
+    // A tag this installation deleted in a Shared Case keeps its name on its
+    // tombstone, and the per-author name index would refuse a second row with
+    // it. Naming it again restores that tag, with the colour now asked for.
+    const tombstone = getDb()
+      .prepare(
+        'SELECT id FROM tags WHERE author_installation_id IS NULL AND name = ? AND deleted_at IS NOT NULL'
+      )
+      .get(params.name) as { id: string } | undefined
+    if (tombstone) {
+      getDb()
+        .prepare('UPDATE tags SET color = ? WHERE id = ?')
+        .run(params.color ?? null, tombstone.id)
+      signLocalRow('tags', { id: tombstone.id }, { deletedAt: null })
+      return { id: tombstone.id, name: params.name, color: params.color }
+    }
+    const id = uuid()
+    getDb()
+      .prepare('INSERT INTO tags (id, name, color, created_at) VALUES (?, ?, ?, ?)')
+      .run(id, params.name, params.color ?? null, new Date().toISOString())
+    signLocalRow('tags', { id })
+    return { id, name: params.name, color: params.color }
+  })
 }
 
 export function updateTag(params: UpdateTagParams): Tag | undefined {
-  const existing = getDb()
-    .prepare(`SELECT ${TAG_COLUMNS} FROM tags WHERE id = ?`)
-    .get(params.id) as Tag | undefined
-  if (!existing) return undefined
-  getDb()
-    .prepare('UPDATE tags SET name = ?, color = ? WHERE id = ?')
-    .run(params.name ?? existing.name, params.color ?? existing.color ?? null, params.id)
-  return getDb().prepare(`SELECT ${TAG_COLUMNS} FROM tags WHERE id = ?`).get(params.id) as Tag
+  return withTransaction(() => {
+    if (!isLiveLocalRow('tags', { id: params.id })) return undefined
+    const existing = getTag(params.id)
+    if (!existing) return undefined
+    getDb()
+      .prepare('UPDATE tags SET name = ?, color = ? WHERE id = ?')
+      .run(params.name ?? existing.name, params.color ?? existing.color ?? null, params.id)
+    signLocalRow('tags', { id: params.id })
+    return getTag(params.id)
+  })
 }
 
+// This installation's applications of a tag that is still live, by Exhibit
+// or by note.
+function liveLocalApplications(table: 'exhibit_tags' | 'note_tags', tagId: string): string[] {
+  const column = table === 'exhibit_tags' ? 'exhibit_id' : 'note_id'
+  return (
+    getDb()
+      .prepare(
+        `SELECT ${column} AS id FROM ${table}
+          WHERE tag_id = ? AND author_installation_id IS NULL AND deleted_at IS NULL`
+      )
+      .all(tagId) as Array<{ id: string }>
+  ).map((row) => row.id)
+}
+
+// Removes this installation's tag, and its own applications of it first:
+// what the foreign keys cascade on a removed row, written out so each
+// application is tombstoned where its Case is shared.
 export function deleteTag(id: string): boolean {
-  const result = getDb().prepare('DELETE FROM tags WHERE id = ?').run(id)
-  return result.changes > 0
+  return withTransaction(() => {
+    if (!isLiveLocalRow('tags', { id })) return false
+    for (const exhibitId of liveLocalApplications('exhibit_tags', id)) {
+      deleteLocalRow('exhibit_tags', { exhibit_id: exhibitId, tag_id: id })
+    }
+    for (const noteId of liveLocalApplications('note_tags', id)) {
+      deleteLocalRow('note_tags', { note_id: noteId, tag_id: id })
+    }
+    return deleteLocalRow('tags', { id })
+  })
+}
+
+function insertCaptureTag(captureId: string, tagId: string): void {
+  getDb()
+    .prepare('INSERT INTO exhibit_tags (exhibit_id, tag_id) VALUES (?, ?)')
+    .run(captureId, tagId)
 }
 
 export function addTagToCapture(params: CaptureTagParams): void {
-  getDb()
-    .prepare('INSERT OR IGNORE INTO exhibit_tags (exhibit_id, tag_id) VALUES (?, ?)')
-    .run(params.captureId, params.tagId)
+  const { captureId, tagId } = params
+  ensureLocalRow('exhibit_tags', { exhibit_id: captureId, tag_id: tagId }, () =>
+    insertCaptureTag(captureId, tagId)
+  )
 }
 
-// Batch counterpart of addTagToCapture (#394): INSERT OR IGNORE per id in one
-// transaction, so re-tagging is a no-op and a mid-list failure applies nothing.
-// Returns the ids applied (every given id carries the tag afterwards), not the
-// rows that were newly inserted.
+// Batch counterpart of addTagToCapture (#394): one transaction, so
+// re-tagging is a no-op and a mid-list failure applies nothing. The batch
+// shares one version. Returns the ids applied (every given id carries the
+// tag afterwards), not the rows that were newly inserted.
 export function addTagToCaptures(captureIds: string[], tagId: string): number {
   if (captureIds.length === 0) return 0
-  const d = getDb()
-  const run = d.transaction(() => {
-    const insert = d.prepare(
-      'INSERT OR IGNORE INTO exhibit_tags (exhibit_id, tag_id) VALUES (?, ?)'
-    )
-    for (const id of captureIds) insert.run(id, tagId)
+  return withTransaction(() => {
+    const version = allocateLocalVersion()
+    for (const id of captureIds) {
+      ensureLocalRow(
+        'exhibit_tags',
+        { exhibit_id: id, tag_id: tagId },
+        () => insertCaptureTag(id, tagId),
+        version
+      )
+    }
     return captureIds.length
   })
-  return run()
 }
 
 /**
  * Batch untag (#665), the counterpart `addTagToCaptures` has lacked since
- * #394. One DELETE per id in one transaction, so a mid-list failure removes
- * nothing.
+ * #394. One transaction, so a mid-list failure removes nothing.
  *
  * Returns the ids the tag no longer holds, deliberately the same reading as
  * `addTagToCaptures` above rather than `changes`: both answer "how many of the
  * ids you named are now in the state you asked for", so an id that never
  * carried the tag counts, exactly as re-tagging an already-tagged id counts.
  *
- * Removes only the capture links. `note_tags` rows and the tag row itself are
- * untouched — untagging a selection is not deleting a tag.
+ * Removes only this installation's capture links. `note_tags` rows and the
+ * tag row itself are untouched — untagging a selection is not deleting a tag.
  */
 export function removeTagFromCaptures(captureIds: string[], tagId: string): number {
   if (captureIds.length === 0) return 0
-  const d = getDb()
-  const run = d.transaction(() => {
-    const del = d.prepare('DELETE FROM exhibit_tags WHERE exhibit_id = ? AND tag_id = ?')
-    for (const id of captureIds) del.run(id, tagId)
+  return withTransaction(() => {
+    for (const id of captureIds) deleteLocalRow('exhibit_tags', { exhibit_id: id, tag_id: tagId })
     return captureIds.length
   })
-  return run()
 }
 
 /**
@@ -112,9 +180,9 @@ export function getTagCountsForCaptures(captureIds: string[]): Record<string, nu
   const placeholders = unique.map(() => '?').join(',')
   const rows = getDb()
     .prepare(
-      `SELECT tag_id, COUNT(*) as count
+      `SELECT tag_id, COUNT(DISTINCT exhibit_id) as count
        FROM exhibit_tags
-       WHERE exhibit_id IN (${placeholders})
+       WHERE exhibit_id IN (${placeholders}) AND deleted_at IS NULL
        GROUP BY tag_id`
     )
     .all(...unique) as Array<{ tag_id: string; count: number }>
@@ -127,59 +195,66 @@ export function getTagCountsForCaptures(captureIds: string[]): Record<string, nu
 }
 
 /**
- * Merge one tag into another (#828): re-point every exhibit_tags and note_tags
- * row from source to target, then delete the source, in one transaction.
- * INSERT OR IGNORE carries the re-point past rows whose capture or note
- * already holds the target — the join tables' unique keys make a plain UPDATE
- * fail on exactly those — and deleting the source afterwards lets ON DELETE
- * CASCADE clear the duplicate rows the IGNORE skipped. Never a
- * create-then-copy shape (#811): both tags must already exist, so the UNIQUE
- * name constraint is never in play and no write precedes the lookups.
+ * Merge one tag into another (#828): re-point this installation's
+ * exhibit_tags and note_tags rows from source to target, then delete the
+ * source, in one transaction. Only this installation's rows move, because
+ * only their author can sign the rows that result (#1512): another member's
+ * applications of the source stay theirs, and another member's tag cannot be
+ * the source at all. Both tags must already exist, so the per-author name
+ * index is never in play and no write precedes the lookups (#811).
  *
- * The self-merge guard is load-bearing, not defensive: without it the inserts
- * would no-op and the delete would destroy the tag and every link it holds.
+ * The self-merge guard is load-bearing, not defensive: without it the
+ * re-point would no-op and the delete would destroy the tag and every link
+ * it holds.
  *
  * note_references rows citing the source are deliberately left to dangle:
  * that index is derived from note body docs, which still cite the source id,
  * and a Mention of a merged-away tag resolves as a broken reference at read
  * time — the same outcome deleteTag already produces.
  *
- * Returns undefined when either tag is missing or source === target.
+ * Returns undefined when either tag is missing, the source is not this
+ * installation's, or source === target.
  */
 export function mergeTags(params: MergeTagsParams): MergeTagsResult | undefined {
   const { sourceId, targetId } = params
   if (sourceId === targetId) return undefined
-  const d = getDb()
-  const run = d.transaction((): MergeTagsResult | undefined => {
-    const source = d.prepare(`SELECT ${TAG_COLUMNS} FROM tags WHERE id = ?`).get(sourceId) as
-      Tag | undefined
-    const target = d.prepare(`SELECT ${TAG_COLUMNS} FROM tags WHERE id = ?`).get(targetId) as
-      Tag | undefined
+  return withTransaction((): MergeTagsResult | undefined => {
+    if (!isLiveLocalRow('tags', { id: sourceId })) return undefined
+    const source = getTag(sourceId)
+    const target = getTag(targetId)
     if (!source || !target) return undefined
-    d.prepare(
-      `INSERT OR IGNORE INTO exhibit_tags (exhibit_id, tag_id)
-       SELECT exhibit_id, ? FROM exhibit_tags WHERE tag_id = ?`
-    ).run(targetId, sourceId)
-    d.prepare(
-      `INSERT OR IGNORE INTO note_tags (note_id, tag_id)
-       SELECT note_id, ? FROM note_tags WHERE tag_id = ?`
-    ).run(targetId, sourceId)
-    d.prepare('DELETE FROM tags WHERE id = ?').run(sourceId)
+    const version = allocateLocalVersion()
+    for (const exhibitId of liveLocalApplications('exhibit_tags', sourceId)) {
+      ensureLocalRow(
+        'exhibit_tags',
+        { exhibit_id: exhibitId, tag_id: targetId },
+        () => insertCaptureTag(exhibitId, targetId),
+        version
+      )
+      deleteLocalRow('exhibit_tags', { exhibit_id: exhibitId, tag_id: sourceId })
+    }
+    for (const noteId of liveLocalApplications('note_tags', sourceId)) {
+      ensureLocalRow(
+        'note_tags',
+        { note_id: noteId, tag_id: targetId },
+        () => insertNoteTag(noteId, targetId),
+        version
+      )
+      deleteLocalRow('note_tags', { note_id: noteId, tag_id: sourceId })
+    }
+    deleteLocalRow('tags', { id: sourceId })
     const count = (table: string): number =>
       (
-        d.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE tag_id = ?`).get(targetId) as {
-          n: number
-        }
+        getDb()
+          .prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE tag_id = ? AND deleted_at IS NULL`)
+          .get(targetId) as { n: number }
       ).n
     return { target, captureLinks: count('exhibit_tags'), noteLinks: count('note_tags') }
   })
-  return run()
 }
 
 export function removeTagFromCapture(params: CaptureTagParams): void {
-  getDb()
-    .prepare('DELETE FROM exhibit_tags WHERE exhibit_id = ? AND tag_id = ?')
-    .run(params.captureId, params.tagId)
+  deleteLocalRow('exhibit_tags', { exhibit_id: params.captureId, tag_id: params.tagId })
 }
 
 /**
@@ -206,27 +281,29 @@ export function findOrCreateTagByName(name: string, color?: string): Tag {
   return found ?? createTag({ name, color })
 }
 
-// Note-level tags (#391). INSERT OR IGNORE for the same reason
-// addTagToCapture uses it: applying a tag a note already carries is a no-op,
+function insertNoteTag(noteId: string, tagId: string): void {
+  getDb().prepare('INSERT INTO note_tags (note_id, tag_id) VALUES (?, ?)').run(noteId, tagId)
+}
+
+// Note-level tags (#391). Applying a tag a note already carries is a no-op,
 // not an error the operator has to read.
 export function addTagToNote(params: NoteTagParams): void {
-  getDb()
-    .prepare('INSERT OR IGNORE INTO note_tags (note_id, tag_id) VALUES (?, ?)')
-    .run(params.noteId, params.tagId)
+  const { noteId, tagId } = params
+  ensureLocalRow('note_tags', { note_id: noteId, tag_id: tagId }, () =>
+    insertNoteTag(noteId, tagId)
+  )
 }
 
 export function removeTagFromNote(params: NoteTagParams): void {
-  getDb()
-    .prepare('DELETE FROM note_tags WHERE note_id = ? AND tag_id = ?')
-    .run(params.noteId, params.tagId)
+  deleteLocalRow('note_tags', { note_id: params.noteId, tag_id: params.tagId })
 }
 
 export function getTagsForNote(noteId: string): Tag[] {
   return getDb()
     .prepare(
-      `SELECT t.id, t.name, t.color FROM tags t
+      `SELECT DISTINCT t.id, t.name, t.color FROM tags t
        JOIN note_tags nt ON t.id = nt.tag_id
-       WHERE nt.note_id = ?
+       WHERE nt.note_id = ? AND nt.deleted_at IS NULL AND t.deleted_at IS NULL
        ORDER BY t.name`
     )
     .all(noteId) as Tag[]
@@ -235,9 +312,9 @@ export function getTagsForNote(noteId: string): Tag[] {
 export function getTagsForCapture(captureId: string): Tag[] {
   return getDb()
     .prepare(
-      `SELECT t.id, t.name, t.color FROM tags t
+      `SELECT DISTINCT t.id, t.name, t.color FROM tags t
        JOIN exhibit_tags ct ON t.id = ct.tag_id
-       WHERE ct.exhibit_id = ?
+       WHERE ct.exhibit_id = ? AND ct.deleted_at IS NULL AND t.deleted_at IS NULL
        ORDER BY t.name`
     )
     .all(captureId) as Tag[]
@@ -249,7 +326,7 @@ export function getTagCountForCase(caseId: string): number {
       `SELECT COUNT(DISTINCT ct.tag_id) as count
        FROM exhibit_tags ct
        JOIN captures c ON ct.exhibit_id = c.id
-       WHERE c.case_id = ?`
+       WHERE c.case_id = ? AND ct.deleted_at IS NULL`
     )
     .get(caseId) as { count: number } | undefined
   return row?.count ?? 0
@@ -258,10 +335,10 @@ export function getTagCountForCase(caseId: string): number {
 export function getTagUsageCountsForCase(caseId: string): Record<string, number> {
   const rows = getDb()
     .prepare(
-      `SELECT ct.tag_id, COUNT(*) as count
+      `SELECT ct.tag_id, COUNT(DISTINCT ct.exhibit_id) as count
        FROM exhibit_tags ct
        JOIN captures c ON ct.exhibit_id = c.id
-       WHERE c.case_id = ?
+       WHERE c.case_id = ? AND ct.deleted_at IS NULL
        GROUP BY ct.tag_id`
     )
     .all(caseId) as Array<{ tag_id: string; count: number }>
@@ -281,11 +358,12 @@ export function getTagUsageCountsForCase(caseId: string): Record<string, number>
 export function getTagCaptureMatrix(caseId: string, limit: number): Record<string, string[]> {
   const rows = getDb()
     .prepare(
-      `SELECT ct.tag_id, ct.exhibit_id
+      `SELECT DISTINCT ct.tag_id, ct.exhibit_id
        FROM exhibit_tags ct
        JOIN (
          SELECT id FROM captures WHERE case_id = ? ORDER BY timestamp DESC LIMIT ?
-       ) recent ON recent.id = ct.exhibit_id`
+       ) recent ON recent.id = ct.exhibit_id
+       WHERE ct.deleted_at IS NULL`
     )
     .all(caseId, limit) as Array<{ tag_id: string; exhibit_id: string }>
 
@@ -322,7 +400,7 @@ export function getCapturesWithAnyTag(caseId: string, tagIds: string[]): string[
       `SELECT DISTINCT ct.exhibit_id, c.timestamp
        FROM exhibit_tags ct
        JOIN captures c ON c.id = ct.exhibit_id
-       WHERE c.case_id = ? AND ct.tag_id IN (${placeholders})
+       WHERE c.case_id = ? AND ct.tag_id IN (${placeholders}) AND ct.deleted_at IS NULL
        ORDER BY c.timestamp DESC, ct.exhibit_id`
     )
     .all(caseId, ...tagIds) as Array<{ exhibit_id: string }>
@@ -332,8 +410,9 @@ export function getCapturesWithAnyTag(caseId: string, tagIds: string[]): string[
 
 // --- Archive bulk ops ---
 
-// Every tag the case reaches, by either relation. The note_tags half is not
-// optional (#391): a tag carried only by a note would otherwise be absent from
+// Every tag the case reaches, by either relation, tombstones included: an
+// archive is the replica as stored. The note_tags half is not optional
+// (#391): a tag carried only by a note would otherwise be absent from
 // data.json while note_tags cited it, so the import would either fail its
 // foreign key or bind the note to whatever local tag already held that id.
 export function collectTagsForCase(caseId: string): Record<string, unknown>[] {
@@ -408,13 +487,16 @@ export function deleteUnusedTags(tagIds: string[]): number {
 
 // `author` is an installation id, or null for this installation. Each author's
 // names are unique on their own (migration 39), so a lookup reads one author's
-// tags; the predicate is the one `idx_tags_author_name` indexes.
+// live tags; the predicate is the one `idx_tags_author_name` indexes.
 export function findTagIdByNameExact(
   name: string,
   author: string | null = null
 ): string | undefined {
   const hit = getDb()
-    .prepare("SELECT id FROM tags WHERE COALESCE(author_installation_id, '') = ? AND name = ?")
+    .prepare(
+      `SELECT id FROM tags
+        WHERE COALESCE(author_installation_id, '') = ? AND name = ? AND deleted_at IS NULL`
+    )
     .get(author ?? '', name) as { id: string } | undefined
   return hit?.id
 }
@@ -425,7 +507,9 @@ export function findTagIdByNameInsensitive(
 ): string | undefined {
   const hit = getDb()
     .prepare(
-      "SELECT id FROM tags WHERE COALESCE(author_installation_id, '') = ? AND lower(name) = lower(?)"
+      `SELECT id FROM tags
+        WHERE COALESCE(author_installation_id, '') = ? AND lower(name) = lower(?)
+          AND deleted_at IS NULL`
     )
     .get(author ?? '', name) as { id: string } | undefined
   return hit?.id

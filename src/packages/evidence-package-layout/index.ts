@@ -11,6 +11,7 @@ export {
   exhibitPackageDirectory,
   exhibitPackagePath,
   inCasePath,
+  isChainInstallationId,
   lineageChainPath,
   memberChainPath,
   parseChainPath,

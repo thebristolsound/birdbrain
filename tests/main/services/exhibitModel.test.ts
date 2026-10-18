@@ -18,7 +18,13 @@ import sharp from 'sharp'
 import { ensureCaseDir, getCaseStorageSize, initStorage } from '@main/services/storage'
 import { closeDatabase, getDb, initDatabase, LATEST_SCHEMA_VERSION } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
-import { getCapture, insertCapture, deleteCapture } from '@main/services/db/captureRepo'
+import {
+  getCapture,
+  insertCapture,
+  deleteCapture,
+  listPendingTimestampCaptures,
+  setCaptureTrustedTime
+} from '@main/services/db/captureRepo'
 import {
   addTagToCapture,
   createTag,
@@ -47,9 +53,14 @@ import {
   runExhibitBackfill,
   THUMBNAIL_DERIVATION
 } from '@main/services/exhibitBackfill'
-import { renderThumbnail } from '@main/services/thumbnails'
+import { getThumbnail, renderThumbnail } from '@main/services/thumbnails'
 import { logger } from '@main/services/logger'
-import { getCaseInventory, getManifestSnapshot, signerSegments } from '@main/services/exhibits'
+import {
+  getCaseInventory,
+  getManifestSnapshot,
+  signerSegments,
+  verifyCaseDerivedFiles
+} from '@main/services/exhibits'
 import { verifyCapture, createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { verifyExhibit } from '@main/services/exhibits'
 import { appendManifestEntry, initManifest, verifyManifestChain } from '@main/services/manifest'
@@ -329,16 +340,18 @@ describe('exhibit model', () => {
       // The archive payload keeps its `capture_id` key, the key every
       // .birdbrain since before the rename carries; the author and sync
       // columns joined it at archive schema 9 (#1512).
-      expect(collectCaptureTagsForCase(caseId)).toEqual([
-        {
-          capture_id: capture.id,
-          tag_id: tag.id,
-          author_installation_id: null,
-          version: 0,
-          deleted_at: null,
-          row_signature: null
-        }
-      ])
+      // The application was written through the repo, which signs every
+      // local write with a fresh version (#1512).
+      const [application] = collectCaptureTagsForCase(caseId)
+      expect(application).toMatchObject({
+        capture_id: capture.id,
+        tag_id: tag.id,
+        author_installation_id: null,
+        deleted_at: null
+      })
+      expect(application.version).toBeGreaterThan(0)
+      expect(typeof application.row_signature).toBe('string')
+      expect(collectCaptureTagsForCase(caseId)).toHaveLength(1)
     })
   })
 
@@ -785,6 +798,153 @@ describe('exhibit model', () => {
       })
       expect(manifestLines(caseDir)).toEqual(after)
       expect(listDerivedFilesForCase(caseId)).toHaveLength(1)
+    })
+
+    // #1814. Exported and imported on this installation while the original is
+    // still here, so the import renames the Capture's row. Unless a test says
+    // otherwise the source Case is not backfilled first.
+    async function renamedImport(archiveName: string, sourceCaseId = caseId) {
+      const archivePath = join(tempDir, `${archiveName}.birdbrain`)
+      await exportCaseArchive(sourceCaseId, archivePath)
+      const { newCaseId } = await importCaseArchive(archivePath)
+      const [row] = listExhibits(newCaseId).filter((exhibit) => exhibit.kind === 'capture')
+      return { newCaseId, newCaseDir: join(storageRoot, newCaseId), row }
+    }
+
+    it("signs a renamed import's thumbnail under the id its capture entry carries", async () => {
+      const capture = await ingestInto(caseId, {
+        url: 'https://example.com/renamed',
+        title: 'Renamed',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        screenshot: await screenshotPng({ r: 70, g: 140, b: 70 })
+      })
+      const { newCaseId, newCaseDir, row } = await renamedImport('renamed')
+      expect(row.id).not.toBe(capture.id)
+
+      const result = await backfillCase(newCaseId, { toolVersion: TOOL_VERSION })
+
+      expect(result.thumbnailsAnchored).toBe(1)
+      const [derived] = listDerivedFilesForCase(newCaseId)
+      expect(derived.exhibitId).toBe(row.id)
+      expect(derived.path).toBe(defaultCaptureStore.thumbnailPaths(newCaseId, row.id).rel)
+      const [entry] = manifestLines(newCaseDir).filter((line) => line.type === 'derivation')
+      expect(entry).toMatchObject({
+        caseId: newCaseId,
+        parentExhibitId: capture.id,
+        parentContentHash: capture.hash,
+        outputHash: derived.contentHash,
+        outputPath: derived.path
+      })
+      expect(entry.index).toBe(derived.manifestSeq)
+      expect((await verifyCaseDerivedFiles(newCaseId)).get(row.id)).toEqual([
+        expect.objectContaining({ derivedFileId: derived.id, status: 'verified' })
+      ])
+
+      const after = manifestLines(newCaseDir)
+      const second = await backfillCase(newCaseId, { toolVersion: TOOL_VERSION })
+      expect(second.thumbnailsAnchored).toBe(0)
+      expect(manifestLines(newCaseDir)).toEqual(after)
+
+      // A kill between the signed append and its row: the next run finds the
+      // entry under the signed id and records the row against it.
+      getDb().prepare('DELETE FROM derived_files WHERE exhibit_id = ?').run(row.id)
+      const third = await backfillCase(newCaseId, { toolVersion: TOOL_VERSION })
+      expect(third.thumbnailsAnchored).toBe(1)
+      expect(manifestLines(newCaseDir)).toEqual(after)
+      expect(listDerivedFilesForCase(newCaseId)[0].manifestSeq).toBe(entry.index)
+    })
+
+    // The usual shape: the source existed across a launch, so the import
+    // inherits its thumbnail entry under the chain id, naming the source's
+    // file. That entry must not stand in for the row's own thumbnail, whether
+    // or not the list view has already drawn one at the row's path.
+    it.each([
+      ['no thumbnail on disk', false],
+      ['a thumbnail the list view drew', true]
+    ])('signs a renamed import whose source was backfilled, with %s', async (_shape, drawn) => {
+      const capture = await ingestInto(caseId, {
+        url: 'https://example.com/source-backfilled',
+        title: 'Source backfilled',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        screenshot: await screenshotPng({ r: 40, g: 120, b: 160 })
+      })
+      await backfillCase(caseId, { toolVersion: TOOL_VERSION })
+      const { newCaseId, newCaseDir, row } = await renamedImport('source-backfilled')
+      const [inherited] = manifestLines(newCaseDir).filter((line) => line.type === 'derivation')
+      expect(inherited.parentExhibitId).toBe(capture.id)
+      if (drawn) expect(await getThumbnail(newCaseId, row.id)).not.toBeNull()
+
+      const result = await backfillCase(newCaseId, { toolVersion: TOOL_VERSION })
+
+      expect(result.thumbnailsAnchored).toBe(1)
+      const [derived] = listDerivedFilesForCase(newCaseId)
+      expect(derived.path).toBe(defaultCaptureStore.thumbnailPaths(newCaseId, row.id).rel)
+      const derivations = manifestLines(newCaseDir).filter((line) => line.type === 'derivation')
+      expect(derivations).toHaveLength(2)
+      expect(derivations[1]).toMatchObject({
+        parentExhibitId: capture.id,
+        outputHash: derived.contentHash,
+        outputPath: derived.path
+      })
+      expect(derived.manifestSeq).toBe(derivations[1].index)
+      expect((await verifyCaseDerivedFiles(newCaseId)).get(row.id)).toEqual([
+        expect.objectContaining({ derivedFileId: derived.id, status: 'verified' })
+      ])
+    })
+
+    it('records the row against an entry an earlier build signed under the renamed id', async () => {
+      const screenshot = await screenshotPng({ r: 140, g: 70, b: 70 })
+      const capture = await ingestInto(caseId, {
+        url: 'https://example.com/earlier-build',
+        title: 'Earlier build',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        screenshot
+      })
+      const { newCaseId, newCaseDir, row } = await renamedImport('earlier-build')
+      // What a build before #1814 appended for this row, killed before its row
+      // landed: the entry names the row's new id.
+      const { bytes, parameters } = await renderThumbnail(screenshot)
+      const paths = defaultCaptureStore.thumbnailPaths(newCaseId, row.id)
+      writeFileSync(paths.abs, bytes)
+      const { index } = appendManifestEntry(newCaseDir, {
+        type: 'derivation',
+        caseId: newCaseId,
+        parentExhibitId: row.id,
+        parentContentHash: capture.hash,
+        derivation: THUMBNAIL_DERIVATION,
+        derivationToolVersion: TOOL_VERSION,
+        derivationParameters: parameters,
+        outputHash: createHash('sha256').update(bytes).digest('hex'),
+        outputPath: paths.rel,
+        timestamp: '2026-04-06T12:00:00.000Z',
+        operatorId: 'op-1',
+        operatorName: 'Test Operator',
+        toolVersion: TOOL_VERSION
+      })
+      const before = manifestLines(newCaseDir)
+
+      const result = await backfillCase(newCaseId, { toolVersion: TOOL_VERSION })
+
+      expect(result.thumbnailsAnchored).toBe(1)
+      expect(manifestLines(newCaseDir)).toEqual(before)
+      expect(listDerivedFilesForCase(newCaseId)[0].manifestSeq).toBe(index)
+    })
+
+    it('signs under the row id on a Case imported twice, where the id map is one hop', async () => {
+      await ingestInto(caseId, {
+        url: 'https://example.com/twice',
+        title: 'Twice',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        screenshot: await screenshotPng({ r: 70, g: 70, b: 140 })
+      })
+      const once = await renamedImport('once')
+      const twice = await renamedImport('twice', once.newCaseId)
+
+      const result = await backfillCase(twice.newCaseId, { toolVersion: TOOL_VERSION })
+
+      expect(result.thumbnailsAnchored).toBe(1)
+      const [entry] = manifestLines(twice.newCaseDir).filter((line) => line.type === 'derivation')
+      expect(entry.parentExhibitId).toBe(twice.row.id)
     })
 
     it('does nothing for a case with no captures', async () => {
@@ -1367,5 +1527,56 @@ describe('exhibit model', () => {
       manifestSeq: 7
     })
     expect(getCapture(capture.id)?.id).toBe(capture.id)
+  })
+
+  describe("another member's rows (#1811)", () => {
+    const author = { installationId: 'inst-alice', memberCode: 'AL' }
+    const received = {
+      url: 'https://example.com/received',
+      title: 'Received page',
+      hash: '7'.repeat(64),
+      timestamp: '2026-04-05T12:00:00.000Z'
+    }
+
+    it('refuses an author without an Exhibit Number', () => {
+      expect(() => insertCapture({ caseId, ...received, author })).toThrow(/no Exhibit Number/)
+      expect(listExhibits(caseId)).toEqual([])
+    })
+
+    it('refuses an author whose Member Code the roster rule would refuse', () => {
+      expect(() =>
+        insertCapture({
+          caseId,
+          ...received,
+          exhibitNumber: 1,
+          author: { ...author, memberCode: 'alice' }
+        })
+      ).toThrow(/invalid Member Code/)
+    })
+
+    it("writes the author onto the Exhibit and cites the author's code", () => {
+      const capture = insertCapture({
+        caseId,
+        ...received,
+        exhibitNumber: 3,
+        author,
+        committedAt: received.timestamp
+      })
+      expect(getExhibit(capture.id)).toMatchObject({
+        exhibitNumber: 3,
+        memberCode: 'AL',
+        authorInstallationId: 'inst-alice',
+        committedAt: received.timestamp
+      })
+      expect(getCapture(capture.id)?.exhibitCitation).toBe('AL-3')
+    })
+
+    it("leaves another member's Capture out of the pending timestamp list", () => {
+      const own = insertCapture({ caseId, ...received, hash: '8'.repeat(64) })
+      const theirs = insertCapture({ caseId, ...received, exhibitNumber: 1, author })
+      setCaptureTrustedTime(own.id, 'pending')
+      setCaptureTrustedTime(theirs.id, 'pending')
+      expect(listPendingTimestampCaptures().map(({ id }) => id)).toEqual([own.id])
+    })
   })
 })

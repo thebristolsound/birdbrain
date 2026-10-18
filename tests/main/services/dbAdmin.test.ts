@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { ensureCaseDir, initStorage } from '@main/services/storage'
@@ -823,7 +823,13 @@ describe('dbAdmin', () => {
       }
     }
 
+    let storageDir: string
+
     beforeEach(() => {
+      // A write in a Shared Case records its version in the Case directory
+      // (#1512), so the storage root has to exist.
+      storageDir = mkdtempSync(join(tmpdir(), 'bb-db-admin-shared-'))
+      initStorage(storageDir)
       shared = seedCase('Shared')
       local = seedCase('Local')
       getDb()
@@ -837,6 +843,10 @@ describe('dbAdmin', () => {
       addTagToCapture({ captureId: shared.captureId, tagId: tags.onExhibit })
       addTagToNote({ noteId: shared.noteId, tagId: tags.onNoteOnly })
       addTagToCapture({ captureId: local.captureId, tagId: tags.local })
+    })
+
+    afterEach(() => {
+      rmSync(storageDir, { recursive: true, force: true })
     })
 
     const exhibitTagKey = (captureId: string, tagId: string) => ({
@@ -1092,6 +1102,33 @@ describe('dbAdmin', () => {
       })
       expect(result.dbRecordsRemoved).toBe(0)
       expect(getCapture(sharedCapture)).toBeDefined()
+    })
+
+    // A teammate's files arrive through the sync session (#1512) before any
+    // row describes them (#1811), so nothing under a Shared Case's directory
+    // is an orphan: not in the scan, and not when a report names it.
+    it('never reports or deletes a file under a Shared Case directory', () => {
+      const shared = getCapture(sharedCapture)!.caseId
+      const local = getCapture(localCapture)!.caseId
+      const remoteCapture = join(shared, 'remote-capture.mhtml')
+      const remoteDocument = join(shared, 'documents', 'remote.pdf')
+      const strayLocal = join(local, 'stray.mhtml')
+      for (const rel of [remoteCapture, remoteDocument, strayLocal]) {
+        mkdirSync(join(tempDir, rel, '..'), { recursive: true })
+        writeFileSync(join(tempDir, rel), 'bytes')
+      }
+
+      const report = findOrphans()
+      expect(report.fileOrphans).toEqual([strayLocal])
+
+      const result = cleanOrphans({
+        dbOrphans: [],
+        fileOrphans: [remoteCapture, remoteDocument, strayLocal]
+      })
+      expect(result.filesRemoved).toBe(1)
+      expect(existsSync(join(tempDir, remoteCapture))).toBe(true)
+      expect(existsSync(join(tempDir, remoteDocument))).toBe(true)
+      expect(existsSync(join(tempDir, strayLocal))).toBe(false)
     })
   })
 })

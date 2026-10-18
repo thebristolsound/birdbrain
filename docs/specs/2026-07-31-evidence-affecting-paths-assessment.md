@@ -57,6 +57,17 @@ exclusion rather than inclusion: window geometry enters no capture, content hash
 entry, canonical JSON field or signature, which #478's Evidence impact section argued and its
 round-2 pre-pass verified. `src/main/index.ts` stays included at blocking tier for the
 invariants it does still hold.
+The Shared Case sync modules under `src/main/services/sharing/` were added on 2026-10-14 with
+#1512, the first code that writes another installation's entries, files and rows into a Case.
+The four that decide what is stored (`session.ts`, `entryAcceptance.ts`, `blobAcceptance.ts`,
+`workingRows.ts`) are blocking; `messages.ts` and `syncState.ts` are advisory; and the transport
+interface with its in-process form, `transport.ts`, is an exclusion by the #227 and #515
+reasoning: it carries bytes between installations, reads no message, and decides nothing about
+what the session accepts. `IrohTransport`, when #1810 lands it, is the same kind of file and
+joins that entry. The repo module the rows step writes through,
+`src/main/services/db/workingRowRepo.ts`, is already swept in by `src/main/services/db/**`.
+#1811 added a fifth blocking module, `receivedEvidence.ts`, which turns received entries into
+Capture and Exhibit rows.
 
 ### Known gap: carve-outs are caught by review, not by a check
 
@@ -197,11 +208,13 @@ that caused it was to record the carved-out file as an exclusion (#515), which i
 | `src/main/services/captureServer.ts` | blocking | Ingest endpoint: upload validation, case routing, ingest-time selector matching |
 | `src/shared/urlPatterns.ts` | blocking | The ignored-URL matcher both sides run: it decides what never enters a case at all, and names the rule recorded as the reason for the absence |
 | `src/shared/urlCanonicalize.ts` | blocking | Canonical URL identity for the extension attach routes: decides which Capture a Tag or Note binds to, and whether an attach request ingests its payload or binds to an existing Capture |
+| `src/shared/localAddress.ts` | blocking | The address classification the viewer's Capture link and the background capture both run: it decides which links and redirects a background capture refuses to render and store (#1726). Added 2026-10-16 |
 | `src/main/services/exclusionPolicy.ts` | blocking | Resolves the per-case exclusion list into the answer the acquisition routes check before ingest, so it decides what those routes refuse. Not every route asks: the pipeline self-test (`POST /api/captures/test`) is a documented exception, so read the call sites rather than assuming coverage is total |
 | `src/main/services/serverToken.ts` | blocking | Authenticates ingest; weakening admits spoofed captures into the evidence chain |
 | `src/main/services/session.ts` | blocking | Active-case state deciding which case a capture is filed under |
 | `src/main/services/recapture.ts` | blocking | Recapture queue re-acquiring URLs as new evidence |
 | `src/main/services/backgroundRenderer.ts` | blocking | Headless render producing the artifacts that get hashed |
+| `src/main/services/localAddressPolicy.ts` | blocking | Applies that classification to recapture links and each redirect hop, and holds the test-only loopback switch a packaged build ignores (#1726). Added 2026-10-16 |
 | `src/main/services/consentBlocker.ts` | blocking | Suppresses consent overlays during recapture — alters acquired page content |
 
 ### Integrity core (hash, manifest, signing, trusted time, verification)
@@ -304,6 +317,22 @@ independent of the Operator who holds it.
 | `src/renderer/components/settings/db/**` | blocking | The DB administration views behind it (browse, row edit, utilities) |
 | `src/renderer/components/settings/OperatorConfig.tsx` | blocking | Operator identity embedded verbatim in export certification |
 
+### Shared Case sync
+
+The sync session (#1512) is the one path by which another installation's chain entries, Exhibit
+bytes and working-layer rows enter a Case directory and database. What it accepts is decided in
+five modules; the rest of the directory moves bytes or records state.
+
+| Path | Tier | Why |
+|---|---|---|
+| `src/main/services/sharing/session.ts` | blocking | Runs the pull: proves the peer's key against the roster, asks for entries, files and rows, and writes the `merge` entry that names the heads received. A defect here stores something the acceptance modules never saw, or signs a `merge` for a head this replica does not hold |
+| `src/main/services/sharing/entryAcceptance.ts` | blocking | Appends a received chain segment only when the stored chain plus the segment verifies under the member's key and continues the stored head; stops before an entry from a newer schema. Decides which remote entries exist on this replica |
+| `src/main/services/sharing/blobAcceptance.ts` | blocking | Writes a received file beside its path, hashes it from disk and renames it in only when the hash is the one a verified entry anchors; refuses paths outside the Case directory. Decides which remote bytes become visible |
+| `src/main/services/sharing/workingRows.ts` | blocking | Signs this installation's rows on every write, tombstones instead of deleting in a Shared Case, and applies a received row only under its author's roster key and above the stored version. Decides what another member's notes, tags and annotations say here |
+| `src/main/services/sharing/receivedEvidence.ts` | blocking | Writes the `captures`, `exhibits` and `derived_files` rows for another member's evidence only once every file its entry anchors is on disk with the anchored hash, and applies that member's `deletion` by removing the Capture and its files (#1811). Decides which received Captures and Exhibits this replica lists and which it removes |
+| `src/main/services/sharing/messages.ts` | advisory | The CBOR codec and frame reader: parses every frame against a strict schema at the trust boundary and passes it on. It admits nothing by itself, since each message is checked by the module above that consumes it |
+| `src/main/services/sharing/syncState.ts` | advisory | `sync-state.json` and `members.json`, neither of them evidence, and the version high-water mark the row signing reads. A defect here can make a peer ignore a row as old, never accept one it should not |
+
 ### Cross-process contracts and configuration
 
 | Path | Tier | Why |
@@ -348,6 +377,7 @@ It is *notable* exclusions, not an exhaustive complement of the include list.
 | `src/main/services/deepLink.ts` | Navigation plumbing |
 | `src/main/services/extensionPath.ts` | Extension setup plumbing |
 | `src/main/windowSize.ts` | Main-window geometry, and the `BIRDBRAIN_WINDOW_SIZE` override read only in an unpackaged build. It holds none of the invariants `src/main/index.ts` is listed for: no capture, content hash, manifest entry, canonical JSON field or signature depends on the size of the window the evidence is later viewed in. Split out of the included `src/main/index.ts` by #478, and left off both lists until #515 |
+| `src/main/services/sharing/transport.ts` | The transport interface and its in-process form, `MemoryTransport` (#1512). A transport carries bytes between installations: it reads no message and decides nothing about what the session accepts, which the four blocking modules above do. The same reasoning as `src/main/services/exclusionPolicy.ts`'s inclusion in reverse (#227) and as `src/main/windowSize.ts` (#515): the evidentiary decision lives elsewhere. `IrohTransport` joins this entry when #1810 adds it |
 | `src/renderer/lib/api/**` | High-churn typed passthrough; evidence parameters originate in included dialogs and are enforced in main (but see judgment call 2) |
 | `src/renderer/lib/queries.ts` | Same rationale — the re-export barrel left behind by the split, deleted by the last PR of #229 |
 | `src/renderer/components/captures/AddUrlsBox.tsx` | Removed by the challenge pass as inconsistent with the standard applied to `src/renderer/lib/queries.ts` and `src/renderer/components/settings/CapturePreferences.tsx` — UI-side plumbing whose values are enforced in main |

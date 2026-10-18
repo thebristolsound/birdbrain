@@ -263,13 +263,13 @@ describe('migration v39 (per-author working-layer keys)', () => {
   })
 
   it('gives annotation pins the four sync columns', () => {
+    // The pin was written through the repo after the migration, which signs
+    // every local write with a fresh version (#1512); the migration's own
+    // defaults are what `syncColumnValues` reads for a row without them.
     const pin = rows('annotation_pins')[0]
-    expect(pin).toMatchObject({
-      author_installation_id: null,
-      version: 0,
-      deleted_at: null,
-      row_signature: null
-    })
+    expect(pin).toMatchObject({ author_installation_id: null, deleted_at: null })
+    expect(pin.version).toBeGreaterThan(0)
+    expect(typeof pin.row_signature).toBe('string')
   })
 
   it('runs again over its own tables without changing them', async () => {

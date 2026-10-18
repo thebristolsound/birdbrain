@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto'
 // eslint-disable-next-line no-restricted-imports -- owns the annotations/annotation_pins aggregate's SQL; repo home resolved by 2026-07-11-capture-row-ownership plan
-import { getDb, syncColumnValues, type ImportCtx } from '@main/services/db/core'
+import { getDb, syncColumnValues, withTransaction, type ImportCtx } from '@main/services/db/core'
+import { deleteLocalRow, signLocalRow } from '@main/services/sharing/workingRows'
 import type {
   AnnotationsBundle,
   AnnotationPin,
@@ -19,6 +20,7 @@ interface AnnotationRow {
   image_height: number
   updated_at: string
   updated_by: string | null
+  author_installation_id: string | null
 }
 
 interface PinRow {
@@ -56,18 +58,26 @@ function rowToPin(row: PinRow): AnnotationPin {
 // A Capture holds one annotation layer per author since migration 39. This
 // installation's layer is the one read, edited and burned into exports; when
 // it has none, the layer with the lowest author installation id is read, so
-// the choice does not depend on row order.
+// the choice does not depend on row order. The pins returned are the layer's
+// author's: a drawing's pins are numbered within it, and listing another
+// member's pins beside it would cite numbers the drawing does not carry.
+// Tombstoned layers and pins (#1512) are skipped like removed ones.
 export function getAnnotations(captureId: string): AnnotationsBundle {
   const annRow = getDb()
     .prepare(
-      `SELECT * FROM annotations WHERE capture_id = ?
+      `SELECT * FROM annotations WHERE capture_id = ? AND deleted_at IS NULL
        ORDER BY COALESCE(author_installation_id, '')
        LIMIT 1`
     )
     .get(captureId) as AnnotationRow | undefined
+  const author = annRow?.author_installation_id ?? ''
   const pinRows = getDb()
-    .prepare('SELECT * FROM annotation_pins WHERE capture_id = ? ORDER BY number ASC')
-    .all(captureId) as PinRow[]
+    .prepare(
+      `SELECT * FROM annotation_pins
+        WHERE capture_id = ? AND COALESCE(author_installation_id, '') = ? AND deleted_at IS NULL
+        ORDER BY number ASC`
+    )
+    .all(captureId, author) as PinRow[]
   return {
     annotations: annRow ? rowToAnnotations(annRow) : null,
     pins: pinRows.map(rowToPin)
@@ -79,9 +89,11 @@ export function saveAnnotations(
   updatedBy: string | null = null
 ): CaptureAnnotations {
   const now = new Date().toISOString()
-  getDb()
-    .prepare(
-      `INSERT INTO annotations (capture_id, schema_version, shapes_json, image_width, image_height, updated_at, updated_by)
+  return withTransaction(() => {
+    // Upserts this installation's layer, restoring it when it was deleted.
+    getDb()
+      .prepare(
+        `INSERT INTO annotations (capture_id, schema_version, shapes_json, image_width, image_height, updated_at, updated_by)
        VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(capture_id, COALESCE(author_installation_id, '')) DO UPDATE SET
          schema_version = excluded.schema_version,
@@ -90,43 +102,54 @@ export function saveAnnotations(
          image_height = excluded.image_height,
          updated_at = excluded.updated_at,
          updated_by = excluded.updated_by`
-    )
-    .run(
-      params.captureId,
-      SCHEMA_VERSION,
-      JSON.stringify(params.shapes),
-      params.imageWidth,
-      params.imageHeight,
-      now,
-      updatedBy
-    )
-  return rowToAnnotations(
-    getDb()
-      .prepare(
-        "SELECT * FROM annotations WHERE capture_id = ? AND COALESCE(author_installation_id, '') = ''"
       )
-      .get(params.captureId) as AnnotationRow
-  )
+      .run(
+        params.captureId,
+        SCHEMA_VERSION,
+        JSON.stringify(params.shapes),
+        params.imageWidth,
+        params.imageHeight,
+        now,
+        updatedBy
+      )
+    signLocalRow('annotations', { capture_id: params.captureId }, { deletedAt: null })
+    return rowToAnnotations(
+      getDb()
+        .prepare(
+          "SELECT * FROM annotations WHERE capture_id = ? AND COALESCE(author_installation_id, '') = ''"
+        )
+        .get(params.captureId) as AnnotationRow
+    )
+  })
 }
 
+// Clears this installation's layer only: another member's drawing is theirs
+// to clear.
 export function deleteAnnotations(captureId: string): void {
-  getDb().prepare('DELETE FROM annotations WHERE capture_id = ?').run(captureId)
+  deleteLocalRow('annotations', { capture_id: captureId })
 }
 
 export function upsertPin(params: UpsertAnnotationPinParams): AnnotationPin {
   const db = getDb()
   const now = new Date().toISOString()
 
-  return db.transaction(() => {
+  return withTransaction(() => {
     if (params.id) {
-      const existing = db.prepare('SELECT * FROM annotation_pins WHERE id = ?').get(params.id) as
-        PinRow | undefined
-      if (existing) {
+      const held = db
+        .prepare('SELECT author_installation_id FROM annotation_pins WHERE id = ?')
+        .get(params.id) as { author_installation_id: string | null } | undefined
+      // Another member's pin is theirs to edit; this installation's own pin
+      // is updated, and restored when it had been deleted.
+      if (held && held.author_installation_id !== null) {
+        throw new Error(`Pin ${params.id} belongs to another member`)
+      }
+      if (held) {
         db.prepare('UPDATE annotation_pins SET body = ?, updated_at = ? WHERE id = ?').run(
           params.body,
           now,
           params.id
         )
+        signLocalRow('annotation_pins', { id: params.id }, { deletedAt: null })
         return rowToPin(
           db.prepare('SELECT * FROM annotation_pins WHERE id = ?').get(params.id) as PinRow
         )
@@ -134,9 +157,13 @@ export function upsertPin(params: UpsertAnnotationPinParams): AnnotationPin {
     }
 
     const id = params.id ?? randomUUID()
+    // Numbered within this installation's pins on the Capture, tombstoned
+    // ones included so a number is never reused: a member's numbers are
+    // its own layer's, and two members numbering one Capture do not collide.
     const row = db
       .prepare(
-        'SELECT COALESCE(MAX(number), 0) + 1 AS next FROM annotation_pins WHERE capture_id = ?'
+        `SELECT COALESCE(MAX(number), 0) + 1 AS next FROM annotation_pins
+          WHERE capture_id = ? AND author_installation_id IS NULL`
       )
       .get(params.captureId) as { next: number }
     const number = row.next
@@ -144,13 +171,14 @@ export function upsertPin(params: UpsertAnnotationPinParams): AnnotationPin {
     db.prepare(
       'INSERT INTO annotation_pins (id, capture_id, number, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
     ).run(id, params.captureId, number, params.body, now, now)
+    signLocalRow('annotation_pins', { id })
 
     return rowToPin(db.prepare('SELECT * FROM annotation_pins WHERE id = ?').get(id) as PinRow)
-  })()
+  })
 }
 
 export function deletePin(pinId: string): void {
-  getDb().prepare('DELETE FROM annotation_pins WHERE id = ?').run(pinId)
+  deleteLocalRow('annotation_pins', { id: pinId })
 }
 
 // --- Archive bulk ops (this service owns the annotations/annotation_pins SQL) ---

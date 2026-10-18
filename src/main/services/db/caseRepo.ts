@@ -15,6 +15,15 @@ export function listAllCaseIds(): string[] {
   ).map((row) => row.id)
 }
 
+// Every Case with `shared_at` set, archived ones included: the Cases whose
+// rows and files other members hold copies of (#1512).
+export function listSharedCaseIds(): Set<string> {
+  const rows = getDb().prepare('SELECT id FROM cases WHERE shared_at IS NOT NULL').all() as Array<{
+    id: string
+  }>
+  return new Set(rows.map((row) => row.id))
+}
+
 export function listCases(): Case[] {
   const rows = getDb()
     .prepare('SELECT * FROM cases WHERE archived = 0 ORDER BY updated_at DESC, rowid DESC')

@@ -54,9 +54,30 @@ import type {
   WaybackSnapshot,
   Persona,
   PersonaImportResult,
-  PersonaStorageState
+  PersonaStorageState,
+  SyncState
 } from '@shared/types'
 import type { CaseManifestSnapshot } from '@shared/manifestSnapshot'
+import type {
+  AddSubjectParams,
+  CaseChange,
+  CaseRevision,
+  ChooseSubjectParams,
+  ClaimCheck,
+  DecideJointParams,
+  DecideSpanParams,
+  InvestigationView,
+  KeepSubjectParams,
+  MarkOwnIdentifierParams,
+  OwnIdentifierEntry,
+  RunProgressEvent,
+  RunRequest,
+  SetCopyMarkParams,
+  SetSourceClassParams,
+  SetWithheldParams,
+  SpanDetail,
+  UnmarkOwnIdentifierParams
+} from '@shared/investigation'
 
 export const IPC_CHANNELS = {
   // Cases
@@ -219,6 +240,32 @@ export const IPC_CHANNELS = {
   // Manifest
   MANIFEST_SNAPSHOT: 'manifest:snapshot',
 
+  // Shared Case sync (#1512). The session itself runs without a channel
+  // until the scheduler and Sync now land (#1810); this reads what the last
+  // sessions left in the Case's sync state.
+  SHARING_GET_SYNC_STATE: 'sharing:getSyncState',
+
+  // Case investigation (engine plan, E10). The fake engine answers these in unpackaged builds
+  // until each real brief replaces its channels, and CI-V5 removes it (ruling 63).
+  INVESTIGATION_GET_REVISION: 'investigation:getRevision',
+  INVESTIGATION_GET_VIEW: 'investigation:getView',
+  INVESTIGATION_GET_SPAN: 'investigation:getSpan',
+  INVESTIGATION_CHECK_SPAN: 'investigation:checkSpan',
+  INVESTIGATION_START_RUN: 'investigation:startRun',
+  INVESTIGATION_CANCEL_RUN: 'investigation:cancelRun',
+  INVESTIGATION_GET_CHANGES: 'investigation:getChanges',
+  INVESTIGATION_DECIDE_JOINT: 'investigation:decideJoint',
+  INVESTIGATION_DECIDE_SPAN: 'investigation:decideSpan',
+  INVESTIGATION_CHOOSE_SUBJECT: 'investigation:chooseSubject',
+  INVESTIGATION_ADD_SUBJECT: 'investigation:addSubject',
+  INVESTIGATION_KEEP_SUBJECT: 'investigation:keepSubject',
+  INVESTIGATION_SET_SOURCE_CLASS: 'investigation:setSourceClass',
+  INVESTIGATION_SET_COPY_MARK: 'investigation:setCopyMark',
+  INVESTIGATION_SET_WITHHELD: 'investigation:setWithheld',
+  INVESTIGATION_LIST_OWN_IDENTIFIERS: 'investigation:listOwnIdentifiers',
+  INVESTIGATION_MARK_OWN_IDENTIFIER: 'investigation:markOwnIdentifier',
+  INVESTIGATION_UNMARK_OWN_IDENTIFIER: 'investigation:unmarkOwnIdentifier',
+
   // Staging Pool (ADR-0024). Upload lands bytes outside the chain; commit is
   // the only route by which a pooled file becomes an Exhibit.
   STAGING_UPLOAD: 'staging:upload',
@@ -261,6 +308,7 @@ export const IPC_CHANNELS = {
   UPDATE_STATUS: 'event:updateStatus',
   GUEST_FRAME_REPLACED: 'event:guestFrameReplaced',
   GUEST_MOUSE_DOWN: 'event:guestMouseDown',
+  INVESTIGATION_PROGRESS: 'event:investigationProgress',
 
   // Capture pipeline observability
   CAPTURE_ACTIVITY: 'event:captureActivity',
@@ -669,7 +717,7 @@ export type BatchDeleteOutcome =
   | { captureId: string; status: 'deleted_unmanifested' }
   | { captureId: string; status: 'rolled_back'; stage: 'artifacts' | 'db'; error: string }
   | { captureId: string; status: 'not_attempted' }
-  | { captureId: string; status: 'rejected'; reason: 'not_found' | 'duplicate' }
+  | { captureId: string; status: 'rejected'; reason: 'not_found' | 'duplicate' | 'not_author' }
 
 // What a Case search field pass did with each Exhibit: built fields from its stored
 // files, did not find its stored page, or failed.
@@ -997,6 +1045,34 @@ export interface IpcInvokeContract {
 
   'manifest:snapshot': { args: [caseId: string]; result: CaseManifestSnapshot }
 
+  'sharing:getSyncState': { args: [caseId: string]; result: SyncState }
+
+  'investigation:getRevision': { args: [caseId: string]; result: CaseRevision }
+  'investigation:getView': { args: [caseId: string]; result: InvestigationView }
+  'investigation:getSpan': { args: [caseId: string, spanId: string]; result: SpanDetail }
+  'investigation:checkSpan': { args: [caseId: string, spanId: string]; result: ClaimCheck }
+  // Resolves the run id once the run starts; the outcome is the run's last progress event.
+  'investigation:startRun': { args: [request: RunRequest]; result: string }
+  'investigation:cancelRun': { args: [caseId: string, runId: string]; result: void }
+  'investigation:getChanges': { args: [caseId: string, runId: string]; result: CaseChange[] }
+  'investigation:decideJoint': { args: [params: DecideJointParams]; result: CaseRevision }
+  'investigation:decideSpan': { args: [params: DecideSpanParams]; result: CaseRevision }
+  'investigation:chooseSubject': { args: [params: ChooseSubjectParams]; result: CaseRevision }
+  'investigation:addSubject': { args: [params: AddSubjectParams]; result: CaseRevision }
+  'investigation:keepSubject': { args: [params: KeepSubjectParams]; result: CaseRevision }
+  'investigation:setSourceClass': { args: [params: SetSourceClassParams]; result: CaseRevision }
+  'investigation:setCopyMark': { args: [params: SetCopyMarkParams]; result: CaseRevision }
+  'investigation:setWithheld': { args: [params: SetWithheldParams]; result: CaseRevision }
+  'investigation:listOwnIdentifiers': { args: [caseId: string]; result: OwnIdentifierEntry[] }
+  'investigation:markOwnIdentifier': {
+    args: [params: MarkOwnIdentifierParams]
+    result: CaseRevision
+  }
+  'investigation:unmarkOwnIdentifier': {
+    args: [params: UnmarkOwnIdentifierParams]
+    result: CaseRevision
+  }
+
   // The open-file dialog lives in the handler; an empty list is a cancel.
   'staging:upload': { args: [caseId: string]; result: StagingFile[] }
   'staging:commit': { args: [caseId: string, stagingIds: string[]]; result: StagingCommitResult }
@@ -1053,6 +1129,7 @@ export interface IpcEventContract {
   'event:guestFrameReplaced': GuestFrameReplacedEvent
   'event:guestMouseDown': GuestMouseDownEvent
   'event:logEntry': LogEntry
+  'event:investigationProgress': RunProgressEvent
 }
 
 export type IpcEventChannel = keyof IpcEventContract

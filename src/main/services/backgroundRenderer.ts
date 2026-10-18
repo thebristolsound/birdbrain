@@ -7,6 +7,7 @@ import { unlink } from 'fs/promises'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
 import { getConsentBlocker } from '@main/services/consentBlocker'
+import { RefusedAddressError, refusedAddressClass } from '@main/services/localAddressPolicy'
 import type { RenderPage, RenderedPage } from '@main/services/recapture'
 import type { ConsentSuppression } from '@shared/types'
 import { logger } from '@main/services/logger'
@@ -402,6 +403,22 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
     )
   })
 
+  // A public page can send the render to the Operator's own machine or network by a
+  // server redirect or by navigating itself (#1726). Chromium asks before each main-frame
+  // hop; a refused hop is stopped before any request goes to the address, and ends the
+  // render the way the deadline does, so nothing from it is rendered or stored.
+  let refuseHop: (err: RefusedAddressError) => void = () => {}
+  const refused = new Promise<never>((_, reject) => {
+    refuseHop = reject
+  })
+  const checkHop = (details: { url: string; isMainFrame: boolean; preventDefault: () => void }) => {
+    if (!details.isMainFrame) return
+    const addressClass = refusedAddressClass(details.url)
+    if (!addressClass) return
+    details.preventDefault()
+    refuseHop(new RefusedAddressError(addressClass))
+  }
+
   const wc = win.webContents
   // Captured up front: cleanup can run after win.destroy() (the timeout path),
   // when wc.session would throw — but the partition session object outlives the
@@ -455,6 +472,9 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
     const startedAt = Date.now()
     const remainingMs = (reserveMs = 0) =>
       Math.max(0, timeoutMs - (Date.now() - startedAt) - reserveMs)
+
+    wc.on('will-redirect', checkHop)
+    wc.on('will-navigate', checkHop)
 
     let httpStatus = 0
     wc.on('did-navigate', (_event, _navUrl, httpResponseCode) => {
@@ -543,7 +563,7 @@ export const renderPageInHiddenWindow: RenderPage = async (url, { timeoutMs }) =
 
   const rendering = render()
   try {
-    return await Promise.race([rendering, deadline])
+    return await Promise.race([rendering, deadline, refused])
   } catch (err) {
     // Destroying the window cancels the in-flight render: its next webContents
     // call rejects. Wait for it to settle so a mid-flight savePage can't

@@ -11,6 +11,8 @@ import {
   type NoteMention
 } from '@shared/noteDoc'
 import { assertMentionsInCase, rewriteReferencesForNote } from '@main/services/db/noteReferenceRepo'
+import { isLiveLocalRow } from '@main/services/db/workingRowRepo'
+import { deleteLocalRow, signLocalRow } from '@main/services/sharing/workingRows'
 import {
   parseNoteAnchor,
   remapAnchorIds,
@@ -133,15 +135,20 @@ function resolveBody(params: { body?: string; bodyDoc?: string }): {
   return { body: params.body ?? '', bodyDoc: null, mentions: [] }
 }
 
+// Every reader skips tombstoned rows: a note deleted in a Shared Case keeps
+// its row so the deletion syncs (#1512), and is as gone to the app as one
+// removed outright.
 export function listNotes(caseId: string): Note[] {
   const rows = getDb()
-    .prepare('SELECT * FROM notes WHERE case_id = ? ORDER BY created_at DESC')
+    .prepare(
+      'SELECT * FROM notes WHERE case_id = ? AND deleted_at IS NULL ORDER BY created_at DESC'
+    )
     .all(caseId) as Array<Record<string, unknown>>
   return rows.map(rowToNote)
 }
 
 export function getNote(id: string): Note | undefined {
-  const row = getDb().prepare('SELECT * FROM notes WHERE id = ?').get(id) as
+  const row = getDb().prepare('SELECT * FROM notes WHERE id = ? AND deleted_at IS NULL').get(id) as
     Record<string, unknown> | undefined
   return row ? rowToNote(row) : undefined
 }
@@ -175,11 +182,15 @@ export function createNote(params: CreateNoteParams): Note {
         now
       )
     rewriteReferencesForNote(id, mentions)
+    signLocalRow('notes', { id })
     return getNote(id)!
   })
 }
 
 export function updateNote(params: UpdateNoteParams): Note | undefined {
+  // Only the author edits a row (design decision 9): another member's note
+  // is readable here and editable on their installation.
+  if (!isLiveLocalRow('notes', { id: params.id })) return undefined
   const existing = getNote(params.id)
   if (!existing) return undefined
   const now = new Date().toISOString()
@@ -223,18 +234,19 @@ export function updateNote(params: UpdateNoteParams): Note | undefined {
     // branch above — an unrelated title edit must not re-validate mentions a
     // rule change or case move has since made questionable.
     if (touchesBody) rewriteReferencesForNote(params.id, resolved.mentions)
+    signLocalRow('notes', { id: params.id })
     return getNote(params.id)
   })
 }
 
+// A tombstone in a Shared Case, a removed row elsewhere (workingRows.ts).
 export function deleteNote(id: string): boolean {
-  const result = getDb().prepare('DELETE FROM notes WHERE id = ?').run(id)
-  return result.changes > 0
+  return deleteLocalRow('notes', { id })
 }
 
 export function getNoteCount(caseId: string): number {
   const row = getDb()
-    .prepare('SELECT COUNT(*) as count FROM notes WHERE case_id = ?')
+    .prepare('SELECT COUNT(*) as count FROM notes WHERE case_id = ? AND deleted_at IS NULL')
     .get(caseId) as { count: number }
   return row.count
 }
@@ -248,7 +260,7 @@ export function searchNotes(caseId: string, query: string): Note[] {
     .prepare(
       `SELECT n.* FROM notes n
        JOIN notes_fts ON notes_fts.rowid = n.rowid
-       WHERE notes_fts MATCH ? AND n.case_id = ?
+       WHERE notes_fts MATCH ? AND n.case_id = ? AND n.deleted_at IS NULL
        ORDER BY rank`
     )
     .all(toFtsMatchQuery(query, NOTES_FTS_COLUMNS), caseId) as Array<Record<string, unknown>>

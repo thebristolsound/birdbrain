@@ -7,6 +7,8 @@ import {
   statSync,
   readFileSync,
   readSync,
+  renameSync,
+  rmSync,
   writeSync,
   fsyncSync,
   truncateSync
@@ -31,7 +33,12 @@ import type {
   SharedCaseVerifyResult,
   UnsupportedEntry
 } from '@shared/verify'
-import { LINEAGE_DIRECTORY, parseChainPath } from '../../packages/evidence-package-layout/index'
+import {
+  LINEAGE_DIRECTORY,
+  isChainInstallationId,
+  memberChainPath,
+  parseChainPath
+} from '../../packages/evidence-package-layout/index'
 import { getInstallationId } from '@main/services/installationId'
 import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
 import type {
@@ -228,6 +235,78 @@ export function readChainFileSnapshots(caseDir: string): ChainFileSnapshot[] {
       : []
   )
   return [...members, ...lineage]
+}
+
+// Another member's chain as this replica holds it: the text of
+// `manifest.<installationId>.jsonl`, or '' before any of it arrived.
+export function readMemberChainText(caseDir: string, installationId: string): string {
+  const path = join(caseDir, memberChainPath(assertChainInstallationId(installationId)))
+  return existsSync(path) ? readFileSync(path, 'utf-8') : ''
+}
+
+// An installation id reaches here from the wire or from a `member-add`
+// entry, and a chain file is named after it: one that is not a single path
+// segment would name a file outside the Case directory, so it is refused
+// before any name is built from it.
+function assertChainInstallationId(installationId: string): string {
+  if (!isChainInstallationId(installationId)) {
+    throw new Error(`Installation id ${JSON.stringify(installationId)} cannot name a chain file`)
+  }
+  return installationId
+}
+
+// Appends received lines to another member's chain file, byte-for-byte as
+// received and fsynced, the way `appendManifestEntry` appends to the local
+// chain. The caller (entryAcceptance.ts) has verified that the lines continue
+// the stored head under that member's key; nothing here checks them.
+export function appendMemberChainLines(
+  caseDir: string,
+  installationId: string,
+  lines: string[]
+): void {
+  if (lines.length === 0) return
+  const fd = openSync(
+    join(caseDir, memberChainPath(assertChainInstallationId(installationId))),
+    'a'
+  )
+  try {
+    writeSync(fd, lines.map((line) => line + '\n').join(''))
+    fsyncSync(fd)
+  } finally {
+    closeSync(fd)
+  }
+}
+
+// Cuts another member's chain file back to its first `keepLines` lines, and
+// removes it when none are kept: the session's rollback when a chain it
+// received page by page turns out to name another Case. The kept lines are
+// written whole to a temporary name, fsynced and renamed over the chain, so
+// the file on disk is the old chain or the cut one and never a part of
+// either.
+export function truncateMemberChainLines(
+  caseDir: string,
+  installationId: string,
+  keepLines: number
+): void {
+  const path = join(caseDir, memberChainPath(assertChainInstallationId(installationId)))
+  if (!existsSync(path)) return
+  const kept = readFileSync(path, 'utf-8')
+    .split('\n')
+    .filter((line) => line.trim().length > 0)
+    .slice(0, keepLines)
+  if (kept.length === 0) {
+    rmSync(path)
+    return
+  }
+  const partial = `${path}.partial`
+  const fd = openSync(partial, 'w')
+  try {
+    writeSync(fd, kept.map((line) => line + '\n').join(''))
+    fsyncSync(fd)
+  } finally {
+    closeSync(fd)
+  }
+  renameSync(partial, path)
 }
 
 // The chain snapshots in the shape the Shared Case walk takes them.
@@ -698,6 +777,24 @@ export type ManifestEntryInput =
       operatorName: string
       toolVersion: string
     }
+  | {
+      // One sync session that brought at least one new remote entry (design
+      // decision 14, #1512): the head this installation now holds for each
+      // member whose chain advanced, bound by index AND hash. Written by the
+      // session after the entries step, never on a session that brought none.
+      type: 'merge'
+      caseId: string
+      heads: Array<{
+        installationId: string
+        index: number
+        entryHash: string
+        entriesReceived: number
+      }>
+      timestamp: string
+      operatorId: string
+      operatorName: string
+      toolVersion: string
+    }
 
 export interface ExportVerificationResult {
   overallValid: boolean
@@ -749,7 +846,10 @@ export const MIN_READER_SCHEMA_VERSION: Record<ManifestEntryInput['type'], numbe
   // it to try.
   exhibit: 3,
   derivation: 3,
-  renumber: 3
+  renumber: 3,
+  // The Shared Case types are schema 4 (#1509); `merge` is the one the sync
+  // session writes (#1512).
+  merge: 4
 }
 
 // Per-entry overrides for the two generalized types (#1180). A `timestamp` or

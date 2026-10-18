@@ -90,6 +90,39 @@ export function getExhibitSearchBuild(exhibitId: string): ExhibitSearchBuild | u
     .get(exhibitId) as ExhibitSearchBuild | undefined
 }
 
+/** One field record with the Content Hashes the exact check compares. */
+export interface FieldRecord {
+  fieldId: number
+  exhibitId: string
+  caseId: string
+  field: string
+  value: string
+  source: 'html-part' | 'text'
+  part: number | null
+  startOffset: number
+  endOffset: number
+  extractor: string
+  /** The Content Hash the build row records. */
+  builtContentHash: string
+  /** The Exhibit row's Content Hash now, or null when the row is gone. */
+  exhibitContentHash: string | null
+}
+
+export function getFieldRecord(fieldId: number): FieldRecord | undefined {
+  return getDb()
+    .prepare(
+      `SELECT f.id AS fieldId, f.exhibit_id AS exhibitId, f.case_id AS caseId, f.field,
+              f.value, f.source, f.part, f.start_offset AS startOffset,
+              f.end_offset AS endOffset, b.extractor, b.content_hash AS builtContentHash,
+              e.content_hash AS exhibitContentHash
+         FROM exhibit_search_fields f
+         JOIN exhibit_search_builds b ON b.exhibit_id = f.exhibit_id
+         LEFT JOIN exhibits e ON e.id = f.exhibit_id
+        WHERE f.id = ?`
+    )
+    .get(fieldId) as FieldRecord | undefined
+}
+
 // One transaction, so a search never sees an Exhibit's old fields beside its new
 // build row. Deleting the build row takes its fields through the cascade.
 export function replaceExhibitFields(build: ExhibitSearchBuild, fields: ExtractedField[]): void {

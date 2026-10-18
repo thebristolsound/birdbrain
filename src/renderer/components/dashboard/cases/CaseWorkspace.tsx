@@ -88,7 +88,7 @@ export function CaseWorkspace() {
 
   return (
     <div className="flex h-full flex-col">
-      <CaseActionBar caseData={activeCase} />
+      <CaseActionBar />
       {/* Split workspaces own their scroll regions and fill the available height. */}
       {isCaptures || isData || isSignals || isNotes ? (
         <div className="flex-1 overflow-hidden">

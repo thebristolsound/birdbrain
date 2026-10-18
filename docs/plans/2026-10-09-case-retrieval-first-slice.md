@@ -375,4 +375,20 @@ The maintainer approved this plan and accepted each recommendation it made.
   same row text, and states once the part and offsets of the first record. The Settings rebuild
   now replaces each Capture's records in place and then rebuilds the index, so a search during it
   still finds the Captures not reached yet.
-- **Next.** Step 5, the exact check, once step 4 merges.
+- **2026-10-16, step 5.** `checkFieldHit` sits in `src/main/services/investigation/claimCheck.ts`,
+  where the engine plan's open question 19 puts the claim checks, behind `cases:checkFieldHit`.
+  `TextCheck` and `ClaimCheck` are in `src/shared/investigation.ts`, as the engine plan's E10
+  declares them. An opened hit gets one Check action in the Text or Links tab, and the answer
+  belongs to one opening of that hit: closing it, or opening any hit, the same one included,
+  clears it. Where the code departs from D7's text: the text digest comes from the signed entry
+  in the Capture author's chain, which the verification reads, not the local chain
+  `noteAnchorResolver.ts` reads. The check hashes the bytes it slices, because the verification
+  hashes the file the row's path names against `captures.hash`, while the search compares
+  `exhibits.content_hash`. Only the per-part ceiling makes a part over budget. Any verification
+  result other than `verified` gives `cannot-check`, so a Capture with a missing screenshot, or a
+  legacy `.html` Capture, cannot be checked. A Capture whose row has no index into the signed
+  record cannot be checked either, since its verification compares the page with the database's
+  hash alone. Extracted Text whose signed entry holds no text digest is checked and marked
+  `unattested`. The view compares the record the check read, value included, with the hit,
+  since a rebuild can give a record id to another record.
+- **Next.** Step 6, the unreviewed view, once the maintainer signs off the check (Ruling 4).

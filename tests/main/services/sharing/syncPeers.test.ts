@@ -5,7 +5,7 @@ import { basename, join } from 'path'
 import { tmpdir } from 'os'
 import { closeDatabase, getDb } from '@main/services/db/core'
 import { listCaseMembers, upsertCaseMember } from '@main/services/db/caseMemberRepo'
-import { insertCapture } from '@main/services/db/captureRepo'
+import { insertCapture, listCaptures } from '@main/services/db/captureRepo'
 import { createNote, deleteNote, getNote, listNotes, updateNote } from '@main/services/db/noteRepo'
 import {
   addTagToCapture,
@@ -71,7 +71,6 @@ import {
   recordSource,
   seedSharedCase,
   TIME,
-  type IngestedCapture,
   type Peer
 } from '../../../helpers/syncPeers'
 
@@ -601,19 +600,6 @@ describe('sync session between peers (#1512)', () => {
     expect(sha(onDisk(doc.path))).toBe(doc.contentHash)
   })
 
-  // Rows on a teammate's Capture reference its `captures` row, which #1811
-  // writes; until then the test writes the row itself where a scenario needs it.
-  function standInCaptureRow(capture: IngestedCapture, by: Peer): void {
-    insertCapture({
-      id: capture.captureId,
-      caseId: CASE_ID,
-      url: `https://example.com/${by.name}`,
-      title: 'Stand-in',
-      hash: capture.contentHash,
-      timestamp: TIME
-    })
-  }
-
   it('brings every working-layer row across signed, and a tombstone removes it again', async () => {
     await activate(A)
     const capture = await addCapture(CASE_ID, A, 1)
@@ -626,9 +612,10 @@ describe('sync session between peers (#1512)', () => {
     const source = recordSource(CASE_ID, A)
 
     await activate(B)
-    standInCaptureRow(capture, A)
     const result = await pull(CASE_ID, source)
     expect(result.errors).toEqual([])
+    // The apply step wrote Alice's Capture row before the rows step needed it.
+    expect(result.capturesApplied).toBe(1)
     expect(result.rowsApplied).toBe(6)
     expect(listNotes(CASE_ID).map((n) => n.title)).toEqual(['Alice note'])
     expect(listTags()).toEqual([tag])
@@ -713,9 +700,10 @@ describe('sync session between peers (#1512)', () => {
 
   // Maintainer ruling of 2026-10-15: every row a session receives lands in
   // one transaction with foreign keys deferred, as the design's working-layer
-  // rule states. Until #1811 writes Capture rows for other members' Captures,
-  // one row referencing a Capture this replica lacks rolls back the whole
-  // session's rows, another member's included; they land once the row exists.
+  // rule states. One row referencing a Capture this replica lacks, here one
+  // whose page archive has not arrived so the apply step wrote no row for it
+  // (#1811), rolls back the whole session's rows, another member's included;
+  // they land once the file arrives and the Capture row with it.
   it('rolls back every row of a session whose reference is missing, and lands them once it exists', async () => {
     await activate(C)
     createNote({ caseId: CASE_ID, title: 'Carol note', body: '' })
@@ -726,9 +714,14 @@ describe('sync session between peers (#1512)', () => {
     saveAnnotations({ captureId: capture.captureId, shapes: [], imageWidth: 1, imageHeight: 1 })
     createNote({ caseId: CASE_ID, title: 'Alice note', body: '' })
     const source = recordSource(CASE_ID, A)
+    const mhtmlPath = defaultCaptureStore.artifactPaths(CASE_ID, capture.captureId, 'mhtml').rel
+    const mhtml = source.files.get(mhtmlPath)!
+    source.files.delete(mhtmlPath)
 
     await activate(B)
     const held = await pull(CASE_ID, source)
+    expect(held.capturesApplied).toBe(0)
+    expect(listCaptures(CASE_ID)).toEqual([])
     expect(held.rowsApplied).toBe(0)
     expect(held.errors).toEqual([
       {
@@ -740,9 +733,10 @@ describe('sync session between peers (#1512)', () => {
     ])
     expect(listNotes(CASE_ID)).toEqual([])
 
-    standInCaptureRow(capture, A)
+    source.files.set(mhtmlPath, mhtml)
     const landed = await pull(CASE_ID, source)
     expect(landed.errors).toEqual([])
+    expect(landed.capturesApplied).toBe(1)
     expect(landed.rowsApplied).toBe(3)
     expect(
       listNotes(CASE_ID)

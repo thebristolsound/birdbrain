@@ -13,7 +13,7 @@ import {
   initInstallationId,
   resetInstallationId
 } from '@main/services/installationId'
-import { getPublicKeyPem } from '@main/services/signingKey'
+import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
 import {
   appendManifestEntry,
   appendMemberChainLines,
@@ -25,6 +25,7 @@ import { MemoryHub, type ByteStream } from '@main/services/sharing/transport'
 import {
   CHALLENGE_BYTES,
   MAX_BLOB_BYTES,
+  MAX_HANDSHAKE_FRAME_BYTES,
   MessageReader,
   expectMessage,
   writeMessage,
@@ -39,6 +40,7 @@ import {
   serveSyncSession,
   type SyncSource
 } from '@main/services/sharing/session'
+import type { ReceivedCaptures } from '@main/services/sharing/receivedEvidence'
 import type { CaseMember } from '@shared/types'
 import { memberChainPath } from '../../../../src/packages/evidence-package-layout/index'
 
@@ -47,6 +49,12 @@ import { memberChainPath } from '../../../../src/packages/evidence-package-layou
 // is a SyncSource standing in for the peer, with its own key and a roster the
 // test can change mid-session. The peer-to-peer steps that move entries,
 // files and rows between two real replicas are in syncPeers.test.ts.
+
+// These sessions bring no Capture, so the apply step never calls either.
+const receivedCaptures: ReceivedCaptures = {
+  processReceived: () => {},
+  removeReceived: async () => false
+}
 
 const keyPair = () =>
   generateKeyPairSync('rsa', {
@@ -129,7 +137,7 @@ describe('sync session handshake (#1512)', () => {
   // Runs one session: this installation dials, the source answers.
   async function session(
     source: SyncSource | null,
-    options: Parameters<typeof pullFromPeer>[2] = {}
+    options: Partial<Parameters<typeof pullFromPeer>[2]> = {}
   ) {
     const hub = new MemoryHub()
     const dialer = hub.createTransport('dialer')
@@ -143,7 +151,7 @@ describe('sync session handshake (#1512)', () => {
       })
     })
     const stream = await dialer.openStream(await dialer.dial(listener.ticket))
-    const result = await pullFromPeer(caseId, stream, options)
+    const result = await pullFromPeer(caseId, stream, { receivedCaptures, ...options })
     await served
     return result
   }
@@ -286,6 +294,42 @@ describe('sync session handshake (#1512)', () => {
     await garbage.served
   })
 
+  it('reads no frame above the handshake cap until the dialer proves its key', async () => {
+    const oversized = new Uint8Array(4)
+    new DataView(oversized.buffer).setUint32(0, MAX_HANDSHAKE_FRAME_BYTES + 1)
+
+    // A stranger's header alone is refused: no body follows, and none is awaited.
+    const stranger = await rawDialer(peerSource())
+    await stranger.stream.write(oversized)
+    expect(await stranger.reader.next()).toEqual({ t: 'bye', reason: BYE_REASONS.protocol })
+    await stranger.served
+
+    // The same request after the proof is served.
+    const blob = vi.fn(() => null)
+    const proven = await rawDialer(peerSource({ blob }))
+    const challenge = randomBytes(CHALLENGE_BYTES)
+    await writeMessage(proven.stream, {
+      t: 'hello',
+      caseId,
+      installationId: localId,
+      challenge,
+      proof: null
+    })
+    const answer = await expectMessage(proven.reader, 'hello')
+    await writeMessage(proven.stream, {
+      t: 'proof',
+      signature: signEntryHash(helloDigest(caseId, answer.challenge, localId))
+    })
+    const paths = Array.from({ length: 70 }, (_, i) => `${i}-${'p'.repeat(1000)}`)
+    await writeMessage(proven.stream, { t: 'blobs-request', paths })
+    for (const path of paths) {
+      expect(await expectMessage(proven.reader, 'blobs')).toEqual({ t: 'blobs', path, bytes: null })
+    }
+    expect(blob).toHaveBeenCalledTimes(paths.length)
+    proven.stream.close()
+    await proven.served
+  })
+
   it('ends quietly when the dialer closes without a word', async () => {
     const { stream, served } = await rawDialer(peerSource())
     stream.close()
@@ -299,7 +343,9 @@ describe('sync session handshake (#1512)', () => {
     const listener = hub.createTransport('listener')
     await listener.listen(() => {})
     const stream = await dialer.openStream(await dialer.dial(listener.ticket))
-    await expect(pullFromPeer(lonely, stream)).rejects.toThrow('not a Shared Case')
+    await expect(pullFromPeer(lonely, stream, { receivedCaptures })).rejects.toThrow(
+      'not a Shared Case'
+    )
   })
 
   it('serves a shared Case live: roster, every chain head, and this installation key', () => {

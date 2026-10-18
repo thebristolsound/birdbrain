@@ -230,11 +230,15 @@ export function reconcileCaptureTrustedTime(capture: {
 // O(captures²)) before writing. Non-MHTML captures have no manifest entry and
 // are skipped.
 export function reconcileAllMirrors(): void {
-  for (const c of caseRepo.listCases()) {
-    const index = buildTrustedTimeIndex(join(getStorageRoot(), c.id), listExhibits(c.id))
-    for (const cap of captureRepo.listCaptures(c.id)) {
-      if (cap.format !== 'mhtml') continue
-      captureRepo.setCaptureTrustedTime(cap.id, index.get(cap.hash)?.trustedTime ?? 'none')
-    }
+  for (const c of caseRepo.listCases()) reconcileCaseMirrors(c.id)
+}
+
+// The same refresh for one Case. A sync session runs it after new entries land, because another
+// member's stamp can arrive in a later session than the Capture it stamps (#1811).
+export function reconcileCaseMirrors(caseId: string): void {
+  const index = buildTrustedTimeIndex(join(getStorageRoot(), caseId), listExhibits(caseId))
+  for (const cap of captureRepo.listCaptures(caseId)) {
+    if (cap.format !== 'mhtml') continue
+    captureRepo.setCaptureTrustedTime(cap.id, index.get(cap.hash)?.trustedTime ?? 'none')
   }
 }

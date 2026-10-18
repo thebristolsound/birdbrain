@@ -55,6 +55,13 @@ export interface InsertExhibitParams {
   // from the chain (X45). The fallback is for callers with no chain to read,
   // such as seeding a database directly.
   exhibitNumber?: number
+  // Another member's Exhibit, received by sync. Absent means this installation's.
+  author?: ExhibitAuthor
+}
+
+export interface ExhibitAuthor {
+  installationId: string
+  memberCode: string
 }
 
 // The highest Exhibit Number a live row of this installation holds in a Case,
@@ -86,15 +93,27 @@ export function insertExhibit(params: InsertExhibitParams): Exhibit {
     path = null,
     sizeBytes = null,
     committedAt,
-    manifestSeq = null
+    manifestSeq = null,
+    author
   } = params
+  if (author) {
+    // The fallback below numbers from this installation's own sequence, which would give a
+    // teammate's Exhibit a local number.
+    if (params.exhibitNumber === undefined) {
+      throw new Error(`Exhibit ${id} names an author but no Exhibit Number`)
+    }
+    if (!MEMBER_CODE_PATTERN.test(author.memberCode)) {
+      throw new Error(`Exhibit ${id} carries an invalid Member Code`)
+    }
+  }
   const exhibitNumber = params.exhibitNumber ?? highestLocalExhibitNumber(caseId) + 1
   getDb()
     .prepare(
       `INSERT INTO exhibits (
          id, case_id, kind, origin, exhibit_number, name,
-         content_hash, path, size_bytes, committed_at, manifest_seq
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         content_hash, path, size_bytes, committed_at, manifest_seq,
+         member_code, author_installation_id
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       id,
@@ -107,7 +126,9 @@ export function insertExhibit(params: InsertExhibitParams): Exhibit {
       path,
       sizeBytes,
       committedAt,
-      manifestSeq
+      manifestSeq,
+      author?.memberCode ?? null,
+      author?.installationId ?? null
     )
   return getExhibit(id)!
 }
@@ -124,6 +145,7 @@ export interface CaptureExhibitParams {
   manifestSeq?: number | null
   method?: string | null
   exhibitNumber?: number
+  author?: ExhibitAuthor
 }
 
 // The Exhibit row for a Capture, derived from the capture's own fields. One
@@ -149,7 +171,8 @@ export function insertExhibitForCapture(params: CaptureExhibitParams): Exhibit {
     sizeBytes: params.sizeBytes ?? null,
     committedAt,
     manifestSeq: params.manifestSeq ?? null,
-    ...(params.exhibitNumber !== undefined ? { exhibitNumber: params.exhibitNumber } : {})
+    ...(params.exhibitNumber !== undefined ? { exhibitNumber: params.exhibitNumber } : {}),
+    ...(params.author ? { author: params.author } : {})
   })
 }
 

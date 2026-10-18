@@ -30,6 +30,7 @@ const NAMESPACES = [
   'exhibits',
   'manifest',
   'sharing',
+  'investigation',
   'staging',
   'app',
   'diagnostics',
@@ -51,7 +52,10 @@ const EVENTS = [
   'onDeepLinkNavigate',
   'onUpdateStatus',
   'onGuestFrameReplaced',
-  'onGuestMouseDown'
+  'onGuestMouseDown',
+  'onSharingChanged',
+  'onSharingJoinProgress',
+  'onInvestigationProgress'
 ] as const satisfies readonly EventKey[]
 
 const TOP_LEVEL = ['search', 'testPipeline', 'testHttp'] as const satisfies readonly TopLevelKey[]

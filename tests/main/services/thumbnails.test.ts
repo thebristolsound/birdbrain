@@ -252,6 +252,15 @@ describe('getThumbnail', () => {
     })
   })
 
+  it('renders without writing a file when asked not to persist it', async () => {
+    store.writeScreenshot('case-1', 'cap-1', await png(1280, 2400, WHITE))
+
+    const thumb = await getThumbnail('case-1', 'cap-1', store, { persist: false })
+
+    expect((await sharp(thumb!).metadata()).width).toBe(THUMB_WIDTH)
+    expect(existsSync(store.thumbnailPaths('case-1', 'cap-1').abs)).toBe(false)
+  })
+
   it('serves the cached thumbnail without re-rendering', async () => {
     store.writeScreenshot('case-1', 'cap-1', await png(1280, 2400, WHITE))
     store.writeThumbnail('case-1', 'cap-1', Buffer.from('already on disk'))

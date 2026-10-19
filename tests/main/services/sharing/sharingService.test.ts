@@ -611,5 +611,85 @@ describe('sharing service (#1810)', () => {
       expect(parsedChain(ownChainText(caseId)).map((e) => e.type)).toEqual(['merge'])
       void caseDirOf
     })
+
+    it("a syncNow during joinCase's first session shares it (#1881)", async () => {
+      await shareCase(caseId, { nodeId: 'alice-node' })
+      const bobMember = await addMember(caseId, {
+        installationId: B.installationId,
+        publicKeyPem: B.publicKeyPem,
+        operatorName: B.operatorName,
+        nodeId: 'bob-node',
+        memberCode: 'BM'
+      })
+      addDocument(caseId, A, 1)
+      const fromAlice = recordSource(caseId, A)
+      const roster = listCaseMembers(caseId).filter((m) => m.installationId !== B.installationId)
+      const registry = new InviteRegistry()
+      const { secret, expiresAt } = registry.open(caseId)
+      const ownerNode = hub.createTransport('alice-node')
+      const joins = new JoinServer({
+        nodeId: ownerNode.nodeId,
+        registry,
+        roster: () => roster,
+        caseName: () => 'Shared',
+        addMember: async () => {
+          roster.push(bobMember)
+          return bobMember
+        },
+        tickets: () => ({ [A.installationId]: ownerNode.ticket }),
+        rememberTicket: () => {},
+        onChanged: () => {}
+      })
+      // The Owner holds every hello until released, so the joiner's first
+      // session is still running when Sync now is pressed.
+      let hellos = 0
+      let release: () => void = () => {}
+      const held = new Promise<void>((resolve) => (release = resolve))
+      const routed: Promise<void>[] = []
+      await ownerNode.listen((stream, peer) => {
+        routed.push(
+          routeIncomingStream(stream, peer, {
+            join: (s, p) => joins.serve(s, p),
+            hello: async (s) => {
+              hellos += 1
+              await held
+              await serveSyncSession(s, (id) => (id === caseId ? fromAlice : null))
+            }
+          })
+        )
+      })
+      const invite = encodeInvite({
+        ticket: ownerNode.ticket,
+        caseId,
+        operatorName: 'Alice Owner',
+        secret,
+        expiresAt
+      })
+
+      await activate(B)
+      const service = newService()
+      service.setTransportProvider(async () => hub.createTransport('bob-node'))
+      const joining = service.joinCase(invite)
+      await settle(() => joins.pendingJoins(caseId).length === 1)
+      await joins.approve(caseId, joins.pendingJoins(caseId)[0].requestId, 'BM')
+      await settle(() => hellos === 1)
+      const pressed = service.syncNow(caseId)
+      release()
+      expect(await joining).toEqual({ caseId, caseName: 'Shared' })
+      expect(await pressed).toEqual([
+        {
+          installationId: A.installationId,
+          outcome: 'synced',
+          entries: 3,
+          blobs: 1,
+          rowsApplied: 0,
+          errors: 0
+        }
+      ])
+      expect(hellos).toBe(1)
+      expect(mergeEntries(caseId)).toHaveLength(1)
+      await service.close()
+      await Promise.all(routed)
+    })
   })
 })

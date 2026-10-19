@@ -31,19 +31,29 @@ import {
   revokeMember,
   shareCase
 } from '@main/services/sharing/membership'
-import { MAX_HANDSHAKE_FRAME_BYTES, MessageReader } from '@main/services/sharing/messages'
+import {
+  MAX_HANDSHAKE_FRAME_BYTES,
+  MessageReader,
+  ProtocolError
+} from '@main/services/sharing/messages'
 import {
   liveSyncSource,
   pullFromPeer,
   rememberPeerTicket,
   serveSyncSession,
+  type SyncSessionResult,
   type SyncSource
 } from '@main/services/sharing/session'
 import type { ReceivedCaptures } from '@main/services/sharing/receivedEvidence'
-import { memberTickets, rememberMemberTickets } from '@main/services/sharing/syncState'
+import {
+  forgetReached,
+  memberTickets,
+  rememberMemberTickets
+} from '@main/services/sharing/syncState'
 import {
   PeerUnreachableError,
   type ByteStream,
+  type Connection,
   type Transport
 } from '@main/services/sharing/transport'
 
@@ -54,11 +64,12 @@ import {
 // member list. Nothing here decides what a session stores: the session and
 // its acceptance modules do, and the roster writers decide who is a member.
 //
-// The transport starts on the first call that needs the network, not at
-// launch, through `setTransportProvider`. The default provider returns null,
-// so every such call refuses `sharing-unavailable`; the app's provider starts
-// `IrohTransport` (#1809) and returns null where the binding does not load.
-// SC-9 moves the start to launch and owns the timer.
+// The transport starts on the first call that needs the network, through
+// `setTransportProvider`. The default provider returns null, so every such
+// call refuses `sharing-unavailable`. The app's provider is the sync service's
+// (syncService.ts, #1881), which owns the transport's lifetime: it runs the
+// round that starts the transport at launch when a Shared Case exists, arms
+// the 60-second timer, and closes the transport on quit.
 
 export type TransportProvider = () => Promise<Transport | null>
 
@@ -70,7 +81,56 @@ export interface SharingServiceDeps {
   // What every pull hands the apply step (receivedEvidence.ts). Required, as on
   // the session, so no session this service runs skips an author's deletion.
   receivedCaptures: ReceivedCaptures
+  // How long a dialled session waits for the peer to send or take a byte
+  // before it ends the session (#1881); 30 s by default.
+  sessionIdleMs?: number
 }
+
+export const SESSION_IDLE_MS = 30_000
+
+// A stream whose read or write gives up once the peer has been idle for `ms`:
+// it closes the stream and refuses with a ProtocolError, which the session
+// records as the peer's failure. The deadline restarts on every chunk, so a
+// transfer that keeps moving is never cut. Without it a peer that took the
+// stream and never answered would hold the session, and every later round of
+// its Case, until the app quit.
+function closeWhenIdle(stream: ByteStream, ms: number): ByteStream {
+  const bounded = <T>(op: Promise<T>, what: string): Promise<T> =>
+    new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        stream.close()
+        reject(new ProtocolError(`The peer ${what} nothing for ${ms} ms`))
+      }, ms)
+      op.then(
+        (value) => {
+          clearTimeout(timer)
+          resolve(value)
+        },
+        (err: unknown) => {
+          clearTimeout(timer)
+          reject(err)
+        }
+      )
+    })
+  return {
+    write: (chunk) => bounded(stream.write(chunk), 'took'),
+    read: () => bounded(stream.read(), 'sent'),
+    close: () => stream.close()
+  }
+}
+
+function syncedOutcome(installationId: string, result: SyncSessionResult): SharingSyncOutcome {
+  return {
+    installationId,
+    outcome: 'synced',
+    entries: result.entriesReceived,
+    blobs: result.blobsReceived,
+    rowsApplied: result.rowsApplied,
+    errors: result.errors.length
+  }
+}
+
+const errorDetail = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
 export interface StreamHandlers {
   join: (stream: ByteStream, peerNodeId: string) => Promise<void>
@@ -144,9 +204,11 @@ export class SharingService {
   private started: Promise<Started | null> | null = null
   private readonly syncing = new Map<string, Promise<SharingSyncOutcome[]>>()
   private readonly sourceFor: (caseId: string) => SyncSource | null
+  private readonly sessionIdleMs: number
 
   constructor(private readonly deps: SharingServiceDeps) {
     this.sourceFor = deps.sourceFor ?? liveSyncSource
+    this.sessionIdleMs = deps.sessionIdleMs ?? SESSION_IDLE_MS
   }
 
   setTransportProvider(provider: TransportProvider): void {
@@ -250,7 +312,10 @@ export class SharingService {
   // Joins the Case an invite names, adopts the welcome, and runs the first
   // session on a new stream of the join connection (the design's step 4).
   // The join is complete once the Case is adopted; a first session that
-  // fails is logged and left to Sync now.
+  // fails is logged and left to Sync now. The first session is the Case's
+  // running one from the moment the Case exists, with no await between, so a
+  // Sync now or a timer round on the new Case shares it rather than starting a
+  // second.
   async joinCase(text: string): Promise<SharingJoinResult> {
     const invite = decodeInvite(text)
     if (getCase(invite.caseId) !== undefined) throw new SharingError('case-exists')
@@ -265,21 +330,36 @@ export class SharingService {
       const result = adoptWelcome(welcome, invite.ticket)
       this.changed(caseId)
       step('syncing')
-      try {
-        await pullFromPeer(caseId, await transport.openStream(connection), {
-          receivedCaptures: this.deps.receivedCaptures,
-          ticket: transport.ticket,
-          peerNodeId: connection.peerNodeId,
-          ticketNodeId: (ticket) => transport.nodeIdOf(ticket)
-        })
-      } catch (err) {
-        logger.warn('sharing', 'sharing.first_session_failed', undefined, err)
-      }
+      await this.single(caseId, () => this.firstSession(caseId, transport, connection))
       return result
     } finally {
       connection.close()
       this.changed(caseId)
     }
+  }
+
+  private async firstSession(
+    caseId: string,
+    transport: Transport,
+    connection: Connection
+  ): Promise<SharingSyncOutcome[]> {
+    const installationId = getCase(caseId)?.ownerInstallationId ?? ''
+    try {
+      const result = await pullFromPeer(caseId, await this.openBounded(transport, connection), {
+        receivedCaptures: this.deps.receivedCaptures,
+        ticket: transport.ticket,
+        peerNodeId: connection.peerNodeId,
+        ticketNodeId: (ticket) => transport.nodeIdOf(ticket)
+      })
+      return [syncedOutcome(installationId, result)]
+    } catch (err) {
+      logger.warn('sharing', 'sharing.first_session_failed', undefined, err)
+      return [{ installationId, outcome: 'failed', detail: errorDetail(err) }]
+    }
+  }
+
+  private async openBounded(transport: Transport, connection: Connection): Promise<ByteStream> {
+    return closeWhenIdle(await transport.openStream(connection), this.sessionIdleMs)
   }
 
   async approveJoin(caseId: string, requestId: string, memberCode: string): Promise<CaseMember> {
@@ -312,60 +392,79 @@ export class SharingService {
   }
 
   // One pull from each member in good standing whose ticket is known, one
-  // after another. A second call while one runs shares its result.
+  // after another. A second call while one runs shares its result, and so
+  // does a timer round or a join's first session on the same Case: one Case
+  // never has two sessions at once (#1881).
   syncNow(caseId: string): Promise<SharingSyncOutcome[]> {
-    const running = this.syncing.get(caseId)
-    if (running) return running
-    const run = this.runSync(caseId).finally(() => this.syncing.delete(caseId))
-    this.syncing.set(caseId, run)
-    return run
+    return this.single(caseId, () => this.runSync(caseId))
   }
 
+  private single(
+    caseId: string,
+    run: () => Promise<SharingSyncOutcome[]>
+  ): Promise<SharingSyncOutcome[]> {
+    const running = this.syncing.get(caseId)
+    if (running) return running
+    const started = run().finally(() => this.syncing.delete(caseId))
+    this.syncing.set(caseId, started)
+    return started
+  }
+
+  // `peersReachable` counts the members whose latest dialled session got past
+  // `hello` (syncState.ts), so a member attempt that stops short of the
+  // `heads` phase forgets that member. An installation whose own row is
+  // revoked runs no session for the Case and reaches nobody in it.
   private async runSync(caseId: string): Promise<SharingSyncOutcome[]> {
     const row = caseOrThrow(caseId)
     if (row.sharedAt === undefined) throw new SharingError('not-shared')
-    const { transport } = await this.transportOrThrow()
     const self = getInstallationId()
+    const roster = listCaseMembers(caseId)
+    if (roster.some((m) => m.installationId === self && m.revokedAtIndex !== null)) {
+      for (const { installationId } of roster) forgetReached(caseId, installationId)
+      this.changed(caseId)
+      return []
+    }
+    const { transport } = await this.transportOrThrow()
     const tickets = memberTickets(caseId)
     const outcomes: SharingSyncOutcome[] = []
     for (const member of listCaseMembers(caseId)) {
       const { installationId } = member
       if (installationId === self || member.revokedAtIndex !== null) continue
-      const ticket = tickets[installationId]
-      if (ticket === undefined) {
-        outcomes.push({ installationId, outcome: 'no-address' })
-        continue
-      }
-      let connection
+      let greeted = false
       try {
-        connection = await transport.dial(ticket)
-      } catch (err) {
-        if (err instanceof PeerUnreachableError) {
-          outcomes.push({ installationId, outcome: 'unreachable' })
+        const ticket = tickets[installationId]
+        if (ticket === undefined) {
+          outcomes.push({ installationId, outcome: 'no-address' })
           continue
         }
-        throw err
-      }
-      try {
-        const result = await pullFromPeer(caseId, await transport.openStream(connection), {
-          receivedCaptures: this.deps.receivedCaptures,
-          ticket: transport.ticket,
-          peerNodeId: connection.peerNodeId,
-          ticketNodeId: (ticket) => transport.nodeIdOf(ticket)
-        })
-        outcomes.push({
-          installationId,
-          outcome: 'synced',
-          entries: result.entriesReceived,
-          blobs: result.blobsReceived,
-          rowsApplied: result.rowsApplied,
-          errors: result.errors.length
-        })
-      } catch (err) {
-        const detail = err instanceof Error ? err.message : String(err)
-        outcomes.push({ installationId, outcome: 'failed', detail })
+        let connection
+        try {
+          connection = await transport.dial(ticket)
+        } catch (err) {
+          if (err instanceof PeerUnreachableError) {
+            outcomes.push({ installationId, outcome: 'unreachable' })
+            continue
+          }
+          throw err
+        }
+        try {
+          const result = await pullFromPeer(caseId, await this.openBounded(transport, connection), {
+            receivedCaptures: this.deps.receivedCaptures,
+            ticket: transport.ticket,
+            peerNodeId: connection.peerNodeId,
+            ticketNodeId: (ticket) => transport.nodeIdOf(ticket),
+            onPhase: (phase) => {
+              if (phase === 'heads') greeted = true
+            }
+          })
+          outcomes.push(syncedOutcome(installationId, result))
+        } catch (err) {
+          outcomes.push({ installationId, outcome: 'failed', detail: errorDetail(err) })
+        } finally {
+          connection.close()
+        }
       } finally {
-        connection.close()
+        if (!greeted) forgetReached(caseId, installationId)
       }
     }
     this.changed(caseId)

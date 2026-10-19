@@ -153,8 +153,10 @@ export function recordLocalVersion(version: number): void {
 
 // Sessions running in this process, by Case: what `phase` reads as syncing.
 const running = new Map<string, number>()
-// Peers that completed `hello` with this installation in this process, by
-// Case: what `peersReachable` counts.
+// Peers whose latest session dialled from this process completed `hello`, by
+// Case: what `peersReachable` counts. A session adds its peer here once the
+// peer's proof verifies; the sharing service forgets one whose next attempt
+// does not get that far (forgetReached).
 const reached = new Map<string, Set<string>>()
 
 export function beginSession(caseId: string): void {
@@ -201,6 +203,12 @@ export function finishSession(caseId: string, outcome: SessionOutcome): void {
   })
 }
 
+// Drops one peer from the Case's reached set: its latest dialled session did
+// not complete `hello` (#1881).
+export function forgetReached(caseId: string, installationId: string): void {
+  reached.get(caseId)?.delete(installationId)
+}
+
 // Records members' tickets in the Case's file, replacing any held for the
 // same installation. A member whose relay changes is dialed at its old ticket
 // until something refreshes it here.
@@ -215,10 +223,11 @@ export function memberTickets(caseId: string): Record<string, string> {
 }
 
 // The payload the sync pill reads. `peersTotal` is the roster less this
-// installation and the revoked; `peersReachable` the peers that completed a
-// session with this process; `phase` is syncing while a session runs, error
-// when the last session failed and none has succeeded since, idle otherwise;
-// `egress` the Egress kind, which sync runs past (ADR-0032 rule 1).
+// installation and the revoked; `peersReachable` the peers whose latest
+// session dialled from this process completed `hello`; `phase` is syncing
+// while a session runs, error when the last session failed and none has
+// succeeded since, idle otherwise; `egress` the Egress kind, which sync runs
+// past (ADR-0032 rule 1).
 export function getSyncState(caseId: string): SyncState {
   const self = getInstallationId()
   const members = listCaseMembers(caseId).filter(

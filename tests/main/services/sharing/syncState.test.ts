@@ -23,6 +23,7 @@ import {
   SYNC_STATE_FILENAME,
   beginSession,
   finishSession,
+  forgetReached,
   getSyncState,
   localVersionHighWater,
   memberTickets,
@@ -252,6 +253,22 @@ describe('sync state (#1512)', () => {
       heads: {}
     })
     expect(getSyncState(caseId).peersReachable).toBe(1)
+  })
+
+  it('forgetReached drops one peer from peersReachable and leaves the file alone (#1881)', () => {
+    share()
+    finishSession(caseId, {
+      peerInstallationId: PEER_ID,
+      transfer: { entries: 0, blobs: 0, bytes: 0 },
+      error: null,
+      heads: {}
+    })
+    expect(getSyncState(caseId).peersReachable).toBe(1)
+    const before = readSyncStateFile(caseDir())
+    forgetReached(caseId, PEER_ID)
+    forgetReached('another-case', PEER_ID)
+    expect(getSyncState(caseId).peersReachable).toBe(0)
+    expect(readSyncStateFile(caseDir())).toEqual(before)
   })
 
   it('writes members.json from the roster cache', () => {

@@ -75,9 +75,15 @@ export const WireRowSchema = z
 
 export type WireRow = z.infer<typeof WireRowSchema>
 
+const MAX_TICKET_CHARS = 2048
+const ticketField = z.string().min(1).max(MAX_TICKET_CHARS)
+
 // `hello` opens a session in both directions: the dialer's names the Case and
 // carries its challenge; the listener's answers with its own challenge and
 // the proof over the dialer's. The dialer's `proof` closes the exchange.
+// `ticket` is the sender's current transport ticket (#1809): a ticket names
+// the relay its node used when it started, so each session refreshes the
+// one the other side dials, once the sender has proved its key.
 const HelloSchema = z
   .object({
     t: z.literal('hello'),
@@ -86,7 +92,8 @@ const HelloSchema = z
     challenge: bytesField.refine((b) => b.length === CHALLENGE_BYTES, {
       message: `challenge must be ${CHALLENGE_BYTES} bytes`
     }),
-    proof: z.string().nullable()
+    proof: z.string().nullable(),
+    ticket: ticketField.optional()
   })
   .strict()
 
@@ -151,12 +158,10 @@ const ByeSchema = z.object({ t: z.literal('bye'), reason: z.string() }).strict()
 const MAX_NAME_CHARS = 256
 const MAX_CASE_NAME_CHARS = 1024
 const MAX_PEM_CHARS = 8192
-const MAX_TICKET_CHARS = 2048
 const MAX_SIGNATURE_CHARS = 4096
 const MAX_ROSTER_MEMBERS = 1000
 
 const pemField = z.string().min(1).max(MAX_PEM_CHARS)
-const ticketField = z.string().min(1).max(MAX_TICKET_CHARS)
 
 // The joiner's request: the invite's secret, its identity, its own ticket so
 // the Owner can dial it later, and a signature over joinDigest (the secret

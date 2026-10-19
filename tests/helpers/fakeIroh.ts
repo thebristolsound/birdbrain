@@ -177,6 +177,12 @@ export class FakeIrohNetwork {
   readonly binds: FakeBindOptions[] = []
   // When false, `online()` never resolves, as with no relay reachable.
   relayReachable = true
+  // When true, `online()` rejects.
+  onlineFails = false
+  // When true, the next `acceptNext()` throws, as when the endpoint's driver stops.
+  acceptFails = false
+  // Incoming connections the listener refused.
+  refused = 0
   // Every connection either side made, so a test can see them closed.
   readonly connections: FakeConnection[] = []
 
@@ -229,10 +235,13 @@ export class FakeIrohNetwork {
   }
 }
 
+interface FakeIncoming {
+  accept: () => Promise<{ connect: () => Promise<FakeConnection> }>
+  refuse: () => Promise<void>
+}
+
 class FakeEndpoint {
-  private readonly incoming = new Queue<{
-    accept: () => Promise<{ connect: () => Promise<FakeConnection> }>
-  }>()
+  private readonly incoming = new Queue<FakeIncoming>()
   closed = false
   watchAddr = aborts('Endpoint.watchAddr')
   watchHomeRelay = aborts('Endpoint.watchHomeRelay')
@@ -255,12 +264,12 @@ class FakeEndpoint {
   }
 
   online(): Promise<void> {
+    if (this.net.onlineFails) return Promise.reject(new Error('relay handshake failed'))
     return this.net.relayReachable ? Promise.resolve() : new Promise<void>(() => {})
   }
 
-  async acceptNext(): Promise<{
-    accept: () => Promise<{ connect: () => Promise<FakeConnection> }>
-  } | null> {
+  async acceptNext(): Promise<FakeIncoming | null> {
+    if (this.net.acceptFails) throw new Error('endpoint driver stopped')
     return this.incoming.next()
   }
 
@@ -273,7 +282,13 @@ class FakeEndpoint {
     near.peer = far
     far.peer = near
     this.net.connections.push(near, far)
-    target.incoming.push({ accept: async () => ({ connect: async () => far }) })
+    target.incoming.push({
+      accept: async () => ({ connect: async () => far }),
+      refuse: async () => {
+        this.net.refused += 1
+        near.close()
+      }
+    })
     return near
   }
 

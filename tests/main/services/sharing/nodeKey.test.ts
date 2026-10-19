@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { irohBinding } from '@main/services/sharing/irohTransport'
@@ -101,5 +101,33 @@ describe('node key (#1809)', () => {
       writeFileSync(join(dir, NODE_KEY_FILENAME), text)
       expect(() => loadOrCreateNodeKey(dir, null)).toThrow(NodeKeyUnreadableError)
     }
+  })
+
+  it('stores the key unwrapped when the credential store refuses to wrap it', () => {
+    const dir = fresh('a')
+    const refusing: KeyCipher = {
+      ...reversing,
+      encryptString: () => {
+        throw new Error('keychain locked')
+      }
+    }
+    const key = loadOrCreateNodeKey(dir, refusing)
+    expect(readFileSync(join(dir, NODE_KEY_FILENAME), 'utf-8')).toBe(
+      Buffer.from(key).toString('base64')
+    )
+  })
+
+  it('wraps a key stored unwrapped once a credential store is available', () => {
+    const dir = fresh('a')
+    const key = loadOrCreateNodeKey(dir, null)
+    expect(Buffer.from(loadOrCreateNodeKey(dir, reversing))).toEqual(Buffer.from(key))
+    expect(readFileSync(join(dir, NODE_KEY_FILENAME), 'utf-8').startsWith('enc:')).toBe(true)
+    expect(Buffer.from(loadOrCreateNodeKey(dir, reversing))).toEqual(Buffer.from(key))
+  })
+
+  it('leaves no partial file beside the key', () => {
+    const dir = fresh('a')
+    loadOrCreateNodeKey(dir, null)
+    expect(readdirSync(dir)).toEqual([NODE_KEY_FILENAME])
   })
 })

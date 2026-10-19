@@ -22,6 +22,7 @@ import {
 } from '@main/services/manifest'
 import { verifyEntrySignature } from '@shared/verify'
 import { MemoryHub, type ByteStream } from '@main/services/sharing/transport'
+import { memberTickets, rememberMemberTickets } from '@main/services/sharing/syncState'
 import {
   CHALLENGE_BYTES,
   MAX_BLOB_BYTES,
@@ -38,6 +39,7 @@ import {
   liveSyncSource,
   pullFromPeer,
   serveSyncSession,
+  type ServeOptions,
   type SyncSource
 } from '@main/services/sharing/session'
 import type { ReceivedCaptures } from '@main/services/sharing/receivedEvidence'
@@ -137,14 +139,15 @@ describe('sync session handshake (#1512)', () => {
   // Runs one session: this installation dials, the source answers.
   async function session(
     source: SyncSource | null,
-    options: Partial<Parameters<typeof pullFromPeer>[2]> = {}
+    options: Partial<Parameters<typeof pullFromPeer>[2]> = {},
+    serve: ServeOptions = {}
   ) {
     const hub = new MemoryHub()
     const dialer = hub.createTransport('dialer')
     const listener = hub.createTransport('listener')
     const served = new Promise<void>((resolve, reject) => {
       void listener.listen((stream) => {
-        serveSyncSession(stream, (id) => (source && id === caseId ? source : null)).then(
+        serveSyncSession(stream, (id) => (source && id === caseId ? source : null), serve).then(
           resolve,
           reject
         )
@@ -158,7 +161,10 @@ describe('sync session handshake (#1512)', () => {
 
   // A hand-driven dialer, for the listener's refusals the real dialer never
   // provokes.
-  async function rawDialer(source: SyncSource): Promise<{
+  async function rawDialer(
+    source: SyncSource,
+    serve: ServeOptions = {}
+  ): Promise<{
     stream: ByteStream
     reader: MessageReader
     served: Promise<void>
@@ -168,7 +174,7 @@ describe('sync session handshake (#1512)', () => {
     const listener = hub.createTransport('listener')
     const served = new Promise<void>((resolve, reject) => {
       void listener.listen((stream) => {
-        serveSyncSession(stream, () => source).then(resolve, reject)
+        serveSyncSession(stream, () => source, serve).then(resolve, reject)
       })
     })
     const stream = await dialer.openStream(await dialer.dial(listener.ticket))
@@ -292,6 +298,53 @@ describe('sync session handshake (#1512)', () => {
     await garbage.stream.write(new Uint8Array([0, 0, 0, 2, 0xff, 0xff]))
     expect(await garbage.reader.next()).toEqual({ t: 'bye', reason: BYE_REASONS.protocol })
     await garbage.served
+  })
+
+  // A ticket names the relay its node started on, so each session refreshes
+  // the one the other side dials, and only once the sender has proved its key
+  // (#1809).
+  it("tells each side the other's current ticket once both have proved their keys", async () => {
+    rememberMemberTickets(caseId, { [PEER_ID]: 'ticket-on-the-old-relay' })
+    const rememberTicket = vi.fn()
+    const result = await session(
+      peerSource(),
+      { ticket: 'dialer-ticket' },
+      { ticket: 'listener-ticket', rememberTicket }
+    )
+    expect(result.errors).toEqual([])
+    expect(memberTickets(caseId)[PEER_ID]).toBe('listener-ticket')
+    expect(rememberTicket).toHaveBeenCalledWith(caseId, localId, 'dialer-ticket')
+  })
+
+  it('keeps the held ticket when the session sends none, or the same one', async () => {
+    rememberMemberTickets(caseId, { [PEER_ID]: 'listener-ticket' })
+    await session(peerSource())
+    expect(memberTickets(caseId)[PEER_ID]).toBe('listener-ticket')
+    const rememberTicket = vi.fn()
+    await session(peerSource(), {}, { ticket: 'listener-ticket', rememberTicket })
+    expect(memberTickets(caseId)[PEER_ID]).toBe('listener-ticket')
+    expect(rememberTicket).not.toHaveBeenCalled()
+  })
+
+  it('takes no ticket from a side that fails to prove its key', async () => {
+    await session(peerSource({ sign: signWith(OTHER_KEY) }), {}, { ticket: 'forged-ticket' })
+    expect(memberTickets(caseId)[PEER_ID]).toBeUndefined()
+
+    const rememberTicket = vi.fn()
+    const bad = await rawDialer(peerSource(), { rememberTicket })
+    await writeMessage(bad.stream, {
+      t: 'hello',
+      caseId,
+      installationId: localId,
+      challenge: randomBytes(CHALLENGE_BYTES),
+      proof: null,
+      ticket: 'forged-ticket'
+    })
+    await expectMessage(bad.reader, 'hello')
+    await writeMessage(bad.stream, { t: 'proof', signature: 'bm90IGEgc2lnbmF0dXJl' })
+    expect(await bad.reader.next()).toEqual({ t: 'bye', reason: BYE_REASONS.badProof })
+    await bad.served
+    expect(rememberTicket).not.toHaveBeenCalled()
   })
 
   it('reads no frame above the handshake cap until the dialer proves its key', async () => {

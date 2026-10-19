@@ -35,6 +35,10 @@ const ALPN_BYTES = Array.from(Buffer.from(SYNC_ALPN))
 const ONLINE_TIMEOUT_MS = 30_000
 // The most a stream read asks the binding for at once.
 const READ_BYTES = 64 * 1024
+// Incoming connections served at once. Anyone holding a ticket can connect
+// before the session checks the roster, and a Case has 2 to 5 members, so
+// more than this is refused at the transport.
+export const MAX_INCOMING_CONNECTIONS = 16
 
 // The binding loaded once, or null when it cannot load: 1.1.0 ships no
 // `darwin-x64` build, and a packaged build missing its native file throws
@@ -139,6 +143,8 @@ export class IrohTransport implements Transport {
   private closed = false
   private readonly connections = new Set<IrohConnection>()
   private readonly accepted = new Set<IrohModule.Connection>()
+  // Incoming connections from their handshake until they end.
+  private serving = 0
 
   private constructor(
     private readonly binding: IrohBinding,
@@ -149,7 +155,8 @@ export class IrohTransport implements Transport {
 
   // Binds an endpoint under the stored key and waits for a home relay, whose
   // URL the ticket names. A relay that does not answer refuses
-  // `relay-unreachable`, and the endpoint is closed again.
+  // `relay-unreachable`; on that or any other failure after the bind, the
+  // endpoint is closed again.
   static async start(options: IrohTransportOptions): Promise<IrohTransport> {
     const { binding, secretKey, relayUrl } = options
     const { Endpoint, EndpointAddr, EndpointTicket, RelayMode, presetMinimal } = binding
@@ -161,16 +168,18 @@ export class IrohTransport implements Transport {
     )
     builder.alpns([ALPN_BYTES])
     const endpoint = await builder.bind()
-    const relay = (await online(endpoint, options.onlineTimeoutMs ?? ONLINE_TIMEOUT_MS))
-      ? endpoint.addr().relayUrl()
-      : null
-    if (relay === null) {
+    try {
+      const relay = (await online(endpoint, options.onlineTimeoutMs ?? ONLINE_TIMEOUT_MS))
+        ? endpoint.addr().relayUrl()
+        : null
+      if (relay === null) throw new SharingError('relay-unreachable')
+      const id = endpoint.id()
+      const ticket = EndpointTicket.fromAddr(new EndpointAddr(id, relay, [])).toString()
+      return new IrohTransport(binding, endpoint, id.toString(), ticket)
+    } catch (err) {
       await endpoint.close()
-      throw new SharingError('relay-unreachable')
+      throw err
     }
-    const id = endpoint.id()
-    const ticket = EndpointTicket.fromAddr(new EndpointAddr(id, relay, [])).toString()
-    return new IrohTransport(binding, endpoint, id.toString(), ticket)
   }
 
   async listen(onStream: (stream: ByteStream, peerNodeId: string) => void): Promise<void> {
@@ -192,9 +201,19 @@ export class IrohTransport implements Transport {
         return
       }
       if (incoming === null) return
-      this.serveConnection(incoming, onStream).catch((err: unknown) => {
-        if (!this.closed) logger.warn('sharing', 'sharing.connection_failed', undefined, err)
-      })
+      if (this.serving >= MAX_INCOMING_CONNECTIONS) {
+        // A peer that already gave up needs no refusal, so its failure is not one.
+        incoming.refuse().catch(() => {})
+        continue
+      }
+      this.serving += 1
+      this.serveConnection(incoming, onStream)
+        .catch((err: unknown) => {
+          if (!this.closed) logger.warn('sharing', 'sharing.connection_failed', undefined, err)
+        })
+        .finally(() => {
+          this.serving -= 1
+        })
     }
   }
 

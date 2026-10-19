@@ -834,8 +834,11 @@ if (!gotSingleInstanceLock) {
     stopExtensionConnectionCheck()
     updaterService?.dispose()
     extractionProcess.dispose()
-    await sharingService?.close()
+    // Started, not awaited: the transport's close is native work Electron
+    // would not wait for, and the two steps below must still run.
+    const closingSharing = sharingService?.close()
     await stopCaptureServer()
     closeDatabase()
+    await closingSharing
   })
 }

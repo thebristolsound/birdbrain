@@ -46,7 +46,13 @@ import {
   verifyRemoteRows,
   type RowPage
 } from '@main/services/sharing/workingRows'
-import { beginSession, finishSession, writeMembersFile } from '@main/services/sharing/syncState'
+import {
+  beginSession,
+  finishSession,
+  memberTickets,
+  rememberMemberTickets,
+  writeMembersFile
+} from '@main/services/sharing/syncState'
 import { rebuildRosterCache } from '@main/services/sharing/rosterCache'
 import { isChainInstallationId } from '../../../packages/evidence-package-layout/index'
 import {
@@ -119,6 +125,11 @@ export const MAX_ROW_PAGES = 1000
 
 export interface ServeOptions {
   pageBytes?: number
+  // This node's current transport ticket, sent in `hello` (#1809).
+  ticket?: string
+  // Called with the dialer's ticket once the dialer has proved its key, so
+  // the listener dials it there next time.
+  rememberTicket?: (caseId: string, installationId: string, ticket: string) => void
 }
 
 export type SyncPhase = 'hello' | 'heads' | 'entries' | 'blobs' | 'apply' | 'rows' | 'merge'
@@ -159,6 +170,18 @@ export interface SyncSessionOptions {
   // interval, for as long as that `merge` is the Case's newest unstamped one
   // (`pendingReceiptStamp` stamps only the newest).
   enqueueReceiptStamp?: (caseId: string, mergeIndex: number) => void
+  // This node's current transport ticket, sent in `hello` (#1809). The
+  // listener's, once it has proved its key, replaces the one this replica
+  // dials it at.
+  ticket?: string
+}
+
+// Records a proved peer's ticket in this replica's sync state when it differs
+// from the one held: a node's ticket names the relay it started on, and only
+// a session tells the other side it moved.
+export function rememberPeerTicket(caseId: string, installationId: string, ticket: string): void {
+  if (memberTickets(caseId)[installationId] === ticket) return
+  rememberMemberTickets(caseId, { [installationId]: ticket })
 }
 
 // Why a listener ends a session before serving it; sent in `bye`.
@@ -293,7 +316,8 @@ export async function serveSyncSession(
       caseId: source.caseId,
       installationId: source.installationId,
       challenge,
-      proof: source.sign(helloDigest(source.caseId, hello.challenge, source.installationId))
+      proof: source.sign(helloDigest(source.caseId, hello.challenge, source.installationId)),
+      ...(serveOptions.ticket === undefined ? {} : { ticket: serveOptions.ticket })
     })
     const { signature } = await expectMessage(reader, 'proof')
     const member = source.roster().find((m) => m.installationId === peerId)
@@ -301,6 +325,8 @@ export async function serveSyncSession(
     if (!member || !verifyEntrySignature(expected, signature, member.publicKeyPem)) {
       return await sayBye(stream, BYE_REASONS.badProof)
     }
+    if (hello.ticket !== undefined)
+      serveOptions.rememberTicket?.(source.caseId, peerId, hello.ticket)
     reader.allowFrames(MAX_FRAME_BYTES)
 
     for (let message = await reader.next(); message !== null; message = await reader.next()) {
@@ -412,7 +438,8 @@ export async function pullFromPeer(
       caseId,
       installationId: self,
       challenge,
-      proof: null
+      proof: null,
+      ...(options.ticket === undefined ? {} : { ticket: options.ticket })
     })
     const hello = await expectMessage(reader, 'hello')
     const peer = roster.find((m) => m.installationId === hello.installationId)
@@ -434,6 +461,7 @@ export async function pullFromPeer(
       return result
     }
     result.peerInstallationId = peer.installationId
+    if (hello.ticket !== undefined) rememberPeerTicket(caseId, peer.installationId, hello.ticket)
     await writeMessage(stream, {
       t: 'proof',
       signature: signEntryHash(helloDigest(caseId, hello.challenge, self))

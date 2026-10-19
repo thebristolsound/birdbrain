@@ -35,6 +35,7 @@ import { MAX_HANDSHAKE_FRAME_BYTES, MessageReader } from '@main/services/sharing
 import {
   liveSyncSource,
   pullFromPeer,
+  rememberPeerTicket,
   serveSyncSession,
   type SyncSource
 } from '@main/services/sharing/session'
@@ -189,7 +190,11 @@ export class SharingService {
     await transport.listen((stream, peerNodeId) => {
       routeIncomingStream(stream, peerNodeId, {
         join: (s, peer) => joins.serve(s, peer),
-        hello: (s) => serveSyncSession(s, this.sourceFor)
+        hello: (s) =>
+          serveSyncSession(s, this.sourceFor, {
+            ticket: transport.ticket,
+            rememberTicket: rememberPeerTicket
+          })
       }).catch((err: unknown) => {
         logger.warn('sharing', 'sharing.stream_failed', undefined, err)
       })
@@ -260,7 +265,8 @@ export class SharingService {
       step('syncing')
       try {
         await pullFromPeer(caseId, await transport.openStream(connection), {
-          receivedCaptures: this.deps.receivedCaptures
+          receivedCaptures: this.deps.receivedCaptures,
+          ticket: transport.ticket
         })
       } catch (err) {
         logger.warn('sharing', 'sharing.first_session_failed', undefined, err)
@@ -338,7 +344,8 @@ export class SharingService {
       }
       try {
         const result = await pullFromPeer(caseId, await transport.openStream(connection), {
-          receivedCaptures: this.deps.receivedCaptures
+          receivedCaptures: this.deps.receivedCaptures,
+          ticket: transport.ticket
         })
         outcomes.push({
           installationId,

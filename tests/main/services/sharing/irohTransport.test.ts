@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
 import { mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
@@ -10,6 +10,7 @@ import { resetSigningKey } from '@main/services/signingKey'
 import { SharingError } from '@main/services/sharing/errors'
 import {
   IrohTransport,
+  MAX_INCOMING_CONNECTIONS,
   SYNC_ALPN,
   createBindingLoader,
   irohBinding,
@@ -92,8 +93,9 @@ describe('the Iroh binding loader (#1809)', () => {
     expect(isSharingAvailable(createBindingLoader(() => net.binding()))).toBe(true)
   })
 
-  it("loads this platform's real binding", () => {
-    // The unit suite runs on Linux x64 and macOS arm64, both of which 1.1.0 ships.
+  // 1.1.0 ships every desktop build but darwin-x64, where the loader reads null.
+  const intelMac = process.platform === 'darwin' && process.arch === 'x64'
+  it.skipIf(intelMac)("loads this platform's real binding", () => {
     const binding = irohBinding()
     expect(binding).not.toBeNull()
     expect(typeof binding?.Endpoint.builder).toBe('function')
@@ -158,6 +160,42 @@ describe('the Iroh transport over a stand-in binding (#1809)', () => {
     )
     expect(code).toBe('relay-unreachable')
     expect(net.endpoints.size).toBe(0)
+  })
+
+  it('closes the endpoint and rethrows when the relay handshake fails after the bind', async () => {
+    net.onlineFails = true
+    await expect(start(1)).rejects.toThrow('relay handshake failed')
+    expect(net.endpoints.size).toBe(0)
+  })
+
+  it(`refuses incoming connections beyond ${MAX_INCOMING_CONNECTIONS} at once`, async () => {
+    const listener = await start(1)
+    const dialer = await start(2)
+    await listener.listen(() => {})
+    for (let i = 0; i <= MAX_INCOMING_CONNECTIONS; i++) await dialer.dial(listener.ticket)
+    await expect.poll(() => net.refused).toBe(1)
+    await dialer.close()
+    // Once those connections end, the listener serves new ones again.
+    const next = await start(3)
+    await next.dial(listener.ticket)
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(net.refused).toBe(1)
+    await next.close()
+    await listener.close()
+  })
+
+  it('stops listening, without throwing, when the endpoint stops accepting', async () => {
+    const listener = await start(1)
+    const dialer = await start(2)
+    net.acceptFails = true
+    const onStream = vi.fn()
+    await listener.listen(onStream)
+    const stream = await dialer.openStream(await dialer.dial(listener.ticket))
+    await stream.write(Buffer.from('x'))
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(onStream).not.toHaveBeenCalled()
+    await dialer.close()
+    await listener.close()
   })
 
   it('carries bytes both ways and tells the listener who dialed', async () => {

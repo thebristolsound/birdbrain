@@ -1,5 +1,5 @@
 import { randomBytes } from 'crypto'
-import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { closeSync, existsSync, fsyncSync, openSync, readFileSync, renameSync, writeSync } from 'fs'
 import { join } from 'path'
 
 // The transport's node key (#1809, the collaborative cases design's open
@@ -30,12 +30,30 @@ export class NodeKeyUnreadableError extends Error {
   }
 }
 
+// Wrapped when the credential store takes it. A store that refuses leaves the
+// key unwrapped, as signingKey.ts does, and the next start tries again.
 function wrap(key: Buffer, cipher: KeyCipher | null): string {
   const plain = key.toString('base64')
-  if (cipher?.isEncryptionAvailable()) {
+  if (!cipher?.isEncryptionAvailable()) return plain
+  try {
     return 'enc:' + cipher.encryptString(plain).toString('base64')
+  } catch {
+    return plain
   }
-  return plain
+}
+
+// Written whole under a temporary name, fsynced and renamed, so a crash
+// cannot leave a partial key file that every later start refuses.
+function writeKeyFile(path: string, text: string): void {
+  const partial = `${path}.partial`
+  const fd = openSync(partial, 'w', 0o600)
+  try {
+    writeSync(fd, text)
+    fsyncSync(fd)
+  } finally {
+    closeSync(fd)
+  }
+  renameSync(partial, path)
 }
 
 function unwrap(stored: string, cipher: KeyCipher | null, path: string): Buffer {
@@ -59,11 +77,20 @@ function unwrap(stored: string, cipher: KeyCipher | null, path: string): Buffer 
 }
 
 // The stored key, or a new one written first. Any 32 random bytes are an
-// ed25519 secret key, so the key is made here and not by the binding.
+// ed25519 secret key, so the key is made here and not by the binding. A key
+// stored unwrapped is wrapped once a credential store is available.
 export function loadOrCreateNodeKey(userDataDir: string, cipher: KeyCipher | null): Uint8Array {
   const path = join(userDataDir, NODE_KEY_FILENAME)
-  if (existsSync(path)) return unwrap(readFileSync(path, 'utf-8'), cipher, path)
+  if (existsSync(path)) {
+    const stored = readFileSync(path, 'utf-8')
+    const key = unwrap(stored, cipher, path)
+    if (!stored.startsWith('enc:')) {
+      const wrapped = wrap(key, cipher)
+      if (wrapped !== stored) writeKeyFile(path, wrapped)
+    }
+    return key
+  }
   const key = randomBytes(NODE_KEY_BYTES)
-  writeFileSync(path, wrap(key, cipher), { encoding: 'utf-8', mode: 0o600, flag: 'wx' })
+  writeKeyFile(path, wrap(key, cipher))
   return key
 }

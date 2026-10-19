@@ -350,6 +350,59 @@ describe('sync service (#1881)', () => {
     expect(bob.hellos.filter((id) => id === c1)).toHaveLength(2)
   })
 
+  it('does not dial a member revoked earlier in the same round', async () => {
+    await seedTeam()
+    const bob = await listener('bob', fromBob)
+    const carol = await listener('carol', fromCarol)
+    const held = deferred()
+    bob.gate = held.promise
+    const svc = build()
+    const syncNow = vi.spyOn(sharing, 'syncNow')
+    svc.start()
+    await settle(() => bob.streams === 1)
+    upsertCaseMember({ ...memberOf(c1, C, 'member', 2), revokedAtIndex: 5 })
+    bob.gate = null
+    held.release()
+    await svc.idle()
+    expect(carol.streams).toBe(0)
+    expect(outcomeKinds((await outcomesOf(syncNow)).get(c1) ?? [])).toEqual([
+      [B.installationId, 'synced']
+    ])
+  })
+
+  it('ends the round for a Case whose own row is revoked during it, and reaches nobody in it', async () => {
+    await seedTeam()
+    const bob = await listener('bob', fromBob)
+    const carol = await listener('carol', fromCarol)
+    const held = deferred()
+    bob.gate = held.promise
+    const svc = build()
+    svc.start()
+    await settle(() => bob.streams === 1)
+    upsertCaseMember({ ...memberOf(c1, A, 'owner', 0), revokedAtIndex: 5 })
+    bob.gate = null
+    held.release()
+    await svc.idle()
+    expect(bob.hellos).toContain(c1)
+    expect(carol.streams).toBe(0)
+    expect(getSyncState(c1).peersReachable).toBe(0)
+  })
+
+  it('forgets the members it reached once its own row is revoked between ticks', async () => {
+    await seedTeam()
+    const bob = await listener('bob', fromBob)
+    await listener('carol', fromCarol)
+    const svc = build()
+    svc.start()
+    await svc.idle()
+    expect(getSyncState(c2).peersReachable).toBe(1)
+    upsertCaseMember({ ...memberOf(c2, A, 'member', 1), revokedAtIndex: 2 })
+    vi.advanceTimersByTime(60_000)
+    await svc.idle()
+    expect(bob.hellos.filter((id) => id === c2)).toHaveLength(1)
+    expect(getSyncState(c2).peersReachable).toBe(0)
+  })
+
   it('runs no session for a Case whose own row is revoked', async () => {
     const c3 = randomUUID()
     seedSharedCase(c3, B, [A])

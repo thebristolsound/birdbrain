@@ -410,26 +410,38 @@ export class SharingService {
     return started
   }
 
+  // The roster as it stands, or null when this installation's own row is
+  // revoked: such an installation runs no session for the Case and reaches
+  // nobody in it.
+  private rosterInStanding(caseId: string, self: string): CaseMember[] | null {
+    const roster = listCaseMembers(caseId)
+    if (!roster.some((m) => m.installationId === self && m.revokedAtIndex !== null)) return roster
+    for (const { installationId } of roster) forgetReached(caseId, installationId)
+    return null
+  }
+
   // `peersReachable` counts the members whose latest dialled session got past
   // `hello` (syncState.ts), so a member attempt that stops short of the
-  // `heads` phase forgets that member. An installation whose own row is
-  // revoked runs no session for the Case and reaches nobody in it.
+  // `heads` phase forgets that member. The roster is read again before each
+  // member, since a session earlier in the round may have stored a revocation.
   private async runSync(caseId: string): Promise<SharingSyncOutcome[]> {
     const row = caseOrThrow(caseId)
     if (row.sharedAt === undefined) throw new SharingError('not-shared')
     const self = getInstallationId()
-    const roster = listCaseMembers(caseId)
-    if (roster.some((m) => m.installationId === self && m.revokedAtIndex !== null)) {
-      for (const { installationId } of roster) forgetReached(caseId, installationId)
+    const order = this.rosterInStanding(caseId, self)
+    if (order === null) {
       this.changed(caseId)
       return []
     }
     const { transport } = await this.transportOrThrow()
     const tickets = memberTickets(caseId)
     const outcomes: SharingSyncOutcome[] = []
-    for (const member of listCaseMembers(caseId)) {
-      const { installationId } = member
-      if (installationId === self || member.revokedAtIndex !== null) continue
+    for (const { installationId } of order) {
+      if (installationId === self) continue
+      const roster = this.rosterInStanding(caseId, self)
+      if (roster === null) break
+      const member = roster.find((m) => m.installationId === installationId)
+      if (member === undefined || member.revokedAtIndex !== null) continue
       let greeted = false
       try {
         const ticket = tickets[installationId]

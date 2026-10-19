@@ -980,7 +980,8 @@ describe('sync session between peers (#1512)', () => {
       peersReachable: 0,
       peersTotal: 2,
       transfer: null,
-      lastError: null
+      lastError: null,
+      egress: 'direct'
     })
     const result = await pull(CASE_ID, source, {
       onPhase: (phase) => {

@@ -71,6 +71,7 @@ import { getThumbnail } from '@main/services/thumbnails'
 import { getCaseInventory, getManifestSnapshot, verifyExhibit } from '@main/services/exhibits'
 import { getSyncState } from '@main/services/sharing/syncState'
 import { SharingError } from '@main/services/sharing/errors'
+import { isSharingAvailable, setRelayUrl } from '@main/services/sharing/irohTransport'
 import type { SharingService } from '@main/services/sharing/sharingService'
 import { registerFakeInvestigationHandlers } from '@main/services/investigation/fakeEngine'
 import { commitStagedFiles, discardStagedFiles, uploadToStaging } from '@main/services/staging'
@@ -1129,7 +1130,7 @@ export function registerIpcHandlers(deps: {
   )
   handle(IPC_CHANNELS.MANIFEST_SNAPSHOT, (_, caseId: string) => getManifestSnapshot(caseId))
 
-  // Shared Cases (#1512, #1810). A SharingError becomes the structured
+  // Shared Cases (#1512, #1810, #1809). A SharingError becomes the structured
   // refusal under its code, as the batch handlers do for BatchCrossCaseError;
   // anything else is this installation's failure and surfaces as such.
   const sharing = async <T>(run: () => T | Promise<T>): Promise<T> => {
@@ -1188,6 +1189,10 @@ export function registerIpcHandlers(deps: {
     existingCaseOrThrow(caseId)
     return sharing(() => sharingService.getMembers(caseId))
   })
+  handle(IPC_CHANNELS.SHARING_IS_AVAILABLE, () => isSharingAvailable())
+  handle(IPC_CHANNELS.SHARING_SET_RELAY_URL, (_, relayUrl: string) =>
+    sharing(() => setRelayUrl(relayUrl))
+  )
 
   // Case investigation: the fake engine serves these channels in unpackaged builds only, and a
   // packaged build registers none of them (engine plan, open question 9).

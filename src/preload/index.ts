@@ -219,7 +219,9 @@ const birdbrain = {
     revoke: bridge(IPC_CHANNELS.SHARING_REVOKE),
     excludeExhibit: bridge(IPC_CHANNELS.SHARING_EXCLUDE_EXHIBIT),
     syncNow: bridge(IPC_CHANNELS.SHARING_SYNC_NOW),
-    getMembers: bridge(IPC_CHANNELS.SHARING_GET_MEMBERS)
+    getMembers: bridge(IPC_CHANNELS.SHARING_GET_MEMBERS),
+    isAvailable: bridge(IPC_CHANNELS.SHARING_IS_AVAILABLE),
+    setRelayUrl: bridge(IPC_CHANNELS.SHARING_SET_RELAY_URL)
   },
 
   investigation: {

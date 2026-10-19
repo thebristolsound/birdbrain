@@ -1168,6 +1168,26 @@ const TsaUrlEditSchema = z.string().transform((value, ctx) => {
   return url
 })
 
+// A self-hosted relay for Shared Case sync (#1809): an http(s) URL, or '' for
+// the default public relays. Returns the trimmed value, or null when it is
+// neither. A stored value is not coerced on load: a relay the Operator chose
+// that no longer parses stops sync rather than falling back to the public
+// relays (irohTransport.ts).
+export function parseRelayUrl(value: string): string | null {
+  const trimmed = value.trim()
+  if (trimmed === '') return ''
+  return parseTsaUrl(trimmed)
+}
+
+const RelayUrlEditSchema = z.string().transform((value, ctx) => {
+  const url = parseRelayUrl(value)
+  if (url === null) {
+    ctx.addIssue({ code: 'custom', message: 'not an http:// or https:// address' })
+    return z.NEVER
+  }
+  return url
+})
+
 export type ProxyUrlParse = { ok: true; url: string } | { ok: false; reason: string }
 
 // The one definition of a usable Egress proxy address (ADR-0032 rule 2), shared
@@ -1306,7 +1326,8 @@ export const BirdbrainSettingsSchema = z.object({
   demoCaseSeeded: z.boolean().optional().default(false),
   releaseChannel: z.enum(['stable', 'beta']).optional().default('stable'),
   autoCheckForUpdates: z.boolean().optional().default(true),
-  egress: StoredEgressSchema.optional().default({ kind: 'direct' })
+  egress: StoredEgressSchema.optional().default({ kind: 'direct' }),
+  sharingRelayUrl: z.string().optional().default('')
 })
 
 // Used on load: user may have an older settings file missing newer keys, so
@@ -1319,5 +1340,6 @@ export const PartialBirdbrainSettingsSchema = BirdbrainSettingsSchema.partial()
 // Egress the Operator chose, never the unavailable marker.
 export const SettingsUpdateSchema = PartialBirdbrainSettingsSchema.extend({
   tsaUrl: TsaUrlEditSchema.optional().default(DEFAULT_TSA_URL),
-  egress: EgressSettingSchema.optional()
+  egress: EgressSettingSchema.optional(),
+  sharingRelayUrl: RelayUrlEditSchema.optional()
 })

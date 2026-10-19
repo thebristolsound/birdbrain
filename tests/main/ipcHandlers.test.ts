@@ -777,6 +777,19 @@ describe('ipcHandlers — captures', () => {
 
   // The sync pill's read (#1512): a Case nobody shared has no peers and
   // nothing to report.
+  it('answers whether sharing is available, and stores or refuses a relay URL (#1809)', async () => {
+    expect(expectOk<boolean>(await invoke(IPC_CHANNELS.SHARING_IS_AVAILABLE))).toBe(true)
+    expectOk(await invoke(IPC_CHANNELS.SHARING_SET_RELAY_URL, 'https://relay.example.org/'))
+    expect(settings.getSettings().sharingRelayUrl).toBe('https://relay.example.org/')
+    const refused = (await invoke(IPC_CHANNELS.SHARING_SET_RELAY_URL, 'nope')) as {
+      ok: boolean
+      code?: string
+    }
+    expect(refused).toMatchObject({ ok: false, code: 'relay-url-invalid' })
+    expectOk(await invoke(IPC_CHANNELS.SHARING_SET_RELAY_URL, ''))
+    expect(settings.getSettings().sharingRelayUrl).toBe('')
+  })
+
   it('answers the sync state of a Case', async () => {
     const state = expectOk<{ phase: string; peersTotal: number; lastError: unknown }>(
       await invoke(IPC_CHANNELS.SHARING_GET_SYNC_STATE, caseId)
@@ -786,7 +799,8 @@ describe('ipcHandlers — captures', () => {
       peersReachable: 0,
       peersTotal: 0,
       transfer: null,
-      lastError: null
+      lastError: null,
+      egress: 'direct'
     })
   })
 

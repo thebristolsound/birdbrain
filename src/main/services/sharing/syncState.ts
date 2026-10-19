@@ -14,6 +14,7 @@ import { SYNC_ERROR_KINDS, type SyncState } from '@shared/types'
 import { listCaseMembers } from '@main/services/db/caseMemberRepo'
 import { listSharedCaseIds } from '@main/services/db/caseRepo'
 import { getInstallationId } from '@main/services/installationId'
+import { getSettings } from '@main/services/settings'
 import { getStorageRoot } from '@main/services/storage'
 
 // The two derived files a Shared Case directory carries beside the chains
@@ -216,7 +217,8 @@ export function memberTickets(caseId: string): Record<string, string> {
 // The payload the sync pill reads. `peersTotal` is the roster less this
 // installation and the revoked; `peersReachable` the peers that completed a
 // session with this process; `phase` is syncing while a session runs, error
-// when the last session failed and none has succeeded since, idle otherwise.
+// when the last session failed and none has succeeded since, idle otherwise;
+// `egress` the Egress kind, which sync runs past (ADR-0032 rule 1).
 export function getSyncState(caseId: string): SyncState {
   const self = getInstallationId()
   const members = listCaseMembers(caseId).filter(
@@ -232,7 +234,8 @@ export function getSyncState(caseId: string): SyncState {
     ).length,
     peersTotal: members.length,
     transfer,
-    lastError: lastError === null ? null : { kind: lastError.kind, at: lastError.at }
+    lastError: lastError === null ? null : { kind: lastError.kind, at: lastError.at },
+    egress: getSettings().egress.kind
   }
 }
 

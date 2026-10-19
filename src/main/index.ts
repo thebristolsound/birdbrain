@@ -4,6 +4,7 @@ import {
   app,
   BrowserWindow,
   dialog,
+  safeStorage,
   shell,
   session as electronSession,
   webContents as electronWebContents,
@@ -57,6 +58,7 @@ import { initServerToken } from '@main/services/serverToken'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createExtractionProcess } from '@main/services/extraction/processClient'
 import { SharingService } from '@main/services/sharing/sharingService'
+import { startIrohTransport } from '@main/services/sharing/irohTransport'
 import { createTimestampWorker } from '@main/services/timestampWorker'
 import { runExhibitBackfill } from '@main/services/exhibitBackfill'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
@@ -662,9 +664,10 @@ if (!gotSingleInstanceLock) {
         getEgress: () => getSettings().egress
       })
 
-      // Shared Cases (#1810). The transport provider stays at its null
-      // default until IrohTransport is wired in (#1809), so every network
-      // call refuses `sharing-unavailable` and nothing listens.
+      // Shared Cases (#1810, #1809). The Iroh transport starts on the first
+      // command that needs the network, not here, so an installation with no
+      // Shared Case opens no connection; where the binding does not load,
+      // every such command refuses `sharing-unavailable`.
       sharingService = new SharingService({
         receivedCaptures: captureLifecycle,
         emitChanged: (payload) => {
@@ -678,6 +681,14 @@ if (!gotSingleInstanceLock) {
           }
         }
       })
+
+      sharingService.setTransportProvider(() =>
+        startIrohTransport({
+          userDataDir: userDataPath,
+          cipher: safeStorage,
+          relayUrl: getSettings().sharingRelayUrl
+        })
+      )
 
       // Register IPC handlers
       registerIpcHandlers({

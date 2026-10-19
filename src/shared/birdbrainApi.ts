@@ -304,6 +304,8 @@ export interface BirdbrainAPI {
     excludeExhibit(caseId: string, exhibitId: string, reason?: string): Promise<SharingExclusion>
     syncNow(caseId: string): Promise<SharingSyncOutcome[]>
     getMembers(caseId: string): Promise<SharingMembers>
+    isAvailable(): Promise<boolean>
+    setRelayUrl(relayUrl: string): Promise<void>
   }
   // Case investigation (engine plan, E10); served by the fake engine in unpackaged builds.
   investigation: {

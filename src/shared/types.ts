@@ -453,6 +453,9 @@ export interface BirdbrainSettings {
   // Where Birdbrain's own traffic leaves from (ADR-0032). One setting for the
   // installation.
   egress: EgressSetting
+  // The relay Shared Case sync uses (#1809): a self-hosted relay's URL, or ''
+  // for the default public relays. Set through `sharing:setRelayUrl`.
+  sharingRelayUrl: string
 }
 
 // The Egress setting. A Proxy or Tor names a SOCKS5 or HTTP proxy that needs no
@@ -843,7 +846,13 @@ export const LOG_CODES = [
   // this installation (the peer saw the stream close), and a joiner's first
   // session that failed after the Case was adopted (Sync now retries it).
   'sharing.stream_failed',
-  'sharing.first_session_failed'
+  'sharing.first_session_failed',
+  // The Iroh transport (#1809): the native binding did not load, so sharing
+  // is unavailable on this computer; the listener stopped accepting
+  // connections; and one incoming connection failed before its first stream.
+  'sharing.binding_unavailable',
+  'sharing.accept_failed',
+  'sharing.connection_failed'
 ] as const
 export type LogCode = (typeof LOG_CODES)[number]
 
@@ -1573,6 +1582,10 @@ export interface SyncState {
   peersTotal: number
   transfer: SyncTransfer | null
   lastError: { kind: SyncErrorKind; at: string } | null
+  // The Egress setting's kind (ADR-0032 rule 1). Sync does not follow the
+  // Egress: while this is not 'direct', sync still runs and teammates and the
+  // relay see this computer's addresses, which the members screens say.
+  egress: EgressSetting['kind']
 }
 
 // Why a sharing command refused (#1810). Every code reaches the renderer as
@@ -1602,7 +1615,9 @@ export const SHARING_ERROR_CODES = [
   'exhibit-ambiguous',
   'already-excluded',
   'operator-name-required',
-  'sharing-unavailable'
+  'sharing-unavailable',
+  'relay-url-invalid',
+  'relay-unreachable'
 ] as const
 export type SharingErrorCode = (typeof SHARING_ERROR_CODES)[number]
 

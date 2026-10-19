@@ -2,7 +2,7 @@
 // cases-design.md, "Transport interface"). A transport carries bytes between
 // two installations and nothing else: it never reads a message and never
 // decides what a session accepts, which is why it sits off the blocking tier
-// of the evidence path list. `IrohTransport` (#1810) implements it over QUIC;
+// of the evidence path list. `IrohTransport` (#1809) implements it over QUIC;
 // `MemoryTransport` below is the in-process form the unit suite runs the
 // protocol on, so the acceptance code is tested against real files and a real
 // database without native code.

@@ -228,7 +228,10 @@ const CODE_LABELS: Record<LogCode, string> = {
   'searchFields.source_missing':
     "Couldn't find a capture's stored page to index its links and headers for search",
   'sharing.stream_failed': "A teammate's connection to this Case ended with an error",
-  'sharing.first_session_failed': "Joined the Case, but the first sync didn't complete"
+  'sharing.first_session_failed': "Joined the Case, but the first sync didn't complete",
+  'sharing.binding_unavailable': "Shared Cases can't run on this computer",
+  'sharing.accept_failed': 'Stopped accepting connections from teammates',
+  'sharing.connection_failed': "A teammate's connection failed before it started"
 }
 
 export function labelForCode(code: LogCode): string {

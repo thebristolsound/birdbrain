@@ -55,8 +55,9 @@ import {
 //
 // The transport starts on the first call that needs the network, not at
 // launch, through `setTransportProvider`. The default provider returns null,
-// so every such call refuses `sharing-unavailable` until `IrohTransport` is
-// wired in (#1809). SC-9 moves the start to launch and owns the timer.
+// so every such call refuses `sharing-unavailable`; the app's provider starts
+// `IrohTransport` (#1809) and returns null where the binding does not load.
+// SC-9 moves the start to launch and owns the timer.
 
 export type TransportProvider = () => Promise<Transport | null>
 

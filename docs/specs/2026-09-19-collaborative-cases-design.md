@@ -367,8 +367,10 @@ at-rest encryption, which a hosted relay holding ciphertext would require.
 
 ## Open questions
 
-1. Where Iroh persists its node key. It must survive restarts so `nodeId` in `member-add`
-   stays valid; if the binding regenerates it, `member-add` needs a rotation path.
+1. Answered 2026-10-18 by #1809: the app persists the node key. It stores the 32-byte secret key
+   in `sharing-node-key` in the user-data directory, wrapped with the operating system's credential
+   store when one is available, and passes it to `EndpointBuilder.secretKey` at every start. Two
+   starts over the same directory report the same node id, so `member-add` needs no rotation path.
 2. Answered 2026-09-19 in the [members mock feasibility assessment](2026-09-19-shared-case-members-feasibility-assessment.md):
    an `exclude` entry annotates and does not change the verifier's pass outcome.
 3. Relay hosting for testers who cannot reach n0's relays; a self-hosted `iroh-relay` is one

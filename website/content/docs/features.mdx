@@ -164,6 +164,11 @@ Birdbrain makes these outbound connections:
 - the Internet Archive, when you ask for a lookup
 - the filter list host, to download cookie-banner lists
 - GitHub, to check for updates
+- for Shared Case sync, once you share or join a Case: a relay (n0's public relays by default,
+  or one you host), each teammate's machine, a listening port for teammates to reach you, and
+  port-mapping requests to your router. Sync does not use the Egress setting, so the relay and
+  your teammates see your IP address, and a teammate can learn every interface address on your
+  machine, not only the public one
 
 [SECURITY.md](https://github.com/thebristolsound/birdbrain/blob/main/SECURITY.md) lists the
 fixed hosts. If you work through a VPN or Tor, route the whole machine through it.

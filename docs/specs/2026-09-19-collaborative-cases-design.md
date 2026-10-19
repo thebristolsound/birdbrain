@@ -211,9 +211,10 @@ Pull-only, over one Iroh bidirectional stream per session, messages CBOR-encoded
    configured, queues the `merge` Entry Hash for a `timestamp` entry with `subject: 'entry'`.
 
 Every peer runs the session against every member in good standing at app start, every 60 seconds
-while the app is open, and on **Sync now**; a member that does not answer is dialled again at the
-next tick, and one Case's sessions run one after another. Because nothing is pushed, a malicious
-peer can only offer entries; the receiver's signature and hash checks decide what is stored.
+while the app is open, and on **Sync now**. A member that does not answer is dialed again at the
+next tick, a transport that failed to start is started again then, and one Case's sessions run one
+after another. Because nothing is pushed, a malicious peer can only offer entries; the receiver's
+signature and hash checks decide what is stored.
 
 ### Working-layer rows
 

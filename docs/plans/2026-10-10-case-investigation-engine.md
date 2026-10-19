@@ -690,8 +690,9 @@ separates a restored state from the one a run read.
 - The collector writes `persona_id` as NULL. Personas are installation-wide and no Case Archive
   carries them, so the id means nothing on another installation and names a local Persona to
   whoever receives the file.
-- The importer sets `author_installation_id` to the archive's source installation
-  (`header.source.installationId`) on every row of the ten synced tables that has none, as
+- The importer sets `author_installation_id` to the archive's exporter (for a fork the
+  installation its verified roster names, `plan.fork.exporterId`, and otherwise
+  `header.source.installationId`) on every row of the ten synced tables that has none, as
   `attributeForkedExhibits()` does for a fork's Exhibits, so an imported decision never reads as
   the importer's (open question 5, ruled 2026-10-10).
 - `case_revisions` does not travel; the import trigger writes a fresh row. `case_change_log` does
@@ -1851,5 +1852,43 @@ implements it amends ADR-0042 in the same PR, so no code ships against an unamen
   in one pass that stops at the row ceiling. A header name now takes any printable character but a
   space or colon (scope added to #1890 from the #1884 review). The Links tab marks a row only for a
   link target or alt text hit.
-- **Next.** CI-9, CI-E, and CI-V1, each against this contract. The gates still open are in "Gates
+- **2026-10-17, CI-V1 (#1894).** The route `/cases/$caseId/investigate` renders the run setup
+  (S1), the header (S2), and three panes that become tabs when the view is narrower than 1140
+  pixels (S7). No sidebar or command palette entry points at it (ruling 57). The route's search
+  holds the selection, `jointId`, `subjectId`, and `spanId`, for CI-V2 to CI-V4. The header's "not
+  read" count opens its reasons in this plan's wording and offers no "Show them" (maintainer
+  ruling, 2026-10-17), and the contract gains `NOT_READ_REASONS`, the reason values the view
+  words. A packaged build registers no `investigation:` handler, so the route shows only its load
+  failure there. Where the build departs from the accepted mock: no "Run N", because `RunSummary`
+  carries no run number; no "N of M Exhibits readable" before a run, which the contract does not
+  carry; no link to Settings -> AI analysis, which does not exist; each unread kind named as the
+  Data screen names it, not "PDFs" or "mbox file"; and the breakdown's heading says "did not read".
+- **2026-10-17, CI-9 (#1891).** Migration 40 creates E1's tables and view, the Case revision, and
+  the triggers on the fifteen input tables. Both restores give every Case a new generation on the
+  copy they install, and `readCaseRevision()` and the MCP tool `get_case_revision` read the
+  revision. ADR-0042's input list now names `exhibits` and `exhibit_search_builds`. Departures:
+  every generation code writes comes from `crypto.randomUUID()`, and only the new-Case trigger
+  uses `randomblob(16)` (open question 20). A local Note write advances the counter twice, because
+  `signLocalRow` re-signs the row with a second `UPDATE` that sets `deleted_at`; E2 assumed local
+  rows stay unsigned until CI-S. The block runs again over its own objects, and its backfill skips
+  a Case that has a row. `windBackToV38` in the tests drops the eligibility view, which blocks the
+  `exhibits` rebuild the older wind-backs make. The SQL sits in `db/caseRevisionRepo.ts` and
+  `db/caseGenerations.ts`, since `getDb` is restricted to `db/`. The engine assessment
+  (`docs/specs/2026-10-17-case-investigation-engine-assessment.md`) starts with the trigger
+  timing, because CI-E has not started it: on the 1,000-Capture Case the run-to-run spread of a
+  reprocess, an import and its field build is larger than the difference between the medians with
+  and without the triggers, and the change-log rows each writes are counted exactly. Whether imported runs read as out of date
+  moves to CI-9b, whose archive first carries them.
+- **2026-10-17, CI-9b (#1909).** Four repositories under `db/` store and list the fourteen record
+  tables through one shared row store, `withheldExhibitIds()` reads the eligibility view, and Case
+  Archive version 10 carries every record table. The import remaps every id, `replaces`
+  included, writes `persona_id` as null, and stamps an author-less row with the exporter's
+  installation: for a fork `plan.fork.exporterId`, which the verified roster names, the
+  installation `attributeForkedExhibits()` stamps and not the Owner `plan.sourceInstallationId`
+  names; otherwise `header.source.installationId`.
+  ADR-0042 says the change log and the Case revision do not travel. Departures: the
+  repositories add `withheldExhibitIds()`, which E5 does not list, for #1827 and CI-14; Notes and
+  the other working-layer rows still import with no author, since ruling 62 covers only the
+  investigation records.
+- **Next.** CI-E and CI-V2 to CI-V4, each against this contract. The gates still open are in "Gates
   this plan waits on".

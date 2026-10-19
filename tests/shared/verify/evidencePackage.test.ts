@@ -27,6 +27,12 @@ import {
 } from '@shared/schemas'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 import { seedMixedKindCase, type MixedKindCase } from '../../helpers/mixedKindCase'
+import {
+  RECEIPT_MEMBER_ID,
+  RECEIPT_TIME,
+  RECEIPT_TSA,
+  writeReceiptPackage
+} from '../../helpers/receiptPackage'
 import { MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import type { ExportOptions } from '@shared/types'
 
@@ -2136,5 +2142,122 @@ describe('verifyEvidencePackage — exhibits of every kind (#1156)', () => {
     } finally {
       rmSync(selDir, { recursive: true, force: true })
     }
+  })
+})
+
+// Receipt stamps (#1515, design decision 15): one row per receipt stamp over
+// the chains the Exhibit Number rows walk, structural like the content rows.
+// The package is written by hand (helpers/receiptPackage.ts), as the Egress
+// one is, so the built binary reads the same bytes in tests/verifier.
+describe('verifyEvidencePackage — receipt stamps on merge entries (#1515)', () => {
+  let dir: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'bb-receipt-pkg-'))
+  })
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  const receiptRows = (result: PackageVerifyResult): PackageCheck[] =>
+    result.checks.filter((c) => c.name.includes('receipt timestamp'))
+  const otherRows = (result: PackageVerifyResult): PackageCheck[] =>
+    result.checks.filter((c) => !c.name.includes('receipt timestamp'))
+
+  it('passes, with one row per receipt stamp naming the TSA and the merge it anchors', () => {
+    const { mergeIndex, receiptIndex } = writeReceiptPackage(dir)
+    const result = verifyEvidencePackage(dir)
+    expect(result.pass, JSON.stringify(result.checks, null, 2)).toBe(true)
+    expect(receiptRows(result)).toEqual([
+      {
+        name: `merge ${mergeIndex} receipt timestamp`,
+        status: 'pass',
+        reason:
+          `rfc3161 per ${RECEIPT_TSA} at ${RECEIPT_TIME.toISOString()} — the token at index ` +
+          `${receiptIndex} anchors the Entry Hash of merge entry ${mergeIndex} and no Exhibit's ` +
+          'content; structural (imprint only); run `openssl ts -verify` for TSA authenticity'
+      }
+    ])
+  })
+
+  it('changes no other row against the same package without the receipt stamp', () => {
+    writeReceiptPackage(dir)
+    const withReceipt = verifyEvidencePackage(dir)
+    const plain = mkdtempSync(join(tmpdir(), 'bb-receipt-plain-'))
+    try {
+      writeReceiptPackage(plain, { withoutReceipt: true })
+      const without = verifyEvidencePackage(plain)
+      expect(without.pass).toBe(true)
+      expect(receiptRows(without)).toEqual([])
+      expect(otherRows(withReceipt)).toEqual(otherRows(without))
+    } finally {
+      rmSync(plain, { recursive: true, force: true })
+    }
+  })
+
+  it('fails the row and the package when the token attests another hash', () => {
+    const { mergeIndex, receiptIndex } = writeReceiptPackage(dir, { wrongImprint: true })
+    const result = verifyEvidencePackage(dir)
+    expect(result.pass).toBe(false)
+    expect(receiptRows(result)).toEqual([
+      {
+        name: `merge ${mergeIndex} receipt timestamp`,
+        status: 'fail',
+        reason:
+          `the receipt token at index ${receiptIndex} names merge entry ${mergeIndex} but does ` +
+          'not parse or attests another hash'
+      }
+    ])
+    expect(result.checks.filter((c) => c.status === 'fail')).toHaveLength(1)
+  })
+
+  it('fails the row, naming the missing token, when the receipt stamp carries none', () => {
+    const { mergeIndex, receiptIndex } = writeReceiptPackage(dir, { withoutToken: true })
+    const result = verifyEvidencePackage(dir)
+    expect(result.pass).toBe(false)
+    expect(receiptRows(result)).toEqual([
+      {
+        name: `merge ${mergeIndex} receipt timestamp`,
+        status: 'fail',
+        reason:
+          `the receipt timestamp entry at index ${receiptIndex} names merge entry ` +
+          `${mergeIndex} but carries no token`
+      }
+    ])
+    expect(result.checks.filter((c) => c.status === 'fail')).toHaveLength(1)
+  })
+
+  it('reports a receipt stamp naming no merge as a skip, and passes', () => {
+    const { receiptIndex } = writeReceiptPackage(dir, { namesNoMerge: true })
+    const result = verifyEvidencePackage(dir)
+    expect(result.pass).toBe(true)
+    expect(receiptRows(result)).toEqual([
+      {
+        name: `receipt timestamp ${receiptIndex}`,
+        status: 'skip',
+        reason: `names no merge entry in its chain (hash ${'b'.repeat(12)}): reported, not counted`
+      }
+    ])
+  })
+
+  it("names the member's chain for a receipt stamp in it", () => {
+    const { mergeIndex, memberMergeIndex } = writeReceiptPackage(dir, { memberReceipt: true })
+    const result = verifyEvidencePackage(dir)
+    expect(result.pass, JSON.stringify(result.checks, null, 2)).toBe(true)
+    expect(receiptRows(result).map((c) => [c.name, c.status])).toEqual([
+      [`merge ${mergeIndex} receipt timestamp`, 'pass'],
+      [`merge ${memberMergeIndex} receipt timestamp in the chain of ${RECEIPT_MEMBER_ID}`, 'pass']
+    ])
+  })
+
+  it('adds no row for a receipt stamp past a break in the exporter’s chain', () => {
+    const { receiptIndex } = writeReceiptPackage(dir, { breakAtReceipt: true })
+    const result = verifyEvidencePackage(dir)
+    expect(result.pass).toBe(false)
+    expect(result.checks.find((c) => c.name === 'manifest chain')?.reason).toContain(
+      `(at index ${receiptIndex})`
+    )
+    expect(receiptRows(result)).toEqual([])
   })
 })

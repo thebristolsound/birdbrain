@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createHash, createSign } from 'crypto'
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs'
 import { basename, join } from 'path'
@@ -32,7 +32,10 @@ import {
   readSharedCaseSnapshot
 } from '@main/services/manifest'
 import { getStorageRoot } from '@main/services/storage'
+import { updateSettings } from '@main/services/settings'
 import { defaultCaptureStore } from '@main/services/captureStore'
+import { createTimestampWorker } from '@main/services/timestampWorker'
+import { buildTrustedTimeIndex, resolveReceiptStamps } from '@main/services/trustedTime'
 import { canonicalStringify } from '@shared/verify'
 import {
   BYE_REASONS,
@@ -42,6 +45,7 @@ import {
   type SyncSource
 } from '@main/services/sharing/session'
 import type { WireRow } from '@main/services/sharing/messages'
+import type { ManifestEntry } from '@shared/schemas'
 import {
   MEMBERS_FILENAME,
   getSyncState,
@@ -49,6 +53,7 @@ import {
   resetSyncStateMemory
 } from '@main/services/sharing/syncState'
 import { memberChainPath } from '../../../../src/packages/evidence-package-layout/index'
+import { buildSyntheticToken } from '../../../helpers/timestampFixtures'
 import {
   activate,
   addCapture,
@@ -1417,6 +1422,153 @@ describe('sync session between peers (#1512)', () => {
       // the same chain fetched again from its start and cut back.
       expect(result.errors).toEqual([foreignError(C, 0), foreignError(C, 0)])
       nothingOfCarolStored()
+    })
+  })
+
+  // Receipt stamps (#1515, design decision 15): the session hands the `merge`
+  // it writes to the timestamp worker, which stamps its Entry Hash. Bob's
+  // worker fakes the TSA with a requester that records every hash it is
+  // asked for and grants a synthetic token over it.
+  describe('receipt stamps on the merge a session writes', () => {
+    const flush = async (): Promise<void> => {
+      await new Promise<void>((resolve) => setImmediate(resolve))
+      await new Promise<void>((resolve) => setImmediate(resolve))
+    }
+    const recorder = () =>
+      vi.fn(async (hash: string) =>
+        buildSyntheticToken({ contentHash: hash, genTime: new Date(TIME), tsaDnsName: 'tsa.bob' })
+      )
+    const stamps = (): Array<Extract<ManifestEntry, { type: 'timestamp' }>> =>
+      parsedChain(ownChainText(CASE_ID)).filter(
+        (e): e is Extract<ManifestEntry, { type: 'timestamp' }> => e.type === 'timestamp'
+      )
+    const walkPasses = (): void => {
+      const caseDir = caseDirOf(CASE_ID)
+      const { verification } = readSharedCaseSnapshot(caseDir, readManifestSnapshot(caseDir))
+      expect(verification?.outcome).toBe('pass')
+      expect(verification?.valid).toBe(true)
+    }
+    // Alice's chain, carried to Bob through Carol so that Bob's replica holds
+    // every roster member's chain and its walk can pass. Returns what Carol
+    // serves after pulling Alice's `n` documents so far.
+    const throughCarol = async (n: number): Promise<SyncSource> => {
+      await activate(A)
+      addDocument(CASE_ID, A, n)
+      const fromAlice = recordSource(CASE_ID, A)
+      await activate(C)
+      await pull(CASE_ID, fromAlice)
+      return recordSource(CASE_ID, C)
+    }
+
+    it('stamps exactly one receipt over the Entry Hash of the merge, and none without one', async () => {
+      const source = await throughCarol(1)
+
+      await activate(B)
+      const requestToken = recorder()
+      const worker = createTimestampWorker({ requestToken })
+      const result = await pull(CASE_ID, source, {
+        enqueueReceiptStamp: worker.enqueueReceiptStamp
+      })
+      await flush()
+
+      const [merge] = mergeEntries(CASE_ID)
+      expect(result.mergeIndex).toBe(merge.index)
+      expect(requestToken.mock.calls.map(([hash]) => hash)).toEqual([merge.entryHash])
+      const receipts = stamps()
+      expect(receipts).toHaveLength(1)
+      expect(receipts[0]).toMatchObject({
+        type: 'timestamp',
+        subject: 'entry',
+        captureContentHash: merge.entryHash,
+        schemaVersion: 4,
+        operatorId: B.installationId
+      })
+      expect(receipts[0].index).toBeGreaterThan(merge.index)
+      expect(resolveReceiptStamps(caseDirOf(CASE_ID)).merges[0].stamp?.tsaName).toBe('tsa.bob')
+      walkPasses()
+
+      // A session that brings nothing new writes no merge and asks for nothing.
+      const before = ownChainText(CASE_ID)
+      const again = await pull(CASE_ID, source, { enqueueReceiptStamp: worker.enqueueReceiptStamp })
+      await flush()
+      expect(again.mergeIndex).toBeNull()
+      expect(requestToken).toHaveBeenCalledTimes(1)
+      expect(ownChainText(CASE_ID)).toBe(before)
+    })
+
+    it('leaves content stamps and every Content Hash answer unchanged', async () => {
+      const source = await throughCarol(1)
+
+      await activate(B)
+      const worker = createTimestampWorker({ requestToken: recorder() })
+      const capture = await addCapture(CASE_ID, B, 1)
+      expect(await worker.stampCapture(capture.captureId)).toBe(true)
+      const caseDir = caseDirOf(CASE_ID)
+      const before = buildTrustedTimeIndex(caseDir)
+      expect(before.get(capture.contentHash)?.trustedTime).toBe('rfc3161')
+
+      await pull(CASE_ID, source, { enqueueReceiptStamp: worker.enqueueReceiptStamp })
+      await flush()
+
+      const [content, receipt] = stamps()
+      expect(content).toMatchObject({ captureContentHash: capture.contentHash, schemaVersion: 2 })
+      expect('subject' in content).toBe(false)
+      expect(receipt).toMatchObject({ subject: 'entry', schemaVersion: 4 })
+      expect([...buildTrustedTimeIndex(caseDir)]).toEqual([...before])
+      walkPasses()
+    })
+
+    it('asks nothing while timestamping is declined, and stamps the merge once it is on', async () => {
+      await activate(A)
+      addDocument(CASE_ID, A, 1)
+      const source = recordSource(CASE_ID, A)
+
+      await activate(B)
+      updateSettings({ tsaEnabled: false })
+      const requestToken = recorder()
+      const worker = createTimestampWorker({ requestToken })
+      const result = await pull(CASE_ID, source, {
+        enqueueReceiptStamp: worker.enqueueReceiptStamp
+      })
+      await flush()
+      expect(result.mergeIndex).toBe(0)
+      expect(requestToken).not.toHaveBeenCalled()
+      expect(stamps()).toHaveLength(0)
+
+      updateSettings({ tsaEnabled: true })
+      expect(await worker.processPending()).toEqual({ stamped: 1, failed: 0 })
+      expect(requestToken).toHaveBeenCalledTimes(1)
+      expect(stamps()).toHaveLength(1)
+      expect(stamps()[0].captureContentHash).toBe(mergeEntries(CASE_ID)[0].entryHash)
+    })
+
+    it('stamps the next session’s merge after a failed request, and retries nothing older', async () => {
+      const first = await throughCarol(1)
+      const second = await throughCarol(2)
+
+      await activate(B)
+      let outage = true
+      const requestToken = vi.fn(async (hash: string) => {
+        if (outage) throw new Error('ENOTFOUND tsa.bob')
+        return buildSyntheticToken({ contentHash: hash, genTime: new Date(TIME) })
+      })
+      const worker = createTimestampWorker({ requestToken })
+      await pull(CASE_ID, first, { enqueueReceiptStamp: worker.enqueueReceiptStamp })
+      await flush()
+      expect(requestToken).toHaveBeenCalledTimes(1)
+      expect(stamps()).toHaveLength(0)
+
+      outage = false
+      await pull(CASE_ID, second, { enqueueReceiptStamp: worker.enqueueReceiptStamp })
+      await flush()
+      const merges = mergeEntries(CASE_ID)
+      expect(merges).toHaveLength(2)
+      expect(stamps().map((e) => e.captureContentHash)).toEqual([merges[1].entryHash])
+
+      // The older merge is covered through prevHash: no request for it.
+      expect(await worker.processPending()).toEqual({ stamped: 0, failed: 0 })
+      expect(requestToken).toHaveBeenCalledTimes(2)
+      walkPasses()
     })
   })
 })

@@ -77,7 +77,10 @@ below are **Case data**: rows in the app's SQLite database, keyed to the Case, l
   those digests alone. The header is unsigned, so a deliberate edit that also rewrites the
   digests passes that check, and the chain verification that runs on import cannot catch it,
   because no Manifest Entry names these rows. Run records travel too, including the list of
-  text a run sent to a hosted provider, so the archive discloses what was sent.
+  text a run sent to a hosted provider, so the archive discloses what was sent. **Amended
+  2026-10-17:** the change log and the Case revision do not travel. The archive carries
+  neither, and the import's own triggers start the new Case a fresh log as its rows arrive, as
+  the maintainer ruled on 2026-10-10 on the engine plan's open question 2.
 - **Export** follows the engine spec: Joints and their decisions travel where an export preset
   includes Notes and stay out where it omits them (the Court exhibit preset), always as the
   Operator's working material, never as evidence
@@ -98,7 +101,12 @@ head. Two revisions are equal only when all three parts are.
   inputs are the ones the engine spec names other than Manifest Entries: Withheld from analysis,
   Source Class, copy marks, the Operator's own identifiers, Subjects, Joints, decisions, Notes,
   and Extracted Data rows. Selectors join them, because the spec's inventory step reads them
-  too: creating, editing, enabling, disabling, or deleting one moves the counter.
+  too: creating, editing, enabling, disabling, or deleting one moves the counter. **Amended
+  2026-10-16:** `exhibits` writes and `exhibit_search_builds` writes join them as well, as the
+  maintainer ruled on 2026-10-10 on the engine plan's open questions 3 and 4. In a Shared Case
+  a received Exhibit's rows arrive while its Manifest Entry sits in another member's chain, so
+  this installation's Manifest head does not move with them. A search rebuild replaces the
+  field records a run reads, and writes one build row per Exhibit.
 - **The Manifest head is the index and hash of the last entry in the Case's `manifest.jsonl`**,
   read from the file whenever the revision is read. Manifest Entries are the one run input kept
   outside the database: `appendManifestEntry` writes the file directly, and writers such as the

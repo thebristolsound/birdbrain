@@ -759,6 +759,10 @@ export const LOG_CODES = [
   'settings.schema_invalid',
   'thumbnails.generate_failed',
   'timestampWorker.stamp_failed',
+  // A receipt stamp over a `merge` entry could not be written (#1515): the
+  // TSA was unreachable or returned a token over another digest. The retry
+  // loop tries the newest unstamped `merge` again on its next tick.
+  'timestampWorker.receipt_stamp_failed',
   // Reading or walking a Shared Case's other member or lineage chains threw
   // (#1713 review). That Case's trusted time then resolves from the local
   // chain alone, and the launch's mirror rebuild carries on over the other

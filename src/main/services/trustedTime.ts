@@ -1,9 +1,10 @@
 import { basename, join } from 'path'
 import {
   resolveTrustedTimeFromEntries,
-  buildTrustedTimeIndexFromEntries
+  buildTrustedTimeIndexFromEntries,
+  receiptStampsFromEntries
 } from '@shared/verify/trustedTime'
-import type { TrustedTimeResult } from '@shared/verify/trustedTime'
+import type { ReceiptStampReport, TrustedTimeResult } from '@shared/verify/trustedTime'
 import type { Exhibit } from '@shared/types'
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
@@ -170,6 +171,37 @@ export function buildTrustedTimeIndex(
   exhibits: readonly AuthoredExhibit[] = []
 ): Map<string, TrustedTimeResult> {
   return buildTrustedTimeIndexFromEntries(trustedTimeEntries(caseDir, authorsOf(exhibits)))
+}
+
+// The receipt stamps of the local chain (#1515): each `merge` this
+// installation wrote and the stamp over its Entry Hash, if any. The local
+// chain alone, because a receipt stamp sits in the chain of the installation
+// that wrote the `merge`; another member's chain says nothing about this
+// one's receipts.
+export function resolveReceiptStamps(caseDir: string): ReceiptStampReport {
+  return receiptStampsFromEntries(readManifestSnapshot(caseDir).entries)
+}
+
+// The `merge` the retry loop owes a receipt stamp: the newest one after the
+// local chain's last `import`, when no receipt stamp binds it. Entries before
+// the last `import` are a source Case's history, by the rule the sync session
+// and the Shared Case walk both apply, so a `merge` there is never pending.
+// Only the newest counts: its Entry Hash covers every older `merge` through
+// `prevHash`, so a stamp over it bounds them all, and one request replaces
+// one per `merge` after an outage.
+export function pendingReceiptStamp(
+  caseDir: string
+): { mergeIndex: number; entryHash: string } | null {
+  const { entries } = readManifestSnapshot(caseDir)
+  let lastImport = -1
+  entries.forEach((entry, position) => {
+    if (entry.type === 'import') lastImport = position
+  })
+  const { merges } = receiptStampsFromEntries(entries)
+  const newest = merges.filter((merge) => merge.mergeIndex > lastImport).at(-1)
+  if (!newest || newest.stamp) return null
+  const { mergeIndex, entryHash } = newest
+  return { mergeIndex, entryHash }
 }
 
 // Read-and-refresh for a single capture: resolves the authoritative trusted-time

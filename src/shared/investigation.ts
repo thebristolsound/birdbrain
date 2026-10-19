@@ -126,9 +126,21 @@ export interface RunProgressEvent {
   reason: string | null
 }
 
+// Why a run did not read an Exhibit: a kind the first slice reads none of (E12), or a Capture
+// with no Extracted Text or no current field build (E11). The view shows any other reason as is.
+export const NOT_READ_REASONS = [
+  'kind-not-read',
+  'build-older',
+  'build-missing',
+  'build-failed',
+  'build-partial',
+  'no-text'
+] as const
+export type NotReadReason = (typeof NOT_READ_REASONS)[number]
+
 export interface NotReadCount {
   kind: string // the Exhibit kind, such as 'document' or 'attachment'
-  reason: string
+  reason: string // a NotReadReason from this build's engine
   count: number
 }
 

@@ -14,6 +14,7 @@ import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
 import { initStorage } from '@main/services/storage'
 import { createCaptureLifecycle, type CaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
+import { inProcessExtraction } from '../../helpers/inProcessExtraction'
 
 function writeHtml(root: string, caseId: string, captureId: string, html: string): void {
   const dir = join(root, caseId)
@@ -30,7 +31,10 @@ describe('captureLifecycle.reprocessCase', () => {
     initStorage(tempDir)
     await initDatabase(':memory:')
     const selectorLifecycle = createSelectorLifecycle({ emitRematched: () => {} })
-    captureLifecycle = createCaptureLifecycle({ selectorLifecycle })
+    captureLifecycle = createCaptureLifecycle({
+      selectorLifecycle,
+      extraction: inProcessExtraction()
+    })
   })
 
   afterEach(() => {
@@ -126,7 +130,7 @@ describe('captureLifecycle.reprocessCase', () => {
     })
 
     // cap1: write a directory where the .html file is expected so the read throws.
-    // (readExtractionHtml falls back to reading <captureId>.html as a buffer; if a
+    // (the extraction process falls back to reading <captureId>.html as a buffer; if a
     // directory of that name exists, the read raises EISDIR.)
     const caseDir = join(tempDir, c.id)
     mkdirSync(caseDir, { recursive: true })
@@ -192,9 +196,11 @@ describe('captureLifecycle.reprocessCase', () => {
 
     await captureLifecycle.reprocessCase(c.id)
 
-    // reprocessCase awaits setImmediate once per capture, then the search field
-    // pass awaits it once per capture it rebuilds: 5 captures -> 10 calls.
-    expect(spy).toHaveBeenCalledTimes(10)
+    // reprocessCase awaits setImmediate once per capture: 5 captures -> 5 calls.
+    // The field build arrives with each capture's extraction reply, so there is
+    // no second pass over the Case to yield in; the fake child answers on a
+    // timer, never on setImmediate, so these are the lifecycle's own.
+    expect(spy).toHaveBeenCalledTimes(5)
     spy.mockRestore()
   })
 })

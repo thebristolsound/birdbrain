@@ -67,6 +67,25 @@ describe('DER strictness of the packaged timestamp tokens', () => {
     expect(report.deviations).toHaveLength(2)
   })
 
+  // The receipt fixture (#1515) was issued eleven months later under a rotated
+  // responder certificate, and carries the same deviation: pinned so a change
+  // in what DigiCert emits is a measurement, not a surprise in a verdict.
+  it('reports the DigiCert receipt token as not strict DER, at the certificates set', () => {
+    const token = readFileSync(join(FIXTURES, 'merge-digicert-token.der'))
+    const report = checkTimestampTokenDerStrictness(token)
+
+    expect(report.strict).toBe(false)
+    expect(report.deviations.map((d) => ({ kind: d.kind, path: d.path }))).toEqual([
+      { kind: 'set-order', path: 'SignedData.certificates' },
+      { kind: 'set-order', path: 'SignedData.certificates' }
+    ])
+    expect(parseTimestampToken(token)).toEqual({
+      messageImprintHex: readFileSync(join(FIXTURES, 'merge-entry-hash.txt'), 'utf-8').trim(),
+      stampedAt: new Date('2026-10-17T03:57:17.000Z'),
+      tsaName: 'DigiCert SHA256 RSA4096 Timestamp Responder 2026 1'
+    })
+  })
+
   it('finds the same deviation in the token carried by the DigiCert response', () => {
     const report = checkTimestampTokenDerStrictness(tokenFromResponse('digicert-response.tsr'))
 

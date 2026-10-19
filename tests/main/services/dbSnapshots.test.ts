@@ -57,6 +57,9 @@ function seedLegacyDb(dbPath: string): void {
       number INTEGER NOT NULL, body TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE TABLE capture_tags (capture_id TEXT NOT NULL REFERENCES captures(id) ON DELETE CASCADE,
       tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE, PRIMARY KEY (capture_id, tag_id));
+    CREATE TABLE extracted_data (id TEXT PRIMARY KEY, capture_id TEXT NOT NULL,
+      case_id TEXT NOT NULL, category TEXT NOT NULL, subcategory TEXT NOT NULL,
+      value TEXT NOT NULL, source_url TEXT NOT NULL, created_at TEXT NOT NULL);
     CREATE VIRTUAL TABLE captures_fts USING fts5(title, url, content);
   `)
   raw

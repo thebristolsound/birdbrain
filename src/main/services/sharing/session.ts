@@ -152,6 +152,13 @@ export interface SyncSessionOptions {
   onPhase?: (phase: SyncPhase) => void
   // Required, so no caller can skip applying an author's deletion by leaving it out.
   receivedCaptures: ReceivedCaptures
+  // The timestamp worker's hand-off for the `merge` this session writes
+  // (#1515, design decision 15): a receipt stamp over its Entry Hash. Optional,
+  // as the Capture Lifecycle's `enqueueTimestamp` is: a caller that leaves it
+  // out still gets the stamp from the worker's retry loop within one
+  // interval, for as long as that `merge` is the Case's newest unstamped one
+  // (`pendingReceiptStamp` stamps only the newest).
+  enqueueReceiptStamp?: (caseId: string, mergeIndex: number) => void
 }
 
 // Why a listener ends a session before serving it; sent in `bye`.
@@ -594,6 +601,7 @@ export async function pullFromPeer(
         toolVersion: resolveToolVersion()
       })
       result.mergeIndex = merge.index
+      options.enqueueReceiptStamp?.(caseId, merge.index)
     }
 
     // 4. Blobs: every file the stored chains of the other members anchor and

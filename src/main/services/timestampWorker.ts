@@ -1,16 +1,19 @@
 import { join } from 'path'
 import * as captureRepo from '@main/services/db/captureRepo'
 import * as caseRepo from '@main/services/db/caseRepo'
+import { listCaseMembers } from '@main/services/db/caseMemberRepo'
 import { getExhibit, listExhibits } from '@main/services/db/exhibitRepo'
 import { appendManifestEntry, initManifest } from '@main/services/manifest'
 import {
   buildTrustedTimeIndex,
+  pendingReceiptStamp,
   reconcileCaptureTrustedTime,
   reconcileAllMirrors,
+  resolveReceiptStamps,
   resolveTrustedTime
 } from '@main/services/trustedTime'
 import { requestTimestamp } from '@main/services/timestamp'
-import { parseTimestampToken } from '@shared/verify'
+import { parseTimestampToken, type MergeReceipt } from '@shared/verify'
 import { getSettings } from '@main/services/settings'
 import { getStorageRoot } from '@main/services/storage'
 import { resolveToolVersion } from '@main/services/toolVersion'
@@ -36,9 +39,15 @@ export interface TimestampWorker {
   // A committed non-Capture Exhibit (X26): the same RFC 3161 path over its
   // Content Hash, and a `timestamp` entry stamped at schema 3 (#1180).
   stampExhibit(exhibitId: string): Promise<boolean>
+  // A receipt stamp (#1515, design decision 15): the same RFC 3161 path over
+  // a `merge` entry's Entry Hash, written as a `timestamp` with
+  // `subject: 'entry'` at schema 4. It bounds the time by which this
+  // installation held what the `merge` names, and vouches for no Exhibit.
+  stampMerge(caseId: string, mergeIndex: number): Promise<boolean>
   processPending(): Promise<{ stamped: number; failed: number }>
   enqueue(captureId: string): void
   enqueueExhibit(exhibitId: string): void
+  enqueueReceiptStamp(caseId: string, mergeIndex: number): void
   rebuildMirror(): void
   start(): void
   stop(): void
@@ -193,6 +202,67 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
     return pending
   }
 
+  // Stamps one `merge` entry of the local chain. No mirror column, as for a
+  // non-Capture Exhibit: whether the `merge` is stamped is read off the
+  // manifest each time. The `merge` is this installation's own entry, so the
+  // local chain is the only one read.
+  async function stampMerge(caseId: string, mergeIndex: number): Promise<boolean> {
+    if (!timestampingEnabled()) return false
+
+    const settings = getSettings()
+    const tsaUrl = settings.tsaUrl || DEFAULT_TSA_URL
+    const caseDir = join(getStorageRoot(), caseId)
+    const receiptOf = (): MergeReceipt | undefined =>
+      resolveReceiptStamps(caseDir).merges.find((merge) => merge.mergeIndex === mergeIndex)
+
+    try {
+      const merge = receiptOf()
+      if (!merge) return false
+      if (merge.stamp) return true
+      const token = await requestToken(merge.entryHash, tsaUrl)
+      const parsed = parseTimestampToken(token)
+      if (parsed.messageImprintHex !== merge.entryHash) {
+        throw new Error('TSA token imprint does not match the merge entry hash')
+      }
+      // The session's hand-off and a retry tick can race for one `merge`, as
+      // for a Capture: a stamp that landed while this request was in flight
+      // means no second entry.
+      if (receiptOf()?.stamp) return true
+      appendManifestEntry(caseDir, {
+        type: 'timestamp',
+        caseId,
+        captureContentHash: merge.entryHash,
+        subject: 'entry',
+        timestamp: new Date().toISOString(),
+        tsaToken: token.toString('base64'),
+        operatorId: getInstallationId(),
+        operatorName: settings.operatorName ?? '',
+        toolVersion: resolveToolVersion()
+      })
+      return true
+    } catch (err) {
+      logger.error(
+        'timestampWorker',
+        'timestampWorker.receipt_stamp_failed',
+        { caseId: ident(caseId) },
+        err
+      )
+      return false
+    }
+  }
+
+  // The newest unstamped `merge` of each Shared Case, read off its chain. A
+  // Case with no roster has no sync session and so no `merge` to stamp.
+  function listPendingReceiptStamps(): Array<{ caseId: string; mergeIndex: number }> {
+    const pending: Array<{ caseId: string; mergeIndex: number }> = []
+    for (const c of caseRepo.listCases()) {
+      if (listCaseMembers(c.id).length === 0) continue
+      const receipt = pendingReceiptStamp(join(getStorageRoot(), c.id))
+      if (receipt) pending.push({ caseId: c.id, mergeIndex: receipt.mergeIndex })
+    }
+    return pending
+  }
+
   async function processPending(): Promise<{ stamped: number; failed: number }> {
     let stamped = 0
     let failed = 0
@@ -207,6 +277,10 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
     }
     for (const exhibitId of listPendingExhibits()) {
       if (await stampExhibit(exhibitId)) stamped++
+      else failed++
+    }
+    for (const { caseId, mergeIndex } of listPendingReceiptStamps()) {
+      if (await stampMerge(caseId, mergeIndex)) stamped++
       else failed++
     }
     return { stamped, failed }
@@ -238,6 +312,17 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
     })
   }
 
+  // The sync session's hand-off (#1515): the `merge` it just wrote. Nothing
+  // waits on the TSA; a session that gets no stamp is caught by the retry
+  // loop within one interval, for as long as its `merge` is the Case's newest
+  // unstamped one (`pendingReceiptStamp` stamps only the newest).
+  function enqueueReceiptStamp(caseId: string, mergeIndex: number): void {
+    if (!timestampingEnabled()) return
+    setImmediate(() => {
+      void stampMerge(caseId, mergeIndex)
+    })
+  }
+
   // Reconstructs the mirror column for every MHTML capture purely from the
   // manifest, so the queue survives a lost/corrupt column (#120 AC). Delegates to
   // the trusted-time module, which owns the read-and-refresh rule.
@@ -261,9 +346,11 @@ export function createTimestampWorker(deps: TimestampWorkerDeps = {}): Timestamp
   return {
     stampCapture,
     stampExhibit,
+    stampMerge,
     processPending,
     enqueue,
     enqueueExhibit,
+    enqueueReceiptStamp,
     rebuildMirror,
     start,
     stop

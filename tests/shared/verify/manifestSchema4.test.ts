@@ -1,9 +1,10 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { createHash, createSign, generateKeyPairSync } from 'crypto'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { tmpdir } from 'os'
 import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
+import { appendManifestEntry, initManifest } from '@main/services/manifest'
 import {
   buildTrustedTimeIndexFromEntries,
   canonicalStringify,
@@ -16,7 +17,7 @@ import {
 } from '@shared/verify'
 import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
 import { ManifestEntrySchema, MEMBER_CODE_PATTERN } from '@shared/schemas'
-import { MANIFEST_SCHEMA_VERSION } from '@shared/constants'
+import { MANIFEST_FILENAME, MANIFEST_SCHEMA_VERSION } from '@shared/constants'
 import {
   lineageChainPath,
   memberChainPath,
@@ -338,6 +339,54 @@ describe('manifest schema 4 — the schema', () => {
       { type: 'timestamp', subject: 'entry', captureContentHash: hash, tsaToken: 'AAAA' }
     ]
     expect(buildTrustedTimeIndexFromEntries(entries).get(hash)).toEqual({ trustedTime: 'pending' })
+  })
+})
+
+// The writer's side of the receipt stamp (#1515): `subject: 'entry'` is the
+// one schema-4 field a `timestamp` input can carry, and the writer stamps it 4
+// without the caller saying so. A content stamp is written exactly as before.
+describe('manifest schema 4 — the timestamp writer', () => {
+  let caseDir: string
+
+  const stamp = (fields: Record<string, unknown> = {}) => ({
+    type: 'timestamp' as const,
+    caseId: CASE_ID,
+    captureContentHash: 'a'.repeat(64),
+    timestamp: '2026-09-19T13:00:00.000Z',
+    tsaToken: 'AAAA',
+    ...OPERATOR,
+    ...fields
+  })
+
+  const written = (): Record<string, unknown>[] =>
+    readFileSync(join(caseDir, MANIFEST_FILENAME), 'utf-8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+
+  beforeEach(() => {
+    caseDir = mkdtempSync(join(tmpdir(), 'birdbrain-schema4-writer-'))
+    initManifest(caseDir)
+  })
+
+  afterEach(() => {
+    rmSync(caseDir, { recursive: true, force: true })
+  })
+
+  it('writes a timestamp with subject entry at schema 4, and the line parses', () => {
+    appendManifestEntry(caseDir, stamp({ subject: 'entry' }))
+    const [line] = written()
+    expect(line.schemaVersion).toBe(4)
+    expect(line.subject).toBe('entry')
+    expect(ManifestEntrySchema.safeParse(line).success).toBe(true)
+  })
+
+  it('writes a content stamp at schema 2 with no subject key, as before', () => {
+    appendManifestEntry(caseDir, stamp())
+    const [line] = written()
+    expect(line.schemaVersion).toBe(2)
+    expect('subject' in line).toBe(false)
+    expect(ManifestEntrySchema.safeParse(line).success).toBe(true)
   })
 })
 

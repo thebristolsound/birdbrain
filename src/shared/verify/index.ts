@@ -72,7 +72,14 @@ export type {
 export {
   resolveTrustedTimeFromEntries,
   buildTrustedTimeIndexFromEntries,
-  stampFor
+  stampFor,
+  receiptStampFor,
+  receiptStampsFromEntries
 } from '@shared/verify/trustedTime'
-export type { TrustedTimeResult } from '@shared/verify/trustedTime'
+export type {
+  TrustedTimeResult,
+  MergeReceipt,
+  ReceiptStampReport,
+  UnboundReceiptStamp
+} from '@shared/verify/trustedTime'
 export { ManifestEntrySchema } from '@shared/schemas'

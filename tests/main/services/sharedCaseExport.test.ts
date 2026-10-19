@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterAll, afterEach, vi } from 'vitest'
 import { createHash, createSign, generateKeyPairSync } from 'crypto'
 import {
   chmodSync,
@@ -15,6 +15,7 @@ import { tmpdir } from 'os'
 import { closeDatabase, getDb, initDatabase } from '@main/services/db/core'
 import { createCase, deleteCase, getCase } from '@main/services/db/caseRepo'
 import { listExhibits } from '@main/services/db/exhibitRepo'
+import { insertWithheldFlag, listWithheldFlags } from '@main/services/db/exhibitMarkRepo'
 import {
   exhibitCitationResolver,
   listCaseMembers,
@@ -43,6 +44,7 @@ import { getPublicKeyPem, signEntryHash } from '@main/services/signingKey'
 import { readStoredZip } from '@main/services/zipRead'
 import { canonicalStringify } from '@shared/verify'
 import { verifyEvidencePackage } from '@shared/verify/evidencePackage'
+import { extractTimestampTokenCertificatesPem } from '@shared/verify/timestampToken'
 import {
   lineageChainPath,
   memberChainPath
@@ -50,6 +52,7 @@ import {
 import type { ExportOptions } from '@shared/types'
 import { HAS_JQ } from '../../helpers/jq'
 import { HAS_OPENSSL } from '../../helpers/openssl'
+import { createLocalTsa, type LocalTsa } from '../../helpers/localTsa'
 import { extractRunbookBlocks, runRunbookBlocks } from '../../helpers/runbookBlocks'
 import { runVerifyScript } from '../../helpers/verifyScript'
 import { checkConformance } from '../../helpers/verifyConformance'
@@ -69,6 +72,23 @@ import { checkConformance } from '../../helpers/verifyConformance'
 vi.mock('@main/services/tlsCertChain', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@main/services/tlsCertChain')>()
   return { ...actual, fetchCertChain: vi.fn(async () => null) }
+})
+
+// The receipt stamp tests (#1515) replace the bundled DigiCert root with a
+// throwaway local TSA's, as verifyRunbookExecution.test.ts does, so the
+// package encloses the root its receipt token chains to. Empty until those
+// tests set it, so every other test exports exactly as before.
+const localRoot = vi.hoisted(() => ({ pem: '' }))
+
+vi.mock('@main/services/tsaTrust', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@main/services/tsaTrust')>()
+  return {
+    ...actual,
+    getTsaTrustBundle: (tsaUrl: string) =>
+      localRoot.pem === ''
+        ? actual.getTsaTrustBundle(tsaUrl)
+        : { pem: localRoot.pem, bundled: true }
+  }
 })
 
 interface KeyPair {
@@ -732,6 +752,55 @@ describe('Shared Case export, import and fork (#1511)', () => {
     )
   })
 
+  // Ruling 62 of 2026-10-10 (#1909): an investigation record with no author was
+  // the exporter's own, and a fork stamps it with the installation it stamps
+  // on the exporter's own Exhibits.
+  it("stamps a fork's author-less investigation records as the exporter's Exhibits", async () => {
+    const { ownDoc } = memberReplica()
+    const flag = insertWithheldFlag({
+      caseId,
+      exhibitId: ownDoc,
+      action: 'set',
+      actedAt: TIME,
+      operatorId: localId,
+      operatorName: 'Casey Operator'
+    })
+    expect(flag.authorInstallationId).toBeNull()
+    const out = join(tempDir, 'fork.birdbrain')
+    await exportCaseArchive(caseId, out)
+
+    const { newCaseId } = await importCaseArchive(out)
+
+    const exporterOwn = listExhibits(newCaseId).find((exhibit) => exhibit.memberCode === 'RP')
+    const [imported] = listWithheldFlags(newCaseId)
+    expect(exporterOwn?.authorInstallationId).toBe(localId)
+    expect(imported.authorInstallationId).toBe(exporterOwn?.authorInstallationId)
+  })
+
+  it("stamps a fork's records with the exporter its verified roster names, whatever the header says", async () => {
+    const { ownDoc } = memberReplica()
+    insertWithheldFlag({
+      caseId,
+      exhibitId: ownDoc,
+      action: 'set',
+      actedAt: TIME,
+      operatorId: localId,
+      operatorName: 'Casey Operator'
+    })
+    const out = join(tempDir, 'fork.birdbrain')
+    await exportCaseArchive(caseId, out)
+    // `package.json` is unsigned, so this edit passes verification.
+    await rewriteArchive(out, (_, header) => {
+      header.source.installationId = 'installation-forged'
+    })
+    expect(inspectCaseArchive(out).verification.overallValid).toBe(true)
+
+    const { newCaseId } = await importCaseArchive(out)
+
+    const [imported] = listWithheldFlags(newCaseId)
+    expect(imported.authorInstallationId).toBe(localId)
+  })
+
   it("renumbers none of a fork's member-authored Exhibits and numbers its own from 1", async () => {
     memberReplica()
     const out = join(tempDir, 'fork.birdbrain')
@@ -1004,6 +1073,246 @@ describe('Shared Case export, import and fork (#1511)', () => {
     expect(run.output).toContain(
       `entries 0 to ${last}: ${owner.lines.length} signed entr(ies) verified under the key ` +
         `import entry ${last + 1} carries (SHA-256 ${fingerprint})`
+    )
+  })
+
+  // Receipt stamps (#1515, design decision 15): verify.sh and VERIFY.md check
+  // the receipt token decoded from its signed line, over the merge entry's
+  // Entry Hash, against the enclosed anchor. The token comes from a local TSA
+  // so the anchor is the root it chains to (see helpers/localTsa.ts).
+  describe('receipt stamps (#1515)', () => {
+    const RUNS = HAS_OPENSSL && HAS_JQ
+    let tsa: LocalTsa | null = null
+    let otherTsa: LocalTsa | null = null
+
+    beforeAll(() => {
+      if (!RUNS) return
+      tsa = createLocalTsa()
+      otherTsa = createLocalTsa()
+      localRoot.pem = tsa.rootPem
+    })
+
+    afterAll(() => {
+      tsa?.dispose()
+      otherTsa?.dispose()
+      localRoot.pem = ''
+    })
+
+    // A receipt stamp over `hash`: `token` null leaves the entry tokenless.
+    const receiptStamp = (hash: string, token: Buffer | null, by: ReturnType<typeof operator>) => ({
+      type: 'timestamp',
+      caseId,
+      captureContentHash: hash,
+      subject: 'entry',
+      timestamp: TIME,
+      ...(token === null ? {} : { tsaToken: token.toString('base64') }),
+      ...by,
+      schemaVersion: 4
+    })
+
+    // The Owner's replica with a receipt stamp at index 4, issued by `issuer`
+    // over its merge (index 3), or over `over` when given.
+    function receiptReplica(
+      issuer: () => LocalTsa,
+      { over, tokenless = false }: { over?: string; tokenless?: boolean } = {}
+    ) {
+      let receiptToken: Buffer = Buffer.alloc(0)
+      const replica = ownerReplica((owner) => {
+        const hash = over ?? owner.hashes[owner.hashes.length - 1]
+        receiptToken = issuer().issueToken(hash)
+        owner.append(receiptStamp(hash, tokenless ? null : receiptToken, LOCAL()))
+      })
+      return { ...replica, receiptToken }
+    }
+
+    // The member's chain continued past the head the Owner merged: a merge
+    // (index 1) naming the Owner's document, and a receipt stamp (index 2)
+    // over `hashOf` that merge, or over `over` when given.
+    function peerReceipt(replica: ReturnType<typeof ownerReplica>, over?: string) {
+      const { owner, peer } = replica
+      peer.append({
+        type: 'merge',
+        caseId,
+        heads: [
+          { installationId: localId, index: 2, entryHash: owner.hashes[2], entriesReceived: 3 }
+        ],
+        timestamp: TIME,
+        ...PEER,
+        schemaVersion: 4
+      })
+      const hash = over ?? peer.hashes[1]
+      peer.append(receiptStamp(hash, tsa!.issueToken(hash), PEER))
+      writeFileSync(join(caseDir(), memberChainPath(PEER_ID)), peer.jsonl)
+      return replica
+    }
+
+    const peerChain = memberChainPath(PEER_ID)
+
+    // The package with its enclosed anchor removed, from the index too, as an
+    // export under a non-default authority leaves it.
+    function withoutAnchor(dir: string): void {
+      rmSync(join(dir, 'tsa-root.pem'), { force: true })
+      const path = join(dir, 'evidence.json')
+      const index = JSON.parse(readFileSync(path, 'utf-8')) as {
+        artifacts: Array<{ path: string }>
+      }
+      index.artifacts = index.artifacts.filter((a) => a.path !== 'tsa-root.pem')
+      writeFileSync(path, JSON.stringify(index))
+    }
+
+    const receiptBlocks = (zip: Map<string, Buffer>) =>
+      extractRunbookBlocks(zip.get('VERIFY.md')!.toString('utf-8')).filter(
+        (b) =>
+          b.section.startsWith('Step 6') &&
+          b.placeholders.length === 0 &&
+          b.code.includes('receipt')
+      )
+
+    it.skipIf(!RUNS)('verify.sh verifies the receipt token over the merge Entry Hash', async () => {
+      const { owner } = receiptReplica(() => tsa!)
+      const { dir, zip } = await exportPackage()
+      expect(failures(dir)).toEqual([])
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(0)
+      expect(run.output).toContain(
+        `merge entry 3: receipt timestamp entry 4 verifies to tsa-root.pem over the Entry Hash ${owner.hashes[3]}`
+      )
+      // The chain carries no content token: the script says so without
+      // saying it carries no token at all.
+      expect(run.output).not.toContain('the signed manifest carries no RFC 3161 token')
+      expect(run.output).not.toContain(
+        'RFC 3161 token, so this package makes no trusted-time claim'
+      )
+      expect(run.output).toContain("RFC 3161 token over any Exhibit's content")
+      expect(run.output).toContain('1 of its 1 receipt token(s) over merge entries')
+
+      const blocks = receiptBlocks(zip)
+      expect(blocks).toHaveLength(1)
+      const runbook = runRunbookBlocks(blocks, { cwd: dir })
+      expect([runbook.failedBlock, runbook.stderr]).toEqual([null, ''])
+      expect(runbook.stdout.trim()).toBe('receipt OK: merge #3 of manifest.jsonl')
+    })
+
+    it.skipIf(!RUNS)("verifies a member chain's receipt over that chain's own merge", async () => {
+      const { peer } = peerReceipt(receiptReplica(() => tsa!))
+      const { dir, zip } = await exportPackage()
+      expect(failures(dir)).toEqual([])
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(0)
+      expect(run.output).toContain(
+        `merge entry 1 of ${PEER_ID}: receipt timestamp entry 2 verifies to tsa-root.pem over ` +
+          `the Entry Hash ${peer.hashes[1]}`
+      )
+      expect(run.output).toContain('2 of its 2 receipt token(s) over merge entries')
+      const runbook = runRunbookBlocks(receiptBlocks(zip), { cwd: dir })
+      expect(runbook.stdout.trim().split('\n')).toEqual([
+        'receipt OK: merge #3 of manifest.jsonl',
+        `receipt OK: merge #1 of ${peerChain}`
+      ])
+    })
+
+    // The package's chains are read together for the content tokens, so a
+    // receipt must not find its merge in another member's chain: the Owner's
+    // merge hash in the member's receipt names nothing in the member's chain.
+    it.skipIf(!RUNS)('matches a receipt only to a merge of its own chain', async () => {
+      const replica = ownerReplica()
+      const { owner } = peerReceipt(replica, replica.owner.hashes[3])
+      const { dir, zip } = await exportPackage()
+      expect(failures(dir)).toEqual([])
+      expect(
+        verifyEvidencePackage(dir).checks.filter((check) => check.name.includes('receipt'))
+      ).toMatchObject([{ name: `receipt timestamp 2 in the chain of ${PEER_ID}`, status: 'skip' }])
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(0)
+      expect(run.output).toContain(
+        `receipt timestamp entry 2 of ${PEER_ID} names no merge entry in its chain (hash ` +
+          `${owner.hashes[3]}), so nothing states what it attests`
+      )
+      expect(run.output).not.toContain('merge entry 3')
+      const runbook = runRunbookBlocks(receiptBlocks(zip), { cwd: dir })
+      expect(runbook.stdout.trim()).toBe(`RECEIPT NAMES NO MERGE: entry 2 of ${peerChain}`)
+    })
+
+    it.skipIf(!RUNS)('notes a receipt stamp naming no merge entry of its chain', async () => {
+      const over = 'f'.repeat(64)
+      receiptReplica(() => tsa!, { over })
+      const { dir, zip } = await exportPackage()
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(0)
+      expect(run.output).toContain(
+        `receipt timestamp entry 4 names no merge entry in its chain (hash ${over}), so ` +
+          'nothing states what it attests'
+      )
+      expect(run.output).not.toContain('receipt token(s) over merge entries')
+      const runbook = runRunbookBlocks(receiptBlocks(zip), { cwd: dir })
+      expect(runbook.stdout.trim()).toBe('RECEIPT NAMES NO MERGE: entry 4 of manifest.jsonl')
+    })
+
+    it.skipIf(!RUNS)('fails a receipt stamp that names a merge and carries no token', async () => {
+      receiptReplica(() => tsa!, { tokenless: true })
+      const { dir } = await exportPackage()
+      expect(failures(dir).map((check) => [check.name, check.reason])).toEqual([
+        [
+          'merge 3 receipt timestamp',
+          'the receipt timestamp entry at index 4 names merge entry 3 but carries no token'
+        ]
+      ])
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      expect(run.output).toContain(
+        'FAIL [step 6] merge entry 3: its receipt timestamp entry 4 carries no token'
+      )
+    })
+
+    it.skipIf(!RUNS)(
+      'counts the receipt among the tokens left unverified without an anchor',
+      async () => {
+        receiptReplica(() => tsa!)
+        const { dir } = await exportPackage()
+        withoutAnchor(dir)
+
+        const run = runVerifyScript(dir)
+        expect(run.status, run.output).toBe(3)
+        expect(run.output).toContain(
+          'INCOMPLETE [step 6] 1 signed token(s) were not verified: no anchor is enclosed for ' +
+            'this script to name'
+        )
+        expect(run.output).not.toContain('merge entry 3: receipt timestamp entry 4 verifies')
+      }
+    )
+
+    it.skipIf(!RUNS)('fails a receipt token from another authority, naming the merge', async () => {
+      receiptReplica(() => otherTsa!)
+      const { dir, zip } = await exportPackage()
+      // Structurally sound: the binary's check is the imprint, not the signer.
+      expect(failures(dir)).toEqual([])
+
+      const run = runVerifyScript(dir)
+      expect(run.status, run.output).toBe(1)
+      expect(run.output).toContain(
+        'FAIL [step 6] merge entry 3: receipt timestamp entry 4 does not verify to tsa-root.pem'
+      )
+      const runbook = runRunbookBlocks(receiptBlocks(zip), { cwd: dir })
+      expect(runbook.stdout.trim()).toBe('RECEIPT FAIL: merge #3 of manifest.jsonl')
+    })
+
+    it.skipIf(!RUNS)(
+      'encloses the certificates the receipt token embeds in tsa-intermediates.pem',
+      async () => {
+        const { receiptToken } = receiptReplica(() => tsa!)
+        const { zip } = await exportPackage()
+        const intermediates = zip.get('tsa-intermediates.pem')!.toString('utf-8')
+        const blocks = extractTimestampTokenCertificatesPem(receiptToken).match(
+          /-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g
+        )!
+        expect(blocks.length).toBeGreaterThan(0)
+        for (const block of blocks) expect(intermediates).toContain(block)
+      }
     )
   })
 

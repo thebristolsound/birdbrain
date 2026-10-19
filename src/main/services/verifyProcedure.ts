@@ -86,5 +86,9 @@ export const VERIFY_RECIPES = {
   // A content stamp only: an `entry` stamp binds a merge entry, not an Exhibit's
   // bytes, and a tsaToken that is not a string is no token at all.
   signedTokenFilter:
-    'select(.type == "timestamp" and (.subject // "content") == "content" and (.tsaToken | type) == "string")'
+    'select(.type == "timestamp" and (.subject // "content") == "content" and (.tsaToken | type) == "string")',
+  // A receipt stamp (#1515): an `entry` stamp binds a merge entry's Entry
+  // Hash. Its token has no enclosed file; the signed line is the only copy.
+  receiptTokenFilter:
+    'select(.type == "timestamp" and .subject == "entry" and (.tsaToken | type) == "string")'
 }

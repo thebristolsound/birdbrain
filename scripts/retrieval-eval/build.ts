@@ -16,6 +16,8 @@
  * slice can be measured on the same Case. The report lands in
  * `out/retrieval-eval/report.md` and `report.json`; a `measure` run over the
  * Case the last report measured keeps that report's latency as an earlier pass.
+ * `--eval-phase=revision-cost` times the Case revision triggers on copies of
+ * that profile (`revisionCost.ts`).
  */
 
 import { app, BrowserWindow, session } from 'electron'
@@ -63,6 +65,7 @@ import {
   type ScoredQuery
 } from './score'
 import { EXPECTED_PLACEMENTS, POOLED_FILE, TARGET_PAGES, type TargetKey } from './targets'
+import { measureRevisionCost, renderRevisionCost } from './revisionCost'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = join(HERE, '..', '..')
@@ -109,20 +112,20 @@ interface CaseRecord {
   targetUrls: Record<string, TargetKey>
 }
 
-async function openProfile(fresh: boolean): Promise<void> {
-  if (fresh) rmSync(PROFILE_DIR, { recursive: true, force: true })
-  mkdirSync(PROFILE_DIR, { recursive: true })
-  await initDatabase(join(PROFILE_DIR, 'birdbrain.db'))
-  initSettings(PROFILE_DIR)
+async function openProfile(fresh: boolean, dir = PROFILE_DIR): Promise<void> {
+  if (fresh) rmSync(dir, { recursive: true, force: true })
+  mkdirSync(dir, { recursive: true })
+  await initDatabase(join(dir, 'birdbrain.db'))
+  initSettings(dir)
   updateSettings({ operatorName: OPERATOR_NAME, operatorRole: '', operatorOrganization: '' })
-  initInstallationId(PROFILE_DIR)
+  initInstallationId(dir)
   // A throwaway profile under out/, so there is nothing for the OS credential
   // store to protect and the run stays non-interactive.
-  initSigningKey(PROFILE_DIR, {
+  initSigningKey(dir, {
     isEncryptionAvailable: () => false,
     confirmUnprotectedKey: () => true
   })
-  initStorage(join(PROFILE_DIR, 'captures'))
+  initStorage(join(dir, 'captures'))
 }
 
 function withoutTrailingSlash(url: string): string {
@@ -495,8 +498,24 @@ async function measure(record: CaseRecord, earlier: PathLatency[][]): Promise<Ev
 
 async function run(): Promise<void> {
   const phase = argValue('eval-phase') ?? 'all'
-  if (!['build', 'measure', 'all'].includes(phase)) {
-    throw new Error(`--eval-phase must be build, measure or all, not ${phase}`)
+  if (!['build', 'measure', 'all', 'revision-cost'].includes(phase)) {
+    throw new Error(`--eval-phase must be build, measure, all or revision-cost, not ${phase}`)
+  }
+  if (phase === 'revision-cost') {
+    const record = JSON.parse(readFileSync(CASE_FILE, 'utf-8')) as CaseRecord
+    const report = await measureRevisionCost({
+      profileDir: PROFILE_DIR,
+      scratchDir: join(OUT_DIR, 'revision-cost'),
+      caseId: record.caseId,
+      captures: record.captures,
+      open: (dir) => openProfile(false, dir),
+      close: closeDatabase
+    })
+    const markdown = renderRevisionCost(report)
+    writeFileSync(join(OUT_DIR, 'revision-cost.json'), `${JSON.stringify(report, null, 2)}\n`)
+    writeFileSync(join(OUT_DIR, 'revision-cost.md'), markdown)
+    process.stdout.write(markdown)
+    return
   }
   const size = Number(argValue('eval-captures') ?? DEFAULT_CAPTURES)
   if (!Number.isInteger(size)) throw new Error('--eval-captures must be a whole number')

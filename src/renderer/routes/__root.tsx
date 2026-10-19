@@ -17,6 +17,10 @@ import { NewCaseWizard } from '@renderer/components/dashboard/cases/NewCaseWizar
 import { CaseWorkspace } from '@renderer/components/dashboard/cases/CaseWorkspace'
 import { CaseOverview } from '@renderer/components/overview/CaseOverview'
 import { CapturesRoute } from '@renderer/routes/cases/$caseId/captures'
+import {
+  InvestigateRoute,
+  validateInvestigateSearch
+} from '@renderer/routes/cases/$caseId/investigate'
 import { NotesOverview } from '@renderer/components/notes/NotesOverview'
 import { SignalsOverview } from '@renderer/components/signals/SignalsOverview'
 import { DataExplorer } from '@renderer/components/dashboard/cases/DataExplorer'
@@ -281,6 +285,16 @@ const dataRoute = createRoute({
   errorComponent: RouteErrorComponent
 })
 
+// Investigate: registered with no sidebar or palette entry until the real engine is behind it
+// (ruling 57); the fake engine answers its channels in unpackaged builds only.
+const investigateRoute = createRoute({
+  getParentRoute: () => caseRoute,
+  path: '/investigate',
+  validateSearch: validateInvestigateSearch,
+  component: InvestigateRoute,
+  errorComponent: RouteErrorComponent
+})
+
 // Build the tree
 export const routeTree = rootRoute.addChildren([
   indexRoute,
@@ -292,6 +306,7 @@ export const routeTree = rootRoute.addChildren([
     capturesRoute,
     notesRoute,
     signalsRoute,
-    dataRoute
+    dataRoute,
+    investigateRoute
   ])
 ])

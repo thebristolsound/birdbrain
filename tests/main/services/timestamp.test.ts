@@ -222,3 +222,49 @@ describe('openssl ts -verify over committed DigiCert fixtures', () => {
     }
   })
 })
+
+// #1515: the same ground truth for the receipt stamp's token, issued over the
+// Entry Hash of the fixed `merge` entry rather than over a content hash. The
+// digest is fed the way verify.sh and VERIFY.md feed it, from the hash the
+// signed entry names, not from a query file.
+describe('openssl ts -verify over the committed DigiCert receipt fixture', () => {
+  const tokenDer = join(FIXTURES, 'merge-digicert-token.der')
+  const caFile = join(FIXTURES, 'digicert-trusted-root-g4.pem')
+  const entryHash = readFileSync(join(FIXTURES, 'merge-entry-hash.txt'), 'utf-8').trim()
+
+  function verify(path: string): { out: string; status: number } {
+    try {
+      const out = execFileSync(
+        'openssl',
+        ['ts', '-verify', '-digest', entryHash, '-in', path, '-token_in', '-CAfile', caFile],
+        { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] }
+      )
+      return { out, status: 0 }
+    } catch (err) {
+      const e = err as { status?: number; stdout?: string; stderr?: string }
+      return { out: `${e.stdout ?? ''}${e.stderr ?? ''}`, status: e.status ?? 1 }
+    }
+  }
+
+  it.skipIf(!HAS_OPENSSL)('verifies the token over the merge Entry Hash (-digest)', () => {
+    const { out, status } = verify(tokenDer)
+    expect(status).toBe(0)
+    expect(out).toContain('Verification: OK')
+    expect(parseTimestampToken(readFileSync(tokenDer)).messageImprintHex).toBe(entryHash)
+  })
+
+  it.skipIf(!HAS_OPENSSL)('FAILS when a token byte is mutated (test discriminates)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bb-receipt-tsverify-'))
+    try {
+      const tampered = readFileSync(tokenDer)
+      tampered[2000] ^= 0xff
+      const tamperedPath = join(dir, 'tampered.der')
+      writeFileSync(tamperedPath, tampered)
+      const { out, status } = verify(tamperedPath)
+      expect(out).not.toContain('Verification: OK')
+      expect(out.includes('Verification: FAILED') || status !== 0).toBe(true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})

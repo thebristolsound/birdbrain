@@ -1,7 +1,7 @@
 // Builds the synthetic retrieval-evaluation Case and measures Case search on
 // it (docs/plans/2026-10-09-case-retrieval-first-slice.md, D10). Arguments
 // after the script name pass through: `--eval-captures=<n>` and
-// `--eval-phase=build|measure|all`.
+// `--eval-phase=build|measure|all|revision-cost`.
 //
 // scripts/retrieval-eval/build.ts is main-process TypeScript, bundled and run
 // under the real Electron binary the way scripts/build-demo-fixture.mjs runs

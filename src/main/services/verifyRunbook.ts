@@ -374,6 +374,44 @@ A token whose imprint matches the content hash but whose TSA signature is invali
 here. That is why this runbook's \`openssl ts -verify\` — not the binary — is the
 canonical proof of trusted time.
 
+A Shared Case package can also carry **receipt stamps**: \`timestamp\` entries
+with \`subject\` set to \`entry\`, which the binary reports as \`merge <n> receipt
+timestamp\`. Each binds the \`entryHash\` of a \`merge\` entry, not a content hash,
+and states that the authority saw that hash at the time in the token. Because an
+Entry Hash covers the entry's \`prevHash\` and a \`merge\` names the head it
+received from each member, the receipt bounds the time by which the writer of
+that chain held every entry before the \`merge\` and every entry up to each
+named head. It is not a trusted time for any Exhibit, it does not say when
+anything was captured, and it does not say the writer held those entries no
+earlier. The token sits only in the signed line, with no \`.tst\` file, so decode
+it from there and verify it over the \`merge\` entry's \`entryHash\`. A receipt binds
+a \`merge\` of the chain it sits in, so look the \`merge\` up in that same file,
+for \`${ROOT.manifest}\` and for every member and lineage chain alike:
+
+\`\`\`sh
+receipt=$(mktemp)
+for chain in ${ROOT.manifest} ${memberChainPath('*')} ${lineageChainPath('*', '*')}; do
+  [ -e "$chain" ] || continue
+  jq -c '${VERIFY_RECIPES.receiptTokenFilter}' "$chain" | while IFS= read -r r; do
+    hash=$(printf '%s' "$r" | jq -r '.captureContentHash')
+    idx=$(jq -rn --arg h "$hash" \\
+      'first(inputs | select(.type == "merge" and .entryHash == $h) | .index) // empty' "$chain")
+    if [ -z "$idx" ]; then
+      echo "RECEIPT NAMES NO MERGE: entry $(printf '%s' "$r" | jq -r '.index') of $chain"
+      continue
+    fi
+    printf '%s' "$r" | jq -r '.tsaToken' | openssl base64 -d -A >"$receipt"
+    if openssl ts -verify -digest "$hash" -in "$receipt" -token_in \\
+      -CAfile ${ROOT.tsaRoot} -untrusted ${ROOT.tsaIntermediates} >/dev/null 2>&1; then
+      echo "receipt OK: merge #$idx of $chain"
+    else
+      echo "RECEIPT FAIL: merge #$idx of $chain"
+    fi
+  done
+done
+rm -f "$receipt"
+\`\`\`
+
 **6c. A strict-DER parser may refuse to read the token. That is an encoding
 deviation by the authority, not tampering.** RFC 3161 tokens are DER, and DER
 requires the members of a \`SET OF\` — which is what the CMS \`certificates\`

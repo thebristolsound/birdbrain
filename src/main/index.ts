@@ -55,6 +55,7 @@ import { initInstallationId, getInstallationId } from '@main/services/installati
 import { initSigningKey, SigningKeyUnacknowledgedError } from '@main/services/signingKey'
 import { initServerToken } from '@main/services/serverToken'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
+import { createExtractionProcess } from '@main/services/extraction/processClient'
 import { SharingService } from '@main/services/sharing/sharingService'
 import { createTimestampWorker } from '@main/services/timestampWorker'
 import { runExhibitBackfill } from '@main/services/exhibitBackfill'
@@ -87,6 +88,9 @@ let windowThemeWatcher: (() => void) | null = null
 let pendingNavigate: DeepLinkTarget | null = null
 // Update-delivery service; disposed on quit.
 let updaterService: UpdaterService | null = null
+// Data extraction's utility process (#598). Forked on the first extraction,
+// not here, since utilityProcess.fork needs the app to be ready; stopped on quit.
+const extractionProcess = createExtractionProcess({ entryPath: join(__dirname, 'extraction.js') })
 // The sharing service, closed on quit so a listening transport does not
 // outlive the window.
 let sharingService: SharingService | null = null
@@ -620,7 +624,8 @@ if (!gotSingleInstanceLock) {
           if (mainWindow && !mainWindow.isDestroyed()) {
             sendEvent(mainWindow.webContents, IPC_CHANNELS.NEW_CAPTURE, capture)
           }
-        }
+        },
+        extraction: extractionProcess
       })
 
       // Put back or purge the files of any capture delete a crash interrupted
@@ -817,6 +822,7 @@ if (!gotSingleInstanceLock) {
 
     stopExtensionConnectionCheck()
     updaterService?.dispose()
+    extractionProcess.dispose()
     await sharingService?.close()
     await stopCaptureServer()
     closeDatabase()

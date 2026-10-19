@@ -12,7 +12,9 @@ import type { Transport } from '@main/services/sharing/transport'
 // single-flight, so a round, a Sync now and a join's first session never run
 // two sessions on one Case at once. This module reads no message and stores
 // nothing; which members a round dials is the sharing service's call, from
-// the roster.
+// the roster. No ticket is built from a roster node id, which names no relay:
+// a member is dialed at the last ticket stored for it, the welcome's or one
+// it sent in a later hello (#1809), and one with none is `no-address`.
 //
 // It owns the transport's lifetime without opening a second endpoint: it
 // installs the sharing service's only transport provider, so whichever comes

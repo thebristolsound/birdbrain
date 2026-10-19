@@ -25,13 +25,20 @@ type ElectronOptions = {
    * two-member Shared Case already in it. Off by default.
    */
   seeded: boolean
+  /**
+   * Let the launch start Shared Case sync. Off by default: a seeded Shared Case would otherwise
+   * start a transport against n0's public relays at launch (BIRDBRAIN_E2E_SHARING_OFF,
+   * syncService.ts).
+   */
+  sharing: boolean
 }
 
 export const test = base.extend<ElectronFixtures & ElectronOptions>({
   freshInstall: [false, { option: true }],
   seeded: [false, { option: true }],
+  sharing: [false, { option: true }],
 
-  electronApp: async ({ freshInstall, seeded }, use) => {
+  electronApp: async ({ freshInstall, seeded, sharing }, use) => {
     const tempDir = await mkdtemp(join(tmpdir(), 'birdbrain-test-'))
 
     // The operator name clears the #116 capture gate and the signing key the #414 gate; both are
@@ -61,9 +68,7 @@ export const test = base.extend<ElectronFixtures & ElectronOptions>({
     const app = await _electron.launch({
       args: ['.', ...args],
       cwd: join(__dirname, '../..'),
-      // BIRDBRAIN_E2E_SHARING_OFF (syncService.ts) keeps a seeded Shared Case
-      // from starting a transport against n0's public relays at launch.
-      env: { ...process.env, ...env, BIRDBRAIN_E2E_SHARING_OFF: '1' }
+      env: { ...process.env, ...env, BIRDBRAIN_E2E_SHARING_OFF: sharing ? '0' : '1' }
     })
 
     try {

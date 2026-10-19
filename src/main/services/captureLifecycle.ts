@@ -8,8 +8,12 @@ import { getExhibit } from '@main/services/db/exhibitRepo'
 import { nextExhibitNumber } from '@main/services/exhibitNumbering'
 import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
 import { recordSlowOp } from '@main/services/diagnostics'
-import type { ExtractionClient } from '@main/services/extraction/processClient'
-import { buildExhibitFields, rebuildCaseFields } from '@main/services/search/fieldIndex'
+import type { ExtractionClient, ExtractionOutcome } from '@main/services/extraction/processClient'
+import {
+  buildExhibitFields,
+  writeFieldBuild,
+  rebuildCaseFields
+} from '@main/services/search/fieldIndex'
 import { getInstallationId } from '@main/services/installationId'
 import {
   authorChainOf,
@@ -176,9 +180,8 @@ export interface CaptureLifecycleDeps {
   // Both optional so a headless lifecycle emits nothing.
   emitCaptureEvent?: (event: CaptureEvent) => void
   emitNewCapture?: (capture: Capture) => void
-  // The extraction utility process (#598). Optional: a lifecycle built without
-  // one extracts nothing, so no headless lifecycle decodes or extracts on the
-  // process it runs in. Main supplies the client of the real process.
+  // The extraction utility process (#598). Optional for headless/test callers,
+  // which fall back to the inline field builder. Main supplies the real client.
   extraction?: ExtractionClient
   // Whether the Egress is Direct right now (ADR-0032). Optional; defaults to the
   // installation's setting. Tests inject it.
@@ -821,25 +824,31 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
   const manualDedup = new Map<string, number>()
   const store = deps.store ?? defaultCaptureStore
 
-  // Decoding and extraction run in the utility process; this side names the
-  // stored files and writes the rows. The duration recorded for Settings →
-  // Diagnostics is the one the process measured, or the time until the client
-  // gave up on it, so it no longer measures how long the app was unresponsive.
-  async function runDataExtraction(captureId: string, caseId: string, url: string): Promise<void> {
+  // Page decoding, extraction, and field indexing run in the utility process;
+  // this side names the stored files and writes the rows. Diagnostics records
+  // the process-measured duration for each operation, not main-process blocking time.
+  async function runCaptureProcessing(
+    captureId: string,
+    caseId: string,
+    url: string
+  ): Promise<void> {
     const { extraction } = deps
     if (!extraction) return
     try {
       const outcome = await extraction.extract({
         mhtmlPath: store.artifactPaths(caseId, captureId, 'mhtml').abs,
-        htmlPath: store.artifactPaths(caseId, captureId, 'html').abs
+        htmlPath: store.artifactPaths(caseId, captureId, 'html').abs,
+        fieldUrl: url,
+        textPath: store.artifactPaths(caseId, captureId, 'txt').abs
       })
       recordSlowOp('data-extraction', url, outcome.durationMs)
-      if (!outcome.ok) throw outcome.error
-      // The lookup and the insert run in one turn of the main process, so a
+      // The lookup and inserts run in one turn of the main process, so a
       // Capture deleted while its extraction ran gets no rows.
       if (captureRepo.getCapture(captureId)) {
-        extractedDataRepo.insertExtractedData(captureId, caseId, url, outcome.rows)
+        saveFieldBuild(captureId, url, outcome.fieldBuild)
+        if (outcome.ok) extractedDataRepo.insertExtractedData(captureId, caseId, url, outcome.rows)
       }
+      if (!outcome.ok) throw outcome.error
     } catch (err) {
       logger.error(
         'captureLifecycle',
@@ -850,10 +859,39 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
     }
   }
 
-  // The Case search field records (docs/plans/2026-10-09-case-retrieval-first-slice.md,
-  // D5). Timed for Settings → Diagnostics: the build runs synchronously on the main
-  // process, so its duration is how long the app was unresponsive. A failure never
-  // fails the ingest: the build writes a `failed` row, and a database fault is logged here.
+  // Writes the field build the process reported. An outcome with no build is a
+  // process failure (exit, timeout, dispose at quit), not a build the extractor
+  // ran and failed, so it writes no row: a Capture with no row is one the next
+  // Case open builds through ensureCaseFields, where a `failed` row would wait
+  // for a reprocess.
+  function saveFieldBuild(
+    captureId: string,
+    url: string,
+    fieldBuild: ExtractionOutcome['fieldBuild']
+  ): void {
+    if (!fieldBuild) return
+    recordSlowOp('field-index', url, fieldBuild.durationMs)
+    let error: Error | undefined
+    if (!fieldBuild.ok) {
+      error = new Error(fieldBuild.error.message)
+      error.name = fieldBuild.error.name
+      if (fieldBuild.error.code) Object.assign(error, { code: fieldBuild.error.code })
+    }
+    const result = fieldBuild.ok
+      ? fieldBuild.result
+      : { fields: [], textHash: null, outcome: 'failed' as const, skippedJson: null }
+    try {
+      writeFieldBuild(captureId, result, error)
+    } catch (err) {
+      logger.error(
+        'captureLifecycle',
+        'searchFields.build_failed',
+        { captureId: ident(captureId) },
+        err
+      )
+    }
+  }
+
   function runFieldBuild(captureId: string, url: string): void {
     const t0 = performance.now()
     try {
@@ -890,8 +928,8 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
         )
       }
 
-      void runDataExtraction(captureId, caseId, url)
-      runFieldBuild(captureId, url)
+      if (deps.extraction) void runCaptureProcessing(captureId, caseId, url)
+      else runFieldBuild(captureId, url)
     })
   }
 
@@ -1552,7 +1590,11 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
           }
           // A copy is a new Exhibit with search field records of its own. Ingest builds
           // them in runPostCaptureWork, which a duplicate does not run.
-          setImmediate(() => runFieldBuild(duplicateId, sourceEntry.url))
+          setImmediate(() => {
+            if (deps.extraction) {
+              void runCaptureProcessing(duplicateId, source.caseId, sourceEntry.url)
+            } else runFieldBuild(duplicateId, sourceEntry.url)
+          })
           return { status: 'duplicated', capture: captureRepo.getCapture(duplicateId) ?? capture }
         } catch (err) {
           // Pre-commit only: the manifest seam has already rolled its own entry
@@ -1594,7 +1636,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
           // Always clear first so legacy rows don't linger when a capture has no
           // readable source file anymore.
           extractedDataRepo.deleteExtractedDataForCapture(cap.id)
-          await runDataExtraction(cap.id, caseId, cap.url)
+          await runCaptureProcessing(cap.id, caseId, cap.url)
         } catch (err) {
           logger.error(
             'captureLifecycle',
@@ -1604,18 +1646,17 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
           )
         }
       }
-      // Reprocess redoes the search field records too, so a failed build gets its
-      // retry here. A pass that cannot start is logged rather than thrown, since the
-      // extraction above has finished and the caller should not see reprocess fail.
-      try {
-        await rebuildCaseFields(caseId, store)
-      } catch (err) {
-        logger.error(
-          'captureLifecycle',
-          'searchFields.ensure_failed',
-          { caseId: ident(caseId) },
-          err
-        )
+      if (!deps.extraction) {
+        try {
+          await rebuildCaseFields(caseId, store)
+        } catch (err) {
+          logger.error(
+            'captureLifecycle',
+            'searchFields.ensure_failed',
+            { caseId: ident(caseId) },
+            err
+          )
+        }
       }
       return { processed: captures.length }
     }

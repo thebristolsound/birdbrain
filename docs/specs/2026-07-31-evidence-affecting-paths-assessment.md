@@ -69,6 +69,9 @@ the Owner's signed `member-add` records is that key's public half. The repo modu
 `src/main/services/db/workingRowRepo.ts`, is already swept in by `src/main/services/db/**`.
 #1811 added a fifth blocking module, `receivedEvidence.ts`, which turns received entries into
 Capture and Exhibit rows.
+On 2026-10-19 #1881 added `syncService.ts` at advisory tier: it decides when sessions run and when
+the transport starts and stops, and reads no message and stores nothing, so what a session it
+starts may store is still decided in the blocking modules and the roster checks in `session.ts`.
 `src/packages/transaction-record/**` was added to Acquisition at blocking tier on 2026-10-17 with
 #1903, the capture engine's step 7 (D12 of the first-slice plan): it decides which of the
 browser's exchanges a Transaction Record holds as complete and how the inventory counts the rest.
@@ -345,7 +348,8 @@ records state.
 | `src/main/services/sharing/invite.ts` | advisory | Encodes and parses the invite string at a trust boundary (#1810). The fields it returns are checked by the join handshake, not here |
 | `src/main/services/sharing/inviteRegistry.ts` | advisory | Holds the hash of each open invite's secret in memory, and refuses an unknown, cancelled, used or expired one (#1810). It decides who may ask to join; the Owner's approval and the signed `member-add` decide who joins |
 | `src/main/services/sharing/nodeKey.ts` | advisory | Stores the transport's node key (#1809). The node id the Owner's signed `member-add` records is its public half, so a key that changed would leave rosters naming a node this installation no longer is; it signs no entry. A session checks a peer's identity by its signing key in `hello`, whose proof names the Case, the signer and its side, and keeps a peer's ticket only when it names that member's recorded node |
-| `src/main/services/sharing/sharingService.ts` | advisory | Routes each incoming stream to the join handshake or the sync session by its first message, and composes the commands behind the `sharing:*` channels (#1810). It decides nothing a session stores |
+| `src/main/services/sharing/sharingService.ts` | advisory | Routes each incoming stream to the join handshake or the sync session by its first message, and composes the commands behind the `sharing:*` channels (#1810). It runs one Case's sessions one after another (Sync now, the sync service's round and a join's first session), refuses to sync a Case whose own roster row is revoked, and ends a dialled session whose peer sends or takes nothing for 30 s (#1881). It decides nothing a session stores. Two sessions on one Case at once could both append against the same stored head, so a reviewer may weigh the per-Case serialisation here for the blocking tier |
+| `src/main/services/sharing/syncService.ts` | advisory | Decides when sessions run (#1881): a round at launch and every 60 s through the sharing service's per-Case single-flight, and the transport's start and stop. It reads no message and stores nothing. Which members a round dials comes from the roster's `revokedAtIndex`, read in `sharingService.ts`, and a session it should not have started still meets both sides' roster checks in `session.ts` |
 | `src/main/services/sharing/syncState.ts` | advisory | `sync-state.json` and `members.json`, neither of them evidence, and the version high-water mark the row signing reads. A defect here can make a peer ignore a row as old, never accept one it should not |
 
 ### Cross-process contracts and configuration

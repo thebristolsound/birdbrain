@@ -105,6 +105,8 @@ export function createSyncService(deps: SyncServiceDeps): SyncService {
       try {
         await sharing.syncNow(caseId)
       } catch (err) {
+        // A session the closed transport ended at quit is no failure.
+        if (stopped) return
         // The rest of the round would only ask for a transport again.
         if (err instanceof SharingError && err.code === 'sharing-unavailable') {
           logger.info('sharing', 'sharing.sync_off', undefined, err)

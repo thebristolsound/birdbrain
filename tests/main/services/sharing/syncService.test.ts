@@ -712,6 +712,7 @@ describe('sync service (#1881)', () => {
     const carol = await listener('carol', fromCarol)
     const held = deferred()
     bob.gate = held.promise
+    const warn = vi.spyOn(logger, 'warn')
     const svc = build()
     svc.start()
     await settle(() => bob.streams === 1)
@@ -721,6 +722,12 @@ describe('sync service (#1881)', () => {
     await svc.idle()
     await turns()
     expect(carol.streams).toBe(0)
+    expect(warn).not.toHaveBeenCalledWith(
+      'sharing',
+      'sharing.case_sync_failed',
+      expect.anything(),
+      expect.anything()
+    )
     expect(hub.listeningNode('mem:node-alice')).toBeUndefined()
   })
 

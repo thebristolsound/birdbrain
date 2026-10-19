@@ -714,10 +714,6 @@ if (!gotSingleInstanceLock) {
         enqueueExhibitTimestamp: (exhibitId) => timestampWorker.enqueueExhibit(exhibitId)
       })
 
-      // After the exhibit backfill above, so no session appends to a chain
-      // while it does. Not awaited: boot never waits on the network.
-      syncService.start()
-
       // Start capture server and extension connection monitor. A failed bind
       // rejects (#513) and is fatal below: the capture server is the only route
       // the extension has into a case, so a window opened without it would
@@ -759,6 +755,12 @@ if (!gotSingleInstanceLock) {
 
       // Arm the updater once the window exists so status events have a target.
       updaterService.start()
+
+      // After the exhibit backfill, so no session appends to a chain while it
+      // does, and after the fatal capture-server bind, so a launch that is
+      // about to fail opens no connection. Not awaited: boot never waits on
+      // the network.
+      syncService.start()
 
       app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {

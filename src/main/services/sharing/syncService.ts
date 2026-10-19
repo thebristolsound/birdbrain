@@ -3,15 +3,16 @@ import { ident } from '@main/services/logSafe'
 import { logger } from '@main/services/logger'
 import { SharingError } from '@main/services/sharing/errors'
 import type { SharingService, TransportProvider } from '@main/services/sharing/sharingService'
-import type { SharingErrorCode } from '@shared/types'
+import type { Transport } from '@main/services/sharing/transport'
 
 // When Shared Case sessions run (#1881; docs/specs/2026-09-19-collaborative-
 // cases-design.md, "Sync session"): a round at launch, a round every 60 s once
-// the transport is up, and Sync now. A round pulls each Shared Case in turn
-// through the sharing service's per-Case single-flight, so a round, a Sync now
-// and a join's first session never run two sessions on one Case at once. This
-// module reads no message and stores nothing; which members a round dials is
-// the sharing service's call, from the roster.
+// the transport has started or a start has failed, and Sync now. A round
+// pulls each Shared Case in turn through the sharing service's per-Case
+// single-flight, so a round, a Sync now and a join's first session never run
+// two sessions on one Case at once. This module reads no message and stores
+// nothing; which members a round dials is the sharing service's call, from
+// the roster.
 //
 // It owns the transport's lifetime without opening a second endpoint: it
 // installs the sharing service's only transport provider, so whichever comes
@@ -30,14 +31,6 @@ export const E2E_SHARING_OFF_SWITCH = 'BIRDBRAIN_E2E_SHARING_OFF'
 export function sharingSwitchedOff(value: string | undefined, allowOverride: boolean): boolean {
   return allowOverride && value === '1'
 }
-
-// Refusals that mean no transport is running, so the rest of the round would
-// only ask for one again.
-const OFF_CODES: ReadonlySet<SharingErrorCode> = new Set<SharingErrorCode>([
-  'sharing-unavailable',
-  'relay-unreachable',
-  'relay-url-invalid'
-])
 
 export interface SyncServiceDeps {
   sharing: Pick<SharingService, 'setTransportProvider' | 'syncNow' | 'close'>
@@ -70,10 +63,12 @@ export function createSyncService(deps: SyncServiceDeps): SyncService {
   let inFlight: Promise<void> | null = null
   let started = false
   let stopped = false
+  let startFailure: unknown = undefined
 
-  // The timer exists only once a transport is up: a transport that cannot
-  // start leaves the service off, and a later command that starts one turns
-  // automatic sync back on.
+  // A transport that cannot load (the factory returns null) leaves the
+  // service off until a later command starts one. A start that throws, such
+  // as a relay unreachable while the network is still coming up, arms the
+  // timer anyway, so the next tick tries again.
   function armTimer(): void {
     if (timer !== undefined || stopped) return
     timer = setInterval(() => void round(), intervalMs)
@@ -82,7 +77,14 @@ export function createSyncService(deps: SyncServiceDeps): SyncService {
 
   sharing.setTransportProvider(async () => {
     if (stopped || switchedOff) return null
-    const transport = await transportFactory()
+    let transport: Transport | null
+    try {
+      transport = await transportFactory()
+    } catch (err) {
+      startFailure = err
+      armTimer()
+      throw err
+    }
     if (transport !== null) armTimer()
     return transport
   })
@@ -100,8 +102,13 @@ export function createSyncService(deps: SyncServiceDeps): SyncService {
       try {
         await sharing.syncNow(caseId)
       } catch (err) {
-        if (err instanceof SharingError && OFF_CODES.has(err.code)) {
+        // The rest of the round would only ask for a transport again.
+        if (err instanceof SharingError && err.code === 'sharing-unavailable') {
           logger.info('sharing', 'sharing.sync_off', undefined, err)
+          return
+        }
+        if (err === startFailure) {
+          logger.info('sharing', 'sharing.sync_start_failed', undefined, err)
           return
         }
         logger.warn('sharing', 'sharing.case_sync_failed', { caseId: ident(caseId) }, err)

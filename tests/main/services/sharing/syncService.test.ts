@@ -636,19 +636,11 @@ describe('sync service (#1881)', () => {
     expect(hub.listeningNode('mem:node-alice')).toBeUndefined()
   })
 
-  it.each([
-    [
-      'throws',
-      async (): Promise<Transport | null> => {
-        throw new SharingError('relay-unreachable')
-      }
-    ],
-    ['returns null', async (): Promise<Transport | null> => null]
-  ])('a factory that %s leaves the service off', async (_, start) => {
+  it('a factory that returns null leaves the service off', async () => {
     await seedTeam()
     const info = vi.spyOn(logger, 'info')
     sharing = newSharing()
-    factory = vi.fn(start)
+    factory = vi.fn(async (): Promise<Transport | null> => null)
     service = createSyncService({ sharing, transportFactory: factory })
     const svc = service
     expect(() => svc.start()).not.toThrow()
@@ -660,6 +652,37 @@ describe('sync service (#1881)', () => {
     expect(factory).toHaveBeenCalledTimes(1)
     expect(vi.getTimerCount()).toBe(0)
   })
+
+  it.each([
+    ['a relay that does not answer', new SharingError('relay-unreachable')],
+    ['a node key that cannot be read', new Error('node key unreadable')]
+  ])(
+    'a start that throws for %s ends the round, and the next tick tries again',
+    async (_, thrown) => {
+      await seedTeam()
+      const bob = await listener('bob', fromBob)
+      await listener('carol', fromCarol)
+      const info = vi.spyOn(logger, 'info')
+      const warn = vi.spyOn(logger, 'warn')
+      sharing = newSharing()
+      factory = vi.fn<() => Promise<Transport | null>>()
+      factory.mockRejectedValueOnce(thrown)
+      factory.mockImplementation(async () => hub.createTransport('node-alice'))
+      service = createSyncService({ sharing, transportFactory: factory })
+      const svc = service
+      expect(() => svc.start()).not.toThrow()
+      await svc.idle()
+      expect(factory).toHaveBeenCalledTimes(1)
+      expect(info).toHaveBeenCalledWith('sharing', 'sharing.sync_start_failed', undefined, thrown)
+      expect(warn).not.toHaveBeenCalled()
+      expect(vi.getTimerCount()).toBe(1)
+      expect(bob.hellos).toEqual([])
+      vi.advanceTimersByTime(60_000)
+      await svc.idle()
+      expect(factory).toHaveBeenCalledTimes(2)
+      expect([...bob.hellos].sort()).toEqual([c1, c2].sort())
+    }
+  )
 
   it('a later command that starts the transport arms the timer', async () => {
     await seedTeam()

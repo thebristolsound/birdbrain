@@ -233,6 +233,7 @@ const CODE_LABELS: Record<LogCode, string> = {
   'sharing.accept_failed': 'Stopped accepting connections from teammates',
   'sharing.connection_failed': "A teammate's connection failed before it started",
   'sharing.sync_off': "Automatic sync is off: sharing couldn't connect",
+  'sharing.sync_start_failed': "Sharing couldn't connect; the next round tries again",
   'sharing.case_sync_failed': "Couldn't sync a Shared Case; the next round tries again"
 }
 

@@ -854,8 +854,11 @@ export const LOG_CODES = [
   'sharing.accept_failed',
   'sharing.connection_failed',
   // The sync service (#1881): a round that stopped because no transport could
-  // start, and one Case whose sync threw while the round went on to the next.
+  // load, one that stopped because the transport's start threw (the next tick
+  // tries again), and one Case whose sync threw while the round went on to
+  // the next.
   'sharing.sync_off',
+  'sharing.sync_start_failed',
   'sharing.case_sync_failed'
 ] as const
 export type LogCode = (typeof LOG_CODES)[number]

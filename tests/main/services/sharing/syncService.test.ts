@@ -89,6 +89,8 @@ interface Listener {
   streams: number
   // When set, the node holds each stream it is handed until this settles.
   gate: Promise<void> | null
+  // When set, the node takes each stream and never answers it.
+  mute: boolean
 }
 
 // How many streams the service's own transport has open at once.
@@ -231,9 +233,13 @@ describe('sync service (#1881)', () => {
 
   async function listener(name: string, sources: Map<string, SyncSource>): Promise<Listener> {
     const node = hub.createTransport(`node-${name}`)
-    const l: Listener = { node, hellos: [], streams: 0, gate: null }
+    const l: Listener = { node, hellos: [], streams: 0, gate: null, mute: false }
     await node.listen((stream) => {
       l.streams += 1
+      if (l.mute) {
+        void stream.read()
+        return
+      }
       const gate = l.gate
       // A stream the service closed while it was held throws on the
       // listener's first write; that end of the session is not under test.
@@ -469,19 +475,27 @@ describe('sync service (#1881)', () => {
     expect(getSyncState(c1).peersReachable).toBe(2)
   })
 
-  it('a peer that answers and then goes silent records kind peer', async () => {
+  it('a peer that answers and then goes silent records kind peer and falls out of reach', async () => {
     await seedTeam()
-    const silent = hub.createTransport('node-bob')
-    await silent.listen((stream) => void stream.read())
+    const bob = await listener('bob', fromBob)
     const carol = await listener('carol', fromCarol)
     const svc = build({ sessionIdleMs: 50 })
-    const syncNow = vi.spyOn(sharing, 'syncNow')
     svc.start()
     await svc.idle()
+    expect(getSyncState(c1).peersReachable).toBe(2)
+
+    bob.mute = true
+    const syncNow = vi.spyOn(sharing, 'syncNow')
+    vi.advanceTimersByTime(60_000)
+    await svc.idle()
     expect(getSyncState(c1).lastError?.kind).toBe('peer')
-    expect(carol.hellos).toEqual([c1])
+    expect(carol.hellos).toEqual([c1, c1])
     const [fromSilent] = (await outcomesOf(syncNow)).get(c1) ?? []
-    expect(fromSilent).toMatchObject({ installationId: B.installationId, errors: 1 })
+    expect(fromSilent).toMatchObject({
+      installationId: B.installationId,
+      outcome: 'synced',
+      errors: 1
+    })
     expect(getSyncState(c1).peersReachable).toBe(1)
   })
 

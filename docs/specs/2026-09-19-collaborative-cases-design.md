@@ -188,7 +188,10 @@ Pull-only, over one Iroh bidirectional stream per session, messages CBOR-encoded
 
 1. `hello`: `caseId`, `installationId`, a 32-byte challenge. Each side signs the other's
    challenge with its signing key and verifies against the roster. A peer not in the roster, or
-   revoked, gets `bye` and the connection closes.
+   revoked, gets `bye` and the connection closes. Each side also sends its current transport
+   ticket, which the other keeps once the sender has proved its key: a ticket names the relay its
+   node started on, so a member whose relay changed is reachable again after its next session
+   with each peer (#1809, maintainer ruling 2026-10-19).
 2. `heads`: for each member chain the sender holds, `{ installationId, index, entryHash }`.
 3. `entries`: the requester asks for `(installationId, fromIndex)` and receives the entries as
    raw lines. The receiver parses each with `ManifestEntrySchema`, verifies the chain segment

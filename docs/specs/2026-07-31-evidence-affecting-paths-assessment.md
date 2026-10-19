@@ -64,7 +64,8 @@ The four that decide what is stored (`session.ts`, `entryAcceptance.ts`, `blobAc
 interface with its in-process form, `transport.ts`, is an exclusion by the #227 and #515
 reasoning: it carries bytes between installations, reads no message, and decides nothing about
 what the session accepts. `IrohTransport` (`irohTransport.ts`, #1809) is the same kind of file
-and joins that entry, with `nodeKey.ts`, which keeps the transport's node key and signs nothing. The repo module the rows step writes through,
+and joins that entry. `nodeKey.ts`, which keeps the transport's node key, is advisory: the node id
+the Owner's signed `member-add` records is that key's public half. The repo module the rows step writes through,
 `src/main/services/db/workingRowRepo.ts`, is already swept in by `src/main/services/db/**`.
 #1811 added a fifth blocking module, `receivedEvidence.ts`, which turns received entries into
 Capture and Exhibit rows.
@@ -343,6 +344,7 @@ records state.
 | `src/main/services/sharing/base32.ts` | advisory | Base32 for the invite string (#1810). A defect here makes an invite unreadable, never admits a member |
 | `src/main/services/sharing/invite.ts` | advisory | Encodes and parses the invite string at a trust boundary (#1810). The fields it returns are checked by the join handshake, not here |
 | `src/main/services/sharing/inviteRegistry.ts` | advisory | Holds the hash of each open invite's secret in memory, and refuses an unknown, cancelled, used or expired one (#1810). It decides who may ask to join; the Owner's approval and the signed `member-add` decide who joins |
+| `src/main/services/sharing/nodeKey.ts` | advisory | Stores the transport's node key (#1809). The node id the Owner's signed `member-add` records is its public half, so a key that changed would leave rosters naming a node this installation no longer is; it signs no entry, and a peer's identity is proven by its signing key in the session's `hello` |
 | `src/main/services/sharing/sharingService.ts` | advisory | Routes each incoming stream to the join handshake or the sync session by its first message, and composes the commands behind the `sharing:*` channels (#1810). It decides nothing a session stores |
 | `src/main/services/sharing/syncState.ts` | advisory | `sync-state.json` and `members.json`, neither of them evidence, and the version high-water mark the row signing reads. A defect here can make a peer ignore a row as old, never accept one it should not |
 
@@ -390,7 +392,7 @@ It is *notable* exclusions, not an exhaustive complement of the include list.
 | `src/main/services/deepLink.ts` | Navigation plumbing |
 | `src/main/services/extensionPath.ts` | Extension setup plumbing |
 | `src/main/windowSize.ts` | Main-window geometry, and the `BIRDBRAIN_WINDOW_SIZE` override read only in an unpackaged build. It holds none of the invariants `src/main/index.ts` is listed for: no capture, content hash, manifest entry, canonical JSON field or signature depends on the size of the window the evidence is later viewed in. Split out of the included `src/main/index.ts` by #478, and left off both lists until #515 |
-| `src/main/services/sharing/transport.ts` | The transport interface and its in-process form, `MemoryTransport` (#1512). A transport carries bytes between installations: it reads no message and decides nothing about what the session accepts, which the four blocking modules above do. The same reasoning as `src/main/services/exclusionPolicy.ts`'s inclusion in reverse (#227) and as `src/main/windowSize.ts` (#515): the evidentiary decision lives elsewhere. `irohTransport.ts` (#1809), the same interface over Iroh, joins this entry, as does `nodeKey.ts`, which stores the transport's node key: the key names the node a peer dials and signs no entry, and a peer's identity is proven by its signing key in the session's `hello` |
+| `src/main/services/sharing/transport.ts` | The transport interface and its in-process form, `MemoryTransport` (#1512). A transport carries bytes between installations: it reads no message and decides nothing about what the session accepts, which the four blocking modules above do. The same reasoning as `src/main/services/exclusionPolicy.ts`'s inclusion in reverse (#227) and as `src/main/windowSize.ts` (#515): the evidentiary decision lives elsewhere. `irohTransport.ts` (#1809), the same interface over Iroh, joins this entry |
 | `src/renderer/lib/api/**` | High-churn typed passthrough; evidence parameters originate in included dialogs and are enforced in main (but see judgment call 2) |
 | `src/renderer/lib/queries.ts` | Same rationale — the re-export barrel left behind by the split, deleted by the last PR of #229 |
 | `src/renderer/components/captures/AddUrlsBox.tsx` | Removed by the challenge pass as inconsistent with the standard applied to `src/renderer/lib/queries.ts` and `src/renderer/components/settings/CapturePreferences.tsx` — UI-side plumbing whose values are enforced in main |

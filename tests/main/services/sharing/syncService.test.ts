@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest'
-import { randomUUID } from 'crypto'
+import { createSign, randomBytes, randomUUID } from 'crypto'
 import { mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -13,7 +13,20 @@ import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { resetSigningKey } from '@main/services/signingKey'
 import { SharingError } from '@main/services/sharing/errors'
 import { encodeInvite } from '@main/services/sharing/invite'
-import { pullFromPeer, serveSyncSession, type SyncSource } from '@main/services/sharing/session'
+import {
+  CHALLENGE_BYTES,
+  MAX_FRAME_BYTES,
+  MAX_HANDSHAKE_FRAME_BYTES,
+  MessageReader,
+  expectMessage,
+  writeMessage
+} from '@main/services/sharing/messages'
+import {
+  helloDigest,
+  pullFromPeer,
+  serveSyncSession,
+  type SyncSource
+} from '@main/services/sharing/session'
 import { SharingService, type SharingServiceDeps } from '@main/services/sharing/sharingService'
 import {
   SYNC_INTERVAL_MS,
@@ -24,6 +37,7 @@ import {
 } from '@main/services/sharing/syncService'
 import {
   getSyncState,
+  memberTickets,
   readSyncStateFile,
   rememberMemberTickets,
   resetSyncStateMemory
@@ -37,6 +51,7 @@ import {
   createPeer,
   memberOf,
   mergeEntries,
+  ownChainText,
   recordSource,
   seedSharedCase,
   type Peer
@@ -586,6 +601,53 @@ describe('sync service (#1881)', () => {
     await activate(A)
     expect(result.peerInstallationId).toBe(A.installationId)
     expect(result.errors).toEqual([])
+  })
+
+  // The app's default source, liveSyncSource, answers from Alice's own files
+  // while she is active, so Bob's side is written by hand here: his hello,
+  // his proof under his key, and the requests a pull would make.
+  it("serves a member that dials it from the installation's live Case", async () => {
+    await seedTeam({ tickets: false })
+    const doc = addDocument(c1, A, 1)
+    const svc = build()
+    svc.start()
+    await svc.idle()
+
+    const bobNode = hub.createTransport('node-bob')
+    const session = await bobNode.openStream(await bobNode.dial('mem:node-alice'))
+    const reader = new MessageReader(session, MAX_HANDSHAKE_FRAME_BYTES)
+    await writeMessage(session, {
+      t: 'hello',
+      caseId: c1,
+      installationId: B.installationId,
+      challenge: randomBytes(CHALLENGE_BYTES),
+      proof: null,
+      ticket: bobNode.ticket
+    })
+    const answer = await expectMessage(reader, 'hello')
+    expect(answer.installationId).toBe(A.installationId)
+    await writeMessage(session, {
+      t: 'proof',
+      signature: createSign('sha256')
+        .update(helloDigest(c1, answer.challenge, B.installationId, 'dialer'))
+        .sign(B.privateKeyPem, 'base64')
+    })
+    reader.allowFrames(MAX_FRAME_BYTES)
+    await writeMessage(session, { t: 'heads', heads: [] })
+    const { heads } = await expectMessage(reader, 'heads')
+    expect(heads).toContainEqual(
+      expect.objectContaining({ installationId: A.installationId, index: doc.index })
+    )
+    await writeMessage(session, {
+      t: 'entries-request',
+      installationId: A.installationId,
+      fromIndex: 0
+    })
+    const { lines } = await expectMessage(reader, 'entries')
+    expect(lines.join('\n')).toBe(ownChainText(c1).trim())
+    await writeMessage(session, { t: 'bye', reason: 'done' })
+    session.close()
+    expect(memberTickets(c1)[B.installationId]).toBe(bobNode.ticket)
   })
 
   it('dials a member at its stored ticket, not one built from its node id', async () => {

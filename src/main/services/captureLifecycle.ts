@@ -845,7 +845,7 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
       // The lookup and inserts run in one turn of the main process, so a
       // Capture deleted while its extraction ran gets no rows.
       if (captureRepo.getCapture(captureId)) {
-        saveFieldBuild(captureId, url, outcome.fieldBuild, outcome.ok ? undefined : outcome.error)
+        saveFieldBuild(captureId, url, outcome.fieldBuild)
         if (outcome.ok) extractedDataRepo.insertExtractedData(captureId, caseId, url, outcome.rows)
       }
       if (!outcome.ok) throw outcome.error
@@ -859,22 +859,25 @@ export function createCaptureLifecycle(deps: CaptureLifecycleDeps): CaptureLifec
     }
   }
 
+  // Writes the field build the process reported. An outcome with no build is a
+  // process failure (exit, timeout, dispose at quit), not a build the extractor
+  // ran and failed, so it writes no row: a Capture with no row is one the next
+  // Case open builds through ensureCaseFields, where a `failed` row would wait
+  // for a reprocess.
   function saveFieldBuild(
     captureId: string,
     url: string,
-    fieldBuild: ExtractionOutcome['fieldBuild'],
-    extractionError?: Error
+    fieldBuild: ExtractionOutcome['fieldBuild']
   ): void {
-    if (fieldBuild) recordSlowOp('field-index', url, fieldBuild.durationMs)
-    if (!fieldBuild && !extractionError) return
-
-    let error = fieldBuild?.ok ? undefined : extractionError
-    if (fieldBuild && !fieldBuild.ok) {
+    if (!fieldBuild) return
+    recordSlowOp('field-index', url, fieldBuild.durationMs)
+    let error: Error | undefined
+    if (!fieldBuild.ok) {
       error = new Error(fieldBuild.error.message)
       error.name = fieldBuild.error.name
       if (fieldBuild.error.code) Object.assign(error, { code: fieldBuild.error.code })
     }
-    const result = fieldBuild?.ok
+    const result = fieldBuild.ok
       ? fieldBuild.result
       : { fields: [], textHash: null, outcome: 'failed' as const, skippedJson: null }
     try {

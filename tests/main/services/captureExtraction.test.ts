@@ -13,6 +13,7 @@ import type { CaptureLifecycleDeps } from '@main/services/captureLifecycle'
 import { createCaptureStore } from '@main/services/captureStore'
 import { getStorageRoot } from '@main/services/storage'
 import { getExhibitSearchBuild } from '@main/services/db/searchFieldRepo'
+import { ensureCaseFields } from '@main/services/search/fieldIndex'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import * as dataExtractor from '@main/services/dataExtractor'
 import * as mhtmlDecoder from '@main/services/mhtmlDecoder'
@@ -209,6 +210,11 @@ describe('capture extraction through the utility process', () => {
       expect(getCapture(failed.id)?.id).toBe(failed.id)
       expect((await lifecycle.verify(failed.id)).status).toBe('verified')
       expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+      // The process never ran the field build, so no row marks it `failed`: the
+      // next Case open finds the Capture unbuilt and builds it here.
+      expect(getExhibitSearchBuild(failed.id)).toBeUndefined()
+      expect(await ensureCaseFields(caseId)).toEqual({ indexed: 1, noSource: 0, failed: 0 })
+      expect(getExhibitSearchBuild(failed.id)?.outcome).toBe('built')
 
       const { capture: next } = await ingestFixture(lifecycle, IRAN, 'https://a.example.org/n')
       await vi.waitFor(() => expect(storedRows(next.id)).toEqual(FIXTURE_KNOWN_ANSWERS[IRAN]))
@@ -216,6 +222,19 @@ describe('capture extraction through the utility process', () => {
       expect(extractionFailures()).toBe(1)
     })
   }
+
+  it('writes no field build row for a Capture whose extraction the app stopped at quit', async () => {
+    const { fork } = fakeFork(['hang'])
+    const client = createExtractionProcess({ entryPath: 'x', fork, timeoutMs: 10_000 })
+    const lifecycle = lifecycleWith(client)
+    const { capture } = await ingestFixture(lifecycle, POPE, 'https://a.example.org/quit')
+    client.dispose()
+    await vi.waitFor(() => expect(extractionFailures()).toBe(1))
+
+    expect(getExhibitSearchBuild(capture.id)).toBeUndefined()
+    expect(await ensureCaseFields(caseId)).toEqual({ indexed: 1, noSource: 0, failed: 0 })
+    expect(getExhibitSearchBuild(capture.id)?.outcome).toBe('built')
+  })
 
   it('records the duration the process measured as a data-extraction slow operation', async () => {
     const record = vi.spyOn(diagnosticsService, 'recordSlowOp')

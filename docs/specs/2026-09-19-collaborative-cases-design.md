@@ -187,11 +187,15 @@ join writes nothing.
 Pull-only, over one Iroh bidirectional stream per session, messages CBOR-encoded:
 
 1. `hello`: `caseId`, `installationId`, a 32-byte challenge. Each side signs the other's
-   challenge with its signing key and verifies against the roster. A peer not in the roster, or
+   challenge with its signing key and verifies against the roster. The signed digest names the
+   Case, the signer and the side it signs as, so an answer one member gave as a listener cannot be
+   passed off as that member's dialer proof in another session. A peer not in the roster, or
    revoked, gets `bye` and the connection closes. Each side also sends its current transport
-   ticket, which the other keeps once the sender has proved its key: a ticket names the relay its
-   node started on, so a member whose relay changed is reachable again after its next session
-   with each peer (#1809, maintainer ruling 2026-10-19).
+   ticket. The other side keeps it only after the sender's proof verifies, and only when the
+   ticket, and the connection the transport authenticated, name the node the member's signed
+   `member-add` records. A ticket names the relay its node started on, so a member whose relay
+   changed is reachable again after its next session with each peer (#1809, maintainer ruling
+   2026-10-19).
 2. `heads`: for each member chain the sender holds, `{ installationId, index, entryHash }`.
 3. `entries`: the requester asks for `(installationId, fromIndex)` and receives the entries as
    raw lines. The receiver parses each with `ManifestEntrySchema`, verifies the chain segment

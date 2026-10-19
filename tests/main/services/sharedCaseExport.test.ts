@@ -777,6 +777,30 @@ describe('Shared Case export, import and fork (#1511)', () => {
     expect(imported.authorInstallationId).toBe(exporterOwn?.authorInstallationId)
   })
 
+  it("stamps a fork's records with the exporter its verified roster names, whatever the header says", async () => {
+    const { ownDoc } = memberReplica()
+    insertWithheldFlag({
+      caseId,
+      exhibitId: ownDoc,
+      action: 'set',
+      actedAt: TIME,
+      operatorId: localId,
+      operatorName: 'Casey Operator'
+    })
+    const out = join(tempDir, 'fork.birdbrain')
+    await exportCaseArchive(caseId, out)
+    // `package.json` is unsigned, so this edit passes verification.
+    await rewriteArchive(out, (_, header) => {
+      header.source.installationId = 'installation-forged'
+    })
+    expect(inspectCaseArchive(out).verification.overallValid).toBe(true)
+
+    const { newCaseId } = await importCaseArchive(out)
+
+    const [imported] = listWithheldFlags(newCaseId)
+    expect(imported.authorInstallationId).toBe(localId)
+  })
+
   it("renumbers none of a fork's member-authored Exhibits and numbers its own from 1", async () => {
     memberReplica()
     const out = join(tempDir, 'fork.birdbrain')

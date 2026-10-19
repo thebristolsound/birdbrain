@@ -837,8 +837,11 @@ export async function importCaseArchive(
     const rows = plan.fork
       ? { ...data, exhibits: attributeForkedExhibits(data.exhibits ?? [], plan.fork) }
       : data
+    // The exporter of a fork is the installation its verified roster names; the
+    // header's copy is unsigned, so an edit there must not reassign the records.
+    const exporterId = plan.fork?.exporterId ?? header.source.installationId
     withTransaction(() => {
-      insertImportedRows(rows, newCaseId, mapId, header.source.installationId)
+      insertImportedRows(rows, newCaseId, mapId, exporterId)
     })
   } catch (err) {
     rmSync(caseDir, { recursive: true, force: true })
@@ -919,8 +922,9 @@ function insertImportedRows(
   // The investigation records, parents before the rows that name them. A row
   // with no author was the exporter's own, and here would read as the
   // importer's, so it takes the exporter's installation (ruling 62 of
-  // 2026-10-10): `header.source.installationId`, the installation
-  // `attributeForkedExhibits` stamps on a fork's Exhibits too.
+  // 2026-10-10): for a fork `plan.fork.exporterId`, the installation
+  // `attributeForkedExhibits` stamps on the exporter's Exhibits, and otherwise
+  // `header.source.installationId`.
   const src = sourceInstallationId
   subjectRepo.importSubjectRows(data.subjects ?? [], ctx, src)
   subjectRepo.importJointRows(data.joints ?? [], ctx, src)

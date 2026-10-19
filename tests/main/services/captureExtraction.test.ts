@@ -12,6 +12,8 @@ import { createCaptureLifecycle, type CaptureLifecycle } from '@main/services/ca
 import type { CaptureLifecycleDeps } from '@main/services/captureLifecycle'
 import { createCaptureStore } from '@main/services/captureStore'
 import { getStorageRoot } from '@main/services/storage'
+import { getExhibitSearchBuild } from '@main/services/db/searchFieldRepo'
+import { ensureCaseFields } from '@main/services/search/fieldIndex'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import * as dataExtractor from '@main/services/dataExtractor'
 import * as mhtmlDecoder from '@main/services/mhtmlDecoder'
@@ -65,6 +67,10 @@ function storedRows(captureId: string): string[] {
 
 function extractionFailures(): number {
   return readRecentEntries(50).filter((e) => e.code === 'capture.extraction_failed').length
+}
+
+function fieldBuildFailures(): number {
+  return readRecentEntries(50).filter((e) => e.code === 'searchFields.build_failed').length
 }
 
 describe('capture extraction through the utility process', () => {
@@ -131,7 +137,9 @@ describe('capture extraction through the utility process', () => {
     const store = createCaptureStore({ getRoot: getStorageRoot })
     expect(requests[0].request).toEqual({
       mhtmlPath: store.artifactPaths(caseId, capture.id, 'mhtml').abs,
-      htmlPath: store.artifactPaths(caseId, capture.id, 'html').abs
+      htmlPath: store.artifactPaths(caseId, capture.id, 'html').abs,
+      fieldUrl: 'https://a.example.org/1',
+      textPath: store.artifactPaths(caseId, capture.id, 'txt').abs
     })
     requests[0].settle({ ok: true, rows: CANNED_ROWS, durationMs: 5 })
 
@@ -169,9 +177,11 @@ describe('capture extraction through the utility process', () => {
       const lifecycle = lifecycleWith(inProcessExtraction())
       const { capture } = await ingestFixture(lifecycle, fixture, 'https://a.example.org/kat')
       await vi.waitFor(() => expect(storedRows(capture.id)).toEqual(expected))
+      await vi.waitFor(() => expect(getExhibitSearchBuild(capture.id)?.outcome).toBe('built'))
 
       await lifecycle.reprocessCase(caseId)
       expect(storedRows(capture.id)).toEqual(expected)
+      expect(getExhibitSearchBuild(capture.id)?.outcome).toBe('built')
     })
   }
 
@@ -187,6 +197,7 @@ describe('capture extraction through the utility process', () => {
     await new Promise((resolve) => setTimeout(resolve, 20))
     expect(getCapture(capture.id)).toBeUndefined()
     expect(storedRows(capture.id)).toEqual([])
+    expect(getExhibitSearchBuild(capture.id)).toBeUndefined()
     expect(extractionFailures()).toBe(0)
   })
 
@@ -203,6 +214,11 @@ describe('capture extraction through the utility process', () => {
       expect(getCapture(failed.id)?.id).toBe(failed.id)
       expect((await lifecycle.verify(failed.id)).status).toBe('verified')
       expect(verifyManifestChain(join(tempDir, 'captures', caseId)).valid).toBe(true)
+      // The process never ran the field build, so no row marks it `failed`: the
+      // next Case open finds the Capture unbuilt and builds it here.
+      expect(getExhibitSearchBuild(failed.id)).toBeUndefined()
+      expect(await ensureCaseFields(caseId)).toEqual({ indexed: 1, noSource: 0, failed: 0 })
+      expect(getExhibitSearchBuild(failed.id)?.outcome).toBe('built')
 
       const { capture: next } = await ingestFixture(lifecycle, IRAN, 'https://a.example.org/n')
       await vi.waitFor(() => expect(storedRows(next.id)).toEqual(FIXTURE_KNOWN_ANSWERS[IRAN]))
@@ -210,6 +226,76 @@ describe('capture extraction through the utility process', () => {
       expect(extractionFailures()).toBe(1)
     })
   }
+
+  it('writes no field build row for a Capture whose extraction the app stopped at quit', async () => {
+    const { fork } = fakeFork(['hang'])
+    const client = createExtractionProcess({ entryPath: 'x', fork, timeoutMs: 10_000 })
+    const lifecycle = lifecycleWith(client)
+    const { capture } = await ingestFixture(lifecycle, POPE, 'https://a.example.org/quit')
+    client.dispose()
+    await vi.waitFor(() => expect(extractionFailures()).toBe(1))
+
+    expect(getExhibitSearchBuild(capture.id)).toBeUndefined()
+    expect(await ensureCaseFields(caseId)).toEqual({ indexed: 1, noSource: 0, failed: 0 })
+    expect(getExhibitSearchBuild(capture.id)?.outcome).toBe('built')
+  })
+
+  it('writes a failed row, and logs it, for a build the process ran and reported failed', async () => {
+    const { client, requests } = recordingClient()
+    const { capture } = await ingestFixture(lifecycleWith(client), POPE, 'https://a.example.org/b')
+    await vi.waitFor(() => expect(requests).toHaveLength(1))
+    requests[0].settle({
+      ok: true,
+      rows: CANNED_ROWS,
+      durationMs: 5,
+      fieldBuild: {
+        ok: false,
+        error: { name: 'Error', code: 'EISDIR', message: 'illegal operation on a directory' },
+        durationMs: 2
+      }
+    })
+
+    await vi.waitFor(() => expect(getExhibitSearchBuild(capture.id)?.outcome).toBe('failed'))
+    expect(storedRows(capture.id)).toEqual(rowKeys(CANNED_ROWS))
+    expect(fieldBuildFailures()).toBe(1)
+    expect(extractionFailures()).toBe(0)
+    // A `failed` row waits for a reprocess; Case open does not retry it.
+    expect(await ensureCaseFields(caseId)).toEqual({ indexed: 0, noSource: 0, failed: 0 })
+  })
+
+  it('a duplicate is processed through the process client like an ingest', async () => {
+    const { client, requests } = recordingClient()
+    const lifecycle = lifecycleWith(client)
+    const { capture: source } = await ingestFixture(lifecycle, POPE, 'https://a.example.org/src')
+    await vi.waitFor(() => expect(requests).toHaveLength(1))
+    requests.splice(0)[0].settle({ ok: true, rows: [], durationMs: 1 })
+
+    const result = await lifecycle.duplicate(source.id)
+    if (result.status !== 'duplicated') throw new Error(`duplicate: ${result.status}`)
+    const copy = result.capture
+    await vi.waitFor(() => expect(requests).toHaveLength(1))
+    const store = createCaptureStore({ getRoot: getStorageRoot })
+    expect(requests[0].request).toEqual({
+      mhtmlPath: store.artifactPaths(caseId, copy.id, 'mhtml').abs,
+      htmlPath: store.artifactPaths(caseId, copy.id, 'html').abs,
+      fieldUrl: 'https://a.example.org/src',
+      textPath: store.artifactPaths(caseId, copy.id, 'txt').abs
+    })
+    requests[0].settle({
+      ok: true,
+      rows: CANNED_ROWS,
+      durationMs: 1,
+      fieldBuild: {
+        ok: true,
+        result: { fields: [], textHash: null, outcome: 'built', skippedJson: null },
+        durationMs: 1
+      }
+    })
+
+    await vi.waitFor(() => expect(storedRows(copy.id)).toEqual(rowKeys(CANNED_ROWS)))
+    expect(getExhibitSearchBuild(copy.id)?.outcome).toBe('built')
+    expect(storedRows(source.id)).toEqual([])
+  })
 
   it('records the duration the process measured as a data-extraction slow operation', async () => {
     const record = vi.spyOn(diagnosticsService, 'recordSlowOp')

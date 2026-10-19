@@ -196,9 +196,11 @@ describe('captureLifecycle.reprocessCase', () => {
 
     await captureLifecycle.reprocessCase(c.id)
 
-    // reprocessCase awaits setImmediate once per capture, then the search field
-    // pass awaits it once per capture it rebuilds: 5 captures -> 10 calls.
-    expect(spy).toHaveBeenCalledTimes(10)
+    // reprocessCase awaits setImmediate once per capture: 5 captures -> 5 calls.
+    // The field build arrives with each capture's extraction reply, so there is
+    // no second pass over the Case to yield in; the fake child answers on a
+    // timer, never on setImmediate, so these are the lifecycle's own.
+    expect(spy).toHaveBeenCalledTimes(5)
     spy.mockRestore()
   })
 })

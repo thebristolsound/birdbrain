@@ -127,6 +127,30 @@ function counted(inner: Transport, count: StreamCount): Transport {
   }
 }
 
+// Leaves the first dial or stream open the service makes unsettled, as a
+// peer that never accepts the connection or grants no stream would.
+function hangingOnce(inner: Transport, call: 'dial' | 'openStream'): Transport {
+  let hung = false
+  const once = <T>(which: typeof call, real: () => Promise<T>): Promise<T> => {
+    if (which !== call || hung) return real()
+    hung = true
+    return new Promise<T>(() => {})
+  }
+  return {
+    get nodeId() {
+      return inner.nodeId
+    },
+    get ticket() {
+      return inner.ticket
+    },
+    listen: (onStream) => inner.listen(onStream),
+    dial: (ticket) => once('dial', () => inner.dial(ticket)),
+    nodeIdOf: (ticket) => inner.nodeIdOf(ticket),
+    openStream: (connection) => once('openStream', () => inner.openStream(connection)),
+    close: () => inner.close()
+  }
+}
+
 const outcomeKinds = (outcomes: SharingSyncOutcome[]): string[][] =>
   outcomes.map((o) => [o.installationId, o.outcome])
 
@@ -460,6 +484,32 @@ describe('sync service (#1881)', () => {
     expect(fromSilent).toMatchObject({ installationId: B.installationId, errors: 1 })
     expect(getSyncState(c1).peersReachable).toBe(1)
   })
+
+  it.each([
+    ['a dial', 'dial', 'unreachable'],
+    ['a stream open', 'openStream', 'failed']
+  ] as const)(
+    '%s that never settles ends that member at the idle bound, and later rounds run',
+    async (_, call, outcome) => {
+      await seedTeam()
+      const bob = await listener('bob', fromBob)
+      const carol = await listener('carol', fromCarol)
+      const svc = build({ sessionIdleMs: 50 })
+      factory.mockImplementation(async () => hangingOnce(hub.createTransport('node-alice'), call))
+      const syncNow = vi.spyOn(sharing, 'syncNow')
+      svc.start()
+      await svc.idle()
+      expect(outcomeKinds((await outcomesOf(syncNow)).get(c1) ?? [])).toEqual([
+        [B.installationId, outcome],
+        [C.installationId, 'synced']
+      ])
+      expect(carol.hellos).toEqual([c1])
+      vi.advanceTimersByTime(60_000)
+      await svc.idle()
+      expect(bob.hellos.filter((id) => id === c1)).toHaveLength(1)
+      expect(carol.hellos).toEqual([c1, c1])
+    }
+  )
 
   it('opens no transport without a Shared Case, and the first invite opens it once', async () => {
     const caseId = createCase({ name: 'Private' }).id

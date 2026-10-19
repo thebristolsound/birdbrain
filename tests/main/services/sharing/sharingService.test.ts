@@ -9,6 +9,7 @@ import { listCaseMembers, upsertCaseMember } from '@main/services/db/caseMemberR
 import { createCase, getCase } from '@main/services/db/caseRepo'
 import { getExhibit } from '@main/services/db/exhibitRepo'
 import { resetInstallationId } from '@main/services/installationId'
+import { logger } from '@main/services/logger'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { resetSigningKey } from '@main/services/signingKey'
 import { updateSettings } from '@main/services/settings'
@@ -119,6 +120,7 @@ describe('sharing service (#1810)', () => {
   })
 
   afterEach(() => {
+    vi.restoreAllMocks()
     closeDatabase()
     resetInstallationId()
     resetSigningKey()
@@ -612,7 +614,12 @@ describe('sharing service (#1810)', () => {
       void caseDirOf
     })
 
-    it("a syncNow during joinCase's first session shares it (#1881)", async () => {
+    // Alice's side for the #1881 joins: the Case shared with Bob already
+    // approved and one document Bob lacks, behind an Owner node that answers
+    // the join and hands every hello stream to `hello`. Leaves Bob active.
+    async function ownerAwaitingJoin(
+      hello: (stream: ByteStream, fromAlice: RecordedSource) => Promise<void>
+    ): Promise<{ joins: JoinServer; invite: string; routed: Promise<void>[] }> {
       await shareCase(caseId, { nodeId: 'alice-node' })
       const bobMember = await addMember(caseId, {
         installationId: B.installationId,
@@ -640,21 +647,12 @@ describe('sharing service (#1810)', () => {
         rememberTicket: () => {},
         onChanged: () => {}
       })
-      // The Owner holds every hello until released, so the joiner's first
-      // session is still running when Sync now is pressed.
-      let hellos = 0
-      let release: () => void = () => {}
-      const held = new Promise<void>((resolve) => (release = resolve))
       const routed: Promise<void>[] = []
       await ownerNode.listen((stream, peer) => {
         routed.push(
           routeIncomingStream(stream, peer, {
             join: (s, p) => joins.serve(s, p),
-            hello: async (s) => {
-              hellos += 1
-              await held
-              await serveSyncSession(s, (id) => (id === caseId ? fromAlice : null))
-            }
+            hello: (s) => hello(s, fromAlice)
           })
         )
       })
@@ -665,8 +663,22 @@ describe('sharing service (#1810)', () => {
         secret,
         expiresAt
       })
-
       await activate(B)
+      return { joins, invite, routed }
+    }
+
+    it("a syncNow during joinCase's first session shares it (#1881)", async () => {
+      // The Owner holds every hello until released, so the joiner's first
+      // session is still running when Sync now is pressed.
+      let hellos = 0
+      let release: () => void = () => {}
+      const held = new Promise<void>((resolve) => (release = resolve))
+      const { joins, invite, routed } = await ownerAwaitingJoin(async (s, fromAlice) => {
+        hellos += 1
+        await held
+        await serveSyncSession(s, (id) => (id === caseId ? fromAlice : null))
+      })
+
       const service = newService()
       service.setTransportProvider(async () => hub.createTransport('bob-node'))
       const joining = service.joinCase(invite)
@@ -690,6 +702,43 @@ describe('sharing service (#1810)', () => {
       expect(mergeEntries(caseId)).toHaveLength(1)
       await service.close()
       await Promise.all(routed)
+    })
+
+    it('a join whose first session opens no stream still joins, and a syncNow during it gets the failure (#1881)', async () => {
+      const { joins, invite } = await ownerAwaitingJoin(async () => {})
+      const service = newService({ sessionIdleMs: 50 })
+      // The join's own stream opens; the first session's never does, as on
+      // a peer that grants no stream.
+      const node = hub.createTransport('bob-node')
+      const open = node.openStream.bind(node)
+      let opened = 0
+      vi.spyOn(node, 'openStream').mockImplementation((connection) => {
+        opened += 1
+        return opened === 1 ? open(connection) : new Promise<ByteStream>(() => {})
+      })
+      service.setTransportProvider(async () => node)
+      const warn = vi.spyOn(logger, 'warn')
+      const joining = service.joinCase(invite)
+      await settle(() => joins.pendingJoins(caseId).length === 1)
+      await joins.approve(caseId, joins.pendingJoins(caseId)[0].requestId, 'BM')
+      await settle(() => opened === 2)
+      const pressed = service.syncNow(caseId)
+      expect(await joining).toEqual({ caseId, caseName: 'Shared' })
+      expect(await pressed).toEqual([
+        {
+          installationId: A.installationId,
+          outcome: 'failed',
+          detail: 'The peer opened no stream for 50 ms'
+        }
+      ])
+      expect(warn).toHaveBeenCalledWith(
+        'sharing',
+        'sharing.first_session_failed',
+        undefined,
+        expect.any(Error)
+      )
+      expect(mergeEntries(caseId)).toEqual([])
+      await service.close()
     })
   })
 })

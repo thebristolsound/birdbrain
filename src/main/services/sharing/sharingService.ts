@@ -119,6 +119,40 @@ function closeWhenIdle(stream: ByteStream, ms: number): ByteStream {
   }
 }
 
+// A dial or stream open that has not settled within `ms` refuses with what
+// `late` builds, and closes what it settles to afterwards. closeWhenIdle
+// bounds only an open stream, and a peer that grants no stream would
+// otherwise hold the Case's session, and every later round, until quit.
+function settleWithin<T>(
+  op: Promise<T>,
+  ms: number,
+  late: () => Error,
+  discard: (value: T) => void
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let expired = false
+    const timer = setTimeout(() => {
+      expired = true
+      reject(late())
+    }, ms)
+    op.then(
+      (value) => {
+        if (expired) {
+          discard(value)
+          return
+        }
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (err: unknown) => {
+        if (expired) return
+        clearTimeout(timer)
+        reject(err)
+      }
+    )
+  })
+}
+
 function syncedOutcome(installationId: string, result: SyncSessionResult): SharingSyncOutcome {
   return {
     installationId,
@@ -359,7 +393,24 @@ export class SharingService {
   }
 
   private async openBounded(transport: Transport, connection: Connection): Promise<ByteStream> {
-    return closeWhenIdle(await transport.openStream(connection), this.sessionIdleMs)
+    const ms = this.sessionIdleMs
+    const stream = await settleWithin(
+      transport.openStream(connection),
+      ms,
+      () => new ProtocolError(`The peer opened no stream for ${ms} ms`),
+      (late) => late.close()
+    )
+    return closeWhenIdle(stream, ms)
+  }
+
+  // A dial the peer leaves unanswered counts as unreachable.
+  private dialBounded(transport: Transport, ticket: string): Promise<Connection> {
+    return settleWithin(
+      transport.dial(ticket),
+      this.sessionIdleMs,
+      () => new PeerUnreachableError(ticket),
+      (late) => late.close()
+    )
   }
 
   async approveJoin(caseId: string, requestId: string, memberCode: string): Promise<CaseMember> {
@@ -451,7 +502,7 @@ export class SharingService {
         }
         let connection
         try {
-          connection = await transport.dial(ticket)
+          connection = await this.dialBounded(transport, ticket)
         } catch (err) {
           if (err instanceof PeerUnreachableError) {
             outcomes.push({ installationId, outcome: 'unreachable' })

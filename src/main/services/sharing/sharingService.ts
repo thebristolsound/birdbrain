@@ -74,7 +74,7 @@ export interface SharingServiceDeps {
 
 export interface StreamHandlers {
   join: (stream: ByteStream, peerNodeId: string) => Promise<void>
-  hello: (stream: ByteStream) => Promise<void>
+  hello: (stream: ByteStream, peerNodeId: string) => Promise<void>
 }
 
 // A stream that replays the chunks the router read, then reads on: the
@@ -117,7 +117,7 @@ export async function routeIncomingStream(
     return
   }
   if (first?.t === 'join') return handlers.join(replayed(stream, recorded), peerNodeId)
-  if (first?.t === 'hello') return handlers.hello(replayed(stream, recorded))
+  if (first?.t === 'hello') return handlers.hello(replayed(stream, recorded), peerNodeId)
   stream.close()
 }
 
@@ -190,9 +190,11 @@ export class SharingService {
     await transport.listen((stream, peerNodeId) => {
       routeIncomingStream(stream, peerNodeId, {
         join: (s, peer) => joins.serve(s, peer),
-        hello: (s) =>
+        hello: (s, peer) =>
           serveSyncSession(s, this.sourceFor, {
             ticket: transport.ticket,
+            peerNodeId: peer,
+            ticketNodeId: (ticket) => transport.nodeIdOf(ticket),
             rememberTicket: rememberPeerTicket
           })
       }).catch((err: unknown) => {
@@ -266,7 +268,9 @@ export class SharingService {
       try {
         await pullFromPeer(caseId, await transport.openStream(connection), {
           receivedCaptures: this.deps.receivedCaptures,
-          ticket: transport.ticket
+          ticket: transport.ticket,
+          peerNodeId: connection.peerNodeId,
+          ticketNodeId: (ticket) => transport.nodeIdOf(ticket)
         })
       } catch (err) {
         logger.warn('sharing', 'sharing.first_session_failed', undefined, err)
@@ -345,7 +349,9 @@ export class SharingService {
       try {
         const result = await pullFromPeer(caseId, await transport.openStream(connection), {
           receivedCaptures: this.deps.receivedCaptures,
-          ticket: transport.ticket
+          ticket: transport.ticket,
+          peerNodeId: connection.peerNodeId,
+          ticketNodeId: (ticket) => transport.nodeIdOf(ticket)
         })
         outcomes.push({
           installationId,
@@ -385,10 +391,13 @@ export class SharingService {
     }
   }
 
-  // Closes the transport, if one started. For quit.
+  // Closes the transport, if one started. For quit. A start that failed has
+  // already refused the command that asked for it, so here it leaves nothing
+  // to close.
   async close(): Promise<void> {
-    const started = this.started === null ? null : await this.started
+    const pending = this.started
     this.started = null
+    const started = pending === null ? null : await pending.catch(() => null)
     await started?.transport.close()
   }
 }

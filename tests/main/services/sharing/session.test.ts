@@ -285,7 +285,7 @@ describe('sync session handshake (#1512)', () => {
     const answer = await expectMessage(odd.reader, 'hello')
     expect(
       verifyEntrySignature(
-        helloDigest(caseId, first.challenge, PEER_ID),
+        helloDigest(caseId, first.challenge, PEER_ID, 'listener'),
         answer.proof!,
         PEER_KEY.publicKey
       )
@@ -301,49 +301,101 @@ describe('sync session handshake (#1512)', () => {
   })
 
   // A ticket names the relay its node started on, so each session refreshes
-  // the one the other side dials, and only once the sender has proved its key
-  // (#1809).
+  // the one the other side dials (#1809). It is kept only from a side whose
+  // proof verified, and only when it, and the connection, name the node the
+  // member's signed member-add records (`node-<installation id>` here).
+  const ticketOf = (installationId: string, relay = 'relay-a'): string =>
+    `t:node-${installationId}:${relay}`
+  const ticketNodeId = (ticket: string): string | null => ticket.split(':')[1] ?? null
+
   it("tells each side the other's current ticket once both have proved their keys", async () => {
-    rememberMemberTickets(caseId, { [PEER_ID]: 'ticket-on-the-old-relay' })
+    rememberMemberTickets(caseId, { [PEER_ID]: ticketOf(PEER_ID, 'old-relay') })
     const rememberTicket = vi.fn()
     const result = await session(
       peerSource(),
-      { ticket: 'dialer-ticket' },
-      { ticket: 'listener-ticket', rememberTicket }
+      { ticket: ticketOf(localId), ticketNodeId, peerNodeId: `node-${PEER_ID}` },
+      { ticket: ticketOf(PEER_ID), ticketNodeId, peerNodeId: `node-${localId}`, rememberTicket }
     )
     expect(result.errors).toEqual([])
-    expect(memberTickets(caseId)[PEER_ID]).toBe('listener-ticket')
-    expect(rememberTicket).toHaveBeenCalledWith(caseId, localId, 'dialer-ticket')
+    expect(memberTickets(caseId)[PEER_ID]).toBe(ticketOf(PEER_ID))
+    expect(rememberTicket).toHaveBeenCalledWith(caseId, localId, ticketOf(localId))
   })
 
   it('keeps the held ticket when the session sends none, or the same one', async () => {
-    rememberMemberTickets(caseId, { [PEER_ID]: 'listener-ticket' })
-    await session(peerSource())
-    expect(memberTickets(caseId)[PEER_ID]).toBe('listener-ticket')
+    rememberMemberTickets(caseId, { [PEER_ID]: ticketOf(PEER_ID) })
+    await session(peerSource(), { ticketNodeId })
+    expect(memberTickets(caseId)[PEER_ID]).toBe(ticketOf(PEER_ID))
+    await session(peerSource(), { ticketNodeId }, { ticket: ticketOf(PEER_ID) })
+    expect(memberTickets(caseId)[PEER_ID]).toBe(ticketOf(PEER_ID))
+  })
+
+  it("keeps no ticket that names another node than the member's, or over a connection to one", async () => {
     const rememberTicket = vi.fn()
-    await session(peerSource(), {}, { ticket: 'listener-ticket', rememberTicket })
-    expect(memberTickets(caseId)[PEER_ID]).toBe('listener-ticket')
+    await session(
+      peerSource(),
+      { ticket: 'unread', ticketNodeId },
+      { ticket: ticketOf('someone-else'), ticketNodeId, rememberTicket }
+    )
+    expect(memberTickets(caseId)[PEER_ID]).toBeUndefined()
     expect(rememberTicket).not.toHaveBeenCalled()
+
+    await session(
+      peerSource(),
+      { ticket: ticketOf(localId), ticketNodeId, peerNodeId: 'node-stranger' },
+      { ticket: ticketOf(PEER_ID), ticketNodeId, peerNodeId: 'node-stranger', rememberTicket }
+    )
+    expect(memberTickets(caseId)[PEER_ID]).toBeUndefined()
+    expect(rememberTicket).not.toHaveBeenCalled()
+
+    // Without a way to read the node a ticket names, no ticket is kept.
+    await session(peerSource(), {}, { ticket: ticketOf(PEER_ID) })
+    expect(memberTickets(caseId)[PEER_ID]).toBeUndefined()
   })
 
   it('takes no ticket from a side that fails to prove its key', async () => {
-    await session(peerSource({ sign: signWith(OTHER_KEY) }), {}, { ticket: 'forged-ticket' })
+    await session(
+      peerSource({ sign: signWith(OTHER_KEY) }),
+      { ticketNodeId },
+      { ticket: ticketOf(PEER_ID) }
+    )
     expect(memberTickets(caseId)[PEER_ID]).toBeUndefined()
 
     const rememberTicket = vi.fn()
-    const bad = await rawDialer(peerSource(), { rememberTicket })
+    const bad = await rawDialer(peerSource(), { ticketNodeId, rememberTicket })
     await writeMessage(bad.stream, {
       t: 'hello',
       caseId,
       installationId: localId,
       challenge: randomBytes(CHALLENGE_BYTES),
       proof: null,
-      ticket: 'forged-ticket'
+      ticket: ticketOf(localId)
     })
     await expectMessage(bad.reader, 'hello')
     await writeMessage(bad.stream, { t: 'proof', signature: 'bm90IGEgc2lnbmF0dXJl' })
     expect(await bad.reader.next()).toEqual({ t: 'bye', reason: BYE_REASONS.badProof })
     await bad.served
+    expect(rememberTicket).not.toHaveBeenCalled()
+  })
+
+  // The #1809 review's relay: a stranger dials the listener as this member,
+  // hands the listener's challenge to this member as a dialer, and passes
+  // the member's listener proof back. The roles in the digest refuse it.
+  it("refuses a member's listener proof passed back as that member's dialer proof", async () => {
+    const rememberTicket = vi.fn()
+    const relay = await rawDialer(peerSource(), { ticketNodeId, rememberTicket })
+    await writeMessage(relay.stream, {
+      t: 'hello',
+      caseId,
+      installationId: localId,
+      challenge: randomBytes(CHALLENGE_BYTES),
+      proof: null,
+      ticket: ticketOf(localId, 'stranger-relay')
+    })
+    const answer = await expectMessage(relay.reader, 'hello')
+    const borrowed = signEntryHash(helloDigest(caseId, answer.challenge, localId, 'listener'))
+    await writeMessage(relay.stream, { t: 'proof', signature: borrowed })
+    expect(await relay.reader.next()).toEqual({ t: 'bye', reason: BYE_REASONS.badProof })
+    await relay.served
     expect(rememberTicket).not.toHaveBeenCalled()
   })
 
@@ -371,7 +423,7 @@ describe('sync session handshake (#1512)', () => {
     const answer = await expectMessage(proven.reader, 'hello')
     await writeMessage(proven.stream, {
       t: 'proof',
-      signature: signEntryHash(helloDigest(caseId, answer.challenge, localId))
+      signature: signEntryHash(helloDigest(caseId, answer.challenge, localId, 'dialer'))
     })
     const paths = Array.from({ length: 70 }, (_, i) => `${i}-${'p'.repeat(1000)}`)
     await writeMessage(proven.stream, { t: 'blobs-request', paths })
@@ -433,7 +485,7 @@ describe('sync session handshake (#1512)', () => {
       { installationId: localId, index: own.index, entryHash: own.entryHash },
       { installationId: PEER_ID, index: 2, entryHash: 'peer-head' }
     ])
-    const digest = helloDigest(caseId, randomBytes(CHALLENGE_BYTES), localId)
+    const digest = helloDigest(caseId, randomBytes(CHALLENGE_BYTES), localId, 'listener')
     expect(verifyEntrySignature(digest, source.sign(digest), getPublicKeyPem())).toBe(true)
   })
 
@@ -489,7 +541,7 @@ describe('sync session handshake (#1512)', () => {
     expect(answer.installationId).toBe(localId)
     await writeMessage(stream, {
       t: 'proof',
-      signature: signWith(PEER_KEY)(helloDigest(caseId, answer.challenge, PEER_ID))
+      signature: signWith(PEER_KEY)(helloDigest(caseId, answer.challenge, PEER_ID, 'dialer'))
     })
     await writeMessage(stream, { t: 'heads', heads: [] })
     expect((await expectMessage(reader, 'heads')).heads).toEqual([])

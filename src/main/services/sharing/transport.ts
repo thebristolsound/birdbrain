@@ -29,6 +29,9 @@ export interface Transport {
   // Accepts incoming streams. Called at most once per transport.
   listen(onStream: (stream: ByteStream, peerNodeId: string) => void): Promise<void>
   dial(ticket: string): Promise<Connection>
+  // The node a ticket names, or null when it is not a ticket this transport
+  // reads.
+  nodeIdOf(ticket: string): string | null
   openStream(connection: Connection): Promise<ByteStream>
   close(): Promise<void>
 }
@@ -183,6 +186,12 @@ export class MemoryTransport implements Transport {
 
   get ticket(): string {
     return `${MEMORY_TICKET_PREFIX}${this.nodeId}`
+  }
+
+  nodeIdOf(ticket: string): string | null {
+    return ticket.startsWith(MEMORY_TICKET_PREFIX)
+      ? ticket.slice(MEMORY_TICKET_PREFIX.length)
+      : null
   }
 
   get isListening(): boolean {

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { createSign, generateKeyPairSync } from 'crypto'
+import { createSign, generateKeyPairSync, randomBytes } from 'crypto'
 import { mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -18,11 +18,13 @@ import { InviteRegistry } from '@main/services/sharing/inviteRegistry'
 import { JoinServer, requestJoin } from '@main/services/sharing/joinHandshake'
 import { addMember, shareCase } from '@main/services/sharing/membership'
 import {
+  CHALLENGE_BYTES,
   MAX_HANDSHAKE_FRAME_BYTES,
   MessageReader,
+  expectMessage,
   writeMessage
 } from '@main/services/sharing/messages'
-import { serveSyncSession } from '@main/services/sharing/session'
+import { helloDigest, serveSyncSession } from '@main/services/sharing/session'
 import {
   SharingService,
   routeIncomingStream,
@@ -247,6 +249,18 @@ describe('sharing service (#1810)', () => {
       await service.close()
     })
 
+    it('closes without throwing while a start that then fails is pending (#1809)', async () => {
+      const service = newService()
+      let fail: (err: Error) => void = () => {}
+      service.setTransportProvider(() => new Promise((_, reject) => (fail = reject)))
+      const creating = service.createInvite(caseId)
+      await new Promise((resolve) => setImmediate(resolve))
+      const closing = service.close()
+      fail(new Error('no relay'))
+      await expect(closing).resolves.toBeUndefined()
+      await expect(creating).rejects.toThrow('no relay')
+    })
+
     it('asks the provider again after a start that throws', async () => {
       const service = newService()
       let calls = 0
@@ -371,6 +385,26 @@ describe('sharing service (#1810)', () => {
       connection.close()
       expect(welcome.roster).toHaveLength(2)
       expect(memberTickets(caseId)).toEqual({ [B.installationId]: bobNode.ticket })
+
+      // A session Bob opens refreshes the ticket the Owner holds for him
+      // (#1809), once his proof verifies and his ticket names his node.
+      rememberMemberTickets(caseId, { [B.installationId]: 'mem:bob-node-on-an-old-relay' })
+      const session = await bobNode.openStream(await bobNode.dial(ownerNode.ticket))
+      await writeMessage(session, {
+        t: 'hello',
+        caseId,
+        installationId: B.installationId,
+        challenge: randomBytes(CHALLENGE_BYTES),
+        proof: null,
+        ticket: bobNode.ticket
+      })
+      const answer = await expectMessage(new MessageReader(session), 'hello')
+      await writeMessage(session, {
+        t: 'proof',
+        signature: signer(B)(helloDigest(caseId, answer.challenge, B.installationId, 'dialer'))
+      })
+      await settle(() => memberTickets(caseId)[B.installationId] === bobNode.ticket)
+      session.close()
 
       // Carol's join is declined.
       const { invite: again } = await service.createInvite(caseId)

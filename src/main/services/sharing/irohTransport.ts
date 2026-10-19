@@ -35,10 +35,14 @@ const ALPN_BYTES = Array.from(Buffer.from(SYNC_ALPN))
 const ONLINE_TIMEOUT_MS = 30_000
 // The most a stream read asks the binding for at once.
 const READ_BYTES = 64 * 1024
-// Incoming connections served at once. Anyone holding a ticket can connect
-// before the session checks the roster, and a Case has 2 to 5 members, so
-// more than this is refused at the transport.
-export const MAX_INCOMING_CONNECTIONS = 16
+// Bounds on incoming connections, which anyone holding a ticket can open
+// before a session checks the roster. A Case has 2 to 5 members, so one node
+// gets a few connections at once and every node shares a larger backstop; a
+// connection that opens no stream in time is closed, so idle connections
+// cannot hold either bound.
+export const MAX_CONNECTIONS_PER_NODE = 4
+export const MAX_INCOMING_CONNECTIONS = 64
+const FIRST_STREAM_TIMEOUT_MS = 30_000
 
 // The binding loaded once, or null when it cannot load: 1.1.0 ships no
 // `darwin-x64` build, and a packaged build missing its native file throws
@@ -124,6 +128,7 @@ export interface IrohTransportOptions {
   // A self-hosted relay, or '' for the default public relays.
   relayUrl: string
   onlineTimeoutMs?: number
+  firstStreamTimeoutMs?: number
 }
 
 async function online(endpoint: IrohModule.Endpoint, timeoutMs: number): Promise<boolean> {
@@ -143,14 +148,17 @@ export class IrohTransport implements Transport {
   private closed = false
   private readonly connections = new Set<IrohConnection>()
   private readonly accepted = new Set<IrohModule.Connection>()
-  // Incoming connections from their handshake until they end.
+  // Incoming connections from their handshake until they end, in all and by
+  // the node that opened them.
   private serving = 0
+  private readonly servingByNode = new Map<string, number>()
 
   private constructor(
     private readonly binding: IrohBinding,
     private readonly endpoint: IrohModule.Endpoint,
     readonly nodeId: string,
-    readonly ticket: string
+    readonly ticket: string,
+    private readonly firstStreamTimeoutMs: number
   ) {}
 
   // Binds an endpoint under the stored key and waits for a home relay, whose
@@ -175,7 +183,8 @@ export class IrohTransport implements Transport {
       if (relay === null) throw new SharingError('relay-unreachable')
       const id = endpoint.id()
       const ticket = EndpointTicket.fromAddr(new EndpointAddr(id, relay, [])).toString()
-      return new IrohTransport(binding, endpoint, id.toString(), ticket)
+      const firstStream = options.firstStreamTimeoutMs ?? FIRST_STREAM_TIMEOUT_MS
+      return new IrohTransport(binding, endpoint, id.toString(), ticket, firstStream)
     } catch (err) {
       await endpoint.close()
       throw err
@@ -224,8 +233,15 @@ export class IrohTransport implements Transport {
     onStream: (stream: ByteStream, peerNodeId: string) => void
   ): Promise<void> {
     const connection = await (await incoming.accept()).connect()
-    this.accepted.add(connection)
     const peerNodeId = connection.remoteId().toString()
+    const fromNode = this.servingByNode.get(peerNodeId) ?? 0
+    if (fromNode >= MAX_CONNECTIONS_PER_NODE) {
+      connection.close(0n, [])
+      return
+    }
+    this.servingByNode.set(peerNodeId, fromNode + 1)
+    this.accepted.add(connection)
+    const idle = setTimeout(() => connection.close(0n, []), this.firstStreamTimeoutMs)
     try {
       for (;;) {
         let bi: IrohModule.BiStream
@@ -234,10 +250,23 @@ export class IrohTransport implements Transport {
         } catch {
           return
         }
+        clearTimeout(idle)
         onStream(new IrohStream(bi), peerNodeId)
       }
     } finally {
+      clearTimeout(idle)
       this.accepted.delete(connection)
+      const left = (this.servingByNode.get(peerNodeId) ?? 1) - 1
+      if (left > 0) this.servingByNode.set(peerNodeId, left)
+      else this.servingByNode.delete(peerNodeId)
+    }
+  }
+
+  nodeIdOf(ticket: string): string | null {
+    try {
+      return this.binding.EndpointTicket.fromString(ticket).endpointAddr().id().toString()
+    } catch {
+      return null
     }
   }
 

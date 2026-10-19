@@ -10,6 +10,7 @@ import { resetSigningKey } from '@main/services/signingKey'
 import { SharingError } from '@main/services/sharing/errors'
 import {
   IrohTransport,
+  MAX_CONNECTIONS_PER_NODE,
   MAX_INCOMING_CONNECTIONS,
   SYNC_ALPN,
   createBindingLoader,
@@ -168,19 +169,52 @@ describe('the Iroh transport over a stand-in binding (#1809)', () => {
     expect(net.endpoints.size).toBe(0)
   })
 
-  it(`refuses incoming connections beyond ${MAX_INCOMING_CONNECTIONS} at once`, async () => {
+  it(`closes a node's connections beyond ${MAX_CONNECTIONS_PER_NODE} at once, and no other node's`, async () => {
     const listener = await start(1)
-    const dialer = await start(2)
+    const stranger = await start(2)
+    const member = await start(3)
     await listener.listen(() => {})
-    for (let i = 0; i <= MAX_INCOMING_CONNECTIONS; i++) await dialer.dial(listener.ticket)
-    await expect.poll(() => net.refused).toBe(1)
-    await dialer.close()
-    // Once those connections end, the listener serves new ones again.
-    const next = await start(3)
-    await next.dial(listener.ticket)
+    for (let i = 0; i <= MAX_CONNECTIONS_PER_NODE; i++) await stranger.dial(listener.ticket)
+    const closedPairs = () => net.connections.filter((c) => c.closed).length / 2
+    await expect.poll(closedPairs).toBe(1)
+    // The member still gets through while the stranger holds its share.
+    await member.dial(listener.ticket)
     await new Promise((resolve) => setImmediate(resolve))
-    expect(net.refused).toBe(1)
-    await next.close()
+    expect(closedPairs()).toBe(1)
+    for (const t of [stranger, member, listener]) await t.close()
+  })
+
+  it(`refuses connections beyond ${MAX_INCOMING_CONNECTIONS} at once from all nodes`, async () => {
+    const listener = await start(1)
+    await listener.listen(() => {})
+    const dialers: IrohTransport[] = []
+    for (let i = 0; i <= MAX_INCOMING_CONNECTIONS; i++) {
+      const dialer = await IrohTransport.start({
+        binding,
+        secretKey: new Uint8Array(32).fill(10).map((b, at) => (at === 0 ? i : b)),
+        relayUrl: ''
+      })
+      dialers.push(dialer)
+      await dialer.dial(listener.ticket)
+    }
+    await expect.poll(() => net.refused).toBe(1)
+    for (const t of [...dialers, listener]) await t.close()
+  })
+
+  it('closes an incoming connection that opens no stream in time', async () => {
+    const listener = await IrohTransport.start({
+      binding,
+      secretKey: key(1),
+      relayUrl: '',
+      firstStreamTimeoutMs: 5
+    })
+    const dialer = await start(2)
+    const onStream = vi.fn()
+    await listener.listen(onStream)
+    await dialer.dial(listener.ticket)
+    await expect.poll(() => net.connections.every((c) => c.closed)).toBe(true)
+    expect(onStream).not.toHaveBeenCalled()
+    await dialer.close()
     await listener.close()
   })
 

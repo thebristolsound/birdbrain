@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import * as dataExtractor from '@main/services/dataExtractor'
+import * as fieldExtractor from '@main/services/search/fieldExtractor'
 import { handleExtractionMessage } from '@main/services/extraction/processHandler'
 import {
   FIXTURE_DIR,
@@ -103,6 +104,58 @@ describe('handleExtractionMessage', () => {
       ])
     })
     expect(reply.fieldBuild.durationMs).toBeGreaterThan(0)
+  })
+
+  it('reports a no-source field build when neither file exists', () => {
+    const reply = handleExtractionMessage({
+      id: 8,
+      mhtmlPath: join(dir, 'none.mhtml'),
+      htmlPath: join(dir, 'none.html'),
+      fieldUrl: 'https://quillmere.example.net/none',
+      textPath: join(dir, 'none.txt')
+    })
+    expect(reply).toMatchObject({ id: 8, ok: true, rows: [] })
+    expect(reply.fieldBuild).toEqual({
+      ok: true,
+      result: { fields: [], textHash: null, outcome: 'no-source', skippedJson: null },
+      durationMs: expect.any(Number)
+    })
+  })
+
+  it('reports a read failure as a failed field build too, with the same error', () => {
+    const htmlPath = join(dir, 'a-directory.html')
+    mkdirSync(htmlPath)
+    const reply = handleExtractionMessage({
+      id: 9,
+      mhtmlPath: join(dir, 'none.mhtml'),
+      htmlPath,
+      fieldUrl: 'https://quillmere.example.net/dir'
+    })
+    expect(reply).toMatchObject({ id: 9, ok: false, error: { code: 'EISDIR' } })
+    expect(reply.fieldBuild).toEqual({
+      ok: false,
+      error: { name: 'Error', code: 'EISDIR', message: expect.any(String) },
+      durationMs: 0
+    })
+  })
+
+  it('reports a field extractor throw as a failed build and keeps the extracted rows', () => {
+    vi.spyOn(fieldExtractor, 'extractFields').mockImplementation(() => {
+      throw new Error('field extractor broke')
+    })
+    const reply = handleExtractionMessage({
+      id: 10,
+      mhtmlPath: join(FIXTURE_DIR, 'cnn-pope-synthetic.mhtml'),
+      htmlPath: join(dir, 'none.html'),
+      fieldUrl: 'https://quillmere.example.net/pope'
+    })
+    if (!reply.ok) throw new Error(`extraction failed: ${reply.error.message}`)
+    expect(rowKeys(reply.rows)).toEqual(FIXTURE_KNOWN_ANSWERS['cnn-pope-synthetic.mhtml'])
+    expect(reply.fieldBuild).toEqual({
+      ok: false,
+      error: { name: 'Error', code: null, message: 'field extractor broke' },
+      durationMs: expect.any(Number)
+    })
   })
 
   it('answers with no rows, without extracting, when neither file exists', () => {

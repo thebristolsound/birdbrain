@@ -69,6 +69,10 @@ function extractionFailures(): number {
   return readRecentEntries(50).filter((e) => e.code === 'capture.extraction_failed').length
 }
 
+function fieldBuildFailures(): number {
+  return readRecentEntries(50).filter((e) => e.code === 'searchFields.build_failed').length
+}
+
 describe('capture extraction through the utility process', () => {
   let tempDir: string
   let caseId: string
@@ -234,6 +238,63 @@ describe('capture extraction through the utility process', () => {
     expect(getExhibitSearchBuild(capture.id)).toBeUndefined()
     expect(await ensureCaseFields(caseId)).toEqual({ indexed: 1, noSource: 0, failed: 0 })
     expect(getExhibitSearchBuild(capture.id)?.outcome).toBe('built')
+  })
+
+  it('writes a failed row, and logs it, for a build the process ran and reported failed', async () => {
+    const { client, requests } = recordingClient()
+    const { capture } = await ingestFixture(lifecycleWith(client), POPE, 'https://a.example.org/b')
+    await vi.waitFor(() => expect(requests).toHaveLength(1))
+    requests[0].settle({
+      ok: true,
+      rows: CANNED_ROWS,
+      durationMs: 5,
+      fieldBuild: {
+        ok: false,
+        error: { name: 'Error', code: 'EISDIR', message: 'illegal operation on a directory' },
+        durationMs: 2
+      }
+    })
+
+    await vi.waitFor(() => expect(getExhibitSearchBuild(capture.id)?.outcome).toBe('failed'))
+    expect(storedRows(capture.id)).toEqual(rowKeys(CANNED_ROWS))
+    expect(fieldBuildFailures()).toBe(1)
+    expect(extractionFailures()).toBe(0)
+    // A `failed` row waits for a reprocess; Case open does not retry it.
+    expect(await ensureCaseFields(caseId)).toEqual({ indexed: 0, noSource: 0, failed: 0 })
+  })
+
+  it('a duplicate is processed through the process client like an ingest', async () => {
+    const { client, requests } = recordingClient()
+    const lifecycle = lifecycleWith(client)
+    const { capture: source } = await ingestFixture(lifecycle, POPE, 'https://a.example.org/src')
+    await vi.waitFor(() => expect(requests).toHaveLength(1))
+    requests.splice(0)[0].settle({ ok: true, rows: [], durationMs: 1 })
+
+    const result = await lifecycle.duplicate(source.id)
+    if (result.status !== 'duplicated') throw new Error(`duplicate: ${result.status}`)
+    const copy = result.capture
+    await vi.waitFor(() => expect(requests).toHaveLength(1))
+    const store = createCaptureStore({ getRoot: getStorageRoot })
+    expect(requests[0].request).toEqual({
+      mhtmlPath: store.artifactPaths(caseId, copy.id, 'mhtml').abs,
+      htmlPath: store.artifactPaths(caseId, copy.id, 'html').abs,
+      fieldUrl: 'https://a.example.org/src',
+      textPath: store.artifactPaths(caseId, copy.id, 'txt').abs
+    })
+    requests[0].settle({
+      ok: true,
+      rows: CANNED_ROWS,
+      durationMs: 1,
+      fieldBuild: {
+        ok: true,
+        result: { fields: [], textHash: null, outcome: 'built', skippedJson: null },
+        durationMs: 1
+      }
+    })
+
+    await vi.waitFor(() => expect(storedRows(copy.id)).toEqual(rowKeys(CANNED_ROWS)))
+    expect(getExhibitSearchBuild(copy.id)?.outcome).toBe('built')
+    expect(storedRows(source.id)).toEqual([])
   })
 
   it('records the duration the process measured as a data-extraction slow operation', async () => {

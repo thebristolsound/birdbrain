@@ -13,8 +13,10 @@ import {
 import {
   resolveTrustedTime,
   buildTrustedTimeIndex,
+  pendingReceiptStamp,
   reconcileCaptureTrustedTime,
-  reconcileAllMirrors
+  reconcileAllMirrors,
+  resolveReceiptStamps
 } from '@main/services/trustedTime'
 import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase, listCases } from '@main/services/db/caseRepo'
@@ -872,5 +874,119 @@ describe('trusted time in a Shared Case', () => {
       )
     }
     expect(buildTrustedTimeIndex(caseDir)).toEqual(buildTrustedTimeIndexFromEntries(entries))
+  })
+})
+
+// #1515. The receipt stamps of the local chain, and the one `merge` the retry
+// loop owes a stamp: the newest after the chain's last `import`, when
+// unstamped. The chain is written through the app's own writer.
+describe('receipt stamps on merge entries', () => {
+  const TIME = '2026-10-17T10:00:00.000Z'
+  let tempDir: string
+  let caseDir: string
+  const caseId = 'case-receipts'
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'birdbrain-tt-receipts-'))
+    caseDir = join(tempDir, caseId)
+    mkdirSync(caseDir, { recursive: true })
+    initManifest(caseDir)
+  })
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  const by = { operatorId: 'op-1', operatorName: 'Op One', toolVersion: '1.0.0' }
+
+  const appendMerge = (): { index: number; entryHash: string } =>
+    appendManifestEntry(caseDir, {
+      type: 'merge',
+      caseId,
+      heads: [
+        { installationId: 'peer', index: 0, entryHash: hashOf('peer-head'), entriesReceived: 1 }
+      ],
+      timestamp: TIME,
+      ...by
+    })
+
+  const appendImport = (): void => {
+    appendManifestEntry(caseDir, {
+      type: 'import',
+      caseId,
+      sourceCaseId: 'case-source',
+      sourceInstallationId: 'installation-source',
+      sourcePublicKeyPem: getPublicKeyPem(),
+      packageHash: hashOf('archive'),
+      idMapSha256: hashOf('id-map'),
+      verificationResult: {
+        overallValid: true,
+        chainValid: true,
+        artifactCount: 0,
+        artifactFailureCount: 0,
+        captureCount: 0,
+        captureHashFailureCount: 0
+      },
+      timestamp: TIME,
+      ...by
+    })
+  }
+
+  const appendReceipt = (entryHash: string): void => {
+    appendManifestEntry(caseDir, {
+      type: 'timestamp',
+      caseId,
+      captureContentHash: entryHash,
+      subject: 'entry',
+      timestamp: TIME,
+      tsaToken: buildSyntheticToken({ contentHash: entryHash, genTime: new Date(TIME) }).toString(
+        'base64'
+      ),
+      ...by
+    })
+  }
+
+  it('reports the first merge stamped and the second pending', () => {
+    appendCapture(caseDir, hashOf('receipts-capture'))
+    const first = appendMerge()
+    appendReceipt(first.entryHash)
+    const second = appendMerge()
+
+    const { merges, unbound } = resolveReceiptStamps(caseDir)
+    expect(unbound).toEqual([])
+    expect(merges.map((m) => [m.mergeIndex, m.stamp?.index])).toEqual([
+      [first.index, 2],
+      [second.index, undefined]
+    ])
+    expect(merges[0].stamp?.trustedTime).toBe('rfc3161')
+    expect(pendingReceiptStamp(caseDir)).toEqual({
+      mergeIndex: second.index,
+      entryHash: second.entryHash
+    })
+  })
+
+  it('reports nothing pending once the newest merge is stamped, whatever an older one lacks', () => {
+    appendMerge()
+    const newest = appendMerge()
+    expect(pendingReceiptStamp(caseDir)?.mergeIndex).toBe(newest.index)
+    appendReceipt(newest.entryHash)
+
+    expect(pendingReceiptStamp(caseDir)).toBeNull()
+    expect(resolveReceiptStamps(caseDir).merges[0].stamp).toBeUndefined()
+  })
+
+  it('never reports a merge before the chain’s last import as pending', () => {
+    appendMerge()
+    appendImport()
+    expect(pendingReceiptStamp(caseDir)).toBeNull()
+
+    const after = appendMerge()
+    expect(pendingReceiptStamp(caseDir)?.mergeIndex).toBe(after.index)
+  })
+
+  it('reports nothing for a chain with no merge', () => {
+    appendCapture(caseDir, hashOf('receipts-no-merge'))
+    expect(resolveReceiptStamps(caseDir)).toEqual({ merges: [], unbound: [] })
+    expect(pendingReceiptStamp(caseDir)).toBeNull()
   })
 })

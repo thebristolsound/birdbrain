@@ -65,10 +65,14 @@ import { defaultCaptureStore } from '@main/services/captureStore'
 import { readCaptureLinks } from '@main/services/captureLinks'
 import { ensureCaseFields, rebuildAllFields } from '@main/services/search/fieldIndex'
 import * as searchFieldRepo from '@main/services/db/searchFieldRepo'
+import { checkFieldHit } from '@main/services/investigation/claimCheck'
 import { renderCapturePdf } from '@main/services/pdfExport'
 import { getThumbnail } from '@main/services/thumbnails'
 import { getCaseInventory, getManifestSnapshot, verifyExhibit } from '@main/services/exhibits'
 import { getSyncState } from '@main/services/sharing/syncState'
+import { SharingError } from '@main/services/sharing/errors'
+import type { SharingService } from '@main/services/sharing/sharingService'
+import { registerFakeInvestigationHandlers } from '@main/services/investigation/fakeEngine'
 import { commitStagedFiles, discardStagedFiles, uploadToStaging } from '@main/services/staging'
 import * as settings from '@main/services/settings'
 import { generateReport, getExportPreflight } from '@main/services/export'
@@ -80,6 +84,7 @@ import {
 import { deleteDemoCase } from '@main/services/demoCase'
 import { getExtensionPath, extensionPathExists } from '@main/services/extensionPath'
 import { lookupSnapshots, isPersistableSnapshot } from '@main/services/waybackMachine'
+import { egressFetch } from '@main/services/egress'
 import { buildCsv } from '@main/services/csvEscape'
 import { getInstallationId } from '@main/services/installationId'
 import { getCaptureServerPort } from '@main/services/captureServer'
@@ -195,12 +200,19 @@ export function registerIpcHandlers(deps: {
   recaptureService: RecaptureService
   updaterService: UpdaterService
   sessionService: SessionService
+  sharingService: SharingService
   // Hand-off for a freshly committed Exhibit to the trusted-timestamp worker
   // (X26). Optional so tests without a worker can register the handlers.
   enqueueExhibitTimestamp?: (exhibitId: string) => void
 }): void {
-  const { selectorLifecycle, captureLifecycle, recaptureService, updaterService, sessionService } =
-    deps
+  const {
+    selectorLifecycle,
+    captureLifecycle,
+    recaptureService,
+    updaterService,
+    sessionService,
+    sharingService
+  } = deps
   // Cases
   handle(IPC_CHANNELS.CASES_LIST, () => caseRepo.listCases())
   handle(IPC_CHANNELS.CASES_GET, (_, id: string) => caseRepo.getCase(id))
@@ -260,6 +272,17 @@ export function registerIpcHandlers(deps: {
       // See NOTES_SEARCH: a failed search must not look like an empty one.
       logger.error('ipc', 'searchFields.search_failed', { caseId: ident(caseId) }, err)
       throw new IpcFailure('Search could not run', 'SEARCH_FAILED')
+    }
+  })
+
+  // The exact check (docs/plans/2026-10-09-case-retrieval-first-slice.md, D7). An error
+  // is not an outcome, so it is reported as a failure, never as `cannot-check`.
+  handle(IPC_CHANNELS.CASES_CHECK_FIELD_HIT, async (_, fieldId: number) => {
+    try {
+      return await checkFieldHit(fieldId)
+    } catch (err) {
+      logger.error('ipc', 'searchFields.check_failed', undefined, err)
+      throw new IpcFailure('The check could not run', 'CHECK_FAILED')
     }
   })
 
@@ -806,7 +829,8 @@ export function registerIpcHandlers(deps: {
     const capture = captureRepo.getCapture(captureId)
     if (!capture) throw new IpcFailure('Capture not found', 'NOT_FOUND')
     try {
-      return await lookupSnapshots(capture.url, capture.timestamp)
+      // The lookup follows the Egress (ADR-0032); through a stopped proxy it fails here.
+      return await lookupSnapshots(capture.url, capture.timestamp, { fetchImpl: egressFetch })
     } catch (err) {
       throw new IpcFailure(
         err instanceof Error ? err.message : 'Wayback lookup failed',
@@ -898,7 +922,10 @@ export function registerIpcHandlers(deps: {
     try {
       const capture = captureRepo.getCapture(captureId)
       if (!capture) return null
-      const buffer = await getThumbnail(capture.caseId, captureId)
+      const received = typeof exhibitRepo.getExhibit(captureId)?.authorInstallationId === 'string'
+      const buffer = await getThumbnail(capture.caseId, captureId, defaultCaptureStore, {
+        persist: !received
+      })
       if (!buffer) return null
       return buffer.toString('base64')
     } catch (err) {
@@ -1102,8 +1129,69 @@ export function registerIpcHandlers(deps: {
   )
   handle(IPC_CHANNELS.MANIFEST_SNAPSHOT, (_, caseId: string) => getManifestSnapshot(caseId))
 
-  // Shared Case sync (#1512): what the sync pill reads.
+  // Shared Cases (#1512, #1810). A SharingError becomes the structured
+  // refusal under its code, as the batch handlers do for BatchCrossCaseError;
+  // anything else is this installation's failure and surfaces as such.
+  const sharing = async <T>(run: () => T | Promise<T>): Promise<T> => {
+    try {
+      return await run()
+    } catch (err) {
+      if (err instanceof SharingError) throw new IpcFailure(err.message, err.code)
+      throw err
+    }
+  }
+  const existingCaseOrThrow = (caseId: string): void => {
+    if (!caseRepo.getCase(caseId)) throw new IpcFailure('Case not found', 'NOT_FOUND')
+  }
   handle(IPC_CHANNELS.SHARING_GET_SYNC_STATE, (_, caseId: string) => getSyncState(caseId))
+  handle(IPC_CHANNELS.SHARING_CREATE_INVITE, (_, caseId: string, ownerMemberCode?: string) => {
+    existingCaseOrThrow(caseId)
+    return sharing(() => sharingService.createInvite(caseId, ownerMemberCode))
+  })
+  handle(IPC_CHANNELS.SHARING_CANCEL_INVITE, (_, caseId: string, inviteId: string) => {
+    existingCaseOrThrow(caseId)
+    return sharing(() => sharingService.cancelInvite(caseId, inviteId))
+  })
+  handle(IPC_CHANNELS.SHARING_READ_INVITE, (_, invite: string) =>
+    sharing(() => sharingService.readInvite(invite))
+  )
+  handle(IPC_CHANNELS.SHARING_JOIN, (_, invite: string) =>
+    sharing(() => sharingService.joinCase(invite))
+  )
+  handle(
+    IPC_CHANNELS.SHARING_APPROVE_JOIN,
+    (_, caseId: string, requestId: string, memberCode: string) => {
+      existingCaseOrThrow(caseId)
+      return sharing(() => sharingService.approveJoin(caseId, requestId, memberCode))
+    }
+  )
+  handle(IPC_CHANNELS.SHARING_DECLINE_JOIN, (_, caseId: string, requestId: string) => {
+    existingCaseOrThrow(caseId)
+    return sharing(() => sharingService.declineJoin(caseId, requestId))
+  })
+  handle(IPC_CHANNELS.SHARING_REVOKE, (_, caseId: string, installationId: string) => {
+    existingCaseOrThrow(caseId)
+    return sharing(() => sharingService.revoke(caseId, installationId))
+  })
+  handle(
+    IPC_CHANNELS.SHARING_EXCLUDE_EXHIBIT,
+    (_, caseId: string, exhibitId: string, reason?: string) => {
+      existingCaseOrThrow(caseId)
+      return sharing(() => sharingService.excludeExhibit(caseId, exhibitId, reason))
+    }
+  )
+  handle(IPC_CHANNELS.SHARING_SYNC_NOW, (_, caseId: string) => {
+    existingCaseOrThrow(caseId)
+    return sharing(() => sharingService.syncNow(caseId))
+  })
+  handle(IPC_CHANNELS.SHARING_GET_MEMBERS, (_, caseId: string) => {
+    existingCaseOrThrow(caseId)
+    return sharing(() => sharingService.getMembers(caseId))
+  })
+
+  // Case investigation: the fake engine serves these channels in unpackaged builds only, and a
+  // packaged build registers none of them (engine plan, open question 9).
+  if (!app.isPackaged) registerFakeInvestigationHandlers()
 
   // Staging Pool (ADR-0024, #1148). The file dialog lives here, as the archive
   // import's does; a cancel is an empty list, not an error.

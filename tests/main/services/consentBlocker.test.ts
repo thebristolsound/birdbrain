@@ -40,7 +40,9 @@ describe('consentBlocker', () => {
     expect(result).toBe(engine)
     expect(fromLists).toHaveBeenCalledTimes(1)
     const [fetchArg, lists, thirdArg, caching] = fromLists.mock.calls[0]
-    expect(fetchArg).toBe(fetch)
+    // The list download follows the Egress (ADR-0032).
+    const { egressFetch } = await import('@main/services/egress')
+    expect(fetchArg).toBe(egressFetch)
     expect(lists).toEqual(['http://localhost/fixture.txt'])
     expect(thirdArg).toBeUndefined()
     // Override skips the disk cache so E2E runs stay deterministic/offline.

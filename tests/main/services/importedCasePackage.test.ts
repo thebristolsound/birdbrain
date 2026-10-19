@@ -49,6 +49,7 @@ import {
   PACKAGE_ROOT_FILES,
   capturePagePath,
   exhibitPackagePath,
+  screenshotPath,
   timestampTokenPath
 } from '../../../src/packages/evidence-package-layout/index'
 import { HAS_OPENSSL } from '../../helpers/openssl'
@@ -349,7 +350,11 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
   // installation while the original is still there, so every id collides and
   // the import gives each row a new one. The inherited entries keep the ids
   // they were signed under: the `chain` ids below.
-  async function remappedCase(screenshot?: Buffer): Promise<{
+  // `before` runs on the source Case ahead of its export.
+  async function remappedCase({
+    screenshot,
+    before
+  }: { screenshot?: Buffer; before?: (caseId: string) => Promise<void> } = {}): Promise<{
     caseId: string
     chainCaptureId: string
     rowCaptureId: string
@@ -357,6 +362,7 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
     rowExhibitId: string
   }> {
     const original = await nativeCase('Remapped', screenshot)
+    await before?.(original.caseId)
     const archive = join(tempDir, 'remapped.birdbrain')
     await exportCaseArchive(original.caseId, archive)
     const { newCaseId } = await importCaseArchive(archive)
@@ -663,7 +669,7 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
     })
       .png()
       .toBuffer()
-    const remapped = await remappedCase(screenshot)
+    const remapped = await remappedCase({ screenshot })
     // The startup backfill, as the next launch runs it on the imported Case
     // (#1814). The source Case is left as it was: one whose thumbnails were
     // already anchored is #1813's question.
@@ -725,6 +731,101 @@ describe('an Evidence Package exported from an imported Case (#1657)', () => {
       expect(text.includes(remapped.rowExhibitId), path).toBe(false)
     }
   })
+
+  // #1815. The deleted Capture's page, screenshot and token leave the package,
+  // so both verifiers pass only if the `deletion` entry names the Capture as
+  // its signed `capture` entry does.
+  function expectDeletedFromPackage(
+    dir: string,
+    remapped: { caseId: string; chainCaptureId: string; rowCaptureId: string }
+  ): void {
+    expectInAppPass(dir)
+    const run = runVerifyScript(dir)
+    expect(run.status, run.output).toBe(0)
+    expect(run.output).toContain('verify.sh: PASS')
+    expect(run.output).toContain(
+      `capture ${remapped.chainCaptureId}: a later deletion entry accounts for it`
+    )
+
+    const capture = chainLines(dir).find(
+      (line) => line.type === 'capture' && line.captureId === remapped.chainCaptureId
+    )!
+    const deletions = chainLines(dir).filter((line) => line.type === 'deletion')
+    expect(deletions.at(-1)).toMatchObject({
+      captureId: remapped.chainCaptureId,
+      caseId: remapped.caseId,
+      contentHash: capture.contentHash
+    })
+    expect(deletions.some((line) => line.captureId === remapped.rowCaptureId)).toBe(false)
+
+    const files = packageFiles(dir)
+    for (const id of [remapped.chainCaptureId, remapped.rowCaptureId]) {
+      expect(files.has(capturePagePath(id))).toBe(false)
+      expect(files.has(timestampTokenPath(id))).toBe(false)
+    }
+    expect(files.has(screenshotPath(sha256('screenshot of Remapped')))).toBe(false)
+    const evidence = JSON.parse(files.get(PACKAGE_ROOT_FILES.evidenceIndex)!.toString())
+    expect(evidence.captures).toEqual([])
+    expect(evidence.warnings.unreconciledChainCaptureIds).toEqual([])
+  }
+
+  it.skipIf(!RUNS)('passes both verifiers after a renamed Capture is deleted', async () => {
+    const remapped = await remappedCase()
+    expect(await lifecycle.delete(remapped.rowCaptureId)).toBe(true)
+
+    expectDeletedFromPackage(await exportPackage(remapped.caseId, 'renamed-delete'), remapped)
+  })
+
+  it.skipIf(!RUNS)('passes both verifiers after a batch deletes a renamed Capture', async () => {
+    const remapped = await remappedCase()
+    const { outcomes } = await lifecycle.deleteMany(remapped.caseId, [remapped.rowCaptureId])
+    expect(outcomes).toEqual([{ captureId: remapped.rowCaptureId, status: 'deleted' }])
+
+    expectDeletedFromPackage(await exportPackage(remapped.caseId, 'renamed-batch'), remapped)
+  })
+
+  // The source Case signed a `deletion` of its own before the export, so the
+  // imported chain inherits one. Neither the inherited entry nor the new one
+  // may stand for the other.
+  it.skipIf(!RUNS)(
+    'passes both verifiers when the source Case already holds a deletion',
+    async () => {
+      let sourceDeletedId = ''
+      const remapped = await remappedCase({
+        before: async (caseId) => {
+          const payload = '<html><body>deleted at the source</body></html>'
+          const { capture } = await ingestMhtmlCapture({
+            caseId,
+            url: 'https://example.com/deleted-at-source',
+            title: 'Deleted at source',
+            timestamp: '2026-09-02T11:00:00.000Z',
+            stream: Readable.from([Buffer.from(payload)]) as unknown as ReadableStream<Uint8Array>,
+            textContent: payload,
+            headers: {},
+            browserVersion: '',
+            userAgent: '',
+            httpStatus: 200,
+            extensionVersion: '',
+            operatorId: 'op',
+            operatorName: 'Operator local',
+            toolVersion: '0.1.0'
+          })
+          sourceDeletedId = capture.id
+          expect(await lifecycle.delete(capture.id)).toBe(true)
+        }
+      })
+      expect(await lifecycle.delete(remapped.rowCaptureId)).toBe(true)
+
+      const dir = await exportPackage(remapped.caseId, 'renamed-after-source-delete')
+      expectDeletedFromPackage(dir, remapped)
+      expect(
+        chainLines(dir)
+          .filter((line) => line.type === 'deletion')
+          .map((line) => line.captureId)
+      ).toEqual([sourceDeletedId, remapped.chainCaptureId])
+      expect(packageFiles(dir).has(capturePagePath(sourceDeletedId))).toBe(false)
+    }
+  )
 
   // The usual shape, a source that was backfilled before its archive was
   // exported, still fails both verifiers: the archive carries no thumbnails,

@@ -17,8 +17,11 @@ export interface Conformance {
   /** The checks Package Verification failed, in its order. */
   binaryFailures: { name: string; reason: string }[]
   script: ScriptVerdict
-  /** Steps verify.sh named in a FAIL or INCOMPLETE line, ascending, each once. */
-  scriptSteps: number[]
+  /**
+   * Steps verify.sh named in a FAIL or INCOMPLETE line, ascending, each once: a
+   * step's number, or a sub-step's id such as '4a'.
+   */
+  scriptSteps: Array<number | string>
   scriptOutput: string
 }
 
@@ -28,7 +31,7 @@ const PRINTED_VERDICTS: Record<ScriptVerdict, string> = {
   fail: `${PACKAGE_ROOT_FILES.verifyScript}: FAIL`,
   incomplete: `${PACKAGE_ROOT_FILES.verifyScript}: INCOMPLETE`
 }
-const FINDING = /^\s*(?:FAIL|INCOMPLETE) \[step (\d+)\]/gm
+const FINDING = /^\s*(?:FAIL|INCOMPLETE) \[step (\d+[a-z]?)\]/gm
 
 export function checkConformance(dir: string): Conformance {
   const result = verifyEvidencePackage(dir)
@@ -52,7 +55,9 @@ export function checkConformance(dir: string): Conformance {
       )
     }
   }
-  const steps = new Set([...run.output.matchAll(FINDING)].map((match) => Number(match[1])))
+  const steps = [...new Set([...run.output.matchAll(FINDING)].map(([, step]) => step))]
+    .sort((a, b) => parseInt(a, 10) - parseInt(b, 10) || a.localeCompare(b))
+    .map((step) => (/^\d+$/.test(step) ? Number(step) : step))
 
   return {
     binary,
@@ -60,7 +65,7 @@ export function checkConformance(dir: string): Conformance {
       .filter((c) => c.status === 'fail')
       .map(({ name, reason }) => ({ name, reason: reason ?? '' })),
     script,
-    scriptSteps: [...steps].sort((a, b) => a - b),
+    scriptSteps: steps,
     scriptOutput: run.output
   }
 }

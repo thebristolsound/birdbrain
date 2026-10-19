@@ -9,7 +9,7 @@
 // hash feeds step 5), so per-step strings here would hide that coupling.
 
 export type VerifyStepNumber = 1 | 2 | 3 | 4 | 5 | 6
-export type VerifySubStep = '6a' | '6b' | '6c'
+export type VerifySubStep = '4a' | '6a' | '6b' | '6c'
 
 export interface VerifyStep {
   number: VerifyStepNumber
@@ -48,6 +48,14 @@ export const VERIFY_STEPS: readonly VerifyStep[] = [
   }
 ]
 
+// The one sub-step verify.sh opens as a step of its own. It runs only for a
+// package that carries member chains, so a single-chain package's output keeps
+// the six steps above and nothing else.
+export const MEMBER_CHAINS_STEP: { id: VerifySubStep; scriptTitle: string } = {
+  id: '4a',
+  scriptTitle: 'member chains of a Shared Case'
+}
+
 export function verifyStep(number: VerifyStepNumber): VerifyStep {
   return VERIFY_STEPS[number - 1]
 }
@@ -78,5 +86,9 @@ export const VERIFY_RECIPES = {
   // A content stamp only: an `entry` stamp binds a merge entry, not an Exhibit's
   // bytes, and a tsaToken that is not a string is no token at all.
   signedTokenFilter:
-    'select(.type == "timestamp" and (.subject // "content") == "content" and (.tsaToken | type) == "string")'
+    'select(.type == "timestamp" and (.subject // "content") == "content" and (.tsaToken | type) == "string")',
+  // A receipt stamp (#1515): an `entry` stamp binds a merge entry's Entry
+  // Hash. Its token has no enclosed file; the signed line is the only copy.
+  receiptTokenFilter:
+    'select(.type == "timestamp" and .subject == "entry" and (.tsaToken | type) == "string")'
 }

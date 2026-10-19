@@ -1,8 +1,15 @@
 import { autoUpdater } from 'electron-updater'
-import { app } from 'electron'
+import { app, type Session } from 'electron'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { BirdbrainSettings, ReleaseChannel, UpdateState, UpdateStatus } from '@shared/types'
+import { proxyConfigFor } from '@main/services/egress'
+import type {
+  BirdbrainSettings,
+  EgressSetting,
+  ReleaseChannel,
+  UpdateState,
+  UpdateStatus
+} from '@shared/types'
 import { GITHUB_RELEASES_URL } from '@shared/constants'
 
 // Update delivery. Wraps electron-updater's GitHub-provider `autoUpdater` and
@@ -26,6 +33,11 @@ export interface UpdaterServiceDeps {
   getChannel: () => ReleaseChannel
   // Whether background auto-checks are enabled (manual checks are always allowed).
   isAutoCheckEnabled: () => boolean
+  // The Egress checks and downloads follow (ADR-0032, ruling 20 of 2026-10-10).
+  getEgress: () => EgressSetting
+  // The session electron-updater sends every request on. Defaults to its own
+  // `netSession` (partition `electron-updater`); tests inject one.
+  netSession?: () => Session
 }
 
 export interface UpdaterService {
@@ -110,6 +122,20 @@ export function createUpdaterService(deps: UpdaterServiceDeps): UpdaterService {
   // The version last reported available, so progress transitions can carry it
   // (electron-updater's progress events don't include version info).
   let availableVersion: string | null = null
+  // Update traffic follows the Egress and fails closed. The proxy goes on the
+  // session at start and on every change of the setting, whether or not this build
+  // can check, with no direct fallback. A session the Egress has been Direct on since
+  // launch is left as electron-updater made it; one that carried a proxy is reset to
+  // direct. `egressApplied` is false once the session refused the change, and no
+  // check or download runs then; it is a promise only while an apply is in flight.
+  let netSessionTouched = false
+  let egressApplied: boolean | Promise<boolean> = true
+  // The Egress last put on the session, so a check notices a change of setting the
+  // change event did not deliver, such as a settings file that reads again.
+  let syncedKey: string | null = null
+
+  const egressKey = (egress: EgressSetting): string =>
+    egress.kind === 'direct' ? 'direct' : egress.kind === 'unavailable' ? '' : egress.proxyUrl
 
   // Build a status from scratch per transition so stale fields (availableVersion,
   // error, …) never leak across states.
@@ -175,6 +201,57 @@ export function createUpdaterService(deps: UpdaterServiceDeps): UpdaterService {
     autoUpdater.allowDowngrade = false
   }
 
+  function syncEgress(): void {
+    const egress = deps.getEgress()
+    syncedKey = egressKey(egress)
+    if (egress.kind === 'unavailable') {
+      egressApplied = false
+      transition({
+        ...base('error'),
+        error: 'Update checks are off: the Egress setting could not be read'
+      })
+      return
+    }
+    if (egress.kind === 'direct' && !netSessionTouched) {
+      egressApplied = true
+      return
+    }
+    netSessionTouched = true
+    const ses = deps.netSession ? deps.netSession() : autoUpdater.netSession
+    const applying = ses.setProxy(proxyConfigFor(egress)).then(
+      () => true,
+      (err: unknown) => {
+        transition({
+          ...base('error'),
+          error: `Update traffic could not follow the Egress: ${messageOf(err)}`
+        })
+        return false
+      }
+    )
+    egressApplied = applying
+    void applying.then((applied) => {
+      if (egressApplied === applying) egressApplied = applied
+    })
+  }
+
+  // Whether update traffic may go out: the session carries the current Egress. A
+  // boolean when that is already settled, so a check goes out in the same tick.
+  function egressReady(): boolean | Promise<boolean> {
+    if (egressKey(deps.getEgress()) !== syncedKey) syncEgress()
+    return egressApplied
+  }
+
+  // Waits on an apply, then asks egressReady again, so a check that waited on one
+  // change does not go out while a later change is still applying.
+  async function egressSettled(ready: false | Promise<boolean>): Promise<boolean> {
+    let next: boolean | Promise<boolean> = ready
+    while (next !== true) {
+      if (!(await next)) return false
+      next = egressReady()
+    }
+    return true
+  }
+
   function clearTimers(): void {
     if (initialTimer) {
       clearTimeout(initialTimer)
@@ -199,6 +276,8 @@ export function createUpdaterService(deps: UpdaterServiceDeps): UpdaterService {
     if (checkInProgress) return status
     checkInProgress = true
     try {
+      const ready = egressReady()
+      if (ready !== true && !(await egressSettled(ready))) return status
       await autoUpdater.checkForUpdates()
     } catch (err) {
       // electron-updater normally emits 'error' before rejecting, which already
@@ -222,6 +301,8 @@ export function createUpdaterService(deps: UpdaterServiceDeps): UpdaterService {
     if (downloadInProgress) return
     downloadInProgress = true
     try {
+      const ready = egressReady()
+      if (ready !== true && !(await egressSettled(ready))) return
       await autoUpdater.downloadUpdate()
     } catch (err) {
       // Mirrors check(): 'error' usually fired already; synthesize one only if
@@ -250,6 +331,7 @@ export function createUpdaterService(deps: UpdaterServiceDeps): UpdaterService {
   function start(): void {
     attachListeners()
     configure()
+    syncEgress()
     scheduleAutoChecks()
   }
 
@@ -261,6 +343,7 @@ export function createUpdaterService(deps: UpdaterServiceDeps): UpdaterService {
     if ('autoCheckForUpdates' in partial) {
       scheduleAutoChecks()
     }
+    if ('egress' in partial) syncEgress()
   }
 
   function dispose(): void {

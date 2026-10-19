@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { createHash, createSign, generateKeyPairSync } from 'crypto'
+import { createHash, createSign, generateKeyPairSync, randomUUID } from 'crypto'
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -10,8 +10,9 @@ import type { CaseMember } from '@shared/types'
 import { ManifestEntrySchema } from '@shared/schemas'
 import {
   acceptEntrySegment,
-  foreignCaseEntry,
-  nonEmptyLines
+  isExhibitId,
+  nonEmptyLines,
+  unstorableEntry
 } from '@main/services/sharing/entryAcceptance'
 import { appendFutureEntry } from '../../../helpers/futureManifestEntry'
 import { memberChainPath } from '../../../../src/packages/evidence-package-layout/index'
@@ -30,16 +31,19 @@ const otherKey = generateKeyPairSync('rsa', {
   privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
 })
 
+// An id in the form the app mints (isExhibitId), fixed per `n`.
+const exhibitIdOf = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
+
 function exhibitBody(n: number, caseId = CASE_ID): Record<string, unknown> {
   return {
     type: 'exhibit',
-    exhibitId: `x-${n}`,
+    exhibitId: exhibitIdOf(n),
     caseId,
     kind: 'document',
     origin: 'manual-upload',
     name: `doc-${n}.pdf`,
     exhibitNumber: n,
-    path: `${caseId}/documents/x-${n}.pdf`,
+    path: `${caseId}/documents/${exhibitIdOf(n)}.pdf`,
     contentHash: String(n).repeat(64).slice(0, 64),
     sizeBytes: 1,
     timestamp: '2026-10-01T00:00:00.000Z',
@@ -204,8 +208,69 @@ describe('acceptEntrySegment', () => {
     })
     const stored = nonEmptyLines(readFileSync(join(caseDir, memberChainPath(MEMBER_ID)), 'utf-8'))
     const entries = stored.map((line) => ManifestEntrySchema.parse(JSON.parse(line)))
-    expect(foreignCaseEntry(entries, CASE_ID)?.index).toBe(1)
-    expect(foreignCaseEntry(entries, 'another-case')?.index).toBe(0)
+    expect(unstorableEntry(entries, CASE_ID)).toEqual({
+      index: 1,
+      reason: `names Case another-case, this Case is ${CASE_ID}`
+    })
+    expect(unstorableEntry(entries, 'another-case')?.index).toBe(0)
+  })
+
+  // Review finding 1 on PR #1879: the file and apply steps build a Capture's paths from its id.
+  it('names the first entry of the current segment whose id is not one the app writes', () => {
+    for (let n = 0; n < 100; n++) expect(isExhibitId(randomUUID())).toBe(true)
+    const id = '6f1c2a9e-3b4d-4e5f-8a7b-9c0d1e2f3a4b'
+    expect(isExhibitId(id)).toBe(true)
+    for (const forged of [`x/../${id}`, id.toUpperCase(), `../other/${id}`, `${id}.`, '']) {
+      expect(isExhibitId(forged)).toBe(false)
+    }
+    const at = (index: number, body: Record<string, unknown>) =>
+      ManifestEntrySchema.parse({ ...body, index, prevHash: '', entryHash: '' })
+    const capture = (index: number, captureId: string) =>
+      at(index, {
+        type: 'capture',
+        captureId,
+        caseId: CASE_ID,
+        url: 'https://example.com/',
+        timestamp: '2026-10-01T00:00:00.000Z',
+        contentHash: 'a'.repeat(64),
+        sizeBytes: 1,
+        operatorId: MEMBER_ID,
+        operatorName: 'Robin Member',
+        toolVersion: '0.9.0',
+        schemaVersion: 3
+      })
+    const forgedExhibit = at(1, { ...exhibitBody(1), exhibitId: id.toUpperCase() })
+    expect(unstorableEntry([capture(0, id), forgedExhibit], CASE_ID)).toEqual({
+      index: 1,
+      reason: `names exhibit id "${id.toUpperCase()}", which is not an id this app writes`
+    })
+    expect(unstorableEntry([capture(0, `x/../${id}`), forgedExhibit], CASE_ID)?.index).toBe(0)
+    // Before the last `import`, an id is a source Case's history, which no step reads.
+    const imported = at(1, {
+      type: 'import',
+      caseId: CASE_ID,
+      sourceCaseId: 'source-case',
+      sourceInstallationId: MEMBER_ID,
+      sourcePublicKeyPem: 'pem',
+      packageHash: 'b'.repeat(64),
+      idMapSha256: 'c'.repeat(64),
+      verificationResult: {
+        overallValid: true,
+        chainValid: true,
+        artifactCount: 0,
+        artifactFailureCount: 0,
+        captureCount: 0,
+        captureHashFailureCount: 0
+      },
+      timestamp: '2026-10-01T00:00:00.000Z',
+      operatorId: MEMBER_ID,
+      operatorName: 'Robin Member',
+      toolVersion: '0.9.0',
+      schemaVersion: 3
+    })
+    expect(unstorableEntry([capture(0, 'source-1'), imported, capture(2, id)], CASE_ID)).toBe(
+      undefined
+    )
   })
 
   it('stops before an entry from a newer schema, keeps what verified, and resumes later', () => {

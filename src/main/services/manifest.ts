@@ -277,6 +277,20 @@ export function appendMemberChainLines(
   }
 }
 
+// Creates another member's chain file, empty, when none exists (#1810). A
+// replica that holds the Owner's chain keeps a file for every member the
+// roster names, from the moment it learns of the member: the verify walk
+// reports a member with no chain file as `member-chain-missing`, and a new
+// member has written nothing for the Owner to hold. An empty chain verifies
+// with no entries, states no head, and is served as no lines until the
+// member's first entries arrive. `appendMemberChainLines` cannot create one,
+// since it returns before opening the file on zero lines.
+export function ensureMemberChainFile(caseDir: string, installationId: string): void {
+  const path = join(caseDir, memberChainPath(assertChainInstallationId(installationId)))
+  if (existsSync(path)) return
+  closeSync(openSync(path, 'a'))
+}
+
 // Cuts another member's chain file back to its first `keepLines` lines, and
 // removes it when none are kept: the session's rollback when a chain it
 // received page by page turns out to name another Case. The kept lines are
@@ -406,15 +420,27 @@ export function readCaseChains(caseDir: string): CaseChains {
   }
 }
 
-// Whether `author` holds `entry` of a chain: it wrote the entry, or it wrote a
-// later `import` and so continued the chain that holds it. An archive import
-// keeps the source's entries as they were signed, so an Exhibit from before
-// an Owner's earlier import carries that source's operatorId.
+// Whether `author` holds `entry` of a chain (#1638): it wrote the entry, or it
+// wrote a later ordinary `import` with no fork import between the two. An
+// archive import keeps the source's entries as they were signed, so an
+// Exhibit from before an Owner's earlier import carries that source's
+// operatorId. A fork import is an `import` with a `member-add` after the
+// previous `import`, or the chain's start: the source was a Shared Case, its
+// entries stay its members', and custody stops there, for the forking member
+// and for any later importer.
 function heldBy(entries: ManifestEntry[], entry: ManifestEntry, author: string): boolean {
-  return (
-    entry.operatorId === author ||
-    entries.some((e) => e.type === 'import' && e.index > entry.index && e.operatorId === author)
-  )
+  if (entry.operatorId === author) return true
+  let shared = false
+  for (const e of entries) {
+    if (e.type === 'member-add') shared = true
+    if (e.type !== 'import') continue
+    if (e.index > entry.index) {
+      if (shared) return false
+      if (e.operatorId === author) return true
+    }
+    shared = false
+  }
+  return false
 }
 
 // The chain that answers for a row (#1511). A row with no author is this
@@ -657,6 +683,12 @@ export type ManifestEntryInput =
       type: 'timestamp'
       caseId: string
       captureContentHash: string
+      // A receipt stamp (#1515, design decision 15): `captureContentHash` is
+      // then a `merge` entry's Entry Hash, and the entry is stamped 4
+      // (TIMESTAMP_SUBJECT_MIN_READER). Only `entry` is writable here: the
+      // schema also reads `content`, but nothing ever writes it, so every
+      // content stamp keeps its canonical body.
+      subject?: 'entry'
       timestamp: string
       tsaToken?: string
       operatorId: string
@@ -734,6 +766,12 @@ export type ManifestEntryInput =
       path: string
       contentHash: string
       sizeBytes: number
+      // The writer's Member Code in a Shared Case (schema 4). OMITTED by every
+      // writer in this build (#1810): a citation takes the code from the
+      // writer's `member-add`, and a code that disagreed with the roster
+      // would be a citation collision. An entry carrying one is stamped 4
+      // (EXHIBIT_MEMBER_CODE_MIN_READER).
+      memberCode?: string
       timestamp: string
       operatorId: string
       operatorName: string
@@ -795,6 +833,48 @@ export type ManifestEntryInput =
       operatorName: string
       toolVersion: string
     }
+  | {
+      // One member joining the Case (#1810), written only by the Owner: the
+      // first names the Owner itself when the Case becomes shared, the rest
+      // are written on approval of a join. The roster every replica caches
+      // and the verifier walks is read from these.
+      type: 'member-add'
+      caseId: string
+      memberInstallationId: string
+      memberPublicKeyPem: string
+      memberCode: string
+      memberOperatorName: string
+      nodeId: string
+      role: 'owner' | 'member'
+      timestamp: string
+      operatorId: string
+      operatorName: string
+      toolVersion: string
+    }
+  | {
+      // The Owner ending a member's participation (#1810).
+      type: 'member-revoke'
+      caseId: string
+      memberInstallationId: string
+      timestamp: string
+      operatorId: string
+      operatorName: string
+      toolVersion: string
+    }
+  | {
+      // The Owner marking another member's Exhibit excluded (#1810). The
+      // Exhibit's own entry stays in its author's chain, and exports still
+      // enclose the Exhibit and list the exclusion.
+      type: 'exclude'
+      caseId: string
+      exhibitId: string
+      authorInstallationId: string
+      reason?: string
+      timestamp: string
+      operatorId: string
+      operatorName: string
+      toolVersion: string
+    }
 
 export interface ExportVerificationResult {
   overallValid: boolean
@@ -848,8 +928,12 @@ export const MIN_READER_SCHEMA_VERSION: Record<ManifestEntryInput['type'], numbe
   derivation: 3,
   renumber: 3,
   // The Shared Case types are schema 4 (#1509); `merge` is the one the sync
-  // session writes (#1512).
-  merge: 4
+  // session writes (#1512), the other three the Owner's roster writers
+  // (#1810). A 4 is what the 1.0.1-beta.22 verifier reads.
+  merge: 4,
+  'member-add': 4,
+  'member-revoke': 4,
+  exclude: 4
 }
 
 // Per-entry overrides for the two generalized types (#1180). A `timestamp` or
@@ -871,7 +955,23 @@ const CAPTURE_EXHIBIT_NUMBER_MIN_READER = 3
 // verifier reads an entry carrying one as "verifier too old" only under a 5.
 const CAPTURE_EGRESS_MIN_READER = 5
 
+// A `timestamp` entry's `subject` is a schema-4 field (#1518): the schema
+// itself refuses one stamped lower, and a schema-3 verifier would read it as a
+// broken chain rather than "verifier too old".
+const TIMESTAMP_SUBJECT_MIN_READER = 4
+
+// `memberCode` on an `exhibit` entry is schema 4 (#1509): the schema refuses
+// the field on an entry stamped lower, so an entry carrying it stamps 4 and
+// one without it keeps the type's 3.
+const EXHIBIT_MEMBER_CODE_MIN_READER = 4
+
 function fieldMinReaderSchemaVersion(entry: ManifestEntryInput): number {
+  if (entry.type === 'timestamp') {
+    return entry.subject !== undefined ? TIMESTAMP_SUBJECT_MIN_READER : 0
+  }
+  if (entry.type === 'exhibit') {
+    return entry.memberCode !== undefined ? EXHIBIT_MEMBER_CODE_MIN_READER : 0
+  }
   if (entry.type !== 'capture') return 0
   const { egressKind, egressLabel, userAgent, tlsSkipped, exhibitNumber } = entry
   if ([egressKind, egressLabel, userAgent, tlsSkipped].some((field) => field !== undefined)) {
@@ -1035,6 +1135,12 @@ export interface CaptureEntryContext {
   consentSuppression?: ConsentSuppression
   // The Exhibit Number the ingest assigned (X46); the row takes the same one.
   exhibitNumber?: number
+  // The Egress fields (ADR-0032), schema 5; omitted when absent, so an entry
+  // written while the Egress was Direct keeps its canonical body.
+  egressKind?: EgressKind
+  egressLabel?: string
+  userAgent?: string
+  tlsSkipped?: TlsRefetchSkip
   sizeBytes: number
   operatorId: string
   operatorName: string
@@ -1077,6 +1183,10 @@ export async function withCaptureEntry<T>(
         ? { consentSuppression: ctx.consentSuppression }
         : {}),
       ...(ctx.exhibitNumber !== undefined ? { exhibitNumber: ctx.exhibitNumber } : {}),
+      ...(ctx.egressKind !== undefined ? { egressKind: ctx.egressKind } : {}),
+      ...(ctx.egressLabel !== undefined ? { egressLabel: ctx.egressLabel } : {}),
+      ...(ctx.userAgent !== undefined ? { userAgent: ctx.userAgent } : {}),
+      ...(ctx.tlsSkipped !== undefined ? { tlsSkipped: ctx.tlsSkipped } : {}),
       sizeBytes: ctx.sizeBytes,
       operatorId: ctx.operatorId,
       operatorName: ctx.operatorName,

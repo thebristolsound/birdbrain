@@ -817,7 +817,7 @@ describe('caseArchive import', () => {
     await exportCaseArchive(caseId, withFields)
 
     const data = readStoredZip(readFileSync(withFields)).get('data.json')!.toString('utf-8')
-    expect(data).not.toMatch(/exhibit_search|header\.from|header\.message-id/)
+    expect(data).not.toMatch(/exhibit_search|header\.from|header\.message-id|text\.address/)
 
     const { newCaseId } = await importCaseArchive(withFields)
     const imported = listCaptures(newCaseId)
@@ -836,7 +836,8 @@ describe('caseArchive import', () => {
         .all(legacy.id)
     ).toEqual([
       { field: 'header.from', norm: 'odile@marsh-post.example.org' },
-      { field: 'header.message-id', norm: '<z9@marsh>' }
+      { field: 'header.message-id', norm: '<z9@marsh>' },
+      { field: 'text.address', norm: 'odile@marsh-post.example.org' }
     ])
   })
 

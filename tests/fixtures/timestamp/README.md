@@ -54,6 +54,55 @@ carried by the embedded responder certificate
 falls back to that certificate's subject CN, which is what this fixture's parse
 test asserts.
 
+## A receipt stamp over a `merge` entry (#1515)
+
+A second **real** DigiCert token, over the Entry Hash of a fixed `merge` entry rather than
+over an Exhibit's Content Hash: the known answer for the receipt stamp the sync session's
+`merge` gets (design decision 15). The bytes behind the first fixture's token were never kept, so no
+`merge` entry can be made to hash to it; this one was requested over a hash the test
+rebuilds from fixed, invented fields through `appendManifestEntry`, so the test pins the
+writer's canonical `merge` body as well as the token.
+
+| File | What it is |
+| --- | --- |
+| `merge-entry-hash.txt` | The Entry Hash of the fixed `merge` entry (hex), as the writer computes it. |
+| `merge-request.tsq` | The DER `TimeStampReq` made with `openssl ts -query` over that hash. |
+| `merge-digicert-response.tsr` | DigiCert's full `TimeStampResp`. |
+| `merge-digicert-token.der` | The extracted `TimeStampToken`, what the worker retains in the entry. |
+
+The chain is two entries under Case id `0196f7a2-aaaa-bbbb-cccc-000000001515`: a `capture` at
+index 0, so that the `merge` links to an entry before it, and the `merge` at index 1 with one
+head naming an invented installation. Its fields are in
+`tests/main/services/timestampWorker.test.ts`, which recomputes the hash each run and compares
+it with `merge-entry-hash.txt`. The Entry Hash covers the body without `signature`, so the
+test key, which differs per run, changes nothing.
+
+The commands run on 2026-10-17 (OpenSSL 3.6.4), from this directory:
+
+```sh
+openssl ts -query -digest "$(cat merge-entry-hash.txt)" -sha256 -cert -out merge-request.tsq
+curl -H 'Content-Type: application/timestamp-query' --data-binary @merge-request.tsq \
+  -o merge-digicert-response.tsr http://timestamp.digicert.com
+openssl ts -reply -in merge-digicert-response.tsr -token_out -out merge-digicert-token.der
+openssl ts -verify -in merge-digicert-response.tsr -queryfile merge-request.tsq \
+  -CAfile digicert-trusted-root-g4.pem
+# => Verification: OK
+openssl ts -verify -token_in -in merge-digicert-token.der -digest "$(cat merge-entry-hash.txt)" \
+  -CAfile digicert-trusted-root-g4.pem
+# => Verification: OK
+```
+
+The request sent DigiCert the 32-byte digest and a nonce, and nothing else. `openssl ts -reply
+-in merge-digicert-response.tsr -text` prints `Time stamp: Oct 17 03:57:17 2026 GMT`, serial
+`0xA7F22F14C775EB493E11996CBC24EA63`, policy `2.16.840.1.114412.7.1`, and `TSA: unspecified`.
+The responder certificate embedded in the token is
+`CN=DigiCert SHA256 RSA4096 Timestamp Responder 2026 1`, issued under
+`CN=DigiCert Trusted G4 TimeStamping RSA4096 SHA256 2025 CA1`, chaining to the same
+DigiCert Trusted Root G4 as the first fixture, so no second anchor is committed. The
+responder differs from the first fixture's (`... Responder 2025 1`): DigiCert rotated it
+between the two requests, which is why the worker's known-answer test for the receipt stamp
+pins the 2026 name.
+
 ## Tokens from other authorities (#1142)
 
 Three further **real** responses, taken from the

@@ -354,6 +354,24 @@ describe('LinksTab', () => {
     )
   })
 
+  it('marks no row for a hit on a field that is not a link, whatever its text', async () => {
+    renderTab(
+      result([link({ text: 'https://cdn.example/banner.png' }), link({ text: 'GTM-QX4R7T' })]),
+      {
+        hit: linkHit({
+          field: 'image.src',
+          preview: 'banner.png',
+          norm: 'https://cdn.example/banner.png'
+        })
+      }
+    )
+    const rows = await screen.findAllByTestId('links-row')
+    expect(rows.map((row) => row.hasAttribute('data-link-hit'))).toEqual([false, false])
+    expect(screen.getByTestId('links-notice').textContent).toBe(
+      'No listed link matches the search hit at part 1, characters 120 to 126.'
+    )
+  })
+
   it('says so when no listed link matches the hit', async () => {
     renderTab(result([link({})]), { hit: linkHit({ norm: 'https://gone.example/' }) })
     expect((await screen.findByTestId('links-notice')).textContent).toBe(

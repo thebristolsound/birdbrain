@@ -64,7 +64,8 @@ const birdbrain = {
     getAutoCapturePolicy: bridge(IPC_CHANNELS.CASES_GET_AUTO_CAPTURE_POLICY),
     setAutoCapturePolicy: bridge(IPC_CHANNELS.CASES_SET_AUTO_CAPTURE_POLICY),
     ensureSearchFields: bridge(IPC_CHANNELS.CASES_ENSURE_SEARCH_FIELDS),
-    searchFields: bridge(IPC_CHANNELS.CASES_SEARCH_FIELDS)
+    searchFields: bridge(IPC_CHANNELS.CASES_SEARCH_FIELDS),
+    checkFieldHit: bridge(IPC_CHANNELS.CASES_CHECK_FIELD_HIT)
   },
   captures: {
     list: bridge(IPC_CHANNELS.CAPTURES_LIST),
@@ -208,7 +209,38 @@ const birdbrain = {
   },
 
   sharing: {
-    getSyncState: bridge(IPC_CHANNELS.SHARING_GET_SYNC_STATE)
+    getSyncState: bridge(IPC_CHANNELS.SHARING_GET_SYNC_STATE),
+    createInvite: bridge(IPC_CHANNELS.SHARING_CREATE_INVITE),
+    cancelInvite: bridge(IPC_CHANNELS.SHARING_CANCEL_INVITE),
+    readInvite: bridge(IPC_CHANNELS.SHARING_READ_INVITE),
+    join: bridge(IPC_CHANNELS.SHARING_JOIN),
+    approveJoin: bridge(IPC_CHANNELS.SHARING_APPROVE_JOIN),
+    declineJoin: bridge(IPC_CHANNELS.SHARING_DECLINE_JOIN),
+    revoke: bridge(IPC_CHANNELS.SHARING_REVOKE),
+    excludeExhibit: bridge(IPC_CHANNELS.SHARING_EXCLUDE_EXHIBIT),
+    syncNow: bridge(IPC_CHANNELS.SHARING_SYNC_NOW),
+    getMembers: bridge(IPC_CHANNELS.SHARING_GET_MEMBERS)
+  },
+
+  investigation: {
+    getRevision: bridge(IPC_CHANNELS.INVESTIGATION_GET_REVISION),
+    getView: bridge(IPC_CHANNELS.INVESTIGATION_GET_VIEW),
+    getSpan: bridge(IPC_CHANNELS.INVESTIGATION_GET_SPAN),
+    checkSpan: bridge(IPC_CHANNELS.INVESTIGATION_CHECK_SPAN),
+    startRun: bridge(IPC_CHANNELS.INVESTIGATION_START_RUN),
+    cancelRun: bridge(IPC_CHANNELS.INVESTIGATION_CANCEL_RUN),
+    getChanges: bridge(IPC_CHANNELS.INVESTIGATION_GET_CHANGES),
+    decideJoint: bridge(IPC_CHANNELS.INVESTIGATION_DECIDE_JOINT),
+    decideSpan: bridge(IPC_CHANNELS.INVESTIGATION_DECIDE_SPAN),
+    chooseSubject: bridge(IPC_CHANNELS.INVESTIGATION_CHOOSE_SUBJECT),
+    addSubject: bridge(IPC_CHANNELS.INVESTIGATION_ADD_SUBJECT),
+    keepSubject: bridge(IPC_CHANNELS.INVESTIGATION_KEEP_SUBJECT),
+    setSourceClass: bridge(IPC_CHANNELS.INVESTIGATION_SET_SOURCE_CLASS),
+    setCopyMark: bridge(IPC_CHANNELS.INVESTIGATION_SET_COPY_MARK),
+    setWithheld: bridge(IPC_CHANNELS.INVESTIGATION_SET_WITHHELD),
+    listOwnIdentifiers: bridge(IPC_CHANNELS.INVESTIGATION_LIST_OWN_IDENTIFIERS),
+    markOwnIdentifier: bridge(IPC_CHANNELS.INVESTIGATION_MARK_OWN_IDENTIFIER),
+    unmarkOwnIdentifier: bridge(IPC_CHANNELS.INVESTIGATION_UNMARK_OWN_IDENTIFIER)
   },
 
   staging: {
@@ -285,6 +317,12 @@ const birdbrain = {
   onGuestFrameReplaced: subscribe(IPC_CHANNELS.GUEST_FRAME_REPLACED),
 
   onGuestMouseDown: subscribe(IPC_CHANNELS.GUEST_MOUSE_DOWN),
+
+  onSharingChanged: subscribe(IPC_CHANNELS.SHARING_CHANGED),
+
+  onSharingJoinProgress: subscribe(IPC_CHANNELS.SHARING_JOIN_PROGRESS),
+
+  onInvestigationProgress: subscribe(IPC_CHANNELS.INVESTIGATION_PROGRESS),
 
   testPipeline: bridge(IPC_CHANNELS.CAPTURES_TEST_PIPELINE),
 

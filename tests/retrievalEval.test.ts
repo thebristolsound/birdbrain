@@ -187,6 +187,16 @@ describe('renderReport', () => {
       indexSizes: [{ name: 'captures_fts_data', bytes: 4096 }],
       fullRebuildMs: 1,
       incrementalMedianMs: null,
+      fieldIndex: {
+        extractor: 'fields/9',
+        fullBuildMs: 12.5,
+        incrementalMedianMs: 0.25,
+        outcomes: [
+          { outcome: 'built', builds: 9 },
+          { outcome: 'partial', builds: 1 }
+        ],
+        records: [{ field: 'link.href', records: 25 }]
+      },
       unreviewedCaptures: 4,
       unreviewedTargets: ['mail-header']
     }
@@ -196,5 +206,46 @@ describe('renderReport', () => {
     expect(markdown).toContain('| Case search | image-link-host | 0.10 | 0.20 | 3 |')
     expect(markdown).toContain('| captures_fts_data | 4096 | 410 |')
     expect(markdown).toContain('Targets among them: mail-header.')
+  })
+
+  it('states the search field build and its records per field', () => {
+    const report: EvalReport = {
+      generatedAt: '2026-10-16T00:00:00.000Z',
+      toolVersion: '0.0.0',
+      captures: 10,
+      targets: 5,
+      fillers: 5,
+      queries: [],
+      scored: [],
+      latency: [],
+      indexSizes: [{ name: 'exhibit_search_fields', bytes: 8192 }],
+      fullRebuildMs: 1,
+      incrementalMedianMs: 0.1,
+      fieldIndex: {
+        extractor: 'fields/9',
+        fullBuildMs: 12.5,
+        incrementalMedianMs: null,
+        outcomes: [
+          { outcome: 'built', builds: 9 },
+          { outcome: 'partial', builds: 1 }
+        ],
+        records: [
+          { field: 'header.from', records: 3 },
+          { field: 'link.href', records: 25 }
+        ]
+      },
+      unreviewedCaptures: 0,
+      unreviewedTargets: []
+    }
+    const markdown = renderReport(report)
+    expect(markdown).toContain('| exhibit_search_fields | 8192 | 819 |')
+    expect(markdown).toContain('- Full build of the search field records (`fields/9`): 12.50 ms.')
+    expect(markdown).toContain("- Building one Capture's search field records again, median: - ms.")
+    expect(markdown).toContain('- Search field builds by outcome: built 9, partial 1.')
+    expect(markdown).toContain('| header.from | 3 | 0.30 |')
+    expect(markdown).toContain('| link.href | 25 | 2.50 |')
+    expect(
+      renderReport({ ...report, fieldIndex: { ...report.fieldIndex, outcomes: [] } })
+    ).toContain('- Search field builds by outcome: none.')
   })
 })

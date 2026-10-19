@@ -10,7 +10,7 @@
 
 import { DIGICERT_TRUSTED_ROOT_G4_SHA256 } from '@main/services/tsaTrust'
 import { EXPORT_ENTRY_REQUIRED_SCHEMA_VERSION } from '@shared/schemas'
-import { SHARED_CASE_SCHEMA_VERSION } from '@shared/verify'
+import { SHARED_CASE_ENTRY_TYPES, SHARED_CASE_SCHEMA_VERSION } from '@shared/verify'
 import {
   CAPTURE_PACKAGE_DIRECTORY,
   LINEAGE_DIRECTORY,
@@ -23,6 +23,7 @@ import {
   timestampTokenPath
 } from '../../packages/evidence-package-layout/index'
 import {
+  MEMBER_CHAINS_STEP,
   VERIFY_RECIPES,
   sentenceStart,
   stepRange,
@@ -34,6 +35,9 @@ import {
 // Every member of the package this runbook names, read from the Package
 // Layout so the prose, the commands and the files the exporter writes agree.
 const ROOT = PACKAGE_ROOT_FILES
+
+// The entry types only a Shared Case writes, as code spans.
+const SHARED_CASE_TYPES = [...SHARED_CASE_ENTRY_TYPES].map((type) => `\`${type}\``).join(', ')
 
 function runbookHeading(number: VerifyStepNumber): string {
   return `## Step ${number} — ${verifyStep(number).runbookTitle}`
@@ -57,7 +61,8 @@ It prints its verdict, then a line per check, then the verdict in full, and exit
 non-zero naming the step that failed — 2 if
 a tool it needs is missing, and 3 (\`INCOMPLETE\`) if a check could not be run at
 all, which this package can cause by enclosing no root for a non-default
-timestamp authority. A skipped check is never folded into its \`PASS\`. It is
+timestamp authority, or, in a Shared Case package, by carrying a member chain
+with an entry from a newer schema than the script reads. A skipped check is never folded into its \`PASS\`. It is
 a convenience, not the authority: what makes this package checkable is that every
 step below can be run by hand, which is what the rest of this document is for.
 
@@ -369,6 +374,44 @@ A token whose imprint matches the content hash but whose TSA signature is invali
 here. That is why this runbook's \`openssl ts -verify\` — not the binary — is the
 canonical proof of trusted time.
 
+A Shared Case package can also carry **receipt stamps**: \`timestamp\` entries
+with \`subject\` set to \`entry\`, which the binary reports as \`merge <n> receipt
+timestamp\`. Each binds the \`entryHash\` of a \`merge\` entry, not a content hash,
+and states that the authority saw that hash at the time in the token. Because an
+Entry Hash covers the entry's \`prevHash\` and a \`merge\` names the head it
+received from each member, the receipt bounds the time by which the writer of
+that chain held every entry before the \`merge\` and every entry up to each
+named head. It is not a trusted time for any Exhibit, it does not say when
+anything was captured, and it does not say the writer held those entries no
+earlier. The token sits only in the signed line, with no \`.tst\` file, so decode
+it from there and verify it over the \`merge\` entry's \`entryHash\`. A receipt binds
+a \`merge\` of the chain it sits in, so look the \`merge\` up in that same file,
+for \`${ROOT.manifest}\` and for every member and lineage chain alike:
+
+\`\`\`sh
+receipt=$(mktemp)
+for chain in ${ROOT.manifest} ${memberChainPath('*')} ${lineageChainPath('*', '*')}; do
+  [ -e "$chain" ] || continue
+  jq -c '${VERIFY_RECIPES.receiptTokenFilter}' "$chain" | while IFS= read -r r; do
+    hash=$(printf '%s' "$r" | jq -r '.captureContentHash')
+    idx=$(jq -rn --arg h "$hash" \\
+      'first(inputs | select(.type == "merge" and .entryHash == $h) | .index) // empty' "$chain")
+    if [ -z "$idx" ]; then
+      echo "RECEIPT NAMES NO MERGE: entry $(printf '%s' "$r" | jq -r '.index') of $chain"
+      continue
+    fi
+    printf '%s' "$r" | jq -r '.tsaToken' | openssl base64 -d -A >"$receipt"
+    if openssl ts -verify -digest "$hash" -in "$receipt" -token_in \\
+      -CAfile ${ROOT.tsaRoot} -untrusted ${ROOT.tsaIntermediates} >/dev/null 2>&1; then
+      echo "receipt OK: merge #$idx of $chain"
+    else
+      echo "RECEIPT FAIL: merge #$idx of $chain"
+    fi
+  done
+done
+rm -f "$receipt"
+\`\`\`
+
 **6c. A strict-DER parser may refuse to read the token. That is an encoding
 deviation by the authority, not tampering.** RFC 3161 tokens are DER, and DER
 requires the members of a \`SET OF\` — which is what the CMS \`certificates\`
@@ -412,6 +455,21 @@ the member who exported the package, signed by \`${ROOT.signingPublicKey}\`. Eve
 member's chain sits beside it as \`${memberChainPath('{installationId}')}\`. A package
 of a Case nobody shared has none of these files, and the blocks below print
 nothing for it.
+
+\`${ROOT.verifyScript}\` runs this section as ${stepRef(MEMBER_CHAINS_STEP.id)}, *${MEMBER_CHAINS_STEP.scriptTitle}*,
+between ${stepRef(4)} and ${stepRef(5)}, and prints it only for a package that carries a member
+chain, a lineage chain, an entry of a type only a Shared Case writes (${SHARED_CASE_TYPES}),
+or an \`exhibit\` entry with a \`memberCode\`. For each member chain it prints
+the member's code and installation id, how many entries verified, and the key
+they verified under, named as "the key the Owner's member-add for it carries"
+with the SHA-256 of that key's PEM text, as ${stepRef(2)} prints for the enclosed
+key. It checks every \`merge\` head and every citation, and that every
+\`exclude\` names an Exhibit its author's chain holds.
+A member chain holding an entry from a newer schema than the script reads is
+reported as \`INCOMPLETE\`, never as a pass: the entries before that entry are
+checked and nothing after it is read. ${sentenceStart(stepRef(5))} then binds each other
+member's Exhibits to the chain their author signed, as it binds this package's
+own.
 
 The Owner's chain is the one whose \`member-add\` entries name the members; the
 first names the Owner itself with role \`owner\`. Each \`member-add\` carries that

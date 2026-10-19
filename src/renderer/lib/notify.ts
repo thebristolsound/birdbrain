@@ -122,6 +122,7 @@ const CODE_LABELS: Record<LogCode, string> = {
   'app.render_process_gone': 'The window stopped responding',
   'app.child_process_gone': 'A helper process stopped',
   'app.storage_init_failed': "Couldn't open the storage folder — using the default location",
+  'app.egress_apply_failed': "Couldn't send the Wayback pane through the Egress",
   'capture.failed': 'Capture failed',
   'capture.screenshot_dropped': 'Screenshot was skipped',
   'capture.server_started': 'Capture server started',
@@ -181,6 +182,8 @@ const CODE_LABELS: Record<LogCode, string> = {
   'settings.schema_invalid': 'Saved settings were invalid — restored defaults',
   'thumbnails.generate_failed': "Couldn't generate a thumbnail",
   'timestampWorker.stamp_failed': "Couldn't get a trusted timestamp for this capture",
+  'timestampWorker.receipt_stamp_failed':
+    "Couldn't get a trusted timestamp for a sync receipt in a shared case",
   'trustedTime.shared_case_walk_failed':
     "Couldn't check other members' records in a shared case, so its trusted timestamps come from this computer alone",
   'app.webview_attach_refused': "A page view was blocked by the app's security policy",
@@ -219,10 +222,13 @@ const CODE_LABELS: Record<LogCode, string> = {
   'persona.orphan_sweep_skipped':
     'Skipped the persona browser data check because the data folders differ',
   'searchFields.build_failed': "Couldn't index a capture's links and headers for search",
+  'searchFields.check_failed': "Couldn't check a search hit against the stored capture",
   'searchFields.ensure_failed': "Couldn't index this case's links and headers for search",
   'searchFields.search_failed': "Couldn't search this case's links and headers",
   'searchFields.source_missing':
-    "Couldn't find a capture's stored page to index its links and headers for search"
+    "Couldn't find a capture's stored page to index its links and headers for search",
+  'sharing.stream_failed': "A teammate's connection to this Case ended with an error",
+  'sharing.first_session_failed': "Joined the Case, but the first sync didn't complete"
 }
 
 export function labelForCode(code: LogCode): string {

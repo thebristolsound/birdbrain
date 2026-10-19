@@ -1,9 +1,10 @@
 import { basename, join } from 'path'
 import {
   resolveTrustedTimeFromEntries,
-  buildTrustedTimeIndexFromEntries
+  buildTrustedTimeIndexFromEntries,
+  receiptStampsFromEntries
 } from '@shared/verify/trustedTime'
-import type { TrustedTimeResult } from '@shared/verify/trustedTime'
+import type { ReceiptStampReport, TrustedTimeResult } from '@shared/verify/trustedTime'
 import type { Exhibit } from '@shared/types'
 import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
@@ -172,6 +173,37 @@ export function buildTrustedTimeIndex(
   return buildTrustedTimeIndexFromEntries(trustedTimeEntries(caseDir, authorsOf(exhibits)))
 }
 
+// The receipt stamps of the local chain (#1515): each `merge` this
+// installation wrote and the stamp over its Entry Hash, if any. The local
+// chain alone, because a receipt stamp sits in the chain of the installation
+// that wrote the `merge`; another member's chain says nothing about this
+// one's receipts.
+export function resolveReceiptStamps(caseDir: string): ReceiptStampReport {
+  return receiptStampsFromEntries(readManifestSnapshot(caseDir).entries)
+}
+
+// The `merge` the retry loop owes a receipt stamp: the newest one after the
+// local chain's last `import`, when no receipt stamp binds it. Entries before
+// the last `import` are a source Case's history, by the rule the sync session
+// and the Shared Case walk both apply, so a `merge` there is never pending.
+// Only the newest counts: its Entry Hash covers every older `merge` through
+// `prevHash`, so a stamp over it bounds them all, and one request replaces
+// one per `merge` after an outage.
+export function pendingReceiptStamp(
+  caseDir: string
+): { mergeIndex: number; entryHash: string } | null {
+  const { entries } = readManifestSnapshot(caseDir)
+  let lastImport = -1
+  entries.forEach((entry, position) => {
+    if (entry.type === 'import') lastImport = position
+  })
+  const { merges } = receiptStampsFromEntries(entries)
+  const newest = merges.filter((merge) => merge.mergeIndex > lastImport).at(-1)
+  if (!newest || newest.stamp) return null
+  const { mergeIndex, entryHash } = newest
+  return { mergeIndex, entryHash }
+}
+
 // Read-and-refresh for a single capture: resolves the authoritative trusted-time
 // from the manifest and writes it through to the rebuildable DB mirror, returning
 // the full result. This is the one place the "manifest is authoritative; the
@@ -198,11 +230,15 @@ export function reconcileCaptureTrustedTime(capture: {
 // O(captures²)) before writing. Non-MHTML captures have no manifest entry and
 // are skipped.
 export function reconcileAllMirrors(): void {
-  for (const c of caseRepo.listCases()) {
-    const index = buildTrustedTimeIndex(join(getStorageRoot(), c.id), listExhibits(c.id))
-    for (const cap of captureRepo.listCaptures(c.id)) {
-      if (cap.format !== 'mhtml') continue
-      captureRepo.setCaptureTrustedTime(cap.id, index.get(cap.hash)?.trustedTime ?? 'none')
-    }
+  for (const c of caseRepo.listCases()) reconcileCaseMirrors(c.id)
+}
+
+// The same refresh for one Case. A sync session runs it after new entries land, because another
+// member's stamp can arrive in a later session than the Capture it stamps (#1811).
+export function reconcileCaseMirrors(caseId: string): void {
+  const index = buildTrustedTimeIndex(join(getStorageRoot(), caseId), listExhibits(caseId))
+  for (const cap of captureRepo.listCaptures(caseId)) {
+    if (cap.format !== 'mhtml') continue
+    captureRepo.setCaptureTrustedTime(cap.id, index.get(cap.hash)?.trustedTime ?? 'none')
   }
 }

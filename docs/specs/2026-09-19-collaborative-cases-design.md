@@ -159,13 +159,19 @@ the Certification is signed by the exporting member.
 
 ### Invite and join
 
-The invite string is `bbinvite1` followed by base32 of a CBOR map: Iroh ticket (node id, relay
-URL, direct addresses), `caseId`, Owner `operatorName`, a 16-byte one-time secret, and an expiry
-timestamp. It is shown as text and as a QR code.
+The invite string is `bbinvite1` followed by base32 without padding (RFC 4648, section 6
+alphabet) of a CBOR map: the Owner's transport ticket, which names the Owner's node id and relay
+URL and never a direct address, `caseId`, Owner `operatorName`, a 16-byte one-time secret, and an
+expiry timestamp. Ruling 74 of 2026-10-10 removed the direct addresses: a ticket built from the
+endpoint's own address list gives every interface address to anyone who reads the string
+([anonymous-team sync spike](2026-10-10-anonymous-team-sync-spike.md)). It is shown as text and as
+a QR code.
 
 1. The joiner pastes the string. Its app dials the Owner's node over Iroh.
 2. The joiner sends `join`: the secret, its public key PEM, `installationId`, `operatorName`,
-   and a signature over `secret || ownerNodeId` made with its signing key.
+   its own ticket, and a signature over `secret || ownerNodeId` made with its signing key, taken
+   over a SHA-256 digest that also binds a purpose string, the `caseId`, and the joiner's
+   `installationId`, as the sync `hello` proof is.
 3. The Owner checks the secret (unused, unexpired), verifies the signature against the offered
    key, and shows the approval dialog with the key fingerprint (SHA-256 over the DER public key,
    first 32 hex characters in groups of four) and a Member Code field.

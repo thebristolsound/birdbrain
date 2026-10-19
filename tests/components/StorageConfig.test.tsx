@@ -75,7 +75,8 @@ const settings = {
   isFreshInstall: false,
   demoCaseSeeded: false,
   releaseChannel: 'stable',
-  autoCheckForUpdates: false
+  autoCheckForUpdates: false,
+  egress: { kind: 'direct' }
 } satisfies BirdbrainSettings
 
 let chooseStoragePath: ReturnType<typeof vi.fn>

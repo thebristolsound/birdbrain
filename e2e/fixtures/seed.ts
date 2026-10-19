@@ -45,13 +45,36 @@ export const SCREENSHOT_PNG_BASE64 =
   'wKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKzA' +
   'rMCswKzArMCswKzArMCswKzArMCswKzArMCswKzArMCswKz9zzotw8GdFsEYhAAAAABJRU5ErkJggg=='
 
+/**
+ * Wraps one HTML document as a Chrome-style MHTML file: a multipart/related body with a
+ * single text/html part, which is the part data extraction reads. Pass it as `mhtml`.
+ */
+export function mhtmlPage(url: string, html: string): string {
+  const boundary = '----MultipartBoundary--seed----'
+  return [
+    'From: <Saved by Blink>',
+    `Snapshot-Content-Location: ${url}`,
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/related; type="text/html"; boundary="${boundary}"`,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/html; charset="UTF-8"',
+    'Content-Transfer-Encoding: binary',
+    `Content-Location: ${url}`,
+    '',
+    html,
+    `--${boundary}--`,
+    ''
+  ].join('\r\n')
+}
+
 export type SeedCapture = {
   slug: string
   /** Defaults to `https://example.com/<slug>`. */
   url?: string
   title?: string
   text?: string
-  /** The MHTML body. Defaults to the text inside a bare HTML page. */
+  /** The MHTML body, such as `mhtmlPage` builds. Defaults to the text inside a bare HTML page. */
   mhtml?: string
   /** A base64 PNG sent as the screenshot, such as SCREENSHOT_PNG_BASE64. */
   screenshot?: string

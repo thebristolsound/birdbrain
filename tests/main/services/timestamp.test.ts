@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { createHash } from 'crypto'
 import { execFileSync } from 'child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
@@ -7,6 +7,7 @@ import { join } from 'path'
 import { AsnConvert } from '@peculiar/asn1-schema'
 import { TimeStampReq, MessageImprint, PKIStatus } from '@peculiar/asn1-tsp'
 import { buildTimestampRequest, requestTimestamp } from '@main/services/timestamp'
+import { initSettings } from '@main/services/settings'
 import { parseTimestampToken } from '@shared/verify'
 import { buildSyntheticToken, buildTimestampResponse } from '../../helpers/timestampFixtures'
 import { HAS_OPENSSL } from '../../helpers/openssl'
@@ -92,8 +93,17 @@ describe('parseTimestampToken', () => {
 })
 
 describe('requestTimestamp', () => {
+  // The request follows the Egress, read from settings; Direct, the default here,
+  // sends it with the global fetch the tests spy on.
+  let settingsDir: string
+  beforeEach(() => {
+    settingsDir = mkdtempSync(join(tmpdir(), 'birdbrain-tsa-settings-'))
+    initSettings(settingsDir)
+  })
+
   afterEach(() => {
     vi.restoreAllMocks()
+    rmSync(settingsDir, { recursive: true, force: true })
   })
 
   it('POSTs an RFC 3161 query and returns the token DER on a granted response', async () => {
@@ -207,6 +217,52 @@ describe('openssl ts -verify over committed DigiCert fixtures', () => {
       expect(combined).not.toContain('Verification: OK')
       expect(exitCode === 0 ? combined : 'nonzero').not.toBe('')
       expect(combined.includes('Verification: FAILED') || exitCode !== 0).toBe(true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+// #1515: the same ground truth for the receipt stamp's token, issued over the
+// Entry Hash of the fixed `merge` entry rather than over a content hash. The
+// digest is fed the way verify.sh and VERIFY.md feed it, from the hash the
+// signed entry names, not from a query file.
+describe('openssl ts -verify over the committed DigiCert receipt fixture', () => {
+  const tokenDer = join(FIXTURES, 'merge-digicert-token.der')
+  const caFile = join(FIXTURES, 'digicert-trusted-root-g4.pem')
+  const entryHash = readFileSync(join(FIXTURES, 'merge-entry-hash.txt'), 'utf-8').trim()
+
+  function verify(path: string): { out: string; status: number } {
+    try {
+      const out = execFileSync(
+        'openssl',
+        ['ts', '-verify', '-digest', entryHash, '-in', path, '-token_in', '-CAfile', caFile],
+        { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] }
+      )
+      return { out, status: 0 }
+    } catch (err) {
+      const e = err as { status?: number; stdout?: string; stderr?: string }
+      return { out: `${e.stdout ?? ''}${e.stderr ?? ''}`, status: e.status ?? 1 }
+    }
+  }
+
+  it.skipIf(!HAS_OPENSSL)('verifies the token over the merge Entry Hash (-digest)', () => {
+    const { out, status } = verify(tokenDer)
+    expect(status).toBe(0)
+    expect(out).toContain('Verification: OK')
+    expect(parseTimestampToken(readFileSync(tokenDer)).messageImprintHex).toBe(entryHash)
+  })
+
+  it.skipIf(!HAS_OPENSSL)('FAILS when a token byte is mutated (test discriminates)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bb-receipt-tsverify-'))
+    try {
+      const tampered = readFileSync(tokenDer)
+      tampered[2000] ^= 0xff
+      const tamperedPath = join(dir, 'tampered.der')
+      writeFileSync(tamperedPath, tampered)
+      const { out, status } = verify(tamperedPath)
+      expect(out).not.toContain('Verification: OK')
+      expect(out.includes('Verification: FAILED') || status !== 0).toBe(true)
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

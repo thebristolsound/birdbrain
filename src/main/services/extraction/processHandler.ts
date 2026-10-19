@@ -1,7 +1,9 @@
+import { createHash } from 'crypto'
 import { existsSync, readFileSync } from 'fs'
 import { extractData } from '@main/services/dataExtractor'
 import type { ExtractedDatum } from '@main/services/dataExtractor'
 import { htmlFromStoredPage } from '@main/services/extraction/extractionSource'
+import { extractFields, type FieldBuildData } from '@main/services/search/fieldExtractor'
 
 // The work the extraction utility process does for one Capture (#598), kept out
 // of its entry file so unit tests, which run without `utilityProcess`, can call
@@ -12,6 +14,8 @@ export interface ExtractionRequest {
   mhtmlPath: string
   // A legacy pre-v11 Capture's page, read only when there is no MHTML.
   htmlPath: string
+  fieldUrl?: string
+  textPath?: string
 }
 
 export interface ExtractionRequestMessage extends ExtractionRequest {
@@ -27,8 +31,24 @@ export interface ExtractionErrorInfo {
 }
 
 export type ExtractionReplyMessage =
-  | { id: number; ok: true; rows: ExtractedDatum[]; durationMs: number }
-  | { id: number; ok: false; error: ExtractionErrorInfo; durationMs: number }
+  | {
+      id: number
+      ok: true
+      rows: ExtractedDatum[]
+      durationMs: number
+      fieldBuild?: FieldBuildReply
+    }
+  | {
+      id: number
+      ok: false
+      error: ExtractionErrorInfo
+      durationMs: number
+      fieldBuild?: FieldBuildReply
+    }
+
+export type FieldBuildReply =
+  | { ok: true; result: FieldBuildData; durationMs: number }
+  | { ok: false; error: ExtractionErrorInfo; durationMs: number }
 
 function readIfPresent(path: string): Buffer | null {
   return existsSync(path) ? readFileSync(path) : null
@@ -45,16 +65,79 @@ function errorInfo(err: unknown): ExtractionErrorInfo {
 export function handleExtractionMessage({
   id,
   mhtmlPath,
-  htmlPath
+  htmlPath,
+  fieldUrl,
+  textPath
 }: ExtractionRequestMessage): ExtractionReplyMessage {
   const t0 = performance.now()
+  let mhtml: Buffer | null = null
+  let legacyHtml: Buffer | null = null
+  let rows: ExtractedDatum[] = []
+  let extractionError: ExtractionErrorInfo | null = null
+  let artifactReadError: ExtractionErrorInfo | null = null
   try {
-    const html = htmlFromStoredPage((type) =>
-      readIfPresent(type === 'mhtml' ? mhtmlPath : htmlPath)
-    )
-    const rows = html ? extractData(html) : []
-    return { id, ok: true, rows, durationMs: performance.now() - t0 }
+    mhtml = readIfPresent(mhtmlPath)
+    legacyHtml = mhtml ? null : readIfPresent(htmlPath)
   } catch (err) {
-    return { id, ok: false, error: errorInfo(err), durationMs: performance.now() - t0 }
+    artifactReadError = errorInfo(err)
+    extractionError = artifactReadError
+  }
+  if (!artifactReadError) {
+    try {
+      const html = htmlFromStoredPage((type) => (type === 'mhtml' ? mhtml : legacyHtml))
+      rows = html ? extractData(html) : []
+    } catch (err) {
+      extractionError = errorInfo(err)
+    }
+  }
+
+  const durationMs = performance.now() - t0
+  const fieldBuild: FieldBuildReply | undefined =
+    fieldUrl === undefined
+      ? undefined
+      : artifactReadError
+        ? { ok: false as const, error: artifactReadError, durationMs: 0 }
+        : buildFields(fieldUrl, mhtml, legacyHtml, textPath)
+  return extractionError
+    ? { id, ok: false, error: extractionError, durationMs, fieldBuild }
+    : { id, ok: true, rows, durationMs, fieldBuild }
+}
+
+function buildFields(
+  fieldUrl: string,
+  mhtml: Buffer | null,
+  legacyHtml: Buffer | null,
+  textPath: string | undefined
+): FieldBuildReply {
+  const t0 = performance.now()
+  try {
+    if (!mhtml && !legacyHtml) {
+      return {
+        ok: true,
+        result: { fields: [], textHash: null, outcome: 'no-source', skippedJson: null },
+        durationMs: performance.now() - t0
+      }
+    }
+    const text = textPath ? readIfPresent(textPath) : null
+    const textHash = text ? createHash('sha256').update(text).digest('hex') : null
+    const { fields, skippedParts, mainDocumentSkipped, truncated } = extractFields({
+      captureUrl: fieldUrl,
+      mhtml,
+      html: legacyHtml,
+      text: text ? text.toString('utf-8') : null
+    })
+    const { tooLarge, overPartCount, overTotalSize } = skippedParts
+    const partial = tooLarge + overPartCount + overTotalSize > 0 || mainDocumentSkipped || truncated
+    const result: FieldBuildData = {
+      fields,
+      textHash,
+      outcome: partial ? 'partial' : 'built',
+      skippedJson: partial
+        ? JSON.stringify({ ...skippedParts, mainDocumentSkipped, truncated })
+        : null
+    }
+    return { ok: true, result, durationMs: performance.now() - t0 }
+  } catch (err) {
+    return { ok: false, error: errorInfo(err), durationMs: performance.now() - t0 }
   }
 }

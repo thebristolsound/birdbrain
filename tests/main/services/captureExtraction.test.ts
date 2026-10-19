@@ -12,6 +12,7 @@ import { createCaptureLifecycle, type CaptureLifecycle } from '@main/services/ca
 import type { CaptureLifecycleDeps } from '@main/services/captureLifecycle'
 import { createCaptureStore } from '@main/services/captureStore'
 import { getStorageRoot } from '@main/services/storage'
+import { getExhibitSearchBuild } from '@main/services/db/searchFieldRepo'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
 import * as dataExtractor from '@main/services/dataExtractor'
 import * as mhtmlDecoder from '@main/services/mhtmlDecoder'
@@ -131,7 +132,9 @@ describe('capture extraction through the utility process', () => {
     const store = createCaptureStore({ getRoot: getStorageRoot })
     expect(requests[0].request).toEqual({
       mhtmlPath: store.artifactPaths(caseId, capture.id, 'mhtml').abs,
-      htmlPath: store.artifactPaths(caseId, capture.id, 'html').abs
+      htmlPath: store.artifactPaths(caseId, capture.id, 'html').abs,
+      fieldUrl: 'https://a.example.org/1',
+      textPath: store.artifactPaths(caseId, capture.id, 'txt').abs
     })
     requests[0].settle({ ok: true, rows: CANNED_ROWS, durationMs: 5 })
 
@@ -169,9 +172,11 @@ describe('capture extraction through the utility process', () => {
       const lifecycle = lifecycleWith(inProcessExtraction())
       const { capture } = await ingestFixture(lifecycle, fixture, 'https://a.example.org/kat')
       await vi.waitFor(() => expect(storedRows(capture.id)).toEqual(expected))
+      await vi.waitFor(() => expect(getExhibitSearchBuild(capture.id)?.outcome).toBe('built'))
 
       await lifecycle.reprocessCase(caseId)
       expect(storedRows(capture.id)).toEqual(expected)
+      expect(getExhibitSearchBuild(capture.id)?.outcome).toBe('built')
     })
   }
 
@@ -187,6 +192,7 @@ describe('capture extraction through the utility process', () => {
     await new Promise((resolve) => setTimeout(resolve, 20))
     expect(getCapture(capture.id)).toBeUndefined()
     expect(storedRows(capture.id)).toEqual([])
+    expect(getExhibitSearchBuild(capture.id)).toBeUndefined()
     expect(extractionFailures()).toBe(0)
   })
 

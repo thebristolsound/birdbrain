@@ -60,6 +60,51 @@ describe('handleExtractionMessage', () => {
     )
   })
 
+  it('builds Case search fields in the utility process', () => {
+    const mhtmlPath = join(dir, 'page.mhtml')
+    const textPath = join(dir, 'page.txt')
+    const url = 'https://quillmere.example.net/page'
+    writeFileSync(
+      mhtmlPath,
+      [
+        'MIME-Version: 1.0',
+        'Content-Type: multipart/related; type="text/html"; boundary="B"',
+        '',
+        '--B',
+        'Content-Type: text/html',
+        `Content-Location: ${url}`,
+        '',
+        '<a href="/contact">Contact</a>',
+        '--B--',
+        ''
+      ].join('\r\n')
+    )
+    writeFileSync(
+      textPath,
+      'From: Wren <wren@quillmere.example.net>\nMessage-ID: <1@quillmere.example.net>\n'
+    )
+
+    const reply = handleExtractionMessage({
+      id: 5,
+      mhtmlPath,
+      htmlPath: join(dir, 'absent.html'),
+      fieldUrl: url,
+      textPath
+    })
+
+    expect(reply.ok).toBe(true)
+    if (!reply.ok || !reply.fieldBuild?.ok) throw new Error('field build failed')
+    expect(reply.fieldBuild.result).toMatchObject({
+      outcome: 'built',
+      textHash: expect.any(String),
+      fields: expect.arrayContaining([
+        expect.objectContaining({ field: 'link.href', value: '/contact' }),
+        expect.objectContaining({ field: 'header.from', norm: 'wren@quillmere.example.net' })
+      ])
+    })
+    expect(reply.fieldBuild.durationMs).toBeGreaterThan(0)
+  })
+
   it('answers with no rows, without extracting, when neither file exists', () => {
     const extract = vi.spyOn(dataExtractor, 'extractData')
     const reply = handleExtractionMessage({

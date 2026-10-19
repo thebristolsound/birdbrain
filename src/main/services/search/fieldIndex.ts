@@ -6,7 +6,7 @@ import type { FieldBuildOutcome, FieldSource } from '@main/services/db/searchFie
 import {
   extractFields,
   FIELD_EXTRACTOR_VERSION,
-  type ExtractedField
+  type FieldBuildData
 } from '@main/services/search/fieldExtractor'
 import { logger } from '@main/services/logger'
 import { ident } from '@main/services/logSafe'
@@ -24,17 +24,10 @@ import type { FieldBuildSummary } from '@shared/ipc'
 
 type ArtifactReader = Pick<CaptureStore, 'readArtifact'>
 
-interface BuiltFields {
-  fields: ExtractedField[]
-  textHash: string | null
-  outcome: FieldBuildOutcome
-  skippedJson: string | null
-}
-
 function extractFromStore(
   { exhibitId, caseId, url }: FieldSource,
   store: ArtifactReader
-): BuiltFields {
+): FieldBuildData {
   const mhtml = store.readArtifact(caseId, exhibitId, 'mhtml')
   // A legacy Capture from before MHTML has its page as `.html` instead.
   const html = mhtml ? null : store.readArtifact(caseId, exhibitId, 'html')
@@ -74,12 +67,39 @@ export function buildExhibitFields(
 ): FieldBuildOutcome | null {
   const source = searchFieldRepo.getFieldSource(exhibitId)
   if (!source) return null
-  let built: BuiltFields
+  let built: FieldBuildData
+  let error: unknown
   try {
     built = extractFromStore(source, store)
   } catch (err) {
-    logger.error('searchFields', 'searchFields.build_failed', { exhibitId: ident(exhibitId) }, err)
+    error = err
     built = { fields: [], textHash: null, outcome: 'failed', skippedJson: null }
+  }
+  return writeFieldBuildForSource(source, built, error)
+}
+
+export function writeFieldBuild(
+  exhibitId: string,
+  built: FieldBuildData,
+  error?: unknown
+): FieldBuildOutcome | null {
+  const source = searchFieldRepo.getFieldSource(exhibitId)
+  return source ? writeFieldBuildForSource(source, built, error) : null
+}
+
+function writeFieldBuildForSource(
+  source: FieldSource,
+  built: FieldBuildData,
+  error?: unknown
+): FieldBuildOutcome {
+  const { exhibitId } = source
+  if (error !== undefined) {
+    logger.error(
+      'searchFields',
+      'searchFields.build_failed',
+      { exhibitId: ident(exhibitId) },
+      error
+    )
   }
   // Every Case open retries a missing page, so warn when it goes missing, not on each
   // retry that still finds nothing; a build that finds it re-arms the warning.

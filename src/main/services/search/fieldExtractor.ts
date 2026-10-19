@@ -82,6 +82,13 @@ export interface FieldExtraction {
   truncated: boolean
 }
 
+export interface FieldBuildData {
+  fields: ExtractedField[]
+  textHash: string | null
+  outcome: 'built' | 'partial' | 'no-source' | 'failed'
+  skippedJson: string | null
+}
+
 export function extractFields(
   sources: FieldSources,
   budgets: CaptureLinkBudgets = CAPTURE_LINK_BUDGETS

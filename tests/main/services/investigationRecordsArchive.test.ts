@@ -295,6 +295,19 @@ describe('investigation record repositories', () => {
     ).toThrow(/no column not_a_column/)
   })
 
+  it('refuses a `replaces` that is not a list of ids', () => {
+    expect(() =>
+      marks.insertWithheldFlag({
+        caseId,
+        exhibitId: 'exhibit-1',
+        action: 'set',
+        actedAt: NOW,
+        ...OP,
+        replaces: [1] as unknown as string[]
+      })
+    ).toThrow(/withheld_flags.replaces is not a list of ids/)
+  })
+
   it('reads an Exhibit as withheld while a live withheld head is set, whoever holds it', () => {
     for (const [n, id] of ['unflagged', 'cleared', 'withheld', 'held-elsewhere'].entries()) {
       getDb()

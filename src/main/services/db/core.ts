@@ -163,7 +163,21 @@ export const ID_PROBE_TABLES = [
   'selectors',
   'extracted_data',
   'capture_archive_refs',
-  'annotation_pins'
+  'annotation_pins',
+  // The investigation records (migration 40). The run child tables are keyed
+  // by their run and follow its remap; `case_revisions` and `case_change_log`
+  // never travel in an archive.
+  'subjects',
+  'joints',
+  'joint_spans',
+  'subject_spans',
+  'joint_decisions',
+  'span_decisions',
+  'source_class_marks',
+  'copy_marks',
+  'withheld_flags',
+  'own_identifiers',
+  'investigation_runs'
 ] as const
 
 // Id-existence probe for the archive import's collision remap.

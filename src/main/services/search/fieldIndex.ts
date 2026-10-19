@@ -12,15 +12,17 @@ import { logger } from '@main/services/logger'
 import { ident } from '@main/services/logSafe'
 import type { FieldBuildSummary } from '@shared/ipc'
 
-// Builds the Case search field records from the stored files (docs/plans/2026-10-09-
-// case-retrieval-first-slice.md, D5): one Capture after ingest or duplication, the
-// Captures a Case lacks or an older extractor built, every Capture in a Case on
-// reprocess, and every Capture on a rebuild. A build that fails writes a `failed`
-// build row and a log entry, and is retried by a reprocess, a rebuild or a new
-// extractor version, not on the next Case open. A Capture whose stored page is not
-// found writes a `no-source` row, and the next Case open tries it again, since the
-// file may be on a drive that is not attached. Only the first of a run of such builds
-// logs a warning.
+// Builds and writes the Case search field records (docs/plans/2026-10-09-
+// case-retrieval-first-slice.md, D5). With an extraction client, ingest, duplication
+// and reprocess build them in the extraction utility process alongside the Extracted
+// Data (#1933) and only `writeFieldBuild` runs here; a lifecycle without one builds
+// them here, from the stored files. This module also builds the Captures a Case lacks
+// or an older extractor built on Case open, and every Capture on a rebuild. A build
+// that fails writes a `failed` build row and a log entry, and is retried by a
+// reprocess, a rebuild or a new extractor version, not on the next Case open. A
+// Capture whose stored page is not found writes a `no-source` row, and the next Case
+// open tries it again, since the file may be on a drive that is not attached. Only
+// the first of a run of such builds logs a warning.
 
 type ArtifactReader = Pick<CaptureStore, 'readArtifact'>
 

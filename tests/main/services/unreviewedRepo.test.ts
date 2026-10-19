@@ -9,7 +9,7 @@ import { createSelector, updateSelector } from '@main/services/db/selectorRepo'
 import { insertExtractedData } from '@main/services/db/extractedDataRepo'
 import { replaceExhibitFields, type FieldBuildOutcome } from '@main/services/db/searchFieldRepo'
 import { listUnreviewedCaptures } from '@main/services/db/unreviewedRepo'
-import type { ExtractedField } from '@main/services/search/fieldExtractor'
+import { extractFields, type ExtractedField } from '@main/services/search/fieldExtractor'
 import type { UnreviewedCaptures, UnreviewedRow } from '@shared/types'
 
 // The unreviewed view's read (docs/plans/2026-10-09-case-retrieval-first-slice.md, D8),
@@ -62,8 +62,9 @@ function build(
   fields: ExtractedField[],
   {
     outcome = 'built',
-    contentHash = HASH
-  }: { outcome?: FieldBuildOutcome; contentHash?: string } = {}
+    contentHash = HASH,
+    extractor = 'fields/1'
+  }: { outcome?: FieldBuildOutcome; contentHash?: string; extractor?: string } = {}
 ): void {
   replaceExhibitFields(
     {
@@ -71,7 +72,7 @@ function build(
       caseId,
       contentHash,
       textHash: null,
-      extractor: 'fields/1',
+      extractor,
       builtAt: '2026-10-01T00:00:00.000Z',
       outcome,
       skippedJson: outcome === 'partial' ? '{"tooLarge":1}' : null
@@ -343,6 +344,66 @@ describe('listUnreviewedCaptures: groups', () => {
       locator: { source: 'html-part', part: 0, startOffset: 10 }
     })
     expect(ungrouped).toBe(0)
+  })
+
+  it('reads only From, Reply-To and link targets from a fields/2 build', () => {
+    const id = capture('Fields two')
+    // A page and Extracted Text that the extractor at head reads every kind from, written
+    // through the same call the field build uses.
+    const text = [
+      'From: Wren Hollis <wren@hollis-mail.example.org>',
+      'Reply-To: pay@corvane.example.net',
+      'To: desk@ostrander.example.net',
+      'Cc: cc@ostrander.example.net',
+      'Message-ID: <1@hollis-mail.example.org>',
+      'Path: news.example.org!not-for-mail',
+      'References: <0@hollis-mail.example.org>',
+      '',
+      'Write to remit@larch.example.org or see https://ledger.example.org/pay'
+    ].join('\n')
+    const html = [
+      '<html><body><a href="https://mail.example.org/a">',
+      '<img src="https://cdn.example.net/a.png" alt="Pay"></a>',
+      `<p>GTM-QX4R7T 0x${'ab12cd34ef'.repeat(4)}</p></body></html>`
+    ].join('')
+    const { fields } = extractFields({
+      captureUrl: 'https://brindle-forum.example.org/thread/88',
+      mhtml: null,
+      html: Buffer.from(html),
+      text
+    })
+    const kinds = new Set(fields.map((f) => f.field))
+    for (const kind of [
+      'header.to',
+      'header.cc',
+      'header.path',
+      'header.references',
+      'image.src',
+      'text.address',
+      'text.url',
+      'id.tracking',
+      'id.crypto'
+    ]) {
+      expect(kinds, kind).toContain(kind)
+    }
+    build(id, fields, { extractor: 'fields/2' })
+    const { groups, ungrouped } = list()
+    expect(keys(groups.from)).toEqual(['wren@hollis-mail.example.org'])
+    expect(keys(groups['reply-to'])).toEqual(['pay@corvane.example.net'])
+    expect(keys(groups['link-host'])).toEqual(['mail.example.org'])
+    expect(groups.rare).toEqual([])
+    expect(ungrouped).toBe(0)
+    const hits = Object.values(groups).flatMap((rows) =>
+      rows.flatMap((row) => row.captures.map((c) => c.hit!))
+    )
+    expect(new Set(hits.map((hit) => hit.field))).toEqual(
+      new Set(['header.from', 'header.reply-to', 'link.href'])
+    )
+    // The From address is also a `text.address` record; the row counts the header only.
+    expect(hits.find((hit) => hit.field === 'header.from')).toMatchObject({
+      occurrences: 1,
+      locator: { source: 'text', extractor: 'fields/2' }
+    })
   })
 
   it('leaves out of the header and link rows a Capture whose records are not current', () => {

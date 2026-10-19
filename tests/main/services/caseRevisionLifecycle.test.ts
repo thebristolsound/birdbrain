@@ -19,6 +19,7 @@ import { initInstallationId, resetInstallationId } from '@main/services/installa
 import { initSettings, updateSettings } from '@main/services/settings'
 import { MANIFEST_FILENAME } from '@shared/constants'
 import type { SelectorLifecycle } from '@main/services/selectorLifecycle'
+import { inProcessExtraction } from '../../helpers/inProcessExtraction'
 
 // The revision triggers inside the custody paths (engine plan, Evidence impact):
 // a Capture delete, a reprocess and a Case Archive import move the counter and
@@ -92,7 +93,8 @@ beforeEach(async () => {
   caseDir = join(storageRoot, caseId)
   initManifest(caseDir)
   lifecycle = createCaptureLifecycle({
-    selectorLifecycle: { runActiveSelectorsForCapture: vi.fn() } as unknown as SelectorLifecycle
+    selectorLifecycle: { runActiveSelectorsForCapture: vi.fn() } as unknown as SelectorLifecycle,
+    extraction: inProcessExtraction()
   })
 })
 

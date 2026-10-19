@@ -59,6 +59,12 @@ import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createExtractionProcess } from '@main/services/extraction/processClient'
 import { SharingService } from '@main/services/sharing/sharingService'
 import { startIrohTransport } from '@main/services/sharing/irohTransport'
+import {
+  E2E_SHARING_OFF_SWITCH,
+  createSyncService,
+  sharingSwitchedOff,
+  type SyncService
+} from '@main/services/sharing/syncService'
 import { createTimestampWorker } from '@main/services/timestampWorker'
 import { runExhibitBackfill } from '@main/services/exhibitBackfill'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
@@ -96,6 +102,9 @@ const extractionProcess = createExtractionProcess({ entryPath: join(__dirname, '
 // The sharing service, closed on quit so a listening transport does not
 // outlive the window.
 let sharingService: SharingService | null = null
+// When Shared Case sessions run (#1881); owns the sharing transport's
+// lifetime, so stopping it on quit closes the transport.
+let syncService: SyncService | null = null
 
 // Registered before whenReady so a failure during startup is still captured.
 // logger.* is a no-op until initLogger runs, which is safe by construction.
@@ -664,10 +673,11 @@ if (!gotSingleInstanceLock) {
         getEgress: () => getSettings().egress
       })
 
-      // Shared Cases (#1810, #1809). The Iroh transport starts on the first
-      // command that needs the network, not here, so an installation with no
-      // Shared Case opens no connection; where the binding does not load,
-      // every such command refuses `sharing-unavailable`.
+      // Shared Cases (#1810, #1809, #1881). The sync service opens the Iroh
+      // transport at launch when a Shared Case exists, otherwise on the first
+      // invite or join, and closes it on quit; an installation with no Shared
+      // Case opens no connection. Where the binding does not load, every
+      // sharing command refuses `sharing-unavailable` and boot goes on.
       sharingService = new SharingService({
         receivedCaptures: captureLifecycle,
         emitChanged: (payload) => {
@@ -682,13 +692,16 @@ if (!gotSingleInstanceLock) {
         }
       })
 
-      sharingService.setTransportProvider(() =>
-        startIrohTransport({
-          userDataDir: userDataPath,
-          cipher: safeStorage,
-          relayUrl: getSettings().sharingRelayUrl
-        })
-      )
+      syncService = createSyncService({
+        sharing: sharingService,
+        transportFactory: () =>
+          startIrohTransport({
+            userDataDir: userDataPath,
+            cipher: safeStorage,
+            relayUrl: getSettings().sharingRelayUrl
+          }),
+        switchedOff: sharingSwitchedOff(process.env[E2E_SHARING_OFF_SWITCH], !app.isPackaged)
+      })
 
       // Register IPC handlers
       registerIpcHandlers({
@@ -700,6 +713,10 @@ if (!gotSingleInstanceLock) {
         sharingService,
         enqueueExhibitTimestamp: (exhibitId) => timestampWorker.enqueueExhibit(exhibitId)
       })
+
+      // After the exhibit backfill above, so no session appends to a chain
+      // while it does. Not awaited: boot never waits on the network.
+      syncService.start()
 
       // Start capture server and extension connection monitor. A failed bind
       // rejects (#513) and is fatal below: the capture server is the only route
@@ -836,7 +853,7 @@ if (!gotSingleInstanceLock) {
     extractionProcess.dispose()
     // Started, not awaited: the transport's close is native work Electron
     // would not wait for, and the two steps below must still run.
-    const closingSharing = sharingService?.close()
+    const closingSharing = syncService?.stop() ?? sharingService?.close()
     await stopCaptureServer()
     closeDatabase()
     await closingSharing

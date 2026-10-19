@@ -231,7 +231,9 @@ const CODE_LABELS: Record<LogCode, string> = {
   'sharing.first_session_failed': "Joined the Case, but the first sync didn't complete",
   'sharing.binding_unavailable': "Shared Cases can't run on this computer",
   'sharing.accept_failed': 'Stopped accepting connections from teammates',
-  'sharing.connection_failed': "A teammate's connection failed before it started"
+  'sharing.connection_failed': "A teammate's connection failed before it started",
+  'sharing.sync_off': "Automatic sync is off: sharing couldn't connect",
+  'sharing.case_sync_failed': "Couldn't sync a Shared Case; the next round tries again"
 }
 
 export function labelForCode(code: LogCode): string {

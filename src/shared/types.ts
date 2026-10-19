@@ -852,7 +852,11 @@ export const LOG_CODES = [
   // connections; and one incoming connection failed before its first stream.
   'sharing.binding_unavailable',
   'sharing.accept_failed',
-  'sharing.connection_failed'
+  'sharing.connection_failed',
+  // The sync service (#1881): a round that stopped because no transport could
+  // start, and one Case whose sync threw while the round went on to the next.
+  'sharing.sync_off',
+  'sharing.case_sync_failed'
 ] as const
 export type LogCode = (typeof LOG_CODES)[number]
 

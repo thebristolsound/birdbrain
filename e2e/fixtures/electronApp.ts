@@ -61,7 +61,9 @@ export const test = base.extend<ElectronFixtures & ElectronOptions>({
     const app = await _electron.launch({
       args: ['.', ...args],
       cwd: join(__dirname, '../..'),
-      env: { ...process.env, ...env }
+      // BIRDBRAIN_E2E_SHARING_OFF (syncService.ts) keeps a seeded Shared Case
+      // from starting a transport against n0's public relays at launch.
+      env: { ...process.env, ...env, BIRDBRAIN_E2E_SHARING_OFF: '1' }
     })
 
     try {

@@ -36,7 +36,12 @@ import {
   rememberMemberTickets,
   resetSyncStateMemory
 } from '@main/services/sharing/syncState'
-import { MemoryHub, type ByteStream, type MemoryTransport } from '@main/services/sharing/transport'
+import {
+  MemoryHub,
+  type ByteStream,
+  type Connection,
+  type MemoryTransport
+} from '@main/services/sharing/transport'
 import type { SharingJoinProgressEvent, SharingSyncOutcome } from '@shared/types'
 import {
   activate,
@@ -521,6 +526,52 @@ describe('sharing service (#1810)', () => {
       const other = createCase({ name: 'Private' }).id
       expect(await refused(() => service.syncNow(other))).toBe('not-shared')
     })
+  })
+
+  it('closes a dial and a stream open that settle after the idle bound (#1881)', async () => {
+    const service = newService({ sessionIdleMs: 50 })
+    const node = hub.createTransport('alice-node')
+    service.setTransportProvider(async () => node)
+    await service.createInvite(caseId)
+    await addMember(caseId, {
+      installationId: B.installationId,
+      publicKeyPem: B.publicKeyPem,
+      operatorName: B.operatorName,
+      nodeId: 'bob-node',
+      memberCode: B.memberCode
+    })
+    rememberMemberTickets(caseId, { [B.installationId]: 'mem:bob-node' })
+
+    let answerDial: (connection: Connection) => void = () => {}
+    const dial = vi
+      .spyOn(node, 'dial')
+      .mockImplementation(() => new Promise<Connection>((resolve) => (answerDial = resolve)))
+    expect(await service.syncNow(caseId)).toEqual([
+      { installationId: B.installationId, outcome: 'unreachable' }
+    ])
+    const lateConnection = { peerNodeId: 'bob-node', close: vi.fn() }
+    answerDial(lateConnection)
+    await settle(() => lateConnection.close.mock.calls.length === 1)
+
+    const connection = { peerNodeId: 'bob-node', close: vi.fn() }
+    dial.mockResolvedValue(connection)
+    let grantStream: (stream: ByteStream) => void = () => {}
+    vi.spyOn(node, 'openStream').mockImplementation(
+      () => new Promise<ByteStream>((resolve) => (grantStream = resolve))
+    )
+    expect(await service.syncNow(caseId)).toEqual([
+      {
+        installationId: B.installationId,
+        outcome: 'failed',
+        detail: 'The peer opened no stream for 50 ms'
+      }
+    ])
+    expect(connection.close).toHaveBeenCalledTimes(1)
+    const lateStream = { read: vi.fn(), write: vi.fn(), close: vi.fn() }
+    grantStream(lateStream)
+    await settle(() => lateStream.close.mock.calls.length === 1)
+    expect(lateStream.read).not.toHaveBeenCalled()
+    await service.close()
   })
 
   describe('joinCase on the joiner', () => {

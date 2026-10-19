@@ -650,6 +650,30 @@ describe('sync service (#1881)', () => {
     expect(hub.listeningNode('mem:node-alice')).toBeUndefined()
   })
 
+  // The quit order in index.ts: the database closes once the stopped round
+  // has settled, so a session the closed transport ends reads the roster and
+  // writes members.json against an open database.
+  it('a round in flight at stop settles before the database may close', async () => {
+    await seedTeam()
+    const bob = await listener('bob', fromBob)
+    const carol = await listener('carol', fromCarol)
+    bob.mute = true
+    const warn = vi.spyOn(logger, 'warn')
+    const svc = build()
+    svc.start()
+    await settle(() => bob.streams === 1)
+    const stopping = svc.stop()
+    await svc.idle()
+    closeDatabase()
+    await stopping
+    await turns()
+    expect(carol.streams).toBe(0)
+    const messages = warn.mock.calls.map(([, , , err]) =>
+      err instanceof Error ? err.message : String(err)
+    )
+    expect(messages.filter((m) => m.includes('Database not initialized'))).toEqual([])
+  })
+
   it('a factory that returns null leaves the service off', async () => {
     await seedTeam()
     const info = vi.spyOn(logger, 'info')

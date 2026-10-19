@@ -854,9 +854,12 @@ if (!gotSingleInstanceLock) {
     updaterService?.dispose()
     extractionProcess.dispose()
     // Started, not awaited: the transport's close is native work Electron
-    // would not wait for, and the two steps below must still run.
+    // would not wait for, and the steps below must still run.
     const closingSharing = syncService?.stop() ?? sharingService?.close()
     await stopCaptureServer()
+    // The closed transport ends a round's session, which still reads the
+    // roster and writes members.json on its way out.
+    await syncService?.idle()
     closeDatabase()
     await closingSharing
   })

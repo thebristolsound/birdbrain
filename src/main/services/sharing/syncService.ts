@@ -47,7 +47,8 @@ export interface SyncService {
   start(): void
   // Clears the timer and closes the transport; nothing starts after it.
   stop(): Promise<void>
-  // The round in flight, or a settled promise.
+  // The round in flight, or a settled promise. After `stop`, it settles once
+  // the closed transport has ended the round, so the database may close.
   idle(): Promise<void>
 }
 

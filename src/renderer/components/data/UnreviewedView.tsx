@@ -215,7 +215,13 @@ export function UnreviewedView({
             ))}
           </Column>
 
-          <Column title={GROUP_LABELS[group]} className="w-80 shrink-0">
+          <Column
+            title={GROUP_LABELS[group]}
+            // The limit the rows answer: the box may hold a refused value, or one still
+            // being read.
+            subtitle={group === 'rare' ? `Found in at most ${captures(data.rareLimit)}` : undefined}
+            className="w-80 shrink-0"
+          >
             {rows.length === 0 ? (
               <EmptyState>No captures in this group.</EmptyState>
             ) : (

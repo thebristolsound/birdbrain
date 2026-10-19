@@ -309,6 +309,24 @@ describe('UnreviewedView', () => {
     expect(listUnreviewed).toHaveBeenLastCalledWith('case1', 2)
   })
 
+  it('names the limit the rare rows answer, not the text in the box', async () => {
+    listUnreviewed = vi.fn((_: string, rareLimit: number) => Promise.resolve(result({ rareLimit })))
+    fakeBridge({ cases: { listUnreviewed } })
+    renderView()
+    await screen.findByTestId('unreviewed-view')
+    fireEvent.click(screen.getByTestId('unreviewed-group-rare'))
+    expect(screen.getByText('Found in at most 2 captures')).toBeTruthy()
+    const limit = screen.getByTestId('unreviewed-rare-limit') as HTMLInputElement
+    fireEvent.change(limit, { target: { value: '3' } })
+    await screen.findByText('Found in at most 3 captures')
+    // A refused value stays in the box; the rows still answer 3, and the title says so.
+    fireEvent.change(limit, { target: { value: '0' } })
+    expect(limit.value).toBe('0')
+    expect(screen.getByText('Found in at most 3 captures')).toBeTruthy()
+    expect(screen.queryByText('Found in at most 0 captures')).toBeNull()
+    expect(listUnreviewed).toHaveBeenLastCalledWith('case1', 3)
+  })
+
   it('reads again each time it is mounted on the same cache', async () => {
     stub(result())
     const { client, unmount } = renderView()

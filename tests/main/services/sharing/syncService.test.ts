@@ -1,4 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest'
+import {
+  describe,
+  it,
+  expect,
+  expectTypeOf,
+  beforeEach,
+  afterEach,
+  vi,
+  type MockInstance
+} from 'vitest'
 import { createSign, randomBytes, randomUUID } from 'crypto'
 import { mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
@@ -296,6 +305,9 @@ describe('sync service (#1881)', () => {
     const carol = await listener('carol', fromCarol)
     const svc = build()
     const syncNow = vi.spyOn(sharing, 'syncNow')
+    // index.ts calls start without awaiting it; a start that returned the
+    // round would let boot wait on the network.
+    expectTypeOf(svc.start).returns.toEqualTypeOf<void>()
     svc.start()
     expect(bob.hellos).toEqual([])
     expect(carol.hellos).toEqual([])

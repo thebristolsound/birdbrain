@@ -1,0 +1,55 @@
+Closes #829
+
+## Summary
+
+An existing selector can now be matched again against every capture in a case, from a
+"Rescan all captures" button on the Signals detail rail. The rescan only adds matches and
+never clears existing ones first, per the wave-4 intake rulings on #829. The button stays
+busy until the rescan reports which selector it finished. The dispatch step opens and labels
+this pull request.
+
+## Changes
+
+<details>
+<summary>Files changed, grouped by purpose</summary>
+
+- `src/main/services/selectorLifecycle.ts`, `src/main/ipcHandlers.ts`, `src/shared/ipc.ts`: the rescan pass and its channel
+- `src/renderer/components/signals/SignalDetailRail.tsx`, `useSelectorRescan.ts`: the button and its busy state
+- `tests/main/services/selectorLifecycle.test.ts`, `tests/components/SignalDetailRail.test.tsx`: known-answer and rail tests
+
+</details>
+
+## Evidence-affecting
+
+Yes
+
+<details>
+<summary>What could change for evidence, and how that is checked</summary>
+
+### Evidence impact
+
+- Evidentiary result or interpretation that could change: which captures a selector reports as matching.
+- What verification proves and does not prove after this change: match rows remain insert-or-ignore; no existing row is removed.
+- Backward verification preserved (existing evidence packages still verify): yes, no manifest or hash path is touched.
+- Known-answer test added or extended, or why none applies: `selectorLifecycle.test.ts` pins the window gap.
+
+</details>
+
+<!-- preflight v1 sha=2c8c60c22a9dc92a778ef74653b7d5aa8be2ee4c status=pass -->
+## Verification
+
+<details>
+<summary>All pre-merge checks passed</summary>
+
+`pnpm preflight` at `2c8c60c22a9dc92a778ef74653b7d5aa8be2ee4c` on Node v20.20.2; diff scored against `origin/main` (merge base `0b48d79fc`). Result: **pass**.
+
+- `pnpm lint` - pass (exit 0)
+- `pnpm typecheck` - pass (exit 0)
+- `pnpm build` - pass (exit 0)
+- `pnpm build:extension` - skipped - no extension/ changes
+- `pnpm test:coverage` - pass (exit 0) - 3648 passed, 8 skipped (3656), thresholds met
+- `pnpm coverage:diff` - pass (exit 0) - 94.1% of changed lines covered
+
+</details>
+
+Created with Claude Opus 5.5 in Claude Code (T3 Code)

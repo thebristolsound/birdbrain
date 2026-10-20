@@ -145,6 +145,7 @@ import type {
   Capture,
   Case,
   FieldHitCheck,
+  UnreviewedCaptures,
   FieldSearchResult,
   LogEntry,
   RecentActivityEvent,
@@ -167,6 +168,7 @@ import * as caseRepo from '@main/services/db/caseRepo'
 import * as captureRepo from '@main/services/db/captureRepo'
 import * as extractedDataRepo from '@main/services/db/extractedDataRepo'
 import * as searchFieldRepo from '@main/services/db/searchFieldRepo'
+import * as unreviewedRepo from '@main/services/db/unreviewedRepo'
 import { createCase } from '@main/services/db/caseRepo'
 import { insertCapture } from '@main/services/db/captureRepo'
 import * as storage from '@main/services/storage'
@@ -178,6 +180,7 @@ import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createSessionService, type SessionService } from '@main/services/session'
 import { SharingService } from '@main/services/sharing/sharingService'
+import { irohBinding } from '@main/services/sharing/irohTransport'
 import { MemoryHub } from '@main/services/sharing/transport'
 import { addMember } from '@main/services/sharing/membership'
 import { listCaseMembers } from '@main/services/db/caseMemberRepo'
@@ -777,6 +780,21 @@ describe('ipcHandlers — captures', () => {
 
   // The sync pill's read (#1512): a Case nobody shared has no peers and
   // nothing to report.
+  it('answers whether sharing is available, and stores or refuses a relay URL (#1809)', async () => {
+    expect(expectOk<boolean>(await invoke(IPC_CHANNELS.SHARING_IS_AVAILABLE))).toBe(
+      irohBinding() !== null
+    )
+    expectOk(await invoke(IPC_CHANNELS.SHARING_SET_RELAY_URL, 'https://relay.example.org/'))
+    expect(settings.getSettings().sharingRelayUrl).toBe('https://relay.example.org/')
+    const refused = (await invoke(IPC_CHANNELS.SHARING_SET_RELAY_URL, 'nope')) as {
+      ok: boolean
+      code?: string
+    }
+    expect(refused).toMatchObject({ ok: false, code: 'relay-url-invalid' })
+    expectOk(await invoke(IPC_CHANNELS.SHARING_SET_RELAY_URL, ''))
+    expect(settings.getSettings().sharingRelayUrl).toBe('')
+  })
+
   it('answers the sync state of a Case', async () => {
     const state = expectOk<{ phase: string; peersTotal: number; lastError: unknown }>(
       await invoke(IPC_CHANNELS.SHARING_GET_SYNC_STATE, caseId)
@@ -786,7 +804,8 @@ describe('ipcHandlers — captures', () => {
       peersReachable: 0,
       peersTotal: 0,
       transfer: null,
-      lastError: null
+      lastError: null,
+      egress: 'direct'
     })
   })
 
@@ -2337,6 +2356,48 @@ describe('ipcHandlers — Case search fields', () => {
       expect(
         readRecentEntries(20).some(
           (e) => e.source === 'ipc' && e.code === 'searchFields.check_failed'
+        )
+      ).toBe(true)
+    } finally {
+      disposeLogger()
+    }
+  })
+
+  it('lists the unreviewed Captures, refuses a bad limit, and reports a read that cannot run', async () => {
+    writeFileSync(
+      defaultCaptureStore.artifactPaths(caseId, captureId, 'html').abs,
+      '<a href="https://ledger-tollgate.example.org/x">x</a>'
+    )
+    expectOk(await invoke(IPC_CHANNELS.CASES_ENSURE_SEARCH_FIELDS, caseId))
+
+    const listed = expectOk<UnreviewedCaptures>(
+      await invoke(IPC_CHANNELS.CASES_LIST_UNREVIEWED, caseId, 2)
+    )
+    expect(listed).toEqual(unreviewedRepo.listUnreviewedCaptures(caseId, 2))
+    expect(listed.groups['link-host'].map(({ key }) => key)).toEqual([
+      'ledger-tollgate.example.org'
+    ])
+
+    const refused = (await invoke(IPC_CHANNELS.CASES_LIST_UNREVIEWED, caseId, 0)) as {
+      ok: boolean
+      code?: string
+    }
+    expect(refused).toMatchObject({ ok: false, code: 'INVALID_LIMIT' })
+
+    initLogger(userDataPath, 'unreviewed-test-session')
+    try {
+      vi.spyOn(unreviewedRepo, 'listUnreviewedCaptures').mockImplementationOnce(() => {
+        throw new Error('database is locked')
+      })
+      const res = (await invoke(IPC_CHANNELS.CASES_LIST_UNREVIEWED, caseId, 2)) as {
+        ok: boolean
+        code?: string
+      }
+      expect(res).toMatchObject({ ok: false, code: 'UNREVIEWED_FAILED' })
+      flushLogger()
+      expect(
+        readRecentEntries(20).some(
+          (e) => e.source === 'ipc' && e.code === 'searchFields.unreviewed_failed'
         )
       ).toBe(true)
     } finally {

@@ -345,7 +345,9 @@ describe('migration v40 (investigation records and the Case revision)', () => {
       expect(count('case_change_log')).toBe(0)
     })
 
-    it('leaves the editable tables, the archive probes and the archive version as they were', () => {
+    // Case Archive version 10 (#1909) carries the records; the revision and its
+    // change log stay behind.
+    it('keeps the records off the editable tables, and the revision out of archives', () => {
       expect([...ALLOWED_TABLES]).toEqual([
         'cases',
         'captures',
@@ -364,15 +366,20 @@ describe('migration v40 (investigation records and the Case revision)', () => {
         'selectors',
         'extracted_data',
         'capture_archive_refs',
-        'annotation_pins'
+        'annotation_pins',
+        ...SYNCED_TABLES,
+        'investigation_runs'
       ])
-      expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(9)
+      expect(CASE_ARCHIVE_SCHEMA_VERSION).toBe(10)
       const caseId = createCase({ name: 'Archived' }).id
       insert('subjects', rows.subject('s-1', caseId))
       const keys = Object.keys(collectCaseData(caseId)).map((key) =>
         key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
       )
-      for (const table of NEW_TABLES) expect(keys, table).not.toContain(table)
+      for (const table of NEW_TABLES) {
+        const travels = table !== 'case_revisions' && table !== 'case_change_log'
+        expect(keys.includes(table), table).toBe(travels)
+      }
     })
   })
 

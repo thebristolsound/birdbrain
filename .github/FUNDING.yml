@@ -1,0 +1,16 @@
+# Funding links shown under the repository's "Sponsor" button.
+# Reference: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/displaying-a-sponsor-button-in-your-repository
+#
+# The button appears only for platforms with a value. GitHub Sponsors needs the
+# maintainer to enrol at https://github.com/sponsors before the entry resolves.
+# Fill in the other platforms only with accounts the maintainer owns.
+
+github: [thebristolsound]
+# patreon:
+# open_collective:
+# ko_fi:
+# liberapay:
+# polar:
+# buy_me_a_coffee:
+# thanks_dev:
+# custom:

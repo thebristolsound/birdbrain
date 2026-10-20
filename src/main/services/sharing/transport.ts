@@ -2,7 +2,7 @@
 // cases-design.md, "Transport interface"). A transport carries bytes between
 // two installations and nothing else: it never reads a message and never
 // decides what a session accepts, which is why it sits off the blocking tier
-// of the evidence path list. `IrohTransport` (#1810) implements it over QUIC;
+// of the evidence path list. `IrohTransport` (#1809) implements it over QUIC;
 // `MemoryTransport` below is the in-process form the unit suite runs the
 // protocol on, so the acceptance code is tested against real files and a real
 // database without native code.
@@ -29,6 +29,9 @@ export interface Transport {
   // Accepts incoming streams. Called at most once per transport.
   listen(onStream: (stream: ByteStream, peerNodeId: string) => void): Promise<void>
   dial(ticket: string): Promise<Connection>
+  // The node a ticket names, or null when it is not a ticket this transport
+  // reads.
+  nodeIdOf(ticket: string): string | null
   openStream(connection: Connection): Promise<ByteStream>
   close(): Promise<void>
 }
@@ -183,6 +186,12 @@ export class MemoryTransport implements Transport {
 
   get ticket(): string {
     return `${MEMORY_TICKET_PREFIX}${this.nodeId}`
+  }
+
+  nodeIdOf(ticket: string): string | null {
+    return ticket.startsWith(MEMORY_TICKET_PREFIX)
+      ? ticket.slice(MEMORY_TICKET_PREFIX.length)
+      : null
   }
 
   get isListening(): boolean {

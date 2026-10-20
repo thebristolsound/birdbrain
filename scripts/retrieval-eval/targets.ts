@@ -12,6 +12,8 @@
  * the extracted-data search and the baseline would understate that path.
  */
 
+import type { UnreviewedGroup } from '@shared/types'
+
 export type TargetKey =
   'image-link' | 'mail-header' | 'rare-address' | 'address-variant' | 'annotated-shop'
 
@@ -83,4 +85,19 @@ export const TARGET_ONLY_STRINGS = [
   'larchfield',
   'reconciliation',
   '7781'
+]
+
+/** Where the unreviewed view must list a target page (D10's table). */
+export interface ExpectedPlacement {
+  target: TargetKey
+  group: UnreviewedGroup
+  key: string
+}
+
+// The mail header's sender and reply address, which no query names, and the address only
+// one Capture holds. Each key is the form the view groups by: the address in lower case.
+export const EXPECTED_PLACEMENTS: ExpectedPlacement[] = [
+  { target: 'mail-header', group: 'from', key: 'orders@quillmere-supplies.example.com' },
+  { target: 'mail-header', group: 'reply-to', key: 'l.marsh.remit@corvane-post.example.net' },
+  { target: 'rare-address', group: 'rare', key: 'ada.penrose@larchfield.example.org' }
 ]

@@ -187,8 +187,15 @@ join writes nothing.
 Pull-only, over one Iroh bidirectional stream per session, messages CBOR-encoded:
 
 1. `hello`: `caseId`, `installationId`, a 32-byte challenge. Each side signs the other's
-   challenge with its signing key and verifies against the roster. A peer not in the roster, or
-   revoked, gets `bye` and the connection closes.
+   challenge with its signing key and verifies against the roster. The signed digest names the
+   Case, the signer and the side it signs as, so an answer one member gave as a listener cannot be
+   passed off as that member's dialer proof in another session. A peer not in the roster, or
+   revoked, gets `bye` and the connection closes. Each side also sends its current transport
+   ticket. The other side keeps it only after the sender's proof verifies, and only when the
+   ticket, and the connection the transport authenticated, name the node the member's signed
+   `member-add` records. A ticket names the relay its node started on, so a member whose relay
+   changed is reachable again after its next session with each peer (#1809, maintainer ruling
+   2026-10-19).
 2. `heads`: for each member chain the sender holds, `{ installationId, index, entryHash }`.
 3. `entries`: the requester asks for `(installationId, fromIndex)` and receives the entries as
    raw lines. The receiver parses each with `ManifestEntrySchema`, verifies the chain segment
@@ -203,9 +210,11 @@ Pull-only, over one Iroh bidirectional stream per session, messages CBOR-encoded
 6. After any new entry landed, the receiver writes `merge` to its own chain and, when a TSA is
    configured, queues the `merge` Entry Hash for a `timestamp` entry with `subject: 'entry'`.
 
-Every peer runs the session against every reachable member on app start, on a 60-second timer
-while peers are connected, and on **Sync now**. Because nothing is pushed, a malicious peer can
-only offer entries; the receiver's signature and hash checks decide what is stored.
+Every peer runs the session against every member in good standing at app start, every 60 seconds
+while the app is open, and on **Sync now**. A member that does not answer is dialed again at the
+next tick, a transport that failed to start is started again then, and one Case's sessions run one
+after another. Because nothing is pushed, a malicious peer can only offer entries; the receiver's
+signature and hash checks decide what is stored.
 
 ### Working-layer rows
 
@@ -367,8 +376,10 @@ at-rest encryption, which a hosted relay holding ciphertext would require.
 
 ## Open questions
 
-1. Where Iroh persists its node key. It must survive restarts so `nodeId` in `member-add`
-   stays valid; if the binding regenerates it, `member-add` needs a rotation path.
+1. Answered 2026-10-18 by #1809: the app persists the node key. It stores the 32-byte secret key
+   in `sharing-node-key` in the user-data directory, wrapped with the operating system's credential
+   store when one is available, and passes it to `EndpointBuilder.secretKey` at every start. Two
+   starts over the same directory report the same node id, so `member-add` needs no rotation path.
 2. Answered 2026-09-19 in the [members mock feasibility assessment](2026-09-19-shared-case-members-feasibility-assessment.md):
    an `exclude` entry annotates and does not change the verifier's pass outcome.
 3. Relay hosting for testers who cannot reach n0's relays; a self-hosted `iroh-relay` is one

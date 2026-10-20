@@ -46,7 +46,13 @@ import {
   verifyRemoteRows,
   type RowPage
 } from '@main/services/sharing/workingRows'
-import { beginSession, finishSession, writeMembersFile } from '@main/services/sharing/syncState'
+import {
+  beginSession,
+  finishSession,
+  memberTickets,
+  rememberMemberTickets,
+  writeMembersFile
+} from '@main/services/sharing/syncState'
 import { rebuildRosterCache } from '@main/services/sharing/rosterCache'
 import { isChainInstallationId } from '../../../packages/evidence-package-layout/index'
 import {
@@ -119,6 +125,16 @@ export const MAX_ROW_PAGES = 1000
 
 export interface ServeOptions {
   pageBytes?: number
+  // This node's current transport ticket, sent in `hello` (#1809).
+  ticket?: string
+  // The node the transport authenticated as the dialer, and how to read the
+  // node a ticket names: a dialer's ticket is kept only when both name the
+  // node its member's signed `member-add` records (keptTicket).
+  peerNodeId?: string
+  ticketNodeId?: (ticket: string) => string | null
+  // Called with the dialer's ticket once it is kept, so the listener dials it
+  // there next time.
+  rememberTicket?: (caseId: string, installationId: string, ticket: string) => void
 }
 
 export type SyncPhase = 'hello' | 'heads' | 'entries' | 'blobs' | 'apply' | 'rows' | 'merge'
@@ -159,6 +175,36 @@ export interface SyncSessionOptions {
   // interval, for as long as that `merge` is the Case's newest unstamped one
   // (`pendingReceiptStamp` stamps only the newest).
   enqueueReceiptStamp?: (caseId: string, mergeIndex: number) => void
+  // This node's current transport ticket, sent in `hello` (#1809). The
+  // listener's, once kept (keptTicket), replaces the one this replica dials
+  // it at; `peerNodeId` is the node the transport reached.
+  ticket?: string
+  peerNodeId?: string
+  ticketNodeId?: (ticket: string) => string | null
+}
+
+// Whether a peer's ticket is kept. Its proof has verified by now; the ticket
+// must also name the node the member's signed `member-add` records, and so
+// must the connection when the transport says which node it reached, so a
+// member cannot point teammates at another node and a ticket from any other
+// node is not taken as the member's.
+function keptTicket(
+  member: CaseMember,
+  ticket: string | undefined,
+  peerNodeId: string | undefined,
+  ticketNodeId: ((ticket: string) => string | null) | undefined
+): ticket is string {
+  if (ticket === undefined || ticketNodeId === undefined) return false
+  if (peerNodeId !== undefined && peerNodeId !== member.nodeId) return false
+  return ticketNodeId(ticket) === member.nodeId
+}
+
+// Records a kept peer ticket in this replica's sync state when it differs
+// from the one held: a node's ticket names the relay it started on, and only
+// a session tells the other side it moved.
+export function rememberPeerTicket(caseId: string, installationId: string, ticket: string): void {
+  if (memberTickets(caseId)[installationId] === ticket) return
+  rememberMemberTickets(caseId, { [installationId]: ticket })
 }
 
 // Why a listener ends a session before serving it; sent in `bye`.
@@ -172,15 +218,26 @@ export const BYE_REASONS = {
   done: 'done'
 } as const
 
+export type HelloRole = 'dialer' | 'listener'
+
 // The string a side signs to prove it holds the key the roster names: bound
-// to the Case and to the signer, so a proof cannot be replayed into another
-// Case or claimed by another member.
-export function helloDigest(caseId: string, challenge: Uint8Array, signer: string): string {
+// to the Case, to the signer and to the side it signs as, so a proof cannot
+// be replayed into another Case, claimed by another member, or relayed from
+// one session into another with the roles swapped (#1809 review: a stranger
+// who dialed member A as B could otherwise hand A's challenge to B as a
+// dialer and pass B's listener proof back to A as B's own).
+export function helloDigest(
+  caseId: string,
+  challenge: Uint8Array,
+  signer: string,
+  role: HelloRole
+): string {
   const body = {
     purpose: 'birdbrain-sync-hello',
     caseId,
     challenge: Buffer.from(challenge).toString('hex'),
-    signer
+    signer,
+    role
   }
   return createHash('sha256').update(canonicalStringify(body)).digest('hex')
 }
@@ -293,13 +350,20 @@ export async function serveSyncSession(
       caseId: source.caseId,
       installationId: source.installationId,
       challenge,
-      proof: source.sign(helloDigest(source.caseId, hello.challenge, source.installationId))
+      proof: source.sign(
+        helloDigest(source.caseId, hello.challenge, source.installationId, 'listener')
+      ),
+      ...(serveOptions.ticket === undefined ? {} : { ticket: serveOptions.ticket })
     })
     const { signature } = await expectMessage(reader, 'proof')
     const member = source.roster().find((m) => m.installationId === peerId)
-    const expected = helloDigest(source.caseId, challenge, peerId)
+    const expected = helloDigest(source.caseId, challenge, peerId, 'dialer')
     if (!member || !verifyEntrySignature(expected, signature, member.publicKeyPem)) {
       return await sayBye(stream, BYE_REASONS.badProof)
+    }
+    const { peerNodeId, ticketNodeId } = serveOptions
+    if (keptTicket(member, hello.ticket, peerNodeId, ticketNodeId)) {
+      serveOptions.rememberTicket?.(source.caseId, peerId, hello.ticket)
     }
     reader.allowFrames(MAX_FRAME_BYTES)
 
@@ -412,7 +476,8 @@ export async function pullFromPeer(
       caseId,
       installationId: self,
       challenge,
-      proof: null
+      proof: null,
+      ...(options.ticket === undefined ? {} : { ticket: options.ticket })
     })
     const hello = await expectMessage(reader, 'hello')
     const peer = roster.find((m) => m.installationId === hello.installationId)
@@ -427,16 +492,19 @@ export async function pullFromPeer(
       await sayBye(stream, refusal ?? BYE_REASONS.notMember)
       return result
     }
-    const expected = helloDigest(caseId, challenge, peer.installationId)
+    const expected = helloDigest(caseId, challenge, peer.installationId, 'listener')
     if (hello.proof === null || !verifyEntrySignature(expected, hello.proof, peer.publicKeyPem)) {
       fail('peer', `peer ${peer.installationId} failed to prove its key`)
       await sayBye(stream, BYE_REASONS.badProof)
       return result
     }
     result.peerInstallationId = peer.installationId
+    if (keptTicket(peer, hello.ticket, options.peerNodeId, options.ticketNodeId)) {
+      rememberPeerTicket(caseId, peer.installationId, hello.ticket)
+    }
     await writeMessage(stream, {
       t: 'proof',
-      signature: signEntryHash(helloDigest(caseId, hello.challenge, self))
+      signature: signEntryHash(helloDigest(caseId, hello.challenge, self, 'dialer'))
     })
 
     options.onPhase?.('heads')

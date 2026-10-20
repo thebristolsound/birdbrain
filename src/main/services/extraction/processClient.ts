@@ -16,8 +16,18 @@ import type {
 export const EXTRACTION_TIMEOUT_MS = 60_000
 
 export type ExtractionOutcome =
-  | { ok: true; rows: ExtractedDatum[]; durationMs: number }
-  | { ok: false; error: Error; durationMs: number }
+  | {
+      ok: true
+      rows: ExtractedDatum[]
+      durationMs: number
+      fieldBuild?: ExtractionReplyMessage['fieldBuild']
+    }
+  | {
+      ok: false
+      error: Error
+      durationMs: number
+      fieldBuild?: ExtractionReplyMessage['fieldBuild']
+    }
 
 export interface ExtractionClient {
   // Never rejects: every failure is an `ok: false` outcome.
@@ -88,8 +98,18 @@ export function createExtractionProcess(deps: ExtractionProcessDeps): Extraction
       if (forked !== child || inFlight?.pending.message.id !== reply.id) return
       settleInFlight(() =>
         reply.ok
-          ? { ok: true, rows: reply.rows, durationMs: reply.durationMs }
-          : { ok: false, error: errorFrom(reply.error), durationMs: reply.durationMs }
+          ? {
+              ok: true,
+              rows: reply.rows,
+              durationMs: reply.durationMs,
+              ...(reply.fieldBuild ? { fieldBuild: reply.fieldBuild } : {})
+            }
+          : {
+              ok: false,
+              error: errorFrom(reply.error),
+              durationMs: reply.durationMs,
+              ...(reply.fieldBuild ? { fieldBuild: reply.fieldBuild } : {})
+            }
       )
       pump()
     })

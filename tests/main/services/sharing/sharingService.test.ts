@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { createSign, generateKeyPairSync } from 'crypto'
+import { createSign, generateKeyPairSync, randomBytes } from 'crypto'
 import { mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -9,6 +9,7 @@ import { listCaseMembers, upsertCaseMember } from '@main/services/db/caseMemberR
 import { createCase, getCase } from '@main/services/db/caseRepo'
 import { getExhibit } from '@main/services/db/exhibitRepo'
 import { resetInstallationId } from '@main/services/installationId'
+import { logger } from '@main/services/logger'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
 import { resetSigningKey } from '@main/services/signingKey'
 import { updateSettings } from '@main/services/settings'
@@ -18,11 +19,13 @@ import { InviteRegistry } from '@main/services/sharing/inviteRegistry'
 import { JoinServer, requestJoin } from '@main/services/sharing/joinHandshake'
 import { addMember, shareCase } from '@main/services/sharing/membership'
 import {
+  CHALLENGE_BYTES,
   MAX_HANDSHAKE_FRAME_BYTES,
   MessageReader,
+  expectMessage,
   writeMessage
 } from '@main/services/sharing/messages'
-import { serveSyncSession } from '@main/services/sharing/session'
+import { helloDigest, serveSyncSession } from '@main/services/sharing/session'
 import {
   SharingService,
   routeIncomingStream,
@@ -33,7 +36,12 @@ import {
   rememberMemberTickets,
   resetSyncStateMemory
 } from '@main/services/sharing/syncState'
-import { MemoryHub, type ByteStream, type MemoryTransport } from '@main/services/sharing/transport'
+import {
+  MemoryHub,
+  type ByteStream,
+  type Connection,
+  type MemoryTransport
+} from '@main/services/sharing/transport'
 import type { SharingJoinProgressEvent, SharingSyncOutcome } from '@shared/types'
 import {
   activate,
@@ -117,6 +125,7 @@ describe('sharing service (#1810)', () => {
   })
 
   afterEach(() => {
+    vi.restoreAllMocks()
     closeDatabase()
     resetInstallationId()
     resetSigningKey()
@@ -247,6 +256,18 @@ describe('sharing service (#1810)', () => {
       await service.close()
     })
 
+    it('closes without throwing while a start that then fails is pending (#1809)', async () => {
+      const service = newService()
+      let fail: (err: Error) => void = () => {}
+      service.setTransportProvider(() => new Promise((_, reject) => (fail = reject)))
+      const creating = service.createInvite(caseId)
+      await new Promise((resolve) => setImmediate(resolve))
+      const closing = service.close()
+      fail(new Error('no relay'))
+      await expect(closing).resolves.toBeUndefined()
+      await expect(creating).rejects.toThrow('no relay')
+    })
+
     it('asks the provider again after a start that throws', async () => {
       const service = newService()
       let calls = 0
@@ -372,6 +393,26 @@ describe('sharing service (#1810)', () => {
       expect(welcome.roster).toHaveLength(2)
       expect(memberTickets(caseId)).toEqual({ [B.installationId]: bobNode.ticket })
 
+      // A session Bob opens refreshes the ticket the Owner holds for him
+      // (#1809), once his proof verifies and his ticket names his node.
+      rememberMemberTickets(caseId, { [B.installationId]: 'mem:bob-node-on-an-old-relay' })
+      const session = await bobNode.openStream(await bobNode.dial(ownerNode.ticket))
+      await writeMessage(session, {
+        t: 'hello',
+        caseId,
+        installationId: B.installationId,
+        challenge: randomBytes(CHALLENGE_BYTES),
+        proof: null,
+        ticket: bobNode.ticket
+      })
+      const answer = await expectMessage(new MessageReader(session), 'hello')
+      await writeMessage(session, {
+        t: 'proof',
+        signature: signer(B)(helloDigest(caseId, answer.challenge, B.installationId, 'dialer'))
+      })
+      await settle(() => memberTickets(caseId)[B.installationId] === bobNode.ticket)
+      session.close()
+
       // Carol's join is declined.
       const { invite: again } = await service.createInvite(caseId)
       const carolNode = hub.createTransport('carol-node')
@@ -487,6 +528,52 @@ describe('sharing service (#1810)', () => {
     })
   })
 
+  it('closes a dial and a stream open that settle after the idle bound (#1881)', async () => {
+    const service = newService({ sessionIdleMs: 50 })
+    const node = hub.createTransport('alice-node')
+    service.setTransportProvider(async () => node)
+    await service.createInvite(caseId)
+    await addMember(caseId, {
+      installationId: B.installationId,
+      publicKeyPem: B.publicKeyPem,
+      operatorName: B.operatorName,
+      nodeId: 'bob-node',
+      memberCode: B.memberCode
+    })
+    rememberMemberTickets(caseId, { [B.installationId]: 'mem:bob-node' })
+
+    let answerDial: (connection: Connection) => void = () => {}
+    const dial = vi
+      .spyOn(node, 'dial')
+      .mockImplementation(() => new Promise<Connection>((resolve) => (answerDial = resolve)))
+    expect(await service.syncNow(caseId)).toEqual([
+      { installationId: B.installationId, outcome: 'unreachable' }
+    ])
+    const lateConnection = { peerNodeId: 'bob-node', close: vi.fn() }
+    answerDial(lateConnection)
+    await settle(() => lateConnection.close.mock.calls.length === 1)
+
+    const connection = { peerNodeId: 'bob-node', close: vi.fn() }
+    dial.mockResolvedValue(connection)
+    let grantStream: (stream: ByteStream) => void = () => {}
+    vi.spyOn(node, 'openStream').mockImplementation(
+      () => new Promise<ByteStream>((resolve) => (grantStream = resolve))
+    )
+    expect(await service.syncNow(caseId)).toEqual([
+      {
+        installationId: B.installationId,
+        outcome: 'failed',
+        detail: 'The peer opened no stream for 50 ms'
+      }
+    ])
+    expect(connection.close).toHaveBeenCalledTimes(1)
+    const lateStream = { read: vi.fn(), write: vi.fn(), close: vi.fn() }
+    grantStream(lateStream)
+    await settle(() => lateStream.close.mock.calls.length === 1)
+    expect(lateStream.read).not.toHaveBeenCalled()
+    await service.close()
+  })
+
   describe('joinCase on the joiner', () => {
     it('joins, adopts the welcome, runs the first session and reports each step', async () => {
       // Alice's side, built while she is active: the Case shared with Bob
@@ -576,6 +663,133 @@ describe('sharing service (#1810)', () => {
       await Promise.all(routed)
       expect(parsedChain(ownChainText(caseId)).map((e) => e.type)).toEqual(['merge'])
       void caseDirOf
+    })
+
+    // Alice's side for the #1881 joins: the Case shared with Bob already
+    // approved and one document Bob lacks, behind an Owner node that answers
+    // the join and hands every hello stream to `hello`. Leaves Bob active.
+    async function ownerAwaitingJoin(
+      hello: (stream: ByteStream, fromAlice: RecordedSource) => Promise<void>
+    ): Promise<{ joins: JoinServer; invite: string; routed: Promise<void>[] }> {
+      await shareCase(caseId, { nodeId: 'alice-node' })
+      const bobMember = await addMember(caseId, {
+        installationId: B.installationId,
+        publicKeyPem: B.publicKeyPem,
+        operatorName: B.operatorName,
+        nodeId: 'bob-node',
+        memberCode: 'BM'
+      })
+      addDocument(caseId, A, 1)
+      const fromAlice = recordSource(caseId, A)
+      const roster = listCaseMembers(caseId).filter((m) => m.installationId !== B.installationId)
+      const registry = new InviteRegistry()
+      const { secret, expiresAt } = registry.open(caseId)
+      const ownerNode = hub.createTransport('alice-node')
+      const joins = new JoinServer({
+        nodeId: ownerNode.nodeId,
+        registry,
+        roster: () => roster,
+        caseName: () => 'Shared',
+        addMember: async () => {
+          roster.push(bobMember)
+          return bobMember
+        },
+        tickets: () => ({ [A.installationId]: ownerNode.ticket }),
+        rememberTicket: () => {},
+        onChanged: () => {}
+      })
+      const routed: Promise<void>[] = []
+      await ownerNode.listen((stream, peer) => {
+        routed.push(
+          routeIncomingStream(stream, peer, {
+            join: (s, p) => joins.serve(s, p),
+            hello: (s) => hello(s, fromAlice)
+          })
+        )
+      })
+      const invite = encodeInvite({
+        ticket: ownerNode.ticket,
+        caseId,
+        operatorName: 'Alice Owner',
+        secret,
+        expiresAt
+      })
+      await activate(B)
+      return { joins, invite, routed }
+    }
+
+    it("a syncNow during joinCase's first session shares it (#1881)", async () => {
+      // The Owner holds every hello until released, so the joiner's first
+      // session is still running when Sync now is pressed.
+      let hellos = 0
+      let release: () => void = () => {}
+      const held = new Promise<void>((resolve) => (release = resolve))
+      const { joins, invite, routed } = await ownerAwaitingJoin(async (s, fromAlice) => {
+        hellos += 1
+        await held
+        await serveSyncSession(s, (id) => (id === caseId ? fromAlice : null))
+      })
+
+      const service = newService()
+      service.setTransportProvider(async () => hub.createTransport('bob-node'))
+      const joining = service.joinCase(invite)
+      await settle(() => joins.pendingJoins(caseId).length === 1)
+      await joins.approve(caseId, joins.pendingJoins(caseId)[0].requestId, 'BM')
+      await settle(() => hellos === 1)
+      const pressed = service.syncNow(caseId)
+      release()
+      expect(await joining).toEqual({ caseId, caseName: 'Shared' })
+      expect(await pressed).toEqual([
+        {
+          installationId: A.installationId,
+          outcome: 'synced',
+          entries: 3,
+          blobs: 1,
+          rowsApplied: 0,
+          errors: 0
+        }
+      ])
+      expect(hellos).toBe(1)
+      expect(mergeEntries(caseId)).toHaveLength(1)
+      await service.close()
+      await Promise.all(routed)
+    })
+
+    it('a join whose first session opens no stream still joins, and a syncNow during it gets the failure (#1881)', async () => {
+      const { joins, invite } = await ownerAwaitingJoin(async () => {})
+      const service = newService({ sessionIdleMs: 50 })
+      // The join's own stream opens; the first session's never does, as on
+      // a peer that grants no stream.
+      const node = hub.createTransport('bob-node')
+      const open = node.openStream.bind(node)
+      let opened = 0
+      vi.spyOn(node, 'openStream').mockImplementation((connection) => {
+        opened += 1
+        return opened === 1 ? open(connection) : new Promise<ByteStream>(() => {})
+      })
+      service.setTransportProvider(async () => node)
+      const warn = vi.spyOn(logger, 'warn')
+      const joining = service.joinCase(invite)
+      await settle(() => joins.pendingJoins(caseId).length === 1)
+      await joins.approve(caseId, joins.pendingJoins(caseId)[0].requestId, 'BM')
+      await settle(() => opened === 2)
+      const pressed = service.syncNow(caseId)
+      expect(await joining).toEqual({ caseId, caseName: 'Shared' })
+      expect(await pressed).toEqual([
+        {
+          installationId: A.installationId,
+          outcome: 'failed',
+          detail: 'The peer opened no stream for 50 ms'
+        }
+      ])
+      expect(warn).toHaveBeenCalledWith(
+        'sharing',
+        'sharing.first_session_failed',
+        undefined,
+        expect.any(Error)
+      )
+      expect(mergeEntries(caseId)).toEqual([])
+      await service.close()
     })
   })
 })

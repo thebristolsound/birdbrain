@@ -187,6 +187,10 @@ describe('rowsForNode', () => {
     }
   })
 
+  it('names no rows under Unreviewed Captures, whose view replaces the table', () => {
+    expect(rows('unreviewed')).toEqual([])
+  })
+
   it('files Integrity Exceptions from the persisted Capture state and infers nothing for Derived Files', () => {
     expect(rows('integrity-exceptions').map((r) => r.id)).toEqual(['cap-a'])
   })

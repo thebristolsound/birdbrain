@@ -4,6 +4,7 @@ import {
   app,
   BrowserWindow,
   dialog,
+  safeStorage,
   shell,
   session as electronSession,
   webContents as electronWebContents,
@@ -57,6 +58,13 @@ import { initServerToken } from '@main/services/serverToken'
 import { createCaptureLifecycle } from '@main/services/captureLifecycle'
 import { createExtractionProcess } from '@main/services/extraction/processClient'
 import { SharingService } from '@main/services/sharing/sharingService'
+import { startIrohTransport } from '@main/services/sharing/irohTransport'
+import {
+  E2E_SHARING_OFF_SWITCH,
+  createSyncService,
+  sharingSwitchedOff,
+  type SyncService
+} from '@main/services/sharing/syncService'
 import { createTimestampWorker } from '@main/services/timestampWorker'
 import { runExhibitBackfill } from '@main/services/exhibitBackfill'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
@@ -94,6 +102,9 @@ const extractionProcess = createExtractionProcess({ entryPath: join(__dirname, '
 // The sharing service, closed on quit so a listening transport does not
 // outlive the window.
 let sharingService: SharingService | null = null
+// When Shared Case sessions run (#1881); owns the sharing transport's
+// lifetime, so stopping it on quit closes the transport.
+let syncService: SyncService | null = null
 
 // Registered before whenReady so a failure during startup is still captured.
 // logger.* is a no-op until initLogger runs, which is safe by construction.
@@ -662,9 +673,11 @@ if (!gotSingleInstanceLock) {
         getEgress: () => getSettings().egress
       })
 
-      // Shared Cases (#1810). The transport provider stays at its null
-      // default until IrohTransport is wired in (#1809), so every network
-      // call refuses `sharing-unavailable` and nothing listens.
+      // Shared Cases (#1810, #1809, #1881). The sync service opens the Iroh
+      // transport at launch when a Shared Case exists, otherwise on the first
+      // invite or join, and closes it on quit; an installation with no Shared
+      // Case opens no connection. Where the binding does not load, every
+      // sharing command refuses `sharing-unavailable` and boot goes on.
       sharingService = new SharingService({
         receivedCaptures: captureLifecycle,
         emitChanged: (payload) => {
@@ -677,6 +690,17 @@ if (!gotSingleInstanceLock) {
             sendEvent(mainWindow.webContents, IPC_CHANNELS.SHARING_JOIN_PROGRESS, payload)
           }
         }
+      })
+
+      syncService = createSyncService({
+        sharing: sharingService,
+        transportFactory: () =>
+          startIrohTransport({
+            userDataDir: userDataPath,
+            cipher: safeStorage,
+            relayUrl: getSettings().sharingRelayUrl
+          }),
+        switchedOff: sharingSwitchedOff(process.env[E2E_SHARING_OFF_SWITCH], !app.isPackaged)
       })
 
       // Register IPC handlers
@@ -731,6 +755,12 @@ if (!gotSingleInstanceLock) {
 
       // Arm the updater once the window exists so status events have a target.
       updaterService.start()
+
+      // After the exhibit backfill, so no session appends to a chain while it
+      // does, and after the fatal capture-server bind, so a launch that is
+      // about to fail opens no connection. Not awaited: boot never waits on
+      // the network.
+      syncService.start()
 
       app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {
@@ -823,8 +853,14 @@ if (!gotSingleInstanceLock) {
     stopExtensionConnectionCheck()
     updaterService?.dispose()
     extractionProcess.dispose()
-    await sharingService?.close()
+    // Started, not awaited: the transport's close is native work Electron
+    // would not wait for, and the steps below must still run.
+    const closingSharing = syncService?.stop() ?? sharingService?.close()
     await stopCaptureServer()
+    // The closed transport ends a round's session, which still reads the
+    // roster and writes members.json on its way out.
+    await syncService?.idle()
     closeDatabase()
+    await closingSharing
   })
 }

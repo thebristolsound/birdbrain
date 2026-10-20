@@ -6,7 +6,9 @@ import type { InventoryRow } from '@shared/types'
 // Exhibit and its Derived Files as child rows — no `raw` / `derived` folders.
 // Staging is its own top-level group beside Data Sources (ADR-0024), never a
 // subgroup of it, because pooled rows are not evidence and a reader must not
-// find them under the heading that says they are. Views holds File Types.
+// find them under the heading that says they are. Views holds File Types and the
+// unreviewed view (D8 of docs/plans/2026-10-09-case-retrieval-first-slice.md), whose row
+// sits last so it is next to Indicators, the identifiers it groups by.
 // Indicators holds the extracted-data categories with their subcategories
 // beneath. Results holds the three nodes whose content is #1150.
 
@@ -19,6 +21,7 @@ export type DataNodeKey =
   | 'views'
   | 'file-types'
   | `file-type:${string}`
+  | 'unreviewed'
   | 'indicators'
   | `indicator-category:${string}`
   | `indicator-subcategory:${string}`
@@ -51,6 +54,8 @@ export interface ResultCounts {
   keywordHits: number | null
   integrityExceptions: number | null
   manifestLedger: number | null
+  // The unreviewed Captures, once the unreviewed view has read them.
+  unreviewed?: number | null
 }
 
 // One child per Selector under Keyword Hits (X39): the label the Signals
@@ -274,6 +279,14 @@ export function buildDataTree({
         })
       }
     }
+    push({
+      key: 'unreviewed',
+      label: 'Unreviewed Captures',
+      depth: 1,
+      group: false,
+      hasChildren: false,
+      count: results.unreviewed ?? null
+    })
   }
 
   // --- Indicators -----------------------------------------------------------
@@ -399,7 +412,8 @@ export function descendantKeys(
   if (key === 'views') {
     return [
       'file-types',
-      ...[...new Set(anchored.map(fileTypeOf))].map((t): DataNodeKey => `file-type:${t}`)
+      ...[...new Set(anchored.map(fileTypeOf))].map((t): DataNodeKey => `file-type:${t}`),
+      'unreviewed'
     ]
   }
   if (key === 'file-types') {

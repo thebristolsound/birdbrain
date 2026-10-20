@@ -16,12 +16,14 @@ import {
   resetInstallationId
 } from '@main/services/installationId'
 import { getPublicKeyPem } from '@main/services/signingKey'
+import { initSettings, updateSettings } from '@main/services/settings'
 import { allocateLocalVersion } from '@main/services/sharing/workingRows'
 import {
   MEMBERS_FILENAME,
   SYNC_STATE_FILENAME,
   beginSession,
   finishSession,
+  forgetReached,
   getSyncState,
   localVersionHighWater,
   memberTickets,
@@ -55,6 +57,7 @@ describe('sync state (#1512)', () => {
     await initDatabase(dbPath)
     resetInstallationId()
     initInstallationId(tempDir)
+    initSettings(tempDir)
     localId = getInstallationId()
     resetSyncStateMemory()
     caseId = createCase({ name: 'Shared' }).id
@@ -186,6 +189,21 @@ describe('sync state (#1512)', () => {
     expect(readSyncStateFile(caseDir()).localVersionHighWater).toBe(3)
   })
 
+  // ADR-0032 rule 1: sync does not follow the Egress, so the state says when
+  // the Egress is not Direct and the members screens can show the notice.
+  it('reports the Egress kind, so a non-Direct Egress reads as not Direct (#1809)', () => {
+    share()
+    expect(getSyncState(caseId).egress).toBe('direct')
+    updateSettings({
+      egress: { kind: 'proxy', proxyUrl: 'socks5://127.0.0.1:1080', label: 'Frankfurt VPN' }
+    })
+    expect(getSyncState(caseId).egress).toBe('proxy')
+    updateSettings({ egress: { kind: 'tor', proxyUrl: 'socks5://127.0.0.1:9050', label: '' } })
+    expect(getSyncState(caseId).egress).toBe('tor')
+    updateSettings({ egress: { kind: 'direct' } })
+    expect(getSyncState(caseId).egress).toBe('direct')
+  })
+
   it('reports the pill payload from the roster, the running sessions and the file', () => {
     share()
     expect(getSyncState(caseId)).toEqual({
@@ -193,7 +211,8 @@ describe('sync state (#1512)', () => {
       peersReachable: 0,
       peersTotal: 1,
       transfer: null,
-      lastError: null
+      lastError: null,
+      egress: 'direct'
     })
     beginSession(caseId)
     expect(getSyncState(caseId).phase).toBe('syncing')
@@ -234,6 +253,22 @@ describe('sync state (#1512)', () => {
       heads: {}
     })
     expect(getSyncState(caseId).peersReachable).toBe(1)
+  })
+
+  it('forgetReached drops one peer from peersReachable and leaves the file alone (#1881)', () => {
+    share()
+    finishSession(caseId, {
+      peerInstallationId: PEER_ID,
+      transfer: { entries: 0, blobs: 0, bytes: 0 },
+      error: null,
+      heads: {}
+    })
+    expect(getSyncState(caseId).peersReachable).toBe(1)
+    const before = readSyncStateFile(caseDir())
+    forgetReached(caseId, PEER_ID)
+    forgetReached('another-case', PEER_ID)
+    expect(getSyncState(caseId).peersReachable).toBe(0)
+    expect(readSyncStateFile(caseDir())).toEqual(before)
   })
 
   it('writes members.json from the roster cache', () => {

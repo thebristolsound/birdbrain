@@ -65,7 +65,8 @@ const birdbrain = {
     setAutoCapturePolicy: bridge(IPC_CHANNELS.CASES_SET_AUTO_CAPTURE_POLICY),
     ensureSearchFields: bridge(IPC_CHANNELS.CASES_ENSURE_SEARCH_FIELDS),
     searchFields: bridge(IPC_CHANNELS.CASES_SEARCH_FIELDS),
-    checkFieldHit: bridge(IPC_CHANNELS.CASES_CHECK_FIELD_HIT)
+    checkFieldHit: bridge(IPC_CHANNELS.CASES_CHECK_FIELD_HIT),
+    listUnreviewed: bridge(IPC_CHANNELS.CASES_LIST_UNREVIEWED)
   },
   captures: {
     list: bridge(IPC_CHANNELS.CAPTURES_LIST),
@@ -219,7 +220,9 @@ const birdbrain = {
     revoke: bridge(IPC_CHANNELS.SHARING_REVOKE),
     excludeExhibit: bridge(IPC_CHANNELS.SHARING_EXCLUDE_EXHIBIT),
     syncNow: bridge(IPC_CHANNELS.SHARING_SYNC_NOW),
-    getMembers: bridge(IPC_CHANNELS.SHARING_GET_MEMBERS)
+    getMembers: bridge(IPC_CHANNELS.SHARING_GET_MEMBERS),
+    isAvailable: bridge(IPC_CHANNELS.SHARING_IS_AVAILABLE),
+    setRelayUrl: bridge(IPC_CHANNELS.SHARING_SET_RELAY_URL)
   },
 
   investigation: {

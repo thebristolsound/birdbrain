@@ -229,6 +229,45 @@ export interface FieldHitCheck {
   record: (Pick<FieldHit, 'exhibitId' | 'field' | 'locator'> & { value: string }) | null
 }
 
+// The unreviewed view (docs/plans/2026-10-09-case-retrieval-first-slice.md, D8): the
+// committed Captures of a Case that no live Note names and no Persisted Match covers,
+// grouped four ways. `listUnreviewedCaptures` states the rules.
+export const UNREVIEWED_GROUPS = ['from', 'reply-to', 'link-host', 'rare'] as const
+export type UnreviewedGroup = (typeof UNREVIEWED_GROUPS)[number]
+
+export interface UnreviewedCapture {
+  exhibitId: string
+  exhibitCitation: string
+  title: string
+  /** The record the Capture opens at; null under a rare identifier, which has no locator. */
+  hit: FieldHit | null
+}
+
+export interface UnreviewedRow {
+  /** The address, the host, or the identifier's value. */
+  key: string
+  /** A rare identifier's `extracted_data` category and subcategory; null in the other groups. */
+  identifier: { category: string; subcategory: string } | null
+  /** How many Captures of the Case hold a rare identifier, reviewed or not; null elsewhere. */
+  caseCaptures: number | null
+  captures: UnreviewedCapture[]
+}
+
+export interface UnreviewedCaptures {
+  /** Committed Captures in the Case. */
+  captures: number
+  /** The unreviewed ones among them. */
+  total: number
+  /** Unreviewed Captures listed under no row. */
+  ungrouped: number
+  /** Unreviewed Captures with no current link and header records, so in no such row. */
+  notCurrent: number
+  /** Unreviewed Captures whose records a size limit cut short. */
+  partial: number
+  rareLimit: number
+  groups: Record<UnreviewedGroup, UnreviewedRow[]>
+}
+
 export interface Capture {
   id: string
   caseId: string
@@ -453,6 +492,9 @@ export interface BirdbrainSettings {
   // Where Birdbrain's own traffic leaves from (ADR-0032). One setting for the
   // installation.
   egress: EgressSetting
+  // The relay Shared Case sync uses (#1809): a self-hosted relay's URL, or ''
+  // for the default public relays. Set through `sharing:setRelayUrl`.
+  sharingRelayUrl: string
 }
 
 // The Egress setting. A Proxy or Tor names a SOCKS5 or HTTP proxy that needs no
@@ -839,11 +881,27 @@ export const LOG_CODES = [
   // line holds the error.
   'searchFields.search_failed',
   'searchFields.source_missing',
+  // The unreviewed view's read that threw: the view says it could not load, and this line
+  // holds the error.
+  'searchFields.unreviewed_failed',
   // Shared Case sharing (#1810): an incoming stream whose handler threw on
   // this installation (the peer saw the stream close), and a joiner's first
   // session that failed after the Case was adopted (Sync now retries it).
   'sharing.stream_failed',
-  'sharing.first_session_failed'
+  'sharing.first_session_failed',
+  // The Iroh transport (#1809): the native binding did not load, so sharing
+  // is unavailable on this computer; the listener stopped accepting
+  // connections; and one incoming connection failed before its first stream.
+  'sharing.binding_unavailable',
+  'sharing.accept_failed',
+  'sharing.connection_failed',
+  // The sync service (#1881): a round that stopped because no transport could
+  // load, one that stopped because the transport's start threw (the next tick
+  // tries again), and one Case whose sync threw while the round went on to
+  // the next.
+  'sharing.sync_off',
+  'sharing.sync_start_failed',
+  'sharing.case_sync_failed'
 ] as const
 export type LogCode = (typeof LOG_CODES)[number]
 
@@ -1573,6 +1631,10 @@ export interface SyncState {
   peersTotal: number
   transfer: SyncTransfer | null
   lastError: { kind: SyncErrorKind; at: string } | null
+  // The Egress setting's kind (ADR-0032 rule 1). Sync does not follow the
+  // Egress: while this is not 'direct', sync still runs and teammates and the
+  // relay see this computer's addresses, which the members screens say.
+  egress: EgressSetting['kind']
 }
 
 // Why a sharing command refused (#1810). Every code reaches the renderer as
@@ -1602,7 +1664,9 @@ export const SHARING_ERROR_CODES = [
   'exhibit-ambiguous',
   'already-excluded',
   'operator-name-required',
-  'sharing-unavailable'
+  'sharing-unavailable',
+  'relay-url-invalid',
+  'relay-unreachable'
 ] as const
 export type SharingErrorCode = (typeof SHARING_ERROR_CODES)[number]
 

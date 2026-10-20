@@ -114,6 +114,43 @@ describe('buildDataTree', () => {
     expect(count('manifest-ledger')).toBe(7)
   })
 
+  // The unreviewed view (docs/plans/2026-10-09-case-retrieval-first-slice.md, D8, Ruling 1):
+  // last under Views, so it sits directly above Indicators.
+  it('puts Unreviewed Captures last under Views, its count absent until the view reports', () => {
+    const viewsOnly = (unreviewed?: number | null, expanded = ['views']) => {
+      const nodes = buildDataTree({
+        rows: INVENTORY,
+        expanded: new Set(expanded),
+        results: { ...RESULTS, unreviewed }
+      })
+      const keys = nodes.map((n) => n.key)
+      return { nodes, keys, row: nodes.find((n) => n.key === 'unreviewed') }
+    }
+    const { keys, row } = viewsOnly()
+    expect(keys.slice(keys.indexOf('views'), keys.indexOf('indicators') + 1)).toEqual([
+      'views',
+      'file-types',
+      'unreviewed',
+      'indicators'
+    ])
+    expect(row).toMatchObject({
+      label: 'Unreviewed Captures',
+      depth: 1,
+      group: false,
+      hasChildren: false,
+      count: null
+    })
+    expect(viewsOnly(null).row?.count).toBeNull()
+    expect(viewsOnly(631).row?.count).toBe(631)
+    expect(viewsOnly(0).row?.count).toBe(0)
+    // With File Types open, the row follows its file types.
+    const open = viewsOnly(4, ['views', 'file-types']).keys
+    expect(open[open.indexOf('indicators') - 1]).toBe('unreviewed')
+    expect(open[open.indexOf('unreviewed') - 1]).toMatch(/^file-type:/)
+    // Collapsed with Views.
+    expect(viewsOnly(4, []).row).toBeUndefined()
+  })
+
   it('groups Data Sources by kind with Derived Files as child rows and no raw/derived folders', () => {
     const nodes = buildDataTree({
       rows: INVENTORY,
@@ -217,7 +254,8 @@ describe('descendantKeys', () => {
       'file-types',
       'file-type:MHTML',
       'file-type:HTML',
-      'file-type:JPG'
+      'file-type:JPG',
+      'unreviewed'
     ])
     expect(descendantKeys(INVENTORY, 'file-types')).toEqual([
       'file-type:MHTML',

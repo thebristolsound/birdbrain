@@ -37,7 +37,7 @@ import {
 import { createCaptureLifecycle, ingestMhtmlCapture } from '@main/services/captureLifecycle'
 import type { ExtractionClient } from '@main/services/extraction/processClient'
 import { createSelectorLifecycle } from '@main/services/selectorLifecycle'
-import { MemoryHub } from '@main/services/sharing/transport'
+import { MemoryHub, type Transport } from '@main/services/sharing/transport'
 import {
   liveSyncSource,
   pullFromPeer,
@@ -434,7 +434,8 @@ export function recordSource(caseId: string, peer: Peer): RecordedSource {
 }
 
 // One session: the active peer dials a listener answering from `source`, with
-// a Capture Lifecycle of its own unless the test passes one. The post-ingest
+// a Capture Lifecycle of its own unless the test passes one. The pair runs on a
+// `MemoryHub` unless the test passes two transports of its own. The post-ingest
 // work of received Captures runs on setImmediate and asks the extraction
 // process (#598) for each page's rows, which arrive on a later turn, so the
 // helper waits out the turn and then every answer: both land in this peer's
@@ -443,7 +444,8 @@ export async function pull(
   caseId: string,
   source: SyncSource,
   options: Partial<SyncSessionOptions> = {},
-  serve: ServeOptions = {}
+  serve: ServeOptions = {},
+  pair?: { dialer: Transport; listener: Transport }
 ): Promise<SyncSessionResult> {
   const answers: Promise<unknown>[] = []
   const extraction = inProcessExtraction()
@@ -462,8 +464,10 @@ export async function pull(
       extraction: awaitedExtraction
     })
   const hub = new MemoryHub({ chunkSize: 4096 })
-  const dialer = hub.createTransport('dialer')
-  const listener = hub.createTransport('listener')
+  const { dialer, listener } = pair ?? {
+    dialer: hub.createTransport('dialer'),
+    listener: hub.createTransport('listener')
+  }
   const served = new Promise<void>((resolve, reject) => {
     void listener.listen((stream) => {
       serveSyncSession(stream, (id) => (id === source.caseId ? source : null), serve).then(

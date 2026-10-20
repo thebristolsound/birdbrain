@@ -50,6 +50,7 @@ import type {
   SelectorOrigin,
   SessionRecord,
   Tag,
+  UnreviewedCaptures,
   UpdateStatus,
   WaybackLookupResult,
   WaybackSnapshot,
@@ -106,6 +107,7 @@ export const IPC_CHANNELS = {
   CASES_ENSURE_SEARCH_FIELDS: 'cases:ensureSearchFields',
   CASES_SEARCH_FIELDS: 'cases:searchFields',
   CASES_CHECK_FIELD_HIT: 'cases:checkFieldHit',
+  CASES_LIST_UNREVIEWED: 'cases:listUnreviewed',
 
   // Captures
   CAPTURES_LIST: 'captures:list',
@@ -266,6 +268,10 @@ export const IPC_CHANNELS = {
   SHARING_EXCLUDE_EXHIBIT: 'sharing:excludeExhibit',
   SHARING_SYNC_NOW: 'sharing:syncNow',
   SHARING_GET_MEMBERS: 'sharing:getMembers',
+  // The transport (#1809): whether the native binding loads on this computer,
+  // and the relay sync uses.
+  SHARING_IS_AVAILABLE: 'sharing:isAvailable',
+  SHARING_SET_RELAY_URL: 'sharing:setRelayUrl',
   SHARING_CHANGED: 'event:sharingChanged',
   SHARING_JOIN_PROGRESS: 'event:sharingJoinProgress',
 
@@ -876,6 +882,10 @@ export interface IpcInvokeContract {
   'cases:ensureSearchFields': { args: [caseId: string]; result: FieldBuildSummary }
   'cases:searchFields': { args: [caseId: string, query: string]; result: FieldSearchResult }
   'cases:checkFieldHit': { args: [fieldId: number]; result: FieldHitCheck }
+  'cases:listUnreviewed': {
+    args: [caseId: string, rareLimit: number]
+    result: UnreviewedCaptures
+  }
 
   'captures:list': { args: [caseId: string]; result: Capture[] }
   'captures:get': { args: [id: string]; result: Capture | undefined }
@@ -1092,6 +1102,10 @@ export interface IpcInvokeContract {
   }
   'sharing:syncNow': { args: [caseId: string]; result: SharingSyncOutcome[] }
   'sharing:getMembers': { args: [caseId: string]; result: SharingMembers }
+  'sharing:isAvailable': { args: []; result: boolean }
+  // An http(s) URL, or '' for the default public relays. Refuses
+  // `relay-url-invalid`; the next transport start uses the stored value.
+  'sharing:setRelayUrl': { args: [relayUrl: string]; result: void }
 
   'investigation:getRevision': { args: [caseId: string]; result: CaseRevision }
   'investigation:getView': { args: [caseId: string]; result: InvestigationView }

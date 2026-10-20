@@ -76,7 +76,8 @@ const settings = {
   demoCaseSeeded: false,
   releaseChannel: 'stable',
   autoCheckForUpdates: false,
-  egress: { kind: 'direct' }
+  egress: { kind: 'direct' },
+  sharingRelayUrl: ''
 } satisfies BirdbrainSettings
 
 let chooseStoragePath: ReturnType<typeof vi.fn>

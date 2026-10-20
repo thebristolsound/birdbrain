@@ -40,6 +40,30 @@
       "packageFiles": ["README.md"],
       "texts": ["LGPL-3.0.txt", "GPL-3.0.txt"]
     },
+    "@number0/iroh": {
+      "note": "The published package carries no licence file. It is dual-licensed MIT OR Apache-2.0; these are the LICENSE-MIT and LICENSE-APACHE files of its source repository (https://github.com/n0-computer/iroh-ffi) at the v1.1.0 tag.",
+      "texts": ["iroh-ffi-LICENSE-MIT.txt", "iroh-ffi-LICENSE-APACHE.txt"]
+    },
+    "@number0/iroh-darwin-arm64": {
+      "note": "The package holds the native build of @number0/iroh for one platform and carries no licence file. It declares the MIT License; this is the LICENSE-MIT file of its source repository (https://github.com/n0-computer/iroh-ffi) at the v1.1.0 tag.",
+      "texts": ["iroh-ffi-LICENSE-MIT.txt"]
+    },
+    "@number0/iroh-linux-arm64-gnu": {
+      "note": "The package holds the native build of @number0/iroh for one platform and carries no licence file. It declares the MIT License; this is the LICENSE-MIT file of its source repository (https://github.com/n0-computer/iroh-ffi) at the v1.1.0 tag.",
+      "texts": ["iroh-ffi-LICENSE-MIT.txt"]
+    },
+    "@number0/iroh-linux-x64-gnu": {
+      "note": "The package holds the native build of @number0/iroh for one platform and carries no licence file. It declares the MIT License; this is the LICENSE-MIT file of its source repository (https://github.com/n0-computer/iroh-ffi) at the v1.1.0 tag.",
+      "texts": ["iroh-ffi-LICENSE-MIT.txt"]
+    },
+    "@number0/iroh-win32-arm64-msvc": {
+      "note": "The package holds the native build of @number0/iroh for one platform and carries no licence file. It declares the MIT License; this is the LICENSE-MIT file of its source repository (https://github.com/n0-computer/iroh-ffi) at the v1.1.0 tag.",
+      "texts": ["iroh-ffi-LICENSE-MIT.txt"]
+    },
+    "@number0/iroh-win32-x64-msvc": {
+      "note": "The package holds the native build of @number0/iroh for one platform and carries no licence file. It declares the MIT License; this is the LICENSE-MIT file of its source repository (https://github.com/n0-computer/iroh-ffi) at the v1.1.0 tag.",
+      "texts": ["iroh-ffi-LICENSE-MIT.txt"]
+    },
     "boolbase": {
       "note": "The published package carries no licence file. This text is the LICENSE file from its source repository (https://github.com/fb55/boolbase), without the email address that follows the author's name in the copyright line.",
       "texts": ["boolbase-LICENSE.txt"]

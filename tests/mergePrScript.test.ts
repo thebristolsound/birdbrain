@@ -95,7 +95,8 @@ describe.skipIf(!HAS_JQ)('merge.sh gates on the required checks of main', () => 
         run('Dependency audit', 'failure')
       ])
     )
-    expect(result.stderr).toBe('')
+    // The body linter notes on stderr when a branch changes it, which says nothing about merge.sh.
+    expect(result.stderr.replace(/^post-pr-body: note: .*\n/gm, '')).toBe('')
     expect(result.status).toBe(0)
     expect(result.stdout).toContain(
       'merge-pr: WARN checks not required on main and not green at head: Dependency audit=completed/failure'

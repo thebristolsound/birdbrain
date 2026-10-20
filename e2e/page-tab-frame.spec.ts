@@ -1,20 +1,17 @@
 import { test, expect } from './fixtures/electronApp'
 
 type Page = import('@playwright/test').Page
+type ElectronApplication = import('@playwright/test').ElectronApplication
 
-// The Page tab's guest geometry (#465). Only a real Electron guest shows the defect:
-// Electron sizes a `<webview>`'s widget from the element's box but lays the guest's
-// document out against the embedder window's viewport, so a frame sized to the pane
-// painted the rest of the archived page outside its own element, where an
-// overflow-hidden pane clipped it and nothing could scroll to it.
+// The stored-page guest lays its page out against the pane it sits in (#1941), on both
+// surfaces that mount it: the Page tab and the stored half of the Wayback tab.
 //
-// What this adds over the jsdom test is real layout: the frame's measured box, the
-// pane's real scroll extent, and both across a details-column collapse. What it does
-// not do is observe a pixel the guest rendered — the guest runs with `javascript=no`,
-// so no `evaluate` can run inside it, and reaching its pixels would take a
-// main-process `webContents.capturePage()` probe on the guest plus an image check.
-// Until that exists, the assertions below are geometry, close to a restatement of the
-// two style properties the fix changed.
+// The guest's own layout viewport is read through the main process's debugger, because
+// nothing in the renderer observes it: the guest runs with `javascript=no`, and the
+// element's box says what the frame was given, not what the page laid out against.
+// Window sizes are set on the BrowserWindow. `page.setViewportSize` emulates a viewport
+// instead, and Playwright's own screenshot of a guest disagrees with the window's
+// `capturePage()`, so neither is evidence of what the Operator sees.
 
 // An archived page that fills its viewport, so any mismatch between the guest's layout
 // viewport and its widget shows up as content nobody can reach.
@@ -69,30 +66,65 @@ async function seedCapture(page: Page, caseId: string, token: string, body: stri
   expect(result.status).toBe('ok')
 }
 
-function readFrame(page: Page) {
+async function resizeWindow(page: Page, electronApp: ElectronApplication, w: number, h: number) {
+  await electronApp.evaluate(
+    ({ BrowserWindow }, [w, h]) => {
+      BrowserWindow.getAllWindows()[0].setContentSize(w, h)
+    },
+    [w, h]
+  )
+  await expect.poll(() => page.evaluate(() => [innerWidth, innerHeight])).toEqual([w, h])
+}
+
+function readPane(page: Page) {
   return page.evaluate(() => {
-    const pane = document.querySelector('[data-testid="mhtml-viewer-scroll"]') as HTMLElement
-    const guest = document.querySelector('[data-testid="mhtml-viewer"]') as HTMLElement
-    const box = guest.getBoundingClientRect()
-    return {
-      paneWidth: pane.clientWidth,
-      paneHeight: pane.clientHeight,
-      scrollWidth: pane.scrollWidth,
-      scrollHeight: pane.scrollHeight,
-      frameWidth: Math.round(box.width),
-      frameHeight: Math.round(box.height),
-      windowWidth: window.innerWidth,
-      windowHeight: window.innerHeight
+    const pane = document.querySelector('[data-testid="mhtml-viewer-pane"]') as HTMLElement
+    return { width: pane.clientWidth, height: pane.clientHeight, windowWidth: innerWidth }
+  })
+}
+
+// The CSS layout viewport the guest's page is laid out against.
+function readGuestViewport(electronApp: ElectronApplication) {
+  return electronApp.evaluate(async ({ webContents }) => {
+    const guest = webContents.getAllWebContents().find((wc) => wc.getType() === 'webview')
+    if (!guest) throw new Error('no guest webContents')
+    guest.debugger.attach('1.3')
+    try {
+      const metrics = await guest.debugger.sendCommand('Page.getLayoutMetrics')
+      const { clientWidth, clientHeight } = metrics.cssLayoutViewport
+      return { width: clientWidth as number, height: clientHeight as number }
+    } finally {
+      guest.debugger.detach()
     }
   })
 }
 
-test.describe('Page tab guest frame', () => {
-  test('sizes the guest to the window and leaves the pane able to scroll to it', async ({
-    page
+// The page is laid out against the pane, not the window: within a pixel, since the pane's
+// box can be fractional and the viewport is whole.
+async function expectGuestFitsPane(page: Page, electronApp: ElectronApplication, label: string) {
+  const pane = await readPane(page)
+  expect(pane.width, `${label}: the pane is narrower than the window`).toBeLessThan(
+    pane.windowWidth
+  )
+  await expect
+    .poll(
+      async () => {
+        const guest = await readGuestViewport(electronApp)
+        return [Math.abs(guest.width - pane.width) <= 1, Math.abs(guest.height - pane.height) <= 1]
+      },
+      { message: label }
+    )
+    .toEqual([true, true])
+  return pane
+}
+
+test.describe('stored-page guest frame', () => {
+  test('lays the page out against its pane on the Page and Wayback tabs', async ({
+    page,
+    electronApp
   }) => {
     test.setTimeout(120000)
-    await page.setViewportSize({ width: 1200, height: 800 })
+    await resizeWindow(page, electronApp, 1200, 800)
 
     await page.evaluate(() => {
       window.location.hash = '/cases/new'
@@ -118,41 +150,20 @@ test.describe('Page tab guest frame', () => {
     await page.getByRole('tab', { name: 'Page', exact: true }).click()
     await expect(page.getByTestId('mhtml-viewer')).toBeVisible({ timeout: 15000 })
 
-    // Three columns are up, so the viewer pane is a fraction of the window — the
-    // configuration the bug was reported in.
-    const withRail = await readFrame(page)
-    expect(withRail.paneWidth).toBeLessThan(withRail.windowWidth)
-    expect(withRail.frameWidth).toBe(withRail.windowWidth)
-    expect(withRail.frameHeight).toBe(withRail.windowHeight)
-    // Everything the guest laid out is inside the frame, and the pane can reach it.
-    expect(withRail.scrollWidth).toBeGreaterThanOrEqual(withRail.windowWidth)
-    expect(withRail.scrollWidth).toBeGreaterThan(withRail.paneWidth)
+    // Three columns are up, so the viewer pane is a fraction of the window: the
+    // configuration both reports were made in.
+    const withRail = await expectGuestFitsPane(page, electronApp, 'Page tab, details open')
 
-    const maxScrollLeft = await page.evaluate(() => {
-      const pane = document.querySelector('[data-testid="mhtml-viewer-scroll"]') as HTMLElement
-      pane.scrollLeft = pane.scrollWidth
-      return pane.scrollLeft
-    })
-    expect(maxScrollLeft).toBe(withRail.scrollWidth - withRail.paneWidth)
-
-    // Collapsing the details column widens the pane; the frame still carries the
-    // window's size, which is what the guest keeps laying out against.
     await page.getByRole('button', { name: 'Collapse details panel' }).first().click()
-    await expect
-      .poll(async () => (await readFrame(page)).paneWidth)
-      .toBeGreaterThan(withRail.paneWidth)
-    const collapsed = await readFrame(page)
-    expect(collapsed.frameWidth).toBe(collapsed.windowWidth)
-    expect(collapsed.frameHeight).toBe(collapsed.windowHeight)
-    // The scroll extent survives the collapse: the wider pane has less left to scroll,
-    // but every laid-out pixel is still inside the frame and still reachable.
-    expect(collapsed.scrollWidth).toBeGreaterThanOrEqual(collapsed.windowWidth)
-    expect(collapsed.scrollWidth).toBeGreaterThan(collapsed.paneWidth)
-    const collapsedMaxScrollLeft = await page.evaluate(() => {
-      const pane = document.querySelector('[data-testid="mhtml-viewer-scroll"]') as HTMLElement
-      pane.scrollLeft = pane.scrollWidth
-      return pane.scrollLeft
-    })
-    expect(collapsedMaxScrollLeft).toBe(collapsed.scrollWidth - collapsed.paneWidth)
+    await expect.poll(async () => (await readPane(page)).width).toBeGreaterThan(withRail.width)
+    await expectGuestFitsPane(page, electronApp, 'Page tab, details collapsed')
+
+    await resizeWindow(page, electronApp, 1500, 700)
+    await expectGuestFitsPane(page, electronApp, 'Page tab, window resized')
+
+    // The Wayback tab splits the viewer again; the stored half is the same guest.
+    await page.getByRole('tab', { name: 'Wayback', exact: true }).click()
+    await expect(page.getByTestId('wayback-compare')).toBeVisible()
+    await expectGuestFitsPane(page, electronApp, 'Wayback tab')
   })
 })

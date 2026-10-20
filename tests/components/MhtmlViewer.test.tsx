@@ -1,10 +1,8 @@
 // @vitest-environment jsdom
 //
-// The MHTML evidence viewer's frame geometry (#465). Electron sizes a guest's widget
-// from the element but lays its page out against the embedder window, so a frame
-// sized to the pane painted the rest of the page outside itself with nothing able to
-// scroll to it. What this file keeps is the shape that makes it reachable: the frame
-// carries the window's size, and the pane around it scrolls.
+// The MHTML evidence viewer: its guest's posture, its link menu, and its frame, which
+// fills the pane whatever the window's size (#1941). Whether the guest's page lays out
+// against that pane is only observable in Electron: e2e/page-tab-frame.spec.ts.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -263,7 +261,7 @@ describe('MhtmlViewer', () => {
 
   it('opens no menu for a right-click on the pane around the guest', async () => {
     renderViewer()
-    const pane = await screen.findByTestId('mhtml-viewer-scroll')
+    const pane = await screen.findByTestId('mhtml-viewer-pane')
 
     fireEvent.contextMenu(pane)
 
@@ -279,31 +277,16 @@ describe('MhtmlViewer', () => {
     expect(screen.queryByRole('menu')).toBeNull()
   })
 
-  it('sizes the frame to the window rather than to the pane, and lets the pane scroll', async () => {
-    renderViewer()
-
-    const guest = await screen.findByTestId('mhtml-viewer')
-    expect(guest.style.width).toBe('1200px')
-    expect(guest.style.height).toBe('800px')
-    // The pane is the only box that may clip, and it has to offer scrollbars when it
-    // does: an overflow-hidden pane is what made the excess unreachable.
-    const pane = screen.getByTestId('mhtml-viewer-scroll')
-    expect(pane.className).toContain('overflow-auto')
-    // A frame narrower than the pane would leave a strip of empty pane beside the page.
-    expect(guest.style.minWidth).toBe('100%')
-    expect(guest.style.minHeight).toBe('100%')
-  })
-
-  it('re-measures the frame when the window is resized', async () => {
+  it('fills its pane, and a window resize leaves the frame to its pane', async () => {
     renderViewer()
     const guest = await screen.findByTestId('mhtml-viewer')
+    expect(guest.style.width).toBe('100%')
+    expect(guest.style.height).toBe('100%')
 
     resizeWindowTo(900, 600)
 
-    await waitFor(() => {
-      expect(guest.style.width).toBe('900px')
-      expect(guest.style.height).toBe('600px')
-    })
+    expect(guest.style.width).toBe('100%')
+    expect(guest.style.height).toBe('100%')
   })
 
   it('shows a failed archive lookup in the danger token and mounts no guest', async () => {

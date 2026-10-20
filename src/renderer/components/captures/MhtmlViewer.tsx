@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { captureMhtmlUrlQueryOptions } from '@renderer/lib/queries'
-import { useGuestFrameSize } from '@renderer/components/captures/useGuestFrameSize'
 import { EntityContextMenu } from '@renderer/components/contextmenu/EntityContextMenu'
 import { middleTruncate, readGuestContextMenu } from '@renderer/components/captures/guestLink'
 import { useLinkMenuTarget, type LinkHit } from '@renderer/components/captures/useLinkMenuTarget'
@@ -29,8 +28,10 @@ function closeOpenMenu(): void {
 // Two surfaces mount it: the Page tab's mhtml branch in CaptureViewer, and the Wayback
 // tab's stored-capture pane via CapturePane in WaybackCompare (asserted there by
 // tests/components/WaybackCompare.test.tsx). A change to the frame or to the guest's
-// posture here changes both, and the Wayback one sits beside a live archive.org guest
-// still sized `100%` (#1126) — so the two panes of that comparison are not alike.
+// posture here changes both.
+//
+// The guest fills its pane, so the page lays out against the pane and reflows with it
+// (#1941). e2e/page-tab-frame.spec.ts pins that from the guest's own layout viewport.
 //
 // Links in the guest are live to the pointer (#1708): hovering one shows its
 // destination, and right-clicking opens the link menu. Following one is refused by
@@ -40,7 +41,6 @@ export function MhtmlViewer({ captureId, caseId }: Props) {
   const ref = useRef<HTMLElement | null>(null)
   const triggerRef = useRef<HTMLDivElement | null>(null)
   const opening = useRef(false)
-  const frame = useGuestFrameSize()
   const [hoverUrl, setHoverUrl] = useState('')
   const [hit, setHit] = useState<LinkHit>(NO_HIT)
   const [frameChanged, setFrameChanged] = useState(false)
@@ -118,38 +118,24 @@ export function MhtmlViewer({ captureId, caseId }: Props) {
     <EntityContextMenu target={linkTarget(hit)} className="h-full w-full" modal={false}>
       <div
         ref={triggerRef}
+        data-testid="mhtml-viewer-pane"
         className="relative h-full w-full"
         // A right-click on the pane around the guest has no link under it.
         onContextMenu={(e) => {
           if (!opening.current) e.preventDefault()
         }}
       >
-        {/* The guest is sized to its layout viewport rather than to the pane, and the
-            pane scrolls it — see useGuestFrameSize for why the two differ (#465).
-            `min-*: 100%` does one thing only: it stops the element being smaller than
-            the pane, so a window narrower than the pane leaves no strip of empty pane
-            beside the page. It is not a fallback for a stale measurement — the guest
-            lays out against the *current* window whatever size the element is, so an
-            element read late still clips. */}
-        <div data-testid="mhtml-viewer-scroll" className="h-full w-full overflow-auto">
-          {/* Intentionally omit `nodeintegration` and `allowpopups` — both default to
-              disabled in Electron, and passing them as string "false" historically
-              *enabled* the features because HTML attribute presence = true. */}
-          <webview
-            data-testid="mhtml-viewer"
-            ref={ref as unknown as React.RefObject<HTMLElement>}
-            src={fileUrl}
-            partition={MHTML_PARTITION}
-            webpreferences="javascript=no,contextIsolation=yes,sandbox=yes"
-            style={{
-              width: `${frame.width}px`,
-              height: `${frame.height}px`,
-              minWidth: '100%',
-              minHeight: '100%',
-              background: 'white'
-            }}
-          />
-        </div>
+        {/* Intentionally omit `nodeintegration` and `allowpopups` — both default to
+            disabled in Electron, and passing them as string "false" historically
+            *enabled* the features because HTML attribute presence = true. */}
+        <webview
+          data-testid="mhtml-viewer"
+          ref={ref as unknown as React.RefObject<HTMLElement>}
+          src={fileUrl}
+          partition={MHTML_PARTITION}
+          webpreferences="javascript=no,contextIsolation=yes,sandbox=yes"
+          style={{ width: '100%', height: '100%', background: 'white' }}
+        />
         {frameChanged && (
           <div
             role="status"

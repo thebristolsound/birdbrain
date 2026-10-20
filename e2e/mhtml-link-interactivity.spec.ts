@@ -442,7 +442,7 @@ test.describe('stored-page viewer links', () => {
     const capture = page.getByTestId('context-menu-item-link-capture')
     // Right-clicks a link and checks the menu opened on it, at the pointer. Radix
     // places the menu's corner on the point it is given, so a placement that missed
-    // the pane's scroll or the guest's position lands far from the link.
+    // the guest's scroll or its position lands far from the link.
     // `pointer` is the window's own input, hit-tested into the guest the way an
     // Operator's mouse is; `main` sends the event to the guest's contents directly.
     const rightClick = async (
@@ -451,7 +451,7 @@ test.describe('stored-page viewer links', () => {
       label: string,
       via: 'pointer' | 'main' = 'pointer'
     ) => {
-      const y = rowY(name, frame)
+      const y = rowY(name, frame) - guestScroll
       const guestBox = (await page.getByTestId('mhtml-viewer').boundingBox())!
       if (via === 'pointer') {
         await page.mouse.click(guestBox.x + ROW.x, guestBox.y + y, { button: 'right' })
@@ -464,21 +464,33 @@ test.describe('stored-page viewer links', () => {
       expect(Math.abs(menuBox.y - (guestBox.y + y)), `${label} y`).toBeLessThan(8)
       return guestBox
     }
-    // Chromium re-measures where the guest sits shortly after the pane scrolls or the
+    // Chromium re-measures where the guest sits shortly after it scrolls or the
     // window resizes, and reports a right-click from that measurement. The pause
     // stands for the Operator's own between scrolling and right-clicking.
     const settle = () => page.waitForTimeout(400)
-    const scrollPane = async (top: number) => {
-      const scrolled = await page.evaluate((amount) => {
-        const pane = document.querySelector('[data-testid="mhtml-viewer-scroll"]') as HTMLElement
-        pane.scrollTop = amount
-        return pane.scrollTop
+    // The guest scrolls its own page. With `javascript=no` only the main process's
+    // debugger can scroll it to an exact offset.
+    let guestScroll = 0
+    const scrollGuest = async (top: number) => {
+      guestScroll = await electronApp.evaluate(async ({ webContents }, amount) => {
+        const guest = webContents.getAllWebContents().find((wc) => wc.getType() === 'webview')
+        if (!guest) throw new Error('no guest webContents')
+        guest.debugger.attach('1.3')
+        try {
+          const { result } = await guest.debugger.sendCommand('Runtime.evaluate', {
+            expression: `scrollTo(0, ${amount}); scrollY`,
+            returnByValue: true
+          })
+          return result.value as number
+        } finally {
+          guest.debugger.detach()
+        }
       }, top)
       await settle()
-      return scrolled
+      return guestScroll
     }
 
-    expect(await scrollPane(120)).toBeGreaterThan(0)
+    expect(await scrollGuest(120)).toBeGreaterThan(0)
     await rightClick('public', 'main', 'Link actions: https://example.test/main')
     await expect(capture).toHaveText('Capture link')
     await expect(capture).not.toHaveAttribute('data-disabled', '')
@@ -496,7 +508,7 @@ test.describe('stored-page viewer links', () => {
     // Scrolled far enough that the sub-frame link sits a menu's height above the window's
     // bottom edge, where Radix would otherwise shift the menu up off the pointer.
     await page.setViewportSize({ width: 1250, height: 850 })
-    expect(await scrollPane(120)).toBeGreaterThan(0)
+    expect(await scrollGuest(120)).toBeGreaterThan(0)
     await page.setViewportSize({ width: 1200, height: 800 })
     await settle()
     await rightClick('public', 'sub', 'Link actions: https://example.test/sub', 'main')

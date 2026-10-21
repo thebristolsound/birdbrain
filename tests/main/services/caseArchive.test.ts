@@ -943,6 +943,27 @@ describe('caseArchive import', () => {
     expect(listNotes(newCaseId).find((n) => n.title === 'Note 1')?.captureId).toBeUndefined()
   })
 
+  it("clears an archived note's link to a Capture another Case of this database holds", async () => {
+    const elsewhere = insertCapture({
+      caseId: createCase({ name: 'Elsewhere' }).id,
+      url: 'https://example.com/elsewhere',
+      title: 'Elsewhere',
+      hash: 'h',
+      timestamp: '2026-01-01T00:00:00.000Z'
+    }).id
+    const path = join(tempDir, 'cross-case-note-link.birdbrain')
+    copyFileSync(archivePath, path)
+    rewriteDataJson(path, (data) => ({
+      ...data,
+      notes: (data.notes as Array<Record<string, unknown>>).map((n) =>
+        n.id === plainNoteId ? { ...n, capture_id: elsewhere } : n
+      )
+    }))
+
+    const { newCaseId } = await importCaseArchive(path)
+    expect(listNotes(newCaseId).find((n) => n.title === 'Note 1')?.captureId).toBeUndefined()
+  })
+
   // Review finding on #1877: the collision remap covers only the ids an archive carries, so a
   // kept link to a deleted Capture would cite whatever this installation holds under that id.
   it.each([

@@ -33,6 +33,44 @@ type ElectronOptions = {
   sharing: boolean
 }
 
+/**
+ * Launches the built app on the profile at `userData`, with `env` on top of the launch's own
+ * variables. Launched via package.json `main` resolution (args: ['.']) so the test exercises
+ * the same code path electron-builder uses in production (asar / asarUnpack / preload).
+ * profileLaunch also gives each launch a fresh Chromium profile (localStorage, IndexedDB).
+ * The two-instance spec (shared-case-sync.spec.ts) launches twice through this.
+ */
+export async function launchBirdbrain(
+  userData: string,
+  env: Record<string, string> = {}
+): Promise<ElectronApplication> {
+  const mainPath = join(__dirname, '../../out/main/index.js')
+
+  try {
+    await access(mainPath)
+  } catch {
+    throw new Error(
+      `Electron main entrypoint not found at "${mainPath}". ` +
+        'Make sure the application is built (e.g. run your build script) before running E2E tests.'
+    )
+  }
+
+  const launch = profileLaunch(userData)
+  return _electron.launch({
+    args: ['.', ...launch.args],
+    cwd: join(__dirname, '../..'),
+    env: { ...process.env, ...launch.env, ...env }
+  })
+}
+
+/** The app's first window once its renderer reports ready. */
+export async function readyPage(app: ElectronApplication): Promise<Page> {
+  const page = await app.firstWindow()
+  await page.waitForLoadState('domcontentloaded')
+  await page.waitForSelector('[data-testid="app-ready"]', { timeout: 15000 })
+  return page
+}
+
 export const test = base.extend<ElectronFixtures & ElectronOptions>({
   freshInstall: [false, { option: true }],
   seeded: [false, { option: true }],
@@ -50,26 +88,7 @@ export const test = base.extend<ElectronFixtures & ElectronOptions>({
     )
     if (seeded) await seedProfile(join(__dirname, '../..'), tempDir)
 
-    const mainPath = join(__dirname, '../../out/main/index.js')
-
-    try {
-      await access(mainPath)
-    } catch {
-      throw new Error(
-        `Electron main entrypoint not found at "${mainPath}". ` +
-          'Make sure the application is built (e.g. run your build script) before running E2E tests.'
-      )
-    }
-
-    // Launch via package.json `main` resolution (args: ['.']) so the test exercises the
-    // same code path electron-builder uses in production (asar / asarUnpack / preload).
-    // profileLaunch also gives each test a fresh Chromium profile (localStorage, IndexedDB).
-    const { args, env } = profileLaunch(tempDir)
-    const app = await _electron.launch({
-      args: ['.', ...args],
-      cwd: join(__dirname, '../..'),
-      env: { ...process.env, ...env, BIRDBRAIN_E2E_SHARING_OFF: sharing ? '0' : '1' }
-    })
+    const app = await launchBirdbrain(tempDir, { BIRDBRAIN_E2E_SHARING_OFF: sharing ? '0' : '1' })
 
     try {
       await use(app)
@@ -80,10 +99,7 @@ export const test = base.extend<ElectronFixtures & ElectronOptions>({
   },
 
   page: async ({ electronApp }, use) => {
-    const page = await electronApp.firstWindow()
-    await page.waitForLoadState('domcontentloaded')
-    await page.waitForSelector('[data-testid="app-ready"]', { timeout: 15000 })
-    await use(page)
+    await use(await readyPage(electronApp))
   }
 })
 

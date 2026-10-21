@@ -747,11 +747,13 @@ itself legacy and avoid signature enforcement.
 Case archive import does more than copy rows. It inspects the archive before
 writing, verifies artifacts, remaps identifiers, records the mapping digest, and
 appends a locally signed import boundary that contains the source public key and
-verification result. The archive also carries each Derived File its verified
-chains anchor, and the import restores a file and its record only when the
-file's bytes hash to the `outputHash` in its signed entry. Verification can
-switch keys across these boundaries, allowing a chain to preserve prior
-installation history and continue under the receiving installation.
+verification result. The archive carries a Derived File only when a verified
+chain signs it, the row for the Exhibit it was computed from is in the archive,
+the import may write its path, and its bytes still hash to the `outputHash` in
+its signed entry. The import restores the file and its record under the same
+checks. Verification can switch keys across these boundaries, allowing a chain
+to preserve prior installation history and continue under the receiving
+installation.
 
 The import boundary avoids pretending that all history was signed by the
 current workstation.

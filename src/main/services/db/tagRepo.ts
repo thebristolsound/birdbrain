@@ -472,10 +472,11 @@ export function collectCaptureTagsForCase(caseId: string): Record<string, unknow
  *
  * For the demonstration case's cleanup path (#405). Tags are global: deleting
  * a case removes its `exhibit_tags` links (removeCaseDependents) and cascades
- * its `note_tags` ones, but leaves the tag rows themselves in every picker. The remaining links are counted rather than
- * the ids taken on trust, because the archive import merges tags by name — the
- * demo's tag may BE one the operator already had, or one they have since put
- * on their own evidence. Returns how many rows were removed.
+ * its `note_tags` ones, but leaves the tag rows themselves in every picker.
+ * The remaining links are counted rather than the ids taken on trust, because
+ * the archive import merges tags by name — the demo's tag may BE one the
+ * operator already had, or one they have since put on their own evidence.
+ * Returns how many rows were removed.
  */
 export function deleteUnusedTags(tagIds: string[]): number {
   if (tagIds.length === 0) return 0

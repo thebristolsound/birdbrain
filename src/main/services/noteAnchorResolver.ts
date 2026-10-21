@@ -88,8 +88,8 @@ export type NoteAnchorResolution =
  * longer in the database.
  *
  * That case is a distinct outcome rather than an error because deleting a
- * capture does not, and must not, erase the anchors pointing at it. SQLite
- * sets `notes.capture_id` to NULL on delete but cannot reach the `captureId`
+ * capture does not, and must not, erase the anchors pointing at it. A delete
+ * clears `notes.capture_id` outside a Shared Case but never the `captureId`
  * inside `anchor_json`, and the answer to that is not to scrub the anchor: a
  * note whose evidence was deleted must survive as a visible gap, the same rule
  * the design states for a brief block whose referent is gone. Erasing it would

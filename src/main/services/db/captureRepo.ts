@@ -242,8 +242,8 @@ export const insertCapture = function (params: InsertCaptureParams & { id?: stri
     // a second record of the capture: it is the identity and numbering row
     // every kind shares, and Exhibit Numbers are assigned at ingest for
     // Captures (X18). Writing it here rather than at each call site is what
-    // keeps `exhibit_tags` — whose foreign key points at `exhibits` — usable
-    // for a capture the moment it lands.
+    // keeps `exhibit_tags`, whose rows must name a held Exhibit, usable for a
+    // capture the moment it lands.
     insertExhibitForCapture({
       id,
       caseId: params.caseId,
